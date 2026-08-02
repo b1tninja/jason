@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jason"
+version = "0.1.0"
+description = "HOA agent (virtual manager) — tasks, secrets, and orchestration for PayHOA and utilities"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "keepersdk>=1.2",
+    "python-dotenv>=1.0",
+    "payhoa",
+    "smud",
+    "idoxs",
+]
+
+[project.scripts]
+jason = "jason.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jason"]
