@@ -186,11 +186,42 @@ def text_of(path: Path) -> tuple[str, str]:
     return text, "image-only; no OCR engine read it"
 
 
+PERSON_KINDS = "library/classified-by-person.json"
+
+
+def person_kinds(root: Path) -> dict[str, dict]:
+    """The kinds people chose for files the rules could not classify (``jason intake``), by library path."""
+    import json
+
+    path = Path(root) / PERSON_KINDS
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def set_person_kind(root: Path, library_path: str, kind: str, by: str, note: str = "") -> None:
+    import json
+    from datetime import date
+
+    path = Path(root) / PERSON_KINDS
+    rows = person_kinds(root)
+    rows[library_path] = {"kind": kind, "by": by, "on": date.today().isoformat(), "note": note}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, indent=1, sort_keys=True), encoding="utf-8")
+
+
+def by_person(row: Classified, chosen: dict[str, dict]) -> Classified:
+    """A person's answer outranks every rule: the row takes the chosen kind, and says who chose it."""
+    pick = chosen.get(row.document.path)
+    if not pick:
+        return row
+    return replace(row, kind=DocumentKind(pick["kind"]), method=Method.PERSON, confidence=1.0,
+                   evidence=f"chosen by {pick.get('by', '?')} on {pick.get('on', '?')}" + (f": {pick['note']}" if pick.get("note") else ""))
+
+
 def ingest(community, root: Path, *, client=None, org_id: int | None = None, model: ModelClassifier | None = None,
            refresh_text: bool = False) -> tuple[tuple[Classified, ...], IngestReport]:
     report = IngestReport()
     docs = payhoa_documents(root / "payhoa.db")
-    rows = list(classify_library(community, docs))
+    rows = [by_person(row, chosen) for chosen in (person_kinds(root),) for row in classify_library(community, docs)]
     report.documents = len(rows)
     mirrors = mirror_index(root)
     if client is not None and org_id is not None:

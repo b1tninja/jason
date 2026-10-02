@@ -767,6 +767,7 @@ class CorrectionKind(Enum):
     TYPO = "typo"                    # the instrument's own slip, fixed in the reading copy
     PUNCTUATION = "punctuation"
     SPACING = "spacing"
+    TRANSCRIBED = "transcribed"      # a person read the page where OCR failed: what the page says, attested by name
 
 
 @dataclass(frozen=True)
@@ -815,7 +816,8 @@ def correct(current: CurrentDocument, corrections: Sequence[Correction], *, fina
     left = []
     for c in corrections:
         p = current.provision(c.section)
-        why = changes_meaning(c.wrong, c.right)
+        # A transcription is a person's reading of the page, not an edit: it may restore a number OCR misread.
+        why = "" if c.kind is CorrectionKind.TRANSCRIBED else changes_meaning(c.wrong, c.right)
         if why:
             current.findings.append(AmendmentFinding(FindingKind.CORRECTION_REFUSED, c.section, "correction", why))
             continue

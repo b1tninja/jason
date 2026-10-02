@@ -38,6 +38,7 @@ class Method(Enum):
     CONTENT = "phrase rule over the text"
     AGENDA = "agenda item that used the file"
     MODEL = "local model over the text"
+    PERSON = "a person's answer (jason intake)"
     NONE = "unclassified"
 
 

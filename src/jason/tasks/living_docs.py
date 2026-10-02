@@ -173,7 +173,7 @@ def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: An
                                       adopted=getattr(d, "adopted", None), recorded=getattr(d, "recorded", None),
                                       number=getattr(d, "recorder_number", "") or ""))
     current = consolidate(outline, instruments, as_of=as_of, base_from=living.base_from,
-                          corrections=living.corrections)
+                          corrections=(*living.corrections, *transcriptions(data_dir, living.key)))
     current.findings += compared
     current.findings += [AmendmentFinding(FindingKind.HELD, "", h.split(":", 1)[0], h.split(":", 1)[-1].strip())
                          for h in held]
@@ -185,6 +185,33 @@ def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: An
         else:
             out.drift = drift(current, copy, label="the working copy", amended_only=not all_sections)
     return out
+
+
+def transcriptions_path(data_dir: Path, key: str) -> Path:
+    return living_dir(data_dir, key) / "transcriptions.json"
+
+
+def transcriptions(data_dir: Path, key: str) -> tuple:
+    """The corrections people made by reading the page (``jason intake``): applied on every build, kept in data."""
+    from jason.community.living import Correction, CorrectionKind
+
+    path = transcriptions_path(data_dir, key)
+    if not path.is_file():
+        return ()
+    return tuple(Correction(r["section"], r["wrong"], r["right"], CorrectionKind(r.get("kind", "transcribed")),
+                            source=r.get("source", ""), note=r.get("note", ""))
+                 for r in json.loads(path.read_text(encoding="utf-8")))
+
+
+def add_transcription(data_dir: Path, key: str, section: str, wrong: str, right: str, *, kind: str = "transcribed",
+                      source: str = "", note: str = "") -> None:
+    """Keep one reading; the same section and wrong words are replaced, not duplicated."""
+    path = transcriptions_path(data_dir, key)
+    rows = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+    rows = [r for r in rows if not (r["section"] == section and r["wrong"] == wrong)]
+    rows.append({"section": section, "wrong": wrong, "right": right, "kind": kind, "source": source, "note": note})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, indent=1), encoding="utf-8")
 
 
 def working_copy(living: LivingDocument, data_dir: Path, *, docs: Any = None) -> DocumentOutline | None:
