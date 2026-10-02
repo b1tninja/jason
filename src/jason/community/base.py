@@ -928,6 +928,15 @@ class Community(ABC):
         general ones. Empty until the specification keeps some."""
         return ()
 
+    def assignments(self) -> tuple:
+        """Who does each duty and when (``jason.community.schedule.Assignment``): the roles and schedules jason
+        proposes and the board adopts. Empty until the specification keeps some."""
+        return ()
+
+    def fiscal_year_end(self) -> tuple[int, int] | None:
+        """The fiscal year's last day as (month, day), the anchor for the annual reports. None until set."""
+        return None
+
     def living_documents(self) -> tuple:
         """The documents kept as amended (``jason.community.living.LivingDocument``): each one's base text, its
         amendments, corrections, and the rule rows that copy its terms. Empty until the specification keeps some."""

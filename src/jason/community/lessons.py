@@ -199,6 +199,15 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/document-duties.md (The gold sets and the measurements)",),
            notes=("To build: a gold set of list items under lead-ins, and a check that a lead-in stating a purpose or "
                   "scope passes no kind to its items.",)),
+    Lesson("duties-need-owners", OCT_2026, (Area.GOVERNING,),
+           "Read across the documents, 47 duties with a deadline or a recurrence had nothing tracking them, among them "
+           "the board's financial reviews, which the law makes monthly.",
+           "Duties were read and listed, but no record said who does each one, or when.",
+           "Each duty is covered by an assignment (a role, a cadence, an anchored clock, or an event's module) that the "
+           "board adopts; a coverage check lists any duty no one owns or no clock sets.",
+           Status.FIXED, guards=("jason.community.schedule.Assignment", "jason schedule --coverage",
+                                 "procedure duty-schedule"),
+           docs=("docs/schedule.md",)),
     Lesson("model-reads-norms-loosely", OCT_2026, (Area.GOVERNING,),
            "Asked to list a section's duties, the local model reported statuses, definitions, and a prohibition's "
            "descriptive clauses as norms, and missed list items under a lead-in (precision 0.78, recall 0.80).",

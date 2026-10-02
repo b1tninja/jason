@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-133 commands, by area:
+134 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (6)
+- [Other](#other) (7)
 
 ## PayHOA & finance
 
@@ -1675,3 +1675,20 @@ Questions jason could not decide while taking documents in: classify, OCR readin
 | `--accept-likely` |  | answer every open likely OCR reading with its suggestion (after looking at --likely) |
 | `--by` | BY | the person answering (required to answer) |
 | `--apply` |  | turn answers into the records the next run uses |
+
+### `jason schedule`
+
+Who does each duty and when: what falls due, the assignments, and the duties nobody owns
+
+| Option | Value | Help |
+|---|---|---|
+| `--days` | DAYS | how far ahead (default 60) |
+| `--past` | PAST | how far back, for what is overdue (default 30) |
+| `--role` | ROLE | one role's items (treasurer, secretary, board, ...) |
+| `--assignments` |  | list the assignments and their standing |
+| `--coverage` |  | the duties no assignment covers |
+| `--limit` | LIMIT |  |
+| `--done` | KEY DUE | record an occurrence done (with --by, --evidence) |
+| `--on` | ON | with --done: the day it was done (default today) |
+| `--by` | BY | with --done: who did it |
+| `--evidence` | EVIDENCE | with --done: what shows it (the minutes' date and item, a payment, a proof) |

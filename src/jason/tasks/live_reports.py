@@ -196,6 +196,25 @@ def _lessons(data_dir: Path, community: Any, params: dict[str, str], context: di
     return lines(sorted(found, key=lambda l: order[l.status])) or ["- None."]
 
 
+def _schedule(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
+    """What falls due in the next weeks (``days=45``), and how many assignments await the board's adoption."""
+    from collections import Counter
+    from datetime import date, timedelta
+
+    from jason.community.schedule import assignments
+    from jason.tasks import schedule as task
+
+    days = int(params.get("days", "45"))
+    today = date.today()
+    found = task.agenda(community, data_dir, start=today - timedelta(days=30), end=today + timedelta(days=days))
+    found = [o for o in found if o.standing != "done" or o.due >= today]
+    out = [f"- {o.due:%B} {o.due.day}: {o.assignment.title} ({o.assignment.role.value}; {o.standing})" for o in found]
+    by = Counter(a.adoption.value for a in assignments(community))
+    out.append(f"- Assignments: " + ", ".join(f"{n} {k}" for k, n in sorted(by.items()))
+               + " (jason schedule --assignments).")
+    return out or ["- Nothing falls due."]
+
+
 def _conflicts(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
     """The written provisions a higher authority displaces (``area=enforcement``), open ones only unless ``all=yes``."""
     from jason.community.authority_order import conflict_lines, conflicts
@@ -218,6 +237,9 @@ REPORTS: dict[str, Report] = {r.key: r for r in (
            caveat="The steps as last written; update the procedure when a step changes."),
     Report("lessons", "Lessons", "jason lessons", "jason's lessons and the community's own", _lessons, offline=True,
            caveat="What went wrong and what changed; open ones still need a change or a decision."),
+    Report("schedule", "What falls due", "jason schedule", "the assignments and the completions recorded",
+           _schedule, offline=True,
+           caveat="Assignments are jason's proposals until the board adopts them; a completion is recorded by a person."),
     Report("conflicts", "Provisions that yield to a higher authority", "jason conflicts",
            "the specification's conflict rows", _conflicts, offline=True,
            caveat="jason's notes of where a provision no longer holds; only the board, counsel, or an amendment "

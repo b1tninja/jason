@@ -245,6 +245,25 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/intake.md", "docs/living-documents.md"),
     ),
     Procedure(
+        "duty-schedule", "Every duty owned, every clock set, and each occurrence done",
+        "Each month before the board meeting; and whenever a document, an amendment, or a law adds duties.",
+        (Area.GOVERNING,),
+        "See that every duty the law and the documents impose has an owner and a schedule, that what fell due was done "
+        "with evidence, and that the board has adopted the assignments.",
+        (
+            Step("Read what falls due, by role.", command="jason schedule --days 45",
+                 check="overdue items: done and not recorded, or not done"),
+            Step("Record each occurrence done, with who did it and the evidence.",
+                 command="jason schedule --done KEY DUE --by NAME --evidence TEXT", person=True),
+            Step("After a document, amendment, or law changes, read its duties again and check coverage.",
+                 command="jason duties --documents KEY; jason schedule --coverage",
+                 check="no duty unowned; no duty on a clock with only a standing owner", lessons=("duties-need-owners",)),
+            Step("Carry the schedule into the packet; the board adopts, changes, or declines the proposed assignments.",
+                 command="{REPORT:schedule}", refs=("docs/schedule.md",), person=True),
+        ),
+        refs=("docs/schedule.md", "procedure document-duties"),
+    ),
+    Procedure(
         "document-duties", "The duties a governing document states",
         "When a governing document is outlined, amended, or replaced, and before relying on what it requires.",
         (Area.GOVERNING,),

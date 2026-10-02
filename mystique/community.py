@@ -499,6 +499,16 @@ class Mystique(Community):
 
         return LESSONS
 
+    def assignments(self):
+        """Who does each duty and when (schedule.py): jason's proposals until the board adopts them."""
+        from .schedule import ASSIGNMENTS
+
+        return ASSIGNMENTS
+
+    def fiscal_year_end(self):
+        """The fiscal year is the calendar year."""
+        return (12, 31)
+
     def living_documents(self):
         """Mystique's documents kept as amended (living.py)."""
         from .living import LIVING_DOCUMENTS
