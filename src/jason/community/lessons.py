@@ -123,6 +123,14 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("authority_order.Conflict", "Community.conflicts()", "jason conflicts",
                                  "jason sop KEY (conflicts in its areas)"),
            docs=("AGENTS.md (Follow what is written, as far as a higher authority allows)",)),
+    Lesson("amendment-standing-is-a-record", OCT_2026, (Area.GOVERNING,),
+           "An amendment was reported as never recorded, from a board item's summary, while a leasing rule said it was "
+           "recorded; the county index showed an amended restriction recorded by the association.",
+           "Whether an amendment took effect was prose in several places, and no record held its standing.",
+           "Check the public index before repeating whether an instrument was recorded. Each amendment should carry "
+           "its standing (draft, adopted, recorded with number and date) as data, and the current text of the "
+           "document it amends should be built from the amendments that took effect, not copied by hand.",
+           Status.OPEN, docs=("docs/living-documents.md (in design)",)),
     Lesson("returns-by-the-same-rules", OCT_2026, (Area.OWNER_INFO, Area.FORMS),
            "An emailed-back form had to be read and judged by hand.",
            "Only PayHOA submissions run through --apply.",

@@ -12,14 +12,16 @@ AB_130 = date(2025, 6, 30)          # Stats. 2025, ch. 22: Civil Code 5850 and 5
 CONFLICTS = (
     Conflict(
         "rental-cap-below-floor", "CC&Rs 4.15(a)", Tier.DECLARATION,
-        "Caps rentals at 20 percent of the units.",
+        "As restated in 2007, caps rentals at 20 percent of the units.",
         "CIV 4741(b), (f)", Tier.STATUTE, date(2021, 1, 1),
-        "A cap below 25 percent may not be adopted or enforced. 4741(f) also required the board, without a member "
-        "vote, to delete the covenant or restate it to comply by July 1, 2022, after 28 days' general notice; the "
-        "draft amendment of 2023 was never signed or recorded.",
-        "Hold no rental against the 20 percent cap. The rest of 4.15 still governs, read against 4741(a)'s bar on "
-        "unreasonable restrictions. The board chooses whether to delete the cap or restate it at 25 percent or more.",
-        Clarity.PLAIN, ConflictStatus.BOARD, (Area.RENTALS, Area.OWNER_INFO, Area.GOVERNING),
+        "A cap below 25 percent may not be adopted or enforced, and 4741(f) had the board restate it by July 1, 2022. "
+        "The Second Amendment restates 4.15(a) at 25 percent; the county index shows an amended restriction the "
+        "association recorded December 6, 2023 (202312060284), most likely that amendment. An index hit is not a "
+        "pin: once the recorded copy is read and matches, this row is resolved by it.",
+        "Apply a 25 percent cap: lawful whether or not the amendment took effect (the 20 percent cap cannot be "
+        "enforced either way). The rest of 4.15 still governs, read against 4741(a)'s bar on unreasonable "
+        "restrictions.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.RENTALS, Area.OWNER_INFO, Area.GOVERNING),
         board_item="rental-cap-20-percent"),
     Conflict(
         "fines-over-the-cap", "the 2022 Enforcement Policy and fine schedule", Tier.OPERATING_RULES,
