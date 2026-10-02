@@ -99,6 +99,16 @@ LESSONS: tuple[Lesson, ...] = (
            "The unit was named only inside a sentence.",
            "Each email opens \"Regarding: {unit address}\", and the subject can carry {unit address}.",
            Status.FIXED, guards=("owner_send.EmailHandler.subject_for / message_for",)),
+    Lesson("answers-need-a-policy", OCT_2026, (Area.OWNER_INFO,),
+           "Complete answers still could not simply be written: one owner answered for co-owners with records of their "
+           "own, a \"second\" email was a co-owner's, a rented unit's mail went to the tenant, and occupancy answers "
+           "contradicted the unit's tags.",
+           "The cycle had rules for recording an answer, not for an answer that raises a question.",
+           "A response policy of rule rows: each finding is recorded, entered by a person, confirmed with the owner, "
+           "held for the board, or ignored; a request with anything but \"record\" stays open, and writes held for the "
+           "board are not made. The board's questions go to its canvas.",
+           Status.FIXED, guards=("owner_responses.RULES", "owner-info --responses --canvas",
+                                 "owner-info --apply holds the board's writes and keeps such requests open")),
     Lesson("returns-by-the-same-rules", OCT_2026, (Area.OWNER_INFO, Area.FORMS),
            "An emailed-back form had to be read and judged by hand.",
            "Only PayHOA submissions run through --apply.",

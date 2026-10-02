@@ -84,6 +84,8 @@ def cmd_owner_info(args: argparse.Namespace, agent_factory: Callable[[Any], Any]
         return _apply(args, agent_factory, community, forms, cycle, data_dir, today)
     if args.prefill:
         return _prefill(args, agent_factory, community, forms, data_dir)
+    if args.responses:
+        return _responses(args, agent_factory, community, forms, data_dir)
     if args.send_plan:
         return _send_plan(args, agent_factory, community, forms, data_dir)
     if args.email_batch:
@@ -140,6 +142,19 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
 
         test = test_memberships(getattr(args, "env", None))
         writes = [w for w in writes if not (w.kind.startswith("member") and w.target in test)]
+        if args.payhoa:
+            # the response policy holds an occupancy the unit's tag does not show for the board: its tag writes wait
+            from jason.community.tags import TagPurpose, TagScope
+            from jason.tasks.owner_responses import Outcome, contexts, triage
+
+            held_units = {c.unit_id for c in contexts(client, org, data_dir, community, forms)
+                          for f in triage(c) if f.outcome is Outcome.BOARD and f.rule == "occupancy-vs-tag"}
+            occupancy = {t.name for t in community.payhoa_tags()
+                         if t.purpose is TagPurpose.OCCUPANCY and t.scope is TagScope.UNIT}
+            held = [w for w in writes if w.kind.startswith("unit") and w.target in held_units and w.value in occupancy]
+            writes = [w for w in writes if w not in held]
+            for w in held:
+                print(f"  held for the board (occupancy-vs-tag): {w.kind} {w.label} {w.value}")
         for kind, count in Counter(w.kind for w in writes).items():
             print(f"  {kind:14} {count}")
         for w in writes[: args.show]:
@@ -171,9 +186,17 @@ def _complete_requests(args: argparse.Namespace, client: Any, org: int, forms: A
         return
     status = {int(r["id"]): r.get("status") for r in client.list_form_submissions(int(record["formId"]))}
     comment = getattr(forms, "OWNER_INFO_COMPLETED_COMMENT", "")
+    # the response policy (owner_responses.RULES): a request with a question for the board, something to confirm with
+    # the owner, or a person's entry stays open; only a response with nothing but "record" findings is completed
+    from jason.community import mystique
+    from jason.tasks.owner_responses import Outcome, contexts, triage
+
+    held = {c.submission: [f"{f.outcome.value}: {f.rule}" for f in triage(c) if f.outcome is not Outcome.RECORD]
+            for c in contexts(client, org, data_dir, mystique(), forms)}
     for item in to_complete(rows, writes):
         if status.get(item.submission_id) != "pending":
             continue
+        item.left += [h for h in held.get(item.submission_id, []) if h not in item.left]
         if item.left:
             print(f"  request {item.submission_id} ({item.unit}: {item.name}) stays open: {'; '.join(item.left)}")
         elif args.yes:
@@ -239,6 +262,40 @@ def _prefill(args: argparse.Namespace, agent_factory: Callable[[Any], Any], comm
         print(f"{p.unit}: {path.name}  filled: {filled}" + (f"  ({'; '.join(p.notes)})" if p.notes else ""))
     if not found:
         print("no owners matched " + ", ".join(args.prefill))
+    return 0
+
+
+def _responses(args: argparse.Namespace, agent_factory: Callable[[Any], Any], community: Any, forms: Any,
+               data_dir: Path) -> int:
+    """Every response so far, each finding with its outcome under the response policy (``owner_responses.RULES``):
+    record, a person's entry, confirm with the owner, a question for the board, or ignore. Reads live; writes nothing
+    in PayHOA. With --canvas the board's questions and the findings go to the board's canvas (private)."""
+    from datetime import datetime
+
+    from jason.community.spec import spec_module
+    from jason.tasks.owner_responses import Outcome, contexts, report, triage
+
+    with agent_factory(args) as agent:
+        found = [(c, triage(c)) for c in contexts(agent.payhoa(), agent.org_id, data_dir, community, forms)]
+    lines = report(found)
+    print("\n".join(lines) if lines else "no responses yet")
+    if args.canvas:
+        canvas = Path(spec_module("forms").__file__).parent / "notes" / "canvas"
+        canvas.mkdir(parents=True, exist_ok=True)
+        year = forms.OWNER_INFO_CYCLE.year
+        questions = sorted({f.rule for _, fs in found for f in fs if f.outcome is Outcome.BOARD})
+        from jason.tasks.owner_responses import RULES
+
+        why = {r.key: r.why for r in RULES}
+        out = canvas / f"owner-info-{year}-responses.md"
+        out.write_text("\n".join([
+            f"# Owner information {year}: responses and the board's questions", "",
+            f"_Read {datetime.now():%B} {datetime.now().day}, {datetime.now().year} {datetime.now():%H:%M} from PayHOA "
+            f"(`jason owner-info --responses --canvas`). {len(found)} responses. Private: for the board._", "",
+            "## Questions for the board", ""]
+            + [f"- **{q}**: {why[q]} ({sum(1 for _, fs in found for f in fs if f.rule == q)} responses)" for q in questions]
+            + ["", "## The responses", ""] + lines), encoding="utf-8")
+        print(f"canvas: {out}")
     return 0
 
 
@@ -566,6 +623,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--preview", metavar="HTML",
                    help="with --email-batch (dry run): write the email as the first owner (or --only's) receives it")
     p.add_argument("--attach", metavar="PDF", help="with --follow-up: one file attached instead of each owner's filled form")
+    p.add_argument("--responses", action="store_true",
+                   help="every response so far, each finding with its outcome (record, person, confirm, board, ignore); read-only")
+    p.add_argument("--canvas", action="store_true", help="with --responses: write the board's questions to its canvas (private)")
     p.add_argument("--send-plan", action="store_true",
                    help="write what each owner will be sent and what each copy carries (read live; no addresses)")
     p.add_argument("--emailed", action="store_true",
