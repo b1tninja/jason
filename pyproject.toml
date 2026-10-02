@@ -37,6 +37,11 @@ models = [
 qr = [
     "segno>=1.6",
 ]
+# OCR post-correction: a general English word list (and others, to name a passage's language) beside the legal
+# corpus on disk; without it the corpus alone decides, and real words it lacks are "corrected" (docs/ocr-correction.md).
+ocr = [
+    "wordfreq>=3.1",
+]
 # PDF text for the utility-bill parsers and the document library (the parsers read PyMuPDF's layout).
 pdf = [
     "pymupdf>=1.24",

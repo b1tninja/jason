@@ -187,6 +187,37 @@ LESSONS: tuple[Lesson, ...] = (
                                  "LivingDocument.checks (TextCheck: the rule rows' terms in the current words)"),
            docs=("docs/living-documents.md",),
            notes=("The full comparison (--all-sections) is mostly the base's OCR slips until the base is reconciled.",)),
+    Lesson("ocr-engine-runs-words-together", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "The recorded declaration's OCR ran about one word in thirty into the next (\"ofthe\", \"Notmore\"): a word "
+           "error rate of 8.6% against the working copy, two thirds of it run-together words.",
+           "PyMuPDF's page OCR takes Tesseract's characters and builds words itself, losing the narrow spaces of "
+           "justified type. Tesseract's own tool, with the same model at the same resolution, read 2.2%.",
+           "A Tesseract command-line engine reads scans with the tool's own word spacing and boxes; the text rules "
+           "split what is left run together, as suggestions.",
+           Status.FIXED, guards=("ocr.TesseractCli (before PyMuPdfTesseract in ocr.engines)",
+                                 "scan_marks.scan_text(engine=\"auto\")", "tests/test_ocr_correct.py"),
+           docs=("docs/ocr-correction.md",),
+           notes=("A base text already cached was read the old way and keeps its transcriptions; reading it again is a "
+                  "person's decision, since the transcriptions name the old text's words.",)),
+    Lesson("model-corrects-the-drafting", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "Told what OCR errors look like and asked to correct a passage, the local model also changed the drafter's "
+           "grammar, turned an article's numeral into a roman one, invented a notary's commission number, replaced a "
+           "sentence with another, and quoted words not in the passage; on the cleanest passages it changed right "
+           "words nine times as often as the text rules.",
+           "A writer model makes text read well; faithfulness to the page is not what it optimizes.",
+           "The model reads only the tokens the lexicon doubts, or chooses among readings it is given; its edit must "
+           "be minimal and pass the guard; a suggestion is likely only when two independent readers agree.",
+           Status.FIXED, guards=("ocr_models.minimal", "ocr_correct.guard", "ocr_correct.tier",
+                                 "tests/test_ocr_correct.py"),
+           docs=("docs/ocr-correction.md",)),
+    Lesson("copy-shares-ocr-slips", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "The hand-kept working copy kept some of the OCR's run-together words (\"ofRecord\") and made its own "
+           "(\"ofCalifornia\", a misread letter), so its agreement with the OCR was taken as proof the OCR was right.",
+           "The copy was made from the same OCR text, so the two readers were not independent there.",
+           "Where the copy keeps the OCR's reading against a confident text rule, the rule's reading is asked; an "
+           "OCR reading is likely only when two independent readers agree.",
+           Status.FIXED, guards=("tasks.intake.ocr_reading_asks (copy slips asked; agreement tiers)",),
+           docs=("docs/ocr-correction.md",)),
     Lesson("duty-gold-overstates", OCT_2026, (Area.GOVERNING,),
            "The phrase grammar for duties scored precision 1.00 on its gold sets, while random samples of its readings "
            "across all the governing documents had about four in five of the right kind.",

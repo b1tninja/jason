@@ -158,7 +158,31 @@ The model closed the two misses the OCR-dropped digits caused and got every stam
 | qwen3.5:9b, document duties, hybrid | the same, `REVIEW_SCHEMA`: the model rules on the grammar's candidates | — | — / median 1.1 s a passage | — | **in use for bearers only** (`jason duties --documents --fill-bearers`): taking its kinds, P 0.89, R 0.86; taking only the bearers the grammar left unstated, P and R stay the grammar's and bearers right rise from 72% to 93% (fresh set 62% to 83%) (October 2, 2026) |
 | qwen3.6:27b, document duties | Ollama | — | — | — | not tried: `preflight` refused it, about 25 GB of commit needed and 17.4 GB free with no model loaded (October 2, 2026); rerun `scripts/eval_duties.py --ask review --model qwen3.6:27b` when commit allows |
 
-Not tried yet: NVIDIA's OCR-trained `Nemotron-Nano-12B-v2-VL-NVFP4-QAD` (it needs vLLM).
+OCR post-correction trials (October 2, 2026; [ocr-correction.md](ocr-correction.md)). The test set is the recorded declaration's OCR against the working copy, unamended sections only.
+
+| Model or tool | Engine, format | Prefill text / page | Decode text / OCR | Digits | Verdict |
+|---|---|---|---|---|---|
+| Tesseract 5.4 command-line tool, `eng` (fast), 300 dpi, its `tsv` words | CPU, about 1.3 s a page | — | — | — | **in use** for scans (`ocr.TesseractCli`, `scan_text`): WER 2.23%, CER 0.46% on the whole declaration, where PyMuPDF's page OCR of the same model read 8.12% and 1.00%, running 784 words together to its 63 |
+| Tesseract tool options | 200 and 400 dpi, a 3,481-word legal `--user-words`, label `--user-patterns`, `--psm 6` | — | — | — | no gain on ten pages: 2.49%, 1.84%, 1.82%, 1.80%, 2.08% against 1.82% at the defaults |
+| qwen3.5:9b, OCR correction, marked suspects | Ollama 0.35.0 CUDA, 8k window, thinking off, temperature 0; `MARKED_PROMPT`, JSON schema | — | — / median 0.6 s a passage | — | **in use** as the second reader (`jason intake --scan --model`): WER 2.75% from 8.89% on 60 passages; with minimal edits that pass the guard, no harm; the text rules' suggestions it confirms are 96.9% right |
+| qwen3.5:9b, OCR correction, explicit expectations | the same, `EXPECTATIONS_PROMPT` with made-up examples; JSON corrections with kind, reason, confidence | — | — / median 2.5 s a passage | — | rejected as a reader: WER 4.88%; 52 corrections quoting words not in the passage; changed the drafter's grammar and a numeral, invented a commission number, replaced a sentence; 3.6 edits to right words per 1,000 on the cleanest passages (the rules 0.4). Its stated confidence is the best of its own signals (AUC 0.82), but self-consistency and agreement with the text rules together separate better (AUC 0.88) |
+| qwen3.5:9b, as a scorer | the same, `CHOOSE_PROMPT`; one letter, `logprobs` and `top_logprobs` 10 | — | — / 0.08 s a token | — | candidate: chose right 195 of 212 (the lexicon 194, the product 197); calibrated (0.95 or more, 98% right); never writes a reading it was not given |
+| qwen3.5:9b, vision, a word's crop | Ollama 0.35.0, 8k window; `VISION_WORD_PROMPT`, the word and its line at 300 and 200 dpi | — | — / 0.22 s a crop | read a commission number the text rules could not | **recommended** for a guarded word (`jason intake --scan --vision`): 30 of 36 misreads read right, 10 of 10 rare right words kept, 4 of 4 of the copy's run-together slips read as two words; where it and the lexicon agree, 38 of 38 right |
+| qwen3.5:9b, vision, anchored | the same, with the OCR's line and the word in doubt (`VISION_ANCHORED_PROMPT`, after olmOCR's document anchoring) | — | — / 0.22 s a crop | — | rejected: 28 of 36; the anchor pulled it toward the OCR's misreading |
+| qwen3.6:27b, OCR correction and word crops | Ollama | — | — | — | not tried: `preflight` refused it, 25.1 GB of commit needed and 17.9 GB free with no model loaded (October 2, 2026) |
+| Tesseract `tessdata_best` `eng` | the tool | — | — | — | not tried: the model file (about 15 MB, github.com/tesseract-ocr/tessdata_best) is a download a person makes |
+
+Not tried yet:
+- NVIDIA's OCR-trained `Nemotron-Nano-12B-v2-VL-NVFP4-QAD` (it needs vLLM).
+- Small document models that lead OmniDocBench v1.6:
+  - PaddleOCR-VL-1.6 (0.9B, Apache-2.0, 96.34);
+  - MinerU2.5-Pro (1.2B, 95.75);
+  - GLM-OCR in its own pipeline with PP-DocLayoutV3 (0.9B, MIT, 95.22; the Ollama trial above looped);
+  - IBM granite-docling-258M (https://huggingface.co/ibm-granite/granite-docling-258M);
+  - olmOCR 2 (7B, faithful transcription; https://olmocr.allenai.org/papers/olmocr.pdf).
+
+  Their value for jason is mostly structure: headings, numbering, and reading order, the outline's weak spot. Survey: https://roboflow.com/blog/best-open-source-ocr-models; https://arxiv.org/abs/2607.08143; https://arxiv.org/abs/2609.03445.
+- Scoring a written candidate by its token log-probabilities in context: Ollama's proposed `logprob_tokens` (https://github.com/ollama/ollama/pull/18580). The chooser above approximates it with one letter.
 
 **OCR candidates (September 30, 2026).** The digit test's 11 strings, checked by eye on the scans of two deeds: a PO box, a ZIP, the recorder's receipt number, book, and page on each, and a handwritten reference number. The stamp test is the amendment's cover: document number, date, time, fee, and title company. The values are in the private notes (mystique/notes/document-tools.md).
 

@@ -231,9 +231,21 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="applied and not-in-effect lists; before-words findings; the rule rows' checks",
                  refs=("docs/living-documents.md",), lessons=("plain-text-loses-the-marks", "amended-by-hand-drifts")),
             Step("Park every uncertainty as a question, and answer them: the kind, OCR readings (the likely ones in a "
-                 "batch after a look), drift, an amendment's silent changes, orphaned notes.",
-                 command="jason intake --scan; jason intake --likely; jason intake --answer ID TEXT --by NAME",
-                 check="no answer without a name; a question for counsel goes to the board's canvas", person=True),
+                 "batch after a look), drift, an amendment's silent changes, orphaned notes. The text rules read the "
+                 "OCR beside the working copy; --model adds the local model as a second reader of the doubtful words "
+                 "and --vision the page's crop of a number or operative word in doubt.",
+                 command="jason intake --scan [--model] [--vision]; jason intake --likely; "
+                         "jason intake --answer ID TEXT --by NAME",
+                 check="no answer without a name; a likely reading has two readers that agree and changes no number "
+                       "or operative word without the page; a question for counsel goes to the board's canvas",
+                 refs=("docs/ocr-correction.md",),
+                 lessons=("model-corrects-the-drafting", "copy-shares-ocr-slips"), person=True),
+            Step("For a scan with no working copy (most library files), write the OCR suggestions beside its text and "
+                 "look first at the worst-read files: a high share of words no English list knows is a file to read "
+                 "again (the Tesseract tool, or the vision model).",
+                 command="jason intake --library-ocr [--library-kind KIND]",
+                 check="the raw text is unchanged; suggestions sit in <id>.ocr-suggestions.json",
+                 refs=("docs/ocr-correction.md",), lessons=("ocr-engine-runs-words-together",)),
             Step("Apply the answers, and build again.", command="jason intake --apply; jason living KEY",
                  check="transcriptions applied; the question count falls"),
             Step("Check what the document changes against the law and the other documents: conflict leads, duties, "

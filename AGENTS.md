@@ -70,6 +70,8 @@ pip install -e ".[mcp]"
 pip install -e ".[charts]"
 # Optional model reader for scanned instruments (anthropic; needs ANTHROPIC_API_KEY):
 pip install -e ".[models]"
+# Optional English word list for OCR post-correction (wordfreq; docs/ocr-correction.md):
+pip install -e ".[ocr]"
 # Optional QR codes for links in printed letters and notices (segno):
 pip install -e ".[qr]"
 ```

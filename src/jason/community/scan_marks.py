@@ -169,13 +169,45 @@ def page_text_lines(page: Any, page_number: int, *, dpi: int = DPI) -> list[Scan
     return out
 
 
-def scan_text(pdf: Path, *, dpi: int = DPI) -> str:
-    """A scanned document's text by OCR, page by page, without its running headers and footers: each OCR block a
-    paragraph, so a section number starts its own line as an outline expects."""
+def tesseract_text_lines(pdf: Path, *, dpi: int = DPI) -> list[ScanLine]:
+    """A scanned PDF's lines as Tesseract's own tool reads them (``ocr.TesseractCli``): its word spacing, which
+    PyMuPDF's page OCR loses ("ofthe"). A Tesseract paragraph is a block."""
     import pymupdf
 
-    doc = pymupdf.open(str(pdf))
-    lines = drop_furniture([line for n in range(doc.page_count) for line in page_text_lines(doc[n], n, dpi=dpi)])
+    from jason.community.ocr import TesseractCli
+
+    cli = TesseractCli(dpi=dpi)
+    out = []
+    with pymupdf.open(str(pdf)) as doc:
+        for n in range(doc.page_count):
+            page = doc[n]
+            height = float(page.rect.height) * dpi / 72 or 1.0
+            lines: dict[tuple[int, int, int], list] = {}
+            for w in cli.page_words(page, n):
+                lines.setdefault((w.block, w.paragraph, w.line), []).append(w)
+            for (block, paragraph, _), words in lines.items():
+                text = " ".join(w.text for w in words)
+                out.append(ScanLine(n, block * 1000 + paragraph, min(w.top for w in words) / height,
+                                    max(w.top + w.height for w in words) / height,
+                                    tuple(ScanChar(c, False, 0.0) for c in text)))
+    return out
+
+
+def scan_text(pdf: Path, *, dpi: int = DPI, engine: str = "auto") -> str:
+    """A scanned document's text by OCR, page by page, without its running headers and footers: each OCR block a
+    paragraph, so a section number starts its own line as an outline expects. ``engine``: "tesseract-cli" (the
+    tool's own words; the default when the tool is installed), "pymupdf" (PyMuPDF's page OCR, which runs narrow-spaced
+    words together), or "auto"."""
+    import pymupdf
+
+    from jason.community.ocr import TesseractCli
+
+    if engine == "tesseract-cli" or (engine == "auto" and TesseractCli.available()):
+        raw_lines = tesseract_text_lines(pdf, dpi=dpi)
+    else:
+        doc = pymupdf.open(str(pdf))
+        raw_lines = [line for n in range(doc.page_count) for line in page_text_lines(doc[n], n, dpi=dpi)]
+    lines = drop_furniture(raw_lines)
     out, last = [], None
     for line in lines:
         if (line.page, line.block) != last and out:
@@ -195,5 +227,5 @@ def operations_from_scan(pdf: Path, *, pages: tuple[int, ...] = ()):
     return tuple(replace(op, struck_by_ocr=True) for op in read_operations(scan_paragraphs(pdf, pages=pages), styled=True))
 
 
-__all__ = ["ScanChar", "ScanLine", "drop_furniture", "operations_from_scan", "page_lines", "page_text_lines", "scan_paragraphs", "scan_text",
+__all__ = ["ScanChar", "ScanLine", "drop_furniture", "operations_from_scan", "page_lines", "page_text_lines", "scan_paragraphs", "scan_text", "tesseract_text_lines",
            "styled_paragraphs"]

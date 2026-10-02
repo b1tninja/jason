@@ -77,34 +77,128 @@ def _unique_span(body: str, tokens: list[str], left: list[str], right: list[str]
     return None
 
 
-def ocr_reading_asks(key: str, current: Any, copy: Any, vocab: Counter) -> list[Ask]:
-    """Where the base text (read by OCR) and the working copy differ by a few words in a section no amendment set."""
-    from jason.community.living import provisions_of
+def _fix_of(old: list[str], new: list[str]) -> Any:
+    from jason.community.ocr_correct import Fix
 
-    theirs = {p.number: p for p in provisions_of(copy) if p.number}
+    if "".join(old) == "".join(new):
+        return Fix.SPLIT if len(new) > len(old) else Fix.JOIN
+    if not new:
+        return Fix.STRAY
+    return Fix.CHARACTER
+
+
+def _readings_in(suggestions: list, i1: int, i2: int, tokens: list[str]) -> dict[Any, str]:
+    """Each method's reading of tokens [i1, i2): its suggestions inside the span applied; a method with none there
+    has no reading of it."""
+    from jason.community.ocr_correct import apply
+
+    by_method: dict[Any, list] = {}
+    for s in suggestions:
+        if i1 <= s.start and s.end <= i2:
+            for m in s.methods:
+                by_method.setdefault(m, []).append(s)
+    out = {}
+    for m, ss in by_method.items():
+        shifted = [type(s)(s.start - i1, s.end - i1, s.wrong, s.right, s.fix, s.methods) for s in ss]
+        out[m] = " ".join(apply(tokens[i1:i2], shifted))
+    return out
+
+
+def _evidence(context: str, readings: dict[Any, str], guard: str) -> tuple[str, ...]:
+    lines = [f"base: ...{context}..."]
+    lines += [f"{m.value} reads: \"{r or '(nothing)'}\"" for m, r in readings.items()]
+    if guard:
+        lines.append(f"a person reads the page: {guard}")
+    return tuple(lines)
+
+
+def ocr_reading_asks(key: str, current: Any, copy: Any, vocab: Counter, *, lexicon: Any = None,
+                     extra: dict[str, list] | None = None, held: list | None = None) -> list[Ask]:
+    """Where the base text (read by OCR) and the working copy differ by a few words in a section no amendment set.
+
+    With ``lexicon`` (``ocr_correct``), each difference is also read by the text rules, and ``extra`` adds other
+    readers' suggestions by section (the local model, the vision model): an ask is ``likely`` only when two independent
+    readers agree and the guard passes (``ocr_correct.tier``). Where the working copy keeps the OCR's reading but the
+    rules read the page otherwise (the copy's own slip, "ofthe"), or where there is no working copy, the rules'
+    suggestion is asked too. Without ``lexicon``, the working copy alone decides, as ``_likely`` says."""
+    from jason.community.living import provisions_of
+    from jason.community.ocr_correct import Method, Suggestion, Tier, combine, suggest, tier
+
+    theirs = {p.number: p for p in provisions_of(copy) if p.number} if copy is not None else {}
     out = []
     for p in current.provisions:
-        if not p.number or p.standing is not None or p.number not in theirs:
+        if not p.number or p.standing is not None:
             continue
-        ours_t, their_t = p.body.split(), theirs[p.number].body.split()
-        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=ours_t, b=their_t, autojunk=False).get_opcodes():
-            if tag == "equal" or i2 - i1 > MAX_WORDS or j2 - j1 > MAX_WORDS or i2 == i1:
-                continue                                  # an insertion in the copy is structure, not a misread
-            old, new = ours_t[i1:i2], their_t[j1:j2]
-            span = _unique_span(p.body, old, ours_t[max(0, i1 - CONTEXT):i1], ours_t[i2:i2 + CONTEXT])
+        ours_t = p.body.split()
+        subject = f"{key}#{p.number}"
+        rules = combine(suggest(ours_t, lexicon), (extra or {}).get(p.number, ())) if lexicon is not None else []
+        covered: set[int] = set()
+        same: set[int] = set()                                # tokens the working copy reads as the OCR did
+        if p.number in theirs:
+            their_t = theirs[p.number].body.split()
+            for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=ours_t, b=their_t, autojunk=False).get_opcodes():
+                if tag == "equal":
+                    same.update(range(i1, i2))
+                if tag == "equal" or i2 - i1 > MAX_WORDS or j2 - j1 > MAX_WORDS or i2 == i1:
+                    continue                                  # an insertion in the copy is structure, not a misread
+                old, new = ours_t[i1:i2], their_t[j1:j2]
+                span = _unique_span(p.body, old, ours_t[max(0, i1 - CONTEXT):i1], ours_t[i2:i2 + CONTEXT])
+                if span is None:
+                    continue
+                covered.update(range(i1, i2))
+                wrong, lw, rw = span
+                right = " ".join(x for x in (lw, " ".join(new), rw) if x)
+                context = " ".join(ours_t[max(0, i1 - 6):i2 + 6])
+                choices: tuple[str, ...] = (right, wrong)
+                detail = {"document": key, "section": p.number, "wrong": wrong, "right": right}
+                if lexicon is None:
+                    likely, evidence = _likely(old, new, vocab), (f"base: ...{context}...",)
+                else:
+                    readings = _readings_in(rules, i1, i2, ours_t)
+                    agree = tuple(m for m, r in readings.items() if r.split() == new)
+                    s = Suggestion(i1, i2, " ".join(old), " ".join(new), _fix_of(old, new), (Method.WORKING_COPY, *agree))
+                    rivals = sorted({r for r in readings.values() if r.split() != new and r.split() != old})
+                    likely = not rivals and tier(s) is Tier.LIKELY
+                    for r in rivals:
+                        choices += (" ".join(x for x in (lw, r, rw) if x),)
+                    evidence = _evidence(context, {Method.WORKING_COPY: " ".join(new), **readings}, s.guard)
+                    detail.update(methods=[m.value for m in s.methods], guard=s.guard, fix=s.fix.value)
+                out.append(Ask(ask_id(AskKind.OCR_READING, subject, wrong), AskKind.OCR_READING, subject,
+                               f'The recorded copy\'s OCR reads "{" ".join(old)}"; the working copy reads '
+                               f'"{" ".join(new) or "(nothing)"}". Which does the page say?',
+                               choices=(*choices, "something else (type it)"), suggestion=right, likely=likely,
+                               evidence=evidence, detail=detail))
+        # The rules' readings where the working copy says nothing different: the copy's own slip ("ofthe" kept), a
+        # section the copy arranges differently, or no copy at all. Asked when two readers agree, or when the copy
+        # keeps the OCR's reading against a confident rule; the rest are held for the record (``held``).
+        for s in rules:
+            if any(k in covered for k in range(s.start, s.end)):
+                continue
+            copy_agrees = all(k in same for k in range(s.start, s.end))
+            likely = not copy_agrees and tier(s) is Tier.LIKELY
+            if not likely and not (copy_agrees and s.confidence >= 0.9):
+                if held is not None:
+                    held.append((p.number, s))
+                continue
+            span = _unique_span(p.body, ours_t[s.start:s.end], ours_t[max(0, s.start - CONTEXT):s.start],
+                                ours_t[s.end:s.end + CONTEXT])
             if span is None:
                 continue
             wrong, lw, rw = span
-            right = " ".join(x for x in (lw, " ".join(new), rw) if x)
-            likely = _likely(old, new, vocab)
-            subject = f"{key}#{p.number}"
-            context = " ".join(ours_t[max(0, i1 - 6):i2 + 6])
-            out.append(Ask(ask_id(AskKind.OCR_READING, subject, wrong), AskKind.OCR_READING, subject,
-                           f'The recorded copy\'s OCR reads "{" ".join(old)}"; the working copy reads '
-                           f'"{" ".join(new) or "(nothing)"}". Which does the page say?',
+            right = " ".join(x for x in (lw, s.right, rw) if x)
+            context = " ".join(ours_t[max(0, s.start - 6):s.end + 6])
+            readings = {m: s.right for m in s.methods}
+            if copy_agrees:
+                readings[Method.WORKING_COPY] = s.wrong
+            who = "the OCR and the working copy read" if copy_agrees else "the OCR reads"
+            out.append(Ask(ask_id(AskKind.OCR_READING, subject, wrong + "|" + s.right), AskKind.OCR_READING, subject,
+                           f'{who[0].upper()}{who[1:]} "{s.wrong}"; {", ".join(m.value for m in s.methods)} '
+                           f'read{"s" if len(s.methods) == 1 else ""} "{s.right or "(nothing)"}". Which does the page say?',
                            choices=(right, wrong, "something else (type it)"), suggestion=right, likely=likely,
-                           evidence=(f"base: ...{context}...",),
-                           detail={"document": key, "section": p.number, "wrong": wrong, "right": right}))
+                           evidence=_evidence(context, readings, s.guard),
+                           detail={"document": key, "section": p.number, "wrong": wrong, "right": right,
+                                   "methods": [m.value for m in s.methods], "guard": s.guard, "fix": s.fix.value,
+                                   "confidence": s.confidence}))
     return out
 
 

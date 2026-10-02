@@ -48,9 +48,18 @@ jason intake --apply                     # answers into records: transcriptions,
 
   A deletion of real words, such as a caption run into the text, is never likely.
 - **The person reads the page.** A `TRANSCRIBED` correction records who read it and when. Unlike an editorial correction, it may restore a number that OCR misread, because it is a reading of the page and not an edit.
+- **More readers.** `jason intake --scan` also reads each provision with the text rules ([ocr-correction.md](ocr-correction.md)):
+  - an English word list and a language model of clean legal text split run-together words and read misread ones;
+  - layout rules drop stray bars and page numbers.
+
+  An OCR question is `likely` only when two independent readers agree (the working copy, the text rules, the local model, the vision model) and the change touches no number or operative word without the page itself. Each question's evidence names every reader and what it read.
+- **Copy slips.** Where the working copy keeps the OCR's own slip ("ofthe"), the rules' reading is asked too.
+- **One-reader suggestions** are kept in `data/living/<key>/ocr-suggestions.json` rather than asked.
+- **Second readers.** `--model` adds the local model as a second reader, and `--vision` adds the page's crop of a number or operative word in doubt.
+- **The library.** `jason intake --library-ocr` writes the same suggestions beside the library's OCR texts and ranks the worst-read files.
 
 ## Not built yet
 
-- Crops of the page image beside an OCR question, from Tesseract's word boxes and confidences (the Tesseract command-line tool's `tsv` output gives both).
+- Showing the page's crop beside an OCR question for the person answering it (the vision reader already crops the word).
 - Questions from the duties and notice catalogs, and from a new file's standing (is it signed? recorded?).
 - Applying the answers to `before differs`, `drift`, and `orphaned note` beyond recording them.

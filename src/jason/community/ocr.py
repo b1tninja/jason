@@ -78,6 +78,126 @@ class PyMuPdfTesseract:
         return "\n\n".join(pages)
 
 
+@dataclass(frozen=True)
+class TesseractWord:
+    """One word as Tesseract's own command-line tool read it (its ``tsv`` output), with its box and confidence."""
+
+    page: int
+    block: int
+    paragraph: int
+    line: int
+    left: int                        # pixels at the rendering's dpi
+    top: int
+    width: int
+    height: int
+    confidence: float                # Tesseract's, 0 to 100
+    text: str
+
+
+def parse_tsv(tsv: str, page: int = 0) -> list[TesseractWord]:
+    """The words of one page's ``tesseract IMAGE stdout tsv`` output."""
+    out = []
+    for row in tsv.splitlines()[1:]:
+        cells = row.split("\t")
+        if len(cells) < 12 or cells[0] != "5" or not cells[11].strip():
+            continue
+        try:
+            nums = [int(c) for c in cells[2:5]] + [int(c) for c in cells[6:10]]
+            conf = float(cells[10])
+        except ValueError:
+            continue
+        out.append(TesseractWord(page, nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6], conf,
+                                 cells[11].strip()))
+    return out
+
+
+class TesseractCli:
+    """Tesseract's own command-line tool, reading a rendered page into words with their boxes and confidences.
+
+    PyMuPDF runs the same engine, but builds words itself from the characters' positions and loses the narrow spaces
+    of justified type: on a recorded declaration it ran about one word in thirty into the next ("ofthe", "Notmore"),
+    where the tool's own words did not (WER 8.1% against 2.2%, the same model and resolution; docs/ocr-correction.md).
+    The tool is the per-user unpack PyMuPDF already uses for its language data, or ``TESSERACT_EXE``."""
+
+    name = "tesseract-cli"
+
+    def __init__(self, *, dpi: int = 300, language: str = "eng", timeout: int = 120) -> None:
+        self.dpi = dpi
+        self.language = language
+        self.timeout = timeout
+
+    @staticmethod
+    def exe() -> str:
+        import os
+        import shutil
+
+        candidates = [os.environ.get("TESSERACT_EXE", "")]
+        for root in (os.environ.get("LOCALAPPDATA", ""), os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", "")):
+            if root:
+                sub = "Programs" if root == os.environ.get("LOCALAPPDATA") else ""
+                candidates.append(str(Path(root) / sub / "Tesseract-OCR" / "tesseract.exe"))
+        for candidate in candidates:
+            if candidate and Path(candidate).is_file():
+                return candidate
+        return shutil.which("tesseract") or ""
+
+    @classmethod
+    def available(cls) -> bool:
+        try:
+            import pymupdf  # noqa: F401
+        except ImportError:
+            return False
+        return bool(cls.exe())
+
+    def page_words(self, page: Any, number: int = 0) -> list[TesseractWord]:
+        """One PyMuPDF page's words, rendered at ``dpi`` in gray and read by the tool."""
+        import os
+        import subprocess
+        import tempfile
+
+        import pymupdf
+
+        pix = page.get_pixmap(dpi=self.dpi, colorspace=pymupdf.csGRAY)
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "page.png"
+            pix.save(str(image))
+            env = dict(os.environ)
+            tessdata = PyMuPdfTesseract.tessdata()
+            if tessdata:
+                env["TESSDATA_PREFIX"] = tessdata
+            done = subprocess.run([self.exe(), str(image), "stdout", "-l", self.language, "tsv"], capture_output=True,
+                                  timeout=self.timeout, env=env, check=False)
+        return parse_tsv(done.stdout.decode("utf-8", errors="replace"), number)
+
+    def words(self, path: Path, *, pages: tuple[int, ...] = ()) -> list[TesseractWord]:
+        import pymupdf
+
+        out: list[TesseractWord] = []
+        with pymupdf.open(path) as document:
+            for number in pages or range(document.page_count):
+                out += self.page_words(document[number], number)
+        return out
+
+    def text_of(self, path: Path) -> str:
+        """The pages' text: a line per Tesseract line, a blank line between its blocks, pages apart."""
+        pages: dict[int, list[TesseractWord]] = {}
+        for w in self.words(path):
+            pages.setdefault(w.page, []).append(w)
+        out = []
+        for number in sorted(pages):
+            lines: dict[tuple[int, int, int], list[str]] = {}
+            for w in pages[number]:
+                lines.setdefault((w.block, w.paragraph, w.line), []).append(w.text)
+            text, last = [], None
+            for key, ws in lines.items():
+                if last is not None and key[:2] != last[:2]:
+                    text.append("")
+                text.append(" ".join(ws))
+                last = key
+            out.append("\n".join(text))
+        return "\n\n".join(out)
+
+
 class DoclingRapidOcr:
     """Docling's converter with full-page OCR through RapidOCR; installs with ``pip install "docling[rapidocr]"``."""
 
@@ -257,6 +377,8 @@ def engines() -> tuple[OcrEngine, ...]:
         found.append(vision)
     if DoclingRapidOcr.available():
         found.append(DoclingRapidOcr())
+    if TesseractCli.available():
+        found.append(TesseractCli())        # Tesseract's own word spacing; PyMuPDF's runs words together
     if PyMuPdfTesseract.available():
         found.append(PyMuPdfTesseract())
     collector = AnythingLLMCollector()
