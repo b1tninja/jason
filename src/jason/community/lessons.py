@@ -187,6 +187,27 @@ LESSONS: tuple[Lesson, ...] = (
                                  "LivingDocument.checks (TextCheck: the rule rows' terms in the current words)"),
            docs=("docs/living-documents.md",),
            notes=("The full comparison (--all-sections) is mostly the base's OCR slips until the base is reconciled.",)),
+    Lesson("duty-gold-overstates", OCT_2026, (Area.GOVERNING,),
+           "The phrase grammar for duties scored precision 1.00 on its gold sets, while random samples of its readings "
+           "across all the governing documents had about four in five of the right kind.",
+           "The gold passages were chosen for the traps the grammar was then written around; list items under a lead-in "
+           "that states a purpose, a scope, or a set of methods, and consequences stated with \"shall\", are rare in them.",
+           "Each measurement reports a blind set drawn after the grammar is frozen and a random sample of readings across "
+           "the corpus beside the gold set; every reading stays a lead with a review status until a person confirms it.",
+           Status.OPEN, guards=("scripts/eval_duties.py (gold.json dev and test halves, gold-fresh.json)",
+                                "DocumentDuty.review (ReviewStatus)"),
+           docs=("docs/document-duties.md (The gold sets and the measurements)",),
+           notes=("To build: a gold set of list items under lead-ins, and a check that a lead-in stating a purpose or "
+                  "scope passes no kind to its items.",)),
+    Lesson("model-reads-norms-loosely", OCT_2026, (Area.GOVERNING,),
+           "Asked to list a section's duties, the local model reported statuses, definitions, and a prohibition's "
+           "descriptive clauses as norms, and missed list items under a lead-in (precision 0.78, recall 0.80).",
+           "Deciding what is a norm turns on drafting forms the grammar reads exactly; the model is good at the part the "
+           "words leave out, who bears a passive duty.",
+           "The model fills only the bearers the grammar leaves unstated; the grammar's kinds and timing stay.",
+           Status.FIXED, guards=("duty_model.merge_review(fill_only=True)", "jason duties --documents --fill-bearers",
+                                 "tests/test_deontic.py"),
+           docs=("docs/document-duties.md (What the numbers say)", "docs/document-tools.md (model trials)")),
 )
 
 

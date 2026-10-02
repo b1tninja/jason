@@ -3024,9 +3024,13 @@ def cmd_index_coverage(args: argparse.Namespace) -> int:
 
 
 def cmd_duties(args: argparse.Namespace) -> int:
-    """Write records.md and duties.md, or print one duty's brief."""
+    """Write records.md and duties.md, or print one duty's brief, or (--documents) list a document's norms."""
     import json
 
+    if getattr(args, "documents", None) is not None:
+        from jason.commands.document_duties import cmd_document_duties
+
+        return cmd_document_duties(args)
     if args.brief:
         from jason.mcp.county import duty_brief
 
@@ -4183,10 +4187,13 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--json", action="store_true", help="Print JSON")
     watch.set_defaults(func=cmd_title_watch)
 
-    duties = sub.add_parser("duties", help="Write records.md (the Civil Code 5200 inventory) and duties.md (the duty briefs with the documents' passages); --brief prints one duty")
+    duties = sub.add_parser("duties", help="Write records.md (the Civil Code 5200 inventory) and duties.md (the duty briefs with the documents' passages); --brief prints one duty; --documents KEY lists the norms a governing document states")
     _add_common(duties)
     duties.add_argument("--brief", default="", help="Print the brief for one duty anchor, such as \"Assessments\"")
     duties.add_argument("--json", action="store_true", help="Print JSON")
+    from jason.commands.document_duties import add_arguments as _document_duty_arguments
+
+    _document_duty_arguments(duties)
     duties.set_defaults(func=cmd_duties)
 
     records = sub.add_parser("records-request", help="List the recorded instruments the association's records lack, with the form fields and the county's copy cost")

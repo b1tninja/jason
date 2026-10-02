@@ -245,6 +245,31 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/intake.md", "docs/living-documents.md"),
     ),
     Procedure(
+        "document-duties", "The duties a governing document states",
+        "When a governing document is outlined, amended, or replaced, and before relying on what it requires.",
+        (Area.GOVERNING,),
+        "List what each document requires, forbids, and allows, who bears it, and when; review the readings; and see "
+        "that every timed duty and duty to give notice is tracked by a person's row.",
+        (
+            Step("Read the documents with the phrase grammar (reviews are kept).", command="jason duties --documents --read"),
+            Step("Fill the bearers the words leave out with the local model, the stack permitting.",
+                 command="jason duties --documents --fill-bearers",
+                 check="preflight passes; afterwards the model is unloaded (jason local-ai --unload NAME --yes) before pytest",
+                 refs=("docs/document-tools.md (model trials)",), lessons=("model-reads-norms-loosely",)),
+            Step("Review the readings that matter first: timed duties nothing tracks, duties to give notice, and owners' "
+                 "prohibitions; confirm, correct, or reject each against the sentence in the document.",
+                 command="jason duties --documents --timed --untracked; jason duties --documents KEY --notices",
+                 check="a list item read with its lead-in; a \"may\" is a power, not a duty",
+                 refs=("docs/document-duties.md (How a person reviews)",), lessons=("duty-gold-overstates",), person=True),
+            Step("Say what tracks each timed duty, or propose the recurring-deadline row it needs; hand duties to give "
+                 "notice to the notice catalog.", command="jason duties --documents KEY --review ID --tracked-by WHAT",
+                 refs=("docs/notices.md",), person=True),
+            Step("After a change to the grammar or the model, score it again and record the trial.",
+                 command="python scripts/eval_duties.py --model NAME", lessons=("duty-gold-overstates",)),
+        ),
+        refs=("docs/document-duties.md",),
+    ),
+    Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",
         "Whenever the association writes to owners.",
         (Area.DOCUMENTS, Area.EMAIL),

@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-132 commands, by area:
+133 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (5)
+- [Other](#other) (6)
 
 ## PayHOA & finance
 
@@ -973,12 +973,31 @@ The maintenance history and insurance claims read from the repair paperwork (Pay
 
 ### `jason duties`
 
-Write records.md (the Civil Code 5200 inventory) and duties.md (the duty briefs with the documents' passages); --brief prints one duty
+Write records.md (the Civil Code 5200 inventory) and duties.md (the duty briefs with the documents' passages); --brief prints one duty; --documents KEY lists the norms a governing document states
 
 | Option | Value | Help |
 |---|---|---|
 | `--brief` | BRIEF | Print the brief for one duty anchor, such as "Assessments" |
 | `--json` |  | Print JSON |
+| `--documents` | KEY | List the norms a governing document states (an outline key, or all): duties, prohibitions, permissions, rights, and conditions, as the phrase grammar reads them |
+| `--read` |  | With --documents: reread the outlines (reviews are kept) |
+| `--kind` | {duty,prohibition,permission,right,condition,definition} | With --documents: one kind |
+| `--bearer` | {association,board,officer,committee,inspector,manager,owner,member,occupant,candidate,declarant,mortgagee,person,other,unstated} | With --documents: one bearer |
+| `--timed` |  | With --documents: duties with a deadline or recurrence, and what tracks each |
+| `--untracked` |  | With --documents: timed duties that no recurring deadline, calendar event, notice provision, or notice rule carries |
+| `--notices` |  | With --documents: duties to give notice, and the notice provision or rule that covers each (leads for the notice catalog) |
+| `--unreviewed` |  | With --documents: only readings no one has reviewed |
+| `--fill-bearers` |  | With --documents: ask the local model who bears each norm the words leave unstated (the hybrid; preflight and the GPU lock first; answers cached) |
+| `--model` | MODEL | With --fill-bearers: the Ollama model (default: jason's shared model) |
+| `--num-ctx` | NUM_CTX | With --fill-bearers: the context window |
+| `--all-kinds` |  | With --documents: include definitions and statements of status |
+| `--limit` | LIMIT | With --documents: lines to print (0 for all) |
+| `--review` | ID | With --documents KEY: record a person's review of one reading |
+| `--status` | {unreviewed,confirmed,corrected,rejected} | With --review: the review's status |
+| `--note` | NOTE | With --review: the reviewer's note |
+| `--set-kind` | {duty,prohibition,permission,right,condition,definition} | With --review: the corrected kind |
+| `--set-bearer` | {association,board,officer,committee,inspector,manager,owner,member,occupant,candidate,declarant,mortgagee,person,other,unstated} | With --review: the corrected bearer |
+| `--tracked-by` | TRACKED_BY | With --review: what carries this timed duty (a recurring deadline's name, a calendar event, a notice rule, a command) |
 
 ### `jason hold`
 
@@ -1618,6 +1637,13 @@ Each notice's delivery to every member, bounces and returns, and the follow-ups 
 | `--since` | SINCE | with --sync: the day the notice went out (default: its first batch's) |
 | `--general` |  | a general notice (Civil Code 4045: a meeting notice) that was also posted where the annual policy statement designates, so the posting delivered it: a failed message is noted, a resend is owed only to a member who asked for individual delivery (4045(b)), and a bounce still asks for a working email. Not posted: leave this off, since the messages were the delivery |
 | `--json` |  | print JSON |
+| `--catalog` |  | the notice requirements the law sets (no KEY: all of them; KEY: one, with the governing documents' clauses and the stricter clock). Reads no PayHOA |
+| `--proof` |  | the proof-of-notice record for KEY: the evidence its requirement calls for, the window, and who was reached late, from the ledger (sync first) |
+| `--requirement` | REQUIREMENT | with --proof: the catalog key, when KEY does not start with one |
+| `--event` | EVENT | with --proof: the day of the meeting, hearing, due date, or other anchor |
+| `--sent` | SENT | with --proof: the day it was mailed or sent (default: the ledger's first attempt) |
+| `--posted` | POSTED | with --proof --general: the day it was posted |
+| `--have` | HAVE | with --proof: evidence on file, comma-separated (text_as_sent,mailing_declaration) |
 
 ### `jason living`
 
@@ -1633,3 +1659,19 @@ Documents kept as amended: the current text from the base and the amendments in 
 | `--redline` | INSTRUMENT | an amendment's words with their marks (ccrs-2nd-amendment) |
 | `--section` | SECTION | one provision with its history (4.15(a)) |
 | `--annotations` |  | read the working copy's comments (read-only) into data/annotations and place them |
+
+### `jason intake`
+
+Questions jason could not decide while taking documents in: classify, OCR readings, amendments, drift, orphaned notes
+
+| Option | Value | Help |
+|---|---|---|
+| `--scan` |  | run the readers and park each uncertainty as a question |
+| `--kind` | KIND | list one kind (classify, ocr reading, drift, before differs, ...) |
+| `--subject` | SUBJECT | list one subject's questions (a prefix: ccrs#4.15, library:) |
+| `--likely` |  | list only the likely ones |
+| `--limit` | LIMIT |  |
+| `--answer` | ID TEXT | answer one (a choice's number or words; dismiss) |
+| `--accept-likely` |  | answer every open likely OCR reading with its suggestion (after looking at --likely) |
+| `--by` | BY | the person answering (required to answer) |
+| `--apply` |  | turn answers into the records the next run uses |
