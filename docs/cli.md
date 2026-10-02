@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-131 commands, by area:
+132 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (4)
+- [Other](#other) (5)
 
 ## PayHOA & finance
 
@@ -1618,3 +1618,18 @@ Each notice's delivery to every member, bounces and returns, and the follow-ups 
 | `--since` | SINCE | with --sync: the day the notice went out (default: its first batch's) |
 | `--general` |  | a general notice (Civil Code 4045: a meeting notice) that was also posted where the annual policy statement designates, so the posting delivered it: a failed message is noted, a resend is owed only to a member who asked for individual delivery (4045(b)), and a bounce still asks for a working email. Not posted: leave this off, since the messages were the delivery |
 | `--json` |  | print JSON |
+
+### `jason living`
+
+Documents kept as amended: the current text from the base and the amendments in effect, with provenance, drift, and annotations
+
+| Option | Value | Help |
+|---|---|---|
+| `key` | optional (?) | the document (ccrs); none lists them |
+| `--fetch` |  | read the Docs again first (read-only) |
+| `--working` |  | compare the working copy kept by hand: the amended sections |
+| `--all-sections` |  | compare every section of the working copy (a base read by OCR differs mostly by its slips) |
+| `--as-of` | AS_OF | the text in force on this date (YYYY-MM-DD) |
+| `--redline` | INSTRUMENT | an amendment's words with their marks (ccrs-2nd-amendment) |
+| `--section` | SECTION | one provision with its history (4.15(a)) |
+| `--annotations` |  | read the working copy's comments (read-only) into data/annotations and place them |

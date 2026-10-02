@@ -115,22 +115,33 @@ The person who keeps the association's documents keeps a text version of each as
 - **Annotations** are `Annotation(section, quote, kind, text, author, written, source, resolved)` with an `AnnotationKind`: `QUESTION`, `VAGUE`, `INTERPRETATION`, `CONTEXT`, `DEFINITION`, `OUTDATED_CITATION`, `POLICY_CANDIDATE`, `ACTION_ITEM`, `PROVENANCE`. An annotation is anchored by section and quoted words, never by offset, so it survives a regenerated text: `place` finds it `ANCHORED` in its section, `MOVED` to wherever its words now are, `SECTION` (a note on the whole section), or `ORPHANED` (a finding, never dropped). A `PROVENANCE` note is checked against the computed provenance. A `POLICY_CANDIDATE` or `VAGUE` note is a lead for the board's rule proposals ("where the law is silent, write it down"); an `OUTDATED_CITATION` note joins the citation conflicts.
 - **The seam with Doc comments.** Annotations are imported from the working Doc's comments, read-only: the Drive API's `comments.list` (with an explicit `fields`) gives each comment's text, its quoted text (`quotedFileContent.value`), replies, and whether it is resolved; `source` keeps the comment id so the next import updates rather than duplicates. A comment whose quote is empty had its passage edited away; it imports as orphaned, and the Drive revisions API could recover what it was attached to (an option, not built). Writing comments back is a later, gated step: Docs does not render the anchor of a comment created through the Drive API, and the Docs API's anchored comment request is in developer preview, so a written comment would be unanchored with its quote until that changes. The annotations themselves are private working notes: `data/annotations/<key>.json`, never checked in.
 
-## Specification (proposed)
+## Specification
 
 The profile pins what a person has confirmed; jason reads the rest.
 
-- **Standing from the pins already there.** An `Amendment` with a recording date and number is recorded; with only an adoption date, adopted; with neither, a draft. No new field is needed for that.
-- **Where the operations are read.** Per instrument: the source (`OperationSource.DOC`, `TEXT_PDF`, `SCAN`, by Drive id) and, once a person has reviewed the reading, a digest of its operations. A reading whose digest no longer matches (the Doc was edited) is held out until reviewed again: the reading is evidence, the digest is the pin.
-- **A living document row.** `LivingDocument(key, base, working, corrections)`: the outline key, the base copy (the recorded instrument's extract, or a Doc a person has compared with it), the working Doc to check, and the corrections. `Community.living_documents()` returns `()` by default.
-- **Stores.** `data/living/<key>.json` (the current document with provenance and findings), `data/living/<key>.md` (the generated text), `data/living/<key>.operations/<instrument>.json` (each reading, with its source revision), `data/annotations/<key>.json`.
+- **Standing from the pins already there.** An `Amendment` with a recording date and number is recorded; with only an adoption date, adopted; with neither, a draft (`living.standing_of`). A declaration's amendment takes effect on recording (`Effect`).
+- **A living document row.** `LivingDocument(key, title, kind, base, base_from, instruments, corrections, checks, working_doc)`, returned by `Community.living_documents()` (empty by default):
+  - `base` and each `LivingInstrument.source` is a `SourceRef`: a Google Doc read with its runs (`SourceKind.DOC`, by Drive id) or a library text extract (`SourceKind.LIBRARY_TEXT`, by library path). A library source pins the `sha256` a person reviewed; a file whose digest changed is held out until it is reviewed again. A Doc is read at its current revision, which the report names.
+  - `corrections` are the `Correction` rows for the base's OCR slips.
+  - `checks` are `TextCheck(section, expect, rule)` rows: a rule row that copies a term of the document (a rental cap, a minimum lease) must find its words in the current text, or the two disagree and a person decides which is wrong.
+  - `working_doc` is the reading copy a person keeps by hand.
+- **Stores** (private): `data/living/<key>/current.md` (the generated text), `data/living/<key>/report.json` (applied, pending, held, findings, checks, drift, the Docs' revisions), `data/living/<key>/sources/<drive id>.json` (each Doc as last read), `data/annotations/<key>.json` (the annotations; a person may change a `kind` and mark `kind_set_by_person`, which a later import keeps).
 
-## Surfaces (proposed)
+## Surfaces
 
-- `jason living --doc KEY` reads the instruments (read-only), consolidates, writes the stores, and prints the findings. `--redline INSTRUMENT` prints an instrument's operations with their marks. `--drift` compares the working Doc. `--as-of DATE` gives the text in force on a date (a dispute about a past lease, an election held under the old bylaws).
-- `jason outlines --current KEY` prints a section of the current text with its provenance: `4.2(b) restated by the Second Amendment, recorded 2024-02-01, No. 2024000123`.
-- The generated text, "as amended through" its last instrument, with a note under each amended section and a list of what is pending. It is not an official restatement; the recorded instruments control. A Google Doc made from it is a later step and a person's to publish.
-- An MCP tool for the board's profile: a section's current words and provenance, with the caveat that drafts are excluded and the instruments control.
-- The procedures for amendments, leasing, and the annual disclosures read the current text; the rule rows and conflicts are checked against it.
+```bash
+jason living                              # the living documents
+jason living ccrs --fetch --working       # read the Docs again (read-only), build, compare the amended sections
+jason living ccrs --all-sections          # compare every section (mostly the base's OCR slips until reconciled)
+jason living ccrs --redline ccrs-2nd-amendment
+jason living ccrs --section "4.15(a)"     # one provision with its history
+jason living ccrs --as-of 2023-01-01      # the text in force on a date
+jason living ccrs --annotations           # the working copy's comments, read-only, placed on the text
+```
+
+- The generated text reads "as amended through" its last instrument, with a note under each amended section and a list of what is not in effect. It is not an official restatement; the recorded instruments control.
+- An annotation is placed on the current text, else on the working copy (where a base read by OCR garbles the quoted words), else reported as orphaned. A comment's kind is first read from its words (`living_docs.kind_of`) and a person corrects it.
+- Not built yet: the scan reader in `jason.community` (the rule and stroke measures above) and a text-PDF reader; the generated Doc; an MCP tool.
 
 ## Failure modes
 
@@ -153,7 +164,7 @@ The profile pins what a person has confirmed; jason reads the rest.
 ## Phases
 
 1. Done: the records, the readers for Doc runs and plain text, the apply step, the before check, drift, corrections, annotation placement (`jason.community.living`).
-2. The profile rows (`LivingDocument`, operation sources, reviewed digests, corrections) and `jason living`.
+2. Done: the profile rows (`LivingDocument`, sources with reviewed digests, corrections, checks) and `jason living`.
 3. The scan reader in `jason.community` (the rule and stroke measures above), and the text-PDF reader.
-4. Annotations imported from Doc comments; rule rows and conflicts checked against the current text.
+4. Done: annotations imported from Doc comments, and rule rows checked against the current text. Conflicts checked against it: not yet.
 5. The generated Doc, and the MCP tool.

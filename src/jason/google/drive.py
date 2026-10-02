@@ -117,6 +117,23 @@ class GoogleDrive:
             if not page_token:
                 return rows
 
+    def list_comments(self, file_id: str) -> list[dict[str, Any]]:
+        """Every comment on a file, with its quoted words and replies (read-only). A comment the API creates on a Google
+        Doc shows unanchored; anchored comments need the Docs API's insertComment, in developer preview."""
+        rows: list[dict[str, Any]] = []
+        page_token: str | None = None
+        fields = ("nextPageToken,comments(id,createdTime,modifiedTime,resolved,deleted,anchor,content,quotedFileContent,"
+                  "author(displayName),replies(id,createdTime,content,action,author(displayName)))")
+        while True:
+            params: dict[str, Any] = {"fields": fields, "pageSize": 100}
+            if page_token:
+                params["pageToken"] = page_token
+            body = self._get(f"/files/{file_id}/comments", params)
+            rows.extend(body.get("comments") or [])
+            page_token = body.get("nextPageToken")
+            if not page_token:
+                return rows
+
     def download(self, file_id: str, dest: str | Path) -> Path:
         """Save a binary file. Google Docs, Sheets, and Sites need export, not this."""
         path = Path(dest)

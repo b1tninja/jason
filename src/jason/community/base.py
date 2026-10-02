@@ -922,6 +922,11 @@ class Community(ABC):
         general ones. Empty until the specification keeps some."""
         return ()
 
+    def living_documents(self) -> tuple:
+        """The documents kept as amended (``jason.community.living.LivingDocument``): each one's base text, its
+        amendments, corrections, and the rule rows that copy its terms. Empty until the specification keeps some."""
+        return ()
+
     def conflicts(self) -> tuple:
         """The community's written provisions a higher authority displaces, wholly or in part
         (``jason.community.authority_order.Conflict``): a governing document or rule followed only as far as the law

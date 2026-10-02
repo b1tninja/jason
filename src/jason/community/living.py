@@ -861,7 +861,72 @@ def place(current: CurrentDocument, annotations: Sequence[Annotation]) -> list[P
     return out
 
 
+# The specification's rows: which document is kept living, from which sources, with which corrections and checks.
+
+
+class SourceKind(Enum):
+    DOC = "doc"                      # a Google Doc, read with its text runs (bold, strikethrough)
+    LIBRARY_TEXT = "library-text"    # the library's text extract of a PDF (a recorded copy's OCR), by library path
+
+
+@dataclass(frozen=True)
+class SourceRef:
+    """Where an instrument's words are read. ``sha256`` pins the library file a person reviewed: a file whose digest
+    has changed is held out until it is reviewed again. A Doc is read at its current revision, which is reported."""
+
+    kind: SourceKind
+    ref: str                         # a Drive id (DOC) or a library path (LIBRARY_TEXT)
+    sha256: str = ""
+    note: str = ""                   # why this copy ("the draft's runs; its after words match the recorded scan")
+
+
+@dataclass(frozen=True)
+class TextCheck:
+    """A rule row that copies a term of the document, checked against the current text: ``expect`` must appear in the
+    section's words. A miss means the rule row and the document disagree, and a person decides which is wrong."""
+
+    section: str
+    expect: str
+    rule: str                        # the row it guards ("LeasingRules.cap_percent = 25")
+
+
+@dataclass(frozen=True)
+class LivingInstrument:
+    key: str                         # the instrument's outline key ("ccrs-2nd-amendment")
+    document: Any                    # the specification's Document: its title, adoption and recording
+    source: SourceRef
+
+
+@dataclass(frozen=True)
+class LivingDocument:
+    """A document kept as amended: the base text, the instruments (applied only once in effect), the editorial
+    corrections, the checks of the rule rows that copy its terms, and the working copy a person keeps by hand."""
+
+    key: str                         # the outline key ("ccrs")
+    title: str
+    kind: DocumentKind
+    base: SourceRef
+    base_from: str                   # how the generated text names its base ("the recorded 2007 copy")
+    instruments: tuple[LivingInstrument, ...] = ()
+    corrections: tuple[Correction, ...] = ()
+    checks: tuple[TextCheck, ...] = ()
+    working_doc: str = ""            # the Drive id of the reading copy kept by hand, checked for drift
+
+
+def standing_of(document: Any) -> Standing:
+    """An instrument's standing from the specification's dates: recorded, adopted, or a draft."""
+    if getattr(document, "recorded", None):
+        return Standing.RECORDED
+    return Standing.ADOPTED if getattr(document, "adopted", None) else Standing.DRAFT
+
+
+def check_text(current: CurrentDocument, checks: Sequence[TextCheck]) -> list[tuple[TextCheck, bool]]:
+    """Each check with whether its words are in the section's current text."""
+    return [(c, _norm(c.expect) in _norm(current.text_of(c.section))) for c in checks]
+
+
 __all__ = ["Mark", "Run", "StyledRun", "Verb", "Standing", "Effect", "effect_of", "Operation", "Instrument",
+           "SourceKind", "SourceRef", "TextCheck", "LivingInstrument", "LivingDocument", "standing_of", "check_text",
            "read_instruction", "legend", "read_operations", "doc_paragraphs", "text_paragraphs", "operations_from_doc",
            "operations_from_text", "FindingKind", "AmendmentFinding", "Provision", "CurrentDocument", "word_changes",
            "provisions_of", "consolidate", "drift", "CorrectionKind", "Correction", "changes_meaning", "correct",

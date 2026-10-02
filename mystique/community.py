@@ -493,6 +493,12 @@ class Mystique(Community):
 
         return LESSONS
 
+    def living_documents(self):
+        """Mystique's documents kept as amended (living.py)."""
+        from .living import LIVING_DOCUMENTS
+
+        return LIVING_DOCUMENTS
+
     def conflicts(self):
         """Mystique's provisions that yield to a higher authority (conflicts.py), each followed only that far."""
         from .conflicts import CONFLICTS

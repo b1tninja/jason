@@ -130,7 +130,10 @@ LESSONS: tuple[Lesson, ...] = (
            "Check the public index before repeating whether an instrument was recorded. Each amendment should carry "
            "its standing (draft, adopted, recorded with number and date) as data, and the current text of the "
            "document it amends should be built from the amendments that took effect, not copied by hand.",
-           Status.OPEN, docs=("docs/living-documents.md (in design)",)),
+           Status.FIXED, guards=("living.standing_of (from the amendment's adopted and recorded dates)",
+                                 "living.Effect: a declaration's amendment takes effect on recording",
+                                 "jason living KEY lists what is applied and what is not in effect"),
+           docs=("docs/living-documents.md",)),
     Lesson("returns-by-the-same-rules", OCT_2026, (Area.OWNER_INFO, Area.FORMS),
            "An emailed-back form had to be read and judged by hand.",
            "Only PayHOA submissions run through --apply.",
@@ -180,9 +183,10 @@ LESSONS: tuple[Lesson, ...] = (
            "Each amendment was applied by reading it and editing the copy, with nothing to check the result.",
            "Compute the current text from the base and the operations of each instrument in effect, with each "
            "section's provenance, and compare the working copy and the rule rows against it.",
-           Status.OPEN, docs=("docs/living-documents.md",),
-           notes=("living.consolidate and living.drift exist; no command runs them yet, and the rule rows are not "
-                  "checked against the current text.",)),
+           Status.FIXED, guards=("jason living KEY --working (the working copy against the current text)",
+                                 "LivingDocument.checks (TextCheck: the rule rows' terms in the current words)"),
+           docs=("docs/living-documents.md",),
+           notes=("The full comparison (--all-sections) is mostly the base's OCR slips until the base is reconciled.",)),
 )
 
 
