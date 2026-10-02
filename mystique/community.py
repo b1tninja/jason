@@ -499,6 +499,12 @@ class Mystique(Community):
 
         return LESSONS
 
+    def response_rules(self):
+        """The documents' response clocks and the proposed policies (responses.py)."""
+        from .responses import RESPONSE_RULES
+
+        return RESPONSE_RULES
+
     def assignments(self):
         """Who does each duty and when (schedule.py): jason's proposals until the board adopts them."""
         from .schedule import ASSIGNMENTS

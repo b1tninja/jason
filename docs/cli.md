@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-134 commands, by area:
+135 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (7)
+- [Other](#other) (8)
 
 ## PayHOA & finance
 
@@ -1692,3 +1692,14 @@ Who does each duty and when: what falls due, the assignments, and the duties nob
 | `--on` | ON | with --done: the day it was done (default today) |
 | `--by` | BY | with --done: who did it |
 | `--evidence` | EVIDENCE | with --done: what shows it (the minutes' date and item, a payment, a proof) |
+
+### `jason respond`
+
+Each request of the association: its kind, its clock, its owner, and whether the answer is on time
+
+| Option | Value | Help |
+|---|---|---|
+| `--all` |  | also the answered requests, and how many were on time |
+| `--kind` | KIND | one kind (records request, maintenance request, ...) |
+| `--limit` | LIMIT |  |
+| `--json` |  | print JSON |

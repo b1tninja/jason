@@ -928,6 +928,15 @@ class Community(ABC):
         general ones. Empty until the specification keeps some."""
         return ()
 
+    def response_rules(self) -> tuple:
+        """The profile's response clocks (``jason.community.responses.ResponseRule``): the governing documents' own,
+        and proposed policies where the law is silent; they replace jason's for the same kind. Empty until set."""
+        return ()
+
+    def request_kind_rules(self) -> tuple:
+        """The profile's own classification rows (``responses.KindRule``), tried before jason's. Empty until set."""
+        return ()
+
     def assignments(self) -> tuple:
         """Who does each duty and when (``jason.community.schedule.Assignment``): the roles and schedules jason
         proposes and the board adopts. Empty until the specification keeps some."""

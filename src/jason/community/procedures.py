@@ -245,6 +245,24 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/intake.md", "docs/living-documents.md"),
     ),
     Procedure(
+        "respond", "Answering members' requests on their clocks",
+        "Each week, and the day before each board meeting.",
+        (Area.GOVERNING, Area.EMAIL),
+        "Know every open request's kind, its due day, and its owner; answer within the clock; put on the agenda what "
+        "the board decides; never approve, deny, or assign on jason's own.",
+        (
+            Step("Refresh the requests, and read them with their clocks.", command="jason sync-catalog; jason respond",
+                 check="anything overdue or due soon; a request classified 'other' is read and its kind decided"),
+            Step("Acknowledge within the policy's days, and send the answer or the plan; a board decision goes on the "
+                 "next agenda.", command="jason request-comment ID ...", person=True),
+            Step("Join emailed requests PayHOA lacks.", command="jason request-links",
+                 check="a draft is entered only on a person's word"),
+            Step("Close each request when it is done.", person=True),
+            Step("Monthly, read how many answers were on time, by kind, for the board.", command="jason respond --all"),
+        ),
+        refs=("docs/responses.md", "procedure duty-schedule"),
+    ),
+    Procedure(
         "duty-schedule", "Every duty owned, every clock set, and each occurrence done",
         "Each month before the board meeting; and whenever a document, an amendment, or a law adds duties.",
         (Area.GOVERNING,),
