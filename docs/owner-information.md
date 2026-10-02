@@ -134,6 +134,8 @@ It goes out as two batches ([batches.md](batches.md)):
 
 ## What the 2027 cycle taught (October 2026)
 
+These are kept as records too: `jason lessons --area owner-info` lists them with their status and guards, and `jason sop owner-info-cycle` is the procedure, step by step, with the lessons that shaped each step. The records are the source; this section is the story.
+
 **What went wrong:**
 - **The link was broken for every owner.** The letters, their QR codes, and the emails linked to the PayHOA form without the unit (`;unitId=`). An owner who followed the link got "You do not have permission to access this form". Only an administrator could open it. The test round trip submitted through the API, which names the unit itself, so it passed.
 - **The letters could not be recalled.** They were mailed first. When the link problem surfaced, about 70 minutes after mailing, every cancel failed: Lob's cancel window had closed.

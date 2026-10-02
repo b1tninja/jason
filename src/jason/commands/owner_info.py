@@ -268,6 +268,17 @@ def _send_plan(args: argparse.Namespace, agent_factory: Callable[[Any], Any], co
     return 0
 
 
+def _show_lessons(area: str, community: Any) -> None:
+    """Before a send is confirmed, the lessons still open for its area (``jason lessons``)."""
+    from jason.community.lessons import Area, for_area
+
+    found = for_area(Area(area), community, open_only=True)
+    if found:
+        print(f"Open lessons for {area} (jason lessons --area {area}):")
+        for lesson in found:
+            print(f"  - {lesson.key}: {lesson.change}")
+
+
 def _only(row: Any, args: argparse.Namespace) -> bool:
     """Whether a send-plan row is one ``--only`` names: a unit whose address starts so, or ``me``, the operator's own
     unit (``payhoa_my_unit_id`` in .env), so a test to oneself never writes one's address on a command line or in docs."""
@@ -437,6 +448,7 @@ def _email_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], 
             if args.preview and rows:
                 _write_preview(Path(args.preview), message_text, community, year, message_file.parent, rows[0],
                                forms, args.subject, data_dir)
+            _show_lessons("email", community)
             print("Dry run: add --yes --confirmed-by NAME to record and send them (--limit N sends the first N).")
             return 0
         if not args.confirmed_by:
@@ -510,6 +522,7 @@ def _mail_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], c
                 who = handler.recipients(batches.Item(batch_id, key, label, payload))
                 letters += len(who)
                 print(f"  {label}: {len(who)} letter(s) to {len(payload['ownerIds'])} owner(s)")
+            _show_lessons("mailroom", community)
             print(f"{letters} letters. Dry run (PayHOA was asked whom each reaches; nothing mailed): add --yes "
                   "--confirmed-by NAME to mail them (--limit N sends the first N buildings).")
             return 0

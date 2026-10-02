@@ -186,7 +186,29 @@ def _packet_report(key: str, packet: str) -> Report:
                   caveat="PayHOA's own report as the treasurer ran it; jason finds it and files it, and changes nothing.")
 
 
+def _lessons(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
+    """The lessons for an area (``area=owner-info``), still open first (``jason.community.lessons``)."""
+    from jason.community.lessons import Area, Status, lessons, lines
+
+    area = Area(params["area"]) if params.get("area") else None
+    found = [l for l in lessons(community) if area is None or l.applies_to(area)]
+    order = {Status.DECISION: 0, Status.OPEN: 1, Status.FIXED: 2}
+    return lines(sorted(found, key=lambda l: order[l.status])) or ["- None."]
+
+
+def _procedure(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
+    """One standard operating procedure (``key=owner-info-cycle``) with the lessons open in its areas."""
+    from jason.community.procedures import find, lines
+
+    proc = find(params.get("key", ""), community)
+    return lines(proc, community) if proc else [f"- No procedure {params.get('key', '')!r}: `jason sop` lists them."]
+
+
 REPORTS: dict[str, Report] = {r.key: r for r in (
+    Report("sop", "Procedure", "jason sop", "jason's procedures and the community's own", _procedure, offline=True,
+           caveat="The steps as last written; update the procedure when a step changes."),
+    Report("lessons", "Lessons", "jason lessons", "jason's lessons and the community's own", _lessons, offline=True,
+           caveat="What went wrong and what changed; open ones still need a change or a decision."),
     Report("occupancy-signals", "Occupancy signals",
            "jason report occupancy-signals",
            "PayHOA's tags and owners' mailing addresses (live), the county's secured roll (homeowners' exemption, tax "

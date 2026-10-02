@@ -96,6 +96,20 @@ Copy `.env.example` → `.env` and fill Keeper record UIDs (never commit `.env`)
 - Drive text watermarks (e.g. diagonal DRAFT) **cannot** be removed via the Docs API; remove them in the Docs editor before export.
 - Do not commit HARs, `.env`, or `secrets/google-token.json`.
 
+## Lessons and procedures
+
+**Before a task, read its procedure and its lessons.**
+- `jason sop` lists the standard operating procedures (`jason.community.procedures`). Each is a task's steps in order: the command, what to check, and where to read more.
+- `jason sop KEY` prints one, with the lessons still open in its areas.
+- `jason lessons --area AREA` lists what went wrong in an area and what changed (`jason.community.lessons`).
+
+**Finish by building on them.** When a task goes wrong, or shows how the next time could go better, add or update a lesson before calling the work done:
+- **The record:** what happened, why, what changed or still has to, and its status: fixed, open, or a decision for a person or the board.
+- **Where it goes:** a lesson true of any association goes in `src/jason/community/lessons.py`. One that names this community's units, counts, or board goes in `mystique/lessons.py`, which is private.
+- **A fixed lesson names its guard:** the code or check that now stops the mistake. A lesson with no guard stays open.
+- **Update the procedure** that should have caught it: add or change the step, and name the lesson on that step, so the reason travels with it.
+- **Tell the person** which lessons you added and which are still open.
+
 ## jason-mcp
 
 `jason-mcp` is a stdio MCP server over the stores already on disk. It does **not** call PayHOA, Google, or Keeper. `jason-mcp --profile board` (or `JASON_MCP_PROFILE=board`) serves the board's thirty-eight tools, starting with `board_digest`; AnythingLLM is registered with that profile. Each tool carries its caveats; repeat them. A confidential file is held back unless asked, and a reading or a hit is evidence, not a pin. Every tool and its caveat: [docs/mcp.md](docs/mcp.md).

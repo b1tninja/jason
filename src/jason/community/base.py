@@ -912,6 +912,16 @@ class Community(ABC):
         """The Google Sheet id of the board's action items. Empty until the specification sets it."""
         return ""
 
+    def procedures(self) -> tuple:
+        """The community's own procedures (``jason.community.procedures.Procedure``), beside jason's general ones.
+        Empty until the specification keeps some."""
+        return ()
+
+    def lessons(self) -> tuple:
+        """The community's own lessons (``jason.community.lessons.Lesson``): what went wrong here, beside jason's
+        general ones. Empty until the specification keeps some."""
+        return ()
+
     def packet_reports(self) -> tuple[str, ...]:
         """The reports every board packet carries, as references (``{REPORT:treasurers-report period=previous-month}``),
         shown as already built (``live_reports``). Empty until the specification sets them."""

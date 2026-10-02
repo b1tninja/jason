@@ -487,6 +487,12 @@ class Mystique(Community):
         """The Google Sheet that holds the board's action items (banking.py)."""
         return BOARD_ITEMS_SHEET
 
+    def lessons(self):
+        """Mystique's own lessons (lessons.py), beside jason's general ones."""
+        from .lessons import LESSONS
+
+        return LESSONS
+
     def packet_reports(self):
         """Every board packet carries last month's Treasurer's Report, as PayHOA ran it (the treasurer runs the packet;
         jason includes the run, never builds one)."""
