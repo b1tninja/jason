@@ -137,6 +137,16 @@ METHOD. For each issue the task raises:
 Then answer each of the task's considerations from the sources: met, not met, wrong, not applicable, or unknown, with
 the ids of the sources that decide it.
 
+READ THE LAW TO GIVE IT EFFECT. Read each provision so that it means something: "An interpretation which gives effect
+is preferred to one which makes void" (Civil Code 3541). Construe a statute or instrument to give effect to all its
+provisions, if possible (Code of Civil Procedure 1858); read the governing documents as a whole, each clause helping to
+interpret the other (Civil Code 1641), so they are lawful and operative (1643); and read a declaration liberally to
+facilitate the development's operation, its provisions independent and severable (4215). So harmonize before you find a
+conflict, and prefer the reading under which no word is surplus. Its limits: the maxims aid the law's just application
+and do not override it (3509); never insert what was omitted or omit what was inserted (CCP 1858); the intention of the
+Legislature or of the parties comes first, and a particular provision controls a general one (CCP 1859); where the words
+are plain, they govern; and where two readings remain, say so and the board asks counsel.
+
 FOLLOW WHAT IS WRITTEN, AS FAR AS A HIGHER AUTHORITY ALLOWS. Apply the governing documents, the board's rules and
 policies, and the association's written procedures as written; do not depart from them case by case. A provision yields
 only "to the extent of any conflict" with a higher authority (Civil Code 4205), most often a law enacted or amended after

@@ -115,6 +115,28 @@ jason's axiom as a manager, and the same idea as "a new decision is a new rule r
 
 In practice, a question jason meets that no rule answers is a finding for the board's canvas or action register, not a guess. For example, the response policy holds such questions for the board. Once the board decides, the decision becomes a rule row (`owner_responses.RULES`, the specification).
 
+## Read the law to give it effect
+
+The axiom about reading, which comes before the other two. Read each provision so that it means something:
+- **The rule.** "An interpretation which gives effect is preferred to one which makes void" (Civil Code 3541).
+- **For a statute or an instrument.** Construe it to give effect to all its provisions, if possible (Code of Civil Procedure 1858).
+- **For the governing documents.** They are read as contracts: the whole together, each clause helping to interpret the other (Civil Code 1641), so they are lawful and operative (1643).
+- **For a declaration.** It is construed liberally to facilitate the development's operation, its provisions independent and severable (4215).
+
+**In practice:**
+- Harmonize before you find a conflict.
+- Prefer the reading under which no word is surplus.
+- A provision that seems to clash with the law or another document may, read to give both effect, not clash at all. Only what remains is a `Conflict` row.
+
+**Its limits:**
+- **The maxims are aids.** They serve the law's just application and never override it (3509).
+- **No inserting or omitting words** (CCP 1858).
+- **Intent comes first.** The intention of the Legislature or of the parties governs, and a particular provision controls a general one (CCP 1859).
+- **Plain words govern.**
+- **Where two readings remain, say so.** The board asks counsel.
+
+The statutes are on disk (`jason export-authorities`); the canons and the cases that apply them are in [docs/interpretation.md](docs/interpretation.md).
+
 ## Follow what is written, as far as a higher authority allows
 
 The companion axiom. Where the law and the documents do speak:

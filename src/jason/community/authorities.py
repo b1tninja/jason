@@ -44,6 +44,7 @@ class Basis(Enum):
     DEVELOPER = "the developer file"
     GOVERNANCE = "the corporation"
     CONTRACTS = "vendor contracts"
+    INTERPRETATION = "reading the law and the documents"
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,12 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
     Authority("BPC", "7026", "7031", "contractor licensing: who needs a license, the license number a contract prints (7030.5), and an unlicensed contractor's pay", Basis.CONTRACTS),
     Authority("BPC", "7151", "7159.14", "home improvement contracts: the required terms, the down payment limit, and payment ahead of the work (7159.5)", Basis.CONTRACTS),
     Authority("CORP", "8310", "8340", "corporate records and their inspection", Basis.RECORD),
+    Authority("CCP", "1858", "1866", "construing a statute or instrument: give effect to all its provisions (1858), the "
+              "intention pursued and the particular over the general (1859)", Basis.INTERPRETATION),
+    Authority("CIV", "1635", "1661", "interpreting contracts, and so the CC&Rs: the whole read together to give effect to "
+              "every part (1641), a reading that makes it lawful and operative (1643)", Basis.INTERPRETATION),
+    Authority("CIV", "3509", "3548", "the maxims of jurisprudence, aids to just application (3509): an interpretation "
+              "that gives effect is preferred to one that makes void (3541)", Basis.INTERPRETATION),
 )
 
 # Named acts lawlibrary outlines; each is exported one page per article so a passage stays with its heading.

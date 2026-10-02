@@ -36,6 +36,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [drive-labels.md](drive-labels.md): jason's labels on Drive files as private `appProperties`.
 - [drive-activity.md](drive-activity.md): who created, moved, renamed, trashed, or re-shared a Drive item, read from the Drive Activity API.
 - [document-readings.md](document-readings.md): reading the instruments' own text into concept records, and what OCR defeats.
+- [interpretation.md](interpretation.md): reading the law to give it effect: the statutes and cases behind the reading axiom, and its limits.
 - [intake.md](intake.md): taking documents in: the questions jason parks for a person (classification, OCR readings, an amendment's silent changes, drift), and answers kept as records.
 - [living-documents.md](living-documents.md): each governing document as amended, section by section, with the instrument that set its words; corrections and annotations kept apart.
 - [document-duties.md](document-duties.md): the duties, prohibitions, permissions, rights, and conditions the governing documents state, read by a phrase grammar and a local model, measured, and reviewed by a person.
