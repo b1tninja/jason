@@ -68,7 +68,10 @@ A records request by email starts the same clock as one on a PayHOA form. `jason
 
 ## Limits
 
-- **Letters:** requests made by letter (`jason mail`) are not yet in the handler's clocks.
+- **Letters:** none of the association's scanned letters through October 2026 was a request with a clock.
+  - The title companies' letters were closing notices with a check enclosed: a new owner to record (`new_owners`), and a check to match to its deposit (`mail_checks`).
+  - The owners' letters were statements.
+  - A request that does arrive by letter (a payment plan request, whose clock runs from its postmark under 5665) is read from `jason mail` by a person, for now.
 - **Email kinds come from subjects:** a vague subject is a miss, and a precise one can still mislead. Read the thread before acting.
 - **A proposed clock is a target,** not a rule, until the board adopts it.
 - **Not built yet:** acknowledgment drafts. A first comment, drafted for a person to send, is the natural next step (`request_actions` writes comments).
