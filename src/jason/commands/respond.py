@@ -30,6 +30,22 @@ def cmd_respond(args: argparse.Namespace) -> int:
     if not args.no_email:
         found = sorted(found + task.email_requests(c, data_dir),
                        key=lambda h: (h.closed is not None, h.due or date.max))
+    if args.draft:
+        wanted = [h for h in found if h.closed is None and h.acknowledged is None
+                  and (args.draft == "all" or str(h.request["id"]) == args.draft)]
+        if not wanted:
+            print(f"no open, unacknowledged request {args.draft}", file=sys.stderr)
+            return 2
+        for h in wanted:
+            text = task.acknowledgment(h, c)
+            print(f"== #{h.request['id']} {h.kind.value}, {h.request.get('unit') or 'unit ?'}: {h.request.get('title', '')[:70]}")
+            print(text)
+            if str(h.request["id"]).isdigit():
+                print(f"   send (a person's step): jason request-comment {h.request['id']} \"<the text above>\"")
+            else:
+                print(f"   an email request: reply in the thread ({h.request.get('link', '')})")
+            print()
+        return 0
     if args.kind:
         try:
             kind = ResponseKind(args.kind)
@@ -65,5 +81,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--kind", help="one kind (records request, maintenance request, ...)")
     p.add_argument("--limit", type=int, default=40)
     p.add_argument("--no-email", action="store_true", help="leave out members' requests made by email")
+    p.add_argument("--draft", metavar="ID|all", help="draft the acknowledgment for an open, unacknowledged request "
+                   "(or all of them), for a person to read and send")
     p.add_argument("--json", action="store_true", help="print JSON")
     p.set_defaults(func=cmd_respond)

@@ -1707,4 +1707,5 @@ Each request of the association: its kind, its clock, its owner, and whether the
 | `--kind` | KIND | one kind (records request, maintenance request, ...) |
 | `--limit` | LIMIT |  |
 | `--no-email` |  | leave out members' requests made by email |
+| `--draft` | ID\|all | draft the acknowledgment for an open, unacknowledged request (or all of them), for a person to read and send |
 | `--json` |  | print JSON |

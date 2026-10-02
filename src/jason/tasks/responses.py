@@ -168,6 +168,26 @@ def email_requests(community: Any, data_dir: Path, *, today: date | None = None)
     return out
 
 
+def acknowledgment(h: Handled, community: Any) -> str:
+    """A first comment to the owner, for a person to read and send (``jason request-comment``). It names what was
+    received and when, and a date only where the law or the documents set one: a proposed policy's day is the board's
+    target, not a promise the association has made."""
+    name = getattr(community, "name", "") or "the Association"
+    kind = h.kind.value
+    when = f"{h.received:%B} {h.received.day}, {h.received.year}" if h.received else "recently"
+    lines = [f"Thank you. The Association received your {kind} on {when}, and it is being reviewed."]
+    rule = h.rule
+    if rule and h.due and rule.source is not ClockSource.POLICY:
+        lines.append(f"Under {rule.authority}, the Association will respond by {h.due:%B} {h.due.day}, {h.due.year}.")
+    else:
+        lines.append("We will follow up with next steps.")
+    if h.kind in (ResponseKind.ARCHITECTURAL, ResponseKind.SOLAR, ResponseKind.EV_CHARGER, ResponseKind.RENTAL,
+                  ResponseKind.VARIANCE):
+        lines.append("The Board decides applications at its meetings; we will let you know the meeting it is on.")
+    lines.append(f"- {name}")
+    return " ".join(lines[:-1]) + "\n\n" + lines[-1]
+
+
 def summary(found: list[Handled]) -> dict[str, Any]:
     """Open requests by standing, and the answered ones: on time against late, by kind."""
     from collections import Counter

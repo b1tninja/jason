@@ -56,6 +56,20 @@ def _db(tmp_path, rows):
             c.execute("INSERT INTO requests VALUES (?,?,?,?,?,?)", (rid, form, 1, status, created, json.dumps(raw)))
 
 
+def test_an_acknowledgment_promises_a_date_only_where_the_law_or_documents_set_one():
+    received = date(2026, 10, 2)
+    records = ResponseRule(ResponseKind.RECORDS, ClockSource.STATUTE, notice="records-current-year", authority="CIV 5210")
+    due, clock = task.due_day(records, received)
+    h = task.Handled({"id": 1}, ResponseKind.RECORDS, "", records, received, due, clock, None, None, None, None, "open")
+    text = task.acknowledgment(h, SimpleNamespace(name="Example Association"))
+    assert "October 2, 2026" in text and "Under CIV 5210" in text and "October 16, 2026" in text
+    assert text.endswith("- Example Association")
+    policy = ResponseRule(ResponseKind.MAINTENANCE, ClockSource.POLICY, days=10, business_days=True)
+    h = task.Handled({"id": 2}, ResponseKind.MAINTENANCE, "", policy, received, date(2026, 10, 16), "", None, None, None,
+                     None, "open")
+    assert "October 16" not in task.acknowledgment(h, SimpleNamespace(name="X"))
+
+
 def test_handle_judges_the_first_response_not_the_closing(tmp_path):
     _db(tmp_path, [
         (1, "Maintenance Request", "complete", "2026-09-01T17:00:00Z", "Leak",
