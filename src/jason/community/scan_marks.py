@@ -27,7 +27,7 @@ from jason.community.living import StyledRun
 DPI = 300
 RULE_LINE_HEIGHTS = 1.5          # a rule is longer than this many line heights
 BOLD_RATIO = 1.3                 # a word is bold when its mean stroke is this much over the page's median
-MARGIN = 0.07                    # the top and bottom bands where running headers and footers sit
+MARGIN = 0.10                    # the top and bottom bands where running headers and footers sit
 
 
 @dataclass(frozen=True)
@@ -96,10 +96,10 @@ def page_lines(page: Any, page_number: int, *, dpi: int = DPI) -> list[ScanLine]
 
 
 def _key(text: str) -> str:
-    return re.sub(r"[^a-z]", "", text.lower())
+    return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
-def drop_furniture(lines: list[ScanLine], *, alike: float = 0.8) -> list[ScanLine]:
+def drop_furniture(lines: list[ScanLine], *, alike: float = 0.7) -> list[ScanLine]:
     """Leave out lines in the top or bottom margin whose letters recur, nearly alike, on another page: running headers
     and footers. OCR reads the same footer a little differently on each page, so the test is a likeness, not equality."""
     from difflib import SequenceMatcher
@@ -108,7 +108,7 @@ def drop_furniture(lines: list[ScanLine], *, alike: float = 0.8) -> list[ScanLin
     drop = set()
     for i, a in enumerate(margin):
         ka = _key(a.text)
-        if len(ka) < 6:
+        if len(ka) < 4:
             continue
         for b in margin[i + 1:]:
             if b.page != a.page and SequenceMatcher(None, ka, _key(b.text)).ratio() >= alike:
@@ -152,6 +152,41 @@ def scan_paragraphs(pdf: Path, *, pages: tuple[int, ...] = (), dpi: int = DPI) -
     return styled_paragraphs(drop_furniture(lines))
 
 
+def page_text_lines(page: Any, page_number: int, *, dpi: int = DPI) -> list[ScanLine]:
+    """OCR one page into lines with their place on the page, without measuring marks (for a whole document's text)."""
+    from jason.community.ocr import PyMuPdfTesseract
+
+    textpage = page.get_textpage_ocr(dpi=dpi, language="eng", full=True, tessdata=PyMuPdfTesseract.tessdata())
+    raw = page.get_text("dict", textpage=textpage)
+    height = float(page.rect.height) or 1.0
+    out = []
+    for block in raw["blocks"]:
+        for line in block.get("lines", []):
+            text = "".join(s["text"] for s in line["spans"])
+            if text.strip():
+                out.append(ScanLine(page_number, int(block["number"]), line["bbox"][1] / height,
+                                    line["bbox"][3] / height, tuple(ScanChar(c, False, 0.0) for c in text)))
+    return out
+
+
+def scan_text(pdf: Path, *, dpi: int = DPI) -> str:
+    """A scanned document's text by OCR, page by page, without its running headers and footers: each OCR block a
+    paragraph, so a section number starts its own line as an outline expects."""
+    import pymupdf
+
+    doc = pymupdf.open(str(pdf))
+    lines = drop_furniture([line for n in range(doc.page_count) for line in page_text_lines(doc[n], n, dpi=dpi)])
+    out, last = [], None
+    for line in lines:
+        if (line.page, line.block) != last and out:
+            out.append("\n")
+        elif out:
+            out.append(" ")
+        out.append(line.text.strip())
+        last = (line.page, line.block)
+    return "".join(out)
+
+
 def operations_from_scan(pdf: Path, *, pages: tuple[int, ...] = ()):
     from dataclasses import replace
 
@@ -160,5 +195,5 @@ def operations_from_scan(pdf: Path, *, pages: tuple[int, ...] = ()):
     return tuple(replace(op, struck_by_ocr=True) for op in read_operations(scan_paragraphs(pdf, pages=pages), styled=True))
 
 
-__all__ = ["ScanChar", "ScanLine", "drop_furniture", "operations_from_scan", "page_lines", "scan_paragraphs",
+__all__ = ["ScanChar", "ScanLine", "drop_furniture", "operations_from_scan", "page_lines", "page_text_lines", "scan_paragraphs", "scan_text",
            "styled_paragraphs"]

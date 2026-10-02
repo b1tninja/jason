@@ -1,7 +1,9 @@
 """Mystique's documents kept as amended (``jason.community.living``).
 
-The CC&Rs: the base is the recorded Restated Declaration of 2007 as the library's text extract reads it (OCR, with the
-corrections below). The First Amendment is read from its recorded copy's extract (it adds a section, so it needs no
+The CC&Rs: the base is the authoritative copy at its best quality, the county's own recorded copy of the 2007 Restated
+Declaration (stamped Book 20070920, Page 0938, September 20, 2007; scanned in 2007), read by OCR with the corrections
+below. It is crisper than the title company's certified copy in the library (CCRs.pdf, a 2012 rescan of a copy). The
+working copy (the board's hand-kept Doc) is the comparison that corrects the OCR (``jason intake``). The First Amendment is read from its recorded copy's extract (it adds a section, so it needs no
 marks). The Second is read from its recorded scan (202312060284), its struck and bold words measured in the pixels
 (``jason.community.scan_marks``), and its draft Doc's words are compared with it. The Third is a draft and is listed, not applied. The working copy is the CC&Rs
 Doc the board's secretary keeps by hand; jason reports where it differs and never edits it.
@@ -20,10 +22,10 @@ _FIRST, _SECOND, _THIRD = CCRS.amendments
 
 CCRS_LIVING = LivingDocument(
     "ccrs", "Restated Declaration of Covenants, Conditions and Restrictions", DocumentKind.DECLARATION,
-    base=SourceRef(SourceKind.LIBRARY_TEXT, "Governing Documents/CCRs.pdf",
-                   sha256="185536dc64b1e6a7aef0ce75c3cc8b14e7e636ad29fd99c9564a4e5281b59683",
-                   note="the recorded 2007 Restated Declaration (200709200938), as OCR reads it"),
-    base_from="the recorded 2007 Restated Declaration (200709200938), read by OCR",
+    base=SourceRef(SourceKind.SCAN, "1DLjMdMWGsKZ_aenjL0o_2xS1pxPLROIl",
+                   sha256="24f7d30ee1e606b8fb19a05e1b9034424f019e972e9dd9ea10aecbe3df73e193",
+                   note="the county's recorded copy (Mystique CC R's RESTATED RECORDED), 56 pages"),
+    base_from="the county's recorded copy of the 2007 Restated Declaration (200709200938), read by OCR",
     instruments=(
         LivingInstrument("ccrs-1st-amendment", _FIRST,
                          SourceRef(SourceKind.LIBRARY_TEXT, "Governing Documents/CCRs - 1st Amendment.pdf",
@@ -41,8 +43,6 @@ CCRS_LIVING = LivingDocument(
     ),
     corrections=(
         Correction("4.15(m)", "ofanyprovisions", "of any provisions", CorrectionKind.SPACING, source="recorded copy"),
-        Correction("4.15(m)", "tenns", "terms", CorrectionKind.OCR, source="recorded copy"),
-        Correction("4.15(m)", "tenn ", "term ", CorrectionKind.OCR, source="recorded copy"),
         # The scan's OCR glues the struck "six"'s first letter onto "of"; the draft Doc and the page read "of".
         Correction("4.15(m)(iii)", "term ofs thirty", "term of thirty", CorrectionKind.OCR,
                    source="the Second Amendment's recorded copy, page 4"),

@@ -50,9 +50,14 @@ def _likely(old: list[str], new: list[str], vocab: Counter) -> bool:
     - a deletion of nothing but non-words (a garbled running footer), never of a real word (a run-in caption);
     - a replacement of non-words by real words that look alike ("Condommmms" by "Condominiums")."""
     if "".join(old) == "".join(new):
-        return True
+        # Spacing: splitting words OCR ran together is likely ("ofthe" -> "of the"); joining two words is not (the
+        # copy's own slip, "of California" -> "ofCalifornia"), unless only punctuation moves ("(51 %)" -> "(51%)").
+        words = lambda tokens: sum(bool(re.search(r"[A-Za-z0-9]", t)) for t in tokens)   # noqa: E731
+        return len(new) > len(old) or words(new) == words(old)
     if not new:
-        return not any(vocab[w.lower()] >= 2 for t in old for w in _WORD.findall(t))
+        # A deletion of junk only: no real word, and no number (a lone "2" may be a paragraph's number).
+        return (not any(vocab[w.lower()] >= 2 for t in old for w in _WORD.findall(t))
+                and not any(re.fullmatch(r"\W*\d[\d.,]*\W*", t) for t in old))
     alike = difflib.SequenceMatcher(None, " ".join(old).lower(), " ".join(new).lower()).ratio() >= 0.5
     return alike and _known(new, vocab) and not _known(old, vocab)
 

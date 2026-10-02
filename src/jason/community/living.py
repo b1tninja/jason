@@ -812,26 +812,57 @@ def correct(current: CurrentDocument, corrections: Sequence[Correction], *, fina
     """Apply editorial corrections. Each must find its ``wrong`` words exactly once in its section. ``consolidate``
     applies them to the base first (so an amendment's before words meet a clean base), then once more after the
     amendments for the rest; a correction that finds its words neither time is stale (an amendment has since
-    restated the section) and reported. Returns the corrections left unapplied."""
+    restated the section) and reported. Returns the corrections left unapplied.
+
+    A section's corrections are all found in its words as they stand before any of them is applied, and only each
+    one's changed core (``wrong`` and ``right`` less the context they share) is replaced, from the end of the section
+    back: so corrections whose context words overlap do not spoil one another."""
     left = []
+    by_section: dict[str, list[Correction]] = {}
     for c in corrections:
-        p = current.provision(c.section)
         # A transcription is a person's reading of the page, not an edit: it may restore a number OCR misread.
         why = "" if c.kind is CorrectionKind.TRANSCRIBED else changes_meaning(c.wrong, c.right)
         if why:
             current.findings.append(AmendmentFinding(FindingKind.CORRECTION_REFUSED, c.section, "correction", why))
             continue
-        if p is None or p.body.count(c.wrong) != 1:
-            if final:
-                found = "not found" if p is None or c.wrong not in p.body else "found more than once"
-                current.findings.append(AmendmentFinding(FindingKind.CORRECTION_STALE, c.section, "correction",
-                                                         f'"{c.wrong}" {found}'))
-            else:
-                left.append(c)
-            continue
-        p.body = p.body.replace(c.wrong, c.right)
-        p.history.append(f"correction ({c.kind.value})")
+        by_section.setdefault(c.section, []).append(c)
+    for section, mine in by_section.items():
+        p = current.provision(section)
+        edits: list[tuple[int, int, str, Correction]] = []
+        for c in mine:
+            if p is None or p.body.count(c.wrong) != 1:
+                if final:
+                    found = "not found" if p is None or c.wrong not in p.body else "found more than once"
+                    current.findings.append(AmendmentFinding(FindingKind.CORRECTION_STALE, section, "correction",
+                                                             f'"{c.wrong}" {found}'))
+                else:
+                    left.append(c)
+                continue
+            head, core_wrong, core_right = _core(c.wrong, c.right)
+            start = p.body.index(c.wrong) + head
+            edits.append((start, start + len(core_wrong), core_right, c))
+        last = len(p.body) + 1 if p is not None else 0
+        for start, end, text, c in sorted(edits, key=lambda e: (e[0], e[1]), reverse=True):
+            if end > last:                                   # overlaps an edit already made: its words have moved
+                left.append(c) if not final else current.findings.append(
+                    AmendmentFinding(FindingKind.CORRECTION_STALE, section, "correction", f'"{c.wrong}" overlaps another'))
+                continue
+            p.body = p.body[:start] + text + p.body[end:]
+            p.history.append(f"correction ({c.kind.value})")
+            last = start
     return left
+
+
+def _core(wrong: str, right: str) -> tuple[int, str, str]:
+    """The part of ``wrong`` a correction changes: (its offset in ``wrong``, the old words, the new ones), less the
+    context the two share at either end."""
+    head = 0
+    while head < min(len(wrong), len(right)) and wrong[head] == right[head]:
+        head += 1
+    tail = 0
+    while tail < min(len(wrong), len(right)) - head and wrong[-1 - tail] == right[-1 - tail]:
+        tail += 1
+    return head, wrong[head:len(wrong) - tail], right[head:len(right) - tail]
 
 
 # Annotations: notes on a passage (a question, an interpretation, context) that survive regenerating the text.

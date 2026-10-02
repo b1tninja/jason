@@ -37,8 +37,15 @@ def living_dir(data_dir: Path, key: str) -> Path:
     return Path(data_dir) / "living" / key
 
 
+# A table of contents line: dot leaders ("Common Area.......... 3"), which an outline would read as a second section.
+_LEADERS = re.compile(r"(?:\.\s*){5,}")
+
+
 def prepare_extract(raw: str) -> str:
-    return _LONE_LABEL.sub(r"\1 ", raw)
+    """An OCR extract made ready to outline: its table of contents dropped (a line with dot leaders), and a section's
+    label on its own line joined to its words."""
+    kept = [line for line in raw.splitlines() if not _LEADERS.search(line)]
+    return _LONE_LABEL.sub(r"\1 ", "\n".join(kept))
 
 
 def library_text(data_dir: Path, path: str) -> tuple[str, str] | None:
@@ -106,6 +113,23 @@ def scan_file(ref: SourceRef, cache: Path, drive: Any = None) -> tuple[Path | No
     return path, ""
 
 
+def scan_base_text(ref: SourceRef, cache: Path, drive: Any = None) -> str:
+    """A scanned base document's text by OCR (``scan_marks.scan_text``), cached under the file's digest so the OCR runs
+    once per file. Raises when the scan is not read or has changed since it was reviewed."""
+    from jason.community.scan_marks import scan_text
+
+    path, why = scan_file(ref, cache, drive)
+    if path is None:
+        raise ValueError(f"the base text cannot be read: {why}")
+    import hashlib
+
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    text_path = cache / f"{ref.ref}.{digest[:16]}.txt"
+    if not text_path.is_file():
+        text_path.write_text(scan_text(path), encoding="utf-8")
+    return text_path.read_text(encoding="utf-8")
+
+
 def operations(ref: SourceRef, data_dir: Path, cache: Path, *, docs: Any = None, drive: Any = None
                ) -> tuple[tuple, str, str]:
     """An instrument's operations from one source: (operations, revision, why held). A held source has none."""
@@ -147,7 +171,10 @@ def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: An
     from jason.community.living import FindingKind
 
     cache = living_dir(data_dir, living.key) / "sources"
-    kind, base, _ = _read(living.base, data_dir, cache, docs)
+    if living.base.kind is SourceKind.SCAN:
+        kind, base = "text", scan_base_text(living.base, cache, drive)
+    else:
+        kind, base, _ = _read(living.base, data_dir, cache, docs)
     if kind == "held":
         raise ValueError(f"the base text cannot be read: {base}")
     outline = (outline_from_doc(base, key=living.key, title=living.title, kind=living.kind.value) if kind == "doc"

@@ -44,6 +44,9 @@ def test_an_answer_names_its_person_and_may_pick_a_choice_by_number(tmp_path):
     (["Condommmms"], ["Condominiums"], True),
     (["(51", "%)"], ["(51%)"], True),                       # spacing only
     (["Mx111q1,u:"], [], True),                             # a garbled footer
+    (["ofthe"], ["of", "the"], True),                       # words OCR ran together
+    (["of", "California"], ["ofCalifornia"], False),        # the copy's own slip
+    (["2"], [], False),                                     # a number is never junk
     (["Decision", "ofBoard", "Conclusive."], [], False),    # a run-in caption, not junk
     (["hours"], ["number"], False),                         # two real words: a person reads the page
 ])
