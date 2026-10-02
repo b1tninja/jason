@@ -117,7 +117,8 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("bounces-are-silent", OCT_2026, (Area.EMAIL,),
            "A bounced email never reached jason.",
            "PayHOA's mailer receives the bounce after the send succeeded.",
-           "After a batch, read PayHOA's communications log for failed and bounced deliveries, and mail those owners.",
+           "After a batch, read PayHOA's communications log for failed and bounced deliveries, and resend those owners' "
+           "notices by mail: a bounced address is not valid, and the association shall resend (Civil Code 4041(e)).",
            Status.OPEN),
     Lesson("one-source-per-document", OCT_2026, (Area.DOCUMENTS, Area.EMAIL),
            "The email, its Doc, and the website guide were separate HTML, and drifted.",

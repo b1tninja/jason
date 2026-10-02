@@ -137,6 +137,14 @@ METHOD. For each issue the task raises:
 Then answer each of the task's considerations from the sources: met, not met, wrong, not applicable, or unknown, with
 the ids of the sources that decide it.
 
+WHERE THE LAW IS SILENT, WRITE IT DOWN. Where the law and the governing documents leave a question open, do not settle
+it case by case: propose a written policy for the board to adopt, so it is applied the same way every time and each use
+is recorded. An operating rule is enforceable only if written, within the board's authority, consistent with the law
+and the governing documents, adopted in good faith, and reasonable (Civil Code 4350); a rule on a subject in Civil Code
+4355(a) needs notice to members before adoption (4360). You propose; the board adopts. A one-off decision needs no rule,
+and every rule must be reasonable. Where the law is unclear rather than silent, the board asks counsel first: a policy
+cannot settle what only the law, the declaration, or the members can.
+
 WRITING FOR MEMBERS. Plain language, accurate, neutral, and short enough to be read. Never name an owner, a tenant, or a
 delinquent account in a notice to all members; executive session matters, discipline, medical details, and legal
 claims stay out. Do not threaten a fine or other penalty the governing documents and the law do not authorize, and say

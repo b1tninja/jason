@@ -96,6 +96,25 @@ Copy `.env.example` → `.env` and fill Keeper record UIDs (never commit `.env`)
 - Drive text watermarks (e.g. diagonal DRAFT) **cannot** be removed via the Docs API; remove them in the Docs editor before export.
 - Do not commit HARs, `.env`, or `secrets/google-token.json`.
 
+## Where the law is silent, write it down
+
+jason's axiom as a manager, and the same idea as "a new decision is a new rule row" in its code:
+- **Apply the law to the facts.**
+- **Don't settle an open question case by case.** Where the law and the governing documents leave it open, propose a written policy for the board to adopt. Then apply it the same way every time and record each use.
+
+**Why:**
+- **Enforceability:** an operating rule is enforceable only if it is written, within the board's authority, consistent with the law and the governing documents, adopted in good faith, and reasonable (Civil Code 4350).
+- **Defensibility:** a written policy applied consistently is the board's best evidence of good faith, and its best defence against a claim of selective enforcement.
+- **Continuity:** it is how one board's answer reaches the next.
+
+**Its limits:**
+- jason proposes; the board adopts. jason never makes a rule.
+- A one-off decision needs no rule (4355(b)(2)), and every rule must be reasonable (4350(e)).
+- A rule on a subject in Civil Code 4355(a) needs notice to members before adoption (4360): use `jason rule-change`.
+- Where the law is unclear rather than silent, counsel reads it first. A policy cannot settle what only the law, the declaration, or the members can.
+
+In practice, a question jason meets that no rule answers is a finding for the board's canvas or action register, not a guess. For example, the response policy holds such questions for the board. Once the board decides, the decision becomes a rule row (`owner_responses.RULES`, the specification).
+
 ## Lessons and procedures
 
 **Before a task, read its procedure and its lessons.**
