@@ -61,6 +61,39 @@ CONFLICTS = (
         "suspensions (use of the recreational facilities) still follow the hearing process (5855).",
         Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING, Area.ENFORCEMENT)),
     Conflict(
+        "bylaws-ballot-good-standing", "Bylaws 3.6(d) (only Members in Good Standing may vote)", Tier.BYLAWS,
+        "Limits the vote to members in good standing.",
+        "CIV 5105(h)(1)", Tier.STATUTE, date(2020, 1, 1),
+        "In an election under the Act, no member may be denied a ballot for any reason but not being a member when "
+        "ballots go out; good standing cannot be a condition of that ballot.",
+        "Give every member a ballot in an election the Act governs. The rest of 3.6(d) (who receives notice) still "
+        "governs, read with the delivery the Act requires.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
+        "bylaws-nomination-timetable", "Bylaws 6.1(a) and 6.1(c) (nominations and notice of nominees)", Tier.BYLAWS,
+        "Nominations close 14 days before ballots are mailed, and the nominees are noticed 7 days before.",
+        "CIV 5115", Tier.STATUTE, date(2020, 1, 1),
+        "The Act's election timetable (the nomination procedure, the candidate list at least 30 days before ballots, "
+        "ballots at least 30 days before the deadline to vote) cannot be met on the bylaws' days.",
+        "Run elections on the Act's timetable as the election rules set it; the bylaws' days yield to it.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
+        "bylaws-action-without-meeting", "Bylaws 7.12 (board action by unanimous written consent)", Tier.BYLAWS,
+        "Lets the board act without a meeting if every director consents in writing.",
+        "CIV 4910", Tier.STATUTE, date(2014, 1, 1),
+        "The board may not act on association business outside a meeting; unanimous written consent by email is "
+        "allowed only for an emergency meeting (4910(b)).",
+        "Take board action at a noticed meeting; written consent only for an emergency as 4910(b) defines it.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
+        "bylaws-discipline-decision", "Bylaws 8.5(g) (notice of discipline within 15 days)", Tier.BYLAWS,
+        "Notifies the member of discipline by personal delivery or first-class mail within 15 days of the action.",
+        "CIV 5855(f)", Tier.STATUTE, date(2025, 6, 30),
+        "Since AB 130 the decision goes to the member within 14 days, by personal delivery or individual delivery "
+        "under 4040 (the member's chosen method).",
+        "Deliver the decision within 14 days, personally or by the member's 4040 method.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.ENFORCEMENT,), board_item="enforcement-policy-ab130"),
+    Conflict(
         "pre-2014-citations", "CC&Rs and Bylaws (their Davis-Stirling citations)", Tier.DECLARATION,
         "Cite about 60 Davis-Stirling sections by their numbers before 2014 (Civil Code 1350 to 1378).",
         "the Davis-Stirling Act as recodified (Stats. 2012, ch. 180)", Tier.STATUTE, date(2014, 1, 1),
