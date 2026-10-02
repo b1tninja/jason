@@ -25,7 +25,8 @@ CITABLE_DOCUMENTS: tuple[CitableDocument, ...] = (
                     written="2007", written_from="the Second and Third Amendments call it \"the 2007 Declaration\"; one "
                     "provision is marked \"Amended January 1, 2012\""),
     CitableDocument("ccrs-2nd-amendment", "Second Amendment to the CC&Rs", "1G2GgTJjpJ1N3ZFAT7XJ9K6NI5RrqP7FyM7SclFhdWRE",
-                    DocumentKind.AMENDMENT, aliases=("Second Amendment",), amends="ccrs"),
+                    DocumentKind.AMENDMENT, aliases=("Second Amendment",), amends="ccrs",
+                    written="2023-11-16", written_from="the recorded copy (202312060284): dated and signed by the board"),
     CitableDocument("ccrs-3rd-amendment", "Third Amendment to the CC&Rs", "1Sz8Wq_4cOhkVj75lSc7wCXobUEs5LPsJm4zI2PkDBcQ",
                     DocumentKind.AMENDMENT, aliases=("Third Amendment",), amends="ccrs"),
     CitableDocument("bylaws", "Bylaws", "1v9MqoGnOvEajRySi9sZJzB6SdaVJqfw4Tbi4ZB1JBFk", DocumentKind.BYLAWS, aliases=("Bylaws",),

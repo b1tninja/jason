@@ -66,10 +66,11 @@ def test_mystique_org_and_rules_come_from_the_spec():
     assert community.ccrs.recorder_number == "200709200938"
     assert community.ccrs.recorded.isoformat() == "2007-09-20"
     assert community.ccrs.drive_id.startswith("1hJc")
-    assert [row.drive_id[:4] for row in community.ccrs.instruments] == ["1hJc", "1yzs", "1G2G", "1Sz8"]
+    assert [row.drive_id[:4] for row in community.ccrs.instruments] == ["1hJc", "1yzs", "1ArM", "1Sz8"]
     assert community.ccrs.amendments[0].recorder_number == "202001170712"
     assert community.ccrs.amendments[0].sections == ("4.15(o)",)
-    assert community.ccrs.amendments[1].sections == ()
+    assert community.ccrs.amendments[1].sections == ("4.15(a)", "4.15(m)(iii)", "4.15(n)")
+    assert community.ccrs.amendments[1].recorder_number == "202312060284"
     assert MembershipTab.ROSTER.value == "Roster"
     assert policies.payhoa_id == 1018661
     assert policies.path == "Governing Documents/Policies/"

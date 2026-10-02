@@ -10,6 +10,8 @@ board September 29, 2026. Section citations and adoption dates stay empty until 
 
 from __future__ import annotations
 
+from datetime import date
+
 from jason.community.documents import Amendment, Document, GoverningDocument
 from jason.community.recorder import Sacramento
 from jason.community.symbols import DocumentKind
@@ -18,6 +20,7 @@ _RECORDED = Sacramento.county_recorder.parse("200709200938")
 # The declaration the restatement rescinded; the county index still lists it as a 324 declaration.
 PRIOR_DECLARATION = "200709120758"
 _FIRST_AMENDMENT = Sacramento.county_recorder.parse("202001170712")
+_SECOND_AMENDMENT = Sacramento.county_recorder.parse("202312060284")
 
 
 class FirstAmendment(Amendment, Document):
@@ -34,10 +37,20 @@ class FirstAmendment(Amendment, Document):
 
 
 class SecondAmendment(Amendment, Document):
+    """The Second Amendment, adopted by the board under Civil Code 4741(f) on November 16, 2023 and recorded December 6,
+    2023 (read from the recorded copy, "Mystique - 231208 - CC&R and Second Amendment.pdf", ten pages). It restates
+    4.15(a) (the rental cap, 20 to 25 percent) and 4.15(m)(iii) (the minimum lease, six months to thirty days), and
+    removes 4.15(n). Its witness clause calls it "this FIRST AMENDMENT", a template's leftover; the title, recitals,
+    and the index say Second. The Google Doc is its draft; the recorded copy is the instrument."""
+
     def __init__(self) -> None:
         super().__init__(
             title="CCRs - 2nd Amendment",
-            drive_id="1G2GgTJjpJ1N3ZFAT7XJ9K6NI5RrqP7FyM7SclFhdWRE",
+            drive_id="1ArMfQcWN6xdTubij06NS15DMjdog8yVo",
+            sections=("4.15(a)", "4.15(m)(iii)", "4.15(n)"),
+            adopted=date(2023, 11, 16),
+            recorder_number=_SECOND_AMENDMENT.number,
+            recorded=_SECOND_AMENDMENT.recorded,
         )
 
 

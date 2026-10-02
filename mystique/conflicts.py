@@ -14,15 +14,13 @@ CONFLICTS = (
         "rental-cap-below-floor", "CC&Rs 4.15(a)", Tier.DECLARATION,
         "As restated in 2007, caps rentals at 20 percent of the units.",
         "CIV 4741(b), (f)", Tier.STATUTE, date(2021, 1, 1),
-        "A cap below 25 percent may not be adopted or enforced, and 4741(f) had the board restate it by July 1, 2022. "
-        "The Second Amendment restates 4.15(a) at 25 percent; the county index shows an amended restriction the "
-        "association recorded December 6, 2023 (202312060284), most likely that amendment. An index hit is not a "
-        "pin: once the recorded copy is read and matches, this row is resolved by it.",
-        "Apply a 25 percent cap: lawful whether or not the amendment took effect (the 20 percent cap cannot be "
-        "enforced either way). The rest of 4.15 still governs, read against 4741(a)'s bar on unreasonable "
-        "restrictions.",
-        Clarity.PLAIN, ConflictStatus.NOTED, (Area.RENTALS, Area.OWNER_INFO, Area.GOVERNING),
-        board_item="rental-cap-20-percent"),
+        "A cap below 25 percent may not be adopted or enforced, and 4741(f) had the board restate it by July 1, 2022.",
+        "The cap is 25 percent (leasing.py). The rest of 4.15 still governs, read against 4741(a)'s bar on "
+        "unreasonable restrictions.",
+        Clarity.PLAIN, ConflictStatus.RESOLVED, (Area.RENTALS, Area.OWNER_INFO, Area.GOVERNING),
+        board_item="rental-cap-20-percent",
+        resolved_by="the Second Amendment, adopted by the board November 16, 2023 and recorded December 6, 2023 "
+                    "(202312060284), which restates 4.15(a) at 25 percent; recorded after the 4741(f) deadline"),
     Conflict(
         "fines-over-the-cap", "the 2022 Enforcement Policy and fine schedule", Tier.OPERATING_RULES,
         "Fines a safety violation up to $300, and lists late fees and interest beside the fines.",
