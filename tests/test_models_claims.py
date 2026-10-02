@@ -1,0 +1,231 @@
+"""The insurance claim models, on made-up claims in the carriers' layouts.
+
+Every claim number, policy number, amount, date, and address here is made up; the street names are the development's.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from types import SimpleNamespace
+
+from jason.community.document_models import ModelContext, Severity, read
+from jason.community.models.insurance_claims import AuthorizationType, LetterType
+from jason.community.symbols import DocumentKind as K
+
+TODAY = date(2026, 9, 29)
+
+
+class FakeCommunity:
+    def insurance(self):
+        master = SimpleNamespace(kind=SimpleNamespace(name="MASTER"), carrier="Example National", number="EX-1")
+        return SimpleNamespace(policies=(master,))
+
+
+def ctx(name: str = "") -> ModelContext:
+    return ModelContext(community=FakeCommunity(), today=TODAY, name=name)
+
+
+def codes(reading):
+    return {f.code: f for f in reading.findings}
+
+
+DISCLAIMER = """ZT0000000
+Toll Free: (800) 435-7764
+Email: myclaim@farmersinsurance.com
+Please include your claim # on any correspondence
+National Document Center
+January 28, 2025
+MYSTIQUE COMMUNITY
+RE:
+Insured:
+MYSTIQUE COMMUNITY
+Claim Number:
+7000000001-1
+Policy Number:
+0600000001
+Loss Date:
+01/21/2025
+Location of Loss:
+3102 Enchanted Walk, Sacramento, CA
+We acknowledge receipt of the above referenced claim.
+We have completed our coverage investigation and have determined your policy canceled per your request
+effective September 28, 2024.  Therefore, since the policy was not active at the time of this loss, we must
+respectfully disclaim coverage for this loss.
+"""
+
+SETTLEMENT = """Please include your claim # on any correspondence
+May 23, 2023
+RE:
+Insured:
+Mystique Community
+Claim Number:
+5020000001-1-1
+Policy Number:
+0600000001
+Loss Date:
+02/23/2023
+Location of Loss:
+5701 Whimsical Lane, Sacramento, CA
+Subject:
+Settlement Notice
+Farmers
+payment has been made to Lionsbridge Contractor Group who will distribute the funds as the repairs are completed.
+Line of Coverage
+Building
+Replacement Cost
+$1,964.01
+Actual Cash Value
+$1,964.01
+Less: Deductible
+$900.57
+Coverage conditions: we will not pay; the property is not covered under the policy when ...
+"""
+
+PRIMACY = """030000001 - 002
+Garrison Property and Casualty Insurance Company
+COVERAGE FOR YOUR CONDOMINIUM CLAIM
+March 6, 2023
+We've reviewed your condominium association's Master Policy and your USAA Condominium Policy to determine the primary insurer
+Policyholder:
+An Owner
+Claim number:
+030000001–002
+Date of loss:
+February 23, 2023
+"""
+
+NO_CONTACT = """Please include your claim # on any correspondence
+January 27, 2023
+RE:
+Insured:
+Mystique Community
+Claim Number:
+5020000002-1-1
+Loss Date:
+12/27/2022
+Location of Loss:
+5607-5693 Whimsical Ln, Sacramento, CA
+Subject:
+Claim Outcome Letter
+We've made several attempts to contact you. As of today, we haven't been able to reach you.
+we are currently unable to make payment and have closed your file.
+Farmers Insurance
+"""
+
+
+def test_a_disclaimer_for_a_canceled_policy_names_the_master_carrier():
+    reading = read(K.CLAIM_LETTER, DISCLAIMER, ctx())
+    r = reading.record
+    assert (r.carrier, r.claim_number, r.policy_number, r.loss_date) == ("Farmers", "7000000001-1", "0600000001", date(2025, 1, 21))
+    assert r.letter_type is LetterType.DENIAL and r.canceled_effective == date(2024, 9, 28) and r.association_is_insured
+    finding = codes(reading)["filed-with-a-prior-carrier"]
+    assert finding.severity is Severity.PROBLEM and "Example National (EX-1)" in finding.message
+
+
+def test_a_settlement_notice_is_a_settlement_though_it_quotes_policy_exclusions():
+    r = read(K.CLAIM_LETTER, SETTLEMENT, ctx()).record
+    assert r.letter_type is LetterType.SETTLEMENT and r.claim_number == "5020000001-1-1"
+    assert (r.replacement_cost_cents, r.deductible_cents, r.program_contractor) == (196401, 90057, "Lionsbridge Contractor Group")
+
+
+def test_primacy_and_no_contact_letters():
+    primacy = read(K.CLAIM_LETTER, PRIMACY, ctx())
+    assert primacy.record.letter_type is LetterType.PRIMACY and not primacy.record.association_is_insured
+    assert primacy.record.claim_number == "030000001-002" and "owner-carrier-defers" in codes(primacy)
+    closed = read(K.CLAIM_LETTER, NO_CONTACT, ctx())
+    assert closed.record.letter_type is LetterType.CLOSED_NO_CONTACT and "closed-no-contact" in codes(closed)
+
+
+def test_statement_of_loss_and_check():
+    statement = read(K.CLAIM_PAYMENT, "DATE:\n9/4/2026\nStatement of loss\nNet Loss\n18,516.00\n$\nLess Deductible\n(10,000.00)\n$\n"
+                                      "Net Claim at RCV\n8,516.00\nLess Depreciation\n(244.08)\n$\nNet Claim at ACV\n8,271.92\n", ctx()).record
+    assert (statement.net_loss_cents, statement.deductible_cents, statement.depreciation_cents, statement.net_claim_cents) == \
+        (1851600, 1000000, 24408, 827192)
+    check = read(K.CLAIM_PAYMENT, "Remittance advice\nAmount\nCheck Number\nIssued Date\n8271.92\n755000\n09-16-2026\nFrom\n"
+                                  "Accelerant National Insurance\nMemo\nAZ000001 Mystique\nDATE OF LOSS\n5/29/2026\n", ctx())
+    r = check.record
+    assert (r.carrier, r.claim_number, r.check_number, r.issued, r.amount_cents, r.date_of_loss) == \
+        ("Accelerant National Insurance Company", "AZ000001", "755000", date(2026, 9, 16), 827192, date(2026, 5, 29))
+
+
+def test_work_authorization_and_certificate():
+    auth = read(K.CLAIM_AUTHORIZATION, "WORK AUTHORIZATION\nFOR REPAIRS AND DIRECTION OF PAYMENT\nDATE:\n5/30/2023\nCLAIM#:\n5020000001-1\n"
+                                       "DATE OF LOSS:\n02/23/2023\nADDRESS:\n5701 Whimsical Lane Sacramento, CA 95835\nYour Insurance Carrier "
+                                       "Farmers submitted a request to CCA Global Partners, Inc. and its affiliate Lionsbridge Contracting Group\n"
+                                       "6/5/2023\nDate\n", ctx()).record
+    assert auth.form is AuthorizationType.WORK_AUTHORIZATION and auth.claim_number == "5020000001-1"
+    assert (auth.date_of_loss, auth.carrier, auth.signed) == (date(2023, 2, 23), "Farmers", date(2023, 6, 5))
+    cos = read(K.CLAIM_AUTHORIZATION, "Certificate of Satisfaction\nThe work is complete.", ctx("Mystique - 231018 - Cert of satisfaction 5020000001-1 - COS.pdf"))
+    assert cos.record.form is AuthorizationType.CERTIFICATE_OF_SATISFACTION and cos.record.claim_number == "5020000001-1"
+
+
+def test_carrier_estimate_and_police_report():
+    estimate = read(K.CLAIM_ESTIMATE, "Insured:\nClaim Number: 1000-00-0001\nType of Loss: WATER\nDate of Loss:\n6/4/2026\nEstimate:\n"
+                                      "AAA Insurance estimate\nRCV\n$7,040.72\nLess Depreciation\n$407.22\nACV\n$6,633.50\nLess Deductible\n"
+                                      "$500.00\nNet Claim\n$6,133.50\n", ctx()).record
+    assert (estimate.carrier, estimate.claim_number, estimate.type_of_loss) == ("AAA Insurance", "1000-00-0001", "WATER")
+    assert (estimate.replacement_cost_cents, estimate.deductible_cents, estimate.net_claim_cents) == (704072, 50000, 613350)
+    report = read(K.POLICE_REPORT, "Date: 5/29/26\nSubject: Request for Police Report No. 26-000001\nSacramento Police Department\n"
+                                   "The incident at 3101 Enchanted Walk\nDriver: A Person\n", ctx("Police Report.pdf")).record
+    assert (report.report_number, report.agency, report.occurred, report.location) == \
+        ("26-000001", "Sacramento Police Department", date(2026, 5, 29), "3101 Enchanted Walk")
+    assert not hasattr(report, "driver"), "a police report's people are not read"
+
+
+def test_a_loss_run_lists_its_claims():
+    text = ("Claim Detail Report by Policy - P&C\nPolicy #:                   900000001\nCompany:                      Example Exchange\n"
+            "Valuation Date:             08/19/2024\nDate Range Selection:  01/01/2019 - 08/19/2024\nClaim Number Date of Loss\nClaim Status\n"
+            "Claim Type\nLoss Information\nZZ000001\n02/23/2023\nClosed With Pay\nCommercial Property\nCause of Loss Description:\n"
+            "Water Damage\nLocation of Loss:\n5701 Whimsical Lane\nLosses Paid:\n$1,063.44\nLoss Details\n")
+    reading = read(K.LOSS_RUN, text, ctx())
+    r = reading.record
+    assert (r.carrier, r.policy, r.valued, r.period, r.paid_cents) == ("Example Exchange", "900000001", date(2024, 8, 19),
+                                                                         "01/01/2019 - 08/19/2024", 106344)
+    found = codes(reading)
+    assert "claim ZZ000001" in found["claim"].message and found["stale-loss-run"].severity is Severity.CHECK
+
+
+CASE_REPORT = """Prepared For:                    Mystique Community Association
+Date:          February 3, 2023
+Days Solving Cases - Current and Last Month
+Cases Currently Open
+Case Number
+Subject
+Type
+ 00000001
+Notices of Default and Demands for Payment
+Board_Committee_Activity
+ 00000002
+Mystique - 3102 Enchanted Walk - Garage Repairs
+RFP/Proposals
+ 00000003
+Mystique - 5703 Whimsical - Claim No. 5020000002-1-1, Claim Outcome Letter
+Insurance
+This chart shows the average
+"""
+
+
+def test_a_manager_case_report_lists_its_open_cases_and_the_work_among_them():
+    from jason.community.models.manager_reports import is_work_case, open_cases
+
+    reading = read(K.MANAGER_CASE_REPORT, CASE_REPORT + " The Helsing Group", ctx())
+    r = reading.record
+    assert r.as_of == date(2023, 2, 3) and r.manager == "The Helsing Group"
+    assert [c.number for c in r.open_cases] == ["00000001", "00000002", "00000003"]
+    assert r.open_cases[1].case_type == "RFP/Proposals"
+    assert [c.number for c in r.open_cases if is_work_case(c)] == ["00000002", "00000003"]
+    rows = "Cases Currently Open\n00000009     Mystique - 5705 Whimsical - Roof Leak          Work Order\n"
+    assert open_cases(rows)[0].subject == "Mystique - 5705 Whimsical - Roof Leak"
+
+
+def test_case_report_evidence_places_each_case_once():
+    from jason.tasks.incidents import case_report_evidence
+    from jason.community.base import BuildingRange
+    from jason.community.symbols import Building, Parity, Street
+
+    ctx_ = {"buildings": (BuildingRange(Building.BLDG_8, Street.WHIMSICAL_LN, 5701, 5751, Parity.ANY),), "site_words": (), "known": {},
+            "parcels": None}
+    rows = case_report_evidence(CASE_REPORT, ref="gmail/x.pdf", channel="email", ctx=ctx_)
+    assert [r.sha256 for r in rows] == ["case:00000002", "case:00000003"]
+    claim = rows[1]
+    assert claim.claim == "5020000002-1-1" and claim.claimed and [p.address for p in claim.where] == ["5703 WHIMSICAL LN"]

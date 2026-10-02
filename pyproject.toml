@@ -14,15 +14,37 @@ dependencies = [
     "payhoa",
     "smud",
     "idoxs",
+    "pillow>=10",
+    "pypdf>=5",
+    # Zoom's times are UTC; Windows has no IANA database for zoneinfo to read the association's time zone from.
+    "tzdata; sys_platform == 'win32'",
 ]
-
-[project.scripts]
-jason = "jason.cli:main"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
 ]
+mcp = [
+    "mcp>=1.9",
+]
+charts = [
+    "matplotlib>=3.8",
+]
+models = [
+    "anthropic>=0.40",
+]
+# QR codes for the links in letters, notices, and forms (segno: pure Python, SVG and PNG, no other dependencies).
+qr = [
+    "segno>=1.6",
+]
+# PDF text for the utility-bill parsers and the document library (the parsers read PyMuPDF's layout).
+pdf = [
+    "pymupdf>=1.24",
+]
+
+[project.scripts]
+jason = "jason.cli:main"
+jason-mcp = "jason.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jason"]

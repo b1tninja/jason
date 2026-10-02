@@ -1,0 +1,26 @@
+[
+ {
+  "suffix": "1111",
+  "purpose": "operating",
+  "bank": "JPMorgan Chase",
+  "label": "Operating"
+ },
+ {
+  "suffix": "2222",
+  "purpose": "reserve",
+  "bank": "JPMorgan Chase",
+  "label": "Reserve"
+ },
+ {
+  "suffix": "3333",
+  "purpose": "reserve",
+  "bank": "JPMorgan Chase",
+  "label": "Reserve CD"
+ },
+ {
+  "suffix": "4444",
+  "purpose": "reserve",
+  "bank": "First Citizens Bank",
+  "label": "Reserve CD (First Citizens)"
+ }
+]

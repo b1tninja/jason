@@ -18,13 +18,15 @@ class SmudBillSource:
         store: SmudBillStore,
         client_factory,
         *,
-        category_id: int | None = 1245405,
+        category_id: int | None = None,
     ) -> None:
         self._store = store
         self._client_factory = client_factory
         self._category_id = category_id
 
     def matches_transaction(self, tx: dict[str, Any]) -> bool:
+        if self._category_id is None:
+            return is_smud_transaction(tx)
         return is_smud_transaction(tx, smud_category_id=self._category_id)
 
     def _to_resolved(self, bill: BillMatch) -> ResolvedBill:
@@ -68,8 +70,9 @@ class SmudBillSource:
                 key = (bill.account_number, bill.bill_date, bill.amount_cents)
                 if key in used:
                     continue
+                match_date = bill.due_date or bill.bill_date
                 if need_matches_bill(
-                    need, amount_cents=bill.amount_cents, bill_date=bill.bill_date
+                    need, amount_cents=bill.amount_cents, bill_date=match_date
                 ):
                     chosen = bill
                     used.add(key)

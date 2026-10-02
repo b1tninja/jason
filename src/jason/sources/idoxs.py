@@ -18,13 +18,15 @@ class IdoxsBillSource:
         store: IdoxsBillStore,
         client_factory,
         *,
-        category_id: int | None = 1245485,
+        category_id: int | None = None,
     ) -> None:
         self._store = store
         self._client_factory = client_factory
         self._category_id = category_id
 
     def matches_transaction(self, tx: dict[str, Any]) -> bool:
+        if self._category_id is None:
+            return is_city_sac_transaction(tx)
         return is_city_sac_transaction(tx, category_id=self._category_id)
 
     def _to_resolved(self, bill: IdoxsBillMatch) -> ResolvedBill:

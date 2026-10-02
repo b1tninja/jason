@@ -7,6 +7,7 @@ from typing import Any
 
 from payhoa import PayhoaClient
 
+from jason.config import DEFAULT_IDOXS_CATEGORY_ID
 from jason.idoxs_data import IdoxsBillStore
 from jason.sources.attach import attach_bills
 from jason.sources.idoxs import IdoxsBillSource
@@ -27,7 +28,7 @@ def upload_idoxs_bills(
     date_window_days: int = DEFAULT_DATE_WINDOW_DAYS,
     dry_run: bool = False,
     approve: bool = False,
-    category_id: int | None = 1245485,
+    category_id: int | None = DEFAULT_IDOXS_CATEGORY_ID,
 ) -> UploadReport:
     """Find unapproved City of Sacramento txs, match cached bills, upload PDFs."""
     registry = BillSourceRegistry(

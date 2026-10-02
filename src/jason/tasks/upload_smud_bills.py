@@ -7,6 +7,7 @@ from typing import Any
 
 from payhoa import PayhoaClient
 
+from jason.config import DEFAULT_SMUD_CATEGORY_ID
 from jason.smud_data import SmudBillStore
 from jason.sources.attach import attach_bills
 from jason.sources.registry import BillSourceRegistry
@@ -39,7 +40,7 @@ def upload_smud_bills(
     date_window_days: int = DEFAULT_DATE_WINDOW_DAYS,
     dry_run: bool = False,
     approve: bool = False,
-    smud_category_id: int | None = 1245405,
+    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
 ) -> UploadReport:
     """Find unapproved SMUD txs, match cached bills, lazily fetch PDFs, upload."""
     registry = BillSourceRegistry(

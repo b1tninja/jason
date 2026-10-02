@@ -1,0 +1,128 @@
+[
+ {
+  "utility": "smud",
+  "account": "1000001",
+  "label": "Building 1 house meter",
+  "building": 1
+ },
+ {
+  "utility": "smud",
+  "account": "1000002",
+  "label": "Building 2 house meter",
+  "building": 2
+ },
+ {
+  "utility": "smud",
+  "account": "1000003",
+  "label": "Building 3 house meter",
+  "building": 3
+ },
+ {
+  "utility": "smud",
+  "account": "1000004",
+  "label": "Building 4 house meter",
+  "building": 4
+ },
+ {
+  "utility": "smud",
+  "account": "1000005",
+  "label": "Building 5 house meter",
+  "building": 5
+ },
+ {
+  "utility": "smud",
+  "account": "1000006",
+  "label": "Building 6 house meter",
+  "building": 6
+ },
+ {
+  "utility": "smud",
+  "account": "1000007",
+  "label": "Building 7 house meter",
+  "building": 7
+ },
+ {
+  "utility": "smud",
+  "account": "1000008",
+  "label": "Building 8 house meter",
+  "building": 8
+ },
+ {
+  "utility": "smud",
+  "account": "1000009",
+  "label": "Pump room (booster pump)",
+  "building": null
+ },
+ {
+  "utility": "smud",
+  "account": "1000010",
+  "label": "Street lights and irrigation controllers",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000001",
+  "label": "Metered water, fire service, and multifamily storm drainage",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000002",
+  "label": "NEC common area",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000003",
+  "label": "SEC common area",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000004",
+  "label": "ACA 1",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000005",
+  "label": "ACA 2",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000006",
+  "label": "ACA 4",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000007",
+  "label": "ACA 5",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000008",
+  "label": "ACA 6",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000009",
+  "label": "ACA 7",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000010",
+  "label": "ACA 3",
+  "building": null
+ },
+ {
+  "utility": "city_sac",
+  "account": "9000000011",
+  "label": "ACA 8",
+  "building": null
+ }
+]

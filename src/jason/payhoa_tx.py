@@ -9,7 +9,13 @@ from typing import Any, Literal
 
 from payhoa import PayhoaClient
 
+from jason.config import DEFAULT_SMUD_CATEGORY_ID
+
 ReviewedFilter = Literal[False, True, "all"]
+
+
+class _UseSpec:
+    """Omit a category override and use the specification's category id."""
 
 
 def parse_tx_date(value: str | date | datetime) -> date:
@@ -28,56 +34,43 @@ def parse_tx_date(value: str | date | datetime) -> date:
 def is_smud_transaction(
     tx: dict[str, Any],
     *,
-    smud_category_id: int | None = 1245405,
+    smud_category_id: int | None | _UseSpec = _UseSpec(),
 ) -> bool:
-    """Client-side SMUD identity (never match other vendors)."""
-    rule = tx.get("transactionRule") or {}
-    if isinstance(rule, dict) and str(rule.get("name", "")).upper() == "SMUD":
-        return True
-    description = str(tx.get("description") or "")
-    if "SMUD" in description.upper():
-        return True
-    if smud_category_id is not None and tx.get("categoryId") == smud_category_id:
-        return True
-    return False
+    """True when the Mystique transaction rules select SMUD."""
+    from jason.community import Utility
+
+    return _utility(tx, Utility.SMUD, smud_category_id) is Utility.SMUD
 
 
 def is_city_sac_transaction(
     tx: dict[str, Any],
     *,
-    category_id: int | None = 1245485,
+    category_id: int | None | _UseSpec = _UseSpec(),
 ) -> bool:
-    """Client-side City of Sacramento utilities identity (never SMUD)."""
-    rule = tx.get("transactionRule") or {}
-    rule_name = str(rule.get("name") or "") if isinstance(rule, dict) else ""
-    description = str(tx.get("description") or "")
-    # SMUD is exclusive
-    if rule_name.upper() == "SMUD" or "SMUD" in description.upper():
-        return False
+    """True when the Mystique transaction rules select the City of Sacramento."""
+    from jason.community import Utility
 
-    if "SACRAMENTO" in rule_name.upper():
-        return True
+    return _utility(tx, Utility.CITY_OF_SACRAMENTO, category_id) is Utility.CITY_OF_SACRAMENTO
 
-    desc = description.upper()
-    if "CITY OF SACRAMENTO" in desc:
-        return True
-    if "SACRAMENTO UTIL" in desc:
-        return True
-    # ACH-style payee text
-    if "SACRAMENTO" in desc and any(
-        token in desc for token in ("UTIL", "WATER", "CITY OF", "CASH CONCENTRAT")
-    ):
-        return True
 
-    if category_id is not None and tx.get("categoryId") == category_id:
-        return True
-    return False
+def _utility(tx: dict[str, Any], utility: Any, category_id: int | None | _UseSpec):
+    from dataclasses import replace
+
+    from jason.community import first_utility, mystique
+
+    rules = mystique().transaction_rules()
+    if not isinstance(category_id, _UseSpec):
+        rules = tuple(
+            replace(rule, category_id=category_id) if rule.utility is utility else rule
+            for rule in rules
+        )
+    return first_utility(tx, rules)
 
 
 def normalize_transaction(
     tx: dict[str, Any],
     *,
-    smud_category_id: int | None = 1245405,
+    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
 ) -> dict[str, Any]:
     rule = tx.get("transactionRule") or {}
     rule_name = ""
@@ -133,7 +126,7 @@ def list_normalized_transactions(
     *,
     reviewed: ReviewedFilter = False,
     search: str = "",
-    smud_category_id: int | None = 1245405,
+    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
     raw: bool = False,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -156,7 +149,7 @@ def dump_transactions(
     *,
     reviewed: ReviewedFilter = False,
     search: str = "",
-    smud_category_id: int | None = 1245405,
+    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
     raw: bool = False,
     fmt: Literal["jsonl", "json"] = "jsonl",
 ) -> Path:
@@ -183,7 +176,7 @@ def probe_transactions(
     client: PayhoaClient,
     org_id: int,
     *,
-    smud_category_id: int | None = 1245405,
+    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
 ) -> list[dict[str, Any]]:
     """Run live list/search probes and return summary rows."""
     results: list[dict[str, Any]] = []

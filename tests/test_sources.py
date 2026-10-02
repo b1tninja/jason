@@ -79,12 +79,14 @@ def test_registry_routes_first_match():
     )
     idoxs = _FakeSource(
         "idoxs",
-        lambda tx: "SACRAMENTO" in str(tx.get("description", "")).upper(),
+        lambda tx: "SACRAMEN" in str(tx.get("description", "")).upper()
+        or "SACRAMENTO" in str(tx.get("description", "")).upper(),
     )
     # SMUD description also contains nothing about sacramento
     registry = BillSourceRegistry([smud, idoxs])
     assert registry.route({"description": "SMUD payment"}).name == "smud"
     assert registry.route({"description": "CITY OF SACRAMENTO"}).name == "idoxs"
+    assert registry.route({"description": "ORIG CO NAME:CITY OF SACRAMEN"}).name == "idoxs"
     assert registry.route({"description": "Other vendor"}) is None
 
 

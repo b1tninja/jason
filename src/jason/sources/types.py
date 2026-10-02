@@ -7,7 +7,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-DEFAULT_ORG_ID = 27889
+def _default_org_id() -> int:
+    from jason.community import mystique
+
+    return mystique().org_id
+
+
+DEFAULT_ORG_ID = _default_org_id()
 DEFAULT_DATE_WINDOW_DAYS = 7
 
 

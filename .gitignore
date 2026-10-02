@@ -12,4 +12,57 @@ ksm-config.json
 client-config.json
 data/
 .env
+secrets/
+google-oauth-client.json
+google-token.json
+client_secret_*.json
+*.har
+*.HAR
+# Service API keys exported from a vendor's console (PostScanMail): they go into Keeper, never git.
+*API_Key*.json
+*api_key*.json
+# Postman exports can carry a key in their variables.
+postman-collection*.json
 
+# Local variants of .env; the example is the only one tracked.
+.env.*
+!.env.example
+
+# Working files dropped at the repository root: recorded copies, closing
+# disclosures, tax bills, minutes, county exports and layouts, screenshots.
+# They belong under data/ (ignored) or in Drive, never in git. Rooted with a
+# leading slash so docs/ can still carry an image or diagram.
+/*.pdf
+/*.PDF
+/*.doc
+/*.docx
+/*.xls
+/*.xlsx
+/*.csv
+/*.jpg
+/*.jpeg
+/*.png
+/*.gif
+/*.heic
+/*.zip
+/*.7z
+/*.txt
+
+# Installers and archives anywhere.
+*.exe
+*.msi
+
+# Editor and OS clutter.
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log
+
+
+# mystique/ is checked in: its private facts are in data/spec (jason.community.private). Its notes are the
+# association's research and findings (finances, legal posture, minutes): association records, never checked in.
+/mystique/notes/
+
+# This machine's tool configuration (absolute paths).
+/.claude/
+/.mcp.json

@@ -3,14 +3,36 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_PAYHOA_ORG_ID = 27889
+def _default_payhoa_org_id() -> int:
+    """Org id from the `mystique` specification."""
+    from jason.community import mystique
+
+    return mystique().org_id
+
+
+DEFAULT_PAYHOA_ORG_ID = _default_payhoa_org_id()
+# Keeper record UIDs come from .env (payhoa_record_uid, idoxs_record_uid); none is built in.
 DEFAULT_PAYHOA_RECORD_UID = ""
 DEFAULT_IDOXS_RECORD_UID = ""
-DEFAULT_SMUD_CATEGORY_ID = 1245405  # Electricity (SMUD) from HAR
-DEFAULT_IDOXS_CATEGORY_ID = 1245485  # City of Sacramento Utilities from HAR
+def _utility_category(utility: object) -> int:
+    from jason.community import mystique
+
+    for rule in mystique().transaction_rules():
+        if rule.utility is utility and rule.category_id is not None:
+            return rule.category_id
+    raise RuntimeError(f"no category id for {utility}")
+
+
+def _default_categories() -> tuple[int, int]:
+    from jason.community import Utility
+
+    return _utility_category(Utility.SMUD), _utility_category(Utility.CITY_OF_SACRAMENTO)
+
+
+DEFAULT_SMUD_CATEGORY_ID, DEFAULT_IDOXS_CATEGORY_ID = _default_categories()
 
 
 def default_keeper_config_path() -> Path:
@@ -40,6 +62,13 @@ def _get(
         if env:
             return _strip_quotes(env)
     return default
+
+
+def _record_uids(values: dict[str, str | None]) -> dict[str, str]:
+    """Every ``*_record_uid`` setting, environment first overridden by .env, keys lower-cased."""
+    found = {k.lower(): _strip_quotes(v) for k, v in os.environ.items() if k.lower().endswith("_record_uid") and v}
+    found.update({k.lower(): _strip_quotes(str(v)) for k, v in values.items() if k.lower().endswith("_record_uid") and v})
+    return found
 
 
 def resolve_env_path(path: str | Path | None = None) -> Path:
@@ -78,6 +107,14 @@ class Settings:
     payhoa_record_uid: str
     smud_record_uid: str
     idoxs_record_uid: str
+    accela_record_uid: str = ""
+    # an unprivileged PayHOA owner account kept for testing forms from an owner's side (its Keeper login record)
+    payhoa_test_record_uid: str = ""
+    # PayHOA memberships kept for testing: their submissions are never an owner's answer, and a real send skips them
+    payhoa_test_membership_ids: tuple[int, ...] = ()
+    # the operator's own PayHOA membership and unit: a test sent to "me" (kept out of code and fixtures)
+    payhoa_my_membership_id: int | None = None
+    payhoa_my_unit_id: int | None = None
     keeper_password: str = ""
     keeper_config: Path = Path(DEFAULT_KEEPER_CONFIG)
     payhoa_org_id: int = DEFAULT_PAYHOA_ORG_ID
@@ -87,7 +124,27 @@ class Settings:
     idoxs_db: Path = Path("data/idoxs.db")
     idoxs_bills_dir: Path = Path("data/idoxs-bills")
     idoxs_category_id: int | None = DEFAULT_IDOXS_CATEGORY_ID
+    payhoa_catalog: Path = Path("data/payhoa.db")
+    ownership_db: Path = Path("data/ownership.db")
+    tax_db: Path = Path("data/tax.db")
+    tax_bills_dir: Path = Path("data/tax-bills")
+    secured_db: Path = Path("data/secured.db")
+    characteristics_db: Path = Path("data/characteristics.db")
+    google_oauth_record_uid: str = ""
+    google_oauth_client_file: Path | None = None
+    google_oauth_token_file: Path = Path("secrets/google-token.json")
+    google_notebook_url: str = ""
+    google_sheets_spreadsheet_id: str = ""
+    anythingllm_api_key: str = ""
+    anythingllm_record_uid: str = ""
+    lawlibrary_home: Path = Path("../lawlibrary")
     env_path: Path | None = None
+    # Every "<name>_record_uid" in .env or the environment, by lower-case key: a vendor portal's Keeper record.
+    record_uids: dict[str, str] = field(default_factory=dict)
+
+    def record_uid(self, name: str) -> str:
+        """The Keeper record UID set as ``<name>_record_uid``, or an empty string."""
+        return self.record_uids.get(f"{name.lower()}_record_uid", "")
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Settings:
@@ -107,14 +164,27 @@ class Settings:
             "PAYHOA_RECORD_UID",
             default=DEFAULT_PAYHOA_RECORD_UID,
         )
+        payhoa_test_record_uid = _get(
+            values, "payhoa_test_record_uid", "PAYHOA_TEST_RECORD_UID", default=""
+        )
         smud_record_uid = _get(
             values, "smud_record_uid", "SMUD_RECORD_UID", default=""
         )
+        test_memberships = tuple(int(x) for x in _get(
+            values, "payhoa_test_membership_ids", "PAYHOA_TEST_MEMBERSHIP_IDS", default="").replace(",", " ").split())
+        my_membership = _get(values, "payhoa_my_membership_id", "PAYHOA_MY_MEMBERSHIP_ID", default="")
+        my_unit = _get(values, "payhoa_my_unit_id", "PAYHOA_MY_UNIT_ID", default="")
         idoxs_record_uid = _get(
             values,
             "idoxs_record_uid",
             "IDOXS_RECORD_UID",
             default=DEFAULT_IDOXS_RECORD_UID,
+        )
+        accela_record_uid = _get(
+            values,
+            "accela_record_uid",
+            "ACCELA_RECORD_UID",
+            default="",
         )
         keeper_password = _get(
             values, "keeper_password", "KEEPER_PASSWORD", default=""
@@ -178,11 +248,73 @@ class Settings:
         except ValueError:
             idoxs_category_id = DEFAULT_IDOXS_CATEGORY_ID
 
+        catalog_raw = _get(
+            values, "payhoa_catalog", "PAYHOA_CATALOG", default=""
+        )
+        payhoa_catalog = (
+            Path(catalog_raw)
+            if catalog_raw
+            else Path(__file__).resolve().parents[2] / "data" / "payhoa.db"
+        )
+        google_oauth_record_uid = _get(
+            values,
+            "google_oauth_record_uid",
+            "GOOGLE_OAUTH_RECORD_UID",
+            default="",
+        )
+        google_notebook_url = _get(
+            values,
+            "google_notebook_url",
+            "GOOGLE_NOTEBOOK_URL",
+            default="",
+        )
+        google_client_raw = _get(
+            values,
+            "google_oauth_client_file",
+            "GOOGLE_OAUTH_CLIENT_FILE",
+            default="",
+        )
+        google_token_raw = _get(
+            values,
+            "google_oauth_token_file",
+            "GOOGLE_OAUTH_TOKEN_FILE",
+            default="",
+        )
+        google_sheets_spreadsheet_id = _get(
+            values,
+            "google_sheets_spreadsheet_id",
+            "GOOGLE_SHEETS_SPREADSHEET_ID",
+            default="",
+        )
+        anythingllm_api_key = _get(
+            values,
+            "anythingllm_api_key",
+            "ANYTHINGLLM_API_KEY",
+            default="",
+        )
+        anythingllm_record_uid = _get(
+            values,
+            "anythingllm_record_uid",
+            "ANYTHINGLLM_RECORD_UID",
+            default="",
+        )
+        lawlibrary_home = _get(
+            values,
+            "lawlibrary_home",
+            "LAWLIBRARY_HOME",
+            default="../lawlibrary",
+        )
+
         return cls(
             keeper_username=keeper_username,
             payhoa_record_uid=payhoa_record_uid,
             smud_record_uid=smud_record_uid,
             idoxs_record_uid=idoxs_record_uid,
+            accela_record_uid=accela_record_uid,
+            payhoa_test_record_uid=payhoa_test_record_uid,
+            payhoa_test_membership_ids=test_memberships,
+            payhoa_my_membership_id=int(my_membership) if my_membership else None,
+            payhoa_my_unit_id=int(my_unit) if my_unit else None,
             keeper_password=keeper_password,
             keeper_config=keeper_config,
             payhoa_org_id=int(org_raw),
@@ -192,5 +324,42 @@ class Settings:
             idoxs_db=idoxs_db,
             idoxs_bills_dir=idoxs_bills_dir,
             idoxs_category_id=idoxs_category_id,
+            payhoa_catalog=payhoa_catalog,
+            ownership_db=payhoa_catalog.parent / "ownership.db",
+            tax_db=payhoa_catalog.parent / "tax.db",
+            tax_bills_dir=payhoa_catalog.parent / "tax-bills",
+            secured_db=payhoa_catalog.parent / "secured.db",
+            characteristics_db=payhoa_catalog.parent / "characteristics.db",
+            google_oauth_record_uid=google_oauth_record_uid,
+            google_oauth_client_file=(
+                Path(google_client_raw) if google_client_raw else None
+            ),
+            google_notebook_url=google_notebook_url,
+            google_oauth_token_file=(
+                Path(google_token_raw)
+                if google_token_raw
+                else Path("secrets/google-token.json")
+            ),
+            google_sheets_spreadsheet_id=google_sheets_spreadsheet_id,
+            anythingllm_api_key=anythingllm_api_key,
+            anythingllm_record_uid=anythingllm_record_uid,
+            lawlibrary_home=Path(lawlibrary_home),
             env_path=env_path if env_path.is_file() else None,
+            record_uids=_record_uids(values),
         )
+
+
+def test_memberships(env_file: str | Path | None = None) -> set[int]:
+    """The PayHOA memberships kept for testing (``payhoa_test_membership_ids`` in .env, plus any the specification's
+    ``TEST_MEMBERSHIPS`` still names): their submissions are never an owner's answer, and a real send skips them."""
+    from jason.community.spec import spec_module
+
+    try:
+        ids = set(Settings.load(env_file).payhoa_test_membership_ids)
+    except Exception:  # no .env (a test run): only what the specification names
+        ids = set()
+    try:
+        ids |= {int(k) for k in getattr(spec_module("forms"), "TEST_MEMBERSHIPS", {}) or {}}
+    except Exception:
+        pass
+    return ids

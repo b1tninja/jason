@@ -19,6 +19,7 @@ class BillMatch:
     amount_cents: int
     pdf_path: Path | None
     pdf_url: str = ""
+    due_date: date | None = None
 
     @property
     def has_pdf(self) -> bool:
@@ -43,6 +44,8 @@ def _row_to_bill_match(row: dict) -> BillMatch:
     pdf_path = Path(pdf_raw) if pdf_raw else None
     if pdf_path is not None and not pdf_path.is_file():
         pdf_path = None
+    due_raw = row.get("due_date") or ""
+    due_date = _parse_date(due_raw) if due_raw else None
     return BillMatch(
         bill_id=str(row["bill_id"]),
         account_number=str(row["account_number"]),
@@ -50,6 +53,7 @@ def _row_to_bill_match(row: dict) -> BillMatch:
         amount_cents=int(row["amount_cents"]),
         pdf_path=pdf_path,
         pdf_url=str(row.get("pdf_url") or ""),
+        due_date=due_date,
     )
 
 

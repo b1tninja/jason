@@ -1,0 +1,39 @@
+{
+ "watt-construction-defects-2022": {
+  "gross_cents": 10000000,
+  "net_cents": 6000000,
+  "proceeds_account": "reserve ...0000 (a test bank)",
+  "settled_source": "a test settlement's Exhibit B. The cost of repair is marked for mediation only under Evidence Code 1119",
+  "settled_items": [
+   {
+    "section": "1.1",
+    "title": "Site drainage",
+    "scope": "test scope",
+    "hard_cents": 100000,
+    "standing": "open",
+    "work": ""
+   },
+   {
+    "section": "2.1",
+    "title": "Garage doors",
+    "scope": "test scope",
+    "hard_cents": 200000,
+    "standing": "open",
+    "work": ""
+   },
+   {
+    "section": "Ex. A, C",
+    "title": "Stucco patching",
+    "scope": "test scope",
+    "hard_cents": null,
+    "standing": "open",
+    "work": ""
+   }
+  ]
+ },
+ "sacramento-26cv016125": {
+  "insurer_claims": [
+   "general liability: a test administrator TEST0001"
+  ]
+ }
+}

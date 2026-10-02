@@ -542,6 +542,45 @@ class VaultSession:
             self.load_record(record_uid), require_totp=require_totp
         )
 
+    def get_secret(self, record_uid: str) -> str:
+        """The password field of a record, which is where an API key is kept."""
+        return _field_value(self.load_record(record_uid), "password")
+
+    def create_login_record(
+        self,
+        title: str,
+        *,
+        password: str,
+        login: str = "",
+        url: str = "",
+        notes: str = "",
+        folder_uid: str | None = None,
+        custom: dict[str, str] | None = None,
+    ) -> str:
+        """Create a typed login record in the vault and return its UID.
+
+        The secret goes in the password field, so ``get_secret`` reads it
+        back the same way for every service. The value is never logged.
+        ``custom`` adds labeled text fields (an app's account id, client id).
+        """
+        from keepersdk.vault.record_management import add_record_to_folder
+        from keepersdk.vault.vault_record import TypedField, TypedRecord
+
+        self.open()
+        record = TypedRecord()
+        record.record_type = "login"
+        record.title = title
+        record.notes = notes
+        for field_type, value in (("login", login), ("password", password), ("url", url)):
+            field = TypedField.create_field(field_type)
+            field.value = [value] if value else []
+            record.fields.append(field)
+        for label, value in (custom or {}).items():
+            field = TypedField.create_field("text", label)
+            field.value = [value] if value else []
+            record.custom.append(field)
+        return add_record_to_folder(self._vault, record, folder_uid)
+
     def close(self) -> None:
         if self._vault is not None:
             self._vault.close()
@@ -621,6 +660,8 @@ def get_payhoa_credentials(
         username = username or settings.keeper_username or None
         password = password or settings.keeper_password or None
         config = config or settings.keeper_config
+    if not record_uid:
+        raise ValueError("payhoa_record_uid is not set; put the PayHOA login's Keeper record UID in .env")
     creds = get_login_credentials(
         record_uid,
         username=username,
@@ -635,6 +676,53 @@ def get_payhoa_credentials(
         email=creds.login,
         password=creds.password,
         totp_code=creds.totp_code,
+    )
+
+
+def get_accela_credentials(
+    *,
+    config: str | Path | None = None,
+    record_uid: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    totp_code: str | None = None,
+    interactive: bool = False,
+    settings: Settings | None = None,
+) -> LoginCredentials:
+    """Load Sacramento Citizen Access login and password from Keeper."""
+    if settings is not None:
+        record_uid = record_uid or settings.accela_record_uid
+        username = username or settings.keeper_username or None
+        password = password or settings.keeper_password or None
+        config = config or settings.keeper_config
+    if not record_uid:
+        raise LookupError("accela_record_uid is not set")
+    return get_login_credentials(
+        record_uid,
+        username=username,
+        password=password,
+        totp_code=totp_code,
+        config=config,
+        interactive=interactive,
+    )
+
+
+def get_vendor_credentials(
+    key: str,
+    *,
+    settings: Settings,
+    interactive: bool = False,
+) -> LoginCredentials:
+    """A vendor portal's login from the Keeper record set as ``<key>_record_uid``."""
+    record_uid = settings.record_uid(key)
+    if not record_uid:
+        raise LookupError(f"{key}_record_uid is not set in .env")
+    return get_login_credentials(
+        record_uid,
+        username=settings.keeper_username or None,
+        password=settings.keeper_password or None,
+        config=settings.keeper_config,
+        interactive=interactive,
     )
 
 
@@ -657,6 +745,8 @@ def get_idoxs_credentials(
         password = password or settings.keeper_password or None
         config = config or settings.keeper_config
     record_uid = record_uid or DEFAULT_IDOXS_RECORD_UID
+    if not record_uid:
+        raise ValueError("idoxs_record_uid is not set; put the i-doxs login's Keeper record UID in .env")
 
     if settings is not None:
         username = username or settings.keeper_username or None
