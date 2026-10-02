@@ -164,6 +164,25 @@ LESSONS: tuple[Lesson, ...] = (
            "repository.",
            Status.FIXED, guards=("payhoa_test_membership_ids, payhoa_my_membership_id, payhoa_my_unit_id in .env",
                                  "mystique/ is its own repository, ignored by jason")),
+    Lesson("plain-text-loses-the-marks", OCT_2026, (Area.GOVERNING,),
+           "A plain-text copy of an amendment read the struck and the added words run together, both versions at once.",
+           "The amendment carries its change in type (struck through, bold), and text extraction drops type styles.",
+           "Operations are read from a source that keeps the marks (a Doc's runs, a text PDF's spans and rules, a "
+           "scan's measured rules); a plain copy of an instrument whose legend promises marks is held out, not applied.",
+           Status.FIXED, guards=("living.read_operations (marks_lost)", "tests/test_living.py"),
+           docs=("docs/living-documents.md",),
+           notes=("Text copies kept for search and quoting still read run together; quote an amended passage from "
+                  "the consolidated text or the instrument, not the plain copy.",)),
+    Lesson("amended-by-hand-drifts", OCT_2026, (Area.GOVERNING, Area.RENTALS),
+           "The working text of the declaration, amended by hand, disagreed with the recorded amendment: a numeral "
+           "changed without its words, words the amendment dropped kept, an article dropped; a hand copy of the "
+           "amended terms in a rule row could drift the same way.",
+           "Each amendment was applied by reading it and editing the copy, with nothing to check the result.",
+           "Compute the current text from the base and the operations of each instrument in effect, with each "
+           "section's provenance, and compare the working copy and the rule rows against it.",
+           Status.OPEN, docs=("docs/living-documents.md",),
+           notes=("living.consolidate and living.drift exist; no command runs them yet, and the rule rows are not "
+                  "checked against the current text.",)),
 )
 
 

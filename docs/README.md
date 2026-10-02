@@ -36,6 +36,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [drive-labels.md](drive-labels.md): jason's labels on Drive files as private `appProperties`.
 - [drive-activity.md](drive-activity.md): who created, moved, renamed, trashed, or re-shared a Drive item, read from the Drive Activity API.
 - [document-readings.md](document-readings.md): reading the instruments' own text into concept records, and what OCR defeats.
+- [living-documents.md](living-documents.md): each governing document as amended, section by section, with the instrument that set its words; corrections and annotations kept apart.
 - [document-tools.md](document-tools.md): the open-source tools for the scans (Ollama, AnythingLLM, OCR engines) and how each joins jason.
 - [letters.md](letters.md): the letter templates in Drive, their `{VARIABLE}` tokens, and filling a copy.
 - [packets.md](packets.md): several documents (the annual disclosures) assembled into one PDF.

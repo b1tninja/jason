@@ -257,7 +257,8 @@ def outline_from_text(text: str, *, key: str, title: str = "", kind: str = "") -
             token = m.group(1).lower()
             roman = re.fullmatch(r"[ivx]+", token) is not None
             # "(i)" after "(h)" is the next letter; after any other letter it is the first roman subsection.
-            next_letter = bool(letter) and len(token) == 1 and ord(token) == ord(letter) + 1
+            # A roman token read before any letter ("(iv)" right under "1.3") is held as the letter; it has no successor.
+            next_letter = len(letter) == 1 and len(token) == 1 and ord(token) == ord(letter) + 1
             if roman and letter and not next_letter:
                 number, parent = f"{base}({letter})({token})", f"{base}({letter})"
             elif token.isdigit():
