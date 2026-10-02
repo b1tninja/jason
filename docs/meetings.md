@@ -75,7 +75,7 @@ What the law says:
 - **A pending lawsuit comes first.** A suit requires preserving anything about its matter. Deleting it then could be spoliation (*Cedars-Sinai Medical Center v. Superior Court* (1998) 18 Cal.4th 1; Evid. Code 413).
 - **A pending bill could change this.** AB 1184 (2026), if enacted, would make open-session recordings association records unless they are kept solely to prepare minutes.
 
-Mystique's findings are in the private notes (mystique/notes/meetings.md).
+This association's findings are in its private notes (mystique/notes/meetings.md).
 
 jason keeps its copies in `data/zoom`, and they are subject to the same policy and any hold. jason deletes nothing.
 
@@ -93,7 +93,7 @@ The board's agenda Docs attach each item's papers as smart chips, such as a Driv
 
 The link kinds are the specification's `LINK_RULES` (`mystique/meetings.py`); the Zoom link on every agenda labels nothing. A label says where the board used a file: it is a lead for filing and classifying it, not a classification. A Google Photos album is known only by its link and its labels; jason does not read the album. Nothing is moved, renamed, or shared.
 
-Mystique's findings are in the private notes (mystique/notes/meetings.md).
+This association's findings are in its private notes (mystique/notes/meetings.md).
 
 ## Agenda items and their documents
 
@@ -129,7 +129,7 @@ Phrase rules taken from the wording of the files left as suggestions (in `jason.
 
 A letter's own kind (counsel's letter, an engagement letter, a notice) counts from its title even though the fallback otherwise skips letters.
 
-Mystique's findings are in the private notes (mystique/notes/meetings.md).
+This association's findings are in its private notes (mystique/notes/meetings.md).
 
 ## Cross-checks between agendas and minutes
 
@@ -151,7 +151,7 @@ The four checks:
 
 `--ask-model` asks the local model one grounded question for up to `--max-questions` documents with an amount and no matched decision. The question holds the GPU lock and runs the preflight first. Its answer counts only when its quote is in the minutes text, and it never changes the outcome.
 
-Mystique's findings are in the private notes (mystique/notes/meetings.md).
+This association's findings are in its private notes (mystique/notes/meetings.md).
 
 Minutes not read are not minutes not written. The AI-summary minutes of 2025 and 2026 tell of decisions in their own words, so a miss can be a decision worded differently.
 
@@ -176,7 +176,7 @@ Four details matter:
 - **Never headings:** the running header and footer (a line repeated on pages at the same height), a "See:" line, and a line that is only a link's words (a chip's title set bold).
 - **Other links:** a link to another page is internal. A URL typed in the text is found as in a Doc.
 
-Where the PDF's item and the Doc's differ, it is mostly the Docs themselves: a Doc can set sub-items as level-4 headings, which the PDF's numbering shows as sub-items. Mystique's findings are in the private notes (mystique/notes/meetings.md).
+Where the PDF's item and the Doc's differ, it is mostly the Docs themselves: a Doc can set sub-items as level-4 headings, which the PDF's numbering shows as sub-items. This association's findings are in its private notes (mystique/notes/meetings.md).
 
 ## Minutes read from Drive
 
@@ -198,7 +198,7 @@ An uploaded Word file saved under a `.pdf` name is read as the .docx its bytes a
 
 Open minutes that name a member's payment plan are a finding: a payment plan is executive-session business (Civil Code 4935(a)).
 
-Mystique's findings are in the private notes (mystique/notes/meetings.md).
+This association's findings are in its private notes (mystique/notes/meetings.md).
 
 ## Paid against approved
 
@@ -235,7 +235,7 @@ A link is a rule's reading; whether a payment was authorized is the board's to s
 
 Payee words of five letters or more name a payee. A large payment that minutes accepted without stating an amount is explained this way.
 
-Mystique's findings are in the private notes (mystique/notes/meetings.md).
+This association's findings are in its private notes (mystique/notes/meetings.md).
 
 ## Reusable pieces
 

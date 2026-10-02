@@ -7,13 +7,19 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-def _default_org_id() -> int:
-    from jason.community import mystique
+def profile_org_id(org_id: int | None = None) -> int:
+    """The PayHOA org id asked for, else the active profile's."""
+    if org_id is not None:
+        return org_id
+    from jason.community import community
 
-    return mystique().org_id
+    return community().org_id
 
 
-DEFAULT_ORG_ID = _default_org_id()
+def __getattr__(name: str):
+    if name == "DEFAULT_ORG_ID":
+        return profile_org_id()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 DEFAULT_DATE_WINDOW_DAYS = 7
 
 

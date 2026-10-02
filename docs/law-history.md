@@ -34,7 +34,7 @@ lawlibrary (`../lawlibrary`, its `history.py` and `succession.py`, see its `docs
 - 516 Davis-Stirling successor rows, all from the official sources.
 - 413 changes since 2011.
 
-**Former citations in the governing documents.** Each former section a governing document cites is listed with its successor, for example 1363(g) (the hearing), now 5855. Mystique's findings are in the private notes (mystique/notes/law-history.md).
+**Former citations in the governing documents.** Each former section a governing document cites is listed with its successor, for example 1363(g) (the hearing), now 5855. This association's findings are in its private notes (mystique/notes/law-history.md).
 
 **Changes since:**
 - CIV 5855 was rewritten in 2025 (151 words inserted). Among the changes, the written decision is due in 14 days where it was 15.

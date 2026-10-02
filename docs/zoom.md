@@ -1,6 +1,6 @@
 # Zoom: the meeting history and disciplinary hearings
 
-The association holds its meetings on Zoom. The account's history holds the association's meetings, cloud-recording transcripts, chats, and AI Companion summaries. jason reads that history to disk. It also schedules a disciplinary hearing, but only when a person asks. The board's meeting schedule is `MEETING_SCHEDULE` in the specification; Mystique's findings are in the private notes (mystique/notes/zoom.md).
+The association holds its meetings on Zoom. The account's history holds the association's meetings, cloud-recording transcripts, chats, and AI Companion summaries. jason reads that history to disk. It also schedules a disciplinary hearing, but only when a person asks. The board's meeting schedule is `MEETING_SCHEDULE` in the specification; This association's findings are in its private notes (mystique/notes/zoom.md).
 
 ## Setup
 

@@ -50,7 +50,7 @@ These are the `InvoiceFormat` rows in `jason.community.invoice_formats`. `jason 
 
 | Vendor | Layout |
 |---|---|
-| ProActive Pest Control | FieldRoutes' printed invoice (existing row) |
+| a pest control vendor on FieldRoutes | FieldRoutes' printed invoice (existing row) |
 | E&R Landscaping | number and total each on a line of their own; items print inline amounts |
 | Philadelphia Indemnity (flood) | renewal notice: Bill ID, notice date, coverage row; new-application invoice; the portal's payment receipt |
 | Farmers Insurance | monthly billing statement (no invoice number) |
@@ -141,7 +141,7 @@ Checks:
 
 The library holds few invoices of its own, so the readers are measured on the PayHOA attachments (`data/payhoa/attachment-text`), grouped by vendor. For a payment with one attachment, the payment's amount is the ground truth for the total. The measures are how often a number and a date (within a year before the payment) are found, how often the total equals the payment, and how many readings are complete.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/invoices.md).
+This association's findings are in its private notes (mystique/notes/document-models/invoices.md).
 
 ## What the texts cannot show
 

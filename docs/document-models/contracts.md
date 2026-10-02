@@ -232,7 +232,7 @@ Model `settlement`. Checks:
 | `waives-1542` | info | A Civil Code 1542 waiver | |
 | `settlement-payment` | info | The amount, due date, and payee | |
 
-Mystique's findings are in the private notes (mystique/notes/document-models/contracts.md).
+This association's findings are in its private notes (mystique/notes/document-models/contracts.md).
 
 ## What the text cannot show
 

@@ -1,6 +1,6 @@
 # Recorded instruments
 
-What each instrument in the county's public index is, which lifecycle it opens or closes, and which official record confirms it. The conveyance processes are in the private notes ([data/spec/notes/ownership-history.md](../data/spec/notes/ownership-history.md)); this page covers everything else the index returns for the community, its owners, and its developers. The code is `jason.community.filings` (the registry and the lifecycles), `jason.community.governing` (the 2792.23 deliveries), and `jason.community.association_record` (the association's record and each parcel's liens). Survey date: 2026-09-28.
+What each instrument in the county's public index is, which lifecycle it opens or closes, and which official record confirms it. The conveyance processes are in the private notes (mystique/notes/ownership-history.md); this page covers everything else the index returns for the community, its owners, and its developers. The code is `jason.community.filings` (the registry and the lifecycles), `jason.community.governing` (the 2792.23 deliveries), and `jason.community.association_record` (the association's record and each parcel's liens). Survey date: 2026-09-28.
 
 ## How to read an index row
 
@@ -55,7 +55,7 @@ The `index_survey` tool counts every cached document by family, process, and fil
 
 Rows the early walks stored with no filing at all (labeled only fee, lien, release, or foreclosure) are read by that label: a lien row is a deed of trust, a release a reconveyance, so they form loans instead of falling out. What stays unmodeled is noise around an owner's name rather than a process: notary bonds, business agreements, partnership statements, and a 1984 CalVet agreement to sell. Each has a class and a name now, so a report can say what it is, and none opens a lifecycle.
 
-Mystique's findings are in the private notes (mystique/notes/recorded-instruments.md).
+This association's findings are in its private notes (mystique/notes/recorded-instruments.md).
 
 ### Coverage: what each process explains, and what is left
 
@@ -85,7 +85,7 @@ Three places to look. Against a developer during construction: those liens attac
 
 A developer can sell each unit with a share of the building's rooftop solar system, the buyer choosing at closing to purchase the share or lease it. A leased share carries a UCC financing statement (368) the lease fund records against the buyer, naming itself secured party; a termination (372) ends it. When the association keeps no roster of who chose which, the index is the record. The specification names the program in `mystique/solar.py`: the buildings, the lease funds the index prints, and who services the leases now, which is where a lease question goes.
 
-Mystique's findings are in the private notes (mystique/notes/recorded-instruments.md).
+This association's findings are in its private notes (mystique/notes/recorded-instruments.md).
 
 The county indexes a fixture filing by the debtor's name, so `jason sync-solar` searches the funds' names instead and caches every filing they recorded in the county (about four thousand rows), and `solar_record` matches the debtors to each unit's owners. A UCC filing is not only solar: `classify_secured_party` reads the secured party as the program's lessor, another solar lessor (Tesla, SolarCity, Sunnova, Sunrun), a solar lender (Loanpal, GoodLeap, Mosaic), the utility (SMUD's own financing filings), or a bank, in that order. Only the program's lessors decide a unit's standing:
 
@@ -101,11 +101,11 @@ Two bounds. No filing is not proof of purchase. And an owner of several units sh
 
 ## Governing instruments and 2792.23
 
-`locate_governing` classifies the governing, plan, and map filings and ties each to the delivery it satisfies. A phase is read from a party name such as MYSTIQUE PHASE 3, or from the recording date matching a phase's annexation date on the public reports, since Watt's later annexations name only the developer. `delivery_status` lists, per delivery, what the index holds and what is missing, phase by phase for annexations. Articles are a Secretary of State filing and bylaws are the association's own; neither is expected in the index. The final map is in the map books, not the document index. Plans, bonds, warranties, policies, and contracts are never recorded and stay with the Drive pins.
+`locate_governing` classifies the governing, plan, and map filings and ties each to the delivery it satisfies. A phase is read from a party name such as "<ASSOCIATION> PHASE 3", or from the recording date matching a phase's annexation date on the public reports, since Watt's later annexations name only the developer. `delivery_status` lists, per delivery, what the index holds and what is missing, phase by phase for annexations. Articles are a Secretary of State filing and bylaws are the association's own; neither is expected in the index. The final map is in the map books, not the document index. Plans, bonds, warranties, policies, and contracts are never recorded and stay with the Drive pins.
 
 An instrument the index places by party name or by date is listed under its delivery, with every grant into the association under the common-area deeds. When an instrument's own recital says it rescinded and superseded an earlier one and the index cites nothing for it, the fact is pinned in `mystique/annexations.py` as a `Supersession`, and the record shows the earlier instrument placed with that status.
 
-Mystique's findings are in the private notes (mystique/notes/recorded-instruments.md).
+This association's findings are in its private notes (mystique/notes/recorded-instruments.md).
 
 ## What the other official records add
 
@@ -154,7 +154,7 @@ A filing on an owner of several units joins each of them; the row names the othe
 
 Utility easements on the common areas are often shown on the final map and the condominium plans rather than recorded as separate instruments, so a search of the index under the developers' and the association's names can find none.
 
-Mystique's findings are in the private notes (mystique/notes/recorded-instruments.md).
+This association's findings are in its private notes (mystique/notes/recorded-instruments.md).
 
 ## Where it shows
 

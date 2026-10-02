@@ -66,4 +66,4 @@ A finding cites the statute where the law shapes the letter. The texts cannot sh
 
 Per-form counts come from `jason models`. A newsletter or flyer that prints no date of issue keeps its missing-date finding: a missing date is a miss, not a defect of the parser. The records request, IDR request, hearing notice, and Request for Resolution findings are tested on synthetic letters (`tests/test_models_correspondence.py`).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/correspondence.md).
+This association's findings are in its private notes (mystique/notes/document-models/correspondence.md).

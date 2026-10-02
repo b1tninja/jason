@@ -28,7 +28,7 @@ READ_BACK = (1.0, 2.0, 4.0, 8.0)
 
 
 def _address_key(text: str) -> str:
-    """"3024 Macon Drive" and "3024 MACON DR" as one key."""
+    """"123 Main Street" and "123 MAIN ST" as one key."""
     t = re.sub(r"[^\w\s]", " ", (text or "").upper())
     t = re.sub(r"\bDRIVE\b", "DR", re.sub(r"\bLANE\b", "LN", t))
     return " ".join(t.split())

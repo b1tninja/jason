@@ -18,7 +18,7 @@ For a `notice`, the models are tried in that order: minutes, then the pre-ballot
 
 ## Coverage
 
-Per-kind counts come from `jason models`. Mystique's findings are in the private notes (mystique/notes/document-models/meetings.md).
+Per-kind counts come from `jason models`. This association's findings are in its private notes (mystique/notes/document-models/meetings.md).
 
 ## Shared parsing
 
@@ -199,7 +199,7 @@ Owners' names and addresses are not kept, nor the case name (it names private pe
 
 ## What the real files show
 
-Mystique's findings are in the private notes (mystique/notes/document-models/meetings.md).
+This association's findings are in its private notes (mystique/notes/document-models/meetings.md).
 
 ## What the text cannot show
 

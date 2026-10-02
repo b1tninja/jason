@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 from payhoa import PayhoaClient
 
-from jason.config import DEFAULT_SMUD_CATEGORY_ID
 
 ReviewedFilter = Literal[False, True, "all"]
 
@@ -70,7 +69,7 @@ def _utility(tx: dict[str, Any], utility: Any, category_id: int | None | _UseSpe
 def normalize_transaction(
     tx: dict[str, Any],
     *,
-    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
+    smud_category_id: int | None | _UseSpec = _UseSpec(),
 ) -> dict[str, Any]:
     rule = tx.get("transactionRule") or {}
     rule_name = ""
@@ -126,7 +125,7 @@ def list_normalized_transactions(
     *,
     reviewed: ReviewedFilter = False,
     search: str = "",
-    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
+    smud_category_id: int | None | _UseSpec = _UseSpec(),
     raw: bool = False,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -149,7 +148,7 @@ def dump_transactions(
     *,
     reviewed: ReviewedFilter = False,
     search: str = "",
-    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
+    smud_category_id: int | None | _UseSpec = _UseSpec(),
     raw: bool = False,
     fmt: Literal["jsonl", "json"] = "jsonl",
 ) -> Path:
@@ -176,7 +175,7 @@ def probe_transactions(
     client: PayhoaClient,
     org_id: int,
     *,
-    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
+    smud_category_id: int | None | _UseSpec = _UseSpec(),
 ) -> list[dict[str, Any]]:
     """Run live list/search probes and return summary rows."""
     results: list[dict[str, Any]] = []

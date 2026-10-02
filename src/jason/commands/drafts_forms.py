@@ -149,7 +149,7 @@ def _form_pdf(args: argparse.Namespace, data_dir: Path) -> int:
     tpl = template(args.pdf)
     prefill = dict(p.split("=", 1) for p in args.prefill)
     out = Path(args.out) if args.out else data_dir / "forms" / f"{tpl.key.value}.pdf"
-    names = form_pdf(tpl, out, association=mystique().name, logo=data_dir / "brand" / "letterhead-logo.png",
+    names = form_pdf(tpl, out, association=mystique().name, logo=mystique().letterhead().logo_path(data_dir),
                      prefill=prefill or None)
     print(f"{out}: {len(names)} fields: {', '.join(names)}")
     return 0

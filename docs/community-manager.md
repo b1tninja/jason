@@ -1,6 +1,6 @@
 # Community manager reference
 
-Jason is a virtual agent for a community manager of a California common interest development. This page is the index of duties and the statutes those duties sit on. It is not legal advice, and it is not a substitute for the current code or for Mystique’s governing documents.
+Jason is a virtual agent for a community manager of a California common interest development. This page is the index of duties and the statutes those duties sit on. It is not legal advice, and it is not a substitute for the current code or for the association's governing documents.
 
 The obligation index is [docs/laws/README.md](laws/README.md). Official section text comes from lawlibrary over `US-CA`. Sacramento ordinances are not in that index. Read the live section on [leginfo](https://leginfo.legislature.ca.gov/) only when the publication has no row. Section numbers below were checked against the 2025 session. On 2026-09-27, lawlibrary returned Civil Code §§ 4145, 4600–4620, and 5380, and Business and Professions Code §§ 10131, 10131.01, 10145, 11004.5, 11010.2, 11018.5, 11018.6, and 11500–11506, from that session. The Commissioner’s regulations are not in that index. The regulation numbers below are from the Bureau of Real Estate Law compilation at `dre.ca.gov/files/pdf/relaw/regs.pdf`. Do not quote a section from this page. Quote the official text, or the governing-document body when the file is in hand.
 
@@ -209,7 +209,7 @@ Business and Professions Code § 11502(b)(1) is the curriculum for a certified m
 
 ## How Jason should use this
 
-- Identify the duty anchor first, then the section, then the Mystique document or catalog row. What Jason prepares, and what stays with the board, is [docs/laws/assist.md](laws/assist.md).
+- Identify the duty anchor first, then the section, then the association's document or catalog row. What Jason prepares, and what stays with the board, is [docs/laws/assist.md](laws/assist.md).
 - Prefer the governing document when the statute defers to it (maintenance, assessment formula, insurance limits above the statutory floor).
 - Prefer the statute when § 4205 says the law wins.
 - Leave a section citation off a draft until the official text has been read for that task.

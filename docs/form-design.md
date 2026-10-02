@@ -10,7 +10,7 @@ large, and where one answer ends and the next begins. It can also keep handwriti
 - **Reading:** they're read back by Tesseract, the reading hints, and local vision models.
 - **Search:** a coordinate descent looks for the layout that comes back best.
 
-The answers are made up, and nothing is sent. Mystique's findings are in the private notes (mystique/notes/form-design.md).
+The answers are made up, and nothing is sent. This association's findings are in its private notes (mystique/notes/form-design.md).
 
 ## What the research says
 

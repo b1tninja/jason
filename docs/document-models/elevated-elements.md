@@ -28,4 +28,4 @@ Model: `sb326-report` in `jason.community.models.elevated_elements`, for `elevat
 
 A report kept in Drive rather than the PayHOA library is not read by `jason models` until it is added; `jason models --file <copy> --kind elevated_element_inspection` reads a local copy. An inspector's license number in a stamp image is not in the text; confirm it with the licensing board. Keep each report for two inspection cycles, and check that the reserve study incorporates it (5551(f), (i)).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/elevated-elements.md).
+This association's findings are in its private notes (mystique/notes/document-models/elevated-elements.md).

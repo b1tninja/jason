@@ -1,6 +1,6 @@
 # Mail (PostScanMail)
 
-Mystique's paper mail goes to a PostScanMail virtual mailbox. PostScanMail receives each piece, photographs the envelope, and scans the contents when asked or by rule. Renewals, cancellations, legal notices, government letters, and escrow requests arrive this way, so jason reads the mailbox.
+The association's paper mail goes to a PostScanMail virtual mailbox. PostScanMail receives each piece, photographs the envelope, and scans the contents when asked or by rule. Renewals, cancellations, legal notices, government letters, and escrow requests arrive this way, so jason reads the mailbox.
 
 ## Access
 
@@ -53,11 +53,11 @@ Some letters carry a credential. The county's ownership-verification letters pri
 
 ## Facts each letter prints
 
-`letter_facts` reads the handles that join a letter to the association's other records: 14-digit parcel numbers, street addresses on Mystique's streets, insurance policy numbers, escrow and order numbers, and masked account endings. The sync joins them to the specification: a parcel number that is one of the association's parcels, and an address that falls in one of its buildings.
+`letter_facts` reads the handles that join a letter to the association's other records: 14-digit parcel numbers, street addresses on the association's streets, insurance policy numbers, escrow and order numbers, and masked account endings. The sync joins them to the specification: a parcel number that is one of the association's parcels, and an address that falls in one of its buildings.
 
 `policy_readings` gathers the insurance policy numbers the letters print, the building their letters place, the latest letter, and the latest stated date, so the mail shows the flood program's history policy by policy. A reading is evidence, not a pin: a building's policy goes on `BuildingRange.policy_number` only after a person confirms it. A policy number that also appears on another building's letter is not placed.
 
-Mystique's findings are in the private notes (mystique/notes/mail.md).
+This association's findings are in its private notes (mystique/notes/mail.md).
 
 ## Checks against jason's records
 
@@ -75,7 +75,7 @@ Mystique's findings are in the private notes (mystique/notes/mail.md).
 - **Checks.** The amounts a check prints against PayHOA deposits of that amount within 45 days, with the category each deposit was booked to.
 - **Preliminary notices and lien claims.** Each 20-day preliminary notice (Civil Code 8200) or mechanic's lien claim, with the claimant named from the form's CLAIMANT block, against PayHOA payments to the claimant from 120 days before the notice to a year after. Whether a claim was recorded is the `mechanics_liens` tool's question.
 
-The checks also go into `data/reports/mail.md`, so the jason-pages catalog carries them as a summary. Mystique's findings are in the private notes (mystique/notes/mail.md).
+The checks also go into `data/reports/mail.md`, so the jason-pages catalog carries them as a summary. This association's findings are in its private notes (mystique/notes/mail.md).
 
 ## Sources
 
@@ -83,7 +83,7 @@ Who a letter comes from, and what kind of source that is, decides how to read it
 
 - **The directory.** `Mystique.senders()` (`mystique/senders.py`) is a `Sender` row per counterparty: its name, `SourceKind`, a government agency's `Level` (federal, state, county, city, special district), the words its letterhead or bank line carries, its PayHOA vendor name, and its role. A new counterparty is a new row.
 - **Resolving.** `jason.community.sources.resolve` tries the sender field, then the letterhead (the first 400 characters, with the association's own name removed, since that is the addressee), then the generic words in `KIND_WORDS` ("County of", "Insurance", "LLP"), then a named sender's words anywhere in the first 1,200 characters (a 1099's payer block, an invoice's "COMPANY:" line). A preliminary notice's sender is the claimant its form names. A miss stays unknown. A known source sorts a letter the words left as "other" (a utility's letter is a utility letter).
-- **Other associations.** `other_associations` reads the names of other community associations a letter mentions. A letter that names one and never names Mystique is that association's mail (`misdirected`), often an owner statement from another association a prior manager also manages. It stays out of AnythingLLM. A notice about the association's own account that names another association is a record under another name, for a person to correct with the sender.
+- **Other associations.** `other_associations` reads the names of other community associations a letter mentions. A letter that names one and never names this association is that association's mail (`misdirected`), often an owner statement from another association a prior manager also manages. It stays out of AnythingLLM. A notice about the association's own account that names another association is a record under another name, for a person to correct with the sender.
 - **Owners.** The association's own assessment statement mailed back with a payment is an owner's account; it stays out of AnythingLLM (Civil Code 5215).
 - **The report.** `jason sources` (and the `counterparties` MCP tool) lists each named sender by kind, with its letters by kind and its PayHOA payments (money out only; a wire or deposit in is not a payment), the PayHOA vendors the directory does not name, the letterheads no rule names, and the other associations.
 

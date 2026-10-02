@@ -149,8 +149,8 @@ the owners the law sends first-class mail. So jason works the notice out three w
 - **`--audit`** lists the tag changes that make those filters complete: every owner carries a delivery tag ("Notices by Mail" until they elect otherwise), and an owner who elected email with no deliverable address also gets mail.
 
 How the tags combine was checked in PayHOA on October 1, 2026. A unit tag and a member tag together select what
-carries both, an intersection, on both screens tried: the people list, and the Mailroom's unit picker. Mystique's
-findings are in the private notes (mystique/notes/drafts-and-forms.md).
+carries both, an intersection, on both screens tried: the people list, and the Mailroom's unit picker. This association's
+findings are in its private notes (mystique/notes/drafts-and-forms.md).
 
 So "Building 3" with "Notices by Mail" picks the Building 3 units that have a mail-electing owner. The Mailroom then
 lists every owner of each unit it picked. Uncheck a co-owner who elected email only, or send to jason's list (`--ids`).
@@ -366,7 +366,7 @@ from the member's unit (the full street address, city, state, and ZIP). A send f
 chosen through. The check refuses `[FIELDS]` left unfilled in a body or subject. A template may keep them.
 
 **The letterhead.** `--letterhead` frames the body as the Letterhead Doc frames a letter: the logo centered over
-MYSTIQUE COMMUNITY ASSOCIATION (Century Gothic, with fallbacks), and a rule over the mailing address. It applies to
+the association's name (Century Gothic, with fallbacks), and a rule over the mailing address. It applies to
 `--preview`, `--send-sample`, and `--save-template`. The frame is not template text. The sync strips it when it copies
 a PayHOA template into a Doc, and a save keeps it when the PayHOA template already had it. The logo needs a public image
 address any mail client loads without signing in (`EMAIL_LOGO_URL` in `mystique/templates.py`). Until one is set, the

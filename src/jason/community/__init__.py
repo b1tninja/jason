@@ -1,7 +1,8 @@
 """Community model.
 
-Implementation lives in jason. The facts for one association are a class such
-as `mystique.Mystique`. Tasks ask a `Community`; they do not hardcode it.
+Implementation lives in jason. The facts for one association are a profile: a
+`Community` subclass in its own package (`jason.community.profile`), such as
+`mystique.Mystique`. Tasks ask a `Community`; they do not hardcode it.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from jason.community.base import (
     split_address,
 )
 from jason.community.register import InsuranceRegistry
+from jason.community.profile import load_profile, profile_name
 from jason.community.spec import find_spec_root, first_utility, load_mystique
 from jason.community.provisions import (
     Alignment,
@@ -46,15 +48,15 @@ from jason.community.symbols import (
     Utility,
 )
 
-_MYSTIQUE: Community | None = None
+
+def community() -> Community:
+    """The active profile's community (``JASON_PROFILE``, default ``mystique``), loaded once."""
+    return load_profile()
 
 
 def mystique() -> Community:
-    """The `mystique` class checked in beside this package."""
-    global _MYSTIQUE
-    if _MYSTIQUE is None:
-        _MYSTIQUE = load_mystique()
-    return _MYSTIQUE
+    """The active profile's community; the name predates profiles (see `community`)."""
+    return load_profile()
 
 
 __all__ = [
@@ -89,7 +91,10 @@ __all__ = [
     "citation",
     "citation_era",
     "citation_session",
+    "community",
     "find_spec_root",
+    "load_profile",
+    "profile_name",
     "load_mystique",
     "first_utility",
     "mystique",

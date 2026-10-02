@@ -67,6 +67,35 @@ class DocumentTemplate:
         return tokens_in("\n".join(text for _, text in BODIES.get(self.kind, ())))
 
 
+def body_markdown(kind: TemplateKind, values: dict[str, str], optional: tuple[str, ...] = ()) -> str:
+    """A template's body as Markdown, its tokens filled; a token with no value is left as ``[token in words]`` for the
+    person who finishes the draft, and an ``optional`` one is dropped. The same body the Doc is built from, so the
+    notice reads the same everywhere."""
+
+    def fill(text: str) -> str:
+        return TOKEN.sub(lambda m: values.get(m.group(1)) or ('' if m.group(1) in optional
+                                                             else f"[{m.group(1).lower().replace('_', ' ')}]"), text).rstrip()
+
+    lines: list[str] = []
+    for block, text in BODIES[kind]:
+        text = fill(text)
+        if block is Block.HEADING:
+            lines += ["", f"## {text}", ""]
+        elif block is Block.BULLET:
+            lines.append(f"- {text}")
+        elif block is Block.BOLD:
+            lines.append(f"**{text}**")
+        elif block is Block.TITLE:
+            lines.append(f"# {text}")
+        else:
+            lines.append(text)
+    out: list[str] = []
+    for line in lines:                       # no run of blank lines
+        if line or (out and out[-1]):
+            out.append(line)
+    return "\n".join(out).strip() + "\n"
+
+
 def tokens_in(text: str) -> tuple[str, ...]:
     """The distinct tokens in ``text``, in order of first appearance."""
     seen: dict[str, None] = {}
@@ -86,7 +115,8 @@ _ADDRESSEE = (
     (T, "{OWNER_NAME}"), (T, "{ADDRESS}"), (T, "{CITY_STATE_ZIP}"), (T, ""),
     (T, "Delivered by {DELIVERY_METHOD}"), (T, ""),
 )
-_CLOSING = ((T, ""), (T, "Sincerely,"), (T, ""), (T, ""), (T, "Board of Directors"), (T, "Mystique Community Association"))
+# The profile fills the signer, its name, and its citations (template_values.profile_values); a body names no association.
+_CLOSING = ((T, ""), (T, "Sincerely,"), (T, ""), (T, ""), (T, "{SIGNER}"), (T, "{ASSOCIATION_NAME}"))
 
 BODIES: dict[TemplateKind, tuple[tuple[Block, str], ...]] = {
     TemplateKind.LETTERHEAD: (
@@ -101,12 +131,12 @@ BODIES: dict[TemplateKind, tuple[tuple[Block, str], ...]] = {
         *_ADDRESSEE,
         (BOLD, "Re: Notice of Hearing, {ADDRESS}"), (T, ""),
         (T, "Dear {OWNER_NAME},"), (T, ""),
-        (T, "The Board of Directors of Mystique Community Association will hold a hearing to consider imposing discipline "
+        (T, "The Board of Directors of {ASSOCIATION_NAME} will hold a hearing to consider imposing discipline "
             "for the alleged violation described below. This notice is given under Civil Code Section 5855."),
         (H, "Date, time, and place"),
         (T, "**Date:** {HEARING_DATE}"),
-        (T, "**Time:** {HEARING_TIME} Pacific"),
-        (T, "**Place:** by Zoom video conference"),
+        (T, "**Time:** {HEARING_TIME} {TIME_ZONE}"),
+        (T, "**Place:** by {MEETING_PLATFORM} video conference"),
         (T, "**Join:** {ZOOM_LINK}"),
         (T, "**Meeting ID:** {ZOOM_MEETING_ID}    **Passcode:** {ZOOM_PASSCODE}"),
         (T, "**By telephone:** {ZOOM_DIAL_IN}"),
@@ -122,11 +152,11 @@ BODIES: dict[TemplateKind, tuple[tuple[Block, str], ...]] = {
             "safety impact and the Board makes a written finding of that impact at a meeting open to the members (Civil "
             "Code Section 5850(c), (d)). No late charge or interest is charged on a fine (Section 5850(e)). If the Board "
             "finds a violation that continues after the hearing, it may consider further fines for the continuing "
-            "violation (Bylaws Section 8.5(f)); you will be notified before any further fine is imposed."),
+            "violation ({CITE_CONTINUING_FINES}); you will be notified before any further fine is imposed."),
         (H, "Your rights"),
         (B, "You have the right to attend the hearing and to address the Board."),
         (B, "You may present evidence, including a written statement, photographs, and witnesses, and you may question "
-            "any witness who speaks against you (Enforcement Policy). If you cannot attend, you may send a written "
+            "any witness who speaks against you ({CITE_HEARING_EVIDENCE}). If you cannot attend, you may send a written "
             "response before the hearing."),
         (B, "The Board will meet in executive session if you ask it to, and you may attend that session (Civil Code "
             "Section 4935(b)). To ask, reply to this notice before the hearing."),
@@ -166,7 +196,7 @@ BODIES: dict[TemplateKind, tuple[tuple[Block, str], ...]] = {
         (B, "If you disagree with this decision, you may request internal dispute resolution, at no cost to you, by "
             "writing to the Board (Civil Code Sections 5855(d), 5910)."),
         (B, "No late charge or interest will be charged on a fine (Civil Code Section 5850(e)). A fine is not an "
-            "assessment and cannot become a lien on your unit (Civil Code Section 5725(b); Declaration Section 6.8)."),
+            "assessment and cannot become a lien on your unit (Civil Code Section 5725(b); {CITE_FINES_NOT_LIENS})."),
         (B, "{PAYMENT_OR_CURE}"),
         (H, "Questions"),
         (T, "{CONTACT}"),
@@ -179,7 +209,7 @@ BODIES: dict[TemplateKind, tuple[tuple[Block, str], ...]] = {
         (TITLE, "{MEETING_KIND}"),
         (T, ""),
         (BOX, "**{MEETING_DATE} at {MEETING_TIME}**"),
-        (BOX, "by Zoom: {ZOOM_LINK}"),
+        (BOX, "by {MEETING_PLATFORM}: {ZOOM_LINK}"),
         (BOX, "Meeting ID {ZOOM_MEETING_ID} · by telephone {ZOOM_PHONE}"),
         (NOTE, "Technical help before and during the meeting: {TECH_CONTACT}. You may ask to receive meeting notices by "
                "individual delivery by writing to the board. Every vote of the directors at this meeting is taken by roll "

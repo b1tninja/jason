@@ -55,7 +55,7 @@ documents' deadlines and sections from a template's own words and the task's top
 names (a vendor's inspection report, jason's calendar), and conflicts between two copies of one rule. The check caught
 bad citations: titles quoted as text, and quotes of the task's own instructions.
 
-Mystique's findings are in the private notes (mystique/notes/manager-review.md).
+This association's findings are in its private notes (mystique/notes/manager-review.md).
 
 The research behind these templates is in `data/briefs/research/`, one file per template group. Its findings are
 findings, not prompt text.

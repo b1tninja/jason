@@ -3,7 +3,8 @@
 ``jason packet annual-disclosures --year 2027`` plans: each part found for the year or missing, the tokens filled and
 the ones left (the board's decisions), and the insurance terms not yet on file. ``--values`` writes the year's
 values.json with every open token to fill. ``--make-templates --yes`` makes the template Docs on the Letterhead from
-mystique/packet_templates/. ``--build --yes`` fills the templates as copies in My Drive/<packet title>/<year>, fetches
+src/jason/templates/packets/ (a profile's packet_templates/ overrides a file). ``--build --yes`` fills the templates as
+copies in My Drive/<packet title>/<year>, fetches
 and generates the rest, and merges them into data/packets/<packet>-<year>/packet.pdf with bookmarks, page numbers, and
 a manifest; ``--draft`` builds even with parts missing, with a page that names each missing part. A packet made per
 building (the annual one: each building's own flood policy) is planned and built once per building, into
@@ -127,7 +128,9 @@ def _make_templates(args: argparse.Namespace, agent_factory: Callable[[Any], Any
     from jason.tasks.letters import markdown_doc
     from jason.tasks.packets import template_markdown, template_style
 
-    spec = spec_module("templates")
+    from jason.community.profile import load_profile
+
+    home, head = load_profile().drive_home(), load_profile().letterhead()
     from jason.community.packets import SourceKind
 
     made = [(f"Template - {p.title}", p.source.markdown, p.source.ref) for p in packet.parts
@@ -140,8 +143,8 @@ def _make_templates(args: argparse.Namespace, agent_factory: Callable[[Any], Any
         drive = agent.drive()
         for name, source, doc_id in made:
             markdown = template_markdown(source)
-            result = markdown_doc(drive, drive.docs(), markdown, name=name, folder_id=spec.TEMPLATES_FOLDER,
-                                  letterhead_id=spec.LETTERHEAD_DOC, footer=spec.FOOTER, doc_id=doc_id,
+            result = markdown_doc(drive, drive.docs(), markdown, name=name, folder_id=home.templates,
+                                  letterhead_id=head.doc_id, footer=head.footer, doc_id=doc_id,
                                   style=template_style(source))
             print(f"{'made' if result['created'] else 'rewrote'} {name}: {result['url']}")
     print("record any new ids in mystique/packets.py")
@@ -178,7 +181,7 @@ def _assemble(args: argparse.Namespace, agent: Any, community: Any, packet: Any,
     values = dict(found.values)
     values.setdefault("MAILING_DATE", today_long())
     name = community.name
-    logo = _data_dir(args) / "brand" / "letterhead-logo.png"       # the Letterhead Doc's logo, saved once
+    logo = community.letterhead().logo_path(_data_dir(args))
     pieces: list[tuple[str, Path, str, bool]] = []
     drive, client = agent.drive(), agent.payhoa()
     docs = drive.docs()
@@ -308,9 +311,9 @@ def _fillable_forms(packet: Any, record: list[dict[str, Any]], pdf: Path, out: P
 
 
 def _my_drive() -> str:
-    from jason.community.spec import spec_module
+    from jason.community.profile import load_profile
 
-    return spec_module("templates").MY_DRIVE
+    return load_profile().drive_home().my_drive
 
 
 def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callable[[Any], Any]) -> None:

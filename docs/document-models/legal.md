@@ -19,7 +19,7 @@ Every statute below is quoted from `data/authorities/CIV`. A PROBLEM finding mea
 
 Per-kind counts come from `jason models`. The pre-lien reader does not require `total_due`: a letter with no itemized statement has no total to read, and `no-itemized-statement` reports that. The `delinquency_notice` fill counts mix two models (pre-lien notices and reimbursement notices), so an empty field may simply not apply.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Delinquency notices
 
@@ -61,7 +61,7 @@ An assessment is delinquent 15 days after it is due. The late charge is at most 
 - No hearing notice (CHECK). A charge for common-area damage takes a 10-day hearing notice and a written decision within 14 days before it is effective (CIV 5855(a), (f), (g)). Damage to exclusive-use common area, such as a garage, counts.
 - The 5725(a) limit on making the charge a lien (INFO).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Owner statements and owner ledgers
 
@@ -93,7 +93,7 @@ Checks:
 
 A late fee posted on the 15th for an installment due on the 1st is 14 days, one day before the assessment is delinquent under 5650(b).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Recorded liens
 
@@ -144,7 +144,7 @@ The INFO findings are the 5720(b) floor and the 5685 release duty.
 
 **`LienReleaseBond`** records the principal, surety, obligee, bond and lien amounts, the lien's recording date, the statute, and the date. It checks the 125 percent test (PROBLEM if under) and flags the admitted surety as a CHECK.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Legal correspondence and briefs
 
@@ -172,7 +172,7 @@ Mystique's findings are in the private notes (mystique/notes/document-models/leg
 
 It checks the brief's unit count against the specification.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Escrow requests
 
@@ -191,7 +191,7 @@ Its checks:
 - No document list (INFO).
 - The 4575 limit and the pending roll change (INFO).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Forms
 
@@ -213,7 +213,7 @@ Its checks:
 - An architectural application with no maximum response time (CHECK, 4765(a)(1)) or no reconsideration procedure (CHECK, 4765(a)(4), (5)).
 - An assessor filing's APNs against the specification's parcels, and its mailing address against the specification's current address.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Membership list
 
@@ -228,7 +228,7 @@ Its checks:
 - No opt-out marker (CHECK, 5200(a)(9), 5220).
 - Extra columns to strip before sharing (INFO, 5215(a)(4)).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## Inspection reports
 
@@ -255,7 +255,7 @@ No Davis-Stirling section shapes these reports. The vendor's standard does (NFPA
 
 NFPA 72 sets most fire alarm tests yearly; a fire alarm row in the specification's `obligations` gives the due date.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/legal.md).
+This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 
 ## What the texts cannot show
 

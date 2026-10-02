@@ -1010,7 +1010,7 @@ def email_intents(intent: str = "", topic: str = "", days: int = 365, limit: int
 
 def case_file(terms: list[str], data_dir: Path | None = None) -> dict[str, Any]:
     """One matter across the stores by the words that name it (a person, an address, a case or claim number, e.g.
-    ["dog attack", "nakayama", "26CV016125"]): the email threads, PayHOA violations (with the restriction cited and the
+    ["water intrusion", "smith", "24CV000123"]): the email threads, PayHOA violations (with the restriction cited and the
     hearing date) and requests, the paper letters, the Drive files, and the library's documents, in date order. A match is
     by words in subjects, titles, names, and paths. Reads disk only. Repeat the caveats."""
     from jason.community import mystique
@@ -1034,7 +1034,7 @@ def reply_needed(party_class: str = "", days: int = 120, limit: int = 40, data_d
 
 
 def party_brief(query: str, data_dir: Path | None = None) -> dict[str, Any]:
-    """One unit or one counterparty across every store. A unit (by address, e.g. "3024 MACON"): its owners by deed, PayHOA
+    """One unit or one counterparty across every store. A unit (by address, e.g. "123 MAIN"): its owners by deed, PayHOA
     balance and members, requests, violations, email threads with topics and status, letters naming it, and the unit brief
     (title, liens, solar, taxes). A counterparty (by sender name, PayHOA vendor, or email domain): payments by year, its
     invoices and whether each is paid, threads awaiting us and them, letters, the people who write from its domains and the
@@ -1575,7 +1575,7 @@ def incident_history(building: int | None = None, address: str = "", work: str =
     Each event has its work (repair, maintenance, improvement, inspection), its causes (roof leak, plumbing leak,
     vehicle collision, ...), and whether an insurance claim is tied to it (claimed, with claim numbers) or it names a
     sudden cause with no claim on file; its standing against the master policy's deductible (claimed, claim candidate when the
-    paperwork's cost reaches the deductible, under deductible, sudden with cost unknown). Filter by building (1-8), address words ("5615 Whimsical"), work, claims_only,
+    paperwork's cost reaches the deductible, under deductible, sudden with cost unknown). Filter by building (1-8), address words ("123 Main"), work, claims_only,
     cause words, or since (YYYY-MM-DD). Routine upkeep and inspections with no claim and no sudden cause are left out
     unless include_routine or a work is named. Amounts are integer cents. An event is a rule's reading of the paperwork;
     whether a peril was covered is the insurer's answer; a claim file's snippet is held back. Reads disk only."""

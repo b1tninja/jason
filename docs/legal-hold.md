@@ -17,7 +17,7 @@ A hold is a `LegalHoldSpec` row in `mystique/holds.py`. It gives:
 
 The duty often begins with a preservation letter, and the hold can reach records from before that day, back to the first notices about the same matter.
 
-Mystique's findings are in the private notes (mystique/notes/legal-hold.md).
+This association's findings are in its private notes (mystique/notes/legal-hold.md).
 
 ## `jason hold`
 

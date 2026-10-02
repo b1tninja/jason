@@ -37,4 +37,4 @@ Research found no Civil Code section of its own on releasing a bond. A release i
 - A bond's phase comes from its heading. When the heading has none, it comes from the one security agreement that states the bond's exact sum, marked `*`.
 - Copies that read differently are flagged rather than reconciled.
 
-Mystique's findings are in the private notes (mystique/notes/developer-securities.md).
+This association's findings are in its private notes (mystique/notes/developer-securities.md).

@@ -26,7 +26,7 @@ The enclosed reserve summary, from the reserve study prepared by {RESERVE_PREPAR
 
 ## 3. Reserve funding plan (§5300(b)(3))
 
-The {FISCAL_YEAR} budget transfers {RESERVE_TRANSFER} to reserves, the contribution in the reserve study's funding plan. The complete reserve study and funding plan are available free on request from the designated recipient, and in PayHOA Documents.
+The {FISCAL_YEAR} budget transfers {RESERVE_TRANSFER} to reserves, the contribution in the reserve study's funding plan. The complete reserve study and funding plan are available free on request from the designated recipient, and in {DOCUMENTS_ONLINE}.
 
 ## 4. Deferred repair or replacement (§5300(b)(4))
 

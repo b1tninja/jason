@@ -360,47 +360,23 @@ def zoom_details(created: dict[str, Any]) -> dict[str, Any]:
 
 
 def notice_text(plan: HearingPlan, association: str) -> str:
-    """A draft of the hearing notice with the elements 5855(b) requires. The owner's name is left for the secretary."""
-    when = plan.start.strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
-    z = plan.zoom
-    place = ["By Zoom video conference."]
-    if z.get("joinUrl"):
-        place.append(f"Join: {z['joinUrl']}")
-        place.append(f"Meeting ID: {z.get('id')}; passcode: {z.get('passcode')}")
-        for number in z.get("dialIn") or []:
-            place.append(f"By telephone: {number}")
-    else:
-        place.append("[Zoom link, meeting ID, and passcode: not yet scheduled]")
-    lines = [
-        f"# Notice of hearing before the Board of Directors, {association}",
-        "",
-        "To: [owner of record], " + plan.address,
-        f"Delivered by: [personal delivery or individual delivery (Civil Code 4040)] on [date, no later than {plan.notice_by:%B %d, %Y}]",
-        "",
-        f"The Board of Directors will meet on {when} to consider imposing discipline for the matter below.",
-        "",
-        "## Place",
-        "",
-        *place,
-        "",
-        "## The alleged violation",
-        "",
-        plan.violation.strip() or "[the nature of the alleged violation, as the board states it]",
-        "",
-        "## Your rights",
-        "",
-        "- You have the right to attend the hearing and to address the Board.",
-        "- The Board will meet in executive session if you ask it to. You may attend that session (Civil Code 4935(b)).",
-        "- You may cure the violation before the hearing. The Board will not impose discipline if you cure it before the"
-        " hearing, or, if a cure would take longer than the time before the hearing, if you give a financial commitment"
-        " to cure it (Civil Code 5855(c)).",
-        "- If you and the Board do not agree after the hearing, you may ask for internal dispute resolution (Civil Code 5910).",
-        f"- The Board will deliver its decision to you in writing within {DECISION_DAYS} days after it acts (Civil Code 5855(f)).",
-        "",
-        "[Signature, title, and the association's contact for questions]",
-        "",
-    ]
-    return "\n".join(lines)
+    """A Markdown draft of the hearing notice: the same body as the notice Doc (`templates.BODIES`), filled from the
+    plan and the profile. What a person still supplies (the owner's name, the sections, the contact) is left in
+    brackets, and the delivery line names the last day the notice can go out (Civil Code 5855(a))."""
+    from jason.community import community
+    from jason.community.template_values import profile_values
+    from jason.community.templates import TemplateKind, body_markdown
+    from jason.tasks.letters import hearing_values, long_date
+
+    profile = community()
+    values = profile_values(profile) | {"ASSOCIATION_NAME": association}
+    values |= {k: v for k, v in hearing_values(plan, city_state_zip=profile.identity().unit_city_state_zip).items() if v}
+    values["DATE"] = "[date]"
+    values["DELIVERY_METHOD"] = ("[personal delivery or individual delivery (Civil Code 4040)] on "
+                                 f"[date, no later than {long_date(plan.notice_by)}]")
+    if not plan.zoom.get("joinUrl"):
+        values["ZOOM_LINK"] = "[the meeting link: not yet scheduled]"
+    return f"# Notice of Hearing\n\n{body_markdown(TemplateKind.HEARING_NOTICE, values, optional=('CURE',))}"
 
 
 __all__ = [

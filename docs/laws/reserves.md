@@ -66,4 +66,4 @@ There is no dollar minimum in section 5510. A board's own spending policy may se
 
 Such a policy rarely defines an expenditure as one invoice. Nothing in the Civil Code forbids the board from treating related replacements of one component as one expenditure. The practice the bidding rules are aimed at is the reverse: splitting one job into pieces so it stays under a bid threshold. Grouping is the component, not the calendar. Work on another component is not added in to clear a threshold. A withdrawal still needs the two signatures in section 5510(a). If the board follows a spending policy, the vote and the bid note go in the minutes with the component name and the count of what was replaced.
 
-Mystique's findings are in the private notes (mystique/notes/laws/reserves.md).
+This association's findings are in its private notes (mystique/notes/laws/reserves.md).

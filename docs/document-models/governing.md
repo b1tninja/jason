@@ -32,7 +32,7 @@ Every statute below is read from `data/authorities/CIV`. A PROBLEM means the tex
 
 A title company's certified copy carries a handwritten certification of the recorded original; a vision reading of page 1 (`jason library --vision declaration,condominium_plan --pages 1`) reads it. Per-kind counts (files, with text, read, complete) come from `jason models`.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Declaration (CC&Rs)
 
@@ -65,7 +65,7 @@ A declaration may not cap rentals below 25 percent of the separate interests (47
 - The text cites a former section (INFO, 4235(a)).
 - The extract stops before its contents' last page (CHECK).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Amendments
 
@@ -110,7 +110,7 @@ An extension of the term may not exceed the initial term or 20 years (4265(c)).
 - It amends a declaration other than the one the specification pins (CHECK).
 - The specification does not list it (INFO).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Declarations of annexation
 
@@ -135,13 +135,13 @@ Mystique's findings are in the private notes (mystique/notes/document-models/gov
 - It annexes under a declaration other than the one pinned (CHECK).
 - No notary's acknowledgment appears in the text (CHECK).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Common areas and cost centers
 
 A condominium project's documents can divide the common area in two: an **association common area** (A.C.A.) the association owns in fee, and a **condominium common area** (C.C.A.) the owners hold in undivided shares. The condominium plan's legend defines both, the declaration defines what each includes, and each annexation annexes an A.C.A. with its C.C.A. and units. The specification holds the association's common areas (`mystique/parcels.py`, `ASSOCIATION_COMMON_AREAS`: number, parcel, building, phase, units, builder, cost center).
 
-An annexation can also split the regular assessment into a general component and **cost centers**, each "allocated and assessed equally among the Units within" it and carrying the upkeep of its own buildings. The specification holds those rules (`COST_CENTERS`). Mystique's reference is in the private notes (mystique/notes/document-models/governing.md).
+An annexation can also split the regular assessment into a general component and **cost centers**, each "allocated and assessed equally among the Units within" it and carrying the upkeep of its own buildings. The specification holds those rules (`COST_CENTERS`). This association's reference is in its private notes (mystique/notes/document-models/governing.md).
 
 **What the models read:**
 
@@ -163,7 +163,7 @@ The clause heading is matched without requiring every word, since a recorded tex
 
 `jason cost-centers` (MCP `cost_centers`) sets the rule beside the records: the monthly assessments charged in each cost center, the budgets' lines, the reserve studies' funding plans, and the cost center budgets the DRE public reports gave buyers (the public report model extracts `cost_center_assessment_cents`, `cost_center_reserve_cents`, `built_out_reserve_cents`, and `adopted_assessment_cents`). Restoring cost centers is for the board, with counsel.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Bylaws and articles
 
@@ -191,7 +191,7 @@ Mystique's findings are in the private notes (mystique/notes/document-models/gov
 
 An extract can stop short of the PDF it came from, so `jason library` takes a PDF's own text layer when it is longer than the extract.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Operating rules, policies, and election rules
 
@@ -280,7 +280,7 @@ Mystique's findings are in the private notes (mystique/notes/document-models/gov
   - Floor nominations are allowed with electronic ballots (PROBLEM, 5105(i)(1)(F)).
   - The 30-day delivery of the ballot and rules (INFO).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Grant deeds
 
@@ -340,7 +340,7 @@ Other readings:
   - County and city taxes that compute different considerations (CHECK).
 - The title company's sale notice is attached (INFO).
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## Public reports, condominium plans, maps, plan sets
 
@@ -367,7 +367,7 @@ Its checks compare the report with its `mystique/reports.py` row: the phase, the
 
 **`PlanSetRecord`** has these fields: `title`, `plan_kind` (record of decision, staff report, application, drawings), `file_number`, `related_files`, `project_address`, `apns`, `dated`, `units`, `buildings`, `acres`, `decision`.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/governing.md).
+This association's findings are in its private notes (mystique/notes/document-models/governing.md).
 
 ## What the texts cannot show
 

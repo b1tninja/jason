@@ -73,7 +73,7 @@ A priced list is compared as topics with each entry's amount. Two entries with t
   - `reference`: the proposal, estimate, purchase order, work order, or contract billed against;
   - `license`: the contractor's license, by the proposal reader's pattern.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/README.md).
+This association's findings are in its private notes (mystique/notes/document-models/README.md).
 
 ## Groups
 
@@ -107,4 +107,4 @@ The archive's "Statement" folders hold owners' account statements (`owner_statem
 
 `jason models` reports, per kind, the files, the files with text, the files read, and the complete readings; `scripts/eval_models.py` measures a kind without saving the readings. A file with no text (a blank template, an image, a scan too poor to read, a text layer of glyph codes that needs OCR) is not read, and a field the text itself lacks keeps a reading incomplete.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/README.md).
+This association's findings are in its private notes (mystique/notes/document-models/README.md).

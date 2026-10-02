@@ -56,6 +56,41 @@ The forecast predicts usage and prices it. It is not a sum of past bills or paym
 
 The brief carries a backtest: this year's finished months predicted from the bills before this year, against what those months cost. Each month's cost is the bills' charges prorated by day.
 
+## Attaching bills to PayHOA transactions
+
+Each month the bank feed brings unreviewed SMUD and City of Sacramento charges with no PDF. `jason sync-bills` lists those PayHOA transactions, syncs only the portals that have a pending match, and attaches the bill when the amount and date line up.
+
+```bash
+jason sync-bills --dry-run
+jason sync-bills
+jason sync-bills --source smud
+jason sync-bills --skip-sync      # attach from the local cache only
+```
+
+The matching rules:
+1. **The queue:** unreviewed PayHOA transactions (`reviewed=false`).
+2. **The provider,** from the transaction text, not the vendor list:
+   - **SMUD:** the transaction rule is "SMUD", "SMUD" is in the description, or the category is Electricity (SMUD);
+   - **City of Sacramento:** the rule or description carries the City's utilities text (including the truncated ACH `CITY OF SACRAMEN`), or the category is City of Sacramento Utilities.
+3. **Skip** a transaction that already has an attachment.
+4. **Match** the exact amount in cents, with the bill date or due date within seven days, in the utility cache.
+5. **Unique only:** an ambiguous match or no match is reported and skipped.
+6. **Download lazily:** the PDF is downloaded from the portal only when a transaction needs it.
+
+The lower-level commands:
+
+```bash
+jason fetch-bills                          # new bills from both portals into the store; nothing goes to PayHOA
+jason fetch-bills --source smud --account ACCOUNT
+jason sync-smud --account ACCOUNT --full   # SMUD bills, payments, and usage
+jason sync-idoxs                           # City bills (Bills.aspx ACCOUNT=ALL, metadata only)
+jason upload-smud-bills --dry-run
+jason upload-idoxs-bills --dry-run
+jason attach-bills                         # attach without a portal sync
+jason probe-transactions --interactive     # live probes: server search against the client filter
+jason dump-transactions --out data/payhoa_txs.jsonl
+```
+
 ## The payment audit
 
 `jason utilities --payments --fetch` reads every PayHOA transaction and keeps the SMUD and City payments. It downloads the attachments the portal files do not already cover into `data/payhoa/attachments/`. Then it checks each payment. PayHOA shows a split payment as child rows that share a hidden parent, and the audit treats those rows as one payment.
@@ -71,4 +106,4 @@ The audit writes `data/payhoa/utility-audit.json`. The `utility_payments` MCP to
 
 The brief lists every PDF whose name dates a different bill than the one inside. A portal can deliver an older bill under a new month's name; the true bill for that month is missing until it is downloaded again.
 
-Mystique's findings are in the private notes (mystique/notes/utility-bills.md).
+This association's findings are in its private notes (mystique/notes/utility-bills.md).

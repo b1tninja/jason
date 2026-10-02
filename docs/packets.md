@@ -141,7 +141,7 @@ The answers belong in PayHOA, the association's books. jason stores no owner's a
 anything else comes the owner delivery-preference solicitation (4041): the answers must be entered at least 30 days
 before the packet goes out.
 
-Mystique's findings are in the private notes (mystique/notes/packets.md).
+This association's findings are in its private notes (mystique/notes/packets.md).
 
 ## QR codes
 

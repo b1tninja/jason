@@ -21,8 +21,8 @@ def _data_dir(args: argparse.Namespace):
     return Settings.load(getattr(args, "env", None)).ownership_db.parent
 
 
-def _reports_folder(drive: Any, spec: Any) -> str:
-    return drive.child_folder(spec.MEETINGS_FOLDER, "Reports") or drive.create_folder("Reports", spec.MEETINGS_FOLDER)
+def _reports_folder(drive: Any, home: Any) -> str:
+    return drive.child_folder(home.meetings, "Reports") or drive.create_folder("Reports", home.meetings)
 
 
 def named_reports(data_dir) -> list[tuple[str, dict[str, str]]]:
@@ -113,17 +113,19 @@ def cmd_report(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
     if args.doc:
         from jason.community.spec import spec_module
 
-        spec = spec_module("templates")
+        from jason.community.profile import load_profile
+
+        home, head = load_profile().drive_home(), load_profile().letterhead()
         with agent_factory(args) as agent:
             drive = agent.drive()
-            folder = _reports_folder(drive, spec)
+            folder = _reports_folder(drive, home)
             for key, params in targets:
                 report = live_reports.REPORTS[key]
                 if report.attach is not None:
                     report.attach(agent.payhoa(), drive, data_dir, params, context, folder)
                     live_reports.refresh(key, data_dir, community, params, context=context)   # now with the Drive link
-                snap = live_reports.publish(key, data_dir, drive, folder_id=folder, letterhead_id=spec.LETTERHEAD_DOC,
-                                            footer=spec.FOOTER, params=params)
+                snap = live_reports.publish(key, data_dir, drive, folder_id=folder, letterhead_id=head.doc_id,
+                                            footer=head.footer, params=params)
                 print(f"{key}: {snap.url}")
     return 1 if failed else 0
 

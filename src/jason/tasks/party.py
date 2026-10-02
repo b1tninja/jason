@@ -220,7 +220,7 @@ def party_brief(query: str, data_dir: Path, community: Any, *, today: date | Non
     if sender is not None:
         return _counterparty_brief(sender, data_dir, community, day)
     return {"found": False, "query": query,
-            "hint": "a unit address (\"3024 MACON\"), a sender's name, its PayHOA vendor name, or its email domain",
+            "hint": "a unit address (\"123 MAIN\"), a sender's name, its PayHOA vendor name, or its email domain",
             "units": [label for label in units if any(w in label for w in q.split())][:10]}
 
 

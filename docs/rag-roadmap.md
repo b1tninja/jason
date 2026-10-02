@@ -9,7 +9,7 @@
 - **Retrieval.** The pieces are `passages`, `retrieval.keyword_exact`, `hybrid` and `VectorCache` (1,953 vectors cached). `manager_review` defaults to hybrid. `scripts/eval_retrieval.py` scores against `data/retrieval/gold.json`, which has 24 questions. Its `kind` field means exact or paraphrase, not document kind. No dense or hybrid row has been recorded on gold. BM25 is recomputed over the whole corpus on every query, and `dense_rank` loads one `.npy` per passage on every query.
 - **Context pack.** `context_pack.assemble` builds the S, G, R, F and D tiers. R takes the latest `RECORD_FILES=3` files per kind, by period. `prompts.verify` checks quotes.
 - **AnythingLLM.**
-  - Catalogs: authorities, association-records, insurance, mail, jason-pages, and one `case-<key>` per legal case, plus the shared Mystique workspace. The legacy "My Workspace" still holds 115 custom-documents.
+  - Catalogs: authorities, association-records, insurance, mail, jason-pages, and one `case-<key>` per legal case, plus the shared association workspace. The legacy "My Workspace" still holds 115 custom-documents.
   - `anythingllm.Source` keeps only title, text and score. `SHELF_OF_FOLDER` has no `insurance` entry.
   - Only `anythingllm_admin.reembed` takes the GPU lock.
   - jason-pages includes `reports/property-history/*.md` (104 pages) with no filter.
@@ -29,12 +29,12 @@
 
 - **Problem.**
   - `anythingllm_sync.library_items` checks each row's `confidential` flag on its own, but `distinct()` treats a file as confidential when any copy of it is.
-  - As a result, 8 treasurer reports are in today's association-records upload list, which is shared into Mystique. Each has one copy under `Confidential/` and a byte-identical copy under Email Attachments.
+  - As a result, 8 treasurer reports are in today's association-records upload list, which is shared into the association workspace. Each has one copy under `Confidential/` and a byte-identical copy under Email Attachments.
   - The cause is the folder (`CONFIDENTIAL_FOLDERS`), not the kind.
   - Treasurer reports also carry PayHOA's aging section. Of the 46 distinct treasurer reports in the upload list, 22 contain both a unit street address and aging or past-due words. This was counted with a loose text match, so a person should confirm it.
 - **Mechanism.**
   - `library_items` iterates `distinct(load(root))`. A sha group whose copies disagree on confidentiality goes into a new `SyncReport` list and is not uploaded.
-  - Add a stale-removal step for library items, modeled on the mail catalog's `_mail_id` pruning, so that copies already uploaded leave association-records and Mystique.
+  - Add a stale-removal step for library items, modeled on the mail catalog's `_mail_id` pruning, so that copies already uploaded leave association-records and the association workspace.
   - Add `insurance` to `SHELF_OF_FOLDER`.
   - Keep the exclusion of unclassified (`""`) rows explicit.
 - **First step.** Replay `library_items` offline. Then diff the list by kind, before and after the change.
@@ -52,12 +52,12 @@
     - `SKILLS.md:150` says three catalogs.
     - The classifier `keep_alive` is documented as 1 minute, but the code uses 5m.
     - The `anythingllm_query` docstring and AGENTS.md omit the insurance catalog.
-  - Longer term, move `CONFIDENTIAL_FOLDERS` into mystique as a confidential flag on `LibraryFolder` rows.
+  - Longer term, move `CONFIDENTIAL_FOLDERS` into the profile (`mystique/`) as a confidential flag on `LibraryFolder` rows.
 
 ### 2. Owner data and claim papers in shared catalogs (no P number; needs a person's decision)
 
 - **Problem.**
-  - jason-pages includes `Source(Root.DATA, "reports/property-history", "*.md")` (`anythingllm_sync.py:130`). Its 104 pages carry who held each unit, PayHOA members, liens and notices, and taxes. They go into the shared Mystique workspace with no filter. The library treats owner_history and membership_list as confidential kinds, so this exposure is larger than item 1's.
+  - jason-pages includes `Source(Root.DATA, "reports/property-history", "*.md")` (`anythingllm_sync.py:130`). Its 104 pages carry who held each unit, PayHOA members, liens and notices, and taxes. They go into the shared association workspace with no filter. The library treats owner_history and membership_list as confidential kinds, so this exposure is larger than item 1's.
   - The insurance catalog uploads `data/insurance/documents/*.pdf` with no confidentiality filter. No file name among the 50 looks like a claim paper, but nobody has checked the contents against `CONFIDENTIAL_KINDS`.
 - **Mechanism.** A person decides one of two things:
   - property-history stays out of the shared workspace, which means a BOARD-only catalog or no catalog;
@@ -66,7 +66,7 @@
   For insurance, join each PDF to its library row by sha256 and exclude any confidential kind. The same stale-removal exception, snapshot and case-catalog check from item 1 apply.
 - **First step.** Run an offline list of jason-pages and insurance uploads, with counts by source and by matched library kind.
 - **Measure.**
-  - property-history pages in Mystique: 0, or exactly the stripped pages the person approved.
+  - property-history pages in the association workspace: 0, or exactly the stripped pages the person approved.
   - Insurance PDFs that match a confidential kind: 0 uploaded.
 - **Conditions.** The code infers nothing here. This item does not depend on P8.
 
@@ -218,7 +218,7 @@ Add vision-layout fixtures (pipe tables and header-row tables) to the 214 model 
 **Retrieval baseline on gold (no P number).** Record keyword, dense and hybrid rows from `eval_retrieval.py` on the 24 gold questions, run as a queued GPU job. `manager_review` defaults to hybrid, which is unmeasured. Record the per-query time of BM25 and `dense_rank` as well. This is the baseline for the R-tier change, for P12 and for the thin-parse scorer.
 
 **Cross-catalog duplicates (no P number).**
-- In Mystique, duplicates use up slots in the topN of 12:
+- In the association workspace, duplicates use up slots in the topN of 12:
   - `re25.pdf` is in both authorities and association-records;
   - 23 PDFs are in both association-records and insurance;
   - insurance also holds duplicates within itself.
@@ -293,7 +293,7 @@ Aim for 10 to 15 files per kind. Seed the review from disagreements, leaving out
 - **Deferred.** The lead queue, the regex miner and `FieldFormat`.
 
 **Governing-document terms (P24, after P23).**
-- A person pins about six to ten values as `GoverningTerm` rows in mystique: delinquency period, late charge, interest, review requirement, insurance minimums and meeting notice.
+- A person pins about six to ten values as `GoverningTerm` rows in the profile (`mystique/`): delinquency period, late charge, interest, review requirement, insurance minimums and meeting notice.
 - Sources: the CC&Rs (6.11, 6.12, 8.1, 8.2), the bylaws (7.6, 8.5, 9.7) and the collection policy outline (section 6, Late Charges/Interest).
 - Take the values for amended sections from the recorded amendments, since those outlines are empty.
 - The existing "Cites:" lines in the outlines are a cheaper lead than a BM25 ranker.
@@ -379,7 +379,7 @@ Aim for 10 to 15 files per kind. Seed the review from disagreements, leaving out
 - **P10, subjects and entity binding.** It depends on P8, P9 and P18. `--subject` and `TaskPrompt.subjects` already exist with another meaning.
 - **P1, dense two-phase embedding and excerpt switching.** No gold exists for long kinds. The memory obstacle is unsettled (see Corrections). Measure it with the retrieval baseline before deciding.
 - **P2, model probes.** There are about 15 fields with a cue present in all; cheaper fixes cover them.
-- **P4, lead queue, regex miner and `FieldFormat`.** 2 invoices and 4 proposals are too few to mine rules from. Moving `INVOICE_FORMATS` into mystique is a separate cleanup.
+- **P4, lead queue, regex miner and `FieldFormat`.** 2 invoices and 4 proposals are too few to mine rules from. Moving `INVOICE_FORMATS` into the profile (`mystique/`) is a separate cleanup.
 
 ## Corrections
 

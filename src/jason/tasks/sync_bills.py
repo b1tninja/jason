@@ -11,7 +11,7 @@ from payhoa import PayhoaClient
 from jason.payhoa_tx import parse_tx_date
 from jason.sources.attach import attach_bills
 from jason.sources.registry import BillSourceRegistry
-from jason.sources.types import DEFAULT_ORG_ID, UploadReport, active_attachments
+from jason.sources.types import UploadReport, active_attachments, profile_org_id
 
 
 @dataclass(frozen=True)
@@ -50,10 +50,11 @@ def list_pending_utility_transactions(
     client: PayhoaClient,
     registry: BillSourceRegistry,
     *,
-    org_id: int = DEFAULT_ORG_ID,
+    org_id: int | None = None,
     fetch_details: bool = True,
 ) -> list[PendingUtilityTx]:
     """Return unapproved PayHOA txs that route to a registered bill source."""
+    org_id = profile_org_id(org_id)
     pending: list[PendingUtilityTx] = []
     for tx in client.iter_transactions(org_id, reviewed=False):
         if tx.get("approved") is True:
@@ -100,7 +101,7 @@ def sync_bills(
     registry: BillSourceRegistry,
     *,
     sync_source: Callable[[str], Any],
-    org_id: int = DEFAULT_ORG_ID,
+    org_id: int | None = None,
     date_window_days: int = 7,
     dry_run: bool = False,
     approve: bool = False,
@@ -108,6 +109,7 @@ def sync_bills(
     sources: list[str] | None = None,
 ) -> SyncBillsReport:
     """Inspect PayHOA first, sync only needed portals, then attach PDFs."""
+    org_id = profile_org_id(org_id)
     if sources:
         registry = registry.filter(set(sources))
 

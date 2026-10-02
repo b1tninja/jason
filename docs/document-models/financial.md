@@ -17,7 +17,7 @@ Amounts are integer cents. Treasurer's reports and the manager's statements carr
 
 `jason models` and the `document_models` tool count, per kind, the classified files in the library, those with text, those a model read, and those it read complete. Each section below says what its model reads and checks.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/financial.md).
+This association's findings are in its private notes (mystique/notes/document-models/financial.md).
 
 ## Bank statements (`chase-statement`)
 

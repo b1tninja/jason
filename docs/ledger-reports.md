@@ -59,4 +59,4 @@ Clearing, voiding, or re-reconciling an item is the treasurer's work in PayHOA.
 
 PayHOA's catalogue (`/reports/config`) lists about 55 reports. The first capture rendered the balance sheet, the account register, the general ledger, and journal entries. The second added profit and loss by month and in detail, the budget summary by year, vendor info, bank reconciliations, saved-report downloads, custom reports, and PDF exports (payhoa `API.md`, "Rendered reports, second capture"). Blind requests for the other catalogue reports answered 404, or 500 when the request body did not fit, so their paths still need a capture, recorded with the cache disabled while each report is opened. The most useful left are aging of accounts, budget performance by month, the trial balance, the cash-flow statement, deposit detail, delinquent accounts, and the vendor balance and aging reports.
 
-Mystique's findings are in the private notes (mystique/notes/ledger-reports.md).
+This association's findings are in its private notes (mystique/notes/ledger-reports.md).

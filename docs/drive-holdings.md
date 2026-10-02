@@ -39,6 +39,6 @@ The report lists:
 
 ## What it found
 
-Mystique's findings are in the private notes (mystique/notes/drive-holdings.md).
+This association's findings are in its private notes (mystique/notes/drive-holdings.md).
 
 A duplicate, a version, or a new path rule is for a person to decide. Jason moves, renames, and deletes nothing.

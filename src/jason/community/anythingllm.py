@@ -266,7 +266,8 @@ def mcp_server_entry(command: str, *, cwd: str = "", profile: str = "board") -> 
     """The entry that registers jason-mcp as an agent tool set in AnythingLLM.
 
     ``profile`` defaults to the board set: AnythingLLM's local model picks
-    better among nineteen tools than sixty. "all" serves every tool.
+    better among the board's few dozen tools than among all of them. "all"
+    serves every tool.
     """
     args = [] if profile in ("", "all") else ["--profile", profile]
     entry: dict[str, Any] = {"command": command, "args": args, "env": {}, "anythingllm": {"autoStart": False}}

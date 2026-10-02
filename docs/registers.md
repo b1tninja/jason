@@ -37,7 +37,7 @@ One sync task, `jason registers --sync NAME`, applies the rules above to any reg
 
 ## The framework (built October 2, 2026)
 
-- **Spec rows.** A register is a `Register` row (`jason.community.registers`): key, title, records tab, and columns. Each `Column` has an owner (jason or the board), a kind (text, date, number, money, choice, checkbox, link) with its dropdown choices, a width, and a note. Mystique's are in `mystique/registers.py`. The Community hooks are `registers()` and `registers_folder()` ("Registers").
+- **Spec rows.** A register is a `Register` row (`jason.community.registers`): key, title, records tab, and columns. Each `Column` has an owner (jason or the board), a kind (text, date, number, money, choice, checkbox, link) with its dropdown choices, a width, and a note. The association's are in `mystique/registers.py`. The Community hooks are `registers()` and `registers_folder()` ("Registers").
 - **`jason registers`** lists the registers and their Sheets. `--create KEY --yes` creates one in the Drive folder "Registers" (made when missing, shared with no one), with its records tab, a `Log` tab, and an `About` tab. `--shape KEY` shapes it again.
 - **Shaping** happens once per Sheet: a bold frozen header with each column's owner in its note; widths; a dropdown for a choice column (strict for the board's columns); dates shown as yyyy-mm-dd; money as dollars. A warning-only protection covers each of jason's columns and the header row.
 - **Syncing** (`jason.tasks.registers.sync`) works by key:
@@ -47,14 +47,14 @@ One sync task, `jason registers --sync NAME`, applies the rules above to any reg
   - reports rows it does not know.
 
   It never clears, reorders, or deletes. A renamed or moved column stops the sync with an error.
-- **The board action items** are the first register. `jason board --sheet spec` adopted the existing "Mystique Board Action Items" Sheet: it added the Log and About tabs and shaped it. A sync with nothing new writes nothing.
+- **The board action items** are the first register. `jason board --sheet spec` adopted the board's existing action-items Sheet: it added the Log and About tabs and shaped it. A sync with nothing new writes nothing.
 
 ## The registers
 
 | Register | Home | jason writes | The board writes | Notes |
 |---|---|---|---|---|
 | Board action items | Sheet + Tasks (exist) | title, ask, authority, evidence, priority, category | status, owner, meeting, notes | change the sync to by-key writes |
-| Legal hold 26CV016125 | Sheet (directors only) + an acknowledgment Form; scope stays jason-only | the custodians, the notice draft ids, custody checks (counts only) | sent date, acknowledged (the Form's response), suspensions done | confidential: directors only; the scope and privilege flags stay in `data/holds` |
+| Legal hold (one per matter) | Sheet (directors only) + an acknowledgment Form; scope stays jason-only | the custodians, the notice draft ids, custody checks (counts only) | sent date, acknowledged (the Form's response), suspensions done | confidential: directors only; the scope and privilege flags stay in `data/holds` |
 | Paid against approved | Sheet | approvals, linked payments, how linked, outcome | explained (yes/no), board note | a lead, not a finding |
 | Insurance terms | Sheet | term, premium, paid, payees, mailing-address findings | renewal decision, agent follow-up | from `jason paid-vs-approved` and the policy readers |
 | Rule changes (4360) | Sheet | proposed text link, notice deadline, decision date, adoption deadline | notice sent, comments, adopted, adopted text link | one row per change |

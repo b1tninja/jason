@@ -151,18 +151,26 @@ def notice_date(meeting: date, *, executive_only: bool = False) -> date:
     return meeting - timedelta(days=2 if executive_only else 4)
 
 
-def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open: bool = False) -> list[str]:
-    """A draft agenda in Markdown from the items proposed or on the agenda (and, with ``include_open``, every open item)."""
+def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open: bool = False, community: Any = None) -> list[str]:
+    """A draft agenda in Markdown from the items proposed or on the agenda (and, with ``include_open``, every open item).
+    The association's name and its bylaws on a quorum come from the profile (the active one unless given)."""
+    from jason.community.template_values import profile_values
+
+    if community is None:
+        from jason.community import community as active
+
+        community = active()
+    values = profile_values(community)
     wanted = {ItemStatus.PROPOSED, ItemStatus.ON_AGENDA} | ({ItemStatus.OPEN} if include_open else set())
     chosen = sorted((i for i in items if i.status in wanted), key=lambda i: (PRIORITY_ORDER[i.priority], i.category.value, i.id))
     open_items = [i for i in chosen if agenda_session(i) is Session.OPEN]
     executive = [i for i in chosen if agenda_session(i) is Session.EXECUTIVE]
-    out = ["# DRAFT agenda: board of directors, Mystique Community Association", ""]
+    out = [f"# DRAFT agenda: board of directors, {values['ASSOCIATION_NAME']}", ""]
     if meeting:
         out.append(f"Meeting: {meeting:%A, %B %d, %Y}. Notice with this agenda by {notice_date(meeting):%A, %B %d} (CIV 4920(a)); "
                    "an item not on the posted agenda cannot be acted on (CIV 4930).")
         out.append("")
-    out += ["1. Call to order; roll call and quorum (Bylaws 7.10: a majority of the directors in office)",
+    out += [f"1. Call to order; roll call and quorum ({values['CITE_DIRECTOR_QUORUM']})",
             "2. Approval of the minutes of the last meeting (CIV 4950)", "3. Treasurer's report", ""]
     n = 4
     if open_items:

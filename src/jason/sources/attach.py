@@ -8,7 +8,7 @@ from jason.payhoa_tx import parse_tx_date
 from jason.sources.registry import BillSourceRegistry
 from jason.sources.types import (
     DEFAULT_DATE_WINDOW_DAYS,
-    DEFAULT_ORG_ID,
+    profile_org_id,
     BillNeed,
     MatchResult,
     ResolvedBill,
@@ -21,12 +21,13 @@ def attach_bills(
     client: PayhoaClient,
     registry: BillSourceRegistry,
     *,
-    org_id: int = DEFAULT_ORG_ID,
+    org_id: int | None = None,
     date_window_days: int = DEFAULT_DATE_WINDOW_DAYS,
     dry_run: bool = False,
     approve: bool = False,
 ) -> UploadReport:
     """Scan unapproved txs once, route to sources, batch-resolve, upload PDFs."""
+    org_id = profile_org_id(org_id)
     report = UploadReport()
 
     # need_key -> (need, source_name, result skeleton fields)

@@ -52,7 +52,7 @@ election only when all of these hold (`EARLIER_ELECTIONS` in `mystique/forms.py`
 Such an owner is still asked to confirm, and gets the year's "Owner Info" tag only when they do. An earlier answer never
 changes occupancy tags: tags carry no dates, so there is no way to tell which is newer.
 
-Mystique's findings are in the private notes (mystique/notes/owner-information.md).
+This association's findings are in its private notes (mystique/notes/owner-information.md).
 
 ## The channels
 
@@ -115,7 +115,7 @@ rentals with no approval on file, or to ask their owners to apply, is the board'
 lists them. Proof of a tenant's criminal background check or credit report, where the declaration asks for it, is a
 sensitive record: it stays out of jason's shared catalogs, and counsel should confirm its use under fair housing law.
 
-Mystique's findings are in the private notes (mystique/notes/owner-information.md).
+This association's findings are in its private notes (mystique/notes/owner-information.md).
 
 ## Sending the request
 

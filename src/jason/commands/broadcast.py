@@ -103,7 +103,9 @@ def _sync_docs(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
     from jason.tasks.template_docs import (APP_KEY, Action, description, doc_name, format_doc, import_html, load_state,
                                            plan, record, save_state, step_line)
 
-    spec = spec_module("templates")
+    from jason.community.profile import load_profile
+
+    home = load_profile().drive_home()
     data_dir = _data_dir(args)
     state = load_state(data_dir)
     with agent_factory(args) as agent:
@@ -120,8 +122,8 @@ def _sync_docs(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
         if not args.yes:
             print(f"{len(writes)} Docs to create or update; --yes writes them")
             return 0
-        folder = (spec.BROADCASTS_FOLDER or drive.child_folder(spec.TEMPLATES_FOLDER, spec.BROADCASTS_FOLDER_NAME)
-                  or drive.create_folder(spec.BROADCASTS_FOLDER_NAME, spec.TEMPLATES_FOLDER))
+        folder = (home.broadcasts or drive.child_folder(home.templates, home.broadcasts_name)
+                  or drive.create_folder(home.broadcasts_name, home.templates))
         rows = {int(r["id"]): r for r in templates}
         for step in writes:
             row = rows[step.template_id]
@@ -137,7 +139,7 @@ def _sync_docs(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
             state[str(step.template_id)] = record(row, doc_id, _doc_sha(drive, doc_id) or "")
             print(f"{step.action.value}: {doc_name(row)}  https://docs.google.com/document/d/{doc_id}/edit")
     save_state(data_dir, state)
-    if not spec.BROADCASTS_FOLDER:
+    if not home.broadcasts:
         print(f"record BROADCASTS_FOLDER = \"{folder}\" in mystique/templates.py")
     return 0
 
@@ -205,12 +207,14 @@ def _draft_doc(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
             print(f"would {'rewrite' if entry.get('docId') else 'make'} {title!r} on the letterhead from {draft.name}; "
                   "--yes does it")
             return 0
-        spec = spec_module("templates")
+        from jason.community.profile import load_profile
+
+        home, head = load_profile().drive_home(), load_profile().letterhead()
         with agent_factory(args) as agent:
             client = agent.payhoa()
             made = draft_docs.push_markdown(
-                agent.drive(), draft, name=title, folder=spec.BROADCASTS_FOLDER, letterhead_id=spec.LETTERHEAD_DOC,
-                footer=spec.FOOTER, state=state, articles=mystique().help_articles(),
+                agent.drive(), draft, name=title, folder=home.broadcasts, letterhead_id=head.doc_id,
+                footer=head.footer, state=state, articles=mystique().help_articles(),
                 picture_link=lambda path: client.upload_file(path, filename=path.name, content_type="image/png",
                                                              context="communication")["viewUrl"])
         draft_docs.save_state(draft.parent, state)
@@ -237,8 +241,10 @@ def _draft_doc(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
             print(f"pulled the Doc into {draft}" + (f"; pictures added in the Doc: {', '.join(added)}" if added else ""))
         else:
             client = agent.payhoa()
-            spec = spec_module("templates")
-            doc_id = draft_docs.push(drive, draft, title=title, folder=spec.BROADCASTS_FOLDER, state=state,
+            from jason.community.profile import load_profile
+
+            home, head = load_profile().drive_home(), load_profile().letterhead()
+            doc_id = draft_docs.push(drive, draft, title=title, folder=home.broadcasts, state=state,
                                      picture_link=lambda path: client.upload_file(
                                          path, filename=path.name, content_type="image/png",
                                          context="communication")["viewUrl"])
@@ -398,7 +404,7 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
 
                 from jason.tasks.email_review import WRAPPER_FILE
 
-                logo = _data_dir(args) / "brand" / "letterhead-logo.png"
+                logo = mystique().letterhead().logo_path(_data_dir(args))
                 wrapper_file = _data_dir(args) / WRAPPER_FILE
                 wrapper = wrapper_file.read_text(encoding="utf-8") if wrapper_file.is_file() else ""
                 out, data = review(subject, rendered, source, logo=logo, model=args.model or "", wrapper=wrapper)

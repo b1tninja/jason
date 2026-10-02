@@ -485,7 +485,7 @@ def _sign_in_citizen_access(client) -> None:
 
 
 def _permit_module(name: str):
-    from jason.community.accela import Module
+    from jason.community.accela import AccelaError, Module
 
     aliases = {
         "building": Module.BUILDING,
@@ -1565,10 +1565,11 @@ def cmd_hearing(args: argparse.Namespace) -> int:
             print("--doc writes a Google Doc into Drive's Disciplinary folder; add --yes to do it")
             return 2
         from jason.community.templates import TemplateKind
+        from jason.community.template_values import profile_values
         from jason.tasks.letters import fill_letter, hearing_values, matter_folder
         from jason.community.spec import spec_module
 
-        UNIT_CITY_STATE_ZIP = spec_module("templates").UNIT_CITY_STATE_ZIP
+        UNIT_CITY_STATE_ZIP = community.identity().unit_city_state_zip
 
         template = community.document_template(TemplateKind.HEARING_NOTICE)
         values = hearing_values(plan, city_state_zip=UNIT_CITY_STATE_ZIP, owner=args.owner, delivery=args.delivery,
@@ -1577,7 +1578,8 @@ def cmd_hearing(args: argparse.Namespace) -> int:
         with _agent(args) as agent:
             drive = agent.drive()
             folder = matter_folder(drive, template.folder_id, f"{plan.address} - {args.matter or 'Hearing'} {day.month}-{day.day}-{day:%y}")
-            letter = fill_letter(drive, drive.docs(), template, values, name=f"Notice of Hearing - {plan.address}", folder_id=folder)
+            letter = fill_letter(drive, drive.docs(), template, values, name=f"Notice of Hearing - {plan.address}", folder_id=folder,
+                                 defaults=profile_values(community))
     record = save_hearing(data_dir, plan, community.name, letter=letter)
     if args.json:
         print(json.dumps(record, indent=2, default=str))
@@ -1846,11 +1848,27 @@ def cmd_templates(args: argparse.Namespace) -> int:
     from jason.community import mystique
     from jason.community.spec import spec_module
 
-    spec = spec_module("templates")
+    from jason.community.profile import load_profile
+
+    home, head = load_profile().drive_home(), load_profile().letterhead()
 
     community = mystique()
     rows = [{"kind": t.kind.slug, "title": t.title, "id": t.drive_id, "tokens": list(t.tokens), "optional": list(t.optional),
              "authority": t.authority} for t in community.document_templates()]
+    if args.lint:
+        from jason.community.template_values import lint
+
+        found = [lint(t.kind.slug, t.tokens, community) for t in community.document_templates()]
+        if args.json:
+            print(json.dumps([f.as_dict() for f in found], indent=2))
+            return 0
+        for f in found:
+            print(f"{f.template}:")
+            print(f"  from the profile: {', '.join(f.profile) or '-'}")
+            if f.general:
+                print(f"  general wording (the profile cites no section): {', '.join(f.general)}")
+            print(f"  left for the letter: {', '.join(f.run) or '-'}")
+        return 0
     if args.rewrite:
         from jason.community.templates import TemplateKind
         from jason.tasks.letters import rewrite_template
@@ -1874,12 +1892,12 @@ def cmd_templates(args: argparse.Namespace) -> int:
 
         with _agent(args) as agent:
             drive = agent.drive()
-            folder = spec.TEMPLATES_FOLDER or drive.child_folder(spec.MY_DRIVE, "Templates") or drive.create_folder("Templates", spec.MY_DRIVE)
+            folder = home.templates or drive.child_folder(home.my_drive, "Templates") or drive.create_folder("Templates", home.my_drive)
             print(f"Templates folder: {folder}")
             for t in missing:
-                print(json.dumps(build_template(drive, drive.docs(), t, letterhead_id=spec.LETTERHEAD_DOC, folder_id=folder,
-                                                footer=spec.FOOTER)))
-        print("record these ids in mystique/templates.py")
+                print(json.dumps(build_template(drive, drive.docs(), t, letterhead_id=head.doc_id, folder_id=folder,
+                                                footer=head.footer)))
+        print("record these ids in the profile's document templates")
         return 0
     if args.json:
         print(json.dumps(rows, indent=2))
@@ -1915,8 +1933,10 @@ def _markdown_letter(args: argparse.Namespace) -> int:
         return 2
     state = draft_docs.load_state(source.parent)
     entry = state.get(source.name) or {}
-    spec = spec_module("templates")
-    folder = args.folder or spec.TEMPLATES_FOLDER
+    from jason.community.profile import load_profile
+
+    home, head = load_profile().drive_home(), load_profile().letterhead()
+    folder = args.folder or home.templates
     if not args.yes:
         print(f"would {'rewrite' if entry.get('docId') else 'make'} {name!r} on the letterhead from {source.name}"
               f" ({sum(1 for p in paras if p.picture)} pictures); add --yes to do it")
@@ -1924,7 +1944,7 @@ def _markdown_letter(args: argparse.Namespace) -> int:
     with _agent(args) as agent:
         client = agent.payhoa()
         made = draft_docs.push_markdown(
-            agent.drive(), source, name=name, folder=folder, letterhead_id=spec.LETTERHEAD_DOC, footer=spec.FOOTER,
+            agent.drive(), source, name=name, folder=folder, letterhead_id=head.doc_id, footer=head.footer,
             state=state, style=args.style, pdf=Path(args.pdf) if args.pdf else None,
             articles=mystique().help_articles(),
             picture_link=lambda path: client.upload_file(path, filename=path.name, content_type="image/png",
@@ -1940,6 +1960,7 @@ def cmd_letter(args: argparse.Namespace) -> int:
 
     from jason.community import mystique
     from jason.community.templates import TemplateKind
+    from jason.community.template_values import profile_values
     from jason.tasks.letters import fill_letter, parse_assignments
 
     if args.markdown:
@@ -1963,7 +1984,8 @@ def cmd_letter(args: argparse.Namespace) -> int:
         return 2
     with _agent(args) as agent:
         drive = agent.drive()
-        letter = fill_letter(drive, drive.docs(), template, values, name=args.name, folder_id=folder)
+        letter = fill_letter(drive, drive.docs(), template, values, name=args.name, folder_id=folder,
+                             defaults=profile_values(mystique()))
     print(json.dumps(letter, indent=2))
     return 0
 
@@ -2509,7 +2531,9 @@ def cmd_board(args: argparse.Namespace) -> int:
             from jason.tasks.letters import markdown_doc
             from jason.community.spec import spec_module
 
-            spec = spec_module("templates")
+            from jason.community.profile import load_profile
+
+            home, head = load_profile().drive_home(), load_profile().letterhead()
 
             docs_file = data_dir / "board" / "docs.json"
             known = json.loads(docs_file.read_text(encoding="utf-8")) if docs_file.is_file() else {}
@@ -2517,9 +2541,9 @@ def cmd_board(args: argparse.Namespace) -> int:
             short = f"{meeting.month}/{meeting.day}/{meeting.year % 100:02d}"
             with _agent(args) as agent:
                 drive = agent.drive()
-                year = drive.child_folder(spec.MEETINGS_FOLDER, str(meeting.year)) or drive.create_folder(str(meeting.year), spec.MEETINGS_FOLDER)
+                year = drive.child_folder(home.meetings, str(meeting.year)) or drive.create_folder(str(meeting.year), home.meetings)
                 made = markdown_doc(drive, drive.docs(), lines, name=f"Board Packet for {short} (confidential)", folder_id=year,
-                                    letterhead_id=spec.LETTERHEAD_DOC, footer=spec.FOOTER, doc_id=known.get(key, ""),
+                                    letterhead_id=head.doc_id, footer=head.footer, doc_id=known.get(key, ""),
                                     continuation=f"Board packet for {meeting:%B} {meeting.day}, {meeting.year} · Confidential: "
                                                  "for the directors and counsel")
             known[key] = made["id"]
@@ -2565,11 +2589,14 @@ def cmd_board(args: argparse.Namespace) -> int:
                 print("--doc fills the agenda template into a new Google Doc; add --yes to do it")
                 return 2
             from jason.community.templates import TemplateKind
+            from jason.community.template_values import profile_values
             from jason.tasks.letters import fill_with_markdown
             from jason.tasks.meeting_agenda import agenda_items, agenda_values
             from jason.community.spec import spec_module
 
-            spec = spec_module("templates")
+            from jason.community.profile import load_profile
+
+            home, head = load_profile().drive_home(), load_profile().letterhead()
 
             template = mystique().document_template(TemplateKind.AGENDA)
             body = agenda_items(previous, load(data_dir), meeting, schedule, previous_meeting=before)
@@ -2581,11 +2608,12 @@ def cmd_board(args: argparse.Namespace) -> int:
             with _agent(args) as agent:
                 drive = agent.drive()
                 if args.preview:
-                    folder, name = spec.TEMPLATES_FOLDER, f"Preview - Agenda for {short}"
+                    folder, name = home.templates, f"Preview - Agenda for {short}"
                 else:
-                    folder = drive.child_folder(spec.MEETINGS_FOLDER, str(meeting.year)) or drive.create_folder(str(meeting.year), spec.MEETINGS_FOLDER)
+                    folder = drive.child_folder(home.meetings, str(meeting.year)) or drive.create_folder(str(meeting.year), home.meetings)
                     name = f"DRAFT Agenda for {short}"
                 made = fill_with_markdown(drive, drive.docs(), template, values, body, name=name, folder_id=folder,
+                                          defaults=profile_values(mystique()),
                                           doc_id=known.get(key, ""))
             known[key] = made["id"]
             docs_file.write_text(json.dumps(known, indent=2), encoding="utf-8")
@@ -3539,9 +3567,9 @@ def build_parser() -> argparse.ArgumentParser:
     allm.add_argument("--catalog", action="append", help="Sync only this catalog (repeatable; a legal case's catalog, case-<key>, "
                       "or cases for all of them, is synced only when named); with --ask, ask this catalog's workspace")
     allm.add_argument("--refresh", action="store_true", help="Replace a page Jason generated when the file on disk is newer than the stored copy (never the association's records)")
-    allm.add_argument("--combined", default=None, help="Also add every document to this shared workspace (default Mystique; empty string for none)")
-    allm.add_argument("--workspace", default="", help="Workspace slug for --ask (default: the --catalog workspace, else the shared Mystique workspace)")
-    allm.add_argument("--profile", default="board", help="jason-mcp tool set to register: board (nineteen tools, the default) or all")
+    allm.add_argument("--combined", default=None, help="Also add every document to this shared workspace (default the association's shared workspace; empty string for none)")
+    allm.add_argument("--workspace", default="", help="Workspace slug for --ask (default: the --catalog workspace, else the association's shared workspace)")
+    allm.add_argument("--profile", default="board", help="jason-mcp tool set to register: board (the board's tools, the default) or all")
     allm.add_argument("--status", action="store_true", help="The app's model settings against jason's, each workspace's documents, and what is wrong")
     allm.add_argument("--start", action="store_true", help="Start the AnythingLLM desktop app and wait for its API (--yes)")
     allm.add_argument("--stop", action="store_true", help="Close the AnythingLLM desktop app (--yes)")
@@ -3655,7 +3683,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     hearing = sub.add_parser("hearing", help="Plan a disciplinary hearing (CIV 5855): dates, notice draft; --create --yes schedules it on Zoom")
     _add_common(hearing)
-    hearing.add_argument("--address", default="", help="The unit's street address (e.g. '3004 Macon Dr')")
+    hearing.add_argument("--address", default="", help="The unit's street address (e.g. '123 Main St')")
     hearing.add_argument("--violation", default="", help="The nature of the alleged violation, in the board's words")
     hearing.add_argument("--date", default="", help="Hearing date YYYY-MM-DD (default: the first meeting day the notice can reach)")
     hearing.add_argument("--time", default="", help="Hearing time, e.g. '6:30 pm' (default: the schedule's hour)")
@@ -3738,6 +3766,8 @@ def build_parser() -> argparse.ArgumentParser:
     templates.add_argument("--build", action="store_true", help="Build the templates that have no Drive id from the Letterhead")
     templates.add_argument("--rewrite", default="", help="Replace one built template's body with the current text (a kind, e.g. hearing-notice)")
     templates.add_argument("--yes", action="store_true", help="Confirm --build or --rewrite")
+    templates.add_argument("--lint", action="store_true",
+                           help="Each template's tokens by where they come from: the profile, general wording, or the letter")
     templates.add_argument("--json", action="store_true", help="Print JSON")
     templates.set_defaults(func=cmd_templates)
 
@@ -3809,7 +3839,7 @@ def build_parser() -> argparse.ArgumentParser:
     th = sub.add_parser("threads", help="Email threads: awaiting us, awaiting them, with related payments, letters, documents, and unit activity")
     _add_common(th)
     th.add_argument("--status", default="", choices=["", "awaiting us", "awaiting them", "notice", "internal"], help="Only this status")
-    th.add_argument("--party", default="", help='Only one party\'s threads: a unit ("3024 MACON"), a sender, or a domain')
+    th.add_argument("--party", default="", help='Only one party\'s threads: a unit ("123 MAIN"), a sender, or a domain')
     th.add_argument("--days", type=int, default=120, help="Threads with a message in the last N days (default 120)")
     th.add_argument("--limit", type=int, default=40, help="Threads to list")
     th.add_argument("--json", action="store_true", help="Print JSON")
@@ -3817,7 +3847,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pt = sub.add_parser("party", help="One unit (by address) or counterparty (by name or domain) across every store")
     _add_common(pt)
-    pt.add_argument("query", help='A unit address ("3024 MACON"), a sender name, its PayHOA vendor, or its email domain')
+    pt.add_argument("query", help='A unit address ("123 MAIN"), a sender name, its PayHOA vendor, or its email domain')
     pt.add_argument("--json", action="store_true", help="Print JSON")
     pt.set_defaults(func=cmd_party)
 
@@ -3859,7 +3889,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     cs = sub.add_parser("case", help="One matter across the stores by its words (a name, an address, a case or claim number)")
     _add_common(cs)
-    cs.add_argument("terms", nargs="+", help='Words that name the matter, e.g. "dog attack" nakayama 26CV016125')
+    cs.add_argument("terms", nargs="+", help='Words that name the matter, e.g. "water intrusion" smith 24CV000123')
     cs.add_argument("--json", action="store_true", help="Print JSON")
     cs.set_defaults(func=cmd_case)
 
@@ -4030,7 +4060,7 @@ def build_parser() -> argparse.ArgumentParser:
     incidents.add_argument("--fetch", action="store_true", help="First download the Drive folders mystique/incidents.py names")
     incidents.add_argument("--stored", action="store_true", help="Print the last run instead of reading again")
     incidents.add_argument("--building", type=int, help="Only events on this building (1-8)")
-    incidents.add_argument("--address", help="Only events at a unit whose address has these words (\"5615 Whimsical\")")
+    incidents.add_argument("--address", help="Only events at a unit whose address has these words (\"123 Main\")")
     incidents.add_argument("--work", choices=("repair", "maintenance", "improvement", "inspection"),
                            help="Only events with this kind of work (the maintenance history)")
     incidents.add_argument("--claims", action="store_true", help="Only events an insurance claim is tied to")

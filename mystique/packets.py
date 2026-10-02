@@ -4,7 +4,7 @@ The annual packet follows the October 1, 2026 research (data/briefs/research/res
 the Civil Code 5320 notice, Part A (the annual budget report, 5300) with its enclosures, then Part B (the annual policy
 statement, 5310) with the collection and enforcement policies. The 25-26 packet was one Doc ("Annual Disclosures",
 1kovE3GFs3fqS82ZUfv_3S2OFShid6h9UPG3nBL-ylj4) with four "[ INSERT ]" pages spliced in by hand; the assembler does that
-now. The templates' text is in packet_templates/, used once to make the Docs on the Letterhead; after that the Docs are
+now. The templates' text is jason's base (src/jason/templates/packets) or this profile's packet_templates/, used once to make the Docs on the Letterhead; after that the Docs are
 the originals (their ids below). The values here are the standing ones; a year's own (the assessment, the board's
 statements on deferral, special assessments, and funding) go in data/packets/<packet>-<year>/values.json.
 """
@@ -17,7 +17,7 @@ from jason.community.symbols import Building
 
 from .help import PORTAL_SIGN_UP
 from .insurance import FLOOD_ZONE
-from .templates import FOOTER, MAILING_ADDRESS_LINES
+from .templates import IDENTITY
 
 # The template Docs (My Drive/Templates), made October 1, 2026 by `jason packet annual-disclosures --make-templates --yes`.
 BUDGET_REPORT_DOC = "1SPbdIdfGmYmq6OTsjOJmRpv6JEp9ky43R8bYYoZTRq4"
@@ -77,12 +77,11 @@ ANNUAL_DISCLOSURES = Packet(
         OWNER_FORM_PART,
     ),
     values=(
-        ("DESIGNATED_RECIPIENT", "Secretary, Board of Directors, Mystique Community Association"),
-        ("OFFICIAL_ADDRESS", FOOTER),
-        # hoa@ (the general inbox) rather than board@, so official mail does not land in every director's inbox.
-        ("OFFICIAL_EMAIL", "hoa@mystiquecommunity.com"),
-        ("OVERNIGHT_ADDRESS", FOOTER + ". Couriers cannot deliver to the payment lockbox's P.O. Box; use this address for overnight payments."),
-        ("POSTING_LOCATION", "The bulletin boards by the community mailboxes, and the Association's website, www.mystiquecommunity.com."),
+        ("DESIGNATED_RECIPIENT", IDENTITY.designated_recipient),
+        ("OFFICIAL_ADDRESS", IDENTITY.official_address),
+        ("OFFICIAL_EMAIL", IDENTITY.official_email),
+        ("OVERNIGHT_ADDRESS", IDENTITY.official_address + ". Couriers cannot deliver to the payment lockbox's P.O. Box; use this address for overnight payments."),
+        ("POSTING_LOCATION", IDENTITY.posting_location),
         ("MINUTES_ACCESS", "Members may have copies of the minutes of any board meeting, approved or in draft, at no cost. Draft "
                            "minutes are available within 30 days of the meeting in PayHOA Documents, or from the designated recipient."),
         ("LOANS_STATEMENT", "The Association has no loans with an original term of more than one year."),
@@ -103,8 +102,8 @@ OWNER_INFORMATION = Packet(
         OWNER_FORM_PART,
     ),
     values=ANNUAL_DISCLOSURES.values + (("PAYHOA_SIGN_UP", PORTAL_SIGN_UP),
-                                        ("MAILING_ADDRESS", "\n".join(MAILING_ADDRESS_LINES)),
-                                        ("MAILING_ADDRESS_INLINE", ", ".join(MAILING_ADDRESS_LINES))),
+                                        ("MAILING_ADDRESS", IDENTITY.values()["MAILING_ADDRESS"]),
+                                        ("MAILING_ADDRESS_INLINE", IDENTITY.values()["MAILING_ADDRESS_INLINE"])),
 )
 
 PACKETS: tuple[Packet, ...] = (ANNUAL_DISCLOSURES, OWNER_INFORMATION)

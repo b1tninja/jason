@@ -91,7 +91,7 @@ The hearing and decision templates follow the statutes as amended by AB 130 (Sta
 
 **Possible discipline.** The notice names it in `{POSSIBLE_DISCIPLINE}`, from the schedule in effect at the time of the violation, rather than reprinting a fine schedule that may exceed the 5850(c) cap. *Ironwood* does not require findings, but the decision template's Findings section states the facts the board found and why.
 
-This is research, not legal advice; counsel's reading governs. Mystique's findings are in the private notes (mystique/notes/letters.md).
+This is research, not legal advice; counsel's reading governs. This association's findings are in its private notes (mystique/notes/letters.md).
 
 
 ## Limits

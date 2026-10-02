@@ -39,7 +39,7 @@ class PartSource:
     ref: str = ""                    # a Doc id (TEMPLATE) or a generator's name (GENERATED)
     pattern: str = ""                # a regex on the library or Drive path; "{year}" becomes the packet's year
     pages: str = ""                  # "1-3" or "1,4-5": the pages of the found file to include; empty is all
-    markdown: str = ""               # a TEMPLATE's text: a file in mystique/packet_templates, or "form:<key>" for a form
+    markdown: str = ""               # a TEMPLATE's text: a file (src/jason/templates/packets, or the profile's packet_templates), or "form:<key>"
     # Pages chosen by what they say, for a found file whose page numbers vary (an insurer's packet around its
     # declarations): ``keep`` keeps only the pages whose text matches, ``drop`` leaves out those whose text matches.
     keep: str = ""

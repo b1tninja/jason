@@ -52,13 +52,13 @@ A file held in several channels is read once, by content hash. The PayHOA copy i
   - The association's site address, and the variants the policies and vendors print, mean the whole community.
   - A bill-to or ship-to address never places the work: it is the payer's home or where the parts went.
   - A street number that is no parcel (a typo, or a project number) places nothing.
-- **Amount and date.** The largest labeled total, and the invoice date or the first date on the page, else the date in the file name ("Mystique - 230222 - ...", "20220808", "(9.4.26)"), else the copy's date.
+- **Amount and date.** The largest labeled total, and the invoice date or the first date on the page, else the date in the file name ("<Association> - 230222 - ...", "20220808", "(9.4.26)"), else the copy's date.
 
 ## Claim papers and loss runs
 
 A document that reads as a claim paper is read again by its document model ([document-models/insurance-claims.md](document-models/insurance-claims.md)). Its claim number, date of loss, outcome (settlement, denial, closed for no contact, primacy), and payment go onto its evidence. A letter dated months after a loss is placed on the loss's date.
 
-A carrier's loss run becomes one piece of evidence per claim it details: number, date of loss, cause, location, the carrier's status, and what it paid. A location spanning the whole street ("5607-5693 Whimsical Ln") places the claim on the community, not on its two end units.
+A carrier's loss run becomes one piece of evidence per claim it details: number, date of loss, cause, location, the carrier's status, and what it paid. A location spanning the whole street ("100-198 Main St") places the claim on the community, not on its two end units.
 
 Claim numbers are compared by their base. Some carriers add feature suffixes (5021000019-1, 5021000019-1-1), and others a line number (030200001-002).
 
@@ -124,7 +124,7 @@ jason incidents --building 8
 ```
 
 ```bash
-jason incidents --address "5615 Whimsical" --all
+jason incidents --address "123 Main" --all
 ```
 
 ```bash
@@ -153,7 +153,7 @@ jason incidents --stored --json
 
 ## Findings
 
-Mystique's findings are in the private notes (mystique/notes/incidents.md).
+This association's findings are in its private notes (mystique/notes/incidents.md).
 
 ## Limits
 

@@ -4,16 +4,16 @@ Some vendors bill through a customer portal. There, jason can read the vendor's 
 
 A portal is one row in `mystique/vendors.py`: a `VendorPortal` with the vendor, its platform, its account name on that platform, its PayHOA budget line, and the words its bank line carries. The Keeper login record is named in `.env` as `<key>_record_uid`. jason signs in non-interactively and only reads. It never pays, uploads, or changes reminders.
 
-## ProActive Pest Control on FieldPortals
+## FieldRoutes vendors on FieldPortals
 
-ProActive (Pro Active North, Roseville) runs on FieldRoutes' customer portal, `proactive.fieldportals.com`. The association's account there is a commercial master account with a service plan. A master account can also carry other properties, each on its own plan; the client switches between them.
+Pest control companies on FieldRoutes give customers a portal at `<company>.fieldportals.com`. A commercial customer can hold a master account with a service plan. A master account can also carry other properties, each on its own plan; the client switches between them. This association's vendor and account: `mystique/docs/vendor-portals.md`.
 
-Mystique's findings are in the private notes (mystique/notes/vendor-portals.md).
+This association's findings are in its private notes (mystique/notes/vendor-portals.md).
 
-`jason.fieldportals.FieldPortals` is the client. It was captured from `proactive.fieldportals.com.har` on September 29, 2026. That HAR holds the portal password in plain text, so do not commit or share it.
+`jason.fieldportals.FieldPortals` is the client. It was captured from a HAR of one company's portal on September 29, 2026. That HAR holds the portal password in plain text, so do not commit or share it.
 
 1. `GET /landing/index`. The page's script sets the `x-csrf-token` header value.
-2. `POST /resources/session/login` with `username`, `password`, `company=proactive`, and `redirect=`. Success is a 302 to `/home`.
+2. `POST /resources/session/login` with `username`, `password`, `company=<company>`, and `redirect=`. Success is a 302 to `/home`.
 3. `POST /resources/delegates/buildDelegate` with `action=getPage&currentPage=<page>`. It returns JSON, and `data.customer` holds the account:
    - `transactions`: tickets and payments. A ticket's `transactionID` is its invoice number, and its `label` is the appointment. A payment's `invoiceIDs` names the tickets it paid.
    - `services`: on the history page only, the latest 50 visits. Each has the technician, time in and out, notes, the ticket, and `productsUsed` (EPA number, amount, dilution, method, areas, target pests).
@@ -30,7 +30,7 @@ jason vendors --sync            # sign in with the Keeper record; download what 
 jason vendors                   # print each property: plan, balance, latest visits, products this year
 ```
 
-Each property lands under `data/vendors/proactive/<customer id>/`:
+Each property lands under `data/vendors/<key>/<customer id>/`:
 
 - `account.json` holds the snapshot.
 - `invoices/<ticket>.pdf` holds each invoice.
@@ -38,7 +38,7 @@ Each property lands under `data/vendors/proactive/<customer id>/`:
 - `chemicals/<year>.pdf` holds each year's product report.
 - `conditions.html` holds the conditions report.
 
-An invoice is kept only when its own text prints that ticket's number and amount. It is read with the ProActive row in `jason.community.invoice_formats`. A PDF that names another invoice goes to `invoices/_mismatch/`.
+An invoice is kept only when its own text prints that ticket's number and amount. It is read with the vendor's row in `jason.community.invoice_formats`. A PDF that names another invoice goes to `invoices/_mismatch/`.
 
 ## Verify against PayHOA
 
@@ -56,8 +56,8 @@ The verifier matches each PayHOA payment to the vendor with the portal's own pay
 - one invoice attached to two payments;
 - portal payments that no PayHOA payment accounts for.
 
-A void line is recognized as the reversal it is. The result is `data/vendors/proactive/verification.json`. It needs the PayHOA snapshot that `jason invoices --fetch` writes.
+A void line is recognized as the reversal it is. The result is `data/vendors/<key>/verification.json`. It needs the PayHOA snapshot that `jason invoices --fetch` writes.
 
 ## Attaching bills
 
-ProActive is registered as a bill source. So `jason sync-bills` routes an unreviewed PayHOA payment that carries the vendor's bank words to this portal. It syncs the portal when a payment needs it, and attaches the checked invoice for the ticket that payment paid. Nothing is attached without a portal payment of the same amount.
+A portal vendor is registered as a bill source. So `jason sync-bills` routes an unreviewed PayHOA payment that carries the vendor's bank words to this portal. It syncs the portal when a payment needs it, and attaches the checked invoice for the ticket that payment paid. Nothing is attached without a portal payment of the same amount.

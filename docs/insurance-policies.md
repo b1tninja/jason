@@ -62,7 +62,7 @@ jason anythingllm --ask "What is the master policy's deductible and does it cove
 
 The `insurance_policies` board tool reads the stored report (`data/reports/policies.json`); `policy` narrows it to one policy. The pages are `data/insurance/pages/<policy>.md`, with `overview.md` covering every policy. Nothing is sent, moved, or changed in Drive, the sheet, or PayHOA.
 
-Mystique's findings are in the private notes (mystique/notes/insurance-policies.md).
+This association's findings are in its private notes (mystique/notes/insurance-policies.md).
 
 ## Limits
 

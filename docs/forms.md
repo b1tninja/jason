@@ -1,6 +1,6 @@
 # Paper forms: the reference for agents
 
-This page maps the forms jason makes, sends, and reads back. The first form is the owner information form, the Civil Code 4041 annual request. Each part has its own page; this one says where everything is, what must never happen, how to extend it, what has been measured, and what is still open. It was written October 1, 2026. Mystique's findings are in the private notes (mystique/notes/forms.md).
+This page maps the forms jason makes, sends, and reads back. The first form is the owner information form, the Civil Code 4041 annual request. Each part has its own page; this one says where everything is, what must never happen, how to extend it, what has been measured, and what is still open. It was written October 1, 2026. This association's findings are in its private notes (mystique/notes/forms.md).
 
 ## The life of a form
 

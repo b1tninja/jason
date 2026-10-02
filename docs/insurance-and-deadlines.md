@@ -17,7 +17,7 @@ A number can change every term: a suffix goes from `-00` to `-01`, or the number
 For each policy the review gives:
 
 - **The letters** that print one of its numbers, with renewal bills, conditional renewals, non-renewals, cancellations, and claims picked out by their headings.
-- **Premiums by term.** A term runs from 90 days before its start to 275 days after, because premiums are often paid ahead or financed monthly. A flood payment is placed on the building whose NFIP policy number (current or prior) its bank line carries ("IND NAME:MYSTIQUE COMMUNITY ASS 5010000011"), else the building its memo or an attachment's name gives ("Invoice Flood Bldg 5 24-25.pdf"), else the building whose renewal bill prints its amount. When the line and the names say nothing, the attached notice is read: its text layer if it reads as characters, else the OCR text `jason invoices` cached for the same file (`best_text`, the vision model's reading first). Some renewal notices are drawn with a font that has no character map, so their text layer extracts as glyph codes; for those, the vision model's reading supplies the policy number and the building. Payments none of this places are listed separately.
+- **Premiums by term.** A term runs from 90 days before its start to 275 days after, because premiums are often paid ahead or financed monthly. A flood payment is placed on the building whose NFIP policy number (current or prior) its bank line carries ("IND NAME:<ASSOCIATION NAME> <payee id>"), else the building its memo or an attachment's name gives ("Invoice Flood Bldg 5 24-25.pdf"), else the building whose renewal bill prints its amount. When the line and the names say nothing, the attached notice is read: its text layer if it reads as characters, else the OCR text `jason invoices` cached for the same file (`best_text`, the vision model's reading first). Some renewal notices are drawn with a font that has no character map, so their text layer extracts as glyph codes; for those, the vision model's reading supplies the policy number and the building. Payments none of this places are listed separately.
 - **A standing:**
   - in term;
   - renewal notice received;
@@ -45,4 +45,4 @@ A deadline no store shows, such as the annual budget report or the reviewed fina
 
 A payment is evidence, not proof. The filing, the inspection report, the receipt, or the notice is the record; a payment PayHOA posted days after the county received it can read as late when it was not.
 
-Mystique's findings are in the private notes (mystique/notes/insurance-and-deadlines.md).
+This association's findings are in its private notes (mystique/notes/insurance-and-deadlines.md).

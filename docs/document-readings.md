@@ -28,7 +28,7 @@ What they miss, and why:
 - **OCR inside a range.** Where a digit dropped ("Units 28 through 3"), the reader leaves the end open rather than guess. The common-area designations beside the range still say which building.
 - **Doubled spaces and broken lines** inside titles and stamps, handled by flattening the head before matching, which is a crutch.
 
-Mystique's findings are in the private notes (mystique/notes/document-readings.md).
+This association's findings are in its private notes (mystique/notes/document-readings.md).
 
 ## The path to tools that fit the scans
 
@@ -84,7 +84,7 @@ The findings are leads for a person: a cited section a document lacks, a resolut
 
 A missing page in a scan looks like a missing section; a person tells a drafting gap from a scan's gap.
 
-Mystique's findings are in the private notes (mystique/notes/document-readings.md).
+This association's findings are in its private notes (mystique/notes/document-readings.md).
 
 A missed reference stays missed: the grammar reads what is written the way associations write it, and a model reading one section at a time can add the prose references ("the rules adopted by the Board") later.
 

@@ -14,12 +14,12 @@ When a review finds the same matter again, it updates jason's fields and never t
 **Commands:**
 - `jason board`: lists the open items.
 - `jason board --set <id> --status proposed --owner Treasurer`: changes the board's fields and records the change in the item's history.
-- `jason board --sheet`: syncs the Google Sheet "Mystique Board Action Items" (created September 29, 2026; its id is `BOARD_ITEMS_SHEET` in `mystique/banking.py`, and `--sheet <id>` names another). The board edits status, owner, meeting, and notes there; each sync reads those back first, then writes every column. It is a private file in the association's Drive; share it with the directors from Drive. `--create-sheet` creates a new one.
+- `jason board --sheet`: syncs the board's action-items Google Sheet (created September 29, 2026; its id is `BOARD_ITEMS_SHEET` in `mystique/banking.py`, and `--sheet <id>` names another). The board edits status, owner, meeting, and notes there; each sync reads those back first, then writes every column. It is a private file in the association's Drive; share it with the directors from Drive. `--create-sheet` creates a new one.
 - `jason board --tasks`: keeps the same items as a Google Tasks list of the same name in the signed-in account, on a token of its own (`secrets/google-tasks-token.json`; the first run needs `--interactive` to consent). Each open item is a task with the ask, status, owner, meeting, and a link to the Sheet in its notes, and the item's due date. Checking a task off closes its item, noted in the item's history; a closed item's task is completed. A Tasks list belongs to one account and is not shared, so the Sheet stays the directors' shared record. jason finds its tasks by a `jason:<id>` line in the notes, deletes none, and reports a task whose item it no longer has. With `--sheet --tasks` the Sheet is read first, then Tasks, then the Sheet is written again.
 
 ## Meetings
 
-**The schedule is recorded in the specification** (`MEETING_SCHEDULE`, in `mystique/banking.py`): the resolution that fixes the meetings, their time and place, the regular months, and the annual meeting's day. A month the board meets in practice but the resolution does not make regular is labeled as such. Mystique's findings are in the private notes (mystique/notes/board-agenda.md).
+**The schedule is recorded in the specification** (`MEETING_SCHEDULE`, in `mystique/banking.py`): the resolution that fixes the meetings, their time and place, the regular months, and the annual meeting's day. A month the board meets in practice but the resolution does not make regular is labeled as such. This association's findings are in its private notes (mystique/notes/board-agenda.md).
 
 **Drafting an agenda.** `jason board --agenda <last agenda Doc id>` drafts the next meeting's agenda the way the secretary does: from last month's Google Doc, read-only, including its smart chips (linked files, dates). It writes Markdown to `data/board/agenda-<date>.md`, and the draft:
 - carries the header, the Zoom details, the standing items, and the decorum rules forward, and marks last month's business "carried over; keep or drop";
@@ -59,13 +59,13 @@ Minutes made this way close the gaps the minutes questions find in minutes that 
 
 Set beside approved minutes that are a Zoom AI summary and asked the same minutes questions, a draft adds what the summary leaves out (the call to order, the adjournment to executive session, the quorum, the directors present, the open forum). Where the two differ on whether something was decided, the transcript settles it: an AI summary can record a discussion as a decision.
 
-Mystique's findings are in the private notes (mystique/notes/board-agenda.md).
+This association's findings are in its private notes (mystique/notes/board-agenda.md).
 
 **Minutes that name a member.** `jason minutes-privacy` reads every minutes text for a member's name (PayHOA's people, matched in either order and without initials) within 120 characters of a delinquency, balance, payment plan, fine, violation, hearing, lien, collections, or foreclosure.
 - A director named in the board's role is not a hit (the roster; "motion made by …, Board President").
 - `--correct` writes a copy with each passage replaced by the general note CIV 4935(e) allows (`data/board/minutes-corrected-<date>.md`). The original is not changed.
 - The minutes template's business section forbids naming a member in that way.
-- Mystique's findings are in the private notes (mystique/notes/board-agenda.md).
+- This association's findings are in its private notes (mystique/notes/board-agenda.md).
 
 **The agenda as a Google Doc.** `jason board --agenda <last agenda Doc id> --doc --yes` fills the **Board Meeting Agenda** template (My Drive/Templates, on the letterhead) into `My Drive/Meetings/<year>/DRAFT Agenda for M/D/YY`; `--preview` puts it in My Drive/Templates as "Preview - Agenda for M/D/YY" instead. A re-run rewrites the same Doc (its id is kept in `data/board/docs.json`). The Doc:
 - has the meeting's name under the letterhead and a ruled box with the date, time, Zoom link, meeting ID, and telephone number, taken from the schedule and the last agenda's header;
@@ -139,7 +139,7 @@ jason report treasurers-report period=2026-08 --doc --yes       # file that run'
 - `period=` is `YYYY-MM`, `previous-month` or `this-month` (counted from the document's date: the meeting's, for the packet), or `latest`.
 - In a document the reference resolves from the catalog on disk each time it is built: no PayHOA call, and no packet is ever built. A month not run yet says so and names the newest run; running the packet is the treasurer's, in PayHOA (Reports, Report Packets).
 - Each run carries the month it reports, notes when its dates do not fit a monthly report, and the library copy that is the same file by its SHA-256. With `--doc --yes` PayHOA's PDF, unchanged, is filed in Drive and the packet links to it.
-- **Every packet carries** the reports `packet_reports()` names in the specification (Mystique: last month's Treasurer's Report), under "Reports" before the items.
+- **Every packet carries** the reports `packet_reports()` names in the specification (for example, last month's Treasurer's Report), under "Reports" before the items.
 
 **The packet as a Google Doc.** `jason board --packet --doc --yes` also writes it to `My Drive/Meetings/<year>/Board Packet for M/D/YY (confidential)` on the letterhead, in the house style (headings with a rule under each item, the quoted law set in, numbered options). The Doc is not shared: the folder is private to the association's account. It opens with a confidentiality line and repeats "Confidential: for the directors and counsel" at the top of each later page, because parts draw on privileged advice and on figures shared for mediation only (Evidence Code 1119). A re-run rewrites the same Doc (`data/board/docs.json`); share it with the directors from Drive.
 
@@ -156,4 +156,4 @@ A proposed change to an operating rule is a `RuleChange` row in `mystique/rule_c
 
 `--draft-email` previews the member notice as a Gmail draft with no recipients; `--draft-email --yes` saves it. jason never sends: a person addresses the draft to the members whose preferred delivery method is email (4041) and mails the rest.
 
-Note 4355(a): 4360 and 4365 apply only to rules on the subjects it lists. For a change not plainly among them, the board may follow 4360 anyway, and counsel says whether it must. Mystique's findings are in the private notes (mystique/notes/board-agenda.md).
+Note 4355(a): 4360 and 4365 apply only to rules on the subjects it lists. For a change not plainly among them, the board may follow 4360 anyway, and counsel says whether it must. This association's findings are in its private notes (mystique/notes/board-agenda.md).

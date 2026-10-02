@@ -7,14 +7,12 @@ from typing import Any
 
 from payhoa import PayhoaClient
 
-from jason.config import DEFAULT_SMUD_CATEGORY_ID
 from jason.smud_data import SmudBillStore
 from jason.sources.attach import attach_bills
 from jason.sources.registry import BillSourceRegistry
 from jason.sources.smud import SmudBillSource
 from jason.sources.types import (
     DEFAULT_DATE_WINDOW_DAYS,
-    DEFAULT_ORG_ID,
     MatchResult,
     UploadReport,
     active_attachments,
@@ -22,7 +20,6 @@ from jason.sources.types import (
 
 __all__ = [
     "DEFAULT_DATE_WINDOW_DAYS",
-    "DEFAULT_ORG_ID",
     "MatchResult",
     "UploadReport",
     "upload_smud_bills",
@@ -36,11 +33,11 @@ def upload_smud_bills(
     bills: SmudBillStore,
     *,
     smud_client_factory: Callable[[], Any],
-    org_id: int = DEFAULT_ORG_ID,
+    org_id: int | None = None,
     date_window_days: int = DEFAULT_DATE_WINDOW_DAYS,
     dry_run: bool = False,
     approve: bool = False,
-    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID,
+    smud_category_id: int | None = None,
 ) -> UploadReport:
     """Find unapproved SMUD txs, match cached bills, lazily fetch PDFs, upload."""
     registry = BillSourceRegistry(

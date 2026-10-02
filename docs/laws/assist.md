@@ -36,5 +36,5 @@ These duties have a statute and an artifact. Jason can name the section and the 
 
 1. Name the duty anchor.
 2. Read the section from the current publication. A 2011 index hit is not that text. `CIV 4000` and `CIV 5200` are `not_in_index` there.
-3. Open the Mystique shelf or the catalog row named on this page.
+3. Open the association's shelf or the catalog row named on this page.
 4. Leave the decision with the board.

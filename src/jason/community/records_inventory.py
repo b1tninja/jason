@@ -90,7 +90,7 @@ def inventory(community, catalog_paths: tuple[str, ...] = (), *, readings: tuple
     for anchor in _files(community):
         for kind in anchor.records or ():
             found[kind].files.append(anchor.name)
-    for rule in getattr(community, "sync_rules", ()) or ():
+    for rule in community.sync_rules:
         for kind in getattr(rule, "records", ()) or ():
             found[kind].rules.append(f"{rule.id.value}: Drive {rule.drive_folder} to PayHOA {rule.destination.value}")
     for row in library:
@@ -111,17 +111,11 @@ def inventory(community, catalog_paths: tuple[str, ...] = (), *, readings: tuple
 
 
 def _library(community):
-    try:
-        return tuple(community.library_folders())
-    except Exception:
-        return tuple(getattr(community, "_library", {}).values())
+    return tuple(community.library_folders())
 
 
 def _files(community):
-    try:
-        return tuple(community.known_files())
-    except Exception:
-        return tuple(getattr(community, "_files", {}).values())
+    return tuple(community.known_files())
 
 
 def _governing_notes(readings: tuple, governing) -> list[str]:

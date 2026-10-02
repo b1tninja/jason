@@ -1,51 +1,36 @@
-"""Load the `mystique` package. The facts are classes in that package."""
+"""Load the active profile package (`jason.community.profile`). The facts are classes in that package."""
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 from typing import Any
 
 from jason.community.base import Community, TransactionRule
 from jason.community.symbols import Utility
 
-_PACKAGE = "jason_mystique"
 
+def find_spec_root(marker: str | None = None) -> Path:
+    """The active profile's package folder (``mystique/``), or the named one's."""
+    from jason.community.profile import profile_root
 
-def find_spec_root(marker: str = "mystique") -> Path:
-    """Walk upward from this file to `marker/__init__.py`."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / marker
-        if (candidate / "__init__.py").is_file():
-            return candidate
-    raise FileNotFoundError(f"no {marker}/__init__.py above {here}")
+    root = profile_root(marker)
+    if root is None:
+        raise FileNotFoundError(f"profile {marker or 'active'} is an installed package, not a folder")
+    return root
 
 
 def spec_module(name: str):
-    """One module of the specification package (``templates``, ``forms``, ...), loading the package first. The package is
-    imported as ``jason_mystique``, so ``from mystique import ...`` works only when the working directory is the repo."""
-    load_mystique()
-    return importlib.import_module(f"{_PACKAGE}.{name}")
+    """One module of the active profile's package (``templates``, ``forms``, ...)."""
+    from jason.community.profile import profile_module
+
+    return profile_module(name)
 
 
 def load_mystique() -> Community:
-    """Import `mystique` and return one `Mystique` instance."""
-    root = find_spec_root()
-    if _PACKAGE in sys.modules:
-        return sys.modules[_PACKAGE].Mystique()
-    spec = importlib.util.spec_from_file_location(
-        _PACKAGE,
-        root / "__init__.py",
-        submodule_search_locations=[str(root)],
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load {root}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_PACKAGE] = module
-    spec.loader.exec_module(module)
-    return module.Mystique()
+    """A new instance of the active profile's `Community` class (named for the first profile)."""
+    from jason.community.profile import profile_class, profile_package
+
+    return profile_class(profile_package())()
 
 
 def first_utility(

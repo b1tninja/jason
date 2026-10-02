@@ -519,6 +519,21 @@ class Community(ABC):
     @abstractmethod
     def document_sync_rules(self) -> dict[str, Any]: ...
 
+    @property
+    def sync_rules(self) -> tuple[SyncRule, ...]:
+        """The Drive sync rules as records. Empty until the specification sets them."""
+        return ()
+
+    def kind_rules(self) -> tuple[Any, ...]:
+        """The document kind rules (`documents.KindRule`), in match order. Empty until the specification sets them."""
+        return ()
+
+    def classify_document(self, name: str, folder: Any = None, path: str = "") -> Any:
+        """The `DocumentKind` the kind rules give a file by name, PayHOA folder, and library path; a miss is None."""
+        from jason.community.documents import classify_document
+
+        return classify_document(name, self.kind_rules(), folder=folder, path=path)
+
     @abstractmethod
     def buildings(self) -> tuple[BuildingRange, ...]: ...
 
@@ -656,7 +671,7 @@ class Community(ABC):
         return None
 
     def unit_city_state_zip(self) -> str:
-        """Every unit's last address line ("Sacramento, CA 95835"), so a street line at one of the community's own
+        """Every unit's last address line ("City, ST 00000"), so a street line at one of the community's own
         units can be completed (``postal.read_mailing_address``). Empty until set."""
         return ""
 
@@ -675,9 +690,35 @@ class Community(ABC):
         (``jason.community.tags.PayhoaTag``). Empty until set."""
         return ()
 
+    def identity(self):
+        """Who the association is, as its notices name it (`identity.Identity`). The default knows only the name,
+        corporate name, and units' city line; a profile sets the rest."""
+        from jason.community.identity import Identity
+
+        return Identity(self.name, corporate_name=self.corporate_name, unit_city_state_zip=self.unit_city_state_zip())
+
+    def letterhead(self):
+        """The letterhead every rendering puts around a document (`identity.LetterheadSpec`). The default is the
+        name alone, with no Doc to copy and no logo."""
+        from jason.community.identity import LetterheadSpec
+
+        identity = self.identity()
+        return LetterheadSpec(identity.name.upper(), footer=identity.official_address)
+
+    def citations(self) -> dict[Any, str]:
+        """The association's own governing-document section for each `template_values.CitationPurpose` a notice
+        cites ("Bylaws Section 4.2"). Empty until set: a template then prints the purpose's general wording."""
+        return {}
+
+    def drive_home(self):
+        """The Drive folders generated documents are filed in (`identity.DriveHome`); empty until set."""
+        from jason.community.identity import DriveHome
+
+        return DriveHome()
+
     def email_letterhead(self):
-        """The letterhead as an email frame (``jason.community.email_html.Letterhead``); None until set."""
-        return None
+        """The letterhead as an email frame (``jason.community.email_html.Letterhead``)."""
+        return self.letterhead().email()
 
     def prompt_context(self) -> tuple[str, ...]:
         """Facts about the association every task prompt carries: its name, how it is managed, who signs, how members

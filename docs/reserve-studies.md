@@ -42,6 +42,6 @@ The brief shows the latest study's plan for next year: contribution per year, mo
 
 The brief also reads each month's treasurer's report from the library, the association's own record of its reserve accounts, including a CD PayHOA cannot see. It checks each study's starting balance against the report for the December before the study's fiscal year.
 
-Mystique's findings are in the private notes (mystique/notes/reserve-studies.md).
+This association's findings are in its private notes (mystique/notes/reserve-studies.md).
 
 The figures are the preparer's estimates. The board adopts the funding plan and the budget.

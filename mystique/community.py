@@ -37,7 +37,6 @@ from .reports import HELD_UNITS, PLAN_BLOCKS, UNIT_BLOCKS, REPORTS
 from .insurance import CATALOG
 from .reserves import COMPONENTS as RESERVE_COMPONENTS
 from .transactions import RULES as TRANSACTION_RULES
-from jason.community.documents import classify_document
 from jason.community.symbols import DocumentKind, DocumentRule, KnownFile, PayhoaFolder
 
 
@@ -189,13 +188,29 @@ class Mystique(Community):
 
         return PAYHOA_TAGS
 
-    def email_letterhead(self):
-        """The Letterhead Doc's header and footer as an email frame (templates.py)."""
-        from jason.community.email_html import Letterhead
+    def identity(self):
+        """The association as its notices name it (templates.IDENTITY)."""
+        from .templates import IDENTITY
 
-        from .templates import EMAIL_LETTERHEAD_FONT, EMAIL_LETTERHEAD_NAME, EMAIL_LOGO_URL, FOOTER
+        return IDENTITY
 
-        return Letterhead(EMAIL_LETTERHEAD_NAME, EMAIL_LOGO_URL, font=EMAIL_LETTERHEAD_FONT, footer=FOOTER)
+    def letterhead(self):
+        """The Letterhead Doc, its footer, and its email frame (templates.LETTERHEAD)."""
+        from .templates import LETTERHEAD
+
+        return LETTERHEAD
+
+    def citations(self):
+        """The bylaws, enforcement policy, and declaration sections the notices cite (templates.CITATIONS)."""
+        from .templates import CITATIONS
+
+        return CITATIONS
+
+    def drive_home(self):
+        """My Drive, Templates, Meetings, PayHOA Broadcasts, and Disciplinary (templates.DRIVE_HOME)."""
+        from .templates import DRIVE_HOME
+
+        return DRIVE_HOME
 
     def prompt_context(self):
         """Who the association is, for every task prompt: read from the specification (units, buildings, the board's
@@ -501,8 +516,8 @@ class Mystique(Community):
         """A.C.A. 1 to 8: each building's association-owned parcel, its phase, and its units (the Condominium Plan)."""
         return ASSOCIATION_COMMON_AREAS
 
-    def classify_document(self, name: str, folder: PayhoaFolder | None = None, path: str = "") -> DocumentKind | None:
-        return classify_document(name, KIND_RULES, folder=folder, path=path)
+    def kind_rules(self):
+        return KIND_RULES
 
     def document_rules(self) -> tuple[DocumentRule, ...]:
         return tuple(rule.id for rule in RULES)

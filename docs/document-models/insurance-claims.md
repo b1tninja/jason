@@ -15,7 +15,7 @@ Every kind is confidential in the library (`CONFIDENTIAL_KINDS`). A claim paper 
 
 Carrier names come from the letterhead (`carrier_of`): Farmers (including Truck Insurance Exchange and Fire Insurance Exchange), USAA (Garrison Property and Casualty), Accelerant, AAA, Athens, MG Skinner, McGowan, and Philadelphia. The name rules in `mystique/documents.py` come before the proposal and invoice rules. "ESTIMATE FOR REPAIRS 5021000019-1" is the carrier's estimate, not a vendor's.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/insurance-claims.md).
+This association's findings are in its private notes (mystique/notes/document-models/insurance-claims.md).
 
 ## Manager case reports
 

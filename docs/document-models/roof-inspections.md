@@ -31,4 +31,4 @@ The roof record: what governs the roofs, and the reader for the roof inspection 
 
 An inspector's stated age and life remaining are the inspector's, not the reserve study's; the checks set them side by side. A drone inspection cannot see under solar panels, and a section referred to a specialist stays unpriced until someone prices it. A lender may ask for a roof certification, which is a separate document from the report.
 
-Mystique's findings are in the private notes (mystique/notes/document-models/roof-inspections.md).
+This association's findings are in its private notes (mystique/notes/document-models/roof-inspections.md).

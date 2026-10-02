@@ -14,4 +14,4 @@ New Google Sites has no content API. The site is a Drive file (`mimeType` `appli
 
 `agent.drive()` reuses the stored refresh token. A missing token raises `GoogleAuthRequired` unless you pass `interactive=True`. `drive.readonly` covers listing and download of the embedded folders. Changing an ACL needs a broader Drive scope.
 
-Mystique's findings are in the private notes (mystique/notes/mystique-site.md).
+This association's findings are in its private notes (mystique/notes/mystique-site.md).

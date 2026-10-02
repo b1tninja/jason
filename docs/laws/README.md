@@ -4,7 +4,7 @@ Source: the 2025 session publication at `downloads.leginfo.legislature.ca.gov` (
 
 These pages are Jason's summaries. The exported statute pages are the authority; the two are kept in separate AnythingLLM catalogs (`authorities`, `jason-pages`) so a retriever's answer says which it read.
 
-These pages are an obligation index for Jason. They are not legal advice, and they are not a substitute for the section text or for Mystique’s governing documents. When a task needs the words of a section, read that section. Do not quote one of these pages as the statute.
+These pages are an obligation index for Jason. They are not legal advice, and they are not a substitute for the section text or for the association's governing documents. When a task needs the words of a section, read that section. Do not quote one of these pages as the statute.
 
 | Page | What Jason uses it for |
 | --- | --- |

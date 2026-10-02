@@ -9,7 +9,7 @@ This page covers what the association owes, what the manager keeps, what the ven
 - **The CC&Rs** say who pays for the wood-destroying pest inspection and preventive program, who repairs common area and unit interiors damaged by those pests, and how owners and occupants are asked to vacate for an eradication.
 - **The rules** say whether exterior pest control is a common service and who handles pests inside a unit.
 
-Mystique's findings are in the private notes (mystique/notes/pest-management.md).
+This association's findings are in its private notes (mystique/notes/pest-management.md).
 
 **The statutes behind those clauses:**
 

@@ -196,14 +196,17 @@ def _link_requests(doc: dict[str, Any], urls: list[str]) -> list[dict[str, Any]]
 
 
 def fill_letter(drive: Any, docs: Any, template: DocumentTemplate, values: dict[str, str], *, name: str,
-                folder_id: str, doc_id: str = "") -> dict[str, Any]:
+                folder_id: str, doc_id: str = "", defaults: dict[str, str] | None = None) -> dict[str, Any]:
     """Copy ``template`` into ``folder_id`` as ``name`` and replace its tokens; report what is left to fill. With
     ``doc_id`` (a Doc filled from this template before), that Doc's body is written again from the template's text and
-    filled in place, so a re-run updates the draft instead of making another."""
+    filled in place, so a re-run updates the draft instead of making another. ``defaults`` are the profile's values
+    (`template_values.profile_values`): they fill what ``values`` leaves, and one the template does not use is not
+    reported as ignored."""
     if not template.drive_id:
         raise ValueError(f"the {template.kind.value} template has no Drive id; build it with `jason templates --build --yes`")
-    given = {k: str(v) for k, v in values.items() if v not in (None, "")}
-    unknown = sorted(set(given) - set(template.tokens))
+    own = {k: str(v) for k, v in values.items() if v not in (None, "")}
+    unknown = sorted(set(own) - set(template.tokens))
+    given = {k: str(v) for k, v in (defaults or {}).items() if v not in (None, "")} | own
     if doc_id:
         docs.batch_update(doc_id, body_requests(BODIES[template.kind], _body_end(docs.get(doc_id))))
         furniture = format_requests(docs.get(doc_id), CONTINUATION.get(template.kind, ""))
@@ -234,10 +237,10 @@ def _send(docs: Any, doc_id: str, requests: list[dict[str, Any]], *, chunk: int 
 
 def fill_with_markdown(drive: Any, docs: Any, template: DocumentTemplate, values: dict[str, str], markdown: list[str], *,
                        name: str, folder_id: str, placeholder: str = "{AGENDA_ITEMS}", style: DocStyle = AGENDA,
-                       doc_id: str = "") -> dict[str, Any]:
+                       doc_id: str = "", defaults: dict[str, str] | None = None) -> dict[str, Any]:
     """``fill_letter``, then the paragraph that is only ``placeholder`` replaced by ``markdown``, styled (an agenda's
     business). With ``doc_id``, that Doc is filled again in place."""
-    result = fill_letter(drive, docs, template, values, name=name, folder_id=folder_id, doc_id=doc_id)
+    result = fill_letter(drive, docs, template, values, name=name, folder_id=folder_id, doc_id=doc_id, defaults=defaults)
     doc = docs.get(result["id"])
     found = find_paragraph(doc, placeholder)
     if found:

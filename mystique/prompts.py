@@ -16,7 +16,9 @@ from jason.community.prompts import Audience, FactSource, TaskKind, TaskPrompt
 from jason.community.symbols import DocumentKind as K
 from jason.community.templates import TemplateKind
 
-MANAGEMENT = "self-managed by its volunteer board of directors, using PayHOA; there is no management company"
+from .templates import IDENTITY
+
+MANAGEMENT = IDENTITY.management
 
 _DELIVERY = "how notices to members must be delivered, and to whom else they are owed"
 _MEMBERS = ("Write for members: plain language, and say how to reach the board with questions.",)

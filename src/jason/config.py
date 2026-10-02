@@ -7,32 +7,51 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 def _default_payhoa_org_id() -> int:
-    """Org id from the `mystique` specification."""
-    from jason.community import mystique
+    """Org id from the active profile."""
+    from jason.community import community
 
-    return mystique().org_id
+    return community().org_id
 
 
-DEFAULT_PAYHOA_ORG_ID = _default_payhoa_org_id()
 # Keeper record UIDs come from .env (payhoa_record_uid, idoxs_record_uid); none is built in.
 DEFAULT_PAYHOA_RECORD_UID = ""
 DEFAULT_IDOXS_RECORD_UID = ""
-def _utility_category(utility: object) -> int:
-    from jason.community import mystique
 
-    for rule in mystique().transaction_rules():
+
+def _utility_category(utility: object) -> int | None:
+    """The PayHOA category the profile's transaction rules give a utility; None when no rule names one."""
+    from jason.community import community
+
+    for rule in community().transaction_rules():
         if rule.utility is utility and rule.category_id is not None:
             return rule.category_id
-    raise RuntimeError(f"no category id for {utility}")
+    return None
 
 
-def _default_categories() -> tuple[int, int]:
+def _default_smud_category_id() -> int | None:
     from jason.community import Utility
 
-    return _utility_category(Utility.SMUD), _utility_category(Utility.CITY_OF_SACRAMENTO)
+    return _utility_category(Utility.SMUD)
 
 
-DEFAULT_SMUD_CATEGORY_ID, DEFAULT_IDOXS_CATEGORY_ID = _default_categories()
+def _default_idoxs_category_id() -> int | None:
+    from jason.community import Utility
+
+    return _utility_category(Utility.CITY_OF_SACRAMENTO)
+
+
+# The profile's defaults are read when first asked for, so importing this module loads no profile.
+_PROFILE_DEFAULTS = {
+    "DEFAULT_PAYHOA_ORG_ID": _default_payhoa_org_id,
+    "DEFAULT_SMUD_CATEGORY_ID": _default_smud_category_id,
+    "DEFAULT_IDOXS_CATEGORY_ID": _default_idoxs_category_id,
+}
+
+
+def __getattr__(name: str):
+    if name in _PROFILE_DEFAULTS:
+        return _PROFILE_DEFAULTS[name]()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def default_keeper_config_path() -> Path:
@@ -117,13 +136,13 @@ class Settings:
     payhoa_my_unit_id: int | None = None
     keeper_password: str = ""
     keeper_config: Path = Path(DEFAULT_KEEPER_CONFIG)
-    payhoa_org_id: int = DEFAULT_PAYHOA_ORG_ID
+    payhoa_org_id: int = field(default_factory=_default_payhoa_org_id)
     smud_db: Path = Path("data/smud.db")
     smud_bills_dir: Path = Path("data/bills")
-    smud_category_id: int | None = DEFAULT_SMUD_CATEGORY_ID
+    smud_category_id: int | None = field(default_factory=_default_smud_category_id)
     idoxs_db: Path = Path("data/idoxs.db")
     idoxs_bills_dir: Path = Path("data/idoxs-bills")
-    idoxs_category_id: int | None = DEFAULT_IDOXS_CATEGORY_ID
+    idoxs_category_id: int | None = field(default_factory=_default_idoxs_category_id)
     payhoa_catalog: Path = Path("data/payhoa.db")
     ownership_db: Path = Path("data/ownership.db")
     tax_db: Path = Path("data/tax.db")
@@ -204,7 +223,7 @@ class Settings:
             values,
             "payhoa_org_id",
             "PAYHOA_ORG_ID",
-            default=str(DEFAULT_PAYHOA_ORG_ID),
+            default=str(_default_payhoa_org_id()),
         )
         smud_db_raw = _get(values, "smud_db", "SMUD_DB_PATH", default="")
         smud_db = Path(smud_db_raw) if smud_db_raw else _default_smud_db()
@@ -218,13 +237,13 @@ class Settings:
             values,
             "smud_category_id",
             "SMUD_CATEGORY_ID",
-            default=str(DEFAULT_SMUD_CATEGORY_ID),
+            default=str(_default_smud_category_id() or ""),
         )
         smud_category_id: int | None
         try:
             smud_category_id = int(cat_raw) if cat_raw else None
         except ValueError:
-            smud_category_id = DEFAULT_SMUD_CATEGORY_ID
+            smud_category_id = _default_smud_category_id()
 
         idoxs_db_raw = _get(values, "idoxs_db", "IDOXS_DB_PATH", default="")
         idoxs_db = Path(idoxs_db_raw) if idoxs_db_raw else _default_idoxs_db()
@@ -240,13 +259,13 @@ class Settings:
             values,
             "idoxs_category_id",
             "IDOXS_CATEGORY_ID",
-            default=str(DEFAULT_IDOXS_CATEGORY_ID),
+            default=str(_default_idoxs_category_id() or ""),
         )
         idoxs_category_id: int | None
         try:
             idoxs_category_id = int(idoxs_cat_raw) if idoxs_cat_raw else None
         except ValueError:
-            idoxs_category_id = DEFAULT_IDOXS_CATEGORY_ID
+            idoxs_category_id = _default_idoxs_category_id()
 
         catalog_raw = _get(
             values, "payhoa_catalog", "PAYHOA_CATALOG", default=""

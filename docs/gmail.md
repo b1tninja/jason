@@ -221,7 +221,7 @@ A draft is entered only when a person names it with `--yes`. PayHOA notifies the
 - the insurer's claim;
 - defense counsel's case analysis.
 
-Mystique's findings are in the private notes (mystique/notes/gmail.md).
+This association's findings are in its private notes (mystique/notes/gmail.md).
 
 PayHOA's violations are synced with every status (`jason sync-catalog --only violations`). Closed violations are the association's precedents; the old default kept only the outstanding ones.
 
@@ -229,7 +229,7 @@ PayHOA's violations are synced with every status (`jason sync-catalog --only vio
 
 `jason replies` (and the `reply_needed` MCP tool) learns from the association's own replies which email needs an answer (`jason.tasks.replies`). A thread that came in was answered when a message went out after its first inbound message. The history is the threads that came in more than 14 days ago.
 
-Reply rates are kept by sender, by kind of party and what the subject asks, and by kind of party. Mystique's findings are in the private notes (mystique/notes/gmail.md).
+Reply rates are kept by sender, by kind of party and what the subject asks, and by kind of party. This association's findings are in its private notes (mystique/notes/gmail.md).
 
 An open thread (its last message came in) takes the rate of the most specific level with five threads of history:
 

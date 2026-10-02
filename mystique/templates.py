@@ -11,7 +11,9 @@ Mesmerizing Walk.
 
 from __future__ import annotations
 
+from jason.community.identity import DriveHome, Identity, LetterheadSpec
 from jason.community.templates import DocumentTemplate, TemplateKind
+from jason.community.template_values import CitationPurpose
 
 LETTERHEAD_DOC = "1PBWiv7bjmwfZeX_snM3reiabiR9A8GELhrTstoIqnwo"
 MY_DRIVE = "0ACGfgho-G00gUk9PVA"
@@ -40,6 +42,38 @@ FOOTER = "901 H St Ste 120, PMB 188, Sacramento, CA 95814"
 # annual budget report and policy statement, where the law names it.
 MAILING_ADDRESS_LINES = ("Mystique Community Association", "901 H ST STE 120 PMB 188", "Sacramento, CA 95814")
 UNIT_CITY_STATE_ZIP = "Sacramento, CA 95835"
+
+# The association as its notices name it, its letterhead, and where generated documents are filed (identity.py). The
+# designated recipient, official email, and posting location are the ones the annual budget report and policy statement
+# print; hoa@ (the general inbox) rather than board@, so official mail does not land in every director's inbox.
+IDENTITY = Identity(
+    "Mystique Community Association",
+    corporate_name="MYSTIQUE COMMUNITY ASSOCIATION",
+    mailing_address=MAILING_ADDRESS_LINES,
+    official_address=FOOTER,
+    official_email="hoa@mystiquecommunity.com",
+    designated_recipient="Secretary, Board of Directors, Mystique Community Association",
+    website="https://www.mystiquecommunity.com",
+    posting_location="The bulletin boards by the community mailboxes, and the Association's website, www.mystiquecommunity.com.",
+    documents_online="PayHOA Documents",
+    unit_city_state_zip=UNIT_CITY_STATE_ZIP,
+    management="self-managed by its volunteer board of directors, using PayHOA; there is no management company",
+    time_zone="Pacific",
+    meeting_platform="Zoom",
+)
+# The logo is the Letterhead Doc's, saved once to data/brand/letterhead-logo.png (LetterheadSpec.logo_path).
+LETTERHEAD = LetterheadSpec(EMAIL_LETTERHEAD_NAME, footer=FOOTER, doc_id=LETTERHEAD_DOC, logo_url=EMAIL_LOGO_URL,
+                            font=EMAIL_LETTERHEAD_FONT)
+# The association's own sections each notice cites (template_values.CitationPurpose): the bylaws on continuing
+# violations and on a quorum of directors, the enforcement policy on a hearing's evidence, and the declaration on fines.
+CITATIONS = {
+    CitationPurpose.CONTINUING_FINES: "Bylaws Section 8.5(f)",
+    CitationPurpose.HEARING_EVIDENCE: "Enforcement Policy",
+    CitationPurpose.FINES_NOT_LIENS: "Declaration Section 6.8",
+    CitationPurpose.DIRECTOR_QUORUM: "Bylaws 7.10",
+}
+DRIVE_HOME = DriveHome(my_drive=MY_DRIVE, templates=TEMPLATES_FOLDER, meetings=MEETINGS_FOLDER, broadcasts=BROADCASTS_FOLDER,
+                       broadcasts_name=BROADCASTS_FOLDER_NAME, disciplinary=DISCIPLINARY_FOLDER)
 
 TEMPLATES: tuple[DocumentTemplate, ...] = (
     DocumentTemplate(TemplateKind.LETTERHEAD, "Template - Letter on Letterhead", "1Ka_KDdXlOhO6HfW5dTktc-3njSEwkgoAMN2AdsiRpuE"),

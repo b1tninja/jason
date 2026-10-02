@@ -35,4 +35,4 @@ Each budgeted month is set beside the transfer that paid it. That is the month t
 
 For each borrowing, the library is searched for the agenda with a "Notice of Intent to Borrow" in the 60 days before, the minutes of that meeting, and a borrowing resolution that names the amount. When the resolution is missing, the report prints the one the agenda cites. Nothing here changes PayHOA or decides that the statute was met.
 
-Mystique's findings are in the private notes (mystique/notes/reserve-transfers.md).
+This association's findings are in its private notes (mystique/notes/reserve-transfers.md).

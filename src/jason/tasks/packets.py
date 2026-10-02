@@ -29,7 +29,20 @@ from jason.community.packets import Packet, Part, SourceKind, page_list
 
 TOKEN = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
 QR_TOKEN = re.compile(r"\{QR:([A-Z][A-Z0-9_]*)\}")
-TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "mystique" / "packet_templates"
+# jason's base packet templates; a profile's own packet_templates/ folder overrides one by file name.
+BASE_TEMPLATES = Path(__file__).resolve().parents[1] / "templates" / "packets"
+
+
+def template_file(name: str) -> Path:
+    """A packet template by file name: the active profile's own (``<profile>/packet_templates/``), else jason's base."""
+    from jason.community.profile import profile_root
+
+    root = profile_root()
+    if root is not None:
+        own = root / "packet_templates" / name
+        if own.is_file():
+            return own
+    return BASE_TEMPLATES / name
 
 
 @dataclass
@@ -70,7 +83,7 @@ def _newest(rows: list[dict[str, Any]], pattern: str, *, path_key: str, date_key
 
 
 GENERATORS = ("insurance-summary", "fha-statement", "va-statement")
-# A generated part ``letter:<file>`` is an HTML letter in mystique/packet_templates, its tokens filled and printed on
+# A generated part ``letter:<file>`` is an HTML letter (`template_file`: the profile's, else jason's base), its tokens filled and printed on
 # the letterhead. The tokens below are a variant's own (one building's flood policy).
 VARIANT_TOKENS = ("BUILDING", "FLOOD_STANDING", "FLOOD_CARRIER", "FLOOD_NUMBER", "FLOOD_TERM", "FLOOD_LIMIT",
                   "FLOOD_DEDUCTIBLE", "FLOOD_CHANGE")
@@ -81,7 +94,7 @@ def _is_letter(source: Any) -> bool:
 
 
 def letter_text(ref: str) -> str:
-    return (TEMPLATES_DIR / ref.split(":", 1)[1]).read_text(encoding="utf-8")
+    return template_file(ref.split(":", 1)[1]).read_text(encoding="utf-8")
 
 
 # The label printed beside a token's QR code (``{QR:TOKEN}``; jason.community.qr).
@@ -157,7 +170,7 @@ def resolve(part: Part, year: int, *, library: list[dict[str, Any]], drive: list
         return Resolved(part, row is not None, str(row["id"]) if row else "", str(row.get("path")) if row else "",
                         "" if row else f"no Drive file matches {pattern}")
     if _is_letter(source):
-        known = (TEMPLATES_DIR / source.ref.split(":", 1)[1]).is_file()
+        known = template_file(source.ref.split(":", 1)[1]).is_file()
         return Resolved(part, known, source.ref, "letter printed by jason", "" if known else f"no letter {source.ref}")
     if source.kind is SourceKind.GENERATED:
         known = source.ref in GENERATORS
@@ -180,7 +193,7 @@ FORM_CLOSING: list[str] = []
 
 
 def template_markdown(source: str) -> list[str]:
-    """A template part's text: a Markdown file in mystique/packet_templates, or ``form:<key>`` for a form rendered for
+    """A template part's text: a Markdown file (`template_file`), or ``form:<key>`` for a form rendered for
     paper (``form_render.paper_markdown``)."""
     if source.startswith("form:"):
         from jason.community.form_render import paper_markdown
@@ -189,7 +202,7 @@ def template_markdown(source: str) -> list[str]:
         key = source.split(":", 1)[1]
         form = next(f for f in spec_module("forms").FORM_TEMPLATES if f.key.value == key)
         return paper_markdown(form, preamble=FORM_PREAMBLE, closing=FORM_CLOSING)
-    return (TEMPLATES_DIR / source).read_text(encoding="utf-8").splitlines()
+    return template_file(source).read_text(encoding="utf-8").splitlines()
 
 
 LINE_BOX = 11.0          # points a line of underscores takes at the template's 11 point text; the rest of a writing
@@ -221,7 +234,7 @@ def template_tokens(packet: Packet) -> list[str]:
     for part in packet.parts:
         if part.source.kind is SourceKind.TEMPLATE and part.source.markdown:
             text = "\n".join(template_markdown(part.source.markdown))
-        elif _is_letter(part.source) and (TEMPLATES_DIR / part.source.ref.split(":", 1)[1]).is_file():
+        elif _is_letter(part.source) and template_file(part.source.ref.split(":", 1)[1]).is_file():
             text = letter_text(part.source.ref)
         else:
             continue
@@ -259,11 +272,13 @@ def linked_parts(packet: Packet, data_dir: Path, year: int) -> Packet:
 
 def values_for(community: Any, packet: Packet, year: int, data_dir: Path, *,
                passages: Callable[[Path], tuple[dict[str, str], list[str]]] | None = None) -> tuple[dict[str, str], list[str]]:
-    """The token values for a year: standing, computed (the mailing date is today unless the values file names
-    it), statutory, then the year's values file (which wins)."""
+    """The token values for a year: the profile's (`template_values.profile_values`), standing, computed (the mailing
+    date is today unless the values file names it), statutory, then the year's values file (which wins)."""
     from jason.community.statute_passages import passages as statute
+    from jason.community.template_values import profile_values
 
-    values = dict(packet.values)
+    values = profile_values(community)
+    values.update(packet.values)
     values.update({"FISCAL_YEAR": str(year), "UNIT_COUNT": str(len(community.units())), "MAILING_DATE": today_long()})
     words, gaps = (passages or statute)(data_dir)
     values.update(words)
