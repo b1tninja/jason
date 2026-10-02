@@ -10,11 +10,12 @@ The tool list is `ALL_TOOLS` in `src/jason/mcp/server.py`. The tools live in `se
 pip install -e ".[mcp]"
 jason-mcp                         # stdio; every tool
 jason-mcp --profile board         # the board set
+jason-mcp --profile governance    # the governance systems
 ```
 
 - `.mcp.json` at the project root registers `jason` as `.venv\Scripts\jason-mcp.exe` for Claude Code.
 - The server runs from `JASON_CWD` when a client sets it, else the folder that holds `.env`. The stores are addressed as `data/...` from there.
-- **Profiles.** With no profile (or `all`) every tool is served: 107 today. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
+- **Profiles.** With no profile (or `all`) every tool is served: 119 today. `--profile governance` serves the twelve governance tools below. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
 - **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile all` registers every tool. A small local model chooses better from the board set.
 
 ## Rules for a client
@@ -199,6 +200,27 @@ The local readers never leave the machine. The hosted reader fails fast without 
 | `anythingllm_status` | AnythingLLM itself: its chat and embedding settings against jason's, each workspace's embedded documents and retrieval, and what is wrong with the command that fixes it. Starting it, applying settings, and re-embedding are `jason anythingllm` commands with `--yes`. |
 
 Each legal case with a `drive_folder` in `mystique/cases.py` is its own catalog (`jason cases --fetch-files`, then `jason anythingllm --sync --catalog case-<key>`). It is confidential, never in the shared workspace, synced only when named, titled with its case number, and never moved into or out of another catalog. It leaves out the medical and veterinary records the case holds back unless a person passes `--include-held`. AnythingLLM fails fast without its key and sends nothing.
+
+## Governance
+
+The living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog and delivery, and the documents' duties. These are `--profile governance` (`jason.mcp.governance`).
+
+| Tool | What it reads, and the caveat |
+| --- | --- |
+| `living_document` | A governing document as amended: the instruments applied and not in effect, the findings, and the rule rows' checks. With `section`, also that section's words, who set them, and its history. `as_of` gives the text in force on a date. Built from the saved sources. Not an official restatement; the recorded instruments control. |
+| `document_conflicts` | Provisions a higher authority displaces (4205), each with what still governs and what yields. `leads` adds the Act's changes since each document was written. A lead is something to read, not a conflict. |
+| `intake_questions` | The questions parked while taking documents in, with evidence, choices, and the suggestion. `likely` means two independent readers agree. |
+| `answer_intake_question` | **Writes** a person's answer to `data/intake/asks.json`; `by` is required. `jason intake --apply` turns answers into records. |
+| `schedule_agenda` | What falls due, by role, with each item's standing. Assignments are proposals until the board adopts them. |
+| `schedule_assignments` | Every assignment (role, clock, evidence, adoption) and the coverage check: duties nobody owns, and duties on a clock nothing schedules. |
+| `record_completion` | **Writes** that an occurrence was done to `data/schedule/done.jsonl`; `by` and `evidence` are required. |
+| `member_requests` | Each member's request (PayHOA and the owners' email): its kind, its clock (statute, documents, or proposed policy), due day, owner, and standing, with the next step. Email kinds come from subjects. Never approves, denies, or assigns. |
+| `acknowledgment_draft` | A first comment for an open request, for a person to send. It promises a date only where the law or the documents set one, and sends nothing. |
+| `notice_requirements` | The notice catalog: every requirement, or one in full (methods, clock, content, the proof it needs, what the documents add). |
+| `notice_delivery` | One notice's delivery to every member from the ledger: reached, bounced, skipped, and the follow-ups the law asks for. Sync first. |
+| `document_duties` | The norms a document states, each with its section, quote, bearer, and timing. A reading is a lead; about one in five is the wrong kind. |
+
+**From Python.** The same functions are `jason.api` (`from jason import api; api.member_requests()`). They return JSON-ready dicts. The other tools import from `jason.mcp.county`, `jason.mcp.index`, and `jason.mcp.rolls`.
 
 ## Board
 

@@ -1,0 +1,36 @@
+"""jason's programmatic interface: the same functions ``jason-mcp`` serves, for Python callers.
+
+Each returns a JSON-ready dict, reads the stores on disk, and decides nothing for the board. The two that write
+(``answer_intake_question``, ``record_completion``) write only a person's record to ``data/`` and require ``by``.
+
+    from jason import api
+
+    api.member_requests(open_only=True)["requests"]
+    api.living_document("ccrs", section="4.15(a)")["section"]["words"]
+    api.document_conflicts(leads=True, since="2026-01-01")
+    api.schedule_agenda(days=30, role="treasurer")
+    api.answer_intake_question("c552e5c7c1", "contract", by="A Person")
+
+The MCP server's other tools (the PayHOA catalog, deeds, liens, finance, mail, meetings, the law) are importable from
+``jason.mcp.county``, ``jason.mcp.index``, and ``jason.mcp.rolls`` the same way. ``docs/mcp.md`` lists every tool.
+"""
+
+from __future__ import annotations
+
+from jason.mcp.governance import (
+    TOOLS,
+    acknowledgment_draft,
+    answer_intake_question,
+    document_conflicts,
+    document_duties,
+    intake_questions,
+    living_document,
+    member_requests,
+    notice_delivery,
+    notice_requirements,
+    record_completion,
+    schedule_agenda,
+    schedule_assignments,
+)
+
+__all__ = [t.__name__ for t in TOOLS]

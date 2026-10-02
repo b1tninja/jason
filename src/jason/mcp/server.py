@@ -14,6 +14,7 @@ from typing import Any
 
 from jason.catalog import PayhoaCatalog
 from jason.config import Settings
+from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
 from jason.mcp.index import recorder_around, recorder_descend, recorder_detail, recorder_priors, recorder_search
 from jason.mcp.rolls import (
     secured_parcel,
@@ -327,6 +328,8 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS
+
 # A profile is a named subset, in the order a client lists them. A small local model (AnythingLLM's agent) picks
 # better from the board set: the digest, the briefs, and the law, not the research tools behind them.
 PROFILES: dict[str, tuple[str, ...]] = {
@@ -335,6 +338,9 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "explain_filing", "solar_status", "unit_characteristics", "duty_brief", "records_inventory", "authorities",
         "records_request", "passage_search", "library_search", "manager_context",
     ),
+    # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
+    # notice catalog and delivery, and the documents' duties. Two tools write a person's record to data/.
+    "governance": tuple(tool.__name__ for tool in GOVERNANCE_TOOLS),
 }
 
 
