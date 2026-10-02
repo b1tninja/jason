@@ -127,7 +127,27 @@ def _db(data_dir: Path) -> sqlite3.Connection:
         notice text, membership_id integer, unit_id integer, unit text, channel text, batch text, key text,
         sent_at text, status text, status_at text, reason text, synced_at text,
         primary key (notice, membership_id, channel, key))""")
+    con.execute("""create table if not exists notice_kinds (
+        notice text primary key, general integer, posted text, set_by text, set_at text)""")
     return con
+
+
+def set_general(data_dir: Path, notice: str, general: bool, *, posted: str = "", by: str = "") -> None:
+    """Record that ``notice`` is a general notice (CIV 4045) that was posted (``posted``: where and when), so every
+    reader of the ledger weighs its failed messages as noted, not as resends the law requires."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with _db(data_dir) as con:
+        con.execute("insert or replace into notice_kinds values (?,?,?,?,?)", (notice, int(general), posted, by, now))
+
+
+def is_general(data_dir: Path, notice: str) -> bool:
+    """Whether the ledger records ``notice`` as a posted general notice (``set_general``); False when nobody said."""
+    path = Path(data_dir) / "notices" / "deliveries.db"
+    if not path.is_file():
+        return False
+    with _db(data_dir) as con:
+        row = con.execute("select general from notice_kinds where notice = ?", (notice,)).fetchone()
+    return bool(row and row[0])
 
 
 def save(data_dir: Path, attempts: Iterable[Attempt]) -> int:

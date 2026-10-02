@@ -85,6 +85,13 @@ def test_a_general_notice_notes_a_failure_unless_the_member_asked_for_individual
     assert any("CIV 4045" in line for line in text)
 
 
+def test_a_posted_general_notice_is_remembered(tmp_path):
+    assert nl.is_general(tmp_path, "meeting-x") is False          # nothing recorded: no db is made
+    assert not (tmp_path / "notices").exists()
+    nl.set_general(tmp_path, "meeting-x", True, posted="the website, 2026-09-10", by="A Person")
+    assert nl.is_general(tmp_path, "meeting-x") is True and nl.is_general(tmp_path, "other") is False
+
+
 def test_sync_matches_emails_by_reference_and_letters_by_communication(tmp_path, monkeypatch):
     items = {"owner-info-x-email": [SimpleNamespace(status=batches.ItemStatus.SENT, result={"reference": "ABC123"},
                                                      payload={"membershipId": 700001, "unitId": 800001})],

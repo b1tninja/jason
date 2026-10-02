@@ -356,7 +356,7 @@ def notices_section(root: Path) -> Section:
     quiet = 0
     owed: dict[str, dict[str, int]] = {}
     for key, _, synced in rows:
-        found = notice_ledger.standing(notice_ledger.load(root, key))
+        found = notice_ledger.standing(notice_ledger.load(root, key), general=notice_ledger.is_general(root, key))
         required = [m for m in found if any(f.resend and f.force == "required" for f, _ in m.follow_ups)]
         policy = [m for m in found if m not in required and any(f.resend for f, _ in m.follow_ups)]
         ask = [m for m in found if any(not f.resend and f is not notice_ledger.GENERAL_NOTE

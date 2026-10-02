@@ -108,11 +108,18 @@ def _proof(args: argparse.Namespace, data_dir: Path) -> int:
         return 2
     _, clocks, notes, _ = effective(row.key, community())
     have = [Evidence[h.strip().upper().replace("-", "_")] for h in (args.have or "").split(",") if h.strip()]
-    found = notice_ledger.standing(notice_ledger.load(data_dir, args.key), general=args.general)
+    found = notice_ledger.standing(notice_ledger.load(data_dir, args.key), general=_general(args, data_dir))
     proof = notice_proof.build(row, clocks=clocks, event=_day(args.event), sent=_day(args.sent), posted=_day(args.posted),
-                               standings=found, general=args.general, have=have, ledger_key=args.key, notes=notes)
+                               standings=found, general=_general(args, data_dir), have=have, ledger_key=args.key, notes=notes)
     print("\n".join(notice_proof.lines(proof)))
     return 0
+
+
+def _general(args: argparse.Namespace, data_dir) -> bool:
+    """A general notice: said now (--general), or recorded once (--mark-general) for every later reading."""
+    from jason.tasks import notice_ledger
+
+    return bool(args.general) or notice_ledger.is_general(data_dir, args.key)
 
 
 def cmd_notices(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
@@ -129,8 +136,14 @@ def cmd_notices(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
             print("no notices in the ledger: jason notices KEY --sync reads one (KEY: its batches' prefix, e.g. "
                   "owner-info-2027)")
         for key, n, synced in rows:
-            print(f"{key}: {n} attempts; synced {synced[:16]}")
+            print(f"{key}: {n} attempts; synced {synced[:16]}" + ("; general notice" if notice_ledger.is_general(data_dir, key) else ""))
         return 0
+    if args.mark_general:
+        if not args.posted or not args.by:
+            print("--mark-general needs --posted (where and when) and --by (who records it)", file=sys.stderr)
+            return 2
+        notice_ledger.set_general(data_dir, args.key, True, posted=args.posted, by=args.by)
+        print(f"{args.key}: recorded as a general notice posted {args.posted} (by {args.by})")
     if args.sync:
         found = notice_batches(data_dir, args.key)
         if not found and not args.subject:
@@ -146,7 +159,7 @@ def cmd_notices(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
                                         since=since, subject=args.subject or "")
         print(f"{args.key}: read {', '.join(b['id'] for b in found)} since {since}")
         print("  " + "; ".join(f"{k}: {v}" for k, v in sorted(counts.items())))
-    standing = notice_ledger.standing(notice_ledger.load(data_dir, args.key), general=args.general)
+    standing = notice_ledger.standing(notice_ledger.load(data_dir, args.key), general=_general(args, data_dir))
     if args.json:
         print(notice_ledger.as_json(standing))
         return 0
@@ -158,6 +171,11 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p = sub.add_parser("notices", help="Each notice's delivery to every member, bounces and returns, and the follow-ups the law asks for")
     add_common(p)
     p.add_argument("key", nargs="?", help="the notice: its batches' id prefix (owner-info-2027)")
+    p.add_argument("--mark-general", action="store_true",
+                   help="with KEY, --posted, and --by: record that the notice is a general notice (CIV 4045) that was "
+                        "posted, so every later reading (and jason attention) weighs a failed message as noted")
+    p.add_argument("--posted", help="with --mark-general: where and when it was posted")
+    p.add_argument("--by", help="with --mark-general: who records it")
     p.add_argument("--sync", action="store_true", help="read the notice's batches and their outcomes from PayHOA (read-only)")
     p.add_argument("--subject", help="with --sync: also every message in PayHOA's log whose subject contains this "
                    "(a notice sent from PayHOA's screens: a meeting notice, a broadcast)")

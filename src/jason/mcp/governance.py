@@ -288,6 +288,7 @@ def notice_delivery(key: str, general: bool = False, data_dir: Path | None = Non
     from jason.tasks import notice_ledger
 
     attempts = notice_ledger.load(_root(data_dir), key)
+    general = general or notice_ledger.is_general(_root(data_dir), key)
     if not attempts:
         return {"error": f"no attempts for {key} in the ledger (jason notices {key} --sync)"}
     return {"key": key, "standing": json.loads(notice_ledger.as_json(notice_ledger.standing(attempts, general=general))),
