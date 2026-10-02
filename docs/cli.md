@@ -1601,6 +1601,9 @@ Written provisions a higher authority displaces: what still governs and what yie
 |---|---|---|
 | `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing |
 | `--open` |  | leave out the resolved ones |
+| `--leads` |  | find candidates: each change in the Davis-Stirling Act since 2014 that may postdate a document, with the section that cites it or speaks to its subject (reads the stored outlines and law history) |
+| `--document` | DOCUMENT | with --leads: one document's outline key (bylaws, enforcement-policy) |
+| `--since` | SINCE | with --leads: only changes operative on or after this date (2026-01-01: this year's laws) |
 | `--json` |  | print JSON |
 
 ### `jason notices`

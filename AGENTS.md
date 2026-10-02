@@ -128,6 +128,7 @@ The companion axiom. Where the law and the documents do speak:
   - the board item that follows it.
 
   `jason conflicts` lists the rows, `jason sop KEY` shows those in its areas, and `{REPORT:conflicts}` carries them into a packet.
+- **Find them, don't wait for them.** `jason conflicts --leads` lists each change in the Act since a document was written, with the section that cites it or speaks to its subject. A lead is read beside the statute before it becomes a row. `jason sop law-review` runs it each January.
 
 **Its limits:**
 - **It is a conflict only if both cannot be obeyed.** A document that asks more than a statute's minimum is followed as written.

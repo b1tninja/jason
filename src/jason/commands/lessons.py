@@ -77,6 +77,23 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
     except ValueError:
         print(f"areas: {', '.join(a.value for a in Area)}", file=sys.stderr)
         return 2
+    if args.leads:
+        from jason.config import Settings
+        from jason.tasks import conflict_leads
+
+        data_dir = Settings.load(getattr(args, "env", None)).ownership_db.parent
+        found_leads = conflict_leads.leads(data_dir, community(), document=args.document or "",
+                                           since=args.since or "")
+        if args.json:
+            print(json.dumps([{**asdict(l), "change": asdict(l.change)} for l in found_leads], indent=1))
+            return 0
+        if not found_leads:
+            print("no leads: jason outlines and jason law-history --export write what this reads")
+            return 0
+        print(f"{len(found_leads)} leads: a change in the Act that may postdate a document, and the section that speaks "
+              "to it. A lead is for a person to read beside the statute; one that is a conflict becomes a Conflict row.")
+        print("\n".join(conflict_leads.lines(found_leads, community())))
+        return 0
     found = conflicts(community(), area, open_only=args.open)
     if args.json:
         print(json.dumps([{**asdict(c), "tier": c.tier.label, "authority_tier": c.authority_tier.label,
@@ -98,6 +115,11 @@ def register_conflicts(sub: Any, add_common: Callable[[Any], None]) -> None:
     add_common(p)
     p.add_argument("--area", help="one area: " + ", ".join(a.value for a in _areas()))
     p.add_argument("--open", action="store_true", help="leave out the resolved ones")
+    p.add_argument("--leads", action="store_true",
+                   help="find candidates: each change in the Davis-Stirling Act since 2014 that may postdate a document, "
+                        "with the section that cites it or speaks to its subject (reads the stored outlines and law history)")
+    p.add_argument("--document", help="with --leads: one document's outline key (bylaws, enforcement-policy)")
+    p.add_argument("--since", help="with --leads: only changes operative on or after this date (2026-01-01: this year's laws)")
     p.add_argument("--json", action="store_true", help="print JSON")
     p.set_defaults(func=cmd_conflicts)
 

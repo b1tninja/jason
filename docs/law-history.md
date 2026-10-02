@@ -71,6 +71,32 @@ The table's own word, "continued" (254 rows), says nothing about substance; the 
   - `tests/test_statutory_terms.py` fails when a constant differs from its term or the exported statute no longer carries the value.
   - A changed term keeps its prior value and effective day; `in_force(name, day)` gives the law of a document's date. A hearing decision letter from 2024 is judged against 15 days, one from after June 30, 2025 against 14.
 
+## Leads for the conflict register
+
+The sweep checks jason's own material. `jason conflicts --leads` (`jason.tasks.conflict_leads`) checks the association's: each governing document, rule, policy, and resolution, as `jason outlines` stored it, against each change to the Act since the 2014 recodification. A provision a later law displaces is followed only as far as the law allows (AGENTS.md, "Follow what is written"). A real conflict becomes a `Conflict` row, which `jason conflicts` lists.
+
+```bash
+jason conflicts --leads --since 2026-01-01
+jason conflicts --leads --document enforcement-policy
+```
+
+- **Two routes.**
+  - *Cites:* a section of the document cites the changed section, by its current number or a former one.
+  - *Subject:* the section is among the passages that best match the changed section's words. BM25 runs over the section's current text and the words the change inserted, leaving out words most of the Act uses ("separate interest", "association").
+  - Many documents never cite the statute that governs them. A fine schedule may cite nothing, yet 5850 caps it.
+- **Only changes that may postdate the document.** Each citable document carries the date its text was written (`CitableDocument.written`, with its evidence).
+  - A year alone counts that same year's changes.
+  - A document with no date counts every change since 2014, so pin the date when the evidence allows.
+  - Recodification rows, and amendments of fewer than ten words, are left out.
+- **One lead per document and change**, citation first, then the best-matching section. A change already on a `Conflict` row is marked with it.
+- **A lead is a reason to read two texts side by side.** Most are not conflicts: the document may already comply, or ask more than the law's minimum. Some subject matches are loose, and the section text in the lead shows which.
+- **On October 2, 2026:**
+  - There were 252 leads across the documents, 26 of them from the laws operative in 2026.
+  - The subject route found AB 130 in five places: the bylaws' rule-making on member discipline, the CC&Rs' power to fine, the Enforcement Policy's due process, and the owner's manual's fine schedule and enforcement page. Most of these cite neither 5850 nor 5855.
+  - It also found 4741 at CC&Rs 4.15, the rental section.
+
+`jason sop law-review` is the yearly procedure.
+
 ## Limits
 
 - **One note per edition.** An edition carries only the latest history note. An act amended twice between two editions shows only the later one, and the shelf starts in 2011.

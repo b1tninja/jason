@@ -172,6 +172,34 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/batches.md (Delivery and follow-ups)", "Civil Code 4040, 4041(e), 4045, 4050"),
     ),
     Procedure(
+        "law-review", "The year's changes in the law against the written provisions",
+        "Each January, once the year's new laws are operative; again when a law takes effect mid-year.",
+        (Area.GOVERNING, Area.ENFORCEMENT, Area.RENTALS),
+        "Find each governing document, rule, policy, and procedure a change in the law now displaces, wholly or in "
+        "part, so it is followed only as far as the law allows and the board can amend it.",
+        (
+            Step("Refresh the law and the change history from lawlibrary.",
+                 command="jason export-authorities; jason law-history --export",
+                 check="the export's date; the year's chaptered bills are in the change list"),
+            Step("Refresh the documents' outlines.", command="jason outlines --fetch",
+                 check="a document added or adopted since is a citable document in the specification, with its "
+                       "written date"),
+            Step("List the leads: each change since a document was written, with the section that cites it or "
+                 "speaks to its subject.", command="jason conflicts --leads --since YEAR-01-01",
+                 check="a document with no written date counts every change: pin the date when the evidence allows",
+                 refs=("docs/law-history.md (Leads for the conflict register)",)),
+            Step("Read each lead beside the statute's text; record each real conflict as a Conflict row (the part "
+                 "that yields, how it is followed meanwhile, plain or for counsel).",
+                 command="jason law-history --section NNNN", refs=("AGENTS.md (Follow what is written)",),
+                 lessons=("law-outdates-provisions",)),
+            Step("Check jason's own rules and pages for the same changes.",
+                 command="jason law-history --sweep --since YEAR", check="data/reports/law-sweep.md"),
+            Step("Put each new conflict on the board's action register, and carry them into the next packet.",
+                 command="jason board --set ITEM ...", refs=("{REPORT:conflicts}",), person=True),
+        ),
+        refs=("docs/law-history.md", "AGENTS.md (Follow what is written, as far as a higher authority allows)"),
+    ),
+    Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",
         "Whenever the association writes to owners.",
         (Area.DOCUMENTS, Area.EMAIL),

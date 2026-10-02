@@ -30,6 +30,9 @@ class CitableDocument:
     kind: DocumentKind
     aliases: tuple[str, ...] = ()          # names another document cites it by ("Declaration", "CC&Rs")
     amends: str = ""                       # the key of the document this one amends
+    written: str = ""                      # when its text was adopted or last restated: "2007-09-17", or "2024" when the
+                                           # evidence gives only the year; empty when unknown
+    written_from: str = ""                 # the evidence for ``written``
 
 
 @dataclass
