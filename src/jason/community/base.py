@@ -666,6 +666,12 @@ class Community(ABC):
                 return rule
         raise KeyError(key)
 
+    def notice_provisions(self) -> tuple:
+        """What the governing documents say about notice beside the statute (``jason.community.notices.
+        NoticeProvision``): a clause that asks more, the same, less, or differently than a catalog requirement
+        (``jason.community.notice_catalog``), or a notice only the documents require. Empty until set."""
+        return ()
+
     def leasing_rules(self):
         """The declaration's leasing cap and minimum term (``jason.community.leasing.LeasingRules``); None until set."""
         return None

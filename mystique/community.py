@@ -164,6 +164,12 @@ class Mystique(Community):
 
         return NOTICE_RULES
 
+    def notice_provisions(self):
+        """The governing documents' notice clauses beside the statute (notices.py)."""
+        from .notices import NOTICE_PROVISIONS
+
+        return NOTICE_PROVISIONS
+
     def leasing_rules(self):
         """CC&Rs 4.15 as amended (leasing.py)."""
         from .leasing import LEASING

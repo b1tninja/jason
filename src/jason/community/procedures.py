@@ -151,6 +151,12 @@ PROCEDURES: tuple[Procedure, ...] = (
         "Know that each member was reached, and where a message bounced, was skipped, or a letter did not mail, "
         "deliver the notice again the way Civil Code 4040, 4041(e), and 4045 ask.",
         (
+            Step("Before it goes out, read the notice's requirement: recipients, method, the clock with the governing "
+                 "documents' stricter period, the content, and the evidence it will need. Name its batches with the "
+                 "requirement's key and the date (board-meeting-2026-10-20) so the ledger and the proof find it.",
+                 command="jason notices REQUIREMENT --catalog",
+                 check="the last day to send; the documents' clauses that ask more; the content list",
+                 refs=("docs/notices.md",)),
             Step("Read the notice's delivery from PayHOA: a jason batch by its id prefix; a notice sent from PayHOA's "
                  "screens by its subject.",
                  command="jason notices KEY --sync (or --sync --subject \"SUBJECT\" --since DATE)",
@@ -168,8 +174,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  refs=("procedure owner-info-cycle", "docs/owner-information.md")),
             Step("Sync again until nothing is owed; the ledger is the record of each delivery.",
                  command="jason notices KEY", refs=("data/notices/deliveries.db",)),
+            Step("Put together the proof of notice: the evidence the requirement calls for, the window, and who was "
+                 "reached only after the last day (a finding for the board: usually a new date and a new notice).",
+                 command="jason notices KEY --proof --event DATE [--general --posted DATE] [--have text_as_sent,...]",
+                 check="every item on file; nobody late or unreached", refs=("docs/notices.md (Proof of notice)",),
+                 person=True),
         ),
-        refs=("docs/batches.md (Delivery and follow-ups)", "Civil Code 4040, 4041(e), 4045, 4050"),
+        refs=("docs/batches.md (Delivery and follow-ups)", "docs/notices.md", "Civil Code 4040, 4041(e), 4045, 4050"),
     ),
     Procedure(
         "law-review", "The year's changes in the law against the written provisions",
@@ -198,6 +209,40 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason board --set ITEM ...", refs=("{REPORT:conflicts}",), person=True),
         ),
         refs=("docs/law-history.md", "AGENTS.md (Follow what is written, as far as a higher authority allows)"),
+    ),
+    Procedure(
+        "document-intake", "Taking a document in: classify, establish its standing, read it, ask, and check",
+        "Whenever a governing document, amendment, rule, policy, or recorded instrument arrives, and after each "
+        "library or Drive sync.",
+        (Area.GOVERNING, Area.DOCUMENTS),
+        "Know what each document is, whether it took effect, what its words say where a reader was unsure, and what it "
+        "changes: so the current text, the conflicts, and the duties stay true, and every answer a person gives is kept.",
+        (
+            Step("Bring the document in: the library and the Drive catalog.", command="jason library; jason drive",
+                 check="it has a kind; an unclassified file becomes a question"),
+            Step("Establish its standing: a draft, adopted (minutes, resolution), or recorded (the county index, the "
+                 "recorded copy with its stamp). Read the recorded copy, not a summary of it.",
+                 command="jason-mcp recorder_search / recorder_detail; jason records-request",
+                 check="an amendment's adopted and recorded dates pinned in the specification",
+                 lessons=("amendment-standing-is-a-record",), person=True),
+            Step("If it amends a document jason keeps living, add it as an instrument with the source its marks are "
+                 "read from (the recorded scan; the draft Doc as a second reading), then build.",
+                 command="jason living KEY --fetch --working",
+                 check="applied and not-in-effect lists; before-words findings; the rule rows' checks",
+                 refs=("docs/living-documents.md",), lessons=("plain-text-loses-the-marks", "amended-by-hand-drifts")),
+            Step("Park every uncertainty as a question, and answer them: the kind, OCR readings (the likely ones in a "
+                 "batch after a look), drift, an amendment's silent changes, orphaned notes.",
+                 command="jason intake --scan; jason intake --likely; jason intake --answer ID TEXT --by NAME",
+                 check="no answer without a name; a question for counsel goes to the board's canvas", person=True),
+            Step("Apply the answers, and build again.", command="jason intake --apply; jason living KEY",
+                 check="transcriptions applied; the question count falls"),
+            Step("Check what the document changes against the law and the other documents: conflict leads, duties, "
+                 "notice requirements.", command="jason conflicts --leads --document KEY",
+                 refs=("procedure law-review",), lessons=("law-outdates-provisions",)),
+            Step("Record what the intake taught as lessons, and update this procedure.",
+                 command="jason lessons --area governing", refs=("AGENTS.md (Lessons and procedures)",)),
+        ),
+        refs=("docs/intake.md", "docs/living-documents.md"),
     ),
     Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",

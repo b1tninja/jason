@@ -36,7 +36,9 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [drive-labels.md](drive-labels.md): jason's labels on Drive files as private `appProperties`.
 - [drive-activity.md](drive-activity.md): who created, moved, renamed, trashed, or re-shared a Drive item, read from the Drive Activity API.
 - [document-readings.md](document-readings.md): reading the instruments' own text into concept records, and what OCR defeats.
+- [intake.md](intake.md): taking documents in: the questions jason parks for a person (classification, OCR readings, an amendment's silent changes, drift), and answers kept as records.
 - [living-documents.md](living-documents.md): each governing document as amended, section by section, with the instrument that set its words; corrections and annotations kept apart.
+- [document-duties.md](document-duties.md): the duties, prohibitions, permissions, rights, and conditions the governing documents state, read by a phrase grammar and a local model, measured, and reviewed by a person.
 - [document-tools.md](document-tools.md): the open-source tools for the scans (Ollama, AnythingLLM, OCR engines) and how each joins jason.
 - [letters.md](letters.md): the letter templates in Drive, their `{VARIABLE}` tokens, and filling a copy.
 - [packets.md](packets.md): several documents (the annual disclosures) assembled into one PDF.
@@ -79,6 +81,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 ## Law, legal, insurance, and claims
 
 - [community-manager.md](community-manager.md): the manager's duties and the statutes they sit on.
+- [notices.md](notices.md): every notice the law requires (recipients, method, clock, content), the instruments that change a governing document, unreachable owners, and the proof of notice.
 - [manager-review.md](manager-review.md): how jason reviews a task: the base prompt, the task prompts, and the context pack.
 - [law-history.md](law-history.md): the Davis-Stirling Act's former sections, their successors, and every change since 2011.
 - [statute-alignment.md](statute-alignment.md): which provision continues which between two versions of the Act.
