@@ -52,6 +52,15 @@ CONFLICTS = (
         "the member's right to executive session, the decision within 14 days, and a hearing for each penalty.",
         Clarity.PLAIN, ConflictStatus.BOARD, (Area.ENFORCEMENT,), board_item="enforcement-policy-ab130"),
     Conflict(
+        "ballot-not-suspended", "CC&Rs 2.3(d) and 10.5(c) (suspension of voting rights)", Tier.DECLARATION,
+        "Let the board suspend a member's voting rights as a sanction for a violation or an unpaid assessment.",
+        "CIV 5105(h)(1)", Tier.STATUTE, date(2020, 1, 1),
+        "Notwithstanding any other law, a member may not be denied a ballot in an election under the Act for any "
+        "reason but not being a member when ballots go out (SB 323). A suspension cannot reach those ballots.",
+        "Deny no member a ballot in an election the Act governs (Civil Code 5100(a)), whatever their standing. Other "
+        "suspensions (use of the recreational facilities) still follow the hearing process (5855).",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING, Area.ENFORCEMENT)),
+    Conflict(
         "pre-2014-citations", "CC&Rs and Bylaws (their Davis-Stirling citations)", Tier.DECLARATION,
         "Cite about 60 Davis-Stirling sections by their numbers before 2014 (Civil Code 1350 to 1378).",
         "the Davis-Stirling Act as recodified (Stats. 2012, ch. 180)", Tier.STATUTE, date(2014, 1, 1),
