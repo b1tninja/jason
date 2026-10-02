@@ -131,3 +131,39 @@ The plan also reads each unit's occupancy signal. When no owner's mailing addres
 It goes out as two batches ([batches.md](batches.md)):
 1. **The Mailroom** (`jason owner-info --mail-batch`): one send per building to the owners the law sends mail. PayHOA sends co-owners at one address one letter. It folds an owner's two units in one send into one letter, so a second unit goes in a send of its own.
 2. **The email supplement** (`jason owner-info --email-batch`): each owner's own filled copy, one at a time.
+
+## What the 2027 cycle taught (October 2026)
+
+**What went wrong:**
+- **The link was broken for every owner.** The letters, their QR codes, and the emails linked to the PayHOA form without the unit (`;unitId=`). An owner who followed the link got "You do not have permission to access this form". Only an administrator could open it. The test round trip submitted through the API, which names the unit itself, so it passed.
+- **The letters could not be recalled.** They were mailed first. When the link problem surfaced, about 70 minutes after mailing, every cancel failed: Lob's cancel window had closed.
+- **The emailed form printed the bare link.** The fillable PDF repeated it in its own return instructions.
+- **Occupancy came back blank on paper.** On a paper or PDF return, nothing can make a question required. The occupancy question sat at number 12, after the optional sections.
+- **An answer of "same as my unit address" was sent to a person.** It needed no entry: PayHOA already mailed to the unit.
+- **Property managers could not tell the emails apart.** They asked which unit each email was about.
+
+**Fixed in jason:**
+- **Unit links everywhere.** Every form link carries the unit (`payhoa_forms.owner_link`, `with_unit`). The send refuses a bare link (`live_problem`), so a letter that is the same for every owner cannot carry one.
+- **The printed form gives the way, not a link.** It reads "online in PayHOA: sign in, choose Requests, then Owner Information and Notice Delivery Preferences". Each emailed copy links those words to its own unit (`fillable.link_phrase`).
+- **The email names its unit.** It opens "Regarding: {unit address}", and the subject can carry `{unit address}`. Its `mailto:` links carry the copy's reference.
+- **The email is written once.** It is Markdown, with the steps pictured, and the same file is its letterhead Doc and its PDF. `--preview` shows one owner's copy, and `--only me` sends a test to yourself.
+- **"Same as my unit address" needs a person** only when PayHOA's profile mails somewhere else.
+- **Owner-side links were tested** from the owner account: `.../forms/114542;unitId=UNIT` opens the form, and the bare link does not.
+
+**To change before the 2028 cycle:**
+
+| | Change | Why | Kind |
+|---|---|---|---|
+| 1 | **Email first, letters after.** Send the emails; test the link the next day from an owner's account, signed out and signed in; then mail. | A letter cannot be recalled after minutes; an email can be followed by a correction. | Order of steps |
+| 2 | **Test like an owner, not like the API.** Before any send, open the exact link and QR target in a private window as the test account. That is a person's step, since jason never signs in. | The API round trip passed while every owner's link failed. | Pre-send checklist |
+| 3 | **Give the letter its own unit's link, or no link.** Either one Mailroom send per unit (each letter with its unit's QR code; same price per letter, more sends), or the written route plus a QR code to the sign-in page. | Decided by whether `;unitId=` survives a sign-in; test it first. | Decision; then code for per-unit letters |
+| 4 | **Move occupancy and "you are answering for" up**, beside delivery. Name the unit in the question, mark it "required by law", and print what is on file beside it (never pre-checked). | Paper cannot require an answer; a question near the top, saying it is required, is answered more often. A default would be confirmed unread. | Form definition (`mystique/forms.py`) |
+| 5 | **Read returns the same way as PayHOA answers.** `owner-info --returns DIR` runs returned PDFs and scans through the same rules, trust levels, and dry run. | Emailed forms now need a person to enter them. | Code |
+| 6 | **A one-tap follow-up for a blank required answer.** One `mailto:` link per choice ("Occupancy: Rented out [Ref ...]"), read back by its subject. | No form to fill in again. | Code, after item 8 |
+| 7 | **Check for bounces after the email batch.** Read PayHOA's communications log for failed and bounced deliveries, and mail those owners. | A bounce happens after the send and never reaches jason. | Code |
+| 8 | **The board decides the rental question first.** It decides the 4.15 recognition of existing rentals, and what to ask likely non-owner-occupied units, before the cycle opens. | Occupancy follow-ups were held for the board in 2027. | Board, `rental-approvals-4-15` |
+| 9 | **Co-owners at one address.** Decide whether each owner gets an envelope by name. 24 of 107 shared one in 2027. | Each owner has a copy, but the envelope names one of them. | Decision (cost) |
+| 10 | **Start in mid-September.** Set `OWNER_INFO_CYCLE` for 2028 with time for one correction before the answer-by date and November 1. | 2027 opened October 1, with a three-week window and no room to resend. | Specification |
+| 11 | **Post the owners' guide** (`data/drafts/owner-preferences-guide.md`) on the website before the cycle, and link it from the letter and the email. | It stays the same every year; the steps change only if PayHOA's screens do. | Website |
+| 12 | **Remind the owners who have not answered.** Send a reminder a week before the answer-by date. | Nothing scheduled one in 2027. | Code |
+| 13 | **Close out the cycle on November 1.** Remove the Unconfirmed Address records, and record what came back. | It is easy to leave them past the cycle. | Calendar |
