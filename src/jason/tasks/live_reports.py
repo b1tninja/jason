@@ -215,6 +215,29 @@ def _schedule(data_dir: Path, community: Any, params: dict[str, str], context: d
     return out or ["- Nothing falls due."]
 
 
+def _responses(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
+    """Members' open requests by standing and kind, the statute-clocked ones named, and last year's timeliness."""
+    from collections import Counter
+
+    from jason.community.responses import ClockSource
+    from jason.tasks import responses as task
+
+    found = task.handle(community, data_dir) + task.email_requests(community, data_dir)
+    open_ = [h for h in found if h.closed is None]
+    out = [f"- Open: {len(open_)}; " + ", ".join(f"{n} {k}" for k, n in Counter(h.kind.value for h in open_).most_common())]
+    late = [h for h in open_ if h.standing.startswith("OVERDUE")]
+    out.append(f"- Past their clocks: {len(late)} (most against proposed policy clocks the board has not adopted).")
+    for h in open_:
+        if h.rule and h.rule.source is not ClockSource.POLICY:
+            out.append(f"- {h.kind.value}, received {h.received}: due {h.due} under {h.rule.authority} ({h.standing}).")
+    s = task.summary(found)
+    kinds = sorted(set(s["onTime"]) | set(s["late"]))
+    if kinds:
+        out.append("- Answered within the clock: " + "; ".join(f"{k} {s['onTime'].get(k, 0)} of "
+                                                              f"{s['onTime'].get(k, 0) + s['late'].get(k, 0)}" for k in kinds) + ".")
+    return out
+
+
 def _conflicts(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
     """The written provisions a higher authority displaces (``area=enforcement``), open ones only unless ``all=yes``."""
     from jason.community.authority_order import conflict_lines, conflicts
@@ -237,6 +260,10 @@ REPORTS: dict[str, Report] = {r.key: r for r in (
            caveat="The steps as last written; update the procedure when a step changes."),
     Report("lessons", "Lessons", "jason lessons", "jason's lessons and the community's own", _lessons, offline=True,
            caveat="What went wrong and what changed; open ones still need a change or a decision."),
+    Report("responses", "Members' requests and their clocks", "jason respond",
+           "the stored PayHOA requests and the owners' email threads", _responses, offline=True,
+           caveat="Email kinds come from subjects; a proposed clock is a target until the board adopts it; jason "
+                  "approves, denies, and assigns nothing."),
     Report("schedule", "What falls due", "jason schedule", "the assignments and the completions recorded",
            _schedule, offline=True,
            caveat="Assignments are jason's proposals until the board adopts them; a completion is recorded by a person."),
