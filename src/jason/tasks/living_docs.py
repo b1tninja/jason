@@ -91,32 +91,92 @@ def _read(ref: SourceRef, data_dir: Path, cache: Path, docs: Any) -> tuple[str, 
     return "text", text, ""
 
 
-def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, as_of: date | None = None,
+def scan_file(ref: SourceRef, cache: Path, drive: Any = None) -> tuple[Path | None, str]:
+    """A scanned PDF in Drive, saved under ``cache`` (downloaded read-only when ``drive`` is given), and why not."""
+    import hashlib
+
+    path = cache / f"{ref.ref}.pdf"
+    if drive is not None:
+        drive.download(ref.ref, path)
+    if not path.is_file():
+        return None, f"scan {ref.ref} not read yet (jason living KEY --fetch)"
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if ref.sha256 and digest != ref.sha256:
+        return None, f"scan {ref.ref}: the file changed since it was reviewed (sha256 {digest[:12]}, pinned {ref.sha256[:12]})"
+    return path, ""
+
+
+def operations(ref: SourceRef, data_dir: Path, cache: Path, *, docs: Any = None, drive: Any = None
+               ) -> tuple[tuple, str, str]:
+    """An instrument's operations from one source: (operations, revision, why held). A held source has none."""
+    if ref.kind is SourceKind.SCAN:
+        from jason.community.scan_marks import operations_from_scan
+
+        path, why = scan_file(ref, cache, drive)
+        return (operations_from_scan(path), "", "") if path else ((), "", why)
+    kind, body, revision = _read(ref, data_dir, cache, docs)
+    if kind == "held":
+        return (), "", body
+    return (operations_from_doc(body) if kind == "doc" else operations_from_text(body)), revision, ""
+
+
+def compare_readings(key: str, first: tuple, second: tuple, label: str) -> list[AmendmentFinding]:
+    """Where two readings of one instrument give different words for a section (a recorded scan against its draft):
+    the after words, since struck words are dropped and their OCR does not matter."""
+    from jason.community.living import FindingKind, _norm, word_changes
+
+    theirs = {op.section: op for op in second}
+    found = []
+    for op in first:
+        other = theirs.pop(op.section, None)
+        if other is None:
+            found.append(AmendmentFinding(FindingKind.READINGS_DIFFER, op.section, key, f"not in {label}"))
+        elif _norm(op.after) != _norm(other.after):
+            found.append(AmendmentFinding(FindingKind.READINGS_DIFFER, op.section, key,
+                                          f"{label}: " + "; ".join(word_changes(op.after, other.after))))
+    found += [AmendmentFinding(FindingKind.READINGS_DIFFER, s, key, f"only in {label}") for s in theirs]
+    return found
+
+
+def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: Any = None, as_of: date | None = None,
           working: bool = False, all_sections: bool = False) -> Built:
-    """The current text of ``living`` from its sources. ``docs`` (a Docs client) reads the Docs afresh; without it the
-    copies saved by the last read are used. ``working`` also compares the working copy: the sections an amendment set,
-    or with ``all_sections`` every section (where a base read by OCR differs mostly by the OCR's slips)."""
+    """The current text of ``living`` from its sources. ``docs`` (a Docs client) reads the Docs afresh and ``drive``
+    downloads the scans; without them the copies saved by the last read are used. ``working`` also compares the working
+    copy: the sections an amendment set, or with ``all_sections`` every section (where a base read by OCR differs
+    mostly by the OCR's slips)."""
+    from jason.community.living import FindingKind
+
     cache = living_dir(data_dir, living.key) / "sources"
     kind, base, _ = _read(living.base, data_dir, cache, docs)
     if kind == "held":
         raise ValueError(f"the base text cannot be read: {base}")
     outline = (outline_from_doc(base, key=living.key, title=living.title, kind=living.kind.value) if kind == "doc"
                else outline_from_text(prepare_extract(base), key=living.key, title=living.title, kind=living.kind.value))
-    held, revisions, instruments = [], {}, []
+    held, revisions, instruments, compared = [], {}, [], []
     for li in living.instruments:
-        kind, body, revision = _read(li.source, data_dir, cache, docs)
-        if kind == "held":
-            held.append(f"{li.key}: {body}")
+        ops, revision, why = operations(li.source, data_dir, cache, docs=docs, drive=drive)
+        if why:
+            held.append(f"{li.key}: {why}")
             continue
         if revision:
             revisions[li.key] = revision
-        ops = operations_from_doc(body) if kind == "doc" else operations_from_text(body)
+        if li.check is not None:
+            other, other_revision, other_why = operations(li.check, data_dir, cache, docs=docs, drive=drive)
+            if other_why:
+                held.append(f"{li.key} (second reading): {other_why}")
+            else:
+                if other_revision:
+                    revisions[f"{li.key} (second reading)"] = other_revision
+                compared += compare_readings(li.key, ops, other, f"the {li.check.kind.value} reading")
         d = li.document
         instruments.append(Instrument(li.key, living.key, standing_of(d), ops, getattr(d, "title", "") or li.key,
                                       adopted=getattr(d, "adopted", None), recorded=getattr(d, "recorded", None),
                                       number=getattr(d, "recorder_number", "") or ""))
     current = consolidate(outline, instruments, as_of=as_of, base_from=living.base_from,
                           corrections=living.corrections)
+    current.findings += compared
+    current.findings += [AmendmentFinding(FindingKind.HELD, "", h.split(":", 1)[0], h.split(":", 1)[-1].strip())
+                         for h in held]
     out = Built(living, current, held, revisions, check_text(current, living.checks))
     if working and living.working_doc:
         copy = working_copy(living, data_dir, docs=docs)

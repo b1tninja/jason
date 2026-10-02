@@ -108,6 +108,7 @@ class Operation:
     caption: str = ""                  # the section's caption as the instruction quotes it
     instruction: str = ""              # the instruction's own words
     marks_lost: bool = False           # the legend says marks carry the change, and this copy has none
+    struck_by_ocr: bool = False        # the struck words were read by OCR through the strike: their letters are noise
 
     @property
     def before(self) -> str:
@@ -376,6 +377,8 @@ class FindingKind(Enum):
     EDITORIAL = "editorial note"             # a copy carries an editor's bracketed note among the words
     CORRECTION_REFUSED = "correction refused"   # an editorial fix that would change meaning
     CORRECTION_STALE = "correction stale"    # its wrong words are no longer in the section
+    READINGS_DIFFER = "readings differ"      # two copies of one instrument give different words for a section
+    HELD = "held"                            # a source not read (changed since review, or not fetched)
 
 
 @dataclass(frozen=True)
@@ -602,7 +605,9 @@ def _apply(current: CurrentDocument, instrument: Instrument, op: Operation) -> N
         if _ratio(target.body, op.after) > _ratio(target.body, op.before):
             find(FindingKind.ALREADY_APPLIED, "the base reads closer to the instrument's after words than its before "
                  "words: a copy amended by hand")
-        find(FindingKind.BEFORE_DIFFERS, "; ".join(word_changes(target.body, op.before)))
+        changes = _before_changes(target.body, op)
+        if changes:
+            find(FindingKind.BEFORE_DIFFERS, "; ".join(changes))
     if op.verb is Verb.RESTATE and _norm(op.after) == _norm(target.body):
         find(FindingKind.NO_CHANGE)
     end = _subtree_end(provisions, at)
@@ -617,6 +622,33 @@ def _apply(current: CurrentDocument, instrument: Instrument, op: Operation) -> N
     provisions[at] = replace(target, body=op.after, caption=target.caption or op.caption,
                              history=[*target.history, f"{key}: {op.verb.value}"], **stamp)
     _split_lines(provisions, at)
+
+
+_STRUCK = "\x00struck"
+
+
+def _before_changes(body: str, op: Operation, *, limit: int = 4) -> list[str]:
+    """How the instrument's before words differ from the section's. When the struck words were read by OCR through the
+    strike, they stand in for whatever the section says there: only a difference in the plain words is reported."""
+    if not op.struck_by_ocr:
+        return word_changes(body, op.before)
+    ours = _norm(body).split(" ")
+    theirs: list[str] = []
+    for r in op.runs:
+        if r.mark is Mark.ADDED:
+            continue
+        words = _norm(r.text).split(" ") if _norm(r.text) else []
+        theirs += [_STRUCK] * len(words) if r.mark is Mark.STRUCK else words
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=ours, b=theirs, autojunk=False).get_opcodes():
+        if tag == "equal" or (j2 > j1 and all(w == _STRUCK for w in theirs[j1:j2])):
+            continue
+        before, after = " ".join(ours[max(0, i1 - 2): i1]), " ".join(ours[i2: i2 + 2])
+        new = " ".join("~struck~" if w == _STRUCK else w for w in theirs[j1:j2])
+        out.append(f'"{before} [{" ".join(ours[i1:i2])}] {after}" -> "{before} [{new}] {after}"'.replace("  ", " "))
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _ratio(a: str, b: str) -> float:
@@ -867,6 +899,7 @@ def place(current: CurrentDocument, annotations: Sequence[Annotation]) -> list[P
 class SourceKind(Enum):
     DOC = "doc"                      # a Google Doc, read with its text runs (bold, strikethrough)
     LIBRARY_TEXT = "library-text"    # the library's text extract of a PDF (a recorded copy's OCR), by library path
+    SCAN = "scan"                    # an image-only PDF in Drive (a recorded copy), read for its marks (scan_marks)
 
 
 @dataclass(frozen=True)
@@ -875,7 +908,7 @@ class SourceRef:
     has changed is held out until it is reviewed again. A Doc is read at its current revision, which is reported."""
 
     kind: SourceKind
-    ref: str                         # a Drive id (DOC) or a library path (LIBRARY_TEXT)
+    ref: str                         # a Drive id (DOC, SCAN) or a library path (LIBRARY_TEXT)
     sha256: str = ""
     note: str = ""                   # why this copy ("the draft's runs; its after words match the recorded scan")
 
@@ -895,6 +928,7 @@ class LivingInstrument:
     key: str                         # the instrument's outline key ("ccrs-2nd-amendment")
     document: Any                    # the specification's Document: its title, adoption and recording
     source: SourceRef
+    check: SourceRef | None = None   # a second reading whose words must agree (the draft Doc against the recorded scan)
 
 
 @dataclass(frozen=True)

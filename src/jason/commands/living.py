@@ -44,7 +44,7 @@ def cmd_living(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
         with agent_factory(args) as agent:
             drive = agent.drive()
             docs = drive.docs() if args.fetch else None
-            built = living_docs.build(ld, data_dir, docs=docs, as_of=as_of, working=args.working or args.annotations,
+            built = living_docs.build(ld, data_dir, docs=docs, drive=drive if args.fetch else None, as_of=as_of, working=args.working or args.annotations,
                                      all_sections=args.all_sections)
             if args.annotations and ld.working_doc:
                 comments = drive.list_comments(ld.working_doc)
