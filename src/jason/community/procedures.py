@@ -73,7 +73,10 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="the subject names the unit; every form link carries ;unitId=; the pictures show"),
             Step("Send the email batch.", command="jason owner-info --email-batch --message NAME.md --yes "
                  "--confirmed-by NAME", refs=("docs/batches.md",)),
-            Step("Check for bounced or failed emails, and mail those owners.", lessons=("bounces-are-silent",)),
+            Step("Read the emails' delivery: bounced, skipped, or never shown delivered; mail those owners.",
+                 command="jason notices owner-info-YEAR --sync", check="the follow-ups owed; again after 24 hours, "
+                 "when PayHOA marks a message with no delivery event failed", refs=("procedure notice-delivery",),
+                 lessons=("bounces-are-silent",)),
             Step("The next day, test the emailed link as an owner again; only then mail the letters.",
                  command="jason owner-info --mail-batch --yes --confirmed-by NAME",
                  check="the Mailroom preview's recipients and price", refs=("jason mailroom --prices",),
@@ -136,8 +139,37 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="the batch's letters read back as processing", lessons=("letters-cannot-be-recalled",)),
             Step("If something is wrong, cancel at once: the window is minutes.",
                  command="jason mailroom --cancel LETTER_ID --yes"),
+            Step("A week on, read the letters' tracking: never mailed, returned, or forwarded.",
+                 command="jason notices KEY --sync", refs=("procedure notice-delivery",)),
         ),
         refs=("AGENTS.md (Boundaries)",),
+    ),
+    Procedure(
+        "notice-delivery", "A notice's delivery, and the follow-ups the law asks for",
+        "After every notice to members: the day after it goes out, again after 24 hours, and a week on for letters.",
+        (Area.EMAIL, Area.MAILROOM),
+        "Know that each member was reached, and where a message bounced, was skipped, or a letter did not mail, "
+        "deliver the notice again the way Civil Code 4040, 4041(e), and 4045 ask.",
+        (
+            Step("Read the notice's delivery from PayHOA: a jason batch by its id prefix; a notice sent from PayHOA's "
+                 "screens by its subject.",
+                 command="jason notices KEY --sync (or --sync --subject \"SUBJECT\" --since DATE)",
+                 check="members reached; the follow-ups owed and each one's authority"),
+            Step("For a general notice (a meeting notice), say whether it was also posted where the annual policy "
+                 "statement designates; only then is a failed message information rather than a resend.",
+                 command="jason notices KEY --general", check="the posting happened, on the notice's date",
+                 refs=("Civil Code 4045",), person=True),
+            Step("Send each required follow-up as its own confirmed send: a bounced or skipped email by first-class "
+                 "mail; a letter that never mailed, again.",
+                 command="jason owner-info --mail-batch --only UNIT --resend --yes --confirmed-by NAME, or jason mailroom",
+                 check="the follow-up's batch starts with the notice's KEY (--resend), so the next --sync reads it",
+                 refs=("procedure mailroom-letter",), lessons=("bounces-are-silent",), person=True),
+            Step("Ask each member whose address failed for a working one, and record the answer in PayHOA.",
+                 refs=("procedure owner-info-cycle", "docs/owner-information.md")),
+            Step("Sync again until nothing is owed; the ledger is the record of each delivery.",
+                 command="jason notices KEY", refs=("data/notices/deliveries.db",)),
+        ),
+        refs=("docs/batches.md (Delivery and follow-ups)", "Civil Code 4040, 4041(e), 4045, 4050"),
     ),
     Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",

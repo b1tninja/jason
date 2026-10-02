@@ -76,3 +76,33 @@ jason batches --show owner-info-2027-email
 ## Checking whether an email went out
 
 An owner's PayHOA communications log lists each email with its attachments. A copy was sent when an email to that owner carries the file the item uploaded. With no upload recorded, it wasn't sent, because the upload comes first. The ledger holds ids, statuses, and errors, never an address: each copy is made from PayHOA when it's sent.
+
+## Delivery and follow-ups
+
+A batch going out is not the notice arriving. `jason notices` keeps every attempt to reach each member, and reads what became of it from PayHOA (`jason.tasks.notice_ledger`, `data/notices/deliveries.db`):
+
+```bash
+jason notices owner-info-2027 --sync
+jason notices meeting-2026-09-15 --sync --subject "Regular Meeting of the Board of Directors" --since 2026-09-10 --general
+jason notices owner-info-2027
+```
+
+- **Email.** PayHOA's communications log carries each message's status and events. SendGrid reports delivered, opened, and bounced, with the receiving server's words. PayHOA reports a message it skipped for no email on file, and fails one with no delivery event after 24 hours. A jason copy is found by the reference in its subject; a notice sent from PayHOA's own screens, by `--subject`.
+- **Letter.** The same log carries each Mailroom letter, and the Mailroom's Lob events say whether it was mailed, returned, or forwarded.
+
+Each outcome is weighed by `FOLLOW_UPS`, one row per case with its force (the statute, or the association's practice) and authority:
+
+| Outcome | Follow-up | Authority |
+|---|---|---|
+| Email bounced | resend by first-class mail; ask for a working email | CIV 4041(e), 4040(a)(2) |
+| Email skipped (no email on file) | make sure a letter went | CIV 4040(a)(2), 4041(c) |
+| Email not shown delivered after 24 hours | resend by mail, as for a bounce | practice |
+| Letter never mailed | send it again | CIV 4050(b) |
+| Letter returned | send to the elected email or secondary address; ask for a mailing address | CIV 4050(b), 4041(c) |
+| Letter forwarded | ask the member to confirm the address | practice |
+
+A member another delivery reached owes no resend. A bounce or a returned letter still asks for the address. 4041(e) counts any "bounce or other error notification", so a full mailbox (SMTP 4xx) is a bounce; jason marks it temporary.
+
+**General notices.** A meeting notice is a general notice (CIV 4045). If it was also posted where the annual policy statement designates, the posting delivered it: pass `--general`, and a failed message is noted rather than resent, except to a member who asked for individual delivery (4045(b)). If it was not posted, the messages were the delivery: leave `--general` off.
+
+**Sending a follow-up** is a person's step through the commands that guard every send. For the owner-information letter, `jason owner-info --mail-batch --only UNIT --resend --yes --confirmed-by NAME` makes a `-resend-` batch that starts with the notice's key, so the next `--sync` reads it in (a `-test-` batch is never part of the notice). Sync the day after a notice, again after 24 hours, and a week on for letters; `jason sop notice-delivery` is the procedure.

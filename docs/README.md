@@ -13,7 +13,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [cli.md](cli.md): every `jason` command and its options, generated from the parser by `scripts/gen_cli_docs.py`.
 - [mcp.md](mcp.md): the jason-mcp tools.
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
-- [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes.
+- [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes; each notice's delivery to every member, and the follow-ups the law asks for (`jason notices`).
 
 ## PayHOA and finance
 

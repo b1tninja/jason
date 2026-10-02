@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-127 commands, by area:
+130 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,6 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
+- [Other](#other) (3)
 
 ## PayHOA & finance
 
@@ -791,11 +792,14 @@ The owner information cycle (CIV 4040, 4041): standing, deadlines, and PayHOA up
 | `--confirmed-by` | CONFIRMED_BY | with a batch and --yes: the person who confirmed the send |
 | `--subject` | SUBJECT | with --email-batch: the subject |
 | `--test-batch` | NAME | with --only: the test batch to resume (default: a new one, named by the time it began) |
+| `--resend` |  | with --only: a follow-up for a notice that did not reach these owners (jason notices lists them); its batch is part of the notice's delivery record, not a test |
 | `--message` | MESSAGE | with --email-batch: the message, Markdown (.md) or HTML (default data/drafts/owner-information-email-prefilled.html) |
 | `--sender` | SENDER | with --email-batch: the From address (default PayHOA's reply-to) |
 | `--follow-up` | NAME | with --email-batch: a follow-up (an updated copy, a correction) to the owners the email batch reached, in its own batch; needs --message |
 | `--preview` | HTML | with --email-batch (dry run): write the email as the first owner (or --only's) receives it |
 | `--attach` | PDF | with --follow-up: one file attached instead of each owner's filled form |
+| `--responses` |  | every response so far, each finding with its outcome (record, person, confirm, board, ignore); read-only |
+| `--canvas` |  | with --responses: write the board's questions to its canvas (private) |
 | `--send-plan` |  | write what each owner will be sent and what each copy carries (read live; no addresses) |
 | `--emailed` |  | with --prefill: the emailed copy (the form filled, with the suggested choices) instead of the letter |
 | `--prefill` | UNIT | write the pre-filled letter for each owner of the unit(s) whose address starts so (read live) |
@@ -1568,3 +1572,36 @@ Run the job queue: one job at a time per resource (GPU, Google, PayHOA, local)
 |---|---|---|
 | `--once` |  | Stop when nothing is due |
 | `--poll` | POLL | Seconds between looks at the queue |
+
+## Other
+
+### `jason lessons`
+
+What went wrong, what changed, and what is still open
+
+| Option | Value | Help |
+|---|---|---|
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository |
+| `--open` |  | only lessons still to act on (open or awaiting a decision) |
+| `--json` |  | print JSON |
+
+### `jason sop`
+
+Standard operating procedures: a task's steps, commands, checks, and reading
+
+| Option | Value | Help |
+|---|---|---|
+| `key` | optional (?) | the procedure to print (none: list them) |
+
+### `jason notices`
+
+Each notice's delivery to every member, bounces and returns, and the follow-ups the law asks for
+
+| Option | Value | Help |
+|---|---|---|
+| `key` | optional (?) | the notice: its batches' id prefix (owner-info-2027) |
+| `--sync` |  | read the notice's batches and their outcomes from PayHOA (read-only) |
+| `--subject` | SUBJECT | with --sync: also every message in PayHOA's log whose subject contains this (a notice sent from PayHOA's screens: a meeting notice, a broadcast) |
+| `--since` | SINCE | with --sync: the day the notice went out (default: its first batch's) |
+| `--general` |  | a general notice (Civil Code 4045: a meeting notice) that was also posted where the annual policy statement designates, so the posting delivered it: a failed message is noted, a resend is owed only to a member who asked for individual delivery (4045(b)), and a bounce still asks for a working email. Not posted: leave this off, since the messages were the delivery |
+| `--json` |  | print JSON |

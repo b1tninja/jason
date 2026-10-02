@@ -355,10 +355,12 @@ def _only(row: Any, args: argparse.Namespace) -> bool:
 
 def _test_suffix(args: argparse.Namespace) -> str:
     """A test run's own batch: each test is new (the date and minute it began), so a test repeated after a change is
-    sent again rather than skipped as already sent; ``--test-batch NAME`` resumes or names one."""
+    sent again rather than skipped as already sent; ``--test-batch NAME`` resumes or names one. ``--resend`` makes it a
+    follow-up instead (a bounced owner's letter): ``-resend-``, which ``jason notices`` reads as part of the notice."""
     from datetime import datetime
 
-    return "-test-" + (args.test_batch or datetime.now().strftime("%Y%m%d-%H%M"))
+    kind = "-resend-" if getattr(args, "resend", False) else "-test-"
+    return kind + (args.test_batch or datetime.now().strftime("%Y%m%d-%H%M"))
 
 
 def _form_not_live(client: Any, data_dir: Path, forms: Any, args: argparse.Namespace, message: str = "") -> bool:
@@ -615,6 +617,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                    help="with --email-batch: the subject")
     p.add_argument("--test-batch", metavar="NAME", default="",
                    help="with --only: the test batch to resume (default: a new one, named by the time it began)")
+    p.add_argument("--resend", action="store_true",
+                   help="with --only: a follow-up for a notice that did not reach these owners (jason notices lists "
+                        "them); its batch is part of the notice's delivery record, not a test")
     p.add_argument("--message", help="with --email-batch: the message, Markdown (.md) or HTML (default data/drafts/owner-information-email-prefilled.html)")
     p.add_argument("--sender", help="with --email-batch: the From address (default PayHOA's reply-to)")
     p.add_argument("--follow-up", metavar="NAME", default="",

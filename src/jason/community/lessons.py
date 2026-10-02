@@ -119,7 +119,10 @@ LESSONS: tuple[Lesson, ...] = (
            "PayHOA's mailer receives the bounce after the send succeeded.",
            "After a batch, read PayHOA's communications log for failed and bounced deliveries, and resend those owners' "
            "notices by mail: a bounced address is not valid, and the association shall resend (Civil Code 4041(e)).",
-           Status.OPEN),
+           Status.FIXED, guards=("notice_ledger.FOLLOW_UPS", "jason notices KEY --sync", "procedure notice-delivery"),
+           docs=("docs/batches.md (Delivery and follow-ups)",),
+           notes=("SendGrid reports a full mailbox (SMTP 452) as a bounce; 4041(e) counts it, and jason marks it "
+                  "temporary.",)),
     Lesson("one-source-per-document", OCT_2026, (Area.DOCUMENTS, Area.EMAIL),
            "The email, its Doc, and the website guide were separate HTML, and drifted.",
            "Each was edited where it lived.",
