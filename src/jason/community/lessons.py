@@ -230,6 +230,13 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/document-duties.md (The gold sets and the measurements)",),
            notes=("To build: a gold set of list items under lead-ins, and a check that a lead-in stating a purpose or "
                   "scope passes no kind to its items.",)),
+    Lesson("task-notes-marker", OCT_2026, (Area.GOVERNING,),
+           "A synced Google Task's notes carried the assignment's command as a line starting 'jason:', which the sync "
+           "reads as the task's marker, so every run would have made a duplicate task.",
+           "The marker is the first notes line that starts with 'jason:', and free text could start the same way.",
+           "Notes write the command as 'Command: ...' and escape any other line starting 'jason:'.",
+           Status.FIXED, guards=("schedule_sync._about", "tests/test_schedule_sync.py (a check-off recorded back)"),
+           docs=("docs/schedule.md (On Google Calendar and Google Tasks)",)),
     Lesson("duties-need-owners", OCT_2026, (Area.GOVERNING,),
            "Read across the documents, 47 duties with a deadline or a recurrence had nothing tracking them, among them "
            "the board's financial reviews, which the law makes monthly.",

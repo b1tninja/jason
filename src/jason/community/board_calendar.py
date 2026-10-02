@@ -21,6 +21,12 @@ class EventKind(str, Enum):
     HEARING_NOTICE = "hearing-notice"
     HEARING_DECISION = "hearing-decision"
     DEADLINE = "deadline"
+    SCHEDULE = "schedule"              # an occurrence of a duty's assignment (``jason schedule --calendar``)
+
+
+# The kinds ``jason calendar`` plans; ``jason schedule --calendar`` plans SCHEDULE. Each run reports only its own kinds'
+# keyed events as no longer planned, so neither reads the other's events as stale.
+BOARD_KINDS = frozenset(k for k in EventKind if k is not EventKind.SCHEDULE)
 
 
 @dataclass(frozen=True)
@@ -37,8 +43,10 @@ class CalendarPolicy:
     hearing_notice_title: str = "Board hearing: notice due"
     hearing_decision_title: str = "Board hearing: written decision due if the board acted"
     deadline_prefix: str = "Deadline: "
+    schedule_prefix: str = "Due: "             # an open occurrence of an assignment: "Due: <its title> (<role>)"
+    schedule_done_prefix: str = "Done: "       # one recorded done
     covered_words: tuple[str, ...] = ("board of directors", "board meeting")
     months: int = 3
 
 
-__all__ = ["NOTICE_DAYS", "CalendarPolicy", "EventKind"]
+__all__ = ["BOARD_KINDS", "NOTICE_DAYS", "CalendarPolicy", "EventKind"]

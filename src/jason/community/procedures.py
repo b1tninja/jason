@@ -285,6 +285,12 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="overdue items: done and not recorded, or not done"),
             Step("Record each occurrence done, with who did it and the evidence.",
                  command="jason schedule --done KEY DUE --by NAME --evidence TEXT", person=True),
+            Step("Put the schedule where people see it: each dated occurrence on the board calendar, each open one on "
+                 "its role's Google Tasks list; a task checked off there is recorded done. Read the dry run, then write.",
+                 command="jason schedule --tasks --calendar; jason schedule --tasks --calendar --yes",
+                 check="the check-offs to record are real; a 'Google Tasks' completion is weaker evidence than the "
+                       "minutes, so record the minutes' item too; no person's name in a title",
+                 refs=("docs/schedule.md (On Google Calendar and Google Tasks)", "docs/calendar.md"), person=True),
             Step("After a document, amendment, or law changes, read its duties again and check coverage.",
                  command="jason duties --documents KEY; jason schedule --coverage",
                  check="no duty unowned; no duty on a clock with only a standing owner", lessons=("duties-need-owners",)),

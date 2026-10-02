@@ -4,6 +4,8 @@
 ``--assignments`` lists the assignments (jason's proposals until the board adopts them). ``--coverage`` checks every
 duty jason knows of (the documents' duties, the notice catalog, the recurring deadlines) against the assignments and
 lists the ones nobody owns. ``--done KEY DUE --by NAME --evidence TEXT`` records that an occurrence was done.
+``--calendar`` puts each dated occurrence on Google Calendar and ``--tasks`` each open one on its role's Google Tasks
+list (``jason.tasks.schedule_sync``): a dry run beside Google unless ``--yes``; ``--plan-only`` makes no Google call.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ def cmd_schedule(args: argparse.Namespace) -> int:
 
     c, data_dir = community(), _data_dir(args)
     rows = assignments(c)
+    if args.calendar or args.tasks:
+        return _sync(args, c, data_dir)
     if args.done:
         key, due = args.done
         if not any(a.key == key for a in rows):
@@ -82,6 +86,52 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sync(args: argparse.Namespace, c: Any, data_dir: Any) -> int:
+    """``--calendar`` and ``--tasks``: the plan beside Google (a dry run), or written with ``--yes``. ``--plan-only``
+    prints the plan from disk with no Google call. Tasks run first, so a task checked off shows done on the calendar."""
+    from jason.tasks import schedule_sync as sync
+
+    today = date.today()
+    months, past = args.months, args.past
+    if args.plan_only:
+        if args.tasks:
+            planned = sync.task_plan(data_dir, c, months=months, past=past, today=today)
+            by_list = Counter(p.list_title for p in planned)
+            print(f"Google Tasks: {len(planned)} open occurrences, " + ", ".join(f"{n} on {t}" for t, n in sorted(by_list.items())))
+            for p in planned:
+                print(f"  {p.due}  [{p.list_title}] {p.body['title']}  [{p.key}]")
+        if args.calendar:
+            planned = sync.calendar_plan(data_dir, c, months=months, past=past, today=today)
+            print(f"Calendar: {len(planned['events'])} events from {planned['from']} to {planned['until']}")
+            for e in planned["events"]:
+                print(f"  {e.day}  {e.summary}  [{e.key}]")
+            for note in planned["notes"]:
+                print(f"* {note}")
+        return 0
+    factory = getattr(args, "agent_factory", None)
+    if factory is None:
+        print("no agent factory: run this through the jason CLI", file=sys.stderr)
+        return 1
+    with factory(args) as agent:
+        if args.tasks:
+            # A non-interactive run without the Tasks token fails fast (GoogleAuthRequired); --interactive signs in.
+            with agent.google_tasks() as tasks:
+                result = sync.sync_tasks(tasks, data_dir, c, months=months, past=past, today=today, write=args.yes)
+            print("\n".join(sync.tasks_lines(result)))
+        if args.calendar:
+            from jason.google.calendar import GoogleCalendar
+            from jason.tasks.board_calendar import sync as calendar_sync, sync_lines
+
+            planned = sync.calendar_plan(data_dir, c, months=months, past=past, today=today)
+            calendar = GoogleCalendar.from_drive(agent.drive(interactive=bool(getattr(args, "interactive", False))))
+            with calendar:
+                result = calendar_sync(calendar, args.calendar_id, planned, write=args.yes)
+            if args.tasks:
+                print()
+            print("\n".join(sync_lines(result)))
+    return 0
+
+
 def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callable[[Any], Any]) -> None:
     p = sub.add_parser("schedule", help="Who does each duty and when: what falls due, the assignments, and the duties "
                                         "nobody owns")
@@ -96,4 +146,13 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--on", help="with --done: the day it was done (default today)")
     p.add_argument("--by", help="with --done: who did it")
     p.add_argument("--evidence", help="with --done: what shows it (the minutes' date and item, a payment, a proof)")
-    p.set_defaults(func=cmd_schedule)
+    p.add_argument("--calendar", action="store_true",
+                   help="each dated occurrence as an all-day event on Google Calendar (dry run unless --yes)")
+    p.add_argument("--tasks", action="store_true",
+                   help="each open occurrence as a Google Task on its role's list; a task checked off is recorded done "
+                        "(dry run unless --yes)")
+    p.add_argument("--calendar-id", default="primary", help="with --calendar: the calendar (default primary)")
+    p.add_argument("--months", type=int, default=3, help="with --calendar or --tasks: months ahead (default 3)")
+    p.add_argument("--plan-only", action="store_true", help="with --calendar or --tasks: the plan from disk, no Google call")
+    p.add_argument("--yes", action="store_true", help="with --calendar or --tasks: write to Google")
+    p.set_defaults(func=cmd_schedule, agent_factory=agent_factory)

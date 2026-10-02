@@ -12,7 +12,9 @@
 Every event carries a stable key in ``extendedProperties.private.jason``. ``diff`` sets the plan beside the calendar:
 an event with the key missing is created, one that differs is patched, and a keyed event jason no longer plans is
 reported, never deleted. An event without a key is jason's to read only; a board meeting already on the calendar by
-another invitation (the policy's ``covered_words`` on the same day) is left to it.
+another invitation (the policy's ``covered_words`` on the same day) is left to it. A plan names the kinds it keeps
+(``kinds``): the schedule's own events (``EventKind.SCHEDULE``, ``jason.tasks.schedule_sync``) go through the same
+``sync``, and each run leaves the other's keyed events alone.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from jason.community.board_calendar import NOTICE_DAYS, CalendarPolicy, EventKind
+from jason.community.board_calendar import BOARD_KINDS, NOTICE_DAYS, CalendarPolicy, EventKind
 from jason.zoom.models import schedule_time
 
 KEY = "jason"
@@ -274,7 +276,8 @@ def plan(data_dir: Path, community: Any, *, months: int | None = None, today: da
               + deadlines(deadline_rows, policy, start=start, until=until, tz=tz))
     events.sort(key=lambda e: (e.day, e.all_day, e.key))
     last = max([until] + [e.day for e in events])
-    return {"from": start, "until": last, "timezone": tz, "events": events, "policy": policy, "notes": notes}
+    return {"from": start, "until": last, "timezone": tz, "events": events, "policy": policy, "notes": notes,
+            "kinds": BOARD_KINDS}
 
 
 def _add_months(day: date, months: int) -> date:
@@ -367,10 +370,15 @@ def diff(planned: dict[str, Any], existing: list[dict[str, Any]]) -> dict[str, A
             update.append((event, found[0], patch))
         else:
             same.append(event)
-    extra = [{**_shown(e), "key": key} for key, rows in keyed.items() if key not in wanted for e in rows]
+    # A plan names the kinds it keeps (``kinds``); a keyed event of another kind belongs to another run (the board's
+    # events to ``jason calendar``, the schedule's to ``jason schedule --calendar``) and is neither extra nor changed.
+    kinds = {k.value if isinstance(k, EventKind) else str(k) for k in planned.get("kinds") or ()}
+    ours = (lambda key: key.split(":", 1)[0] in kinds) if kinds else (lambda key: True)
+    extra = [{**_shown(e), "key": key} for key, rows in keyed.items() if key not in wanted and ours(key) for e in rows]
     duplicates = [{**_shown(e), "key": key} for key, rows in keyed.items() if key in wanted for e in rows[1:]]
+    elsewhere = sum(len(rows) for key, rows in keyed.items() if key not in wanted and not ours(key))
     return {"create": create, "update": update, "same": same, "covered": covered, "extra": extra,
-            "duplicates": duplicates, "others": [_shown(e) for e in others]}
+            "duplicates": duplicates, "others": [_shown(e) for e in others], "elsewhere": elsewhere}
 
 
 def window(planned: dict[str, Any]) -> tuple[datetime, datetime]:
@@ -400,7 +408,8 @@ def sync(calendar: Any, calendar_id: str, planned: dict[str, Any], *, write: boo
             "update": [{**e.row(), "id": found.get("id"), "fields": sorted(patch)} for e, found, patch in result["update"]],
             "unchanged": [e.key for e in result["same"]],
             "covered": result["covered"], "extra": result["extra"], "duplicates": result["duplicates"],
-            "others": result["others"], "done": done, "notes": planned["notes"], "caveats": list(CAVEATS)}
+            "others": result["others"], "elsewhere": result["elsewhere"], "done": done, "notes": planned["notes"],
+            "caveats": list(planned.get("caveats") or CAVEATS)}
 
 
 def sync_lines(result: dict[str, Any]) -> list[str]:
@@ -421,6 +430,8 @@ def sync_lines(result: dict[str, Any]) -> list[str]:
     for title, rows, show in sections:
         out += ["", f"{title} ({len(rows)})"] + [f"  {show(r)}" for r in rows]
     out += ["", f"Unchanged: {len(result['unchanged'])}"]
+    if result.get("elsewhere"):
+        out.append(f"jason's events of other kinds in the window, kept by another run: {result['elsewhere']}")
     if result["done"]:
         out += ["", "Done"] + [f"  {d['action']} {d['key']}" for d in result["done"]]
     out += [""] + [f"* {n}" for n in result["notes"]] + [f"* {c}" for c in result["caveats"]]

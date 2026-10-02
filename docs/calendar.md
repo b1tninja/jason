@@ -25,7 +25,8 @@ Each event jason makes carries a key in `extendedProperties.private.jason` (`boa
 - **Create.** A planned key the calendar lacks.
 - **Update.** A keyed event whose title, description, location, or times differ. Times are compared as instants.
 - **Covered.** A board meeting whose day already has an event jason did not make with the policy's words ("board of directors", "board meeting"): the board's Zoom invitation. No second event is added.
-- **Extra.** A keyed event jason no longer plans. It is reported, never deleted.
+- **Extra.** A keyed event of the board's kinds that jason no longer plans. It is reported, never deleted.
+- **Another run's.** A keyed `schedule:` event belongs to `jason schedule --calendar` ([schedule.md](schedule.md)), which puts each dated duty on the same calendar. Each command counts the other's events and leaves them alone. The schedule does not add a second event for a meeting, its notice deadline, or a recurring deadline this calendar already carries on the same day.
 - **Others.** Every event without a key is listed and never changed.
 
 Writes send no invitations or updates (`sendUpdates=none`). There is no delete.
