@@ -94,6 +94,32 @@ CONFLICTS = (
         "Deliver the decision within 14 days, personally or by the member's 4040 method.",
         Clarity.PLAIN, ConflictStatus.NOTED, (Area.ENFORCEMENT,), board_item="enforcement-policy-ab130"),
     Conflict(
+        "bylaws-quarterly-review", "Bylaws 9.6(a)-(c) (the board's quarterly financial reviews)", Tier.BYLAWS,
+        "Has the board review the reconciliations and reserve actuals against budget at least quarterly.",
+        "CIV 5500, 5501", Tier.STATUTE, date(2019, 1, 1),
+        "Unless the documents are more stringent, the board reviews monthly: both reconciliations, actuals against "
+        "budget, the bank statements, the income and expense statement, the check register, general ledger, and "
+        "delinquency report. A review outside a meeting is ratified at the next meeting, in the minutes (5501).",
+        "Review the 5500 documents monthly, and record the review or its ratification in the minutes.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
+        "resolution-reserve-study-discretion", "the Fiscal Management Resolution's reserve study paragraph",
+        Tier.OPERATING_RULES,
+        "Lets the board vote whether to have a reserve study and how often, and calls a physical examination preferred.",
+        "CIV 5550(a)", Tier.STATUTE, date(2014, 1, 1),
+        "Read to give it effect, the paragraph governs what the law leaves open (who prepares the study, studies "
+        "beyond the law's). It cannot make the study at least every three years, with a visual inspection of the "
+        "major components, a choice; the bylaws (9.3) agree with the statute.",
+        "Have the study at least every three years with a visual inspection; the board chooses the preparer.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
+        "collection-interest-start", "the Assessment Collection Policy's interest clause", Tier.OPERATING_RULES,
+        "Starts interest on an unpaid assessment 15 days after it becomes due.",
+        "CIV 5650(b)(3)", Tier.STATUTE, date(2014, 1, 1),
+        "Interest, at no more than 12 percent a year, runs from 30 days after the assessment becomes due.",
+        "Charge no interest before the 31st day after an assessment is due.",
+        Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
         "pre-2014-citations", "CC&Rs and Bylaws (their Davis-Stirling citations)", Tier.DECLARATION,
         "Cite about 60 Davis-Stirling sections by their numbers before 2014 (Civil Code 1350 to 1378).",
         "the Davis-Stirling Act as recodified (Stats. 2012, ch. 180)", Tier.STATUTE, date(2014, 1, 1),
