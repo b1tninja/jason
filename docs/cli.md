@@ -1675,6 +1675,10 @@ Questions jason could not decide while taking documents in: classify, OCR readin
 | `--accept-likely` |  | answer every open likely OCR reading with its suggestion (after looking at --likely) |
 | `--by` | BY | the person answering (required to answer) |
 | `--apply` |  | turn answers into the records the next run uses |
+| `--model` |  | with --scan: the local text model reads the doubtful words too (a second reader) |
+| `--vision` |  | with --scan: the vision model reads the page's crop of a number or operative word in doubt |
+| `--library-ocr` |  | write OCR suggestions beside the library's OCR texts and list the worst-read files |
+| `--library-kind` | LIBRARY_KIND | with --library-ocr: only this kind (repeatable) |
 
 ### `jason schedule`
 
@@ -1702,4 +1706,5 @@ Each request of the association: its kind, its clock, its owner, and whether the
 | `--all` |  | also the answered requests, and how many were on time |
 | `--kind` | KIND | one kind (records request, maintenance request, ...) |
 | `--limit` | LIMIT |  |
+| `--no-email` |  | leave out members' requests made by email |
 | `--json` |  | print JSON |

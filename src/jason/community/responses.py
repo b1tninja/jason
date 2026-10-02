@@ -54,9 +54,12 @@ class KindRule:
     kind: ResponseKind
     words: str = ""                      # a regular expression over the title and message, case-insensitive
     forms: tuple[str, ...] = ()
+    exclude: str = ""                    # words that make it something else (a reply to the association's own notice)
 
     def matches(self, form: str, text: str) -> bool:
         if self.forms and form not in self.forms:
+            return False
+        if self.exclude and re.search(self.exclude, text, re.I):
             return False
         return not self.words or re.search(self.words, text, re.I) is not None
 
@@ -77,8 +80,12 @@ class ResponseRule:
 
 # General classification: the statute's kinds by their words, then the form. A profile's rows come first.
 KIND_RULES: tuple[KindRule, ...] = (
-    KindRule(ResponseKind.SOLAR, r"\bsolar\b|\bphotovoltaic\b|\bpv\s+(?:system|panels?)\b"),
-    KindRule(ResponseKind.EV_CHARGER, r"\bEV\b|\belectric\s+vehicle\b|\bcharg(?:er|ing)\s+station\b|\bLevel\s*2\b"),
+    # An application, not every mention: solar or a charger with the words of installing or asking.
+    KindRule(ResponseKind.SOLAR, r"\b(?:solar|photovoltaic|pv)\b[^.]{0,60}\b(?:install\w*|panels?|system|application|"
+                                 r"permit|approv\w*|request)\b|\b(?:install\w*|add\w*)\b[^.]{0,40}\bsolar\b"),
+    KindRule(ResponseKind.EV_CHARGER, r"\b(?:EV|electric\s+vehicle)\s+charg\w*\b[^.]{0,60}\b(?:install\w*|application|"
+                                      r"permit|approv\w*|request)\b|\binstall\w*\b[^.]{0,40}\bcharg(?:er|ing\s+station)\b|"
+                                      r"\bcharging\s+station\b"),
     # The documents a sale needs (4525, 4528), not every message that mentions escrow.
     KindRule(ResponseKind.RESALE, r"\b452[58]\b|\bresale\s+(?:disclosure|package|documents?|certificate)\b|"
                                   r"\bdisclosure\s+package\b|\bdemand\s+(?:statement|for\s+payoff)\b|\bpayoff\s+demand\b|"
@@ -95,7 +102,8 @@ KIND_RULES: tuple[KindRule, ...] = (
                                   r"\bapply\b[^.]{0,30}\b(?:lease|rent)\b"),
     KindRule(ResponseKind.ARCHITECTURAL, forms=("Architectural Request",)),
     KindRule(ResponseKind.MAINTENANCE, forms=("Maintenance Request",)),
-    KindRule(ResponseKind.COMPLAINT, r"\bcomplain\w*\b|\bnoise\b|\bnuisance\b|\bharass\w*\b|\bviolat\w*\b"),
+    KindRule(ResponseKind.COMPLAINT, r"\bcomplain\w*\b|\bnoise\b|\bnuisance\b|\bharass\w*\b|\bviolat\w*\b",
+             exclude=r"\bcourtesy\s+notice\b|\bnotice\s+of\s+(?:violation|hearing)\b|\bhearing\s+notice\b"),
     KindRule(ResponseKind.QUESTION, forms=("General Request",)),
 )
 

@@ -122,6 +122,52 @@ def handle(community: Any, data_dir: Path, *, today: date | None = None) -> list
     return sorted(out, key=lambda h: (h.closed is not None, h.due or date.max, h.received or date.min))
 
 
+MAINTENANCE_TOPICS = frozenset({"maintenance", "landscaping", "pests", "utilities", "bins"})
+
+
+def email_requests(community: Any, data_dir: Path, *, today: date | None = None) -> list[Handled]:
+    """Members' requests made by email: a thread between the association and an owner (no business on it), not joined
+    to a PayHOA request (``request_links``), whose subject names a kind (the words rules) or a maintenance topic. Its
+    clock runs from the first message in; its response is the first message out after it. Email is read by its headers,
+    so a kind comes from the subject alone; a request whose subject says nothing is left to ``jason replies``."""
+    from jason.tasks.gmail import CORRESPONDENCE, _load
+    from jason.tasks.request_links import request_links
+    from jason.tasks.threads import threads
+
+    today = today or date.today()
+    tz = "America/Los_Angeles"
+    kind_rules, by_kind = rules_for(community)
+    words_only = tuple(k for k in kind_rules if not k.forms)
+    linked = {t["threadId"] for r in request_links(Path(data_dir), community)["rows"] for t in r["ownerThreads"]}
+    by_thread: dict[str, list[dict[str, Any]]] = {}
+    for m in _load(Path(data_dir), CORRESPONDENCE).get("messages") or []:
+        by_thread.setdefault(m["threadId"], []).append(m)
+    out = []
+    for t in threads(Path(data_dir), community, today=today)["rows"]:
+        owners = [p for p in t["parties"] if p.startswith("owner of ")]
+        if not owners or t["domains"] or t["threadId"] in linked or t["status"] in ("notice", "internal"):
+            continue
+        kind, why = classify("", t["subject"], words_only)
+        if kind is ResponseKind.OTHER and MAINTENANCE_TOPICS & set(t.get("topics") or []):
+            kind, why = ResponseKind.MAINTENANCE, "its topic"
+        if kind in (ResponseKind.OTHER, ResponseKind.QUESTION):
+            continue
+        items = sorted(by_thread.get(t["threadId"], []), key=lambda m: m["at"])
+        first_in = next((m for m in items if m.get("direction") == "in"), None)
+        if first_in is None:
+            continue
+        reply = next((m for m in items if m.get("direction") == "out" and m["at"] > first_in["at"]), None)
+        rule = by_kind.get(kind) or by_kind.get(ResponseKind.OTHER)
+        received = _local_day(first_in["at"], tz)
+        due, clock = due_day(rule, received) if rule and received else (None, "")
+        answered = _local_day(reply["at"], tz) if reply else None
+        request = {"id": f"email:{t['threadId'][:10]}", "form": "email", "unit": owners[0][len("owner of "):],
+                   "title": t["subject"], "status": t["status"], "link": t["link"]}
+        out.append(Handled(request, kind, f"{why} (email subject)", rule, received, due, clock, None, answered, answered,
+                           answered, _standing(due, answered, today)))
+    return out
+
+
 def summary(found: list[Handled]) -> dict[str, Any]:
     """Open requests by standing, and the answered ones: on time against late, by kind."""
     from collections import Counter

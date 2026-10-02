@@ -51,8 +51,24 @@ jason respond --all                 # also the answered ones, and how many were 
 jason respond --kind "records request"
 ```
 
+## Requests made by email
+
+A records request by email starts the same clock as one on a PayHOA form. `jason respond` also reads the owners' threads (`email_requests`).
+
+- **Which threads count:**
+  - between the association and an owner, with no business on it;
+  - not already joined to a PayHOA request (`request_links`);
+  - whose subject names a kind, or a maintenance topic.
+- **The clock** runs from the first message in. The response is the first message out after it.
+- **Classification:** email is read by its headers, so a kind comes from the subject alone.
+  - A mention is not an application. "Solar question" is not a solar application, which needs the words of installing or asking.
+  - A reply to the association's own courtesy notice is not a complaint (`KindRule.exclude`).
+  - A thread whose subject says nothing is left to `jason replies`.
+- `--no-email` leaves these out.
+
 ## Limits
 
-- **PayHOA requests only.** Requests made by email and by letter are read by `request_links` (the email it can match to a request, and drafts for the rest) and by `jason mail`. They are not yet in the handler's clocks.
+- **Letters:** requests made by letter (`jason mail`) are not yet in the handler's clocks.
+- **Email kinds come from subjects:** a vague subject is a miss, and a precise one can still mislead. Read the thread before acting.
 - **A proposed clock is a target,** not a rule, until the board adopts it.
 - **Not built yet:** acknowledgment drafts. A first comment, drafted for a person to send, is the natural next step (`request_actions` writes comments).

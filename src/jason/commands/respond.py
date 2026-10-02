@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from typing import Any, Callable
 
 
@@ -24,7 +25,11 @@ def cmd_respond(args: argparse.Namespace) -> int:
     from jason.community.responses import ResponseKind
     from jason.tasks import responses as task
 
-    found = task.handle(community(), _data_dir(args))
+    c, data_dir = community(), _data_dir(args)
+    found = task.handle(c, data_dir)
+    if not args.no_email:
+        found = sorted(found + task.email_requests(c, data_dir),
+                       key=lambda h: (h.closed is not None, h.due or date.max))
     if args.kind:
         try:
             kind = ResponseKind(args.kind)
@@ -59,5 +64,6 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--all", action="store_true", help="also the answered requests, and how many were on time")
     p.add_argument("--kind", help="one kind (records request, maintenance request, ...)")
     p.add_argument("--limit", type=int, default=40)
+    p.add_argument("--no-email", action="store_true", help="leave out members' requests made by email")
     p.add_argument("--json", action="store_true", help="print JSON")
     p.set_defaults(func=cmd_respond)

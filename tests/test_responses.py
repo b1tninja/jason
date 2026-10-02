@@ -19,6 +19,10 @@ from jason.tasks import responses as task
     ("General Request", "Requesting a payment plan for my balance", ResponseKind.PAYMENT_PLAN),
     ("General Request", "Noise complaint about the unit above", ResponseKind.COMPLAINT),
     ("Other Form", "hello", ResponseKind.OTHER),
+    ("", "Solar question 2", ResponseKind.OTHER),                         # a mention, not an application
+    ("", "Request to install an EV charger in my garage", ResponseKind.EV_CHARGER),
+    ("", "Re: Courtesy Notice: Noise and Parking Violations", ResponseKind.OTHER),   # a reply to our own notice
+    ("", "Offer to meet and confer", ResponseKind.DISPUTE),
 ])
 def test_classify(form, text, kind):
     assert classify(form, text)[0] is kind
