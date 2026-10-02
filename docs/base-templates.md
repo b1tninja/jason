@@ -1,6 +1,6 @@
 # Plan: base templates rendered per profile
 
-Status: **phases 1 and 2 done, phase 3 mostly done** (October 2, 2026); the rest is the plan. The goal is to put the effort into one set of general templates (letters, notices, forms, packets) written for any California common interest development. A profile ([profiles.md](profiles.md)) then supplies its identity, letterhead, governing-document citations, and values, and jason *generates* that association's versions. A community-specific copy is an output, never a hand-edited source.
+Status: **phases 1-4 done for the letter templates** (October 2, 2026); the rest is the plan. The goal is to put the effort into one set of general templates (letters, notices, forms, packets) written for any California common interest development. A profile ([profiles.md](profiles.md)) then supplies its identity, letterhead, governing-document citations, and values, and jason *generates* that association's versions. A community-specific copy is an output, never a hand-edited source.
 
 ## What exists today
 
@@ -162,11 +162,42 @@ Each phase is one reviewable change. Stop after each one.
      - The board's draft agenda takes the name and the quorum citation from the profile.
      - The Markdown hearing draft (`zoom.models.notice_text`) renders the same body as the notice Doc (`templates.body_markdown`). The email that sends it is a cover message, not a copy, and stays.
      - The base folder is in the boundary test.
+     - **The 5810 insurance notice is generated, not edited.** `tasks/insurance_notice.py` compares each annual-budget-report policy's term in force with the term before it. The changes 5810 names are significant: a reduced limit, a higher deductible, and a lapse the record states (a policy marked canceled or not renewed). Other changes (a raised limit, a new insurer) are listed but do not by themselves call for the notice.
+       - The base `insurance-change-notice.html` lists the changes and the policies, and cites `{CITE_OWNER_INSURANCE}` for what owners must carry.
+       - Coverage the association does not carry is `Community.coverages_not_carried()`. The insurance summary no longer hardcodes the earthquake line.
+       - A term missing from the records is a gap ("read the renewed declarations"), never a lapse. The first run on real records found the 2026-27 package not yet read, and would otherwise have reported four false lapses.
+       - When nothing on file is a named change, the gaps say so, and sending is the board's call.
+     - **Past notices stay as sent.** The 2026-27 renewal letter (`packet_templates/master-insurance-notice.html`) is the first profile's record and is not tokenized. It is an example of the content a generated notice should reach, not a template.
    - Left:
-     - The insurance notice is still the first profile's own (`packet_templates/master-insurance-notice.html`: flood zone, building count, deductibles). It needs re-tokenizing before it can be a base.
+     - The first profile's annual packet still encloses the sent 2026-27 letter as its insurance notice part. Switching that part to `letter:insurance-change-notice.html` is the board's decision about what owners receive. The packet planner already fills the new notice's values when a packet names it.
      - The owner-information cover names PayHOA; it waits for `software()`.
+
+**Improvements found while doing phase 3 (to schedule):**
+
+- **The policy record keeps one deductible per term.** The 2026 notice's trigger, the general liability deductible rising while the property deductible stayed, cannot be seen in it. The `jason policies` model needs a deductible per coverage (property, liability, crime, D&O) so the 5810 check can see that kind of change.
+- **A lapse needs evidence.** Policies have no status. Reading carrier notices of cancellation and nonrenewal (the mail sort already finds them, `docs/mail.md`) into a policy status would let 5810's lapse and nonrenewal duties ("immediately notify ... if replacement coverage will not be in effect") be checked, not just the changes.
+- **The sent letter's other content.** These parts of the 2026-27 letter can be generated from profile data:
+  - the walls-in coverage basis;
+  - lender certificate instructions;
+  - the recommended loss assessment limit;
+  - flood zone context.
+
+  They need profile fields, such as `insurance_guidance()`. It would hold the coverage basis, the certificate service, and the recommended owner limits, each with its source document.
    - **A person refreshes the Drive template Docs.** They were built from the old bodies, so they still read the same as the filled text. `jason templates --rewrite <kind> --yes` rewrites each from the new body. Until then, filling works as before.
-4. **Generation and drift.** `jason templates --generate`, `data/<profile>/templates.json`, and the drift report. Remove the pasted Doc ids from the profile.
+4. **Generation and drift (done for the letter templates).** `jason.tasks.template_gen` compares each base body's hash and its Doc's text hash with what jason last wrote. The record is in `data/templates/<profile>.json`.
+   - **The actions:**
+     - create, when there is no Doc;
+     - adopt, for a Doc the profile names that was built before the bases; the plan says whether it still reads as built or may have been edited;
+     - update, when the base changed;
+     - edited, when a person changed the Doc; it is left alone, and the person either folds the edit into the base or keeps it as the profile's own;
+     - conflict, when both changed;
+     - unchanged.
+   - **The command:** `jason templates --generate` prints the plan, reading Drive only. `--yes` writes and records the ids.
+   - **Filling uses the generated Doc.** The hearing, letter, and agenda commands fill the generated Doc when one is recorded (`template_gen.template_for`).
+   - **First run on the first profile:** all four Docs are adopt steps, "unchanged since" they were built.
+   - **Left:**
+     - The profile's pasted Doc ids stay as the fallback until a person runs `--generate --yes`.
+     - The packet Markdown Docs (budget report, policy statement) still use `jason packet --make-templates` and the ids in `mystique/packets.py`; they come next.
 5. **New bases, by statutory weight:**
    - collections: the assessment increase notice, the pre-lien notice (rendered from the 5660 checklist), the payment-plan reply, and lien release;
    - the replies to members: the records request, the architectural decision, and the IDR resolution;

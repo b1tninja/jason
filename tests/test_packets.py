@@ -135,7 +135,7 @@ def test_the_insurance_summary_uses_only_terms_in_force_when_the_year_begins():
          "carrier": "PHILADELPHIA INDEMNITY", "number": "501", "limits": {"limit": 300000000}, "deductible": 200000}]},
         {"key": "workers-comp", "kind": "workers_comp", "terms": []},
     ]
-    rows, gaps = insurance_rows(policies, 2027)
+    rows, gaps = insurance_rows(policies, 2027, not_carried=("earthquake",))
     assert rows[0] == ["Flood (Building 3)", "Philadelphia Indemnity", "501", "Dec 3, 2026 to Dec 3, 2027", "$3,000,000", "$2,000"]
     assert rows[-1][0] == "Earthquake"
     assert len(gaps) == 1 and "master" in gaps[0]                            # last year's term is never printed

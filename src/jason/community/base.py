@@ -710,6 +710,11 @@ class Community(ABC):
         cites ("Bylaws Section 4.2"). Empty until set: a template then prints the purpose's general wording."""
         return {}
 
+    def coverages_not_carried(self) -> tuple[str, ...]:
+        """Kinds of insurance the association does not carry and says so in its notices ("earthquake"). Empty until
+        set: a notice then says nothing about coverage the records do not list."""
+        return ()
+
     def drive_home(self):
         """The Drive folders generated documents are filed in (`identity.DriveHome`); empty until set."""
         from jason.community.identity import DriveHome

@@ -1571,7 +1571,10 @@ def cmd_hearing(args: argparse.Namespace) -> int:
 
         UNIT_CITY_STATE_ZIP = community.identity().unit_city_state_zip
 
-        template = community.document_template(TemplateKind.HEARING_NOTICE)
+        from jason.community.profile import profile_name
+        from jason.tasks.template_gen import template_for
+
+        template = template_for(community, TemplateKind.HEARING_NOTICE, data_dir, profile_name())
         values = hearing_values(plan, city_state_zip=UNIT_CITY_STATE_ZIP, owner=args.owner, delivery=args.delivery,
                                 sections=args.sections, contact=args.contact)
         day = plan.start
@@ -1841,6 +1844,51 @@ def cmd_vault(args: argparse.Namespace) -> int:
     return 0
 
 
+def _generate_templates(args: argparse.Namespace, community: object) -> int:
+    """``jason templates --generate``: plan the profile's template Docs against the bases; ``--yes`` writes them."""
+    import json
+
+    from jason.community.profile import profile_name
+    from jason.config import Settings
+    from jason.tasks import template_gen
+    from jason.tasks.letters import document_text
+
+    data_dir = Settings.load(args.env).payhoa_catalog.parent
+    profile = profile_name()
+    state = template_gen.load_state(data_dir, profile)
+    with _agent(args) as agent:
+        drive = agent.drive()
+        docs = drive.docs()
+        ids = {str(e.get("docId")) for e in state.values() if e.get("docId")}
+        ids |= {t.drive_id for t in community.document_templates() if t.drive_id}
+        texts: dict[str, str | None] = {}
+        for doc_id in sorted(ids):
+            try:
+                texts[doc_id] = document_text(docs.get(doc_id))
+            except Exception:
+                texts[doc_id] = None
+        steps = template_gen.plan(community, state, texts)
+        if args.json and not args.yes:
+            print(json.dumps([{"kind": s.kind.slug, "action": s.action.value, "id": s.doc_id, "reason": s.reason} for s in steps],
+                             indent=2))
+        else:
+            for step in steps:
+                print(step.line())
+        writes = [s for s in steps if s.action.writes]
+        if not writes:
+            return 0
+        if not args.yes:
+            print(f"--generate --yes writes {len(writes)} template Docs from the bases ({profile})")
+            return 0
+        home = community.drive_home()
+        folder = home.templates or drive.child_folder(home.my_drive, "Templates") or drive.create_folder("Templates", home.my_drive)
+        done = template_gen.generate(drive, docs, community, steps, state, folder_id=folder)
+    path = template_gen.save_state(data_dir, profile, state)
+    print(json.dumps(done, indent=2) if args.json else "\n".join(f"{d['action']:10} {d['kind']:16} {d['id']}" for d in done))
+    print(f"recorded in {path}")
+    return 0
+
+
 def cmd_templates(args: argparse.Namespace) -> int:
     """The letter templates in the specification; with --build --yes, build the missing ones from the Letterhead."""
     import json
@@ -1855,6 +1903,8 @@ def cmd_templates(args: argparse.Namespace) -> int:
     community = mystique()
     rows = [{"kind": t.kind.slug, "title": t.title, "id": t.drive_id, "tokens": list(t.tokens), "optional": list(t.optional),
              "authority": t.authority} for t in community.document_templates()]
+    if args.generate:
+        return _generate_templates(args, community)
     if args.lint:
         from jason.community.template_values import lint
 
@@ -1970,7 +2020,12 @@ def cmd_letter(args: argparse.Namespace) -> int:
         return 2
     community = mystique()
     try:
-        template = community.document_template(TemplateKind.from_slug(args.template))
+        from jason.community.profile import profile_name
+        from jason.config import Settings
+        from jason.tasks.template_gen import template_for
+
+        template = template_for(community, TemplateKind.from_slug(args.template),
+                                Settings.load(getattr(args, 'env', None)).payhoa_catalog.parent, profile_name())
         values = parse_assignments(args.set or [])
     except ValueError as exc:
         print(f"error: {exc}")
@@ -2598,7 +2653,10 @@ def cmd_board(args: argparse.Namespace) -> int:
 
             home, head = load_profile().drive_home(), load_profile().letterhead()
 
-            template = mystique().document_template(TemplateKind.AGENDA)
+            from jason.community.profile import profile_name
+            from jason.tasks.template_gen import template_for
+
+            template = template_for(mystique(), TemplateKind.AGENDA, data_dir, profile_name())
             body = agenda_items(previous, load(data_dir), meeting, schedule, previous_meeting=before)
             values = agenda_values(previous, meeting, schedule, tech_contact=args.tech_contact)
             short = f"{meeting.month}/{meeting.day}/{meeting.year % 100:02d}"
@@ -3766,6 +3824,9 @@ def build_parser() -> argparse.ArgumentParser:
     templates.add_argument("--build", action="store_true", help="Build the templates that have no Drive id from the Letterhead")
     templates.add_argument("--rewrite", default="", help="Replace one built template's body with the current text (a kind, e.g. hearing-notice)")
     templates.add_argument("--yes", action="store_true", help="Confirm --build or --rewrite")
+    templates.add_argument("--generate", action="store_true",
+                           help="Plan the profile's template Docs against jason's bases (create, adopt, update, edited, "
+                                "conflict); with --yes, write them and record the ids in data/templates/<profile>.json")
     templates.add_argument("--lint", action="store_true",
                            help="Each template's tokens by where they come from: the profile, general wording, or the letter")
     templates.add_argument("--json", action="store_true", help="Print JSON")

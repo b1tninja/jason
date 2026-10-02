@@ -71,6 +71,7 @@ CITATIONS = {
     CitationPurpose.HEARING_EVIDENCE: "Enforcement Policy",
     CitationPurpose.FINES_NOT_LIENS: "Declaration Section 6.8",
     CitationPurpose.DIRECTOR_QUORUM: "Bylaws 7.10",
+    CitationPurpose.OWNER_INSURANCE: "the CC&Rs, Article 8 (Individual Owner's Property Insurance)",
 }
 DRIVE_HOME = DriveHome(my_drive=MY_DRIVE, templates=TEMPLATES_FOLDER, meetings=MEETINGS_FOLDER, broadcasts=BROADCASTS_FOLDER,
                        broadcasts_name=BROADCASTS_FOLDER_NAME, disciplinary=DISCIPLINARY_FOLDER)

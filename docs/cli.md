@@ -349,6 +349,8 @@ The letter templates in Drive and their {TOKENS}; --build --yes builds missing o
 | `--build` |  | Build the templates that have no Drive id from the Letterhead |
 | `--rewrite` | REWRITE | Replace one built template's body with the current text (a kind, e.g. hearing-notice) |
 | `--yes` |  | Confirm --build or --rewrite |
+| `--generate` |  | Plan the profile's template Docs against jason's bases (create, adopt, update, edited, conflict); with --yes, write them and record the ids in data/templates/<profile>.json |
+| `--lint` |  | Each template's tokens by where they come from: the profile, general wording, or the letter |
 | `--json` |  | Print JSON |
 
 ### `jason letter`

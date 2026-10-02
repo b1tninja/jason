@@ -111,9 +111,14 @@ def fill_letter(ref: str, values: dict[str, str]) -> tuple[str, list[str]]:
 
     text = letter_text(ref)
     left = [t for t in dict.fromkeys(TOKEN.findall(text)) if not values.get(t)]
-    # a value of several lines (an address block) keeps its lines
-    filled = TOKEN.sub(lambda m: html.escape(values[m.group(1)]).replace("\n", "<br>") if values.get(m.group(1))
-                       else m.group(0), text)
+    # a value of several lines (an address block) keeps its lines; a ``*_LIST`` token's lines are list items
+    def value(name: str) -> str:
+        lines = values[name].split("\n")
+        if name.endswith("_LIST"):
+            return "".join(f"<li>{html.escape(line)}</li>" for line in lines if line.strip())
+        return "<br>".join(html.escape(line) for line in lines)
+
+    filled = TOKEN.sub(lambda m: value(m.group(1)) if values.get(m.group(1)) else m.group(0), text)
     filled, no_link = fill_qr_tokens(filled, values, labels=QR_LABELS)
     from jason.community import mystique
     from jason.community.links import fill_help_tokens, linkify
@@ -398,9 +403,11 @@ SUMMARY_LIMITS: dict[str, tuple[tuple[str, str], ...]] = {
 }
 
 
-def insurance_rows(policies: list[dict[str, Any]], fiscal_year: int) -> tuple[list[list[str]], list[str]]:
+def insurance_rows(policies: list[dict[str, Any]], fiscal_year: int, *,
+                   not_carried: tuple[str, ...] = ()) -> tuple[list[list[str]], list[str]]:
     """Each policy's insurer, type, number, term, limit, and deductible for the term in force on the first day of the
-    fiscal year; a policy with no such term on file is a gap, never last year's figures."""
+    fiscal year; a policy with no such term on file is a gap, never last year's figures. ``not_carried`` are the kinds
+    of insurance the profile says the association does not carry (`Community.coverages_not_carried`)."""
     start = f"{fiscal_year}-01-01"
     rows: list[list[str]] = []
     gaps: list[str] = []
@@ -422,7 +429,7 @@ def insurance_rows(policies: list[dict[str, Any]], fiscal_year: int) -> tuple[li
             carrier = str(term.get("carrier") or policy.get("carrier") or "")
             rows.append([label, carrier.title() if carrier.isupper() else carrier, str(term.get("number") or ""),
                          f"{short_date(term.get('start'))} to {short_date(term.get('end'))}", money(limits.get(key)), money(deductible)])
-    rows.append(["Earthquake", "None", "", "", "", "The Association does not carry earthquake insurance."])
+    rows += [[kind.capitalize(), "None", "", "", "", f"The Association does not carry {kind} insurance."] for kind in not_carried]
     return rows, gaps
 
 

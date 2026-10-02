@@ -82,6 +82,12 @@ def plans(community: Any, packet: Any, year: int, data_dir: Path, *, only: str =
             found.gaps.append(f"insurance records: {error}")
         elif any(p.source.ref == "insurance-summary" for p in packet.parts):
             found.gaps += insurance_rows(policies, year)[1]
+        if not error and any(p.source.ref == "letter:insurance-change-notice.html" for p in packet.parts):
+            from jason.tasks.insurance_notice import notice_values
+
+            values, gaps = notice_values(policies, community)
+            found.values.update({k: v for k, v in values.items() if k not in found.values})
+            found.gaps += gaps
         if variant and not error:
             values, gaps = flood_values(policies, int(variant), units.get(int(variant), 0), fiscal_year=year)
             found.values.update(values)
@@ -238,7 +244,7 @@ def _assemble(args: argparse.Namespace, agent: Any, community: Any, packet: Any,
                 drive.download(resolved.ref, target)
             pages = _pages(target, source, part.title)
         elif source.ref == "insurance-summary":
-            rows, _ = insurance_rows(_policies(_data_dir(args))[0], args.year)
+            rows, _ = insurance_rows(_policies(_data_dir(args))[0], args.year, not_carried=community.coverages_not_carried())
             print_pdf(page_html("Summary of insurance (Civil Code §5300(b)(9))",
                                 insurance_html(rows, values.get("INSURANCE_STATEMENT", "")), association=name, logo=logo), target)
         elif source.ref in ("fha-statement", "va-statement"):          # each on its own sheet (Part.own_sheet)

@@ -200,6 +200,10 @@ class Mystique(Community):
 
         return LETTERHEAD
 
+    def coverages_not_carried(self):
+        """The association carries no earthquake insurance (the insurance sheet and every notice since 2025)."""
+        return ("earthquake",)
+
     def citations(self):
         """The bylaws, enforcement policy, and declaration sections the notices cite (templates.CITATIONS)."""
         from .templates import CITATIONS

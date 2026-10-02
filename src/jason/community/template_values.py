@@ -30,6 +30,7 @@ class CitationPurpose(Enum):
     FINE_SCHEDULE = "fine-schedule"
     ARCHITECTURAL_REVIEW = "architectural-review"
     ELECTION_RULES = "election-rules"
+    OWNER_INSURANCE = "owner-insurance"
 
     @property
     def token(self) -> str:
@@ -50,6 +51,7 @@ _GENERAL = {
     CitationPurpose.FINE_SCHEDULE: "the association's schedule of fines",
     CitationPurpose.ARCHITECTURAL_REVIEW: "the association's architectural review procedure",
     CitationPurpose.ELECTION_RULES: "the association's election rules",
+    CitationPurpose.OWNER_INSURANCE: "the association's governing documents",
 }
 
 
