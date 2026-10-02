@@ -235,6 +235,12 @@ def lines(proc: Procedure, community: object | None = None) -> list[str]:
     open_ = [l for l in lessons(community) if l.status is not Status.FIXED and any(l.applies_to(a) for a in proc.areas)]
     if open_:
         out += ["", "Open lessons in its areas:"] + [f"- **{l.key}** ({l.status.value}): {l.change}" for l in open_]
+    from jason.community.authority_order import conflict_lines, conflicts
+
+    held = [c for c in conflicts(community, open_only=True) if set(c.areas) & set(proc.areas)]
+    if held:
+        out += ["", "Where a written provision yields to a higher authority (follow it only that far):"]
+        out += conflict_lines(held)
     return out
 
 

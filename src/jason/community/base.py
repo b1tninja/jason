@@ -922,6 +922,12 @@ class Community(ABC):
         general ones. Empty until the specification keeps some."""
         return ()
 
+    def conflicts(self) -> tuple:
+        """The community's written provisions a higher authority displaces, wholly or in part
+        (``jason.community.authority_order.Conflict``): a governing document or rule followed only as far as the law
+        allows. Empty until the specification records some."""
+        return ()
+
     def packet_reports(self) -> tuple[str, ...]:
         """The reports every board packet carries, as references (``{REPORT:treasurers-report period=previous-month}``),
         shown as already built (``live_reports``). Empty until the specification sets them."""

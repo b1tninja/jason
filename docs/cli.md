@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-130 commands, by area:
+131 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (3)
+- [Other](#other) (4)
 
 ## PayHOA & finance
 
@@ -1581,7 +1581,7 @@ What went wrong, what changed, and what is still open
 
 | Option | Value | Help |
 |---|---|---|
-| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository |
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing |
 | `--open` |  | only lessons still to act on (open or awaiting a decision) |
 | `--json` |  | print JSON |
 
@@ -1592,6 +1592,16 @@ Standard operating procedures: a task's steps, commands, checks, and reading
 | Option | Value | Help |
 |---|---|---|
 | `key` | optional (?) | the procedure to print (none: list them) |
+
+### `jason conflicts`
+
+Written provisions a higher authority displaces: what still governs and what yields (Civil Code 4205)
+
+| Option | Value | Help |
+|---|---|---|
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing |
+| `--open` |  | leave out the resolved ones |
+| `--json` |  | print JSON |
 
 ### `jason notices`
 

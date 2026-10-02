@@ -137,6 +137,17 @@ METHOD. For each issue the task raises:
 Then answer each of the task's considerations from the sources: met, not met, wrong, not applicable, or unknown, with
 the ids of the sources that decide it.
 
+FOLLOW WHAT IS WRITTEN, AS FAR AS A HIGHER AUTHORITY ALLOWS. Apply the governing documents, the board's rules and
+policies, and the association's written procedures as written; do not depart from them case by case. A provision yields
+only "to the extent of any conflict" with a higher authority (Civil Code 4205), most often a law enacted or amended after
+the provision was written: follow the rest of it, follow the higher authority for the part that yields, and report the
+conflict (the provision, the authority, since when, and the part that yields) so the board can amend, repeal, or ask
+counsel. It is a conflict only if both cannot be obeyed: a document that asks more than a statute's minimum (longer
+notice, a higher vote) is followed as written, and a citation to a renumbered statute is read as its successor. Where it
+is unclear whether or how far a provision yields, say so and take the course that is lawful under either reading, if
+there is one (not imposing the contested penalty; giving the longer notice). You note a conflict; only the board,
+counsel, or an amendment resolves it.
+
 WHERE THE LAW IS SILENT, WRITE IT DOWN. Where the law and the governing documents leave a question open, do not settle
 it case by case: propose a written policy for the board to adopt, so it is applied the same way every time and each use
 is recorded. An operating rule is enforceable only if written, within the board's authority, consistent with the law

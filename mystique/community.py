@@ -493,6 +493,12 @@ class Mystique(Community):
 
         return LESSONS
 
+    def conflicts(self):
+        """Mystique's provisions that yield to a higher authority (conflicts.py), each followed only that far."""
+        from .conflicts import CONFLICTS
+
+        return CONFLICTS
+
     def packet_reports(self):
         """Every board packet carries last month's Treasurer's Report, as PayHOA ran it (the treasurer runs the packet;
         jason includes the run, never builds one)."""

@@ -23,6 +23,9 @@ class Area(Enum):
     FORMS = "forms"                      # the PayHOA form, the fillable PDF, the paper form
     DOCUMENTS = "documents"              # drafts, Docs, the letterhead, the packet
     REPOSITORY = "repository"            # what is kept in git and what is not
+    ENFORCEMENT = "enforcement"          # violations, hearings, fines, and their notices
+    RENTALS = "rentals"                  # leasing approvals and limits
+    GOVERNING = "governing"              # the governing documents themselves: amendments, citations, meetings
 
 
 class Status(Enum):
@@ -109,6 +112,17 @@ LESSONS: tuple[Lesson, ...] = (
            "board are not made. The board's questions go to its canvas.",
            Status.FIXED, guards=("owner_responses.RULES", "owner-info --responses --canvas",
                                  "owner-info --apply holds the board's writes and keeps such requests open")),
+    Lesson("law-outdates-provisions", OCT_2026, (Area.GOVERNING, Area.ENFORCEMENT, Area.RENTALS),
+           "Governing documents and rules written before a change in the law stayed in use as written: a fine schedule "
+           "above a new statutory cap, a rental cap below a statutory floor the law said the board must amend by a "
+           "deadline.",
+           "Where a provision no longer held was known only from board items and drafts, not to the procedure or "
+           "command about to apply it.",
+           "Each such provision is a Conflict row: what still governs, the part that yields, since when, and how it is "
+           "applied meanwhile; procedures in its area show it.",
+           Status.FIXED, guards=("authority_order.Conflict", "Community.conflicts()", "jason conflicts",
+                                 "jason sop KEY (conflicts in its areas)"),
+           docs=("AGENTS.md (Follow what is written, as far as a higher authority allows)",)),
     Lesson("returns-by-the-same-rules", OCT_2026, (Area.OWNER_INFO, Area.FORMS),
            "An emailed-back form had to be read and judged by hand.",
            "Only PayHOA submissions run through --apply.",

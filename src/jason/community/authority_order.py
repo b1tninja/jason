@@ -15,12 +15,23 @@ the articles, the articles or declaration over the bylaws, and all three over th
 
 ``Tier`` is that order; a lower number controls. A conflict is reported, never resolved silently: the higher source
 controls, and the lower one is a finding for the board (an outdated rule, a document citing a renumbered statute).
+
+**Follow what is written, as far as a higher authority allows.** A provision is followed as written, and yields only "to
+the extent of any conflict" (Civil Code 4205): the rest of it still governs. A ``Conflict`` records one such provision:
+what it says, the authority above it and since when (most often a change in the law after the provision was written),
+the part that yields, how the provision is applied meanwhile, whether the conflict is plain or a question for counsel,
+and the board item that follows it. A command or procedure working in a conflict's area shows it (``jason sop KEY``,
+``jason conflicts``), so whoever follows the written procedure knows where it no longer holds. jason notes a conflict;
+only the board, counsel, or an amendment resolves one.
 """
 
 from __future__ import annotations
 
-from enum import IntEnum
+from dataclasses import dataclass
+from datetime import date
+from enum import Enum, IntEnum
 
+from jason.community.lessons import Area
 from jason.community.symbols import DocumentKind
 
 
@@ -98,4 +109,73 @@ def tier_of_citation(citation: str) -> Tier:
     return Tier.STATUTE
 
 
-__all__ = ["KIND_TIERS", "Tier", "tier_of_citation", "tier_of_kind"]
+class Clarity(Enum):
+    """How plainly the higher authority displaces the provision."""
+    PLAIN = "plain"              # the authority speaks to it directly (a cap, a floor, a required step): apply it now
+    UNCLEAR = "unclear"          # whether, or how far, the provision yields turns on a reading: counsel first
+    RENUMBERED = "renumbered"    # no conflict of substance: the provision cites a statute by a former number
+
+
+class ConflictStatus(Enum):
+    NOTED = "noted"              # recorded; no one is acting on it yet
+    COUNSEL = "counsel"          # with counsel for a reading
+    BOARD = "board"              # on the board's action register
+    RESOLVED = "resolved"        # amended, repealed, or settled by an adopted reading (``resolved_by``)
+
+
+@dataclass(frozen=True)
+class Conflict:
+    """A written provision a higher authority displaces, wholly or in part. ``says`` and ``extent`` paraphrase; quote
+    a provision only from its text."""
+    key: str
+    provision: str                       # the document and section ("CC&Rs 9.9(b)", "the 2022 fine schedule")
+    tier: Tier                           # the provision's own tier
+    says: str                            # what it provides, in a sentence
+    authority: str                       # the higher authority ("CIV 4741(b)")
+    authority_tier: Tier
+    since: date | None                   # when the higher authority took effect: a change in law after the provision
+    extent: str                          # the part that yields; the rest still governs
+    apply: str                           # how the provision is followed meanwhile
+    clarity: Clarity
+    status: ConflictStatus
+    areas: tuple[Area, ...] = ()
+    board_item: str = ""                 # the board's action item that follows it
+    resolved_by: str = ""                # the amendment, resolution, or adopted reading that settled it
+
+    def __post_init__(self) -> None:
+        if self.authority_tier >= self.tier:
+            raise ValueError(f"{self.key}: {self.authority} ({self.authority_tier.label}) does not rank above "
+                             f"{self.provision} ({self.tier.label})")
+        if self.status is ConflictStatus.RESOLVED and not self.resolved_by:
+            raise ValueError(f"{self.key}: a resolved conflict names what resolved it")
+
+    @property
+    def open(self) -> bool:
+        return self.status is not ConflictStatus.RESOLVED
+
+
+def conflicts(community: object | None = None, area: Area | None = None, *, open_only: bool = False
+              ) -> tuple[Conflict, ...]:
+    """The community's recorded conflicts (``Community.conflicts()``), in an area, optionally only the open ones."""
+    found = tuple(getattr(community, "conflicts", lambda: ())()) if community is not None else ()
+    return tuple(c for c in found if (area is None or area in c.areas) and (not open_only or c.open))
+
+
+def conflict_lines(found: tuple[Conflict, ...] | list[Conflict]) -> list[str]:
+    """Each conflict as a Markdown item: the provision, the authority above it, the part that yields, and how it is
+    applied meanwhile."""
+    out = []
+    for c in found:
+        item =f" (board item {c.board_item})" if c.board_item else ""
+        out.append(f"- **{c.provision}** yields to {c.authority}{_since(c.since)} [{c.clarity.value}; "
+                   f"{c.status.value}{item}]: {c.extent} Meanwhile: {c.apply}"
+                   + (f" Resolved by {c.resolved_by}." if c.resolved_by else ""))
+    return out
+
+
+def _since(when: date | None) -> str:
+    return f", since {when.strftime('%B')} {when.day}, {when.year}" if when else ""
+
+
+__all__ = ["Clarity", "Conflict", "ConflictStatus", "KIND_TIERS", "Tier", "conflict_lines", "conflicts",
+           "tier_of_citation", "tier_of_kind"]

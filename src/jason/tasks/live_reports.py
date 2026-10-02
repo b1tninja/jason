@@ -196,6 +196,15 @@ def _lessons(data_dir: Path, community: Any, params: dict[str, str], context: di
     return lines(sorted(found, key=lambda l: order[l.status])) or ["- None."]
 
 
+def _conflicts(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
+    """The written provisions a higher authority displaces (``area=enforcement``), open ones only unless ``all=yes``."""
+    from jason.community.authority_order import conflict_lines, conflicts
+    from jason.community.lessons import Area
+
+    area = Area(params["area"]) if params.get("area") else None
+    return conflict_lines(conflicts(community, area, open_only=params.get("all") != "yes")) or ["- None."]
+
+
 def _procedure(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
     """One standard operating procedure (``key=owner-info-cycle``) with the lessons open in its areas."""
     from jason.community.procedures import find, lines
@@ -209,6 +218,10 @@ REPORTS: dict[str, Report] = {r.key: r for r in (
            caveat="The steps as last written; update the procedure when a step changes."),
     Report("lessons", "Lessons", "jason lessons", "jason's lessons and the community's own", _lessons, offline=True,
            caveat="What went wrong and what changed; open ones still need a change or a decision."),
+    Report("conflicts", "Provisions that yield to a higher authority", "jason conflicts",
+           "the specification's conflict rows", _conflicts, offline=True,
+           caveat="jason's notes of where a provision no longer holds; only the board, counsel, or an amendment "
+                  "resolves one."),
     Report("occupancy-signals", "Occupancy signals",
            "jason report occupancy-signals",
            "PayHOA's tags and owners' mailing addresses (live), the county's secured roll (homeowners' exemption, tax "

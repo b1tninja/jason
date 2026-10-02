@@ -115,6 +115,27 @@ jason's axiom as a manager, and the same idea as "a new decision is a new rule r
 
 In practice, a question jason meets that no rule answers is a finding for the board's canvas or action register, not a guess. For example, the response policy holds such questions for the board. Once the board decides, the decision becomes a rule row (`owner_responses.RULES`, the specification).
 
+## Follow what is written, as far as a higher authority allows
+
+The companion axiom. Where the law and the documents do speak:
+- **Follow the written provision**, whether a governing document, a rule, a policy, or a procedure, as written. Don't depart from it case by case.
+- **A provision yields only "to the extent of any conflict"** with a higher authority (Civil Code 4205). The order is `authority_order.Tier`. Follow the rest of the provision, and follow the higher authority for the part that yields.
+- **Watch for changes in law.** A statute enacted or amended after the provision was written is the usual cause. Check a provision's citations against the law in force (`jason law-history`).
+- **Record the conflict** as a `Conflict` row in the specification (`Community.conflicts()`):
+  - the provision, and the authority above it, with the date it took effect;
+  - the part that yields, and how the provision is applied meanwhile;
+  - whether the conflict is plain or a question for counsel;
+  - the board item that follows it.
+
+  `jason conflicts` lists the rows, `jason sop KEY` shows those in its areas, and `{REPORT:conflicts}` carries them into a packet.
+
+**Its limits:**
+- **It is a conflict only if both cannot be obeyed.** A document that asks more than a statute's minimum is followed as written.
+- **A renumbered citation is not a conflict.** It is read as its successor.
+- **Where the extent is unclear:** take the course that is lawful under either reading, and the board asks counsel.
+- **jason notes a conflict and never resolves one.** Only the board, counsel, or an amendment does.
+- **jason's own procedures rank lowest.** A step that conflicts with a rule or the law is corrected in the procedure, and the lesson is recorded.
+
 ## Lessons and procedures
 
 **Before a task, read its procedure and its lessons.**

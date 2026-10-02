@@ -50,11 +50,56 @@ def cmd_lessons(args: argparse.Namespace) -> int:
 def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callable[[Any], Any]) -> None:
     p = sub.add_parser("lessons", help="What went wrong, what changed, and what is still open")
     add_common(p)
-    p.add_argument("--area", help="one area: owner-info, mailroom, email, forms, documents, repository")
+    p.add_argument("--area", help="one area: " + ", ".join(a.value for a in _areas()))
     p.add_argument("--open", action="store_true", help="only lessons still to act on (open or awaiting a decision)")
     p.add_argument("--json", action="store_true", help="print JSON")
     p.set_defaults(func=cmd_lessons)
     register_sop(sub, add_common)
+    register_conflicts(sub, add_common)
+
+
+def _areas() -> tuple:
+    from jason.community.lessons import Area
+
+    return tuple(Area)
+
+
+def cmd_conflicts(args: argparse.Namespace) -> int:
+    """Each written provision a higher authority displaces: what still governs, what yields, and who is acting."""
+    from dataclasses import asdict
+
+    from jason.community import community
+    from jason.community.authority_order import conflict_lines, conflicts
+    from jason.community.lessons import Area
+
+    try:
+        area = Area(args.area) if args.area else None
+    except ValueError:
+        print(f"areas: {', '.join(a.value for a in Area)}", file=sys.stderr)
+        return 2
+    found = conflicts(community(), area, open_only=args.open)
+    if args.json:
+        print(json.dumps([{**asdict(c), "tier": c.tier.label, "authority_tier": c.authority_tier.label,
+                           "since": c.since.isoformat() if c.since else None, "clarity": c.clarity.value,
+                           "status": c.status.value, "areas": [a.value for a in c.areas]} for c in found], indent=1))
+        return 0
+    if not found:
+        print("no conflicts recorded" + (f" in {area.value}" if area else "") + ": a provision a higher authority "
+              "displaces is a Conflict row in the specification (Community.conflicts())")
+        return 0
+    print("Follow each provision as written, except the part that yields; that part follows the higher authority.")
+    print("\n".join(conflict_lines(found)))
+    return 0
+
+
+def register_conflicts(sub: Any, add_common: Callable[[Any], None]) -> None:
+    p = sub.add_parser("conflicts", help="Written provisions a higher authority displaces: what still governs and what "
+                                         "yields (Civil Code 4205)")
+    add_common(p)
+    p.add_argument("--area", help="one area: " + ", ".join(a.value for a in _areas()))
+    p.add_argument("--open", action="store_true", help="leave out the resolved ones")
+    p.add_argument("--json", action="store_true", help="print JSON")
+    p.set_defaults(func=cmd_conflicts)
 
 
 def cmd_sop(args: argparse.Namespace) -> int:
