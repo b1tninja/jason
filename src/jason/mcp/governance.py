@@ -1,5 +1,6 @@
 """MCP tools, and the programmatic interface, for the governance systems: the living documents, the conflicts, the
-intake questions, the schedule, members' requests, the notice catalog, and the documents' duties.
+intake questions, the schedule, members' requests, the notice catalog, and the documents' duties; and
+``governance_digest``, what needs attention across all of them.
 
 Each tool is a plain function that returns a JSON-ready dict, so ``jason-mcp`` serves it and Python code imports it
 (``jason.api``). They read the stores on disk; three write a person's record to ``data/`` and never anything else:
@@ -314,8 +315,31 @@ def document_duties(key: str, kind: str = "", timed: bool = False, limit: int = 
         "recurrence": d.recurrence, "notice": d.notice, "review": d.review.value} for d in found[: max(1, int(limit))]]}
 
 
+# --- What needs attention ---------------------------------------------------------------------------------------------
+
+def governance_digest(section: str = "", limit: int = 8, past: int = 30, private: bool = False,
+                      data_dir: Path | None = None) -> dict[str, Any]:
+    """Start here for "what needs attention" in the governance systems: schedule items overdue or due soon by role;
+    members' requests past or near their clocks (a statute's clock first); open intake questions by kind, the likely
+    ones apart; open conflicts by status (counsel, board, noted); notices with follow-ups owed; living documents with
+    failed rule checks, held sources, or drift; and the documents' timed duties nothing tracks. Most urgent first: a
+    passed clock the law or the documents set (LEGAL), then overdue, due soon, open, noted. Each section is capped at
+    ``limit`` with its total, and each line names the command that gives the detail (the tools: schedule_agenda,
+    member_requests, intake_questions, document_conflicts, notice_delivery, living_document, document_duties).
+    ``section`` narrows to one (schedule, requests, intake, conflicts, notices, living, duties); ``private`` leaves
+    units out. A section whose store is missing is reported unavailable, not raised. Reads disk only; decides nothing."""
+    from jason.tasks import attention
+
+    try:
+        found = attention.digest(_community(), _root(data_dir), limit=max(1, int(limit)), past=max(0, int(past)),
+                                 sections=(section,) if section else attention.SECTIONS, private=private)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return found.as_dict()
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, acknowledgment_draft, notice_requirements,
-         notice_delivery, document_duties)
+         notice_delivery, document_duties, governance_digest)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

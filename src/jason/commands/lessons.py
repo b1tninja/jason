@@ -78,10 +78,10 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
         print(f"areas: {', '.join(a.value for a in Area)}", file=sys.stderr)
         return 2
     if args.leads:
-        from jason.config import Settings
+        from jason.commands._shared import data_dir as _data_dir
         from jason.tasks import conflict_leads
 
-        data_dir = Settings.load(getattr(args, "env", None)).ownership_db.parent
+        data_dir = _data_dir(args)
         found_leads = conflict_leads.leads(data_dir, community(), document=args.document or "",
                                            since=args.since or "")
         if args.json:

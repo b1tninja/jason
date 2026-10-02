@@ -5,6 +5,7 @@ Each returns a JSON-ready dict, reads the stores on disk, and decides nothing fo
 
     from jason import api
 
+    api.governance_digest()["sections"]          # what needs attention, most urgent first
     api.member_requests(open_only=True)["requests"]
     api.living_document("ccrs", section="4.15(a)")["section"]["words"]
     api.document_conflicts(leads=True, since="2026-01-01")
@@ -23,6 +24,7 @@ from jason.mcp.governance import (
     answer_intake_question,
     document_conflicts,
     document_duties,
+    governance_digest,
     intake_questions,
     living_document,
     member_requests,

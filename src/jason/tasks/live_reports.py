@@ -247,6 +247,18 @@ def _conflicts(data_dir: Path, community: Any, params: dict[str, str], context: 
     return conflict_lines(conflicts(community, area, open_only=params.get("all") != "yes")) or ["- None."]
 
 
+def _attention(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
+    """What needs attention across the governance systems (``jason.tasks.attention``), units left out; ``limit=5``
+    sets the lines per section and ``section=requests`` narrows to one."""
+    from jason.tasks import attention
+
+    sections = (params["section"],) if params.get("section") else attention.SECTIONS
+    # as of the day it is built, not the meeting's: the stores say what is true now
+    found = attention.digest(community, data_dir, limit=int(params.get("limit", "5")), sections=sections, private=True)
+    # one level below the packet's own headings
+    return [("#" + line) if line.startswith("## ") else line for line in found.lines()]
+
+
 def _procedure(data_dir: Path, community: Any, params: dict[str, str], context: dict[str, Any]) -> list[str]:
     """One standard operating procedure (``key=owner-info-cycle``) with the lessons open in its areas."""
     from jason.community.procedures import find, lines
@@ -267,6 +279,11 @@ REPORTS: dict[str, Report] = {r.key: r for r in (
     Report("schedule", "What falls due", "jason schedule", "the assignments and the completions recorded",
            _schedule, offline=True,
            caveat="Assignments are jason's proposals until the board adopts them; a completion is recorded by a person."),
+    Report("attention", "What needs attention", "jason attention --private",
+           "the schedule, members' requests, intake questions, conflicts, the notice ledger, the living documents' last "
+           "builds, and the documents' duties", _attention, offline=True,
+           caveat="Clocks computed from the stores on disk; a section that could not be read says so. jason decides "
+                  "nothing: a follow-up is a person's send, and an assignment is a proposal until the board adopts it."),
     Report("conflicts", "Provisions that yield to a higher authority", "jason conflicts",
            "the specification's conflict rows", _conflicts, offline=True,
            caveat="jason's notes of where a provision no longer holds; only the board, counsel, or an amendment "

@@ -15,11 +15,7 @@ import sys
 from collections import Counter
 from typing import Any, Callable
 
-
-def _data_dir(args: argparse.Namespace):
-    from jason.config import Settings
-
-    return Settings.load(getattr(args, "env", None)).ownership_db.parent
+from jason.commands._shared import data_dir as _data_dir
 
 
 def _second_readers(ld, built, lexicon, data_dir, *, model: bool, vision: bool) -> dict:

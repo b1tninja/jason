@@ -25,11 +25,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-
-def _data_dir(args: argparse.Namespace) -> Path:
-    from jason.config import Settings
-
-    return Settings.load(getattr(args, "env", None)).ownership_db.parent
+from jason.commands._shared import data_dir as _data_dir
+from jason.commands._shared import day as _day
 
 
 def notice_batches(data_dir: Path, key: str) -> list[dict[str, Any]]:
@@ -96,8 +93,6 @@ def _catalog(key: str | None) -> int:
 
 def _proof(args: argparse.Namespace, data_dir: Path) -> int:
     """One notice's proof-of-notice record, from its ledger and the dates a person gives."""
-    from datetime import date
-
     from jason.community import community
     from jason.community.notice_catalog import effective, for_ledger, requirement
     from jason.community.notices import Evidence
@@ -112,10 +107,9 @@ def _proof(args: argparse.Namespace, data_dir: Path) -> int:
               file=sys.stderr)
         return 2
     _, clocks, notes, _ = effective(row.key, community())
-    day = lambda v: date.fromisoformat(v) if v else None  # noqa: E731
     have = [Evidence[h.strip().upper().replace("-", "_")] for h in (args.have or "").split(",") if h.strip()]
     found = notice_ledger.standing(notice_ledger.load(data_dir, args.key), general=args.general)
-    proof = notice_proof.build(row, clocks=clocks, event=day(args.event), sent=day(args.sent), posted=day(args.posted),
+    proof = notice_proof.build(row, clocks=clocks, event=_day(args.event), sent=_day(args.sent), posted=_day(args.posted),
                                standings=found, general=args.general, have=have, ledger_key=args.key, notes=notes)
     print("\n".join(notice_proof.lines(proof)))
     return 0

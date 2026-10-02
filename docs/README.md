@@ -39,6 +39,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [interpretation.md](interpretation.md): reading the law to give it effect: the statutes and cases behind the reading axiom, and its limits.
 - [responses.md](responses.md): each member's request with its kind, its clock (the statute's, the documents', or a proposed policy), its owner, and whether the answer is on time.
 - [schedule.md](schedule.md): every duty owned and every clock set: the assignments the board adopts, what falls due, and the coverage check.
+- [attention.md](attention.md): what needs attention across the governance systems in one digest, most urgent first (`jason attention`, `governance_digest`, `{REPORT:attention}`).
 - [intake.md](intake.md): taking documents in: the questions jason parks for a person (classification, OCR readings, an amendment's silent changes, drift), and answers kept as records.
 - [living-documents.md](living-documents.md): each governing document as amended, section by section, with the instrument that set its words; corrections and annotations kept apart.
 - [document-duties.md](document-duties.md): the duties, prohibitions, permissions, rights, and conditions the governing documents state, read by a phrase grammar and a local model, measured, and reviewed by a person.

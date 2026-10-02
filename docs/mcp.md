@@ -219,6 +219,7 @@ The living documents, conflicts, intake questions, the schedule, members' reques
 | `notice_requirements` | The notice catalog: every requirement, or one in full (methods, clock, content, the proof it needs, what the documents add). |
 | `notice_delivery` | One notice's delivery to every member from the ledger: reached, bounced, skipped, and the follow-ups the law asks for. Sync first. |
 | `document_duties` | The norms a document states, each with its section, quote, bearer, and timing. A reading is a lead; about one in five is the wrong kind. |
+| `governance_digest` | Start here: what needs attention across these systems, most urgent first (a passed statutory or documents' clock, then overdue, due soon, open, noted). Each section is capped, names the tool for the rest, and is reported unavailable rather than failing when its store is missing ([attention.md](attention.md)). Decides nothing. |
 
 **From Python.** The same functions are `jason.api` (`from jason import api; api.member_requests()`). They return JSON-ready dicts. The other tools import from `jason.mcp.county`, `jason.mcp.index`, and `jason.mcp.rolls`.
 
