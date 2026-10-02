@@ -173,6 +173,8 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
               "every part (1641), a reading that makes it lawful and operative (1643)", Basis.INTERPRETATION),
     Authority("CIV", "3509", "3548", "the maxims of jurisprudence, aids to just application (3509): an interpretation "
               "that gives effect is preferred to one that makes void (3541)", Basis.INTERPRETATION),
+    Authority("GOV", "27293", "27293", "an instrument in a language other than English is not accepted for record without "
+              "a certified English translation: a recorded instrument's words are English", Basis.INTERPRETATION),
 )
 
 # Named acts lawlibrary outlines; each is exported one page per article so a passage stays with its heading.
