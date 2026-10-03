@@ -101,7 +101,10 @@ def test_loader_calls_its_tool(county, loader):
     out = sources.default_loaders()[loader]({})
     name, _ = _one(county)
     assert name == TOOLS[loader]
-    assert out == {"found": True, "stub": TOOLS[loader]}
+    if loader == "hearings":  # decorates each row with its key and stages; its own test below
+        assert out["found"] is True and out["hearings"] == []
+    else:
+        assert out == {"found": True, "stub": TOOLS[loader]}
 
 
 @pytest.mark.parametrize("loader", [k for k, v in TOOLS.items() if v in (
@@ -498,6 +501,23 @@ def test_onboarding_and_communities_overlay_the_stores(county, tmp_path, monkeyp
     monkeypatch.setattr(sys.modules.setdefault("jason.community.profile", type(sys)("jason.community.profile")), "profiles", lambda: [{"name": "mystique", "where": "/x/mystique", "active": True}, {"name": "sample", "where": "/x/profiles/sample", "active": False}], raising=False)
     comm = sources.communities({})
     assert comm["count"] == 2 and comm["communities"][0]["progress"]["accountsSet"] == 1 and "progress" not in comm["communities"][1]
+
+
+def test_hearings_adds_keys_stages_and_decisions(county, tmp_path, monkeypatch):
+    import sys
+
+    from jason.web import sources
+
+    fake = sys.modules["jason.mcp.county"]
+    monkeypatch.setattr(fake, "hearings", lambda: {"found": True, "hearings": [
+        {"address": "123 Main St #12", "start": "2026-10-20T18:00:00", "noticeBy": "2026-10-10", "noticeOn": "2026-10-05", "decisionByIfHeld": "2026-11-03", "standing": "s", "scheduled": True},
+        {"address": "123 Main St #7", "start": "2026-09-01T18:00:00", "noticeBy": "2026-08-22", "decisionByIfHeld": "2026-09-15", "standing": "s", "scheduled": False,
+         "decision": {"findings": "A $50 fine", "decidedOn": "2026-09-01", "noticeDueBy": "2026-09-15", "by": "Secretary", "recorded": "x", "history": []}},
+    ]}, raising=False)
+    out = sources.hearings({})
+    a, b = out["hearings"]
+    assert a["key"] == "2026-10-20|123-main-st-12" and [st["key"] for st in a["stages"]] == ["noticeBy", "hearing", "decisionBy"] and a["stages"][0]["done"] is True
+    assert b["decision"]["findings"] == "A $50 fine" and [st["key"] for st in b["stages"]] == ["noticeBy", "hearing", "noticeDueBy"] and b["stages"][1]["done"] is True
 
 
 def test_library_forwards(county):

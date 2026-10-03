@@ -197,12 +197,19 @@ and proposed text, the Civil Code 4360 clock as a `Clock` (notice, last day for 
 due, decision, adoption notice, reversal window) from a chosen notice date and decision meeting, and the command
 that saves the member notice as a Gmail draft a person sends.
 
+### Built: the hearing decision (`#/hearings`)
+
+A hearing opens to its 5855 clock (notice delivered by, the hearing, the written decision due) and a card where the
+board's findings and discipline are entered once, in its words, with the day decided and who recorded it, behind
+a confirm; the decision is written onto the hearing's own row, and the notice deadline follows from it. The
+decision notice then previews from the decision-notice template with the hearing's facts filled, naming any
+token still open, with the `jason letter` command that fills a Drive copy for a person to deliver.
+
 ### Open: what still needs a screen, and the decision in each
 
 | Workflow | The board's decision | What jason has | What the screen would add |
 |---|---|---|---|
 | **Minutes to approve** | approve the prior minutes, with corrections | `--minutes DATE` draft with blanks; `minutes-privacy --correct` | the draft as a form: each blank a field, the privacy flags beside the names they concern |
-| **Hearing decision (5855(f))** | the discipline, within 14 days | the hearing clocks; `letter --template decision-notice --set DECISION=` | the decision entered once, the notice previewed from the template, the command |
 | **Delinquency steps** | release, pre-lien notice, lien (open session by roll call, 5673), foreclosure floor (5720) | collections standings with `nextStep`; `who-owes-sheet` | per account: the step the board takes, its vote, and the handoff; jason records and submits nothing |
 | **Reserve borrowing finding (5515)** | the finding, and a noticed finding when restoring late | the 5515 checklist per loan | the finding's text drafted into the packet and minutes |
 | **Insurance renewal** | renew, re-bid, change coverage; a 5810 notice when limits change | policy standings and findings; the register's renewal column | the decision and the member notice draft |

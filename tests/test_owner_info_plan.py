@@ -55,7 +55,7 @@ def test_api_owner_info_route(tmp_path):
             raise ValueError("by")
         return {"found": True, "pending": 0, "key": key}
 
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=writer).test_client()
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=writer, hearing_writer=None).test_client()
     assert c.post("/api/owner-info/member tag +|11|notice: email", json={"by": "S"}).json["key"] == "member tag +|11|notice: email"
     assert c.post("/api/owner-info/nope", json={"by": "S"}).status_code == 404
     assert c.post("/api/owner-info/x", json={}).status_code == 400

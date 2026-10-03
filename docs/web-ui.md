@@ -41,7 +41,9 @@ Read-only helpers for the canvas: `GET /api/file?path=` serves a photo, PDF, or 
 
 - `POST /api/owner-info/<key>` (`by`, `confirmed`) records a person's confirmation of one planned owner-information write. `jason owner-info` saves the plan it computed (`data/payhoa/owner-info-plan.json`, `tasks.owner_info_plan`) as the read artifact of its run; `GET /api/owner-info` shows each write with its confirmation, the requests left to complete, the owners by standing, and the apply command once every write is confirmed. The apply stays `jason owner-info --apply --payhoa --yes` from a terminal.
 
-`create_app(board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None)` turns the writes off; `/api/health` lists `writes`.
+- `POST /api/hearings/<key>` (`findings`, `decidedOn`, `by`) records the board's decision after a hearing onto the hearing's own row in `data/zoom/hearings.json` (`tasks.hearing_decisions`), with the fourteen-day notice deadline (CIV 5855(f)) computed from the day decided. `GET /api/hearings` adds each hearing's key, its 5855 clock as stages, and its decision. The decision notice is a filled copy of the decision-notice template (`GET /api/templates?kind=decision-notice&V_FINDINGS=…`) that a person makes with `jason letter … --yes` and delivers.
+
+`create_app(board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=None)` turns the writes off; `/api/health` lists `writes`.
 
 ## Views (`ui/src/views`, hash routes)
 
