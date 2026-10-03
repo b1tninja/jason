@@ -22,12 +22,18 @@ Development: `jason-web` in one terminal, `npm run dev` in `ui/` in another (Vit
 
 ## API
 
-`GET /api/health`, and `GET /api/<source>` for each loader in `jason.web.app.default_loaders()` (today `board-digest`, the `board_digest` tool). A loader that fails answers `{"error": ...}` with 4xx/5xx, which the UI shows with a Retry. Add a source by adding a loader; it reads the association only through `Community`.
+`GET /api/health`, and `GET /api/<source>` for each loader in `jason.web.sources.default_loaders()`: `board-digest`, `board-items` (`?closed=1` includes closed), `association-records`, `records-inventory`, `library-status`, `document-readings`, `jobs`, and `leads` (the aggregate described in [web-ui-decisions.md](web-ui-decisions.md)). Each wraps a read-only `jason.mcp` tool. A loader that fails answers `{"error": ...}` with 4xx/5xx, which the UI shows with a Retry.
+
+The one write: `POST /api/board-items/<id>` with any of `status`, `owner`, `meeting`, `notes`, the board's own columns, through `tasks.board_items.set_fields` (what `jason board --set` calls). Any other field is refused with 400. `create_app(board_writer=None)` turns it off; `/api/health` lists `writes`.
+
+## Views (`ui/src/views`, hash routes)
+
+`#/digest` (any tool result, generic), `#/board` (kanban of board items; the board's fields editable behind a confirm), `#/records` (the Civil Code 5200 inventory and the recorded instruments), `#/ingestion` (how the library was classified, and what the recorded copies say), `#/leads` (everything unpinned, in one list), `#/status`.
 
 ## Components (`ui/src/components`)
 
-`AppShell`, `Card`, `Stat`, `Badge`, `Money` (integer cents), `DataTable` (sort, filter), `Tabs`, `SearchBox`, and `Loading`/`ErrorNotice`/`EmptyState`. `DigestView` renders a tool result without knowing its shape: scalars become stats, row lists become tables, and keys ending in `Cents` show as dollars. Build a purpose-made view when a result needs more than that.
+Layout and data: `AppShell`, `Card`, `Stat`, `Badge`, `Money` (integer cents), `DataTable` (sort, filter), `Tabs`, `SearchBox`, `Kanban`, `Timeline`. The tools' shared shapes: `Pill` (a standing or status with its meaning), `Findings`, `Caveats`, `Evidence`, `DueDate`, `RemoteView` (loading, error, the tool's own `found: false` note). Writes: `Confirm` (two clicks, the change spelled out). `DigestView` renders a result without knowing its shape. The map from tasks to components is [web-ui-decisions.md](web-ui-decisions.md).
 
 ## Open
 
-Authentication (needed before any non-loopback host), routing (tabs are local state), and packaging `ui/dist` inside the wheel.
+Authentication (needed before any non-loopback host, and before any write beyond the board's columns), and packaging `ui/dist` inside the wheel.

@@ -1,9 +1,18 @@
 export { AppShell } from "./AppShell";
 export { Badge, type Tone } from "./Badge";
 export { Card } from "./Card";
+export { Caveats } from "./Caveats";
+export { Confirm } from "./Confirm";
 export { DataTable, type Column } from "./DataTable";
+export { DueDate, daysUntil } from "./DueDate";
+export { Evidence } from "./Evidence";
+export { Findings } from "./Findings";
+export { Kanban } from "./Kanban";
 export { Money } from "./Money";
+export { Pill } from "./Pill";
+export { RemoteView } from "./Remote";
 export { SearchBox } from "./SearchBox";
 export { Stat } from "./Stat";
 export { EmptyState, ErrorNotice, Loading } from "./States";
 export { Tabs, type TabSpec } from "./Tabs";
+export { Timeline, type TimelineEvent } from "./Timeline";

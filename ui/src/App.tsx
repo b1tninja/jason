@@ -1,7 +1,11 @@
-import { useState } from "react";
-import { AppShell, Card, ErrorNotice, Loading, Tabs } from "./components";
+import { AppShell, Card, ErrorNotice, Loading } from "./components";
 import { DigestView, type Digest } from "./DigestView";
 import { useApi } from "./lib/useApi";
+import { useHash } from "./lib/useHash";
+import { AssociationRecordsView } from "./views/AssociationRecordsView";
+import { BoardItemsView } from "./views/BoardItemsView";
+import { IngestionView } from "./views/IngestionView";
+import { LeadsView } from "./views/LeadsView";
 
 function BoardDigest() {
   const r = useApi<Digest>("/api/board-digest");
@@ -11,28 +15,44 @@ function BoardDigest() {
 }
 
 function Status() {
-  const r = useApi<{ ok: boolean; ui: boolean; sources: string[] }>("/api/health");
+  const r = useApi<{ ok: boolean; ui: boolean; sources: string[]; writes: string[] }>("/api/health");
   if (r.status === "loading") return <Loading />;
   if (r.status === "error") return <ErrorNotice error={r.error} onRetry={r.reload} />;
   return (
     <Card title="Server">
       <p>Sources: {r.data.sources.join(", ") || "none"}</p>
+      <p>Writes: {r.data.writes.join(", ") || "none"}</p>
     </Card>
   );
 }
 
+const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
+  { id: "digest", label: "Digest", view: BoardDigest },
+  { id: "board", label: "Board items", view: BoardItemsView },
+  { id: "records", label: "Association records", view: AssociationRecordsView },
+  { id: "ingestion", label: "Document ingestion", view: IngestionView },
+  { id: "leads", label: "Leads", view: LeadsView },
+  { id: "status", label: "Status", view: Status },
+];
+
 export function App() {
-  const [tab, setTab] = useState("digest");
+  const [hash, go] = useHash("digest");
+  const current = VIEWS.find((v) => v.id === hash) ?? VIEWS[0];
+  const View = current.view;
   return (
-    <AppShell title="Jason">
-      <Tabs
-        active={tab}
-        onChange={setTab}
-        tabs={[
-          { id: "digest", label: "Board digest", content: <BoardDigest /> },
-          { id: "status", label: "Status", content: <Status /> },
-        ]}
-      />
+    <AppShell
+      title="Jason"
+      nav={
+        <nav className="nav">
+          {VIEWS.map((v) => (
+            <a key={v.id} href={`#/${v.id}`} aria-current={v.id === current.id ? "page" : undefined} onClick={(e) => { e.preventDefault(); go(v.id); }}>
+              {v.label}
+            </a>
+          ))}
+        </nav>
+      }
+    >
+      <View />
     </AppShell>
   );
 }

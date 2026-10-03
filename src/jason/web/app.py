@@ -14,31 +14,37 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from jason.web.sources import default_loaders, set_board_item
+
 DEFAULT_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
 
 # name -> loader; each takes the query args and returns a JSON-able dict. Loaders import lazily so the app starts
 # without loading a profile (importing jason loads none).
 Loader = Callable[[dict[str, str]], dict[str, Any]]
+Writer = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
-def _board_digest(args: dict[str, str]) -> dict[str, Any]:
-    from jason.mcp.county import board_digest
-
-    return board_digest(since=args.get("since", ""), days=int(args.get("days", "30") or 30))
-
-
-def default_loaders() -> dict[str, Loader]:
-    return {"board-digest": _board_digest}
-
-
-def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None) -> Flask:
+def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None, board_writer: Writer | None = set_board_item) -> Flask:
     dist = Path(dist) if dist else Path(os.environ.get("JASON_UI_DIST", DEFAULT_DIST))
     sources = default_loaders() if loaders is None else loaders
     app = Flask(__name__, static_folder=None)
 
+    @app.post("/api/board-items/<item_id>")
+    def board_item(item_id: str):
+        """The board's columns only (status, owner, meeting, notes), as `jason board --set`. Nothing else is written."""
+        if board_writer is None:
+            return jsonify(error="writes are off"), 405
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify(board_writer(item_id, body))
+        except KeyError:
+            return jsonify(error=f"no item {item_id}"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
     @app.get("/api/health")
     def health():
-        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources))
+        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=["board-items"] if board_writer else [])
 
     @app.get("/api/<name>")
     def source(name: str):
