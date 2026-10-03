@@ -1,0 +1,11 @@
+"""{{NAME}}'s pinned documents: Drive files bound to a Civil Code 5200 record or to a developer delivery.
+
+``PINS`` holds ``jason.community.documents.DocumentPin`` rows. ``pin()`` is a 5200 record; ``deliver()`` is a map, plan,
+common-area deed, public report, or plan set the subdivider had to deliver that is not one of those records.
+``developer_file()`` groups the pins, and an empty group is a missing document. A county recorder hit is a lead, not a
+pin, until its file is pinned here (docs/recorded-instruments.md).
+"""
+
+from __future__ import annotations
+
+PINS: tuple = ()

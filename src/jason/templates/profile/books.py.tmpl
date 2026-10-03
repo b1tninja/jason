@@ -1,0 +1,15 @@
+"""Which of {{NAME}}'s documents fills which book (``jason.community.books``).
+
+A record address reads through these rows: ``jason://decl/1.1`` is whatever document the ``Book.DECL`` row names. Each
+``BookEntry`` names the document's outline key, its ``Book``, and a ``note`` saying why it is here; an amendment is a
+version of its book (``role=Role.AMENDMENT``), an annexation a part. ``jason onboard`` asks which document fills a book
+no row maps, and the answer becomes a proposed patch adding a row below (docs/record-addresses.md).
+"""
+
+from __future__ import annotations
+
+from jason.community.books import Book, BookEntry, Role  # noqa: F401 - the rows below use them
+
+BOOK_ENTRIES: tuple[BookEntry, ...] = (
+    # BookEntry("example-declaration", Book.DECL, note="the recorded declaration"),
+)

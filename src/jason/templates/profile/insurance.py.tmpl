@@ -1,0 +1,20 @@
+"""{{NAME}}'s insurance: the policies, the year folders, and the coverages the association does not carry.
+
+- ``CATALOG``: a ``jason.community.base.InsuranceCatalog`` (the policy years, the ``Policy`` rows, the buildings). It
+  starts empty; ``jason policies`` reads each declarations page once the files are in Drive.
+- ``WORKBOOK_ID``: the Google Sheet that keeps the policy sheet, or "".
+- ``NOT_CARRIED``: kinds of coverage the association does not carry ("earthquake"), for the notice owners get (Civil
+  Code 5300(b)(9)).
+
+See docs/insurance-policies.md and docs/insurance-and-deadlines.md.
+"""
+
+from __future__ import annotations
+
+from jason.community.base import InsuranceCatalog
+
+from .buildings import BUILDINGS
+
+CATALOG = InsuranceCatalog(years=(), policies=(), buildings=BUILDINGS)
+WORKBOOK_ID = ""
+NOT_CARRIED: tuple[str, ...] = ()

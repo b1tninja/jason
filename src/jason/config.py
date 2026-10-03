@@ -54,6 +54,20 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def default_data_dir(profile: str = "") -> Path:
+    """The data folder when ``PAYHOA_CATALOG`` does not name one: ``data/`` for the default profile, ``data/<profile>/``
+    for any other, so a second association never reads the first one's stores (phase 5 of docs/profiles.md).
+    ``profile`` defaults to the active one; reading its name loads no profile."""
+    root = Path(__file__).resolve().parents[2] / "data"
+    try:
+        from jason.community.profile import DEFAULT_PROFILE, profile_name
+
+        name = profile or profile_name()
+    except Exception:  # noqa: BLE001 - a name that is not a profile's leaves the first profile's folder
+        return root
+    return root if name == DEFAULT_PROFILE else root / name
+
+
 def default_keeper_config_path() -> Path:
     """Persistent device config (Commander/SDK default location)."""
     return Path.home() / ".keeper" / "keeper-config.json"
@@ -270,11 +284,7 @@ class Settings:
         catalog_raw = _get(
             values, "payhoa_catalog", "PAYHOA_CATALOG", default=""
         )
-        payhoa_catalog = (
-            Path(catalog_raw)
-            if catalog_raw
-            else Path(__file__).resolve().parents[2] / "data" / "payhoa.db"
-        )
+        payhoa_catalog = Path(catalog_raw) if catalog_raw else default_data_dir() / "payhoa.db"
         google_oauth_record_uid = _get(
             values,
             "google_oauth_record_uid",

@@ -1,0 +1,34 @@
+# {{NAME}}: the instance reference
+
+This folder is the `{{KEY}}` profile's own documentation: this association's setup, which jason's general docs describe without naming it. It was started by `jason onboard --new {{KEY}}` on {{DATE}}.
+
+## The three tiers
+
+| Tier | Where | Checked in | What it holds |
+|---|---|---|---|
+| General | jason's `docs/` | yes | How jason works for any California common interest development. |
+| Instance | this folder | yes | This association's setup: its Drive folder map, vendors and portals, phases and annexations, meeting habits, and why each rule row exists. |
+| Private | `../notes/` and `data/spec/{{KEY}}.json` | no | Owners, parties, matters, figures, review findings, account numbers, and people's contacts. |
+
+Passwords and codes are in Keeper, never in a document, a note, or an email.
+
+## Where things go
+
+- **A fact about the association** is a row in the profile module that holds its kind of row. Each module's docstring says what goes there and which `Community` method reads it.
+- **A private fact** is an entry in `data/spec/{{KEY}}.json`. `jason onboard --apply` merges a person's answer there, with a backup and a diff.
+- **A finding that names owners or parties** is a note in `../notes/`.
+- **Why a rule row exists** is a page here, linked from the row's module.
+
+## Starting
+
+```bash
+JASON_PROFILE={{KEY}} jason onboard                 # progress, the stage gates, the next questions
+JASON_PROFILE={{KEY}} jason onboard --request       # the list to send the prior manager
+JASON_PROFILE={{KEY}} jason onboard --scan          # park the questions so they can be answered
+```
+
+The stores for this profile are under `data/{{KEY}}/` unless `PAYHOA_CATALOG` names another folder. jason's `docs/onboarding.md` describes the checklist, the gates, and onboarding by conversation. Its `docs/profiles.md` describes profiles and the phases still open.
+
+## Pages
+
+None yet.

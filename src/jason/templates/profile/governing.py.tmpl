@@ -1,0 +1,14 @@
+"""{{NAME}}'s declaration and its amendments.
+
+``DECLARATION`` is a ``jason.community.documents.GoverningDocument`` bound to the Drive id of the recorded copy, with each
+amendment an ``Amendment`` row that records the sections it changes (one row per amendment, not one ``KnownFile`` member
+per amendment). It stays ``None`` until a person confirms which recorded instrument is the declaration in force: that
+is a high-stakes answer, and a second person confirms it (``jason onboard --confirm``).
+
+Quote the declaration only from its text on disk, never from a file name. See docs/recorded-instruments.md and
+docs/living-documents.md.
+"""
+
+from __future__ import annotations
+
+DECLARATION = None

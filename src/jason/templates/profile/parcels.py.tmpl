@@ -1,0 +1,13 @@
+"""{{NAME}}'s units and common areas, as the assessor's parcels.
+
+- ``UNITS``: each residential unit's street address, the membership roll, in the form the county's roll prints it.
+- ``COMMON_AREAS``: the common-area parcels the association is taxed on.
+
+Who owns a unit is not a fact here: it is PayHOA's, read live, and the county's recorded deeds
+(docs/property-histories.md).
+"""
+
+from __future__ import annotations
+
+UNITS: tuple[str, ...] = ()
+COMMON_AREAS: tuple[str, ...] = ()

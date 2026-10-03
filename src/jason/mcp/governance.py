@@ -3,9 +3,9 @@ intake questions, the schedule, members' requests, the notice catalog, and the d
 ``governance_digest``, what needs attention across all of them.
 
 Each tool is a plain function that returns a JSON-ready dict, so ``jason-mcp`` serves it and Python code imports it
-(``jason.api``). They read the stores on disk; three write a person's record to ``data/`` and never anything else:
-``answer_intake_question``, ``record_completion``, and nothing that reaches PayHOA, Google, or the mail. A write names
-the person (``by``) and is refused without one. None decides for the board: a conflict is noted, a duty is a reading, a
+(``jason.api``). They read the stores on disk; three write a person's record to ``data/`` and never anything else
+(``answer_intake_question``, ``onboarding_confirm``, ``record_completion``), and nothing reaches PayHOA, Google, or the
+mail. A write names the person (``by``) and is refused without one. None decides for the board: a conflict is noted, a duty is a reading, a
 request's clock is computed, and approving, denying, or assigning stays a person's.
 """
 
@@ -111,37 +111,80 @@ def document_conflicts(area: str = "", include_resolved: bool = False, leads: bo
 # --- Intake questions -------------------------------------------------------------------------------------------------
 
 def intake_questions(kind: str = "", subject: str = "", likely_only: bool = False, status: str = "open",
-                     limit: int = 50, data_dir: Path | None = None) -> dict[str, Any]:
+                     limit: int = 50, awaiting_confirmation: bool = False,
+                     data_dir: Path | None = None) -> dict[str, Any]:
     """The questions jason parked while taking documents in (``jason intake --scan``): which kind a file is, what an
-    OCR'd word says, an amendment's silent change, drift in the working copy, an orphaned note. Each with its
-    evidence, choices, and jason's suggestion; ``likely`` means two independent readers agree. ``status`` is open,
-    answered, applied, dismissed, stale, or "" for all."""
+    OCR'd word says, an amendment's silent change, drift in the working copy, an orphaned note, and onboarding's FACT
+    and MAP questions. Each with its evidence, choices, and jason's suggestion; ``likely`` means two independent readers
+    agree. ``status`` is open, answered, applied, dismissed, stale, or "" for all. ``awaiting_confirmation`` lists only
+    the answered high-stakes questions no second person has confirmed (``onboarding_confirm``), whatever ``status``
+    says."""
     from jason.community import intake
 
     asks = [a for a in intake.load(_root(data_dir))
-            if (not status or a.status.value == status) and (not kind or a.kind.value == kind)
-            and (not subject or a.subject.startswith(subject)) and (not likely_only or a.likely)]
+            if (awaiting_confirmation or not status or a.status.value == status) and (not kind or a.kind.value == kind)
+            and (not subject or a.subject.startswith(subject)) and (not likely_only or a.likely)
+            and (not awaiting_confirmation or (a.status is intake.AskStatus.ANSWERED and intake.high_stakes(a)
+                                               and not a.confirmed_by))]
     return {"count": len(asks), "questions": [{
         "id": a.id, "kind": a.kind.value, "subject": a.subject, "question": a.question, "choices": list(a.choices),
         "suggestion": a.suggestion, "likely": a.likely, "evidence": list(a.evidence), "status": a.status.value,
-        "answer": a.answer, "answeredBy": a.answered_by} for a in asks[: max(1, int(limit))]]}
+        "answer": a.answer, "answeredBy": a.answered_by, "answeredAt": a.answered_at,
+        "highStakes": intake.high_stakes(a), "confirmedBy": a.confirmed_by} for a in asks[: max(1, int(limit))]]}
 
 
 def answer_intake_question(question_id: str, answer: str, by: str, data_dir: Path | None = None) -> dict[str, Any]:
     """Record a person's answer to one intake question (a choice's number, or words; "dismiss" closes it). It writes
     only ``data/intake/asks.json``; ``jason intake --apply`` turns answers into the records later runs use. ``by``
-    names the person answering and is required: jason never answers in its own name."""
+    names the person answering and is required: jason never answers in its own name. An onboarding question
+    ``next_questions`` lists that is not in the queue yet is parked first, as ``jason onboard --answer`` does. An answer
+    that looks like a secret is refused and not stored: the secret goes in Keeper, and the answer is the Keeper
+    record's name. A high-stakes answer waits for a second person (``onboarding_confirm``)."""
     from jason.community import intake
+    from jason.locks import Resource, hold
 
+    if not by.strip():
+        return {"error": f"cannot answer {question_id}: an answer names who gave it (by)"}
     root = _root(data_dir)
-    asks = intake.load(root)
+    with hold(Resource.STORE, "intake-asks", timeout=120, purpose="answer_intake_question"):
+        asks = intake.load(root)
+        if not any(a.id == question_id for a in asks):
+            asks = _with_onboarding_questions(asks, root)
+        try:
+            a = intake.answer(asks, question_id, answer, by)
+        except (KeyError, ValueError) as exc:
+            return {"error": f"cannot answer {question_id}: {exc}"}
+        intake.save(root, asks)
+    out = {"id": a.id, "status": a.status.value, "answer": a.answer, "answeredBy": a.answered_by,
+           "next": "jason intake --apply"}
+    if intake.high_stakes(a) and a.status is intake.AskStatus.ANSWERED:
+        out["highStakes"] = True
+        out["next"] = ("a second person confirms it (onboarding_confirm, or jason onboard --confirm ID --by NAME) "
+                       "before jason onboard --apply takes it")
+    return out
+
+
+def _with_onboarding_questions(asks: list, root: Path) -> list:
+    """The queue with the active profile's onboarding questions merged in (the CLI's ``--answer`` does the same). A
+    profile that cannot be read leaves the queue as it was."""
+    from jason.community import intake
+    from jason.tasks import onboarding_session as task
+
     try:
-        a = intake.answer(asks, question_id, answer, by)
-    except (KeyError, ValueError) as exc:
-        return {"error": f"cannot answer {question_id}: {exc}"}
-    intake.save(root, asks)
-    return {"id": a.id, "status": a.status.value, "answer": a.answer, "answeredBy": a.answered_by,
-            "next": "jason intake --apply"}
+        fresh = task.generate_for(_community(), root, settings=_settings())
+    except Exception:  # noqa: BLE001 - the answer then misses with the queue's own reason
+        return asks
+    return intake.merge(asks, fresh, scope=task.SCOPE)
+
+
+def _settings() -> Any:
+    """The settings, so the checks that read a Keeper record UID see it set; None without a .env."""
+    try:
+        from jason.config import Settings
+
+        return Settings.load()
+    except Exception:  # noqa: BLE001 - no .env: those checks read as not set
+        return None
 
 
 # --- The schedule -----------------------------------------------------------------------------------------------------
@@ -436,13 +479,7 @@ def _onboarding_session(data_dir: Path | None) -> Any:
     """The session, with the settings loaded so the checks that read a Keeper record UID see it set."""
     from jason.tasks import onboarding_session as task
 
-    try:
-        from jason.config import Settings
-
-        settings = Settings.load()
-    except Exception:  # noqa: BLE001 - no .env: those checks read as not set
-        settings = None
-    return task.build(_community(), _root(data_dir), settings=settings)
+    return task.build(_community(), _root(data_dir), settings=_settings())
 
 
 def onboarding_status(data_dir: Path | None = None) -> dict[str, Any]:
@@ -467,8 +504,9 @@ def next_questions(limit: int = 5, group: str = "", stage: str = "", data_dir: P
     schedule assignment citing the section), then a missing checklist item, a stage gate, a heavily cited section, and
     a quality issue last. Each with its evidence, choices, suggestion, priority, and ``unblocks``. ``group`` narrows to
     a checklist group (finance, governing, ...), ``stage`` to a stage's gate. FACT questions ask a fact no document
-    holds; MAP questions which book or 5200 record a document or folder fills. Answer with ``answer_intake_question``
-    (a secret is refused; a high-stakes answer needs a second person's ``jason onboard --confirm``). Reads disk only."""
+    holds (or what a public source suggests: a lead); MAP questions which book or 5200 record a document or folder fills.
+    Answer with ``answer_intake_question`` (a secret is refused; a high-stakes answer needs a second person's
+    ``onboarding_confirm``). Reads disk only."""
     from jason.community.onboarding import Group, Stage
     from jason.tasks import onboarding_session as task
 
@@ -489,9 +527,33 @@ def next_questions(limit: int = 5, group: str = "", stage: str = "", data_dir: P
                       "jason onboard --apply. A private fact's value is never shown here once recorded."}
 
 
+def onboarding_confirm(question_id: str, by: str, data_dir: Path | None = None) -> dict[str, Any]:
+    """A second person confirms a high-stakes answer (which text is in force, whether an instrument was recorded, a
+    fact such as the bank signers) so ``jason onboard --apply`` can take it. ``by`` names the person confirming, is
+    required, and must not be the person who answered: the same name is refused. It writes only
+    ``data/intake/asks.json``. Confirm only after reading the question, the evidence, and the answer given; a new
+    answer clears the confirmation."""
+    from jason.community import intake
+    from jason.locks import Resource, hold
+
+    if not by.strip():
+        return {"error": f"cannot confirm {question_id}: a confirmation names who gave it (by)"}
+    root = _root(data_dir)
+    with hold(Resource.STORE, "intake-asks", timeout=120, purpose="onboarding_confirm"):
+        asks = intake.load(root)
+        try:
+            a = intake.confirm(asks, question_id, by)
+        except (KeyError, ValueError) as exc:
+            return {"error": f"cannot confirm {question_id}: {exc}"}
+        intake.save(root, asks)
+    return {"id": a.id, "question": a.question, "answer": a.answer, "answeredBy": a.answered_by,
+            "answeredAt": a.answered_at, "confirmedBy": a.confirmed_by, "confirmedAt": a.confirmed_at,
+            "highStakes": intake.high_stakes(a), "next": "jason onboard --apply"}
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
          notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, section_refs,
-         embedded_copies, onboarding_status, next_questions)
+         embedded_copies, onboarding_status, next_questions, onboarding_confirm)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

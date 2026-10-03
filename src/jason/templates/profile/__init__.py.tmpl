@@ -1,0 +1,11 @@
+"""{{NAME}}: the `{{KEY}}` profile. Import `{{CLASS}}`; do not parse a data file.
+
+Written by `jason onboard --new {{KEY}}` on {{DATE}} from jason's profile templates (src/jason/templates/profile).
+`JASON_PROFILE={{KEY}} jason onboard` shows what is present, what is missing, and the next questions to ask.
+"""
+
+from .community import {{CLASS}}
+
+PROFILE = {{CLASS}}
+
+__all__ = ["{{CLASS}}", "PROFILE"]

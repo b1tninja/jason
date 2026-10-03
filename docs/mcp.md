@@ -11,12 +11,13 @@ pip install -e ".[mcp]"
 jason-mcp                         # stdio; every tool
 jason-mcp --profile board         # the board set
 jason-mcp --profile governance    # the governance systems
+jason-mcp --profile onboarding    # onboarding by conversation
 ```
 
 - `.mcp.json` at the project root registers `jason` as `.venv\Scripts\jason-mcp.exe` for Claude Code.
 - The server runs from `JASON_CWD` when a client sets it, else the folder that holds `.env`. The stores are addressed as `data/...` from there.
-- **Profiles.** With no profile (or `all`) every tool is served: 126 today, with the record resources ([Resources](#resources): eleven templates, and about 130 listed resources for a profile with a declaration, rules, and annexations, plus up to twenty notices). `--profile governance` serves the nineteen governance tools below and the same resources. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
-- **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile all` registers every tool. A small local model chooses better from the board set.
+- **Profiles.** With no profile (or `all`) every tool is served: 127 today, with the record resources ([Resources](#resources): eleven templates, and about 130 listed resources for a profile with a declaration, rules, and annexations, plus up to twenty notices). `--profile governance` serves the twenty governance tools below, the same resources, and the onboarding prompts. `--profile onboarding` serves five of them (`onboarding_status`, `next_questions`, `intake_questions`, `answer_intake_question`, `onboarding_confirm`) and the two prompts ([Prompts](#prompts)). `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
+- **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile onboarding` registers the onboarding set for a conversation ([onboarding.md](onboarding.md#onboarding-by-conversation)), and `--profile all` every tool. A small local model chooses better from the board set.
 
 ## Rules for a client
 
@@ -209,10 +210,11 @@ The living documents, conflicts, intake questions, onboarding, the schedule, mem
 | --- | --- |
 | `living_document` | A governing document as amended: the instruments applied and not in effect, the findings, and the rule rows' checks. With `section`, also that section's words, who set them, and its history. `as_of` gives the text in force on a date. Built from the saved sources. Not an official restatement; the recorded instruments control. |
 | `document_conflicts` | Provisions a higher authority displaces (4205), each with what still governs and what yields. `leads` adds the Act's changes since each document was written. A lead is something to read, not a conflict. |
-| `intake_questions` | The questions parked while taking documents in, with evidence, choices, and the suggestion. `likely` means two independent readers agree. |
-| `answer_intake_question` | **Writes** a person's answer to `data/intake/asks.json`; `by` is required. It answers FACT and MAP questions too, once `jason onboard --scan` has parked them. An answer that looks like a secret (a password, a PIN or code, a long token) is refused and not stored. A high-stakes answer (which text is in force, whether an instrument was recorded, a fact such as the bank signers) waits for a second person's `jason onboard --confirm`. `jason intake --apply` turns answers into records. |
+| `intake_questions` | The questions parked while taking documents in, with evidence, choices, and the suggestion. `likely` means two independent readers agree. `awaiting_confirmation` lists only the answered high-stakes questions no second person has confirmed. |
+| `answer_intake_question` | **Writes** a person's answer to `data/intake/asks.json`; `by` is required. It answers FACT and MAP questions too; one `next_questions` listed that is not in the queue yet is parked first. An answer that looks like a secret (a password, a PIN or code, a long token) is refused and not stored. A high-stakes answer (which text is in force, whether an instrument was recorded, a fact such as the bank signers) waits for a second person (`onboarding_confirm`). `jason intake --apply` turns answers into records. |
 | `onboarding_status` | Onboarding as a session ([onboarding.md](onboarding.md#the-session)): the checklist's progress by group, the stage gates (start, ingest, establish, operate, adopt) with what each waits on, and the queue's size by kind. Counts and keys only, never a private value. A gate is jason's reading; the board decides what is done. |
 | `next_questions` | The open intake and onboarding questions ranked by what each answer unblocks: a legal clock, then a missing checklist item, a stage gate, a cited section, and quality last. Each with its evidence, choices, suggestion, priority, and `unblocks`; `group` and `stage` narrow. A suggestion is a lead, not an answer. |
+| `onboarding_confirm` | **Writes** a second person's confirmation of a high-stakes answer to `data/intake/asks.json`, so `jason onboard --apply` can take it. `by` is required and must not be the person who answered; the same name is refused. A new answer clears the confirmation. |
 | `schedule_agenda` | What falls due, by role, with each item's standing. Assignments are proposals until the board adopts them. |
 | `schedule_assignments` | Every assignment (role, clock, evidence, adoption) and the coverage check: duties nobody owns, and duties on a clock nothing schedules. |
 | `record_completion` | **Writes** that an occurrence was done to `data/schedule/done.jsonl`; `by` and `evidence` are required. |
@@ -228,6 +230,17 @@ The living documents, conflicts, intake questions, onboarding, the schedule, mem
 | `governance_digest` | Start here: what needs attention across these systems, most urgent first (a passed statutory or documents' clock, then overdue, due soon, open, noted). Its `meetings` section reads each board meeting's notice (4920) and minutes (4950(a)) days against the record; none on record is not none given. Its `people` section reads people's own Google Tasks and calendar events beside what jason tracks (past due, proposed to close, untracked recurring); nothing in Google is marked or closed. `private` leaves units out and replaces each task's title with its rule's label. Each section is capped, names the tool for the rest, and is reported unavailable rather than failing when its store is missing ([attention.md](attention.md)). Decides nothing. |
 
 **From Python.** The same functions are `jason.api` (`from jason import api; api.member_requests()`). They return JSON-ready dicts. The other tools import from `jason.mcp.county`, `jason.mcp.index`, and `jason.mcp.rolls`.
+
+## Prompts
+
+Two prompts run onboarding as a conversation ([onboarding.md](onboarding.md#onboarding-by-conversation)). They are served under `--profile onboarding`, `governance`, and the default `all`; the board profile has none. The code is `jason.mcp.prompts`.
+
+| Prompt | Arguments | What it tells the assistant |
+| --- | --- | --- |
+| `onboard` | `person`, `group`, `stage` (all optional) | Read `onboarding_status`. Then take `next_questions` one at a time: show the evidence and the suggestion (a lead, not an answer), ask the person, and record the answer with `answer_intake_question`, with `by` set to the person's name. Never accept a secret: point to Keeper and record the record's name. At a high-stakes answer, say a second person must confirm it, and stop there. Finish with the progress. |
+| `onboard_review` | `person` (optional) | List the answers awaiting a second person (`intake_questions`, `awaiting_confirmation`). Show each with its evidence and who answered. Confirm with `onboarding_confirm` only when the reviewer agrees and is not the one who answered; otherwise record their answer instead. |
+
+A client without MCP prompts (AnythingLLM's agent) takes the same steps as a system prompt: `system_prompt()`, printed in onboarding.md.
 
 ## Resources
 

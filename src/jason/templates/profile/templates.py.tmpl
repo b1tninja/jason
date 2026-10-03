@@ -1,0 +1,10 @@
+"""{{NAME}}'s letter templates in Drive, and where the letters made from them are filed.
+
+``DOCUMENT_TEMPLATES`` holds ``jason.community.templates.DocumentTemplate`` rows: a Drive Doc with ``{VARIABLE}`` tokens,
+and a letter is a filled copy. A template is a general base rendered with this association's name, letterhead,
+contacts, and rules; a copy is generated from the base, never edited by hand (docs/letters.md, docs/base-templates.md).
+"""
+
+from __future__ import annotations
+
+DOCUMENT_TEMPLATES: tuple = ()

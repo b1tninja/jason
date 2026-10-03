@@ -263,7 +263,7 @@ def run(data_dir: Path, outlines: list[DocumentOutline] | None = None) -> dict[s
 
 
 def load_rows(data_dir: Path) -> list[dict[str, Any]]:
-    path = outline_dir(data_dir) / "references.json"
+    path = Path(data_dir) / "outlines" / "references.json"      # a read: no folder is made for it
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
 
 

@@ -505,6 +505,12 @@ class Community(ABC):
         return ""
 
     @property
+    def region(self) -> str:
+        """Where the association's public records are kept, as ``"<state>/<county>"`` (``"ca/<county>"``): which county
+        recorder, assessor, and tax collector jason reads (phase 6 of docs/profiles.md). Empty until set."""
+        return ""
+
+    @property
     @abstractmethod
     def slug(self) -> str: ...
 

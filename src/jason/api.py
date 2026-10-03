@@ -1,7 +1,8 @@
 """jason's programmatic interface: the same functions ``jason-mcp`` serves, for Python callers.
 
-Each returns a JSON-ready dict, reads the stores on disk, and decides nothing for the board. The two that write
-(``answer_intake_question``, ``record_completion``) write only a person's record to ``data/`` and require ``by``.
+Each returns a JSON-ready dict, reads the stores on disk, and decides nothing for the board. The three that write
+(``answer_intake_question``, ``onboarding_confirm``, ``record_completion``) write only a person's record to ``data/``
+and require ``by``.
 
     from jason import api
 
@@ -37,6 +38,7 @@ from jason.mcp.governance import (
     next_questions,
     notice_delivery,
     notice_requirements,
+    onboarding_confirm,
     onboarding_status,
     record_completion,
     request_kinds_measure,

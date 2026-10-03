@@ -1,0 +1,22 @@
+"""How {{NAME}}'s documents are recognized and synced: the kind rules, the Drive sync rules, and the folders sync skips.
+
+- ``KIND_RULES``: ``jason.community.documents.KindRule`` rows, in match order. Each says what a file is (its
+  ``DocumentKind``) by its name, PayHOA folder, or library path. Match order is part of the rule; a name no row
+  matches goes to jason's phrase rules, then a local model, and a miss after all three stays a miss
+  (``Community.classify_document``).
+- ``SYNC_RULES``: ``jason.community.base.SyncRule`` rows, one Drive folder glob and the PayHOA folder it publishes to
+  (docs/drive-sync-rules.md).
+- ``EXCLUDED``: ``jason.community.base.ExcludedFolder`` rows, the Drive folders sync must skip, each with its reason.
+- ``DOCUMENT_RULES``: the ``DocumentRule`` members this association uses.
+
+``DocumentRule``, ``PayhoaFolder``, and ``PublicDrive`` still hold the first profile's members in
+``jason.community.symbols``; they move into the profile in phase 3 of docs/profiles.md. Until then, leave the sync rows
+empty rather than add members there.
+"""
+
+from __future__ import annotations
+
+KIND_RULES: tuple = ()
+SYNC_RULES: tuple = ()
+EXCLUDED: tuple = ()
+DOCUMENT_RULES: tuple = ()

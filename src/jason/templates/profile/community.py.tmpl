@@ -1,0 +1,219 @@
+"""{{NAME}}, expressed as objects: the `{{KEY}}` profile's `Community` subclass.
+
+Written by `jason onboard --new {{KEY}}` on {{DATE}}. It holds only the identity it was given. Every other method reads
+the module named beside it, and every module starts empty: an empty answer is a miss for jason's tasks, never a crash.
+
+- **A fact is a row.** Add it to the module that holds its kind of row. Do not hardcode it in a method, a task, or a
+  default argument.
+- **Private facts stay out.** People, emails, phone numbers, account numbers, and figures go in
+  `data/spec/{{KEY}}.json`, which is never checked in. Passwords and codes go in Keeper.
+- **jason asks for what is missing.** `JASON_PROFILE={{KEY}} jason onboard` lists the checklist, the stage gates, and
+  the next questions. An answer becomes a private fact or a proposed change to this package, for a person to apply.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from jason.community.base import Community
+
+from . import (
+    anchors,
+    banking,
+    books,
+    buildings,
+    cases,
+    conflicts,
+    developers,
+    documents,
+    governing,
+    insurance,
+    lessons,
+    living,
+    notices,
+    obligations,
+    outlines,
+    parcels,
+    pins,
+    responses,
+    schedule,
+    templates,
+    transactions,
+    utilities,
+    vendors,
+)
+
+
+class {{CLASS}}(Community):
+    """The association specification. Facts are rows in this package's modules, not a data file."""
+
+    # --- Identity --------------------------------------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        return {{NAME_LITERAL}}
+
+    @property
+    def corporate_name(self) -> str:
+        """The name on recorded instruments and the Secretary of State's filing. Empty until a person confirms it."""
+        return {{CORPORATE_LITERAL}}
+
+    @property
+    def slug(self) -> str:
+        return {{KEY_LITERAL}}
+
+    @property
+    def org_id(self) -> int:
+        """The PayHOA organization id. 0 until the management software is set up."""
+        return 0
+
+    @property
+    def region(self) -> str:
+        """Where the public records are kept ("ca/<county>"). Empty when no county was given."""
+        return {{REGION_LITERAL}}
+
+    @property
+    def root(self) -> Path:
+        return Path(__file__).resolve().parent
+
+    # --- Documents and Drive (documents.py, anchors.py, pins.py) ---------------------------------------------------
+
+    @property
+    def sync_rules(self):
+        return documents.SYNC_RULES
+
+    def kind_rules(self):
+        return documents.KIND_RULES
+
+    def document_rules(self):
+        return documents.DOCUMENT_RULES
+
+    def document_sync_rules(self) -> dict[str, Any]:
+        """The Drive sync rules in the dict shape the document-sync tasks consume."""
+        return {
+            "rules": [rule.as_dict(self.library_folder(rule.destination).path) for rule in documents.SYNC_RULES],
+            "exclude": [row.as_dict() for row in documents.EXCLUDED],
+        }
+
+    def library_folder(self, folder):
+        """The pinned PayHOA library folder; KeyError until anchors.LIBRARY pins it."""
+        for row in anchors.LIBRARY:
+            if row.folder is folder:
+                return row
+        raise KeyError(folder)
+
+    def library_folders(self):
+        return anchors.LIBRARY
+
+    def known_file(self, file):
+        """The pinned Drive file; KeyError until anchors.FILES pins it."""
+        for row in anchors.FILES:
+            if row.file is file:
+                return row
+        raise KeyError(file)
+
+    def drive_roots(self):
+        return anchors.ROOTS
+
+    def site_pages(self):
+        return anchors.PAGES
+
+    def pins(self):
+        return pins.PINS
+
+    # --- Governing documents (governing.py, books.py, outlines.py, living.py, conflicts.py) -------------------------
+
+    @property
+    def ccrs(self):
+        """The declaration with its amendments; None until governing.py holds it."""
+        return governing.DECLARATION
+
+    def book_entries(self):
+        return books.BOOK_ENTRIES
+
+    def citable_documents(self):
+        return outlines.CITABLE_DOCUMENTS
+
+    def living_documents(self):
+        return living.LIVING_DOCUMENTS
+
+    def conflicts(self):
+        return conflicts.CONFLICTS
+
+    # --- The property (parcels.py, buildings.py, developers.py) ----------------------------------------------------
+
+    def units(self):
+        return parcels.UNITS
+
+    def common_areas(self):
+        return parcels.COMMON_AREAS
+
+    def buildings(self):
+        return buildings.BUILDINGS
+
+    def developers(self):
+        return developers.DEVELOPERS
+
+    # --- The board, money, and the calendar (banking.py, obligations.py, schedule.py, notices.py) ------------------
+
+    def board(self):
+        return banking.BOARD
+
+    def meeting_schedule(self):
+        return banking.MEETING_SCHEDULE
+
+    def bank_accounts(self):
+        return banking.BANK_ACCOUNTS
+
+    def fiscal_year_end(self):
+        return obligations.FISCAL_YEAR_END
+
+    def obligations(self):
+        return obligations.OBLIGATIONS
+
+    def assignments(self):
+        return schedule.ASSIGNMENTS
+
+    def notice_rules(self):
+        return notices.NOTICE_RULES
+
+    def notice_provisions(self):
+        return notices.NOTICE_PROVISIONS
+
+    def transaction_rules(self):
+        return transactions.RULES
+
+    # --- Insurance, utilities, vendors, and matters (insurance.py, utilities.py, vendors.py, cases.py) -------------
+
+    def insurance(self):
+        return insurance.CATALOG
+
+    def insurance_workbook_id(self) -> str:
+        return insurance.WORKBOOK_ID
+
+    def coverages_not_carried(self):
+        return insurance.NOT_CARRIED
+
+    def utility_accounts(self):
+        return utilities.UTILITY_ACCOUNTS
+
+    def vendor_portals(self):
+        return vendors.VENDOR_PORTALS
+
+    def senders(self):
+        return vendors.SENDERS
+
+    def legal_cases(self):
+        return cases.LEGAL_CASES
+
+    # --- Letters, responses, and lessons (templates.py, responses.py, lessons.py) ----------------------------------
+
+    def document_templates(self):
+        return templates.DOCUMENT_TEMPLATES
+
+    def response_rules(self):
+        return responses.RESPONSE_RULES
+
+    def lessons(self):
+        return lessons.LESSONS

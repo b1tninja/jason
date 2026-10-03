@@ -1,0 +1,12 @@
+"""{{NAME}}'s written provisions that a higher authority displaces, wholly or in part.
+
+``CONFLICTS`` holds ``jason.community.authority_order.Conflict`` rows. A provision yields only to the extent of the
+conflict (Civil Code 4205): each row names the provision, the authority above it and the day it took effect, the part
+that yields, how the provision is applied meanwhile, whether it is plain or a question for counsel, and the board item
+that follows it. jason notes a conflict and never resolves one. ``jason conflicts --leads`` finds candidates; a lead is
+read beside the statute before it becomes a row (docs/statute-alignment.md).
+"""
+
+from __future__ import annotations
+
+CONFLICTS: tuple = ()

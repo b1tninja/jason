@@ -15,7 +15,15 @@ profile and the data on disk, read-only, and prints present, partial, or missing
 the report under ``data/onboarding/``. ``--request SOURCE`` prints the items to ask one source for (the prior manager
 by default), as the list a board or a new manager sends. ``--items`` prints the checklist itself.
 
-Nothing here writes to PayHOA, Google, or the mail, or edits the profile.
+``--new KEY --name NAME`` starts a new association: its profile package written from jason's general templates
+(``jason.tasks.profile_scaffold``), beside the default profile unless ``--dir`` says where, and its empty private facts
+in ``data/spec/KEY.json``. It refuses to overwrite either, and refuses a key that collides with a record address's
+book, a document key or alias, another profile, or a jason-mcp tool set. ``--county`` sets the profile's region;
+``--lookup`` searches that county recorder's public index for the name, read-only, and keeps what it finds as leads,
+each asked as a FACT question with the found value as its suggestion (``jason.tasks.onboarding_lookup``). Alone,
+``--lookup`` does the same for the active profile.
+
+Nothing here writes to PayHOA, Google, or the mail, or edits an existing profile.
 """
 
 from __future__ import annotations
@@ -58,6 +66,10 @@ def cmd_onboard(args: argparse.Namespace) -> int:
                 if i.ask:
                     print(f"    asks: {i.ask.question} ({i.ask.record.value}{', high stakes' if i.ask.stakes else ''})")
         return 0
+    if args.new:
+        return _new(args)
+    if args.lookup:
+        return _lookup_active(args)
     if args.checklist:
         return _checklist(args, group)
     if args.answer or args.confirm or args.apply or args.scan:
@@ -147,6 +159,61 @@ def _queue(args: argparse.Namespace) -> int:
     return 0
 
 
+def _new(args: argparse.Namespace) -> int:
+    """Write a new association's profile package and its empty private facts; with ``--lookup``, its leads."""
+    from pathlib import Path
+
+    from jason.tasks import profile_scaffold as scaffold
+
+    try:
+        made = scaffold.write(args.new, args.name or "", county=args.county or "",
+                              directory=Path(args.dir) if args.dir else None)
+    except scaffold.ScaffoldRefused as exc:
+        print("not written:", file=sys.stderr)
+        for reason in exc.reasons:
+            print(f"  {reason}", file=sys.stderr)
+        return 2
+    print(f"wrote the profile {made.key} ({made.name}) at {made.package}: {len(made.files)} files")
+    for path in made.files:
+        print(f"  {path.relative_to(made.package).as_posix()}")
+    print(f"wrote empty private facts at {made.spec} (never checked in)")
+    if args.lookup:
+        _print_lookup(made.key, made.name, args.county or "")
+    print("\nTo make it the active profile, set in .env (or the environment):")
+    for line in scaffold.environment(made):
+        print(f"  {line}")
+    print(f"Its stores are under data/{made.key}/ unless PAYHOA_CATALOG names another folder. Then:\n"
+          f"  jason onboard                 # every gate closed, the checklist mostly missing, the next questions")
+    return 0
+
+
+def _print_lookup(profile: str, name: str, county: str) -> None:
+    from jason.tasks import onboarding_lookup as lookup
+
+    found = lookup.lookup(name, county)
+    if found.leads:
+        path = lookup.save_leads(profile, found.leads)
+        print(f"\nleads from public sources: {len(found.leads)}, kept in {path} and asked as FACT questions:")
+        for lead in found.leads:
+            print(f"  {lead['key']}: {lead['suggestion']} (serves {lead['item']}"
+                  + (", high stakes" if lead.get("stakes") else "") + ")")
+    else:
+        print("\nleads from public sources: none")
+    for note in found.notes:
+        print(f"  {note}")
+
+
+def _lookup_active(args: argparse.Namespace) -> int:
+    """The lookup for the active profile: its name, in the county its ``region`` names (or ``--county``)."""
+    from jason.community import community
+    from jason.community.profile import profile_name
+
+    the = community()
+    county = args.county or (the.region.split("/", 1)[1] if "/" in the.region else "")
+    _print_lookup(profile_name(), the.name, county)
+    return 0
+
+
 def _checklist(args: argparse.Namespace, group: Any) -> int:
     from jason.community import community
     from jason.community.onboarding import Status, by_group, counts, report_dicts
@@ -199,4 +266,13 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--status", choices=("present", "partial", "missing"), help="with --checklist: only items with this status")
     p.add_argument("--write", action="store_true", help="with --checklist: keep the report in data/onboarding/ (private)")
     p.add_argument("--json", action="store_true", help="print JSON")
+    p.add_argument("--new", metavar="KEY",
+                   help="write a new association's profile package from jason's templates (with --name; --county, "
+                        "--dir, --lookup), and its empty private facts in data/spec/KEY.json; never overwrites")
+    p.add_argument("--name", help="with --new: the association's name as its notices give it")
+    p.add_argument("--county", help="with --new or --lookup: the county whose public records hold the association's")
+    p.add_argument("--dir", help="with --new: where to write the package (default: beside the default profile)")
+    p.add_argument("--lookup", action="store_true",
+                   help="search the county recorder's public index for the association's name, read-only; each find "
+                        "becomes a FACT question with the found value as its suggestion (alone: the active profile)")
     p.set_defaults(func=cmd_onboard)

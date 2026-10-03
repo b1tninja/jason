@@ -339,8 +339,12 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "records_request", "passage_search", "library_search", "manager_context",
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
-    # notice catalog and delivery, and the documents' duties. Two tools write a person's record to data/.
+    # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.
     "governance": tuple(tool.__name__ for tool in GOVERNANCE_TOOLS),
+    # Onboarding by conversation (docs/onboarding.md): the session, its questions, and the two writes, with the
+    # onboard and onboard_review prompts. A small set, so a local model picks the right tool.
+    "onboarding": ("onboarding_status", "next_questions", "intake_questions", "answer_intake_question",
+                   "onboarding_confirm"),
 }
 
 
@@ -369,21 +373,25 @@ def _profile() -> str:
 
 
 def build(profile: str = "", *, community: Any = None, data_dir: Path | None = None) -> Any:
-    """The server for a profile: its tools, and under ``all`` and ``governance`` the record addresses as resources
-    (``jason.mcp.resources``)."""
+    """The server for a profile: its tools; under ``all`` and ``governance`` the record addresses as resources
+    (``jason.mcp.resources``); and under ``all``, ``governance``, and ``onboarding`` the onboarding prompts
+    (``jason.mcp.prompts``)."""
     try:
         from mcp.server.mcpserver import MCPServer
     except ImportError as exc:
         raise SystemExit(
             'The mcp package is not installed. pip install -e ".[mcp]"'
         ) from exc
-    from jason.mcp import resources
+    from jason.mcp import prompts, resources
 
     server = MCPServer("jason")
     for tool in tools_for(profile):
         server.add_tool(tool)
-    if (profile or "all").strip().lower() in resources.PROFILES:
+    wanted = (profile or "all").strip().lower()
+    if wanted in resources.PROFILES:
         resources.register(server, community=community, data_dir=data_dir)
+    if wanted in prompts.PROFILES:
+        prompts.register(server)
     return server
 
 

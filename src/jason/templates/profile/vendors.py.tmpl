@@ -1,0 +1,14 @@
+"""{{NAME}}'s vendors and counterparties.
+
+- ``VENDOR_PORTALS``: ``jason.community.base.VendorPortal`` rows, each vendor customer portal jason reads bills and
+  service records from, with the Keeper record named by its key (never a password here).
+- ``SENDERS``: ``jason.community.sources.Sender`` rows, who writes to the association and who it pays, and what kind of
+  source each is.
+
+Which vendor's format reader applies is a row here; the readers are jason's (docs/vendor-portals.md, docs/invoices.md).
+"""
+
+from __future__ import annotations
+
+VENDOR_PORTALS: tuple = ()
+SENDERS: tuple = ()

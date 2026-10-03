@@ -1,0 +1,18 @@
+"""{{NAME}}'s board rule, meeting schedule, and bank accounts.
+
+- ``BOARD``: a ``jason.community.base.BoardRule`` (seats, the range the documents allow, the quorum floor, and the
+  section that sets them), or ``None`` until a person answers. Who holds the seats is PayHOA's, read live.
+- ``MEETING_SCHEDULE``: a ``jason.community.base.MeetingSchedule`` (weekday, which one in the month, time, place), or
+  ``None``.
+- ``BANK_ACCOUNTS``: ``jason.community.base.BankAccount`` rows by the last digits the statements carry, with each one's
+  ``AccountPurpose`` (operating or reserve). The account numbers themselves and the signers are private facts
+  (``data/spec/{{KEY}}.json``), never here.
+
+See docs/ledger-reports.md and docs/reserve-transfers.md.
+"""
+
+from __future__ import annotations
+
+BOARD = None
+MEETING_SCHEDULE = None
+BANK_ACCOUNTS: tuple = ()

@@ -1,0 +1,23 @@
+"""{{NAME}}'s request and owner-information forms.
+
+jason still reads these module constants directly (``spec_module("forms")``); phase 2 of docs/profiles.md moves them
+onto ``Community``. Each is empty or ``None`` until the association has the form:
+
+- ``OWNER_INFO``: the annual owner-information form (Civil Code 4041), a ``jason.community.forms.FormTemplate``;
+- ``OWNER_INFO_CYCLE``: the year's answer cycle (``AnswerCycle``);
+- ``FORM_TEMPLATES``, ``FORM_IMPORTS``, ``GOOGLE_FORMS``: the other forms, imports, and Google Forms channels;
+- ``TEST_MEMBERSHIPS``: PayHOA memberships used for tests, by id.
+
+See docs/forms.md and docs/owner-information.md.
+"""
+
+from __future__ import annotations
+
+OWNER_INFO = None
+OWNER_INFO_CYCLE = None
+OWNER_INFO_COMPLETED_COMMENT = ""
+EARLIER_ELECTIONS = None
+FORM_TEMPLATES: tuple = ()
+FORM_IMPORTS: tuple = ()
+GOOGLE_FORMS: dict = {}
+TEST_MEMBERSHIPS: dict[int, str] = {}

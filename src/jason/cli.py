@@ -3638,7 +3638,7 @@ def build_parser() -> argparse.ArgumentParser:
     allm.add_argument("--refresh", action="store_true", help="Replace a page Jason generated when the file on disk is newer than the stored copy (never the association's records)")
     allm.add_argument("--combined", default=None, help="Also add every document to this shared workspace (default the association's shared workspace; empty string for none)")
     allm.add_argument("--workspace", default="", help="Workspace slug for --ask (default: the --catalog workspace, else the association's shared workspace)")
-    allm.add_argument("--profile", default="board", help="jason-mcp tool set to register: board (the board's tools, the default) or all")
+    allm.add_argument("--profile", default="board", help="jason-mcp tool set to register: board (the board's tools, the default), onboarding (onboarding by conversation), governance, or all")
     allm.add_argument("--status", action="store_true", help="The app's model settings against jason's, each workspace's documents, and what is wrong")
     allm.add_argument("--start", action="store_true", help="Start the AnythingLLM desktop app and wait for its API (--yes)")
     allm.add_argument("--stop", action="store_true", help="Close the AnythingLLM desktop app (--yes)")

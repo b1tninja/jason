@@ -6,11 +6,11 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-144 commands, by area:
+145 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
-- [Documents & library](#documents--library) (18)
+- [Documents & library](#documents--library) (19)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (24)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
@@ -568,6 +568,20 @@ Find a document's versions (email, PayHOA, the site, Drive files and revisions) 
 | `--diff` | A B | compare two versions directly: an id (v3), a date (the version current on it), or a hash |
 | `--stored` |  | print the stored history; do not rebuild it |
 | `--json` |  | print JSON |
+
+### `jason ingest`
+
+Take a folder, zip, Drive folder, or files into the library: inventory, dedup, read, classify, find versions, and propose each file's book, record, and folder (a dry run unless --apply)
+
+| Option | Value | Help |
+|---|---|---|
+| `source` | optional (*) | a folder, a .zip, a Drive folder link or drive:ID, or files |
+| `--apply` |  | copy the ready files into the library store and record them in library.db |
+| `--park` |  | park the questions in the intake queue (jason intake) |
+| `--model` | MODEL | ask a local Ollama model about files no rule placed (preflight and the GPU lock first; the default model when no name is given) |
+| `--no-ocr` |  | read text layers only; an image-only file is left unread |
+| `--gate` |  | print what the last ingest says for the onboarding session's ingest stage (read-only) |
+| `--json` |  | print the run as JSON |
 
 ## Meetings, board & minutes
 
@@ -1791,7 +1805,7 @@ Print the jason-mcp entry for AnythingLLM's agent tools (--write installs it), o
 | `--refresh` |  | Replace a page Jason generated when the file on disk is newer than the stored copy (never the association's records) |
 | `--combined` | COMBINED | Also add every document to this shared workspace (default the association's shared workspace; empty string for none) |
 | `--workspace` | WORKSPACE | Workspace slug for --ask (default: the --catalog workspace, else the association's shared workspace) |
-| `--profile` | PROFILE | jason-mcp tool set to register: board (the board's tools, the default) or all |
+| `--profile` | PROFILE | jason-mcp tool set to register: board (the board's tools, the default), onboarding (onboarding by conversation), governance, or all |
 | `--status` |  | The app's model settings against jason's, each workspace's documents, and what is wrong |
 | `--start` |  | Start the AnythingLLM desktop app and wait for its API (--yes) |
 | `--stop` |  | Close the AnythingLLM desktop app (--yes) |
@@ -1892,3 +1906,8 @@ Onboarding as a session: progress, stage gates, and the next questions ranked by
 | `--status` | {present,partial,missing} | with --checklist: only items with this status |
 | `--write` |  | with --checklist: keep the report in data/onboarding/ (private) |
 | `--json` |  | print JSON |
+| `--new` | KEY | write a new association's profile package from jason's templates (with --name; --county, --dir, --lookup), and its empty private facts in data/spec/KEY.json; never overwrites |
+| `--name` | NAME | with --new: the association's name as its notices give it |
+| `--county` | COUNTY | with --new or --lookup: the county whose public records hold the association's |
+| `--dir` | DIR | with --new: where to write the package (default: beside the default profile) |
+| `--lookup` |  | search the county recorder's public index for the association's name, read-only; each find becomes a FACT question with the found value as its suggestion (alone: the active profile) |

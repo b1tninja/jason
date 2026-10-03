@@ -7,6 +7,8 @@ unblocks.
 questions onboarding asks (``generate``):
 
 - a ``FACT`` for each checklist item a person supplies (an item with a ``FactAsk``) that is missing or partial;
+- a ``FACT`` for each lead a lookup found in a public source (``jason onboard --lookup``), its found value the
+  suggestion, while the item it serves is not present;
 - a ``MAP`` for each book a checklist item looks for that no document fills, where the outlines or the library hold a
   candidate; and for each Civil Code 5200 record held in classified files with no folder pinned to hold it.
 
@@ -30,7 +32,8 @@ from jason.community.intake_rank import (
     QUALITY_KINDS, Citing, Ranked, Unblocks, rank, reading_matters, section_weight, subject_section,
 )
 from jason.community.onboarding import (
-    GATES, Context, FactRecord, GateResult, InBook, ItemResult, Record, Settled, Stage, Status, check, gates, stages_of,
+    GATES, LEADS, Context, FactRecord, GateResult, InBook, ItemResult, Record, Settled, Stage, Status, check, gates,
+    stages_of,
 )
 
 # The subjects the onboarding questions use: a scan that covers them marks a question no longer asked stale.
@@ -114,6 +117,36 @@ def fact_asks(results: Iterable[ItemResult], ctx: Context, data_dir: Path) -> li
                        evidence=evidence, serves=r.item.key, stakes=spec.stakes,
                        detail={"item": r.item.key, "record": spec.record.value, "group": r.item.group.value,
                                "clock": spec.clock, "method": spec.method, "private": r.item.private}))
+    return out
+
+
+def lead_asks(results: Iterable[ItemResult], ctx: Context) -> list[Ask]:
+    """A ``FACT`` for each lead a lookup found in a public source (``jason.tasks.onboarding_lookup``), kept under
+    ``leads`` in the profile's private facts, while the item it serves is not present. The found value is the
+    suggestion; the answer becomes a proposed change to the profile, never a row written straight in."""
+    found = ctx.private(ctx.profile) if ctx.profile else {}
+    leads = found.get(LEADS) if isinstance(found, dict) else None
+    by_key = {r.item.key: r for r in results}
+    record = FactRecord.PROFILE
+    out = []
+    for lead in leads or ():
+        if not isinstance(lead, dict) or not lead.get("key") or not lead.get("question"):
+            continue
+        r = by_key.get(str(lead.get("item") or ""))
+        if r is not None and r.status is Status.PRESENT:
+            continue
+        subject = f"fact:lookup:{lead['key']}"
+        evidence = ([f"checklist {r.item.key} is {r.status.value}: {r.evidence}"] if r is not None else []) + [
+            f"lead: {lead.get('source') or 'a public source'}, read {lead.get('found') or '?'}",
+            *(str(e) for e in lead.get("evidence") or ())]
+        out.append(Ask(ask_id(AskKind.FACT, subject, ""), AskKind.FACT, subject,
+                       f"{lead['question']} {_RECORD_ANSWER[record]}", choices=tuple(lead.get("choices") or ()),
+                       suggestion=str(lead.get("suggestion") or ""), evidence=tuple(evidence),
+                       serves=r.item.key if r is not None else "", stakes=bool(lead.get("stakes")),
+                       detail={"item": r.item.key if r is not None else str(lead.get("item") or ""),
+                               "record": record.value, "group": r.item.group.value if r is not None else "",
+                               "clock": "", "method": str(lead.get("method") or ""), "private": False,
+                               "lead": lead["key"], "source": str(lead.get("source") or "")}))
     return out
 
 
@@ -217,7 +250,7 @@ def map_asks(results: Iterable[ItemResult], ctx: Context, data_dir: Path) -> lis
 
 def generate(results: Iterable[ItemResult], ctx: Context, data_dir: Path) -> list[Ask]:
     results = tuple(results)
-    return fact_asks(results, ctx, data_dir) + map_asks(results, ctx, data_dir)
+    return fact_asks(results, ctx, data_dir) + lead_asks(results, ctx) + map_asks(results, ctx, data_dir)
 
 
 def generate_for(community: Any, data_dir: Path, *, settings: Any = None) -> list[Ask]:
@@ -292,6 +325,8 @@ class Session:
     queue: list[Ask]                                  # the stored questions merged with the generated ones
     stored: set[str] = field(default_factory=set)     # ids already in data/intake/asks.json
     ranked: list[Ranked] = field(default_factory=list)
+    ingest: dict[str, Any] | None = None              # the last ``jason ingest`` (``jason.tasks.ingest.gate``)
+    ingest_lines: list[str] = field(default_factory=list)
 
     @property
     def stage(self) -> Stage | None:
@@ -330,8 +365,20 @@ def build(community: Any, data_dir: Path, *, settings: Any = None) -> Session:
     open_asks = [a for a in queue if a.status is AskStatus.OPEN]
     unblocks = {a.id: unblocks_for(a, status=status, groups=groups, gate_results=gate_results, cited=cited, books=books)
                 for a in open_asks}
+    ingest, ingest_lines = _ingest(data_dir)
     return Session(f"Onboarding: {getattr(community, 'name', '')}", results, gate_results, queue,
-                   {a.id for a in stored}, rank(open_asks, unblocks))
+                   {a.id for a in stored}, rank(open_asks, unblocks), ingest, ingest_lines)
+
+
+def _ingest(data_dir: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    """What the last ``jason ingest`` read, filed, and left open, for the ingest stage beside its checklist condition;
+    nothing when it cannot be read."""
+    try:
+        from jason.tasks import ingest as ingest_task
+
+        return ingest_task.gate(data_dir), list(ingest_task.gate_lines(data_dir))
+    except Exception:  # noqa: BLE001 - an ingest report that cannot be read leaves the gate's own checks
+        return None, []
 
 
 def status_dict(session: Session) -> dict[str, Any]:
@@ -345,7 +392,8 @@ def status_dict(session: Session) -> dict[str, Any]:
         "stage": session.stage.value if session.stage else "operating",
         "gates": [{"stage": g.gate.stage.value, "title": g.gate.title, "open": g.open, "opensWhen": g.gate.opens,
                    "waiting": [{"key": r.item.key, "status": r.status.value} for r in g.waiting],
-                   "checks": [{"passed": f.passed, "evidence": f.evidence} for f in g.findings]} for g in session.gates],
+                   "checks": [{"passed": f.passed, "evidence": f.evidence} for f in g.findings],
+                   **({"ingest": session.ingest} if g.gate.stage is Stage.INGEST else {})} for g in session.gates],
         "questions": {"open": len(open_asks), "byKind": dict(Counter(a.kind.value for a in open_asks).most_common()),
                       "answeredNotApplied": len(session.waiting()),
                       "notYetInQueue": sum(1 for a in open_asks if a.id not in session.stored)},
@@ -376,6 +424,8 @@ def lines(session: Session, *, limit: int = 5) -> list[str]:
         out.append(f"  {g.gate.stage.value:10} {'open' if g.open else 'closed'}: {g.gate.title}")
         if not g.open:
             out.append(f"             waiting on: {g.evidence}")
+        if g.gate.stage is Stage.INGEST:
+            out += [f"             {line.strip()}" for line in session.ingest_lines]
     waiting = session.waiting()
     if waiting:
         out += ["", f"Answered, not yet applied: {len(waiting)} (jason onboard --apply; a high-stakes answer needs "
@@ -404,5 +454,6 @@ def question_lines(r: Ranked, stored: set[str]) -> list[str]:
     return out
 
 
-__all__ = ["SCOPE", "Session", "build", "citations", "fact_asks", "generate", "generate_for", "lines", "map_asks",
+__all__ = ["SCOPE", "Session", "build", "citations", "fact_asks", "generate", "generate_for", "lead_asks", "lines",
+           "map_asks",
            "question_dict", "question_lines", "status_dict", "unblocks_for"]

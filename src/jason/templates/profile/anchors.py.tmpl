@@ -1,0 +1,19 @@
+"""Where {{NAME}}'s files are: PayHOA library folders, Drive roots, well-known Drive files, and public site pages.
+
+- ``LIBRARY``: ``jason.community.base.LibraryFolder`` rows, each PayHOA library folder with its path and the Civil Code
+  5200 records it holds (``records=``). A folder with no pin is unclassified; ``jason onboard`` asks which folder holds
+  a record it finds in classified files, and the answer becomes a proposed pin here.
+- ``ROOTS``: ``jason.community.base.DriveRoot`` rows, the Drive folders jason reads.
+- ``FILES``: ``jason.community.base.KnownAnchor`` rows, each well-known Drive file by its ``KnownFile`` member.
+- ``PAGES``: ``jason.community.base.SitePageRef`` rows, the association's public site pages.
+
+The ``PayhoaFolder``, ``KnownFile``, and ``SitePage`` members are still the first profile's (phase 3 of
+docs/profiles.md). See docs/drive-holdings.md and docs/drive-sync-rules.md.
+"""
+
+from __future__ import annotations
+
+LIBRARY: tuple = ()
+ROOTS: tuple = ()
+FILES: tuple = ()
+PAGES: tuple = ()

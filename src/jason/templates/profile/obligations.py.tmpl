@@ -1,0 +1,12 @@
+"""{{NAME}}'s fiscal year and recurring deadlines.
+
+- ``FISCAL_YEAR_END``: the fiscal year's last day as ``(month, day)``, or ``None`` until a person answers. It anchors
+  the annual budget report and policy statement windows (Civil Code 5300, 5310).
+- ``OBLIGATIONS``: ``jason.community.obligations.Obligation`` rows, each recurring deadline with its authority and the
+  evidence that shows it done (docs/insurance-and-deadlines.md).
+"""
+
+from __future__ import annotations
+
+FISCAL_YEAR_END = None
+OBLIGATIONS: tuple = ()

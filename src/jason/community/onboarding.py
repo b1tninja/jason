@@ -32,6 +32,7 @@ Pure records: nothing here reads disk; the task (``jason.tasks.onboarding``) loa
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Iterable
@@ -263,6 +264,8 @@ class Setting:
 
 
 FACTS = "facts"                              # the key in ``data/spec/<profile>.json`` that holds answered facts
+LEADS = "leads"                              # and the one that holds a lookup's leads (``jason.tasks.onboarding_lookup``):
+                                             # each asked as a FACT question, never a fact until a person answers
 
 
 @dataclass(frozen=True)
@@ -1110,10 +1113,17 @@ def _size(value: Any, contains: str) -> int:
         return int(value)
     if isinstance(value, (int, float)):
         return 1 if value else 0
+    groups = (tuple, list, set, frozenset)
     if isinstance(value, dict):
+        if not contains and value and all(isinstance(v, groups) for v in value.values()):
+            # A map of groups (each delivery and the pins that locate it): an empty group is a gap, not a row.
+            return sum(1 for v in value.values() if v)
         rows: list[Any] = list(value.values()) if contains else list(value)
-    elif isinstance(value, (tuple, list, set, frozenset)):
+    elif isinstance(value, groups):
         rows = list(value)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        # A record the base class answers with by default (the Drive folders, all empty) holds nothing yet.
+        return 1 if any(getattr(value, f.name) for f in dataclasses.fields(value)) else 0
     else:
         return 1
     if contains:
@@ -1124,7 +1134,7 @@ def _size(value: Any, contains: str) -> int:
 
 __all__ = [
     "Check", "Context", "FACTS", "Fact", "FactAsk", "FactRecord", "Finding", "GATES", "Gate", "GateResult", "Group",
-    "IN_FORCE_KINDS", "InBook", "ItemResult", "ITEMS", "Kinds", "Method", "OnboardingItem", "Origin", "Private",
+    "IN_FORCE_KINDS", "InBook", "ItemResult", "ITEMS", "Kinds", "LEADS", "Method", "OnboardingItem", "Origin", "Private",
     "Record", "Setting", "Settled", "Source", "Stage", "Status", "Store", "Verified", "by_group", "check", "check_item",
     "counts", "gates", "item", "items", "report_dicts", "report_markdown", "request_markdown", "stages_of",
 ]

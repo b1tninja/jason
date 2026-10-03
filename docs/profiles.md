@@ -17,6 +17,8 @@ oakview = "jason_oakview"
 
 It is imported as `jason_<name>`. Its `PROFILE` attribute names the `Community` class. `spec_module("forms")` reads one module of the active profile.
 
+`jason onboard --new KEY --name NAME` starts a new profile from jason's general templates (`src/jason/templates/profile/`): a package with a `Community` subclass holding only the identity given, an empty module for each family of rule rows, `docs/README.md`, and a `notes/` folder git ignores, plus empty private facts in `data/spec/KEY.json`. It never overwrites a package or private facts ([onboarding.md](onboarding.md#starting-a-new-association)).
+
 Importing jason loads no profile. The settings that come from it (`payhoa_org_id`, the utility categories) are read when first asked for, so a profile with no SMUD rule has no SMUD category instead of failing.
 
 The tests run against `mystique` whatever `.env` says (`tests/conftest.py`). `tests/test_profile.py` also builds a small second profile and loads it next to the first one.
@@ -76,17 +78,21 @@ The coupling was surveyed on October 2, 2026. jason hardcodes no Drive ids or Pa
      - the maintenance request groups in `request_sheet`;
      - the prose in `board_packet`.
    - Each one reads `community.name`, `community.corporate_name`, `community.unit_city_state_zip()`, or a new profile field.
-5. **Data per profile.**
-   - Every store derives `data/` from `Settings.payhoa_catalog.parent`, so all profiles share one folder.
-   - The fix is a `data_dir` setting: `JASON_DATA_DIR`, else `data/` for the first profile and `data/<profile>/` for any other.
-   - It also needs a check that a store's recorded org id matches the profile's.
+5. **Data per profile (started).**
+   - Every store derives `data/` from `Settings.payhoa_catalog.parent`.
+   - Done: when `PAYHOA_CATALOG` names no folder, that is `data/` for the default profile and `data/<profile>/` for any other (`jason.config.default_data_dir`).
+   - Still to do:
+     - a `JASON_DATA_DIR` setting;
+     - the code that still says `Path("data")` without the settings;
+     - the private fact files named by topic (`data/spec/bank_accounts.json`), which every profile reads;
+     - a check that a store's recorded org id matches the profile's.
 6. **Regions.**
    - These sources are Sacramento's:
      - the recorder index, copy orders, the assessor, and the secured roll;
      - county-taxes.net;
      - the City's Accela permits;
      - SMUD and the City's utility bills.
-   - They move behind a region adapter that the profile names (`region = "ca/sacramento"`).
+   - They move behind a region adapter that the profile names (`region = "ca/sacramento"`). `Community.region` exists, empty by default; the scaffold sets it from `--county`, and `jason onboard --lookup` picks the county recorder's reader by it.
    - Another county is a new adapter.
    - The `smud` and `idoxs` packages become optional extras.
 7. **Vendor formats as plug-ins.**
