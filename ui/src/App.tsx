@@ -21,6 +21,13 @@ import { MeetingView } from "./views/MeetingView";
 import { CommunitiesView, OnboardingView } from "./views/OnboardingView";
 import { OwnerInfoView } from "./views/OwnerInfoView";
 import { RuleChangeView } from "./views/RuleChangeView";
+import { RegistersView } from "./views/RegistersView";
+import { DelinquencyView } from "./views/DelinquencyView";
+import { MinutesReviewView } from "./views/MinutesReviewView";
+import { InsuranceRenewalsView } from "./views/InsuranceRenewalsView";
+import { ReserveFindingsView } from "./views/ReserveFindingsView";
+import { RecordsRequestsView } from "./views/RecordsRequestsView";
+import { MailTriageView } from "./views/MailTriageView";
 import { MeetingsView } from "./views/MeetingsView";
 import { MoneyView } from "./views/MoneyView";
 import { IngestionView } from "./views/IngestionView";
@@ -63,6 +70,13 @@ const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
   { id: "title", label: "Title watch", view: TitleWatchView },
   { id: "hearings", label: "Hearings", view: HearingsView },
   { id: "rules", label: "Rule changes", view: RuleChangeView },
+  { id: "registers", label: "Registers", view: RegistersView },
+  { id: "delinquency", label: "Delinquency", view: DelinquencyView },
+  { id: "minutes-review", label: "Minutes review", view: MinutesReviewView },
+  { id: "renewals", label: "Insurance renewals", view: InsuranceRenewalsView },
+  { id: "reserve-findings", label: "Reserve findings", view: ReserveFindingsView },
+  { id: "records-requests", label: "Records requests", view: RecordsRequestsView },
+  { id: "mail-triage", label: "Mail triage", view: MailTriageView },
   { id: "books", label: "Books checks", view: BooksChecksView },
   { id: "legal", label: "Legal", view: LegalView },
   { id: "jobs", label: "Jobs", view: JobsView },

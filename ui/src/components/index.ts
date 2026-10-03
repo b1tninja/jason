@@ -16,6 +16,7 @@ export { Findings } from "./Findings";
 export { Kanban } from "./Kanban";
 export { Money } from "./Money";
 export { Pill } from "./Pill";
+export { RegisterGrid } from "./RegisterGrid";
 export { RemoteView } from "./Remote";
 export { RollCall, tally, VOTE_WORDS, type VoteWord } from "./RollCall";
 export { SearchBox } from "./SearchBox";

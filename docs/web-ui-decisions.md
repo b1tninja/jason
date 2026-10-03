@@ -205,18 +205,21 @@ a confirm; the decision is written onto the hearing's own row, and the notice de
 decision notice then previews from the decision-notice template with the hearing's facts filled, naming any
 token still open, with the `jason letter` command that fills a Drive copy for a person to deliver.
 
-### Open: what still needs a screen, and the decision in each
+### Built: the rest of the inventory, one store each
 
-| Workflow | The board's decision | What jason has | What the screen would add |
-|---|---|---|---|
-| **Minutes to approve** | approve the prior minutes, with corrections | `--minutes DATE` draft with blanks; `minutes-privacy --correct` | the draft as a form: each blank a field, the privacy flags beside the names they concern |
-| **Delinquency steps** | release, pre-lien notice, lien (open session by roll call, 5673), foreclosure floor (5720) | collections standings with `nextStep`; `who-owes-sheet` | per account: the step the board takes, its vote, and the handoff; jason records and submits nothing |
-| **Reserve borrowing finding (5515)** | the finding, and a noticed finding when restoring late | the 5515 checklist per loan | the finding's text drafted into the packet and minutes |
-| **Insurance renewal** | renew, re-bid, change coverage; a 5810 notice when limits change | policy standings and findings; the register's renewal column | the decision and the member notice draft |
-| **Annual disclosures (5300, 5310)** | the open tokens: the choices only the board makes | `packet --values` writes them blank | `values.json` as a form, the parts plan, the build command |
-| **Records request (5225)** | whether the stated purpose is adequate; what is withheld and why | the request list and the copy order | the request, the decision, the redaction reason, the mailing as separate jobs |
-| **Mail triage** | scan, forward, shred, discard | kind, urgency, deadlines per letter | the letter with its deadline clock and the choice recorded |
-| **Registers** | the board's own columns (status, explained, renewal decision, notice sent, adopted) | Sheets with owned columns and a log tab | the board's columns edited here as the board-items columns are, logged the same way |
+Each records what a person decided beside the facts the read-only tools show, in jason's own store, and acts
+outward on nothing: **registers** (`#/registers`: a local snapshot of each register, the board's columns edited
+by kind and logged, pushed to the Sheet by the next sync); **delinquency steps** (`#/delinquency`: release,
+payment plan, pre-lien notice, lien by roll call in open session, handoff, foreclosure authorized, written off,
+each with its date, vote, and recorder, beside the standing and `nextStep`); **minutes review**
+(`#/minutes-review`: the draft's blanks as a form, the privacy flags beside their lines, a filled copy saved and
+the draft never edited); **insurance renewals** (`#/renewals`: renew, renew with changes, re-bid, change carrier,
+or let lapse, with whether a CIV 5810 member notice is needed); **reserve findings** (`#/reserve-findings`: the
+board's 5515 finding per borrowing, at the borrowing or for a late restoration, flagged where the record lacks
+one); **records requests** (`#/records-requests`: each member request with its 5210 clock, whether the stated
+purpose is adequate for the membership list, what is withheld and why, and when it was produced); **mail
+triage** (`#/mail-triage`: scan, forward, shred, discard, or keep, recorded per letter for the person at the mail
+service).
 
 The pattern for all of them is already on the page: the facts from the read-only tools, the decision's text
 entered once by a person, a preview from the same template the Doc is built from, and the command that writes.
