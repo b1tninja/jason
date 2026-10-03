@@ -18,6 +18,7 @@ import { TemplatesView } from "./views/TemplatesView";
 import { TitleWatchView } from "./views/TitleWatchView";
 import { InsuranceView } from "./views/InsuranceView";
 import { MeetingView } from "./views/MeetingView";
+import { CommunitiesView, OnboardingView } from "./views/OnboardingView";
 import { MeetingsView } from "./views/MeetingsView";
 import { MoneyView } from "./views/MoneyView";
 import { IngestionView } from "./views/IngestionView";
@@ -43,6 +44,8 @@ function Status() {
 }
 
 const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
+  { id: "communities", label: "Communities", view: CommunitiesView },
+  { id: "onboarding", label: "Onboarding", view: OnboardingView },
   { id: "digest", label: "Digest", view: BoardDigest },
   { id: "duties", label: "Duties", view: DutiesView },
   { id: "inbox", label: "Inbox", view: InboxView },

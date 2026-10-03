@@ -85,3 +85,5 @@ button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .picker { margin: .5rem 0; } .picks { list-style: none; padding: 0; margin: .25rem 0; max-height: 14rem; overflow: auto; } .picks li { padding: .15rem 0; }
 .rollcall { border-collapse: collapse; margin: .5rem 0; } .rollcall th, .rollcall td { padding: .2rem .6rem; border-bottom: 1px solid var(--line); text-align: left; } .rollcall th:not(:first-child), .rollcall td.num { text-align: center; }
 .decision { margin-bottom: .75rem; }
+.factrow { display: grid; grid-template-columns: 11rem 1fr; gap: .5rem; padding: .3rem 0; border-bottom: 1px solid var(--line); align-items: start; }
+.mark { margin: .25rem 0; }

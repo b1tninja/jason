@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from jason.web.sources import default_loaders, set_board_item, write_canvas, write_decision
+from jason.web.sources import default_loaders, set_board_item, write_canvas, write_decision, write_request
 
 DEFAULT_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
 
@@ -25,7 +25,8 @@ Writer = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
 def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None, board_writer: Writer | None = set_board_item,
-               canvas_writer: Writer | None = write_canvas, decision_writer: Writer | None = write_decision) -> Flask:
+               canvas_writer: Writer | None = write_canvas, decision_writer: Writer | None = write_decision,
+               request_writer: Writer | None = write_request) -> Flask:
     dist = Path(dist) if dist else Path(os.environ.get("JASON_UI_DIST", DEFAULT_DIST))
     sources = default_loaders() if loaders is None else loaders
     app = Flask(__name__, static_folder=None)
@@ -71,6 +72,19 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
+    @app.post("/api/onboarding/<key>")
+    def onboarding_request(key: str):
+        """What a person did about one item of the request list: asked, received, pinned, gap, not applicable."""
+        if request_writer is None:
+            return jsonify(error="writes are off"), 405
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify(request_writer(key, body))
+        except KeyError:
+            return jsonify(error=f"no request item {key}"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
     @app.get("/api/file")
     def local_file():
         """A photo or document under data/, read-only, for a canvas to show. Only files under data/ and only these types."""
@@ -95,7 +109,7 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
 
     @app.get("/api/health")
     def health():
-        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer), ("decisions", decision_writer)) if on])
+        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer), ("decisions", decision_writer), ("onboarding", request_writer)) if on])
 
     @app.get("/api/<name>")
     def source(name: str):

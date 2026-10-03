@@ -85,11 +85,11 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter"} == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
-        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds"):  # stores under data/ or the profile, not county tools; their own tests below
+        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter"):  # stores under data/ or the profile, not county tools; their own tests below
             continue
         out = fn({})
         assert isinstance(out, dict), name
@@ -456,3 +456,44 @@ def test_meeting_builds_the_spine_from_the_board_items(county, tmp_path, monkeyp
     assert out["commands"]["packetDoc"] == "jason board --packet --date 2026-10-20 --doc --yes"
     assert sources.meeting({"date": "2026-11-17"})["noticeBy"] == "2026-11-13"
     assert sources.meeting({"date": "soon"})["found"] is False
+
+
+def test_onboarding_and_communities_overlay_the_stores(county, tmp_path, monkeypatch):
+    import sys
+
+    from jason.web import sources
+
+    class Community(_FakeCommunity):
+        name = "The Association"
+
+        def bank_accounts(self):
+            return ({"suffix": "1234"},)
+
+        def buildings(self):
+            return ()
+
+        def calendar_id(self):
+            return ""
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    monkeypatch.setattr(sources, "_community", lambda: Community())
+    monkeypatch.setattr(sources, "records_inventory", lambda a: {"records": [{"record": "minutes", "gap": ""}, {"record": "tax_return", "gap": "nothing pinned"}]})
+    monkeypatch.setattr(sources, "association_records", lambda a: {"deliveries": [{"delivery": "declaration", "found": ["1"], "missing": []}, {"delivery": "bond", "found": [], "missing": ["x"]}]})
+    monkeypatch.setattr(sources, "_accounts", lambda: [{"service": "PayHOA", "set": True, "how": ""}, {"service": "Google", "set": False, "how": ""}])
+    sources.write_request("declaration", {"status": "asked", "asked_of": "the prior manager", "asked_on": "2026-10-03"})
+    out = sources.onboarding({})
+    s = out["summary"]
+    assert s["accountsSet"] == 1 and s["accountsTotal"] == 2 and s["recordsHeld"] == 1 and s["recordsTotal"] == 2 and s["deliveriesFound"] == 1 and s["gaps"] == 1
+    assert s["factsSupplied"] >= 1 and s["factsTotal"] > 40
+    by = {i["key"]: i for i in out["items"]}
+    assert by["declaration"]["status"] == "asked" and by["declaration"]["askedOf"] == "the prior manager"
+    assert "delivery is found" in by["declaration"]["storeSays"] and "gap" in by["tax-returns"]["storeSays"]
+    assert by["minutes"]["storeSays"].startswith("a holder is pinned")
+    assert by["bonds-warranties"]["storeSays"].endswith("the delivery is missing")
+    assert s["requests"]["asked"] == 1
+    letter = sources.request_letter({})
+    assert letter["count"] == 1 and "The recorded declaration" in letter["markdown"] and "The Association" in letter["markdown"]
+    assert sources.request_letter({"keys": "budget,minutes"})["count"] == 2
+    monkeypatch.setattr(sys.modules.setdefault("jason.community.profile", type(sys)("jason.community.profile")), "profiles", lambda: [{"name": "mystique", "where": "/x/mystique", "active": True}, {"name": "sample", "where": "/x/profiles/sample", "active": False}], raising=False)
+    comm = sources.communities({})
+    assert comm["count"] == 2 and comm["communities"][0]["progress"]["accountsSet"] == 1 and "progress" not in comm["communities"][1]

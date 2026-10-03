@@ -50,7 +50,7 @@ def test_api_canvas_routes(tmp_path, monkeypatch):
             raise ValueError("bad")
         return {"key": key or "new", **body}
 
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=writer, decision_writer=None).test_client()
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=writer, decision_writer=None, request_writer=None).test_client()
     assert c.post("/api/canvases", json={"title": "T"}).json == {"key": "new", "title": "T"}
     assert c.post("/api/canvases/k", json={"notes": "n"}).json["notes"] == "n"
     assert c.post("/api/canvases/k", json={"clip": {"source": "s", "text": "t"}}).status_code == 200
@@ -91,7 +91,7 @@ def test_local_file_route_serves_only_known_types_under_data(tmp_path, monkeypat
     (tmp_path / "zoom" / "meetings" / "2026-09-15-bbbbbbbbbb" / "audio.m4a").write_bytes(b"\x00\x00\x00\x1cftypM4A ")
     fake = type(sys)("jason.mcp.county"); fake._data_dir = lambda _: tmp_path
     monkeypatch.setitem(sys.modules, "jason.mcp.county", fake)
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None).test_client()
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None).test_client()
     ok = c.get("/api/file?path=photos/a.png")
     assert ok.status_code == 200 and ok.headers["Content-Type"].startswith("image/png") and ok.headers["Content-Security-Policy"] == "sandbox"
     audio = c.get("/api/file?path=zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a")

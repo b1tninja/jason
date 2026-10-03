@@ -420,6 +420,138 @@ def decisions(args: Args) -> dict[str, Any]:
             "decisions": [store.as_dict(d) for d in sorted(rows, key=lambda d: (d.meeting, d.recorded), reverse=True)]}
 
 
+# The facts a profile supplies, by duty, as Community methods with empty defaults; supplied when the call returns
+# something. General names only; the profile file that sets each is the profile's own layout.
+FACTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("identity", ("name", "corporate_name", "identity", "letterhead", "email_domains", "google_groups", "drive_home")),
+    ("property", ("buildings", "units", "parcels", "common_areas", "association_common_areas", "floor_plans", "cost_centers")),
+    ("governing documents", ("ccrs", "pins", "developers", "public_reports", "supersessions", "citations", "document_rules", "kind_rules")),
+    ("money", ("bank_accounts", "transaction_rules", "reserve_components", "reserve_budget_lines", "obligations", "vendor_portals", "utility_accounts", "utility_budget_lines")),
+    ("insurance", ("insurance", "insurance_workbook_id", "premium_rules", "coverages_not_carried")),
+    ("meetings and board", ("meeting_schedule", "board", "board_items_sheet", "zoom_meeting_rules", "meeting_record_rules", "calendar_policy", "calendar_id", "hearing_policy")),
+    ("records and library", ("document_sync_rules", "sync_rules", "library_folders", "known_files", "drive_roots", "site_pages", "registers", "registers_folder", "photo_album_rule")),
+    ("letters and forms", ("document_templates", "packets", "notice_rules", "request_forms", "help_articles", "payhoa_tags", "payhoa_fields", "task_prompts")),
+    ("mail and email", ("mail_addresses", "senders", "topic_rules", "intent_rules", "meeting_email_rules", "communication_search")),
+    ("legal", ("legal_cases", "legal_holds", "privilege_parties", "leasing_rules", "rule_changes")),
+)
+
+ACCOUNTS: tuple[tuple[str, str, str], ...] = (
+    ("PayHOA", "payhoa_record_uid", "jason login; data/payhoa"),
+    ("Google", "google_oauth_record_uid", "docs/setup.md: the OAuth client and consent"),
+    ("Keeper", "keeper_username", ".env: keeper_username; jason login"),
+    ("SMUD (utility portal)", "smud_record_uid", "jason sync-bills"),
+    ("City utility (i-doxs)", "idoxs_record_uid", "jason sync-bills"),
+    ("City permits (Accela)", "accela_record_uid", "jason permit-status --sync"),
+    ("AnythingLLM", "anythingllm_record_uid", "jason anythingllm --status"),
+)
+
+
+def _fact_supplied(community: Any, name: str) -> bool | None:
+    fn = getattr(community, name, None)
+    if fn is None:
+        return None
+    try:
+        value = fn() if callable(fn) else fn
+    except Exception:
+        return False
+    if value is None or value == "" or value == () or value == [] or value == {}:
+        return False
+    return True
+
+
+def _accounts() -> list[dict[str, Any]]:
+    try:
+        from jason.config import Settings
+
+        settings = Settings.load()
+    except Exception as exc:  # no .env here; every account reads as unknown
+        return [{"service": s, "set": None, "how": how, "note": f"settings not loaded: {type(exc).__name__}"} for s, _, how in ACCOUNTS]
+    return [{"service": s, "set": bool(getattr(settings, attr, "") or ""), "how": how} for s, attr, how in ACCOUNTS]
+
+
+def communities(args: Args) -> dict[str, Any]:
+    """The portal: every profile this checkout can load, the active one marked, with its onboarding progress (facts
+    supplied, accounts connected, records pinned, deliveries found, library files, open requests). Loads only the
+    active profile; the others are listed from where they were found."""
+    from jason.community.profile import profiles
+
+    rows = profiles()
+    out = []
+    for row in rows:
+        card: dict[str, Any] = {**row}
+        if row["active"]:
+            card["progress"] = onboarding({"summary": "1"})["summary"]
+        out.append(card)
+    return {"found": True, "count": len(out), "communities": out}
+
+
+def onboarding(args: Args) -> dict[str, Any]:
+    """The active community's onboarding: the accounts, the facts by duty, the request list with what a person
+    recorded and what the stores already show (a 5200 record with a holder, a delivery found), and the gaps.
+    ``summary=1`` gives the counts only."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks import onboarding as ob
+
+    root = _data_dir(None)
+    community = _community()
+    facts = [{"duty": duty, "facts": [{"name": n, "supplied": _fact_supplied(community, n)} for n in names]} for duty, names in FACTS]
+    supplied = sum(1 for d in facts for f in d["facts"] if f["supplied"])
+    total_facts = sum(len(d["facts"]) for d in facts)
+    accounts = _accounts()
+    recorded = ob.load(root)
+    held: dict[str, bool] = {}
+    gaps: list[str] = []
+    try:
+        for rec in records_inventory({}).get("records", []):
+            held[rec["record"]] = not rec.get("gap")
+            if rec.get("gap"):
+                gaps.append(f"{rec['record']}: {rec['gap']}")
+    except Exception as exc:
+        gaps.append(f"records inventory not read: {type(exc).__name__}")
+    found_deliveries: dict[str, bool] = {}
+    try:
+        for d in association_records({}).get("deliveries", []):
+            found_deliveries[d["delivery"]] = bool(d.get("found")) and not d.get("missing")
+    except Exception:
+        pass
+    items = []
+    for c in ob.catalog_dicts():
+        r = recorded.get(c["key"])
+        store_says = ""
+        if c["record"] and c["record"] in held:
+            store_says = "a holder is pinned for this record" if held[c["record"]] else "the inventory shows a gap for this record"
+        if c["delivery"] and c["delivery"] in found_deliveries:
+            store_says = (store_says + "; " if store_says else "") + ("the delivery is found" if found_deliveries[c["delivery"]] else "the delivery is missing")
+        items.append({**c, "status": r.status if r else ob.RequestStatus.NOT_ASKED.value, "askedOf": r.asked_of if r else "", "askedOn": r.asked_on if r else "",
+                      "chasedOn": r.chased_on if r else "", "receivedOn": r.received_on if r else "", "filed": r.filed if r else "", "reason": r.reason if r else "",
+                      "note": r.note if r else "", "history": r.history if r else [], "storeSays": store_says})
+    counts: dict[str, int] = {}
+    for it in items:
+        counts[it["status"]] = counts.get(it["status"], 0) + 1
+    summary = {"factsSupplied": supplied, "factsTotal": total_facts, "accountsSet": sum(1 for a in accounts if a["set"]), "accountsTotal": len(accounts),
+               "recordsHeld": sum(1 for v in held.values() if v), "recordsTotal": len(held), "deliveriesFound": sum(1 for v in found_deliveries.values() if v),
+               "deliveriesTotal": len(found_deliveries), "requests": counts, "gaps": len(gaps)}
+    if _flag(args, "summary"):
+        return {"found": True, "summary": summary}
+    return {"found": True, "summary": summary, "accounts": accounts, "facts": facts, "items": items, "gaps": gaps,
+            "statuses": [s.value for s in ob.RequestStatus], "holders": [h.value for h in ob.Holder], "groups": [g.value for g in ob.Group],
+            "caveats": ["The request list is sent by a person; the page writes what was asked and what came back, and files nothing.",
+                        "A store's reading (a holder pinned, a delivery found) is what the profile and the library show; the person's entry is the record."]}
+
+
+def request_letter(args: Args) -> dict[str, Any]:
+    """The request letter from the items marked ``asked`` (or the ``keys`` given, comma-separated), in plain words."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks import onboarding as ob
+
+    keys = {k.strip() for k in args.get("keys", "").split(",") if k.strip()}
+    recorded = ob.load(_data_dir(None))
+    chosen = [c for c in ob.catalog_dicts() if (c["key"] in keys) or (not keys and recorded.get(c["key"]) and recorded[c["key"]].status == ob.RequestStatus.ASKED.value)]
+    name = getattr(_community(), "name", "the association")
+    name = name() if callable(name) else name
+    return {"found": True, "count": len(chosen), "markdown": ob.request_letter(chosen, association=str(name or "the association"), to=args.get("to", "the board"))}
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -506,6 +638,9 @@ def default_loaders() -> dict[str, Any]:
         "templates": templates,
         "meeting": meeting,
         "decisions": decisions,
+        "communities": communities,
+        "onboarding": onboarding,
+        "request-letter": request_letter,
         "drive-files": drive_files,
         "photos": photos,
         "embeds": embeds,
@@ -565,3 +700,16 @@ def write_decision(decision_id: str, body: dict[str, Any]) -> dict[str, Any]:
     if not clean:
         raise ValueError("nothing to change")
     return store.as_dict(store.update(root, decision_id, **clean))
+
+
+def write_request(key: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Record what a person did about one request-list item. jason's own store; it sends nothing."""
+    from dataclasses import asdict
+
+    from jason.mcp.county import _data_dir
+    from jason.tasks import onboarding as ob
+
+    clean = {k: v for k, v in body.items() if v is not None}
+    if not clean:
+        raise ValueError("nothing to change")
+    return asdict(ob.update(_data_dir(None), key, **clean))
