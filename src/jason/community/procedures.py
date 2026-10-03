@@ -105,6 +105,15 @@ PROCEDURES: tuple[Procedure, ...] = (
         "Give the directors each open-session item researched, the standing reports, and the evidence, as of the "
         "meeting.",
         (
+            Step("Before the notice day, read the meeting's clocks: the last day to give members notice and the "
+                 "agenda (Civil Code 4920), and the minutes still owed from the last meeting (4950(a)). Rebuild the "
+                 "catalog first so a notice already sent is on record.",
+                 command="jason meetings --sync; jason schedule-evidence --watch",
+                 check="the notice goes out by its day, at least four days before the meeting (longer if a document "
+                       "asks more); the last meeting's minutes, or a draft marked as one, are available to members "
+                       "within 30 days; a posting jason cannot see is recorded (jason schedule --done KEY DUE --by "
+                       "NAME --evidence TEXT); a notice day already passed means a later meeting day noticed in time",
+                 refs=("docs/schedule.md (The watch)", "docs/attention.md"), lessons=("meeting-clocks-read-forward",)),
             Step("Bring the action items up to date: status, owner, meeting, notes.",
                  command="jason board --set ITEM --status 'on agenda' --meeting DATE",
                  refs=("docs/board-agenda.md",)),

@@ -352,15 +352,17 @@ def document_duties(key: str, kind: str = "", timed: bool = False, limit: int = 
 
 def governance_digest(section: str = "", limit: int = 8, past: int = 30, private: bool = False,
                       data_dir: Path | None = None) -> dict[str, Any]:
-    """Start here for "what needs attention" in the governance systems: schedule items overdue or due soon by role;
-    members' requests past or near their clocks (a statute's clock first); open intake questions by kind, the likely
-    ones apart; open conflicts by status (counsel, board, noted); notices with follow-ups owed; living documents with
-    failed rule checks, held sources, or drift; and the documents' timed duties nothing tracks. Most urgent first: a
-    passed clock the law or the documents set (LEGAL), then overdue, due soon, open, noted. Each section is capped at
-    ``limit`` with its total, and each line names the command that gives the detail (the tools: schedule_agenda,
-    member_requests, intake_questions, document_conflicts, notice_delivery, living_document, document_duties).
-    ``section`` narrows to one (schedule, requests, intake, conflicts, notices, living, duties); ``private`` leaves
-    units out. A section whose store is missing is reported unavailable, not raised. Reads disk only; decides nothing."""
+    """Start here for "what needs attention" in the governance systems: each board meeting's notice (CIV 4920) and
+    minutes (4950(a)) deadlines read against the record (a deadline passed with none on record, a record late, one
+    near; none on record is not none given; the section's counts carry every meeting watched); schedule items overdue
+    or due soon by role; members' requests past or near their clocks (a statute's clock first); open intake questions
+    by kind, the likely ones apart; open conflicts by status (counsel, board, noted); notices with follow-ups owed;
+    living documents with failed rule checks, held sources, or drift; and the documents' timed duties nothing tracks.
+    Most urgent first: a passed clock the law or the documents set (LEGAL), then overdue, due soon, open, noted. Each
+    section is capped at ``limit`` with its total, and each line names the command that gives the detail (the tools:
+    schedule_agenda, member_requests, intake_questions, document_conflicts, notice_delivery, living_document,
+    document_duties). ``section`` narrows to one (meetings, schedule, requests, intake, conflicts, notices, living,
+    duties); ``private`` leaves units out. A section whose store is missing is reported unavailable, not raised. Reads disk only; decides nothing."""
     from jason.tasks import attention
 
     try:

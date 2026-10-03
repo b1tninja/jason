@@ -272,6 +272,19 @@ LESSONS: tuple[Lesson, ...] = (
            "board.",
            Status.DECISION, guards=("jason schedule-evidence", "procedure duty-schedule"),
            docs=("docs/schedule.md (Evidence: What the minutes show)",)),
+    Lesson("meeting-clocks-read-forward", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "Reading the record backward for evidence that duties were done showed board meeting notices given to "
+           "members fewer than the four days Civil Code 4920(a) requires, some on the day of the meeting, and minutes "
+           "first dated weeks past the 30 days of 4950(a).",
+           "Nothing read the meetings' clocks ahead of time. The calendar carried the notice day, but no check set "
+           "the record against it, so a late notice or late minutes was found only after the fact.",
+           "The watch reads the same records forward: for each board meeting, the notice day and the minutes day "
+           "from the notice catalog's clocks, and what is on record for each. A day passed with none on record ranks "
+           "first in jason attention; a day within two weeks is due soon. The board packet procedure reads it before "
+           "the notice day. Whether the minutes reach members by being posted, not only dated, is still not kept.",
+           Status.FIXED, guards=("jason schedule-evidence --watch", "jason attention (meetings section)",
+                                 "tests/test_meeting_watch.py", "procedure board-packet"),
+           docs=("docs/schedule.md (The watch)", "docs/attention.md")),
     Lesson("email-topic-values", OCT_2026, (Area.EMAIL,),
            "Measured against hand-labelled requests, owners' emailed repair requests were found less than half the "
            "time, and the email topic fallback never fired.",

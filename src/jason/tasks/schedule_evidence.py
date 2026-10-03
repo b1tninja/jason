@@ -456,27 +456,66 @@ def _minutes_report(a: Assignment, due: date, rule: EvidenceRule, stores: Stores
     return out
 
 
+def notice_on_record(stores: Stores, day: date) -> tuple[date, str, str] | None:
+    """The first notice to members of the meeting on ``day`` on record, as (the day sent, the record and where it is,
+    its note): PayHOA's log, its Gmail copy, the delivery ledger; an agenda emailed on its own only when no notice is
+    on record. None when none is: a miss, not proof that none was given (a posting is not kept here)."""
+    notices: list[tuple[date, str, str]] = []
+    agendas: list[tuple[date, str, str]] = []
+    for rec in stores.meetings().get(day, {}).get("records", []):
+        if rec.get("kind") in ("meeting notice", "agenda") and rec.get("sent"):
+            d = stores.local_day(rec["sent"])
+            if d and d <= day:
+                (notices if rec["kind"] == "meeting notice" else agendas).append(
+                    (d, f"{rec.get('name')} ({rec.get('where')})", rec.get("note") or ""))
+    for key, stamp in stores.ledger().items():
+        d = stores.local_day(stamp)
+        if day.isoformat() in key and d and d <= day:
+            notices.append((d, f"{key} (notice ledger)", ""))
+    sent = notices or agendas
+    if not sent:
+        return None
+    return min(sent, key=lambda s: (s[0], "preview" in s[1].lower(), s[1]))
+
+
+MINUTES_KINDS = ("minutes", "draft minutes")    # 4950(a): the minutes, a draft marked as one, or a summary
+
+
+def minutes_on_record(stores: Stores, day: date) -> tuple[list[tuple[date, str]], list[str]]:
+    """The copies on record of the minutes of the meeting on ``day``, as (dated, undated): each dated copy with the day
+    it was sent or (on Drive) created, earliest first; the rest by name. The minutes, or a draft marked as one (4950(a)
+    counts it), in the catalog; jason's own drafts are not with the members and are left out. A copy dated before the
+    meeting (a template made ahead) says nothing of when it was finished, so it is undated. With no catalog record, the
+    readings' minutes of that day, undated."""
+    records = [r for r in stores.meetings().get(day, {}).get("records", [])
+               if r.get("kind") in MINUTES_KINDS and r.get("where") != "jason draft"]
+    drive = stores.drive_files()
+    dated: list[tuple[date, str]] = []
+    undated: list[str] = []
+    for r in records:
+        label = f"{r.get('name')} ({r.get('where')}" + (", draft)" if r.get("kind") == "draft minutes" else ")")
+        d = None
+        if r.get("sent"):
+            d = stores.local_day(r["sent"])
+        elif r.get("where") == "Drive" and r.get("ref") in drive:
+            d = stores.local_day(drive[r["ref"]].get("created") or "")
+        if d and d < day:
+            undated.append(f"{label}, dated {d}, before the meeting")
+        elif d:
+            dated.append((d, label))
+        else:
+            undated.append(label)
+    if not records:
+        undated += [m.label for m in stores.minutes().get(day, []) if not m.confidential]
+    return sorted(dated), undated
+
+
 def _meeting_notice(a: Assignment, due: date, rule: EvidenceRule, stores: Stores) -> list[Finding]:
     out = []
     for day in meeting_days(a, due, rule, stores):
-        # The notice to members (PayHOA's log, its Gmail copy, the delivery ledger); an agenda emailed on its own
-        # only when no notice is on record.
-        notices: list[tuple[date, str, str]] = []
-        agendas: list[tuple[date, str, str]] = []
-        for rec in stores.meetings().get(day, {}).get("records", []):
-            if rec.get("kind") in ("meeting notice", "agenda") and rec.get("sent"):
-                d = stores.local_day(rec["sent"])
-                if d and d <= day:
-                    (notices if rec["kind"] == "meeting notice" else agendas).append(
-                        (d, f"{rec.get('name')} ({rec.get('where')})", rec.get("note") or ""))
-        for key, stamp in stores.ledger().items():
-            d = stores.local_day(stamp)
-            if day.isoformat() in key and d and d <= day:
-                notices.append((d, f"{key} (notice ledger)", ""))
-        sent = notices or agendas
-        if not sent:
+        first = notice_on_record(stores, day)
+        if first is None:
             continue
-        first = min(sent, key=lambda s: (s[0], "preview" in s[1].lower(), s[1]))
         lead = (day - first[0]).days
         if lead >= rule.days:
             out.append(Finding(rule.key, rule.weight, rule.source, first[1], first[0], "",
@@ -493,21 +532,8 @@ def _minutes_filed(a: Assignment, due: date, rule: EvidenceRule, stores: Stores)
     meeting = _anchor_day(a, due)
     days = [d for d in stores.held() if (d.year, d.month) == (meeting.year, meeting.month)
             or abs((d - meeting).days) <= MEETING_SLACK_DAYS]
-    drive = stores.drive_files()
     for day in days:
-        records = [r for r in stores.meetings().get(day, {}).get("records", []) if r.get("kind") == "minutes"]
-        dated: list[tuple[date, str]] = []
-        undated: list[str] = []
-        for r in records:
-            label = f"{r.get('name')} ({r.get('where')})"
-            d = None
-            if r.get("sent"):
-                d = stores.local_day(r["sent"])
-            elif r.get("where") == "Drive" and r.get("ref") in drive:
-                d = stores.local_day(drive[r["ref"]].get("created") or "")
-            (dated.append((d, label)) if d else undated.append(label))
-        if not records:
-            undated += [m.label for m in stores.minutes().get(day, [])]
+        dated, undated = minutes_on_record(stores, day)
         if dated:
             first = min(dated)
             late = (first[0] - day).days
@@ -712,5 +738,6 @@ def lines(proposals: list[Proposal], *, show_none: bool = False) -> list[str]:
     return out
 
 
-__all__ = ["CAVEATS", "Finding", "Proposal", "Stores", "find", "lines", "meeting_days", "passages", "propose",
-           "record", "store_path", "summary", "unserved", "write"]
+__all__ = ["CAVEATS", "MINUTES_KINDS", "Finding", "Proposal", "Stores", "find", "lines", "meeting_days",
+           "minutes_on_record", "notice_on_record", "passages", "propose", "record", "store_path", "summary", "unserved",
+           "write"]

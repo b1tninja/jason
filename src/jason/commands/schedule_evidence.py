@@ -5,6 +5,10 @@
 went, the minutes on file, a mailing, a payment. Nothing is recorded. ``--record KEY DUE --by NAME`` records one
 occurrence a person has read and confirms (``schedule.record_done``), with the evidence found unless ``--evidence``
 gives the person's own; ``--on`` sets the day it was done (default the evidence's date).
+
+``--watch`` reads forward instead (``jason.tasks.meeting_watch``): each board meeting from ``--past`` days (plus the
+minutes' 30) back to ``--ahead`` days on, with the day its notice to members is due (Civil Code 4920) and the day its
+minutes are (4950(a)), and what is on record for each so far. ``--as-of`` reads a given day as today.
 """
 
 from __future__ import annotations
@@ -27,6 +31,17 @@ def cmd_schedule_evidence(args: argparse.Namespace) -> int:
     from jason.tasks import schedule_evidence as task
 
     c, data_dir = community(), _data_dir(args)
+    if args.watch:
+        from jason.tasks import meeting_watch
+
+        try:
+            on = date.fromisoformat(args.as_of) if args.as_of else date.today()
+        except ValueError as exc:
+            print(f"a date is YYYY-MM-DD: {exc}", file=sys.stderr)
+            return 2
+        found = meeting_watch.watch(c, data_dir, on=on, past=args.past, ahead=args.ahead)
+        print(json.dumps(found.as_dict(), indent=1) if args.json else "\n".join(found.lines()))
+        return 0
     try:
         start = date.fromisoformat(args.since) if args.since else date.today() - timedelta(days=365)
         end = date.fromisoformat(args.until) if args.until else date.today()
@@ -94,4 +109,14 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--by", help="with --record: who read the evidence and confirms it")
     p.add_argument("--on", help="with --record: the day it was done (default the evidence's date)")
     p.add_argument("--evidence", help="with --record: the evidence in the person's own words")
+    from jason.tasks.meeting_watch import AHEAD_DAYS, PAST_DAYS
+
+    p.add_argument("--watch", action="store_true",
+                   help="read forward instead: each board meeting's notice deadline (CIV 4920) and minutes deadline "
+                        "(4950(a)), and what is on record for each so far")
+    p.add_argument("--ahead", type=int, default=AHEAD_DAYS,
+                   help=f"with --watch: days ahead to look for meetings (default {AHEAD_DAYS})")
+    p.add_argument("--past", type=int, default=PAST_DAYS,
+                   help=f"with --watch: days back a passed clock is still shown (default {PAST_DAYS})")
+    p.add_argument("--as-of", help="with --watch: the day to read as today (YYYY-MM-DD; default today)")
     p.set_defaults(func=cmd_schedule_evidence)

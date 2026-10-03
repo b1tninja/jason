@@ -126,8 +126,31 @@ jason schedule-evidence --record KEY 2026-03-17 --by NAME --on 2026-03-20 --evid
   A miss stays a miss. Minutes that record the review in other words are not found, and nothing found is not proof the duty was not done.
 - **Recording.** `--record` calls `record_done` with the name of the person who confirms it, the evidence found (or the person's own, with `--evidence`), and the day of the evidence (or `--on`). The run's proposals are kept in `data/schedule/evidence.json`, which is private.
 - **What the minutes show.** A report the minutes name shows what the board had before it, not that the board reviewed each part. To show the monthly review (Civil Code 5500), or its ratification under 5501, the minutes should say so in words: "The board reviewed the reconciliations of the operating and reserve accounts for MONTH," or "The board ratified the review of MONTH's financial documents made under Civil Code 5501."
+- **The minutes on file** count the minutes and a draft marked as one (4950(a) counts either), not jason's own drafts in `data/board`, which members never see. A copy dated before its meeting (a Doc made ahead from a template) says nothing of when it was finished, so it counts as undated.
+
+### The watch: the meetings' clocks read forward
+
+The evidence finder reads backward, so a late notice or late minutes is found after the clock has passed. `--watch` reads the same records forward, so the next one is seen while there is still time (`jason.tasks.meeting_watch`; lesson `meeting-clocks-read-forward`).
+
+```bash
+jason schedule-evidence --watch                     # each board meeting from 60 days back to 60 days ahead
+jason schedule-evidence --watch --as-of 2026-10-17  # read another day as today
+jason schedule-evidence --watch --ahead 30 --json
+```
+
+- **Which meetings.** Each regular meeting the schedule sets (monthly, as `jason calendar` plans them), each day the meeting catalog holds a record of (an agenda drafted, a notice sent: a special or a moved meeting), and each meeting on record in the window behind. A Zoom meeting of the members or a committee is left out; one held solely in executive session takes that clock.
+- **The notice** (Civil Code 4920). The last day is the notice catalog's `board-meeting` clock, made stricter by any governing document that asks more (4920(b)(3); `notice_catalog.effective`), or `board-meeting-executive` (two days, 4920(b)(2)) for a meeting held solely in executive session. The record is the first notice on or before the meeting, as the evidence finder reads it.
+- **The minutes** (4950(a)), for a meeting held that was not solely an executive session. The last day is the `minutes-available` clock, 30 days after. The record is the earliest dated copy of the minutes or of a draft.
+- **A clock's standing:** on record in time; on record late; on record, undated; none on record yet; none on record and the deadline passed.
+- **A person's record counts.** A completion recorded for the assignment that owns the clock (`jason schedule --done KEY DUE --by NAME --evidence TEXT`, with DUE the meeting's day plus the assignment's offset, as the watch prints it) counts as a record on the day it says. That is how a posting, which jason never sees, is recorded once.
+- **A scheduled day behind with nothing on record** within ten days is listed: if the meeting was held, its minutes were due 30 days after (rebuild the catalog with `jason meetings --sync`, which reads Zoom and PayHOA's communications log first).
+- **What it does not do.** None on record is not none given. Every meeting ahead is read as an open meeting (four days); an emergency meeting under 4923 needs no notice, and the watch cannot foresee one. Minutes dated in time are not proof members could read them then. It reads the catalog as last built.
+
+`jason attention` carries the watch as its first section (`meetings`): a deadline passed with none on record, or a record dated past it, is LEGAL; a deadline within two weeks with none on record yet is due soon. When both sections are read, the schedule section leaves the assignments the watch reads (the meetings' notice and minutes) to it.
 
 ## Not built yet
 
 - A notice's proof-of-notice record (`jason notices KEY --proof`) as evidence for the notice assignments. The evidence finder reads the meeting catalog's notice days and the ledger's sends, not the proof's window.
+- Where and when members could read the minutes. The catalog keeps when a copy was sent or created, not when it was posted where members can read it, so the watch's minutes clock is met by a dated copy; a posting date would need its own record.
+- The watch reads the catalog as last built. Rebuilding it on a schedule (or reading PayHOA's communications log directly) would show a notice the day it goes out.
 - A role's holder from the board's private record, to address reminders.

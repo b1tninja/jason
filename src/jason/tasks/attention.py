@@ -2,7 +2,10 @@
 
 ``digest`` reads the stores the governance commands keep and gives each system a section:
 
-- **schedule** (``jason schedule``): occurrences overdue or due soon, by role, and the duties nobody owns;
+- **meetings** (``jason schedule-evidence --watch``): each board meeting's notice to members (Civil Code 4920) and its
+  minutes (4950(a)) read against the record: a deadline passed with none on record, a record late, a deadline near;
+- **schedule** (``jason schedule``): occurrences overdue or due soon, by role, and the duties nobody owns (the
+  meetings' notice and minutes are left to the meetings section when both are read);
 - **requests** (``jason respond``): members' requests past or near their clocks, a statute's clock first;
 - **intake** (``jason intake``): open questions by kind, the likely ones apart, and answers not yet applied;
 - **conflicts** (``jason conflicts``): open conflicts by status (with counsel, on the board's register, noted);
@@ -181,7 +184,10 @@ def cover_rank(covers: tuple[str, ...] | list[str]) -> int:
     return POLICY
 
 
-def schedule_section(community: Any, root: Path, on: date, *, past: int = PAST_DAYS) -> Section:
+def schedule_section(community: Any, root: Path, on: date, *, past: int = PAST_DAYS,
+                     watched: frozenset[str] = frozenset()) -> Section:
+    """``watched``: assignments another section reads against the record (the meetings' notice and minutes); their
+    occurrences are counted in a note, not listed twice."""
     from jason.community.schedule import Adoption
     from jason.tasks import schedule as task
 
@@ -189,10 +195,14 @@ def schedule_section(community: Any, root: Path, on: date, *, past: int = PAST_D
     found = task.agenda(community, root, start=on - timedelta(days=past), end=on + timedelta(days=task.SOON_DAYS),
                         today=on)
     by_role: dict[str, Counter] = {}
+    elsewhere: Counter = Counter()
     for o in found:
         if o.standing not in ("overdue", "due soon"):
             continue
         a = o.assignment
+        if a.key in watched:
+            elsewhere[a.key] += 1
+            continue
         rank = cover_rank(a.covers)
         urgency = (Urgency.SOON if o.standing == "due soon"
                    else Urgency.LEGAL if rank <= DOCUMENTS else Urgency.OVERDUE)
@@ -207,6 +217,9 @@ def schedule_section(community: Any, root: Path, on: date, *, past: int = PAST_D
     s.summary = (f"{overdue} overdue and {soon} due within {task.SOON_DAYS} days"
                  + (": " + "; ".join(f"{r} {c['overdue']} overdue, {c['due soon']} due soon"
                                      for r, c in sorted(by_role.items())) if by_role else "") + ".")
+    if elsewhere:
+        s.notes.append(f"{sum(elsewhere.values())} occurrences of {', '.join(sorted(elsewhere))} are read against the "
+                       "meeting records under the board meetings' clocks.")
     if (overdue or soon) and not task.completions(root):
         s.notes.append("No completion is recorded yet, so an occurrence done but not recorded shows as overdue: "
                        "record it with jason schedule --done KEY DUE --by NAME --evidence TEXT.")
@@ -220,6 +233,79 @@ def schedule_section(community: Any, root: Path, on: date, *, past: int = PAST_D
         if uncovered or loose:
             s.items.append(Item(Urgency.NOTED, f"{len(uncovered)} duties nobody owns; {len(loose)} on a clock that only "
                                                "a standing assignment owns", "jason schedule --coverage"))
+    return s
+
+
+# --- The board meetings' clocks ---------------------------------------------------------------------------------------
+
+def meetings_section(community: Any, root: Path, on: date, *, past: int = PAST_DAYS) -> Section:
+    """Each board meeting's notice (4920) and minutes (4950(a)) clocks against the record (``meeting_watch``): a
+    deadline passed with none on record, or a record dated past it, is LEGAL; a deadline within the schedule's two
+    weeks with none on record yet is due soon; minutes on file undated past their deadline wait on a person."""
+    from jason.tasks import meeting_watch as mw
+    from jason.tasks.schedule import SOON_DAYS
+
+    s = _new("meetings")
+    w = mw.watch(community, root, on=on, past=past)
+    behind = on - timedelta(days=past)
+    for m in w.meetings:
+        label = f"{m.kind} {m.day}"
+        for c in m.clocks:
+            owner = f" [{c.assignment}]" if c.assignment else ""
+            when = f"{c.timing}, {c.authority}"
+            urgency, text = None, ""
+            if c.what == "notice":
+                if m.day < behind and c.standing is not mw.Standing.OPEN:
+                    continue                          # an old meeting's notice: the evidence finder's to read
+                if c.standing is mw.Standing.LATE:
+                    urgency, text = Urgency.LEGAL, f"{label}: the notice to members on record ({c.record}, {c.on}) was {c.note}"
+                elif c.standing is mw.Standing.PASSED and m.day >= on:
+                    urgency, text = Urgency.LEGAL, (f"{label}: notice and agenda to members were due by {c.deadline} "
+                                                    f"({when}); none on record and that day has passed. If it was "
+                                                    "given (a posting), record it; if not, the meeting needs a day "
+                                                    "noticed in time")
+                elif c.standing is mw.Standing.PASSED:
+                    urgency, text = Urgency.LEGAL, (f"{label}: no notice to members on record (due by {c.deadline}, "
+                                                    f"{when}); if it was given (a posting), record it")
+                elif c.standing is mw.Standing.OPEN and (c.deadline - on).days <= SOON_DAYS:
+                    urgency, text = Urgency.SOON, (f"{label}: give members notice and the agenda by {c.deadline} "
+                                                   f"({when}); none on record yet")
+            else:
+                if c.standing is mw.Standing.LATE:
+                    urgency, text = Urgency.LEGAL, (f"{label}: minutes were due to members by {c.deadline} ({when}); "
+                                                    f"{c.note} ({c.record})")
+                elif c.standing is mw.Standing.PASSED:
+                    urgency = Urgency.LEGAL if m.held else Urgency.OPEN
+                    text = (f"{label}: minutes (or a draft or summary) were due to members by {c.deadline} ({when}); "
+                            "none on record" + ("" if m.held else "; only the notice shows the meeting, not that it "
+                                                                   "was held"))
+                elif c.standing is mw.Standing.OPEN and (c.deadline - on).days <= SOON_DAYS:
+                    urgency, text = Urgency.SOON, (f"{label}: minutes (or a draft or summary) to members by "
+                                                   f"{c.deadline} ({when}); none on record yet")
+                elif c.standing is mw.Standing.UNDATED and on > c.deadline:
+                    urgency, text = Urgency.OPEN, (f"{label}: minutes on file with no date ({c.record}); they were due "
+                                                   f"to members by {c.deadline}, and when they were available is not "
+                                                   "kept")
+            if urgency is not None:
+                s.items.append(Item(urgency, text + owner, mw.COMMAND, STATUTE, c.deadline))
+    for day, due in w.gaps:
+        s.items.append(Item(Urgency.OPEN, f"the schedule set a board meeting on {day} and nothing is on record near "
+                                          f"it: if it was held, its minutes were due by {due}", "jason meetings --sync",
+                            STATUTE, due))
+    nxt = w.next
+    passed = sum(1 for i in s.items if i.urgency is Urgency.LEGAL)
+    soon = sum(1 for i in s.items if i.urgency is Urgency.SOON)
+    s.counts = {"meetings": [m.row() for m in w.meetings], "passed": passed, "dueSoon": soon,
+                "unrecorded": [d.isoformat() for d, _ in w.gaps]}
+    head = ""
+    if nxt is not None:
+        notice = next((c for c in nxt.clocks if c.what == "notice"), None)
+        head = (f"Next: {nxt.kind} {nxt.day}, notice by {notice.deadline} ({notice.standing.value}). "
+                if notice else f"Next: {nxt.kind} {nxt.day}. ")
+    s.summary = (head + f"{len(w.meetings)} meetings watched from {w.start} to {w.until}; {passed} on a passed clock, "
+                 f"{soon} due within {SOON_DAYS} days.")
+    s.notes += w.notes
+    s.notes.append(mw.CAVEATS[0])
     return s
 
 
@@ -487,8 +573,10 @@ def duties_section(community: Any, root: Path) -> Section:
 
 # --- The digest -------------------------------------------------------------------------------------------------------
 
-SECTIONS = ("requests", "schedule", "notices", "living", "conflicts", "duties", "intake")
-TITLES = {"schedule": ("The schedule: overdue and due soon", "jason schedule", "schedule_agenda"),
+SECTIONS = ("meetings", "requests", "schedule", "notices", "living", "conflicts", "duties", "intake")
+TITLES = {"meetings": ("The board meetings' clocks: notice and minutes", "jason schedule-evidence --watch",
+                       "governance_digest (section meetings)"),
+          "schedule": ("The schedule: overdue and due soon", "jason schedule", "schedule_agenda"),
           "requests": ("Members' requests and their clocks", "jason respond", "member_requests"),
           "intake": ("Intake questions", "jason intake", "intake_questions"),
           "conflicts": ("Provisions that yield to a higher authority", "jason conflicts", "document_conflicts"),
@@ -519,8 +607,17 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
     open-session packet)."""
     on = on or date.today()
     root = Path(data_dir)
+
+    def watched() -> frozenset[str]:
+        if "meetings" not in sections:
+            return frozenset()
+        from jason.tasks.meeting_watch import owned_keys
+
+        return owned_keys(community)
+
     builders: dict[str, Callable[[], Section]] = {
-        "schedule": lambda: schedule_section(community, root, on, past=past),
+        "meetings": lambda: meetings_section(community, root, on, past=past),
+        "schedule": lambda: schedule_section(community, root, on, past=past, watched=watched()),
         "requests": lambda: requests_section(community, root, on, private=private),
         "intake": lambda: intake_section(root),
         "conflicts": lambda: conflicts_section(community),
@@ -535,5 +632,5 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
 
 
 __all__ = ["CAVEAT", "Digest", "Item", "LIMIT", "SECTIONS", "Section", "Urgency", "conflicts_section", "cover_rank",
-           "digest", "duties_section", "intake_section", "living_section", "notices_section", "request_rank",
-           "requests_section", "schedule_section"]
+           "digest", "duties_section", "intake_section", "living_section", "meetings_section", "notices_section",
+           "request_rank", "requests_section", "schedule_section"]

@@ -1,8 +1,8 @@
 """``jason attention``: what needs attention across the governance systems, most urgent first.
 
-One section per system (``jason.tasks.attention``): the schedule, members' requests, intake questions, conflicts,
-notices with follow-ups owed, the living documents, and the documents' timed duties nothing tracks. Each line names the
-command that gives its detail. ``--section requests`` (repeatable) narrows; ``--limit N`` sets the lines per section;
+One section per system (``jason.tasks.attention``): the board meetings' notice and minutes clocks, the schedule,
+members' requests, intake questions, conflicts, notices with follow-ups owed, the living documents, and the documents'
+timed duties nothing tracks. Each line names the command that gives its detail. ``--section requests`` (repeatable) narrows; ``--limit N`` sets the lines per section;
 ``--json`` prints JSON; ``--private`` leaves units out (what the board packet's ``{REPORT:attention}`` prints). Reads
 disk only, writes nothing, and decides nothing.
 """
