@@ -8,6 +8,7 @@ import { BooksChecksView } from "./views/BooksChecksView";
 import { JobsView } from "./views/JobsView";
 import { LegalView } from "./views/LegalView";
 import { CalendarView } from "./views/CalendarView";
+import { DraftsView } from "./views/DraftsView";
 import { DutiesView } from "./views/DutiesView";
 import { HearingsView } from "./views/HearingsView";
 import { InboxView } from "./views/InboxView";
@@ -42,6 +43,7 @@ const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
   { id: "digest", label: "Digest", view: BoardDigest },
   { id: "duties", label: "Duties", view: DutiesView },
   { id: "inbox", label: "Inbox", view: InboxView },
+  { id: "drafts", label: "Drafts", view: DraftsView },
   { id: "calendar", label: "Deadlines", view: CalendarView },
   { id: "money", label: "Money", view: MoneyView },
   { id: "meetings", label: "Meetings", view: MeetingsView },

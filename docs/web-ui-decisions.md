@@ -114,7 +114,18 @@ The verbs with a store behind them each get a view:
   a write. The UI adds, runs, and cancels nothing; a write runs only because a person queued it with
   `--confirm NAME`.
 
+### Drafts for approval (`#/drafts`)
+
+The bridge between the read-only views and the gated writes: a draft is shown next to the exact `--yes` command a
+person would run, in a `Command` block that copies and never runs. The first is `request_links.drafts`, an
+emailed request PayHOA does not have, with the form jason matched, the thread, and the message it would enter
+(`jason request-links --create THREAD --yes`). The same pattern fits the agenda, minutes, hearing notice,
+rule-change, and letter drafts, and the owner-information send plan.
+
 ## Next, by what a person decides
+
+**Drafts.** The agenda and minutes drafts (`data/board/*.md`), hearing and meeting-notice Gmail drafts, letters
+from templates, the owner-information send plan and `plan_writes`, each with its command.
 
 **Review queues.** `reply_needed` on its own with its basis, `vendor_portal`, `document_copies` candidates.
 

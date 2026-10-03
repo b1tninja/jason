@@ -167,6 +167,12 @@ def audit_chains(args: Args) -> dict[str, Any]:
     return tool(apn=args.get("apn", ""))
 
 
+def request_links(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import request_links as tool
+
+    return tool(unit=args.get("unit", ""), drafts_only=_flag(args, "drafts"), limit=int(args.get("limit", "40") or 40))
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -248,6 +254,7 @@ def default_loaders() -> dict[str, Any]:
         "ledger-validation": ledger_validation,
         "legal-cases": legal_cases,
         "audit-chains": audit_chains,
+        "request-links": request_links,
     }
 
 

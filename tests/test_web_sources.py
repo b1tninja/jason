@@ -38,6 +38,7 @@ TOOLS = {
     "ledger-validation": "ledger_validation",
     "legal-cases": "legal_cases",
     "audit-chains": "audit_chains",
+    "request-links": "request_links",
 }
 
 
@@ -271,3 +272,10 @@ def test_leads_rows_come_from_the_named_loaders(county, monkeypatch):
     unplaced = next(r for r in out["rows"] if r["kind"] == "unplaced instrument")
     assert unplaced["title"] == "5" and "recorded ? by ?" in unplaced["detail"]
     assert all({"source", "kind", "title", "detail", "next"} <= set(r) for r in out["rows"])
+
+
+def test_request_links_forwards(county):
+    from jason.web.sources import request_links
+
+    request_links({"unit": "12", "drafts": "1", "limit": "5"})
+    assert county.calls[-1] == ("request_links", (), {"unit": "12", "drafts_only": True, "limit": 5})

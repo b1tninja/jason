@@ -2,6 +2,7 @@ export { AppShell } from "./AppShell";
 export { Badge, type Tone } from "./Badge";
 export { Card } from "./Card";
 export { Caveats } from "./Caveats";
+export { Command } from "./Command";
 export { Confirm } from "./Confirm";
 export { DataTable, type Column } from "./DataTable";
 export { DueDate, daysUntil } from "./DueDate";
