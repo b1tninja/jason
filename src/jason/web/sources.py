@@ -143,6 +143,30 @@ def open_items(args: Args) -> dict[str, Any]:
     return tool(days=int(args.get("days", "30") or 30))
 
 
+def utility_payments(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import utility_payments as tool
+
+    return tool(problems_only=not _flag(args, "all"), since=args.get("since", ""), limit=int(args.get("limit", "80") or 80))
+
+
+def ledger_validation(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import ledger_validation as tool
+
+    return tool()
+
+
+def legal_cases(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import legal_cases as tool
+
+    return tool()
+
+
+def audit_chains(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import audit_chains as tool
+
+    return tool(apn=args.get("apn", ""))
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -220,6 +244,10 @@ def default_loaders() -> dict[str, Any]:
         "hearings": hearings,
         "title-watch": title_watch,
         "open-items": open_items,
+        "utility-payments": utility_payments,
+        "ledger-validation": ledger_validation,
+        "legal-cases": legal_cases,
+        "audit-chains": audit_chains,
     }
 
 

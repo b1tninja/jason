@@ -102,10 +102,21 @@ The verbs with a store behind them each get a view:
   due; the written decision within fourteen days), whether a meeting is scheduled, and its problems. Directors
   only; jason never sends the notice or decides.
 
+### Books checks, legal, and runs (`#/books`, `#/legal`, `#/jobs`)
+
+- **Books checks**: `utility_payments` (each SMUD or City payment against the bills it paid and the PDF attached,
+  with findings for the treasurer) and `ledger_validation` (the treasurer's reports in the library matched to
+  PayHOA's runs, and their printed balances against today's ledger: a report edited, misfiled, or re-run).
+- **Legal**: `legal_cases` (each matter's open statutory duties, met, not met, or not shown; its events as a
+  timeline) and `audit_chains` (the deed chain per parcel, each finding naming the next record to read).
+  Confidential: executive session under CIV 4935(a).
+- **Jobs** (`jobs_status`): the queue by status, each job's resource, attempts, and log tail, and who confirmed
+  a write. The UI adds, runs, and cancels nothing; a write runs only because a person queued it with
+  `--confirm NAME`.
+
 ## Next, by what a person decides
 
-**Review queues.** `utility_payments` (same shape as invoices), `ledger_validation` (printed against ledger),
-`reply_needed` on its own with its basis, `legal_cases.openDuties`, `audit_chains`.
+**Review queues.** `reply_needed` on its own with its basis, `vendor_portal`, `document_copies` candidates.
 
 **Drafts for approval (a person reads, then runs the command).** `request_links.drafts` (a proposed PayHOA
 request per thread), agenda, minutes, hearing and rule-change drafts, letters from templates, Gmail drafts, the
