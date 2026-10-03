@@ -597,6 +597,62 @@ LESSONS: tuple[Lesson, ...] = (
            "Retrieval always returns its top k; no score says nothing answers.",
            "A search tool's results must not imply a passage answers the question; measure a score threshold on the "
            "unanswerable questions.", Status.OPEN),
+    Lesson("notice-evidence-first-attempt", OCT_2026, (Area.EMAIL, Area.GOVERNING),
+           "Record stages, the meeting watch, and the evidence finder counted any send as delivered: a notice owing "
+           "resends to a fifth of the members looked the same as one every member received.",
+           "Only the notices command and attention read the delivery ledger's standing; the others kept a first attempt.",
+           "One reader weighs a notice as delivered, sent with follow-ups owed, sent, or a file; a file never meets a "
+           "clock, and a send meets one only with what is owed listed.",
+           Status.FIXED, guards=("notice_evidence.weigh", "notice_evidence.judge", "tests/test_notice_evidence.py",
+                                 "procedure notice-delivery"), docs=("docs/notices.md",)),
+    Lesson("notice-key-names-requirement", OCT_2026, (Area.EMAIL,),
+           "Real notice keys did not start with their requirement's key, so a meeting notice got no proof of notice.",
+           "Notices sent from PayHOA's screens were synced under ad hoc keys.",
+           "Form keys are mapped and a meeting's day in a key is read as that meeting's notice (labeled as a reading); "
+           "sync such notices as REQUIREMENT-DATE.", Status.OPEN, guards=("notice_record requirement matching",),
+           docs=("docs/notices.md",)),
+    Lesson("notice-text-not-kept", OCT_2026, (Area.EMAIL,),
+           "A notice's record could not show the words members received: the email's text was not kept with its batch.",
+           "Batches kept recipients and outcomes, not the message.",
+           "Owner-information batches keep their message path; broadcasts and rule-change notices still need their "
+           "rendered text and fill records kept in data/notices/KEY/.", Status.OPEN,
+           guards=("owner_info batch params.message",), docs=("docs/notices.md",)),
+    Lesson("notice-quoting-the-law", OCT_2026, (Area.GOVERNING,),
+           "A member notice put the board's purpose and effect before the rule's text, and a notice that only quoted "
+           "the statute's requirement was counted as carrying it.",
+           "Notices were drafted from the content list, not the statute's order, and the check matched words.",
+           "Rule-change notices give the text first, then the board's description, labeled (4360(a)); the "
+           "required-elements check masks recited statutes before it looks.",
+           Status.FIXED, guards=("rule_change.member_notice", "notice_elements.mask_recitals",
+                                 "tests/test_rule_change.py", "tests/test_notice_elements.py"),
+           docs=("docs/notices.md (What a notice must say, checked)",)),
+    Lesson("working-doc-is-not-adopted-text", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "Publishing the working rules Doc whole would have presented dozens of passages changed with no adoption, "
+           "and pending suggestions, as the adopted rules.",
+           "The Doc is edited between adoptions, and its exports carried suggestions inline.",
+           "The 4360 draft for publishing the rules keeps adopted text, changes with no adoption found, and pending "
+           "suggestions apart; outlines read a Doc without its suggestions.",
+           Status.OPEN, guards=("manual_rule_change (three kinds)", "Docs.get(without_suggestions=True)",
+                                "tests/test_manual_rule_change.py"),
+           notes=("Open until jason manual --render labels or withholds the changes with no adoption found.",)),
+    Lesson("intake-queue-order", OCT_2026, (Area.ONBOARDING,),
+           "The intake queue listed questions in the order scans found them: library classifications first, the "
+           "questions deciding which text is in force behind them, and mostly OCR respacings.",
+           "Nothing measured what an answer unblocks.",
+           "intake_rank.priority ranks a legal clock, then a missing checklist item, then a stage gate, then a cited "
+           "section, then quality; jason onboard shows the ranked queue.",
+           Status.FIXED, guards=("intake_rank.priority", "tests/test_onboarding_session.py")),
+    Lesson("answer-may-hold-a-secret", OCT_2026, (Area.ONBOARDING,),
+           "A person asked where keys, codes, or a sign-in are kept may type the secret itself.",
+           "Answers are stored as given.",
+           "intake.answer refuses an answer that looks like a secret before anything is written, for the command line "
+           "and MCP alike; a Keeper answer stores only the record's name.",
+           Status.FIXED, guards=("intake.secret_reason", "tests/test_onboarding_session.py")),
+    Lesson("profile-proposal-untracked", OCT_2026, (Area.ONBOARDING,),
+           "A mapping or profile-fact answer is marked applied once its proposal is written, whether or not a person "
+           "ever applies the patch.",
+           "The applier's job ends at writing the proposal.",
+           "Track a proposal's state, or ask again when its checklist item is still not present.", Status.OPEN),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

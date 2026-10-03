@@ -185,10 +185,14 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Read the notice's delivery from PayHOA: a jason batch by its id prefix; a notice sent from PayHOA's "
                  "screens by its subject.",
                  command="jason notices KEY --sync (or --sync --subject \"SUBJECT\" --since DATE)",
-                 check="members reached; the follow-ups owed and each one's authority"),
+                 check="members reached; the follow-ups owed and each one's authority; a notice sent from PayHOA's "
+                       "screens is synced under its requirement and date (board-meeting-YYYY-MM-DD), so its proof "
+                       "and its stage find it",
+                 lessons=("notice-key-names-requirement",)),
             Step("For a general notice (a meeting notice), say whether it was also posted where the annual policy "
                  "statement designates; only then is a failed message information rather than a resend.",
-                 command="jason notices KEY --general", check="the posting happened, on the notice's date",
+                 command="jason notices KEY --mark-general --posted \"WHERE, YYYY-MM-DD\" --by NAME",
+                 check="the posting happened, on the notice's date; a posting with no day meets no clock",
                  refs=("Civil Code 4045",), person=True),
             Step("Send each required follow-up as its own confirmed send: a bounced or skipped email by first-class "
                  "mail; a letter that never mailed, again.",
@@ -204,6 +208,10 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason notices KEY --proof --event DATE [--general --posted DATE] [--have text_as_sent,...]",
                  check="every item on file; nobody late or unreached", refs=("docs/notices.md (Proof of notice)",),
                  person=True),
+            Step("Keep the text as sent and the recipients plan with the notice, and read its record.",
+                 command="data/notices/KEY/ (text, .refs.json, recipients.json); jason cite jason://notice/KEY",
+                 check="its strength is delivered, or sent with what is owed listed; never a file alone",
+                 lessons=("notice-evidence-first-attempt", "notice-text-not-kept")),
         ),
         refs=("docs/batches.md (Delivery and follow-ups)", "docs/notices.md", "Civil Code 4040, 4041(e), 4045, 4050"),
     ),
@@ -448,6 +456,15 @@ PROCEDURES: tuple[Procedure, ...] = (
         "Gather every record and fact a profile needs, from each source, and keep secrets out of documents.",
         (
             Step("Read the checklist.", command="jason onboard --items"),
+            Step("Run the session: the stage gates, then the ranked questions. Park the fact and mapping questions, "
+                 "answer in the order given, have a second person confirm the high-stakes ones, then apply.",
+                 command="jason onboard; jason onboard --scan; jason onboard --answer ID TEXT --by NAME; "
+                         "jason onboard --confirm ID --by NAME; jason onboard --apply",
+                 check="a secret is never typed (answer with the Keeper record's name); each private-facts diff is "
+                       "read; each profile proposal in data/onboarding/proposals/ is reviewed before it is applied",
+                 refs=("docs/onboarding.md (The session)",),
+                 lessons=("intake-queue-order", "answer-may-hold-a-secret", "profile-proposal-untracked"),
+                 person=True),
             Step("Send each source its request list, with three dates: at once, monthly after late fees, and at "
                  "transition; paper records come with a contents list for each box.",
                  command="jason onboard --request [SOURCE]", lessons=("outgoing-manager-only-items",), person=True),
