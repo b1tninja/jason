@@ -57,6 +57,54 @@ Governing documents cite each other and the law by section: "Section 7.2 of the 
 - **From a PDF's text** (`outline_from_text`). Lines that start with a number, "ARTICLE n", or "(a)". It closes the usual OCR gaps first ("13 .1", "1.3( d)", "6.S(b)"), and reads "(i)" as the letter after "(h)" but as roman i under any other letter.
 - Each section spans to the next section at its depth or shallower, so `section_at` finds the innermost section around any place in the text.
 
+### Section numbers from a scan's OCR
+
+A recorded copy's OCR garbles many labels, and `outline_from_text` reads only clean ones. Its misses come in a few kinds:
+- a dropped dot ("41 Residential Use" for 4.1);
+- a letter or a wrong digit for a digit ("ARTICLES EASEMENTS" for Article 9, "3.2" between 5.1 and 5.3);
+- a bracket for a parenthesis ("{c)", "(b}");
+- a glyph run into its parenthesis ("Gj)", "Q)");
+- an empty or half label ("()", "( Rehearing");
+- a misread roman numeral ("(it)", "(11)", "(ili)");
+- stray marks before the label ("“ (a)", "| (b)");
+- a table of contents whose dot leaders OCR broke up;
+- subsections listed inline ("Rules (i) limiting ..., (ii) limiting ...").
+
+Two steps recover them. Each keeps what it did as a note, and a miss stays a miss.
+
+**The label grammar** (`jason.community.outline_labels.outline_from_ocr`) reads each line's start against the few labels the order allows next. It never reads a token as just any label.
+- **The grammar.** It reads "ARTICLE n", "A.n" sections, and four subsection series: (a), (i), (A), (1). A letter comes under a section, a roman numeral under a letter, and a capital under a roman numeral. Another series is allowed at a cost.
+- **The confusions.** A token's distance to each expected label is a weighted edit distance:
+  - i, l, 1, I, |, ! and t are near, and so are o, 0, O and s, 5, S;
+  - a dropped or doubled stroke in a roman numeral, a missing dot, or a missing parenthesis costs a little;
+  - an unrelated glyph costs a whole substitution. That is accepted only with a caption after the label. For a section number, the next clear label must also agree: "9.4" before "9.2" is 9.1.
+- **The order.** Labels increase. A skipped label is a gap, noted, and a clear later number stands (an excerpt that starts at 4.15). A clear label that goes backwards is a cross-reference at a line's start, read as text.
+- **Inline labels.** A line label whose predecessors were not read ("(iii)" with no (i) or (ii)) looks for them mid-line in its parent's words. It splits them out, then reads the rest of that series on its line. An inline enumeration nothing points to stays words.
+- **A hanging caption.** A short Title Case line just before a label line with no caption of its own is that label's caption, when the label's siblings carry captions.
+- **Firm and unclear.** Each label (`Mark`) records how it was read: clear, recovered, or inline. It is firm when it was read cleanly and in order.
+
+The outline's text writes each label cleanly ("Gj)" as "(j)", "41" as "4.1").
+
+**Alignment to a reference** (`jason.community.outline_align.align_to_reference`) uses a copy of the same document, such as the working Doc or an earlier reading. The copy is evidence, not authority: it may number a list the recorded text runs inline, or nest a list a level too deep. It is used only where the reading has no clear answer:
+1. **Align.** The two outlines' sections are aligned in order, within an article of each other, by the words that open them. The comparison uses letters and digits only, so "ofthe" meets "of the".
+2. **Renumber the unclear.** A firm label the copy numbers otherwise is kept, and the difference is a finding (`DISAGREES`). An unclear one takes the copy's number (`RENUMBERED`), and its subsections follow. An example is "(1)" read as an unusual numeric series where the copy has (b).
+3. **Place the missing.** A section only the copy has is looked for between its neighbours' places, after a label token in the reading that its words follow. The token may be inline ("(iv) the right to ...") or garbled at a line's start ("63) Any proposed action"). If found, it becomes a section (`ALIGNED`). Where the reading's own clean label differs ("(i) managing" where the copy has "(a)"), the reading's label stands and the difference is a finding. Words with no label token are never split.
+
+**In the living documents.** `living_docs.build(numbering=...)` chooses how a base read from text is numbered:
+- `"text"` is `outline_from_text`;
+- `"labels"`, the default, is the grammar;
+- `"aligned"` is the grammar, then the working copy.
+
+The notes go to `Built.numbering` and to `report.json` under `numbering`.
+
+**A trial on a recorded declaration.** It compared every section with the board's working copy:
+- **The grammar alone** cut the sections in one outline only by about two fifths. No section that had matched began to differ. The table of contents no longer passes as sections, so the corrections it had made stale applied.
+- **With alignment**, they fell to about a third. What remains is mostly the copy's own numbering: lists it enumerates with letters where the recorded text has roman numerals, a list nested a level too deep, a renumbered run of subsections, and a section an amendment added. Those are findings for a person, not OCR.
+- **The words.** The amended sections and the rule checks were unchanged. More sections are now compared word by word, and their differences are the OCR's word slips.
+- **One side effect.** A correction keyed to a section whose inline subsections alignment splits out early ("7.3(b)" holding words now in "7.3(b)(iii)") goes stale. Re-key it to the subsection before making `"aligned"` the default.
+
+**A layout model?** Recognising headings and list items with a model such as granite-docling or PaddleOCR-VL (see [document-tools.md](document-tools.md), "Not tried yet") would add little to the numbering. After the grammar and alignment, a handful of labels remain garbled beyond reading. A trial is worth its download only if it is scored as a whole-page OCR on the word differences, with label recovery (`outline_from_ocr` over its text) as a second score.
+
 **References** (`jason.community.references`). A citation grammar, with each reference tied to the section it sits in, the verb around it (replaces, amends, acts under, is subject to, overrides, takes a definition from, is required by, or cites), and its sentence:
 - **Statutes** in any code: lists and subdivisions ("5850(c), (d)"), the code before or after the number ("Corporation Code, Section 7110", "602(k) Penal Code"), and regulations ("10 CCR 2792.23"). A bare four-digit section from 1350 to 6200 is the Civil Code. A pre-2014 Davis-Stirling number (1350 to 1378) is marked as prior numbering.
 - **Sections** of the document itself or another, by name before or after ("Declaration Section 6.5(b)", "Section 6.5(d) and Section 6.6(c) of the Declaration", "these Bylaws"). An unqualified section in an amendment or an annexation is the Declaration's, unless the document's own outline has it or its parent (an annexation's own "1.3(d)(ii)").

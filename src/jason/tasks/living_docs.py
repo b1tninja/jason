@@ -80,6 +80,7 @@ class Built:
     revisions: dict[str, str] = field(default_factory=dict)    # a Doc's revision, by instrument key
     checks: list[tuple[TextCheck, bool]] = field(default_factory=list)
     drift: list[AmendmentFinding] = field(default_factory=list)
+    numbering: list = field(default_factory=list)              # LabelNotes from recovering an OCR base's numbers
 
 
 def _read(ref: SourceRef, data_dir: Path, cache: Path, docs: Any) -> tuple[str, Any, str]:
@@ -113,20 +114,58 @@ def scan_file(ref: SourceRef, cache: Path, drive: Any = None) -> tuple[Path | No
     return path, ""
 
 
-def scan_base_text(ref: SourceRef, cache: Path, drive: Any = None) -> str:
+# A scanned base read again by another engine, kept beside the first reading under its own name: its name -> the
+# ``scan_marks.scan_text`` engine. The first reading ("", the original) stays in use until a person chooses
+# (``jason living KEY --use-reread NAME``), which ``reading.json`` records.
+READINGS = {"cli": "tesseract-cli", "pymupdf": "pymupdf"}
+
+
+def reading_choice_path(data_dir: Path, key: str) -> Path:
+    return living_dir(data_dir, key) / "reading.json"
+
+
+def _chosen_in(folder: Path) -> str:
+    path = folder / "reading.json"
+    return str(json.loads(path.read_text(encoding="utf-8")).get("reading") or "") if path.is_file() else ""
+
+
+def chosen_reading(data_dir: Path, key: str) -> str:
+    """The reading of a scanned base a person chose ("" for the original, the first one cached)."""
+    return _chosen_in(living_dir(data_dir, key))
+
+
+def base_text_path(ref: SourceRef, cache: Path, digest: str, reading: str = "") -> Path:
+    """Where a scanned base's text is cached: ``<id>.<digest16>.txt`` for the original reading, and
+    ``<id>.<digest16>.<reading>.txt`` for a re-read, so a re-read never replaces the original."""
+    return cache / (f"{ref.ref}.{digest[:16]}.{reading}.txt" if reading else f"{ref.ref}.{digest[:16]}.txt")
+
+
+def scan_base_text(ref: SourceRef, cache: Path, drive: Any = None, *, reading: str | None = None) -> str:
     """A scanned base document's text by OCR (``scan_marks.scan_text``), cached under the file's digest so the OCR runs
-    once per file. Raises when the scan is not read or has changed since it was reviewed."""
+    once per file. ``reading`` names a re-read (``READINGS``), cached beside the original under its own name; None is
+    the reading a person chose (``reading.json`` beside ``cache``), else the original. A cached text is never
+    replaced. Raises when the scan is not read or has changed since it was reviewed."""
     from jason.community.scan_marks import scan_text
 
+    if reading is None:
+        reading = _chosen_in(cache.parent)
+    if reading and reading not in READINGS:
+        raise ValueError(f"no reading {reading!r}: {', '.join(READINGS)}")
     path, why = scan_file(ref, cache, drive)
     if path is None:
         raise ValueError(f"the base text cannot be read: {why}")
     import hashlib
 
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    text_path = cache / f"{ref.ref}.{digest[:16]}.txt"
+    text_path = base_text_path(ref, cache, digest, reading)
     if not text_path.is_file():
-        text_path.write_text(scan_text(path), encoding="utf-8")
+        if reading == "cli":
+            from jason.community.ocr import TesseractCli
+
+            if not TesseractCli.available():
+                raise ValueError("the cli reading needs Tesseract's command-line tool (docs/setup.md; TESSERACT_EXE)")
+        text = scan_text(path, engine=READINGS[reading]) if reading else scan_text(path)
+        text_path.write_text(text, encoding="utf-8")
     return text_path.read_text(encoding="utf-8")
 
 
@@ -163,22 +202,33 @@ def compare_readings(key: str, first: tuple, second: tuple, label: str) -> list[
 
 
 def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: Any = None, as_of: date | None = None,
-          working: bool = False, all_sections: bool = False) -> Built:
+          working: bool = False, all_sections: bool = False, reading: str | None = None,
+          transcribed: tuple | None = None, numbering: str = "labels") -> Built:
     """The current text of ``living`` from its sources. ``docs`` (a Docs client) reads the Docs afresh and ``drive``
     downloads the scans; without them the copies saved by the last read are used. ``working`` also compares the working
     copy: the sections an amendment set, or with ``all_sections`` every section (where a base read by OCR differs
-    mostly by the OCR's slips)."""
+    mostly by the OCR's slips). ``reading`` reads a scanned base by a re-read (``scan_base_text``; None is the one a
+    person chose) and ``transcribed`` replaces the stored transcriptions (None reads them): both for ``ocr_reread``.
+    ``numbering`` says how a base read from text gets its section numbers: "text" (``outline_from_text``), "labels"
+    (the label grammar, ``outline_labels``), or "aligned" (the grammar, then the working copy places what it could not:
+    ``outline_align``); see docs/document-readings.md."""
     from jason.community.living import FindingKind
 
     cache = living_dir(data_dir, living.key) / "sources"
     if living.base.kind is SourceKind.SCAN:
-        kind, base = "text", scan_base_text(living.base, cache, drive)
+        kind, base = "text", scan_base_text(living.base, cache, drive, reading=reading)
     else:
         kind, base, _ = _read(living.base, data_dir, cache, docs)
     if kind == "held":
         raise ValueError(f"the base text cannot be read: {base}")
-    outline = (outline_from_doc(base, key=living.key, title=living.title, kind=living.kind.value) if kind == "doc"
-               else outline_from_text(prepare_extract(base), key=living.key, title=living.title, kind=living.kind.value))
+    numbered: list = []
+    if kind == "doc":
+        outline = outline_from_doc(base, key=living.key, title=living.title, kind=living.kind.value)
+    elif numbering == "text":
+        outline = outline_from_text(prepare_extract(base), key=living.key, title=living.title, kind=living.kind.value)
+    else:
+        outline, numbered = numbered_outline(living, prepare_extract(base), data_dir, docs=docs,
+                                             aligned=numbering == "aligned")
     held, revisions, instruments, compared = [], {}, [], []
     for li in living.instruments:
         ops, revision, why = operations(li.source, data_dir, cache, docs=docs, drive=drive)
@@ -200,11 +250,12 @@ def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: An
                                       adopted=getattr(d, "adopted", None), recorded=getattr(d, "recorded", None),
                                       number=getattr(d, "recorder_number", "") or ""))
     current = consolidate(outline, instruments, as_of=as_of, base_from=living.base_from,
-                          corrections=(*living.corrections, *transcriptions(data_dir, living.key)))
+                          corrections=(*living.corrections,
+                                       *(transcriptions(data_dir, living.key) if transcribed is None else transcribed)))
     current.findings += compared
     current.findings += [AmendmentFinding(FindingKind.HELD, "", h.split(":", 1)[0], h.split(":", 1)[-1].strip())
                          for h in held]
-    out = Built(living, current, held, revisions, check_text(current, living.checks))
+    out = Built(living, current, held, revisions, check_text(current, living.checks), numbering=numbered)
     if working and living.working_doc:
         copy = working_copy(living, data_dir, docs=docs)
         if copy is None:
@@ -246,6 +297,24 @@ def working_copy(living: LivingDocument, data_dir: Path, *, docs: Any = None) ->
     return outline_from_doc(doc, key=living.key, title=living.title, kind=living.kind.value) if doc else None
 
 
+def numbered_outline(living: LivingDocument, text: str, data_dir: Path, *, docs: Any = None, aligned: bool = False
+                     ) -> tuple[DocumentOutline, list]:
+    """A base read from OCR text, its section numbers recovered by the label grammar and, with ``aligned``, placed by
+    the working copy where the grammar could not read them (the copy saved by the last read, else read with ``docs``).
+    Returns the outline and the notes: what was recovered, placed, renumbered, and where the copy disagrees."""
+    from jason.community.outline_align import align_to_reference
+    from jason.community.outline_labels import outline_from_ocr
+
+    reading = outline_from_ocr(text, key=living.key, title=living.title, kind=living.kind.value)
+    if aligned and living.working_doc:
+        cache = living_dir(data_dir, living.key) / "sources"
+        copy = working_copy(living, data_dir) if (cache / f"{living.working_doc}.json").is_file() else \
+            working_copy(living, data_dir, docs=docs)
+        if copy is not None:
+            reading = align_to_reference(reading, copy, label="the working copy")
+    return reading.outline(), reading.notes
+
+
 def write(built: Built, data_dir: Path) -> Path:
     """The current text as Markdown, and the findings, checks, and drift as JSON beside it."""
     folder = living_dir(data_dir, built.living.key)
@@ -259,6 +328,7 @@ def write(built: Built, data_dir: Path) -> Path:
         "findings": [f.line() for f in built.current.findings],
         "checks": [{"section": c.section, "expect": c.expect, "rule": c.rule, "found": ok} for c, ok in built.checks],
         "drift": [f.line() for f in built.drift],
+        **({"numbering": [n.line() for n in built.numbering]} if built.numbering else {}),
     }
     (folder / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     return path

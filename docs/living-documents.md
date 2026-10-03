@@ -139,9 +139,78 @@ jason living ccrs --as-of 2023-01-01      # the text in force on a date
 jason living ccrs --annotations           # the working copy's comments, read-only, placed on the text
 ```
 
+- `jason living KEY --reread cli` and `--use-reread cli --yes --by NAME`: reading a scanned base again (below).
 - The generated text reads "as amended through" its last instrument, with a note under each amended section and a list of what is not in effect. It is not an official restatement; the recorded instruments control.
 - An annotation is placed on the current text, else on the working copy (where a base read by OCR garbles the quoted words), else reported as orphaned. A comment's kind is first read from its words (`living_docs.kind_of`) and a person corrects it.
 - Not built yet: the scan reader in `jason.community` (the rule and stroke measures above) and a text-PDF reader; the generated Doc; an MCP tool.
+
+## Re-reading a base
+
+A scanned base is read by OCR once and cached under the scan's digest (`living_docs.scan_base_text`: `sources/<drive id>.<digest16>.txt`). People then read the page where the OCR failed, and each reading became a transcription keyed to the OCR's exact wrong words (`transcriptions.json`). A better engine reads the page differently, so replacing the cached text would leave most transcriptions stale and most open OCR questions pointing at words no longer there. Reading the base again is therefore a dry run first and a person's decision after. The code is `jason.tasks.ocr_reread`, with tests in `tests/test_ocr_reread.py`.
+
+```bash
+jason living ccrs --reread cli                       # the dry run: nothing in use changes
+jason living ccrs --reread cli --numbering text      # both readings numbered by outline_from_text
+jason living ccrs --use-reread cli                   # says what a switch would do
+jason living ccrs --use-reread cli --yes --by NAME   # the person's switch
+```
+
+**The re-read never overwrites.** `--reread cli` OCRs the scan with Tesseract's own tool (`scan_text(engine="tesseract-cli")`) into `sources/<drive id>.<digest16>.cli.txt`, beside the original. `living_docs.READINGS` names the readings (`cli`, `pymupdf`). Every build reads the original until `data/living/<key>/reading.json` names another. `build(..., reading=, transcribed=)` reads one reading with one set of transcriptions without changing the stores, for the comparison.
+
+**Migrating the transcriptions.** `ocr_reread.migrate` takes each transcription in its section and finds its place in the new reading. It applies the section's transcriptions to the reading in use, aligns those corrected words with the new reading's, and compares the words at the transcription's place:
+
+| Fate | When | What happens |
+|---|---|---|
+| no longer needed | the new reading already reads the person's right words | dropped from the migrated set |
+| carried | the new reading has the same wrong words there | kept, keyed with more context if its words no longer occur once |
+| re-keyed | different wrong words there (`rep2ir` read now as `repzir`) | a question for the intake queue: the person's right words against the new wrong words. Never applied and never `likely`: three readers disagree there, and some earlier readings came from the working copy and carry its slips |
+| unplaced | the place cannot be found, or it lies behind a second section of the same number | listed for a person |
+| stale already | it did not apply to the reading in use either | listed |
+
+- **Two stages.** As `living.correct` does: the base's provisions first, then the text after the amendments for a transcription the base did not hold.
+- **Numbering.** A reading can misread a label ("1.40" for "1.10") or read a cross-reference or a table of contents line as a heading. A section is placed by its words, not only its number: among sections of the same number, the one most like the old words (`PLACED`); else between the neighbouring sections both readings have.
+  - A carried transcription follows the number the new reading gives, and the report lists each such move.
+  - One behind a second section of the same number is unplaced, because `CurrentDocument.provision` finds the first.
+  - Both readings are numbered the same way: `build`'s `numbering` (its default, or `--numbering`). A change of numbering moves sections again, so migrate after it, not before.
+- **The specification's corrections** are migrated the same way and reported. Changing them is a person's edit to the profile.
+
+**The evidence.** The dry run writes these files under `data/living/<key>/`:
+
+- `reread-<reading>.md`, also printed: the report.
+- `reread-<reading>.json`: each transcription's fate, and the digest of `transcriptions.json` it was built from.
+- `transcriptions.<reading>.json`: the migrated set, carried rows only. A moved row keeps `carried_from`.
+- `reread-<reading>-asks.json`: the proposed questions, with subject `reread:<key>#<section>`. That subject is outside `jason intake --scan`'s scope, so a scan never marks them stale.
+
+The report gives:
+
+- **Word error.** Each reading's word and character error against the working copy, as read and with its transcriptions (`word_error`). This is one alignment of the whole text. Sections an amendment set are left out, and so is any differing block of more than six words (captions, the table of contents, page furniture). The working copy has slips of its own.
+- **The transcriptions.** How many are no longer needed, carried, re-keyed, or unplaced.
+- **The OCR questions.** How many open questions a scan of the new reading would no longer ask. A question is the same one by its id, or by its section and the words it changes less their context.
+- **Section numbers.** Those only one reading has.
+- **The remaining differences.** Spacing, case or punctuation, or words, with the most frequent.
+
+**The switch** (`ocr_reread.switch`) refuses in these cases:
+
+- no one is named;
+- there is no dry run;
+- `transcriptions.json` changed since the dry run (a question answered in between);
+- the reading in use changed since the dry run;
+- the dry run numbered sections otherwise than the builds do (the migrated rows would be keyed to the wrong sections).
+
+Otherwise it does four things:
+
+1. It keeps the set in use as `transcriptions.<previous>.backup.json`, timestamped if that name is taken.
+2. It copies the migrated set to `transcriptions.json`.
+3. It merges the proposed questions into the intake queue.
+4. It writes `reading.json` with who chose it and when.
+
+No cached text is deleted. The next `jason intake --scan` marks stale the open questions keyed to the old words. To go back, a person restores the backup and removes `reading.json`.
+
+A profile's trials are in its own docs (for this profile, [mystique/docs/living.md](../mystique/docs/living.md)). A switch is refused when the dry run was numbered otherwise than the builds.
+
+## Numbering a base read by OCR
+
+A base read from a scan gets its section numbers from the label grammar (`outline_labels.outline_from_ocr`), not from `outline_from_text`. The grammar reads garbled labels as the label the order expects ("41" as 4.1, "Gj)" as (j)) and skips a table of contents. `living_docs.build(numbering="aligned")` also lets the working copy place what the grammar could not read, such as an inline "(iv)" or a garbled "63)". A label read clearly and in order is never renumbered, and each difference with the copy is a note in `report.json` under `numbering`. `numbering="text"` keeps the old reader. The method and a trial are in [document-readings.md](document-readings.md), "Section numbers from a scan's OCR".
 
 ## Failure modes
 

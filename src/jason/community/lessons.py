@@ -295,6 +295,27 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_responses.py (test_classify_email)", "jason respond --measure",
                                  "procedure respond"),
            docs=("docs/responses.md (How well the kinds are read)",)),
+    Lesson("ocr-labels-garbled", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "Building a living document from a scan's OCR, the outline reader missed garbled section labels ('41' for "
+           "4.1, 'Gj)' for (j)) and read a broken-up table of contents as sections, so corrections keyed to those "
+           "sections went stale and structural drift against the working copy was overstated.",
+           "outline_from_text expects a typed document's clean labels; OCR drops dots, confuses letters and digits, and "
+           "breaks dot leaders.",
+           "A label grammar reads the label the order expects and skips the table of contents; the working copy may "
+           "place what the grammar cannot read, and a clear in-order label is never renumbered.",
+           Status.FIXED, guards=("outline_labels.outline_from_ocr", "outline_align", "tests/test_outline_labels.py"),
+           docs=("docs/document-readings.md (Section numbers from a scan's OCR)",)),
+    Lesson("reading-moves-transcriptions", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "A better OCR reading of the recorded base was ready, but the person's transcriptions and open questions "
+           "were keyed by section, and the new engine misreads different labels, so switching would have dropped or "
+           "misplaced them.",
+           "Transcriptions are keyed by section number, and a change of reading or of numbering moves the sections.",
+           "A re-read is a dry run that migrates each transcription by its words and re-keys the questions; the switch "
+           "needs a person's name and refuses a dry run numbered otherwise than the builds. The label grammar still "
+           "fails on the new engine's text, so the switch waits.",
+           Status.OPEN, guards=("ocr_reread.migrate", "jason living KEY --use-reread (numbering check)",
+                                "tests/test_ocr_reread.py"),
+           docs=("docs/living-documents.md (Re-reading a base)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
