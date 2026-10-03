@@ -32,11 +32,39 @@ Loopback is not a boundary: any browser tab or program on the machine can reach 
 - **Off (the default).** The route is refused with the command a person runs instead: `jason approvals apply ID --yes --by NAME`. The page shows that command, as every other outward write in the console does.
 - **On.** The server prints "apply is ON" when it starts. An apply carries the token in its header (the cookie alone is not enough), names its person (`by`), and echoes the fingerprint that person reviewed (`confirm`); a fingerprint that is not the approval's is refused, with nothing written. The engine then re-reads live and refuses again if anything changed since review ([approval-workflow.md](approval-workflow.md#6-re-plan-before-apply)).
 
-Why a flag and not a role: until each person signs in, a name on an apply is a pick from a list. Starting the server with `--allow-apply` is a person's act at the terminal, like the CLI's `--yes`, made once for the session.
+Why a flag and not a role: unless sign-in is required (`--require-sign-in`), a name on an apply may be a pick from a list. Starting the server with `--allow-apply` is a person's act at the terminal, like the CLI's `--yes`, made once for the session.
 
 ## Identity
 
-### Today: a named person, not a login
+### Built: Sign in with Google
+
+An officer can sign in with their Workspace account (`jason.web.signin`; set up in [setup.md, Console sign-in](../setup.md#5-console-sign-in-jason-web)):
+- **The flow.** OpenID Connect's authorization-code flow runs on the server, with PKCE, `state`, and `nonce`, and asks only `openid email profile`. The ID token comes straight from Google's token endpoint, in exchange for the client secret. No Google script runs in the page, and no Google token is kept.
+- **Who gets in.** An account gets in when all of these hold:
+  - the token is for this client and from Google, unexpired, and carries jason-web's `nonce`;
+  - the email is verified;
+  - its `hd` claim is one of the association's email domains;
+  - the address is exactly one officer's on the roster (`Officer.email`, a private fact).
+
+  With an Internal consent screen, Google refuses accounts outside the Workspace organization before jason sees them.
+- **What it changes.**
+  - While someone is signed in, a write's `by` must be the signed-in officer's name; an empty one is filled with it.
+  - Approval steps record `via: console:google`.
+  - `jason-web --require-sign-in` refuses every write (401) until an officer signs in.
+  - Sign-in is not a role: what a person may approve is still the roster's.
+- **The session.**
+  - It is Flask's signed cookie (`jason_session`, `HttpOnly; SameSite=Lax`), signed with a key made when the app starts. Lax rather than Strict, so the cookie survives the top-level return from Google.
+  - It lasts twelve hours at most, and a restart signs everyone out.
+  - An officer taken off the roster is signed out at their next write.
+  - Sign-ins, refusals, and sign-outs are logged in `data/web/sign-ins.jsonl`.
+- **What stays the same.**
+  - The write guard (Host, Origin, token) still applies to every write, sign-out included.
+  - Apply still needs `--allow-apply`.
+  - The console still listens on loopback only.
+
+Without sign-in set up, or with no one signed in and sign-in not required, the console behaves as before (below).
+
+### Without sign-in: a named person, not a login
 
 - **"Signed in as" is a sample picker** over the profile's officers (`Community.officers()`, the names from the private facts). The pick is kept in the browser's `localStorage` (`jason-console-user`), a name only. It grants nothing.
 - **The server checks what it can.** A letter's approval is refused unless `by` is an officer whose `approves` names the letter's approver; for the board, the president or the secretary, with the meeting's date (`tasks.approvals`). Every write requires `by`.
@@ -44,12 +72,14 @@ Why a flag and not a role: until each person signs in, a name on an apply is a p
 - **The second person's name starts empty** in `SecondConfirm`. Retyping is the point of that step, which falls under WCAG 3.3.7's security exception. The first signer's name is pre-filled from "Signed in as".
 - **What a name proves.** On a shared machine, a name is a claim, not an authentication. The audit log records the operating-system user beside each name (`os_user`), and `via: "console"` or `"cli"`. The log does not prove who clicked. The console's caveats say so plainly.
 
-### Later: sign-in for each person
+### Later: beyond Google sign-in
 
-Each person gets their own credential, so a name is authenticated. The preferred path is a passkey (WebAuthn) for each officer, registered at the manager's machine (public keys only under `data/`): phishing-resistant, and nothing to remember or transcribe (WCAG 3.3.8). Until then:
-- apply stays behind `--allow-apply`;
-- the second-person rule guards against mistakes, not a determined person;
-- serving beyond loopback stays out of scope.
+- **Google sign-in authenticates a person through their Workspace account.** It is as strong as that account's own sign-in, including the organization's two-step verification, if its admin requires it.
+- **A passkey (WebAuthn) remains an option** for an officer without a Workspace account. It would be registered at the manager's machine, with public keys only under `data/`.
+- **Until the board decides that sign-in is required** (`--require-sign-in` as the norm):
+  - apply stays behind `--allow-apply`;
+  - the second-person rule guards against mistakes, not a determined person;
+  - serving beyond loopback stays out of scope.
 
 **Remote access** would need, at least: TLS, sign-in for each person, rate limits, and the board's written policy on who may see what (a rule row, by the "where the law is silent" axiom).
 

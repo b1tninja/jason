@@ -46,6 +46,25 @@ describe("ConsoleShell", () => {
     expect(setMe).toHaveBeenCalledWith("R. Lind");
   });
 
+  it("names the officer signed in with Google, with Sign out and no picker", async () => {
+    const onSignOut = vi.fn();
+    const people = [{ name: "D. Okafor", role: "president" }];
+    shell({ session: { me: "D. Okafor", setMe: vi.fn(), people, account: { name: "D. Okafor", role: "president", email: "d@example.org" }, onSignOut, signInHref: "/auth/google" } });
+    expect(screen.queryByLabelText("Signed in as")).toBeNull();
+    expect(screen.getByText("D. Okafor, president")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in with Google" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(onSignOut).toHaveBeenCalled();
+  });
+
+  it("offers Sign in with Google beside the picker when the server has it, and says a refusal", () => {
+    const people = [{ name: "D. Okafor", role: "president" }];
+    shell({ session: { me: "", setMe: vi.fn(), people, signInHref: "/auth/google?next=%23%2Fdigest", signInError: "x@example.org is not an officer's account" } });
+    expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google?next=%23%2Fdigest");
+    expect(screen.getByLabelText("Signed in as")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("not an officer's account");
+  });
+
   it("hides board-only screens, the sign-in, and board drawers from owners, and shows the read-only banner", async () => {
     const { onAudience } = shell({ audience: "owner" });
     const nav = screen.getByRole("navigation", { name: "Duties" });

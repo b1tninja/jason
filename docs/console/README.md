@@ -69,7 +69,7 @@ Each comes from [AGENTS.md](../../AGENTS.md), how jason works, and the design ha
 | **2. The governance screens** | Requests, Notices, Governing documents, the onboarding session, and the bands the screen specs add to existing screens | `data/` records a person signs: intake answers and their second person, a duty done, a posting recorded |
 | **3. More kinds** | Gmail drafts, calendar, Tasks, private Docs, PayHOA form updates, delivery tags | Each kind's own write, behind its registry row |
 | **4. Money and members** | Mailroom sends, owner email and mail batches, publishing forms, Vault holds (two people); Members and units with P2 masking | Postage, notices to members, legal holds |
-| **5. Sign-in** | A credential for each officer, roles enforced on the server, the private view | The same writes, with authenticated names |
+| **5. Sign-in** | A credential for each officer (built: Sign in with Google), roles enforced on the server, the private view | The same writes, with authenticated names |
 
 Out of scope at every phase:
 - anything jason may not do from the CLI: approving, denying, or assigning a member's request; sending to a collection agency; deleting a live PayHOA form; editing an owner's submission; mailing on jason's own initiative;

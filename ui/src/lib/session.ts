@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getJson } from "./api";
+import { getJson, serverSession, signInHref, signOut, type SignedIn, type SignInSetup } from "./api";
 
-/** The signed-in person. There is no real sign-in: this is a sample picker over the association's officers (from
- * `/api/approvals`), and the chosen name is what goes on the record (`by`) when the person approves or records a step.
- * The name is remembered per browser in localStorage (`jason-console-user`); the server checks every approval against
- * the profile's officers anyway, so picking a name here grants nothing. */
+/** The signed-in person. When the server has Google sign-in (`jason.web.signin`) and an officer signed in, `me` is that
+ * officer, fixed by the server: every write goes on the record under that name. Otherwise it is a sample picker over
+ * the association's officers (from `/api/approvals`), remembered per browser in localStorage (`jason-console-user`);
+ * the server checks every approval against the profile's officers anyway, so picking a name grants nothing. */
 
 export interface Person { name: string; role: string; approves: string[]; canApproveBoard: boolean }
 
@@ -36,10 +36,27 @@ export function writeMe(name: string): void {
   }
 }
 
+/** What the server says about sign-in: who signed in, whether it is set up, and its last refusal (said once). */
+export function useSignIn() {
+  const [state, setState] = useState<{ account: SignedIn | null; setup?: SignInSetup; error: string }>({ account: null, error: "" });
+  useEffect(() => {
+    let on = true;
+    serverSession().then((s) => on && setState({ account: s.signedIn ?? null, setup: s.signIn, error: s.signInError ?? "" }));
+    return () => { on = false; };
+  }, []);
+  const href = state.setup?.configured ? signInHref(state.setup, typeof window !== "undefined" ? window.location.hash : "") : "";
+  const out = useCallback(async () => {
+    await signOut(state.setup);
+    setState((s) => ({ ...s, account: null }));
+  }, [state.setup]);
+  return { account: state.account, setup: state.setup, error: state.error, signInHref: href, signOut: out };
+}
+
 /** `people` comes from `/api/approvals` unless the caller passes the list it already loaded. */
 export function useSession(given?: readonly Person[]) {
-  const [me, setMeState] = useState<string>(readMe);
+  const [picked, setPicked] = useState<string>(readMe);
   const [fetched, setFetched] = useState<Person[]>([]);
+  const signIn = useSignIn();
   useEffect(() => {
     if (given) return;
     const ctl = new AbortController();
@@ -47,7 +64,8 @@ export function useSession(given?: readonly Person[]) {
     return () => ctl.abort();
   }, [given]);
   const people = useMemo(() => (given ? [...given] : fetched), [given, fetched]);
-  const setMe = useCallback((name: string) => { setMeState(name); writeMe(name); }, []);
+  const me = signIn.account?.name ?? picked;
+  const setMe = useCallback((name: string) => { setPicked(name); writeMe(name); }, []);
   const can = useCallback((approver: string) => canApprove(me, approver, people), [me, people]);
-  return { me, setMe, people, canApprove: can };
+  return { me, setMe, people, canApprove: can, account: signIn.account, signInHref: signIn.signInHref, signInError: signIn.error, signOut: signIn.signOut };
 }

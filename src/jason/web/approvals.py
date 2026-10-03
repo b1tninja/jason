@@ -163,6 +163,17 @@ def _body() -> dict[str, Any]:
     return body if isinstance(body, dict) else {}
 
 
+def _who(body: dict[str, Any]) -> tuple[str, str, str]:
+    """Who takes a step, their role, and ``via``: the signed-in officer (``console:google``) when someone signed in
+    with Google, else the name the page sent (``console``)."""
+    from jason.web.signin import VIA, current_account
+
+    a = current_account()
+    if a is not None:
+        return a.name, a.role or "manager", VIA
+    return _text(body, "by"), _text(body, "role").strip()[:40] or "manager", "console"
+
+
 def _text(body: dict[str, Any], key: str) -> str:
     value = body.get(key)
     return "" if value is None else str(value)
@@ -243,8 +254,9 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             choices = [d.value for d in Decision if d is not Decision.UNDECIDED]
             if _text(body, "decision") not in choices:
                 raise ValueError(f"decision is one of {', '.join(choices)}")
-            a = engine.decide(ident, items, by=_text(body, "by"), decision=Decision(_text(body, "decision")),
-                              reason=_text(body, "reason"), via="console")
+            by, _, via = _who(body)
+            a = engine.decide(ident, items, by=by, decision=Decision(_text(body, "decision")),
+                              reason=_text(body, "reason"), via=via)
             return mask(to_dict(a))
         return _answer(run)
 
@@ -260,16 +272,15 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             from jason.approvals import engine
             from jason.approvals.model import to_dict
 
-            by, reason = _text(body, "by"), _text(body, "reason")
-            role = _text(body, "role").strip()[:40] or "manager"
+            (by, role, via), reason = _who(body), _text(body, "reason")
             if step == "submit":
-                a = engine.submit(ident, by=by, role=role, via="console")
+                a = engine.submit(ident, by=by, role=role, via=via)
             elif step == "confirm":
-                a = engine.confirm(ident, by=by, role=role, via="console")
+                a = engine.confirm(ident, by=by, role=role, via=via)
             elif step == "decline":
-                a = engine.decline(ident, by=by, reason=reason, via="console")
+                a = engine.decline(ident, by=by, reason=reason, via=via)
             else:
-                a = engine.withdraw(ident, by=by, reason=reason, via="console")
+                a = engine.withdraw(ident, by=by, reason=reason, via=via)
             return mask(to_dict(a))
         return _answer(run)
 
@@ -295,10 +306,11 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
                 return jsonify(error=f"the fingerprint reviewed is not {a.id}'s: nothing written. Reload it, review "
                                      "it again, and confirm what it shows", fingerprint=a.fingerprint,
                                status=a.status.value, supersededBy=a.superseded_by), 409
-            if not _text(body, "by").strip() or engine.problems(a):    # refused (and logged) before any sign-in
-                engine.apply(a.id, engine.Live(), by=_text(body, "by"), via="console")
+            by, _, via = _who(body)
+            if not by.strip() or engine.problems(a):    # refused (and logged) before any sign-in
+                engine.apply(a.id, engine.Live(), by=by, via=via)
             with live(registry.get(a.kind)) as lv:
-                done = engine.apply(a.id, lv, by=_text(body, "by"), via="console")
+                done = engine.apply(a.id, lv, by=by, via=via)
             if done.superseded_by is not None:
                 fresh = done.superseded_by
                 return jsonify(error=f"changed since review: nothing written. {a.id} is superseded by {fresh.id}; "

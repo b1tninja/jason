@@ -186,7 +186,8 @@ export function App() {
       onGo={go}
       audience={audience}
       onAudience={setAudience}
-      session={{ me: session.me, setMe: session.setMe, people: session.people }}
+      session={{ me: session.me, setMe: session.setMe, people: session.people, account: session.account,
+                 signInHref: session.signInHref, signInError: session.signInError, onSignOut: () => { void session.signOut(); } }}
       dock={<DockToolbar open={drawer} onToggle={(id) => setDrawer((d) => (d === id ? null : id))} counts={counts} audience={audience} />}
       pinned={pinned && wide ? drawerNode : undefined}
       floating={!(pinned && wide) ? drawerNode : undefined}

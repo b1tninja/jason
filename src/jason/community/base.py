@@ -534,11 +534,13 @@ class OfficerRole(Enum):
 class Officer:
     """One person in a board or management role. ``approves`` names what the role may approve on its own
     (``"the treasurer"``, ``"a fluent reviewer"``); ``"the board"`` is never a person's: it is a vote at a meeting
-    (CIV 4910) that the president or the secretary records."""
+    (CIV 4910) that the president or the secretary records. ``email`` is the Google account the person signs in to
+    jason-web with (``jason.web.signin``); a private fact, empty when the person does not sign in."""
 
     role: OfficerRole
     name: str
     approves: tuple[str, ...] = ()
+    email: str = ""
 
     def can_approve(self, approver: str) -> bool:
         if approver == "the board":

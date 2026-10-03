@@ -2,7 +2,8 @@
 
 Who holds which seat is a private fact in data/spec/officers.json (jason.community.private): a list of
 ``{"role": "president" | "vice president" | "secretary" | "treasurer" | "director" | "manager", "name": "...",
-"approves": [...]}``. ``approves`` names what the person may approve alone and defaults by role: the president
+"approves": [...], "email": "..."}``. ``email`` is the Google account the person signs in to jason-web with; a row
+without one cannot sign in. ``approves`` names what the person may approve alone and defaults by role: the president
 approves "the president", the secretary "the secretary", the treasurer "the treasurer", the manager "the manager";
 a vice president or director approves nothing alone. A row may add "a fluent reviewer" (translations). "The board"
 is never a person's: it is a vote at a meeting (CIV 4910) that the president or the secretary records.
@@ -35,7 +36,8 @@ def officers() -> tuple[Officer, ...]:
         if not name:
             continue
         approves = row.get("approves")
-        rows.append(Officer(role, name, tuple(str(a) for a in approves) if isinstance(approves, list) else DEFAULT_APPROVES[role]))
+        rows.append(Officer(role, name, tuple(str(a) for a in approves) if isinstance(approves, list) else DEFAULT_APPROVES[role],
+                            str(row.get("email", "") or "").strip()))
     return tuple(rows)
 
 

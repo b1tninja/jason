@@ -10,14 +10,14 @@ interface Page {
   found?: boolean; note?: string; letters: Letter[]; groups: Record<string, string[]>; pending: number; people: Person[]; stages: string[]; caveats?: string[];
 }
 
-/** The approvals inbox: the sample sign-in, the approvals engine's plans of writes (`PlanApprovals`, each opening to a
+/** The approvals inbox: who is signed in (Google sign-in, else the sample picker), the approvals engine's plans of writes (`PlanApprovals`, each opening to a
  * `PlanReview`), every letter jason drafted by where it stands, and the selected letter as a `DraftLetter` below. Every
  * letter step is a POST to `/api/write/approvals/<key>`, every plan step a POST to `/api/approvals/<id>`, in the
  * signed-in person's name. */
 export function ApprovalsView({ go }: { go?: (screen: string) => void } = {}) {
   const r = useApi<Page>("/api/approvals");
   const people = r.status === "ready" ? r.data.people : undefined;
-  const { me, setMe } = useSession(people);
+  const { me, setMe, account } = useSession(people);
   const [open, setOpen] = useState("");
   const [plan, setPlan] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,13 +38,17 @@ export function ApprovalsView({ go }: { go?: (screen: string) => void } = {}) {
       <header className="approvals-head">
         <h1>Approvals</h1>
         <p className="muted">Everything jason drafted that is waiting on a person. Nothing goes out without approval.</p>
-        <label className="approvals-signin">
-          <span>Sample sign-in: this picks whose name goes on the record</span>
-          <select value={me} onChange={(e) => setMe(e.target.value)} aria-label="Signed in as">
-            <option value="">— pick a person —</option>
-            {(people ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}, {p.role}</option>)}
-          </select>
-        </label>
+        {account ? (
+          <p className="approvals-signin">Signed in with Google as <strong>{account.name}</strong>: every step here goes on the record in that name.</p>
+        ) : (
+          <label className="approvals-signin">
+            <span>Sample sign-in: this picks whose name goes on the record</span>
+            <select value={me} onChange={(e) => setMe(e.target.value)} aria-label="Signed in as">
+              <option value="">— pick a person —</option>
+              {(people ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}, {p.role}</option>)}
+            </select>
+          </label>
+        )}
       </header>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
       <RemoteView r={r}>

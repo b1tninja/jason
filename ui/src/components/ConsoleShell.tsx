@@ -27,8 +27,14 @@ export interface ConsoleShellProps {
   onGo: (id: string) => void;
   audience: Audience;
   onAudience: (a: Audience) => void;
-  /** The "Signed in as" picker: the chosen name and the people to choose from. Hidden for owners or with no one to pick. */
-  session?: { me: string; setMe: (name: string) => void; people: readonly ConsolePerson[] };
+  /** Who is signed in. With `account` (an officer signed in with Google), the header names them with a Sign out button
+   * and there is no picker. Without it, the "Signed in as" picker (the chosen name and the people to choose from; hidden
+   * with no one to pick) and, when `signInHref` is set, a "Sign in with Google" link. Hidden for owners. */
+  session?: {
+    me: string; setMe: (name: string) => void; people: readonly ConsolePerson[];
+    account?: { name: string; role?: string; email?: string } | null;
+    signInHref?: string; signInError?: string; onSignOut?: () => void;
+  };
   /** The dock toolbar, rendered in the header. */
   dock?: ReactNode;
   /** A pinned drawer: a sticky column beside the page. */
@@ -68,7 +74,9 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
   const visible = visibleScreens(screens, audience);
   const owner = audience === "owner";
   const grouped = groups.map((g) => ({ label: g, items: visible.filter((s) => s.group === g) })).filter((g) => g.items.length);
-  const showSignIn = !owner && session && session.people.length > 0;
+  const account = !owner ? session?.account : null;
+  const showPicker = !owner && !account && session && session.people.length > 0;
+  const googleHref = !owner && !account ? session?.signInHref : "";
   return (
     <div className="console">
       <header className="console-bar">
@@ -78,7 +86,13 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
             <span className="console-legal">{legal} · jason</span>
           </div>
           {recordsAsOf && <span className="console-meta">Records as of {recordsAsOf}</span>}
-          {showSignIn && (
+          {account && (
+            <span className="console-signin" title={account.email ? `${account.email}, signed in with Google` : "Signed in with Google"}>
+              Signed in as <strong className="console-signin-name">{account.role ? `${account.name}, ${account.role}` : account.name}</strong>
+              {session?.onSignOut && <button className="link" onClick={session.onSignOut}>Sign out</button>}
+            </span>
+          )}
+          {showPicker && (
             <label className="console-signin">
               Signed in as
               <select value={session.me} onChange={(e) => session.setMe(e.target.value)}>
@@ -89,6 +103,8 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
               </select>
             </label>
           )}
+          {googleHref && <a className="console-signin-google" href={googleHref}>Sign in with Google</a>}
+          {!owner && session?.signInError && <span className="console-signin-error" role="alert">{session.signInError}</span>}
           {dock}
           <div role="radiogroup" aria-label="View as" className="console-seg">
             <button role="radio" aria-checked={!owner} onClick={() => onAudience("board")}>Board</button>

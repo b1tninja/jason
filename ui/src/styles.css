@@ -121,6 +121,10 @@ button.primary { color: var(--on-accent, #fff); }
 .console-legal, .console-meta, .console-signin { color: var(--muted); font-size: 13px; }
 .console-signin { display: flex; gap: 6px; align-items: center; }
 .console-signin select { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; }
+.console-signin-name { color: var(--ink); font-weight: 600; }
+.console-signin-google { font-size: 13px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: var(--bg); white-space: nowrap; }
+.console-signin-google:hover, .console-signin-google:focus-visible { border-color: var(--accent); }
+.console-signin-error { color: var(--bad); font-size: 13px; max-width: 360px; }
 .console-seg, .dock { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
 .console-seg button { border: 0; border-radius: 999px; padding: 4px 14px; font-size: 13px; white-space: nowrap; background: transparent; color: var(--muted); }
 .console-seg button[aria-checked="true"] { background: var(--ink); color: var(--panel); }

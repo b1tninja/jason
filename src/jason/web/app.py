@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, make_response, request, send_from_directory
 
-from jason.web import guard
+from jason.web import guard, signin
 from jason.web.approvals import LiveFactory, blueprint as approvals_routes, default_live
 from jason.web.sources import confirm_owner_info_write, default_loaders, extra_writer, set_board_item, write_canvas, write_decision, write_hearing_decision, write_request
 
@@ -34,22 +34,26 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
                request_writer: Writer | None = write_request, owner_info_writer: Writer | None = confirm_owner_info_write,
                hearing_writer: Writer | None = write_hearing_decision, extra_writes: bool = True,
                approvals_live: LiveFactory | None = default_live, allow_apply: bool = False,
-               approvals_writes: bool = True, hosts: tuple[str, ...] = ()) -> Flask:
+               approvals_writes: bool = True, hosts: tuple[str, ...] = (),
+               sign_in: signin.SignIn | None = None) -> Flask:
     """``allow_apply`` turns on ``POST /api/approvals/<id>/apply``, a write to PayHOA (``jason-web --allow-apply``);
     ``approvals_live`` builds the live context a check or an apply reads (None turns both off); ``hosts`` adds a
-    name the Host check accepts beside the loopback names (``--host``)."""
+    name the Host check accepts beside the loopback names (``--host``); ``sign_in`` is Google sign-in
+    (``jason.web.signin``; default: as .env sets it up, not required)."""
     dist = Path(dist) if dist else Path(os.environ.get("JASON_UI_DIST", DEFAULT_DIST))
     sources = default_loaders() if loaders is None else loaders
     app = Flask(__name__, static_folder=None)
     token = guard.install(app, hosts=hosts)
+    signin.install(app, sign_in or signin.default_sign_in())
     app.config["JASON_ALLOW_APPLY"] = bool(allow_apply and approvals_live is not None)
     app.register_blueprint(approvals_routes(live=approvals_live, allow_apply=allow_apply, writes=approvals_writes))
 
     @app.get("/api/session")
     def session():
-        """What the page needs to write: the token to send in ``X-Jason-Token``, and which writes are on."""
+        """What the page needs to write: the token to send in ``X-Jason-Token``, which writes are on, and who is
+        signed in (``signedIn``, from Google sign-in; null when no one is)."""
         return jsonify(token=token, header=guard.TOKEN_HEADER, applyEnabled=app.config["JASON_ALLOW_APPLY"],
-                       liveChecks=approvals_live is not None, approvalsWrites=approvals_writes)
+                       liveChecks=approvals_live is not None, approvalsWrites=approvals_writes, **signin.session_info())
 
     @app.post("/api/board-items/<item_id>")
     def board_item(item_id: str):
@@ -214,12 +218,20 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--allow-apply", action="store_true",
                    help="turn on POST /api/approvals/<id>/apply: an approved plan written to PayHOA, after a live "
                         "re-read, by the named person who echoes its fingerprint. Off by default")
+    p.add_argument("--require-sign-in", action="store_true",
+                   help="refuse every write until an officer signs in with Google (docs/setup.md, Console sign-in)")
     a = p.parse_args(argv)
     from waitress import serve
 
+    sign_in = signin.default_sign_in(required=a.require_sign_in)
+    if a.require_sign_in and not sign_in.configured:
+        p.error(f"--require-sign-in needs Google sign-in set up: {signin.RECORD_KEY} in .env (docs/setup.md)")
     if a.allow_apply:
         print("jason-web: apply is ON: an approved plan can be written to PayHOA from the console", file=sys.stderr)
-    serve(create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,)), host=a.host, port=a.port)
+    if sign_in.configured:
+        print(f"jason-web: Google sign-in is on{' and required for writes' if a.require_sign_in else ''}; its "
+              f"redirect is http://{a.host}:{a.port}{signin.CALLBACK}", file=sys.stderr)
+    serve(create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,), sign_in=sign_in), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":
