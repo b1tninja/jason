@@ -210,7 +210,7 @@ A profile's trials are in its own docs (for this profile, [mystique/docs/living.
 
 ## Numbering a base read by OCR
 
-A base read from a scan gets its section numbers from the label grammar (`outline_labels.outline_from_ocr`), not from `outline_from_text`. The grammar reads garbled labels as the label the order expects ("41" as 4.1, "Gj)" as (j)) and skips a table of contents. `living_docs.build(numbering="aligned")` also lets the working copy place what the grammar could not read, such as an inline "(iv)" or a garbled "63)". A label read clearly and in order is never renumbered, and each difference with the copy is a note in `report.json` under `numbering`. `numbering="text"` keeps the old reader. The method and a trial are in [document-readings.md](document-readings.md), "Section numbers from a scan's OCR".
+A base read from a scan gets its section numbers from the label grammar (`outline_labels.outline_from_ocr`), not from `outline_from_text`. The grammar reads garbled labels as the label the order expects ("41" as 4.1, "Gj)" as (j)) and skips a table of contents. Where the document has a working copy, the build also lets it place what the grammar could not read, such as an inline "(iv)" or a garbled "63)" (`numbering="aligned"`, the default then; `"labels"` without one; `living_docs.default_numbering`). A label read clearly and in order is never renumbered, and each difference with the copy is a note in `report.json` under `numbering`. `numbering="text"` keeps the old reader. The re-read's dry run numbers its readings by the same default. The method and a trial are in [document-readings.md](document-readings.md), "Section numbers from a scan's OCR".
 
 ## Failure modes
 

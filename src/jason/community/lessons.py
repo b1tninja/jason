@@ -311,10 +311,13 @@ LESSONS: tuple[Lesson, ...] = (
            "misplaced them.",
            "Transcriptions are keyed by section number, and a change of reading or of numbering moves the sections.",
            "A re-read is a dry run that migrates each transcription by its words and re-keys the questions; the switch "
-           "needs a person's name and refuses a dry run numbered otherwise than the builds. The label grammar still "
-           "fails on the new engine's text, so the switch waits.",
-           Status.OPEN, guards=("ocr_reread.migrate", "jason living KEY --use-reread (numbering check)",
-                                "tests/test_ocr_reread.py"),
+           "needs a person's name and refuses a dry run numbered otherwise than the builds. The label grammar, tuned on "
+           "one engine, first collapsed the other's columned table of contents into the last article; it now skips "
+           "number-only rows and drops word-poor front matter, and every transcription is placed.",
+           Status.FIXED, guards=("ocr_reread.migrate", "jason living KEY --use-reread (numbering check)",
+                                 "tests/test_ocr_reread.py",
+                                 "tests/test_outline_labels.py (another engine's failure patterns)",
+                                 "procedure document-intake (re-read step)"),
            docs=("docs/living-documents.md (Re-reading a base)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "

@@ -42,7 +42,9 @@ CCRS_LIVING = LivingDocument(
                                    note="a draft (an unsigned 2025 date): listed, not applied")),
     ),
     corrections=(
-        Correction("4.15(m)", "ofanyprovisions", "of any provisions", CorrectionKind.SPACING, source="recorded copy"),
+        # Keyed to the inline subsection the words are in: the working copy numbers the base (aligned numbering).
+        Correction("4.15(m)(iii)", "ofanyprovisions", "of any provisions", CorrectionKind.SPACING,
+                   source="recorded copy"),
         # The scan's OCR glues the struck "six"'s first letter onto "of"; the draft Doc and the page read "of".
         Correction("4.15(m)(iii)", "term ofs thirty", "term of thirty", CorrectionKind.OCR,
                    source="the Second Amendment's recorded copy, page 4"),

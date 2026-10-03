@@ -18,3 +18,15 @@ The general method is [docs/living-documents.md](../../docs/living-documents.md)
 - **The open OCR questions.** Of 176, 98 would no longer be asked; in 83 of them the tool no longer has the words in question. The scan would ask 41 new ones (8 likely).
 - **Section numbers.** The tool reads 394 numbered sections against 365, but it misreads some labels the original read right ("1.10" as "1.40").
 - **Under the label grammar** (`--numbering labels`, the builds' default that day), the grammar read 402 sections in the original reading and only 245 in the tool's ("16(a)" and its like for whole articles), so 426 transcriptions came out unplaced. The tool's reading needs the grammar's attention before a switch, and the switch refuses a dry run numbered otherwise than the builds.
+
+### After the label grammar learned the second engine's layout (October 2, 2026)
+
+The grammar now reads the CLI text's columned table of contents as front matter. Sections read, against the working Doc's 468: the original reading 402 (labels) and 454 (aligned); the CLI reading 388 (labels, up from 245) and 450 (aligned).
+
+| `--numbering` | transcriptions: not needed / carried / re-keyed / unplaced | WER as read: original → CLI | WER with transcriptions: original → CLI |
+|---|---|---|---|
+| text | 448 / 57 / 16 / 2 | 8.55% → 2.18% | 5.01% → 1.85% |
+| labels | 456 / 59 / 16 / 0 | 8.32% → 2.01% | 4.74% → 1.67% |
+| aligned (the default, with the working Doc) | 456 / 59 / 16 / 0 | 8.30% → 1.99% | 4.72% → 1.65% |
+
+With the re-keyed questions accepted as suggested, the CLI reading under `aligned` is 1.55%. The switch (`--use-reread cli --yes --by NAME`) is a person's decision; the correction "ofanyprovisions" is now keyed to 4.15(m)(iii).

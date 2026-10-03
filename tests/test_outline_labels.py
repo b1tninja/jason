@@ -110,6 +110,64 @@ def test_an_excerpt_and_a_gap_keep_their_clear_numbers():
     assert not {m.number: m for m in reading.marks}["4.15(d)"].firm
 
 
+# The same made-up declaration as another OCR engine reads it: its table of contents in columns (bare article
+# headings, rows of numbers), "1.40" for 1.10, a heading run into the next, a number read above its caption, and
+# a wrong digit that only a comma-separated next label settles.
+CLI_OCR = """TABLE OF CONTENTS
+ARTICLE 2
+ARTICLE 3
+1.9 1.10 1.11
+2.1 2.2 2.3
+3.1 3.2 3.3 3.4
+Total Voting Power... 0... ccc cc cece 5
+ARTICLE 4
+ARTICLE 5
+4.1 4.2
+5.1 5.2
+EXHIBIT "A"
+ARTICLE 1 DEFINITIONS
+1.8 Bylaws. "Bylaws" shall mean the bylaws of the Association.
+1.9 City. "City" shall mean the city in which the Development lies.
+1.40 Common Area. "Common Area" shall mean all of the property except the Units.
+1.11 Condominium. "Condominium" shall mean an estate in real property.
+ARTICLE 2 COMMON AREA 2.1 Ownership of Common Area. (a) Association Common Area. Declarant shall convey it.
+(b) Condominium Common Area. Each Unit owns an undivided interest.
+2.2 Assessment Liens.
+(a) Collection. The Association may collect a delinquent Assessment:
+(i) By a civil action in small claims court.
+2.3 (ii) By Recording a lien on the Owner's Unit.
+Foreclosure of Liens.
+(a) Conditions. The Association may foreclose only as the law allows.
+ARTICLE 3 EASEMENTS
+3.4 Easements in General. Easements are reserved as shown on the Map.
+3,2 Utility Easements. Easements for utilities are reserved.
+3,3 Easements Granted by Board. The Board may grant easements.
+3.4 Maintenance Easements. The Association has an easement to maintain the Common Area.
+"""
+
+
+def test_the_grammar_reads_another_engines_failure_patterns():
+    reading = outline_from_ocr(CLI_OCR, key="decl")
+    numbers = _numbers(reading)
+    assert numbers == ["1", "1.8", "1.9", "1.10", "1.11", "2", "2.1", "2.1(a)", "2.1(b)", "2.2", "2.2(a)",
+                       "2.2(a)(i)", "2.2(a)(ii)", "2.3", "2.3(a)", "3", "3.1", "3.2", "3.3", "3.4"]
+    by = {m.number: m for m in reading.marks}
+    assert by["1.10"].raw == "1.40" and by["3.1"].raw == "3.4"
+    assert by["2.1"].how is How.INLINE and by["2.1(a)"].how is How.INLINE
+    notes = {(n.kind, n.number) for n in reading.notes}
+    assert (NoteKind.RECOVERED, "2.3") in notes                 # its number read above its caption
+    assert any(n.kind is NoteKind.OUT_OF_ORDER and "table of contents" in n.detail for n in reading.notes)
+    outline = reading.outline()
+    assert outline.text_of(outline.section("2.3")).startswith("2.3 Foreclosure of Liens.")
+    assert outline.text_of(outline.section("2.2(a)(ii)")).startswith("(ii) By Recording a lien")
+    assert not any(n.startswith(("4", "5")) for n in numbers)      # the table of contents is not the body
+
+
+def test_a_bare_article_heading_still_starts_an_excerpt():
+    reading = outline_from_ocr("ARTICLE 4\n4.15 Rental. An Owner may rent.\n(a) Cap. Ten Units.\n", key="d")
+    assert _numbers(reading) == ["4", "4.15", "4.15(a)"]
+
+
 def test_a_hanging_caption_is_read_with_its_label():
     text = """5.1 Leasing.
 (a) Restriction. Not more than ten Units shall be leased.

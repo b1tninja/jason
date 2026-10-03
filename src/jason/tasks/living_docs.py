@@ -203,7 +203,7 @@ def compare_readings(key: str, first: tuple, second: tuple, label: str) -> list[
 
 def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: Any = None, as_of: date | None = None,
           working: bool = False, all_sections: bool = False, reading: str | None = None,
-          transcribed: tuple | None = None, numbering: str = "labels") -> Built:
+          transcribed: tuple | None = None, numbering: str | None = None) -> Built:
     """The current text of ``living`` from its sources. ``docs`` (a Docs client) reads the Docs afresh and ``drive``
     downloads the scans; without them the copies saved by the last read are used. ``working`` also compares the working
     copy: the sections an amendment set, or with ``all_sections`` every section (where a base read by OCR differs
@@ -211,9 +211,10 @@ def build(living: LivingDocument, data_dir: Path, *, docs: Any = None, drive: An
     person chose) and ``transcribed`` replaces the stored transcriptions (None reads them): both for ``ocr_reread``.
     ``numbering`` says how a base read from text gets its section numbers: "text" (``outline_from_text``), "labels"
     (the label grammar, ``outline_labels``), or "aligned" (the grammar, then the working copy places what it could not:
-    ``outline_align``); see docs/document-readings.md."""
+    ``outline_align``); None is ``default_numbering``. See docs/document-readings.md."""
     from jason.community.living import FindingKind
 
+    numbering = numbering or default_numbering(living)
     cache = living_dir(data_dir, living.key) / "sources"
     if living.base.kind is SourceKind.SCAN:
         kind, base = "text", scan_base_text(living.base, cache, drive, reading=reading)
@@ -295,6 +296,13 @@ def add_transcription(data_dir: Path, key: str, section: str, wrong: str, right:
 def working_copy(living: LivingDocument, data_dir: Path, *, docs: Any = None) -> DocumentOutline | None:
     doc = doc_json(living.working_doc, living_dir(data_dir, living.key) / "sources", docs)
     return outline_from_doc(doc, key=living.key, title=living.title, kind=living.kind.value) if doc else None
+
+
+def default_numbering(living: LivingDocument | None = None) -> str:
+    """How a base read from text is numbered unless a caller says otherwise: by the working copy where the document
+    has one ("aligned": the board approved it as the numbering reference), else by the label grammar ("labels").
+    ``build`` and the re-read's dry run (``ocr_reread``) both use it, so a dry run numbers sections as builds do."""
+    return "aligned" if living is not None and living.working_doc else "labels"
 
 
 def numbered_outline(living: LivingDocument, text: str, data_dir: Path, *, docs: Any = None, aligned: bool = False

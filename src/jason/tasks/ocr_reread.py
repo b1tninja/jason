@@ -491,12 +491,10 @@ def _rows(path: Path) -> list[dict]:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
 
 
-def build_numbering() -> str:
-    """How ``living_docs.build`` numbers a base read from text by default ("text" where it has no choice)."""
-    import inspect
-
-    p = inspect.signature(living_docs.build).parameters.get("numbering")
-    return str(p.default) if p is not None else "text"
+def build_numbering(living: Any = None) -> str:
+    """How ``living_docs.build`` numbers ``living``'s base read from text by default (``living_docs.
+    default_numbering``: by the working copy where there is one, else by the label grammar)."""
+    return living_docs.default_numbering(living)
 
 
 def _build(living: Any, data_dir: Path, numbering: str, **kw: Any) -> Any:
@@ -596,7 +594,7 @@ def dry_run(living: Any, data_dir: Path, reading: str = "cli", *, lexicon: bool 
     rows = _rows(active)
 
     # Builds: each reading as read, and with its transcriptions.
-    numbering = numbering or build_numbering()
+    numbering = numbering or build_numbering(living)
     old_raw = _build(living, data_dir, numbering, reading=in_use, transcribed=())
     new_raw = _build(living, data_dir, numbering, reading=reading, transcribed=())
     old_base = base_provisions(living, old_text, data_dir, numbering)
@@ -833,10 +831,10 @@ def switch(living: Any, data_dir: Path, reading: str, by: str) -> list[str]:
     if in_use != detail.get("in_use", ""):
         raise ValueError(f"the reading in use changed since the dry run: jason living {key} --reread {reading} again")
     numbered = detail.get("sections", {}).get("numbering", "text")
-    if numbered != build_numbering():
+    if numbered != build_numbering(living):
         raise ValueError(f"the dry run numbered sections by {numbered!r}, and builds number them by "
-                         f"{build_numbering()!r}: the migrated transcriptions are keyed to the wrong sections. Run "
-                         f"jason living {key} --reread {reading} --numbering {build_numbering()} again")
+                         f"{build_numbering(living)!r}: the migrated transcriptions are keyed to the wrong sections. Run "
+                         f"jason living {key} --reread {reading} --numbering {build_numbering(living)} again")
     cache = living_docs.living_dir(data_dir, key) / "sources"
     if not (cache / detail["files"]["new"]).is_file():
         raise ValueError(f"the {reading} reading's text is gone: jason living {key} --reread {reading} again")

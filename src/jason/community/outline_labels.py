@@ -324,8 +324,8 @@ def _clear_head(line: str) -> _Head | None:
         if re.fullmatch(r"[IVXL]+", tok):
             return _Head(True, roman_value(tok))
         return None
-    if (m := _DOTTED_AT.match(s)) and m.group(1).isdigit() and m.group(3).isdigit() and "." in m.group(2):
-        return _Head(False, int(m.group(1)), int(m.group(3)))
+    if (m := _DOTTED_AT.match(s)) and m.group(1).isdigit() and m.group(3).isdigit():
+        return _Head(False, int(m.group(1)), int(m.group(3)))       # "9,2" too: clear enough to look ahead by
     return None
 
 
@@ -343,7 +343,7 @@ def _consistent(nxt: _Head | None, a: int, b: int) -> bool:
 def outline_from_ocr(text: str, *, key: str, title: str = "", kind: str = "") -> LabelReading:
     """The labels of an OCR'd document, read by the grammar, the confusions, and the order (see the module's notes).
     ``reading.outline()`` is the ``DocumentOutline``; ``reading.notes`` say what was recovered, skipped, or doubtful."""
-    text = normalize(text)
+    text, moved = _displaced_labels(normalize(text))
     lines: list[tuple[int, str]] = []
     at = 0
     for raw in text.splitlines(keepends=True):
@@ -359,14 +359,39 @@ def outline_from_ocr(text: str, *, key: str, title: str = "", kind: str = "") ->
     st = _State()
     last_marked = -1
     for i, (off, s) in enumerate(lines):
-        if not s.strip() or _LEADERS.search(s) or len(_TOC.findall(s)) >= 2:
+        if not s.strip() or _LEADERS.search(s) or len(_TOC.findall(s)) >= 2 or _number_row(s):
             continue                       # a table of contents line: its numbers are not sections
         prev = lines[i - 1][1] if i and last_marked != i - 1 else ""
-        if _read_article(reading, st, off, s, upcoming[i]) or _read_section(reading, st, off, s, upcoming[i]) \
+        if _read_article(reading, st, text, off, s, upcoming[i]) or _read_section(reading, st, off, s, upcoming[i]) \
                 or _read_subsection(reading, st, text, off, s, prev, lines[i - 1][0] if i else 0):
             last_marked = i
+            _run_in_heads(reading, st, text, off, s)
+    reading.notes += [LabelNote(NoteKind.RECOVERED, number, "its number was read on the line above its caption")
+                      for number in moved]
     reading.marks.sort(key=lambda m: m.start)
     return reading
+
+
+_DISPLACED = re.compile(r"(\d+\.\d+)[ \t]+(?=[(\[{][ivxl1]{1,4}[)\]}])")
+
+
+def _displaced_labels(text: str) -> tuple[str, list[str]]:
+    """A section number OCR read onto the line above its caption: "6.13 (ii) By Recording a lien ..." with
+    "Foreclosure of Association Assessment Liens." alone a line or two below. The number goes back before its
+    caption, and the line it was read on keeps its own subsection label. Returns the text and the numbers moved."""
+    lines = text.split("\n")
+    moved = []
+    for i, line in enumerate(lines):
+        m = _DISPLACED.match(line)
+        if not m:
+            continue
+        for j in (i + 1, i + 2):
+            if j < len(lines) and _lone_caption(lines[j]) and not _DISPLACED.match(lines[j]):
+                lines[i] = line[m.end():]
+                lines[j] = f"{m.group(1)} {lines[j].strip()}"
+                moved.append(m.group(1))
+                break
+    return "\n".join(lines), moved
 
 
 def _starts(s: str) -> list[int]:
@@ -377,7 +402,56 @@ def _starts(s: str) -> list[int]:
     return out
 
 
-def _read_article(reading: LabelReading, st: _State, off: int, s: str, nxt: _Head | None) -> bool:
+_NUMBER_TOKEN = re.compile(r"[0-9VIl|SO]{1,3}(?:[.,][0-9Il|SO]{1,3})?\.?")
+
+
+def _number_row(s: str) -> bool:
+    """A line of section numbers and nothing else ("2.1 2.2 2.3 2.4", "7.1 7.2 74 75 V7"): a table of contents laid
+    out in columns, its numbers read apart from their captions."""
+    tokens = s.split()
+    return len(tokens) >= 2 and all(_NUMBER_TOKEN.fullmatch(t) for t in tokens) and any("." in t for t in tokens)
+
+
+def _front_matter(reading: LabelReading, text: str, at: int) -> bool:
+    """Whether the marks read so far are front matter, not a body: a table of contents whose headings and numbers
+    carry almost no words of their own."""
+    marks = sorted(reading.marks, key=lambda m: m.start)
+    if not marks:
+        return False
+    words = [len(text[max(m.cut, m.start): (marks[k + 1].start if k + 1 < len(marks) else at)].split())
+             for k, m in enumerate(marks)]
+    return sorted(words)[len(words) // 2] < 8
+
+
+_RUN_IN_SECTION = r"(?<=[\s.])({base})\.?[ \t]+(?=[A-Z])"
+_RUN_IN_FIRST = re.compile(r"(?<=[.:][ \t])[(\[{][ \t]*a[ \t]*[)\]}][ \t]+(?=[A-Z])")
+
+
+def _run_in_heads(reading: LabelReading, st: _State, text: str, off: int, s: str) -> None:
+    """Headings OCR ran into the line before them: "ARTICLE 3 COMMON AREA 3.1 Ownership of Common Area. (a)
+    Association Common Area. Declarant shall ...". Only the next expected labels, each after a capitalized heading."""
+    head = st.head
+    if head is None or not off <= head.start <= off + len(s) or st.section or st.levels:
+        return                             # only after an article's heading read on this line
+    pos = max(head.cut, head.start)
+    end = off + len(s)
+    m = re.compile(_RUN_IN_SECTION.format(base=re.escape(f"{st.article}.1"))).search(text, pos, end)
+    if not m:
+        return
+    number = f"{st.article}.1"
+    mark = Mark(number, m.start(), m.end(), f"{number} ", text[m.end():end][:120], How.INLINE, 0.0, True, m.group(0))
+    reading.marks.append(mark)
+    reading.notes.append(LabelNote(NoteKind.INLINE, number, "run into the heading before it"))
+    st.section, st.head, st.levels, pos = 1, mark, [], m.end()
+    if (m := _RUN_IN_FIRST.search(text, pos, end)) and captioned(text[m.end():end]):
+        number = f"{st.base()}(a)"
+        mark = Mark(number, m.start(), m.end(), "(a) ", text[m.end():end][:120], How.INLINE, 0.0, True, m.group(0))
+        reading.marks.append(mark)
+        reading.notes.append(LabelNote(NoteKind.INLINE, number, "run into the heading before it"))
+        st.levels = [_Level(Series.LOWER, 1, mark, captioned(text[m.end():end]))]
+
+
+def _read_article(reading: LabelReading, st: _State, text: str, off: int, s: str, nxt: _Head | None) -> bool:
     for p in _starts(s):
         m = _ARTICLE_AT.match(s, p)
         if not m:
@@ -389,6 +463,14 @@ def _read_article(reading: LabelReading, st: _State, off: int, s: str, nxt: _Hea
         if rest and not cap:
             continue                                   # "Article 6 of this Declaration": a reference, not a heading
         value = int(tok) if tok.isdigit() else roman_value(tok) if re.fullmatch(r"[IVXL]+", tok) else 0
+        if (value and value <= st.article and cap and nxt is not None and not nxt.article and nxt.a == value
+                and _front_matter(reading, text, off)):
+            # The body starts again from a lower article: what was read so far was a table of contents.
+            dropped = ", ".join(x.number for x in reading.marks[:6]) + ("…" if len(reading.marks) > 6 else "")
+            reading.notes[:] = [LabelNote(NoteKind.OUT_OF_ORDER, dropped,
+                                          f"a table of contents before ARTICLE {value}: read as text")]
+            reading.marks.clear()
+            st.article, st.section, st.head, st.levels = 0, 0, None, []
         targets = [(st.article + 1, 0.0), (st.article + 2, 0.6), (st.article + 3, 0.9)]
         if value > st.article + 1:
             targets.append((value, 0.0 if st.article == 0 else 0.3))     # a clear number: an excerpt, or a gap

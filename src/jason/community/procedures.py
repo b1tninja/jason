@@ -257,6 +257,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  refs=("docs/ocr-correction.md",), lessons=("ocr-engine-runs-words-together",)),
             Step("Apply the answers, and build again.", command="jason intake --apply; jason living KEY",
                  check="transcriptions applied; the question count falls"),
+            Step("When a better reading of a scanned base is available, re-read it as a dry run, and switch only on a "
+                 "person's word.", command="jason living KEY --reread cli; jason living KEY --use-reread cli --yes "
+                                           "--by NAME",
+                 check="the re-read's section count under the builds' numbering is close to the reading in use; no "
+                       "transcription unplaced; the WER falls; the re-keyed questions answered after the switch",
+                 refs=("docs/living-documents.md (Re-reading a base)",),
+                 lessons=("reading-moves-transcriptions", "ocr-labels-garbled"), person=True),
             Step("Check what the document changes against the law and the other documents: conflict leads, duties, "
                  "notice requirements.", command="jason conflicts --leads --document KEY",
                  refs=("procedure law-review",), lessons=("law-outdates-provisions",)),

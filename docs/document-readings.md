@@ -67,7 +67,10 @@ A recorded copy's OCR garbles many labels, and `outline_from_text` reads only cl
 - an empty or half label ("()", "( Rehearing");
 - a misread roman numeral ("(it)", "(11)", "(ili)");
 - stray marks before the label ("“ (a)", "| (b)");
-- a table of contents whose dot leaders OCR broke up;
+- a table of contents whose dot leaders OCR broke up, or that another engine lays out in columns: bare "ARTICLE 2" lines and rows of numbers ("2.1 2.2 2.3");
+- a wrong digit in a clear-looking number ("1.40" between 1.9 and 1.11);
+- a heading run into the line before it ("ARTICLE 3 COMMON AREA 3.1 Ownership of Common Area. (a) Association Common Area. ...");
+- a section number read on the line above its caption ("6.13 (ii) By Recording a lien ...", with "Foreclosure of Liens." alone below);
 - subsections listed inline ("Rules (i) limiting ..., (ii) limiting ...").
 
 Two steps recover them. Each keeps what it did as a note, and a miss stays a miss.
@@ -79,6 +82,8 @@ Two steps recover them. Each keeps what it did as a note, and a miss stays a mis
   - a dropped or doubled stroke in a roman numeral, a missing dot, or a missing parenthesis costs a little;
   - an unrelated glyph costs a whole substitution. That is accepted only with a caption after the label. For a section number, the next clear label must also agree: "9.4" before "9.2" is 9.1.
 - **The order.** Labels increase. A skipped label is a gap, noted, and a clear later number stands (an excerpt that starts at 4.15). A clear label that goes backwards is a cross-reference at a line's start, read as text.
+- **Front matter.** A row of numbers alone is a table of contents and read as text. When a captioned article heading starts the order again from a lower number ("ARTICLE 1 DEFINITIONS" after bare headings up to "ARTICLE 16") and what was read so far carries almost no words of its own, that was a table of contents: it is dropped, with a note, and the body is read from there.
+- **Run-in and displaced headings.** An article heading's line is searched for its first section and that section's "(a)" run into it. A section number read above its subsection line, with its caption alone a line or two below, is moved back before its caption.
 - **Inline labels.** A line label whose predecessors were not read ("(iii)" with no (i) or (ii)) looks for them mid-line in its parent's words. It splits them out, then reads the rest of that series on its line. An inline enumeration nothing points to stays words.
 - **A hanging caption.** A short Title Case line just before a label line with no caption of its own is that label's caption, when the label's siblings carry captions.
 - **Firm and unclear.** Each label (`Mark`) records how it was read: clear, recovered, or inline. It is firm when it was read cleanly and in order.
@@ -92,16 +97,17 @@ The outline's text writes each label cleanly ("Gj)" as "(j)", "41" as "4.1").
 
 **In the living documents.** `living_docs.build(numbering=...)` chooses how a base read from text is numbered:
 - `"text"` is `outline_from_text`;
-- `"labels"`, the default, is the grammar;
+- `"labels"` is the grammar;
 - `"aligned"` is the grammar, then the working copy.
 
-The notes go to `Built.numbering` and to `report.json` under `numbering`.
+Unless a caller says otherwise, a document with a working copy is numbered `"aligned"` (the board approved the working copy as the numbering reference) and one without is numbered `"labels"` (`living_docs.default_numbering`). The re-read's dry run numbers both readings the same way, so its migrated transcriptions are keyed as the builds key them. The notes go to `Built.numbering` and to `report.json` under `numbering`.
 
 **A trial on a recorded declaration.** It compared every section with the board's working copy:
 - **The grammar alone** cut the sections in one outline only by about two fifths. No section that had matched began to differ. The table of contents no longer passes as sections, so the corrections it had made stale applied.
 - **With alignment**, they fell to about a third. What remains is mostly the copy's own numbering: lists it enumerates with letters where the recorded text has roman numerals, a list nested a level too deep, a renumbered run of subsections, and a section an amendment added. Those are findings for a person, not OCR.
 - **The words.** The amended sections and the rule checks were unchanged. More sections are now compared word by word, and their differences are the OCR's word slips.
-- **One side effect.** A correction keyed to a section whose inline subsections alignment splits out early ("7.3(b)" holding words now in "7.3(b)(iii)") goes stale. Re-key it to the subsection before making `"aligned"` the default.
+- **One side effect.** A correction keyed to a section whose inline subsections alignment splits out early ("7.3(b)" holding words now in "7.3(b)(iii)") goes stale. It is re-keyed to the subsection.
+- **A second engine's reading.** The Tesseract command-line tool's reading of the same scan lays its table of contents out in columns. Before the front-matter and run-in rules, the grammar read about three fifths as many sections in it as in the first reading, and the articles collapsed under the table's last heading. After them, both readings come within a few sections of each other, by the grammar alone and with alignment, and the re-read's dry run leaves no transcription unplaced.
 
 **A layout model?** Recognising headings and list items with a model such as granite-docling or PaddleOCR-VL (see [document-tools.md](document-tools.md), "Not tried yet") would add little to the numbering. After the grammar and alignment, a handful of labels remain garbled beyond reading. A trial is worth its download only if it is scored as a whole-page OCR on the word differences, with label recovery (`outline_from_ocr` over its text) as a second score.
 
