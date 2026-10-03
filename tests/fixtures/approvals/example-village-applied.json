@@ -1,0 +1,717 @@
+{
+ "id": "apr-20261003T183801-51fb",
+ "kind": "owner-info-tags",
+ "title": "Owner information: PayHOA tags and request completions",
+ "status": "applied",
+ "scope": {
+  "payhoa": true,
+  "cycle": 2027
+ },
+ "profile": "example-village",
+ "fingerprint": "f12f68bc95107ae48a4247a73ab578d6bd8a324fdb64e6aead6cc6ea4e418b59",
+ "readAt": "2026-10-03T18:38:01+00:00",
+ "requestedBy": "A Manager",
+ "requestedAt": "2026-10-03T18:38:01+00:00",
+ "requestedVia": "cli",
+ "evidence": [
+  {
+   "label": "The same plan as a dry run",
+   "address": "jason owner-info --apply --payhoa"
+  },
+  {
+   "label": "Civil Code 4040, 4041",
+   "address": "CIV 4041"
+  },
+  {
+   "label": "The response policy's findings",
+   "address": "jason owner-info --responses"
+  }
+ ],
+ "items": [
+  {
+   "id": "7344a0e1a0d1efa6",
+   "op": "member tag -",
+   "target": "member:10",
+   "label": "101 EXAMPLE WAY: Ana Example",
+   "value": "Notices by Email",
+   "why": "this cycle's answer (payhoa:501)",
+   "group": "101 EXAMPLE WAY: Ana Example",
+   "change": {
+    "op": "remove",
+    "field": "member tags",
+    "value": "Notices by Email",
+    "before": "Notices by Email",
+    "after": "",
+    "text": "- Notices by Email (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 501",
+     "address": "payhoa:submission:501"
+    }
+   ],
+   "basis": "4cd8072d3d4c7b2b49bc8218e77e4462c9236566a3b7826acecb5ffeaa791549",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "rejected",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "next week",
+   "result": "not_applied",
+   "resultDetail": "rejected by A Manager: next week"
+  },
+  {
+   "id": "ce429297c68875e6",
+   "op": "member tag +",
+   "target": "member:10",
+   "label": "101 EXAMPLE WAY: Ana Example",
+   "value": "Notices by Mail",
+   "why": "this cycle's answer (payhoa:501)",
+   "group": "101 EXAMPLE WAY: Ana Example",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Notices by Mail",
+    "before": "Notices by Email",
+    "after": "Notices by Email, Notices by Mail",
+    "text": "+ Notices by Mail (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 501",
+     "address": "payhoa:submission:501"
+    }
+   ],
+   "basis": "4cd8072d3d4c7b2b49bc8218e77e4462c9236566a3b7826acecb5ffeaa791549",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "rejected",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "next week",
+   "result": "not_applied",
+   "resultDetail": "rejected by A Manager: next week"
+  },
+  {
+   "id": "a6011a0ad7cbb357",
+   "op": "member tag +",
+   "target": "member:10",
+   "label": "101 EXAMPLE WAY: Ana Example",
+   "value": "Owner Info 2027",
+   "why": "this cycle's answer (payhoa:501)",
+   "group": "101 EXAMPLE WAY: Ana Example",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Owner Info 2027",
+    "before": "Notices by Email",
+    "after": "Notices by Email, Owner Info 2027",
+    "text": "+ Owner Info 2027 (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 501",
+     "address": "payhoa:submission:501"
+    }
+   ],
+   "basis": "4cd8072d3d4c7b2b49bc8218e77e4462c9236566a3b7826acecb5ffeaa791549",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "rejected",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "next week",
+   "result": "not_applied",
+   "resultDetail": "rejected by A Manager: next week"
+  },
+  {
+   "id": "dceffc0b8fac3f1d",
+   "op": "member tag +",
+   "target": "member:11",
+   "label": "102 EXAMPLE WAY: Ben Sample",
+   "value": "Notices by Email",
+   "why": "this cycle's answer (payhoa:502)",
+   "group": "102 EXAMPLE WAY: Ben Sample",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Notices by Email",
+    "before": "",
+    "after": "Notices by Email",
+    "text": "+ Notices by Email (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 502",
+     "address": "payhoa:submission:502"
+    }
+   ],
+   "basis": "5312b5da743162ecd8258388b655666c491d6f9aa33bc4a0d8561ab92834650c",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "written"
+  },
+  {
+   "id": "79b0872b69c00a3f",
+   "op": "member tag +",
+   "target": "member:11",
+   "label": "102 EXAMPLE WAY: Ben Sample",
+   "value": "Owner Info 2027",
+   "why": "this cycle's answer (payhoa:502)",
+   "group": "102 EXAMPLE WAY: Ben Sample",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Owner Info 2027",
+    "before": "",
+    "after": "Owner Info 2027",
+    "text": "+ Owner Info 2027 (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 502",
+     "address": "payhoa:submission:502"
+    }
+   ],
+   "basis": "5312b5da743162ecd8258388b655666c491d6f9aa33bc4a0d8561ab92834650c",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "written"
+  },
+  {
+   "id": "e956ce6be8a40eaf",
+   "op": "member tag +",
+   "target": "member:12",
+   "label": "103 EXAMPLE WAY: Cy Placeholder",
+   "value": "Notices by Email",
+   "why": "this cycle's answer (payhoa:503)",
+   "group": "103 EXAMPLE WAY: Cy Placeholder",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Notices by Email",
+    "before": "",
+    "after": "Notices by Email",
+    "text": "+ Notices by Email (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 503",
+     "address": "payhoa:submission:503"
+    }
+   ],
+   "basis": "7e129adb89490bbdf1a5f8a50ee05af5886717ac522a3b40f929fa96fe85a717",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "rejected",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "next week",
+   "result": "not_applied",
+   "resultDetail": "rejected by A Manager: next week"
+  },
+  {
+   "id": "9f524866de8c5727",
+   "op": "member tag +",
+   "target": "member:12",
+   "label": "103 EXAMPLE WAY: Cy Placeholder",
+   "value": "Owner Info 2027",
+   "why": "this cycle's answer (payhoa:503)",
+   "group": "103 EXAMPLE WAY: Cy Placeholder",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Owner Info 2027",
+    "before": "",
+    "after": "Owner Info 2027",
+    "text": "+ Owner Info 2027 (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 503",
+     "address": "payhoa:submission:503"
+    }
+   ],
+   "basis": "7e129adb89490bbdf1a5f8a50ee05af5886717ac522a3b40f929fa96fe85a717",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "rejected",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "next week",
+   "result": "not_applied",
+   "resultDetail": "rejected by A Manager: next week"
+  },
+  {
+   "id": "6f35931565f4e006",
+   "op": "member tag +",
+   "target": "member:13",
+   "label": "104 EXAMPLE WAY: Dee Fictional",
+   "value": "Notices by Email",
+   "why": "this cycle's answer (payhoa:504)",
+   "group": "104 EXAMPLE WAY: Dee Fictional",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Notices by Email",
+    "before": "",
+    "after": "Notices by Email",
+    "text": "+ Notices by Email (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 504",
+     "address": "payhoa:submission:504"
+    }
+   ],
+   "basis": "bd148e0e31d936744dbfa086efd271ceba1acecb86de7387725441b109d7de60",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "written"
+  },
+  {
+   "id": "a0f145a0cdf5357c",
+   "op": "member tag +",
+   "target": "member:13",
+   "label": "104 EXAMPLE WAY: Dee Fictional",
+   "value": "Notices by Mail",
+   "why": "this cycle's answer (payhoa:504)",
+   "group": "104 EXAMPLE WAY: Dee Fictional",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Notices by Mail",
+    "before": "",
+    "after": "Notices by Mail",
+    "text": "+ Notices by Mail (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 504",
+     "address": "payhoa:submission:504"
+    }
+   ],
+   "basis": "bd148e0e31d936744dbfa086efd271ceba1acecb86de7387725441b109d7de60",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "written"
+  },
+  {
+   "id": "6ae6c864f8a1250c",
+   "op": "member tag +",
+   "target": "member:13",
+   "label": "104 EXAMPLE WAY: Dee Fictional",
+   "value": "Owner Info 2027",
+   "why": "this cycle's answer (payhoa:504)",
+   "group": "104 EXAMPLE WAY: Dee Fictional",
+   "change": {
+    "op": "add",
+    "field": "member tags",
+    "value": "Owner Info 2027",
+    "before": "",
+    "after": "Owner Info 2027",
+    "text": "+ Owner Info 2027 (member tags)"
+   },
+   "rule": "the response policy's delivery row (owner_responses.RULES: delivery)",
+   "evidence": [
+    {
+     "label": "PayHOA request 504",
+     "address": "payhoa:submission:504"
+    }
+   ],
+   "basis": "bd148e0e31d936744dbfa086efd271ceba1acecb86de7387725441b109d7de60",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "written"
+  },
+  {
+   "id": "acad6529c029339a",
+   "op": "unit tag -",
+   "target": "unit:1",
+   "label": "101 EXAMPLE WAY: Ana Example",
+   "value": "Rental",
+   "why": "says owner-occupied; the unit is tagged Rented out: held for the board by the response policy (occupancy-vs-tag)",
+   "group": "101 EXAMPLE WAY: Ana Example",
+   "change": {
+    "op": "remove",
+    "field": "unit tags",
+    "value": "Rental",
+    "before": "Rental",
+    "after": "",
+    "text": "- Rental (unit tags)"
+   },
+   "rule": "owner_responses.RULES: occupancy-vs-tag",
+   "evidence": [
+    {
+     "label": "Board item rental-approvals-4-15",
+     "address": "board-item:rental-approvals-4-15"
+    },
+    {
+     "label": "PayHOA request 501",
+     "address": "payhoa:submission:501"
+    }
+   ],
+   "basis": "2e2705aa73b5f3a08ff43cef633826223c021e3b27d5a0c37a329ee6df719d5e",
+   "class": "held_for_board",
+   "boardItem": "rental-approvals-4-15",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "undecided",
+   "decidedBy": "",
+   "decidedAt": "",
+   "reason": "",
+   "result": "not_applied",
+   "resultDetail": "held for board"
+  },
+  {
+   "id": "f8c33b440bec33f9",
+   "op": "unit tag +",
+   "target": "unit:1",
+   "label": "101 EXAMPLE WAY: Ana Example",
+   "value": "Owner Occupied",
+   "why": "says owner-occupied; the unit is tagged Rented out: held for the board by the response policy (occupancy-vs-tag)",
+   "group": "101 EXAMPLE WAY: Ana Example",
+   "change": {
+    "op": "add",
+    "field": "unit tags",
+    "value": "Owner Occupied",
+    "before": "Rental",
+    "after": "Owner Occupied, Rental",
+    "text": "+ Owner Occupied (unit tags)"
+   },
+   "rule": "owner_responses.RULES: occupancy-vs-tag",
+   "evidence": [
+    {
+     "label": "Board item rental-approvals-4-15",
+     "address": "board-item:rental-approvals-4-15"
+    },
+    {
+     "label": "PayHOA request 501",
+     "address": "payhoa:submission:501"
+    }
+   ],
+   "basis": "2e2705aa73b5f3a08ff43cef633826223c021e3b27d5a0c37a329ee6df719d5e",
+   "class": "held_for_board",
+   "boardItem": "rental-approvals-4-15",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "undecided",
+   "decidedBy": "",
+   "decidedAt": "",
+   "reason": "",
+   "result": "not_applied",
+   "resultDetail": "held for board"
+  },
+  {
+   "id": "62e81e24baaf4a8e",
+   "op": "request stays open",
+   "target": "submission:501",
+   "label": "101 EXAMPLE WAY: Ana Example",
+   "value": "board: occupancy-vs-tag",
+   "why": "only a request with nothing left is completed (the board's rule); what is left: board: occupancy-vs-tag",
+   "group": "101 EXAMPLE WAY: Ana Example",
+   "change": null,
+   "rule": "the board's owner-information completion rule (AGENTS.md)",
+   "evidence": [
+    {
+     "label": "PayHOA request 501",
+     "address": "payhoa:submission:501"
+    }
+   ],
+   "basis": "14e6168175ccc0d7afbcb459976c46d6086f8ee9bb377ec12349f7eb30998031",
+   "class": "informational",
+   "boardItem": "",
+   "dependsOn": [
+    "7344a0e1a0d1efa6",
+    "ce429297c68875e6",
+    "a6011a0ad7cbb357"
+   ],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "undecided",
+   "decidedBy": "",
+   "decidedAt": "",
+   "reason": "",
+   "result": "not_applied",
+   "resultDetail": "informational"
+  },
+  {
+   "id": "9611d0b11945aa9a",
+   "op": "complete request",
+   "target": "submission:502",
+   "label": "102 EXAMPLE WAY: Ben Sample",
+   "value": "complete",
+   "why": "nothing is left but its writes: once they are made, the request is marked complete and the board's comment is emailed to the owner",
+   "group": "102 EXAMPLE WAY: Ben Sample",
+   "change": {
+    "op": "set",
+    "field": "request status",
+    "value": "complete",
+    "before": "pending",
+    "after": "complete",
+    "text": "request status: pending -> complete"
+   },
+   "rule": "the board's owner-information completion rule (AGENTS.md)",
+   "evidence": [
+    {
+     "label": "PayHOA request 502",
+     "address": "payhoa:submission:502"
+    }
+   ],
+   "basis": "fe71e07c36910eb3d5d6d020a323eebff404aad58655e1830fe8924df5c20bf9",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [
+    "dceffc0b8fac3f1d",
+    "79b0872b69c00a3f"
+   ],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "marked complete; the owner is thanked"
+  },
+  {
+   "id": "3bb2cb92e752903d",
+   "op": "for a person",
+   "target": "submission:503",
+   "label": "103 EXAMPLE WAY: Cy Placeholder",
+   "value": "a person enters the secondary delivery",
+   "why": "an answer asks what jason does not write: a person enters it in PayHOA",
+   "group": "103 EXAMPLE WAY: Cy Placeholder",
+   "change": null,
+   "rule": "owner_info.FOR_A_PERSON",
+   "evidence": [
+    {
+     "label": "PayHOA request 503",
+     "address": "payhoa:submission:503"
+    }
+   ],
+   "basis": "61dfd4507d2cda27771333d7ec00c6758f8449864c6900774d66c932cc34bf91",
+   "class": "for_a_person",
+   "boardItem": "",
+   "dependsOn": [],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "undecided",
+   "decidedBy": "",
+   "decidedAt": "",
+   "reason": "",
+   "result": "not_applied",
+   "resultDetail": "for a person"
+  },
+  {
+   "id": "3283f85a1978f2d8",
+   "op": "request stays open",
+   "target": "submission:503",
+   "label": "103 EXAMPLE WAY: Cy Placeholder",
+   "value": "a person enters the secondary delivery",
+   "why": "only a request with nothing left is completed (the board's rule); what is left: a person enters the secondary delivery",
+   "group": "103 EXAMPLE WAY: Cy Placeholder",
+   "change": null,
+   "rule": "the board's owner-information completion rule (AGENTS.md)",
+   "evidence": [
+    {
+     "label": "PayHOA request 503",
+     "address": "payhoa:submission:503"
+    }
+   ],
+   "basis": "61dfd4507d2cda27771333d7ec00c6758f8449864c6900774d66c932cc34bf91",
+   "class": "informational",
+   "boardItem": "",
+   "dependsOn": [
+    "e956ce6be8a40eaf",
+    "9f524866de8c5727"
+   ],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "undecided",
+   "decidedBy": "",
+   "decidedAt": "",
+   "reason": "",
+   "result": "not_applied",
+   "resultDetail": "informational"
+  },
+  {
+   "id": "0567aea365e18877",
+   "op": "complete request",
+   "target": "submission:504",
+   "label": "104 EXAMPLE WAY: Dee Fictional",
+   "value": "complete",
+   "why": "nothing is left but its writes: once they are made, the request is marked complete and the board's comment is emailed to the owner",
+   "group": "104 EXAMPLE WAY: Dee Fictional",
+   "change": {
+    "op": "set",
+    "field": "request status",
+    "value": "complete",
+    "before": "pending",
+    "after": "complete",
+    "text": "request status: pending -> complete"
+   },
+   "rule": "the board's owner-information completion rule (AGENTS.md)",
+   "evidence": [
+    {
+     "label": "PayHOA request 504",
+     "address": "payhoa:submission:504"
+    }
+   ],
+   "basis": "64d0d2cf0b2ea0da9849a8607bdfb2bbcb0a00abad5fe73d6bb35831ba5a65dc",
+   "class": "approvable",
+   "boardItem": "",
+   "dependsOn": [
+    "6f35931565f4e006",
+    "a0f145a0cdf5357c",
+    "6ae6c864f8a1250c"
+   ],
+   "highStakes": false,
+   "costCents": 0,
+   "decision": "approved",
+   "decidedBy": "A Manager",
+   "decidedAt": "2026-10-03T18:38:01+00:00",
+   "reason": "",
+   "result": "applied",
+   "resultDetail": "marked complete; the owner is thanked"
+  }
+ ],
+ "decisions": [
+  {
+   "by": "A Manager",
+   "at": "2026-10-03T18:38:01+00:00",
+   "items": [
+    "0567aea365e18877",
+    "6ae6c864f8a1250c",
+    "6f35931565f4e006",
+    "79b0872b69c00a3f",
+    "9611d0b11945aa9a",
+    "a0f145a0cdf5357c",
+    "dceffc0b8fac3f1d"
+   ],
+   "decision": "approved",
+   "reason": "",
+   "fingerprint": "f12f68bc95107ae48a4247a73ab578d6bd8a324fdb64e6aead6cc6ea4e418b59",
+   "via": "cli"
+  },
+  {
+   "by": "A Manager",
+   "at": "2026-10-03T18:38:01+00:00",
+   "items": [
+    "7344a0e1a0d1efa6",
+    "9f524866de8c5727",
+    "a6011a0ad7cbb357",
+    "ce429297c68875e6",
+    "e956ce6be8a40eaf"
+   ],
+   "decision": "rejected",
+   "reason": "next week",
+   "fingerprint": "f12f68bc95107ae48a4247a73ab578d6bd8a324fdb64e6aead6cc6ea4e418b59",
+   "via": "cli"
+  }
+ ],
+ "first": {
+  "name": "A Manager",
+  "at": "2026-10-03T18:38:01+00:00",
+  "fingerprint": "f12f68bc95107ae48a4247a73ab578d6bd8a324fdb64e6aead6cc6ea4e418b59",
+  "role": "manager",
+  "via": "cli"
+ },
+ "second": null,
+ "costCents": null,
+ "clock": {
+  "what": "owners asked to answer by",
+  "due": "2026-10-23",
+  "daysLeft": 13
+ },
+ "summary": {
+  "writes": 10,
+  "held": 2,
+  "byOp": {
+   "member tag -": 1,
+   "member tag +": 9
+  },
+  "completions": 2,
+  "requestsStayOpen": 2,
+  "forAPerson": 1,
+  "confirmWithOwner": 0,
+  "testAccountsLeftOut": 0,
+  "completionComment": "<p>Thank you. Your preferences are recorded.</p>",
+  "cost": "No charge: PayHOA tag changes and request status"
+ },
+ "result": {
+  "not_applied": 10,
+  "applied": 7,
+  "at": "2026-10-03T18:38:01+00:00",
+  "by": "A Manager"
+ },
+ "supersedes": "",
+ "supersededBy": "",
+ "notes": []
+}

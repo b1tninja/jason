@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jason.local/schemas/approvals/plan-item.schema.json",
+  "title": "PlanItem",
+  "description": "One change in an approval: what it changes (before and after, or a value added or removed), why, the rule and evidence, and whether a person may approve it. Items held for the board, for a person, to confirm with the owner, or informational are never approvable.",
+  "type": "object",
+  "required": ["id", "op", "target", "label", "value", "why", "class", "basis", "decision", "result"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[0-9a-f]{16}$", "description": "sha256(kind|op|target|value)[:16]: the same on every re-plan."},
+    "op": {"type": "string", "description": "The kind's verb: \"member tag +\", \"unit tag -\", \"complete request\", \"for a person\", \"request stays open\"."},
+    "target": {"type": "string", "description": "What it changes: \"member:123\", \"unit:45\", \"submission:678\"."},
+    "label": {"type": "string", "description": "Who or what, for the reader (a name is shown; contact details never are)."},
+    "value": {"type": "string"},
+    "why": {"type": "string"},
+    "group": {"type": "string", "description": "The items read together: one owner."},
+    "change": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["op", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "op": {"enum": ["add", "remove", "set"]},
+            "field": {"type": "string"},
+            "value": {"type": "string"},
+            "before": {"type": "string"},
+            "after": {"type": "string"},
+            "text": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "rule": {"type": "string", "description": "The rule that calls for it: a citation (CIV 4040(a)(2)) or a rule row's address."},
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label"],
+        "additionalProperties": false,
+        "properties": {"label": {"type": "string"}, "address": {"type": "string"}}
+      }
+    },
+    "basis": {"type": "string", "description": "sha256 of the live state the item relies on; required of an approvable item."},
+    "class": {"enum": ["approvable", "held_for_board", "for_a_person", "confirm_with_owner", "informational"]},
+    "boardItem": {"type": "string", "description": "Held for the board: the board item it waits on."},
+    "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Item ids that must apply first."},
+    "highStakes": {"type": "boolean", "description": "A second, distinct person signs before it applies."},
+    "costCents": {"type": "integer", "minimum": 0},
+    "decision": {"enum": ["undecided", "approved", "rejected", "held"]},
+    "decidedBy": {"type": "string"},
+    "decidedAt": {"type": "string"},
+    "reason": {"type": "string", "description": "Required for a rejection or a hold."},
+    "result": {"enum": ["pending", "applied", "not_applied", "changed", "blocked", "failed", "uncertain"]},
+    "resultDetail": {"type": "string"}
+  },
+  "allOf": [
+    {"if": {"properties": {"class": {"const": "approvable"}}}, "then": {"properties": {"basis": {"minLength": 64}}}},
+    {"if": {"properties": {"class": {"not": {"const": "approvable"}}}}, "then": {"properties": {"decision": {"const": "undecided"}}}},
+    {"if": {"properties": {"decision": {"enum": ["rejected", "held"]}}}, "then": {"properties": {"reason": {"minLength": 1}}, "required": ["reason"]}}
+  ]
+}

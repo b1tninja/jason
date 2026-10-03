@@ -54,6 +54,7 @@ GROUPS: dict[str, str] = {
     "paid-vs-approved": "PayHOA & finance",
     "mailroom": "PayHOA & finance",
     "batches": "PayHOA & finance",
+    "approvals": "PayHOA & finance",
     # Utility bills
     "sync-bills": "Utility bills",
     "upload-smud-bills": "Utility bills",

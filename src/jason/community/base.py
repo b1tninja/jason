@@ -770,6 +770,12 @@ class Community(ABC):
         """The association's request forms (form id, title/message/attachment question ids, topics). Empty until set."""
         return ()
 
+    def owner_information(self):
+        """The owner-information cycle's forms (Civil Code 4040, 4041): an object carrying ``OWNER_INFO`` (the form),
+        ``OWNER_INFO_CYCLE``, ``EARLIER_ELECTIONS``, ``FORM_IMPORTS``, and ``OWNER_INFO_COMPLETED_COMMENT`` (the
+        board's comment when a request is completed). None until set."""
+        return None
+
     def request_topics(self):
         """The topics that make an owner's email a request of the association. Empty until set."""
         return ()

@@ -6,7 +6,8 @@ Each tool is a plain function that returns a JSON-ready dict, so ``jason-mcp`` s
 (``jason.api``). They read the stores on disk; three write a person's record to ``data/`` and never anything else
 (``answer_intake_question``, ``onboarding_confirm``, ``record_completion``), and nothing reaches PayHOA, Google, or the
 mail. A write names the person (``by``) and is refused without one. None decides for the board: a conflict is noted, a duty is a reading, a
-request's clock is computed, and approving, denying, or assigning stays a person's.
+request's clock is computed, and approving, denying, or assigning stays a person's. ``approvals_list`` and
+``approval_show`` read the approvals store; no tool decides, submits, confirms, or applies an approval.
 """
 
 from __future__ import annotations
@@ -551,9 +552,49 @@ def onboarding_confirm(question_id: str, by: str, data_dir: Path | None = None) 
             "highStakes": intake.high_stakes(a), "next": "jason onboard --apply"}
 
 
+# --- Approvals (read only) ---------------------------------------------------------------------------------------------
+
+_APPROVALS_CAVEAT = ("Read only. An approval is decided, submitted, confirmed, and applied by a named person in the "
+                     "terminal (jason approvals) or the console, never by a tool call. Items held for the board, for a "
+                     "person, or to confirm with the owner are never approvable.")
+
+
+def approvals_list(status: str = "", kind: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+    """The plans of writes outside jason waiting on, or decided by, a named person (``jason approvals``): each one's
+    id, kind, status, counts by class, how many approved, and who asked for it. ``status`` (planned, in_review,
+    approved, partially_approved, applying, applied, failed, superseded, withdrawn) and ``kind`` filter. Read only:
+    no tool decides or applies an approval."""
+    from jason.approvals import store
+    from jason.approvals.engine import counts
+    from jason.approvals.model import OPEN
+
+    rows = [a for a in store.load_all(_root(data_dir)) if (not status or a.status.value == status)
+            and (not kind or a.kind == kind)]
+    rows.sort(key=lambda a: (a.status not in OPEN, a.requested_at))
+    return {"approvals": [{"id": a.id, "kind": a.kind, "title": a.title, "status": a.status.value,
+                           "readAt": a.read_at, "requestedBy": a.requested_by, "fingerprint": a.fingerprint[:12],
+                           "approved": len(a.approved), **counts(a)} for a in rows],
+            "caveat": _APPROVALS_CAVEAT}
+
+
+def approval_show(approval_id: str, data_dir: Path | None = None) -> dict[str, Any]:
+    """One approval as stored: its items (each with its change, why, rule, evidence, class, board item, decision, and
+    result), the decisions and signatures, the clock, and its audit entries. ``approval_id`` may be a unique prefix.
+    Read only: say what is held for the board and why; never decide or apply."""
+    from jason.approvals import audit, store
+    from jason.approvals.model import to_dict
+
+    root = _root(data_dir)
+    try:
+        a = store.load(approval_id, root)
+    except KeyError as exc:
+        return {"error": str(exc.args[0]), "approvals": store.ids(root)}
+    return {**to_dict(a), "audit": audit.read(root, a.id), "caveat": _APPROVALS_CAVEAT}
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
          notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, section_refs,
-         embedded_copies, onboarding_status, next_questions, onboarding_confirm)
+         embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list, approval_show)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

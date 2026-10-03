@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jason.local/schemas/approvals/audit-entry.schema.json",
+  "title": "AuditEntry",
+  "description": "One line of approvals/audit.jsonl, append only. Each line carries the hash of the line before (prev) and its own (hash: sha256 of the canonical JSON of the line without hash). No line holds an email address, a mailing address, an account number, or a token.",
+  "type": "object",
+  "required": ["seq", "at", "event", "os_user", "prev", "hash"],
+  "properties": {
+    "seq": {"type": "integer", "minimum": 1},
+    "at": {"type": "string"},
+    "event": {
+      "enum": ["plan.created", "plan.failed", "item.decided", "approval.submitted", "approval.confirmed",
+               "approval.declined", "apply.started", "apply.refused", "item.applying", "item.applied", "item.failed",
+               "item.uncertain", "item.blocked", "item.not_applied", "approval.applied", "approval.failed",
+               "approval.superseded", "approval.withdrawn", "cli.applied"]
+    },
+    "os_user": {"type": "string"},
+    "approval": {"type": "string"},
+    "kind": {"type": "string"},
+    "actor": {"type": "string", "description": "The named person, or os:<user> when none was named."},
+    "via": {"enum": ["cli", "console"]},
+    "role": {"type": "string"},
+    "fingerprint": {"type": "string"},
+    "item": {"type": "string"},
+    "items": {"type": "array", "items": {"type": "string"}},
+    "op": {"type": "string"},
+    "target": {"type": "string"},
+    "label": {"type": "string"},
+    "value": {"type": "string"},
+    "basis": {"type": "string"},
+    "result": {},
+    "detail": {"type": "string"},
+    "prev": {"type": "string", "description": "The previous line's hash; empty on the first line."},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "not": {"anyOf": [
+    {"properties": {"detail": {"pattern": "[\\w.+-]+@[\\w-]+\\.[\\w.-]+"}}, "required": ["detail"]},
+    {"properties": {"label": {"pattern": "[\\w.+-]+@[\\w-]+\\.[\\w.-]+"}}, "required": ["label"]}
+  ]}
+}

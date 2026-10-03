@@ -33,52 +33,30 @@ def _data_dir(args: argparse.Namespace) -> Path:
 
 
 def _answers(data_dir: Path, forms: Any, client: Any = None, org_id: int | None = None) -> tuple[list[Any], dict[str, str]]:
-    """Every answer jason holds, from each channel, and each source's title."""
-    from jason.tasks.forms import forms_dir, import_responses
+    """Every answer jason holds, from each channel, and each source's title (``owner_info_apply.gather_answers``)."""
+    from jason.tasks.owner_info_apply import gather_answers
 
-    answers, titles = [], {"payhoa": "PayHOA owner information form"}
-    for rules in forms.FORM_IMPORTS:
-        saved = forms_dir(data_dir) / rules.source / "responses.json"
-        if saved.is_file():
-            answers += import_responses(json.loads(saved.read_text(encoding="utf-8")), rules)
-            titles["google"] = rules.title
-    if client is not None:
-        from jason.tasks.payhoa_forms import fetch_submissions, record_for
-
-        record = record_for(data_dir, forms.OWNER_INFO.key.value)
-        if record:
-            from jason.config import test_memberships
-
-            tests = test_memberships()      # a test account's answers are never an owner's
-            answers += [a for a in fetch_submissions(client, org_id, record, forms.OWNER_INFO)
-                        if a.membership_id is None or int(a.membership_id) not in tests]
-    return answers, titles
+    return gather_answers(data_dir, forms, client, org_id)
 
 
 def _rows(units: list[dict[str, Any]], people: list[dict[str, Any]], answers: list[Any], data_dir: Path,
           community: Any, cycle: Any, today: date) -> tuple[Any, list[Any]]:
-    from jason.tasks.member_preferences import match, unit_owners
-    from jason.tasks.notice_delivery import plan
-    from jason.tasks.owner_info import ledger
-    from jason.tasks.parties import PartyResolver
+    from jason.tasks.owner_info_apply import ledger_rows
 
-    tags = community.payhoa_tags()
-    deeds = PartyResolver(data_dir).latest_deed
-    matched = match(answers, unit_owners(units, people, deeds, tags), tags, cycle=cycle, today=today)
-    found = plan(units, people, tags)
-    from jason.community.spec import spec_module
-
-    return found, ledger(found, matched, tags, cycle, earlier=spec_module("forms").EARLIER_ELECTIONS, today=today)
+    return ledger_rows(units, people, answers, data_dir, community, cycle, today)
 
 
 def cmd_owner_info(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
-    from jason.community.spec import spec_module
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.broadcast import catalog_rows
     from jason.tasks.owner_info import summary
 
-    community, forms, today = mystique(), spec_module("forms"), date.today()
+    community, today = active(), date.today()
+    forms = community.owner_information()        # the profile's owner-information forms
+    if forms is None:
+        print("the profile has no owner-information form (Community.owner_information)", file=sys.stderr)
+        return 2
     cycle, data_dir = forms.OWNER_INFO_CYCLE, _data_dir(args)
     if args.apply:
         return _apply(args, agent_factory, community, forms, cycle, data_dir, today)
@@ -120,41 +98,22 @@ def cmd_owner_info(args: argparse.Namespace, agent_factory: Callable[[Any], Any]
 
 def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], community: Any, forms: Any, cycle: Any,
            data_dir: Path, today: date) -> int:
-    """Read PayHOA live, plan the writes, and with --yes perform them."""
-    from jason.tasks.owner_info import execute, plan_writes
+    """Read PayHOA live (once: ``owner_info_apply.plan_apply``, the planner the approvals kind ``owner-info-tags``
+    shares), plan the writes, and with --yes perform them. A --yes is also written to the approvals audit log
+    (``jason.approvals.audit``), one line a write and a request, with the person --by (or --confirmed-by) names, else
+    the operating-system user. A request is completed only when every write it waits on was made: a write that failed
+    stays pending, and the failure is raised once the writes made are recorded."""
+    from jason.tasks.owner_info_apply import execute_each, plan_apply
 
+    done: dict[str, int] = {}
+    results: list[Any] = []
     with agent_factory(args) as agent:
         client, org = agent.payhoa(), agent.org_id
-        units, page = [], 1
-        while True:
-            body = client.list_units(org, page=page)
-            units.extend(body.get("data") or [])
-            meta = body.get("meta") or {}
-            if page >= int(meta.get("lastPage") or meta.get("last_page") or 1):
-                break
-            page += 1
-        people = list(client.iter_people(org))
-        answers, _ = _answers(data_dir, forms, client if args.payhoa else None, org)
-        found, rows = _rows(units, people, answers, data_dir, community, cycle, today)
-        writes = plan_writes(rows, found, community.payhoa_tags(), earlier=forms.EARLIER_ELECTIONS, today=today)
-        # a test account is never an owner of record: no delivery or other tag goes on it
-        from jason.config import test_memberships
-
-        test = test_memberships(getattr(args, "env", None))
-        writes = [w for w in writes if not (w.kind.startswith("member") and w.target in test)]
-        if args.payhoa:
-            # the response policy holds an occupancy the unit's tag does not show for the board: its tag writes wait
-            from jason.community.tags import TagPurpose, TagScope
-            from jason.tasks.owner_responses import Outcome, contexts, triage
-
-            held_units = {c.unit_id for c in contexts(client, org, data_dir, community, forms)
-                          for f in triage(c) if f.outcome is Outcome.BOARD and f.rule == "occupancy-vs-tag"}
-            occupancy = {t.name for t in community.payhoa_tags()
-                         if t.purpose is TagPurpose.OCCUPANCY and t.scope is TagScope.UNIT}
-            held = [w for w in writes if w.kind.startswith("unit") and w.target in held_units and w.value in occupancy]
-            writes = [w for w in writes if w not in held]
-            for w in held:
-                print(f"  held for the board (occupancy-vs-tag): {w.kind} {w.label} {w.value}")
+        planned = plan_apply(client, org, community=community, forms=forms, cycle=cycle, data_dir=data_dir,
+                             today=today, payhoa=args.payhoa, env=getattr(args, "env", None))
+        writes, rows = planned.writes, planned.rows
+        for h in planned.held:
+            print(f"  held for the board ({h.rule}): {h.write.kind} {h.write.label} {h.write.value}")
         for kind, count in Counter(w.kind for w in writes).items():
             print(f"  {kind:14} {count}")
         for w in writes[: args.show]:
@@ -164,46 +123,58 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
         elif not args.yes:
             print(f"Dry run ({len(writes)} writes, read live just now): add --yes to write them in PayHOA.")
         else:
-            tag_rows = {int(p["id"]): list(p.get("tags") or []) for p in people if p.get("id") is not None}
-            done = execute(client, org, writes, member_tag_rows=tag_rows)
-            print("written: " + ", ".join(f"{k} {v}" for k, v in done.items()))
-            writes = []                                  # written: nothing pending stands in a request's way
+            results = execute_each(client, org, writes, member_tag_rows=planned.member_tag_rows)
+            done = dict(Counter(r.write.kind for r in results if r.done))
+            failed = next((r.error for r in results if r.error is not None), None)
+            print(("written before the failure: " if failed else "written: ")
+                  + ", ".join(f"{k} {v}" for k, v in done.items()))
+            if failed is not None:
+                _audit_cli(args, data_dir, results, [])
+                raise failed
+            # a write PayHOA did not take stays pending, so its request stays open
+            writes = [r.write for r in results if not r.satisfied]
+        completed: list[int] = []
         if args.payhoa:
-            _complete_requests(args, client, org, forms, data_dir, rows, writes)
+            completed = _complete_requests(args, client, org, planned, writes)
+        if args.yes and (results or completed):
+            _audit_cli(args, data_dir, results, completed)
     return 0
 
 
-def _complete_requests(args: argparse.Namespace, client: Any, org: int, forms: Any, data_dir: Path, rows: list[Any],
-                       writes: list[Any]) -> None:
+def _audit_cli(args: argparse.Namespace, data_dir: Path, results: list[Any], completed: list[int]) -> None:
+    """The CLI's --yes in the approvals audit log, beside the approvals' own entries, so the log is whole whichever
+    door wrote to PayHOA: one line a write and a completed request, then the run's summary."""
+    from jason.approvals import audit
+
+    actor = getattr(args, "by", None) or getattr(args, "confirmed_by", None) or audit.os_actor()
+    audit.record_cli(data_dir, kind="owner-info-tags", actor=actor, command="jason owner-info --apply --payhoa --yes",
+                     writes=[(f"{r.write.kind}", f"{'unit' if r.write.kind.startswith('unit') else 'member'}:"
+                              f"{r.write.target}", r.write.label, r.write.value,
+                              "applied" if r.satisfied else ("failed" if r.error is not None else "not_applied"),
+                              r.detail) for r in results],
+                     completed=completed)
+
+
+def _complete_requests(args: argparse.Namespace, client: Any, org: int, planned: Any, writes: list[Any]) -> list[int]:
     """Each owner's open PayHOA request: marked complete, with the thank-you comment, once jason has recorded all of
-    it (the board's rule of October 1, 2026, AGENTS.md); otherwise left open with what is left for a person. Only with
-    --yes; a test account's request is never an owner's and is left alone."""
-    from jason.tasks.owner_info import complete, to_complete
-    from jason.tasks.payhoa_forms import record_for
+    it (the board's stated exception, AGENTS.md); otherwise left open with what is left for a person. Only with --yes;
+    a test account's request is never an owner's and is left alone. The response policy (``owner_responses.RULES``):
+    a request with a question for the board, something to confirm with the owner, or a person's entry stays open; only
+    a response with nothing but "record" findings is completed (``owner_info_apply.requests_left``)."""
+    from jason.tasks.owner_info import complete
+    from jason.tasks.owner_info_apply import requests_left
 
-    record = record_for(data_dir, forms.OWNER_INFO.key.value)
-    if record is None:
-        return
-    status = {int(r["id"]): r.get("status") for r in client.list_form_submissions(int(record["formId"]))}
-    comment = getattr(forms, "OWNER_INFO_COMPLETED_COMMENT", "")
-    # the response policy (owner_responses.RULES): a request with a question for the board, something to confirm with
-    # the owner, or a person's entry stays open; only a response with nothing but "record" findings is completed
-    from jason.community import mystique
-    from jason.tasks.owner_responses import Outcome, contexts, triage
-
-    held = {c.submission: [f"{f.outcome.value}: {f.rule}" for f in triage(c) if f.outcome is not Outcome.RECORD]
-            for c in contexts(client, org, data_dir, mystique(), forms)}
-    for item in to_complete(rows, writes):
-        if status.get(item.submission_id) != "pending":
-            continue
-        item.left += [h for h in held.get(item.submission_id, []) if h not in item.left]
+    completed = []
+    for item in requests_left(planned, writes):
         if item.left:
             print(f"  request {item.submission_id} ({item.unit}: {item.name}) stays open: {'; '.join(item.left)}")
         elif args.yes:
-            complete(client, org, item, comment)
+            complete(client, org, item, planned.comment)
+            completed.append(item.submission_id)
             print(f"  request {item.submission_id} ({item.unit}: {item.name}) marked complete; the owner is thanked")
         else:
             print(f"  request {item.submission_id} ({item.unit}: {item.name}) would be marked complete (--yes)")
+    return completed
 
 
 def _live(client: Any, org: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -687,4 +658,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--apply", action="store_true", help="read PayHOA live and list the writes that bring it up to date")
     p.add_argument("--show", type=int, default=15, help="with --apply: how many writes to list (default 15)")
     p.add_argument("--yes", action="store_true", help="with --apply: write them in PayHOA")
+    p.add_argument("--by", metavar="NAME",
+                   help="with --apply --yes: the person who confirmed the writes, for the approvals audit log (default "
+                        "--confirmed-by, else the operating-system user)")
     p.set_defaults(func=lambda a: cmd_owner_info(a, agent_factory))

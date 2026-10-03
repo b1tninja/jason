@@ -215,12 +215,14 @@ def triage(c: Context, rules: tuple[Rule, ...] = RULES) -> list[Finding]:
     return out
 
 
-def contexts(client: Any, org_id: int, data_dir: Any, community: Any, forms: Any) -> list[Context]:
-    """Every PayHOA response to the owner-information form, read live with its unit and people."""
+def contexts(client: Any, org_id: int, data_dir: Any, community: Any, forms: Any,
+             live: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None) -> list[Context]:
+    """Every PayHOA response to the owner-information form, read live with its unit and people. ``live`` is the units
+    and people a plan already read (``owner_info_apply.plan_apply``), so they are not read again."""
     from pathlib import Path
 
-    from jason.commands.owner_info import _live
     from jason.community.forms import check
+    from jason.tasks.owner_info_apply import live_read as _live
     from jason.community.tags import tag_names
     from jason.config import test_memberships
     from jason.tasks.payhoa_forms import fetch_submissions, record_for
@@ -228,7 +230,7 @@ def contexts(client: Any, org_id: int, data_dir: Any, community: Any, forms: Any
     record = record_for(Path(data_dir), forms.OWNER_INFO.key.value)
     if record is None:
         return []
-    units, people = _live(client, org_id)
+    units, people = live if live is not None else _live(client, org_id)
     by_id = {int(p["id"]): p for p in people}
     units_by_id = {int(u["id"]): u for u in units}
     tests = test_memberships()

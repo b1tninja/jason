@@ -26,6 +26,8 @@ from __future__ import annotations
 from jason.mcp.governance import (
     TOOLS,
     acknowledgment_draft,
+    approval_show,
+    approvals_list,
     answer_intake_question,
     cite_document,
     document_conflicts,

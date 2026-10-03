@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jason.local/schemas/approvals/approval.schema.json",
+  "title": "Approval",
+  "description": "One plan of writes outside jason, made from a live read, with every item a person reviews, the decisions, the signatures, and the result. Stored as approvals/<id>.json in the profile's data folder.",
+  "type": "object",
+  "required": ["id", "kind", "title", "status", "fingerprint", "readAt", "requestedBy", "requestedAt", "items", "decisions"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^apr-[0-9]{8}T[0-9]{6}-[0-9a-f]{4}$"},
+    "kind": {"type": "string", "description": "An action kind's key: \"owner-info-tags\"."},
+    "title": {"type": "string"},
+    "status": {"enum": ["planned", "in_review", "approved", "partially_approved", "applying", "applied", "failed", "superseded", "withdrawn"]},
+    "scope": {"type": "object", "description": "The planner's arguments: {\"payhoa\": true, \"cycle\": 2099}."},
+    "profile": {"type": "string"},
+    "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 over the kind, the scope, and each approvable item's id and basis (canonical JSON: sorted keys, no spaces)."},
+    "readAt": {"type": "string", "description": "When the live state was read (UTC)."},
+    "requestedBy": {"type": "string", "minLength": 1},
+    "requestedAt": {"type": "string"},
+    "requestedVia": {"enum": ["cli", "console"]},
+    "evidence": {
+      "type": "array",
+      "items": {"type": "object", "required": ["label"], "additionalProperties": false,
+                "properties": {"label": {"type": "string"}, "address": {"type": "string"}}}
+    },
+    "items": {"type": "array", "items": {"$ref": "plan-item.schema.json"}},
+    "decisions": {"type": "array", "items": {"$ref": "decision.schema.json"}},
+    "first": {"oneOf": [{"type": "null"}, {"$ref": "decision.schema.json#/$defs/signature"}]},
+    "second": {"oneOf": [{"type": "null"}, {"$ref": "decision.schema.json#/$defs/signature"}]},
+    "costCents": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}], "description": "Integer cents; null when the kind has no cost."},
+    "clock": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "properties": {"what": {"type": "string"}, "due": {"type": "string"}, "daysLeft": {"type": "integer"}}}
+      ]
+    },
+    "summary": {"type": "object", "description": "The planner's counts for the reader (writes, held, completions, ...)."},
+    "result": {"type": "object", "description": "After apply: counts by result, when, and by whom; or why it was refused."},
+    "supersedes": {"type": "string"},
+    "supersededBy": {"type": "string"},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

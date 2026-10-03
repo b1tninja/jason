@@ -6,9 +6,9 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-146 commands, by area:
+147 commands, by area:
 
-- [PayHOA & finance](#payhoa--finance) (18)
+- [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (19)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
@@ -199,6 +199,26 @@ Bulk-write batches: progress, failures, and resuming
 | `--not-sent` |  | with --resolve: it was not (back to pending) |
 | `--cancel` | ID | skip a batch's pending items (with --yes) |
 | `--yes` |  |  |
+
+### `jason approvals`
+
+Plans of writes outside jason, approved item by item by a named person
+
+| Option | Value | Help |
+|---|---|---|
+| `action` | {list,kinds,plan,show,decide,submit,confirm,decline,withdraw,apply,audit} | list (default), kinds, plan KIND, show ID, decide ID, submit ID, confirm ID, decline ID, withdraw ID, apply ID, audit [ID] |
+| `ref` | optional (?) | the kind (plan) or the approval's id or a unique prefix |
+| `--by` | NAME | the person deciding, submitting, confirming, or applying |
+| `--items` | ITEM | with decide: item ids or unique prefixes (6+ characters) |
+| `--all` |  | with decide: every approvable item |
+| `--hold` |  | with decide: hold the items (needs --reason) |
+| `--reject` |  | with decide: leave the items out (needs --reason) |
+| `--reason` | REASON | why: a hold, a rejection, a decline, or a withdrawal |
+| `--yes` |  | with apply: apply the approved items (without it: re-plan and compare, writing nothing) |
+| `--json` |  | with show: the approval as JSON |
+| `--status` | STATUS | with list: only this status (planned, in_review, approved, ...) |
+| `--kind` | KIND | with list: only this kind |
+| `--verify` |  | with audit: check the log's hash chain |
 
 ## Utility bills
 
@@ -1022,6 +1042,7 @@ The owner information cycle (CIV 4040, 4041): standing, deadlines, and PayHOA up
 | `--apply` |  | read PayHOA live and list the writes that bring it up to date |
 | `--show` | SHOW | with --apply: how many writes to list (default 15) |
 | `--yes` |  | with --apply: write them in PayHOA |
+| `--by` | NAME | with --apply --yes: the person who confirmed the writes, for the approvals audit log (default --confirmed-by, else the operating-system user) |
 
 ### `jason rentals`
 

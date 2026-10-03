@@ -13,7 +13,8 @@ PayHOA is the record (``jason.community.tags``). For each current owner:
 Answers live in tags, the profile, and additional owner records, never in custom fields (PayHOA's are untyped text).
 ``ledger`` gives each owner a status and the next action. ``plan_writes`` lists every tag write that would follow, each
 with its reason, read against PayHOA as it is now: a delivery tag is only added where the owner has none, and a
-this-cycle answer's changes are applied. ``execute`` performs them, on a person's --yes.
+this-cycle answer's changes are applied. ``execute`` performs them, on a person's --yes. ``owner_info_apply`` plans
+them from one live read for the CLI and the approvals kind alike.
 """
 
 from __future__ import annotations
@@ -176,30 +177,16 @@ def plan_writes(rows: list[OwnerInfo], found: Any, tags: Iterable[PayhoaTag], *,
 def execute(client: Any, org_id: int, writes: list[Write], *,
             member_tag_rows: dict[int, list[dict[str, Any]]] | None = None, batch: int = 25) -> dict[str, int]:
     """Perform the writes: member tags added in batches by tag, removals by the member's tag row (from
-    ``member_tag_rows``, the members' tags as read live), and unit tags. Returns counts by kind."""
-    from collections import defaultdict
+    ``member_tag_rows``, the members' tags as read live), and unit tags. Returns counts by kind; a failed write raises
+    and nothing after it is attempted. ``owner_info_apply.execute_each`` performs them and gives each write's result."""
+    from jason.tasks.owner_info_apply import execute_each
 
     done: Counter[str] = Counter()
-    adds: dict[str, list[int]] = defaultdict(list)
-    for w in writes:
-        if w.kind == "member tag +":
-            adds[w.value].append(w.target)
-    for tag, ids in adds.items():
-        for i in range(0, len(ids), batch):
-            client.update_member_tags(org_id, ids[i:i + batch], add=[tag])
-        done["member tag +"] += len(ids)
-    for w in writes:
-        if w.kind == "member tag -":
-            rows = [t for t in (member_tag_rows or {}).get(w.target, []) if t.get("tag") == w.value]
-            if rows:
-                client.update_member_tags(org_id, [w.target], remove=[int(rows[0]["id"])])
-                done["member tag -"] += 1
-        elif w.kind == "unit tag +":
-            client.add_unit_tag(org_id, [w.target], w.value)
-            done["unit tag +"] += 1
-        elif w.kind == "unit tag -":
-            client.remove_unit_tag(org_id, [w.target], w.value)
-            done["unit tag -"] += 1
+    for result in execute_each(client, org_id, writes, member_tag_rows=member_tag_rows, batch=batch):
+        if result.error is not None:
+            raise result.error
+        if result.done:
+            done[result.write.kind] += 1
     return dict(done)
 
 

@@ -255,6 +255,13 @@ class Mystique(Community):
 
         return CLOSED_STATUSES
 
+    def owner_information(self):
+        """The owner-information form, its cycle, the earlier-elections rule, the outside forms read, and the board's
+        completion comment (forms.py)."""
+        from . import forms
+
+        return forms
+
     def request_forms(self):
         """PayHOA's request forms with their question ids, and the topics each takes (requests.py)."""
         from .requests import REQUEST_FORMS
