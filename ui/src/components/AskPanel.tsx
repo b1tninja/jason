@@ -152,9 +152,11 @@ export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string
         return (
           <div className="stack">
             {!me && (
-              <label className="dock-sub row">Your name
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Who is asking" aria-label="Your name" />
-              </label>
+              <div className="dock-panel">
+                <label className="dock-sub row">Your name
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Who is asking" aria-label="Your name" />
+                </label>
+              </div>
             )}
             <Tabs active={tab} onChange={setTab} tabs={[{ id: "ask", label: "Ask", content: askTab }, { id: "translate", label: "Translate", content: translateTab }]} />
             {error && <p className="notice notice-error">{error}</p>}

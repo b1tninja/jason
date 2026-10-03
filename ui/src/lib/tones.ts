@@ -11,6 +11,8 @@ const TONES: Record<string, Tone> = {
   released: "good", "in default": "bad", stands: "warn", "release due": "bad",
   // jobs and batches
   queued: "neutral", running: "good", failed: "bad", cancelled: "neutral", sent: "good", uncertain: "warn", pending: "neutral",
+  // agenda readiness
+  ready: "good", "needs work": "warn",
   // documents
   recorded: "good", superseded: "neutral", unrecorded: "warn", missing: "bad", pinned: "good",
 };

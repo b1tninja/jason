@@ -92,7 +92,8 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     root = _root()
     if key in ("", "new"):
         req = store.open_request(root, body.get("receivedOn", ""), body.get("unit", ""), body.get("via", ""),
-                                 body.get("records") or [], body.get("purpose", ""), body.get("years") or [], body.get("by", ""))
+                                 body.get("records") or [], body.get("purpose", ""), body.get("years") or [], body.get("by", ""),
+                                 delivery=str(body.get("delivery", "") or ""))
     else:
         req = store.decide(root, key, **body)
     return store.as_dict(req)

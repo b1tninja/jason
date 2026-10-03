@@ -38,13 +38,15 @@ function BoardApprove({ title, me, busy, onConfirm }: { title: string; me: strin
 /** Every drafted letter waiting on a person, keyed by its path so the inbox and the document always agree. Approve
  * (or, for the board, Record board approval with the meeting's date) and Send back show only for the matching signed-in
  * person; an approved letter shows the terminal command a person runs; a sent one shows nothing to do. */
-export function ApprovalsInbox({ letters, me, people, onAction, busy, go, onOpen }: {
+export function ApprovalsInbox({ letters, me, people, onAction, busy, go, onOpen, today }: {
   letters: readonly Letter[]; me: string; people: readonly Person[];
   onAction: (key: string, action: StageAction, body: StageBody) => Promise<void> | void;
   busy?: boolean; go?: (screen: string) => void; onOpen?: (key: string) => void;
+  /** The day "this month" is read against (ISO date); defaults to now. Previews and tests pass it so the stat is stable. */
+  today?: string;
 }) {
   const groups = groupLetters(letters);
-  const month = new Date().toISOString().slice(0, 7);
+  const month = (today || new Date().toISOString()).slice(0, 7);
   const sentThisMonth = groups[2].items.filter((l) => (l.sentOn || lastEvent(l)).startsWith(month)).length;
   return (
     <div className="approvals-inbox">

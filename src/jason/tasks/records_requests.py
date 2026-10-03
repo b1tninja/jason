@@ -62,6 +62,7 @@ class Request:
     purpose: str = ""                              # the member's stated purpose, as given
     membershipList: bool = False
     years: list[int] = field(default_factory=list)     # fiscal years asked for; empty means the current one
+    delivery: str = ""                             # how the member asked to receive copies, in their words ("by email")
     decisions: Decisions = field(default_factory=Decisions)
     by: str = ""
     recorded: str = ""
@@ -210,8 +211,8 @@ def _store_lock(fn):
 
 @_store_lock
 def open_request(data_dir: Path, received_on: str, unit: str, via: str, records: list[str], purpose: str = "",
-                 years: list[int] | None = None, by: str = "") -> Request:
-    """Record a member's request as received. The purpose is kept in the member's words."""
+                 years: list[int] | None = None, by: str = "", delivery: str = "") -> Request:
+    """Record a member's request as received. The purpose and the delivery preference are kept in the member's words."""
     received_on = str(received_on).strip()
     date.fromisoformat(received_on)
     unit = str(unit).strip()
@@ -230,7 +231,7 @@ def open_request(data_dir: Path, received_on: str, unit: str, via: str, records:
     now = _now()
     req = Request(id=key, receivedOn=received_on, unit=unit, via=via, records=kinds, purpose=str(purpose or ""),
                   membershipList=AssociationRecord.MEMBERSHIP_LIST.value in kinds, years=ys, by=str(by or ""),
-                  recorded=now, updated=now, history=[f"{now[:10]}: received via {via}"])
+                  delivery=str(delivery or "").strip(), recorded=now, updated=now, history=[f"{now[:10]}: received via {via}"])
     items.append(req)
     save(data_dir, items)
     return req

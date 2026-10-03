@@ -37,13 +37,13 @@ const minutes: Letter = {
 const letters = [release, vendor, notice, reminder, minutes];
 
 /** The treasurer signed in: she may approve the vendor letter but not record a board vote, so the lien release says why. */
-export const Treasurer = () => <ApprovalsInbox letters={letters} me="M. Chen" people={people} onAction={() => {}} onOpen={() => {}} />;
+export const Treasurer = () => <ApprovalsInbox today="2026-10-03" letters={letters} me="M. Chen" people={people} onAction={() => {}} onOpen={() => {}} />;
 
 /** The secretary signed in: Record board approval shows on the board's letter; the treasurer's letter is not hers to approve. */
-export const Secretary = () => <ApprovalsInbox letters={letters} me="R. Lind" people={people} onAction={() => {}} onOpen={() => {}} go={() => {}} />;
+export const Secretary = () => <ApprovalsInbox today="2026-10-03" letters={letters} me="R. Lind" people={people} onAction={() => {}} onOpen={() => {}} go={() => {}} />;
 
 /** Nothing waiting at all: each group's empty line under zero counts. */
-export const Empty = () => <ApprovalsInbox letters={[]} me="D. Okafor" people={people} onAction={() => {}} />;
+export const Empty = () => <ApprovalsInbox today="2026-10-03" letters={[]} me="D. Okafor" people={people} onAction={() => {}} />;
 
 /** Only sent letters on file, and no one picked as signed in. */
-export const SentOnly = () => <ApprovalsInbox letters={[reminder, minutes]} me="" people={people} onAction={() => {}} onOpen={() => {}} />;
+export const SentOnly = () => <ApprovalsInbox today="2026-10-03" letters={[reminder, minutes]} me="" people={people} onAction={() => {}} onOpen={() => {}} />;
