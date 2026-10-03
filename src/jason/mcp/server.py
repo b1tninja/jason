@@ -368,16 +368,25 @@ def _profile() -> str:
     return os.environ.get("JASON_MCP_PROFILE", "")
 
 
-def main() -> None:
-    _working_directory()
+def build(profile: str = "", *, community: Any = None, data_dir: Path | None = None) -> Any:
+    """The server for a profile: its tools, and under ``all`` and ``governance`` the record addresses as resources
+    (``jason.mcp.resources``)."""
     try:
         from mcp.server.mcpserver import MCPServer
     except ImportError as exc:
         raise SystemExit(
             'The mcp package is not installed. pip install -e ".[mcp]"'
         ) from exc
+    from jason.mcp import resources
 
     server = MCPServer("jason")
-    for tool in tools_for(_profile()):
+    for tool in tools_for(profile):
         server.add_tool(tool)
-    server.run(transport="stdio")
+    if (profile or "all").strip().lower() in resources.PROFILES:
+        resources.register(server, community=community, data_dir=data_dir)
+    return server
+
+
+def main() -> None:
+    _working_directory()
+    build(_profile()).run(transport="stdio")

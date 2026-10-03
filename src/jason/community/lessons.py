@@ -485,6 +485,18 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("retrieval.HYBRID_RRF_K and DENSE_WEIGHT", "scripts/eval_retrieval.py",
                                  "tests/test_retrieval.py"),
            docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("resource-template-reserved-section", OCT_2026, (Area.GOVERNING,),
+           "An MCP resource template for a section would not match sibling sections ('6.2(a),6.2(b)'), and a broad "
+           "template caught versioned addresses with the version glued to the book.",
+           "URI template simple expansion stops at a comma, and a bounded variable accepts '@' and ':'.",
+           "Sections use reserved expansion ({+section}), templates are ordered most specific first, and every handler "
+           "rebuilds the address from its parameters.",
+           Status.FIXED, guards=("jason.mcp.resources", "tests/test_record_resources.py")),
+    Lesson("document-in-two-books-lists-twice", OCT_2026, (Area.GOVERNING,),
+           "A document mapped to two books had its sections listed twice as resources.",
+           "A document's address key is its first book entry, so both books produced the same addresses.",
+           "The resource listing skips a document already listed.",
+           Status.FIXED, guards=("tests/test_record_resources.py (no address listed twice)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

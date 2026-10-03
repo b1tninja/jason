@@ -10,7 +10,8 @@ def test_the_governance_profile_serves_the_tools_and_the_api_exports_them():
     assert names == [t.__name__ for t in governance.TOOLS]
     assert set(names) <= {t.__name__ for t in ALL_TOOLS}
     assert len(tools_for("board")) == 38                       # the board's set is unchanged
-    assert set(api.__all__) == set(names) and api.member_requests is governance.member_requests
+    assert set(api.__all__) == set(names) | {"read_record", "record_resources"}   # the tools, and the resources
+    assert api.member_requests is governance.member_requests
 
 
 def test_an_intake_answer_needs_a_person_and_writes_only_the_queue(tmp_path):

@@ -129,6 +129,15 @@ change, draft minutes) is a miss naming the record's stages, which their own rea
 In Python, `jason.community.addresses.parse(text)` returns an `Address`, and `Address.format()` prints it back.
 `jason.tasks.cite.resolve(address)` resolves one.
 
+### Reading an address
+
+- **As an MCP resource.** `jason-mcp` serves every address as a resource, with templates for each form above and a
+  listing of the books and their top-level articles ([mcp.md](mcp.md#resources)). A read returns Markdown, the
+  recitation first. A restricted book is listed by name only and never read there.
+- **As pages.** `jason cite --html` writes the record reader into `data/reader`: a static page per book, part,
+  section, history, and version, linked by address (`jason.tasks.reader`). Serve it with
+  `python -m http.server -d data/reader 8765`. Restricted books are written only with `--private`.
+
 ## Permanent ids
 
 In Akoma Ntoso, an element's work-level id is fixed by its place in a master expression. Here a section's permanent id

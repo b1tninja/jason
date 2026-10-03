@@ -16,11 +16,13 @@ R-3(e)", "Resolution 20990101-1", "Doc. No. 209901010001", "minutes 2099-01-01",
   the sections and statutes named most.
 - ``--books`` lists the association's books (the statute's keys) and the profile's documents in each.
 - ``--private`` opens a restricted book (executive-session minutes, the membership list, election materials: CIV 5215).
+- ``--html [DIR]`` writes the record reader (``jason.tasks.reader``): static pages for each book, section, history,
+  and version, linked by address, into ``data/reader`` (private); restricted books only with ``--private``.
 - ``--migrate-ids`` adds each citing record's permanent id and the version it cites (a dry run; ``--apply`` writes,
   backing each file up first): jason.tasks.permanent_ids.
 
-Reading only, except ``--migrate-ids --apply`` (data/ files, backed up) and the id tables it caches in
-data/section-refs: nothing here reaches Drive, PayHOA, or the mail.
+Reading only, except ``--migrate-ids --apply`` (data/ files, backed up), ``--html`` (its own output folder), and the id
+tables it caches in data/section-refs: nothing here reaches Drive, PayHOA, or the mail.
 """
 
 from __future__ import annotations
@@ -53,6 +55,29 @@ def cmd_cite(args: argparse.Namespace) -> int:
     from jason.tasks.cite import Shelf, markdown
 
     shelf = Shelf(community(), _data_dir(args), private=args.private)
+    if args.html is not None:
+        from jason.tasks.reader import write
+
+        out = Path(args.html) if args.html else _data_dir(args) / "reader"
+        report = write(shelf, out, private=args.private)
+        if args.json:
+            print(json.dumps({"out": str(report.out), "pages": report.pages, "byKind": report.by_kind,
+                              "missing": report.missing, "restricted": report.restricted, "unread": report.unread,
+                              "capped": report.capped}, indent=1))
+            return 0
+        kinds = ", ".join(f"{k} {n}" for k, n in sorted(report.by_kind.items()))
+        print(f"{report.pages} pages in {report.out} ({kinds})")
+        print(f"{len(report.missing)} linked addresses have no page (each link to one is marked with why)")
+        for reason, n in Counter(v.split(":", 1)[0] for v in report.missing.values()).most_common():
+            print(f"  {reason}: {n}")
+        if report.restricted:
+            print("not written (restricted; --private writes them): " + ", ".join(report.restricted))
+        if report.capped:
+            print("stopped at the page cap: some links are marked not written")
+        if report.unread:
+            print("not read: " + "; ".join(report.unread[:10]))
+        print(f"open {report.out / 'index.html'}, or serve it: python -m http.server -d {report.out} 8765")
+        return 0
     if args.books:
         table = shelf.books.table()
         if args.json:
@@ -270,6 +295,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                                                         "each with its statute and the profile's documents")
     p.add_argument("--private", action="store_true", help="open a restricted book (executive-session minutes, the "
                                                           "membership list, election materials: CIV 5215)")
+    p.add_argument("--html", nargs="?", const="", metavar="DIR",
+                   help="write the record reader: static pages for each book, section, history, and version, linked "
+                        "by address (default data/reader; restricted books only with --private)")
     p.add_argument("--migrate-ids", action="store_true", help="add each citing record's permanent id and the version "
                                                               "it cites (a dry run unless --apply)")
     p.add_argument("--apply", action="store_true", help="with --migrate-ids: write the fields (each file backed up "

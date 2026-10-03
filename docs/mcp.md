@@ -15,7 +15,7 @@ jason-mcp --profile governance    # the governance systems
 
 - `.mcp.json` at the project root registers `jason` as `.venv\Scripts\jason-mcp.exe` for Claude Code.
 - The server runs from `JASON_CWD` when a client sets it, else the folder that holds `.env`. The stores are addressed as `data/...` from there.
-- **Profiles.** With no profile (or `all`) every tool is served: 124 today. `--profile governance` serves the seventeen governance tools below. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
+- **Profiles.** With no profile (or `all`) every tool is served: 124 today, with the record resources ([Resources](#resources): nine templates, and about 130 listed resources for a profile with a declaration, rules, and annexations). `--profile governance` serves the seventeen governance tools below and the same resources. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
 - **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile all` registers every tool. A small local model chooses better from the board set.
 
 ## Rules for a client
@@ -226,6 +226,44 @@ The living documents, conflicts, intake questions, the schedule, members' reques
 | `governance_digest` | Start here: what needs attention across these systems, most urgent first (a passed statutory or documents' clock, then overdue, due soon, open, noted). Its `meetings` section reads each board meeting's notice (4920) and minutes (4950(a)) days against the record; none on record is not none given. Its `people` section reads people's own Google Tasks and calendar events beside what jason tracks (past due, proposed to close, untracked recurring); nothing in Google is marked or closed. `private` leaves units out and replaces each task's title with its rule's label. Each section is capped, names the tool for the rest, and is reported unavailable rather than failing when its store is missing ([attention.md](attention.md)). Decides nothing. |
 
 **From Python.** The same functions are `jason.api` (`from jason import api; api.member_requests()`). They return JSON-ready dicts. The other tools import from `jason.mcp.county`, `jason.mcp.index`, and `jason.mcp.rolls`.
+
+## Resources
+
+The association's books are MCP resources, by their `jason://` addresses ([record-addresses.md](record-addresses.md)). They are served under `--profile governance` and the default `all`; the board profile has none. The code is `jason.mcp.resources`, over the same resolver as `cite_document` and `jason cite` (`jason.tasks.cite`).
+
+**`resources/templates/list`** gives the address forms, most specific first:
+
+| Template | Reads |
+| --- | --- |
+| `jason://{book}/history/{+section}` | a section's timeline: each version, the number it went by, whether its words changed |
+| `jason://{book}@{version}/{+section}` | a section at a version: `base`, the day one took effect, or a stage (`draft-2099-01-01`, never in force) |
+| `jason://{book}:{date}/{+section}` | the words in force on a day |
+| `jason://res/{number}`, `jason://min/{day}`, `jason://inst/{number}` | a resolution, minutes, a recorded instrument |
+| `jason://{book}/{item}{#fragment}` | a series item with a fragment (`#item-4`); the item is read whole |
+| `jason://{book}/{+section}` | the current text of a section, a span (`6.2..6.4`), siblings (`6.2(a),6.2(b)`), or a series item |
+| `jason://{book}` | a book: a living book's outline, a series book's record kind, or `gov` |
+
+A section label holds dots, parentheses, `~`, and commas, so it is a reserved expansion (`{+section}`): a simple `{var}` stops at a comma. The SDK's path checks pass a span (`6.2..6.4` is not a `..` segment). Each template reads the address its parameters spell, so a URI two templates match reads the same either way.
+
+**`resources/list`** lists every book, each part the profile maps (`rules.parking`), and each living book's top-level articles or sections (forty a book; the sections stop at two hundred in all). A restricted book (`exec`, `members`, `ballots`) is listed by name only, with a note that a read is refused. Annotations:
+
+- `audience`: the user and the assistant; the user alone for a restricted book.
+- `priority`: 0.9 for a governing document's book, 0.7 for its parts, 0.6 for its articles, 0.5 for the other books (0.4 for their parts and articles), 0.3 for the manual, 0.1 for a restricted one.
+- `lastModified`: the effective day of the version the words are read at (a book's version in force; an amended section's instrument). It is left out for words that are still the base's, whose day jason does not keep here.
+
+**`resources/read`** returns `text/markdown`, the recitation first: the words whole, the citation and the version in force, any note, and the caveat. Then the address, the permanent id, the history's address, and the defined terms the words use, each recited from its own section with its address. An outline (a book, an article, a span) lists its parts as links. A miss is a not-found error (`-32602`) carrying the resolver's reason (`not_in_document`, `no_such_version`, `restricted`, ...). A resource never opens a restricted book: a URI cannot ask for `private`, and `jason cite --private` reads one locally.
+
+Repeat the caveat. A consolidated text is not an official restatement, and a permanent id is a program's pairing of words.
+
+**Not emitted.** Subscriptions and `notifications/resources/list_changed` are out of scope; the listing is computed when the server starts. What would emit them:
+
+- an amendment applied to a living document (`jason living KEY --fetch` with a new instrument in force): `resources/updated` for its sections, and `list_changed` when it adds or removes a top-level article;
+- a migration run (`jason cite --migrate-ids --apply`), or a rebuilt id table that renumbers: `resources/updated` for the histories;
+- a profile's `book_entries()` changed: `list_changed`.
+
+**From Python.** `api.read_record("jason://decl/6.2(a)")` returns the page (`{found, address, title, text, lastModified}`, or a miss with its reason), and `api.record_resources()` the listing.
+
+**The reader.** `jason cite --html [DIR]` writes the same pages as static HTML into `data/reader` (private, never checked in), linked by address: each book, part, section, history, and version, with what a section cites and what cites it. Every link reaches a written page or is marked missing with why. Restricted books are written only with `--private`. To browse: `python -m http.server -d data/reader 8765`, then http://localhost:8765/ (or open `data/reader/index.html`).
 
 ## Board
 

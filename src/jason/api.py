@@ -13,6 +13,8 @@ Each returns a JSON-ready dict, reads the stores on disk, and decides nothing fo
     api.answer_intake_question("c552e5c7c1", "contract", by="A Person")
     api.cite_document("Section 6.2(a) of the Declaration")["text"]     # the words, with the citation
     api.section_refs("Declaration 6.2(a)", hops=2, direction="both")
+    api.read_record("jason://decl/6.2(a)")["text"]     # the MCP resource's Markdown: the recitation first
+    api.record_resources()                              # what jason-mcp lists as resources
 
 The MCP server's other tools (the PayHOA catalog, deeds, liens, finance, mail, meetings, the law) are importable from
 ``jason.mcp.county``, ``jason.mcp.index``, and ``jason.mcp.rolls`` the same way. ``docs/mcp.md`` lists every tool.
@@ -41,4 +43,28 @@ from jason.mcp.governance import (
     section_refs,
 )
 
-__all__ = [t.__name__ for t in TOOLS]
+
+
+def record_resources(data_dir=None) -> list[dict]:
+    """The record addresses ``jason-mcp`` lists as resources (``jason.mcp.resources.listing``): every book (a
+    restricted one by name only), each part, and each living book's top-level articles or sections, capped."""
+    from jason.mcp.resources import listing
+
+    return listing(data_dir=data_dir)
+
+
+def read_record(address: str, data_dir=None) -> dict:
+    """One ``jason://`` address as the MCP resource reads it: ``{found, address, title, text (Markdown: the
+    recitation first), lastModified}``, or ``{found: False, reason, detail}`` for a miss (a restricted book is
+    ``restricted``; ``jason cite --private`` reads one locally)."""
+    from jason.mcp.resources import AddressNotFound, read
+
+    try:
+        page = read(address, data_dir=data_dir)
+    except AddressNotFound as exc:
+        return {"found": False, "address": exc.address, "reason": exc.reason, "detail": exc.detail}
+    return {"found": True, "address": page.address, "title": page.title, "text": page.text,
+            "lastModified": page.last_modified}
+
+
+__all__ = [t.__name__ for t in TOOLS] + ["read_record", "record_resources"]
