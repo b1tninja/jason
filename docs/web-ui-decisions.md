@@ -59,17 +59,40 @@ no person has pinned: unclassified library files, records gaps, supersessions th
 specification does not pin, missing developer deliveries, and unplaced instruments. A source that cannot be
 read is a note, not a crash. The caveat is on the page.
 
+### The manager's core (`#/duties`, `#/calendar`, `#/money`, `#/meetings`, `#/insurance`)
+
+The backbone is the duty anchors in [community-manager.md](community-manager.md): BPC 11500(d)'s four
+management services (collect, report, and archive the finances and assets; carry out the board's resolutions;
+carry out the governing documents; administer the contracts, insurance, and vendors), broken into the
+seventeen duties `jason.community.duties.DUTIES` records. `#/duties` lays them out by cadence (monthly, annual,
+every three years, continuous, on the event), each card naming what the duty keeps straight, its sections, the
+tools that serve it, and its limit (what jason does not do); a card opens to `duty_brief`, the passages the
+governing documents and the law notes give for the duty's questions.
+
+The verbs with a store behind them each get a view:
+
+- **Deadlines** (`association_calendar`): the obligations sorted overdue, no evidence, due soon, upcoming; each
+  with its authority, rule, next date, the last time a payment showed it done, and its past deadlines. A payment
+  is evidence, not proof.
+- **Money**, the monthly review under CIV 5500: budget against actual with the categories furthest off and the
+  balances; each bank account's reconciliation with its open items and their `reason` lead; the payments with
+  questions (missing attachment, other vendor, possible double payment); and the delinquent accounts by
+  standing with the board's `nextStep`, marked executive session.
+- **Meetings** (`meeting_records`): each meeting's records on hand (agenda, notice, minutes, transcript,
+  recording) and its checks (no minutes 30 days on, a recording held after the minutes, a transcript into
+  executive session), with the scheduled days that have no record.
+- **Insurance** (`insurance_review`): each policy's standing and term end, the next term's payments, the letters
+  that print its number (a cancellation or non-renewal red), its findings, the terms as a timeline, and the
+  claims the mail acknowledges.
+
 ## Next, by what a person decides
 
-**Review queues (a treasurer or manager works a list).** `invoice_review` and `utility_payments` (payments
-with findings and the attachment beside them), `bank_reconciliations` (open items with a `reason` lead and an
-age), `ledger_validation` (printed against ledger), `title_watch --attention` (the four standings a person acts
-on), `association_collections` (grouped by standing with `nextStep`), `open_items` and `reply_needed` (an inbox).
-Table with facets, expandable rows, `Findings`, `Pill`, `DueDate`.
+**Review queues (a treasurer or manager works a list).** `utility_payments` (same shape as invoices),
+`ledger_validation` (printed against ledger), `title_watch --attention` (the four standings a person acts
+on), `open_items` and `reply_needed` (an inbox). Table with facets, expandable rows, `Findings`, `Pill`, `DueDate`.
 
 **Compliance records (the board judges whether a statute was met).** `reserve_transfers` (a card per borrowing
-with the 5515 documents ticked and `gaps` red), `association_calendar` (obligations by standing with history),
-`hearings` (the 5855 clocks), `meeting_records` (checks per meeting), `insurance_review` (terms and findings).
+with the 5515 documents ticked and `gaps` red), `hearings` (the 5855 clocks), `legal_cases.openDuties`.
 Checklist plus `Timeline`.
 
 **Drafts for approval (a person reads, then runs the command).** `request_links.drafts` (a proposed PayHOA

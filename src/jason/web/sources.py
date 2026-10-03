@@ -59,6 +59,66 @@ def jobs_status(args: Args) -> dict[str, Any]:
     return tool(job=int(args.get("job", "0") or 0), every=_flag(args, "all"))
 
 
+def duties(args: Args) -> dict[str, Any]:
+    """The manager's duty anchors (docs/community-manager.md): each with what it keeps straight, its sections, artifact,
+    cadence, the CIV 5200 records it rests on, what jason produces, and its limit. ``anchor`` gives one duty's full
+    brief with the passages retrieval found; without it, the list (no retrieval)."""
+    from jason.community.duties import DUTIES
+
+    anchor = args.get("anchor", "").strip()
+    if anchor:
+        from jason.mcp.county import duty_brief
+
+        return duty_brief(anchor)
+    return {"found": True, "count": len(DUTIES), "duties": [
+        {"anchor": d.anchor, "keepsStraight": d.keeps_straight, "sections": d.sections, "artifact": d.artifact,
+         "cadence": d.cadence.value, "when": d.when, "records": [r.value for r in d.records], "produce": d.produce, "limit": d.limit}
+        for d in DUTIES]}
+
+
+def calendar(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import association_calendar as tool
+
+    return tool()
+
+
+def meetings(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import meeting_records as tool
+
+    return tool(date=args.get("date", ""))
+
+
+def insurance(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import insurance_review as tool
+
+    return tool()
+
+
+def budget(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import budget_status as tool
+
+    return tool(year=int(args.get("year", "0") or 0))
+
+
+def reconciliations(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import bank_reconciliations as tool
+
+    return tool()
+
+
+def invoices(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import invoice_review as tool
+
+    return tool(payee=args.get("payee", ""), problems_only=not _flag(args, "all"), since=args.get("since", ""),
+                limit=int(args.get("limit", "80") or 80))
+
+
+def collections(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import association_collections as tool
+
+    return tool()
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -124,6 +184,14 @@ def default_loaders() -> dict[str, Any]:
         "document-readings": document_readings,
         "jobs": jobs_status,
         "leads": leads,
+        "duties": duties,
+        "calendar": calendar,
+        "meetings": meetings,
+        "insurance": insurance,
+        "budget": budget,
+        "reconciliations": reconciliations,
+        "invoices": invoices,
+        "collections": collections,
     }
 
 

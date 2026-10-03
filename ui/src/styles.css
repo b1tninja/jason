@@ -63,3 +63,12 @@ button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .bar { display: block; height: .7rem; background: var(--accent); border-radius: 3px; min-width: 2px; } .bar-label { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deliveries { list-style: none; padding: 0; margin: 0; } .deliveries li { padding: .3rem 0; border-bottom: 1px solid var(--line); }
 @media (max-width: 640px) { .tl { grid-template-columns: 1fr; } .fields { grid-template-columns: 1fr; } .bars li { grid-template-columns: 6rem 1fr 3rem; } }
+
+/* duties */
+.grid-3 { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cadence { text-transform: capitalize; color: var(--muted); font-size: .9rem; margin: 1rem 0 .4rem; border-bottom: 1px solid var(--line); }
+.duty { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .75rem .9rem; } .duty h4 { margin: 0 0 .3rem; font-size: 1rem; } .duty p { margin: .2rem 0; font-size: .92rem; }
+.duty .link { font: inherit; font-weight: 650; text-align: left; } .limit { color: var(--warn); font-size: .85rem; }
+.kv { display: grid; grid-template-columns: 9rem 1fr; gap: .3rem .75rem; margin: 0; } .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+.passage { margin: .5rem 0; padding: .4rem .8rem; border-left: 3px solid var(--line); background: var(--bg); border-radius: 0 6px 6px 0; } .passage p { margin: 0 0 .3rem; }
+@media (max-width: 640px) { .kv { grid-template-columns: 1fr; } }

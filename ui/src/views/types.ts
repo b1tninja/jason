@@ -36,3 +36,54 @@ export interface Readings {
 }
 export interface Lead { source: string; kind: string; title: string; detail: string; next: string; authority?: string }
 export interface Leads { found?: boolean; note?: string; count: number; counts: Record<string, number>; rows: Lead[]; notes: string[]; caveats: string[] }
+
+export interface Duty {
+  anchor: string; keepsStraight: string; sections: string; artifact: string; cadence: string; when: string;
+  records: string[]; produce: string; limit: string;
+}
+export interface Duties { found?: boolean; note?: string; count: number; duties: Duty[] }
+export interface DutyBrief extends Duty {
+  found?: boolean; note?: string;
+  passages: Record<string, { shelf: string; file: string; passage: number; score: number; text: string }[]>;
+}
+
+export interface Obligation {
+  name: string; authority: string; rule: string; note: string; standing: string; next: string | null; daysLeft: number | null;
+  lastDone: string | null; history: { deadline?: string; standing?: string; daysLate?: number; date?: string; amountCents?: number; evidence?: string[] }[];
+}
+export interface Calendar { found?: boolean; note?: string; asOf: string; obligations: Obligation[]; lateOrMissed?: Obligation[]; caveats?: string[] }
+
+export interface Meeting { date: string; titles: string[]; has: Record<string, Record<string, number>>; checks: string[] }
+export interface Meetings { found?: boolean; note?: string; builtAt?: string; count?: number; meetings: Meeting[]; scheduleGaps?: string[]; unplaced?: unknown[]; caveats?: string[] }
+
+export interface Policy {
+  kind: string; building?: string | number | null; number: string; priorNumbers: string[]; carrier: string; program: string; agent: string;
+  standing: string; termEnd: string | null; terms: { start?: string; end?: string; paidCents?: number }[]; nextTermPayments: { date: string; amountCents: number }[];
+  letters: unknown[]; letterCount?: number; notices: { kind: string; received: string; subject?: string }[]; findings: string[];
+}
+export interface Insurance { found?: boolean; note?: string; asOf: string; paymentsSynced?: string; policies: Policy[]; unplacedFloodPayments: unknown[]; claims: { received: string; claimNumber?: string; dateOfLoss?: string; kind?: string }[]; caveats?: string[] }
+
+export interface Side { budget?: number; actual?: number; variance?: number; budgeted?: number }
+export interface Budget {
+  found?: boolean; note?: string; year: number; throughMonth?: string; syncedAt?: string;
+  yearToDate: Record<string, Side | number>; fullYear?: Record<string, Side | number>;
+  months: { month: string; incomeBudget: number; incomeActual: number; expenseBudget: number; expenseActual: number }[];
+  expenseGaps: { name: string; budgeted: number; actual: number; gap: number }[]; revenueGaps: { name: string; budgeted: number; actual: number; gap: number }[];
+  accounts: { name?: string; label?: string; last4?: string; purpose?: string; balance_cents?: number | null }[]; reserveTotalCents: number | null;
+}
+export interface Account {
+  account: string; last4?: string; reconciled?: string; latest?: string; latestEndingCents?: number; registerBalanceCents?: number; gaps: string[];
+  openItems: { kind: string; date: string; amount?: number; lineCents?: number; description: string; ageDays: number; reason: string }[];
+  ledgerMismatches: { end: string; statementCents: number; ledgerCents: number; differenceCents: number; explained: boolean }[];
+}
+export interface Reconciliations { found?: boolean; note?: string; accounts: Account[]; openTransfers: unknown[]; caveats?: string[] }
+export interface Payment {
+  key: string; date: string; amountCents: number; payee: string; description: string; categories: string[];
+  documents: { filename: string; kind?: string }[]; findings: string[]; ok: boolean;
+}
+export interface Invoices { found?: boolean; note?: string; summary: Record<string, number>; payments: Payment[]; more?: string; caveats?: string[] }
+export interface CollectionRow {
+  apn: string; address: string; owners: string[]; standing: string; meaning: string; balanceCents: number; pastDueCents: number;
+  lien?: string; lienRecorded?: string; lienStatus?: string; lienDays?: number; floorQuestion?: string; nextStep: string;
+}
+export interface Collections { found?: boolean; note?: string; counts: Record<string, number>; rows: CollectionRow[]; pastDueCents: number; note2?: string }

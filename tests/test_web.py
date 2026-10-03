@@ -81,3 +81,13 @@ def test_set_board_item_refuses_jason_fields():
         set_board_item("x", {"title": "mine"})
     with pytest.raises(ValueError):
         set_board_item("x", {})
+
+
+def test_duties_list_needs_no_store():
+    from jason.web.sources import duties
+
+    out = duties({})
+    assert out["found"] and out["count"] >= 10
+    first = out["duties"][0]
+    assert {"anchor", "keepsStraight", "sections", "cadence", "records", "produce"} <= set(first)
+    assert all(isinstance(d["records"], list) for d in out["duties"])

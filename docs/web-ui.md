@@ -22,13 +22,13 @@ Development: `jason-web` in one terminal, `npm run dev` in `ui/` in another (Vit
 
 ## API
 
-`GET /api/health`, and `GET /api/<source>` for each loader in `jason.web.sources.default_loaders()`: `board-digest`, `board-items` (`?closed=1` includes closed), `association-records`, `records-inventory`, `library-status`, `document-readings`, `jobs`, and `leads` (the aggregate described in [web-ui-decisions.md](web-ui-decisions.md)). Each wraps a read-only `jason.mcp` tool. A loader that fails answers `{"error": ...}` with 4xx/5xx, which the UI shows with a Retry.
+`GET /api/health`, and `GET /api/<source>` for each loader in `jason.web.sources.default_loaders()`: `board-digest`, `board-items` (`?closed=1` includes closed), `association-records`, `records-inventory`, `library-status`, `document-readings`, `jobs`, `leads` (the aggregate described in [web-ui-decisions.md](web-ui-decisions.md)), `duties` (`?anchor=` for one brief with its passages), `calendar`, `meetings` (`?date=`), `insurance`, `budget` (`?year=`), `reconciliations`, `invoices` (`?all=1` includes clean payments), and `collections`. Each wraps a read-only `jason.mcp` tool. A loader that fails answers `{"error": ...}` with 4xx/5xx, which the UI shows with a Retry.
 
 The one write: `POST /api/board-items/<id>` with any of `status`, `owner`, `meeting`, `notes`, the board's own columns, through `tasks.board_items.set_fields` (what `jason board --set` calls). Any other field is refused with 400. `create_app(board_writer=None)` turns it off; `/api/health` lists `writes`.
 
 ## Views (`ui/src/views`, hash routes)
 
-`#/digest` (any tool result, generic), `#/board` (kanban of board items; the board's fields editable behind a confirm), `#/records` (the Civil Code 5200 inventory and the recorded instruments), `#/ingestion` (how the library was classified, and what the recorded copies say), `#/leads` (everything unpinned, in one list), `#/status`.
+`#/digest` (any tool result, generic), `#/duties` (the manager's duty anchors by cadence, each opening to its brief and the documents' passages), `#/calendar` (the recurring deadlines, overdue first), `#/money` (the monthly review: budget against actual, reconciliations, invoice questions, collections), `#/meetings` (each meeting's records and checks), `#/insurance` (the policy register against payments and mail), `#/board` (kanban of board items; the board's fields editable behind a confirm), `#/records` (the Civil Code 5200 inventory and the recorded instruments), `#/ingestion` (how the library was classified, and what the recorded copies say), `#/leads` (everything unpinned, in one list), `#/status`.
 
 ## Components (`ui/src/components`)
 
