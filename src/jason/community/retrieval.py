@@ -37,19 +37,26 @@ from jason.community.passages import Hit, Passage, corpus, rank
 EMBED_MODEL = "qwen3-embedding:8b"
 RRF_K = 60
 DENSE_DEPTH = 50           # how deep each ranking goes into the fusion
+# The hybrid's fusion, measured on the gold questions (October 2, 2026; docs/document-tools.md, model trials): a
+# small k lets each ranking's first places count, and the dense ranking weighed 1.5 keeps its paraphrase recall
+# that equal weights gave up (recall@5 0.75 to 0.88). Tuned on 24 questions: measure again as the gold set grows.
+HYBRID_RRF_K = 10
+DENSE_WEIGHT = 1.5
 # Qwen3-Embedding is trained with an instruction on the query side only; passages are embedded bare.
 QUERY_INSTRUCTION = "Instruct: Given a question about a homeowners association's documents, retrieve the passages that answer it\nQuery: "
 
 # --- fusion ---------------------------------------------------------------------------------------------------------
 
 
-def rrf(rankings: Iterable[Sequence[Hashable]], k: int = RRF_K) -> list[tuple[Hashable, float]]:
-    """Reciprocal rank fusion: each item scores the sum of ``1 / (k + rank)`` over the rankings it appears in (rank
-    from 1). Highest first; ties keep the order in which items were first seen."""
+def rrf(rankings: Iterable[Sequence[Hashable]], k: int = RRF_K,
+        weights: Sequence[float] | None = None) -> list[tuple[Hashable, float]]:
+    """Reciprocal rank fusion: each item scores the sum of ``weight / (k + rank)`` over the rankings it appears in (rank
+    from 1; every weight 1 unless given). Highest first; ties keep the order in which items were first seen."""
     scores: dict[Hashable, float] = {}
-    for ranking in rankings:
+    for n, ranking in enumerate(rankings):
+        weight = weights[n] if weights is not None and n < len(weights) else 1.0
         for position, item in enumerate(ranking, start=1):
-            scores[item] = scores.get(item, 0.0) + 1.0 / (k + position)
+            scores[item] = scores.get(item, 0.0) + weight / (k + position)
     order = {item: i for i, item in enumerate(scores)}
     return sorted(scores.items(), key=lambda pair: (-pair[1], order[pair[0]]))
 
@@ -392,7 +399,8 @@ def keyword_exact(query: str, items: Sequence[Passage], *, k: int = 8) -> tuple[
 
 
 def hybrid(query: str, items: Sequence[Passage], *, k: int = 8, embedder: Embedder | None = None,
-           reranker: Reranker | None = None, depth: int = DENSE_DEPTH, rrf_k: int = RRF_K) -> tuple[Hit, ...]:
+           reranker: Reranker | None = None, depth: int = DENSE_DEPTH, rrf_k: int = HYBRID_RRF_K,
+           dense_weight: float = DENSE_WEIGHT) -> tuple[Hit, ...]:
     """Keyword (BM25) and dense rankings fused by RRF, the exact-token passages first, optionally reranked. A hit's
     score is its fused RRF score. Without an embedder this is ``keyword_exact``."""
     items = tuple(items)
@@ -405,10 +413,13 @@ def hybrid(query: str, items: Sequence[Passage], *, k: int = 8, embedder: Embedd
         dense = dense_rank(query, items, embedder, k=depth)
         exact = exact_rank(query, items)
         rankings = [[_key(h.passage) for h in keyword], [_key(h.passage) for h in dense]]
+        weights = [1.0, dense_weight]
         if exact:
             rankings.append([_key(h.passage) for h in exact])
+            weights.append(1.0)
         by_key = {_key(p): p for p in items}
-        hits = boost_exact(query, [Hit(by_key[key], round(score, 5)) for key, score in rrf(rankings, k=rrf_k)])
+        fused = rrf(rankings, k=rrf_k, weights=weights)
+        hits = boost_exact(query, [Hit(by_key[key], round(score, 5)) for key, score in fused])
     if reranker is not None:
         tokens = exact_tokens(query)
         pinned = [h for h in hits if tokens and exact_count(tokens, h.passage.text)]

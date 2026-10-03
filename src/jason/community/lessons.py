@@ -476,6 +476,15 @@ LESSONS: tuple[Lesson, ...] = (
            "Rule sections phrased 'are to be', 'requires', or 'will be' showed no norm to the duty grammar.",
            "The deontic grammar reads shall, must, may, and their negatives.",
            "Listed as grammar leads; the grammar needs these forms.", Status.OPEN, guards=("jason manual --classify (grammar leads)",)),
+    Lesson("fusion-gave-up-dense", OCT_2026, (Area.DOCUMENTS,),
+           "The hybrid search, jason's default retriever, was never measured; on the gold questions it found fewer "
+           "paraphrased answers than the dense ranking alone (0.67 against 0.78).",
+           "Equal-weight fusion with a large k let the keyword ranking's misses dilute the dense ranking's first places.",
+           "The fusion weighs the dense ranking 1.5 with k 10 (recall@5 0.75 to 0.88), measured on the gold set; a change "
+           "to retrieval is measured with scripts/eval_retrieval.py before and after, and recorded in the model trials.",
+           Status.FIXED, guards=("retrieval.HYBRID_RRF_K and DENSE_WEIGHT", "scripts/eval_retrieval.py",
+                                 "tests/test_retrieval.py"),
+           docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

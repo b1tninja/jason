@@ -184,3 +184,11 @@ def test_passage_search_modes(tmp_path, monkeypatch):
     monkeypatch.setattr(OllamaEmbedder, "_embed", down)
     hybrid_down = passage_search("garage door", data_dir=tmp_path, mode="hybrid")
     assert hybrid_down["available"] is False and "Ollama" in hybrid_down["note"]
+
+
+def test_a_weighted_ranking_counts_more_in_the_fusion():
+    from jason.community.retrieval import rrf
+
+    equal = [item for item, _ in rrf([["a", "b"], ["b", "a"]], k=10)]
+    weighted = [item for item, _ in rrf([["a", "b"], ["b", "a"]], k=10, weights=[1.0, 1.5])]
+    assert equal[0] == "a" and weighted[0] == "b"          # a tie in rank goes to the heavier ranking
