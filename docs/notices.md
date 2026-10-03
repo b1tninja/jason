@@ -99,7 +99,7 @@ The policy statement carries what makes notices work: who receives documents for
 
 ## The catalog
 
-Each row is a `NoticeRequirement` in `notice_catalog.REQUIREMENTS`, keyed for linking. Recipients, method (`general` = 4045, `individual` = 4040), and the clock; the content lists, notes, and evidence are in the rows (`jason notices KEY --catalog`). Seventy-two rows; seventy are verified against the statute's words on disk. The two that are not say why.
+Each row is a `NoticeRequirement` in `notice_catalog.REQUIREMENTS`, keyed for linking. Recipients, method (`general` = 4045, `individual` = 4040), and the clock; the content lists, notes, and evidence are in the rows (`jason notices KEY --catalog`). Seventy-three rows; seventy-one are verified against the statute's words on disk. The two that are not say why.
 
 ### Meetings
 
@@ -108,6 +108,7 @@ Each row is a `NoticeRequirement` in `notice_catalog.REQUIREMENTS`, keyed for li
 | `board-meeting` | CIV 4920 | every member | general | at least 4 days before the meeting; with the agenda |
 | `board-meeting-executive` | CIV 4920 | every member | general | at least 2 days before a meeting held only in executive session |
 | `board-meeting-emergency` | CIV 4920, 4923 | every member | none required | the minutes record the emergency |
+| `board-meeting-directors` | CORP 7211 | the directors | first-class mail, personal delivery, or electronic | a special meeting: 4 days by mail or 48 hours otherwise; a regular meeting fixed by the bylaws or the board needs none |
 | `teleconference-meeting` | CIV 4926 | every member | in the meeting notice | technical instructions, a help contact, the individual-delivery reminder |
 | `disaster-meeting-first` | CIV 5450 | every member | individual | the first teleconference meeting during a declared emergency |
 | `reserve-transfer-consideration` | CIV 5515 | every member | in the board meeting notice | reasons, repayment options, whether a special assessment may be considered |

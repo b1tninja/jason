@@ -69,6 +69,12 @@ def _after(anchor: Anchor, most: int | None = None, least: int | None = None) ->
 NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
     # Bylaws.
     NoticeProvision(
+        "bylaws-3.5", "bylaws", "3.5",
+        "A member who sold to a contract purchaser may assign the membership's rights; an assignment to a contract "
+        "purchaser who does not live in the unit binds no one until the board is told of it in writing.", OWN,
+        title="Owner's notice to the board of an assignment to a contract purchaser", recipients=Recipients.BOARD,
+        methods=(Method.WRITTEN,)),
+    NoticeProvision(
         "bylaws-3.6a", "bylaws", "3.6(a)",
         "The board may fix a record date for notice of a members' meeting 10 to 90 days before it; otherwise the close "
         "of business the business day before notice is given.", OWN, "member-meeting",
@@ -104,6 +110,15 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
              "distributed, so nominations must close more than 30 days before; the election rules (3.2.1, 2.1) follow "
              "the statute and the bylaws' timetable cannot be met as written."),
     NoticeProvision(
+        "bylaws-6.1b", "bylaws", "6.1(b)",
+        "A nominating committee the board appoints tells the president or secretary in writing whom it nominates, at "
+        "least 14 days before the date the board sets for mailing the ballots.", OWN,
+        timing=(_before(Anchor.BALLOTS_DISTRIBUTED, 14),), methods=(Method.WRITTEN,),
+        title="Nominating committee's nominees to the president or secretary", recipients=Recipients.BOARD,
+        lead="Fourteen days before the ballots is too late for the candidate list the pre-ballot notice carries 30 "
+             "days before them (5115(b)); the committee reports before the nomination deadline the election rules "
+             "set. The bylaws-nomination-timetable conflict covers 6.1."),
+    NoticeProvision(
         "bylaws-6.7", "bylaws", "6.7", "Ballots and two envelopes mailed first class or delivered at least 30 days "
         "before the voting deadline.", SAME, "ballots", (_before(Anchor.VOTING_DEADLINE, 30),)),
     NoticeProvision(
@@ -112,6 +127,13 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
         MORE, "election-results", (_after(Anchor.ELECTION, 15),), (Method.INDIVIDUAL,),
         lead="Read as a communication to every member, more than a posting: send the results by each member's 4040 "
              "method as well as posting them, which satisfies both."),
+    NoticeProvision(
+        "bylaws-7.5", "bylaws", "7.5",
+        "Notice of each board meeting (regular meetings excepted under 7.2) to the directors by first-class mail at "
+        "least four days before, or at least 48 hours before by personal delivery, telephone or voice messaging, "
+        "telegraph, fax, or email; a reasonable effort for an emergency meeting; none to a director who waived it in "
+        "writing or attended without protest.", SAME, "board-meeting-directors", (_before(Anchor.MEETING, 4),),
+        (Method.FIRST_CLASS_MAIL, Method.PERSONAL_DELIVERY, Method.ELECTRONIC)),
     NoticeProvision(
         "bylaws-7.6", "bylaws", "7.6",
         "Members get notice of the day, time, and place of each board meeting at least four days before, by posting in "
@@ -227,6 +249,14 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
         lead="This follows 4040 as it read before 2023. Individual delivery now follows the member's 4041 choice of "
              "mail or email, else first-class mail to the address on the books (4040(a)); personal delivery is "
              "individual delivery only where a section names it (5855, 4785). 12.12(c) matches 4040(c)."),
+    NoticeProvision(
+        "bylaws-exhibit-c", "bylaws", "ASSESSMENTS AND FORECLOSURE, PAYMENTS",
+        "Exhibit C, which 9.9(g) calls the current version, reproduces the assessments and foreclosure notice as "
+        "former Civil Code 1365.1 gave it, citing former sections (1367.1, 1368.810, 1369.510): the pre-lien notice, "
+        "the receipt, and the address for overnight payments.", RENUMBERED, "collection-policy-notice",
+        lead="The notice is now 5730's text, verbatim in at least 12-point type; deliver the current text (as the "
+             "collection policy carries it), not Exhibit C's. Its duties are the catalog's pre-lien-notice (5660) and "
+             "the policy statement's overnight payment address (5655(c))."),
     # Election rules.
     NoticeProvision(
         "election-rules-2", "election-rules", "1.2, 2.1, 2.2, 2.3, 2.7, 3.2.1",
@@ -240,7 +270,24 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
         "election; electronic ballots go out 30 days before; individual notice 30 days before the deadline to change.",
         SAME, "electronic-opt-out-notice", (_before(Anchor.OPT_OUT_DEADLINE, 30),)),
     NoticeProvision(
+        "election-rules-6.4.4", "election-rules", "6.4.4",
+        "The inspector delivers the ballots by first-class mail, and a copy of the election rules by individual "
+        "delivery or by printing their website address on the ballot with the 12-point phrase, at least 30 days before "
+        "the election.", SAME, "ballots", (_before(Anchor.ELECTION, 30),),
+        (Method.FIRST_CLASS_MAIL, Method.INDIVIDUAL, Method.WEBSITE)),
+    NoticeProvision(
+        "election-rules-8.5", "election-rules", "8.5, 8.6, 8.7, 8.8",
+        "Paper and electronic ballots list the same items; a paper ballot is mailed only to a member who chose paper or "
+        "gave no working email (who is deemed to have chosen paper); an electronic ballot goes only to a member who "
+        "chose it and gave a working email; a member with no working email on file when ballots go out gets paper.",
+        SAME, "ballots"),
+    NoticeProvision(
         "election-rules-8.18", "election-rules", "8.18",
+        "The 5115(b) notice includes preliminary instructions for casting an electronic ballot once voting starts, and "
+        "the deadline to submit it.", SAME, "pre-ballot-notice",
+        content=("preliminary instructions on how to cast an electronic ballot", "the deadline for electronic ballots")),
+    NoticeProvision(
+        "election-rules-8.19", "election-rules", "8.19",
         "Members who vote electronically agree to receive all election notices electronically.", DIFFERENT,
         "pre-ballot-notice",
         lead="An unrecorded rule's method is not a member's agreement (4040(c)); individual delivery follows the "
@@ -248,13 +295,51 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
              "election notices is for counsel; until then, deliver by the 4041 choice."),
     # The enforcement and collection policies.
     NoticeProvision(
-        "enforcement-policy-due-process", "enforcement-policy", "(b) Due Process Requirements",
+        "enforcement-policy-due-process", "enforcement-policy", "b) Due Process Requirements",
         "A Notice of Board Hearing mailed at least ten days before, delivered personally or by first-class mail, with "
         "the provision allegedly violated; the decision within fifteen days after the hearing.", LESS,
         "discipline-hearing", (_before(Anchor.HEARING, 10),), (Method.PERSONAL_DELIVERY, Method.FIRST_CLASS_MAIL),
         ("a reference to the provision allegedly violated",),
         lead="Already the hearing-procedure conflict (5855(a)-(g)); the content it adds (the provision's reference) "
              "is followed."),
+    NoticeProvision(
+        "enforcement-policy-courtesy", "enforcement-policy", "preamble (courtesy notification letter)",
+        "When the board or its committee finds a violation likely, the owner is mailed a courtesy notification letter "
+        "naming the alleged violation and asking for correction within a reasonable time; then another letter, or a "
+        "Notice of Board Hearing.", OWN, methods=(Method.FIRST_CLASS_MAIL,),
+        title="Courtesy notification letter before a hearing", recipients=Recipients.MEMBER,
+        lead="Not discipline (the owner's manual lists it among the steps that need no hearing); a hearing that "
+             "follows takes the 5855 notice."),
+    # The owner's manual and rules (it carries the enforcement policy's text as its B-18(C)).
+    NoticeProvision(
+        "owners-manual-due-process", "owners-manual", "B-18(C)(1), B-18(C)(3)",
+        "A Notice of Board Hearing mailed at least ten days before, delivered personally or by first-class mail to the "
+        "last address on the books; the decision sent within fifteen days after the hearing.", LESS,
+        "discipline-hearing", (_before(Anchor.HEARING, 10),), (Method.PERSONAL_DELIVERY, Method.FIRST_CLASS_MAIL),
+        lead="The enforcement policy's text (enforcement-policy-due-process), and the same hearing-procedure conflict: "
+             "delivery personally or by the member's 4040 method, the right to cure and to executive session in the "
+             "notice, and the decision within 14 days (5855)."),
+    NoticeProvision(
+        "owners-manual-courtesy", "owners-manual", "B-18(C) (courtesy notification letter)",
+        "A courtesy notification letter, mailed, naming the alleged violation and asking for correction within a "
+        "reasonable time, before any Notice of Board Hearing.", OWN, methods=(Method.FIRST_CLASS_MAIL,),
+        title="Courtesy notification letter before a hearing", recipients=Recipients.MEMBER),
+    NoticeProvision(
+        "owners-manual-B-1d", "owners-manual", "B-1(d)",
+        "The association distributes a resident registration form each year, to be completed within 30 days of "
+        "receipt, and an updated one within 30 days of a change of occupancy; a fine for failing to keep it current.",
+        OWN, methods=(Method.WRITTEN,), title="Annual resident registration form", recipients=Recipients.ALL_MEMBERS,
+        lead="The annual 4041 request (owner-info-solicitation) already asks whether the unit is owner-occupied, "
+             "rented, or vacant; whether it also serves as this form is the board's call. A fine for failing to update "
+             "it is a penalty: on the schedule and after a 5855 hearing."),
+    NoticeProvision(
+        "owners-manual-B-1h", "owners-manual", "B-1(h)",
+        "Before leasing, the owner asks for and gets the board's written approval, gives the tenants the CC&Rs, bylaws, "
+        "and rules at the owner's cost, and tells management the tenants' names and phone numbers, with the rental "
+        "agreement and proof of background and credit checks.", OWN, methods=(Method.WRITTEN,),
+        title="Owner's notice to management of a tenancy", recipients=Recipients.BOARD,
+        lead="Read with CC&Rs 4.15 and the rental-approvals question before the board; asking an owner for these "
+             "papers is held until the board decides (no owner contact about occupancy meanwhile)."),
     NoticeProvision(
         "collection-policy-3", "collection-policy", "3",
         "Notice of the regular assessment 30 to 90 days before the fiscal year begins; an increase or a special "
@@ -299,12 +384,21 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
         (_after(Anchor.APPLICATION_RECEIVED, 30),), (Method.WRITTEN,),
         title="Decision on an application to rent", recipients=Recipients.APPLICANT),
     NoticeProvision(
+        "ccrs-4.15h", "ccrs", "4.15(h)",
+        "The board keeps a list of the owners renting their units (name, mailing address, unit, date of record "
+        "ownership, and lease term), available to any owner for a reasonable charge the board sets.", OWN,
+        methods=(Method.MADE_AVAILABLE,), title="List of rented units, on an owner's request",
+        recipients=Recipients.REQUESTER,
+        lead="The list names owners and their units: read a request with 5215(a)(4) (information reasonably likely to "
+             "compromise a member's privacy may be withheld or redacted) and 5216 (a Safe at Home participant's "
+             "address is withheld). How much to release is a written policy for the board to adopt."),
+    NoticeProvision(
         "ccrs-4.15k", "ccrs", "4.15(k)",
         "Before an eviction action, notice to the owner detailing the tenant's infraction and a chance to correct it "
         "or appear before the board.", OWN, title="Notice before an eviction action", recipients=Recipients.MEMBER,
         methods=(Method.WRITTEN,)),
     NoticeProvision(
-        "ccrs-4.20", "ccrs", "4.20(a)-(c)",
+        "ccrs-4.20", "ccrs", "4.20",
         "A variance request: a denial on its face noticed within 30 days of the decision; otherwise a hearing within "
         "45 days of the request, noticed to all members at least 15 days before; the decision noticed within 30 days.",
         OWN, "", (_before(Anchor.HEARING, 15),), (Method.WRITTEN,),
@@ -316,23 +410,36 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
         "The budget estimate for the year distributed to all owners 30 to 90 days before the fiscal year begins.", SAME,
         "annual-budget-report", (_before(Anchor.FISCAL_YEAR_END, 30, 90),)),
     NoticeProvision(
-        "ccrs-6.12-payment-plan", "ccrs", "6.12 (payment plan)",
+        "ccrs-6.12b", "ccrs", "6.12(b)",
+        "Payments go first to assessments; a receipt on request, with the date and who received it; and the "
+        "association provides a mailing address for overnight payment of assessments.", SAME,
+        "annual-policy-statement", content=("the mailing address for overnight payments",),
+        lead="5655(c) puts the address in the annual policy statement."),
+    NoticeProvision(
+        "ccrs-6.12-payment-plan", "ccrs", "6.12(e)",
         "The board meets an owner on a payment plan within 45 days of the request's postmark, or a committee of one or "
         "more members when no meeting falls in the period.", DIFFERENT, "payment-plan-meeting",
         (_after(Anchor.REQUEST_MAILED, 45),),
         lead="5665(b) says a committee of one or more directors."),
     NoticeProvision(
-        "ccrs-6.12-collection", "ccrs", "6.12 (notices, lien, release, secondary address)",
+        "ccrs-6.12-collection", "ccrs", "6.12(a), 6.12(f), 6.12(l)",
         "The pre-lien notice's content, the lien copy by certified mail within 10 calendar days, release within 21 "
-        "days, and copies of collection notices to a secondary address the owner gives in writing.", SAME,
+        "days, copies of collection notices to a secondary address the owner gives in writing, and a step missed "
+        "means recommencing the notices at the association's cost (5690).", SAME,
         "lien-copy", (_after(Anchor.LIEN_RECORDING, 10),), (Method.CERTIFIED_MAIL,),
         lead="It tells owners of the secondary-address right with the budget under former Civil Code 1365; that is "
              "now the policy statement (5310(a)(2))."),
     NoticeProvision(
-        "ccrs-6.13", "ccrs", "6.13 (decision to foreclose; notice)",
+        "ccrs-6.13", "ccrs", "6.13(c), 6.13(d)",
         "The foreclosure vote at least 30 days before any sale; personal service on a resident owner or the legal "
         "representative, first-class mail to a non-resident owner.", SAME, "foreclosure-decision",
         methods=(Method.PERSONAL_SERVICE, Method.FIRST_CLASS_MAIL)),
+    NoticeProvision(
+        "ccrs-6.13e", "ccrs", "6.13(e)",
+        "A nonjudicial foreclosure is subject to a 90-day right of redemption, and the notice of sale says the unit is "
+        "sold subject to it, citing former Civil Code 1367.4(c)(4).", RENUMBERED, "notice-of-sale",
+        content=("that the unit is sold subject to the right of redemption",),
+        lead="Former 1367.4(c)(4) is now 5715(b), which says the same."),
     NoticeProvision(
         "ccrs-7.2", "ccrs", "7.2",
         "Entry into a unit or exclusive use common area on reasonable written notice of at least 24 hours, except in "
@@ -368,6 +475,24 @@ NOTICE_PROVISIONS: tuple[NoticeProvision, ...] = (
         content=("the provision allegedly violated", "the sanction or action the board contemplates"),
         lead="Its content adds to 5855(b). Its method is wider than 5855(a) (personal delivery or the member's 4040 "
              "method): use the statute's."),
+    NoticeProvision(
+        "ccrs-12.2", "ccrs", "12.2",
+        "When an owner defaults on a mortgage, the mortgagee may cast the owner's vote while the default lasts, once it "
+        "has given the owner written notice, recorded a notice of default under Civil Code 2924, and delivered a copy "
+        "of it to the association.", OWN, methods=(Method.WRITTEN, Method.RECORDED),
+        title="Mortgagee's notice before casting a defaulting owner's vote", recipients=Recipients.MEMBER,
+        lead="Read with 5105(h)(1), which bars denying a member a ballot for any reason but not being a member when "
+             "ballots go out: whether 12.2 can pass an owner's ballot to a mortgagee in an election the Act governs is "
+             "for counsel."),
+    NoticeProvision(
+        "ccrs-15.4", "ccrs", "15.4",
+        "An amendment of the declaration, bylaws, or other governing instruments is notified to the Department of Real "
+        "Estate at once under section 2800 of the Commissioner's Regulations, while any part of the development is "
+        "under an outstanding final subdivision public report.", OWN, methods=(Method.WRITTEN,),
+        title="Notice to the Department of Real Estate of an amendment",
+        lead="Only while a final public report is outstanding; check the public reports on file before an amendment is "
+             "recorded. Title 10, section 2800 is not on disk (data/authorities holds 10 CCR 2792.x): read it before "
+             "relying on this row."),
     NoticeProvision(
         "ccrs-12.6", "ccrs", "12.4(c), 12.6, 12.7(c)",
         "A mortgagee who asks gets written notice of meetings, 60-day delinquencies, uncured defaults, insurance lapses, "

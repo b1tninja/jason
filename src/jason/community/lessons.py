@@ -255,6 +255,21 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("duty_model.merge_review(fill_only=True)", "jason duties --documents --fill-bearers",
                                  "tests/test_deontic.py"),
            docs=("docs/document-duties.md (What the numbers say)", "docs/document-tools.md (model trials)")),
+    Lesson("cli-parser-built-not-imported", OCT_2026, (Area.REPOSITORY,),
+           "A new option on jason notices reused --posted, which the command already had, and every jason command "
+           "stopped working until it was found.",
+           "The check after an edit imported jason.cli, and argparse refuses a duplicate option only when the parser is "
+           "built, so the import passed.",
+           "A test builds the whole parser and renders each command's help, so a clash fails the suite.",
+           Status.FIXED, guards=("tests/test_cli_parser.py",)),
+    Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
+           "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
+           "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
+           "A notice clause's section label is free text, matched against the outline's numbers and titles.",
+           "A test checks each label a clause names by heading against its outline's numbers and titles. A free-text "
+           "suffix after a valid number still passes, so that case is open.",
+           Status.OPEN, guards=("tests/test_notice_catalog.py (labels are outline numbers or titles)",),
+           docs=("docs/notices.md",)),
 )
 
 

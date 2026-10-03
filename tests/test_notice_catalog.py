@@ -83,6 +83,33 @@ def test_a_provisions_section_is_in_its_outline():
                            for n in numbers), f"{p.key}: {head.group(1)} is not in {p.document}'s outline"
 
 
+def test_a_provisions_named_section_is_in_its_outline():
+    """A section a document names by heading rather than number ("b) Due Process Requirements", "B-1(d)") is one of
+    its outline's numbers or titles, so the duties read from that section find the provision that carries them. A
+    trailing parenthetical is a note, and "preamble" is the text before the first heading."""
+    from jason.community import community
+
+    for p in community().notice_provisions():
+        path = DATA / "outlines" / f"{p.document}.json"
+        if not path.is_file():
+            continue
+        sections = json.loads(path.read_text(encoding="utf-8"))["sections"]
+        names = {s["number"].strip() for s in sections} | {s["title"].strip() for s in sections}
+        for part in p.section.split(","):
+            part = re.sub(r"\s*\([^()]*\)$", "", part.strip())
+            if not part or part[0].isdigit() or part == "preamble":
+                continue
+            assert part in names, f"{p.key}: '{part}' is not a section of {p.document}'s outline"
+
+
+def test_the_directors_notice_is_four_days_by_mail_and_proved_by_its_methods():
+    row = requirement("board-meeting-directors")
+    assert row.recipients is Recipients.BOARD and row.timing[0].least == 4
+    assert {Evidence.MAILING_DECLARATION, Evidence.DELIVERY_DECLARATION} <= set(row.proof())
+    assert for_ledger("board-meeting-directors-2026-10-20").key == "board-meeting-directors"
+    assert for_ledger("board-meeting-2026-10-20").key == "board-meeting"
+
+
 def test_a_rule_delivers_its_named_requirements_or_its_own():
     class Rule:
         key, requirements = "board-meeting", ()

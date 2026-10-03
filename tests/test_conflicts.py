@@ -60,3 +60,31 @@ def test_the_profile_records_its_conflicts_by_area():
     rows = conflicts(community())
     assert all(c.authority_tier < c.tier for c in rows)
     assert len({c.key for c in rows}) == len(rows)
+
+
+def test_an_unclear_conflict_waits_on_a_reading():
+    """A conflict that turns on a reading goes to counsel (or the board) first; it is never merely noted."""
+    from jason.community import community
+
+    for c in conflicts(community()):
+        if c.clarity is Clarity.UNCLEAR:
+            assert c.status in (ConflictStatus.COUNSEL, ConflictStatus.BOARD, ConflictStatus.RESOLVED), c.key
+
+
+def test_a_conflicts_civil_code_sections_are_on_disk():
+    """Each Civil Code section a profile conflict names is in the exported statutes, so the row can be read beside
+    the law's words (skipped where the statutes are not exported)."""
+    import re
+    from pathlib import Path
+
+    from jason.community import community
+    from jason.tasks.export_authorities import authority_text
+
+    data = Path(__file__).resolve().parents[1] / "data"
+    if not (data / "authorities" / "CIV").is_dir():
+        pytest.skip("the statutes are not exported here (jason export-authorities)")
+    for c in conflicts(community()):
+        if not c.authority.startswith("CIV "):
+            continue
+        for number in re.findall(r"(?<![\d.(])(\d{4}(?:\.\d+)?)(?![\d)])", c.authority):
+            assert authority_text(data, f"CIV {number}").get("text"), f"{c.key}: CIV {number} is not on disk"

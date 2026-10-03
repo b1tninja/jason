@@ -63,6 +63,19 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
              "not reasonably have been foreseen (4923); a meeting by email needs every director's written consent, "
              "filed with the minutes (4910(b)(2)). The minutes are the evidence of the emergency."),
     NoticeRequirement(
+        "board-meeting-directors", "Special board meeting: notice to the directors", "CORP 7211", Recipients.BOARD,
+        None, (Method.FIRST_CLASS_MAIL, Method.PERSONAL_DELIVERY, Method.ELECTRONIC), (_before(Anchor.MEETING, 4),),
+        ("the time and place of the meeting (the purpose need not be stated)",),
+        words=r"four days. notice by first-class mail or 48 hours. notice delivered personally",
+        also=("CIV 4920",),
+        note="Four days by first-class mail, or 48 hours delivered personally, by telephone, or by electronic "
+             "transmission; the clock here is the four days, which serves every method. A regular meeting whose time "
+             "and place the bylaws or the board fix needs no notice to the directors, and the articles or bylaws may "
+             "not dispense with notice of a special meeting (7211(a)(2)). A director's written waiver, consent, or "
+             "approval of the minutes, or attendance without protest, excuses it, and the waivers are filed with the "
+             "minutes (7211(a)(3)). The directors' notice; the members' is 4920. 'Unless otherwise provided in the "
+             "articles or in the bylaws' (7211(a)): a document's own rule is its NoticeProvision."),
+    NoticeRequirement(
         "teleconference-meeting", "A board or member meeting held entirely by teleconference", "CIV 4926",
         Recipients.ALL_MEMBERS, None, (Method.GENERAL,), (),
         ("clear technical instructions on how to participate", "the telephone number and email of a person who can "

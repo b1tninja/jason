@@ -70,8 +70,10 @@ CONFLICTS = (
         "governs, read with the delivery the Act requires.",
         Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
     Conflict(
-        "bylaws-nomination-timetable", "Bylaws 6.1(a) and 6.1(c) (nominations and notice of nominees)", Tier.BYLAWS,
-        "Nominations close 14 days before ballots are mailed, and the nominees are noticed 7 days before.",
+        "bylaws-nomination-timetable", "Bylaws 6.1(a)-(c) (nominations, the nominating committee's report, and notice "
+        "of nominees)", Tier.BYLAWS,
+        "Nominations close, and the nominating committee reports its nominees, 14 days before ballots are mailed, and "
+        "the nominees are noticed 7 days before.",
         "CIV 5115", Tier.STATUTE, date(2020, 1, 1),
         "The Act's election timetable (the nomination procedure, the candidate list at least 30 days before ballots, "
         "ballots at least 30 days before the deadline to vote) cannot be met on the bylaws' days.",
@@ -119,6 +121,22 @@ CONFLICTS = (
         "Interest, at no more than 12 percent a year, runs from 30 days after the assessment becomes due.",
         "Charge no interest before the 31st day after an assessment is due.",
         Clarity.PLAIN, ConflictStatus.NOTED, (Area.GOVERNING,)),
+    Conflict(
+        "disaster-reconstruction-vote", "CC&Rs 11.1(b) (rebuilding when insurance covers less than 80 percent)",
+        Tier.DECLARATION,
+        "Puts the rebuilding bids to a vote of the impacted members; if they reject every bid and every lesser "
+        "alternative, the board, with the mortgagees' approval, may sell the whole development.",
+        "CIV 4752(a)", Tier.STATUTE, date(2026, 1, 1),
+        "4752 voids a provision of a governing document to the extent it prohibits, or sets conditions that have the "
+        "effect of prohibiting, a substantially similar reconstruction of a residential structure destroyed or damaged "
+        "in a declared disaster; 4766 sets how a body reviews one. Whether either reaches a condominium building the "
+        "association rebuilds (4752 defines the structure as one on a separate interest, measured against lot lines), "
+        "and whether a members' vote against the bids, or a sale under 11.1(b)(ii), is such a condition, turns on a "
+        "reading.",
+        "Follow 11.1 as written. After a casualty in a declared disaster, counsel reads 4752 before the bids go to the "
+        "members' vote or the board acts to sell under 11.1(b)(ii); meanwhile keep reconstruction open (seek bids and "
+        "the lesser alternatives), which is lawful under either reading.",
+        Clarity.UNCLEAR, ConflictStatus.COUNSEL, (Area.GOVERNING,)),
     Conflict(
         "pre-2014-citations", "CC&Rs and Bylaws (their Davis-Stirling citations)", Tier.DECLARATION,
         "Cite about 60 Davis-Stirling sections by their numbers before 2014 (Civil Code 1350 to 1378).",
