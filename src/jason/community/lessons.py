@@ -373,6 +373,35 @@ LESSONS: tuple[Lesson, ...] = (
            "The read copied a few display fields.",
            "The read keeps each event's id and extendedProperties.",
            Status.FIXED, guards=("people_tasks EVENT_FIELDS", "tests/test_people_tasks.py")),
+    Lesson("duty-readings-keyed-to-copy-numbers", OCT_2026, (Area.GOVERNING,),
+           "Read for stale citations, dozens of document-duty readings named sections the living text does not have "
+           "(numbered as the working copy numbers them), and others named sections missing from their outline.",
+           "Records cite a section by its number alone, and the number depends on which copy and which reading "
+           "numbered it.",
+           "jason cite --stale lists each citing record whose section is numbered differently, missing, or changed. "
+           "Still to build: a stable id for each section, carried through amendments and renumberings, stored with the "
+           "number on every record that cites it.",
+           Status.OPEN, guards=("jason cite --stale", "procedure law-review"),
+           docs=("docs/citations.md (Gaps)",)),
+    Lesson("short-forms-unread", OCT_2026, (Area.GOVERNING,),
+           "'Section 4.15 (...), subsection (a)' was read as a citation of 4.15, not 4.15(a), and a bare 'subsection "
+           "(b)' inside a section went unplaced.",
+           "The reference grammar read only full citations.",
+           "A short form in the same sentence narrows its antecedent, and a bare subsection reads as the enclosing "
+           "section's child or sibling where the outline has one.",
+           Status.FIXED, guards=("references short-form pass", "tests/test_outlines_references.py")),
+    Lesson("reading-in-place-of-words", OCT_2026, (Area.GOVERNING,),
+           "Listing what cites a section, a conflict row's summary of the provision would have stood as the "
+           "provision itself.",
+           "jason's records keep a summary ('says') beside the citation, and nothing kept the two apart.",
+           "A citation leads with the recited words and the version in force; a record's summary is shown only as "
+           "jason's reading, beside the words.",
+           Status.FIXED, guards=("cite Citing.reading / recitedWords", "tests/test_cite.py")),
+    Lesson("roman-under-letter-split", OCT_2026, (Area.GOVERNING,),
+           "Splitting a statute's words to a subdivision, a deeper '(i)' ended the subdivision '(a)' early.",
+           "A roman numeral and a letter share the glyph 'i'.",
+           "The splitter reads the label that succeeds the one asked for, not any label at the same glyph.",
+           Status.FIXED, guards=("cite.label_text", "tests/test_cite.py")),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

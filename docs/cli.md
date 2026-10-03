@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-138 commands, by area:
+139 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (11)
+- [Other](#other) (12)
 
 ## PayHOA & finance
 
@@ -1689,6 +1689,27 @@ Embedded references ({QUOTE:ccrs#4.2(b)}, {CITE:...}) in place of copied governi
 | `--guide` | KEY | compile the guide to the documents (default: all) in data/section-refs/guide |
 | `--refresh` |  | rebuild the cached versions of the living documents first |
 
+### `jason cite`
+
+Cite and recite the association's documents and records (Declaration 6.2(a), Resolution N, Doc. No. N, minutes, CIV 4920(a)); follow references both ways
+
+| Option | Value | Help |
+|---|---|---|
+| `expression` | optional (?) | what to cite: "Declaration 6.2(a)", "Section 6.2(a) of the Declaration", "Resolution 20990101-1", decl#6.2(a)@2099-01-01 |
+| `--as-of` | AS_OF | the words in force on this date (YYYY-MM-DD) |
+| `--refs` |  | follow what it cites |
+| `--hops` | HOPS | with --refs: how many hops (default 1); all follows until a target repeats |
+| `--same` |  | with --refs: stay inside this document |
+| `--only` | ONLY | with --refs: follow only these kinds (statute,section,document,resolution,instrument) |
+| `--cited-by` |  | what names it: the governing documents and jason's own records, with how the cited words stand now |
+| `--no-text` |  | leave the words out |
+| `--md` |  | print a Markdown page |
+| `--chart` |  | print the reference walk as a Mermaid flowchart |
+| `--json` |  | print the full answer as JSON |
+| `--survey` |  | resolve every reference the governing documents make |
+| `--stale` |  | citing records whose cited words are gone or changed (exit 1 when any) |
+| `--most-cited` | N | the sections and statutes named most (default 30) |
+
 ### `jason intake`
 
 Questions jason could not decide while taking documents in: classify, OCR readings, amendments, drift, orphaned notes
@@ -1722,7 +1743,7 @@ Who does each duty and when: what falls due, the assignments, and the duties nob
 | `--coverage` |  | the duties no assignment covers |
 | `--limit` | LIMIT |  |
 | `--done` | KEY DUE | record an occurrence done (with --by, --evidence) |
-| `--on` | ON | with --done: the day it was done (default today) |
+| `--on` | ON | with --done: the day it was done (default today); with --people: the day read as today |
 | `--by` | BY | with --done: who did it |
 | `--evidence` | EVIDENCE | with --done: what shows it (the minutes' date and item, a payment, a proof) |
 | `--calendar` |  | each dated occurrence as an all-day event on Google Calendar (dry run unless --yes) |
@@ -1731,6 +1752,11 @@ Who does each duty and when: what falls due, the assignments, and the duties nob
 | `--months` | MONTHS | with --calendar or --tasks: months ahead (default 3) |
 | `--plan-only` |  | with --calendar or --tasks: the plan from disk, no Google call |
 | `--yes` |  | with --calendar or --tasks: write to Google |
+| `--read-google` |  | read the calendar's events and every Google Tasks list into the private store (reads only; never signs in) |
+| `--people` |  | people's own tasks and events beside what jason tracks: covered, untracked recurring, one-off, stale (from the stored read) |
+| `--private` |  | with --people: print each rule's label, not the titles |
+| `--all` |  | with --people: every open item by its class |
+| `--json` |  | with --people: as JSON |
 
 ### `jason schedule-evidence`
 
@@ -1776,7 +1802,7 @@ What needs attention across the governance systems: clocks passed or near, quest
 
 | Option | Value | Help |
 |---|---|---|
-| `--section` | {meetings,requests,schedule,notices,living,conflicts,duties,intake} | one section (repeatable) |
+| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake} | one section (repeatable) |
 | `--limit` | LIMIT | lines per section (default 8) |
 | `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
 | `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |

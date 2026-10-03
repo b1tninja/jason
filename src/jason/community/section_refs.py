@@ -49,7 +49,15 @@ class Verb(Enum):
 
 
 class SectionRefError(LookupError):
-    """A reference that cannot be filled: the reason is the message. A document with one is not rendered."""
+    """A reference that cannot be filled: the reason is the message. A document with one is not rendered.
+
+    ``reason`` is the same reason a citation's miss carries (``jason.community.cite.Reason`` values:
+    ``unknown_document``, ``not_in_document``, ``removed``, ...), so a token, ``jason cite``, and the guide report a
+    miss alike; empty when the message is all there is."""
+
+    def __init__(self, message: str = "", reason: str = "") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass(frozen=True)

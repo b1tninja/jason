@@ -214,6 +214,11 @@ PROCEDURES: tuple[Procedure, ...] = (
                  lessons=("law-outdates-provisions",)),
             Step("Check jason's own rules and pages for the same changes.",
                  command="jason law-history --sweep --since YEAR", check="data/reports/law-sweep.md"),
+            Step("Survey the documents' references and the records that cite them: misses by reason, and citations "
+                 "made stale by an amendment or a renumbering.", command="jason outlines; jason cite --survey; "
+                                                                          "jason cite --stale",
+                 check="a prior-numbering miss is read as its successor; a stale record is re-keyed or re-read",
+                 refs=("docs/citations.md",), lessons=("duty-readings-keyed-to-copy-numbers", "short-forms-unread")),
             Step("Check each people-task rule that retires a duty against its source (an exemption, a repealed "
                  "filing).", command="jason schedule --people --all", check="each retire reason still true at its source",
                  lessons=("people-keep-clocks-by-hand",)),
@@ -383,6 +388,10 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="every reference fills; a quote noted 'check before sending' is read against the recorded copy; "
                        "any reading of the provision follows the quote and is labeled as a reading, and whose",
                  refs=("docs/embedded-references.md",), lessons=("copied-passages-go-stale", "quotes-carry-ocr-slips")),
+            Step("Where it states what a provision requires, read the provision as cited, with jason's readings beside "
+                 "its words.", command="jason cite EXPRESSION --cited-by --md",
+                 check="the words in force are quoted; a summary is labeled as a reading",
+                 refs=("docs/citations.md",), lessons=("reading-in-place-of-words",)),
             Step("Keep its Doc on the letterhead for review.", command="jason broadcast FILE.md --to-doc --yes"),
             Step("For a page to post or attach, export the PDF.",
                  command="jason letter --markdown FILE.md --pdf OUT.pdf --yes", refs=("docs/letters.md",)),

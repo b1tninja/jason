@@ -15,7 +15,7 @@ jason-mcp --profile governance    # the governance systems
 
 - `.mcp.json` at the project root registers `jason` as `.venv\Scripts\jason-mcp.exe` for Claude Code.
 - The server runs from `JASON_CWD` when a client sets it, else the folder that holds `.env`. The stores are addressed as `data/...` from there.
-- **Profiles.** With no profile (or `all`) every tool is served: 121 today. `--profile governance` serves the fourteen governance tools below. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
+- **Profiles.** With no profile (or `all`) every tool is served: 124 today. `--profile governance` serves the seventeen governance tools below. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
 - **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile all` registers every tool. A small local model chooses better from the board set.
 
 ## Rules for a client
@@ -203,7 +203,7 @@ Each legal case with a `drive_folder` in `mystique/cases.py` is its own catalog 
 
 ## Governance
 
-The living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog and delivery, and the documents' duties. These are `--profile governance` (`jason.mcp.governance`).
+The living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog and delivery, the documents' duties, and citations of the documents and records. These are `--profile governance` (`jason.mcp.governance`).
 
 | Tool | What it reads, and the caveat |
 | --- | --- |
@@ -220,7 +220,10 @@ The living documents, conflicts, intake questions, the schedule, members' reques
 | `notice_requirements` | The notice catalog: every requirement, or one in full (methods, clock, content, the proof it needs, what the documents add). |
 | `notice_delivery` | One notice's delivery to every member from the ledger: reached, bounced, skipped, and the follow-ups the law asks for. Sync first. |
 | `document_duties` | The norms a document states, each with its section, quote, bearer, and timing. A reading is a lead; about one in five is the wrong kind. |
-| `governance_digest` | Start here: what needs attention across these systems, most urgent first (a passed statutory or documents' clock, then overdue, due soon, open, noted). Its `meetings` section reads each board meeting's notice (4920) and minutes (4950(a)) days against the record; none on record is not none given. Each section is capped, names the tool for the rest, and is reported unavailable rather than failing when its store is missing ([attention.md](attention.md)). Decides nothing. |
+| `cite_document` | Cites and recites a document's section or a record as people write it ("Section 6.2(b) of the Declaration", "Resolution 20250101-1", "Doc. No. 202501010001", "minutes 2025-01-01", "CIV 4920(a)", `key#n@YYYY-MM-DD`): the citation, the stored words whole, the version in force, and the instruments that changed it (one not in force is flagged, never merged). A document, article, span, or siblings is an outline; a miss carries its reason. Recite the words first; a reading is labeled as one. Not an official restatement ([citations.md](citations.md)). |
+| `section_refs` | The references around a section or record: `out` follows what it cites for `hops` hops (0: until a target repeats), each found or missing with a reason; `in` lists the governing documents and jason's records that name it, each with its scope and how the cited words stand now. A record's summary is `jasonsReading`, beside `recitedWords`. References are read by a grammar from the current outlines; one it missed stays missed. |
+| `embedded_copies` | The last `jason section-refs --scan`: each document holding a copy of a governing document's section, who owns it and what may be done, and whether the copy reads as the current, superseded, or a draft's words. A copy is found by shared words: a lead, not a finding ([embedded-references.md](embedded-references.md)). |
+| `governance_digest` | Start here: what needs attention across these systems, most urgent first (a passed statutory or documents' clock, then overdue, due soon, open, noted). Its `meetings` section reads each board meeting's notice (4920) and minutes (4950(a)) days against the record; none on record is not none given. Its `people` section reads people's own Google Tasks and calendar events beside what jason tracks (past due, proposed to close, untracked recurring); nothing in Google is marked or closed. `private` leaves units out and replaces each task's title with its rule's label. Each section is capped, names the tool for the rest, and is reported unavailable rather than failing when its store is missing ([attention.md](attention.md)). Decides nothing. |
 
 **From Python.** The same functions are `jason.api` (`from jason import api; api.member_requests()`). They return JSON-ready dicts. The other tools import from `jason.mcp.county`, `jason.mcp.index`, and `jason.mcp.rolls`.
 

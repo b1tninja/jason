@@ -85,12 +85,24 @@ def test_the_grammar_reads_statutes_sections_and_documents():
 def test_an_amendment_and_an_annexation_cite_the_declaration_unless_the_section_is_their_own():
     amendment = _outline("ccrs-2nd", "Article 4, Section 4.15 (Rental), subsection (a), is hereby amended and restated.", amends="ccrs")
     refs = extract(amendment, ALIASES)
-    assert {r.target for r in refs} == {"ccrs#4", "ccrs#4.15"} and all(r.relation is RefRelation.AMENDS for r in refs)
+    # "subsection (a)" after "Section 4.15 (Rental)" in the same sentence is 4.15(a): the short form hangs from it.
+    assert {r.target for r in refs} == {"ccrs#4", "ccrs#4.15", "ccrs#4.15(a)"}
+    assert all(r.relation is RefRelation.AMENDS for r in refs)
     text = "1.3 Assessments.\n(d) Allocation. See subsection 1.3(d)(ii), below, and Section 6.5(b) of the Declaration and Section 13.1.\n"
     annexation = outline_from_text(text, key="phase-7")
     annexation.amends = "ccrs"
     targets = {r.target for r in extract(annexation, ALIASES)}
     assert targets == {"phase-7#1.3(d)(ii)", "ccrs#6.5(b)", "ccrs#13.1"}
+
+
+def test_a_short_form_names_a_part_or_a_sibling_of_the_section_around_it():
+    text = ("6.2 Letting.\n(a) Limit. Except as subsection (b) provides, no more than a tenth of the Lots are let.\n"
+            "(b) Notice. Notice is given as paragraph (a) of Section 4920 of the Civil Code requires, and as "
+            "subsection (z) says.\n")
+    decl = outline_from_text(text, key="decl")
+    targets = {r.target for r in extract(decl, ALIASES)}
+    assert "decl#6.2(b)" in targets                              # the sibling of the subsection it sits in
+    assert not any(t.endswith("(z)") or t == "decl#6.2(a)" for t in targets)   # nothing named; another provision
 
 
 def test_an_unqualified_section_takes_its_document_from_the_section_title():

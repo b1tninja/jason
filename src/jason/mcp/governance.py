@@ -355,14 +355,18 @@ def governance_digest(section: str = "", limit: int = 8, past: int = 30, private
     """Start here for "what needs attention" in the governance systems: each board meeting's notice (CIV 4920) and
     minutes (4950(a)) deadlines read against the record (a deadline passed with none on record, a record late, one
     near; none on record is not none given; the section's counts carry every meeting watched); schedule items overdue
-    or due soon by role; members' requests past or near their clocks (a statute's clock first); open intake questions
+    or due soon by role; people's own Google Tasks and calendar events read beside what jason tracks (open tasks past
+    their due day, tasks a rule says to close, untracked recurring items as proposed clocks; nothing in Google is
+    marked or closed); members' requests past or near their clocks (a statute's clock first); open intake questions
     by kind, the likely ones apart; open conflicts by status (counsel, board, noted); notices with follow-ups owed;
     living documents with failed rule checks, held sources, or drift; and the documents' timed duties nothing tracks.
     Most urgent first: a passed clock the law or the documents set (LEGAL), then overdue, due soon, open, noted. Each
     section is capped at ``limit`` with its total, and each line names the command that gives the detail (the tools:
     schedule_agenda, member_requests, intake_questions, document_conflicts, notice_delivery, living_document,
-    document_duties). ``section`` narrows to one (meetings, schedule, requests, intake, conflicts, notices, living,
-    duties); ``private`` leaves units out. A section whose store is missing is reported unavailable, not raised. Reads disk only; decides nothing."""
+    document_duties). ``section`` narrows to one (meetings, schedule, people, requests, intake, conflicts, notices,
+    living, duties); ``private`` leaves units out and replaces each person's task title with its rule's label (a title
+    can name an owner or a unit). A section whose store is missing is reported unavailable, not raised. Reads disk
+    only; decides nothing."""
     from jason.tasks import attention
 
     try:
@@ -373,8 +377,62 @@ def governance_digest(section: str = "", limit: int = 8, past: int = 30, private
     return found.as_dict()
 
 
+# --- Citations --------------------------------------------------------------------------------------------------------
+
+def cite_document(expression: str, as_of: str = "", text: bool = True, data_dir: Path | None = None) -> dict[str, Any]:
+    """Cite and recite one of the association's documents or records, the way a person or a document writes it:
+    "Declaration § 6.2(a)", "Section 6.2(a) of the Declaration", "Bylaws Art. 6", "Rules R-3(e)",
+    "Resolution 20990101-1", "Doc. No. 209901010001", "minutes 2099-01-01", "CIV 4920(a)", or a canonical
+    ``decl#6.2(a)``; ``as_of`` (YYYY-MM-DD) gives the words in force on a day. Returns ``kind`` (section, outline,
+    record, statute, miss), ``found``, the ``citation``, the stored words whole (``text``), the version in force
+    (``inForce``), and ``history`` (the instruments that changed it; one not in force is flagged, never merged). A
+    document, an article, a span, or siblings is an ``outline``, never concatenated words; a miss has its ``reason``.
+    Recite the words first, with the citation and the caveat; any reading of them is yours, labeled as one. The
+    consolidated text is not an official restatement; the recorded instruments control."""
+    from jason.tasks.cite import resolve
+
+    return resolve(expression, as_of=as_of or None, text=bool(text), data_dir=_root(data_dir))
+
+
+def section_refs(expression: str, hops: int = 1, direction: str = "out", data_dir: Path | None = None) -> dict[str, Any]:
+    """The references around one section or record (same expressions as ``cite_document``). ``direction`` "out"
+    follows what its words cite (other documents' sections, statutes on disk, resolutions, instruments) for ``hops``
+    hops (0 follows until a target repeats), each node found or missing with a reason; "in" lists what names it: the
+    governing documents' sections and jason's own records (Conflict rows, notice provisions and requirements, document
+    duties, schedule assignments, response rules, templates, procedures, lessons, embedded references and their
+    renderings), each with its scope (exact, within, enclosing) and how the cited words stand now (current, amended,
+    words changed since read, removed, missing). "both" gives both. A record's own summary is ``jasonsReading``,
+    shown beside ``recitedWords``: a reading, never the provision. References are read from the documents' current
+    outlines (``jason outlines``); a reference the grammar missed stays missed."""
+    from jason.tasks.cite import Shelf
+
+    if direction not in ("out", "in", "both"):
+        return {"error": "direction is out, in, or both"}
+    shelf = Shelf(None, _root(data_dir))
+    c = shelf(expression).hops(None if int(hops) <= 0 else int(hops))
+    try:
+        return c.as_dict(text=False, refs=direction in ("out", "both"), cited_by=direction in ("in", "both"))
+    except Exception as exc:  # a reader that fails is an answer, not a traceback
+        return {"kind": "miss", "found": False, "reason": "unreadable", "detail": str(exc), "expression": expression}
+
+
+def embedded_copies(key: str = "", host: str = "", stale_only: bool = False, owner: str = "",
+                    data_dir: Path | None = None) -> dict[str, Any]:
+    """The last scan's copies of governing-document sections in other documents (``jason section-refs --scan``):
+    each host with who owns it and what may be done (a token for jason's own sources; report only for adopted
+    documents and vendor templates; never rewritten for what was sent or recorded), and each copy's section, kind,
+    coverage, and whether it reads as the current words, superseded ones, or a draft's. ``key`` narrows to a document,
+    ``host`` to hosts whose name contains it, ``owner`` to one owner, ``stale_only`` to stale copies. A copy is found
+    by shared words: a lead to read beside the section, not a finding. The consolidated text is not an official
+    restatement."""
+    from jason.tasks import section_refs as sr
+
+    return sr.embedded_copies(_root(data_dir), key=key, host=host, stale_only=bool(stale_only), owner=owner)
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
-         notice_requirements, notice_delivery, document_duties, governance_digest)
+         notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, section_refs,
+         embedded_copies)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

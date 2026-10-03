@@ -246,11 +246,11 @@ class DiskResolver:
         if key not in self._versions:
             living = self.living(key)
             if living is None:
-                raise SectionRefError(f"{key} is not kept as amended")
+                raise SectionRefError(f"{key} is not kept as amended", "not_kept_as_amended")
             try:
                 self._versions[key] = build_versions(living, self.data_dir, log=self.log)
             except ValueError as exc:                     # a base that cannot be read: say so, never render nothing
-                raise SectionRefError(f"{key}: {exc}") from exc
+                raise SectionRefError(f"{key}: {exc}", "unreadable") from exc
         return self._versions[key]
 
     def outline(self, key: str) -> DocumentOutline | None:
@@ -258,38 +258,62 @@ class DiskResolver:
             self._outlines[key] = load_outline(self.data_dir, key)
         return self._outlines[key]
 
+    def known(self, key: str) -> bool:
+        """A document the profile keeps (living or citable), or any outline on disk (an annexation read from the
+        library, a resolution read from its folder)."""
+        return self.living(key) is not None or self.citable(key) is not None or self.outline(key) is not None
+
     def name(self, key: str) -> str:
+        """The name a citation uses: the specification's ``cite_as``, else its title; an outline's title for a
+        document only an outline knows."""
         doc = self.citable(key)
         if doc is not None:
             return getattr(doc, "cite_as", "") or doc.title
         living = self.living(key)
         if living is not None:
             return living.title
-        raise SectionRefError(f"no document {key!r}: the documents are {', '.join(self.keys()) or 'none'}")
+        outline = self.outline(key)
+        if outline is not None:
+            return outline.title or key
+        raise SectionRefError(f"no document {key!r}: the documents are {', '.join(self.keys()) or 'none'}",
+                              "unknown_document")
 
-    def _document(self, key: str, as_of: date | None) -> tuple[CurrentDocument, Versions | None]:
+    def document(self, key: str, as_of: date | None = None) -> tuple[CurrentDocument, Versions | None]:
+        """The document as amended (on ``as_of``, or now) with its versions, or as its outline reads it. The one reader
+        a token, ``jason cite``, and the guide share."""
         if self.living(key) is not None:
             v = self.versions(key)
             return v.at(as_of).current(v.key, v.title, v.base), v
-        if self.citable(key) is None:
-            raise SectionRefError(f"no document {key!r}: the documents are {', '.join(self.keys()) or 'none'}")
+        if not self.known(key):
+            raise SectionRefError(f"no document {key!r}: the documents are {', '.join(self.keys()) or 'none'}",
+                                  "unknown_document")
         if as_of is not None:
             raise SectionRefError(f"{key} is not kept as amended (Community.living_documents()): its text in force on "
-                                  f"{as_of.isoformat()} is not known; quote it without as-of")
+                                  f"{as_of.isoformat()} is not known; quote it without as-of", "not_kept_as_amended")
         outline = self.outline(key)
         if outline is None:
-            raise SectionRefError(f"{key} has no outline on disk (jason outlines)")
+            raise SectionRefError(f"{key} has no outline on disk (jason outlines)", "no_outline")
         return CurrentDocument(key, outline.title, f"revision {outline.revision}" if outline.revision else key,
                                provisions_of(outline)), None
 
-    def _provision(self, doc: CurrentDocument, key: str, number: str) -> Provision:
+    _document = document
+
+    def provision(self, doc: CurrentDocument, key: str, number: str) -> Provision:
+        """The one provision numbered ``number``; a miss names the nearest section that is there."""
         found = [p for p in doc.provisions if p.number == number]
         if not found:
+            from jason.community.references import ancestors
+
+            parent = next((a for a in ancestors(number) if doc.provision(a) is not None), "")
             near = sorted({p.number for p in doc.provisions if p.number.startswith(number.split("(")[0])})[:8]
-            raise SectionRefError(f"{key} has no section {number}" + (f" (near: {', '.join(near)})" if near else ""))
+            raise SectionRefError(f"{key} has no section {number}" + (f" (near: {', '.join(near)})" if near else ""),
+                                  "parent_only" if parent else "not_in_document")
         if len(found) > 1:
-            raise SectionRefError(f"{key} numbers {len(found)} sections {number}: the reference is ambiguous")
+            raise SectionRefError(f"{key} numbers {len(found)} sections {number}: the reference is ambiguous",
+                                  "ambiguous")
         return found[0]
+
+    _provision = provision
 
     def citation(self, key: str, number: str) -> str:
         name = self.name(key)
@@ -304,7 +328,8 @@ class DiskResolver:
         p = self._provision(doc, key, number)
         if p.removed:
             raise SectionRefError(f"{key} {number} was removed by {p.set_by}"
-                                  + (f" ({p.dated.isoformat()})" if p.dated else "") + "; quote it with an earlier as-of")
+                                  + (f" ({p.dated.isoformat()})" if p.dated else "") + "; quote it with an earlier as-of",
+                                  "removed")
         words = doc.text_of(number)
         amended = p.standing is not None
         note = ""
@@ -812,6 +837,9 @@ def _alias_matches(text: str, aliases: dict[str, str]) -> list[re.Match]:
 def _is_article(p: Provision) -> bool:
     """A top-level section the document heads "ARTICLE n"."""
     return bool(_ARTICLE.match(p.caption or "")) or bool(_ARTICLE.match(_first_line(p.body)))
+
+
+is_article = _is_article
 
 
 def _within(number: str, listed: Iterable[str]) -> bool:

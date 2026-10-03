@@ -189,10 +189,14 @@ def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference
     def free(start: int, end: int) -> bool:
         return all(end <= s or start >= e for s, e in taken)
 
+    section_spans: list[tuple[int, int, str]] = []        # each section reference's span, for a short form after it
+
     def add(kind: TargetKind, target: str, start: int, end: int, prior: bool = False) -> None:
         section = outline.section_at(start)
         out.append(Reference(outline.key, section.name if section else "", kind, target, _relation(text, start, end),
                              _sentence(text, start, end), start, prior))
+        if kind is TargetKind.SECTION:
+            section_spans.append((start, end, target))
 
     def whole_name(at: int, name: str, end: int) -> tuple[str, int]:
         """The whole code name ("Civil Code") or document name ("Declaration of Covenants, ...") starting at ``at``."""
@@ -318,6 +322,26 @@ def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference
             else:
                 add(TargetKind.DOCUMENT, key, m.start(), m.end())
                 taken.append((m.start(), m.end()))
+    for m in _RELATIVE.finditer(text):
+        # A short form: "subsection (b)" names a part of the section just cited in the same sentence ("Section 4.15
+        # (Rental), subsection (a)"), else a part or a sibling of the section it sits in ("as subsection (b) above
+        # provides"). One that names nothing in the outline is left alone: a miss stays a miss.
+        if not free(m.start(), m.end()) or _QUALIFIED.match(text, m.end()):
+            continue
+        labels = "".join(f"({x})" for x in re.findall(r"\(([A-Za-z0-9]{1,4})\)", m.group("labels")))
+        target = _antecedent(text, m.start(), section_spans, labels)
+        if not target and outline.key:
+            here = outline.section_at(m.start())
+            number = here.number if here else ""
+            # A part of this section, else a sibling: no further out, where "paragraph (a) above" could mean any of
+            # several (a)s.
+            for base in ([number, *list(ancestors(number))[:1]] if number else []):
+                if outline.section(base + labels) is not None and base + labels != number:
+                    target = f"{outline.key}#{base + labels}"
+                    break
+        if target:
+            add(TargetKind.SECTION, target, m.start(), m.end())
+            taken.append((m.start(), m.end()))
     for m in _RESOLUTION.finditer(text):
         if free(m.start(), m.end()):
             add(TargetKind.RESOLUTION, f"resolution:{m.group('num')}", m.start(), m.end())
@@ -334,6 +358,33 @@ def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference
         seen.add((r.target, r.quote))
         unique.append(r)
     return unique
+
+
+_RELATIVE = re.compile(r"(?<![\w§])(?:[Ss]ub)?(?:[Ss]ections?|[Pp]aragraphs?|[Ss]ubparagraphs?|[Ss]ubdivisions?|[Cc]lauses?)"
+                       r"\s*(?P<labels>\([A-Za-z0-9]{1,4}\)(?:\s?\([A-Za-z0-9]{1,4}\))*)")
+# "subdivision (a) of Section 4920 of the Civil Code" names another provision; "of this Section" does not.
+_QUALIFIED = re.compile(r"\s*,?\s*of\s+(?!this\b|these\b)", re.I)
+
+
+def _style(label: str) -> str:
+    return "digit" if label.isdigit() else "upper" if label.isupper() else "lower"
+
+
+def _antecedent(text: str, at: int, spans: list[tuple[int, int, str]], labels: str) -> str:
+    """The section a short form hangs from: the last section cited before it in the same sentence, within a few words.
+    A label of the same series as the antecedent's last one names a sibling ("Section 4.15(a) and subsection (b)")."""
+    for start, end, target in reversed(spans):
+        if end > at:
+            continue
+        between = text[end:at]
+        if len(between) > 60 or re.search(r"\.\s|;|\n", between):
+            return ""
+        first = re.match(r"\(([A-Za-z0-9]{1,4})\)", labels)
+        last = re.search(r"\(([A-Za-z0-9]{1,4})\)$", target)
+        if first and last and _style(first.group(1)) == _style(last.group(1)):
+            return target[: last.start()] + labels
+        return target + labels
+    return ""
 
 
 def statute_key(target: str) -> tuple[str, str]:
