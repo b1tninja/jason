@@ -57,3 +57,32 @@ def test_api_canvas_routes(tmp_path, monkeypatch):
     assert c.post("/api/canvases/missing", json={"notes": "n"}).status_code == 404
     assert c.post("/api/canvases/k", json={"bad": 1}).status_code == 400
     assert c.get("/api/health").json["writes"] == ["canvases"]
+
+
+def test_attachments_are_validated(tmp_path):
+    c = store.create(tmp_path, "Photos of the east bed")
+    c = store.update(tmp_path, c.key, attachments=[{"kind": "image", "ref": "photos/east-bed.jpg", "title": "before"}, {"kind": "doc", "ref": "1AbCdEfGhIjKlMnOpQ", "title": ""}])
+    assert [a["kind"] for a in store.load(tmp_path, c.key).attachments] == ["image", "doc"]
+    with pytest.raises(ValueError):
+        store.update(tmp_path, c.key, attachments=[{"kind": "video", "ref": "x"}])
+    with pytest.raises(ValueError):
+        store.update(tmp_path, c.key, attachments=[{"kind": "pdf", "ref": "  "}])
+
+
+def test_local_file_route_serves_only_known_types_under_data(tmp_path, monkeypatch):
+    import sys
+
+    from jason.web.app import create_app
+
+    (tmp_path / "photos").mkdir()
+    (tmp_path / "photos" / "a.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (tmp_path / "secret.db").write_bytes(b"x")
+    fake = type(sys)("jason.mcp.county"); fake._data_dir = lambda _: tmp_path
+    monkeypatch.setitem(sys.modules, "jason.mcp.county", fake)
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None).test_client()
+    ok = c.get("/api/file?path=photos/a.png")
+    assert ok.status_code == 200 and ok.headers["Content-Type"].startswith("image/png") and ok.headers["Content-Security-Policy"] == "sandbox"
+    assert c.get("/api/file?path=secret.db").status_code == 404
+    assert c.get("/api/file?path=../pyproject.toml").status_code == 404
+    assert c.get("/api/file?path=").status_code == 404
+    assert c.get("/api/file?path=photos").status_code == 404

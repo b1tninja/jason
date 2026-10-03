@@ -46,6 +46,7 @@ class Canvas:
     notes: str = ""                # the person's notes, Markdown
     clips: list[Clip] = field(default_factory=list)
     links: list[dict[str, str]] = field(default_factory=list)      # {"label", "url"}
+    attachments: list[dict[str, str]] = field(default_factory=list)  # {"kind", "ref", "title"}: a Doc, Sheet, Form, Drive file, photo, or PDF shown on the canvas
     checklist: list[dict[str, Any]] = field(default_factory=list)  # {"text", "done"}
     created: str = ""
     updated: str = ""
@@ -53,7 +54,8 @@ class Canvas:
 
 
 # The fields a person edits in place; everything else is set by a call (a clip is added, never edited).
-EDITABLE = ("title", "question", "status", "matter", "duty", "notes", "links", "checklist")
+EDITABLE = ("title", "question", "status", "matter", "duty", "notes", "links", "checklist", "attachments")
+ATTACHMENT_KINDS = ("doc", "sheet", "slides", "form", "drive", "image", "pdf", "url")
 
 
 def _now() -> str:
@@ -150,8 +152,12 @@ def update(data_dir: Path, key: str, **changes: Any) -> Canvas:
     for k, v in changes.items():
         if k == "status":
             v = CanvasStatus(v) if not isinstance(v, CanvasStatus) else v
-        if k in ("links", "checklist") and not isinstance(v, list):
+        if k in ("links", "checklist", "attachments") and not isinstance(v, list):
             raise ValueError(f"{k} is a list")
+        if k == "attachments":
+            bad = [a for a in v if not isinstance(a, dict) or a.get("kind") not in ATTACHMENT_KINDS or not str(a.get("ref", "")).strip()]
+            if bad:
+                raise ValueError(f"an attachment is {{kind: one of {', '.join(ATTACHMENT_KINDS)}, ref, title}}")
         if getattr(c, k) != v:
             if k == "status":
                 c.history.append(f"{now[:10]}: status {c.status.value} -> {v.value}")

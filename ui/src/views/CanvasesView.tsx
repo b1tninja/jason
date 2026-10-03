@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Card, Command, Confirm, EmptyState, Kanban, Pill, RemoteView } from "../components";
+import { Badge, Card, Command, Confirm, Embed, EmptyState, Kanban, Markdown, Pill, RemoteView, type Attachment, type EmbedKind } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
@@ -7,8 +7,12 @@ import { useHash } from "../lib/useHash";
 export interface Clip { at: string; source: string; text: string; label: string; args: Record<string, unknown> }
 export interface Canvas {
   key: string; title: string; question: string; status: string; matter: string; duty: string; notes: string;
-  clips: Clip[]; links: { label: string; url: string }[]; checklist: { text: string; done: boolean }[]; created: string; updated: string; history: string[];
+  clips: Clip[]; links: { label: string; url: string }[]; checklist: { text: string; done: boolean }[]; attachments: Attachment[]; created: string; updated: string; history: string[];
 }
+const KINDS: { kind: EmbedKind; label: string }[] = [
+  { kind: "doc", label: "Google Doc" }, { kind: "sheet", label: "Google Sheet" }, { kind: "slides", label: "Google Slides" }, { kind: "form", label: "Google Form" },
+  { kind: "drive", label: "Drive file" }, { kind: "image", label: "Photo (data/ path or URL)" }, { kind: "pdf", label: "PDF (data/ path or URL)" }, { kind: "url", label: "Web page" },
+];
 type Summary = Omit<Canvas, "clips"> & { clips: number };
 interface Listing { found?: boolean; note?: string; count: number; statuses: string[]; canvases: Summary[] }
 
@@ -80,6 +84,8 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
   const [newLink, setNewLink] = useState({ label: "", url: "" });
   const [newTask, setNewTask] = useState("");
   const [clip, setClip] = useState({ source: "", label: "", text: "" });
+  const [preview, setPreview] = useState(true);
+  const [newAtt, setNewAtt] = useState<Attachment>({ kind: "doc", ref: "", title: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dirty = (Object.keys(draft) as (keyof typeof draft)[]).filter((k) => draft[k] !== c[k]);
@@ -109,8 +115,12 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
             <label>Status <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{["research", "preparing", "on agenda", "done"].map((s) => <option key={s}>{s}</option>)}</select></label>
             <label>Duty <select value={draft.duty} onChange={(e) => setDraft({ ...draft, duty: e.target.value })}>{DUTIES.map((d) => <option key={d} value={d}>{d || "—"}</option>)}</select></label>
             <label className="wide">Board item id, once one exists <input value={draft.matter} onChange={(e) => setDraft({ ...draft, matter: e.target.value })} placeholder="reserve-loan-not-restored" /></label>
-            <label className="wide">Notes (Markdown) <textarea rows={12} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></label>
+            <label className="wide">Notes (Markdown; a ```mermaid fence draws a diagram; ![photo](/api/file?path=photos/x.jpg) shows a photo under data/)
+              <textarea rows={12} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+            </label>
           </div>
+          <div className="row"><button className="link" onClick={() => setPreview((p) => !p)} aria-pressed={preview}>{preview ? "Hide preview" : "Show preview"}</button></div>
+          {preview && draft.notes.trim() && <div className="preview"><Markdown text={draft.notes} /></div>}
           {error && <p className="notice notice-error">{error}</p>}
         </Card>
         <div className="stack">
@@ -143,6 +153,24 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
           </Card>
         </div>
       </div>
+      <Card title={`On the canvas (${(c.attachments ?? []).length})`}>
+        <p className="muted">Google Docs, Sheets, Slides, Forms, and Drive files show in place for anyone already allowed to see them; photos and PDFs under data/ are served read-only.</p>
+        <div className="embeds">
+          {(c.attachments ?? []).map((a, i) => (
+            <div key={i} className="stack">
+              <Embed a={a} />
+              <button className="link" onClick={() => put({ attachments: (c.attachments ?? []).filter((_, j) => j !== i) })}>remove from the canvas</button>
+            </div>
+          ))}
+        </div>
+        <div className="fields">
+          <label>Kind <select value={newAtt.kind} onChange={(e) => setNewAtt({ ...newAtt, kind: e.target.value as EmbedKind })}>{KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}</select></label>
+          <label>Title <input value={newAtt.title ?? ""} onChange={(e) => setNewAtt({ ...newAtt, title: e.target.value })} /></label>
+          <label className="wide">Link, Google file id, or path under data/ <input value={newAtt.ref} onChange={(e) => setNewAtt({ ...newAtt, ref: e.target.value })} placeholder="https://docs.google.com/document/d/… or photos/east-bed.jpg" /></label>
+        </div>
+        <Picker onPick={(a) => setNewAtt(a)} />
+        <button onClick={() => put({ attachments: [...(c.attachments ?? []), newAtt] }).then(() => setNewAtt({ kind: "doc", ref: "", title: "" }))} disabled={!newAtt.ref.trim() || busy}>Add to the canvas</button>
+      </Card>
       <Card title="To the board">
         <p className="muted">When the research is done, it becomes a board item (a matter to decide, never the decision) and a packet section. The page runs nothing.</p>
         {c.matter ? (
@@ -159,6 +187,33 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
         {c.history.length > 0 && <details><summary>History ({c.history.length})</summary><ul className="muted">{c.history.map((h, i) => <li key={i}>{h}</li>)}</ul></details>}
       </Card>
     </div>
+  );
+}
+
+interface DriveFile { id: string; name: string; path: string; kind: EmbedKind; link: string }
+interface Album { slug: string; label: string; count: number; items: { filename: string; path: string; createTime: string }[] }
+
+/** Search the Drive catalog and the photo albums on disk; a pick fills the attachment form. */
+function Picker({ onPick }: { onPick: (a: Attachment) => void }) {
+  const [q, setQ] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => { const h = setTimeout(() => setDebounced(q), 300); return () => clearTimeout(h); }, [q]);
+  const drive = useApi<{ found: boolean; note?: string; files: DriveFile[] }>(`/api/drive-files?q=${encodeURIComponent(debounced)}&limit=12`);
+  const photos = useApi<{ found: boolean; note?: string; albums: Album[] }>("/api/photos");
+  return (
+    <details className="picker">
+      <summary>Pick from Drive or the photo albums</summary>
+      <input className="search" aria-label="Search Drive" placeholder="Search Drive…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {drive.status === "ready" && drive.data.found !== false && (
+        <ul className="picks">{(drive.data.files ?? []).map((f) => <li key={f.id}><button className="link" onClick={() => onPick({ kind: f.kind, ref: f.id, title: f.name })}>{f.name}</button> <span className="muted">{f.path} · {f.kind}</span></li>)}</ul>
+      )}
+      {drive.status === "ready" && drive.data.found === false && <p className="muted">{drive.data.note}</p>}
+      {photos.status === "ready" && photos.data.found !== false && (photos.data.albums ?? []).map((al) => (
+        <details key={al.slug}><summary>{al.label || al.slug} <span className="muted">({al.count})</span></summary>
+          <ul className="picks">{(al.items ?? []).map((i) => <li key={i.path}><button className="link" onClick={() => onPick({ kind: "image", ref: i.path, title: i.filename })}>{i.filename}</button> <span className="muted">{i.createTime?.slice(0, 10)}</span></li>)}</ul>
+        </details>
+      ))}
+    </details>
   );
 }
 

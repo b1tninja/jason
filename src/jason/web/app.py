@@ -57,6 +57,27 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
+    @app.get("/api/file")
+    def local_file():
+        """A photo or document under data/, read-only, for a canvas to show. Only files under data/ and only these types."""
+        from flask import abort, send_file
+
+        from jason.mcp.county import _data_dir
+
+        root = _data_dir(None).resolve()
+        rel = request.args.get("path", "")
+        target = (root / rel).resolve()
+        if not rel or not target.is_relative_to(root) or not target.is_file():
+            abort(404)
+        kinds = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+                 ".pdf": "application/pdf", ".md": "text/plain", ".txt": "text/plain"}
+        mime = kinds.get(target.suffix.lower())
+        if mime is None:
+            abort(404)
+        resp = send_file(target, mimetype=mime, conditional=True)
+        resp.headers["Content-Security-Policy"] = "sandbox"  # a served SVG or PDF runs no script against the app
+        return resp
+
     @app.get("/api/health")
     def health():
         return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer)) if on])

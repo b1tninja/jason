@@ -85,11 +85,11 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties", "canvases"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos"} == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
-        if name == "canvases":  # a store under data/, not a county tool; its own test below
+        if name in ("canvases", "templates", "drive-files", "photos"):  # stores under data/ or the profile, not county tools; their own tests below
             continue
         out = fn({})
         assert isinstance(out, dict), name
@@ -301,3 +301,64 @@ def test_canvases_source_reads_the_store(county, tmp_path, monkeypatch):
     assert listed["clips"] == 1 and listed["notes"] == ""
     assert canvases({"key": "nope"})["found"] is False
     assert store.load(tmp_path, "pool-deck-bids").history[-1].endswith("research -> preparing")
+
+
+class _FakeCommunity:
+    """A profile with one template row and no private facts; template_values reads what it has and defaults the rest."""
+
+    def document_templates(self):
+        from jason.community.templates import DocumentTemplate, TemplateKind
+
+        return (DocumentTemplate(TemplateKind.HEARING_NOTICE, "Notice of Hearing", "1DocIdHearing", folder_id="1Folder"),)
+
+    def identity(self):
+        from jason.community.identity import Identity
+
+        return Identity("The Association")
+
+
+def test_templates_lists_lint_and_previews(county, tmp_path, monkeypatch):
+    import sys
+
+    from jason.web import sources
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    monkeypatch.setattr(sources, "_community", lambda: _FakeCommunity())
+    listing = sources.templates({})
+    assert listing["found"] and listing["templates"][0]["kind"] == "hearing-notice"
+    t = listing["templates"][0]
+    assert set(t["lint"]) == {"profile", "general", "run"} and set(t["tokens"]) >= set(t["lint"]["run"])
+    one = sources.templates({"kind": "hearing-notice", "name": "Hearing, unit 12", "V_OWNER_NAME": "J. Doe", "V_IGNORED": ""})
+    assert one["found"] and "J. Doe" in one["markdown"] or "OWNER_NAME" not in one["tokens"]
+    assert one["command"].startswith("jason letter --template hearing-notice --name 'Hearing, unit 12'") and one["command"].endswith("--yes")
+    assert "--set OWNER_NAME=J.\\ Doe" in one["command"] or "--set 'OWNER_NAME=J. Doe'" in one["command"]
+    assert "IGNORED" not in one["command"]
+    assert all(x not in one["markdown"] for x in ("{", "}")), "no raw token survives"
+    assert sources.templates({"kind": "nope"})["found"] is False
+
+
+def test_drive_files_and_photos_read_the_stores(county, tmp_path, monkeypatch):
+    import json
+    import sys
+
+    from jason.web import sources
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    assert sources.drive_files({})["found"] is False and sources.photos({})["found"] is False
+    (tmp_path / "drive").mkdir()
+    (tmp_path / "drive" / "files.json").write_text(json.dumps({"syncedAt": "2026-10-01", "files": [
+        {"id": "1A", "name": "Minutes 2026-09", "path": "Board/Minutes", "mimeType": "application/vnd.google-apps.document", "link": "https://d/1A", "modified": "2026-09-20"},
+        {"id": "1B", "name": "Budget 2027", "path": "Finance", "mimeType": "application/vnd.google-apps.spreadsheet", "link": "https://d/1B", "modified": "2026-09-25"},
+        {"id": "1C", "name": "roof.jpg", "path": "Photos", "mimeType": "image/jpeg", "link": "https://d/1C", "modified": "2026-08-01"},
+    ]}))
+    out = sources.drive_files({"q": "minutes"})
+    assert out["matching"] == 1 and out["files"][0]["kind"] == "doc"
+    kinds = [f["kind"] for f in sources.drive_files({})["files"]]
+    assert kinds == ["sheet", "doc", "image"]
+    (tmp_path / "photos" / "east-bed").mkdir(parents=True)
+    (tmp_path / "photos" / "east-bed" / "manifest.json").write_text(json.dumps({"slug": "east-bed", "label": "East bed, before", "items": [
+        {"filename": "a.jpg", "path": "photos/east-bed/a.jpg", "createTime": "2026-09-01", "mimeType": "image/jpeg"},
+        {"filename": "b.mp4", "path": "photos/east-bed/b.mp4", "createTime": "2026-09-01", "mimeType": "video/mp4"},
+    ]}))
+    albums = sources.photos({})["albums"]
+    assert albums[0]["count"] == 1 and albums[0]["items"][0]["path"] == "photos/east-bed/a.jpg"

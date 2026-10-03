@@ -6,13 +6,15 @@ import { CanvasList, CanvasWorkspace } from "./CanvasesView";
 const canvas = {
   key: "pool-deck-bids", title: "Pool deck bids", question: "Which bidder?", status: "research", matter: "", duty: "Money", notes: "three quotes",
   clips: [{ at: "2026-10-03T10:00:00+00:00", source: "budget_status", text: "Pool: $3,000 over budget", label: "the gap", args: { year: 2026 } }],
-  links: [], checklist: [{ text: "find the resolution", done: false }], created: "2026-10-01T00:00:00+00:00", updated: "2026-10-03T00:00:00+00:00", history: ["2026-10-01: opened"],
+  links: [], attachments: [], checklist: [{ text: "find the resolution", done: false }], created: "2026-10-01T00:00:00+00:00", updated: "2026-10-03T00:00:00+00:00", history: ["2026-10-01: opened"],
 };
 
 function mockFetch(onPost: (url: string, body: unknown) => unknown) {
   const f = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") return new Response(JSON.stringify(onPost(url, JSON.parse(String(init.body)))), { status: 200 });
     if (url.includes("key=")) return new Response(JSON.stringify({ found: true, canvas }), { status: 200 });
+    if (url.startsWith("/api/drive-files")) return new Response(JSON.stringify({ found: true, files: [{ id: "1A", name: "Minutes 2026-09", path: "Board", kind: "doc", link: "" }] }), { status: 200 });
+    if (url.startsWith("/api/photos")) return new Response(JSON.stringify({ found: false, note: "no albums" }), { status: 200 });
     return new Response(JSON.stringify({ found: true, count: 1, statuses: ["research", "preparing", "on agenda", "done"], canvases: [{ ...canvas, clips: 1, notes: "" }] }), { status: 200 });
   });
   vi.stubGlobal("fetch", f);
@@ -40,7 +42,7 @@ describe("CanvasWorkspace", () => {
     expect(await screen.findByText("Pool: $3,000 over budget")).toBeInTheDocument();
     expect(screen.getByText(/No board item yet/)).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Notes (Markdown)"), " plus a fourth");
+    await user.type(screen.getByLabelText(/Notes \(Markdown/), " plus a fourth");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(posts[0]).toEqual(["/api/canvases/pool-deck-bids", { notes: "three quotes plus a fourth" }]));
     await user.type(screen.getByLabelText("Text"), "Reserve balance $482,100.33");

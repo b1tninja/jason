@@ -124,6 +124,22 @@ canvas opens to its workspace. "To the board" shows the commands that turn it in
 section; the page runs neither. A clip is evidence a person kept, not a pin in the specification's sense. The
 store is jason's own (`data/canvases/`), which is why the UI may write it.
 
+What a canvas shows: the notes render as Markdown, with ```mermaid fences as diagrams and photos inline
+(`![before](/api/file?path=photos/<album>/<file>.jpg)`); attachments show in place, a Google Doc, Sheet, Slides
+deck, Form, or Drive file in Google's own preview frame (for a viewer already allowed to see it), a photo or PDF
+under `data/` through the read-only file route. A picker searches the Drive catalog and the photo albums jason
+already keeps, so a canvas is assembled from what the association has, not uploaded again.
+
+### Templates (`#/templates`)
+
+The UI equivalent of `jason templates` and `jason letter`. The letter templates are rows in the profile with
+their bodies in `jason.community.templates.BODIES`, so the page lists each with its tokens sorted by who fills
+them (the profile, a general citation, or the run) and, for one picked, a form for the run's tokens and the body
+as it would read, rendered from `body_markdown`, the same text the Drive Doc is built from. The result is the
+`jason letter --template … --set … --yes` command (a Drive copy, filled; a person runs it) and a "keep on a
+canvas" that files the text as a clip. Packets (`jason packet`) and the Markdown drafts (`data/drafts/`) fit the
+same pattern next: the parts and `values.json` as a form, the build as a command.
+
 ### Drafts for approval (`#/drafts`)
 
 The bridge between the read-only views and the gated writes: a draft is shown next to the exact `--yes` command a

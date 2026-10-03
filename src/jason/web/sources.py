@@ -189,6 +189,101 @@ def canvases(args: Args) -> dict[str, Any]:
             "canvases": [{**store.encode(c), "clips": len(c.clips), "notes": ""} for c in items]}
 
 
+def _community():
+    from jason.community import community
+
+    return community()
+
+
+def templates(args: Args) -> dict[str, Any]:
+    """The letter templates: each with its tokens sorted by who fills them (the profile, a general citation, or the run).
+    With ``kind`` and ``V_<TOKEN>`` args, the body as Markdown with those values over the profile's, the tokens still
+    open, and the command that fills a Drive copy. The body is the same text the Doc is built from; the page copies
+    nothing in Drive."""
+    import os
+    import shlex
+
+    from jason.community.template_values import lint, profile_values
+    from jason.community.templates import TemplateKind, body_markdown
+    from jason.mcp.county import _data_dir
+    from jason.tasks.template_gen import load_state
+    from jason.tasks.template_gen import templates as rows
+
+    community = _community()
+    state = load_state(_data_dir(None), os.environ.get("JASON_PROFILE", "mystique"))
+    found = rows(community, state)
+    kind = args.get("kind", "").strip()
+    if not kind:
+        return {"found": bool(found), "templates": [
+            {"kind": t.kind.slug, "title": t.title, "driveId": t.drive_id, "folderId": t.folder_id, "authority": t.authority,
+             "optional": list(t.optional), "linkTokens": list(t.link_tokens), "tokens": list(t.tokens),
+             "lint": {"profile": list(l.profile), "general": list(l.general), "run": list(l.run)}}
+            for t in found for l in [lint(t.title, t.tokens, community)]]}
+    try:
+        tk = TemplateKind.from_slug(kind) if hasattr(TemplateKind, "from_slug") else next(k for k in TemplateKind if k.slug == kind)
+    except (StopIteration, ValueError):
+        return {"found": False, "note": f"no template {kind}; one of {', '.join(k.slug for k in TemplateKind)}"}
+    t = next((x for x in found if x.kind is tk), None)
+    run = {k[2:]: v for k, v in args.items() if k.startswith("V_") and v.strip()}
+    values = {**profile_values(community), **run}
+    optional = tuple(t.optional) if t else ()
+    markdown = body_markdown(tk, values, optional)
+    tokens = list(t.tokens) if t else []
+    open_tokens = [x for x in tokens if not values.get(x) and x not in optional]
+    name = args.get("name", "").strip() or f"{t.title if t else kind} draft"
+    cmd = " ".join(["jason letter", "--template", kind, "--name", shlex.quote(name)] + [f"--set {shlex.quote(f'{k}={v}')}" for k, v in run.items()] + ["--yes"])
+    return {"found": True, "kind": kind, "title": t.title if t else kind, "driveId": t.drive_id if t else "", "markdown": markdown,
+            "tokens": tokens, "open": open_tokens, "command": cmd,
+            "note": "the body as the Doc is built from it; the command copies the template in Drive and fills it, and sends nothing"}
+
+
+def drive_files(args: Args) -> dict[str, Any]:
+    """The Drive catalog on disk (`jason drive --sync`): files whose name or path contains ``q``, with the kind a canvas
+    would embed them as. Reads disk only."""
+    import json
+
+    from jason.mcp.county import _data_dir
+
+    path = _data_dir(None) / "drive" / "files.json"
+    if not path.is_file():
+        return {"found": False, "note": "no Drive catalog; run jason drive --sync"}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    q = args.get("q", "").strip().lower()
+    limit = int(args.get("limit", "30") or 30)
+    kinds = {"application/vnd.google-apps.document": "doc", "application/vnd.google-apps.spreadsheet": "sheet",
+             "application/vnd.google-apps.presentation": "slides", "application/vnd.google-apps.form": "form", "application/pdf": "drive"}
+    rows_ = []
+    for f in raw.get("files", []):
+        hay = f"{f.get('name', '')} {f.get('path', '')}".lower()
+        if q and q not in hay:
+            continue
+        mime = f.get("mimeType", "")
+        kind = kinds.get(mime) or ("image" if mime.startswith("image/") else "drive")
+        rows_.append({"id": f.get("id"), "name": f.get("name"), "path": f.get("path"), "mimeType": mime, "kind": kind, "link": f.get("link"), "modified": f.get("modified")})
+    rows_.sort(key=lambda r: str(r.get("modified") or ""), reverse=True)
+    return {"found": True, "syncedAt": raw.get("syncedAt"), "matching": len(rows_), "files": rows_[:limit]}
+
+
+def photos(args: Args) -> dict[str, Any]:
+    """The photo albums saved under data/photos (`jason photos --pick`): each with its label and items, whose ``path``
+    is relative to data/ and served by /api/file. Reads disk only."""
+    import json
+
+    from jason.mcp.county import _data_dir
+
+    folder = _data_dir(None) / "photos"
+    if not folder.is_dir():
+        return {"found": False, "note": "no albums; run jason photos --pick"}
+    albums = []
+    for manifest in sorted(folder.glob("*/manifest.json")):
+        m = json.loads(manifest.read_text(encoding="utf-8"))
+        items = [{"filename": i.get("filename"), "path": i.get("path"), "createTime": i.get("createTime"), "mimeType": i.get("mimeType")}
+                 for i in m.get("items", []) if str(i.get("mimeType", "")).startswith("image/")]
+        albums.append({"slug": m.get("slug", manifest.parent.name), "label": m.get("label", ""), "count": len(items), "items": items,
+                       "labels": m.get("labels", []), "driveFolderId": (m.get("drive") or {}).get("folderId")})
+    return {"found": bool(albums), "albums": albums}
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -272,6 +367,9 @@ def default_loaders() -> dict[str, Any]:
         "audit-chains": audit_chains,
         "request-links": request_links,
         "canvases": canvases,
+        "templates": templates,
+        "drive-files": drive_files,
+        "photos": photos,
     }
 
 

@@ -76,3 +76,10 @@ button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .command { border: 1px dashed var(--line); border-radius: 6px; padding: .5rem .75rem; background: var(--bg); }
 .command pre { margin: 0 0 .4rem; white-space: pre-wrap; word-break: break-all; font-size: .85rem; }
 .draft-message { white-space: pre-wrap; }
+.markdown :is(h1,h2,h3) { margin: .8rem 0 .3rem; } .markdown p { margin: .4rem 0; } .markdown img { max-width: 100%; border-radius: 6px; } .markdown table { border-collapse: collapse; } .markdown td, .markdown th { border-bottom: 1px solid var(--line); padding: .25rem .5rem; }
+.markdown pre { background: var(--bg); padding: .5rem .75rem; border-radius: 6px; overflow-x: auto; } .mermaid svg { max-width: 100%; height: auto; }
+.preview { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .9rem; margin-top: .5rem; }
+.embeds { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-bottom: .75rem; }
+.embed { margin: 0; } .embed iframe { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fff; } .embed img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); }
+.embed figcaption { justify-content: space-between; font-size: .85rem; color: var(--muted); margin-top: .25rem; }
+.picker { margin: .5rem 0; } .picks { list-style: none; padding: 0; margin: .25rem 0; max-height: 14rem; overflow: auto; } .picks li { padding: .15rem 0; }
