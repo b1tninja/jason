@@ -212,6 +212,27 @@ class Zoom:
 
     # --- the one write --------------------------------------------------------------------------------------------
 
+    def in_meeting_control(self, meeting_id: int | str, method: str, params: dict[str, Any] | None = None) -> None:
+        """One in-meeting control on a live meeting (``PATCH /live_meetings/{id}/events``): ``recording.start``,
+        ``recording.pause``, ``recording.resume``, ``recording.stop``. The app acts as the meeting's host."""
+        self._request("PATCH", f"live_meetings/{meeting_id}/events", json={"method": method, "params": params or {}})
+
+    def caption_token(self, meeting_id: int | str) -> str:
+        """The meeting's closed-caption URL (``GET /meetings/{id}/token?type=closed_caption_token``). Text posted to it
+        shows in every participant's captions; the host must allow the caption API token in the meeting's settings."""
+        answer = self._request("GET", f"meetings/{meeting_id}/token", params={"type": "closed_caption_token"}) or {}
+        token = str(answer.get("token") or "")
+        if not token:
+            raise ZoomError(f"meeting {meeting_id} gave no caption token; is 'Allow use of caption API token' on for the host?")
+        return token
+
+    def post_caption(self, caption_url: str, seq: int, text: str, *, lang: str = "en-US") -> None:
+        """Post one line of caption text to the caption URL; ``seq`` counts up by one per line for the meeting."""
+        response = self._http.post(caption_url, params={"seq": seq, "lang": lang}, content=text.encode("utf-8"),
+                                   headers={"Content-Type": "text/plain", "User-Agent": USER_AGENT})
+        if not response.is_success:
+            raise ZoomError(f"HTTP {response.status_code} posting a caption: {_message(response)}")
+
     def create_meeting(self, body: dict[str, Any]) -> dict[str, Any]:
         """Schedule a meeting on the host's account. The host's ``start_url`` is removed from what is returned."""
         created = self._request("POST", f"users/{self._user}/meetings", json=body) or {}

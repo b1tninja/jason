@@ -65,6 +65,22 @@ hour. Without `--yes` it prints what it would schedule. What the notice may carr
 US dial-in numbers) is kept in `data/zoom/board-meetings.json`, one row per date; the host's start link is dropped. The
 Plan a meeting page reads that row to fill the notice's join and dial-in fields unless a person types them over.
 
+## In a live meeting: `jason zoom --recording`, `jason zoom --caption`
+
+Two acts in a meeting that is under way, both as the host, both from a terminal with `--yes`, both logged under the
+meeting id in `data/zoom/live-acts.json` with `--by` naming who asked:
+
+- `jason zoom --recording pause --meeting-id N --yes` pauses the cloud recording (`PATCH /live_meetings/N/events`),
+  for the executive session; `resume`, `start`, and `stop` are the other methods. The app acts as the meeting's host
+  or an alternative host, so the account's user must be one.
+- `jason zoom --caption "text" --meeting-id N --yes` posts one line, prefixed `jason:`, into every participant's
+  captions through the meeting's caption token (`GET /meetings/N/token?type=closed_caption_token`, then a `text/plain`
+  POST to the token URL with the meeting's next sequence number). The host must have "Allow use of caption API token"
+  on. A caption is a broadcast: it is for an answer a person chose, never for jason's own words.
+
+The meeting room's Zoom tab shows both commands once `--create-board-meeting` scheduled the meeting (it needs the id).
+jason does not admit, mute, or remove anyone, run a poll, or end a meeting; those stay the host's acts in Zoom.
+
 ## Disciplinary hearings: `jason hearing`
 
 `jason hearing --address A --violation "..."` plans a hearing and drafts its notice. It changes nothing in Zoom.

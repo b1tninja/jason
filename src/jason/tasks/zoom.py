@@ -47,6 +47,8 @@ ZOOM_DIR = "zoom"
 INDEX = "meetings.json"
 HEARINGS = "hearings.json"
 BOARD_MEETINGS = "board-meetings.json"   # the board meetings jason scheduled on Zoom, by date
+LIVE_ACTS = "live-acts.json"             # what a person had jason do in a live meeting: recording controls, captions
+RECORDING_METHODS = ("start", "pause", "resume", "stop")
 OVERLAP_DAYS = 14                       # a recording or summary can appear days after the meeting
 FILE_NAMES = {"TRANSCRIPT": "transcript.vtt", "CHAT": "chat.txt"}
 MEDIA_NAMES = {"M4A": "audio.m4a", "MP4": "video.mp4"}
@@ -404,6 +406,30 @@ def board_meeting(data_dir: Path, on: date | str) -> dict[str, Any] | None:
         return None
     day = on if isinstance(on, str) else on.isoformat()
     return next((r for r in json.loads(path.read_text(encoding="utf-8")).get("meetings", []) if r.get("date") == day), None)
+
+
+def _live_acts(data_dir: Path) -> tuple[Path, dict[str, Any]]:
+    path = zoom_dir(data_dir) / LIVE_ACTS
+    return path, (json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"meetings": {}})
+
+
+def record_live_act(data_dir: Path, meeting_id: int | str, kind: str, detail: str, *, by: str = "") -> dict[str, Any]:
+    """Log one act in a live meeting under the meeting id: ``kind`` is ``recording`` or ``caption``, ``detail`` the
+    method or the text. A caption takes the next sequence number for that meeting, which Zoom needs to count up."""
+    path, data = _live_acts(data_dir)
+    meeting = data["meetings"].setdefault(str(meeting_id), {"seq": 0, "acts": []})
+    act = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "kind": kind, "detail": detail, "by": by}
+    if kind == "caption":
+        meeting["seq"] += 1
+        act["seq"] = meeting["seq"]
+    meeting["acts"].append(act)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return act
+
+
+def live_acts(data_dir: Path, meeting_id: int | str) -> list[dict[str, Any]]:
+    return list(_live_acts(data_dir)[1]["meetings"].get(str(meeting_id), {}).get("acts", []))
 
 
 # --- disciplinary hearings ----------------------------------------------------------------------------------------

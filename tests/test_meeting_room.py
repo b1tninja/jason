@@ -234,6 +234,7 @@ def test_loader_merges_the_meeting_the_room_and_falls_back_without_a_plan(fakes)
     assert [p["path"] for p in out["offAgendaPaths"]] == ["b", "c", "d1", "d2", "d3"]
     assert out["room"]["motions"] == [] and out["room"]["present"] == [] and out["minutesKey"] == f"minutes/{DAY}"
     assert any("jason does not admit" in c for c in out["caveats"]) and out["zoom"]["admitCommand"] == ""
+    assert "recordingPause" not in out["zoom"]["commands"] and "Schedule the meeting" in out["zoom"]["note"] and out["zoom"]["meetingId"] is None
     assert meeting_room({"date": "bad"}) == {"found": False, "note": "date is YYYY-MM-DD"}
     # The writer applies an action as the person's act and gives the room back with tallies; the loader then shows it.
     room = write(DAY, {"action": "attendance", "by": "S. Clerk", "directors": FIVE, "attendance": {n: "present" for n in FIVE[:3]}})
@@ -277,3 +278,22 @@ def test_api_meeting_room_write_route(fakes):
     assert r.status_code == 200 and r.json["view"] == "shared"
     assert c.post(f"/api/write/meeting-room/{DAY}", json={"action": "set_view", "view": "tv", "by": "S. Clerk"}).status_code == 400
     assert c.post("/api/write/meeting-room/nope", json={"action": "set_view", "view": "shared", "by": "S. Clerk"}).status_code == 404
+
+
+def test_a_scheduled_meeting_adds_the_recording_and_caption_commands(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from jason.tasks.zoom import save_board_meeting
+    from jason.web.extra import meeting_room as mod
+    from jason.zoom.models import BoardMeetingPlan, BoardMeetingPolicy
+
+    policy = BoardMeetingPolicy(timezone="America/Los_Angeles", topic="Sample Commons board meeting")
+    save_board_meeting(tmp_path, BoardMeetingPlan(start=datetime(2026, 10, 21, 19, 0, tzinfo=ZoneInfo(policy.timezone)), policy=policy,
+                                                  zoom={"id": 85550001111, "joinUrl": "https://zoom.us/j/1", "passcode": "1", "dialIn": []}))
+    z = mod._zoom(tmp_path, "2026-10-21")
+    assert z["meetingId"] == 85550001111
+    assert z["commands"]["recordingPause"] == "jason zoom --recording pause --meeting-id 85550001111 --yes"
+    assert z["commands"]["caption"].startswith('jason zoom --caption "<the answer>" --meeting-id 85550001111 --yes')
+    assert "seen by everyone" in z["note"]
+    assert mod._zoom(tmp_path, "2026-11-18")["meetingId"] is None

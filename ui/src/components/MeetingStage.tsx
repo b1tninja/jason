@@ -546,6 +546,13 @@ function ZoomTab({ data, item, onAction, canWrite }: TabProps) {
         {r.executive.active && <p className="limit">In executive session since {hhmm(r.executive.startedAt)}. Members wait for the open session to resume.</p>}
       </div>
       <p className="muted">{data.zoom.note}</p>
+      {data.zoom.commands.recordingPause && (
+        <div className="stack">
+          <Command cmd={data.zoom.commands.recordingPause} note="Pauses the cloud recording as the host, for the executive session; logged under the meeting id." />
+          <Command cmd={data.zoom.commands.recordingResume} note="Resumes it when the open session returns." />
+          <Command cmd={data.zoom.commands.caption} note="Posts one line, prefixed jason:, into every participant's captions. Put the chosen answer in the quotes." />
+        </div>
+      )}
       {data.zoom.commands.sync && <Command cmd={data.zoom.commands.sync} note="Reads the Zoom account's meetings, transcripts, and summaries to disk after the meeting." />}
     </div>
   );

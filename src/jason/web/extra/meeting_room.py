@@ -119,6 +119,24 @@ def _roster(root) -> dict[str, Any]:
     return {"synced": synced, "count": len(rows), "rows": rows, "note": ""}
 
 
+def _zoom(root: Any, day: str) -> dict[str, Any]:
+    """The Zoom commands for the day's meeting: the sync, and when `jason zoom --create-board-meeting` scheduled it,
+    the recording controls and the caption line a person may run as the host."""
+    from jason.tasks.zoom import board_meeting
+
+    created = board_meeting(root, day) or {}
+    meeting_id = (created.get("zoom") or {}).get("id")
+    commands = {"sync": "jason zoom", "meeting": f"jason zoom --meeting {day}"}
+    if meeting_id:
+        commands.update({"recordingPause": f"jason zoom --recording pause --meeting-id {meeting_id} --yes",
+                         "recordingResume": f"jason zoom --recording resume --meeting-id {meeting_id} --yes",
+                         "caption": f"jason zoom --caption \"<the answer>\" --meeting-id {meeting_id} --yes"})
+    note = ("jason reads the Zoom account's history to disk (jason zoom). Admitting, muting, polls, and breakout rooms are the host's acts in Zoom; the room logs them."
+            + (" The recording controls and the caption line run as the host from a terminal, each logged under the meeting id; a caption is seen by everyone."
+               if meeting_id else " Schedule the meeting with jason zoom --create-board-meeting to get the recording and caption commands here."))
+    return {"commands": commands, "meetingId": meeting_id, "admitCommand": "", "note": note}
+
+
 def meeting_room(args: Args) -> dict[str, Any]:
     """The meeting (``meeting`` loader), the plan's items, the room record with tallies, the quorum, the roster, and the caveats."""
     from jason.mcp.county import _data_dir
@@ -143,8 +161,7 @@ def meeting_room(args: Args) -> dict[str, Any]:
         "found": True, "date": day, "today": base.get("today", ""), "directors": directors, "quorum": store.quorum(directors),
         "items": items, "room": store.with_tallies(room), "decisions": base.get("decisions", []), "plan": {"found": bool(candidates), "count": len(candidates)},
         "roster": roster, "offAgendaPaths": [{"path": k, "text": v} for k, v in store.OFF_AGENDA_PATHS.items()],
-        "zoom": {"commands": {"sync": "jason zoom", "meeting": f"jason zoom --meeting {day}"},
-                 "admitCommand": "", "note": "jason reads the Zoom account's history to disk (jason zoom). Admitting, muting, recording, polls, and breakout rooms are the host's acts in Zoom; the room logs them."},
+        "zoom": _zoom(root, day),
         "commands": {**(base.get("commands") or {}), "minutesDraft": f"jason board --minutes {day}"},
         "minutesKey": f"minutes/{day}", "notes": notes, "caveats": list(CAVEATS),
     }

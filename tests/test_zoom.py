@@ -254,3 +254,34 @@ def test_a_board_meeting_follows_the_profiles_policy_and_schedule() -> None:
     assert plan.record()["zoom"] == {} and plan.record()["date"] == plan.start.date().isoformat()
     with pytest.raises(ValueError):
         plan_board_meeting(mystique(), at="noonish")
+
+
+def test_recording_controls_and_captions_go_to_the_live_meeting(tmp_path) -> None:
+    from jason.tasks.zoom import live_acts, record_live_act
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return httpx.Response(200, json={"token": "https://wmcc.zoom.us/closedcaption?id=1&ns=x&expire=86400&sparams=id&signature=s"})
+        if request.url.host == "wmcc.zoom.us":
+            return httpx.Response(200, text="")
+        return httpx.Response(204)
+
+    client = _zoom(handler, seen)
+    client.in_meeting_control(85550001111, "recording.pause")
+    assert seen[-1].method == "PATCH" and seen[-1].url.path == "/v2/live_meetings/85550001111/events"
+    assert json.loads(seen[-1].content) == {"method": "recording.pause", "params": {}}
+    url = client.caption_token(85550001111)
+    assert seen[-1].url.params["type"] == "closed_caption_token"
+    first = record_live_act(tmp_path, 85550001111, "caption", "jason: The next meeting is on the schedule's day.", by="D. Okafor")
+    second = record_live_act(tmp_path, 85550001111, "caption", "jason: Second line.")
+    assert (first["seq"], second["seq"]) == (1, 2)
+    client.post_caption(url, second["seq"], second["detail"])
+    posted = seen[-1]
+    assert posted.method == "POST" and posted.url.host == "wmcc.zoom.us" and posted.url.params["seq"] == "2" and posted.url.params["lang"] == "en-US"
+    assert posted.content == b"jason: Second line." and posted.headers["content-type"] == "text/plain"
+    record_live_act(tmp_path, 85550001111, "recording", "pause", by="D. Okafor")
+    acts = live_acts(tmp_path, 85550001111)
+    assert [a["kind"] for a in acts] == ["caption", "caption", "recording"] and acts[-1]["by"] == "D. Okafor" and "seq" not in acts[-1]
+    assert live_acts(tmp_path, 1) == []

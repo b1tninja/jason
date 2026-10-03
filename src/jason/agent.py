@@ -1086,6 +1086,26 @@ class Jason:
             plan.zoom = zoom_details(client.create_meeting(plan.meeting_body()))
         return plan.zoom
 
+    def control_recording(self, meeting_id: int | str, method: str, *, by: str = "") -> dict[str, Any]:
+        """Start, pause, resume, or stop the cloud recording of a live meeting, as the host, and log the act."""
+        from jason.tasks.zoom import RECORDING_METHODS, record_live_act
+
+        if method not in RECORDING_METHODS:
+            raise ValueError(f"recording method is one of {', '.join(RECORDING_METHODS)}")
+        with self.zoom() as client:
+            client.in_meeting_control(meeting_id, f"recording.{method}")
+        return record_live_act(self.settings.payhoa_catalog.parent, meeting_id, "recording", method, by=by)
+
+    def caption(self, meeting_id: int | str, text: str, *, lang: str = "en-US", by: str = "") -> dict[str, Any]:
+        """Post one line into the live meeting's captions, prefixed so everyone sees who wrote it, and log it."""
+        from jason.tasks.zoom import record_live_act
+
+        line = f"jason: {text.strip()}"
+        act = record_live_act(self.settings.payhoa_catalog.parent, meeting_id, "caption", line, by=by)
+        with self.zoom() as client:
+            client.post_caption(client.caption_token(meeting_id), act["seq"], line, lang=lang)
+        return act
+
     def sync_vendor_portal(self, key: str, *, full: bool = False, log: Any = None):
         """Sync one vendor portal to ``data/vendors/<key>``: account, visits, products, files, and checked invoices."""
         from jason.tasks.vendor_portals import sync_portal

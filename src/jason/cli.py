@@ -1504,6 +1504,20 @@ def cmd_zoom(args: argparse.Namespace) -> int:
     if args.meeting:
         print(json.dumps(meeting_text(data_dir, args.meeting, include_confidential=args.confidential), indent=2, default=str))
         return 0
+    if args.recording or args.caption:
+        if not args.meeting_id:
+            print("--recording and --caption need --meeting-id (the live meeting's id)")
+            return 2
+        what = (f"{args.recording} the cloud recording of meeting {args.meeting_id}" if args.recording
+                else f"post 'jason: {args.caption}' into the captions of meeting {args.meeting_id}, which every participant sees")
+        if not args.yes:
+            print(f"this would {what}, as the host; add --yes to do it")
+            return 2
+        with _agent(args) as agent:
+            act = (agent.control_recording(args.meeting_id, args.recording, by=args.by) if args.recording
+                   else agent.caption(args.meeting_id, args.caption, lang=args.lang, by=args.by))
+        print(json.dumps(act, indent=2) if args.json else f"done: {act['kind']} {act['detail']} at {act['at']}")
+        return 0
     if args.create_board_meeting:
         from jason.tasks.zoom import plan_board_meeting, save_board_meeting
 
@@ -3758,7 +3772,13 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Schedule the board meeting on Zoom under the profile's board meeting policy (needs --yes); the join link and dial-in go to the notice")
     zoom.add_argument("--date", default="", help="With --create-board-meeting: the meeting date YYYY-MM-DD (default the schedule's next)")
     zoom.add_argument("--time", default="", help="With --create-board-meeting: the start, e.g. '7:00 pm' (default the schedule's hour)")
-    zoom.add_argument("--yes", action="store_true", help="Confirm --create-board-meeting")
+    zoom.add_argument("--meeting-id", default="", help="With --recording or --caption: the live meeting's id")
+    zoom.add_argument("--recording", default="", choices=["", "start", "pause", "resume", "stop"],
+                      help="Control the live meeting's cloud recording as the host (pause for an executive session); needs --meeting-id and --yes")
+    zoom.add_argument("--caption", default="", help="Post one line, prefixed 'jason:', into the live meeting's captions for everyone; needs --meeting-id and --yes")
+    zoom.add_argument("--lang", default="en-US", help="With --caption: the caption language (default en-US)")
+    zoom.add_argument("--by", default="", help="With --recording or --caption: who asked for it, for the log")
+    zoom.add_argument("--yes", action="store_true", help="Confirm --create-board-meeting, --recording, or --caption")
     zoom.add_argument("--json", action="store_true", help="Print JSON")
     zoom.set_defaults(func=cmd_zoom)
 

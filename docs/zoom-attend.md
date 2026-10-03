@@ -47,7 +47,9 @@ event subscriptions (webhooks). It cannot be in a meeting: no audio, no live tra
   meeting is set by the host, not created by the API. `GET /report/meetings/{meetingId}/participants` gives who was
   there.
 
-This is where jason stands today, and it already covers "keep the record" after the fact.
+This is where jason stands today, and it already covers "keep the record" after the fact. Built since this note was
+written: `jason zoom --create-board-meeting`, `--recording pause|resume|start|stop`, and `--caption`, each behind
+`--yes` and logged ([zoom.md](zoom.md)).
 
 ## 2. The three ways to be in the meeting
 
