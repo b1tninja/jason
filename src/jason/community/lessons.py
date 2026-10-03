@@ -759,6 +759,21 @@ LESSONS: tuple[Lesson, ...] = (
            "jason cannot see the body PayHOA sent.",
            "Compare with the communication's body when the notice is synced, if PayHOA returns it.", Status.OPEN,
            guards=("notice_text.keep (state: handed)",)),
+    Lesson("google-writes-without-yes", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "Surveying every write jason makes outside itself for the console's approvals, four commands were found "
+           "writing to Google with no --yes step: the board items' sheet (create and update), the board items' Google "
+           "Tasks sync, and the property-history sheet.",
+           "They were built as syncs of jason's own registers, so writing seemed routine.",
+           "Each gets a dry run by default and --yes (and later an approval kind), like every other outside write.",
+           Status.OPEN, docs=("docs/console/approval-workflow.md (the survey)",)),
+    Lesson("apply-loses-partial-results", OCT_2026, (Area.OWNER_INFO,),
+           "The owner-information apply returns only counts, so a failure part-way leaves no record of which writes "
+           "were made; and it treats every planned write as written, which would complete a request whose write was "
+           "never approved once approvals are per item.",
+           "The apply was written for all-or-nothing runs from the command line.",
+           "Results per item, and a request completed only after its own writes were made; the approvals engine's "
+           "owner-info adapter carries both.",
+           Status.OPEN, docs=("docs/console/mvp.md",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
