@@ -12,7 +12,8 @@ jason intake                             # the open questions (--kind, --subject
 jason intake --answer ID 1 --by NAME     # a choice's number, or words; "dismiss" closes it
 jason intake --likely --kind "ocr reading"
 jason intake --accept-likely --by NAME   # after looking: every likely OCR reading, with its suggestion
-jason intake --apply                     # answers into records: transcriptions, person-chosen kinds
+jason intake --confirm ID --by OTHER     # a second person, for a high-stakes answer
+jason intake --apply                     # answers into records: transcriptions, person-chosen kinds, facts, proposals
 ```
 
 - **Records:** each question is an `Ask` (`jason.community.intake`), kept in `data/intake/asks.json`, which is private.
@@ -22,7 +23,8 @@ jason intake --apply                     # answers into records: transcriptions,
   - the question, the choices, and jason's suggestion;
   - whether the suggestion is `likely`;
   - the evidence;
-  - the answer and who gave it.
+  - the checklist item it serves, for an onboarding question;
+  - the answer, who gave it and when, and who confirmed it and when.
 - **Ids:** an ask's id comes from what it is about, so a later scan finds the same question rather than a new one.
 - **Stale questions:** an open question that a later scan no longer produces is marked stale; its cause went away.
 
@@ -37,6 +39,37 @@ jason intake --apply                     # answers into records: transcriptions,
 | `drift` | the working copy differs from the current text in an amended section | fix the working copy, record a correction, or ask counsel |
 | `orphaned note` | an annotation whose words are gone | re-anchor, keep as a general note, or resolve |
 | `held source` | a source not read (changed since review, or not fetched) | review and pin the new digest, or fetch |
+| `section kind` | a section of the owner's manual whose kind no rule settled | the kind the next `jason manual` run reads |
+| `fact` | an onboarding checklist item a person supplies, missing or partial ([onboarding.md](onboarding.md#questions-the-checklist-asks)) | a private fact in `data/spec/<profile>.json`, a note that it is kept in Keeper, or a proposed profile change |
+| `map` | a book a checklist item looks for that no document fills, or a 5200 record no folder is pinned to hold | a proposed profile change: a `.patch` under `data/onboarding/proposals/` |
+
+## Guards on every answer
+
+- **No secret is stored.** An answer that looks like a password, a PIN or code given with its digits, a key or token given with its value, or a long token is refused before anything is written. The person puts it in Keeper and answers with the Keeper record's name. A link is not a token, so a Drive folder is answered with its link. The words of a page may say "code" with a number, so an OCR reading is held only to the token rule.
+- **A high-stakes answer needs a second person.** Some answers decide which text is in force or whether an instrument took effect: `standing`, `readings differ`, `before differs`, `drift`, and a fact marked high stakes. `--apply` refuses each until `--confirm ID --by NAME` records a second person, who is not the one who answered. A new answer clears the confirmation.
+
+## The session
+
+The queue is ranked by what each answer unblocks (`jason.community.intake_rank`), and `jason onboard` shows it beside the checklist and the stage gates ([onboarding.md](onboarding.md#the-session)). `jason onboard --questions` lists more.
+
+- **Unblocks.** Each question gets an `Unblocks`. It names:
+  - the legal clocks it affects: a schedule assignment, notice requirement, or notice provision that cites the section, or a fact that sets a clock;
+  - the checklist items it would move to present;
+  - the stage gates it holds closed;
+  - the books or 5200 records it fills;
+  - the sections it touches, with their weighted citations.
+- **Citations.** A section's weight counts what cites it, read as `jason cite --most-cited` reads it: a conflict row 4, a notice provision or requirement 3, a document duty or schedule assignment 2, another document's cross-reference 1, anything else 0.5. A citation of the section itself counts in full, of the section enclosing it half, of its whole article a fifth, and of a part inside it a quarter. A whole article's own words are a heading, so its parts' citations do not count for it.
+- **Priority.** One function, `priority`, with its weights as named constants, sorts the queue in tiers:
+  1. a legal clock;
+  2. a missing checklist item, then a partial one;
+  3. a stage gate;
+  4. a heavily cited section;
+  5. a book or record filled with no item behind it, which counts as fifty citations;
+  6. quality alone.
+
+  Each tier's cap stays below the next tier's single step.
+- **OCR readings.** An OCR reading reaches the clock tier only when it could change what the section means: a digit differs, or the two readings are words a person must choose between. One that differs only in spacing, case, or punctuation, or a likely real word for a non-word, keeps its citations and gives up the clock. One in a section nothing cites sinks to the bottom. An orphaned note, a section's kind, or a held source decides no words, so it never reaches the clock tier.
+- **The same paths.** `jason onboard --answer`, `--confirm`, and `--apply` are this queue's own answer, confirm, and apply paths.
 
 ## Manual reading where OCR fails
 
@@ -63,3 +96,4 @@ jason intake --apply                     # answers into records: transcriptions,
 - Showing the page's crop beside an OCR question for the person answering it (the vision reader already crops the word).
 - Questions from the duties and notice catalogs, and from a new file's standing (is it signed? recorded?).
 - Applying the answers to `before differs`, `drift`, and `orphaned note` beyond recording them.
+- Applying a profile proposal: a person reviews and applies each patch; jason does not track which were applied, except that a question no scan asks again stays applied.

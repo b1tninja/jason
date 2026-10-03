@@ -15,7 +15,7 @@ jason-mcp --profile governance    # the governance systems
 
 - `.mcp.json` at the project root registers `jason` as `.venv\Scripts\jason-mcp.exe` for Claude Code.
 - The server runs from `JASON_CWD` when a client sets it, else the folder that holds `.env`. The stores are addressed as `data/...` from there.
-- **Profiles.** With no profile (or `all`) every tool is served: 124 today, with the record resources ([Resources](#resources): eleven templates, and about 130 listed resources for a profile with a declaration, rules, and annexations, plus up to twenty notices). `--profile governance` serves the seventeen governance tools below and the same resources. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
+- **Profiles.** With no profile (or `all`) every tool is served: 126 today, with the record resources ([Resources](#resources): eleven templates, and about 130 listed resources for a profile with a declaration, rules, and annexations, plus up to twenty notices). `--profile governance` serves the nineteen governance tools below and the same resources. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
 - **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile all` registers every tool. A small local model chooses better from the board set.
 
 ## Rules for a client
@@ -203,14 +203,16 @@ Each legal case with a `drive_folder` in `mystique/cases.py` is its own catalog 
 
 ## Governance
 
-The living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog and delivery, the documents' duties, and citations of the documents and records. These are `--profile governance` (`jason.mcp.governance`).
+The living documents, conflicts, intake questions, onboarding, the schedule, members' requests, the notice catalog and delivery, the documents' duties, and citations of the documents and records. These are `--profile governance` (`jason.mcp.governance`).
 
 | Tool | What it reads, and the caveat |
 | --- | --- |
 | `living_document` | A governing document as amended: the instruments applied and not in effect, the findings, and the rule rows' checks. With `section`, also that section's words, who set them, and its history. `as_of` gives the text in force on a date. Built from the saved sources. Not an official restatement; the recorded instruments control. |
 | `document_conflicts` | Provisions a higher authority displaces (4205), each with what still governs and what yields. `leads` adds the Act's changes since each document was written. A lead is something to read, not a conflict. |
 | `intake_questions` | The questions parked while taking documents in, with evidence, choices, and the suggestion. `likely` means two independent readers agree. |
-| `answer_intake_question` | **Writes** a person's answer to `data/intake/asks.json`; `by` is required. `jason intake --apply` turns answers into records. |
+| `answer_intake_question` | **Writes** a person's answer to `data/intake/asks.json`; `by` is required. It answers FACT and MAP questions too, once `jason onboard --scan` has parked them. An answer that looks like a secret (a password, a PIN or code, a long token) is refused and not stored. A high-stakes answer (which text is in force, whether an instrument was recorded, a fact such as the bank signers) waits for a second person's `jason onboard --confirm`. `jason intake --apply` turns answers into records. |
+| `onboarding_status` | Onboarding as a session ([onboarding.md](onboarding.md#the-session)): the checklist's progress by group, the stage gates (start, ingest, establish, operate, adopt) with what each waits on, and the queue's size by kind. Counts and keys only, never a private value. A gate is jason's reading; the board decides what is done. |
+| `next_questions` | The open intake and onboarding questions ranked by what each answer unblocks: a legal clock, then a missing checklist item, a stage gate, a cited section, and quality last. Each with its evidence, choices, suggestion, priority, and `unblocks`; `group` and `stage` narrow. A suggestion is a lead, not an answer. |
 | `schedule_agenda` | What falls due, by role, with each item's standing. Assignments are proposals until the board adopts them. |
 | `schedule_assignments` | Every assignment (role, clock, evidence, adoption) and the coverage check: duties nobody owns, and duties on a clock nothing schedules. |
 | `record_completion` | **Writes** that an occurrence was done to `data/schedule/done.jsonl`; `by` and `evidence` are required. |

@@ -3,9 +3,11 @@
 ``jason intake --scan`` runs the readers (the library, each living document against its sources and working copy)
 and parks each uncertainty as a question in ``data/intake/asks.json``; an answered question stays answered.
 ``jason intake`` lists the open ones (``--kind``, ``--subject``, ``--limit``). ``--answer ID TEXT --by NAME`` answers
-one (a choice's number or words; ``dismiss`` closes it). ``--accept-likely --by NAME`` answers every open ``likely``
-OCR reading with its suggestion, after a person has looked at the list. ``--apply`` turns the answers into the records
-the next run uses (transcriptions, person-chosen kinds). Read-only everywhere but ``data/``.
+one (a choice's number or words; ``dismiss`` closes it; an answer that looks like a secret is refused and not stored).
+``--confirm ID --by NAME`` is a second person's confirmation of a high-stakes answer. ``--accept-likely --by NAME``
+answers every open ``likely`` OCR reading with its suggestion, after a person has looked at the list. ``--apply``
+turns the answers into the records the next run uses (transcriptions, person-chosen kinds, private facts, proposed
+profile changes). The scan also parks the onboarding questions (``jason onboard``). Read-only everywhere but ``data/``.
 """
 
 from __future__ import annotations
@@ -115,7 +117,25 @@ def _scan(data_dir, *, model: bool = False, vision: bool = False) -> tuple[list,
                                    indent=1), encoding="utf-8")
         if held:
             print(f"{ld.key}: {len(held)} suggestions with one reader kept in {path} (--model adds a second)")
+    # The onboarding questions: facts a person supplies, and documents or records with no book or folder.
+    from jason.tasks import onboarding_session
+
+    try:
+        asks += onboarding_session.generate_for(community(), data_dir)
+        scope += list(onboarding_session.SCOPE)
+    except Exception as exc:  # noqa: BLE001 - the checklist failing must not lose the document questions
+        print(f"onboarding questions not read: {type(exc).__name__}: {exc}", file=sys.stderr)
     return asks, tuple(scope)
+
+
+def print_applied(done: list, refused: list, shown: list) -> None:
+    """What ``--apply`` did: each record, each diff or proposal, and each answer it refused, with why."""
+    print(f"applied {len(done)}: " + "; ".join(f"{a.id} -> {a.applied_to}" for a in done[:10])
+          + (" ..." if len(done) > 10 else ""))
+    for a, text in shown:
+        print(f"\n{a.id} ({a.kind.value} {a.subject}):\n{text.rstrip()}")
+    for a, why in refused:
+        print(f"not applied {a.id} ({a.kind.value} {a.subject}): {why}", file=sys.stderr)
 
 
 def cmd_intake(args: argparse.Namespace) -> int:
@@ -132,7 +152,7 @@ def cmd_intake(args: argparse.Namespace) -> int:
         for r in rows[:15]:
             print(f"  {r['suspects'] / max(1, r['tokens']):.1%} suspect, English {r['english_share']:.0%}, "
                   f"{r['suggestions']} suggestions ({r['guarded']} for a person): {r['path']} [{r['engine']}]")
-        if not (args.scan or args.answer or args.accept_likely or args.apply):
+        if not (args.scan or args.answer or args.confirm or args.accept_likely or args.apply):
             return 0
     if args.scan:
         found, scope = _scan(data_dir, model=args.model, vision=args.vision)
@@ -148,7 +168,17 @@ def cmd_intake(args: argparse.Namespace) -> int:
             print(f"cannot answer {ident}: {exc}", file=sys.stderr)
             return 2
         intake.save(data_dir, asks)
-        print(f"{a.id}: {a.status.value}: {a.answer!r} (by {a.answered_by})")
+        print(f"{a.id}: {a.status.value}: {a.answer!r} (by {a.answered_by})"
+              + ("; high stakes: a second person confirms it (--confirm ID --by NAME) before --apply"
+                 if intake.high_stakes(a) and a.status is intake.AskStatus.ANSWERED else ""))
+    if args.confirm:
+        try:
+            a = intake.confirm(asks, args.confirm, args.by or "")
+        except (KeyError, ValueError) as exc:
+            print(f"cannot confirm {args.confirm}: {exc}", file=sys.stderr)
+            return 2
+        intake.save(data_dir, asks)
+        print(f"{a.id}: confirmed by {a.confirmed_by} (answered by {a.answered_by})")
     if args.accept_likely:
         try:
             done = intake_task.accept_likely(asks, args.by or "")
@@ -158,11 +188,12 @@ def cmd_intake(args: argparse.Namespace) -> int:
         intake.save(data_dir, asks)
         print(f"accepted {len(done)} likely OCR readings in the name of {args.by}")
     if args.apply:
-        done = intake_task.apply(asks, data_dir)
+        refused: list = []
+        shown: list = []
+        done = intake_task.apply(asks, data_dir, refused=refused, shown=shown)
         intake.save(data_dir, asks)
-        print(f"applied {len(done)}: " + "; ".join(f"{a.id} -> {a.applied_to}" for a in done[:10])
-              + (" ..." if len(done) > 10 else ""))
-    if args.scan or args.answer or args.accept_likely or args.apply:
+        print_applied(done, refused, shown)
+    if args.scan or args.answer or args.confirm or args.accept_likely or args.apply:
         return 0
     wanted = [a for a in asks if a.status is intake.AskStatus.OPEN
               and (not args.kind or a.kind.value == args.kind) and (not args.subject or a.subject.startswith(args.subject))]
@@ -193,7 +224,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--answer", nargs=2, metavar=("ID", "TEXT"), help="answer one (a choice's number or words; dismiss)")
     p.add_argument("--accept-likely", action="store_true",
                    help="answer every open likely OCR reading with its suggestion (after looking at --likely)")
-    p.add_argument("--by", help="the person answering (required to answer)")
+    p.add_argument("--confirm", metavar="ID",
+                   help="a second person confirms an answered high-stakes question (with --by; not who answered)")
+    p.add_argument("--by", help="the person answering or confirming (required)")
     p.add_argument("--apply", action="store_true", help="turn answers into the records the next run uses")
     p.add_argument("--model", action="store_true",
                    help="with --scan: the local text model reads the doubtful words too (a second reader)")

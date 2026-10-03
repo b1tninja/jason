@@ -430,9 +430,68 @@ def embedded_copies(key: str = "", host: str = "", stale_only: bool = False, own
     return sr.embedded_copies(_root(data_dir), key=key, host=host, stale_only=bool(stale_only), owner=owner)
 
 
+# --- Onboarding -------------------------------------------------------------------------------------------------------
+
+def _onboarding_session(data_dir: Path | None) -> Any:
+    """The session, with the settings loaded so the checks that read a Keeper record UID see it set."""
+    from jason.tasks import onboarding_session as task
+
+    try:
+        from jason.config import Settings
+
+        settings = Settings.load()
+    except Exception:  # noqa: BLE001 - no .env: those checks read as not set
+        settings = None
+    return task.build(_community(), _root(data_dir), settings=settings)
+
+
+def onboarding_status(data_dir: Path | None = None) -> dict[str, Any]:
+    """Onboarding as a session (``jason onboard``): the checklist's progress by group (present, partial, missing), the
+    stage gates (start, ingest, establish, operate, adopt) with what each waits on, the stage reached, and the intake
+    queue's size by kind. Counts and keys only, never a private value. Reads disk only; a missing item is a place to
+    look, not a finding that the record does not exist."""
+    from jason.tasks import onboarding_session as task
+
+    try:
+        session = _onboarding_session(data_dir)
+    except Exception as exc:  # a reader that fails is an answer, not a traceback
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    out = task.status_dict(session)
+    out["caveat"] = ("A gate is jason's reading of the checklist; the board decides what is done. Questions marked "
+                     "inQueue false are parked by jason onboard --scan before answer_intake_question can answer them.")
+    return out
+
+
+def next_questions(limit: int = 5, group: str = "", stage: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+    """The open intake and onboarding questions ranked by what each answer unblocks: a legal clock first (a notice or
+    schedule assignment citing the section), then a missing checklist item, a stage gate, a heavily cited section, and
+    a quality issue last. Each with its evidence, choices, suggestion, priority, and ``unblocks``. ``group`` narrows to
+    a checklist group (finance, governing, ...), ``stage`` to a stage's gate. FACT questions ask a fact no document
+    holds; MAP questions which book or 5200 record a document or folder fills. Answer with ``answer_intake_question``
+    (a secret is refused; a high-stakes answer needs a second person's ``jason onboard --confirm``). Reads disk only."""
+    from jason.community.onboarding import Group, Stage
+    from jason.tasks import onboarding_session as task
+
+    try:
+        if group:
+            Group(group)
+        if stage:
+            Stage(stage)
+    except ValueError:
+        return {"error": f"groups: {', '.join(g.value for g in Group)}; stages: {', '.join(s.value for s in Stage)}"}
+    try:
+        session = _onboarding_session(data_dir)
+    except Exception as exc:  # a reader that fails is an answer, not a traceback
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    rows = session.questions(group=group, stage=stage)
+    return {"count": len(rows), "questions": [task.question_dict(r, session.stored) for r in rows[: max(1, int(limit))]],
+            "caveat": "A suggestion is jason's lead, not an answer; nothing is applied until a person answers and runs "
+                      "jason onboard --apply. A private fact's value is never shown here once recorded."}
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
          notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, section_refs,
-         embedded_copies)
+         embedded_copies, onboarding_status, next_questions)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

@@ -61,8 +61,8 @@ def test_present_partial_and_missing_on_a_made_up_profile(ctx):
     assert found["management-software"].status is Status.PARTIAL  # the vault record, but no organization id
     assert found["tax-returns"].status is Status.MISSING          # no 5200 holder, no file
     assert found["policies"].status is Status.MISSING
-    assert found["tax-id"].status is Status.MISSING and not found["tax-id"].findings
-    assert found["tax-id"].evidence == "nothing in jason holds this yet"
+    assert found["tax-id"].status is Status.MISSING                # a person supplies it: no answer recorded yet
+    assert found["tax-id"].evidence == "no private fact tax-id: not answered"
     assert "no 5200 record tax_return: nothing pinned" in found["tax-returns"].evidence
 
 

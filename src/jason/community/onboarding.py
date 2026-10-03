@@ -19,6 +19,14 @@ the Civil Code 5200 records inventory, file counts on disk, the private facts, t
 every check passes, partial when some do, and missing when none does or when nothing in jason holds it yet. An item
 with no ``fetch`` command is one a person must supply: jason has no source it can read for it.
 
+An item a person supplies may carry a ``FactAsk``: the question jason asks while it is missing or partial, and where the
+answer goes (``FactRecord``): the private facts (``data/spec/<profile>.json``), a proposed change to the profile for a
+person to apply, or a note that the secret is kept in Keeper, never its value. ``Fact`` checks the private facts.
+
+The stages (``Stage``, ``GATES``) group the items into the order a takeover opens: start, ingest, establish, operate,
+adopt. A gate is open when its items are present and its own checks pass (``Settled``: no open question of some kinds;
+``Verified``: the governing instruments' copies matched in the county index).
+
 Pure records: nothing here reads disk; the task (``jason.tasks.onboarding``) loads the context.
 """
 
@@ -128,6 +136,8 @@ class Context:
     count: Callable[[str, str], int] = lambda path, table="": 0
     private: Callable[[str], Any] = lambda name: {}
     settings: Any = None
+    profile: str = ""                        # the active profile's name: its private facts file (``Fact``)
+    asks: tuple[Any, ...] = ()               # the intake questions (``Settled``)
 
 
 @dataclass(frozen=True)
@@ -252,7 +262,100 @@ class Setting:
         return Finding(bool(str(value).strip()), f"setting {self.name}: {'set' if value else 'not set'}")
 
 
-Check = Method | Kinds | Record | InBook | Store | Private | Setting
+FACTS = "facts"                              # the key in ``data/spec/<profile>.json`` that holds answered facts
+
+
+@dataclass(frozen=True)
+class Fact:
+    """A person's answer for this item is in the profile's private facts (``data/spec/<profile>.json``, under
+    ``facts``), or the record that it is kept in Keeper. Only whether it is recorded is reported, never a value."""
+
+    key: str
+
+    def run(self, ctx: Context) -> Finding:
+        found = ctx.private(ctx.profile) if ctx.profile else {}
+        entry = (found.get(FACTS) or {}).get(self.key) if isinstance(found, dict) else None
+        if not entry:
+            return Finding(False, f"private fact {self.key}: not answered")
+        if isinstance(entry, dict) and entry.get("kept_in"):
+            return Finding(True, f"private fact {self.key}: kept in {entry['kept_in']}")
+        return Finding(True, f"private fact {self.key}: recorded")
+
+
+@dataclass(frozen=True)
+class Settled:
+    """No open intake question of these kinds (values of ``AskKind``); with ``governing``, only questions about a
+    document in a governing book (CIV 4150) count."""
+
+    kinds: tuple[str, ...]
+    governing: bool = False
+
+    def counts(self, ask: Any, books: Any = None) -> bool:
+        """Whether this open question holds the check closed."""
+        if getattr(ask.status, "value", ask.status) != "open" or getattr(ask.kind, "value", ask.kind) not in self.kinds:
+            return False
+        if not self.governing:
+            return True
+        document = ask.subject.split("#", 1)[0].split("@", 1)[0]
+        book = books.book(document) if books is not None else None
+        return bool(book is not None and book.governing)
+
+    def run(self, ctx: Context) -> Finding:
+        from jason.community.books import Books
+
+        books = Books.of(ctx.community) if self.governing else None
+        found = sum(1 for a in ctx.asks if self.counts(a, books))
+        where = " on the governing documents" if self.governing else ""
+        return Finding(found == 0, f"intake: {found} open {'/'.join(self.kinds)} question{'' if found == 1 else 's'}{where}")
+
+
+@dataclass(frozen=True)
+class Verified:
+    """Each governing instrument's copy (the declaration, its amendments and annexations) read with a recording stamp is
+    matched in the county index, and none is read without a stamp. The records inventory's governing notes say which;
+    an unrecorded copy is not counted against it (the recorded instrument is the record)."""
+
+    def run(self, ctx: Context) -> Finding:
+        holding = next((h for h in ctx.holdings if getattr(getattr(h, "kind", None), "value", "") == "governing_documents"), None)
+        notes = list(getattr(holding, "notes", ()) or ())
+        if holding is None or not notes:
+            return Finding(False, "county: the governing instruments' copies were not read")
+        recorded = [n for n in notes if ": recorded as " in n]
+        matched = [n for n in recorded if "," in n.split(": recorded as ", 1)[1]]
+        unstamped = [n for n in notes if "no stamp read" in n]
+        passed = bool(recorded) and len(matched) == len(recorded) and not unstamped
+        return Finding(passed, f"county: {len(matched)} of {len(recorded)} recorded copies matched in the index, "
+                               f"{len(unstamped)} read without a stamp")
+
+
+Check = Method | Kinds | Record | InBook | Store | Private | Setting | Fact | Settled | Verified
+
+
+class FactRecord(Enum):
+    """Where a person's answer to a fact goes."""
+
+    PRIVATE = "private facts"                # data/spec/<profile>.json: people, account numbers, the tax ID
+    PROFILE = "profile change"               # a proposed patch to the profile, for a person to review and apply
+    KEEPER = "kept in Keeper"                # a record that the secret is in Keeper, under a named record; no value
+
+
+@dataclass(frozen=True)
+class FactAsk:
+    """The question jason asks a person while the item is missing or partial.
+
+    ``lead_kinds`` are library document kinds that may hold the answer (their files are the question's evidence);
+    ``lead_pattern`` a regular expression whose most common match in those files' text is jason's suggestion.
+    ``clock`` names the legal clock the answer sets, when it sets one. ``stakes`` marks an answer a second person
+    confirms before it is applied."""
+
+    question: str
+    record: FactRecord = FactRecord.PRIVATE
+    stakes: bool = False
+    clock: str = ""
+    choices: tuple[str, ...] = ()
+    lead_kinds: tuple[DocumentKind, ...] = ()
+    lead_pattern: str = ""
+    method: str = ""                         # for a profile change: the ``Community`` method the answer fills
 
 
 @dataclass(frozen=True)
@@ -268,6 +371,7 @@ class OnboardingItem:
     fetch: str = ""                          # the jason command that reads it once access is set up
     private: bool = False                    # it names people or accounts: private facts or notes, not the spec
     note: str = ""
+    ask: FactAsk | None = None               # the question a person answers while it is missing or partial
 
     @property
     def by_person(self) -> bool:
@@ -290,6 +394,9 @@ class ItemResult:
 
 L, P, Q, F, H = Origin.LAW, Origin.PROFILE, Origin.REQUEST, Origin.FOLLOW_UP, Origin.HANDOFF
 S = Source
+A = FactAsk
+PROFILE_CHANGE, KEEPER = FactRecord.PROFILE, FactRecord.KEEPER
+FACTS_FILE = "private facts (data/spec/<profile>.json)"
 
 ITEMS: tuple[OnboardingItem, ...] = (
     # Governing documents and amendments
@@ -386,18 +493,25 @@ ITEMS: tuple[OnboardingItem, ...] = (
     # Corporate and tax filings
     OnboardingItem(
         "tax-id", Group.CORPORATE, "Federal employer identification number and the state entity number",
-        "tax returns, bank accounts, and 1099s use them", (S.PRIOR_MANAGER, S.SECRETARY_OF_STATE), "no field yet",
-        (), (Q, H), note="jason has no field for it; add one to Community, with an empty default, when a task needs it."),
+        "tax returns, bank accounts, and 1099s use them", (S.PRIOR_MANAGER, S.SECRETARY_OF_STATE), FACTS_FILE,
+        (Fact("tax-id"),), (Q, H),
+        note="The answer is a private fact; add a Community field, with an empty default, when a task needs it.",
+        ask=A("What are the association's federal employer identification number (EIN) and its state entity number?",
+              lead_kinds=(K.TAX_RETURN, K.FINANCIAL_REVIEW), lead_pattern=r"\b\d{2}-\d{7}\b")),
     OnboardingItem(
         "statement-of-information", Group.CORPORATE, "The statement of information and the common interest development statement (SI-CID), current",
         "every two years (Corporations Code 8210; CIV 5405)", (S.SECRETARY_OF_STATE,), "Community.obligations()",
-        (Method("obligations", contains="statement of information"),), (L, P)),
+        (Method("obligations", contains="statement of information"),), (L, P),
+        ask=A("When was the statement of information (with the SI-CID) last filed, and when is the next one due?",
+              PROFILE_CHANGE, clock="the statement of information every two years (CIV 5405)", method="obligations")),
     OnboardingItem(
         "official-address", Group.CORPORATE, "The designated recipient and address for official notices, the posting location, and the overnight payment address",
         "CIV 4035, 4045, 5655; each goes in the annual policy statement (5310(a))", (S.BOARD, S.PRIOR_MANAGER),
         "Community.identity(), mail_addresses()",
         (Method("identity", field="designated_recipient"), Method("identity", field="posting_location"),
-         Method("mail_addresses")), (L, P)),
+         Method("mail_addresses")), (L, P),
+        ask=A("Who is the designated recipient of official notices, and at what address? Where are general notices "
+              "posted, and what is the overnight payment address?", PROFILE_CHANGE, method="identity")),
     OnboardingItem(
         "tax-returns", Group.CORPORATE, "Federal and state tax returns for prior years",
         "an association record (CIV 5200(a)(6)); the next return's preparer needs them", (S.ACCOUNTANT, S.PRIOR_MANAGER),
@@ -408,12 +522,15 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("obligations", contains="property tax"), Store("tax.db")), (P,), "jason sync-tax; jason deadlines"),
     OnboardingItem(
         "1099s-w9s", Group.CORPORATE, "1099 reports and vendors' W-9s",
-        "the year's information returns", (S.PRIOR_MANAGER, S.VENDOR), "no record yet", (), (Q, H),
-        note="jason keeps no W-9 record; the accounting system holds them."),
+        "the year's information returns", (S.PRIOR_MANAGER, S.VENDOR), FACTS_FILE, (Fact("1099s-w9s"),), (Q, H),
+        note="jason keeps no W-9 record; the accounting system holds them.",
+        ask=A("Who keeps the 1099 reports and the vendors' W-9s, and where?")),
     # The board, officers, committees, and manager
     OnboardingItem(
         "board-rule", Group.BOARD, "The number of seats, their terms, and the quorum, from the bylaws",
-        "quorum counts in minutes and the election cycle", (S.BOARD,), "Community.board()", (Method("board"),), (P,)),
+        "quorum counts in minutes and the election cycle", (S.BOARD,), "Community.board()", (Method("board"),), (P,),
+        ask=A("How many seats does the board have, how long is a term, and what is the quorum?", PROFILE_CHANGE,
+              lead_kinds=(K.BYLAWS,), method="board")),
     OnboardingItem(
         "board-roster", Group.BOARD, "Directors and officers, with their offices, term dates, and contact",
         "who may act, sign, and be noticed; the incoming manager's first request", (S.BOARD, S.PRIOR_MANAGER),
@@ -422,8 +539,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
     OnboardingItem(
         "signers", Group.BOARD, "Bank signers, their order, and the board's approval limits for transfers",
         "transfers over the limit need the board's written approval (CIV 5380(b)(6), 5502)", (S.BOARD, S.BANK),
-        "no record yet", (), (L, F), private=True,
-        note="Asked during the transition (the new signature card), not on the request list."),
+        FACTS_FILE, (Fact("signers"),), (L, F), private=True,
+        note="Asked during the transition (the new signature card), not on the request list.",
+        ask=A("Who are the bank signers, in what order, and above what amount does a transfer need the board's "
+              "written approval?", stakes=True, lead_kinds=(K.RESOLUTION, K.MINUTES))),
     OnboardingItem(
         "committees", Group.BOARD, "Committees, their members, and their contact information",
         "committee agendas and minutes are records (CIV 5200(a)(8)); who reviews architecture and events", (S.BOARD,),
@@ -453,7 +572,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (L, P, Q, H), "jason sync-catalog", private=True),
     OnboardingItem(
         "account-numbers", Group.MEMBERS, "Each owner's account number at the prior manager",
-        "for the inquiries that follow a move", (S.PRIOR_MANAGER,), "no record yet", (), (Q,), private=True),
+        "for the inquiries that follow a move", (S.PRIOR_MANAGER,), FACTS_FILE, (Fact("account-numbers"),), (Q,),
+        private=True,
+        ask=A("Where is the list of each owner's account number at the prior manager kept, or is there none?",
+              choices=("none: the prior manager kept no account numbers",))),
     OnboardingItem(
         "owner-information", Group.MEMBERS, "Each owner's annual delivery preferences, legal representative, and occupancy",
         "CIV 4041, entered 30 days before the annual reports", (S.OWNERS,), "PayHOA tags; Community.payhoa_tags()",
@@ -472,8 +594,11 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("packets"), Kinds((K.RESALE_DISCLOSURE, K.ESCROW_REQUEST))), (L, P, Q), "jason new-owners"),
     OnboardingItem(
         "other-charges", Group.MEMBERS, "Other items billed to owners: special assessments, utilities, permits, rentals of common area",
-        "a buyer's statement lists every charge (CIV 4525(a)(4), (8))", (S.PRIOR_MANAGER, S.BOARD), "no record yet",
-        (), (L, Q, H)),
+        "a buyer's statement lists every charge (CIV 4525(a)(4), (8))", (S.PRIOR_MANAGER, S.BOARD), FACTS_FILE,
+        (Fact("other-charges"),), (L, Q, H),
+        ask=A("What is billed to owners besides the regular assessment (special assessments, utilities, permits, "
+              "rentals of common area), and how much?", choices=("none: only the regular assessment",),
+              lead_kinds=(K.BUDGET, K.RESALE_DISCLOSURE))),
     # Finances
     OnboardingItem(
         "bank-accounts", Group.FINANCE, "Operating and reserve accounts: bank, type, last digits, and a contact at the bank",
@@ -487,8 +612,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
     OnboardingItem(
         "prefund", Group.FINANCE, "Start-up funds for the new operating account, and how money moves from the old accounts",
         "the new manager pays bills before the first assessments clear", (S.PRIOR_MANAGER, S.BOARD, S.BANK),
-        "no record yet", (), (Q, F),
-        note="The outgoing manager may wire rather than write a check; send account details apart from their label."),
+        FACTS_FILE, (Fact("prefund"),), (Q, F),
+        note="The outgoing manager may wire rather than write a check; send account details apart from their label.",
+        ask=A("How much start-up money goes into the new operating account, and how does money move from the old "
+              "accounts (a wire or a check)?")),
     OnboardingItem(
         "assessments", Group.FINANCE, "Current regular assessments by year, the billing frequency, and the billing method",
         "CIV 4525(a)(4), 5300(b)(1), 5600-5625", (S.PRIOR_MANAGER, S.BOARD), "the PayHOA budgets",
@@ -532,7 +659,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("cost_centers"), Method("association_common_areas")), (P, H), "jason cost-centers"),
     OnboardingItem(
         "fiscal-year", Group.FINANCE, "The fiscal year's end", "sets the annual reports' window (CIV 5300(a), 5310(a))",
-        (S.BOARD, S.PRIOR_MANAGER), "Community.fiscal_year_end()", (Method("fiscal_year_end"),), (L, P)),
+        (S.BOARD, S.PRIOR_MANAGER), "Community.fiscal_year_end()", (Method("fiscal_year_end"),), (L, P),
+        ask=A("On what day does the fiscal year end?", PROFILE_CHANGE,
+              clock="the annual budget report and policy statement windows (CIV 5300(a), 5310(a))",
+              lead_kinds=(K.BUDGET, K.FINANCIAL_REVIEW), method="fiscal_year_end")),
     OnboardingItem(
         "transaction-rules", Group.FINANCE, "How bank transactions are categorized, and the budget lines for utilities and reserves",
         "jason matches bills and expenses to budget lines", (S.PLATFORM, S.BOARD),
@@ -549,7 +679,11 @@ ITEMS: tuple[OnboardingItem, ...] = (
         "jason who-owes", private=True),
     OnboardingItem(
         "loans", Group.FINANCE, "Loans with a term over one year: payee, rate, balance, payment, and payoff",
-        "the budget report states them (CIV 5300(b)(8))", (S.PRIOR_MANAGER, S.BANK), "no record yet", (), (L,)),
+        "the budget report states them (CIV 5300(b)(8))", (S.PRIOR_MANAGER, S.BANK), FACTS_FILE, (Fact("loans"),),
+        (L,),
+        ask=A("Does the association have a loan with a term over one year? If so: the payee, rate, balance, payment, "
+              "and payoff.", choices=("none: no loan over one year",),
+              lead_kinds=(K.BUDGET, K.FINANCIAL_STATEMENT, K.FINANCIAL_REVIEW))),
     # Insurance
     OnboardingItem(
         "policies", Group.INSURANCE, "Each policy: carrier, agent, number, term, limits, and deductible (property, liability, directors and officers, fidelity, flood, earthquake, umbrella, workers' compensation)",
@@ -570,7 +704,9 @@ ITEMS: tuple[OnboardingItem, ...] = (
     OnboardingItem(
         "not-carried", Group.INSURANCE, "Coverages the association does not carry, and the notice owners get",
         "CIV 5300(b)(9), 5810", (S.INSURER, S.BOARD), "Community.coverages_not_carried()",
-        (Method("coverages_not_carried"),), (L, P)),
+        (Method("coverages_not_carried"),), (L, P),
+        ask=A("Which coverages does the association not carry (earthquake, flood), for the notice owners get?",
+              PROFILE_CHANGE, lead_kinds=(K.INSURANCE_POLICY, K.ANNUAL_DISCLOSURE), method="coverages_not_carried")),
     # Contracts and vendors
     OnboardingItem(
         "contracts", Group.VENDORS, "Executed contracts in force, with their terms and renewals",
@@ -583,8 +719,11 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Store("payhoa/vendor-info.json"), Method("senders")), (P, Q, H), "jason contacts"),
     OnboardingItem(
         "vendor-licenses", Group.VENDORS, "Vendors' licenses, insurance certificates, and W-9s",
-        "a licensed contractor; insurance before work starts", (S.VENDOR,), "VendorLicense rows on vendor portals",
-        (), (P, H), note="jason records a license only for a portal vendor; the rest are kept outside jason."),
+        "a licensed contractor; insurance before work starts", (S.VENDOR,),
+        f"VendorLicense rows on vendor portals; {FACTS_FILE}", (Fact("vendor-licenses"),), (P, H),
+        note="jason records a license only for a portal vendor; the rest are kept outside jason.",
+        ask=A("Where are the vendors' licenses, insurance certificates, and W-9s kept, and who checks them before "
+              "work starts?", lead_kinds=(K.EVIDENCE_OF_INSURANCE, K.CONTRACT))),
     OnboardingItem(
         "vendor-portals", Group.VENDORS, "Vendor customer portals the association signs in to",
         "jason reads visits, invoices, and files from them", (S.VENDOR,), "Community.vendor_portals()",
@@ -603,7 +742,9 @@ ITEMS: tuple[OnboardingItem, ...] = (
     OnboardingItem(
         "utility-allocation", Group.MAINTENANCE, "How utilities are charged: submeters or shared in the budget, as the declaration says",
         "the declaration may require individual billing", (S.BOARD,), "Community.utility_roll(), utility_budget_lines()",
-        (Method("utility_roll"), Method("utility_budget_lines")), (P, F)),
+        (Method("utility_roll"), Method("utility_budget_lines")), (P, F),
+        ask=A("How are utilities charged: submeters billed to owners, or shared in the budget? What does the "
+              "declaration require?", PROFILE_CHANGE, lead_kinds=(K.UTILITY_BILL, K.BUDGET), method="utility_roll")),
     OnboardingItem(
         "life-safety", Group.MAINTENANCE, "Fire alarm, sprinkler, and backflow inspections: schedule and last reports",
         "the fire code and the water purveyor's annual test", (S.VENDOR, S.CITY), "Community.obligations()",
@@ -618,7 +759,9 @@ ITEMS: tuple[OnboardingItem, ...] = (
         "Community.assignments()", (Method("assignments", contains="maintenance"),), (P, H)),
     OnboardingItem(
         "maintenance-programs", Group.MAINTENANCE, "Standing inspection programs and their worksheets",
-        "a program applied the same way every time", (S.BOARD,), "no record yet", (), (H,)),
+        "a program applied the same way every time", (S.BOARD,), FACTS_FILE, (Fact("maintenance-programs"),), (H,),
+        ask=A("Which standing inspection programs are there (what, how often, and who), and where are their "
+              "worksheets?", choices=("none yet",), lead_kinds=(K.INSPECTION_REPORT,))),
     OnboardingItem(
         "permits", Group.MAINTENANCE, "Building permits, open and closed", "repairs and claims", (S.CITY,),
         "Community.permit_portal()", (Method("permit_portal"),), (P,), "jason permit-status"),
@@ -628,9 +771,12 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("solar_program"),), (P, H)),
     OnboardingItem(
         "keys-and-codes", Group.MAINTENANCE, "Keys, lock boxes, panel and controller codes, and stored materials and where they are",
-        "access for repairs and emergencies", (S.PRIOR_MANAGER, S.BOARD), "the password vault, not a document",
-        (), (Q, H), private=True,
-        note="Codes and passwords go in the vault (Keeper), never in a document or an email."),
+        "access for repairs and emergencies", (S.PRIOR_MANAGER, S.BOARD),
+        "the password vault, not a document; the private facts record only the Keeper record's name",
+        (Fact("keys-and-codes"),), (Q, H), private=True,
+        note="Codes and passwords go in the vault (Keeper), never in a document or an email.",
+        ask=A("Which Keeper record holds the keys, lock boxes, and panel and controller codes, and where are the "
+              "stored materials? Answer with the record's name, never a code.", KEEPER)),
     # Meetings
     OnboardingItem(
         "minutes", Group.MEETINGS, "Minutes of board and member meetings, at least the last twelve months",
@@ -673,8 +819,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Store("payhoa.db", "violations"), Kinds((K.VIOLATION_NOTICE,))), (L, P, F), "jason violations", private=True),
     OnboardingItem(
         "parking", Group.ENFORCEMENT, "Parking permits issued, towing authorizations, and the towing company",
-        "Vehicle Code 22658; the rules' parking part", (S.PRIOR_MANAGER, S.BOARD), "no record yet", (), (H, F),
-        private=True),
+        "Vehicle Code 22658; the rules' parking part", (S.PRIOR_MANAGER, S.BOARD), FACTS_FILE, (Fact("parking"),),
+        (H, F), private=True,
+        ask=A("Who is the towing company, where is the towing authorization, and where is the list of parking "
+              "permits issued?", lead_kinds=(K.CONTRACT,))),
     OnboardingItem(
         "dispute-resolution", Group.ENFORCEMENT, "Internal and alternative dispute resolution procedures",
         "CIV 5905-5920, 5925-5965; summarized in the policy statement", (S.BOARD,), "Community.assignments()",
@@ -697,7 +845,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("library_folders"), Method("drive_roots"), Method("sync_rules")), (L, P), "jason duties"),
     OnboardingItem(
         "paper-records", Group.RECORDS, "Paper records in storage: boxes, a contents list for each, and where to collect them",
-        "the association's records follow the association", (S.PRIOR_MANAGER,), "no record yet", (), (Q, H)),
+        "the association's records follow the association", (S.PRIOR_MANAGER,), FACTS_FILE, (Fact("paper-records"),),
+        (Q, H),
+        ask=A("Where are the paper records (how many boxes, with a contents list for each), and how are they "
+              "collected?", choices=("none: there are no paper records",))),
     OnboardingItem(
         "litigation", Group.RECORDS, "Pending litigation and claims, with counsel and the matter's status",
         "the incoming manager's disclosure; holds and privilege", (S.COUNSEL, S.PRIOR_MANAGER),
@@ -727,7 +878,9 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("document_templates"), Method("letterhead"), Method("request_forms")), (P, H), "jason templates"),
     OnboardingItem(
         "orientation", Group.RECORDS, "Board orientation: training material, recorded walkthroughs, and the law references the board uses",
-        "how one board's knowledge reaches the next", (S.BOARD,), "no record yet", (), (H,)),
+        "how one board's knowledge reaches the next", (S.BOARD,), FACTS_FILE, (Fact("orientation"),), (H,),
+        ask=A("What board orientation material is there (training, recorded walkthroughs, the law references the "
+              "board uses), and where?", choices=("none yet",))),
     # System access
     OnboardingItem(
         "management-software", Group.ACCESS, "The association's organization in the management software, and the board's access",
@@ -735,8 +888,12 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (Method("org_id"), Setting("payhoa_record_uid")), (P,), "jason sync-catalog"),
     OnboardingItem(
         "prior-portal", Group.ACCESS, "The board's access to the prior manager's portal until the handover ends",
-        "the records are there until they are delivered", (S.PRIOR_MANAGER,), "no record yet", (), (F,),
-        note="Asked during the transition: access ended before the records were delivered."),
+        "the records are there until they are delivered", (S.PRIOR_MANAGER,),
+        "the password vault; the private facts record only the Keeper record's name", (Fact("prior-portal"),), (F,),
+        note="Asked during the transition: access ended before the records were delivered.",
+        ask=A("Which Keeper record holds the board's sign-in to the prior manager's portal, and until what day does "
+              "access last? Answer with the record's name, never a password.", KEEPER,
+              choices=("none: the handover is complete",))),
     OnboardingItem(
         "email-groups", Group.ACCESS, "The association's email domain and groups, and what each is for",
         "jason reads which group a message came through", (S.BOARD,), "Community.google_groups(), email_domains()",
@@ -750,8 +907,10 @@ ITEMS: tuple[OnboardingItem, ...] = (
         (S.BOARD,), "Community.site_pages()", (Method("site_pages"),), (P,)),
     OnboardingItem(
         "payment-portal", Group.ACCESS, "How owners pay: the payment portal, the lockbox, and the welcome letter",
-        "owners need it before the first assessment after the move", (S.BANK, S.PRIOR_MANAGER), "no record yet",
-        (), (H, F)),
+        "owners need it before the first assessment after the move", (S.BANK, S.PRIOR_MANAGER), FACTS_FILE,
+        (Fact("payment-portal"),), (H, F),
+        ask=A("How do owners pay: the payment portal, the lockbox address, and where is the welcome letter?",
+              lead_kinds=(K.NOTICE, K.CORRESPONDENCE))),
     OnboardingItem(
         "vault", Group.ACCESS, "The password vault and the Google sign-in jason uses", "jason never stores a password",
         (S.BOARD,), "settings: Keeper record UIDs", (Setting("google_oauth_record_uid"),), (P,), "jason login"),
@@ -760,11 +919,98 @@ ITEMS: tuple[OnboardingItem, ...] = (
         "jason posts meetings and deadlines to it", (S.BOARD,), "Community.calendar_policy()",
         (Method("calendar_policy"),), (P, H), "jason calendar"),
 )
-del L, P, Q, F, H, S
+del L, P, Q, F, H, S, A, PROFILE_CHANGE, KEEPER
 
 
 def items(group: Group | None = None) -> tuple[OnboardingItem, ...]:
     return tuple(i for i in ITEMS if group is None or i.group is group)
+
+
+def item(key: str) -> OnboardingItem | None:
+    return next((i for i in ITEMS if i.key == key), None)
+
+
+# --- Stages ------------------------------------------------------------------------------------------------------------
+
+class Stage(Enum):
+    """The order a takeover opens in. Each stage's gate is open when its items are present and its checks pass."""
+
+    START = "start"
+    INGEST = "ingest"
+    ESTABLISH = "establish"
+    OPERATE = "operate"
+    ADOPT = "adopt"
+
+
+@dataclass(frozen=True)
+class Gate:
+    stage: Stage
+    title: str
+    opens: str                               # the sentence that says when it opens
+    items: tuple[str, ...]                   # checklist item keys that must be present
+    checks: tuple[Check, ...] = ()           # and the gate's own checks
+
+
+# Which text is in force, and whether an instrument took effect: open questions of these kinds hold "establish" closed.
+IN_FORCE_KINDS = ("standing", "readings differ", "before differs", "drift")
+
+GATES: tuple[Gate, ...] = (
+    Gate(Stage.START, "The profile is set up and jason reaches the association's systems",
+         "open once the units, the management software, the Drive, and the vault are present",
+         ("units", "management-software", "drive", "vault")),
+    Gate(Stage.INGEST, "The records are taken in, classified, and mapped",
+         "open once the records map, minutes, budget reports, financial statements, contracts, and insurance policies "
+         "are present, and no library file waits for a kind",
+         ("records-map", "minutes", "budget-reports", "financial-statements", "contracts", "policies"),
+         (Settled(("classify",)),)),
+    Gate(Stage.ESTABLISH, "The governing documents are established",
+         "open once the declaration with its amendments and annexations, the bylaws, and the articles are present; "
+         "each recorded copy is matched in the county index; and no question is open about which text is in force",
+         ("declaration", "amendments", "annexations", "bylaws", "articles"),
+         (Verified(), Settled(IN_FORCE_KINDS, governing=True))),
+    Gate(Stage.OPERATE, "jason can run the association's business",
+         "open once the board, the signers, the accounts, the assessments, the fiscal year, the meetings, the notices, "
+         "the schedule, and the utilities are present",
+         ("board-rule", "board-roster", "signers", "bank-accounts", "assessments", "fiscal-year", "meeting-schedule",
+          "notice-rules", "assignments", "utility-accounts")),
+    Gate(Stage.ADOPT, "The board has the rules and policies jason applies",
+         "open once the operating rules, the election rules, the policies and resolutions, the collection and "
+         "enforcement policies, the architectural procedure, the governing set, and the conflicts are present",
+         ("operating-rules", "election-rules", "policies-resolutions", "collection-policy", "discipline-policy",
+          "architectural-procedure", "governing-set", "conflicts")),
+)
+
+
+@dataclass(frozen=True)
+class GateResult:
+    gate: Gate
+    waiting: tuple[ItemResult, ...]          # its items not yet present
+    findings: tuple[Finding, ...]            # its own checks
+
+    @property
+    def open(self) -> bool:
+        return not self.waiting and all(f.passed for f in self.findings)
+
+    @property
+    def evidence(self) -> str:
+        parts = [f"{r.item.key} {r.status.value}" for r in self.waiting]
+        parts += [f.evidence for f in self.findings if not f.passed]
+        return "; ".join(parts)
+
+
+def gates(results: Iterable[ItemResult], ctx: Context) -> tuple[GateResult, ...]:
+    """Each stage's gate against the checklist's results and the context."""
+    found = {r.item.key: r for r in results}
+    out = []
+    for g in GATES:
+        waiting = tuple(found[k] for k in g.items if k in found and found[k].status is not Status.PRESENT)
+        out.append(GateResult(g, waiting, tuple(c.run(ctx) for c in g.checks)))
+    return tuple(out)
+
+
+def stages_of(key: str) -> tuple[Stage, ...]:
+    """The stages whose gate waits on this checklist item."""
+    return tuple(g.stage for g in GATES if key in g.items)
 
 
 def check_item(item: OnboardingItem, ctx: Context) -> ItemResult:
@@ -837,6 +1083,8 @@ def report_dicts(results: tuple[ItemResult, ...]) -> list[dict[str, Any]]:
          "why": r.item.why, "sources": [s.value for s in r.item.sources], "fills": r.item.fills,
          "origins": [o.value for o in r.item.origins], "fetch": r.item.fetch, "byPerson": r.item.by_person,
          "private": r.item.private, "note": r.item.note,
+         "ask": ({"question": r.item.ask.question, "record": r.item.ask.record.value, "stakes": r.item.ask.stakes}
+                 if r.item.ask else None),
          "findings": [{"passed": f.passed, "evidence": f.evidence} for f in r.findings]}
         for r in results
     ]
@@ -875,7 +1123,8 @@ def _size(value: Any, contains: str) -> int:
 
 
 __all__ = [
-    "Check", "Context", "Finding", "Group", "InBook", "ItemResult", "ITEMS", "Kinds", "Method", "OnboardingItem",
-    "Origin", "Private", "Record", "Setting", "Source", "Status", "Store", "by_group", "check", "check_item", "counts",
-    "items", "report_dicts", "report_markdown", "request_markdown",
+    "Check", "Context", "FACTS", "Fact", "FactAsk", "FactRecord", "Finding", "GATES", "Gate", "GateResult", "Group",
+    "IN_FORCE_KINDS", "InBook", "ItemResult", "ITEMS", "Kinds", "Method", "OnboardingItem", "Origin", "Private",
+    "Record", "Setting", "Settled", "Source", "Stage", "Status", "Store", "Verified", "by_group", "check", "check_item",
+    "counts", "gates", "item", "items", "report_dicts", "report_markdown", "request_markdown", "stages_of",
 ]

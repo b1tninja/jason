@@ -13,7 +13,9 @@
 
 ``apply`` turns answered asks into records the next run uses: an OCR reading becomes a transcription (a
 ``living.Correction`` kept in ``data/living/<key>/transcriptions.json``), a classification a person-chosen kind
-(``data/library/classified-by-person.json``). The other kinds are recorded answers for the board or counsel.
+(``data/library/classified-by-person.json``), an onboarding fact a private fact, a Keeper note, or a proposed profile
+change, and a mapping a proposed profile change (``jason.tasks.onboarding_answers``). The other kinds are recorded
+answers for the board or counsel. A high-stakes answer waits for a second person's confirmation.
 """
 
 from __future__ import annotations
@@ -272,8 +274,15 @@ def library_asks(data_dir: Path) -> list[Ask]:
     return out
 
 
-def apply(asks: list[Ask], data_dir: Path) -> list[Ask]:
-    """Turn answered asks into the records runs use. Returns the asks applied."""
+def apply(asks: list[Ask], data_dir: Path, *, refused: list | None = None, shown: list | None = None,
+          replace: bool = False, community: Any = None, profile: str = "", spec_dir: Path | None = None) -> list[Ask]:
+    """Turn answered asks into the records runs use. Returns the asks applied.
+
+    A high-stakes answer (``intake.high_stakes``) is refused until a second person has confirmed it. A ``FACT`` or
+    ``MAP`` answer goes through ``jason.tasks.onboarding_answers``: private facts merged (with a backup; ``replace``
+    lets a different answer replace one already there), a Keeper record named, or a proposed profile change written.
+    ``refused`` collects (ask, why) for those not applied, ``shown`` (ask, text) for the diffs and proposals."""
+    from jason.community.intake import high_stakes
     from jason.community.symbols import DocumentKind
     from jason.tasks import library as library_task
     from jason.tasks import living_docs
@@ -282,7 +291,24 @@ def apply(asks: list[Ask], data_dir: Path) -> list[Ask]:
     for a in asks:
         if a.status is not AskStatus.ANSWERED:
             continue
-        if a.kind is AskKind.OCR_READING:
+        if high_stakes(a) and not a.confirmed_by:
+            if refused is not None:
+                refused.append((a, "high stakes: a second person confirms it first (--confirm ID --by NAME)"))
+            continue
+        if a.kind in (AskKind.FACT, AskKind.MAP):
+            from jason.tasks.onboarding_answers import apply_answer
+
+            out = apply_answer(a, data_dir=data_dir, community=community, profile=profile, spec_dir=spec_dir,
+                               replace=replace)
+            if not out.applied:
+                if refused is not None:
+                    refused.append((a, out.reason))
+                continue
+            a.status, a.applied_to = AskStatus.APPLIED, out.record
+            if shown is not None and out.shown:
+                shown.append((a, out.shown))
+            done.append(a)
+        elif a.kind is AskKind.OCR_READING:
             d = a.detail
             right = a.answer
             if right == d["wrong"]:
