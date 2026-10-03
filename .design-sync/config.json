@@ -1,0 +1,15 @@
+{
+  "projectId": "0977b54c-c98d-4496-ac57-54c8c05577fb",
+  "shape": "package",
+  "pkg": "jason-ui",
+  "globalName": "JasonUI",
+  "buildCmd": "npm run build:lib",
+  "srcDir": "src/components",
+  "cssEntry": "src/styles.css",
+  "componentSrcMap": {
+    "RemoteView": "src/components/Remote.tsx",
+    "Loading": "src/components/States.tsx",
+    "ErrorNotice": "src/components/States.tsx",
+    "EmptyState": "src/components/States.tsx"
+  }
+}
