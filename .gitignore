@@ -66,3 +66,7 @@ desktop.ini
 # This machine's tool configuration (absolute paths).
 /.claude/
 /.mcp.json
+
+# The React UI: dependencies and the built bundle.
+node_modules/
+/ui/dist/

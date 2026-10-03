@@ -12,6 +12,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [base-templates.md](base-templates.md): plan for general base templates (letters, notices, forms, packets) rendered per profile, with the statutory catalog.
 - [cli.md](cli.md): every `jason` command and its options, generated from the parser by `scripts/gen_cli_docs.py`.
 - [mcp.md](mcp.md): the jason-mcp tools.
+- [web-ui.md](web-ui.md): the React UI, its WSGI server, and the API.
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
 - [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes.
 
