@@ -768,13 +768,29 @@ LESSONS: tuple[Lesson, ...] = (
            "Each gets a dry run by default and --yes (and later an approval kind), like every other outside write.",
            Status.OPEN, docs=("docs/console/approval-workflow.md (the survey)",)),
     Lesson("apply-loses-partial-results", OCT_2026, (Area.OWNER_INFO,),
-           "The owner-information apply returns only counts, so a failure part-way leaves no record of which writes "
-           "were made; and it treats every planned write as written, which would complete a request whose write was "
-           "never approved once approvals are per item.",
+           "The owner-information apply returned only counts, so a failure part-way left no record of which writes "
+           "were made.",
            "The apply was written for all-or-nothing runs from the command line.",
-           "Results per item, and a request completed only after its own writes were made; the approvals engine's "
-           "owner-info adapter carries both.",
-           Status.OPEN, docs=("docs/console/mvp.md",)),
+           "Each write has its own result and audit line; a failure stops the run with what was written recorded.",
+           Status.FIXED, guards=("owner_info_apply.execute_each", "tests/test_approvals.py")),
+    Lesson("complete-only-after-writes", OCT_2026, (Area.OWNER_INFO,),
+           "After writing, the apply treated every planned write as made, which would complete a request whose write "
+           "was never approved or failed.",
+           "The pending list was cleared after the run, not after each write.",
+           "A write not actually made stays pending, so its request stays open (blocked, in an approval).",
+           Status.FIXED, guards=("owner_info_apply", "tests/test_approvals.py")),
+    Lesson("plan-reads-once", OCT_2026, (Area.OWNER_INFO,),
+           "One owner-information plan read PayHOA three times, and a task imported from a command module.",
+           "The response triage and the plan each read live on their own.",
+           "The plan reads once through a wrapper that also refuses any write while planning, and the triage reuses it.",
+           Status.FIXED, guards=("owner_info_apply.ReadOnce", "owner_responses.contexts(live=...)",
+                                 "tests/test_approvals.py")),
+    Lesson("approvals-store-location", OCT_2026, (Area.GOVERNING,),
+           "The console spec puts approvals in a SQLite store under the console's folder; the engine as built keeps one "
+           "JSON file per approval and an append-only audit log in the profile's data folder.",
+           "The engine was built before the console's storage was decided.",
+           "A person picks one before the console is built.", Status.DECISION,
+           docs=("docs/console/approval-workflow.md", "docs/console/architecture.md")),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

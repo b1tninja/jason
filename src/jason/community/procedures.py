@@ -85,10 +85,14 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason owner-info --responses --canvas",
                  check="each finding's outcome; the board's questions in its canvas (mystique/notes/canvas)",
                  lessons=("answers-need-a-policy",)),
-            Step("Record the answers as they come in: dry run, then write.",
-                 command="jason owner-info --apply --payhoa; then --yes",
-                 check="each write's reason; a request left open says why", lessons=("returns-by-the-same-rules",
-                 "same-as-unit-needs-no-person")),
+            Step("Record the answers as they come in: dry run, then write; or as an approval, decided item by item "
+                 "by a named person and applied only if nothing changed since.",
+                 command="jason owner-info --apply --payhoa; then --yes --by NAME (or jason approvals plan "
+                         "owner-info-tags; show ID; decide ID --items ... --by NAME; submit ID; apply ID; apply ID --yes)",
+                 check="each write's reason; a request left open says why; held items are never approved; apply "
+                       "refuses when the plan changed since review",
+                 lessons=("returns-by-the-same-rules", "same-as-unit-needs-no-person", "complete-only-after-writes",
+                          "apply-loses-partial-results")),
             Step("Remind the owners who have not answered, a week before the answer-by date.",
                  command="jason owner-info --email-batch --follow-up reminder --message REMINDER.md"),
             Step("On the entry date, close the cycle: remove the unconfirmed addresses, and note what is still open.",
