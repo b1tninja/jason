@@ -99,6 +99,8 @@ PayHOA's Mailroom (USPS letters through Lob): mailings and their cost; preview a
 | `--letters` | {pdf,invoice,violation,bill-pay,voting} | Every letter of one kind across its mailings: status, last event, cost, communication id |
 | `--events` | COMMUNICATION | One letter's postal events, by its communication id (from --letters or --batch) |
 | `--months` | YEAR | Pieces mailed each month of a year |
+| `--notice` | KEY | With --pdf --send: the notice's ledger key (it starts with the requirement's key); the letter as mailed and its recipients' ids are kept in data/notices/KEY/ |
+| `--by` | NAME | With --notice: who mailed it |
 | `--yes` |  | Confirm --send or --cancel |
 | `--json` |  | Print JSON |
 
@@ -550,7 +552,8 @@ The owner's manual taken apart: which sections are the operating rules, copies, 
 | `--classify` |  | classify every section with its evidence (the default) |
 | `--asks` |  | with --classify: put the open questions in the intake store |
 | `--concordance` |  | every old address to its new one, and every existing citation of the manual resolved |
-| `--render` |  | write the official rules and the generated manual to data/drafts, with the diff against the Doc's text |
+| `--render` |  | write the official rules and the generated manual to data/drafts, with the diff against the Doc's text; the rules hold the last adopted words, with jason's notes |
+| `--current` |  | with --render: the official rules in the working words (rules-and-regulations-current.md), with the same notes |
 
 ### `jason revisions`
 
@@ -711,7 +714,9 @@ Member notice, agenda item, and adoption notice for a proposed rule change (Civi
 | `--comment-deadline` | DATE | members' written comments due (default: the day before) |
 | `--regular-months-only` |  | count only the resolution's regular months, not the monthly practice |
 | `--draft-email` |  | preview the member notice as a Gmail draft |
-| `--yes` |  | with --draft-email: save the draft (never sent) |
+| `--yes` |  | with --draft-email: save the draft (never sent) and keep its text in data/notices/KEY/ |
+| `--notice` | KEY | with --draft-email: the notice's ledger key (default rule-change-proposed-CHANGE-NOTICEDATE) |
+| `--by` | NAME | with --draft-email --yes: who saved the draft |
 
 ### `jason schedule`
 
@@ -968,6 +973,8 @@ Check and preview a PayHOA broadcast drafted on disk (never sends to members)
 | `--to-doc` |  | make or refresh FILE's Google Doc (pictures included) in My Drive/Templates/PayHOA Broadcasts (--yes writes; replaces edits made in the Doc since) |
 | `--pull-doc` |  | write FILE's Google Doc back over FILE, pictures included (--yes writes; the old file kept as .bak) |
 | `--from-doc` | DOC_ID | turn a Doc into the body (written to FILE or data/drafts/), then check it as usual |
+| `--notice` | KEY | the notice's ledger key (it starts with the requirement's key: board-meeting-2099-01-14); with --yes, keep the text as rendered, its subject, fill records, and recipients plan in data/notices/KEY/ once it is saved for sending (--save-template) or handed to the composer |
+| `--by` | NAME | with --notice: who saved it for sending |
 | `--yes` |  | write the Docs, upload, and send the test copy (default: dry run) |
 
 ### `jason delivery`

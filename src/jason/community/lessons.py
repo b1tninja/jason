@@ -633,9 +633,10 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("notice-text-not-kept", OCT_2026, (Area.EMAIL,),
            "A notice's record could not show the words members received: the email's text was not kept with its batch.",
            "Batches kept recipients and outcomes, not the message.",
-           "Owner-information batches keep their message path; broadcasts and rule-change notices still need their "
-           "rendered text and fill records kept in data/notices/KEY/.", Status.OPEN,
-           guards=("owner_info batch params.message",), docs=("docs/notices.md",)),
+           "Each sender keeps the text as rendered, subject, fill records, and recipients plan in data/notices/KEY/ with "
+           "sha256 digests once sent or saved for sending; the record shows whether the text was edited since.",
+           Status.FIXED, guards=("notice_text.keep", "notice_record.text_sent", "tests/test_notice_text.py"),
+           docs=("docs/notices.md",)),
     Lesson("notice-quoting-the-law", OCT_2026, (Area.GOVERNING,),
            "A member notice put the board's purpose and effect before the rule's text, and a notice that only quoted "
            "the statute's requirement was counted as carrying it.",
@@ -649,11 +650,12 @@ LESSONS: tuple[Lesson, ...] = (
            "Publishing the working rules Doc whole would have presented dozens of passages changed with no adoption, "
            "and pending suggestions, as the adopted rules.",
            "The Doc is edited between adoptions, and its exports carried suggestions inline.",
-           "The 4360 draft for publishing the rules keeps adopted text, changes with no adoption found, and pending "
-           "suggestions apart; outlines read a Doc without its suggestions.",
-           Status.OPEN, guards=("manual_rule_change (three kinds)", "Docs.get(without_suggestions=True)",
-                                "tests/test_manual_rule_change.py"),
-           notes=("Open until jason manual --render labels or withholds the changes with no adoption found.",)),
+           "jason manual --render prints each such passage's last adopted words where an adoption on record covers "
+           "them, with jason's labeled note reciting the working words; where none is on record, a note only; "
+           "--current prints the working words with the same notes; pending suggestions never appear.",
+           Status.FIXED, guards=("manual.render", "manual_rule_change.separate (Unadopted.basis)",
+                                 "tests/test_manual.py", "tests/test_manual_rule_change.py"),
+           docs=("docs/owners-manual.md",)),
     Lesson("intake-queue-order", OCT_2026, (Area.ONBOARDING,),
            "The intake queue listed questions in the order scans found them: library classifications first, the "
            "questions deciding which text is in force behind them, and mostly OCR respacings.",
@@ -736,6 +738,27 @@ LESSONS: tuple[Lesson, ...] = (
            "'index unreachable' look the same.",
            "The reader swallows the session failure.",
            "The reader should raise, or the lookup check the session first.", Status.OPEN),
+    Lesson("revision-text-reads-suggestions-accepted", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "The revision history's copy of a Doc's current words read it as if every suggestion were accepted.",
+           "Its text comes from the Word export, which applies insertions and drops pending deletions.",
+           "A passage's note recites the rendered words with insertions taken out, so pending deletions still stand.",
+           Status.FIXED, guards=("manual.render (working_of)",)),
+    Lesson("insertions-hide-each-others-context", OCT_2026, (Area.DOCUMENTS,),
+           "Taking one suggested insertion out broke the context that locates the next.",
+           "Insertions were removed one at a time.",
+           "All are found first, then removed together.",
+           Status.FIXED, guards=("manual.strip_inserts", "tests/test_manual.py")),
+    Lesson("adoption-between-versions-is-no-basis", OCT_2026, (Area.GOVERNING,),
+           "An adoption dated between an earlier version and a change was about to vouch for words no version shows "
+           "it adopted.",
+           "Any adoption before the change was taken as covering the earlier words.",
+           "The basis must be no later than the version the earlier words come from.",
+           Status.FIXED, guards=("manual_rule_change.separate", "tests/test_manual_rule_change.py")),
+    Lesson("broadcast-kept-is-handed-not-sent", OCT_2026, (Area.EMAIL,),
+           "A broadcast's kept text is what jason handed PayHOA's composer; a person may edit it there before sending.",
+           "jason cannot see the body PayHOA sent.",
+           "Compare with the communication's body when the notice is synced, if PayHOA returns it.", Status.OPEN,
+           guards=("notice_text.keep (state: handed)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

@@ -211,7 +211,8 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Keep the text as sent and the recipients plan with the notice, and read its record.",
                  command="data/notices/KEY/ (text, .refs.json, recipients.json); jason cite jason://notice/KEY",
                  check="its strength is delivered, or sent with what is owed listed; never a file alone",
-                 lessons=("notice-evidence-first-attempt", "notice-text-not-kept")),
+                 lessons=("notice-evidence-first-attempt", "notice-text-not-kept",
+                          "broadcast-kept-is-handed-not-sent")),
         ),
         refs=("docs/batches.md (Delivery and follow-ups)", "docs/notices.md", "Civil Code 4040, 4041(e), 4045, 4050"),
     ),
@@ -415,7 +416,11 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Check the concordance.", command="jason manual --concordance", check="zero unresolved citations",
                  lessons=("outline-numbers-are-the-readers", "span-is-not-subject")),
             Step("Render the rules and the manual, and read the labeled differences and the diff.",
-                 command="jason manual --render", check="zero unlabeled differences"),
+                 command="jason manual --render (the last adopted words); jason manual --render --current (the working "
+                         "words)",
+                 check="zero unlabeled differences; render.json's adoption block: the passages changed with no "
+                       "adoption, how many have no adopted version on record, and no pending suggestion left",
+                 lessons=("working-doc-is-not-adopted-text", "revision-text-reads-suggestions-accepted")),
             Step("Refetch the Doc's links (chips) before anything is published.", command="jason outlines --fetch"),
             Step("Put the extraction on the board's agenda; a rule change takes the 4360 notice and adoption.",
                  command="jason board --set ITEM ...; jason rule-change", person=True),

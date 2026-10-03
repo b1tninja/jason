@@ -40,4 +40,11 @@ LESSONS = (
            "It was written as a working handoff list, with access details beside the records.",
            "The board moves them to Keeper, changes them, and removes them from the Doc; a scan of Docs for credential "
            "words could guard it.", Status.DECISION, docs=("mystique/notes/onboarding/README.md",)),
+    Lesson("rules-without-adopted-words", date(2026, 10, 3), (Area.GOVERNING,),
+           "Most of the rules' passages changed with no adoption on record (20 of 24) have no adopted version on "
+           "record either, so the official rules print jason's note alone for them.",
+           "The working Doc was edited over years without rule-change notices, and earlier adopted texts were not kept.",
+           "The board adopts the working words through 4360 (jason rule-change --from-manual) or records the adoptions "
+           "that cover them; the parking demarcation passages may be covered by the 2022 parking adoption.",
+           Status.DECISION, docs=("data/manual/owners-manual/render.json",)),
 )
