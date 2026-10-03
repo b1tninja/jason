@@ -43,3 +43,9 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 
 - `ui/dist-lib/` is gitignored: a fresh clone must run `npm install && npm run build:lib` in `ui/` first.
 - The previews use dates around 2026-10; `DueDate` cells pass `today` explicitly so they do not drift.
+- Re-sync, from the repo root, after `cd ui && npm run build:lib`: re-copy the staged scripts into `.ds-sync/`,
+  `npm i esbuild ts-morph @types/react playwright@1.56.1` there, fetch the project's `_ds_sync.json` to
+  `.design-sync/.cache/remote-sync.json`, then
+  `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node .ds-sync/resync.mjs --config .design-sync/config.json --node-modules ./ui/node_modules --entry ./ui/dist-lib/index.js --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json`.
+- All 20 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
+  until its preview is authored.
