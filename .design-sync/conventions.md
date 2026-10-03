@@ -49,6 +49,30 @@ secondary style; `className="primary"` is the one accent button; `className="lin
 - **Writes**: `Confirm` (`summary`, `onConfirm`, `busy`): two clicks, the change spelled out. Use it in front of
   anything that writes.
 
+## The console pieces (board loop, meetings, dock)
+
+Brand tokens the theme adds, all with fallbacks: `--on-accent`, `--accent-2`, `--brand-font`, `--brand-weight`,
+`--brand-case`, `--brand-tracking`, `--hero`, `--hero-ink`, `--hero-muted`, `--hero-line`. Use
+`font-family: var(--brand-font, system-ui)` for a wordmark or an H1; `ScreenHeader` (`title`, `summary`, `actions`)
+already does, so start a screen with it. `ConsoleShell` (`wordmark`, `legal`, `groups`, `screens`, `current`,
+`onGo`, `audience`, `onAudience`, `session`, `dock`, children) is the whole frame: grouped left nav, Board / Owner
+switch, dock toolbar.
+
+- **Letters and approvals**: `DraftLetter` (`letter`, `me`, `people`, `onStage`, `readonly`) walks draft → saved →
+  awaiting approval → approved → sent, every step a `Confirm` under the person's name; the approved stage shows a
+  `Command`, never a send button. `ApprovalsInbox` (`letters`, `me`, `people`, `onAction`) groups them.
+  `Checklist` (`items: {label, ready}[]`) is read-only required contents; `ConfirmList` when a person must tick.
+- **Meetings**: `DecisionBrief` (`decision: {question, criteria, options, facts}`) lays out lettered options and
+  never recommends; put it above a `DecisionCard`. `AgendaWizard` (`plan`, `onSave`) with `ReadinessRow`
+  (`candidate`) and `DriveAttach` (`files`, `onChange`) plan a meeting. `MeetingStage` (`wordmark`, `item`,
+  `content`, `caption`, `progress`) is a 16:9 stage on `--hero`; `HostPanel` (`room`, `onAction`, `me`) is its
+  sidebar. `RollCall` takes `present`, `recused`, `threshold`; `Clock` stages take `who`, `note`, `evidence`,
+  `decision`.
+- **Dock**: `DockToolbar` (`open`, `onToggle`, `counts`, `audience`) and `Drawer` (`id`, `title`, `pinned`,
+  `canDock`, `onPin`, `onUnpin`, `onClose`) frame `DeadlineList`, `ActionRegister`, `Scratchpad`, `AskPanel`, each
+  taking `go` and `me`. `BoardFields` (`item`, `onSaved`) and `RequestForm` (`kinds`, `onSent`) are the two
+  small forms.
+
 ## One idiomatic screen
 
 ```jsx
