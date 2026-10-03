@@ -3,7 +3,7 @@ export function Evidence({ items, label = "Evidence" }: { items?: readonly strin
   if (!items?.length) return null;
   return (
     <div className="evidence">
-      <span className="muted">{label}: </span>
+      {label && <span className="muted">{label}: </span>}
       {items.map((e, i) => (
         <code key={i} className="chip">
           {e}

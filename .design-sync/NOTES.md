@@ -17,7 +17,11 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   validate/capture with `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`. A newer playwright fails with
   "Executable doesn't exist".
 - **Previews import from `jason-ui`.** Named exports, one per cell. `Badge` takes a single string child
-  (template literal, not an array). `DueDate` takes `today` so a preview is deterministic.
+  (template literal, not an array). `DueDate` takes `today` so a preview is deterministic; without it the
+  distance drifts daily and the floor card rendered blank.
+- **Controlled inputs need a wrapper.** `SearchBox` and `Tabs` take `value`/`active` + `onChange`; a cell wraps
+  them in a small function component with `useState`, else they read as broken.
+- **`Findings` with `ok={false}` and no items renders nothing** by design; never use that as a cell.
 
 ## Known render warns
 
