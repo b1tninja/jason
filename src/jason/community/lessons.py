@@ -572,6 +572,30 @@ LESSONS: tuple[Lesson, ...] = (
            "The Gmail sync stores a rolling window of messages.",
            "An older search is a live read-only search; the window should be recorded in docs/gmail.md or extended.",
            Status.OPEN, docs=("docs/gmail.md",)),
+    Lesson("tuned-on-the-test", OCT_2026, (Area.DOCUMENTS,),
+           "The hybrid search's fusion settings were tuned on the same 24 questions that reported their gain.",
+           "One gold set served both to choose the settings and to score them.",
+           "A held-out set written after the tuning and never used for it checks a change (recall@5 0.71 to 0.80 on 116 "
+           "new questions, 12 won and 1 lost); before changing the fusion, both gold files run with the old settings "
+           "passed as --fusion, and wins and losses are read question by question.",
+           Status.FIXED, guards=("data/retrieval/gold-heldout.json", "scripts/eval_retrieval.py --gold ... --fusion K:W",
+                                 "tests/test_eval_retrieval.py"), docs=("docs/document-tools.md (model trials)",)),
+    Lesson("chunks-ignore-section-breaks", OCT_2026, (Area.DOCUMENTS,),
+           "Questions on definitions, fee tables, form pages, and exported lists that lost their numbers were missed by "
+           "every retrieval method.",
+           "Passages are fixed 220-word windows that split sections and put unrelated subsections together.",
+           "Cut passages on headings and section numbers, with the section's address carried into each passage, and "
+           "measure on both gold files.", Status.OPEN, docs=("docs/document-tools.md",)),
+    Lesson("copies-crowd-the-top", OCT_2026, (Area.DOCUMENTS,),
+           "A document kept as a Doc, a PDF's text, and a recorded scan took about three of keyword search's top ten "
+           "places with near copies of one passage.",
+           "Retrieval ranks every copy on its own.",
+           "Collapse near-duplicate passages before the top-k cut, and measure it.", Status.OPEN),
+    Lesson("no-nothing-relevant-signal", OCT_2026, (Area.DOCUMENTS,),
+           "Questions whose answer is in no document still returned confident passages from the governing documents.",
+           "Retrieval always returns its top k; no score says nothing answers.",
+           "A search tool's results must not imply a passage answers the question; measure a score threshold on the "
+           "unanswerable questions.", Status.OPEN),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
