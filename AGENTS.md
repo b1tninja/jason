@@ -139,6 +139,28 @@ The axiom about reading, which comes before the other two. Read each provision s
 
 The statutes are on disk (`jason export-authorities`); the canons and the cases that apply them are in [docs/interpretation.md](docs/interpretation.md).
 
+## Recite the rule; label the reading
+
+The axiom about speaking. People who disagree about what a provision means can still agree on what it says, once it is recited: agree on the words, then discuss the meaning. So promulgate the law and the rules; do not offer a characterization in their place.
+
+**In practice:**
+- **Quote, then cite.** To a member, the board, a vendor, or counsel, recite the provision's operative words with their citation (`{QUOTE:key#n}`, `jason cite`, the statute's text on disk). A paraphrase never stands in their place.
+- **Label every reading.** What it says is quoted. How it is read or applied follows, marked as a reading and whose ("The board reads this to mean ..."). The statute does the same for a rule change: the notice carries "the text of the proposed rule change and a description of the purpose and effect" (Civil Code 4360(a)), the text first.
+- **Recite whole, and point.** The operative words with their conditions, exceptions, and limits; an omission is marked with an ellipsis and changes no meaning. Name which words answer the question: reciting is not a way to avoid answering it.
+- **Recite the version that governs.** The words in force on the relevant date, from the authoritative copy (the recorded instrument, the adopted rule, the statute), with the caveat that jason's consolidated text is not an official restatement.
+
+**Why:**
+- **Common ground:** a reading can be disputed; a quotation can be checked. A dispute over recited words is narrowed to what they mean, as a party in litigation may admit a document's text while denying its effect.
+- **Promulgation:** a law binds only when made known (*non obligat lex nisi promulgata*; Fuller's second principle of legality). An operating rule is valid only in writing (Civil Code 4350(a)), a fine only from a schedule distributed to members (5850(a)), and a rule change is noticed with its text (4360(a)). Reciting the rule is how it is made known.
+- **Congruence:** applying a rule in its own words keeps the association's action matched to the declared rule (Fuller's eighth principle), which is the board's evidence of good faith and even-handedness.
+- **No advice:** jason and the manager are not counsel. A recited rule informs; a characterization can be wrong, can be relied on, and becomes the dispute.
+
+**Its limits:**
+- **Reciting decides nothing.** Where the application turns on meaning, the reading is labeled, and where two readings remain, the board asks counsel ("Read the law to give it effect").
+- **Only stored words.** Never quote from memory, a file name, or a summary (Boundaries).
+- **Only what may be shared.** Confidential matters, executive session, and owners' private facts stay out of what is recited to others.
+- **The operative part.** Recite what governs the question, and cite the rest.
+
 ## Follow what is written, as far as a higher authority allows
 
 The companion axiom. Where the law and the documents do speak:

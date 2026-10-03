@@ -290,8 +290,9 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Read where each answer is written: the documents' passages, the library's files, and the precedents.",
                  command="jason respond --sources", check="each line is a lead to read, not a ruling"),
             Step("Acknowledge within the policy's days, and send the answer or the plan; a board decision goes on the "
-                 "next agenda. A PayHOA request gets a comment; an email request a Gmail draft in its thread, which a "
-                 "person reads, edits, and sends.",
+                 "next agenda. An answer that turns on a rule recites the rule's words with its citation before any "
+                 "reading of it (AGENTS.md, Recite the rule; label the reading). A PayHOA request gets a comment; an "
+                 "email request a Gmail draft in its thread, which a person reads, edits, and sends.",
                  command="jason respond --draft ID; jason request-comment ID ... (or jason respond --draft email:ID "
                          "--gmail, then --yes)", person=True),
             Step("Join emailed requests PayHOA lacks.", command="jason request-links",
@@ -370,7 +371,8 @@ PROCEDURES: tuple[Procedure, ...] = (
                  refs=("docs/drafts-and-forms.md (one Markdown source)",), lessons=("one-source-per-document",)),
             Step("Quote a governing-document section as {QUOTE:key#n} (or cite it as {CITE:key#n}), never a pasted copy, "
                  "and check the references before sending.", command="jason section-refs --check FILE",
-                 check="every reference fills; a quote noted 'check before sending' is read against the recorded copy",
+                 check="every reference fills; a quote noted 'check before sending' is read against the recorded copy; "
+                       "any reading of the provision follows the quote and is labeled as a reading, and whose",
                  refs=("docs/embedded-references.md",), lessons=("copied-passages-go-stale", "quotes-carry-ocr-slips")),
             Step("Keep its Doc on the letterhead for review.", command="jason broadcast FILE.md --to-doc --yes"),
             Step("For a page to post or attach, export the PDF.",

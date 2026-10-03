@@ -44,6 +44,31 @@ These are as summarized by secondary sources. Read the opinion before citing one
 3. **Then the order of authority.** What still cannot be reconciled is a conflict. Follow the provision as far as the higher authority allows (4205), and record a `Conflict` row.
 4. **Two readings left.** Name both, say which gives effect and why, and the board asks counsel. Meanwhile, take a course that is lawful under either reading.
 
+## Recite the rule; label the reading
+
+The companion axiom for what jason says, as against how it reads (AGENTS.md). The reading above is how jason works out what a provision means; what it tells a member, the board, a vendor, or counsel starts from the words themselves: agree on the words, then discuss the meaning.
+
+- **The words are common ground.** Two parties who disagree about a provision's meaning can agree on its text once it is recited. A characterization is one party's view and invites the dispute it was meant to settle.
+- **Quote, cite, then read.** The operative words, quoted whole with their conditions and exceptions, and the citation (`{QUOTE:key#n}` in a document jason renders, [embedded-references.md](embedded-references.md); `jason cite` or the statute's text on disk otherwise). A reading follows, labeled as a reading and whose: "The board reads this to mean ...".
+- **Point to the words that answer.** Reciting is not a way to avoid the question. Courts reject "the document speaks for itself" as a response; say which words decide it.
+- **The governing version.** The words in force on the date that matters, from the recorded or adopted copy; jason's consolidated text carries its caveat.
+- **Where it applies:** owner notices and letters, violation, hearing, and decision letters, answers to members' requests, board packets, and questions to counsel (which should recite the provisions they ask about).
+
+### Where the idea comes from
+
+| Source | What it says |
+|---|---|
+| *Non obligat lex nisi promulgata* | A law does not bind unless promulgated: made known to those it governs. |
+| Fuller, *The Morality of Law* (1964) | Of his eight principles of legality, the second is that rules be promulgated, and the eighth congruence between official action and the declared rule. |
+| Civil Code 4350(a) | An operating rule is valid and enforceable only if "in writing". |
+| Civil Code 4360(a) | A rule-change notice "shall include the text of the proposed rule change and a description of the purpose and effect": the text, and then a labeled description. |
+| Civil Code 5850(a) | A fine is imposed from a schedule adopted and distributed to each member. |
+| Legal writing practice | A contract dispute turns on the precise words, so they are quoted, not characterized; a party may admit a document's text and dispute its meaning, which narrows the dispute. |
+
+The statutes are on disk; the maxim, Fuller, and the writing practice are from secondary sources.
+
+**What it is not.** Reciting decides nothing and settles no dispute about meaning; it fixes what the dispute is about. A provision recited to a member is not legal advice, and a reading that turns on how a court would read it is for counsel.
+
 ## Limits
 
 - **Aids, not overrides.** The maxims never override the law (3509), never insert or omit words (CCP 1858), and give way to the drafters' or the Legislature's intent (CCP 1859).
