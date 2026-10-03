@@ -760,10 +760,11 @@ LESSONS: tuple[Lesson, ...] = (
            "Compare with the communication's body when the notice is synced, if PayHOA returns it.", Status.OPEN,
            guards=("notice_text.keep (state: handed)",)),
     Lesson("google-writes-without-yes", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
-           "Surveying every write jason makes outside itself for the console's approvals, four commands were found "
-           "writing to Google with no --yes step: the board items' sheet (create and update), the board items' Google "
-           "Tasks sync, and the property-history sheet.",
-           "They were built as syncs of jason's own registers, so writing seemed routine.",
+           "Surveying every write jason makes outside itself for the console's approvals, five commands were found "
+           "writing with no --yes step: the board items' sheet (create and update), the board items' Google Tasks "
+           "sync, the property-history sheet, and a PayHOA request comment that is emailed to the owner.",
+           "They were built as syncs of jason's own registers, so writing seemed routine. jason request-comment, "
+           "which posts a PayHOA comment emailed to the owner, has no dry run or --yes either.",
            "Each gets a dry run by default and --yes (and later an approval kind), like every other outside write.",
            Status.OPEN, docs=("docs/console/approval-workflow.md (the survey)",)),
     Lesson("apply-loses-partial-results", OCT_2026, (Area.OWNER_INFO,),
