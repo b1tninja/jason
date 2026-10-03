@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Command, DataTable, DueDate, Markdown, Pill, RemoteView, Stat, Tabs, type Column } from "../components";
+import { Badge, Card, Caveats, Command, DataTable, DecisionCard, DueDate, Markdown, Pill, RemoteView, Stat, Tabs, type Column, type DecisionDraft } from "../components";
+import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import type { BoardItem } from "./types";
 
 type Row = BoardItem & { agendaSession: string };
+interface Decision extends DecisionDraft { id: string; meeting: string; item: string; session: string; recorded: string; updated: string; history: string[]; tally: Record<string, number>; suggested: string }
 interface Meeting {
   found?: boolean; note?: string; date: string; today: string; noticeBy: string; executiveNoticeBy: string; items: Row[]; openCount: number; executiveCount: number;
+  directors: string[]; decisions: Decision[];
   agendaMarkdown: string; packetMarkdown: string; minutesTemplate: string; notes: string[];
   commands: { agendaDoc: string; packetDoc: string; minutesDraft: string; notice: string }; caveats?: string[];
 }
@@ -25,6 +28,17 @@ export function MeetingView() {
   const [date, setDate] = useState("");
   const r = useApi<Meeting>(`/api/meeting${date ? `?date=${date}` : ""}`);
   const [tab, setTab] = useState("agenda");
+  const [saved, setSaved] = useState<Record<string, Decision>>({});
+  const [busy, setBusy] = useState(false);
+  const save = async (meeting: string, item: Row | null, d: DecisionDraft) => {
+    setBusy(true);
+    try {
+      const out = await postJson<Decision>("/api/decisions", { meeting, title: d.title, motion: d.motion, item: item?.id ?? "", session: item?.agendaSession ?? "open session", mover: d.mover, second: d.second, votes: d.votes, outcome: d.outcome, by: d.by, notes: d.notes });
+      setSaved((s) => ({ ...s, [out.id]: out }));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <RemoteView r={r}>
       {(d) => (
@@ -56,6 +70,17 @@ export function MeetingView() {
                 <p className="muted">Each item: background, the question for the board, the law quoted, what the records show now, the board's notes with live reports, options, and a draft motion. Executive items by title only.</p>
                 {d.packetMarkdown ? <div className="preview"><Markdown text={d.packetMarkdown} /></div> : <p className="notice notice-warn">{d.notes.find((n) => n.startsWith("packet")) ?? "No packet for this meeting."}</p>}
                 <Command cmd={d.commands.packetDoc} note="Writes the packet as a confidential Doc, private until shared; a Drive write a person confirms." />
+              </Card>
+            ) },
+            { id: "decisions", label: `Decisions (${d.decisions.length + Object.keys(saved).length})`, content: (
+              <Card title="What the board did">
+                <p className="muted">One motion per item, in the board's words: who moved and seconded, each director's vote, and the outcome. jason records the board's decision; it decides nothing. A roll call is kept for every vote (a lien needs one in open session, CIV 5673).</p>
+                {d.directors.length === 0 && <p className="notice notice-warn">No directors on file (`jason board --members`); type names into the roll call as you go.</p>}
+                {d.items.map((item) => {
+                  const existing = saved[`${d.date}--${item.id}`] ?? d.decisions.find((x) => x.item === item.id);
+                  return <DecisionCard key={item.id + (existing?.updated ?? "")} title={item.title} directors={d.directors} initial={existing ? { ...existing } : { session: item.agendaSession }} busy={busy} onSave={(dd) => save(d.date, item, dd)} />;
+                })}
+                <DecisionCard key="other" title="Another motion (not on an item)" directors={d.directors} busy={busy} onSave={(dd) => save(d.date, null, { ...dd, title: dd.motion.slice(0, 60) })} />
               </Card>
             ) },
             { id: "minutes", label: "Minutes frame", content: (

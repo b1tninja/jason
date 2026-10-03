@@ -83,3 +83,5 @@ button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .embed { margin: 0; } .embed iframe { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fff; } .embed img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); }
 .embed figcaption { justify-content: space-between; font-size: .85rem; color: var(--muted); margin-top: .25rem; }
 .picker { margin: .5rem 0; } .picks { list-style: none; padding: 0; margin: .25rem 0; max-height: 14rem; overflow: auto; } .picks li { padding: .15rem 0; }
+.rollcall { border-collapse: collapse; margin: .5rem 0; } .rollcall th, .rollcall td { padding: .2rem .6rem; border-bottom: 1px solid var(--line); text-align: left; } .rollcall th:not(:first-child), .rollcall td.num { text-align: center; }
+.decision { margin-bottom: .75rem; }

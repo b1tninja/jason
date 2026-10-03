@@ -11,7 +11,7 @@ def _client(tmp_path, loaders=None, built=True):
 
 def test_health_and_api(tmp_path):
     c = _client(tmp_path)
-    assert c.get("/api/health").json == {"ok": True, "ui": True, "sources": ["demo"], "writes": ["board-items", "canvases"]}
+    assert c.get("/api/health").json == {"ok": True, "ui": True, "sources": ["demo"], "writes": ["board-items", "canvases", "decisions"]}
     assert c.get("/api/demo?n=3").json == {"n": "3"}
     assert c.get("/api/nope").status_code == 404
 
@@ -53,8 +53,8 @@ def test_board_item_write_is_board_fields_only(tmp_path):
     assert c.post("/api/board-items/x", json={"status": "on agenda", "owner": "A"}).json == {"id": "x", "status": "on agenda", "owner": "A"}
     assert c.post("/api/board-items/x", json={"title": "no"}).status_code == 400
     assert c.post("/api/board-items/missing", json={"notes": "n"}).status_code == 404
-    assert c.get("/api/health").json["writes"] == ["board-items", "canvases"]
-    off = create_app(tmp_path, {}, board_writer=None, canvas_writer=None).test_client()
+    assert c.get("/api/health").json["writes"] == ["board-items", "canvases", "decisions"]
+    off = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None).test_client()
     assert off.post("/api/board-items/x", json={"notes": "n"}).status_code == 405
     assert off.get("/api/health").json["writes"] == []
 

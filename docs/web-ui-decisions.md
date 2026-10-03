@@ -163,11 +163,20 @@ One meeting as the board sees it: the date (the schedule's next unless chosen), 
 what the records show now, options, a draft motion), the minutes frame the Secretary fills, and the commands
 that write each as a Doc. Nothing is taken up that is not on the noticed agenda (CIV 4930).
 
+### Built: motions and votes (the meeting's Decisions tab)
+
+One `DecisionCard` per item proposed or on the agenda, and one for a motion not on an item: the motion as
+made, mover and second (from the directors on file), a `RollCall` (aye, no, abstain, absent per director), the
+tally with what the votes say on their face, and the outcome in the board's word (approved, denied, tabled; a
+vote may stay open). Recording goes through a confirm that spells out the record. The store is jason's own
+(`data/board/decisions.json`), one record per meeting and item, with history; the minutes draft quotes it
+("Decisions the Secretary recorded at the meeting") instead of inferring votes from the transcript. jason
+records the board's decision and decides nothing.
+
 ### Open: what still needs a screen, and the decision in each
 
 | Workflow | The board's decision | What jason has | What the screen would add |
 |---|---|---|---|
-| **Motions and votes** | approve, deny, table; mover, second, roll call | `Action(motion, outcome, mover, second)` parsed from minutes; `Outcome` | a decision record per agenda item taken at the meeting, feeding the minutes draft; today it is typed into the Secretary's frame |
 | **Minutes to approve** | approve the prior minutes, with corrections | `--minutes DATE` draft with blanks; `minutes-privacy --correct` | the draft as a form: each blank a field, the privacy flags beside the names they concern |
 | **Rule change (CIV 4360)** | adopt, amend, or withdraw; whether 4355 covers it | `jason rule-change`: timeline, member notice, agenda item, adoption notice, `[brackets]` the board fills | the brackets as a form, the 28-day comment clock, the notice and adoption drafts with their commands |
 | **Hearing decision (5855(f))** | the discipline, within 14 days | the hearing clocks; `letter --template decision-notice --set DECISION=` | the decision entered once, the notice previewed from the template, the command |

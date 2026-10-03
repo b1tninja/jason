@@ -320,8 +320,17 @@ def meeting(args: Args) -> dict[str, Any]:
     except Exception as exc:
         minutes_md, notes = "", notes + [f"minutes frame: {type(exc).__name__}: {exc}"]
     iso = day.isoformat()
+    try:
+        from jason.tasks.board_members import current_names
+
+        directors = current_names(root)
+    except Exception:
+        directors = []
+    from jason.tasks import decisions as decided
+
     return {
-        "found": True, "date": iso, "today": today.isoformat(),
+        "found": True, "date": iso, "today": today.isoformat(), "directors": directors,
+        "decisions": [decided.as_dict(d) for d in decided.for_meeting(root, day)],
         "noticeBy": notice_date(day).isoformat(), "executiveNoticeBy": notice_date(day, executive_only=True).isoformat(),
         "items": rows, "openCount": sum(1 for r in rows if r["agendaSession"] == "open session"),
         "executiveCount": sum(1 for r in rows if r["agendaSession"] != "open session"),
@@ -334,6 +343,19 @@ def meeting(args: Args) -> dict[str, Any]:
         },
         "caveats": ["No action may be taken on an item not on the noticed agenda (CIV 4930). The agenda, packet, and minutes are drafts a person finishes; the board decides."],
     }
+
+
+def decisions(args: Args) -> dict[str, Any]:
+    """The board's recorded decisions (`tasks.decisions`), all or for one ``meeting``, with each vote's tally and what the
+    votes say on their face; the outcome is the board's word. Reads disk only."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks import decisions as store
+
+    root = _data_dir(None)
+    day = args.get("meeting", "").strip()
+    rows = store.for_meeting(root, day) if day else store.load(root)
+    return {"found": True, "count": len(rows), "outcomes": list(store.OUTCOMES), "votes": list(store.VOTES),
+            "decisions": [store.as_dict(d) for d in sorted(rows, key=lambda d: (d.meeting, d.recorded), reverse=True)]}
 
 
 def leads(args: Args) -> dict[str, Any]:
@@ -421,6 +443,7 @@ def default_loaders() -> dict[str, Any]:
         "canvases": canvases,
         "templates": templates,
         "meeting": meeting,
+        "decisions": decisions,
         "drive-files": drive_files,
         "photos": photos,
     }
@@ -463,3 +486,19 @@ def write_canvas(key: str, body: dict[str, Any]) -> dict[str, Any]:
     if not changes:
         raise ValueError("nothing to change")
     return store.encode(store.update(root, key, **changes))
+
+
+def write_decision(decision_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Record a decision (``decision_id`` empty: ``meeting``, ``title``, ``motion`` and the rest) or change one in place.
+    jason's own store; the board's decision in the board's words, never jason's."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks import decisions as store
+
+    root = _data_dir(None)
+    clean = {k: v for k, v in body.items() if v is not None}
+    if not decision_id:
+        meeting, title, motion = str(clean.pop("meeting", "")), str(clean.pop("title", "")), str(clean.pop("motion", ""))
+        return store.as_dict(store.record(root, meeting, title, motion, **clean))
+    if not clean:
+        raise ValueError("nothing to change")
+    return store.as_dict(store.update(root, decision_id, **clean))

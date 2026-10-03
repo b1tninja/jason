@@ -33,7 +33,9 @@ Two writes, both to jason's own stores, nothing outward:
 
 Read-only helpers for the canvas: `GET /api/file?path=` serves a photo, PDF, or text file under `data/` and nothing else (path-checked, known types only, `Content-Security-Policy: sandbox`); `GET /api/drive-files?q=` searches the Drive catalog (`data/drive/files.json`) and names the kind each file embeds as; `GET /api/photos` lists the albums under `data/photos/`; `GET /api/templates` lists the letter templates with each token sorted by who fills it (the profile, a general citation, or the run), and `?kind=&name=&V_TOKEN=value` renders the body as Markdown with those values (`templates.body_markdown`, the same text the Doc is built from), the tokens still open, and the `jason letter … --yes` command.
 
-`create_app(board_writer=None, canvas_writer=None)` turns the writes off; `/api/health` lists `writes`.
+- `POST /api/decisions` (`meeting`, `title`, `motion`, and any of `item`, `session`, `mover`, `second`, `votes`, `outcome`, `by`, `notes`) records what the board did on one item at one meeting, replacing an earlier record for the same meeting and item; `POST /api/decisions/<id>` changes one in place. `GET /api/decisions?meeting=` lists them with each vote's tally and what the votes say on their face; the outcome is the board's word. The store is `data/board/decisions.json` (`tasks.decisions`, under the `board-decisions` store lock), and the minutes draft (`jason board --minutes`) quotes it.
+
+`create_app(board_writer=None, canvas_writer=None, decision_writer=None)` turns the writes off; `/api/health` lists `writes`.
 
 ## Views (`ui/src/views`, hash routes)
 

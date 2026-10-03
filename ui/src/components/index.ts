@@ -7,6 +7,7 @@ export { Embed, embedUrls, googleId, type Attachment, type EmbedKind } from "./E
 export { Markdown, setMermaidUrl } from "./Markdown";
 export { Confirm } from "./Confirm";
 export { DataTable, type Column } from "./DataTable";
+export { DecisionCard, OUTCOMES, type DecisionDraft } from "./DecisionCard";
 export { DueDate, daysUntil } from "./DueDate";
 export { Evidence } from "./Evidence";
 export { Findings } from "./Findings";
@@ -14,6 +15,7 @@ export { Kanban } from "./Kanban";
 export { Money } from "./Money";
 export { Pill } from "./Pill";
 export { RemoteView } from "./Remote";
+export { RollCall, tally, VOTE_WORDS, type VoteWord } from "./RollCall";
 export { SearchBox } from "./SearchBox";
 export { Stat } from "./Stat";
 export { EmptyState, ErrorNotice, Loading } from "./States";
