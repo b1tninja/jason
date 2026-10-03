@@ -215,7 +215,7 @@ Add vision-layout fixtures (pipe tables and header-row tables) to the 214 model 
   - Approve this as an explicit catalog flag, not `generated=True`.
 - **Scorer first.** Write a small `vector-search` scorer over gold before retitling all of the ~214 library documents or splitting the 497 statute sections into separate pages.
 
-**Retrieval baseline on gold (no P number).** Record keyword, dense and hybrid rows from `eval_retrieval.py` on the 24 gold questions, run as a queued GPU job. `manager_review` defaults to hybrid, which is unmeasured. Record the per-query time of BM25 and `dense_rank` as well. This is the baseline for the R-tier change, for P12 and for the thin-parse scorer.
+**Retrieval baseline on gold (no P number).** Done October 2, 2026: the row in docs/document-tools.md (model trials); per-question results in data/retrieval/runs/. Hybrid (RRF) leads on MRR@10 (0.73) but gives up dense's paraphrase recall (0.78 to 0.67), so the fusion's weights are the next thing to measure. Originally: record keyword, dense and hybrid rows from `eval_retrieval.py` on the 24 gold questions, run as a queued GPU job. `manager_review` defaults to hybrid, which is unmeasured. Record the per-query time of BM25 and `dense_rank` as well. This is the baseline for the R-tier change, for P12 and for the thin-parse scorer.
 
 **Cross-catalog duplicates (no P number).**
 - In the association workspace, duplicates use up slots in the topN of 12:
