@@ -850,6 +850,10 @@ class Community(ABC):
         """The board calendar's event titles (``jason.community.board_calendar.CalendarPolicy``). None until set."""
         return None
 
+    def calendar_id(self) -> str:
+        """The id of the Google calendar ``jason calendar`` writes to, which the UI embeds. Empty means none."""
+        return ""
+
     def photo_album_rule(self):
         """How jason names the Photos albums it keeps (``jason.community.photos.AlbumNameRule``). None until set."""
         return None

@@ -84,7 +84,8 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         if not rel or not target.is_relative_to(root) or not target.is_file():
             abort(404)
         kinds = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
-                 ".pdf": "application/pdf", ".md": "text/plain", ".txt": "text/plain"}
+                 ".pdf": "application/pdf", ".md": "text/plain", ".txt": "text/plain",
+                 ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg"}
         mime = kinds.get(target.suffix.lower())
         if mime is None:
             abort(404)

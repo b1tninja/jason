@@ -46,7 +46,7 @@ class Canvas:
     notes: str = ""                # the person's notes, Markdown
     clips: list[Clip] = field(default_factory=list)
     links: list[dict[str, str]] = field(default_factory=list)      # {"label", "url"}
-    attachments: list[dict[str, str]] = field(default_factory=list)  # {"kind", "ref", "title"}: a Doc, Sheet, Form, Drive file, photo, or PDF shown on the canvas
+    attachments: list[dict[str, Any]] = field(default_factory=list)  # {"kind", "ref", "title", "opts"?}: a Doc, Sheet, Form, Drive file, photo, PDF, calendar, Zoom recording, audio, map, chart, or mail thread shown on the canvas; opts is str -> str
     checklist: list[dict[str, Any]] = field(default_factory=list)  # {"text", "done"}
     created: str = ""
     updated: str = ""
@@ -55,7 +55,7 @@ class Canvas:
 
 # The fields a person edits in place; everything else is set by a call (a clip is added, never edited).
 EDITABLE = ("title", "question", "status", "matter", "duty", "notes", "links", "checklist", "attachments")
-ATTACHMENT_KINDS = ("doc", "sheet", "slides", "form", "drive", "image", "pdf", "url")
+ATTACHMENT_KINDS = ("doc", "sheet", "slides", "form", "drive", "image", "pdf", "url", "calendar", "zoom", "audio", "map", "chart", "thread")
 
 
 def _now() -> str:
@@ -157,7 +157,11 @@ def update(data_dir: Path, key: str, **changes: Any) -> Canvas:
         if k == "attachments":
             bad = [a for a in v if not isinstance(a, dict) or a.get("kind") not in ATTACHMENT_KINDS or not str(a.get("ref", "")).strip()]
             if bad:
-                raise ValueError(f"an attachment is {{kind: one of {', '.join(ATTACHMENT_KINDS)}, ref, title}}")
+                raise ValueError(f"an attachment is {{kind: one of {', '.join(ATTACHMENT_KINDS)}, ref, title, opts?}}")
+            bad_opts = [a for a in v if "opts" in a and not (isinstance(a["opts"], dict)
+                                                             and all(isinstance(k, str) and isinstance(x, str) for k, x in a["opts"].items()))]
+            if bad_opts:
+                raise ValueError("an attachment's opts is an object of string values")
         if getattr(c, k) != v:
             if k == "status":
                 c.history.append(f"{now[:10]}: status {c.status.value} -> {v.value}")

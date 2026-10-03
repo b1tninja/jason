@@ -67,6 +67,16 @@ def test_attachments_are_validated(tmp_path):
         store.update(tmp_path, c.key, attachments=[{"kind": "video", "ref": "x"}])
     with pytest.raises(ValueError):
         store.update(tmp_path, c.key, attachments=[{"kind": "pdf", "ref": "  "}])
+    for kind in ("calendar", "zoom", "audio", "map", "chart", "thread"):
+        assert kind in store.ATTACHMENT_KINDS
+    c = store.update(tmp_path, c.key, attachments=[
+        {"kind": "zoom", "ref": "u-1", "title": "September meeting", "opts": {"file": "zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a"}},
+        {"kind": "map", "ref": "123 Main St", "title": "", "opts": {"zoom": "17"}}])
+    assert store.load(tmp_path, c.key).attachments[0]["opts"] == {"file": "zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a"}
+    with pytest.raises(ValueError):
+        store.update(tmp_path, c.key, attachments=[{"kind": "map", "ref": "x", "opts": "zoom=17"}])
+    with pytest.raises(ValueError):
+        store.update(tmp_path, c.key, attachments=[{"kind": "map", "ref": "x", "opts": {"zoom": 17}}])
 
 
 def test_local_file_route_serves_only_known_types_under_data(tmp_path, monkeypatch):
@@ -77,11 +87,15 @@ def test_local_file_route_serves_only_known_types_under_data(tmp_path, monkeypat
     (tmp_path / "photos").mkdir()
     (tmp_path / "photos" / "a.png").write_bytes(b"\x89PNG\r\n\x1a\n")
     (tmp_path / "secret.db").write_bytes(b"x")
+    (tmp_path / "zoom" / "meetings" / "2026-09-15-bbbbbbbbbb").mkdir(parents=True)
+    (tmp_path / "zoom" / "meetings" / "2026-09-15-bbbbbbbbbb" / "audio.m4a").write_bytes(b"\x00\x00\x00\x1cftypM4A ")
     fake = type(sys)("jason.mcp.county"); fake._data_dir = lambda _: tmp_path
     monkeypatch.setitem(sys.modules, "jason.mcp.county", fake)
     c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None).test_client()
     ok = c.get("/api/file?path=photos/a.png")
     assert ok.status_code == 200 and ok.headers["Content-Type"].startswith("image/png") and ok.headers["Content-Security-Policy"] == "sandbox"
+    audio = c.get("/api/file?path=zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a")
+    assert audio.status_code == 200 and audio.headers["Content-Type"].startswith("audio/mp4")
     assert c.get("/api/file?path=secret.db").status_code == 404
     assert c.get("/api/file?path=../pyproject.toml").status_code == 404
     assert c.get("/api/file?path=").status_code == 404

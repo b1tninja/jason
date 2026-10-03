@@ -85,11 +85,11 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds"} == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
-        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions"):  # stores under data/ or the profile, not county tools; their own tests below
+        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds"):  # stores under data/ or the profile, not county tools; their own tests below
             continue
         out = fn({})
         assert isinstance(out, dict), name
@@ -362,6 +362,65 @@ def test_drive_files_and_photos_read_the_stores(county, tmp_path, monkeypatch):
     ]}))
     albums = sources.photos({})["albums"]
     assert albums[0]["count"] == 1 and albums[0]["items"][0]["path"] == "photos/east-bed/a.jpg"
+
+
+def test_embeds_reads_the_zoom_index_and_the_profile(county, tmp_path, monkeypatch):
+    import json
+    import sys
+
+    from jason.tasks.zoom import INDEX, ZOOM_DIR
+    from jason.web import sources
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    monkeypatch.setattr(sources, "_community", lambda: _FakeCommunity())  # no calendar_id, no time zone
+    out = sources.embeds({})
+    assert out["found"] is True and out["calendarId"] == "" and out["timeZone"] == "America/Los_Angeles"
+    assert out["recordings"] == [] and out["maps"] == {} and any("no Zoom index" in n for n in out["notes"])
+
+    class Community(_FakeCommunity):
+        def calendar_id(self):
+            return "abc123@group.calendar.google.com"
+
+        def time_zone(self):
+            return "America/Denver"
+
+    monkeypatch.setattr(sources, "_community", lambda: Community())
+    zoom = tmp_path / ZOOM_DIR
+    old, new, closed = zoom / "meetings" / "2026-08-18-aaaaaaaaaa", zoom / "meetings" / "2026-09-15-bbbbbbbbbb", zoom / "meetings" / "2026-09-16-cccccccccc"
+    for folder in (old, new, closed):
+        folder.mkdir(parents=True)
+    (new / "audio.m4a").write_bytes(b"\x00\x00")
+    (new / "transcript.vtt").write_text("WEBVTT\n")
+    (new / "transcript.txt").write_text("[00:00] A: hello\n")
+    (new / "participants.json").write_text("[]")  # not a recording file
+    (closed / "audio.m4a").write_bytes(b"\x00")
+    (zoom / INDEX).write_text(json.dumps({"syncedAt": "2026-10-01T00:00:00+00:00", "since": "2026-01-01", "through": "2026-10-01", "meetings": [
+        {"uuid": "u-old", "meetingId": "1", "topic": "Board meeting", "start": "2026-08-18T18:00-07:00", "date": "2026-08-18", "kind": "board",
+         "confidential": False, "files": {}, "folder": "meetings/2026-08-18-aaaaaaaaaa", "cloud": ["MP4", "M4A"]},
+        {"uuid": "u-new", "meetingId": "1", "topic": "Board meeting", "start": "2026-09-15T18:00-07:00", "date": "2026-09-15", "kind": "board",
+         "confidential": False, "files": {"transcript": "meetings/2026-09-15-bbbbbbbbbb/transcript.txt"}, "folder": "meetings/2026-09-15-bbbbbbbbbb", "cloud": ["M4A", "TRANSCRIPT"]},
+        {"uuid": "u-none", "meetingId": "2", "topic": "Chat only", "start": "2026-09-20T10:00-07:00", "date": "2026-09-20", "kind": "other",
+         "confidential": False, "files": {}, "folder": "meetings/2026-09-20-dddddddddd"},
+        {"uuid": "u-exec", "meetingId": "3", "topic": "Executive session", "start": "2026-09-16T19:00-07:00", "date": "2026-09-16", "kind": "executive session",
+         "confidential": True, "files": {}, "folder": "meetings/2026-09-16-cccccccccc", "cloud": ["M4A"]},
+    ]}))
+    out = sources.embeds({})
+    assert out["calendarId"] == "abc123@group.calendar.google.com" and out["timeZone"] == "America/Denver" and out["syncedAt"] == "2026-10-01T00:00:00+00:00"
+    assert [r["uuid"] for r in out["recordings"]] == ["u-new", "u-old"], "newest first; no recording and confidential are left out"
+    newest = out["recordings"][0]
+    assert set(newest) == {"date", "topic", "uuid", "kind", "confidential", "shareUrl", "playUrl", "cloud", "files"}
+    assert newest["date"] == "2026-09-15" and newest["shareUrl"] == "" and newest["playUrl"] == ""
+    assert sorted((f["type"], f["name"], f["path"]) for f in newest["files"]) == [
+        ("audio", "audio.m4a", "zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a"),
+        ("transcript", "transcript.txt", "zoom/meetings/2026-09-15-bbbbbbbbbb/transcript.txt"),
+        ("transcript", "transcript.vtt", "zoom/meetings/2026-09-15-bbbbbbbbbb/transcript.vtt")]
+    assert out["recordings"][1]["files"] == [] and out["recordings"][1]["cloud"] == ["MP4", "M4A"]
+    assert any("1 confidential" in n for n in out["notes"])
+    assert [r["uuid"] for r in sources.embeds({"limit": "1"})["recordings"]] == ["u-new"]
+    with_exec = sources.embeds({"confidential": "1"})
+    assert [r["uuid"] for r in with_exec["recordings"]] == ["u-exec", "u-new", "u-old"] and with_exec["recordings"][0]["confidential"] is True
+    assert with_exec["recordings"][0]["files"][0]["path"] == "zoom/meetings/2026-09-16-cccccccccc/audio.m4a"
+    assert county.calls == [], "embeds reads disk only"
 
 
 def test_meeting_builds_the_spine_from_the_board_items(county, tmp_path, monkeypatch):

@@ -345,6 +345,68 @@ def meeting(args: Args) -> dict[str, Any]:
     }
 
 
+def _time_zone(community: Any) -> str:
+    for name in ("time_zone", "timezone"):
+        value = getattr(community, name, None)
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                value = None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return "America/Los_Angeles"
+
+
+def embeds(args: Args) -> dict[str, Any]:
+    """What a canvas can embed beside Drive files and photos: the Google calendar ``jason calendar`` writes to, the
+    association's time zone, and the Zoom meetings on disk (`jason zoom --sync`) that have a recording, newest first,
+    each with the files present under its folder as paths relative to data/ for /api/file. An executive session's or
+    a hearing's recording is confidential (Civil Code 4935) and listed only with ``confidential=1``. Reads disk only;
+    calls neither Zoom nor Google."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks.zoom import FILE_NAMES, MEDIA_NAMES, ZOOM_DIR, load_index
+
+    community = _community()
+    calendar_id = str(getattr(community, "calendar_id", lambda: "")() or "")
+    root = _data_dir(None)
+    limit = int(args.get("limit", "24") or 24)
+    notes: list[str] = []
+    index = load_index(root)
+    rows = index.get("meetings", []) if isinstance(index, dict) else []
+    if not index:
+        notes.append("no Zoom index; run jason zoom --sync")
+    show_confidential = _flag(args, "confidential")
+    held_back = 0
+    recordings: list[dict[str, Any]] = []
+    # what sync saves in a meeting folder: the media and Zoom's files by their fixed names, plus the derived text files
+    kinds = {MEDIA_NAMES["M4A"]: "audio", MEDIA_NAMES["MP4"]: "video", FILE_NAMES["TRANSCRIPT"]: "transcript",
+             "transcript.txt": "transcript", "summary.md": "summary", FILE_NAMES["CHAT"]: "chat"}
+    for row in sorted(rows, key=lambda r: str(r.get("start") or r.get("date") or ""), reverse=True):
+        folder_rel = str(row.get("folder") or "")
+        folder = root / ZOOM_DIR / folder_rel if folder_rel else None
+        files: list[dict[str, str]] = []
+        if folder is not None and folder.is_dir():
+            for name, kind in kinds.items():
+                if (folder / name).is_file():
+                    files.append({"type": kind, "name": name, "path": f"{ZOOM_DIR}/{folder_rel}/{name}"})
+        if not files and not row.get("cloud"):
+            continue  # a meeting with no recording
+        if row.get("confidential") and not show_confidential:
+            held_back += 1
+            continue
+        recordings.append({
+            "date": row.get("date") or (str(row.get("start") or "")[:10] or None), "topic": row.get("topic") or "", "uuid": row.get("uuid") or "",
+            "kind": row.get("kind") or "", "confidential": bool(row.get("confidential")),
+            "shareUrl": str(row.get("shareUrl") or row.get("share_url") or ""), "playUrl": str(row.get("playUrl") or row.get("play_url") or ""),
+            "cloud": list(row.get("cloud") or []), "files": files,
+        })
+    if held_back:
+        notes.append(f"{held_back} confidential recording(s) held back (Civil Code 4935); pass confidential=1 to list them")
+    return {"found": True, "calendarId": calendar_id, "timeZone": _time_zone(community), "syncedAt": index.get("syncedAt") if isinstance(index, dict) else None,
+            "recordings": recordings[:limit], "maps": {}, "notes": notes}
+
+
 def decisions(args: Args) -> dict[str, Any]:
     """The board's recorded decisions (`tasks.decisions`), all or for one ``meeting``, with each vote's tally and what the
     votes say on their face; the outcome is the board's word. Reads disk only."""
@@ -446,6 +508,7 @@ def default_loaders() -> dict[str, Any]:
         "decisions": decisions,
         "drive-files": drive_files,
         "photos": photos,
+        "embeds": embeds,
     }
 
 
