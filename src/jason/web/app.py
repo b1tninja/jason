@@ -221,24 +221,23 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--require-sign-in", action="store_true",
                    help="refuse every write until an officer signs in with Google (docs/setup.md, Console sign-in)")
     p.add_argument("--dev", action="store_true",
-                   help="not production: a signed-in maintainer (maintainers.json) may view the console as any officer "
-                        "or office; writes are refused while they do")
+                   help="not production: a signed-in admin (data/access/admins.json) may view the console as any "
+                        "officer or office; writes are refused while they do")
     a = p.parse_args(argv)
     from waitress import serve
 
     sign_in = signin.default_sign_in(required=a.require_sign_in, dev=a.dev)
     if a.dev:
-        print("jason-web: --dev: a signed-in maintainer may view the console as anyone (writes refused meanwhile)",
+        print("jason-web: --dev: a signed-in admin may view the console as anyone (writes refused meanwhile)",
               file=sys.stderr)
     if a.require_sign_in and not sign_in.configured:
-        p.error(f"--require-sign-in needs Google sign-in set up: {signin.DESKTOP_KEY} or {signin.RECORD_KEY} in .env "
+        p.error("--require-sign-in needs Google sign-in set up: `jason sign-in` shows what is missing "
                 "(docs/setup.md, Console sign-in)")
     if a.allow_apply:
         print("jason-web: apply is ON: an approved plan can be written to PayHOA from the console", file=sys.stderr)
     if sign_in.configured:
-        key = signin.client_record(signin._settings())[1]
-        which = "jason's Desktop client" if key == signin.DESKTOP_KEY else "the Web client"
-        print(f"jason-web: Google sign-in is on with {which} ({key}){' and required for writes' if a.require_sign_in else ''}; "
+        which = ", ".join(f"{p.key} ({p.source})" for p in sign_in.all())
+        print(f"jason-web: Google sign-in is on with {which}{' and required for writes' if a.require_sign_in else ''}; "
               f"its redirect is http://{a.host}:{a.port}{signin.CALLBACK}", file=sys.stderr)
     serve(create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,), sign_in=sign_in), host=a.host, port=a.port)
 
