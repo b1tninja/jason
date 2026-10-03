@@ -13,6 +13,12 @@ function keyFor(data: unknown): number {
   return k;
 }
 
+/** Calls the view's render function during its own render, so a throw while computing the JSX (the shape-mismatch
+ * case) happens inside the boundary, not in RemoteView's render above it. */
+function Render<T>({ fn, data }: { fn: (data: T) => ReactNode; data: T }) {
+  return <>{fn(data)}</>;
+}
+
 /** Loading, error (with Retry), the tool's own `found: false` note, or the data. Every view goes through this. */
 export function RemoteView<T extends { found?: boolean; note?: string; hint?: string }>({ r, children }: {
   r: Remote<T> & { reload: () => void };
@@ -25,7 +31,7 @@ export function RemoteView<T extends { found?: boolean; note?: string; hint?: st
   if (r.data.found === false) return <EmptyState>{r.data.note ?? r.data.hint ?? "Nothing on disk yet."}</EmptyState>;
   return (
     <ViewBoundary key={key} data={r.data}>
-      {children(r.data)}
+      <Render fn={children} data={r.data} />
     </ViewBoundary>
   );
 }

@@ -21,11 +21,23 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   distance drifts daily and the floor card rendered blank.
 - **Controlled inputs need a wrapper.** `SearchBox` and `Tabs` take `value`/`active` + `onChange`; a cell wraps
   them in a small function component with `useState`, else they read as broken.
-- **`Findings` with `ok={false}` and no items renders nothing** by design; never use that as a cell.
+- **`Findings` with `ok={false}` and no items renders nothing** by design; never use that as a cell. `Caveats`
+  returns null for an empty list, same rule.
+- **Wide components.** `.kanban` is `grid-auto-columns: minmax(260px, 1fr)`, so five lanes need ~1350px: Kanban
+  has `cardMode: column` and a `1400x700` viewport in `cfg.overrides`; AppShell is column mode. `.stats` is
+  `minmax(150px, 1fr)` and clips six-figure money at ~500px; the Stat and Card previews widen the columns with
+  inline grid glue (`.stat` itself has no overflow handling, a component note).
+- **`Confirm`'s armed state is internal** and cannot render statically; its preview shows the idle button and a
+  lookalike of the armed markup. `busy` only sets `disabled`, which `styles.css` does not style.
+- **`RemoteView`** renders its `children` function through an inner component, so a throw while computing the
+  JSX lands in `ViewBoundary`. A caught throw still appears in the review json's `pageErrs` (React logs it); the
+  cell renders, so it is not a capture error.
 
 ## Known render warns
 
-(none recorded yet)
+- `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's
+  `ChildrenThrow` cell throws on purpose to show the shape-tolerant fallback; the boundary catches it, React logs
+  it, the root renders. Expected on every validate.
 
 ## Re-sync risks
 

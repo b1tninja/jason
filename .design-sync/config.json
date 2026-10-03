@@ -11,5 +11,15 @@
     "Loading": "src/components/States.tsx",
     "ErrorNotice": "src/components/States.tsx",
     "EmptyState": "src/components/States.tsx"
-  }
+  },
+  "overrides": {
+    "Kanban": {
+      "cardMode": "column",
+      "viewport": "1400x700"
+    },
+    "AppShell": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
 }
