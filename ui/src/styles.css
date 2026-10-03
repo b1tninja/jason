@@ -87,3 +87,4 @@ button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .decision { margin-bottom: .75rem; }
 .factrow { display: grid; grid-template-columns: 11rem 1fr; gap: .5rem; padding: .3rem 0; border-bottom: 1px solid var(--line); align-items: start; }
 .mark { margin: .25rem 0; }
+.confirmlist ul { list-style: none; padding: 0; margin: .5rem 0; } .confirmlist li { padding: .3rem 0; border-bottom: 1px solid var(--line); } .confirmlist li.done strong { color: var(--muted); } .confirmlist input { margin-right: .5rem; }

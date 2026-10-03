@@ -181,6 +181,14 @@ vote may stay open). Recording goes through a confirm that spells out the record
 ("Decisions the Secretary recorded at the meeting") instead of inferring votes from the transcript. jason
 records the board's decision and decides nothing.
 
+### Built: owner-information confirmations (`#/owner-info`)
+
+`jason owner-info` now saves the plan it computed (each PayHOA tag write an owner's answer or election calls
+for, the requests left to complete, the owners by standing) as the read artifact of its run. The page shows the
+writes as a `ConfirmList`: a person enters their name and confirms each after reading the answer; the apply
+command appears only when every write is confirmed, and it stays a terminal command. `ConfirmList` is the
+component for every apply step that a person should look at row by row first.
+
 ### Open: what still needs a screen, and the decision in each
 
 | Workflow | The board's decision | What jason has | What the screen would add |
@@ -193,7 +201,6 @@ records the board's decision and decides nothing.
 | **Insurance renewal** | renew, re-bid, change coverage; a 5810 notice when limits change | policy standings and findings; the register's renewal column | the decision and the member notice draft |
 | **Annual disclosures (5300, 5310)** | the open tokens: the choices only the board makes | `packet --values` writes them blank | `values.json` as a form, the parts plan, the build command |
 | **Records request (5225)** | whether the stated purpose is adequate; what is withheld and why | the request list and the copy order | the request, the decision, the redaction reason, the mailing as separate jobs |
-| **Owner-information answers** | confirm each change before tags are written | per-owner changes with source and assurance; `plan_writes` | the confirmations as a checklist, then the apply command |
 | **Mail triage** | scan, forward, shred, discard | kind, urgency, deadlines per letter | the letter with its deadline clock and the choice recorded |
 | **Registers** | the board's own columns (status, explained, renewal decision, notice sent, adopted) | Sheets with owned columns and a log tab | the board's columns edited here as the board-items columns are, logged the same way |
 

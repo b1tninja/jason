@@ -59,7 +59,7 @@ def test_api_onboarding_route(tmp_path):
             raise ValueError("status")
         return {"key": key, **body}
 
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=writer).test_client()
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=writer, owner_info_writer=None).test_client()
     assert c.post("/api/onboarding/declaration", json={"status": "asked"}).json == {"key": "declaration", "status": "asked"}
     assert c.post("/api/onboarding/nope", json={"status": "asked"}).status_code == 404
     assert c.post("/api/onboarding/x", json={"status": "lost"}).status_code == 400

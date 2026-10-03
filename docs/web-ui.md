@@ -39,7 +39,9 @@ Read-only helpers for the canvas: `GET /api/file?path=` serves a photo, PDF, or 
 
 - `POST /api/onboarding/<key>` records what a person did about one item of the onboarding request list (`status`, `asked_of`, `asked_on`, `chased_on`, `received_on`, `filed`, `reason`, `note`); the store is `data/onboarding/requests.json` (`tasks.onboarding`). `GET /api/onboarding` gives the active community's accounts (set or not, never a value), its facts by duty, the request list with the stores' own reading beside each item, and the gaps; `GET /api/communities` lists every profile this checkout can load with the active one's progress; `GET /api/request-letter` writes the letter from the items marked asked; `GET /api/library` (`?kind=`, `?record=`, `?period=`, `?words=`, `?confidential=1`) searches the classified library, so a received item is marked with the file jason classified rather than a typed path. The design is [onboarding-ux.md](onboarding-ux.md).
 
-`create_app(board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None)` turns the writes off; `/api/health` lists `writes`.
+- `POST /api/owner-info/<key>` (`by`, `confirmed`) records a person's confirmation of one planned owner-information write. `jason owner-info` saves the plan it computed (`data/payhoa/owner-info-plan.json`, `tasks.owner_info_plan`) as the read artifact of its run; `GET /api/owner-info` shows each write with its confirmation, the requests left to complete, the owners by standing, and the apply command once every write is confirmed. The apply stays `jason owner-info --apply --payhoa --yes` from a terminal.
+
+`create_app(board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None)` turns the writes off; `/api/health` lists `writes`.
 
 ## Views (`ui/src/views`, hash routes)
 

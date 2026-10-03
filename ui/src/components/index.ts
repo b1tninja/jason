@@ -6,6 +6,7 @@ export { Command } from "./Command";
 export { Embed, embedUrls, googleId, type Attachment, type EmbedKind } from "./Embed";
 export { Markdown, setMermaidUrl } from "./Markdown";
 export { Confirm } from "./Confirm";
+export { ConfirmList, type ConfirmRow } from "./ConfirmList";
 export { DataTable, type Column } from "./DataTable";
 export { DecisionCard, OUTCOMES, type DecisionDraft } from "./DecisionCard";
 export { DueDate, daysUntil } from "./DueDate";

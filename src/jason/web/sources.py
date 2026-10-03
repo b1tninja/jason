@@ -559,6 +559,16 @@ def library(args: Args) -> dict[str, Any]:
                 include_confidential=_flag(args, "confidential"), limit=int(args.get("limit", "25") or 25))
 
 
+def owner_info(args: Args) -> dict[str, Any]:
+    """The owner-information plan the last `jason owner-info` run computed (`tasks.owner_info_plan`): each PayHOA tag
+    write an answer calls for, with a person's confirmation beside it; the requests left to complete; the owners by
+    standing; and the apply command once every write is confirmed. Reads disk only."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks.owner_info_plan import status
+
+    return status(_data_dir(None))
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -649,6 +659,7 @@ def default_loaders() -> dict[str, Any]:
         "onboarding": onboarding,
         "request-letter": request_letter,
         "library": library,
+        "owner-info": owner_info,
         "drive-files": drive_files,
         "photos": photos,
         "embeds": embeds,
@@ -721,3 +732,13 @@ def write_request(key: str, body: dict[str, Any]) -> dict[str, Any]:
     if not clean:
         raise ValueError("nothing to change")
     return asdict(ob.update(_data_dir(None), key, **clean))
+
+
+def confirm_owner_info_write(key: str, body: dict[str, Any]) -> dict[str, Any]:
+    """A person's confirmation of one planned owner-information write (``by``; ``confirmed`` false withdraws it)."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks.owner_info_plan import confirm, status
+
+    root = _data_dir(None)
+    confirm(root, key, by=str(body.get("by", "")), confirmed=bool(body.get("confirmed", True)))
+    return status(root)

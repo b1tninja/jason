@@ -100,6 +100,12 @@ def cmd_owner_info(args: argparse.Namespace, agent_factory: Callable[[Any], Any]
     found, rows = _rows(units, people, answers, data_dir, community, cycle, today)
     report = summary(rows, cycle, today)
     report["catalogSynced"] = synced
+    # The plan this read computed, saved for the web UI to show and a person to confirm (owner_info_plan).
+    from jason.tasks.owner_info import plan_writes, to_complete
+    from jason.tasks.owner_info_plan import save_plan
+
+    planned = plan_writes(rows, found, community.payhoa_tags(), earlier=forms.EARLIER_ELECTIONS, today=today)
+    save_plan(data_dir, summary=report, writes=planned, to_complete=to_complete(rows, planned), owners=rows)
     print(json.dumps(report, indent=1))
     print("next actions:")
     for action, count in Counter(a for r in rows for a in r.actions[:1]).most_common():
@@ -140,6 +146,10 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
 
         test = test_memberships(getattr(args, "env", None))
         writes = [w for w in writes if not (w.kind.startswith("member") and w.target in test)]
+        from jason.tasks.owner_info import to_complete as _to_complete
+        from jason.tasks.owner_info_plan import save_plan as _save_plan
+
+        _save_plan(data_dir, summary=summary(rows, cycle, today), writes=writes, to_complete=_to_complete(rows, writes), owners=rows)
         for kind, count in Counter(w.kind for w in writes).items():
             print(f"  {kind:14} {count}")
         for w in writes[: args.show]:
@@ -153,6 +163,7 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
             done = execute(client, org, writes, member_tag_rows=tag_rows)
             print("written: " + ", ".join(f"{k} {v}" for k, v in done.items()))
             writes = []                                  # written: nothing pending stands in a request's way
+            _save_plan(data_dir, summary=summary(rows, cycle, today), writes=[], to_complete=_to_complete(rows, []), owners=rows, written=True)
         if args.payhoa:
             _complete_requests(args, client, org, forms, data_dir, rows, writes)
     return 0
