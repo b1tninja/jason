@@ -558,11 +558,16 @@ def default_embedder(data_dir: Path | str, **kwargs: Any) -> OllamaEmbedder:
     return OllamaEmbedder(cache=VectorCache(Path(data_dir) / "retrieval" / "vectors"), **kwargs)
 
 
-def search(query: str, *folders: Path | str, k: int = 8, data_dir: Path | str = "data", mode: str = "hybrid",
+def search(query: str, *folders: Path | str, k: int = 8, data_dir: Path | str | None = None, mode: str = "hybrid",
            rerank: bool = False, embedder: Embedder | None = None) -> tuple[Hit, ...]:
     """``passages.search`` with a mode: "keyword" (BM25, as ``passages.search``), "exact" (BM25 with the exact
     boost), "dense", or "hybrid". "dense" and "hybrid" embed through Ollama and cache under ``data_dir``. The passages
-    are cut as ``CHUNKING`` says, with the outlines under ``data_dir``."""
+    are cut as ``CHUNKING`` says, with the outlines under ``data_dir`` (the active profile's data folder,
+    ``jason.config.data_dir()``, when not given)."""
+    if data_dir is None:
+        from jason.config import data_dir as active_data_dir
+
+        data_dir = active_data_dir()
     items = corpus(*folders, chunking=CHUNKING, outlines=Path(data_dir) / "outlines")
 
     def fold(hits: Sequence[Hit]) -> tuple[Hit, ...]:

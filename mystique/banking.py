@@ -4,7 +4,7 @@ A reserve account's statements and letters are records of reserve balances and p
 as well as enhanced records under 5200(b); the operating account's statements are enhanced records only. The library
 marks a file by the suffix in its name ("<date>-statements-<last four>-.pdf").
 
-The accounts themselves (suffix, purpose, bank, label) are private facts in data/spec/bank_accounts.json
+The accounts themselves (suffix, purpose, bank, label) are private facts in data/spec/mystique/bank_accounts.json
 (jason.community.private), confirmed by the board on 2026-09-29: one operating account and the reserve accounts,
 including two reserve certificates of deposit.
 """
@@ -17,7 +17,7 @@ def _accounts() -> tuple[BankAccount, ...]:
     from jason.community.private import facts
 
     return tuple(BankAccount(str(r["suffix"]), AccountPurpose(r["purpose"]), r.get("bank", ""), r.get("label", ""))
-                 for r in facts("bank_accounts", []))
+                 for r in facts("bank_accounts", [], profile="mystique"))
 
 
 BANK_ACCOUNTS: tuple[BankAccount, ...] = _accounts()

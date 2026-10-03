@@ -120,7 +120,7 @@ def test_legal_cases_from_the_specification():
     m = mystique()
     cases = {c.key: c for c in m.legal_cases()}
     watt = cases["watt-construction-defects-2022"]
-    # The settlement's figures are private facts; the tests read made-up ones (tests/fixtures/spec/cases.json).
+    # The settlement's figures are private facts; the tests read made-up ones (tests/fixtures/spec/mystique/cases.json).
     assert (watt.gross_cents, watt.net_cents, watt.opened) == (10000000, 6000000, date(2022, 7, 5))
     assert [d.statute for d in watt.open_duties] == ["CIV 6100(a)", "CIV 4525(a)(7)", "CIV 4177(b), 5565(b)(3)",
                                                      "CIV 941(a)"]   # 6150 never applied

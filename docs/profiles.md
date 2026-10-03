@@ -17,11 +17,28 @@ oakview = "jason_oakview"
 
 It is imported as `jason_<name>`. Its `PROFILE` attribute names the `Community` class. `spec_module("forms")` reads one module of the active profile.
 
-`jason onboard --new KEY --name NAME` starts a new profile from jason's general templates (`src/jason/templates/profile/`): a package with a `Community` subclass holding only the identity given, an empty module for each family of rule rows, `docs/README.md`, and a `notes/` folder git ignores, plus empty private facts in `data/spec/KEY.json`. It never overwrites a package or private facts ([onboarding.md](onboarding.md#starting-a-new-association)).
+`jason onboard --new KEY --name NAME` starts a new profile from jason's general templates (`src/jason/templates/profile/`): a package with a `Community` subclass holding only the identity given, an empty module for each family of rule rows, `docs/README.md`, and a `notes/` folder git ignores, plus empty private facts in `data/spec/KEY.json` (its topics go in `data/spec/KEY/`). It never overwrites a package or private facts ([onboarding.md](onboarding.md#starting-a-new-association)).
 
 Importing jason loads no profile. The settings that come from it (`payhoa_org_id`, the utility categories) are read when first asked for, so a profile with no SMUD rule has no SMUD category instead of failing.
 
 The tests run against `mystique` whatever `.env` says (`tests/conftest.py`). `tests/test_profile.py` also builds a small second profile and loads it next to the first one.
+
+## Each profile's data
+
+A second association never reads the first one's data.
+
+| What | The default profile | Any other profile |
+|---|---|---|
+| Stores, caches, and generated pages | `data/` | `data/<profile>/` |
+| Onboarding's answers (`facts`, `leads`) | `data/spec/<profile>.json` | `data/spec/<profile>.json` |
+| Private fact topics (`bank_accounts`, `utility_accounts`, `cases`, `holds`, `senders`) | `data/spec/<profile>/<topic>.json` | `data/spec/<profile>/<topic>.json` |
+
+- **The data root** is `JASON_DATA_DIR` (environment or `.env`) when set, else `data/` beside the checkout (`jason.config.data_root`). It is the only place the folder is named.
+- **A profile's data folder** is the folder of `PAYHOA_CATALOG` when `.env` sets it, else `jason.config.default_data_dir()`. Code asks `jason.config.data_dir()` or the settings when it needs the path, never `Path("data")` and never a default argument that evaluates the profile. `tests/test_profile_data.py` fails on a new `Path("data")` in `src/jason`.
+- **The utility stores.** The `smud` and `i-doxs` checkouts' own stores beside jason are the default profile's. Another profile's settings point at `smud.db` and `idoxs.db` in its own data folder.
+- **Private facts** are read through `jason.community.private.facts(topic)`, for the active profile. A profile's module names itself (`facts("bank_accounts", [], profile="<its key>")`), so its facts never depend on which profile is active. A missing file is an empty answer.
+- **The old layout.** The default profile's topics were kept at `data/spec/<topic>.json`. They are still read for the default profile, and only for it, when its own folder has no copy. `jason spec` shows where each topic is read from (paths only). `jason spec --migrate` lists what it would copy into `data/spec/<default profile>/`, and with `--yes` copies it after a backup to `data/spec/backups/migrate-<stamp>/`. It never moves, changes, or deletes a source; a person removes the old files once satisfied.
+- **The tests** read made-up facts from `tests/fixtures/spec/<profile>/` (`JASON_SPEC_DIR`). `tests/test_profile_data.py` scaffolds a second profile over a data root that holds a first profile's stores and private facts. It runs the onboarding session, the library, the private facts, and the bank and utility accounts, and checks through Python's audit events that nothing of the first profile's is opened or listed and nothing is created.
 
 ## The three tiers of documentation
 
@@ -80,11 +97,13 @@ The coupling was surveyed on October 2, 2026. jason hardcodes no Drive ids or Pa
    - Each one reads `community.name`, `community.corporate_name`, `community.unit_city_state_zip()`, or a new profile field.
 5. **Data per profile (started).**
    - Every store derives `data/` from `Settings.payhoa_catalog.parent`.
-   - Done: when `PAYHOA_CATALOG` names no folder, that is `data/` for the default profile and `data/<profile>/` for any other (`jason.config.default_data_dir`).
+   - Done ([Each profile's data](#each-profiles-data)):
+     - when `PAYHOA_CATALOG` names no folder, that is `data/` for the default profile and `data/<profile>/` for any other (`jason.config.default_data_dir`);
+     - the `JASON_DATA_DIR` setting (`jason.config.data_root`);
+     - the code that said `Path("data")` asks `jason.config.data_dir()` or the settings, and a test keeps it so;
+     - the private fact topics are each profile's own (`data/spec/<profile>/<topic>.json`), with `jason spec --migrate` for the default profile's old files.
    - Still to do:
-     - a `JASON_DATA_DIR` setting;
-     - the code that still says `Path("data")` without the settings;
-     - the private fact files named by topic (`data/spec/bank_accounts.json`), which every profile reads;
+     - `jason.tasks.notice_record` still falls back to `Path("data")` (listed as pending in `tests/test_profile_data.py`);
      - a check that a store's recorded org id matches the profile's.
 6. **Regions.**
    - These sources are Sacramento's:

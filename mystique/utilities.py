@@ -26,7 +26,7 @@ UTILITY_ROLL: tuple[RollRule, ...] = (
 )
 
 # What each account serves, from the board's utility sheet (the "SMUD" and "Water" tabs, read 2026-09-29), with the
-# account numbers: private facts in data/spec/utility_accounts.json (jason.community.private), one row per account
+# account numbers: private facts in data/spec/mystique/utility_accounts.json (jason.community.private), one row per account
 # (utility, account, label, building). Only the purpose is pinned: meters, sizes, service addresses, and parcels are read
 # from the bills themselves, which are the record where the sheet and a bill differ. An account the sheet does not name
 # stays unlabeled until a person names it.
@@ -38,7 +38,7 @@ def _accounts() -> tuple[UtilityAccount, ...]:
 
     return tuple(UtilityAccount(Utility(r["utility"]), str(r["account"]), r.get("label", ""),
                                 Building(r["building"]) if r.get("building") else None)
-                 for r in facts("utility_accounts", []))
+                 for r in facts("utility_accounts", [], profile="mystique"))
 
 
 UTILITY_ACCOUNTS: tuple[UtilityAccount, ...] = _accounts()

@@ -237,7 +237,8 @@ class Store:
 
 @dataclass(frozen=True)
 class Private:
-    """A private fact file (``data/spec/<name>.json``) has entries. Only the count is reported, never a value."""
+    """The profile's private fact topic (``data/spec/<profile>/<name>.json``, ``jason.community.private``) has entries.
+    Only the count is reported, never a value."""
 
     name: str
 

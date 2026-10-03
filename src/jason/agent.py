@@ -943,13 +943,16 @@ class Jason:
 
     def dump_transactions(
         self,
-        path: str | Path = "data/payhoa_txs.jsonl",
+        path: str | Path | None = None,
         *,
         reviewed: ReviewedFilter = False,
         search: str = "",
         raw: bool = False,
         fmt: Literal["jsonl", "json"] = "jsonl",
     ) -> Path:
+        """``path`` defaults to ``payhoa_txs.jsonl`` in the profile's data folder."""
+        if path is None:
+            path = self.settings.payhoa_catalog.parent / "payhoa_txs.jsonl"
         return dump_transactions(
             self.payhoa(),
             self.org_id,

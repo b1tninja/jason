@@ -840,7 +840,8 @@ def contexts(community: Any, data_dir: Path, *, rows: list[dict[str, Any]], asks
     after_lib = tuple(distinct(raw + rows)) if rows else before_lib
     count = counter(root)
     before = Context(community=community, library=before_lib, holdings=holdings(before_lib), count=count,
-                     private=lambda name: facts(name), settings=settings, profile=profile, asks=tuple(asks))
+                     private=lambda name: facts(name, profile=profile), settings=settings, profile=profile,
+                     asks=tuple(asks))
     after = replace(before, library=after_lib, holdings=holdings(after_lib) if rows else before.holdings,
                     asks=tuple(after_asks if after_asks is not None else asks))
     return before, after

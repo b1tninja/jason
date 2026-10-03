@@ -13,14 +13,14 @@ from jason.community.legal_cases import CaseDuty, CaseEvent, CaseRole, CaseStatu
 from .incidents import EVIDENCE
 
 def _with_private(case: LegalCase) -> LegalCase:
-    """The case with its private facts from data/spec/cases.json (jason.community.private): settlement money, the
+    """The case with its private facts from data/spec/mystique/cases.json (jason.community.private): settlement money, the
     proceeds account, the cost of repair's items (Evidence Code 1119: for directors and counsel), insurer claim numbers,
     and events whose figures are kept out of the specification."""
     from dataclasses import replace
 
     from jason.community.private import facts
 
-    private = dict(facts("cases").get(case.key) or {})
+    private = dict(facts("cases", profile="mystique").get(case.key) or {})
     if "settled_items" in private:
         private["settled_items"] = tuple(SettledItem(**{**s, "standing": RepairStanding(s.get("standing", RepairStanding.OPEN.value))})
                                          for s in private["settled_items"])

@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-145 commands, by area:
+146 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -18,7 +18,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
-- [Setup & maintenance](#setup--maintenance) (6)
+- [Setup & maintenance](#setup--maintenance) (7)
 
 ## PayHOA & finance
 
@@ -30,7 +30,7 @@ Dump PayHOA transactions to JSONL/JSON for analysis
 |---|---|---|
 | `--reviewed` | {false,true,all} | reviewed filter (default: false = unreviewed queue) |
 | `--search` | SEARCH | PayHOA search query param |
-| `--out` | OUT | Output path (default: data/payhoa_txs.jsonl) |
+| `--out` | OUT | Output path (default: payhoa_txs.jsonl in the profile's data folder) |
 | `--format` | {jsonl,json} | Output format (default: jsonl) |
 | `--raw` |  | Write full API transaction objects |
 
@@ -1911,3 +1911,12 @@ Onboarding as a session: progress, stage gates, and the next questions ranked by
 | `--county` | COUNTY | with --new or --lookup: the county whose public records hold the association's |
 | `--dir` | DIR | with --new: where to write the package (default: beside the default profile) |
 | `--lookup` |  | search the county recorder's public index for the association's name, read-only; each find becomes a FACT question with the found value as its suggestion (alone: the active profile) |
+
+### `jason spec`
+
+Where the active profile's private facts are read from; --migrate to the per-profile layout
+
+| Option | Value | Help |
+|---|---|---|
+| `--migrate` |  | copy the default profile's topic files (data/spec/TOPIC.json) into data/spec/PROFILE/; a dry run unless --yes |
+| `--yes` |  | with --migrate: copy, after a backup of each file copied |

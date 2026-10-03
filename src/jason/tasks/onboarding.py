@@ -95,7 +95,8 @@ def load_context(community: Any, data_dir: Path, *, settings: Any = None, asks: 
         except Exception:  # noqa: BLE001
             profile = ""
     return Context(community=community, library=library, holdings=holdings, count=counter(data_dir),
-                   private=lambda name: facts(name), settings=settings, profile=profile, asks=tuple(asks))
+                   private=lambda name: facts(name, profile=profile), settings=settings, profile=profile,
+                   asks=tuple(asks))
 
 
 def run(community: Any, data_dir: Path, *, settings: Any = None) -> tuple[ItemResult, ...]:

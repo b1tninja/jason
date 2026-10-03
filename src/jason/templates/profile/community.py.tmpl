@@ -6,7 +6,8 @@ the module named beside it, and every module starts empty: an empty answer is a 
 - **A fact is a row.** Add it to the module that holds its kind of row. Do not hardcode it in a method, a task, or a
   default argument.
 - **Private facts stay out.** People, emails, phone numbers, account numbers, and figures go in
-  `data/spec/{{KEY}}.json`, which is never checked in. Passwords and codes go in Keeper.
+  `data/spec/{{KEY}}.json` (onboarding's answers) and `data/spec/{{KEY}}/TOPIC.json` (one file per topic, read with
+  `jason.community.private.facts`), which are never checked in. Passwords and codes go in Keeper.
 - **jason asks for what is missing.** `JASON_PROFILE={{KEY}} jason onboard` lists the checklist, the stage gates, and
   the next questions. An answer becomes a private fact or a proposed change to this package, for a person to apply.
 """

@@ -192,6 +192,7 @@ GROUPS: dict[str, str] = {
     # Setup & maintenance
     "login": "Setup & maintenance",
     "onboard": "Setup & maintenance",
+    "spec": "Setup & maintenance",
     "jobs": "Setup & maintenance",
     "worker": "Setup & maintenance",
 }

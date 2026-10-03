@@ -94,7 +94,7 @@ def cmd_dump_transactions(args: argparse.Namespace) -> int:
     else:
         reviewed_arg = False
 
-    out = Path(args.out)
+    out = Path(args.out) if args.out else None
     with _agent(args) as agent:
         path = agent.dump_transactions(
             out,
@@ -3272,8 +3272,8 @@ def build_parser() -> argparse.ArgumentParser:
     dump.add_argument("--search", default="", help="PayHOA search query param")
     dump.add_argument(
         "--out",
-        default="data/payhoa_txs.jsonl",
-        help="Output path (default: data/payhoa_txs.jsonl)",
+        default=None,
+        help="Output path (default: payhoa_txs.jsonl in the profile's data folder)",
     )
     dump.add_argument(
         "--format",

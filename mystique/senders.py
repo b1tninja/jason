@@ -135,13 +135,13 @@ _SENDERS: tuple[Sender, ...] = (
 
 
 def _with_private(sender: Sender) -> Sender:
-    """A sender with its private facts (data/spec/senders.json): which unit an owner's property manager serves, and
+    """A sender with its private facts (data/spec/mystique/senders.json): which unit an owner's property manager serves, and
     match words that are a person's name."""
     from dataclasses import replace
 
     from jason.community.private import facts
 
-    private = facts("senders")
+    private = facts("senders", profile="mystique")
     role = (private.get("roles") or {}).get(sender.name)
     extra = tuple((private.get("words") or {}).get(sender.name, ()))
     if not role and not extra:

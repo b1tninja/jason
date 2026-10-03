@@ -19,12 +19,9 @@ from pathlib import Path
 
 
 def _data_dir(args: argparse.Namespace) -> Path:
-    from jason.config import Settings
+    from jason.config import data_dir
 
-    try:
-        return Settings.load(args.env).payhoa_catalog.parent
-    except Exception:
-        return Path("data")
+    return data_dir(getattr(args, "env", None))
 
 
 def cmd_document_duties(args: argparse.Namespace) -> int:

@@ -6,7 +6,8 @@
   ``None``.
 - ``BANK_ACCOUNTS``: ``jason.community.base.BankAccount`` rows by the last digits the statements carry, with each one's
   ``AccountPurpose`` (operating or reserve). The account numbers themselves and the signers are private facts
-  (``data/spec/{{KEY}}.json``), never here.
+  (``data/spec/{{KEY}}/bank_accounts.json``, read with ``jason.community.private.facts("bank_accounts",
+  profile={{KEY_LITERAL}})``), never here.
 
 See docs/ledger-reports.md and docs/reserve-transfers.md.
 """

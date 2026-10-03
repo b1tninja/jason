@@ -6,7 +6,7 @@ dogs began. Vault holds the association's Workspace account (Drive and Mail); bo
 photos, and Zoom's cloud, are outside Vault and are kept by notice and export. While the hold stands the Decorum Rules'
 deletion of the Secretary's recording is suspended, as is any Zoom cloud-recording auto-delete.
 
-The hold's private facts are in data/spec/holds.json (jason.community.private), by the hold's key: the Workspace
+The hold's private facts are in data/spec/mystique/holds.json (jason.community.private), by the hold's key: the Workspace
 accounts held, the unit's address among the search terms, the matter's Drive folder, the custodian of record, and
 counsel's direct contact.
 """
@@ -22,7 +22,7 @@ from jason.community.holds import LegalHoldSpec
 def _with_private(spec: LegalHoldSpec) -> LegalHoldSpec:
     from jason.community.private import facts
 
-    private = facts("holds").get(spec.key) or {}
+    private = facts("holds", profile="mystique").get(spec.key) or {}
     return replace(spec, custodians=tuple(private.get("custodians", ())), terms=spec.terms + tuple(private.get("terms", ())),
                    drive_folders=tuple(private.get("drive_folders", ())),
                    custodian_of_record=private.get("custodian_of_record", ""),

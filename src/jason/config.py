@@ -54,11 +54,51 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def _env_value(key: str) -> str:
+    """``key`` from the environment, else from .env (``resolve_env_path``), else ""."""
+    value = os.environ.get(key, "").strip()
+    if value:
+        return _strip_quotes(value)
+    try:
+        from dotenv import dotenv_values
+
+        path = resolve_env_path(None)
+        values = dotenv_values(path) if path.is_file() else {}
+    except Exception:  # noqa: BLE001 - an unreadable .env sets nothing
+        return ""
+    for k, v in values.items():
+        if k.upper() == key and v:
+            return _strip_quotes(str(v))
+    return ""
+
+
+def data_root() -> Path:
+    """The data root: ``JASON_DATA_DIR`` (environment or .env) when set, else ``data/`` beside this checkout. It is the
+    default profile's data folder, the parent of every other profile's, and the home of the private facts
+    (``<root>/spec``). Code asks ``data_dir()`` or ``default_data_dir()`` for a profile's folder; this is the one place
+    the folder is named."""
+    explicit = _env_value("JASON_DATA_DIR")
+    if explicit:
+        return Path(explicit)
+    return Path(__file__).resolve().parents[2] / "data"
+
+
+def _is_default_profile(profile: str = "") -> bool:
+    """Whether ``profile`` (the active one by default) is the default profile. Reading the name loads no profile; a name
+    that is not a profile's counts as the default, as ``default_data_dir`` reads it."""
+    try:
+        from jason.community.profile import DEFAULT_PROFILE, profile_name
+
+        return (profile or profile_name()) == DEFAULT_PROFILE
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def default_data_dir(profile: str = "") -> Path:
     """The data folder when ``PAYHOA_CATALOG`` does not name one: ``data/`` for the default profile, ``data/<profile>/``
     for any other, so a second association never reads the first one's stores (phase 5 of docs/profiles.md).
     ``profile`` defaults to the active one; reading its name loads no profile."""
-    root = Path(__file__).resolve().parents[2] / "data"
+    root = data_root()
     try:
         from jason.community.profile import DEFAULT_PROFILE, profile_name
 
@@ -66,6 +106,16 @@ def default_data_dir(profile: str = "") -> Path:
     except Exception:  # noqa: BLE001 - a name that is not a profile's leaves the first profile's folder
         return root
     return root if name == DEFAULT_PROFILE else root / name
+
+
+def data_dir(env_file: str | Path | None = None) -> Path:
+    """The active profile's data folder as the commands read it: the folder of the PayHOA catalog
+    (``Settings.payhoa_catalog.parent``, so ``PAYHOA_CATALOG`` in .env moves it), else ``default_data_dir()`` when the
+    settings cannot be read. Called when a path is needed, never as a default argument's value."""
+    try:
+        return Settings.load(env_file).payhoa_catalog.parent
+    except Exception:  # noqa: BLE001 - a .env that cannot be read leaves the profile's own folder
+        return default_data_dir()
 
 
 def default_keeper_config_path() -> Path:
@@ -121,17 +171,26 @@ def resolve_env_path(path: str | Path | None = None) -> Path:
 
 
 def _default_smud_db() -> Path:
+    """The ``smud`` checkout's own store beside jason for the default profile (it holds that association's accounts),
+    else ``smud.db`` in the profile's data folder: another profile never reads the first one's utility store."""
     sibling = Path(__file__).resolve().parents[3] / "smud" / "data" / "smud.db"
-    if sibling.is_file():
+    if sibling.is_file() and _is_default_profile():
         return sibling
-    return Path("data") / "smud.db"
+    return default_data_dir() / "smud.db"
 
 
 def _default_idoxs_db() -> Path:
+    """As ``_default_smud_db``, for the ``i-doxs`` checkout's store."""
     sibling = Path(__file__).resolve().parents[3] / "i-doxs" / "data" / "idoxs.db"
-    if sibling.is_file():
+    if sibling.is_file() and _is_default_profile():
         return sibling
-    return Path("data") / "idoxs.db"
+    return default_data_dir() / "idoxs.db"
+
+
+def _in_data(name: str):
+    """A dataclass default: ``name`` in the active profile's data folder, found when a ``Settings`` is built (never at
+    import, so importing jason reads no profile)."""
+    return field(default_factory=lambda: default_data_dir() / name)
 
 
 @dataclass(frozen=True)
@@ -151,18 +210,18 @@ class Settings:
     keeper_password: str = ""
     keeper_config: Path = Path(DEFAULT_KEEPER_CONFIG)
     payhoa_org_id: int = field(default_factory=_default_payhoa_org_id)
-    smud_db: Path = Path("data/smud.db")
-    smud_bills_dir: Path = Path("data/bills")
+    smud_db: Path = _in_data("smud.db")
+    smud_bills_dir: Path = _in_data("bills")
     smud_category_id: int | None = field(default_factory=_default_smud_category_id)
-    idoxs_db: Path = Path("data/idoxs.db")
-    idoxs_bills_dir: Path = Path("data/idoxs-bills")
+    idoxs_db: Path = _in_data("idoxs.db")
+    idoxs_bills_dir: Path = _in_data("idoxs-bills")
     idoxs_category_id: int | None = field(default_factory=_default_idoxs_category_id)
-    payhoa_catalog: Path = Path("data/payhoa.db")
-    ownership_db: Path = Path("data/ownership.db")
-    tax_db: Path = Path("data/tax.db")
-    tax_bills_dir: Path = Path("data/tax-bills")
-    secured_db: Path = Path("data/secured.db")
-    characteristics_db: Path = Path("data/characteristics.db")
+    payhoa_catalog: Path = _in_data("payhoa.db")
+    ownership_db: Path = _in_data("ownership.db")
+    tax_db: Path = _in_data("tax.db")
+    tax_bills_dir: Path = _in_data("tax-bills")
+    secured_db: Path = _in_data("secured.db")
+    characteristics_db: Path = _in_data("characteristics.db")
     google_oauth_record_uid: str = ""
     google_oauth_client_file: Path | None = None
     google_oauth_token_file: Path = Path("secrets/google-token.json")
