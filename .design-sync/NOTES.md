@@ -33,6 +33,15 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   JSX lands in `ViewBoundary`. A caught throw still appears in the review json's `pageErrs` (React logs it); the
   cell renders, so it is not a capture error.
 
+- **Mermaid is not bundled.** `Markdown` loads it at render time from a CDN (`setMermaidUrl` overrides); bundling
+  it put 5 MB into the library build and would have gone into every design. A diagram cell cannot be verified
+  where the capture has no network, so the Markdown preview carries none.
+- **This container has no outbound network** (the proxy refuses the CDN) and the headless Chromium shell has
+  no PDF viewer: a Google preview frame, a Mermaid diagram, or a PDF cannot be verified in a capture here. The
+  Embed and Markdown previews use blob URLs (an SVG photo, an HTML page) that render offline instead.
+- **`data:` and `blob:` refs.** `embedUrls` passes them through (anything else is a path under data/), and
+  `Markdown` allows them as image sources (DOMPurify's default strips both); the preview images rely on it.
+
 ## Known render warns
 
 - `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's

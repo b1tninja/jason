@@ -2,7 +2,17 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-/** Renders a ```mermaid fence. The library is loaded on first use (it is large) and never blocks the text. */
+// DOMPurify's default drops data: and blob: sources; a clip or a preview may carry an inline image, so images keep them.
+const URI = /^(?:(?:(?:f|ht)tps?|mailto|tel|blob|data:image\/[a-z+]+;|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$)):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i;
+
+/** Where Mermaid is loaded from on first use: a few megabytes that belong in no bundle. Override before the first
+ * diagram renders (`setMermaidUrl`) to serve it from the app's own host. */
+let mermaidUrl = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+export function setMermaidUrl(url: string) {
+  mermaidUrl = url;
+}
+
+/** Renders a ```mermaid fence. The library loads at render time from `mermaidUrl` and never blocks the text. */
 function Mermaid({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
@@ -10,7 +20,7 @@ function Mermaid({ code }: { code: string }) {
     let live = true;
     (async () => {
       try {
-        const m = (await import("mermaid")).default;
+        const m = (await import(/* @vite-ignore */ mermaidUrl)).default;
         m.initialize({ startOnLoad: false, securityLevel: "strict", theme: window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
         const { svg } = await m.render(`m${Math.random().toString(36).slice(2)}`, code);
         if (live && ref.current) ref.current.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true, html: true } });
@@ -43,7 +53,7 @@ export function Markdown({ text }: { text: string }) {
     <div className="markdown">
       {parts.map((p, i) =>
         p.kind === "mermaid" ? <Mermaid key={i} code={p.body} /> : (
-          <div key={i} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(p.body, { async: false }) as string, { ADD_ATTR: ["target"] }).replace(/<a /g, '<a target="_blank" rel="noreferrer" ') }} />
+          <div key={i} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(p.body, { async: false }) as string, { ADD_ATTR: ["target"], ALLOWED_URI_REGEXP: URI }).replace(/<a /g, '<a target="_blank" rel="noreferrer" ') }} />
         ))}
     </div>
   );

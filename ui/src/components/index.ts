@@ -4,7 +4,7 @@ export { Card } from "./Card";
 export { Caveats } from "./Caveats";
 export { Command } from "./Command";
 export { Embed, embedUrls, googleId, type Attachment, type EmbedKind } from "./Embed";
-export { Markdown } from "./Markdown";
+export { Markdown, setMermaidUrl } from "./Markdown";
 export { Confirm } from "./Confirm";
 export { DataTable, type Column } from "./DataTable";
 export { DueDate, daysUntil } from "./DueDate";

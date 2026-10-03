@@ -2,7 +2,7 @@ export type EmbedKind = "doc" | "sheet" | "slides" | "form" | "drive" | "image" 
 
 export interface Attachment {
   kind: EmbedKind;
-  ref: string;   // a Google file id, a URL, or a path under data/ (image, pdf)
+  ref: string;   // a Google file id, a URL (http, blob, or data), or a path under data/ (image, pdf)
   title?: string;
 }
 
@@ -23,7 +23,7 @@ export function embedUrls(a: Attachment): { frame: string; open: string } {
     case "drive": return { frame: `https://drive.google.com/file/d/${id}/preview`, open: `https://drive.google.com/file/d/${id}/view` };
     case "image":
     case "pdf": {
-      const u = /^https?:/.test(a.ref) ? a.ref : `/api/file?path=${encodeURIComponent(a.ref)}`;
+      const u = /^(https?:|blob:|data:)/.test(a.ref) ? a.ref : `/api/file?path=${encodeURIComponent(a.ref)}`;
       return { frame: u, open: u };
     }
     default: return { frame: a.ref, open: a.ref };

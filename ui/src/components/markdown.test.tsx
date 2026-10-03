@@ -13,6 +13,12 @@ describe("Markdown", () => {
     expect(screen.getByText("after")).toBeInTheDocument();
     expect(document.querySelector(".mermaid, .notice-error")).not.toBeNull();
   });
+  it("keeps data: and blob: image sources and still drops javascript: links", () => {
+    render(<Markdown text={"![a](data:image/svg+xml;utf8,%3Csvg%3E) ![b](blob:http://x/2) [bad](javascript:alert(1))"} />);
+    expect(screen.getByRole("img", { name: "a" })).toHaveAttribute("src", "data:image/svg+xml;utf8,%3Csvg%3E");
+    expect(screen.getByRole("img", { name: "b" })).toHaveAttribute("src", "blob:http://x/2");
+    expect(screen.getByText("bad")).not.toHaveAttribute("href");
+  });
 });
 
 describe("Embed", () => {
@@ -24,6 +30,8 @@ describe("Embed", () => {
     expect(embedUrls({ kind: "form", ref: "1AbCdEfGhIjKlMnOpQ" }).frame).toContain("viewform?embedded=true");
     expect(embedUrls({ kind: "image", ref: "photos/east bed.jpg" }).frame).toBe("/api/file?path=photos%2Feast%20bed.jpg");
     expect(embedUrls({ kind: "pdf", ref: "https://h/x.pdf" }).frame).toBe("https://h/x.pdf");
+    expect(embedUrls({ kind: "image", ref: "blob:http://x/1" }).frame).toBe("blob:http://x/1");
+    expect(embedUrls({ kind: "image", ref: "data:image/png;base64,AAAA" }).frame).toBe("data:image/png;base64,AAAA");
   });
   it("renders an image as img and a doc as an iframe", () => {
     const { rerender } = render(<Embed a={{ kind: "image", ref: "photos/a.jpg", title: "before" }} />);
