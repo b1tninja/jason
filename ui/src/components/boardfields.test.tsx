@@ -26,7 +26,7 @@ describe("BoardFields", () => {
     const confirm = screen.getByRole("group", { name: "Confirm" });
     expect(confirm).toHaveTextContent("Status: open → on agenda");
     expect(confirm).toHaveTextContent("Owner: (blank) → D. Okafor");
-    expect(confirm.firstElementChild?.textContent?.trim().endsWith("Saved to the board fields only.")).toBe(true); // the summary, before the buttons
+    expect(confirm.querySelector(":scope > div")?.textContent?.trim().endsWith("Saved to the board fields only.")).toBe(true); // the summary, before the buttons
     await user.click(screen.getByRole("button", { name: "Yes, do it" }));
     await waitFor(() => expect(posted).toEqual([{ status: "on agenda", owner: "D. Okafor" }]));
     const saved = onSaved.mock.calls[0][0];

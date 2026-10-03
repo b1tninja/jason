@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 
-/** A two-step button: the first click shows what will happen, the second does it. For anything that writes. */
-export function Confirm({ children, summary, onConfirm, busy }: { children: ReactNode; summary: ReactNode; onConfirm: () => void; busy?: boolean }) {
+/** A two-step button: the first click shows what will happen, the second does it. For anything that writes. Armed, it
+ * is a stamp: the `label` ("Confirm", "Record", "Send") hangs on its top edge, the summary comes first, the buttons last. */
+export function Confirm({ children, summary, onConfirm, busy, label = "Confirm" }: { children: ReactNode; summary: ReactNode; onConfirm: () => void; busy?: boolean; label?: string }) {
   const [armed, setArmed] = useState(false);
   if (!armed)
     return (
@@ -10,7 +11,8 @@ export function Confirm({ children, summary, onConfirm, busy }: { children: Reac
       </button>
     );
   return (
-    <div className="confirm" role="group" aria-label="Confirm">
+    <div className="confirm" role="group" aria-label={label}>
+      <span className="confirm-label" aria-hidden="true">{label}</span>
       <div>{summary}</div>
       <div className="row">
         <button className="primary" onClick={() => { setArmed(false); onConfirm(); }} disabled={busy}>

@@ -1,13 +1,17 @@
+/* The clerk's desk (the design project's templates/redesign/REDESIGN-SPEC.md): paper on a desk, rules, a serif for
+   what is read (Newsreader, with Georgia while it loads or offline), a sans for what is scanned, tabular figures. */
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap");
 :root {
-  --bg: #f6f7f9; --panel: #fff; --ink: #1c2330; --muted: #5f6b7a; --line: #dde1e7; --accent: #2457c5;
-  --good: #1b7a43; --warn: #946200; --bad: #b3261e;
+  --bg: #eef1f5; --panel: #fff; --paper: #e8ecf2; --ink: #1a2028; --muted: #5a6473; --line: #d9dee6; --rule: #c3cad4;
+  --accent: #2457c5; --good: #1b7a43; --warn: #946200; --bad: #b3261e;
+  --r: 2px; --serif: 'Newsreader', Georgia, 'Times New Roman', serif; --label: 11.5px;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #12161d; --panel: #1b212b; --ink: #e8ebf0; --muted: #98a3b3; --line: #2c3442; --accent: #7ba2ff; --good: #5fcf8a; --warn: #e3b341; --bad: #ff8a80; }
+  :root { --bg: #111419; --panel: #191e26; --paper: #20262f; --ink: #e7eaef; --muted: #9ba5b3; --line: #2a313b; --rule: #3a4350; --accent: #7ba2ff; --good: #5fcf8a; --warn: #e3b341; --bad: #ff8a80; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14.5px/1.5 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 .shell-bar { display: flex; gap: 1rem; align-items: center; padding: .75rem 1rem; background: var(--panel); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; color: var(--ink); text-decoration: none; }
 .shell-main { max-width: 1100px; margin: 0 auto; padding: 1rem; }
@@ -467,3 +471,145 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stage-state { font-size: 13px; color: var(--muted); } .stage-state-open { color: var(--good); } .stage-waits { margin: 0; font-size: 13px; }
 
 /* ==== end console build ==== */
+
+/* ==== the clerk's desk ====
+   The redesign (REDESIGN-SPEC.md; the gallery templates/redesign/ComponentGallery.dc.html), folded in from the design
+   project's clerk.css. Each rule there was `[data-skin="clerk"] X`; here it is `:root X`, which has the same specificity, so
+   the cascade over the rules above is the one the gallery shows, with nothing to opt into. Colour is spent in three places:
+   the community accent on primary buttons and headings, selection and focus, and status (always with a word). */
+
+/* type */
+:root :is(h1, h2, h3, .screen-head h1, .card-head h2, .drawer-title, .stage-title, .brief-q, .draft-letter-body h3, .dock-title, .approve-decide legend, .plan-head h2) { font-family: var(--brand-font, var(--serif)); font-weight: var(--brand-weight, 500); letter-spacing: var(--brand-tracking, 0); text-wrap: pretty; }
+:root .screen-head h1 { font-size: 34px; line-height: 1.1; }
+:root .screen-head p { color: var(--muted); max-width: 60ch; }
+:root .card-head h2 { font-size: 20px; margin: 0; }
+:root :is(.console-group-label, .stat-label, th, .dock-h, .hp-field, .wfield > span, .readiness-checks, .plan-section-head, .rf-set legend, .kv dt, .factrow > :first-child, .tl-date, .recitation-label, .reading-label, .hp-section > span:first-child) { font-size: var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+:root .tl-date { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; }
+
+/* corners and surfaces */
+:root :is(.card, .stat, .hostpanel, .drawer-pinned, .draft-letter, .approve-bar, .brief-option, .item, .lane, .confirm, .notice, .notice-warn, .notice-error, .notice-good, .search, .fields input, .fields select, .fields textarea, .hp-field input, .hp-field select, .hp-field textarea, .chip, .clock li, .nav a, .console-nav button, .attach-dialog, .dock-note, .dock-add, .console-goto select, .console-signin select, .question-card, .plan-group, .apply-result, .badge, button, .console-owner-banner, .held-note, .changed-banner, .room-shared) { border-radius: var(--r); }
+:root :is(.card, .hostpanel, .drawer-pinned, .plan-group, .question-card, .room-shared) { border-color: var(--rule); }
+:root .card { padding: 18px 20px; }
+:root .card-head { padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+:root .stat { border: 0; border-top: 2px solid var(--ink); border-radius: 0; background: transparent; padding: 10px 2px 6px; }
+:root .stat-value { font-family: var(--serif); font-size: clamp(22px, 1.9vw, 28px); font-weight: 400; line-height: 1.1; margin: 2px 0 4px; overflow-wrap: anywhere; }
+:root .stat-hint { font-size: 13px; }
+
+/* buttons: ink chrome, the community accent only on the primary */
+:root button { padding: .4rem .85rem; border-color: var(--rule); background: var(--panel); font-size: 14px; line-height: 1.3; }
+:root button:hover { border-color: var(--ink); }
+:root button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); font-weight: 600; }
+:root button.link { border: 0; background: none; padding: 0; color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+:root button.link:hover { text-decoration-color: var(--ink); }
+:root button[aria-pressed="true"] { outline: 0; background: var(--ink); color: var(--panel); border-color: var(--ink); }
+:root :is(button, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* a sortable table head is a label that sorts, not a button in a box (clerk.css's `button` rule would box it) */
+:root th button { padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
+/* the same for the other buttons that are not boxes: tabs (an underline only when selected), wizard steps, the small
+   segmented control */
+:root .tabs button { background: none; border-color: transparent; }
+:root .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+:root .wizard-steps button { border: 0; background: none; padding: 2px 0; }
+:root .seg { border: 1px solid var(--rule); border-radius: var(--r); padding: 0; gap: 0; background: var(--panel); }
+:root .seg button { border: 0; border-radius: 0; background: transparent; padding: 4px 12px; }
+:root .seg button[aria-pressed="true"], :root .seg button[aria-checked="true"] { background: var(--ink); color: var(--panel); }
+
+/* badges, pills, chips: a quiet tinted label, never a pill */
+:root .badge { border: 0; padding: 1px 6px; font-size: 12px; letter-spacing: .01em; background: color-mix(in srgb, currentColor 11%, transparent); }
+:root .badge-neutral { color: var(--muted); }
+:root .chip { border-color: var(--line); background: var(--paper); font-size: 12.5px; padding: 1px 6px; }
+:root .evidence .chip { font-family: var(--serif); font-style: italic; font-size: 13px; }
+
+/* tables and registers: ledger rules, labelled heads */
+:root th { border-bottom: 2px solid var(--rule); padding: .45rem .6rem; white-space: nowrap; }
+:root td { padding: .55rem .6rem; border-bottom: 1px solid var(--line); }
+:root tbody tr:last-child td { border-bottom: 1px solid var(--rule); }
+:root table.selectable tbody tr:hover { background: var(--paper); }
+:root tr.selected td { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+:root .search { border-radius: var(--r); background: var(--panel); border-color: var(--rule); }
+:root .tabs { gap: 18px; border-bottom: 1px solid var(--rule); }
+:root .tabs button { padding: .55rem 0; border-width: 0 0 2px; font-size: 14px; }
+
+/* confirm: a stamp box with a hanging label (Confirm's `label`); the summary is the point */
+:root .confirm { position: relative; border: 1px dashed var(--ink); padding: 16px 16px 12px; margin-top: 12px; background: var(--panel); }
+:root .confirm-label { position: absolute; top: -9px; left: 12px; padding: 0 6px; background: var(--panel); font-size: var(--label); line-height: 18px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+:root .confirm p, :root .confirm li { font-size: 14px; line-height: 1.55; }
+:root .confirm button.primary { margin-top: 4px; }
+
+/* approve bar: your move, on a double rule */
+:root .approve-bar { border: 1px solid var(--rule); border-top: 3px double var(--ink); border-radius: 0; background: var(--panel); padding: 14px 18px; }
+:root .approve-decide legend { font-size: 20px; }
+:root .approve-sign { font-family: var(--serif); font-size: 16px; }
+:root .write-row { border-top-color: var(--line); }
+:root .write-approved { border-left: 3px solid var(--good); }
+:root .write-rejected { border-left: 3px solid var(--bad); }
+:root .write-held, :root .write-held-for-board { border-left: 3px solid var(--warn); }
+:root .changed-banner { border: 2px solid var(--bad); border-radius: 0; }
+
+/* draft letter: letterhead on paper */
+:root .draft-letter { border: 0; border-radius: 0; background: var(--panel); box-shadow: 0 0 0 1px var(--rule), 0 14px 28px -22px rgba(0, 0, 0, .45); }
+:root .draft-letter-head { background: var(--panel); border-bottom: 1px solid var(--rule); }
+:root .draft-letter-body { font-family: var(--serif); font-size: 17px; line-height: 1.6; padding: 34px clamp(20px, 5vw, 56px) 28px; }
+:root .draft-letter-body h3 { font-size: 28px; font-weight: 500; }
+:root .draft-letter-body dl { font-family: system-ui, sans-serif; font-size: 13.5px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+:root .draft-letter-foot { border-top: 1px solid var(--rule); background: var(--paper); }
+
+/* status, deadlines, notices */
+:root .due { font-variant-numeric: tabular-nums; }
+:root :is(.notice, .notice-warn, .notice-error, .notice-good) { border-width: 1px 1px 1px 3px; padding: .6rem .9rem; background: var(--panel); }
+:root .caveats { border-left: 0; padding: 0; color: var(--muted); font-size: 13.5px; }
+:root .findings li { padding: .3rem 0; border-bottom: 1px solid var(--line); }
+:root .findings li:last-child { border-bottom: 0; }
+
+/* timeline and clock */
+:root .timeline { border-left: 1px solid var(--rule); }
+:root .tl::before { width: 8px; height: 8px; left: -4.5px; box-shadow: 0 0 0 3px var(--panel); }
+:root .clock li { border: 0; border-top: 1px solid var(--rule); border-radius: 0; padding: 10px 2px 8px 1.6rem; background: transparent; }
+:root .clock-next { border-top: 2px solid var(--ink) !important; }
+
+/* kanban: a card wall with quiet lanes */
+:root .lane { background: transparent; border: 0; border-top: 2px solid var(--rule); border-radius: 0; padding: 8px 0; }
+:root .lane h3 { font-family: system-ui, sans-serif; font-size: var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 4px 0 10px; }
+:root .item { border: 1px solid var(--line); border-left-width: 1px; box-shadow: inset 3px 0 0 transparent; }
+:root .item[data-priority="urgent"] { box-shadow: inset 3px 0 0 var(--bad); }
+:root .item[data-priority="high"] { box-shadow: inset 3px 0 0 var(--warn); }
+
+/* forms */
+:root :is(.fields, .hp-field, .wfield) :is(input, select, textarea) { background: var(--panel); border-color: var(--rule); padding: .45rem .6rem; font-size: 14px; }
+:root :is(.fields, .hp-field, .wfield) :is(input, select, textarea):focus { border-color: var(--ink); }
+:root .fields label { gap: 4px; }
+
+/* shell: desk bar, rail nav, text dock */
+:root .console-bar { background: var(--bg); border-bottom: 1px solid var(--rule); }
+:root .console-bar-inner { padding: 10px 24px; }
+:root .console-legal, :root .console-meta { font-size: 12.5px; }
+:root .console-signin select { border-radius: var(--r); background: var(--panel); border-color: var(--rule); padding: 3px 8px; }
+:root .dock { border: 0; padding: 0; gap: 16px; border-radius: 0; }
+:root .dock-pill, :root .dock button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 5px 0; background: transparent; color: var(--muted); font-size: 13.5px; }
+:root .dock-pill.on, :root .dock button[aria-expanded="true"] { background: transparent; color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+:root .dock-count { background: var(--bad); color: #fff; border-radius: var(--r); font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 5px; text-align: center; }
+:root .console-seg { border: 1px solid var(--rule); border-radius: var(--r); padding: 0; gap: 0; background: var(--panel); }
+:root .console-seg button { border-radius: 0; padding: 4px 12px; }
+:root .console-seg button[aria-checked="true"] { background: var(--ink); color: var(--panel); }
+:root .console-nav { gap: 20px; }
+:root .console-group-label { margin-left: 12px; }
+:root .console-nav button { border: 0; border-left: 2px solid transparent; border-radius: 0; padding: 5px 10px; background: transparent; color: var(--muted); display: flex; gap: 9px; align-items: center; }
+:root .console-nav button:hover { color: var(--ink); }
+:root .console-nav button[aria-current="page"] { border-left-color: var(--ink); background: transparent; color: var(--ink); font-weight: 600; }
+:root .console-owner-banner { background: var(--paper); border-color: var(--line); color: var(--muted); }
+:root .drawer-head { border-bottom: 1px solid var(--rule); background: var(--paper); }
+:root .drawer-float { box-shadow: -1px 0 0 var(--rule), -24px 0 48px -32px rgba(0, 0, 0, .4); }
+
+/* meetings: the stage keeps its dark ground; the host panel goes to paper */
+:root .stage { border-radius: 4px; }
+:root .stage-title { font-weight: 500; }
+:root .hostpanel .tabs { gap: 0; border-bottom: 1px solid var(--rule); }
+:root .hostpanel .tabs button { padding: 10px 12px; }
+:root .rollcall th { border-bottom: 2px solid var(--rule); }
+:root .rollcall td { padding: .4rem .6rem; }
+:root .brief-option { border-color: var(--rule); padding: 14px 16px; }
+:root .brief-letter { font-family: var(--serif); font-style: italic; font-size: 15px; }
+:root .wizard-steps { border-bottom: 1px solid var(--rule); }
+:root .step-n { border-radius: var(--r); }
+:root .readiness { border-top: 1px solid var(--line); padding-top: 12px; }
+/* ==== end the clerk's desk ==== */

@@ -9,9 +9,17 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - **Component CSS is global.** The components carry no CSS imports (a per-component `.css` import makes the library
   build emit a separate `style.css` the converter never ships, so designs lose those rules; `Embed`'s link-card rules
   were folded into `styles.css` for that reason); everything is `ui/src/styles.css`
-  (`cfg.cssEntry`). Tokens are the `:root` custom properties in that file (`--bg`, `--panel`, `--ink`, `--muted`,
-  `--line`, `--accent`, `--good`, `--warn`, `--bad`), with a dark variant under `prefers-color-scheme`. The font is
-  `system-ui`: no `@font-face`, nothing to ship, no `[FONT_MISSING]`.
+  (`cfg.cssEntry`). Tokens are the `:root` custom properties in that file (`--bg`, `--panel`, `--paper`, `--ink`,
+  `--muted`, `--line`, `--rule`, `--accent`, `--good`, `--warn`, `--bad`, `--r`, `--serif`, `--label`), with a dark
+  variant under `prefers-color-scheme`. Fonts: `system-ui`, and Newsreader (`--serif`) through a Google Fonts `@import`
+  at the top of `styles.css`, so the build reports `[FONT_REMOTE]` (informational) and nothing ships in `fonts/`;
+  Georgia stands in where the font cannot load. Self-hosting it is the console's open decision 9 (docs/console/mvp.md).
+- **The clerk's desk (2026-10-03).** The redesign (the project's `templates/redesign/`, REDESIGN-SPEC.md) is folded into
+  `styles.css` as its last section, each `[data-skin="clerk"] X` rule written `:root X` for the same specificity, so
+  no attribute is needed. Its bare `button` rule outranks component rules that strip a button's box at one class
+  (`th button`, `.tabs button`, `.wizard-steps button`, `.seg button`); the section restores those explicitly, and the
+  design project's own `clerk.css` still has that defect. Confirm renders its hanging label as `.confirm-label`
+  (prop `label`), not `::before`.
 - **Four exports share a source file.** `Loading`, `ErrorNotice`, `EmptyState` live in `States.tsx` and
   `RemoteView` in `Remote.tsx`; `cfg.componentSrcMap` pins them, otherwise they are "not src-matched".
 - **Playwright.** The container's cached Chromium is build 1194 at `/opt/pw-browsers`, pinned by

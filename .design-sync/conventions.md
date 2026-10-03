@@ -7,27 +7,37 @@ Keep that voice in anything you build with it.
 ## Setup
 
 No provider and no wrapper. Load `styles.css` once (it imports `_ds_bundle.css`); every component is styled by the
-global classes and the `:root` tokens in that file. Components come from `window.JasonUI.*`. React 18. The font
-is `system-ui`; there is nothing to load.
+global classes and the `:root` tokens in that file. Components come from `window.JasonUI.*`. React 18. Two faces:
+`system-ui` for what is scanned (labels, tables, controls) and `var(--serif)` (Newsreader, which `styles.css` loads,
+falling back to Georgia) for what is read: titles, letters, decision questions, stat figures. Figures are tabular
+everywhere.
 
 ## Styling idiom: tokens and a small class vocabulary, no utility system
 
-Colors are CSS custom properties on `:root`, with a dark variant under `prefers-color-scheme: dark`. Use them in
-inline styles or small CSS; never hard-code a color.
+The look is a clerk's desk: paper on a desk, rules instead of boxes, two-pixel corners, ink chrome. Colour is spent in
+three places only: the community accent on the primary button and headings, selection and focus, and status (always
+with a word). The tokens are CSS custom properties on `:root`, with a dark variant under `prefers-color-scheme: dark`.
+Use them in inline styles or small CSS; never hard-code a color or a radius.
 
 | Token | Use |
 |---|---|
-| `--bg`, `--panel` | page background, card background |
-| `--ink`, `--muted` | text, secondary text |
-| `--line` | borders and dividers |
+| `--bg`, `--panel` | the desk (page background), paper (cards, tables, letters) |
+| `--paper` | a second sheet: drawer heads, letter feet, chips, a hovered row |
+| `--ink`, `--muted` | text and chrome, secondary text and labels |
+| `--line` | hairlines inside paper (row dividers) |
+| `--rule` | rules that bound a thing: card edges, table heads, the nav rail, lanes |
+| `--r` | every corner (2px); never round to a pill |
+| `--serif`, `--label` | the reading face; the size of small-caps labels (uppercase, +7% tracking, weight 600) |
 | `--accent` | the one action color (primary buttons, active tab) |
 | `--good`, `--warn`, `--bad` | standings: done / due soon / overdue |
 
 Layout glue is a handful of global classes from `styles.css`: `.stack` (vertical gap), `.row` + `.wrap` (flex
 row), `.grid-2`, `.grid-3`, `.stats` (a stat tile row; widen with `gridTemplateColumns: "repeat(auto-fill,
 minmax(200px, 1fr))"` when a tile holds six-figure money), `.muted`, `.num` (right-aligned tabular numbers),
-`.chip` (an inline code chip), `.notice`, `.notice-warn`, `.notice-error`. Buttons: a bare `<button>` is the
-secondary style; `className="primary"` is the one accent button; `className="link"` is a text button.
+`.chip` (an inline code chip), `.notice`, `.notice-warn`, `.notice-error` (paper with one 3px edge in its tone).
+Buttons: a bare `<button>` is the secondary style (ink on paper, a rule border); `className="primary"` is the one
+accent button; `className="link"` is an underlined text button. A heading (`h1`-`h3`) takes the community's brand
+font, else the serif.
 
 ## The components and how they fit
 
@@ -46,14 +56,15 @@ secondary style; `className="primary"` is the one accent button; `className="lin
 - **Remote state**: `RemoteView` takes `r` from `useApi` and a `children(data)` function; it handles loading,
   error with Retry, the tool's own `found: false` note, and a view that throws on an unexpected shape (it then
   shows the raw data). `Loading`, `ErrorNotice`, `EmptyState` are the pieces on their own.
-- **Writes**: `Confirm` (`summary`, `onConfirm`, `busy`): two clicks, the change spelled out. Use it in front of
-  anything that writes.
+- **Writes**: `Confirm` (`summary`, `onConfirm`, `busy`, `label`): two clicks, the change spelled out. Armed, it is
+  a dashed stamp with its `label` ("Confirm", "Record", "Send") hanging on the top edge and the summary first. Use
+  it in front of anything that writes.
 
 ## The console pieces (board loop, meetings, dock)
 
 Brand tokens the theme adds, all with fallbacks: `--on-accent`, `--accent-2`, `--brand-font`, `--brand-weight`,
 `--brand-case`, `--brand-tracking`, `--hero`, `--hero-ink`, `--hero-muted`, `--hero-line`. Use
-`font-family: var(--brand-font, system-ui)` for a wordmark or an H1; `ScreenHeader` (`title`, `summary`, `actions`)
+`font-family: var(--brand-font, var(--serif))` for a wordmark or a heading; `ScreenHeader` (`title`, `summary`, `actions`)
 already does, so start a screen with it. `ConsoleShell` (`wordmark`, `legal`, `groups`, `screens`, `current`,
 `onGo`, `audience`, `onAudience`, `session`, `dock`, children) is the whole frame: grouped left nav, Board / Owner
 switch, dock toolbar.
