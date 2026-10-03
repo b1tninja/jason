@@ -32,8 +32,9 @@ CONFLICTS = (
         "on a penalty. The rest of the schedule stands until the board adopts the new policy.",
         Clarity.PLAIN, ConflictStatus.BOARD, (Area.ENFORCEMENT,), board_item="enforcement-policy-ab130"),
     Conflict(
-        "per-day-fines", "the 2022 fine schedule's per-day fines", Tier.OPERATING_RULES,
-        "Fines a continuing violation by the day until it is cured.",
+        "per-day-fines", "the 2022 fine schedule's per-day fines; owner's manual B-18(e)", Tier.OPERATING_RULES,
+        "Fines a continuing violation by the day until it is cured; B-18(e) fines an unapproved alteration not restored "
+        "on the board's request $10 to $50 a day.",
         "CIV 5850(c), 5865", Tier.STATUTE, AB_130,
         "Whether a fine accruing by the day survives the $100 cap is unsettled; the bylaws allow per-day fines, and "
         "5865 says 5850 neither expands nor reduces the board's authority.",
