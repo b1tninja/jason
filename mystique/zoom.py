@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from jason.zoom.models import HearingPolicy, MeetingKind, MeetingRule, Recording
+from jason.zoom.models import BoardMeetingPolicy, HearingPolicy, MeetingKind, MeetingRule, Recording
 
 TIMEZONE = "America/Los_Angeles"
 
@@ -47,3 +47,8 @@ EXECUTIVE_BREAK_PATTERNS: tuple[str, ...] = (
 
 HEARING_POLICY =HearingPolicy(timezone=TIMEZONE, duration_minutes=30, waiting_room=True, recording=Recording.NONE,
                                topic="Mystique board hearing")
+
+# The board's open meeting: ninety minutes at the schedule's hour, a waiting room, cloud recording on (the open
+# session's transcript is the record the sync reads; the host pauses it for the executive session).
+BOARD_MEETING_POLICY = BoardMeetingPolicy(timezone=TIMEZONE, duration_minutes=90, waiting_room=True, recording=Recording.CLOUD,
+                                          topic="Mystique board meeting")

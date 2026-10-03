@@ -1,0 +1,7 @@
+/* Books checks: the ledger validation checklist. */
+.books-checklist .card-head h2 { display: flex; align-items: center; gap: .5rem; }
+.books-count { font-size: .8rem; font-weight: normal; padding: 0 .45rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.books-count-bad { border-color: var(--bad); color: var(--bad); }
+.books-count-good { border-color: var(--good); color: var(--good); }
+.books-none { color: var(--good); }
+.books-chips code.chip { white-space: nowrap; }

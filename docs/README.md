@@ -12,6 +12,9 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [base-templates.md](base-templates.md): plan for general base templates (letters, notices, forms, packets) rendered per profile, with the statutory catalog.
 - [cli.md](cli.md): every `jason` command and its options, generated from the parser by `scripts/gen_cli_docs.py`.
 - [mcp.md](mcp.md): the jason-mcp tools.
+- [web-ui.md](web-ui.md): the React UI, its WSGI server, and the API.
+- [web-ui-decisions.md](web-ui-decisions.md): where jason needs a person, and the UI component for each.
+- [onboarding-ux.md](onboarding-ux.md): onboarding a community: the portal, the request list a manager sends, and ingestion.
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
 - [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes.
 
@@ -64,6 +67,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [meetings.md](meetings.md): the meeting records catalog across Zoom, Drive, and PayHOA, and its checks.
 - [calendar.md](calendar.md): meetings, notice and hearing deadlines, and recurring deadlines on Google Calendar.
 - [zoom.md](zoom.md): the Zoom meeting history and disciplinary hearings under Civil Code 5855.
+- [zoom-attend.md](zoom-attend.md): research on attending meetings: what the Server-to-Server app reaches, RTMS, a Meeting SDK bot, a Zoom App, captions, and AI Companion, and what jason would do with each.
 
 ## Owners, notices, and forms
 

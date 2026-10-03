@@ -21,6 +21,7 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 from jason.community.base import Community
 
@@ -32,6 +33,30 @@ _LOADED: dict[str, Community] = {}
 
 class ProfileNotFound(LookupError):
     """No package for the named profile."""
+
+
+def profiles() -> list[dict[str, Any]]:
+    """Every profile this checkout can load, by the same search as ``profile_package``: the folders beside jason
+    (``profiles/<name>/`` and ``<name>/`` with a package inside), ``JASON_PROFILE_DIR``, and the ``jason.profiles``
+    entry points. Each with where it was found and whether it is the active one. Loads none of them."""
+    found: dict[str, dict[str, Any]] = {}
+    here = Path(__file__).resolve().parents[3]
+    for folder in (here / "profiles", here):
+        if not folder.is_dir():
+            continue
+        for child in sorted(folder.iterdir()):
+            if child.is_dir() and _NAME.match(child.name) and (child / "__init__.py").is_file() and child.name not in ("src", "tests", "docs", "scripts", "ui", "data"):
+                found.setdefault(child.name, {"name": child.name, "where": str(child)})
+    custom = os.environ.get("JASON_PROFILE_DIR", "").strip()
+    if custom and Path(custom).is_dir():
+        found.setdefault(Path(custom).name, {"name": Path(custom).name, "where": custom})
+    try:
+        for ep in entry_points(group=ENTRY_POINT_GROUP):
+            found.setdefault(ep.name, {"name": ep.name, "where": f"entry point {ep.value}"})
+    except Exception:  # an environment without importlib.metadata groups
+        pass
+    active = profile_name()
+    return [{**row, "active": row["name"] == active} for row in found.values()]
 
 
 def profile_name() -> str:

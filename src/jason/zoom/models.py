@@ -75,6 +75,19 @@ class HearingPolicy:
     topic: str = "Board hearing"
 
 
+@dataclass(frozen=True)
+class BoardMeetingPolicy:
+    """How the association holds a board meeting on Zoom: its time zone, the meeting's length, the waiting room (members
+    are admitted; the board can deliberate apart in executive session), and the cloud recording the open session's
+    transcript comes from. The notice periods are the statute's, not here."""
+
+    timezone: str
+    duration_minutes: int = 90
+    waiting_room: bool = True
+    recording: Recording = Recording.CLOUD
+    topic: str = "Board meeting"
+
+
 NOTICE_DAYS = 10               # CIV 5855(a)
 SUSPENSION_NOTICE_DAYS = 15    # Corp 7341(c)(2): suspending a member of a mutual benefit corporation
 DECISION_DAYS = 14             # CIV 5855(f)
@@ -348,6 +361,38 @@ class HearingPlan:
             "executiveNoticeBy": self.executive_notice_by.isoformat(), "decisionByIfHeld": self.decision_by_if_held.isoformat(),
             "zoom": self.zoom, "problems": self.problems,
         }
+
+
+@dataclass
+class BoardMeetingPlan:
+    """A board meeting to schedule on Zoom: when, under which policy, and once created, what the notice may carry."""
+
+    start: datetime
+    policy: BoardMeetingPolicy
+    zoom: dict[str, Any] = field(default_factory=dict)   # id, joinUrl, passcode, dialIn, once created
+
+    def meeting_body(self) -> dict[str, Any]:
+        """The ``POST /users/me/meetings`` body: a dated topic, the waiting room, members muted on entry, and the
+        policy's recording. Every director vote in a teleconference meeting is a roll call (CIV 4926), so no poll."""
+        return {
+            "topic": f"{self.policy.topic} {self.start.date().isoformat()}",
+            "type": 2,
+            "start_time": self.start.strftime("%Y-%m-%dT%H:%M:%S"),
+            "timezone": self.policy.timezone,
+            "duration": self.policy.duration_minutes,
+            "agenda": "Open meeting of the board of directors (Civil Code 4920, 4926)",
+            "settings": {
+                "waiting_room": self.policy.waiting_room,
+                "join_before_host": False,
+                "mute_upon_entry": True,
+                "approval_type": 2,
+                "auto_recording": self.policy.recording.value,
+            },
+        }
+
+    def record(self) -> dict[str, Any]:
+        return {"date": self.start.date().isoformat(), "start": self.start.isoformat(timespec="minutes"),
+                "timezone": self.policy.timezone, "topic": self.meeting_body()["topic"], "zoom": self.zoom}
 
 
 def zoom_details(created: dict[str, Any]) -> dict[str, Any]:

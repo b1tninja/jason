@@ -1,0 +1,58 @@
+{
+  "projectId": "0977b54c-c98d-4496-ac57-54c8c05577fb",
+  "shape": "package",
+  "pkg": "jason-ui",
+  "globalName": "JasonUI",
+  "buildCmd": "npm run build:lib",
+  "srcDir": "src/components",
+  "cssEntry": "src/styles.css",
+  "componentSrcMap": {
+    "RemoteView": "src/components/Remote.tsx",
+    "Loading": "src/components/States.tsx",
+    "ErrorNotice": "src/components/States.tsx",
+    "EmptyState": "src/components/States.tsx"
+  },
+  "overrides": {
+    "Kanban": {
+      "cardMode": "column",
+      "viewport": "1400x700"
+    },
+    "AppShell": {
+      "cardMode": "column"
+    },
+    "DecisionCard": {
+      "cardMode": "column"
+    },
+    "RegisterGrid": {
+      "cardMode": "column"
+    },
+    "RollCall": {
+      "cardMode": "column"
+    },
+    "ConsoleShell": {
+      "cardMode": "column",
+      "viewport": "1400x900"
+    },
+    "AgendaWizard": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "HostPanel": {
+      "cardMode": "column"
+    },
+    "BoardFields": {
+      "cardMode": "column"
+    },
+    "Drawer": {
+      "cardMode": "single",
+      "primaryStory": "Floating"
+    },
+    "DriveAttach": {
+      "cardMode": "column"
+    },
+    "MeetingStage": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

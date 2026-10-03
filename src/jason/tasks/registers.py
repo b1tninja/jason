@@ -13,7 +13,10 @@ Sheets is warned before overwriting what jason keeps. Shaping runs once per spre
 2. **writes only jason's columns** that changed, cell by cell in one atomic ``values:batchUpdate``; a board column of an
    existing row is never written;
 3. **appends** a record with no row yet, whole;
-4. **reports** a row whose key jason does not know (a row the board added by hand); it is left as it is.
+4. **reports** a row whose key jason does not know (a row the board added by hand); it is left as it is;
+5. **pushes the board's UI edits** waiting in the register's local snapshot (``jason.tasks.register_snapshots``): each
+   is applied like a Sheet edit, written to its board cell so the Sheet catches up, and logged "in the UI";
+6. **saves the snapshot** of what it now holds, so the UI shows the register and the board can edit its columns there.
 
 Nothing is cleared, reordered, or deleted. The state (spreadsheet ids, shaping) is ``data/registers/registers.json``.
 """
@@ -202,10 +205,20 @@ def sync(sheets: Any, reg: Register, data_dir: Path, records: Callable[[], list[
             if value and value != _cell(record.get(name)).strip():
                 edits.setdefault(k, {})[name] = value
                 log.append([seen, k, name, _cell(record.get(name)), value, "the board, in the Sheet"])
+    from jason.tasks import register_snapshots as snapshots
+
+    data: list[dict[str, Any]] = []
+    for k, changes in snapshots.pending_edits(data_dir, reg).items():
+        if k not in before:
+            continue
+        for name, value in changes.items():
+            edits.setdefault(k, {})[name] = value
+            log.append([seen, k, name, _cell(before[k].get(name)), value, "the board, in the UI"])
+            if k in rows:  # the board's own value, onto its own cell, so the Sheet catches up
+                data.append({"range": f"{reg.tab}!{letter(reg.names.index(name))}{rows[k][0]}", "values": [[value]]})
     if edits and apply is not None:
         apply(edits)
     after = records()
-    data: list[dict[str, Any]] = []
     append: list[list[str]] = []
     for record in after:
         k = str(record[key])
@@ -222,6 +235,8 @@ def sync(sheets: Any, reg: Register, data_dir: Path, records: Callable[[], list[
         sheets.values_append(sid, f"{reg.tab}!A1", append)
     if log:
         sheets.values_append(sid, f"{LOG_TAB}!A1", log)
+    kept = (snapshots.load_snapshot(data_dir, reg.key) or {}).get("log", [])
+    snapshots.save_snapshot(data_dir, reg, after, log=kept + [dict(zip(LOG_COLUMNS, entry)) for entry in log])
     known = {str(r[key]) for r in after}
     return {"boardEdits": sum(len(v) for v in edits.values()), "cellsWritten": len(data), "appended": len(append),
             "logged": len(log), "unknownRows": sorted(k for k in rows if k not in known)}

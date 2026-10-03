@@ -43,6 +43,8 @@ A general page that has instance detail ends with one pointer line, for example 
 
 It then lists the general documents that name any of them. Adding a fact to the profile extends the check. A code span that points into the profile (`mystique/meetings.py`) is allowed. The association's name in prose is not.
 
+**Themes are profile data.** The association's brand for the console and its public owner page is one `Theme` row (`jason.community.base.Theme`) returned by `Community.theme()`: the accent and the text that sits on it, a second accent, the brand font with its weight, case, and tracking, the hero surface, dark-scheme overrides by the same keys, the surface layer the public page opts into with `data-reach="full"`, and a font stylesheet URL. The console reads it from `GET /api/theme` (`jason.web.extra.theme`) and scopes it to `[data-community="<slug>"]` (`ui/src/lib/theme.ts`); jason's data views take the brand layer only. No color, font, or wordmark appears in `src/jason/`, `ui/src/`, or these docs; a profile without a theme answers `found: false` and the console keeps its neutral look. The public page's facts come the same way, from `GET /api/community-profile` (`jason.web.extra.community_profile`), which reads `Community` methods alone and shows nothing for a method left at its empty default. This association: `mystique/docs/theme.md`.
+
 `tests/fixtures/docs_boundary.json` is a ratchet. It records what each document names today. A new term fails the test, and so does a cleared term that the baseline still lists. Run `python -m jason.community.boundary` to see where things stand, and `--update` to rewrite the baseline after a cleanup.
 
 ## Making jason reusable: the phases

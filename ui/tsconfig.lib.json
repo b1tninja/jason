@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": false, "declaration": true, "emitDeclarationOnly": true, "outDir": "dist-lib", "rootDir": "src", "types": [] },
+  "include": ["src/components/**/*.ts", "src/components/**/*.tsx", "src/lib/**/*.ts", "src/DigestView.tsx"],
+  "exclude": ["src/**/*.test.tsx", "src/setup.ts"]
+}

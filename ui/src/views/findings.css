@@ -1,0 +1,7 @@
+/* The two "decision beside the facts" views: a recorded decision reads as a quiet card; a flag that needs the board reads warm. */
+.recorded { border-left: 3px solid var(--accent); padding: .4rem .75rem; margin: .5rem 0; }
+.recorded blockquote { margin: .25rem 0; font-style: italic; }
+.recorded .who { color: var(--muted); font-size: .85rem; }
+.recorded ul.history { margin: .25rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .8rem; }
+.fields .check { flex-direction: row; align-items: center; gap: .5rem; }
+.fields .check input { width: auto; }

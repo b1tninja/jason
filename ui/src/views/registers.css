@@ -1,0 +1,8 @@
+.register-grid td { vertical-align: top; }
+.register-grid .rg-cell { display: inline-flex; gap: .4rem; align-items: baseline; }
+.register-grid .rg-cell .link { opacity: .55; font-size: .8rem; }
+.register-grid tr:hover .rg-cell .link, .register-grid .rg-cell .link:focus { opacity: 1; }
+.register-grid .rg-edit { display: inline-grid; gap: .4rem; grid-template-columns: 1fr; min-width: 12rem; }
+.register-grid .rg-edit .confirm { grid-column: 1 / -1; }
+.register-grid .rg-key { display: inline-flex; gap: .4rem; align-items: center; font-family: ui-monospace, monospace; font-size: .9rem; }
+.register-grid .rg-log summary { cursor: pointer; font-weight: 600; margin: .25rem 0; }
