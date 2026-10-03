@@ -1,0 +1,11 @@
+/* Records requests under Civil Code 5200-5240. */
+.rr-kinds { display: grid; gap: .3rem; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; padding: .5rem .75rem; }
+.rr-kinds legend { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
+.rr-kinds label { flex-direction: row !important; align-items: baseline; gap: .4rem; color: var(--ink) !important; }
+.rr-facts { display: grid; grid-template-columns: max-content 1fr; gap: .3rem .8rem; margin: 0; }
+.rr-facts dt { color: var(--muted); font-size: .85rem; }
+.rr-facts dd { margin: 0; }
+.rr-list { margin: 0; padding-left: 1.1rem; }
+.rr-quote { margin: 0; padding: .3rem .6rem; border-left: 3px solid var(--line); white-space: pre-wrap; }
+.rr-withheld { display: grid; gap: .5rem; margin: .8rem 0; }
+@media (max-width: 640px) { .rr-kinds { grid-template-columns: 1fr; } .rr-facts { grid-template-columns: 1fr; } }
