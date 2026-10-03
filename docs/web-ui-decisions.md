@@ -124,6 +124,14 @@ canvas opens to its workspace. "To the board" shows the commands that turn it in
 section; the page runs neither. A clip is evidence a person kept, not a pin in the specification's sense. The
 store is jason's own (`data/canvases/`), which is why the UI may write it.
 
+Media by how it embeds: Google Docs, Sheets, Slides, Forms, Drive files, a Google Calendar, a published Sheets
+chart, a map, and a Zoom recording embed by URL for a viewer already allowed to see them; photos, PDFs, and
+audio under `data/` go through the read-only file route; Gmail and Google Tasks cannot be framed, so a thread
+is a link card and the Tasks sync is read from jason's own record. The Google Picker (a live Drive and Photos
+chooser in the browser) waits on a sign-in in the UI; until then the picker reads the Drive catalog and the
+photo albums jason already keeps. County, recorder, assessor, permit, and statute pages mostly refuse framing
+and are links.
+
 What a canvas shows: the notes render as Markdown, with ```mermaid fences as diagrams and photos inline
 (`![before](/api/file?path=photos/<album>/<file>.jpg)`); attachments show in place, a Google Doc, Sheet, Slides
 deck, Form, or Drive file in Google's own preview frame (for a viewer already allowed to see it), a photo or PDF
