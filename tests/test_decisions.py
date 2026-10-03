@@ -49,7 +49,7 @@ def test_api_decision_routes(tmp_path):
             raise ValueError("outcome is one of approved, denied, tabled")
         return {"id": decision_id or "new", **body}
 
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=writer, request_writer=None, owner_info_writer=None, hearing_writer=None).test_client()
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=writer, request_writer=None, owner_info_writer=None, hearing_writer=None, extra_writes=False).test_client()
     assert c.post("/api/decisions", json={"meeting": "2026-10-20", "title": "t", "motion": "m"}).json["id"] == "new"
     assert c.post("/api/decisions/x", json={"outcome": "approved"}).json["outcome"] == "approved"
     assert c.post("/api/decisions/x", json={"outcome": "carried"}).status_code == 400

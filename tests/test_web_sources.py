@@ -86,11 +86,11 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info", "rule-changes"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info", "rule-changes"} | set(sources.EXTRA_LOADERS) == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
-        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info", "rule-changes"):  # stores under data/ or the profile, not county tools; their own tests below
+        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info", "rule-changes") or name in sources.EXTRA_LOADERS:  # stores under data/ or the profile, not county tools; their own tests below
             continue
         out = fn({})
         assert isinstance(out, dict), name

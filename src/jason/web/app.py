@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from jason.web.sources import confirm_owner_info_write, default_loaders, set_board_item, write_canvas, write_decision, write_hearing_decision, write_request
+from jason.web.sources import confirm_owner_info_write, default_loaders, extra_writer, set_board_item, write_canvas, write_decision, write_hearing_decision, write_request
 
 DEFAULT_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
 
@@ -27,7 +27,7 @@ Writer = Callable[[str, dict[str, Any]], dict[str, Any]]
 def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None, board_writer: Writer | None = set_board_item,
                canvas_writer: Writer | None = write_canvas, decision_writer: Writer | None = write_decision,
                request_writer: Writer | None = write_request, owner_info_writer: Writer | None = confirm_owner_info_write,
-               hearing_writer: Writer | None = write_hearing_decision) -> Flask:
+               hearing_writer: Writer | None = write_hearing_decision, extra_writes: bool = True) -> Flask:
     dist = Path(dist) if dist else Path(os.environ.get("JASON_UI_DIST", DEFAULT_DIST))
     sources = default_loaders() if loaders is None else loaders
     app = Flask(__name__, static_folder=None)
@@ -112,6 +112,20 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
+    @app.post("/api/write/<store>/<path:key>")
+    def extra_write(store: str, key: str):
+        """A person's entry into one of the extra stores (jason.web.extra): a decision, a choice, a filled blank."""
+        writer = extra_writer(store) if extra_writes else None
+        if writer is None:
+            return jsonify(error=f"no writes for {store}"), 405 if extra_writes else 405
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify(writer(key, body))
+        except KeyError as exc:
+            return jsonify(error=f"no {store} {exc.args[0] if exc.args else key}"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
     @app.get("/api/file")
     def local_file():
         """A photo or document under data/, read-only, for a canvas to show. Only files under data/ and only these types."""
@@ -136,7 +150,7 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
 
     @app.get("/api/health")
     def health():
-        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer), ("decisions", decision_writer), ("onboarding", request_writer), ("owner-info", owner_info_writer), ("hearings", hearing_writer)) if on])
+        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer), ("decisions", decision_writer), ("onboarding", request_writer), ("owner-info", owner_info_writer), ("hearings", hearing_writer)) if on] + (sorted(__import__("jason.web.sources", fromlist=["EXTRA_WRITERS"]).EXTRA_WRITERS) if extra_writes else []))
 
     @app.get("/api/<name>")
     def source(name: str):

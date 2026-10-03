@@ -705,8 +705,47 @@ def leads(args: Args) -> dict[str, Any]:
             "caveats": ["A lead is evidence, not a pin: a reading, a match, or a gap is something to read, never a finding."]}
 
 
+# Features in their own modules (jason.web.extra.<module>), resolved on first call so a missing one is a 500 for
+# that source alone, never a failed import of the app.
+EXTRA_LOADERS: dict[str, str] = {
+    "registers": "jason.web.extra.registers:registers",
+    "delinquency": "jason.web.extra.delinquency:delinquency",
+    "minutes-review": "jason.web.extra.minutes_review:minutes_review",
+    "insurance-renewals": "jason.web.extra.insurance_renewals:insurance_renewals",
+    "reserve-findings": "jason.web.extra.reserve_findings:reserve_findings",
+    "records-requests": "jason.web.extra.records_requests:records_requests",
+    "mail-triage": "jason.web.extra.mail_triage:mail_triage",
+}
+EXTRA_WRITERS: dict[str, str] = {
+    "registers": "jason.web.extra.registers:write",
+    "delinquency": "jason.web.extra.delinquency:write",
+    "minutes-review": "jason.web.extra.minutes_review:write",
+    "insurance-renewals": "jason.web.extra.insurance_renewals:write",
+    "reserve-findings": "jason.web.extra.reserve_findings:write",
+    "records-requests": "jason.web.extra.records_requests:write",
+    "mail-triage": "jason.web.extra.mail_triage:write",
+}
+
+
+def _lazy(spec: str):
+    import importlib
+
+    module, _, name = spec.partition(":")
+
+    def call(*a, **kw):
+        return getattr(importlib.import_module(module), name)(*a, **kw)
+    call.__name__ = name
+    return call
+
+
+def extra_writer(store: str):
+    """The writer for an extra store, or None when there is none."""
+    spec = EXTRA_WRITERS.get(store)
+    return _lazy(spec) if spec else None
+
+
 def default_loaders() -> dict[str, Any]:
-    return {
+    return {**{name: _lazy(spec) for name, spec in EXTRA_LOADERS.items()},
         "board-digest": board_digest,
         "board-items": board_items,
         "association-records": association_records,

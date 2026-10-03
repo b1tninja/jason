@@ -41,7 +41,7 @@ def test_api_hearing_route(tmp_path):
             raise ValueError("by")
         return {"key": key, "decision": body}
 
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=writer).test_client()
+    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=writer, extra_writes=False).test_client()
     assert c.post("/api/hearings/2026-10-20|123-main-st-12", json={"findings": "f", "decidedOn": "2026-10-20", "by": "S"}).json["key"] == "2026-10-20|123-main-st-12"
     assert c.post("/api/hearings/nope", json={"by": "S"}).status_code == 404
     assert c.post("/api/hearings/x", json={}).status_code == 400
