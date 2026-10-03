@@ -2616,10 +2616,17 @@ def cmd_board(args: argparse.Namespace) -> int:
                       (f", last login {m['lastLogin']}" if m["lastLogin"] else ""))
         return 0
     if args.minutes:
+        from jason.tasks.minutes_draft import check_lines, recheck
         from jason.tasks.minutes_draft import draft as draft_minutes
 
+        if args.recheck:
+            found = recheck(data_dir, mystique(), date.fromisoformat(args.minutes))
+            print(f"checked {found['file']} (DRAFT; nothing posted)")
+            print("\n".join(check_lines(found)[2:]).rstrip())
+            return 0
         result = draft_minutes(data_dir, mystique(), date.fromisoformat(args.minutes))
         print(f"wrote {result['file']} (DRAFT; nothing posted)")
+        print("\n".join(check_lines(result["checks"])[2:]).rstrip())
         print(f"  {result['unknowns']} blanks for the Secretary; the draft's own check still lacks: {', '.join(result['gaps']) or 'nothing'}")
         if result["unsupported"]:
             print(f"  sections whose quotes are not in the transcript (check them): {', '.join(result['unsupported'])}")
@@ -4025,6 +4032,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Read the members PayHOA tags 'Board Member' (current and archived) into data/payhoa/board-members.json")
     board.add_argument("--minutes", default="", metavar="DATE",
                        help="Draft the minutes of the board meeting on DATE from its Zoom record with the local model (open meeting only)")
+    board.add_argument("--recheck", action="store_true",
+                       help="With --minutes: count the quorum and find confidential subjects in the draft already written; "
+                            "no model")
     board.add_argument("--date", default="", help="The meeting date (default: the next third Tuesday)")
     board.add_argument("--previous", default="", help="The previous meeting's date, for the minutes to approve")
     board.add_argument("--directors", default="", help="Comma-separated directors for the minutes template")

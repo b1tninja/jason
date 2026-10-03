@@ -420,6 +420,18 @@ LESSONS: tuple[Lesson, ...] = (
            "jason reports 'a file in time; its delivery is not on record' and never counts it as met; a person confirms "
            "each delivery and records it in the notice ledger.",
            Status.OPEN, guards=("record_stages evidence strength",), docs=("docs/record-stages.md",)),
+    Lesson("model-asserts-quorum", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "Two minutes drafts from Zoom transcripts each said 'a quorum was present' while listing two of four "
+           "directors on the call, below the bylaws' majority of those in office; one recorded a motion as carried, "
+           "and the other set out a lawsuit and a member's assessment hearing in the open business.",
+           "The model wrote the quorum sentence from the template's prompt instead of counting, and a meeting with no "
+           "executive break gave it every subject discussed.",
+           "The drafter counts the directors on the call against the board's quorum, flags a quorum claim the count "
+           "does not support and any motion acted on without one, and lists lines naming a subject the open minutes "
+           "give only in general terms. Whether to ratify actions taken without a quorum is the board's decision.",
+           Status.FIXED, guards=("minutes_draft.checks", "jason board --minutes DATE --recheck",
+                                 "tests/test_minutes_draft_checks.py", "procedure board-packet"),
+           docs=("docs/board-agenda.md (Drafting the minutes from the Zoom record)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

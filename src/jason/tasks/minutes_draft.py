@@ -149,6 +149,104 @@ def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
             "transcript": transcript[:55_000], "brokeAtExecutive": brk is not None}
 
 
+def _tokens(name: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]+", name.casefold()) if len(w) > 1}
+
+
+def directors_on_call(record: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """The directors in office the attendance names (a participant's words all in one director's name, or the other
+    way round, and no second director matching), and the participants that could be a director but are not named:
+    callers shown only by a number that the Secretary has not said are not directors."""
+    found: list[str] = []
+    for participant, _minutes in record.get("attendance") or []:
+        words = _tokens(participant)
+        if not words:
+            continue
+        hits = [d for d in record.get("directors") or [] if words <= _tokens(d) or _tokens(d) <= words]
+        if len(hits) == 1 and hits[0] not in found:
+            found.append(hits[0])
+    return found, list(record.get("unidentified") or [])
+
+
+def quorum_check(record: dict[str, Any], community: Any) -> dict[str, Any]:
+    """The quorum, counted: the directors the record shows on the call against the board's quorum for the number in
+    office (``Board.quorum``). An unidentified caller may be a director, so it can only raise the count."""
+    directors = list(record.get("directors") or [])
+    present, maybe = directors_on_call(record)
+    board = community.board() if hasattr(community, "board") else None
+    needed = board.quorum(len(directors)) if board is not None and directors else None
+    if needed is None:
+        standing = "unknown"
+    elif len(present) >= needed:
+        standing = "present"
+    elif len(present) + len(maybe) >= needed:
+        standing = "depends on an unidentified caller"
+    else:
+        standing = "not on the record"
+    return {"inOffice": len(directors), "present": present, "unidentified": len(maybe), "needed": needed,
+            "standing": standing}
+
+
+# Subjects the open minutes give only by their general nature (Civil Code 4935): a line naming one is for the
+# Secretary to read before the draft is shared.
+CONFIDENTIAL = re.compile(r"\blawsuits?\b|\blitigation\b|\bsued\b|\bevict\w*|\bdelinquen\w*|\bpayment plan|"
+                          r"\bdisciplin\w*|\bhearing\b|\bfined?\b|\bviolation|\blien\b|\bforeclos\w*|\bcollections?\b|"
+                          r"\breimbursement assessment|\bpersonnel\b", re.I)
+
+
+def checks(record: dict[str, Any], text: str, community: Any) -> dict[str, Any]:
+    """What jason counts rather than the model: the quorum, and the lines naming a subject the open minutes give only
+    in general terms."""
+    quorum = quorum_check(record, community)
+    claims = bool(re.search(r"\ba quorum was present\b", text, re.I))
+    lines, heading = [], ""
+    for ln in text.splitlines():
+        if ln.startswith("## "):
+            heading = ln[3:].strip().casefold()
+        # The executive session section names its general headings by design (4935(e)); the checks block is jason's.
+        elif heading not in ("executive session", "jason's checks") and not ln.startswith(("_", "#")) \
+                and CONFIDENTIAL.search(ln):
+            lines.append(ln.strip())
+    motions = len(re.findall(r"^\s*- \*\*Motion:\*\*", text, re.M))
+    return {"quorum": quorum, "claimsQuorum": claims, "motions": motions, "confidential": lines}
+
+
+def check_lines(found: dict[str, Any]) -> list[str]:
+    """The checks as a block for the top of the draft."""
+    q = found["quorum"]
+    out = ["## jason's checks", ""]
+    if q["needed"] is None:
+        out.append("- Quorum: not counted (no directors in office are on record).")
+    else:
+        out.append(f"- Quorum: the record shows {len(q['present'])} of {q['inOffice']} directors in office on the call "
+                   f"({', '.join(q['present']) or 'none'}), with {q['unidentified']} unidentified caller(s); a quorum "
+                   f"is {q['needed']}. Standing: {q['standing']}.")
+        if q["standing"] == "not on the record":
+            if found["claimsQuorum"]:
+                out.append("  - The draft says a quorum was present; the count does not support it. Correct the "
+                           "attendance, or the statement.")
+            if found["motions"]:
+                out.append(f"  - {found['motions']} motion(s) are recorded as acted on without a quorum on the record. "
+                           "Recite the bylaws' quorum provision to the board; whether to ratify at a meeting with a "
+                           "quorum is the board's decision.")
+    if found["confidential"]:
+        out.append(f"- {len(found['confidential'])} line(s) name a subject the open minutes give only by its general "
+                   "nature (Civil Code 4935): read each before the draft is shared, and keep members' names and "
+                   "details out.")
+    return out + [""]
+
+
+def recheck(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
+    """The checks applied to a draft already written, without the model: the block replaces any earlier one."""
+    out = Path(data_dir) / "board" / f"minutes-draft-{day.isoformat()}.md"
+    text = out.read_text(encoding="utf-8")
+    text = re.sub(r"\n## jason's checks\n.*?(?=\n## )", "\n", text, flags=re.S)
+    found = checks(meeting_record(data_dir, community, day), text, community)
+    head, _, rest = text.partition("\n## ")
+    out.write_text(head.rstrip("\n") + "\n\n" + "\n".join(check_lines(found)) + "\n## " + rest, encoding="utf-8")
+    return {"file": str(out), **found}
+
+
 def _ask(model: str) -> Callable[[str, dict[str, Any]], dict[str, Any]]:
     from jason.tasks.model_questions import _asker
 
@@ -205,6 +303,10 @@ def draft(data_dir: Path, community: Any, day: date, *, model: str = "",
         ask = _ask(model)
     answer = ask(prompt(day, record), schema())
     lines, unsupported = render(day, answer, record["transcript"])
+    found = checks(record, "\n".join(lines), community)
+    lines = lines[:4] + check_lines(found) + lines[4:]
+    if found["quorum"]["standing"] == "not on the record" and found["claimsQuorum"]:
+        unsupported.append("attendance (quorum)")
     text = "\n".join(lines)
     out = Path(data_dir) / "board" / f"minutes-draft-{day.isoformat()}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -214,7 +316,8 @@ def draft(data_dir: Path, community: Any, day: date, *, model: str = "",
     checks = [judge(q, answers.get(q.key) or {}, text, {}) for q in MINUTES.questions]
     gaps = [c["key"] for c in checks if c["verdict"] == "gap"]
     return {"file": str(out), "zoom": record["zoom"], "items": len(record["items"]), "attendance": record["attendance"],
-            "unsupported": unsupported, "gaps": gaps, "unknowns": text.count(UNKNOWN)}
+            "unsupported": unsupported, "gaps": gaps, "unknowns": text.count(UNKNOWN), "checks": found}
 
 
-__all__ = ["draft", "meeting_record", "prompt", "render", "schema"]
+__all__ = ["checks", "check_lines", "directors_on_call", "draft", "meeting_record", "prompt", "quorum_check", "recheck",
+           "render", "schema"]

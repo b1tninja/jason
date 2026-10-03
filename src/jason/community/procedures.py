@@ -114,6 +114,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                        "within 30 days; a posting jason cannot see is recorded (jason schedule --done KEY DUE --by "
                        "NAME --evidence TEXT); a notice day already passed means a later meeting day noticed in time",
                  refs=("docs/schedule.md (The watch)", "docs/attention.md"), lessons=("meeting-clocks-read-forward",)),
+            Step("Within days of a meeting, draft its minutes from the Zoom transcript, and read jason's checks before "
+                 "anything else: the quorum counted from the attendance, a motion acted on without one, and lines "
+                 "naming a subject the open minutes give only in general terms.",
+                 command="jason board --minutes DATE; jason board --minutes DATE --recheck",
+                 check="the quorum statement matches the count; members' names and executive matters are out; the "
+                       "draft stays DRAFT until the Secretary reads it and the board approves it",
+                 refs=("docs/board-agenda.md",), lessons=("model-asserts-quorum",), person=True),
             Step("Read each meeting's minutes history and each open rule change's stages: a copy of the minutes on "
                  "record within 30 days, the next minutes stating the approval in words, and a rule change's 28-day "
                  "notice delivered before its decision and its notice of adoption within 15 days after (Civil Code "
