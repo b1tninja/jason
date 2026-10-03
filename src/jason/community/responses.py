@@ -97,14 +97,38 @@ KIND_RULES: tuple[KindRule, ...] = (
     KindRule(ResponseKind.VARIANCE, r"\bvariance\b"),
     KindRule(ResponseKind.RECORDS, r"\b(?:inspect|copies|copy)\b[^.]{0,60}\b(?:records?|minutes|budget|financial|"
                                    r"ledger|statements?|contracts?|membership\s+list)\b|\brecords?\s+request\b|"
-                                   r"\bmembership\s+list\b|\b5200\b|\b5205\b"),
+                                   r"\bmembership\s+list\b|\b5200\b|\b5205\b|"
+                                   # a copy of the governing documents
+                                   r"\bcop(?:y|ies)\s+of\b[^.]{0,40}\b(?:CC&?Rs?|bylaws|(?:operating\s+)?rules|"
+                                   r"owners?'?\s+manual|governing\s+documents|articles\s+of\s+incorporation)\b"),
     KindRule(ResponseKind.RENTAL, r"\b(?:lease|rent(?:al)?|tenant)\b[^.]{0,60}\b(?:application|approv\w*|request)\b|"
-                                  r"\bapply\b[^.]{0,30}\b(?:lease|rent)\b"),
+                                  r"\bapply\b[^.]{0,30}\b(?:lease|rent)\b|\bintent\s+to\s+(?:rent|lease)\b|"
+                                  r"\b(?:rent|renting|lease|leasing)\s+out\b"),
     KindRule(ResponseKind.ARCHITECTURAL, forms=("Architectural Request",)),
     KindRule(ResponseKind.MAINTENANCE, forms=("Maintenance Request",)),
-    KindRule(ResponseKind.COMPLAINT, r"\bcomplain\w*\b|\bnoise\b|\bnuisance\b|\bharass\w*\b|\bviolat\w*\b",
-             exclude=r"\bcourtesy\s+notice\b|\bnotice\s+of\s+(?:violation|hearing)\b|\bhearing\s+notice\b"),
+    # Asking leave to change the unit or the common area is an application on any form.
+    KindRule(ResponseKind.ARCHITECTURAL, r"\bhome\s+improvement\b|\barchitectural\s+(?:request|application|approval)\b|"
+                                         r"\bpermission\s+to\b[^.]{0,30}\b(?:install\w*|paint\w*|decorat\w*|replac\w*|"
+                                         r"add\w*|plant\w*|modif\w*|alter\w*|build\w*)\b"),
+    # Conduct reported, not the association's own notice about it, and not an owner asking not to be cited.
+    KindRule(ResponseKind.COMPLAINT, r"\bcomplain\w*\b|\bnoise\b|\bnuisance\b|\bharass\w*\b|\bviolat\w*\b|"
+                                     r"\bvandal\w*\b|\bdisturbance\b|\bdefecat\w*\b|\bdog\s+(?:poop\w*|waste|feces)\b|"
+                                     r"\bpoop\w*\b|\bparked\s+(?:car|vehicle|truck)\b|"
+                                     r"\bconcerns?\b[^.]{0,60}\b(?:parking|common\s+areas?|neighbou?rs?)\b",
+             exclude=r"\bcourtesy\s+notice\b|\bnotice\s+of\s+(?:violation|hearing)\b|\bhearing\s+notice\b|"
+                     r"\b(?:do\s+not|don'?t|not\s+to)\s+(?:mark|cite|fine|count)\w*\b[^.]{0,40}\bviolation\b|"
+                     r"\bviolation\s+report\b"),
+    # Something to fix or tend, on a form that is not the maintenance form (or an email subject). A question about it
+    # (whose job is it?) is a question.
+    KindRule(ResponseKind.MAINTENANCE, r"\bleak\w*|\brepairs?\b|\bbroken\b|\bnot\s+working\b|\bno\s+(?:power|heat|hot\s+"
+                                       r"water)\b|\brust(?:y|ed)\b|\btrees?\b|\bstanding\s+water\b|\b(?:re)?stak(?:e|ed|"
+                                       r"ing)\b|\b(?:light|lamp|bulb)s?\b[^.]{0,40}\bout\b|\bclog\w*|\bpest\s+control\b|"
+                                       r"\bwasps?\b|\brodents?\b|\bweeds?\b|\bdrip\s+lines?\b|\bsprinklers?\b|"
+                                       r"\bheat(?:er|ing)\b|\bhvac\b|\bgarage\s+door\b|\bfire\s+alarm\b|\bwork\s+order\b|"
+                                       r"\bgutters?\b|\bmisalign\w*",
+             exclude=r"\bquestions?\b|\brecommend\w*|\bresponsib\w*|\bliab(?:le|ility)\b"),
     KindRule(ResponseKind.QUESTION, forms=("General Request",)),
+    KindRule(ResponseKind.QUESTION, r"\?|\bquestions?\b|\binquir(?:y|ies|ing)\b|\bclarif\w*"),
 )
 
 

@@ -29,7 +29,10 @@ _API = "https://gmail.googleapis.com/gmail/v1/users/me/drafts"
 
 @dataclass(frozen=True)
 class DraftMessage:
-    """One message to save as a draft. ``html`` is an optional alternative to ``text``; ``attachments`` are file paths."""
+    """One message to save as a draft. ``html`` is an optional alternative to ``text``; ``attachments`` are file paths.
+
+    A reply names its Gmail ``thread_id`` and the RFC 5322 ``Message-ID`` it answers (``in_reply_to``, and the thread's
+    ``references``), so Gmail files the draft in the thread; its subject should be the thread's, with "Re:"."""
 
     to: tuple[str, ...]
     subject: str
@@ -38,6 +41,9 @@ class DraftMessage:
     bcc: tuple[str, ...] = ()
     html: str | None = None
     attachments: tuple[Path, ...] = field(default_factory=tuple)
+    thread_id: str = ""
+    in_reply_to: str = ""
+    references: str = ""
 
     def email(self) -> EmailMessage:
         message = EmailMessage()
@@ -48,6 +54,9 @@ class DraftMessage:
         if self.bcc:
             message["Bcc"] = ", ".join(self.bcc)
         message["Subject"] = self.subject
+        if self.in_reply_to:
+            message["In-Reply-To"] = self.in_reply_to
+            message["References"] = self.references or self.in_reply_to
         message.set_content(self.text)
         if self.html:
             message.add_alternative(self.html, subtype="html")
@@ -77,10 +86,13 @@ class GmailDrafts:
         return cls(drive._token, http=drive._http)
 
     def create(self, draft: DraftMessage) -> dict[str, Any]:
+        message: dict[str, Any] = {"raw": draft.raw()}
+        if draft.thread_id:                           # a reply, filed in its thread
+            message["threadId"] = draft.thread_id
         response = self._http.post(
             _API,
             headers={**self._headers(), "Content-Type": "application/json"},
-            content=json.dumps({"message": {"raw": draft.raw()}}),
+            content=json.dumps({"message": message}),
         )
         if not response.is_success:
             raise GoogleError(f"HTTP {response.status_code} creating a Gmail draft: {response.text[:200]}")

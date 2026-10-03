@@ -272,6 +272,16 @@ LESSONS: tuple[Lesson, ...] = (
            "board.",
            Status.DECISION, guards=("jason schedule-evidence", "procedure duty-schedule"),
            docs=("docs/schedule.md (Evidence: What the minutes show)",)),
+    Lesson("email-topic-values", OCT_2026, (Area.EMAIL,),
+           "Measured against hand-labelled requests, owners' emailed repair requests were found less than half the "
+           "time, and the email topic fallback never fired.",
+           "The fallback compared bare words such as 'maintenance' to topic values such as 'maintenance and repairs', "
+           "so nothing matched; and the kind rules had never been measured.",
+           "The fallback uses the Topic members themselves; kinds are scored against a private gold set before a rule "
+           "changes.",
+           Status.FIXED, guards=("tests/test_responses.py (test_classify_email)", "jason respond --measure",
+                                 "procedure respond"),
+           docs=("docs/responses.md (How well the kinds are read)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

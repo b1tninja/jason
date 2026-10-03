@@ -265,12 +265,20 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Refresh the requests, and read them with their clocks.", command="jason sync-catalog; jason respond",
                  check="anything overdue or due soon; a request classified 'other' is read and its kind decided"),
+            Step("Read where each answer is written: the documents' passages, the library's files, and the precedents.",
+                 command="jason respond --sources", check="each line is a lead to read, not a ruling"),
             Step("Acknowledge within the policy's days, and send the answer or the plan; a board decision goes on the "
-                 "next agenda.", command="jason request-comment ID ...", person=True),
+                 "next agenda. A PayHOA request gets a comment; an email request a Gmail draft in its thread, which a "
+                 "person reads, edits, and sends.",
+                 command="jason respond --draft ID; jason request-comment ID ... (or jason respond --draft email:ID "
+                         "--gmail, then --yes)", person=True),
             Step("Join emailed requests PayHOA lacks.", command="jason request-links",
                  check="a draft is entered only on a person's word"),
             Step("Close each request when it is done.", person=True),
             Step("Monthly, read how many answers were on time, by kind, for the board.", command="jason respond --all"),
+            Step("Label new requests' kinds in the gold set, and measure before changing a kind rule.",
+                 command="jason respond --measure", check="no kind's precision or recall falls",
+                 lessons=("email-topic-values",)),
         ),
         refs=("docs/responses.md", "procedure duty-schedule"),
     ),
