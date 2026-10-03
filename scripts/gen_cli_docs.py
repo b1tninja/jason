@@ -99,6 +99,7 @@ GROUPS: dict[str, str] = {
     "section-refs": "Documents & library",
     "cite": "Documents & library",
     "intake": "Documents & library",
+    "ingest": "Documents & library",
     # Law, legal, insurance & claims
     "conflicts": "Law, legal, insurance & claims",
     # Setup & maintenance

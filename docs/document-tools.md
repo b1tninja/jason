@@ -263,6 +263,8 @@ Not tried yet:
 6. **Refinements.** Record rules add a Civil Code 5200 record the kind alone does not give, and a period is read from the text when the name gave none.
 7. **Store.** Rows go to `data/library/library.db`, read by `library_search`, `library_status`, `library_text`, and the 5200 inventory.
 
+Documents from outside the PayHOA catalog (a prior manager's export, a zip, a Drive folder) go through the same readers and the same chain with `jason ingest SOURCE`, which also dedups by hash, finds versions of the documents jason knows, and proposes each file's book, record, and folder ([onboarding.md](onboarding.md#ingest)). Its `--apply` rows sit in `library.db`'s `ingested` table too, and a `jason library` run copies them back into `documents` after it rebuilds the catalog's rows.
+
 The scorecard (`jason library --score`, with `--model` for the model) measures a text reader against the name rules, which are the answer key where the association's naming exists. A disagreement is a rule to fix or a file misnamed, and the misses list names the files.
 
 | Reader | Files scored | Right when answering | Silent |

@@ -301,6 +301,24 @@ CREATE TABLE IF NOT EXISTS documents (
     period TEXT, confidential INTEGER, evidence TEXT, confidence REAL, classified_at TEXT, sha256 TEXT
 )
 """
+COLUMNS = "id, source, path, name, kind, category, records, method, period, confidential, evidence, confidence, classified_at, sha256"
+# Files ``jason ingest --apply`` took in from outside the PayHOA catalog: the documents row, plus where each came from,
+# the dates it carries, its book, and the version it was found to be. ``save`` rebuilds ``documents`` from the catalog
+# and then copies these rows back in, so a library run never drops a file taken in by hand.
+INGESTED = """
+CREATE TABLE IF NOT EXISTS ingested (
+    id TEXT PRIMARY KEY, source TEXT, path TEXT, name TEXT, kind TEXT, category TEXT, records TEXT, method TEXT,
+    period TEXT, confidential INTEGER, evidence TEXT, confidence REAL, classified_at TEXT, sha256 TEXT,
+    origin TEXT, dates TEXT, book TEXT, version TEXT, ingested_at TEXT, report TEXT
+)
+"""
+
+
+def keep_ingested(conn: sqlite3.Connection) -> int:
+    """Copy the ingested files' rows into ``documents``; the number copied (0 when nothing was ever ingested)."""
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ingested'").fetchone():
+        return 0
+    return conn.execute(f"INSERT OR REPLACE INTO documents ({COLUMNS}) SELECT {COLUMNS} FROM ingested").rowcount
 
 
 def save(root: Path, rows: tuple[Classified, ...]) -> Path:
@@ -316,6 +334,7 @@ def save(root: Path, rows: tuple[Classified, ...]) -> Path:
               r.category.value if r.category else "", ",".join(x.value for x in r.records), r.method.name, r.period,
               int(r.confidential), r.evidence, r.confidence, now, _sha(root, r.document.id)) for r in rows],
         )
+        keep_ingested(conn)
     return path
 
 
