@@ -17,7 +17,7 @@ interface Page {
 export function ApprovalsView({ go }: { go?: (screen: string) => void } = {}) {
   const r = useApi<Page>("/api/approvals");
   const people = r.status === "ready" ? r.data.people : undefined;
-  const { me, setMe, account } = useSession(people);
+  const { me, setMe, account, acting } = useSession(people);
   const [open, setOpen] = useState("");
   const [plan, setPlan] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,7 +38,9 @@ export function ApprovalsView({ go }: { go?: (screen: string) => void } = {}) {
       <header className="approvals-head">
         <h1>Approvals</h1>
         <p className="muted">Everything jason drafted that is waiting on a person. Nothing goes out without approval.</p>
-        {account ? (
+        {account && acting ? (
+          <p className="approvals-signin" role="status">Viewing as <strong>{acting.name || `the ${acting.role}`}</strong> (admin view): this is what they would see, and every step is refused until you go back to yourself.</p>
+        ) : account ? (
           <p className="approvals-signin">Signed in with Google as <strong>{account.name}</strong>: every step here goes on the record in that name.</p>
         ) : (
           <label className="approvals-signin">
