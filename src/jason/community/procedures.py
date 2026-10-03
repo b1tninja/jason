@@ -455,6 +455,13 @@ PROCEDURES: tuple[Procedure, ...] = (
         (Area.ONBOARDING,),
         "Gather every record and fact a profile needs, from each source, and keep secrets out of documents.",
         (
+            Step("Start the profile: the package from jason's templates and its empty private facts; set JASON_PROFILE; "
+                 "with --county and --lookup, the county recorder's finds become questions.",
+                 command="jason onboard --new KEY --name NAME --county COUNTY --lookup",
+                 check="the package is new (nothing overwritten); jason onboard shows every gate closed; a lead is a "
+                       "question, never a row",
+                 refs=("docs/onboarding.md (Starting a new association)",),
+                 lessons=("second-profile-shared-stores", "recorder-empty-or-unreachable")),
             Step("Read the checklist.", command="jason onboard --items"),
             Step("Run the session: the stage gates, then the ranked questions. Park the fact and mapping questions, "
                  "answer in the order given, have a second person confirm the high-stakes ones, then apply.",
@@ -465,6 +472,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  refs=("docs/onboarding.md (The session)",),
                  lessons=("intake-queue-order", "answer-may-hold-a-secret", "profile-proposal-untracked"),
                  person=True),
+            Step("Or answer by conversation: register the onboarding tool set and use the onboard prompt; a second "
+                 "person runs onboard_review for the high-stakes answers.",
+                 command="jason-mcp --profile onboarding; jason anythingllm --write --profile onboarding",
+                 check="every answer's by is a person's name; no secret recorded; the person who confirms is not the "
+                       "one who answered",
+                 refs=("docs/onboarding.md (Onboarding by conversation)", "docs/mcp.md (Prompts)"),
+                 lessons=("listed-question-not-answerable-over-mcp",), person=True),
             Step("Send each source its request list, with three dates: at once, monthly after late fees, and at "
                  "transition; paper records come with a contents list for each box.",
                  command="jason onboard --request [SOURCE]", lessons=("outgoing-manager-only-items",), person=True),

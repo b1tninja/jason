@@ -199,7 +199,7 @@ The companion axiom. Where the law and the documents do speak:
 
 ## jason-mcp
 
-`jason-mcp` is a stdio MCP server over the stores already on disk. It does **not** call PayHOA, Google, or Keeper. `jason-mcp --profile board` (or `JASON_MCP_PROFILE=board`) serves the board's thirty-eight tools, starting with `board_digest`; AnythingLLM is registered with that profile. Each tool carries its caveats; repeat them. A confidential file is held back unless asked, and a reading or a hit is evidence, not a pin. `--profile governance` serves the living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog, and the documents' duties. The same functions are the Python interface, `jason.api`. Two of them write a person's record to `data/`, and only with `by`. Every tool and its caveat: [docs/mcp.md](docs/mcp.md).
+`jason-mcp` is a stdio MCP server over the stores already on disk. It does **not** call PayHOA, Google, or Keeper. `jason-mcp --profile board` (or `JASON_MCP_PROFILE=board`) serves the board's thirty-eight tools, starting with `board_digest`; AnythingLLM is registered with that profile. Each tool carries its caveats; repeat them. A confidential file is held back unless asked, and a reading or a hit is evidence, not a pin. `--profile governance` serves the living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog, and the documents' duties. The same functions are the Python interface, `jason.api`. Three of them write a person's record to `data/`, and only with `by`. `--profile onboarding` serves the onboarding tools, with the MCP prompts `onboard` and `onboard_review`. Every tool and its caveat: [docs/mcp.md](docs/mcp.md).
 
 ## Deeper docs
 
