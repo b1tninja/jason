@@ -39,6 +39,7 @@ TOOLS = {
     "legal-cases": "legal_cases",
     "audit-chains": "audit_chains",
     "request-links": "request_links",
+    "library": "library_search",
 }
 
 
@@ -497,3 +498,10 @@ def test_onboarding_and_communities_overlay_the_stores(county, tmp_path, monkeyp
     monkeypatch.setattr(sys.modules.setdefault("jason.community.profile", type(sys)("jason.community.profile")), "profiles", lambda: [{"name": "mystique", "where": "/x/mystique", "active": True}, {"name": "sample", "where": "/x/profiles/sample", "active": False}], raising=False)
     comm = sources.communities({})
     assert comm["count"] == 2 and comm["communities"][0]["progress"]["accountsSet"] == 1 and "progress" not in comm["communities"][1]
+
+
+def test_library_forwards(county):
+    from jason.web.sources import library
+
+    library({"kind": "minutes", "record": "minutes", "period": "2026", "words": "quorum", "confidential": "1", "limit": "5"})
+    assert county.calls[-1] == ("library_search", (), {"kind": "minutes", "record": "minutes", "period": "2026", "words": "quorum", "include_confidential": True, "limit": 5})

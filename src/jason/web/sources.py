@@ -552,6 +552,13 @@ def request_letter(args: Args) -> dict[str, Any]:
     return {"found": True, "count": len(chosen), "markdown": ob.request_letter(chosen, association=str(name or "the association"), to=args.get("to", "the board"))}
 
 
+def library(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import library_search as tool
+
+    return tool(kind=args.get("kind", ""), record=args.get("record", ""), period=args.get("period", ""), words=args.get("words", ""),
+                include_confidential=_flag(args, "confidential"), limit=int(args.get("limit", "25") or 25))
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -641,6 +648,7 @@ def default_loaders() -> dict[str, Any]:
         "communities": communities,
         "onboarding": onboarding,
         "request-letter": request_letter,
+        "library": library,
         "drive-files": drive_files,
         "photos": photos,
         "embeds": embeds,

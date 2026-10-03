@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, Card, Caveats, Command, DataTable, Findings, Markdown, Pill, RemoteView, Stat, Tabs, type Column } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
@@ -24,6 +24,33 @@ export function SummaryStats({ s }: { s: Summary }) {
   );
 }
 
+interface LibraryRow { id: string; path: string; kind: string; records: string[]; period: string; method: string; evidence: string; confidential: boolean }
+
+/** Find the file jason classified for this item: by its kinds and record first, then by words. A pick fills "filed where". */
+function FindInLibrary({ it, onPick }: { it: Item; onPick: (row: LibraryRow) => void }) {
+  const [words, setWords] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => { const h = setTimeout(() => setDebounced(words), 300); return () => clearTimeout(h); }, [words]);
+  const q = new URLSearchParams({ limit: "8" });
+  if (debounced.trim()) q.set("words", debounced.trim());
+  else if (it.kinds[0]) q.set("kind", it.kinds[0]);
+  else if (it.record) q.set("record", it.record);
+  const r = useApi<{ found: boolean; note?: string; count?: number; heldBackConfidential?: number; rows?: LibraryRow[] }>(`/api/library?${q}`);
+  return (
+    <details className="picker" open>
+      <summary>Find in the library{it.kinds[0] ? <span className="muted"> (kind {it.kinds[0].replace(/_/g, " ")})</span> : null}</summary>
+      <input className="search" aria-label="Words in the file" placeholder="words in the file…" value={words} onChange={(e) => setWords(e.target.value)} />
+      {r.status === "ready" && r.data.found === false && <p className="muted">{r.data.note ?? "nothing classified yet"}</p>}
+      {r.status === "ready" && r.data.found !== false && (
+        <ul className="picks">
+          {(r.data.rows ?? []).map((row) => <li key={row.id}><button className="link" onClick={() => onPick(row)}>{row.path}</button> <span className="muted">{row.period} · {row.method}</span></li>)}
+          {!!r.data.heldBackConfidential && <li className="muted">{r.data.heldBackConfidential} confidential held back</li>}
+        </ul>
+      )}
+    </details>
+  );
+}
+
 /** One request-list row's editor: what a person did about it. */
 function Mark({ it, holders, statuses, onSaved }: { it: Item; holders: string[]; statuses: string[]; onSaved: (next: Item) => void }) {
   const [open, setOpen] = useState(false);
@@ -46,6 +73,7 @@ function Mark({ it, holders, statuses, onSaved }: { it: Item; holders: string[];
       <label>Chased on <input type="date" value={d.chased_on} onChange={(e) => setD({ ...d, chased_on: e.target.value })} /></label>
       <label>Received on <input type="date" value={d.received_on} onChange={(e) => setD({ ...d, received_on: e.target.value })} /></label>
       <label>Filed where <input value={d.filed} onChange={(e) => setD({ ...d, filed: e.target.value })} placeholder="PayHOA folder, Drive path, or library id" /></label>
+      <div className="wide"><FindInLibrary it={it} onPick={(row) => setD({ ...d, filed: `${row.path} (library ${row.id})`, status: d.status === "not asked" || d.status === "asked" ? "received" : d.status })} /></div>
       {d.status === "not applicable" && <label className="wide">Why it does not apply <input value={d.reason} onChange={(e) => setD({ ...d, reason: e.target.value })} /></label>}
       <label className="wide">Note <input value={d.note} onChange={(e) => setD({ ...d, note: e.target.value })} /></label>
       <div className="row"><button className="primary" onClick={save}>Save</button><button onClick={() => setOpen(false)}>Cancel</button>{error && <span className="notice notice-error">{error}</span>}</div>

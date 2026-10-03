@@ -13,6 +13,7 @@ describe("OnboardingView", () => {
     const posts: unknown[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") { posts.push([url, JSON.parse(String(init.body))]); return new Response(JSON.stringify({ key: "budget", status: "asked", asked_of: "the prior manager", asked_on: "2026-10-03", chased_on: "", received_on: "", filed: "", reason: "", note: "", history: ["2026-10-03: not asked -> asked"] }), { status: 200 }); }
+      if (url.startsWith("/api/library")) return new Response(JSON.stringify({ found: true, count: 1, heldBackConfidential: 0, rows: [{ id: "lib-77", path: "Financials/Budget 2027.pdf", kind: "budget", records: ["financial_disclosure"], period: "2027", method: "NAME_RULE", evidence: "", confidential: false }] }), { status: 200 });
       if (url.startsWith("/api/request-letter")) return new Response(JSON.stringify({ found: true, count: 1, markdown: "# Records and information requested for The Association\n\n## Financial\n\n- **The current and prior year's budgets** (CIV 5300)." }), { status: 200 });
       return new Response(JSON.stringify({ found: true, summary, accounts: [{ service: "PayHOA", set: true, how: "jason login" }, { service: "Google", set: false, how: "docs/setup.md" }],
         facts: [{ duty: "money", facts: [{ name: "bank_accounts", supplied: true }, { name: "obligations", supplied: false }] }],
@@ -27,6 +28,10 @@ describe("OnboardingView", () => {
     await user.click(within(row).getByRole("button", { name: "mark" }));
     await user.selectOptions(within(row).getByLabelText("Status"), "asked");
     await user.type(within(row).getByLabelText("Asked of"), "the prior manager");
+    await user.click(await within(row).findByRole("button", { name: "Financials/Budget 2027.pdf" }));
+    expect(within(row).getByLabelText("Filed where")).toHaveValue("Financials/Budget 2027.pdf (library lib-77)");
+    expect(within(row).getByLabelText("Status")).toHaveValue("received");
+    await user.selectOptions(within(row).getByLabelText("Status"), "asked");
     await user.click(within(row).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(posts).toHaveLength(1));
     expect((posts[0] as unknown[])[0]).toBe("/api/onboarding/budget");
