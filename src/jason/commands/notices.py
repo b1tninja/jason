@@ -174,7 +174,6 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--mark-general", action="store_true",
                    help="with KEY, --posted, and --by: record that the notice is a general notice (CIV 4045) that was "
                         "posted, so every later reading (and jason attention) weighs a failed message as noted")
-    p.add_argument("--posted", help="with --mark-general: where and when it was posted")
     p.add_argument("--by", help="with --mark-general: who records it")
     p.add_argument("--sync", action="store_true", help="read the notice's batches and their outcomes from PayHOA (read-only)")
     p.add_argument("--subject", help="with --sync: also every message in PayHOA's log whose subject contains this "
@@ -195,6 +194,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--requirement", help="with --proof: the catalog key, when KEY does not start with one")
     p.add_argument("--event", help="with --proof: the day of the meeting, hearing, due date, or other anchor")
     p.add_argument("--sent", help="with --proof: the day it was mailed or sent (default: the ledger's first attempt)")
-    p.add_argument("--posted", help="with --proof --general: the day it was posted")
+    p.add_argument("--posted", help="with --proof --general: the day it was posted; with --mark-general: where and "
+                                    "when it was posted")
     p.add_argument("--have", help="with --proof: evidence on file, comma-separated (text_as_sent,mailing_declaration)")
     p.set_defaults(func=lambda a: cmd_notices(a, agent_factory))
