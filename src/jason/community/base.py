@@ -991,6 +991,11 @@ class Community(ABC):
         allows. Empty until the specification records some."""
         return ()
 
+    def owners_manual(self):
+        """The owner's manual taken apart (``jason.community.manual.ManualSpec``): which of its sections are the
+        operating rules, copies, policies, and guidance, and where each goes. None until the specification sets it."""
+        return None
+
     def packet_reports(self) -> tuple[str, ...]:
         """The reports every board packet carries, as references (``{REPORT:treasurers-report period=previous-month}``),
         shown as already built (``live_reports``). Empty until the specification sets them."""

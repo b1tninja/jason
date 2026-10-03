@@ -395,6 +395,28 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/document-duties.md",),
     ),
     Procedure(
+        "owners-manual", "Keeping the owner's manual and the rules it carries",
+        "Whenever the manual's Doc changes, a rule is changed, or a document it copies is amended.",
+        (Area.DOCUMENTS, Area.GOVERNING),
+        "Keep the official rules word for word, the manual generated from its sources, and every citation resolving.",
+        (
+            Step("Refresh the outlines (read-only) and the copies scan.", command="jason outlines --fetch; jason section-refs --scan"),
+            Step("Classify each section by rule rows and evidence, and answer the questions.",
+                 command="jason manual --classify --asks; jason intake",
+                 lessons=("guide-states-duties", "askkind-classify-is-the-librarys", "grammar-misses-future-and-passive-duties")),
+            Step("Check the concordance.", command="jason manual --concordance", check="zero unresolved citations",
+                 lessons=("outline-numbers-are-the-readers", "span-is-not-subject")),
+            Step("Render the rules and the manual, and read the labeled differences and the diff.",
+                 command="jason manual --render", check="zero unlabeled differences"),
+            Step("Refetch the Doc's links (chips) before anything is published.", command="jason outlines --fetch"),
+            Step("Put the extraction on the board's agenda; a rule change takes the 4360 notice and adoption.",
+                 command="jason board --set ITEM ...; jason rule-change", person=True),
+            Step("After adoption, add the rules document as a citable document and the source of the rules book, move the "
+                 "aliases to it, and run the steps again.", person=True),
+        ),
+        refs=("docs/owners-manual.md", "docs/record-addresses.md"),
+    ),
+    Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",
         "Whenever the association writes to owners.",
         (Area.DOCUMENTS, Area.EMAIL),

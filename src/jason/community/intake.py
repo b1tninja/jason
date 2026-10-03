@@ -30,6 +30,8 @@ class AskKind(Enum):
     READINGS_DIFFER = "readings differ"      # two copies of one instrument disagree
     ORPHANED_NOTE = "orphaned note"          # an annotation whose words are gone
     HELD_SOURCE = "held source"              # a source not read (changed since review, or never fetched)
+    SECTION_KIND = "section kind"            # what a section of a document is: a rule, a copy, a policy, guidance
+                                             # (jason.community.manual); the answer is read by the next run
 
 
 class AskStatus(Enum):

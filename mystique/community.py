@@ -563,6 +563,12 @@ class Mystique(Community):
 
         return CONFLICTS
 
+    def owners_manual(self):
+        """The Owner's Manual and Rules taken apart: rules, copies, policies, and guidance (manual.py)."""
+        from .manual import MANUAL
+
+        return MANUAL
+
     def packet_reports(self):
         """Every board packet carries last month's Treasurer's Report, as PayHOA ran it (the treasurer runs the packet;
         jason includes the run, never builds one)."""

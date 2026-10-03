@@ -446,6 +446,36 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("minutes_draft.checks", "jason board --minutes DATE --recheck",
                                  "tests/test_minutes_draft_checks.py", "procedure board-packet"),
            docs=("docs/board-agenda.md (Drafting the minutes from the Zoom record)",)),
+    Lesson("outline-numbers-are-the-readers", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "An owner's manual's part letters were hung under the section before them ('4(A)', 'B-18(C)'), and a list "
+           "under an unnumbered heading was read as a second 'B-12(i)'; records already cited those made-up numbers.",
+           "The Docs outline reader numbers by nesting, and a part letter or an unnumbered list has no number of its own.",
+           "Extraction keeps every printed number and maps each made-up one to where it now lives (a concordance), so old "
+           "citations still resolve. The outline reader itself still does this.",
+           Status.OPEN, guards=("jason manual --concordance", "manual.resolve_old", "tests/test_manual.py"),
+           docs=("docs/owners-manual.md",)),
+    Lesson("span-is-not-subject", OCT_2026, (Area.DOCUMENTS,),
+           "One rule section's span in the outline ran on over a bound-in collection policy, its statutory notice, and "
+           "an application form, so duties and an assignment cited the rule for the notice.",
+           "A section's span ends only at the next label, and bound-in documents carry none.",
+           "Sections are split into pieces by kind; the notice now has its own address in the collection policy's book. "
+           "Open until the assignment that cites the old span is re-pointed.",
+           Status.OPEN, guards=("manual classification pieces",), docs=("docs/owners-manual.md",)),
+    Lesson("guide-states-duties", OCT_2026, (Area.DOCUMENTS,),
+           "Guidance in an owner's manual said what owners 'shall' maintain without citing any source.",
+           "A guide written for owners restates duties in its own words.",
+           "Classification asks a person when guidance states an owner's duty with no source; it is never taken as a rule "
+           "on its own.", Status.FIXED, guards=("manual evidence check", "AskKind.SECTION_KIND")),
+    Lesson("askkind-classify-is-the-librarys", OCT_2026, (Area.DOCUMENTS,),
+           "A section-kind question filed under the library's classify kind would have been applied as a library file's "
+           "kind and failed.",
+           "One question kind was reused for a different subject.",
+           "Section kinds have their own question kind, applied by the next classification run.",
+           Status.FIXED, guards=("AskKind.SECTION_KIND", "tests/test_manual.py")),
+    Lesson("grammar-misses-future-and-passive-duties", OCT_2026, (Area.GOVERNING,),
+           "Rule sections phrased 'are to be', 'requires', or 'will be' showed no norm to the duty grammar.",
+           "The deontic grammar reads shall, must, may, and their negatives.",
+           "Listed as grammar leads; the grammar needs these forms.", Status.OPEN, guards=("jason manual --classify (grammar leads)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
