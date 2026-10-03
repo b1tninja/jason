@@ -9,6 +9,9 @@ board and counsel: nothing here is adopted until the board decides it at a meeti
 
 from __future__ import annotations
 
+from datetime import date
+
+from jason.community.record_stages import Outcome, RuleChangeRecord
 from jason.community.rule_changes import RuleChange, SectionChange
 
 # PayHOA is retiring the deposit lockbox (P.O. Box 981506, West Sacramento) that receives members' mailed checks. At the
@@ -127,4 +130,46 @@ COLLECTION_POLICY_PAYMENTS = RuleChange(
 
 RULE_CHANGES: tuple[RuleChange, ...] = (COLLECTION_POLICY_PAYMENTS,)
 
-__all__ = ["COLLECTION_POLICY_PAYMENTS", "RULE_CHANGES"]
+
+# The association's own rule changes, made or proposed, whose stages ``jason record-stages`` reads from disk (Civil Code
+# 4360). ``files`` matches each change's own notices and text by name on Drive and in the library; ``decided`` is the
+# meeting whose minutes record the decision. The draft above (COLLECTION_POLICY_PAYMENTS) is read from the
+# specification and needs no row until it is noticed.
+RULE_CHANGE_RECORDS: tuple[RuleChangeRecord, ...] = (
+    RuleChangeRecord(
+        key="parking-fines-2022", title="Rules B-7 and B-12, and the fine schedule", document="owners-manual",
+        document_title="Owner's Manual and Rules",
+        files=r"^Notice of (Proposed|Adopted) (Rule )?Changes? B-7, B-12",
+        words=("adopted the proposed rule changes", "B-7, B-12"),
+        decided=date(2022, 8, 30),
+        note="The minutes of 2022-08-30 record the adoption \"after ... discussion and comments from members\"; the "
+             "fine schedule was adopted as amended at that meeting."),
+    RuleChangeRecord(
+        key="election-rules-2022", title="Election rules revised to conform to SB 323", document="election-rules",
+        document_title="Election Rules",
+        files=r"SB 323 Election Rules|Notice to Owners re Amendment to CCRs and Election Rules",
+        words=("revised election rules", "SB 323 Election Rules"),
+        decided=date(2022, 10, 24), notices=r"Notice to Owners re Amendment",
+        note="Made \"to conform with new legislation, SB323\": whether the change was one the law required with no "
+             "discretion (4355(b)(4), no 28-day notice) is for counsel. The notice to owners of 9/7/22 also covered a "
+             "CC&R amendment."),
+    RuleChangeRecord(
+        key="owners-manual-2023", title="Owner's Manual and Rules (B-1 and others) and the Assessment Collection Policy",
+        document="owners-manual", document_title="Owner's Manual and Rules",
+        files=r"^Notice of Proposed Rule Changes?( B-1)?(\.pdf|\.docx)?$|^Notice of Adopted Rule Change( \d{6}\.pdf)?$",
+        words=("Adoption of Proposed Rule Changes",),
+        decided=date(2023, 4, 18),
+        note="Whether the Assessment Collection Policy is a rule on a 4355(a) subject (payment plans, (a)(4)) is for "
+             "counsel; it was noticed and adopted with the Owner's Manual."),
+    RuleChangeRecord(
+        key="election-rules-electronic-voting", title="Election Rules: electronic voting (AB 2159)",
+        document="election-rules", document_title="Election Rules",
+        files=r"^Notice of Proposed Rule Change - Electronic Voting",
+        words=("Electronic Voting",),
+        outcome=Outcome.PENDING, tasks=r"election rules",
+        note="The proposed text is in the Election Rules Doc (outline key election-rules), which has changed since; its "
+             "words at the notice are not kept apart. The minutes of 2024-12-17 record that the board would like to "
+             "propose electronic voting rules."),
+)
+
+__all__ = ["COLLECTION_POLICY_PAYMENTS", "RULE_CHANGES", "RULE_CHANGE_RECORDS"]

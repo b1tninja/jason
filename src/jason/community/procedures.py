@@ -114,6 +114,15 @@ PROCEDURES: tuple[Procedure, ...] = (
                        "within 30 days; a posting jason cannot see is recorded (jason schedule --done KEY DUE --by "
                        "NAME --evidence TEXT); a notice day already passed means a later meeting day noticed in time",
                  refs=("docs/schedule.md (The watch)", "docs/attention.md"), lessons=("meeting-clocks-read-forward",)),
+            Step("Read each meeting's minutes history and each open rule change's stages: a copy of the minutes on "
+                 "record within 30 days, the next minutes stating the approval in words, and a rule change's 28-day "
+                 "notice delivered before its decision and its notice of adoption within 15 days after (Civil Code "
+                 "4360).", command="jason record-stages --minutes; jason record-stages --change KEY",
+                 check="the approval is written as passed ('approved the minutes of DATE, M/S/P'), not only listed; "
+                       "a clock is met by a delivery, not a file; executive-session minutes show only their date",
+                 refs=("docs/record-stages.md",),
+                 lessons=("approval-item-is-not-approval", "notice-file-is-not-delivery",
+                          "executive-minutes-counted-open")),
             Step("Bring the action items up to date: status, owner, meeting, notes.",
                  command="jason board --set ITEM --status 'on agenda' --meeting DATE",
                  refs=("docs/board-agenda.md",)),

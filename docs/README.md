@@ -72,6 +72,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 
 - [board-agenda.md](board-agenda.md): the board's action items, the meeting schedule, and drafting the next agenda and minutes.
 - [meetings.md](meetings.md): the meeting records catalog across Zoom, Drive, and PayHOA, and its checks.
+- [record-stages.md](record-stages.md): each rule change's and each meeting's minutes' versions, stages, and clocks (Civil Code 4360, 4950).
 - [calendar.md](calendar.md): meetings, notice and hearing deadlines, and recurring deadlines on Google Calendar.
 - [zoom.md](zoom.md): the Zoom meeting history and disciplinary hearings under Civil Code 5855.
 

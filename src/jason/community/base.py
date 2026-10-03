@@ -808,6 +808,11 @@ class Community(ABC):
         """Proposed operating rule changes (``jason.community.rule_changes.RuleChange``). Empty until the specification sets them."""
         return ()
 
+    def rule_change_records(self) -> tuple:
+        """The association's own rule changes, made or proposed, whose stages jason reads from disk
+        (``jason.community.record_stages.RuleChangeRecord``). Empty until the specification sets them."""
+        return ()
+
     def zoom_meeting_rules(self) -> tuple:
         """Topic words that name a Zoom meeting's kind (``jason.zoom.models.MeetingRule``), in order. Empty until set."""
         return ()

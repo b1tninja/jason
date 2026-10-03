@@ -85,6 +85,7 @@ GROUPS: dict[str, str] = {
     "minutes-privacy": "Meetings, board & minutes",
     "calendar": "Meetings, board & minutes",
     "rule-change": "Meetings, board & minutes",
+    "record-stages": "Meetings, board & minutes",
     # Owners, requests, notices & forms
     "request-sheet": "Owners, requests, notices & forms",
     "export-requests": "Owners, requests, notices & forms",

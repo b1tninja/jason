@@ -402,6 +402,24 @@ LESSONS: tuple[Lesson, ...] = (
            "A roman numeral and a letter share the glyph 'i'.",
            "The splitter reads the label that succeeds the one asked for, not any label at the same glyph.",
            Status.FIXED, guards=("cite.label_text", "tests/test_cite.py")),
+    Lesson("executive-minutes-counted-open", OCT_2026, (Area.GOVERNING,),
+           "An executive session's minutes, dated earlier, could have met the 30-day clock for the open meeting's "
+           "minutes.",
+           "The minutes reader took any minutes copy in the meeting catalog, confidential ones included.",
+           "The reader skips confidential copies; executive-session minutes show only that they exist and their date.",
+           Status.FIXED, guards=("schedule_evidence.minutes_on_record", "tests/test_record_stages.py")),
+    Lesson("approval-item-is-not-approval", OCT_2026, (Area.GOVERNING,),
+           "Most minutes name the earlier meeting under 'Approval of minutes' without saying the motion passed.",
+           "Minutes are written on the agenda's outline.",
+           "jason reports an approval as stated (the words say it passed) or only listed. Writing 'The board approved "
+           "the minutes of DATE (M/S/P)' is a practice for the secretary and the board to adopt.",
+           Status.DECISION, guards=("jason record-stages --minutes",), docs=("docs/record-stages.md",)),
+    Lesson("notice-file-is-not-delivery", OCT_2026, (Area.GOVERNING,),
+           "For rule changes made before the delivery log began, only the 4360 notices' files are on disk.",
+           "A file shows the notice was written, not that members received it.",
+           "jason reports 'a file in time; its delivery is not on record' and never counts it as met; a person confirms "
+           "each delivery and records it in the notice ledger.",
+           Status.OPEN, guards=("record_stages evidence strength",), docs=("docs/record-stages.md",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

@@ -487,8 +487,8 @@ def minutes_on_record(stores: Stores, day: date) -> tuple[list[tuple[date, str]]
     counts it), in the catalog; jason's own drafts are not with the members and are left out. A copy dated before the
     meeting (a template made ahead) says nothing of when it was finished, so it is undated. With no catalog record, the
     readings' minutes of that day, undated."""
-    records = [r for r in stores.meetings().get(day, {}).get("records", [])
-               if r.get("kind") in MINUTES_KINDS and r.get("where") != "jason draft"]
+    records = [r for r in stores.meetings().get(day, {}).get("records", [])        # not executive session's (4950(a))
+               if r.get("kind") in MINUTES_KINDS and r.get("where") != "jason draft" and not r.get("confidential")]
     drive = stores.drive_files()
     dated: list[tuple[date, str]] = []
     undated: list[str] = []

@@ -341,6 +341,12 @@ class Mystique(Community):
 
         return RULE_CHANGES
 
+    def rule_change_records(self):
+        """The association's own rule changes, made or proposed, read stage by stage from disk (rule_changes.py)."""
+        from .rule_changes import RULE_CHANGE_RECORDS
+
+        return RULE_CHANGE_RECORDS
+
     def zoom_meeting_rules(self):
         """Hearing, executive session, annual meeting, committee, then board meeting, by the topic's words (zoom.py)."""
         from .zoom import ZOOM_MEETING_RULES

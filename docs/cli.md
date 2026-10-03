@@ -6,12 +6,12 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-139 commands, by area:
+140 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (12)
-- [Meetings, board & minutes](#meetings-board--minutes) (8)
+- [Meetings, board & minutes](#meetings-board--minutes) (9)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (21)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (13)
 - [Google Workspace](#google-workspace) (8)
@@ -578,6 +578,20 @@ Member notice, agenda item, and adoption notice for a proposed rule change (Civi
 | `--regular-months-only` |  | count only the resolution's regular months, not the monthly practice |
 | `--draft-email` |  | preview the member notice as a Gmail draft |
 | `--yes` |  | with --draft-email: save the draft (never sent) |
+
+### `jason record-stages`
+
+Revision histories of the rule changes (Civil Code 4360) and the minutes (4950): each version, its stage, the clocks, and the record of each; reads disk only
+
+| Option | Value | Help |
+|---|---|---|
+| `--rules` |  | only the rule changes |
+| `--minutes` |  | only the minutes |
+| `--change` | KEY | one rule change by its key |
+| `--meeting` | DATE | one meeting's minutes (YYYY-MM-DD) |
+| `--since` | DATE | minutes of meetings from this day (default January 1 last year) |
+| `--as-of` | DATE | read this day as today (YYYY-MM-DD) |
+| `--json` |  | the rows a tool would show, as JSON |
 
 ## Owners, requests, notices & forms
 
