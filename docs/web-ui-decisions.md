@@ -148,6 +148,43 @@ emailed request PayHOA does not have, with the form jason matched, the thread, a
 (`jason request-links --create THREAD --yes`). The same pattern fits the agenda, minutes, hearing notice,
 rule-change, and letter drafts, and the owner-information send plan.
 
+## The board loop: present, decide, act
+
+Everything above feeds one loop: a matter is researched (a canvas), becomes a board item, is noticed for a
+meeting, goes to the board in a packet, is decided by a motion, is recorded in the minutes, and leads to an
+action (a letter, a notice, a register entry, a payment, a filing). The UI covers the research and the items;
+what the board sees and does needs its own screens.
+
+### Built: the meeting (`#/meeting`)
+
+One meeting as the board sees it: the date (the schedule's next unless chosen), the last days to give notice
+(CIV 4920: four days; two for an executive-only meeting), the items proposed or on the agenda by session
+(executive items by title only, CIV 4935), the agenda draft, the packet (background, the question, the law quoted,
+what the records show now, options, a draft motion), the minutes frame the Secretary fills, and the commands
+that write each as a Doc. Nothing is taken up that is not on the noticed agenda (CIV 4930).
+
+### Open: what still needs a screen, and the decision in each
+
+| Workflow | The board's decision | What jason has | What the screen would add |
+|---|---|---|---|
+| **Motions and votes** | approve, deny, table; mover, second, roll call | `Action(motion, outcome, mover, second)` parsed from minutes; `Outcome` | a decision record per agenda item taken at the meeting, feeding the minutes draft; today it is typed into the Secretary's frame |
+| **Minutes to approve** | approve the prior minutes, with corrections | `--minutes DATE` draft with blanks; `minutes-privacy --correct` | the draft as a form: each blank a field, the privacy flags beside the names they concern |
+| **Rule change (CIV 4360)** | adopt, amend, or withdraw; whether 4355 covers it | `jason rule-change`: timeline, member notice, agenda item, adoption notice, `[brackets]` the board fills | the brackets as a form, the 28-day comment clock, the notice and adoption drafts with their commands |
+| **Hearing decision (5855(f))** | the discipline, within 14 days | the hearing clocks; `letter --template decision-notice --set DECISION=` | the decision entered once, the notice previewed from the template, the command |
+| **Delinquency steps** | release, pre-lien notice, lien (open session by roll call, 5673), foreclosure floor (5720) | collections standings with `nextStep`; `who-owes-sheet` | per account: the step the board takes, its vote, and the handoff; jason records and submits nothing |
+| **Reserve borrowing finding (5515)** | the finding, and a noticed finding when restoring late | the 5515 checklist per loan | the finding's text drafted into the packet and minutes |
+| **Insurance renewal** | renew, re-bid, change coverage; a 5810 notice when limits change | policy standings and findings; the register's renewal column | the decision and the member notice draft |
+| **Annual disclosures (5300, 5310)** | the open tokens: the choices only the board makes | `packet --values` writes them blank | `values.json` as a form, the parts plan, the build command |
+| **Records request (5225)** | whether the stated purpose is adequate; what is withheld and why | the request list and the copy order | the request, the decision, the redaction reason, the mailing as separate jobs |
+| **Owner-information answers** | confirm each change before tags are written | per-owner changes with source and assurance; `plan_writes` | the confirmations as a checklist, then the apply command |
+| **Mail triage** | scan, forward, shred, discard | kind, urgency, deadlines per letter | the letter with its deadline clock and the choice recorded |
+| **Registers** | the board's own columns (status, explained, renewal decision, notice sent, adopted) | Sheets with owned columns and a log tab | the board's columns edited here as the board-items columns are, logged the same way |
+
+The pattern for all of them is already on the page: the facts from the read-only tools, the decision's text
+entered once by a person, a preview from the same template the Doc is built from, and the command that writes.
+A decision is recorded where jason already keeps it (the board's columns, a register, the minutes); the UI adds
+no second place for it.
+
 ## Next, by what a person decides
 
 **Drafts.** The agenda and minutes drafts (`data/board/*.md`), hearing and meeting-notice Gmail drafts, letters

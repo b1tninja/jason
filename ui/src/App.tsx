@@ -17,6 +17,7 @@ import { ReservesView } from "./views/ReservesView";
 import { TemplatesView } from "./views/TemplatesView";
 import { TitleWatchView } from "./views/TitleWatchView";
 import { InsuranceView } from "./views/InsuranceView";
+import { MeetingView } from "./views/MeetingView";
 import { MeetingsView } from "./views/MeetingsView";
 import { MoneyView } from "./views/MoneyView";
 import { IngestionView } from "./views/IngestionView";
@@ -59,6 +60,7 @@ const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
   { id: "legal", label: "Legal", view: LegalView },
   { id: "jobs", label: "Jobs", view: JobsView },
   { id: "board", label: "Board items", view: BoardItemsView },
+  { id: "meeting", label: "Next meeting", view: MeetingView },
   { id: "records", label: "Association records", view: AssociationRecordsView },
   { id: "ingestion", label: "Document ingestion", view: IngestionView },
   { id: "leads", label: "Leads", view: LeadsView },

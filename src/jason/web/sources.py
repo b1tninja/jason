@@ -284,6 +284,58 @@ def photos(args: Args) -> dict[str, Any]:
     return {"found": bool(albums), "albums": albums}
 
 
+def meeting(args: Args) -> dict[str, Any]:
+    """One board meeting as the board sees it: the date (default the schedule's next), the last days to give notice
+    (CIV 4920: four days; two for an executive-only meeting), the items proposed or on the agenda by session, the agenda
+    draft, the packet (each item's background, the law, what the records show now, options, a draft motion), the
+    minutes frame the Secretary fills, and the commands that write the Doc, the packet, and the minutes draft. Reads
+    disk only; the page writes none of them."""
+    from datetime import date as _date
+
+    from jason.community.board_items import ItemStatus, agenda_session
+    from jason.mcp.county import _data_dir
+    from jason.tasks.board_items import _encode, agenda, load, notice_date
+    from jason.tasks.meeting_agenda import minutes_template
+
+    community = _community()
+    root = _data_dir(None)
+    today = _date.today()
+    raw = args.get("date", "").strip()
+    try:
+        day = _date.fromisoformat(raw) if raw else community.next_meeting(today)
+    except ValueError:
+        return {"found": False, "note": "date is YYYY-MM-DD"}
+    items = [i for i in load(root) if i.status in (ItemStatus.PROPOSED, ItemStatus.ON_AGENDA)]
+    rows = [{**_encode(i), "agendaSession": agenda_session(i).value} for i in items]
+    agenda_lines = agenda(items, day, community=community)
+    notes: list[str] = []
+    try:
+        from jason.tasks.board_packet import packet as build_packet
+
+        packet_md = "\n".join(build_packet(root, community, day))
+    except Exception as exc:  # a packet needs the stores its items cite; the meeting page stands without it
+        packet_md, notes = "", [f"packet: {type(exc).__name__}: {exc}"]
+    try:
+        minutes_md = "\n".join(minutes_template(day, [], agenda_lines))
+    except Exception as exc:
+        minutes_md, notes = "", notes + [f"minutes frame: {type(exc).__name__}: {exc}"]
+    iso = day.isoformat()
+    return {
+        "found": True, "date": iso, "today": today.isoformat(),
+        "noticeBy": notice_date(day).isoformat(), "executiveNoticeBy": notice_date(day, executive_only=True).isoformat(),
+        "items": rows, "openCount": sum(1 for r in rows if r["agendaSession"] == "open session"),
+        "executiveCount": sum(1 for r in rows if r["agendaSession"] != "open session"),
+        "agendaMarkdown": "\n".join(agenda_lines), "packetMarkdown": packet_md, "minutesTemplate": minutes_md, "notes": notes,
+        "commands": {
+            "agendaDoc": f"jason board --agenda <previous agenda Doc id> --date {iso} --doc --yes",
+            "packetDoc": f"jason board --packet --date {iso} --doc --yes",
+            "minutesDraft": f"jason board --minutes {iso}",
+            "notice": f"jason board --set <item id> --status \"on agenda\" --meeting {iso}",
+        },
+        "caveats": ["No action may be taken on an item not on the noticed agenda (CIV 4930). The agenda, packet, and minutes are drafts a person finishes; the board decides."],
+    }
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -368,6 +420,7 @@ def default_loaders() -> dict[str, Any]:
         "request-links": request_links,
         "canvases": canvases,
         "templates": templates,
+        "meeting": meeting,
         "drive-files": drive_files,
         "photos": photos,
     }

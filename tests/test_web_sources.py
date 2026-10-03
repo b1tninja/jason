@@ -85,11 +85,11 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting"} == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
-        if name in ("canvases", "templates", "drive-files", "photos"):  # stores under data/ or the profile, not county tools; their own tests below
+        if name in ("canvases", "templates", "drive-files", "photos", "meeting"):  # stores under data/ or the profile, not county tools; their own tests below
             continue
         out = fn({})
         assert isinstance(out, dict), name
@@ -362,3 +362,38 @@ def test_drive_files_and_photos_read_the_stores(county, tmp_path, monkeypatch):
     ]}))
     albums = sources.photos({})["albums"]
     assert albums[0]["count"] == 1 and albums[0]["items"][0]["path"] == "photos/east-bed/a.jpg"
+
+
+def test_meeting_builds_the_spine_from_the_board_items(county, tmp_path, monkeypatch):
+    import json
+    import sys
+    from datetime import date
+
+    from jason.web import sources
+
+    class Community(_FakeCommunity):
+        name = "The Association"
+        corporate_name = ""
+
+        def next_meeting(self, after, *, monthly=False):
+            return date(2026, 10, 20)
+
+        def unit_city_state_zip(self):
+            return ""
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    monkeypatch.setattr(sources, "_community", lambda: Community())
+    (tmp_path / "board").mkdir()
+    (tmp_path / "board" / "items.json").write_text(json.dumps({"items": [
+        {"id": "reserve-loan", "title": "Reserve loan not restored", "summary": "s", "ask": "Decide whether to restore", "category": "reserves", "priority": "high", "status": "on agenda", "authority": "CIV 5515(d)", "evidence": [], "session": None, "special_notice": "", "due": None, "opened": "2026-09-01", "owner": "", "meeting": "2026-10-20", "notes": "", "source": "jason", "history": []},
+        {"id": "unit-14-delinquency", "title": "Unit 14 delinquency", "summary": "s", "ask": "Vote to record a lien", "category": "collections", "priority": "normal", "status": "proposed", "authority": "CIV 5673", "evidence": [], "session": None, "special_notice": "", "due": None, "opened": "2026-09-01", "owner": "", "meeting": "", "notes": "", "source": "jason", "history": []},
+        {"id": "closed-one", "title": "Done", "summary": "s", "ask": "a", "category": "finance", "priority": "normal", "status": "closed", "authority": "", "evidence": [], "session": None, "special_notice": "", "due": None, "opened": None, "owner": "", "meeting": "", "notes": "", "source": "jason", "history": []},
+    ]}))
+    out = sources.meeting({})
+    assert out["found"] and out["date"] == "2026-10-20" and out["noticeBy"] == "2026-10-16" and out["executiveNoticeBy"] == "2026-10-18"
+    assert [i["id"] for i in out["items"]] == ["reserve-loan", "unit-14-delinquency"]
+    assert out["openCount"] == 1 and out["executiveCount"] == 1
+    assert "Reserve loan not restored" in out["agendaMarkdown"]
+    assert out["commands"]["packetDoc"] == "jason board --packet --date 2026-10-20 --doc --yes"
+    assert sources.meeting({"date": "2026-11-17"})["noticeBy"] == "2026-11-13"
+    assert sources.meeting({"date": "soon"})["found"] is False
