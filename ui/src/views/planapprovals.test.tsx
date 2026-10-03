@@ -42,6 +42,19 @@ describe("the Approvals screen's plans", () => {
     expect(auditOf(entries).entries).toHaveLength(22);
   });
 
+  it("lists the server's summary rows, where items is a count and byClass counts them by class", async () => {
+    const full = plannedJson as unknown as { items: { class: string }[] };
+    const byClass: Record<string, number> = {};
+    for (const i of full.items) byClass[i.class] = (byClass[i.class] ?? 0) + 1;
+    const summary = { ...plannedJson, items: full.items.length, byClass, byDecision: {}, byResult: {}, approved: 0 };
+    stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    vi.mocked(fetch).mockImplementation(async (url) =>
+      new Response(JSON.stringify(url === "/api/approvals" ? { ...page, approvals: [summary] } : { error: "no route" }), { status: url === "/api/approvals" ? 200 : 404 }));
+    render(<ApprovalsView />);
+    const plans = await screen.findByRole("region", { name: "Plans of writes" });
+    expect(within(plans).getByText(`${byClass.approvable} to decide`, { exact: false })).toBeInTheDocument();
+  });
+
   it("opens a plan, decides an item as the signed-in person, and posts it with the write token", async () => {
     const posted = stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
     const user = userEvent.setup();

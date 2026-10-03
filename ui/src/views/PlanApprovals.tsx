@@ -4,8 +4,12 @@ import { postJson, serverSession, type ApiError, type ServerSession } from "../l
 import { useApi } from "../lib/useApi";
 import { STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type Recheck } from "../lib/approvals";
 
-/** An approval as a list carries it: the engine's record, or at least its head. */
-type Listed = Partial<Approval> & Pick<Approval, "id" | "kind" | "title" | "status">;
+/** An approval as a list carries it: the engine's record, or (from `GET /api/approvals`) its summary, where `items` is
+ * a count and `byClass` counts the items by class. */
+type Listed = Omit<Partial<Approval>, "items"> & Pick<Approval, "id" | "kind" | "title" | "status"> & {
+  items?: Approval["items"] | number;
+  byClass?: Record<string, number>;
+};
 
 /** The engine approvals in `/api/approvals` (`approvals`, or `plans`), told apart from the letters by their `apr-` ids. */
 export function engineApprovals(page: unknown): Listed[] {
@@ -25,8 +29,13 @@ export function approvalOf(d: Detail & Partial<Approval>): Approval | null {
 const OPEN = ["planned", "in_review", "approved", "partially_approved", "applying", "failed"];
 
 function counts(a: Listed): string {
-  if (!a.items) return "";
-  const n = (cls: string) => a.items!.filter((i) => i.class === cls).length;
+  const items = a.items;
+  const n = Array.isArray(items)
+    ? (cls: string) => items.filter((i) => i.class === cls).length
+    : a.byClass
+      ? (cls: string) => a.byClass?.[cls] ?? 0
+      : null;
+  if (!n) return "";
   const parts = [`${n("approvable")} to decide`, n("held_for_board") ? `${n("held_for_board")} held` : "", n("for_a_person") ? `${n("for_a_person")} for a person` : ""];
   return parts.filter(Boolean).join(" · ");
 }
