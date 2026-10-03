@@ -26,6 +26,7 @@ class Area(Enum):
     ENFORCEMENT = "enforcement"          # violations, hearings, fines, and their notices
     RENTALS = "rentals"                  # leasing approvals and limits
     GOVERNING = "governing"              # the governing documents themselves: amendments, citations, meetings
+    ONBOARDING = "onboarding"            # taking on an association, or a change of manager: its records and access
 
 
 class Status(Enum):
@@ -547,6 +548,30 @@ LESSONS: tuple[Lesson, ...] = (
            "subsections.",
            "The provenance names each subsection another instrument set, and the version fields describe the words "
            "recited.", Status.FIXED, guards=("SectionText.parts", "tests/test_cite.py (history and provenance agree)")),
+    Lesson("doc-smart-chips-dropped", OCT_2026, (Area.DOCUMENTS,),
+           "A checklist Doc read as questions with no answers: its answers were smart chips (linked files, people).",
+           "The Docs reader kept text runs only.",
+           "Rich links render as [title] and person chips by name.", Status.FIXED,
+           guards=("google.docs.document_markdown", "tests/test_onboarding.py (smart chips kept)")),
+    Lesson("takeover-list-omits-statutory-items", OCT_2026, (Area.ONBOARDING,),
+           "A management company's takeover request list left out what the law requires the association to keep or "
+           "give: the reserve study, the elevated-element inspection, the Secretary of State statements, loans, and the "
+           "policy statement's addresses.",
+           "Takeover lists are written for running the books, not for the statutes' records.",
+           "The onboarding checklist marks each statutory item by its law and checks it against the profile and disk.",
+           Status.FIXED, guards=("jason.community.onboarding.ITEMS (Origin.LAW)", "jason onboard --checklist",
+                                 "tests/test_onboarding.py"), docs=("docs/onboarding.md",)),
+    Lesson("outgoing-manager-only-items", OCT_2026, (Area.ONBOARDING,),
+           "At a change of manager, the ledgers, receivables, owner account numbers, and start-up funds never reached "
+           "the board's own record, and the board's access to the old portal ended before the records were delivered.",
+           "Only the outgoing manager held them, and nothing named them or a date in the termination.",
+           "Name these items, with dates, in the termination notice; keep the board's portal access through the "
+           "handover; have the outgoing manager copy the board.", Status.DECISION, docs=("docs/onboarding.md",)),
+    Lesson("gmail-store-window", OCT_2026, (Area.EMAIL,),
+           "A history search found nothing in the stored Gmail because the store keeps a limited window.",
+           "The Gmail sync stores a rolling window of messages.",
+           "An older search is a live read-only search; the window should be recorded in docs/gmail.md or extended.",
+           Status.OPEN, docs=("docs/gmail.md",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

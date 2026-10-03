@@ -148,6 +148,8 @@ def _paragraph_text(paragraph: dict[str, Any]) -> str:
         run = element.get("textRun")
         if isinstance(run, dict):
             parts.append(str(run.get("content") or ""))
+            continue
+        parts.append(_chip_text(element))
     text = "".join(parts).replace("\u000b", "\n").strip()
     if not text:
         return ""
@@ -168,6 +170,21 @@ def _paragraph_text(paragraph: dict[str, Any]) -> str:
     if isinstance(bullet, dict):
         return "- " + " ".join(text.split())
     return text
+
+
+def _chip_text(element: dict[str, Any]) -> str:
+    """A smart chip's visible text: a linked file's title or a person's name. A list of chips is often the whole
+    answer in a checklist Doc, so dropping them leaves only the questions."""
+    rich = element.get("richLink")
+    if isinstance(rich, dict):
+        props = rich.get("richLinkProperties") if isinstance(rich.get("richLinkProperties"), dict) else {}
+        title = str(props.get("title") or "").strip()
+        return f"[{title}]" if title else ""
+    person = element.get("person")
+    if isinstance(person, dict):
+        props = person.get("personProperties") if isinstance(person.get("personProperties"), dict) else {}
+        return str(props.get("name") or props.get("email") or "").strip()
+    return ""
 
 
 def _table_lines(table: dict[str, Any]) -> list[str]:

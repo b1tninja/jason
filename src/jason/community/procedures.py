@@ -442,6 +442,31 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/revision-detection.md", "procedure owners-manual"),
     ),
     Procedure(
+        "onboard", "Taking on an association, or a change of manager",
+        "When jason takes on a new association, and before a management company's contract ends.",
+        (Area.ONBOARDING,),
+        "Gather every record and fact a profile needs, from each source, and keep secrets out of documents.",
+        (
+            Step("Read the checklist.", command="jason onboard --items"),
+            Step("Send each source its request list, with three dates: at once, monthly after late fees, and at "
+                 "transition; paper records come with a contents list for each box.",
+                 command="jason onboard --request [SOURCE]", lessons=("outgoing-manager-only-items",), person=True),
+            Step("Put people, account numbers, and figures in data/spec/<name>.json or the profile's notes; put codes and "
+                 "passwords in Keeper, never in a Doc.", person=True),
+            Step("Write the profile's Community subclass with the facts the board supplies; pin the library folders and "
+                 "Drive roots to the 5200 records; map each governing document into its book.",
+                 refs=("docs/profiles.md", "docs/record-addresses.md")),
+            Step("Fetch what jason can read itself.",
+                 command="jason sync-catalog; jason library; jason outlines --fetch"),
+            Step("Run the checklist until only the items a person supplies are missing, and give each an owner.",
+                 command="jason onboard --checklist --write; jason schedule",
+                 lessons=("takeover-list-omits-statutory-items",)),
+            Step("For a change of manager, before the termination date: request the records (Civil Code 5205), confirm "
+                 "the board's portal access through the handover, and tell each vendor.", person=True),
+        ),
+        refs=("docs/onboarding.md",),
+    ),
+    Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",
         "Whenever the association writes to owners.",
         (Area.DOCUMENTS, Area.EMAIL),

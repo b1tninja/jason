@@ -35,4 +35,9 @@ LESSONS = (
            "A decision for the board, with counsel: which text is in force, and whether to notice and adopt the changes "
            "(Civil Code 4360) or restore the adopted text.", Status.DECISION,
            docs=("data/reports/revisions-owners-manual.md", "data/reports/revisions-election-rules.md")),
+    Lesson("secrets-in-handoff-doc", date(2026, 10, 2), (Area.ONBOARDING,),
+           "The knowledge-transfer Doc holds a portal password and lock and fire panel codes in plain text.",
+           "It was written as a working handoff list, with access details beside the records.",
+           "The board moves them to Keeper, changes them, and removes them from the Doc; a scan of Docs for credential "
+           "words could guard it.", Status.DECISION, docs=("mystique/notes/onboarding/README.md",)),
 )

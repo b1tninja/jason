@@ -174,6 +174,7 @@ GROUPS: dict[str, str] = {
     "ocr-documents": "Local AI & search",
     # Setup & maintenance
     "login": "Setup & maintenance",
+    "onboard": "Setup & maintenance",
     "jobs": "Setup & maintenance",
     "worker": "Setup & maintenance",
 }
