@@ -52,6 +52,16 @@
     },
     "MeetingStage": {
       "cardMode": "column"
+    },
+    "SecondConfirm": {
+      "cardMode": "column"
+    },
+    "StageSteps": {
+      "cardMode": "column"
+    },
+    "PlanReview": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

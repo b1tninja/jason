@@ -14,8 +14,8 @@ export const Waiting = () => <SecondConfirm approval={signed} me="Casey Sample" 
 /** Seen by the person who signed first: told they cannot be the second. */
 export const SignedFirstViewing = () => <SecondConfirm approval={signed} me="Jane Example" onConfirm={() => {}} onDecline={() => {}} />;
 
-/** A two-person kind with no high-stakes item, still waiting. */
-export const TwoPersonKind = () => <SecondConfirm approval={{ ...signed, items: signed.items.map((i) => ({ ...i, highStakes: false })) }} twoPerson me="Casey Sample" />;
+/** A two-person kind with no high-stakes item, asked for by one person and signed by another: neither may be the second. */
+export const TwoPersonKind = () => <SecondConfirm approval={{ ...signed, requestedBy: "A Manager", items: signed.items.map((i) => ({ ...i, highStakes: false })) }} twoPerson me="Casey Sample" />;
 
 /** Confirmed: both people and both times. */
 export const Confirmed = () => <SecondConfirm approval={{ ...signed, second: { name: "Casey Sample", at: "2026-10-03T09:05:00+00:00", fingerprint: FP, role: "director", via: "console" } }} />;

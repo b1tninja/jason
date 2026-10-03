@@ -12,7 +12,7 @@ const lease = {
 export const Recited = () => <Recitation citation={lease} mark="not less than thirty (30) days" />;
 
 /** A rule that is not in force: a draft amendment, labeled and never merged. */
-export const NotInForce = () => <Recitation citation={{ ...lease, citation: "Section 7.3, as the 2027 amendment would set it", version: { inForce: false, note: "a draft: not in force, and never merged into the text in force" } }} />;
+export const NotInForce = () => <Recitation citation={{ ...lease, citation: "Section 7.3, as the 2027 amendment would set it", inForce: "proposed 2026-09-15, not adopted", version: { inForce: false, note: "a draft: not in force, and never merged into the text in force" } }} />;
 
 /** A miss recites nothing and says why. */
 export const Miss = () => <Recitation citation={{ kind: "miss", found: false, citation: "Rules R-9(c)", reason: "no_such_section" }} />;

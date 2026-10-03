@@ -17,7 +17,9 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - **Playwright.** The container's cached Chromium is build 1194 at `/opt/pw-browsers`, pinned by
   `playwright-core@1.56.1` (`/opt/node-tools`). Install that exact `playwright` version into `.ds-sync/` and run
   validate/capture with `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`. A newer playwright fails with
-  "Executable doesn't exist".
+  "Executable doesn't exist". On the Windows checkout the cache is `%LOCALAPPDATA%\ms-playwright` (chromium-1243
+  on 2026-10-03), which `playwright@1.63.0` pins; no `PLAYWRIGHT_BROWSERS_PATH` is needed there. Check the cache's
+  `chromium-<build>` against `.ds-sync/node_modules/playwright-core/browsers.json` before a run.
 - **Previews import from `jason-ui`.** Named exports, one per cell. `Badge` takes a single string child
   (template literal, not an array). `DueDate` takes `today` so a preview is deterministic; without it the
   distance drifts daily and the floor card rendered blank.
@@ -82,15 +84,23 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `npm i esbuild ts-morph @types/react playwright@1.56.1` there, fetch the project's `_ds_sync.json` to
   `.design-sync/.cache/remote-sync.json`, then
   `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node .ds-sync/resync.mjs --config .design-sync/config.json --node-modules ./ui/node_modules --entry ./ui/dist-lib/index.js --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json`.
-- All 48 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
+- All 61 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
   until its preview is authored. The thirteen approvals-engine components (PlanReview, WriteRow, HeldNote,
   ChangedBanner, ApproveBar, SecondConfirm, CostLine, ApplyResult, Recitation, ReadingLabel, AuditLog, QuestionCard,
-  StageSteps) have authored previews too, cut from `tests/fixtures/approvals/`, not yet synced; their `now`/`today`
-  props are pinned so the stale and clock cells do not drift.
+  StageSteps), synced 2026-10-03, are cut from `tests/fixtures/approvals/`; their `now`/`today` props are pinned so
+  the stale and clock cells do not drift. `PlanReview` is a column card at `1000x1400` (its cells are a whole plan
+  and cropped at 700px); `SecondConfirm` and `StageSteps` are column cards (wide `.fields` grid; five stage tiles).
+- Preview cells must differ in something visible. `SecondConfirm`'s `TwoPersonKind` differs from `Waiting` only in
+  why a second person is needed, which the component does not show, so its cell has a different requester (two
+  refused names). A not-in-force `Recitation` carries its own `inForce` text: spreading the in-force citation's
+  `inForce` put "in force from" under "not in force".
+- The 2026-10-03 re-sync re-verified all 48 earlier components: the anchor's `styleSha` and `scriptsSha` had moved
+  (styles.css grew for the approvals pieces; a newer converter), so every component re-graded. Expect the same
+  whenever `styles.css` changes.
 - `RollCall` and `ConfirmList` are controlled (`votes`/`onChange`, `rows`/`onToggle`): their previews wrap them in a
   `useState` component, as `Tabs` and `SearchBox` do. `DecisionCard` keeps its own state from `initial`, so its
   cells are static props. `RegisterGrid`'s board cells post to `/api/write/registers/...` only on save, so the grid
   renders without a server; the `Clock` previews pass `today` like `DueDate`.
-- The conventions header (`.design-sync/conventions.md`) still names only the first 23 components; the five from
-  the board loop (`Clock`, `ConfirmList`, `RollCall`, `DecisionCard`, `RegisterGrid`) are described only by their
-  `.prompt.md`. Every name it does use verified against the 2026-10-03 build.
+- The conventions header (`.design-sync/conventions.md`) names every component group, the approvals-engine pieces
+  included; `RegisterGrid` is described only by its `.prompt.md`. Every prop name it uses was checked against the
+  2026-10-03 `.d.ts` files.
