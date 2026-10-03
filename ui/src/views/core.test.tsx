@@ -39,12 +39,28 @@ describe("CalendarView", () => {
     mockFetch({ "/api/calendar": { asOf: "2026-10-03", caveats: ["A payment is evidence, not proof."], obligations: [
       { name: "Budget report", authority: "CIV 5300", rule: "yearly", note: "", standing: "upcoming", next: "2026-11-01", daysLeft: 29, lastDone: "2025-11-01", history: [] },
       { name: "Backflow test", authority: "city", rule: "yearly", note: "", standing: "overdue", next: "2026-09-01", daysLeft: -32, lastDone: null, history: [{ deadline: "2025-09-01", standing: "done late", daysLate: 10 }] },
-    ] } });
+    ] }, "/api/embeds": { found: true, calendarId: "", timeZone: "America/Los_Angeles", recordings: [] } });
     render(<CalendarView />);
     const rows = await screen.findAllByRole("row");
     expect(rows[1]).toHaveTextContent("Backflow test");
     expect(rows[1]).toHaveTextContent("2025-09-01: done late (10d late)");
     expect(screen.getByText("A payment is evidence, not proof.")).toBeInTheDocument();
+    expect(screen.queryByText("The calendar jason writes to")).not.toBeInTheDocument();
+    expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("embeds the association's calendar when the profile names one", async () => {
+    mockFetch({
+      "/api/calendar": { asOf: "2026-10-03", caveats: [], obligations: [] },
+      "/api/embeds": { found: true, calendarId: "abc@group.calendar.google.com", timeZone: "America/Los_Angeles", recordings: [] },
+    });
+    render(<CalendarView />);
+    expect(await screen.findByText("The calendar jason writes to")).toBeInTheDocument();
+    const frame = document.querySelector("iframe") as HTMLIFrameElement;
+    expect(frame.src).toContain("calendar.google.com/calendar/embed?src=abc%40group.calendar.google.com");
+    expect(frame.src).toContain("mode=MONTH");
+    expect(frame.src).toContain("ctz=America%2FLos_Angeles");
+    expect(screen.getByText(/A viewer must already be allowed to see it/)).toBeInTheDocument();
   });
 });
 

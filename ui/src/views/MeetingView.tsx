@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Command, DataTable, DecisionCard, DueDate, Markdown, Pill, RemoteView, Stat, Tabs, type Column, type DecisionDraft } from "../components";
+import { Badge, Card, Caveats, Command, DataTable, DecisionCard, DueDate, Embed, Markdown, Pill, RemoteView, Stat, Tabs, type Column, type DecisionDraft } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import type { BoardItem } from "./types";
@@ -11,6 +11,21 @@ interface Meeting {
   directors: string[]; decisions: Decision[];
   agendaMarkdown: string; packetMarkdown: string; minutesTemplate: string; notes: string[];
   commands: { agendaDoc: string; packetDoc: string; minutesDraft: string; notice: string }; caveats?: string[];
+}
+
+interface Recording { date: string; topic: string; uuid: string; shareUrl: string; playUrl: string; files: { type: string; name: string; path: string }[] }
+interface Embeds { found: boolean; note?: string; calendarId: string; timeZone: string; recordings: Recording[] }
+
+const isAudioFile = (f: { type: string; name: string }) => f.type === "audio" || /\.(m4a|mp3)$/i.test(f.name);
+
+/** The Sunday-to-Saturday week holding an ISO date, as Google's `dates=` range (`YYYYMMDD/YYYYMMDD`). */
+export function weekOf(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  if (Number.isNaN(d.getTime())) return "";
+  const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
+  const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
+  const ymd = (x: Date) => `${x.getFullYear()}${String(x.getMonth() + 1).padStart(2, "0")}${String(x.getDate()).padStart(2, "0")}`;
+  return `${ymd(sun)}/${ymd(sat)}`;
 }
 
 const cols: Column<Row>[] = [
@@ -27,6 +42,8 @@ const cols: Column<Row>[] = [
 export function MeetingView() {
   const [date, setDate] = useState("");
   const r = useApi<Meeting>(`/api/meeting${date ? `?date=${date}` : ""}`);
+  const embeds = useApi<Embeds>("/api/embeds");
+  const em = embeds.status === "ready" && embeds.data.found !== false ? embeds.data : null;
   const [tab, setTab] = useState("agenda");
   const [saved, setSaved] = useState<Record<string, Decision>>({});
   const [busy, setBusy] = useState(false);
@@ -41,12 +58,20 @@ export function MeetingView() {
   };
   return (
     <RemoteView r={r}>
-      {(d) => (
+      {(d) => {
+        const recording = (em?.recordings ?? []).find((x) => x.date === d.date);
+        const week = weekOf(d.date);
+        return (
         <div className="stack">
           <div className="row wrap">
             <label>Meeting <input type="date" value={date || d.date} onChange={(e) => setDate(e.target.value)} /></label>
             <span className="muted">the schedule's next meeting unless chosen</span>
           </div>
+          {em && em.calendarId && week && (
+            <Card title="That week on the calendar">
+              <Embed a={{ kind: "calendar", ref: em.calendarId, title: `Association calendar, week of ${d.date}`, opts: { mode: "WEEK", dates: week, tz: em.timeZone } }} height={260} />
+            </Card>
+          )}
           <div className="stats">
             <Stat label="Notice by (open meeting, CIV 4920(a))" value={<DueDate iso={d.noticeBy} today={new Date(d.today + "T12:00:00")} />} />
             <Stat label="Notice by (executive only, 4920(b)(2))" value={<DueDate iso={d.executiveNoticeBy} today={new Date(d.today + "T12:00:00")} />} />
@@ -76,6 +101,13 @@ export function MeetingView() {
               <Card title="What the board did">
                 <p className="muted">One motion per item, in the board's words: who moved and seconded, each director's vote, and the outcome. jason records the board's decision; it decides nothing. A roll call is kept for every vote (a lien needs one in open session, CIV 5673).</p>
                 {d.directors.length === 0 && <p className="notice notice-warn">No directors on file (`jason board --members`); type names into the roll call as you go.</p>}
+                {recording && (
+                  <div className="stack">
+                    {(recording.shareUrl || recording.playUrl) && <Embed a={{ kind: "zoom", ref: recording.shareUrl || recording.playUrl, title: recording.topic }} height={300} />}
+                    {(recording.files ?? []).filter(isAudioFile).map((f) => <Embed key={f.path} a={{ kind: "audio", ref: f.path, title: f.name || `${recording.topic} (audio)` }} />)}
+                    <p className="muted">A kept recording may be under a litigation hold; the page shows it and deletes nothing.</p>
+                  </div>
+                )}
                 {d.items.map((item) => {
                   const existing = saved[`${d.date}--${item.id}`] ?? d.decisions.find((x) => x.item === item.id);
                   return <DecisionCard key={item.id + (existing?.updated ?? "")} title={item.title} directors={d.directors} initial={existing ? { ...existing } : { session: item.agendaSession }} busy={busy} onSave={(dd) => save(d.date, item, dd)} />;
@@ -93,7 +125,8 @@ export function MeetingView() {
           ]} />
           <Caveats items={d.caveats} />
         </div>
-      )}
+        );
+      }}
     </RemoteView>
   );
 }

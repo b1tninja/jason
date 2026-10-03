@@ -1,9 +1,11 @@
-import { Card, Caveats, DataTable, DueDate, Findings, Pill, RemoteView, type Column } from "../components";
+import { Card, Caveats, DataTable, DueDate, Embed, Findings, Pill, RemoteView, type Column } from "../components";
 import { useApi } from "../lib/useApi";
 import type { Calendar, Obligation } from "./types";
 
 const ORDER = ["overdue", "no evidence", "due soon", "upcoming", "done late", "done", "listed", "no store shows it"];
 const rank = (s: string) => { const i = ORDER.indexOf(s); return i < 0 ? ORDER.length : i; };
+
+interface Embeds { found: boolean; note?: string; calendarId: string; timeZone: string }
 
 const cols: Column<Obligation>[] = [
   { key: "standing", header: "Standing", render: (r) => <Pill word={r.standing} meaning={r.note} />, value: (r) => rank(r.standing) },
@@ -19,6 +21,8 @@ const cols: Column<Obligation>[] = [
 /** The recurring deadlines, overdue first. A payment is evidence a thing was done, not proof. */
 export function CalendarView() {
   const r = useApi<Calendar>("/api/calendar");
+  const embeds = useApi<Embeds>("/api/embeds");
+  const em = embeds.status === "ready" && embeds.data.found !== false && embeds.data.calendarId ? embeds.data : null;
   return (
     <RemoteView r={r}>
       {(d) => {
@@ -29,6 +33,12 @@ export function CalendarView() {
             <Card title={`Deadlines as of ${d.asOf}`} actions={<span className="row wrap">{Object.entries(counts).map(([s, n]) => <span key={s}><Pill word={s} /> {n}</span>)}</span>}>
               <DataTable rows={rows} columns={cols} searchable={false} />
             </Card>
+            {em && (
+              <Card title="The calendar jason writes to">
+                <Embed a={{ kind: "calendar", ref: em.calendarId, title: "Association calendar", opts: { mode: "MONTH", tz: em.timeZone } }} height={520} />
+                <p className="muted">The deadlines above are what jason computed; the calendar is where <code>jason calendar --yes</code> wrote them. A viewer must already be allowed to see it.</p>
+              </Card>
+            )}
             <Caveats items={d.caveats} />
           </div>
         );

@@ -12,6 +12,8 @@ export interface Canvas {
 const KINDS: { kind: EmbedKind; label: string }[] = [
   { kind: "doc", label: "Google Doc" }, { kind: "sheet", label: "Google Sheet" }, { kind: "slides", label: "Google Slides" }, { kind: "form", label: "Google Form" },
   { kind: "drive", label: "Drive file" }, { kind: "image", label: "Photo (data/ path or URL)" }, { kind: "pdf", label: "PDF (data/ path or URL)" }, { kind: "url", label: "Web page" },
+  { kind: "calendar", label: "Google Calendar (calendar id)" }, { kind: "zoom", label: "Zoom recording (share link)" }, { kind: "audio", label: "Audio (data/ path or URL)" },
+  { kind: "map", label: "Map (address)" }, { kind: "chart", label: "Sheets chart (published chart link, or Sheet id)" }, { kind: "thread", label: "Gmail thread (link card)" },
 ];
 type Summary = Omit<Canvas, "clips"> & { clips: number };
 interface Listing { found?: boolean; note?: string; count: number; statuses: string[]; canvases: Summary[] }
@@ -192,17 +194,24 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
 
 interface DriveFile { id: string; name: string; path: string; kind: EmbedKind; link: string }
 interface Album { slug: string; label: string; count: number; items: { filename: string; path: string; createTime: string }[] }
+interface Recording { date: string; topic: string; uuid: string; shareUrl: string; playUrl: string; files: { type: string; name: string; path: string }[] }
+interface Embeds { found: boolean; note?: string; calendarId: string; timeZone: string; recordings: Recording[] }
 
-/** Search the Drive catalog and the photo albums on disk; a pick fills the attachment form. */
+const isAudioFile = (f: { type: string; name: string }) => f.type === "audio" || /\.(m4a|mp3)$/i.test(f.name);
+
+/** Search the Drive catalog, the photo albums on disk, and the kept Zoom recordings and calendar; a pick fills the attachment form. */
 function Picker({ onPick }: { onPick: (a: Attachment) => void }) {
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   useEffect(() => { const h = setTimeout(() => setDebounced(q), 300); return () => clearTimeout(h); }, [q]);
   const drive = useApi<{ found: boolean; note?: string; files: DriveFile[] }>(`/api/drive-files?q=${encodeURIComponent(debounced)}&limit=12`);
   const photos = useApi<{ found: boolean; note?: string; albums: Album[] }>("/api/photos");
+  const embeds = useApi<Embeds>("/api/embeds");
+  const em = embeds.status === "ready" && embeds.data.found !== false ? embeds.data : null;
+  const recordings = em?.recordings ?? [];
   return (
     <details className="picker">
-      <summary>Pick from Drive or the photo albums</summary>
+      <summary>Pick from Drive, the photo albums, or the recordings</summary>
       <input className="search" aria-label="Search Drive" placeholder="Search Drive…" value={q} onChange={(e) => setQ(e.target.value)} />
       {drive.status === "ready" && drive.data.found !== false && (
         <ul className="picks">{(drive.data.files ?? []).map((f) => <li key={f.id}><button className="link" onClick={() => onPick({ kind: f.kind, ref: f.id, title: f.name })}>{f.name}</button> <span className="muted">{f.path} · {f.kind}</span></li>)}</ul>
@@ -213,6 +222,26 @@ function Picker({ onPick }: { onPick: (a: Attachment) => void }) {
           <ul className="picks">{(al.items ?? []).map((i) => <li key={i.path}><button className="link" onClick={() => onPick({ kind: "image", ref: i.path, title: i.filename })}>{i.filename}</button> <span className="muted">{i.createTime?.slice(0, 10)}</span></li>)}</ul>
         </details>
       ))}
+      {em && em.calendarId && (
+        <p><button className="link" onClick={() => onPick({ kind: "calendar", ref: em.calendarId, title: "Association calendar", opts: { mode: "AGENDA", tz: em.timeZone } })}>The association's calendar</button></p>
+      )}
+      {recordings.length > 0 && (
+        <details><summary>Zoom recordings <span className="muted">({recordings.length})</span></summary>
+          <ul className="picks">
+            {recordings.map((rec) => {
+              const title = `${rec.topic} (${rec.date})`;
+              return (
+                <li key={rec.uuid || `${rec.date}-${rec.topic}`}>
+                  {rec.shareUrl || rec.playUrl ? <button className="link" onClick={() => onPick({ kind: "zoom", ref: rec.shareUrl || rec.playUrl, title })}>{rec.topic}</button> : <span>{rec.topic} <span className="muted">(no share link on file; the files below)</span></span>} <span className="muted">{rec.date}</span>
+                  {(rec.files ?? []).filter(isAudioFile).map((f) => (
+                    <span key={f.path}> · <button className="link" onClick={() => onPick({ kind: "audio", ref: f.path, title })}>{f.name || "audio"}</button></span>
+                  ))}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
     </details>
   );
 }

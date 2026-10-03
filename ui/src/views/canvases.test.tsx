@@ -15,6 +15,9 @@ function mockFetch(onPost: (url: string, body: unknown) => unknown) {
     if (url.includes("key=")) return new Response(JSON.stringify({ found: true, canvas }), { status: 200 });
     if (url.startsWith("/api/drive-files")) return new Response(JSON.stringify({ found: true, files: [{ id: "1A", name: "Minutes 2026-09", path: "Board", kind: "doc", link: "" }] }), { status: 200 });
     if (url.startsWith("/api/photos")) return new Response(JSON.stringify({ found: false, note: "no albums" }), { status: 200 });
+    if (url.startsWith("/api/embeds")) return new Response(JSON.stringify({ found: true, calendarId: "abc@group.calendar.google.com", timeZone: "America/Los_Angeles", recordings: [
+      { date: "2026-10-20", topic: "Board meeting", uuid: "u1", shareUrl: "https://zoom.us/rec/share/abc", playUrl: "https://zoom.us/rec/play/abc", files: [{ type: "audio", name: "audio_only.m4a", path: "zoom/2026-10-20/audio_only.m4a" }, { type: "video", name: "shared_screen.mp4", path: "zoom/2026-10-20/shared_screen.mp4" }] },
+    ] }), { status: 200 });
     return new Response(JSON.stringify({ found: true, count: 1, statuses: ["research", "preparing", "on agenda", "done"], canvases: [{ ...canvas, clips: 1, notes: "" }] }), { status: 200 });
   });
   vi.stubGlobal("fetch", f);
@@ -52,5 +55,28 @@ describe("CanvasWorkspace", () => {
     expect(await screen.findByText("Reserve balance $482,100.33")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox"));
     await waitFor(() => expect((posts[2] as unknown[])[1]).toEqual({ checklist: [{ text: "find the resolution", done: true }] }));
+  });
+
+  it("offers the new kinds and picks the calendar, a Zoom recording, and its audio", async () => {
+    mockFetch(() => canvas);
+    render(<CanvasWorkspace keyName="pool-deck-bids" back={() => {}} />);
+    await screen.findByText("Pool: $3,000 over budget");
+    const kind = screen.getByLabelText("Kind") as HTMLSelectElement;
+    const values = Array.from(kind.options).map((o) => o.value);
+    expect(values).toEqual(expect.arrayContaining(["calendar", "zoom", "audio", "map", "chart", "thread"]));
+    expect(screen.getByRole("option", { name: "Sheets chart (published chart link, or Sheet id)" })).toBeInTheDocument();
+    const user = userEvent.setup();
+    const ref = () => (screen.getByLabelText(/Link, Google file id, or path under data\//) as HTMLInputElement).value;
+    await user.click(await screen.findByRole("button", { name: "The association's calendar" }));
+    expect(kind.value).toBe("calendar");
+    expect(ref()).toBe("abc@group.calendar.google.com");
+    await user.click(screen.getByRole("button", { name: "Board meeting" }));
+    expect(kind.value).toBe("zoom");
+    expect(ref()).toBe("https://zoom.us/rec/share/abc");
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Board meeting (2026-10-20)");
+    await user.click(screen.getByRole("button", { name: "audio_only.m4a" }));
+    expect(kind.value).toBe("audio");
+    expect(ref()).toBe("zoom/2026-10-20/audio_only.m4a");
+    expect(screen.queryByRole("button", { name: "shared_screen.mp4" })).not.toBeInTheDocument();
   });
 });
