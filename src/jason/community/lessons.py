@@ -812,6 +812,14 @@ LESSONS: tuple[Lesson, ...] = (
            "The live context was built before the engine's checks ran.",
            "The engine's problems are checked, and the refusal audited, before any live context is built.",
            Status.FIXED, guards=("approvals.engine.problems", "tests/test_web_approvals.py")),
+    Lesson("ui-tests-on-the-wrong-shape", OCT_2026, (Area.GOVERNING,),
+           "The Approvals screen failed on the first real plan (\"items.filter is not a function\"): its tests fed the "
+           "list the full approval, while GET /api/approvals sends a summary row whose items is a count.",
+           "The UI fixture was the engine's record, not what the route answers; the Python and UI tests each passed "
+           "against their own idea of the contract.",
+           "The list reads either shape, and a UI test feeds it the summary row as the route builds it "
+           "(engine.counts: items, byClass). A screen is opened on real data before it is called done.",
+           Status.FIXED, guards=("ui/src/views/planapprovals.test.tsx (the server's summary rows)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
