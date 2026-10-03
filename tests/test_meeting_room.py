@@ -7,6 +7,7 @@ import sys
 import types
 
 import pytest
+import webclient
 
 os.environ.setdefault("JASON_SPEC_DIR", "/home/user/jason/tests/fixtures/spec")
 os.environ["JASON_PROFILE"] = "mystique"
@@ -271,8 +272,8 @@ def test_loader_orders_the_plans_included_candidates(fakes):
 def test_api_meeting_room_write_route(fakes):
     from jason.web.app import create_app
 
-    c = create_app(fakes.root, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None,
-                   hearing_writer=None, extra_writes=True).test_client()
+    c = webclient.client(create_app(fakes.root, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None,
+                                    owner_info_writer=None, hearing_writer=None, extra_writes=True))
     assert "meeting-room" in c.get("/api/health").json["writes"]
     r = c.post(f"/api/write/meeting-room/{DAY}", json={"action": "set_view", "view": "shared", "by": "S. Clerk"})
     assert r.status_code == 200 and r.json["view"] == "shared"

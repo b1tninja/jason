@@ -1,19 +1,24 @@
 """WSGI app for the React UI.
 
-One process, one origin: ``/api/*`` is JSON over the stores already on disk (no PayHOA, Google, or Keeper calls),
-and every other path serves the built bundle, falling back to ``index.html`` so client-side routes survive a reload.
-Read-only: the API has no write routes. It binds to loopback unless a person passes ``--host``.
+One process, one origin: ``/api/*`` is JSON over the stores already on disk, and every other path serves the built
+bundle, falling back to ``index.html`` so client-side routes survive a reload. Its writes go to jason's own stores,
+each behind the write guard (``jason.web.guard``: Host, Origin, and a per-process token). The one exception is the
+approvals' check (a live PayHOA read that writes nothing) and apply (a PayHOA write), and apply is off unless a person
+starts it with ``--allow-apply`` (``jason.web.approvals``). It binds to loopback unless a person passes ``--host``.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, make_response, request, send_from_directory
 
+from jason.web import guard
+from jason.web.approvals import LiveFactory, blueprint as approvals_routes, default_live
 from jason.web.sources import confirm_owner_info_write, default_loaders, extra_writer, set_board_item, write_canvas, write_decision, write_hearing_decision, write_request
 
 DEFAULT_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
@@ -27,10 +32,24 @@ Writer = Callable[[str, dict[str, Any]], dict[str, Any]]
 def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None, board_writer: Writer | None = set_board_item,
                canvas_writer: Writer | None = write_canvas, decision_writer: Writer | None = write_decision,
                request_writer: Writer | None = write_request, owner_info_writer: Writer | None = confirm_owner_info_write,
-               hearing_writer: Writer | None = write_hearing_decision, extra_writes: bool = True) -> Flask:
+               hearing_writer: Writer | None = write_hearing_decision, extra_writes: bool = True,
+               approvals_live: LiveFactory | None = default_live, allow_apply: bool = False,
+               approvals_writes: bool = True, hosts: tuple[str, ...] = ()) -> Flask:
+    """``allow_apply`` turns on ``POST /api/approvals/<id>/apply``, a write to PayHOA (``jason-web --allow-apply``);
+    ``approvals_live`` builds the live context a check or an apply reads (None turns both off); ``hosts`` adds a
+    name the Host check accepts beside the loopback names (``--host``)."""
     dist = Path(dist) if dist else Path(os.environ.get("JASON_UI_DIST", DEFAULT_DIST))
     sources = default_loaders() if loaders is None else loaders
     app = Flask(__name__, static_folder=None)
+    token = guard.install(app, hosts=hosts)
+    app.config["JASON_ALLOW_APPLY"] = bool(allow_apply and approvals_live is not None)
+    app.register_blueprint(approvals_routes(live=approvals_live, allow_apply=allow_apply, writes=approvals_writes))
+
+    @app.get("/api/session")
+    def session():
+        """What the page needs to write: the token to send in ``X-Jason-Token``, and which writes are on."""
+        return jsonify(token=token, header=guard.TOKEN_HEADER, applyEnabled=app.config["JASON_ALLOW_APPLY"],
+                       liveChecks=approvals_live is not None, approvalsWrites=approvals_writes)
 
     @app.post("/api/board-items/<item_id>")
     def board_item(item_id: str):
@@ -177,22 +196,30 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
             if path.startswith("assets/"):  # content-hashed by Vite
                 resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             return resp
-        resp = send_from_directory(dist, "index.html")
-        resp.headers["Cache-Control"] = "no-cache"
+        html = (dist / "index.html").read_text(encoding="utf-8")
+        resp = make_response(guard.inject_meta(html, token))
+        resp.mimetype = "text/html"
+        resp.headers["Cache-Control"] = "no-cache, no-store"     # it carries this process's token
         return resp
 
     return app
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="jason-web", description="Serve the board UI (read-only).")
+    p = argparse.ArgumentParser(prog="jason-web", description="Serve the board UI: reads, and writes to jason's own "
+                                "stores behind the write guard. PayHOA is written only with --allow-apply.")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--dist", type=Path, default=None, help="built UI folder (default ui/dist)")
+    p.add_argument("--allow-apply", action="store_true",
+                   help="turn on POST /api/approvals/<id>/apply: an approved plan written to PayHOA, after a live "
+                        "re-read, by the named person who echoes its fingerprint. Off by default")
     a = p.parse_args(argv)
     from waitress import serve
 
-    serve(create_app(a.dist), host=a.host, port=a.port)
+    if a.allow_apply:
+        print("jason-web: apply is ON: an approved plan can be written to PayHOA from the console", file=sys.stderr)
+    serve(create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,)), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

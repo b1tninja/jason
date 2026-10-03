@@ -715,7 +715,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "reserve-findings": "jason.web.extra.reserve_findings:reserve_findings",
     "records-requests": "jason.web.extra.records_requests:records_requests",
     "mail-triage": "jason.web.extra.mail_triage:mail_triage",
-    "approvals": "jason.web.extra.approvals:approvals",
+    "approvals": "jason.web.approvals:approvals",  # the letters inbox with the engine's approvals beside it
     "agenda-plan": "jason.web.extra.agenda_plan:agenda_plan",
     "meeting-room": "jason.web.extra.meeting_room:meeting_room",
     "dock": "jason.web.extra.dock:dock",

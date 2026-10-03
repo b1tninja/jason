@@ -359,6 +359,12 @@ def _problems(a: Approval, kind: registry.ActionKind) -> list[str]:
     return out
 
 
+def problems(a: Approval) -> list[str]:
+    """Why ``apply`` would refuse before any live read (its status, a missing second person, its age); empty when it
+    would go on to re-plan. A caller that must sign in to read live asks this first."""
+    return _problems(a, registry.get(a.kind))
+
+
 def compare(a: Approval, planned: Planned) -> tuple[list[Changed], list[PlanItem]]:
     """Each approved item against the re-plan: gone, now not approvable, or its basis moved is a change. Approvable
     items the approval does not have are new."""
@@ -530,4 +536,4 @@ def _run(a: Approval, kind: registry.ActionKind, planned: Planned, new: list[Pla
 
 
 __all__ = ["Applied", "Changed", "Live", "Planned", "Recheck", "Recorder", "Refused", "apply", "check", "compare",
-           "confirm", "counts", "decide", "decline", "needs_second", "plan", "submit", "withdraw"]
+           "confirm", "counts", "decide", "decline", "needs_second", "plan", "problems", "submit", "withdraw"]

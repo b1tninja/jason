@@ -7,7 +7,7 @@ A React single-page app (`ui/`, Vite + TypeScript) served by a small WSGI app (`
 - **One process, one origin.** The WSGI app serves `ui/dist` and `/api/*` together. No CORS, no nginx, one command (`jason-web`).
 - **WSGI (Flask), not ASGI.** Jason's readers and stores are synchronous and take file locks (`jason.locks`); nothing here streams or holds sockets. Flask is the smallest well-known WSGI framework and waitress is a pure-Python production server that runs on Windows. FastAPI (`app.frontend()`/StaticFiles) would also work; nothing in the UI depends on the choice, since it only calls `/api/*`.
 - **Vite SPA, no SSR.** The UI is a read-only console for a few people. A static bundle with content-hashed assets (served `immutable`) needs no Node at runtime.
-- **Read-only, loopback.** The API reads stores already on disk, as `jason-mcp` does, and has no write routes. It binds to `127.0.0.1`; `--host` is a person's choice.
+- **Reads, writes to jason's own stores, loopback.** The API reads stores already on disk, as `jason-mcp` does. Its writes go to jason's own stores, each behind [the write guard](#the-write-guard). The one route that writes outside jason, an approval's apply to PayHOA, is off unless a person starts `jason-web --allow-apply` ([Approvals](#approvals)). It binds to `127.0.0.1`; `--host` is a person's choice.
 
 ## Run
 
@@ -47,7 +47,55 @@ Read-only helpers for the canvas: `GET /api/file?path=` serves a photo, PDF, or 
 
 - The console stores, built from the design handoff (`docs/web-ui-decisions.md`, "the console"), through the same route: `approvals` (`GET /api/approvals`: the letters jason drafted in `data/approvals/letters.json`, grouped requested / approved / sent / drafts, the pending count for the nav badge, and the officers who may approve; `?key=` gives one; `POST /api/write/approvals/<key>` records one person's step, `draft`, `save`, `request`, `withdraw`, `send_back`, `approve` (a board approval carries the `meeting` date), or `record_sent` (carries `sentRef`); the approved stage shows the terminal command and nothing here sends), `agenda-plan` (`GET /api/agenda-plan?date=`: the meeting loader merged with the saved plan `data/meetings/plan-<date>.json`, each candidate with computed readiness checks, the notice's required contents (CIV 4920, 4926), the steps, and the commands; `POST /api/write/agenda-plan/<date>` saves basics, items (include, kind, motion, minutes, order, packet, brief), and the Zoom fields with `by`; a body naming a recommendation is refused), `meeting-room` (`GET /api/meeting-room?date=`: the meeting, the plan's candidates, and the room record `data/meetings/room-<date>.json` with quorum, per-motion tallies, the owner roster when the PayHOA catalog is on disk, and the CIV 4930 paths; `POST /api/write/meeting-room/<date>` applies one named action, `call_to_order`, `go_to`, `attendance`, `motion_draft`, `vote`, `decide`, `off_agenda`, `executive_start`, `executive_end`, `poll`, `admit`, `suggest`, `suggestion_state`, `adjourn`, `set_presenter`, `set_view`, `set_mode`, as `by`'s act; a decided motion is also recorded in `data/board/decisions.json`), `dock` (`GET /api/dock?part=counts|deadlines|tasks|notes|ask|all`: deadlines grouped from the calendar with a screen hint, the action register, scratchpad notes, and Ask's common questions answered from the stores with citations; `POST /api/write/dock/<id|new>` with `action` in `task_add`, `task_update`, `task_done`, `note_add`, `note_update`, `ask`, `translate`, `translation_state`; the store is `data/dock/dock.json`; a free question reads the library and, with no hit, is routed to the manager as a task). Read-only beside them: `GET /api/theme` (the profile's brand tokens by scheme, its surface layer, and a font stylesheet URL; `found: false` keeps the neutral look) and `GET /api/community-profile` (what the public owner page shows, read from `Community` methods only).
 
-`create_app(board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=None, extra_writes=False)` turns the writes off; `/api/health` lists `writes`.
+`create_app(board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=None, extra_writes=False, approvals_writes=False, approvals_live=None)` turns the writes off; `/api/health` lists `writes`.
+
+## Approvals
+
+The approvals engine (`jason.approvals`, [console/approval-workflow.md](console/approval-workflow.md)) through the same functions the CLI (`jason approvals`) calls; the routes are `jason.web.approvals` and have no logic of their own. Every write names its person (`by`), is recorded `via: "console"` in the audit log, and returns the Approval as stored.
+
+| Route | Does |
+|---|---|
+| `GET /api/approvals` | The letters inbox as before (`letters`, `groups`, `pending`, `people`, …; `?key=` is one letter), with the engine's approvals beside it under `approvals`, open ones first (`?status=`, `?kind=`), `approvalsOpen`, and `approvalStatuses`. A letters store that cannot be read is `lettersError`; the approvals still show |
+| `GET /api/approvals/<id>` | The Approval JSON as the engine stores it (`approval.schema.json`); an id or a unique prefix |
+| `GET /api/approvals/audit` | The audit log (`?approval=` for one), and with `?verify=1` the chain check: `{whole, line, why}` |
+| `POST /api/approvals/<id>/check` | Re-plans live and compares, writing nothing: `ok`, `unchanged`, `changed` (each item's basis then and now, and why), `new`, `problems`, and `wouldApply`. The CLI's `jason approvals apply ID` without `--yes` |
+| `POST /api/approvals/<id>/decide` | `{items, decision, by, reason}`: `items` is a list of ids (or unique prefixes of six or more) or `"all"`; `decision` is `approved`, `rejected`, or `held`; a rejection or a hold needs `reason` |
+| `POST /api/approvals/<id>/submit` | `{by}`: signs the decisions (`role` optional, default `manager`) |
+| `POST /api/approvals/<id>/confirm` | `{by}`: the second, distinct person, where the kind or a high-stakes item needs one |
+| `POST /api/approvals/<id>/decline` | `{by, reason}`: the second person sends it back to review |
+| `POST /api/approvals/<id>/withdraw` | `{by, reason}` |
+| `POST /api/approvals/<id>/apply` | `{by, confirm}`: `confirm` is the full fingerprint the person reviewed. Off by default |
+
+**Check is a POST.** It signs in to PayHOA (non-interactively: a missing Keeper session is a 503 that names `jason login`, and jason-web never asks for a credential) and reads it live. A GET could be set off by a link, a prefetch, or another site's `<img>`; a POST sits behind the write guard and needs the token in the `X-Jason-Token` header itself. A GET to `check` or `apply` is 405.
+
+**Apply is off by default.** `jason-web --allow-apply` (or `create_app(allow_apply=True)`) turns it on, and the server says so on start. Without it, apply is 403 and a person applies from a terminal (`jason approvals apply ID --by NAME --yes`). With it, apply:
+1. needs the token in the `X-Jason-Token` header (the cookie alone is refused);
+2. refuses with 409, before anything is read, when `confirm` is not the approval's fingerprint: the page shows what it showed the person, and the person confirms that plan or none;
+3. refuses with 400, before signing in, what the engine refuses: a status other than approved or partially approved, a missing second person, a plan older than the kind's `max_age_hours`, no `by`;
+4. re-plans live under the kind's lock. When an approved item's basis moved, is gone, or is now held, nothing is written: 409 with `supersededBy` (the new approval to review), `changed`, and the superseded `approval`;
+5. otherwise writes only the approved items and returns the Approval with each item's result (`applied`, or `failed` with each failure's detail).
+
+**Refusals.** The engine's own words, with a status:
+
+| Status | Means |
+|---|---|
+| 400 | The engine refused: no `by` (`… names the person (by)`); an item held for the board, for a person, or to confirm with the owner (`never approvable`); a rejection, hold, decline, or withdrawal with no `reason` (`says why`); a completion whose writes are not approved (`waits on`); undecided items at submit; the same person confirming (`submitted it`, `asked for the plan`); the wrong state (`is in_review: …`, `cannot be withdrawn`); an unknown `decision` or malformed `items`; apply without `confirm` |
+| 403 | The write guard refused, or apply is off (`--allow-apply`), or a check or apply came without the token header |
+| 404 | No such approval, item, or step |
+| 405 | A GET to `check` or `apply`; or the store writes or live reads are off in this server |
+| 409 | Apply: the fingerprint echoed is not the approval's, or PayHOA changed since review (`supersededBy`); or a lock is held elsewhere (`busy`) |
+| 503 | A live read needs a session a person makes in a terminal (`jason login`) |
+
+**Privacy.** The store holds names and tags. Everything these routes return passes `jason.web.approvals.mask`: an email address (`[email]`) or a phone number (`[phone]`) in a reason, a note, or a result's detail never reaches the browser.
+
+## The write guard
+
+jason-web binds `127.0.0.1`, but any page in the person's browser can send a request to loopback. `jason.web.guard` stops that, for every write (POST, PUT, PATCH, DELETE), jason's own stores included:
+- **Host.** Every `/api/*` request and every write must name a loopback host (`127.0.0.1`, `localhost`, `::1`) or the `--host` a person passed; anything else is 421. This stops a DNS-rebinding page from reading or writing under its own name.
+- **Origin.** A write carries `Origin` equal to its own host (`http://127.0.0.1:8080` for `Host: 127.0.0.1:8080`); missing, `null`, or another origin is 403, and so is `Sec-Fetch-Site` other than `same-origin`. The Vite dev proxy keeps the browser's Host, so `npm run dev` passes.
+- **Token.** A random token made when the server starts, kept in memory only (never in `data/`, a log, or the audit log). The page reads it from `<meta name="jason-token">` in `index.html` (served `no-store`) or `GET /api/session` (`{token, header, applyEnabled, liveChecks, approvalsWrites}`) and sends it as `X-Jason-Token`. Every response also sets it as the `jason_token` cookie (HttpOnly, SameSite=Strict), so the pages written before the token keep writing jason's stores; an approval's check and apply take the header only. A restart makes a new token.
+
+The token is not a sign-in: a program on the machine can read `/api/session` as the page does. It is the second, independent layer against a web page, beside the Origin check. Signing in is still open (below).
 
 ## Views (`ui/src/views`, hash routes)
 
@@ -63,4 +111,4 @@ Layout and data: `AppShell`, `Card`, `Stat`, `Badge`, `Money` (integer cents), `
 
 ## Open
 
-Authentication (needed before any non-loopback host, and before any write beyond the board's columns), and packaging `ui/dist` inside the wheel.
+Authentication (needed before any non-loopback host; until then a `by` is a name a person types at a shared machine, as [console/security-and-privacy.md](console/security-and-privacy.md) says), the session token's sign-in exchange that page describes, and packaging `ui/dist` inside the wheel.

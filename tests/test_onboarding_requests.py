@@ -1,6 +1,7 @@
 import json
 
 import pytest
+import webclient
 
 from jason.tasks import onboarding_requests as ob
 
@@ -59,7 +60,7 @@ def test_api_onboarding_route(tmp_path):
             raise ValueError("status")
         return {"key": key, **body}
 
-    c = create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=writer, owner_info_writer=None, hearing_writer=None, extra_writes=False).test_client()
+    c = webclient.client(create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=writer, owner_info_writer=None, hearing_writer=None, extra_writes=False))
     assert c.post("/api/onboarding/declaration", json={"status": "asked"}).json == {"key": "declaration", "status": "asked"}
     assert c.post("/api/onboarding/nope", json={"status": "asked"}).status_code == 404
     assert c.post("/api/onboarding/x", json={"status": "lost"}).status_code == 400
