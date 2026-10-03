@@ -511,6 +511,12 @@ class Mystique(Community):
 
         return ASSIGNMENTS
 
+    def evidence_rules(self):
+        """What shows done the duties Mystique covers by its own documents' sections (evidence.py)."""
+        from .evidence import EVIDENCE_RULES
+
+        return EVIDENCE_RULES
+
     def fiscal_year_end(self):
         """The fiscal year is the calendar year."""
         return (12, 31)

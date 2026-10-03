@@ -283,8 +283,14 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Read what falls due, by role.", command="jason schedule --days 45",
                  check="overdue items: done and not recorded, or not done"),
+            Step("Find the evidence on disk for what fell due: the minutes, the reports they name, the notices, the "
+                 "mailings, and the payments.", command="jason schedule-evidence --since DATE --all",
+                 check="a proposal is read in its source before it is recorded; 'contrary' (a late notice, a late "
+                       "payment) goes to the board; a miss is not proof the duty was not done",
+                 refs=("docs/schedule.md (Evidence)",), lessons=("minutes-say-the-review",)),
             Step("Record each occurrence done, with who did it and the evidence.",
-                 command="jason schedule --done KEY DUE --by NAME --evidence TEXT", person=True),
+                 command="jason schedule-evidence --record KEY DUE --by NAME (or jason schedule --done KEY DUE --by NAME "
+                         "--evidence TEXT)", person=True),
             Step("Put the schedule where people see it: each dated occurrence on the board calendar, each open one on "
                  "its role's Google Tasks list; a task checked off there is recorded done. Read the dry run, then write.",
                  command="jason schedule --tasks --calendar; jason schedule --tasks --calendar --yes",

@@ -942,6 +942,12 @@ class Community(ABC):
         proposes and the board adopts. Empty until the specification keeps some."""
         return ()
 
+    def evidence_rules(self) -> tuple:
+        """The profile's own evidence rules (``jason.community.schedule_evidence.EvidenceRule``): what shows a duty
+        done that it covers by its own documents' sections, or the words its minutes use. Tried before jason's.
+        Empty until set."""
+        return ()
+
     def fiscal_year_end(self) -> tuple[int, int] | None:
         """The fiscal year's last day as (month, day), the anchor for the annual reports. None until set."""
         return None

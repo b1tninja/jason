@@ -262,6 +262,16 @@ LESSONS: tuple[Lesson, ...] = (
            "built, so the import passed.",
            "A test builds the whole parser and renders each command's help, so a clash fails the suite.",
            Status.FIXED, guards=("tests/test_cli_parser.py",)),
+    Lesson("minutes-say-the-review", OCT_2026, (Area.GOVERNING,),
+           "Searched for evidence of the board's monthly financial review (Civil Code 5500) and its ratification under "
+           "5501, the minutes named the treasurer's report but never said the board reviewed the reconciliations.",
+           "Minutes record the report as received; the statute asks for a review of named documents, and the words that "
+           "would show it were never written down.",
+           "The evidence finder proposes what the minutes show and marks a named report as supporting only. The minutes "
+           "template should carry a line that says the review was done, which is a decision for the secretary and the "
+           "board.",
+           Status.DECISION, guards=("jason schedule-evidence", "procedure duty-schedule"),
+           docs=("docs/schedule.md (Evidence: What the minutes show)",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

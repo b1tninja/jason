@@ -86,7 +86,48 @@ jason schedule --calendar --calendar-id ID --months 6 --past 30
   - A task jason no longer plans, or an open one due before the window, is reported, never deleted. A task on another role's list (the role changed) is patched where it is and reported.
 - **Credentials.** A run without `--plan-only` reads Google. Without a token, a non-interactive run fails fast (`GoogleAuthRequired`). Only `--interactive` opens a browser to sign in.
 
+## Evidence
+
+`jason schedule-evidence` finds the evidence on disk that each occurrence was done and proposes it for a person to confirm. It never records anything on its own. `jason.tasks.schedule_evidence` does the work; the rules are `jason.community.schedule_evidence`.
+
+```bash
+jason schedule-evidence                              # the past year's occurrences that have evidence
+jason schedule-evidence --since 2024-01-01 --key KEY --all          # one assignment, with the misses
+jason schedule-evidence --record KEY 2026-01-20 --by NAME            # confirm one, with the evidence found
+jason schedule-evidence --record KEY 2026-03-17 --by NAME --on 2026-03-20 --evidence "the person's own words"
+```
+
+- **The rules are data.** An `EvidenceRule` serves the assignments that cover one of its references, such as a statute (`CIV 5500`), a notice catalog key (`notice:board-meeting`), or a prefix (`obligation:`). Each rule names:
+  - where jason looks;
+  - the words it looks for, as regular expressions, and any words that must be near them;
+  - how much a hit says:
+    - **direct**: the record says the duty was done;
+    - **supporting**: the record makes it likely, and a person reads it;
+    - **against**: the record says the duty was done wrongly, such as a notice sent too late.
+
+  jason's own rules serve the statutes and the notice catalog. A profile adds rules for the duties it covers by its own documents' sections, or for the words its minutes use (`Community.evidence_rules()`). The profile's rules are tried first.
+- **Where jason looks:**
+  - **The minutes' text.** jason reads the minutes of the meeting the occurrence falls on and quotes the passage. A meeting-anchored occurrence takes the meetings held in that month, or within ten days of the scheduled day. Any other occurrence takes the meetings in the rule's window. Confidential minutes are neither searched nor quoted.
+  - **A report the minutes name.** This is a stored reading, such as a treasurer's report, whose name the minutes carry, with the lines of it that hold the words (for example, its bank reconciliations). If the minutes name more than one copy, jason uses the copy named most fully, which is the one the board was given.
+  - **The meeting catalog.** It shows:
+    - the notice to members and how many days before the meeting it went out (an emailed agenda counts only when no notice is on record);
+    - the minutes on file and the earliest date any copy carries;
+    - whether the meeting was held.
+  - **Mailings.** PayHOA's communications log, jason's own sends, the Mailroom log, and the notice delivery ledger, inside the rule's window.
+  - **The library.** A file of the kind the duty produces, for the year.
+  - **Payments.** The obligation rows' payments (`jason deadlines`), for an assignment that covers a recurring deadline. Each fixed deadline that PayHOA shows paid becomes an occurrence. A late payment counts as evidence against.
+- **An occurrence's standing:**
+  - **proposed:** direct evidence and nothing against;
+  - **partial:** supporting evidence only;
+  - **contrary:** some evidence against;
+  - **none:** nothing found;
+  - **recorded:** a person has already recorded the occurrence done.
+
+  A miss stays a miss. Minutes that record the review in other words are not found, and nothing found is not proof the duty was not done.
+- **Recording.** `--record` calls `record_done` with the name of the person who confirms it, the evidence found (or the person's own, with `--evidence`), and the day of the evidence (or `--on`). The run's proposals are kept in `data/schedule/evidence.json`, which is private.
+- **What the minutes show.** A report the minutes name shows what the board had before it, not that the board reviewed each part. To show the monthly review (Civil Code 5500), or its ratification under 5501, the minutes should say so in words: "The board reviewed the reconciliations of the operating and reserve accounts for MONTH," or "The board ratified the review of MONTH's financial documents made under Civil Code 5501."
+
 ## Not built yet
 
-- Evidence read automatically: the minutes' items, a payment's category, a notice proof. Completions are recorded by hand for now.
+- A notice's proof-of-notice record (`jason notices KEY --proof`) as evidence for the notice assignments. The evidence finder reads the meeting catalog's notice days and the ledger's sends, not the proof's window.
 - A role's holder from the board's private record, to address reminders.
