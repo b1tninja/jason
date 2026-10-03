@@ -187,7 +187,7 @@ export function App() {
       audience={audience}
       onAudience={setAudience}
       session={{ me: session.me, setMe: session.setMe, people: session.people, account: session.account,
-                 signInHref: session.signInHref, signInError: session.signInError, onSignOut: () => { void session.signOut(); },
+                 signInLinks: session.signInLinks, signInError: session.signInError, onSignOut: () => { void session.signOut(); },
                  actAs: session.canActAs ? {
                    people: session.actAsPeople, roles: session.actAsRoles, acting: session.acting,
                    // every screen reads who is viewing from the server's session, so a change reloads the page

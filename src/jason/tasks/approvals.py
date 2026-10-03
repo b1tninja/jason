@@ -152,8 +152,11 @@ def _approval_check(letter: dict[str, Any], by: str, meeting: str | None) -> str
     """Who may record the approval, and the log line. Raises ValueError when ``by`` may not."""
     from jason.community import community
 
+    from jason.access import officers_with_managers
+    from jason.community.profile import profile_name
+
     approver = letter.get("approver") or BOARD
-    officers = community().officers()
+    officers = officers_with_managers(community().officers(), profile_name())   # and the portfolio's manager
     if not officers:
         raise ValueError("the profile names no officers (officers.json), so no approval can be recorded")
     from jason.community.base import offices_of

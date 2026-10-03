@@ -24,12 +24,16 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
 }
 
 /** Who signed in with Google: the officer the account matched (`jason.web.signin`); `role` joins two offices. */
-export interface SignedIn { name: string; role?: string; email?: string; provider?: string; at?: string; maintainer?: boolean }
+export interface SignedIn { name: string; role?: string; email?: string; provider?: string; at?: string; admin?: boolean }
 
 /** Whether Google sign-in is set up on this server, whether writes need it, its routes, and `--dev`. */
-export interface SignInSetup { provider?: string; configured?: boolean; required?: boolean; start?: string; signOut?: string; dev?: boolean; actAs?: string }
+export interface SignInProviderInfo { key: string; label?: string; source?: string }
 
-/** Who a maintainer views the console as under `--dev`: a person (`name`) or an office alone (`role`, no name). */
+/** Whether Google sign-in is set up on this server (one or more providers: the community's own Workspace, the
+ * installation's), whether writes need it, its routes, and `--dev`. */
+export interface SignInSetup { provider?: string; configured?: boolean; required?: boolean; start?: string; signOut?: string; dev?: boolean; actAs?: string; providers?: SignInProviderInfo[] }
+
+/** Who an admin views the console as under `--dev`: a person (`name`) or an office alone (`role`, no name). */
 export interface Acting { name: string; role: string }
 
 /** What `GET /api/session` says about this server process: the write token and its header, which approval steps it
@@ -62,9 +66,20 @@ export function resetServerSession(): void {
 }
 
 /** Where "Sign in with Google" goes: the server's start route, returning to `hash` (a console route) after. */
-export function signInHref(setup: SignInSetup | undefined, hash: string): string {
+export function signInHref(setup: SignInSetup | undefined, hash: string, provider = ""): string {
   const start = setup?.start || "/auth/google";
-  return hash.startsWith("#/") ? `${start}?next=${encodeURIComponent(hash)}` : start;
+  const q = [hash.startsWith("#/") ? `next=${encodeURIComponent(hash)}` : "", provider ? `provider=${encodeURIComponent(provider)}` : ""].filter(Boolean);
+  return q.length ? `${start}?${q.join("&")}` : start;
+}
+
+/** One "Sign in with Google" link a provider; with more than one, each named by its label (or key). */
+export function signInLinks(setup: SignInSetup | undefined, hash: string): { label: string; href: string }[] {
+  if (!setup?.configured) return [];
+  const providers = setup.providers?.length ? setup.providers : [{ key: "" }];
+  return providers.map((p) => ({
+    label: providers.length > 1 ? `Sign in with Google (${p.label || p.key})` : "Sign in with Google",
+    href: signInHref(setup, hash, providers.length > 1 ? p.key : ""),
+  }));
 }
 
 /** Sign out (a guarded POST); the cached session is dropped so the next read says who is signed in. */

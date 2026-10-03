@@ -4,12 +4,17 @@ The person's browser goes to Google and comes back to ``/auth/google/callback`` 
 code for an ID token directly with Google (its client secret, over HTTPS) and reads who signed in. That account is
 let in only when all of these hold (Google's guidance: docs/setup.md "Console sign-in"):
 
-- the ID token is for this client (``aud``), from Google (``iss``), unexpired, and carries the ``nonce`` this server
-  sent, and the ``state`` round-trips;
-- the email is verified, and when the profile names its email domains (``Community.email_domains``), the token's
-  ``hd`` claim is one of them (``hd`` sent to Google is a hint only; the claim is what counts);
-- the email is an officer's (``Community.officers``, the ``email`` in ``officers.json``): sign-in names a person on
-  the roster and grants what the roster grants, nothing more.
+- the ID token is for the client the person chose (``aud``), from Google (``iss``), unexpired, and carries the
+  ``nonce`` this server sent, and the ``state`` round-trips;
+- the email is verified, and when that client names email domains, the token's ``hd`` claim is one of them (``hd``
+  sent to Google is a hint only; the claim is what counts);
+- the email is on the roster: the community's officers (``Community.officers``), the managers whose portfolio holds
+  this community, and jason's admins (``jason.access``). Sign-in names a person and grants what the roster grants.
+
+**Providers.** A community sets up its own Google Sign-In (``Community.sign_in``: one or more clients, each with its
+own domains); the installation may add its own (``jason.access.installation_sign_in``: a management company's
+Workspace, for admins and managers). With neither, the .env client: ``google_signin_record_uid``, else jason's own
+Desktop client (``google_oauth_record_uid``). The console shows one button a provider.
 
 The signed-in person is kept in Flask's signed session cookie (``jason_session``: HttpOnly, SameSite=Lax), signed
 with a key made when the app starts, so a restart signs everyone out, and it lasts at most ``LIFETIME``. No Google
@@ -22,9 +27,9 @@ what a person may approve is still the roster's (``Officer.approves``), and the 
 still applies to every write.
 
 One person may hold two offices (two roster rows with one name): sign-in matches them once, with the offices joined.
-Under ``jason-web --dev`` (not production), a signed-in maintainer (``Community.maintainers``) may view the console as
-any person on the roster or any office (``POST /auth/act-as``), to build and check role-based views. Every write is
-refused while they view as someone else, so no record ever carries a name its person did not sign in as.
+Under ``jason-web --dev`` (not production), a signed-in admin may view the console as any person on the roster or any
+office (``POST /auth/act-as``), to build and check role-based views. Every write is refused while they view as
+someone else, so no record ever carries a name its person did not sign in as.
 """
 
 from __future__ import annotations
@@ -51,8 +56,8 @@ START = "/auth/google"
 CALLBACK = "/auth/google/callback"
 SIGN_OUT = "/auth/signout"
 ACT_AS = "/auth/act-as"
-RECORD_KEY = "google_signin_record_uid"     # .env: a Web application client's Keeper record (optional)
-DESKTOP_KEY = "google_oauth_record_uid"     # .env: jason's own Desktop client, used when RECORD_KEY is not set
+RECORD_KEY = "google_signin_record_uid"     # .env: a Web application client's Keeper record (the fallback)
+DESKTOP_KEY = "google_oauth_record_uid"     # .env: jason's own Desktop client, the last fallback
 LIFETIME = timedelta(hours=12)
 PENDING_SECONDS = 600                        # a sign-in started and not finished in ten minutes starts over
 VIA = "console:google"
@@ -65,38 +70,57 @@ class Refused(ValueError):
 
 @dataclass(frozen=True)
 class Client:
-    """The Web application OAuth client (not the Desktop client jason's own Google calls use)."""
+    """An OAuth client: its id and secret, read from Keeper."""
 
     client_id: str
     client_secret: str
 
 
+@dataclass
+class Provider:
+    """One way to sign in, resolved for this jason-web: its key, its button's words, where it was set up
+    (``community``, ``jason``, or an .env key), the domains it accepts (empty: any), and how to load its client."""
+
+    key: str
+    label: str
+    source: str
+    domains: tuple[str, ...]
+    client: Callable[[], Client]
+    _loaded: Client | None = field(default=None, repr=False)
+
+    def load(self) -> Client:
+        if self._loaded is None:
+            self._loaded = self.client()
+        return self._loaded
+
+
 @dataclass(frozen=True)
 class Account:
-    """Who is signed in: the officer the Google account matched, and the account itself."""
+    """Who is signed in: the person the Google account matched, the account itself, and the provider used."""
 
     name: str
     role: str
     email: str
     sub: str = ""
     at: str = ""
-    maintainer: bool = False
+    admin: bool = False
+    provider: str = ""
 
 
 @dataclass(frozen=True)
 class Person:
-    """One person on the roster: their offices joined (``"secretary, treasurer"``), the address they sign in with
-    (empty: cannot sign in), and whether they build jason (``Community.maintainers``)."""
+    """One person on the roster: their roles joined (``"secretary, treasurer"``, ``"manager"``, ``"admin"``), the
+    address they sign in with (empty: cannot sign in), and whether they are one of jason's admins."""
 
     name: str
     role: str
     email: str
-    maintainer: bool = False
+    admin: bool = False
 
 
 @dataclass(frozen=True)
 class Acting:
-    """Who a maintainer views the console as under ``--dev``: a person on the roster, or an office with no person."""
+    """Who an admin views the console as under ``--dev``: a person on the roster, or an office with no person."""
 
     name: str
     role: str
@@ -107,22 +131,35 @@ Exchange = Callable[[Client, str, str, str], dict[str, Any]]   # client, code, r
 
 @dataclass
 class SignIn:
-    """What sign-in reads. ``configured`` says a client is set up (cheap: no Keeper read); ``client`` loads it."""
+    """What sign-in reads: the providers (cheap: no Keeper read until one is used), the roster, the token exchange."""
 
-    configured: bool
-    client: Callable[[], Client]
+    providers: Callable[[], tuple[Provider, ...]]
     roster: Callable[[], tuple[Person, ...]]
-    domains: Callable[[], tuple[str, ...]]
     exchange: Exchange
     required: bool = False
     log: Path | None = None
-    dev: bool = False                         # jason-web --dev: a maintainer may view the console as anyone
-    _client: Client | None = field(default=None, repr=False)
+    dev: bool = False                         # jason-web --dev: an admin may view the console as anyone
+    _cache: dict[str, Provider] = field(default_factory=dict, repr=False)
 
-    def load_client(self) -> Client:
-        if self._client is None:
-            self._client = self.client()
-        return self._client
+    def all(self) -> tuple[Provider, ...]:
+        """The providers, each kept once so its client is read from Keeper once."""
+        out = []
+        for p in self.providers():
+            out.append(self._cache.setdefault(p.key, p))
+        return tuple(out)
+
+    @property
+    def configured(self) -> bool:
+        try:
+            return bool(self.all())
+        except Exception:  # noqa: BLE001 - a broken setup is no sign-in, said at the start route
+            return False
+
+    def provider(self, key: str = "") -> Provider:
+        found = self.all()
+        if not found:
+            raise Refused(f"Google sign-in is not set up: see docs/setup.md, Console sign-in ({DESKTOP_KEY})")
+        return next((p for p in found if p.key == key), found[0]) if key else found[0]
 
 
 def _settings():
@@ -132,9 +169,9 @@ def _settings():
 
 
 def client_record(settings: Any) -> tuple[str, str]:
-    """Which Keeper record holds the sign-in client, and which .env key named it: a Web application client
-    (``google_signin_record_uid``) when one is set, else jason's own Desktop client (``google_oauth_record_uid``),
-    which Google lets redirect to any loopback address and port with nothing registered. ``("", "")`` when neither."""
+    """The .env fallback: a Web application client (``google_signin_record_uid``) when one is set, else jason's own
+    Desktop client (``google_oauth_record_uid``), which Google lets redirect to any loopback address and port with
+    nothing registered. ``("", "")`` when neither."""
     web = str(getattr(settings, "record_uids", {}).get(RECORD_KEY, "") or "")
     if web:
         return web, RECORD_KEY
@@ -142,52 +179,77 @@ def client_record(settings: Any) -> tuple[str, str]:
     return (desktop, DESKTOP_KEY) if desktop else ("", "")
 
 
-def default_client() -> Client:
-    """The client from Keeper (``client_record``), with custom fields ``client_id`` and ``client_secret``. Read
-    without a prompt; a missing Keeper login raises KeeperAuthRequired."""
-    from jason.secrets import VaultSession, extract_custom_fields
+def keeper_client(record_uid: str) -> Callable[[], Client]:
+    """A loader for the Google client in a Keeper record: ``client_id`` and ``client_secret`` as custom fields, or the
+    id as the login and the secret as the password (as ``jason sign-in --import-client`` stores them). Read without a
+    prompt; a missing Keeper login raises KeeperAuthRequired."""
 
-    settings = _settings()
-    uid, _ = client_record(settings)
-    if not uid:
-        raise Refused(f"neither {RECORD_KEY} nor {DESKTOP_KEY} is set in .env")
-    custom = extract_custom_fields(VaultSession.from_settings(settings, interactive=False).load_record(uid))
-    cid, secret = str(custom.get("client_id") or "").strip(), str(custom.get("client_secret") or "").strip()
-    if not cid or not secret:
-        raise Refused("the sign-in Keeper record needs custom fields client_id and client_secret")
-    return Client(cid, secret)
+    def load() -> Client:
+        from jason.secrets import VaultSession, _field_value, extract_custom_fields
+
+        record = VaultSession.from_settings(_settings(), interactive=False).load_record(record_uid)
+        custom = extract_custom_fields(record)
+        cid = str(custom.get("client_id") or _field_value(record, "login") or "").strip()
+        secret = str(custom.get("client_secret") or _field_value(record, "password") or "").strip()
+        if not cid or not secret:
+            raise Refused("the sign-in Keeper record needs the client id (client_id, or the login) and the secret "
+                          "(client_secret, or the password)")
+        return Client(cid, secret)
+    return load
 
 
-def roster_of(officers: Any, maintainers: Any = ()) -> tuple[Person, ...]:
-    """One ``Person`` a name: a person's offices joined, their first address; maintainers marked, and a maintainer who
-    holds no office added with the role ``maintainer``."""
+def default_providers() -> tuple[Provider, ...]:
+    """The community's providers, then the installation's; with neither, the .env client."""
+    from jason.access import installation_sign_in
+    from jason.community import community
+
+    c = community()
+    own_domains = tuple(d.strip().lower() for d in c.email_domains() if d.strip())
+    out = [Provider(p.key, p.label, "community", p.domains or own_domains, keeper_client(p.record_uid))
+           for p in c.sign_in()]
+    out += [Provider(p.key, p.label, "jason", p.domains, keeper_client(p.record_uid)) for p in installation_sign_in()
+            if p.key not in {q.key for q in out}]
+    if not out:
+        uid, key = client_record(_settings())
+        if uid:
+            out.append(Provider("google", "", key, own_domains, keeper_client(uid)))
+    return tuple(out)
+
+
+def roster_of(officers: Any, admins: Any = (), managers: Any = (), community: str = "") -> tuple[Person, ...]:
+    """One ``Person`` a name: a person's offices joined and their first address; the managers whose portfolio holds
+    ``community`` as its manager; jason's admins marked (added with the role ``admin`` when they hold no office)."""
     people: dict[str, Person] = {}
+
+    def add(name: str, role: str, email: str, admin: bool = False) -> None:
+        p = people.get(name)
+        roles = [r for r in (p.role.split(", ") if p and p.role else []) if r]
+        if role and role not in roles:
+            roles.append(role)
+        people[name] = Person(name, ", ".join(roles), (p.email if p and p.email else email.strip().lower()),
+                              admin or bool(p and p.admin))
+
     for o in officers:
-        p = people.get(o.name)
-        role = ", ".join(r for r in ((p.role if p else ""), o.role.value) if r)
-        email = (p.email if p and p.email else o.email.strip().lower())
-        people[o.name] = Person(o.name, role, email)
-    for d in maintainers:
-        email = d.email.strip().lower()
-        hit = next((p for p in people.values() if p.email == email), None)
+        add(o.name, o.role.value, o.email)
+    for m in managers:
+        if m.manages(community):
+            hit = next((p for p in people.values() if p.email and p.email == m.email.strip().lower()), None)
+            add(hit.name if hit else m.name, "manager", m.email)
+    for a in admins:
+        hit = next((p for p in people.values() if p.email and p.email == a.email.strip().lower()), None)
         if hit is not None:
-            people[hit.name] = Person(hit.name, hit.role, hit.email, True)
+            add(hit.name, "", hit.email, True)
         else:
-            people[d.name] = Person(d.name, "maintainer", email, True)
+            add(a.name, "admin", a.email, True)
     return tuple(people.values())
 
 
 def default_roster() -> tuple[Person, ...]:
+    from jason.access import admins, managers
     from jason.community import community
+    from jason.community.profile import profile_name
 
-    c = community()
-    return roster_of(c.officers(), c.maintainers())
-
-
-def default_domains() -> tuple[str, ...]:
-    from jason.community import community
-
-    return tuple(d.strip().lower() for d in community().email_domains() if d.strip())
+    return roster_of(community().officers(), admins(), managers(), profile_name())
 
 
 def default_exchange(client: Client, code: str, redirect_uri: str, verifier: str) -> dict[str, Any]:
@@ -204,15 +266,11 @@ def default_exchange(client: Client, code: str, redirect_uri: str, verifier: str
 
 
 def default_sign_in(*, required: bool = False, dev: bool = False) -> SignIn:
-    """Sign-in as the .env and the profile set it up: ``configured`` when either client record is set."""
-    try:
-        configured = bool(client_record(_settings())[0])
-    except Exception:  # noqa: BLE001 - no .env is no sign-in, not a crash
-        configured = False
+    """Sign-in as the community, the installation, and the .env set it up."""
     from jason.mcp.county import _data_dir
 
-    return SignIn(configured=configured, client=default_client, roster=default_roster, domains=default_domains,
-                  exchange=default_exchange, required=required, log=_data_dir(None) / "web" / "sign-ins.jsonl", dev=dev)
+    return SignIn(providers=default_providers, roster=default_roster, exchange=default_exchange, required=required,
+                  log=_data_dir(None) / "web" / "sign-ins.jsonl", dev=dev)
 
 
 def _b64(raw: bytes) -> str:
@@ -237,8 +295,8 @@ def claims_of(id_token: str) -> dict[str, Any]:
 
 
 def account_for(claims: dict[str, Any], *, client_id: str, nonce: str, roster: tuple[Person, ...],
-                domains: tuple[str, ...], now: float | None = None) -> Account:
-    """The officer a verified Google account is, or ``Refused`` with the reason. Every check in the module doc."""
+                domains: tuple[str, ...], now: float | None = None, provider: str = "") -> Account:
+    """The person a verified Google account is, or ``Refused`` with the reason. Every check in the module doc."""
     now = time.time() if now is None else now
     if claims.get("iss") not in ISSUERS:
         raise Refused("the ID token is not from Google")
@@ -258,15 +316,15 @@ def account_for(claims: dict[str, Any], *, client_id: str, nonce: str, roster: t
         raise Refused("Google did not vouch for this account's email address")
     hd = str(claims.get("hd") or "").strip().lower()
     if domains and hd not in domains:
-        raise Refused(f"{email} is not an account of the association's Google Workspace")
+        raise Refused(f"{email} is not an account of the Google Workspace this sign-in accepts")
     match = [p for p in roster if p.email and p.email == email]
     if not match:
-        raise Refused(f"{email} is not an officer's account: the manager adds its email to the officers' roster")
+        raise Refused(f"{email} is not on the roster: add it to the officers (or to jason's admins or managers)")
     if len({p.name for p in match}) > 1:
-        raise Refused(f"{email} is on the roster for more than one person: the manager corrects the roster")
+        raise Refused(f"{email} is on the roster for more than one person: correct the roster")
     p = match[0]
     return Account(p.name, p.role, email, str(claims.get("sub") or ""),
-                   datetime.now(timezone.utc).isoformat(timespec="seconds"), p.maintainer)
+                   datetime.now(timezone.utc).isoformat(timespec="seconds"), p.admin, provider)
 
 
 def current_account() -> Account | None:
@@ -275,14 +333,14 @@ def current_account() -> Account | None:
     if not isinstance(raw, dict) or not raw.get("name"):
         return None
     try:
-        return Account(**{k: str(raw.get(k, "")) for k in ("name", "role", "email", "sub", "at")},
-                       maintainer=raw.get("maintainer") is True)
+        return Account(**{k: str(raw.get(k, "")) for k in ("name", "role", "email", "sub", "at", "provider")},
+                       admin=raw.get("admin") is True)
     except TypeError:
         return None
 
 
 def acting_as() -> Acting | None:
-    """Who a maintainer is viewing the console as (``--dev``); None when they view it as themselves."""
+    """Who an admin is viewing the console as (``--dev``); None when they view it as themselves."""
     raw = session.get("acting")
     if not isinstance(raw, dict) or not (raw.get("name") or raw.get("role")):
         return None
@@ -334,26 +392,26 @@ def install(app: Flask, sign_in: SignIn) -> None:
         if not ours():
             return "jason-web answers on its loopback name", 421
         to = _next(request.args.get("next", ""))
-        if not sign_in.configured:
-            return back(f"Google sign-in is not set up: see docs/setup.md, Console sign-in ({DESKTOP_KEY})", to)
         try:
-            client = sign_in.load_client()
+            provider = sign_in.provider(request.args.get("provider", ""))
+            client = provider.load()
+        except Refused as exc:
+            return back(str(exc), to)
         except Exception as exc:  # noqa: BLE001 - said on the page, not a crash
             hint = " (run `jason login` in a terminal)" if type(exc).__name__.endswith("AuthRequired") else ""
             _log(sign_in, "client failed", why=f"{type(exc).__name__}: {exc}")
             return back(f"Google sign-in could not read its client: {exc}{hint}", to)
         verifier = _b64(secrets.token_bytes(48))
         pending = {"state": secrets.token_urlsafe(24), "nonce": secrets.token_urlsafe(24), "verifier": verifier,
-                   "next": to, "at": time.time()}
+                   "next": to, "provider": provider.key, "at": time.time()}
         session["pending"] = pending
         session.pop("signInError", None)
         params = {"client_id": client.client_id, "redirect_uri": request.host_url.rstrip("/") + CALLBACK,
                   "response_type": "code", "scope": SCOPES, "state": pending["state"], "nonce": pending["nonce"],
                   "code_challenge": _b64(hashlib.sha256(verifier.encode("ascii")).digest()),
                   "code_challenge_method": "S256", "prompt": "select_account"}
-        domains = sign_in.domains()
-        if len(domains) == 1:
-            params["hd"] = domains[0]                  # a hint for Google's account chooser; the claim is checked
+        if len(provider.domains) == 1:
+            params["hd"] = provider.domains[0]         # a hint for Google's account chooser; the claim is checked
         return redirect(f"{AUTH_URL}?{urlencode(params)}")
 
     @app.get(CALLBACK)
@@ -372,10 +430,12 @@ def install(app: Flask, sign_in: SignIn) -> None:
         if not code:
             return back("Google's answer carried no code: sign in again", to)
         try:
-            client = sign_in.load_client()
+            provider = sign_in.provider(str(pending.get("provider", "")))
+            client = provider.load()
             tokens = sign_in.exchange(client, code, request.host_url.rstrip("/") + CALLBACK, str(pending["verifier"]))
             account = account_for(claims_of(str(tokens.get("id_token", ""))), client_id=client.client_id,
-                                  nonce=str(pending.get("nonce", "")), roster=sign_in.roster(), domains=sign_in.domains())
+                                  nonce=str(pending.get("nonce", "")), roster=sign_in.roster(), domains=provider.domains,
+                                  provider=provider.key)
         except Refused as exc:
             _log(sign_in, "refused", why=str(exc))
             return back(str(exc), to)
@@ -385,7 +445,8 @@ def install(app: Flask, sign_in: SignIn) -> None:
         session.clear()
         session.permanent = True
         session["account"] = asdict(account)
-        _log(sign_in, "signed in", name=account.name, role=account.role, email=account.email, sub=account.sub)
+        _log(sign_in, "signed in", name=account.name, role=account.role, email=account.email, sub=account.sub,
+             provider=account.provider)
         return redirect("/" + to)
 
     @app.post(SIGN_OUT)
@@ -398,15 +459,16 @@ def install(app: Flask, sign_in: SignIn) -> None:
 
     @app.post(ACT_AS)
     def act_as():
-        """Under ``--dev``, a signed-in maintainer views the console as a person on the roster (``{"name": ...}``) or
-        an office (``{"role": ...}``); ``{}`` goes back to themselves. Writes are refused while acting."""
+        """Under ``--dev``, a signed-in admin views the console as a person on the roster (``{"name": ...}``) or an
+        office (``{"role": ...}``); ``{}`` goes back to themselves. Writes are refused while acting."""
         from jason.community.base import OfficerRole
 
         a = current_account()
         if not sign_in.dev:
             return jsonify(error="viewing as someone else needs jason-web --dev (not production)"), 403
-        if a is None or not a.maintainer:
-            return jsonify(error="only a maintainer (maintainers.json) who is signed in may view as someone else"), 403
+        if a is None or not a.admin:
+            return jsonify(error="only one of jason's admins (data/access/admins.json), signed in, may view as "
+                                 "someone else"), 403
         body = request.get_json(silent=True) or {}
         name, role = str(body.get("name") or "").strip(), str(body.get("role") or "").strip().lower()
         if name:
@@ -431,22 +493,22 @@ def install(app: Flask, sign_in: SignIn) -> None:
     @app.before_request
     def _signed_in():
         """On a write: refuse it without a sign-in when one is required; with one, the record names that person; while
-        a maintainer views as someone else, refuse it."""
+        an admin views as someone else, refuse it."""
         if request.method in SAFE or not request.path.startswith("/api/"):
             return None
         acting = acting_as()
         if acting is not None:
-            return jsonify(error=f"viewing as {acting.name or 'the ' + acting.role} (maintainer view): writes are "
+            return jsonify(error=f"viewing as {acting.name or 'the ' + acting.role} (admin view): writes are "
                                  "refused. Go back to yourself to write in your own name"), 403
         a = current_account()
         if a is None:
             if sign_in.required:
                 return jsonify(error="sign in with Google first (Sign in, at the top of the console): this jason-web "
-                                     "takes writes only from a signed-in officer"), 401
+                                     "takes writes only from a signed-in person on the roster"), 401
             return None
         if a.name not in {p.name for p in sign_in.roster()}:
             session.clear()
-            return jsonify(error=f"{a.name} is no longer on the officers' roster: signed out"), 401
+            return jsonify(error=f"{a.name} is no longer on the roster: signed out"), 401
         body = request.get_json(silent=True)
         if isinstance(body, dict) and "by" in body:
             given = str(body.get("by") or "").strip()
@@ -459,7 +521,8 @@ def install(app: Flask, sign_in: SignIn) -> None:
 
 
 def session_info() -> dict[str, Any]:
-    """What ``GET /api/session`` adds: who is signed in, whether sign-in is set up or required, its last refusal."""
+    """What ``GET /api/session`` adds: who is signed in, the ways to sign in, whether it is required, its last
+    refusal, and under ``--dev`` whom an admin may view the console as."""
     from flask import current_app
 
     from jason.community.base import OfficerRole
@@ -467,13 +530,18 @@ def session_info() -> dict[str, Any]:
     sign_in: SignIn | None = current_app.extensions.get("jason_sign_in")
     a = current_account()
     error = session.pop("signInError", "") if "signInError" in session else ""
-    can_act = bool(sign_in and sign_in.dev and a and a.maintainer)
+    try:
+        providers = sign_in.all() if sign_in else ()
+    except Exception as exc:  # noqa: BLE001 - a broken setup shows as a refusal, not a crash
+        providers, error = (), error or f"Google sign-in is not set up correctly: {exc}"
+    can_act = bool(sign_in and sign_in.dev and a and a.admin)
     acting = acting_as() if can_act else None
-    return {"signedIn": {"name": a.name, "role": a.role, "email": a.email, "provider": "google", "at": a.at,
-                         "maintainer": a.maintainer} if a else None,
-            "signIn": {"provider": "google", "configured": bool(sign_in and sign_in.configured),
+    return {"signedIn": {"name": a.name, "role": a.role, "email": a.email, "provider": a.provider or "google",
+                         "at": a.at, "admin": a.admin} if a else None,
+            "signIn": {"provider": "google", "configured": bool(providers),
                        "required": bool(sign_in and sign_in.required), "start": START, "signOut": SIGN_OUT,
-                       "dev": bool(sign_in and sign_in.dev), "actAs": ACT_AS},
+                       "dev": bool(sign_in and sign_in.dev), "actAs": ACT_AS,
+                       "providers": [{"key": p.key, "label": p.label, "source": p.source} for p in providers]},
             "signInError": error,
             "canActAs": can_act,
             "acting": asdict(acting) if acting else None,
@@ -481,6 +549,7 @@ def session_info() -> dict[str, Any]:
             "actAsRoles": [r.value for r in OfficerRole] if can_act else []}
 
 
-__all__ = ["ACT_AS", "Account", "Acting", "CALLBACK", "Client", "Person", "RECORD_KEY", "Refused", "SCOPES", "SIGN_OUT", "START", "SignIn",
-           "VIA", "account_for", "acting_as", "claims_of", "current_account", "roster_of", "default_sign_in", "install", "session_info",
+__all__ = ["ACT_AS", "Account", "Acting", "CALLBACK", "Client", "Person", "Provider", "RECORD_KEY", "Refused", "SCOPES",
+           "SIGN_OUT", "START", "SignIn", "VIA", "account_for", "acting_as", "claims_of", "client_record",
+           "current_account", "default_sign_in", "install", "keeper_client", "roster_of", "session_info",
            "signed_in_name"]

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { actAs, getJson, serverSession, signInHref, signOut, type Acting, type SignedIn, type SignInSetup } from "./api";
+import { actAs, getJson, serverSession, signInLinks, signOut, type Acting, type SignedIn, type SignInSetup } from "./api";
 
 /** The signed-in person. When the server has Google sign-in (`jason.web.signin`) and an officer signed in, `me` is that
  * officer, fixed by the server: every write goes on the record under that name. Under `jason-web --dev`, a signed-in
- * maintainer may view the console as another person or an office (`acting`); `me` is then that person (empty for an
+ * admin may view the console as another person or an office (`acting`); `me` is then that person (empty for an
  * office alone) and the server refuses every write until they go back to themselves. Otherwise it is a sample picker
  * over the association's officers (from `/api/approvals`), remembered per browser in localStorage
  * (`jason-console-user`); the server checks every approval against the profile's officers anyway, so picking a name
@@ -45,7 +45,7 @@ interface SignInState {
 }
 
 /** What the server says about sign-in: who signed in, whether it is set up, its last refusal (said once), and under
- * `--dev` whom a maintainer may view the console as. */
+ * `--dev` whom an admin may view the console as. */
 export function useSignIn() {
   const [state, setState] = useState<SignInState>({ account: null, error: "", canActAs: false, acting: null, actAsPeople: [], actAsRoles: [] });
   useEffect(() => {
@@ -56,7 +56,7 @@ export function useSignIn() {
     }));
     return () => { on = false; };
   }, []);
-  const href = state.setup?.configured ? signInHref(state.setup, typeof window !== "undefined" ? window.location.hash : "") : "";
+  const links = signInLinks(state.setup, typeof window !== "undefined" ? window.location.hash : "");
   const out = useCallback(async () => {
     await signOut(state.setup);
     setState((s) => ({ ...s, account: null, acting: null, canActAs: false }));
@@ -65,7 +65,7 @@ export function useSignIn() {
     const acting = await actAs(state.setup, target);
     setState((s) => ({ ...s, acting }));
   }, [state.setup]);
-  return { ...state, signInHref: href, signOut: out, actAs: viewAs };
+  return { ...state, signInLinks: links, signOut: out, actAs: viewAs };
 }
 
 /** `people` comes from `/api/approvals` unless the caller passes the list it already loaded. */
@@ -84,7 +84,7 @@ export function useSession(given?: readonly Person[]) {
   const setMe = useCallback((name: string) => { setPicked(name); writeMe(name); }, []);
   const can = useCallback((approver: string) => canApprove(me, approver, people), [me, people]);
   return {
-    me, setMe, people, canApprove: can, account: signIn.account, signInHref: signIn.signInHref, signInError: signIn.error,
+    me, setMe, people, canApprove: can, account: signIn.account, signInLinks: signIn.signInLinks, signInError: signIn.error,
     signOut: signIn.signOut, acting: signIn.acting, canActAs: signIn.canActAs, actAsPeople: signIn.actAsPeople,
     actAsRoles: signIn.actAsRoles, actAs: signIn.actAs,
   };

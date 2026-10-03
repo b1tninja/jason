@@ -10,13 +10,15 @@ approves nothing alone. A row may add "a fluent reviewer" (translations). "The b
 at a meeting (CIV 4910) that the president or the secretary records. ``email`` is the Google account the person signs
 in to jason-web with; a row without one cannot sign in.
 
-The people who build jason are data/spec/maintainers.json, ``[{"name": "...", "email": "..."}]``: with
-``jason-web --dev`` they may view the console as any officer or office (jason.web.signin). It is not an office.
+How people sign in to the console for this community is data/spec/<profile>/sign_in.json (``jason sign-in
+--import-client`` writes it): ``[{"key": "...", "record_uid": "...", "provider": "google", "domains": [...],
+"label": "..."}]``, each a Google client in Keeper. Empty, the installation's sign-in applies (jason.access).
+jason's admins and the managers of a portfolio are the installation's, not the community's (data/access).
 """
 
 from __future__ import annotations
 
-from jason.community.base import Maintainer, Officer, OfficerRole
+from jason.community.base import IdentityProvider, Officer, OfficerRole, SignInProvider
 
 DEFAULT_APPROVES: dict[OfficerRole, tuple[str, ...]] = {
     OfficerRole.PRESIDENT: ("the president",),
@@ -51,15 +53,12 @@ def officers() -> tuple[Officer, ...]:
     return tuple(rows)
 
 
-def maintainers() -> tuple[Maintainer, ...]:
+def sign_in() -> tuple[SignInProvider, ...]:
     from jason.community.private import facts
 
-    out = []
-    for row in facts("maintainers", []):
-        name, email = str(row.get("name", "") or "").strip(), str(row.get("email", "") or "").strip()
-        if name and email:
-            out.append(Maintainer(name, email))
-    return tuple(out)
+    from jason.access import providers_from
+
+    return providers_from(facts("sign_in", []))
 
 
-__all__ = ["DEFAULT_APPROVES", "maintainers", "officers"]
+__all__ = ["DEFAULT_APPROVES", "officers", "sign_in"]

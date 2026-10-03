@@ -49,7 +49,7 @@ describe("ConsoleShell", () => {
   it("names the officer signed in with Google, with Sign out and no picker", async () => {
     const onSignOut = vi.fn();
     const people = [{ name: "D. Okafor", role: "president" }];
-    shell({ session: { me: "D. Okafor", setMe: vi.fn(), people, account: { name: "D. Okafor", role: "president", email: "d@example.org" }, onSignOut, signInHref: "/auth/google" } });
+    shell({ session: { me: "D. Okafor", setMe: vi.fn(), people, account: { name: "D. Okafor", role: "president", email: "d@example.org" }, onSignOut, signInLinks: [{ label: "Sign in with Google", href: "/auth/google" }] } });
     expect(screen.queryByLabelText("Signed in as")).toBeNull();
     expect(screen.getByText("D. Okafor, president")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Sign in with Google" })).toBeNull();
@@ -57,15 +57,15 @@ describe("ConsoleShell", () => {
     expect(onSignOut).toHaveBeenCalled();
   });
 
-  it("lets a maintainer view as a person or an office under --dev, and says writes are off meanwhile", async () => {
+  it("lets an admin view as a person or an office under --dev, and says writes are off meanwhile", async () => {
     const onChange = vi.fn();
     const people = [{ name: "Sam Example", role: "secretary, treasurer" }, { name: "Pat Example", role: "president" }];
     shell({ session: { me: "Pat Example", setMe: vi.fn(), people, account: { name: "Sam Example", role: "secretary, treasurer" },
       actAs: { people, roles: ["president", "director"], acting: { name: "Pat Example", role: "president" }, onChange } } });
-    const view = screen.getByLabelText("Maintainer view");
+    const view = screen.getByLabelText("Admin view");
     expect(view).toHaveValue("p:Pat Example");
     expect(within(view).queryByText("Sam Example, secretary, treasurer")).toBeNull();     // not oneself twice
-    expect(screen.getByRole("status")).toHaveTextContent("Viewing as Pat Example (maintainer view): writes are off");
+    expect(screen.getByRole("status")).toHaveTextContent("Viewing as Pat Example (admin view): writes are off");
     await userEvent.selectOptions(view, "r:director");
     expect(onChange).toHaveBeenCalledWith({ role: "director" });
     await userEvent.selectOptions(view, "");
@@ -74,8 +74,9 @@ describe("ConsoleShell", () => {
 
   it("offers Sign in with Google beside the picker when the server has it, and says a refusal", () => {
     const people = [{ name: "D. Okafor", role: "president" }];
-    shell({ session: { me: "", setMe: vi.fn(), people, signInHref: "/auth/google?next=%23%2Fdigest", signInError: "x@example.org is not an officer's account" } });
-    expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google?next=%23%2Fdigest");
+    shell({ session: { me: "", setMe: vi.fn(), people, signInLinks: [{ label: "Sign in with Google (Board)", href: "/auth/google?next=%23%2Fdigest&provider=google" }, { label: "Sign in with Google (Management company)", href: "/auth/google?provider=mgmt" }], signInError: "x@example.org is not an officer's account" } });
+    expect(screen.getByRole("link", { name: "Sign in with Google (Board)" })).toHaveAttribute("href", "/auth/google?next=%23%2Fdigest&provider=google");
+    expect(screen.getByRole("link", { name: "Sign in with Google (Management company)" })).toHaveAttribute("href", "/auth/google?provider=mgmt");
     expect(screen.getByLabelText("Signed in as")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("not an officer's account");
   });

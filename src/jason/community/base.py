@@ -554,14 +554,24 @@ def offices_of(officers: Iterable[Officer], name: str) -> tuple[Officer, ...]:
     return tuple(o for o in officers if o.name == name)
 
 
-@dataclass(frozen=True)
-class Maintainer:
-    """A person who builds and maintains jason and, only when jason-web runs with ``--dev``, may view the console as any
-    officer or office (``jason.web.signin``). Not an office and grants nothing in production; a private fact
-    (``maintainers.json``). Not the ``Developer``, which is the subdivider."""
+class IdentityProvider(Enum):
+    """Who vouches for a person signing in to the console. Google (a Workspace account) is the one built; another
+    is a new member here and a new flow in ``jason.web.signin``."""
 
-    name: str
-    email: str
+    GOOGLE = "google"
+
+
+@dataclass(frozen=True)
+class SignInProvider:
+    """One way to sign in to the console for this community: the identity provider, the Keeper record holding its
+    OAuth client (``client_id``, ``client_secret``), and the email domains whose accounts it accepts (empty: the
+    community's ``email_domains``). ``key`` names it when there is more than one; ``label`` is the button's words."""
+
+    key: str
+    record_uid: str
+    provider: IdentityProvider = IdentityProvider.GOOGLE
+    domains: tuple[str, ...] = ()
+    label: str = ""
 
 
 @dataclass(frozen=True)
@@ -723,9 +733,9 @@ class Community(ABC):
         A person who holds two offices is two rows (``offices_of``)."""
         return ()
 
-    def maintainers(self) -> tuple[Maintainer, ...]:
-        """The people who build and maintain jason (``Maintainer``), who may view the console as any officer when
-        jason-web runs with ``--dev``; a private fact, empty until set."""
+    def sign_in(self) -> tuple[SignInProvider, ...]:
+        """How people sign in to the console for this community (``SignInProvider``): its own Google Workspace
+        client or clients; a private fact. Empty: the installation's (``jason.access``)."""
         return ()
 
     def copy_priority(self):

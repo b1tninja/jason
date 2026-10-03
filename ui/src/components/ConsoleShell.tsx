@@ -29,12 +29,12 @@ export interface ConsoleShellProps {
   onAudience: (a: Audience) => void;
   /** Who is signed in. With `account` (an officer signed in with Google), the header names them with a Sign out button
    * and there is no picker. Without it, the "Signed in as" picker (the chosen name and the people to choose from; hidden
-   * with no one to pick) and, when `signInHref` is set, a "Sign in with Google" link. Hidden for owners. */
+   * with no one to pick) and `signInLinks`, one "Sign in with Google" link a provider. Hidden for owners. */
   session?: {
     me: string; setMe: (name: string) => void; people: readonly ConsolePerson[];
     account?: { name: string; role?: string; email?: string } | null;
-    signInHref?: string; signInError?: string; onSignOut?: () => void;
-    /** Under `jason-web --dev`, a signed-in maintainer's "View as": the people and offices to view the console as,
+    signInLinks?: readonly { label: string; href: string }[]; signInError?: string; onSignOut?: () => void;
+    /** Under `jason-web --dev`, a signed-in admin's "View as": the people and offices to view the console as,
      * whom they view it as now (`acting`), and the change. Writes are refused while acting. */
     actAs?: { people: readonly ConsolePerson[]; roles: readonly string[]; acting?: { name: string; role: string } | null; onChange: (target: { name?: string; role?: string }) => void };
   };
@@ -83,7 +83,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
   const grouped = groups.map((g) => ({ label: g, items: visible.filter((s) => s.group === g) })).filter((g) => g.items.length);
   const account = !owner ? session?.account : null;
   const showPicker = !owner && !account && session && session.people.length > 0;
-  const googleHref = !owner && !account ? session?.signInHref : "";
+  const googleLinks = !owner && !account ? session?.signInLinks ?? [] : [];
   return (
     <div className="console">
       <header className="console-bar">
@@ -101,7 +101,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
           )}
           {account && session?.actAs && (
             <label className="console-signin console-actas">
-              Maintainer view
+              Admin view
               <select value={actingValue(session.actAs.acting)} onChange={(e) => session.actAs!.onChange(actingTarget(e.target.value))}>
                 <option value="">myself</option>
                 <optgroup label="A person">
@@ -117,7 +117,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
           )}
           {account && session?.actAs?.acting && (
             <span className="console-acting" role="status">
-              Viewing as {session.actAs.acting.name || `the ${session.actAs.acting.role}`} (maintainer view): writes are off
+              Viewing as {session.actAs.acting.name || `the ${session.actAs.acting.role}`} (admin view): writes are off
             </span>
           )}
           {showPicker && (
@@ -131,7 +131,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
               </select>
             </label>
           )}
-          {googleHref && <a className="console-signin-google" href={googleHref}>Sign in with Google</a>}
+          {googleLinks.map((l) => <a key={l.href} className="console-signin-google" href={l.href}>{l.label}</a>)}
           {!owner && session?.signInError && <span className="console-signin-error" role="alert">{session.signInError}</span>}
           {dock}
           <div role="radiogroup" aria-label="View as" className="console-seg">

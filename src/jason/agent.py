@@ -1066,6 +1066,19 @@ class Jason:
                   "Jason reads it as zoom_record_uid.",
         )
 
+    def store_google_client(self, client_id: str, client_secret: str, *, title: str, project_id: str = "",
+                            notes: str = "") -> str:
+        """Put a Google OAuth client in a new Keeper login record and return its UID: the client id as the login and as
+        the custom field ``client_id``, the secret in the password field (``jason sign-in --import-client``)."""
+        return self._vault_session().create_login_record(
+            title,
+            password=client_secret,
+            login=client_id,
+            url=f"https://console.cloud.google.com/auth/clients?project={project_id}" if project_id else "",
+            custom={"client_id": client_id, **({"project_id": project_id} if project_id else {})},
+            notes=notes,
+        )
+
     def sync_zoom(self, *, full: bool = False, since=None, media: bool = False, log: Any = None) -> dict[str, int]:
         """Sync the Zoom account's meetings, transcripts, chats, and AI Companion summaries to ``data/zoom``."""
         from jason.tasks.zoom import sync

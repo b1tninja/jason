@@ -38,37 +38,44 @@ Why a flag and not a role: unless sign-in is required (`--require-sign-in`), a n
 
 ### Built: Sign in with Google
 
-An officer can sign in with their Workspace account (`jason.web.signin`; set up in [setup.md, Console sign-in](../setup.md#5-console-sign-in-jason-web)):
+A person on the roster can sign in with their Google Workspace account (`jason.web.signin`; set up in [setup.md, Console sign-in](../setup.md#5-console-sign-in-jason-web)):
 - **The flow.** OpenID Connect's authorization-code flow runs on the server, with PKCE, `state`, and `nonce`, and asks only `openid email profile`. The ID token comes straight from Google's token endpoint, in exchange for the client secret. No Google script runs in the page, and no Google token is kept.
+- **The clients.** A community sets up its own Google Sign-In: one or more clients from its own Workspace (`Community.sign_in`, a private fact). The installation may add its own (`jason.access`), such as a management company's Workspace for admins and managers. The console shows one button for each. `jason sign-in --import-client` puts a downloaded client in Keeper and records it; the secret is never printed.
+- **The roster.** It joins the two levels:
+  - **the community's officers** (`Officer.email`, a private fact);
+  - **managers** (`data/access/managers.json`). A manager whose portfolio holds this community is its manager;
+  - **jason's admins** (`data/access/admins.json`). They are the overall administrators, and hold no office, so being an admin approves nothing.
 - **Who gets in.** An account gets in when all of these hold:
-  - the token is for this client and from Google, unexpired, and carries jason-web's `nonce`;
+  - the token is for the chosen client and from Google, unexpired, and carries jason-web's `nonce`;
   - the email is verified;
-  - its `hd` claim is one of the association's email domains;
-  - the address is exactly one officer's on the roster (`Officer.email`, a private fact).
+  - its `hd` claim is one of that client's domains;
+  - the address is exactly one person's on the roster.
 
-  With an Internal consent screen, Google refuses accounts outside the Workspace organization before jason sees them.
+  With an Internal consent screen, Google refuses accounts outside the client's Workspace organization before jason sees them.
 - **What it changes.**
-  - While someone is signed in, a write's `by` must be the signed-in officer's name; an empty one is filled with it.
+  - While someone is signed in, a write's `by` must be the signed-in person's name; an empty one is filled with it.
   - Approval steps record `via: console:google`.
-  - `jason-web --require-sign-in` refuses every write (401) until an officer signs in.
+  - `jason-web --require-sign-in` refuses every write (401) until someone signs in.
   - Sign-in is not a role: what a person may approve is still the roster's.
 - **The session.**
   - It is Flask's signed cookie (`jason_session`, `HttpOnly; SameSite=Lax`), signed with a key made when the app starts. Lax rather than Strict, so the cookie survives the top-level return from Google.
   - It lasts twelve hours at most, and a restart signs everyone out.
-  - An officer taken off the roster is signed out at their next write.
-  - Sign-ins, refusals, and sign-outs are logged in `data/web/sign-ins.jsonl`.
+  - A person taken off the roster is signed out at their next write.
+  - Sign-ins, refusals, and sign-outs are logged in `data/web/sign-ins.jsonl`, each with the client used.
 - **What stays the same.**
   - The write guard (Host, Origin, token) still applies to every write, sign-out included.
   - Apply still needs `--allow-apply`.
   - The console still listens on loopback only.
 
-**Two offices, one person.** A person who holds two offices is two roster rows with one name. Sign-in matches them once, with the offices joined. The letters' approval check and the console's people list read every office the person holds.
+**Two offices, one person.** A person who holds two offices is two roster rows with one name. Sign-in matches them once, with the offices joined. The letters' approval check and the console's people list read every office the person holds, and a portfolio manager too.
 
-**Maintainer view (`--dev`, not production).** A signed-in maintainer (`Community.maintainers`, a private fact) may view the console as any person on the roster, or as an office with no person (`POST /auth/act-as`, a guarded write). This is for building and checking role-based views. While they view as someone else:
+**Admin view (`--dev`, not production).** A signed-in admin may view the console as any person on the roster, or as an office with no person (`POST /auth/act-as`, a guarded write). This is for building and checking role-based views. While they view as someone else:
 - every write is refused (403), so no record ever carries a name its person did not sign in as;
 - the switch and its return are logged.
 
-Without `--dev`, being a maintainer grants nothing.
+Without `--dev`, being an admin gives no view-as.
+
+**A portfolio in one console: not yet.** One jason-web serves one community (the active profile). A manager with several communities runs a jason-web for each until jason serves more than one profile at once ([mvp.md](mvp.md#open-decisions), decision 14).
 
 Without sign-in set up, or with no one signed in and sign-in not required, the console behaves as before (below).
 

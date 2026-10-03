@@ -91,64 +91,79 @@ New Google Sites has no content API. The published site is a Drive file, so Driv
 
 ### 5. Console sign-in (jason-web)
 
-With this step, officers can sign in to the console (`jason-web`) with their Workspace accounts. Each step a signed-in officer takes then goes on the record under that officer's own name, not a name picked from a list. Sign-in asks Google for `openid email profile` and nothing else: it only learns who the person is. jason-web never calls a Google API in the person's name.
+With this step, people sign in to the console (`jason-web`) with their Google Workspace accounts. Each step a signed-in person takes then goes on the record under their own name, not a name picked from a list. Sign-in asks Google for `openid email profile` and nothing else: it only learns who the person is. jason-web never calls a Google API in the person's name.
 
 How it works: jason-web runs OpenID Connect's authorization-code flow on the server, with PKCE, `state`, and `nonce` ([Google's OpenID Connect guide](https://developers.google.com/identity/openid-connect/openid-connect)). The browser goes to Google and comes back to `/auth/google/callback`. jason-web then trades the code for an ID token directly with Google, using the client secret. No Google script is loaded into the page, and no Google token is kept.
 
-1. **The client: nothing to do.** jason-web signs people in with jason's own Desktop client, the Keeper record from step 3 (`google_oauth_record_uid`). Google lets a Desktop client return to any loopback address and port with nothing registered in the console ([Google's loopback guide](https://developers.google.com/identity/protocols/oauth2/native-app#redirect-uri_loopback)), and jason-web listens on loopback. The consent screen from step 2 applies too: with the user type **Internal**, only accounts in the association's Workspace organization can sign in at all. jason-web reads the Keeper record without a prompt, so `jason login` must have been run once ([Keeper login](#keeper-login)).
-2. **The roster.** Add each officer's Google account address to their row in the private officers file (`data/spec/officers.json`, or `data/spec/<profile>/officers.json`; [Private facts](#private-facts)). Use the address they sign in with:
+**Who signs in, and where it is set up.** Every file here is private, under `data/`, and never checked in.
+
+| Level | What | File |
+|---|---|---|
+| A community (a profile) | Its officers, with the address each signs in with | `data/spec/<profile>/officers.json` |
+| | Its own Google Sign-In: one or more clients from its own Workspace, each with the email domains it accepts | `data/spec/<profile>/sign_in.json` (`Community.sign_in`) |
+| jason (the installation) | **Admins**: jason's overall administrators, across every community | `data/access/admins.json` |
+| | **Managers**: each manages a portfolio of communities, and is the manager of each one in it | `data/access/managers.json` |
+| | The installation's own sign-in clients, such as a management company's Workspace, for admins and managers | `data/access/sign_in.json` |
+
+jason-web offers one button for each client: first the community's, then the installation's. If neither is set up, it uses the `.env` client, `google_signin_record_uid` or else jason's own Desktop client from step 3. Whichever client a person chooses, they must be on this community's roster: its officers, the managers whose portfolio holds it, and jason's admins. An admin holds no office, so being an admin approves nothing; what anyone may approve is still the community's roster. Each client checks its own domains.
+
+1. **A client.** Pick one:
+   - **The community's Web client (recommended).** In its Cloud project, open **Google Auth Platform → Clients → Create client**, with the type **Web application**. Under **Authorized redirect URIs**, add the exact addresses jason-web answers on, followed by `/auth/google/callback`:
+     - `http://127.0.0.1:8080/auth/google/callback`
+     - `http://localhost:8080/auth/google/callback`
+
+     Plain `http` is allowed only for loopback; any other host needs `https`. Leave **Authorized JavaScript origins** empty. Download the client's JSON; newer projects may show the secret only then. Then put the client in Keeper and record it with:
+
+     ```bash
+     jason sign-in --import-client client_secret_XXXX.json --yes --delete-file
+     ```
+
+     This puts the client ID and secret in a new Keeper login record, and records it in the community's `sign_in.json`. The secret goes from the file to Keeper and is never printed. Without `--yes`, it says what it would do. `--for jason` records the client as the installation's instead. `--domain` restricts it to one or more domains (default: the community's email domains). `--label` names its button.
+   - **Nothing to set up.** jason-web falls back to jason's own Desktop client from step 3. Google lets a Desktop client return to any loopback address and port with nothing registered. Google's guide is silent on a path after the port, but it accepted `http://127.0.0.1:8080/auth/google/callback` when this was first tried (October 2026).
+
+   With the consent screen's user type **Internal** (step 2), only accounts in that Workspace organization can sign in with its client at all. If the Cloud project is not in the organization, the user type can only be **External**. Keep the app in **Testing** and list the people's addresses as test users (at most 100). `openid`, `email`, and `profile` are not sensitive scopes, so no verification is needed. jason-web reads Keeper without a prompt, so `jason login` must have been run once ([Keeper login](#keeper-login)). A new redirect URI can take from five minutes to a few hours to take effect.
+2. **The roster.** Add each officer's Google account address to their row in `officers.json` ([Private facts](#private-facts)):
 
    ```json
    [{"role": "treasurer", "name": "Pat Example", "email": "treasurer@example.org"}]
    ```
 
-   A row without `email` cannot sign in. A shared role account (such as the treasurer's address) signs in as whoever holds that seat on the roster. Who holds a seat is the board's record, so update the roster when a seat changes hands.
+   - **No address, no sign-in.** A row without `email` cannot sign in.
+   - **Shared role accounts.** A role account, such as the treasurer's address, signs in as whoever holds that seat on the roster. Who holds a seat is the board's record, so update the roster when a seat changes hands.
+   - **Two offices.** Where the bylaws let one person hold two offices, give the row a list: `"role": ["secretary", "treasurer"]`. Sign-in matches the person once, with both offices, and they may approve what either office approves.
+   - **Admins and managers.**
+     - `data/access/admins.json` takes `[{"name": "...", "email": "..."}]`.
+     - `data/access/managers.json` takes `[{"name": "...", "email": "...", "communities": ["<profile>", "..."]}]`; `"*"` means every community.
+     - A portfolio manager approves "the manager" in each of their communities, unless that community's own roster names a manager.
+3. **Check and start it.**
+   - `jason sign-in` shows the setup without writing anything: the clients, the fallback, and how many people can sign in.
+   - `jason-web` offers sign-in beside the sample picker. `jason-web --require-sign-in` refuses every write until someone signs in.
+   - The **Sign in with Google** button or buttons appear at the top of the console. After sign-in, the header shows the person's name and a **Sign out** button.
 
-   **Two offices.** Where the bylaws let one person hold two offices, give the row a list: `"role": ["secretary", "treasurer"]`. Sign-in matches the person once, with both offices. They may approve what either office approves.
-
-   **Maintainers.** The people who build and maintain jason go in `data/spec/maintainers.json` as `[{"name": "...", "email": "..."}]`. ("Developer" in jason means the subdivider.) Being a maintainer grants nothing unless jason-web runs with `--dev` (step 3).
-3. **Start it.** Run `jason-web` to offer sign-in beside the sample picker, or `jason-web --require-sign-in` to refuse every write until an officer signs in. jason-web says at startup which client it signs in with. **Sign in with Google** appears at the top of the console. After sign-in, the header shows the officer's name and a **Sign out** button.
-
-   **Not production: `jason-web --dev`.** A signed-in maintainer gets a **Maintainer view** control in the header. With it, they see the console as any person on the roster or any office, to build and check role-based views. While they view as someone else, every write is refused, so no record ever carries a name its person did not sign in as. Choosing "myself" restores writes. Each switch is logged in `data/web/sign-ins.jsonl`.
-
-**Optional: a Web application client.** You need one only to serve the console on a name other than loopback, which needs HTTPS and is out of scope for now (below). You also need one if Google ever refuses the Desktop client's return address with `redirect_uri_mismatch`. Google's guide names `http://127.0.0.1:port` for Desktop clients and is silent on a path after the port, but Google accepted `http://127.0.0.1:8080/auth/google/callback` from jason's Desktop client when this was first tried (October 2026).
-1. In the Cloud console, open **Google Auth Platform → Clients → Create client**, with the type **Web application** and the name `jason console`.
-2. Under **Authorized redirect URIs**, add the exact addresses jason-web answers on, followed by `/auth/google/callback`. For example:
-   - `http://127.0.0.1:8080/auth/google/callback`
-   - `http://localhost:8080/auth/google/callback`
-
-   Plain `http` is allowed only for loopback; any other host needs `https`. Leave **Authorized JavaScript origins** empty.
-3. Copy the client ID and secret straight into a new Keeper Login record titled `jason Google sign-in`, with custom fields `client_id` and `client_secret` (hidden). Newer projects may show the secret only once.
-4. Put the record's UID in `.env` as `google_signin_record_uid`. When it is set, it takes the place of the Desktop client.
-
-A new redirect URI can take from five minutes to a few hours to take effect.
-
-If the Cloud project is not in the Workspace organization, its user type can only be **External**. Keep the app in **Testing** and list the officers' addresses as test users (at most 100). `openid`, `email`, and `profile` are not sensitive scopes, so no verification is needed either way.
+   **Not production: `jason-web --dev`.** A signed-in admin gets an **Admin view** control in the header. With it, they see the console as any person on the roster or any office, to build and check role-based views. While they view as someone else, every write is refused, so no record ever carries a name its person did not sign in as. Choosing "myself" restores writes, and each switch is logged in `data/web/sign-ins.jsonl`.
 
 **What jason-web checks before it lets anyone in:**
 - the `state` it sent comes back, within ten minutes;
-- the ID token's `iss` is Google, its `aud` is this client, it has not expired, and it carries the `nonce` jason-web sent;
+- the ID token's `iss` is Google, its `aud` is the chosen client, it has not expired, and it carries the `nonce` jason-web sent;
 - `email_verified` is true;
-- when the profile names the association's email domains (`Community.email_domains`), the token's `hd` claim is one of them. Google's own advice is that the `hd` parameter sent to Google is only a hint for the account chooser; the claim is what counts;
-- the email matches exactly one officer on the roster.
+- when the client names email domains, the token's `hd` claim is one of them. Google's own advice is that the `hd` parameter sent to Google is only a hint for the account chooser; the claim is what counts;
+- the email matches exactly one person on the roster.
 
-Sign-in grants what the roster grants and nothing more: what a person may approve is still `Officer.approves`.
+Sign-in grants what the roster grants and nothing more.
 
-**While an officer is signed in:**
-- **The record uses their name.** A write's `by` must be the signed-in officer's name, and an empty `by` is filled with it. Approval steps record `via: console:google` in the audit log.
-- **The session has limits.** It is a signed, HttpOnly cookie that lasts twelve hours at most. Restarting jason-web signs everyone out. An officer taken off the roster is signed out at their next write.
-- **Sign-ins are logged.** Each sign-in, refusal, and sign-out is a line in `data/web/sign-ins.jsonl`.
+**While someone is signed in:**
+- **The record uses their name.** A write's `by` must be the signed-in person's name, and an empty `by` is filled with it. Approval steps record `via: console:google` in the audit log.
+- **The session has limits.** It is a signed, HttpOnly cookie that lasts twelve hours at most. Restarting jason-web signs everyone out. A person taken off the roster is signed out at their next write.
+- **Sign-ins are logged.** Each sign-in, refusal, and sign-out is a line in `data/web/sign-ins.jsonl`, with the client used.
 
 **When it goes wrong:**
-- **`redirect_uri_mismatch`.**
-  - With the Desktop client: open the console at `http://127.0.0.1:8080` rather than `localhost`. If Google still refuses, set up the Web client above.
-  - With the Web client: the console was opened at an address the client does not list. Add that exact address.
-- **`org_internal` or "access blocked":** the account is outside the Workspace organization.
-- **"not an officer's account":** the address is not on the roster (step 2).
-- **"not an account of the association's Google Workspace":** the account's domain is not one of `Community.email_domains`.
-- **"could not read its client":** run `jason login`, and check that the Keeper record has `client_id` and `client_secret`.
+- **`redirect_uri_mismatch`:** the console was opened at an address the client does not list. Add that exact address to the client. With jason's Desktop client, open the console at `http://127.0.0.1:8080`.
+- **`org_internal` or "access blocked":** the account is outside the Workspace organization that owns the client.
+- **"not on the roster":** the address is in none of the roster files (step 2).
+- **"not an account of the Google Workspace this sign-in accepts":** the account's domain is not one of the client's domains.
+- **"could not read its client":** run `jason login`. Then check that the Keeper record has the client ID (`client_id` or the login) and the secret (`client_secret` or the password).
 
-The console still listens on loopback only. Serving it beyond this machine needs HTTPS and the board's written policy on who may see what ([console/security-and-privacy.md](console/security-and-privacy.md)).
+**What is still to come.** A manager's portfolio decides where they may sign in and what they approve. But one jason-web serves one community, the active profile (`JASON_PROFILE`), so moving between a portfolio's communities is a separate jason-web for each. The provider kind is a closed set (`IdentityProvider`); only Google is built. The console still listens on loopback only. Serving it beyond this machine needs HTTPS and the board's written policy on who may see what ([console/security-and-privacy.md](console/security-and-privacy.md)).
 
 ## Local AI
 

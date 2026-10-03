@@ -56,6 +56,7 @@ MODULES: tuple[str, ...] = (
     "ingest",
     "spec",
     "approvals",
+    "sign_in",
 )
 
 
