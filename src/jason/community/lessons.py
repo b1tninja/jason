@@ -693,11 +693,22 @@ LESSONS: tuple[Lesson, ...] = (
            "Whether new files go to a catch-all folder is the board's or manager's call; a rule could prefer a folder "
            "pinned to the file's record.", Status.DECISION),
     Lesson("second-profile-shared-stores", OCT_2026, (Area.ONBOARDING,),
-           "A second association's onboarding session read the first association's library, intake queue, and stores.",
-           "Every store was found from one shared data folder.",
-           "A profile other than the default gets its own data folder (data/<profile>/). Still open: callers that use "
-           "Path('data') directly, and the topic-named private fact files every profile reads.",
-           Status.OPEN, guards=("config.default_data_dir", "tests/test_onboarding_new.py")),
+           "A second association's onboarding session read the first association's library, intake queue, stores, "
+           "and private fact files.",
+           "Every store was found from one shared data folder, some callers named it directly, and the private fact "
+           "topics were one file each for every profile.",
+           "The data root is named once (config.data_root, JASON_DATA_DIR); callers ask config.data_dir() or the "
+           "settings when they need it; private fact topics are each profile's own (data/spec/<profile>/<topic>.json), "
+           "the default profile's old files read for it alone until jason spec --migrate --yes copies them.",
+           Status.FIXED, guards=("config.data_root", "community.private.path_of", "tests/test_profile_data.py",
+                                 "jason spec --migrate"), docs=("docs/profiles.md (Each profile's data)",)),
+    Lesson("profile-module-reads-active-facts", OCT_2026, (Area.ONBOARDING,),
+           "A profile computes its private-fact rows at import; first imported while another profile was active, it "
+           "cached that profile's facts, or none, for the whole process.",
+           "The facts reader keyed on the active profile, not the profile asking.",
+           "private.facts(topic, profile=...): each profile module passes its own key, and the onboarding and ingest "
+           "contexts pass the profile whose checklist they build.",
+           Status.FIXED, guards=("community.private.facts(profile=)", "tests/test_profile_data.py")),
     Lesson("empty-default-counted-present", OCT_2026, (Area.ONBOARDING,),
            "A new profile's checklist showed items present that held nothing: a map of empty groups and an all-empty "
            "record counted as rows.",

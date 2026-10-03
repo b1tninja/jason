@@ -462,6 +462,11 @@ PROCEDURES: tuple[Procedure, ...] = (
                        "question, never a row",
                  refs=("docs/onboarding.md (Starting a new association)",),
                  lessons=("second-profile-shared-stores", "recorder-empty-or-unreachable")),
+            Step("Confirm the new profile reads only its own private facts; for the default profile, copy its old "
+                 "topic files into its own folder once.", command="jason spec; jason spec --migrate (then --yes)",
+                 check="the paths are data/spec/<key>.json and data/spec/<key>/ only; a backup before any copy",
+                 refs=("docs/profiles.md (Each profile's data)",),
+                 lessons=("second-profile-shared-stores", "profile-module-reads-active-facts")),
             Step("Read the checklist.", command="jason onboard --items"),
             Step("Run the session: the stage gates, then the ranked questions. Park the fact and mapping questions, "
                  "answer in the order given, have a second person confirm the high-stakes ones, then apply.",
