@@ -16,6 +16,17 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
 - [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes; each notice's delivery to every member, and the follow-ups the law asks for (`jason notices`).
 
+## Console (requirements, not built)
+
+- [console/README.md](console/README.md): the property management console: its vision, principles, phases, and prior art.
+- [console/personas-and-jobs.md](console/personas-and-jobs.md): the manager, directors, officers, a second-person reviewer, and counsel; what each does and must never see or do.
+- [console/information-architecture.md](console/information-architecture.md): the navigation and each screen's data source (the jason function or MCP tool) and actions.
+- [console/approval-workflow.md](console/approval-workflow.md): every `--yes` write surveyed and classified, then the `Approval` record, its states, approval by item, re-plan with a fingerprint check, the second-person rule, the action-kind registry, the audit log, and `jason approvals`.
+- [console/security-and-privacy.md](console/security-and-privacy.md): loopback only, the session token and CSRF, approver identity, roles, data levels, and no secrets.
+- [console/architecture.md](console/architecture.md): Starlette with server-rendered HTML, the module layout, locks and jobs, `jason serve`, the launch entry, tests, and dependencies.
+- [console/components.md](console/components.md): the component inventory for `src/jason/console/ui/`, with states and variants, and the WCAG 2.2 AA duties.
+- [console/mvp.md](console/mvp.md): the first build as acceptance criteria, the prerequisites in jason, moving `--yes` onto approvals, and the open decisions.
+
 ## PayHOA and finance
 
 - [payhoa-reports.md](payhoa-reports.md): what PayHOA can report, how it computes it, and how jason reads it.
