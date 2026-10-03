@@ -38,11 +38,15 @@ class GoogleDocs:
         if self._owns_http:
             self._http.close()
 
-    def get(self, document_id: str) -> dict[str, Any]:
-        """Read the document, including every tab."""
+    def get(self, document_id: str, *, without_suggestions: bool = False) -> dict[str, Any]:
+        """Read the document, including every tab. ``without_suggestions`` reads it as it stands, pending suggestions
+        left out (for reading its text); the default keeps them inline, which edits' indexes rely on."""
+        params: dict[str, Any] = {"includeTabsContent": True}
+        if without_suggestions:
+            params["suggestionsViewMode"] = "PREVIEW_WITHOUT_SUGGESTIONS"
         response = self._http.get(
             f"{_API}/documents/{document_id}",
-            params={"includeTabsContent": True},
+            params=params,
             headers=self._headers(),
         )
         return _ok(response, f"reading {document_id}")

@@ -53,7 +53,7 @@ def build(docs: Any, drive: Any, community: Any, data_dir: Path, *, log=print) -
     """Read every outlined document and write its outline. Returns the outlines."""
     out: list[DocumentOutline] = []
     for spec in community.citable_documents():
-        doc = docs.get(spec.drive_id)
+        doc = docs.get(spec.drive_id, without_suggestions=True)
         outline = outline_from_doc(doc, key=spec.key, title=spec.title, kind=spec.kind.value)
         outline.aliases, outline.amends = list(spec.aliases), spec.amends
         out.append(_save(data_dir, outline))
@@ -63,7 +63,7 @@ def build(docs: Any, drive: Any, community: Any, data_dir: Path, *, log=print) -
         for f in drive.list_folder(folder):
             if not f.get("mimeType", "").endswith("document"):
                 continue
-            doc = docs.get(f["id"])
+            doc = docs.get(f["id"], without_suggestions=True)
             # Several resolutions share a title ("Special Resolution - Investment of Reserve Funds"); the Drive id keeps them apart.
             key = f"resolution-{_slug(f['name'])[:48]}-{f['id'][:4].lower()}"
             # The number the headers print, or the one the Doc's first line (its title) gives.
