@@ -40,3 +40,23 @@ export { AskPanel } from "./AskPanel";
 export { BoardFields, type BoardFieldsItem } from "./BoardFields";
 export { RequestForm, DELIVERIES, type RequestKind, type RecordedRequest, type Delivery } from "./RequestForm";
 export { ConsoleShell, ScreenHeader, visibleScreens, OWNER_BANNER, type ConsoleScreen, type ConsoleShellProps, type Audience } from "./ConsoleShell";
+// Approvals engine (jason.approvals): the engine's JSON in, no mapping layer. lib/approvals.ts has the types and rules.
+export { PlanReview, PLAN_CAVEATS } from "./PlanReview";
+export { WriteRow } from "./WriteRow";
+export { HeldNote } from "./HeldNote";
+export { ChangedBanner } from "./ChangedBanner";
+export { ApproveBar } from "./ApproveBar";
+export { SecondConfirm } from "./SecondConfirm";
+export { CostLine } from "./CostLine";
+export { ApplyResult } from "./ApplyResult";
+export { Recitation, type Citation, type RecitedTerm } from "./Recitation";
+export { ReadingLabel, type Whose } from "./ReadingLabel";
+export { AuditLog, auditWords } from "./AuditLog";
+export { QuestionCard, unblocksText, type Question, type Unblocks, type Answered } from "./QuestionCard";
+export { StageSteps, type StageGate } from "./StageSteps";
+export {
+  cleanName, sameName, isJason, signerProblem, personName, tally as approvalTally, needsSecond, staleness, waitsOn, decisionProblem, groupItems, changeText,
+  type Approval, type ApprovalStatus, type PlanItem, type ItemClass, type ItemDecision, type ItemResult, type Change, type EvidenceRef,
+  type DecisionRecord, type Signature, type AuditEntry, type AuditEvent, type ChainCheck, type ChangedItem, type Recheck,
+  type DecideBody, type SignBody, type DecisionWord, type Staleness,
+} from "../lib/approvals";

@@ -15,6 +15,10 @@ const TONES: Record<string, Tone> = {
   ready: "good", "needs work": "warn",
   // documents
   recorded: "good", superseded: "neutral", unrecorded: "warn", missing: "bad", pinned: "good",
+  // approvals engine: an approval's status, an item's decision and result
+  planned: "neutral", "in review": "warn", approved: "good", "partially approved": "warn", applying: "good", applied: "good",
+  withdrawn: "neutral", undecided: "neutral", rejected: "bad", held: "warn", "not applied": "neutral",
+  "changed since review": "warn", blocked: "warn",
 };
 
 export function toneOf(word: string | null | undefined): Tone {

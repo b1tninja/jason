@@ -83,7 +83,10 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `.design-sync/.cache/remote-sync.json`, then
   `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node .ds-sync/resync.mjs --config .design-sync/config.json --node-modules ./ui/node_modules --entry ./ui/dist-lib/index.js --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json`.
 - All 48 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
-  until its preview is authored.
+  until its preview is authored. The thirteen approvals-engine components (PlanReview, WriteRow, HeldNote,
+  ChangedBanner, ApproveBar, SecondConfirm, CostLine, ApplyResult, Recitation, ReadingLabel, AuditLog, QuestionCard,
+  StageSteps) have authored previews too, cut from `tests/fixtures/approvals/`, not yet synced; their `now`/`today`
+  props are pinned so the stale and clock cells do not drift.
 - `RollCall` and `ConfirmList` are controlled (`votes`/`onChange`, `rows`/`onToggle`): their previews wrap them in a
   `useState` component, as `Tabs` and `SearchBox` do. `DecisionCard` keeps its own state from `initial`, so its
   cells are static props. `RegisterGrid`'s board cells post to `/api/write/registers/...` only on save, so the grid

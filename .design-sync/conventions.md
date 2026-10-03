@@ -73,6 +73,27 @@ switch, dock toolbar.
   taking `go` and `me`. `BoardFields` (`item`, `onSaved`) and `RequestForm` (`kinds`, `onSent`) are the two
   small forms.
 
+## The approvals engine pieces
+
+Each takes the approvals engine's own JSON (an `Approval` with its `items`, `decisions`, `first`, `second`; audit lines;
+`cite_document`'s result), so a real `jason approvals show ID --json` renders as it is.
+
+- **The plan**: `PlanReview` (`approval`, `me`, `audit`, `recheck`, `now`, and `onDecide`/`onSubmit`/`onConfirmSecond`/
+  `onDecline`/`onApply`/`onWithdraw`/`onCheck`) is the whole review. Its parts stand alone: `WriteRow` (`item`,
+  `selectable`, `checked`, `onToggle`, `waits`; a checkbox only on an approvable item), `HeldNote` (`items`; "Held for the
+  board" as jason's policy finding, solid, apart from "Held for the board by NAME", dashed), `ChangedBanner`
+  (`approval`, `recheck`, `now`; a change blocks approval), `ApproveBar` (`approval`, `selected`, `me`; reject and hold
+  need a reason; the button says "Approve 5 of 8 changes as NAME"), `SecondConfirm` (`approval`; the first signer and the
+  requester are refused), `CostLine` (spread an approval: `costCents`, `summary`), `ApplyResult` (`approval`),
+  `AuditLog` (`entries`, `approval`, `chain`).
+- **Words and readings**: `Recitation` (`citation`, `mark`) quotes stored words whole; `ReadingLabel` (`whose`: jason,
+  board, counsel, open) follows it and never stands in for it.
+- **Onboarding**: `QuestionCard` (`question`, `rank`, `me`, `onAnswer`; jason's suggestion labeled, never chosen) and
+  `StageSteps` (`gates`, `current`).
+
+jason appears only as the planner ("Planned by jason, asked by NAME"); every decision, signature, and apply names a
+person, and each goes through `Confirm`.
+
 ## One idiomatic screen
 
 ```jsx

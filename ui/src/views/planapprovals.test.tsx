@@ -1,0 +1,73 @@
+/// <reference types="vite/client" />
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import plannedJson from "../../../tests/fixtures/approvals/example-village-planned.json";
+import auditRaw from "../../../tests/fixtures/approvals/example-village-audit.jsonl?raw";
+import { ApprovalsView } from "./ApprovalsView";
+import { approvalOf, auditOf, engineApprovals } from "./PlanApprovals";
+import { postJson, resetServerSession } from "../lib/api";
+
+const ID = "apr-20261003T183801-4f5b";
+const people = [{ name: "A Manager", role: "manager", approves: ["the manager"], canApproveBoard: false }];
+const page = { found: true, letters: [], groups: { requested: [], approved: [], sent: [], drafts: [] }, pending: 0, people, stages: [], caveats: [], approvals: [plannedJson], approvalsOpen: 1 };
+const entries = auditRaw.trim().split("\n").map((l) => JSON.parse(l));
+
+afterEach(() => { vi.unstubAllGlobals(); resetServerSession(); document.head.querySelector('meta[name="jason-token"]')?.remove(); });
+
+function stub(session: object) {
+  const posted: { url: string; body: unknown; headers: Record<string, string> }[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
+    if (init?.method === "POST") {
+      posted.push({ url, body: JSON.parse(String(init.body)), headers: init.headers as Record<string, string> });
+      return json({ ...plannedJson, status: "in_review" });
+    }
+    if (url === "/api/session") return json(session);
+    if (url.startsWith("/api/approvals/audit")) return json({ entries: entries.filter((e) => e.approval === ID), verify: { ok: true, why: "whole" } });
+    if (url === `/api/approvals/${ID}`) return json(plannedJson);
+    if (url === "/api/approvals") return json(page);
+    return json({ error: "no route" }, 404);
+  }));
+  return posted;
+}
+
+describe("the Approvals screen's plans", () => {
+  it("reads the engine list beside the letters and the engine's approval as the body", () => {
+    expect(engineApprovals(page).map((a) => a.id)).toEqual([ID]);
+    expect(engineApprovals({ letters: [{ key: "Drive/x.docx" }] })).toEqual([]);
+    expect(approvalOf(plannedJson as never)?.id).toBe(ID);
+    expect(approvalOf({ approval: plannedJson } as never)?.id).toBe(ID);
+    expect(auditOf({ entries, verify: { ok: false, line: 3, why: "hash" } }).chain).toEqual({ ok: false, line: 3, why: "hash" });
+    expect(auditOf(entries).entries).toHaveLength(22);
+  });
+
+  it("opens a plan, decides an item as the signed-in person, and posts it with the write token", async () => {
+    const posted = stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    const user = userEvent.setup();
+    render(<ApprovalsView />);
+    const plans = await screen.findByRole("region", { name: "Plans of writes" });
+    await user.click(within(plans).getByText("Owner information: PayHOA tags and request completions"));
+    const open = await screen.findByRole("region", { name: "Open plan" });
+    expect(await within(open).findByRole("heading", { name: "To decide (12)" })).toBeInTheDocument();
+    expect(await within(open).findByText(/Planned by jason: 17 items \(asked by A Manager\)/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Signed in as"), "A Manager");
+    const first = open.querySelector<HTMLInputElement>("input[data-plan-check]")!;
+    await user.click(first);
+    await user.click(within(open).getByRole("button", { name: "Approve 1 selected" }));
+    await user.click(within(open).getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].url).toBe(`/api/approvals/${ID}/decide`);
+    expect(posted[0].body).toEqual({ items: ["7344a0e1a0d1efa6"], decision: "approved", by: "A Manager", reason: "" });
+    expect(posted[0].headers["X-Jason-Token"]).toBe("tok-1");
+  });
+
+  it("reads the token from the page's meta tag first", async () => {
+    const posted = stub({});
+    const meta = document.createElement("meta");
+    meta.name = "jason-token"; meta.content = "from-meta";
+    document.head.appendChild(meta);
+    await postJson(`/api/approvals/${ID}/submit`, { by: "A Manager" });
+    expect(posted[0].headers["X-Jason-Token"]).toBe("from-meta");
+  });
+});
