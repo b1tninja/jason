@@ -83,3 +83,26 @@ def test_main_offline_pools_several_gold_files(tmp_path, capsys):
     assert [Path(r["gold"]).name for r in saved["runs"]] == ["one.json", "two.json"]
     assert saved["pooled"]["all"]["keyword (BM25)"]["n"] == 2
     assert saved["runs"][1]["unanswerable"]["gone"]
+
+
+def test_relevance_ignores_spacing_and_counts_a_folded_copy():
+    item = {"files": ["rules"], "text": ["limited to 72 hours"]}
+    spread = Hit(_p("rules.md", 5, "Guest parking is limited\nto  72 hours."), 1.0)
+    assert ev.relevant(spread, item)
+    folded = Hit(_p("bylaws.md", 0, "Directors serve terms of two years."), 1.0, also=(PASSAGES[0],))
+    assert ev.relevant(folded, item) and not ev.relevant(folded, item, also=False)
+
+
+def test_compare_lists_questions_won_and_lost_and_families_moved():
+    before = {"runs": [{"gold": "g/one.json", "detail": {"guest": {"m": 7}, "trash": {"m": 1}, "term": {"m": 3}}}]}
+    after = {"runs": [{"gold": "g/one.json", "detail": {"guest": {"m": 2}, "trash": {"m": 0}, "term": {"m": 1}}}]}
+    row = ev.compare(before, after, {"one.json": QUESTIONS})["one.json / m"]
+    assert row["won"] == ["guest(7>2)"] and row["lost"] == ["trash(1>-)"] and row["rank up"] == ["term(3>1)"]
+    assert row["families moved"] == {"parking": 1, "trash": -1}
+
+
+def test_separation_finds_the_threshold_that_flags_no_answer():
+    answerable = {"a": {"cosine": 0.62}, "b": {"cosine": 0.55}, "c": {"cosine": 0.41}}
+    absent = {"x": {"cosine": 0.38}, "y": {"cosine": 0.45}}
+    row = ev.separation(answerable, absent)["cosine"]
+    assert row["recall"] == 1.0 and row["precision"] == 0.667 and row["flagged answerable"] == 1

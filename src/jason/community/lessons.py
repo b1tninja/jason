@@ -584,19 +584,38 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("chunks-ignore-section-breaks", OCT_2026, (Area.DOCUMENTS,),
            "Questions on definitions, fee tables, form pages, and exported lists that lost their numbers were missed by "
            "every retrieval method.",
-           "Passages are fixed 220-word windows that split sections and put unrelated subsections together.",
-           "Cut passages on headings and section numbers, with the section's address carried into each passage, and "
-           "measure on both gold files.", Status.OPEN, docs=("docs/document-tools.md",)),
+           "Passages were fixed 220-word windows that split sections and put unrelated subsections together.",
+           "Passages are cut on the outline, the OCR labels, and the headings, with the section's path carried for "
+           "ranking and the words kept exact for recitation (held-out hybrid recall@5 0.80 to 0.86; on the 24 tuning "
+           "questions it fell 0.88 to 0.83, so both sets are read before a change is kept).",
+           Status.FIXED, guards=("passage_sections.section_passages", "tests/test_passage_sections.py",
+                                 "scripts/eval_retrieval.py --chunking"), docs=("docs/document-tools.md",)),
     Lesson("copies-crowd-the-top", OCT_2026, (Area.DOCUMENTS,),
-           "A document kept as a Doc, a PDF's text, and a recorded scan took about three of keyword search's top ten "
-           "places with near copies of one passage.",
-           "Retrieval ranks every copy on its own.",
-           "Collapse near-duplicate passages before the top-k cut, and measure it.", Status.OPEN),
+           "A document kept as a Doc, a PDF's text, and a recorded scan filled four or five of every top ten with near "
+           "copies of one passage.",
+           "Retrieval ranked every copy on its own.",
+           "Near copies fold under the best-ranked one, listed as also-in (held-out hybrid recall@5 0.86 to 0.91, no "
+           "question lost); short boilerplate and two instruments written from one form never fold.",
+           Status.FIXED, guards=("retrieval.collapse", "retrieval.near_copies", "tests/test_passage_sections.py")),
+    Lesson("numbered-paragraph-title-doubled", OCT_2026, (Area.DOCUMENTS,),
+           "Putting a numbered paragraph's opening words in its ranking prefix doubled them, and a neighbouring list "
+           "item outranked the answer.",
+           "A numbered paragraph's 'title' is its own first words.",
+           "The prefix keeps only a short first sentence, or the number alone.", Status.FIXED,
+           guards=("passage_sections._caption(numbered=True)",)),
+    Lesson("copies-have-no-authority-order", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "When near copies of a governing document fold, nothing says the recorded or adopted copy should be the one "
+           "shown over a working copy.",
+           "Neither the library nor the profile ranks a document's copies by authority.",
+           "Add a Community method giving the order of authority for a document's copies, and pass it to collapse.",
+           Status.DECISION, guards=("retrieval.collapse(prefer=...)",)),
     Lesson("no-nothing-relevant-signal", OCT_2026, (Area.DOCUMENTS,),
            "Questions whose answer is in no document still returned confident passages from the governing documents.",
            "Retrieval always returns its top k; no score says nothing answers.",
-           "A search tool's results must not imply a passage answers the question; measure a score threshold on the "
-           "unanswerable questions.", Status.OPEN),
+           "A search tool's results must not imply a passage answers the question. No dense or keyword score "
+           "threshold separated the questions answered nowhere (best precision 0.33), so no advisory is shown; grow "
+           "the absent list and measure again with eval_retrieval --no-answer.", Status.OPEN,
+           guards=("retrieval.NO_ANSWER_COSINE (unset)", "retrieval.no_answer_advisory")),
     Lesson("notice-evidence-first-attempt", OCT_2026, (Area.EMAIL, Area.GOVERNING),
            "Record stages, the meeting watch, and the evidence finder counted any send as delivered: a notice owing "
            "resends to a fifth of the members looked the same as one every member received.",

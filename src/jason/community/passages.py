@@ -28,17 +28,24 @@ class Passage:
     path: Path
     index: int
     start_word: int
-    text: str
+    text: str                      # the document's own words, for display and recitation
+    heading: str = ""              # the section's path ("Bylaws > 7 MEETINGS > 7.2 Notice"), read by the rankers only
 
     @property
     def title(self) -> str:
         return self.path.name
+
+    @property
+    def ranked(self) -> str:
+        """What the rankers read: the section's path, then the words."""
+        return f"{self.heading}\n{self.text}" if self.heading else self.text
 
 
 @dataclass(frozen=True)
 class Hit:
     passage: Passage
     score: float
+    also: tuple[Passage, ...] = ()     # near copies of the passage folded under it (``retrieval.collapse``)
 
 
 def passages_of(path: Path, text: str | None = None) -> tuple[Passage, ...]:
@@ -58,7 +65,17 @@ def passages_of(path: Path, text: str | None = None) -> tuple[Passage, ...]:
     return tuple(found)
 
 
-def corpus(*folders: Path | str, suffixes: tuple[str, ...] = (".md", ".txt")) -> tuple[Passage, ...]:
+def corpus(*folders: Path | str, suffixes: tuple[str, ...] = (".md", ".txt"), chunking: str = "windows",
+           outlines: Path | str | None = None) -> tuple[Passage, ...]:
+    """Every extract's passages under ``folders``. ``chunking`` is "windows" (``passages_of``) or "sections"
+    (``passage_sections.section_passages``, which places the outlines in the folder ``outlines`` on the extracts)."""
+    if chunking not in ("windows", "sections"):
+        raise ValueError(f"unknown chunking {chunking!r}: windows or sections")
+    index = None
+    if chunking == "sections":
+        from jason.community.passage_sections import OutlineIndex
+
+        index = OutlineIndex.load(outlines)
     found: list[Passage] = []
     for folder in folders:
         root = Path(folder)
@@ -66,7 +83,12 @@ def corpus(*folders: Path | str, suffixes: tuple[str, ...] = (".md", ".txt")) ->
             continue
         for path in sorted(root.rglob("*")):
             if path.is_file() and path.suffix.lower() in suffixes:
-                found.extend(passages_of(path))
+                if index is None:
+                    found.extend(passages_of(path))
+                else:
+                    from jason.community.passage_sections import section_passages
+
+                    found.extend(section_passages(path, outlines=index))
     return tuple(found)
 
 
@@ -91,7 +113,7 @@ def rank(query: str, items: tuple[Passage, ...], *, k: int = 8, k1: float = 1.5,
     wanted = tokens(query)
     if not wanted or not items:
         return ()
-    docs = [tokens(p.text) for p in items]
+    docs = [tokens(p.ranked) for p in items]
     n = len(docs)
     avg = sum(len(d) for d in docs) / n
     df: dict[str, int] = {}

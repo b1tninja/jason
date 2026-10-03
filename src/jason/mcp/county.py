@@ -486,7 +486,10 @@ def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: s
         return {"query": query, "mode": mode, "available": False, "note": str(exc)}
     return {
         "query": query, **({"mode": mode} if mode and mode != "keyword" else {}), "count": len(hits),
-        "hits": [{"file": hit.passage.title, "path": str(hit.passage.path), "passage": hit.passage.index, "startWord": hit.passage.start_word, "score": hit.score, "text": hit.passage.text} for hit in hits],
+        "hits": [{"file": hit.passage.title, "path": str(hit.passage.path), "passage": hit.passage.index,
+                  "startWord": hit.passage.start_word, "score": hit.score, "text": hit.passage.text,
+                  "section": getattr(hit.passage, "heading", "") or "",
+                  "alsoIn": [str(p.path) for p in (getattr(hit, "also", None) or ())]} for hit in hits],
     }
 
 
