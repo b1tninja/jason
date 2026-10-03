@@ -791,6 +791,27 @@ LESSONS: tuple[Lesson, ...] = (
            "The engine was built before the console's storage was decided.",
            "A person picks one before the console is built.", Status.DECISION,
            docs=("docs/console/approval-workflow.md", "docs/console/architecture.md")),
+    Lesson("web-writes-unguarded", OCT_2026, (Area.GOVERNING,),
+           "jason-web's writes (board items, canvases, decisions, onboarding, owner-information confirmations, "
+           "hearings) accepted any POST: any page in the person's browser could write jason's stores through loopback, "
+           "and a DNS-rebinding page could read the API under its own name.",
+           "The web app was built read-only first, and its writes were added without a guard.",
+           "jason.web.guard checks Host on every /api request and Origin plus a per-process token on every write; a route "
+           "that writes outside jason also needs the token in a header. The token is not a sign-in.",
+           Status.FIXED, guards=("jason.web.guard", "tests/test_web_approvals.py"),
+           docs=("docs/web-ui.md (The write guard)",)),
+    Lesson("web-route-name-reused", OCT_2026, (Area.GOVERNING,),
+           "The approvals engine's list reused the URL of the letters inbox, which the inbox, the nav badge, and the "
+           "officer picker already read.",
+           "Two approval stores grew in parallel under one name.",
+           "One loader answers both shapes; whether to split them (letters under their own path) is a decision once "
+           "the UI moves.", Status.DECISION, guards=("tests/test_web_approvals.py (the letters inbox keeps its shape)",)),
+    Lesson("apply-signs-in-before-refusing", OCT_2026, (Area.GOVERNING,),
+           "A web apply or check signed in to PayHOA before the engine refused it for its status, a missing second "
+           "person, or its age.",
+           "The live context was built before the engine's checks ran.",
+           "The engine's problems are checked, and the refusal audited, before any live context is built.",
+           Status.FIXED, guards=("approvals.engine.problems", "tests/test_web_approvals.py")),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
