@@ -68,7 +68,12 @@ def prompt(day: date, record: dict[str, Any]) -> str:
              "Sections:"]
     for s in SECTIONS:
         lines.append(f"- {s.key}: {s.prompt}" + (" Write one entry per agenda item, in the agenda's order." if s.per_item else ""))
+    decided = record.get("decisions") or []
     lines += ["", "Agenda items:", *([f"- {i}" for i in record["items"]] or ["- (no agenda on file)"]),
+              *(["", "Decisions the Secretary recorded at the meeting (the record; quote each motion, its mover, second, votes, and outcome as given, and do not infer a different vote from the transcript):",
+                 *[f"- {d['title']}: \"{d['motion']}\" moved by {d.get('mover') or 'unknown'}, seconded by {d.get('second') or 'unknown'}; "
+                   f"votes {', '.join(f'{n} {v}' for n, v in (d.get('votes') or {}).items()) or 'not recorded'}; outcome {d.get('outcome') or 'not recorded'}"
+                   for d in decided]] if decided else []),
               "", "Executive session agenda headings:", *([f"- {h}" for h in record["executive"]] or ["- (none)"]),
               "", "Attendance (name, minutes on the call):",
               *([f"- {n}: {m}" for n, m in record["attendance"]] or ["- (none)"]),
@@ -153,8 +158,11 @@ def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
     callers = json.loads(callers_file.read_text(encoding="utf-8")) if callers_file.is_file() else {}
     known_callers = {n: c for n, c in callers.items() if n in attendance}
     unidentified = [n for n in attendance if re.fullmatch(r"[\d\s()+-]{7,}", n) and n not in callers]
+    from jason.tasks.decisions import as_dict, for_meeting
+
     return {"zoom": row["uuid"], "topic": str(row.get("topic") or ""), "kind": meeting_kind(str(row.get("topic") or "")),
             "items": list(dict.fromkeys(items)), "executive": list(dict.fromkeys(executive)),
+            "decisions": [as_dict(d) for d in for_meeting(data_dir, day)],
             "knownCallers": known_callers, "unidentified": unidentified,
             "directors": directors,
             "attendance": [(n, round(s / 60)) for n, s in sorted(attendance.items(), key=lambda kv: -kv[1])],

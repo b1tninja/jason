@@ -1,0 +1,8 @@
+/* The minutes review: the blanks as a form beside the filled copy, each blank shown in its line. */
+.minutes-review .blank-section { border-top: 1px solid var(--line); padding-top: .4rem; }
+.minutes-review .blank-section h4 { margin: .2rem 0 .4rem; font-size: .85rem; color: var(--muted); font-weight: 600; }
+.minutes-review .blank-label { display: flex; gap: .4rem; align-items: center; font-family: ui-monospace, monospace; font-size: .75rem; }
+.minutes-review .blank-context { font-size: .8rem; white-space: pre-wrap; margin: .15rem 0; }
+.minutes-review .blank-gap { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--ink); border-radius: 3px; padding: 0 .2rem; }
+.minutes-review .history { font-size: .8rem; margin: .5rem 0 0; padding-left: 1.2rem; }
+.minutes-review .preview { max-height: 70vh; overflow: auto; }

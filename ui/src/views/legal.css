@@ -1,0 +1,6 @@
+/* Legal matters and deed chains. */
+.legal-case .kv { margin: .5rem 0; }
+.legal-chain summary { cursor: pointer; }
+.legal-chain summary.muted { cursor: default; list-style: none; }
+.legal-findings { margin: .5rem 0 0; padding-left: 1.2rem; }
+.legal-findings li { margin: .2rem 0; }

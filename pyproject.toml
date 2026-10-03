@@ -47,9 +47,16 @@ pdf = [
     "pymupdf>=1.24",
 ]
 
+# The board's web UI: a WSGI app (Flask) under a production server (waitress). Build the bundle in ui/ (npm).
+web = [
+    "flask>=3.0",
+    "waitress>=3.0",
+]
+
 [project.scripts]
 jason = "jason.cli:main"
 jason-mcp = "jason.mcp.server:main"
+jason-web = "jason.web.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jason"]

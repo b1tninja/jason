@@ -28,6 +28,7 @@ from jason.zoom.client import Zoom, ZoomError
 from jason.zoom.models import (
     NOTICE_DAYS,
     SUSPENSION_NOTICE_DAYS,
+    BoardMeetingPlan,
     HearingPlan,
     MeetingKind,
     ZoomMeeting,
@@ -45,6 +46,9 @@ from jason.zoom.models import (
 ZOOM_DIR = "zoom"
 INDEX = "meetings.json"
 HEARINGS = "hearings.json"
+BOARD_MEETINGS = "board-meetings.json"   # the board meetings jason scheduled on Zoom, by date
+LIVE_ACTS = "live-acts.json"             # what a person had jason do in a live meeting: recording controls, captions
+RECORDING_METHODS = ("start", "pause", "resume", "stop")
 OVERLAP_DAYS = 14                       # a recording or summary can appear days after the meeting
 FILE_NAMES = {"TRANSCRIPT": "transcript.vtt", "CHAT": "chat.txt"}
 MEDIA_NAMES = {"M4A": "audio.m4a", "MP4": "video.mp4"}
@@ -362,6 +366,70 @@ def brief_lines(brief: dict[str, Any], *, limit: int = 40) -> list[str]:
         lines += [f"- {g['date']}{'' if g['regular'] else ' (a month the resolution does not make regular)'}" for g in brief["scheduleGaps"]]
     lines += ["", *[f"Note: {c}" for c in brief["caveats"]]]
     return lines
+
+
+# --- board meetings -------------------------------------------------------------------------------------------------
+
+def plan_board_meeting(community: Any, *, on: date | None = None, at: str = "", today: date | None = None) -> BoardMeetingPlan:
+    """A board meeting on ``on`` (default the schedule's next meeting day) at ``at`` (default the schedule's hour)."""
+    policy = community.board_meeting_policy()
+    if policy is None:
+        raise ValueError("the specification sets no board meeting policy (board_meeting_policy)")
+    schedule = community.meeting_schedule()
+    if on is None:
+        if schedule is None:
+            raise ValueError("give the meeting's date; the specification sets no meeting schedule")
+        on = schedule.next_meeting(today or date.today(), monthly=True)
+    hour = schedule_time(at or (schedule.time if schedule else ""))
+    if hour is None:
+        raise ValueError(f"cannot read the meeting's time {at!r}; give it like '6:30 pm'")
+    from zoneinfo import ZoneInfo
+
+    return BoardMeetingPlan(start=datetime.combine(on, hour, tzinfo=ZoneInfo(policy.timezone)), policy=policy)
+
+
+def save_board_meeting(data_dir: Path, plan: BoardMeetingPlan) -> dict[str, Any]:
+    """Keep the scheduled meeting in ``board-meetings.json`` (one row per date); a later run for the same date replaces it."""
+    path = zoom_dir(data_dir) / BOARD_MEETINGS
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = json.loads(path.read_text(encoding="utf-8")).get("meetings", []) if path.is_file() else []
+    record = {**plan.record(), "saved": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    rows = [r for r in rows if r.get("date") != record["date"]] + [record]
+    path.write_text(json.dumps({"meetings": sorted(rows, key=lambda r: r["date"])}, indent=1), encoding="utf-8")
+    return record
+
+
+def board_meeting(data_dir: Path, on: date | str) -> dict[str, Any] | None:
+    """The scheduled board meeting for ``on``, or None."""
+    path = zoom_dir(data_dir) / BOARD_MEETINGS
+    if not path.is_file():
+        return None
+    day = on if isinstance(on, str) else on.isoformat()
+    return next((r for r in json.loads(path.read_text(encoding="utf-8")).get("meetings", []) if r.get("date") == day), None)
+
+
+def _live_acts(data_dir: Path) -> tuple[Path, dict[str, Any]]:
+    path = zoom_dir(data_dir) / LIVE_ACTS
+    return path, (json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"meetings": {}})
+
+
+def record_live_act(data_dir: Path, meeting_id: int | str, kind: str, detail: str, *, by: str = "") -> dict[str, Any]:
+    """Log one act in a live meeting under the meeting id: ``kind`` is ``recording`` or ``caption``, ``detail`` the
+    method or the text. A caption takes the next sequence number for that meeting, which Zoom needs to count up."""
+    path, data = _live_acts(data_dir)
+    meeting = data["meetings"].setdefault(str(meeting_id), {"seq": 0, "acts": []})
+    act = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "kind": kind, "detail": detail, "by": by}
+    if kind == "caption":
+        meeting["seq"] += 1
+        act["seq"] = meeting["seq"]
+    meeting["acts"].append(act)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return act
+
+
+def live_acts(data_dir: Path, meeting_id: int | str) -> list[dict[str, Any]]:
+    return list(_live_acts(data_dir)[1]["meetings"].get(str(meeting_id), {}).get("acts", []))
 
 
 # --- disciplinary hearings ----------------------------------------------------------------------------------------

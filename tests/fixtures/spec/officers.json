@@ -1,0 +1,8 @@
+[
+ {"role": "president", "name": "Quill Ashgrove"},
+ {"role": "vice president", "name": "Bram Tidewell", "approves": ["a fluent reviewer"]},
+ {"role": "treasurer", "name": "Ilse Varnholt"},
+ {"role": "secretary", "name": "Odo Fennimore"},
+ {"role": "director", "name": "Wren Castlebury"},
+ {"role": "manager", "name": "Pell Marchbanks"}
+]

@@ -1,6 +1,6 @@
 # Zoom: the meeting history and disciplinary hearings
 
-The association holds its meetings on Zoom. The account's history holds the association's meetings, cloud-recording transcripts, chats, and AI Companion summaries. jason reads that history to disk. It also schedules a disciplinary hearing, but only when a person asks. The board's meeting schedule is `MEETING_SCHEDULE` in the specification; This association's findings are in its private notes (mystique/notes/zoom.md).
+The association holds its meetings on Zoom. The account's history holds the association's meetings, cloud-recording transcripts, chats, and AI Companion summaries. jason reads that history to disk. It also schedules a disciplinary hearing, but only when a person asks. The board's meeting schedule is `MEETING_SCHEDULE` in the specification; This association's findings are in its private notes (mystique/notes/zoom.md). Being in the meeting itself (live transcript, captions, a bot, AI Companion) is researched in [zoom-attend.md](zoom-attend.md).
 
 ## Setup
 
@@ -55,6 +55,31 @@ It also lists the **schedule gaps**: each of the schedule's meeting days in the 
 - **The transcript is speech recognition.** Names and numbers can be wrong.
 - **Recordings can include the executive session.** A board meeting's recording can run on into the executive session that follows it.
 - **Confidential kinds are held back.** An executive session's or a hearing's transcript, summary, and next steps are held back unless asked for (Civil Code 4935).
+
+## Scheduling the board meeting: `jason zoom --create-board-meeting`
+
+`jason zoom --create-board-meeting --date YYYY-MM-DD --yes` creates the board meeting on the association's account under
+the profile's board meeting policy (`Community.board_meeting_policy()`: the length, the waiting room, the cloud
+recording, the topic); without `--date` it takes the schedule's next meeting day, and `--time` overrides the schedule's
+hour. Without `--yes` it prints what it would schedule. What the notice may carry (the join link, the passcode, the
+US dial-in numbers) is kept in `data/zoom/board-meetings.json`, one row per date; the host's start link is dropped. The
+Plan a meeting page reads that row to fill the notice's join and dial-in fields unless a person types them over.
+
+## In a live meeting: `jason zoom --recording`, `jason zoom --caption`
+
+Two acts in a meeting that is under way, both as the host, both from a terminal with `--yes`, both logged under the
+meeting id in `data/zoom/live-acts.json` with `--by` naming who asked:
+
+- `jason zoom --recording pause --meeting-id N --yes` pauses the cloud recording (`PATCH /live_meetings/N/events`),
+  for the executive session; `resume`, `start`, and `stop` are the other methods. The app acts as the meeting's host
+  or an alternative host, so the account's user must be one.
+- `jason zoom --caption "text" --meeting-id N --yes` posts one line, prefixed `jason:`, into every participant's
+  captions through the meeting's caption token (`GET /meetings/N/token?type=closed_caption_token`, then a `text/plain`
+  POST to the token URL with the meeting's next sequence number). The host must have "Allow use of caption API token"
+  on. A caption is a broadcast: it is for an answer a person chose, never for jason's own words.
+
+The meeting room's Zoom tab shows both commands once `--create-board-meeting` scheduled the meeting (it needs the id).
+jason does not admit, mute, or remove anyone, run a poll, or end a meeting; those stay the host's acts in Zoom.
 
 ## Disciplinary hearings: `jason hearing`
 

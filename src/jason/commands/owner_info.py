@@ -80,6 +80,12 @@ def cmd_owner_info(args: argparse.Namespace, agent_factory: Callable[[Any], Any]
     found, rows = _rows(units, people, answers, data_dir, community, cycle, today)
     report = summary(rows, cycle, today)
     report["catalogSynced"] = synced
+    # The plan this read computed, saved for the web UI to show and a person to confirm (owner_info_plan).
+    from jason.tasks.owner_info import plan_writes, to_complete
+    from jason.tasks.owner_info_plan import save_plan
+
+    planned = plan_writes(rows, found, community.payhoa_tags(), earlier=forms.EARLIER_ELECTIONS, today=today)
+    save_plan(data_dir, summary=report, writes=planned, to_complete=to_complete(rows, planned), owners=rows)
     print(json.dumps(report, indent=1))
     print("next actions:")
     for action, count in Counter(a for r in rows for a in r.actions[:1]).most_common():
@@ -114,6 +120,12 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
         writes, rows = planned.writes, planned.rows
         for h in planned.held:
             print(f"  held for the board ({h.rule}): {h.write.kind} {h.write.label} {h.write.value}")
+        # the plan as computed, for the web UI's owner-information view (``owner_info_plan``)
+        from jason.tasks.owner_info import summary, to_complete as _to_complete
+        from jason.tasks.owner_info_plan import save_plan as _save_plan
+
+        _save_plan(data_dir, summary=summary(rows, cycle, today), writes=writes, to_complete=_to_complete(rows, writes),
+                   owners=rows)
         for kind, count in Counter(w.kind for w in writes).items():
             print(f"  {kind:14} {count}")
         for w in writes[: args.show]:
@@ -133,6 +145,8 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
                 raise failed
             # a write PayHOA did not take stays pending, so its request stays open
             writes = [r.write for r in results if not r.satisfied]
+            _save_plan(data_dir, summary=summary(rows, cycle, today), writes=writes,
+                       to_complete=_to_complete(rows, writes), owners=rows, written=not writes)
         completed: list[int] = []
         if args.payhoa:
             completed = _complete_requests(args, client, org, planned, writes)

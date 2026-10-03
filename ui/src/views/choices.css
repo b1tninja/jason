@@ -1,0 +1,8 @@
+/* The two "a person records a choice" pages: delinquency steps and mail triage. */
+.choice-steps { margin: .5rem 0 0; padding-left: 1.2rem; }
+.choice-steps li { margin: .2rem 0; }
+.choice-letter { display: grid; gap: .5rem; padding: .75rem 0; border-top: 1px solid var(--line, #ddd); }
+.choice-letter:first-child { border-top: 0; }
+.choice-letter .meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
+.choice-buttons { display: flex; flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
+.choice-recorded { font-size: .9em; }
