@@ -233,8 +233,11 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Survey the documents' references and the records that cite them: misses by reason, and citations "
                  "made stale by an amendment or a renumbering.", command="jason outlines; jason cite --survey; "
                                                                           "jason cite --stale",
-                 check="a prior-numbering miss is read as its successor; a stale record is re-keyed or re-read",
-                 refs=("docs/citations.md",), lessons=("duty-readings-keyed-to-copy-numbers", "short-forms-unread")),
+                 check="a prior-numbering miss is read as its successor; a stale record is re-keyed or re-read; "
+                       "jason cite --renumbered lists the records found again by permanent id; jason cite --migrate-ids "
+                       "(then --apply) stores the ids; each 'more than one section answers' row is picked by a person",
+                 refs=("docs/citations.md", "docs/record-addresses.md"),
+                 lessons=("numbers-are-not-identity", "number-alone-is-ambiguous-across-readings", "short-forms-unread")),
             Step("Check each people-task rule that retires a duty against its source (an exemption, a repealed "
                  "filing).", command="jason schedule --people --all", check="each retire reason still true at its source",
                  lessons=("people-keep-clocks-by-hand",)),

@@ -11,6 +11,11 @@
     shelf("Section 6.2(a) of the Declaration").refs.hops(2)         # what it cites, two hops out
     shelf.resolution("20990101-1"); shelf.instrument("209901010001"); shelf.minutes("2099-01-01")
     shelf.record(AssociationRecord.MINUTES)               # CIV 5200(a)(8), and where the profile keeps it
+    shelf("jason://decl@2099-01-01/6.2(a)")               # an address (jason.community.addresses)
+
+Every resolved citation carries its address (``jason://decl/6.2(a)``) and, for a section, its permanent id
+(``decl@base/6.2(a)``, ``jason.tasks.permanent_ids``). A restricted book (executive-session minutes, the membership
+list, election materials: CIV 5215 and 5200) is refused unless the shelf is opened with ``private=True``.
 
 The words come from ``jason.tasks.section_refs.DiskResolver``, the one reader the ``{QUOTE:}``/``{CITE:}`` tokens and
 the guide also use, so a token, ``jason cite``, and the guide give the same citation and words. The shelf is itself a
@@ -38,6 +43,7 @@ from typing import Any, Iterable
 from jason.community.cite import (CAVEAT, STALE, Citing, Holder, Kind, Miss, Node, Reason, Scope, Target, Treatment,
                                   Unit, label_text, mermaid, of_reference, parse, scope_of, sentences, targets_in,
                                   tree_lines)
+from jason.community.books import Book
 from jason.community.outlines import DocumentOutline, normalize_number
 from jason.community.references import ancestors
 from jason.community.section_refs import TOKEN, SectionRefError, SectionText, citation_of
@@ -145,16 +151,26 @@ class Mention:
     digest: str = ""                   # a rendering's digest of the words it quoted
     as_of: date | None = None
     reading: str = ""                  # the record's own paraphrase of the provision: jason's reading, not its words
+    pid: str = ""                      # the permanent id the migration stored with the record (jason cite --migrate-ids)
+    numbered: str = ""                 # the reading that numbers it so ("outline": the working copy), when known
 
 
 class Shelf:
     """The association's documents and records on disk, opened for citing. Also a ``Resolver``."""
 
-    def __init__(self, community: Any = None, data_dir: Path | None = None, *, log=None, repo: Path | None = None):
+    def __init__(self, community: Any = None, data_dir: Path | None = None, *, log=None, repo: Path | None = None,
+                 private: bool = False):
+        from jason.community.books import Books
+
         self.resolver = DiskResolver(data_dir, community, log=log)
         self.community = self.resolver.community
         self.data_dir = self.resolver.data_dir
         self.repo = repo
+        self.private = private
+        self.books = Books.of(self.community)
+        self._locator: Any = None
+        self._register: dict[str, list[dict[str, Any]]] | None = None
+        self._checked: list[Citing] | None = None
         self._names: dict[str, str] | None = None
         self._outlines: dict[str, DocumentOutline] | None = None
         self._rows: list[dict[str, Any]] | None = None
@@ -174,13 +190,26 @@ class Shelf:
     # --- Opening a citation ----------------------------------------------------------------------------------------
 
     def __call__(self, expression: str) -> Citation:
-        parsed = parse(expression, self.names())
+        parsed = parse(expression, self.names(), self.books)
+        if isinstance(parsed, Miss) and parsed.reason is Reason.UNKNOWN_DOCUMENT:
+            # A common name written with other punctuation or case ("CC & R's 4.2", "BY-LAWS 7.2"): the canon.
+            m = re.match(r"^(?:the\s+)?(?P<name>.+?)['’]?\s*,?\s*(?P<rest>(?:§+|Sections?|Secs?\.|Arts?\.|Articles?)?\s*"
+                         r"(?:[A-Z]{1,2}-)?\d.*)$", " ".join(str(expression or "").split()), re.I)
+            doc = self.books.named(m.group("name")) if m else ""
+            if doc:
+                retry = parse(f"{doc} {m.group('rest')}", self.names(), self.books)
+                if not isinstance(retry, Miss):
+                    parsed = retry
         if isinstance(parsed, Miss):
             return Citation(self, None, miss=parsed, expression=str(expression or ""))
         return Citation(self, parsed, expression=str(expression or ""))
 
     def doc(self, name: str) -> Citation:
         key = self.names().get(str(name or "").strip().lower(), "")
+        if not key and self.books.document(str(name or "").strip()) in set(self.names().values()):
+            key = self.books.document(str(name).strip())          # a book's key: decl, rules.parking
+        if not key:
+            key = self.books.named(str(name or ""))                # a common name, any punctuation: "CC & R's"
         if not key:
             return Citation(self, None, miss=Miss(Reason.UNKNOWN_DOCUMENT, f"no document {name!r}", str(name)),
                             expression=str(name))
@@ -235,6 +264,17 @@ class Shelf:
                 for name in (d.key, d.title, getattr(d, "cite_as", ""), *d.aliases):
                     if name:
                         out[name.lower()] = d.key
+            # The canon of common names (jason.community.books.CANON), for a book the profile fills; never over a
+            # name the profile's own documents use.
+            from jason.community.books import CANON
+
+            keys = set(out.values())
+            for book, common in CANON.items():
+                doc = self.books.document(book.value)
+                if doc in keys:
+                    for name in common:
+                        out.setdefault(name.lower(), doc)
+                    out.setdefault(book.value, doc)
             self._names = out
         return self._names
 
@@ -256,6 +296,53 @@ class Shelf:
             self._rows = rows
         return self._rows
 
+    # --- Addresses and permanent ids ------------------------------------------------------------------------------------
+
+    @property
+    def locator(self) -> Any:
+        if self._locator is None:
+            from jason.tasks.permanent_ids import Locator
+
+            self._locator = Locator(self.resolver, self.books)
+        return self._locator
+
+    def address(self, t: Target | None) -> str:
+        """The target's ``jason://`` address; empty for a statute (lawlibrary's) or a record kind."""
+        from jason.community.addresses import Address
+
+        if t is None:
+            return ""
+        if t.unit in (Unit.SECTION, Unit.DOCUMENT):
+            body = ",".join(t.siblings) if t.siblings else (t.number + (f"..{t.end}" if t.end else ""))
+            version = t.version if t.version else ""
+            in_force = t.as_of if t.as_of and not version else None
+            return Address(self.books.key(t.key), body, version=version, in_force=in_force, history=t.history,
+                           fragment=t.fragment).format()
+        series = {Unit.RESOLUTION: "res", Unit.MINUTES: "min", Unit.INSTRUMENT: "inst"}
+        if t.unit in series:
+            if t.unit is Unit.INSTRUMENT and not t.key.isdigit():
+                return ""
+            return Address(series[t.unit], item=t.key, version=t.version, fragment=t.fragment).format()
+        if t.unit is Unit.BOOK:
+            return Address(t.key, item=t.number, version=t.version, fragment=t.fragment).format()
+        return ""
+
+    def pid(self, t: Target | None) -> str:
+        """A section's permanent id, in the version it is read at; empty when no table knows it."""
+        if t is None or t.unit is not Unit.SECTION or t.end or t.siblings:
+            return ""
+        table = self.locator.table(t.key)
+        if table is None:
+            return ""
+        return table.permanent_id(t.number, t.as_of) or ""
+
+    def register(self) -> dict[str, list[dict[str, Any]]]:
+        if self._register is None:
+            from jason.tasks.permanent_ids import load_register
+
+            self._register = load_register(self.data_dir)
+        return self._register
+
     # --- Resolving a target ------------------------------------------------------------------------------------------
 
     def state(self, t: Target) -> State:
@@ -267,6 +354,12 @@ class Shelf:
         return self._states[t.id]
 
     def _resolve(self, t: Target) -> State:
+        if t.unit is Unit.BOOK:
+            return self._book(t)
+        if t.unit in (Unit.SECTION, Unit.DOCUMENT) and (t.version or t.history):
+            versioned = self._versioned(t)
+            if versioned is not None:
+                return versioned
         if t.unit is Unit.SECTION:
             if t.end:
                 return self._span(t)
@@ -284,6 +377,144 @@ class Shelf:
         if t.unit is Unit.MINUTES:
             return self._minutes(t)
         return self._record(t)
+
+    def _book(self, t: Target) -> State:
+        """An item of a series book named by an address: refused when the book is restricted and the shelf is not
+        private; otherwise the record kind it is, the statute, and where the profile keeps it."""
+        from jason.community.books import split_key
+
+        book, _ = split_key(t.key)
+        cite = f"{book.info.title if book else t.key}" + (f", {t.number}" if t.number else "")
+        if book is None:
+            return _miss(Reason.UNKNOWN_RECORD, f"no book {t.key!r}", cite)
+        if book.restricted and not self.private:
+            return _miss(Reason.RESTRICTED, f"{book.info.title} may be withheld ({book.restricted}): ask with "
+                         "private=True (jason cite --private)", cite, statute=book.restricted)
+        if book is Book.GOV:
+            return self._governing()
+        if book is Book.AGENDA and t.number:
+            from jason.tasks.meeting_catalog import load
+
+            meeting = next((m for m in load(self.data_dir).get("meetings", []) if m.get("date") == t.number), None)
+            rows = [r for r in (meeting or {}).get("records", []) if r.get("kind") == "agenda"]
+            if rows:
+                return State(Kind.RECORD, True, citation=f"agenda of the meeting of {t.number}", title=rows[0].get(
+                    "name", ""), version={"statute": book.info.statute}, nodes=[
+                    {"kind": r["kind"], "where": r.get("where"), "location": r.get("location")} for r in rows])
+            return _miss(Reason.NO_MINUTES, "no agenda on that day in the meeting catalog (jason meetings)", cite)
+        state = self._record(Target(Unit.RECORD, book.info.record.value)) if book.info.record else None
+        version = {"statute": book.info.statute, "book": book.value, "item": t.number,
+                   "note": "jason does not index this series by item: the record kind and where the profile keeps it"}
+        if book.restricted:
+            version["restricted"] = book.restricted
+        law = self(book.info.statute).state if book.info.statute else None
+        return State(Kind.RECORD, True, citation=cite, title=book.info.title, text=law.text if law and law.found else "",
+                     version=version, nodes=state.nodes if state else [])
+
+    def _governing(self) -> State:
+        """The governing documents as a set: the Act's list (CIV 4150) with the profile's documents in each book, then
+        the set the association's own documents define, and how the two differ (reported, not resolved)."""
+        from jason.community.books import STATUTE_GOVERNING
+        from jason.community.definitions import compare_governing
+
+        law = self("CIV 4150").state
+        def node(where: str, b: Any, note: str = "") -> dict[str, Any]:
+            docs = [e.document for e in self.books.entries if e.book is b and e.role.value != "amendment"]
+            row = {"set": where, "book": b.value, "title": b.info.title, "documents": docs, "note": note}
+            if b.info.shape.value == "series":
+                row["series"] = f"a series: jason://{b.value}/{b.info.item.replace(' ', '-').upper()}"
+            elif not docs:
+                row["note"] = note or "the profile maps no document to it"
+            return row
+
+        nodes = [node("statute (CIV 4150)", b) for b in STATUTE_GOVERNING]
+        defined = getattr(self.community, "governing_set", lambda: None)()
+        found = compare_governing(defined, STATUTE_GOVERNING)
+        extra: dict[str, Any] = {"differences": {"onlyInTheDocuments": [b.value for b in found.only_profile],
+                                                 "onlyInTheStatute": [b.value for b in found.only_statute],
+                                                 "alsoNamed": list(found.also), "notes": found.notes}}
+        if defined is not None:
+            where = parse(defined.defined_at, self.names(), self.books)
+            words = self.state(where).text if isinstance(where, Target) else ""
+            nodes += [node(f"the documents' own term ({defined.defined_at})", b, defined.note) for b in defined.books]
+            extra["definedAt"] = {"target": defined.defined_at, "address": self.address(where)
+                                  if isinstance(where, Target) else "", "words": words}
+        return State(Kind.OUTLINE, True, citation="the governing documents (CIV 4150)", title="the governing documents",
+                     text=law.text if law.found else "", version={"statute": "CIV 4150", "source": law.version.get(
+                         "source", "")}, nodes=nodes, extra=extra)
+
+    def defined_terms(self, t: Target | None, words: str) -> list[dict[str, Any]]:
+        """The terms the section's own document defines that its words use, each with the definition's words and
+        address: the document's meaning governs its own words (Civil Code 1644)."""
+        from jason.community.definitions import used_in
+
+        if t is None or t.unit is not Unit.SECTION or not words:
+            return []
+        rows = tuple(getattr(self.community, "defined_terms", lambda: ())())
+        out = []
+        for term in used_in(words, rows, document=t.key):
+            if term.section == t.number:
+                continue
+            where = Target(Unit.SECTION, term.document, normalize_number(term.section))
+            st = self.state(where)
+            out.append({"term": term.term, "definedAt": term.target, "address": self.address(where),
+                        "citation": st.citation or term.target, "definition": st.text if st.found else "",
+                        "found": st.found})
+        return out
+
+    def _versioned(self, t: Target) -> State | None:
+        """A section or a document at an address's version: the base, the version made effective on a day (a miss
+        when none was), a stage (a draft's words, never in force), or the section's history. None to read it as
+        usual (the version is ``as_of``)."""
+        from jason.community.addresses import VersionLabel
+        from jason.community.revisions import Stage
+        from jason.tasks.permanent_ids import effective_dates, timeline
+
+        living = self.resolver.living(t.key)
+        if t.history:
+            if t.unit is not Unit.SECTION:
+                return _miss(Reason.UNPARSED, "a history names a section: jason://decl/history/6.2(a)")
+            found = timeline(self.locator, t.key, t.number, day=t.as_of)
+            if found is None:
+                return _miss(Reason.NOT_IN_DOCUMENT, f"no permanent id answers to {t.number}")
+            name = self.resolver.name(t.key)
+            return State(Kind.HISTORY, True, citation=citation_of(name, t.number) + ", history", title=name,
+                         nodes=found["versions"], version={"pid": found["pid"], "born": found["born"],
+                                                           "removed": found["removed"]},
+                         extra={"readings": found["readings"]})
+        label = VersionLabel(t.version)
+        if label.stage is not None:
+            if label.stage is not Stage.DRAFT or living is None or t.unit is not Unit.SECTION:
+                return _miss(Reason.NO_VERSION, f"no {label.stage.value} version of {t.key} on disk: a stage version "
+                             "is read from the record's stages (rule changes, minutes)", self.address(t))
+            v = self.resolver.versions(t.key)
+            ops = [op for op in v.pending if normalize_number(op.get("section", "")) == t.number]
+            info = [v.instruments.get(op["instrument"]) or {} for op in ops]
+            want = label.day
+            ops = [(op, i) for op, i in zip(ops, info) if want is None or i.get("dated") == want.isoformat()]
+            if not ops:
+                return _miss(Reason.NO_VERSION, f"no draft of {t.key} sets {t.number}", self.address(t))
+            op, i = ops[0]
+            name = self.resolver.name(t.key)
+            return State(Kind.SECTION, True, citation=f"{citation_of(name, t.number)}, as {i.get('describe') or op['instrument']} "
+                         "would set it", title=name, text=op["after"],
+                         version={"stage": label.stage.value, "inForce": False, "instrument": op["instrument"],
+                                  "describe": i.get("describe"), "note": "a draft: not in force, and never merged into "
+                                                                         "the text in force"})
+        if living is None:
+            if label.base or t.version == "":
+                return None
+            return _miss(Reason.NOT_KEPT_AS_AMENDED, f"{t.key} is not kept as amended: it has one version, @base", self.address(t))
+        v = self.resolver.versions(t.key)
+        days = effective_dates(v)
+        if label.base:
+            day = v.snapshots[0].until if len(v.snapshots) > 1 else None
+            return self.state(replace(t, version="", as_of=day)) if day else self.state(replace(t, version=""))
+        if label.effective is not None and label.effective not in days:
+            shown = ", ".join(["base", *(d.isoformat() for d in days[1:])])
+            return _miss(Reason.NO_VERSION, f"no version of {t.key} took effect on {label.effective.isoformat()}; its "
+                         f"versions: {shown}", self.address(t))
+        return self.state(replace(t, version=""))
 
     def _links(self, key: str) -> list[dict[str, str]]:
         """Where a person checks the words: the Doc an outline was read from, the library file a living document's
@@ -666,7 +897,8 @@ class Shelf:
         def add(holder: Holder, key: str, title: str, text: str, field: str = "", quote: str = "",
                 reading: str = "") -> None:
             for t in targets_in(text, names):
-                out.append(Mention(holder, key, title, t, field, quote, reading=reading))
+                out.append(Mention(holder, key, title, t, field, quote, reading=reading,
+                                   pid=pid_in(key, t.key, t.number) if t.unit is Unit.SECTION else ""))
 
         def guarded(what: str, read) -> None:
             try:
@@ -680,11 +912,19 @@ class Shelf:
                 add(Holder.CONFLICT, f"conflict:{r.key}", r.provision, r.provision, "provision", reading=r.says)
                 add(Holder.CONFLICT, f"conflict:{r.key}", r.provision, r.authority, "authority")
 
+        stored = self.register()
+
+        def pid_in(record: str, document: str, number: str) -> str:
+            """The permanent id the migration stored for this record's citation of ``number`` (the register)."""
+            return next((r.get("pid", "") for r in stored.get(record) or ()
+                         if r.get("document") == document and r.get("written") == number), "")
+
         def notice_clauses() -> None:
             for p in getattr(c, "notice_provisions", lambda: ())():
                 for number in _numbers_in(p.section or ""):
                     out.append(Mention(Holder.NOTICE_CLAUSE, f"notice:{p.key}", p.citation,
-                                       Target(Unit.SECTION, p.document, number), "section", reading=p.says))
+                                       Target(Unit.SECTION, p.document, number), "section", reading=p.says,
+                                       pid=pid_in(f"notice:{p.key}", p.document, number)))
 
         def requirements() -> None:
             from jason.community.notice_catalog import REQUIREMENTS
@@ -700,8 +940,10 @@ class Shelf:
                 for d in stored(self.data_dir, path.stem):
                     number = normalize_number(d.section or "")
                     if number and re.match(r"^(?:[A-Z]{1,2}-)?\d", number):
+                        # A duty is read from the outline on disk: its number is the outline's.
                         out.append(Mention(Holder.DUTY, f"duty:{d.id}", d.kind.value,
-                                           Target(Unit.SECTION, d.source or path.stem, number), "section", d.quote))
+                                           Target(Unit.SECTION, d.source or path.stem, number), "section", d.quote,
+                                           pid=getattr(d, "pid", ""), numbered="outline"))
 
         def assignments() -> None:
             from jason.community.schedule import assignments as rows
@@ -803,10 +1045,14 @@ class Shelf:
                 self.unread.append(f"{path}: not a rendering record")
 
     def treat(self, cited: Target, *, quote: str = "", digest: str = "", as_of: date | None = None,
-              holder: Holder | None = None) -> tuple[Treatment, str]:
+              holder: Holder | None = None, pid: str = "", numbered: str = "") -> tuple[Treatment, str]:
         """How the cited words stand now against the citing record. A record read from a document's outline (a duty
         read from the working copy) is compared with that outline too: a section the outline numbers and the text as
-        amended does not is renumbered, not gone, and a quote the outline has is the copy's words, not stale ones."""
+        amended does not is renumbered, not gone, and a quote the outline has is the copy's words, not stale ones.
+
+        The permanent id finds a section again (``jason.tasks.permanent_ids``): the id the record stored (``pid``), or
+        the one its number has under the reading it was read from (``numbered``), the text as amended, or another
+        reading. A section found so is ``RELOCATED`` (renumbered, printed twice, or run inline), not missing."""
         if cited.unit is not Unit.SECTION or cited.end or cited.siblings:
             return Treatment.NOT_CHECKED, ""
         if not re.match(r"^(?:[A-Z]{1,2}-)?\d", cited.number):
@@ -818,6 +1064,10 @@ class Shelf:
             return Treatment.FILLED, "filled from the words in force each time it is rendered"
         st = self.state(replace(cited, as_of=as_of))
         copy = self._copy_words(cited)
+        if (pid or not st.found) and st.reason is not Reason.REMOVED:
+            moved = self._relocated(cited, st, copy, quote=quote, pid=pid, numbered=numbered, as_of=as_of)
+            if moved is not None:
+                return moved
         if not st.found:
             if st.reason is Reason.REMOVED:
                 return Treatment.REMOVED, st.detail
@@ -846,6 +1096,32 @@ class Shelf:
         if st.version.get("amended"):
             return Treatment.AMENDED, f"set by {st.version.get('setByTitle')}; the record stores no version"
         return Treatment.UNAMENDED, ""
+
+    def _relocated(self, cited: Target, st: State, copy: str | None, *, quote: str = "", pid: str = "",
+                   numbered: str = "", as_of: date | None = None) -> tuple[Treatment, str] | None:
+        """The cited section found by its permanent id, or None to judge it by its number as usual (the number is
+        the section's own, or no id answers to it, or more than one does and nothing tells them apart)."""
+        try:
+            loc = self.locator.locate(cited.key, cited.number, quote=quote, day=as_of, pid=pid, reading=numbered)
+        except Exception as exc:  # a table that cannot be built leaves the record to its number
+            self.unread.append(f"permanent ids of {cited.key}: {exc}")
+            return None
+        if loc is None:
+            return None
+        if st.found and loc.number == cited.number and not loc.within:
+            return None
+        if loc.removed:
+            return Treatment.REMOVED, loc.note()
+        if quote:
+            if loc.quoted:
+                return Treatment.RELOCATED, loc.note()
+            if copy and _letters(quote) in _letters(copy):
+                return Treatment.RELOCATED, (loc.note() + "; the quote is the outline's words, which the text as "
+                                             "amended reads differently (an OCR slip, or drift)")
+            return Treatment.WORDS_CHANGED, loc.note() + "; the words the record quotes are not in it now"
+        if loc.ambiguous:
+            return None
+        return Treatment.RELOCATED, loc.note()
 
     def _copy_words(self, cited: Target) -> str | None:
         """A living document's section as its outline on disk (the working copy) reads it; None when the outline has
@@ -891,7 +1167,8 @@ class Shelf:
     def _citing(self, m: Mention, scope: Scope) -> Citing:
         """A mention as a reverse edge. A record that paraphrases the provision carries the paraphrase as jason's
         reading, with the section's words now beside it, so a person compares the two."""
-        treatment, note = self.treat(m.target, quote=m.quote, digest=m.digest, as_of=m.as_of, holder=m.holder)
+        treatment, note = self.treat(m.target, quote=m.quote, digest=m.digest, as_of=m.as_of, holder=m.holder,
+                                     pid=m.pid, numbered=m.numbered)
         words = ""
         if m.reading:
             st = self.state(replace(m.target, as_of=None))
@@ -901,22 +1178,34 @@ class Shelf:
 
     def stale(self) -> list[Citing]:
         """Every citing record whose cited words are gone or changed: a section missing or removed, a quote no longer
-        in the words, a rendering whose words have changed."""
+        in the words, a rendering whose words have changed. The records found again by their permanent id (renumbered,
+        printed twice, run inline) are not stale; ``relocated`` lists them."""
+        return [c for c in self.checked() if c.treatment in STALE]
+
+    def relocated(self) -> list[Citing]:
+        """The citing records whose section the permanent id found under another number."""
+        return [c for c in self.checked() if c.treatment is Treatment.RELOCATED]
+
+    def checked(self) -> list[Citing]:
+        """Every citing record of a section, with how its cited words stand (read once)."""
+        if self._checked is not None:
+            return self._checked
         out = []
         for row in self.rows():
             cited = of_reference(row.get("target", ""), row.get("kind", ""))
             if cited is None or cited.unit is not Unit.SECTION:
                 continue
             treatment, note = self.treat(cited)
-            if treatment in STALE:
-                where = _where(row)
-                out.append(Citing(Holder.DOCUMENT, f"{row['source']}#{where}" if where else row["source"],
-                                  self.title(row["source"]), cited.id, Scope.EXACT, "text", row.get("relation", ""),
-                                  row.get("quote", ""), treatment, note))
+            where = _where(row)
+            out.append(Citing(Holder.DOCUMENT, f"{row['source']}#{where}" if where else row["source"],
+                              self.title(row["source"]), cited.id, Scope.EXACT, "text", row.get("relation", ""),
+                              row.get("quote", ""), treatment, note))
         for m in self.mentions():
-            treatment, _ = self.treat(m.target, quote=m.quote, digest=m.digest, as_of=m.as_of, holder=m.holder)
-            if treatment in STALE:
+            if m.target.unit is Unit.SECTION:
                 out.append(self._citing(m, Scope.EXACT))
+        if self._locator is not None:
+            self.unread += [e for e in self._locator.errors if e not in self.unread]
+        self._checked = out
         return out
 
     def most_cited(self, limit: int = 30) -> list[dict[str, Any]]:
@@ -1210,6 +1499,22 @@ class Citation:
         return [p.number for p in doc.provisions if p.number and next(iter(ancestors(p.number)), "") == number]
 
     @property
+    def terms(self) -> list[dict[str, Any]]:
+        """The defined terms the recited words use, each with its definition's words and address."""
+        st = self.state
+        if not st.found or st.kind is not Kind.SECTION:
+            return []
+        return self.shelf.defined_terms(self.target, st.text)
+
+    @property
+    def address(self) -> str:
+        return self.shelf.address(self.target)
+
+    @property
+    def pid(self) -> str:
+        return self.shelf.pid(self.target)
+
+    @property
     def sentences(self) -> list[str]:
         return sentences(self.text)
 
@@ -1276,6 +1581,15 @@ class Citation:
             out["inForce"] = self.in_force
         if st.found and st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE):
             out["caveat"] = CAVEAT
+        address = self.shelf.address(self.target)
+        if address:
+            out["address"] = address
+        pid = self.shelf.pid(self.target) if st.found and st.kind is Kind.SECTION else ""
+        if pid:
+            out["pid"] = pid
+        terms = self.terms
+        if terms:
+            out["terms"] = terms          # the definitions' own words, by address: recited, not read
         out["expression"], out["target"] = self.expression, self.id
         if st.reason is not None:
             out["reason"] = st.reason.value
@@ -1320,6 +1634,18 @@ def markdown(c: Citation) -> str:
         lines += [f"> _{c}" + (f", {c.in_force}" if c.in_force else "") + "._", ""]
         if st.version.get("note"):
             lines += [f"Note: {st.version['note']}.", ""]
+    address = c.address
+    if address:
+        lines += [f"Address: `{address}`" + (f"; permanent id `{c.pid}`" if st.found and c.pid else "") + ".", ""]
+    terms = c.terms
+    if terms:
+        lines += ["## Defined terms", "", "The document defines words this section uses; its definition governs them "
+                  "here (Civil Code 1644). Each is recited from its own section.", ""]
+        for row in terms:
+            lines += [f"**{row['term']}** ({row['citation']}, `{row['address']}`):", ""]
+            if row["definition"]:
+                lines += [f"> {line}" if line.strip() else ">" for line in row["definition"].strip().splitlines()]
+                lines.append("")
     if st.nodes:
         lines += ["## Outline", ""]
         for n in st.nodes[:200]:
@@ -1356,18 +1682,19 @@ def markdown(c: Citation) -> str:
     return "\n".join(lines)
 
 
-def cite(community: Any = None, data_dir: Path | None = None, *, log=None) -> Shelf:
-    """The association's documents and records, opened for citing."""
-    return Shelf(community, data_dir, log=log)
+def cite(community: Any = None, data_dir: Path | None = None, *, log=None, private: bool = False) -> Shelf:
+    """The association's documents and records, opened for citing. ``private`` opens the restricted books (CIV 5215)."""
+    return Shelf(community, data_dir, log=log, private=private)
 
 
 def resolve(expression: str, *, as_of: str | date | None = None, text: bool = True, refs: bool = False,
             hops: int | None = 1, cited_by: bool = False, community: Any = None, data_dir: Path | None = None,
-            shelf: Shelf | None = None) -> dict[str, Any]:
+            shelf: Shelf | None = None, private: bool = False) -> dict[str, Any]:
     """What ``expression`` names, as lawlibrary's handoff answers ``cite``: ``{kind: section|outline|record|statute|
-    miss, found, reason, citation, text, ...}``. A span or a whole article is an outline, never concatenated words; a
-    miss is an answer with its reason, never an exception."""
-    shelf = shelf or Shelf(community, data_dir)
+    history|miss, found, reason, citation, text, address, pid, ...}``. A span or a whole article is an outline, never
+    concatenated words; a miss is an answer with its reason, never an exception. ``expression`` may be an address
+    (``jason://decl/6.2(a)``); a restricted book is read only with ``private``."""
+    shelf = shelf or Shelf(community, data_dir, private=private)
     c = shelf(expression)
     if as_of:
         c = c.as_of(as_of)

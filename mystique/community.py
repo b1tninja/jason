@@ -467,6 +467,24 @@ class Mystique(Community):
 
         return CITABLE_DOCUMENTS
 
+    def book_entries(self):
+        """Which document fills which book, for record addresses (books.py)."""
+        from .books import BOOK_ENTRIES
+
+        return BOOK_ENTRIES
+
+    def defined_terms(self):
+        """The terms the CC&Rs and Bylaws define, with their sections (terms.py)."""
+        from .terms import DEFINED_TERMS
+
+        return DEFINED_TERMS
+
+    def governing_set(self):
+        """The CC&Rs' own "Governing Documents" (terms.py)."""
+        from .terms import GOVERNING_SET
+
+        return GOVERNING_SET
+
     def resolutions_folder(self):
         """My Drive/Governing Documents/Resolutions (outlines.py)."""
         from .outlines import RESOLUTIONS_FOLDER

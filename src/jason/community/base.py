@@ -893,6 +893,24 @@ class Community(ABC):
         """The Google Docs other documents cite, with their aliases (``jason.community.outlines.CitableDocument``)."""
         return ()
 
+    def book_entries(self) -> tuple:
+        """Which of the association's documents fills which book (``jason.community.books.BookEntry``): the
+        declaration's document in ``decl``, a separately adopted set of rules as a part of ``rules``. A record
+        address (``jason://decl/6.2(a)``) reads through it; a document no row maps is addressed by its own key. Empty
+        until set."""
+        return ()
+
+    def defined_terms(self) -> tuple:
+        """The terms the association's documents define, each with the section that defines it
+        (``jason.community.definitions.DefinedTerm``): reciting a section that uses one carries its definition beside
+        it. Empty until set."""
+        return ()
+
+    def governing_set(self):
+        """What the association's own documents say "the Governing Documents" are
+        (``jason.community.definitions.GoverningSet``), kept apart from the Act's list (CIV 4150). None until set."""
+        return None
+
     def resolutions_folder(self) -> str:
         """The Drive folder whose Google Docs are the board's resolutions. Empty until set."""
         return ""

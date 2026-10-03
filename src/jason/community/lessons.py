@@ -378,11 +378,25 @@ LESSONS: tuple[Lesson, ...] = (
            "(numbered as the working copy numbers them), and others named sections missing from their outline.",
            "Records cite a section by its number alone, and the number depends on which copy and which reading "
            "numbered it.",
-           "jason cite --stale lists each citing record whose section is numbered differently, missing, or changed. "
-           "Still to build: a stable id for each section, carried through amendments and renumberings, stored with the "
-           "number on every record that cites it.",
-           Status.OPEN, guards=("jason cite --stale", "procedure law-review"),
-           docs=("docs/citations.md (Gaps)",)),
+           "Superseded by numbers-are-not-identity: records now carry a permanent id beside the number.",
+           Status.FIXED, guards=("jason cite --stale", "jason cite --migrate-ids", "procedure law-review"),
+           docs=("docs/record-addresses.md",)),
+    Lesson("numbers-are-not-identity", OCT_2026, (Area.GOVERNING,),
+           "Of 99 stale citations, 58 named sections by the working copy's numbers and 22 named numbers an outline "
+           "prints twice; only 21 were truly gone or changed.",
+           "Records cited a section by its number alone, and the number depends on which copy and which reading "
+           "numbered it.",
+           "Each section has a permanent id, its address at the version where it first appeared; a renumbering or "
+           "another reading is a name in its history. Records store the number as written, the id, and the version.",
+           Status.FIXED, guards=("jason.community.permanent_ids", "jason cite --migrate-ids", "Treatment.RELOCATED",
+                                 "tests/test_record_addresses.py"),
+           docs=("docs/record-addresses.md",)),
+    Lesson("number-alone-is-ambiguous-across-readings", OCT_2026, (Area.GOVERNING,),
+           "A notice provision citing two subsections could not say whether it used the working copy's numbers or the "
+           "living text's, which give those numbers to different sections.",
+           "The provision was written against one copy and records only the number.",
+           "The migration stores no id where more than one section answers and lists the candidates for a person.",
+           Status.DECISION, guards=("jason cite --migrate-ids (more than one section answers)",)),
     Lesson("short-forms-unread", OCT_2026, (Area.GOVERNING,),
            "'Section 4.15 (...), subsection (a)' was read as a citation of 4.15, not 4.15(a), and a bare 'subsection "
            "(b)' inside a section went unplaced.",

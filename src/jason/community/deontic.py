@@ -120,6 +120,10 @@ class DocumentDuty:
     set_by: str = ""
     review: ReviewStatus = ReviewStatus.UNREVIEWED
     note: str = ""                   # the reviewer's note, or the model's caveat
+    # Filled by the permanent-id migration (jason cite --migrate-ids); ``section`` keeps the number as written.
+    pid: str = ""                    # the section's permanent id ("decl@base/6.2(a)")
+    version: str = ""                # the version in force when it was read ("@base", "@2099-01-01")
+    reading: str = ""                # the reading that numbers the section so ("outline"), when not the text
 
     @property
     def id(self) -> str:

@@ -122,6 +122,11 @@ def save(data_dir: Path, key: str, duties: list[DocumentDuty], *, reader: str = 
         hybrid = {item.get("id"): item for item in old.get("duties") or () if item.get("method") == "hybrid"}
         duties = [replace(d, bearer=Bearer(hybrid[d.id]["bearer"]), method="hybrid", note=hybrid[d.id].get("note", ""))
                   if d.id in hybrid and d.bearer is Bearer.UNSTATED else d for d in duties]
+        # A permanent id the migration stored stays with its reading while the words stay the same.
+        placed = {item.get("id"): item for item in old.get("duties") or () if item.get("pid")}
+        duties = [replace(d, pid=placed[d.id]["pid"], version=placed[d.id].get("version", ""),
+                          reading=placed[d.id].get("reading", "")) if d.id in placed and not d.pid else d
+                  for d in duties]
         ids = {d.id for d in duties}
         orphaned = dict(old.get("orphaned") or {})
         for rid in list(reviews):

@@ -268,7 +268,7 @@ class DiskResolver:
         document only an outline knows."""
         doc = self.citable(key)
         if doc is not None:
-            return getattr(doc, "cite_as", "") or doc.title
+            return getattr(doc, "cite_as", "") or self._book_name(key) or doc.title
         living = self.living(key)
         if living is not None:
             return living.title
@@ -277,6 +277,14 @@ class DiskResolver:
             return outline.title or key
         raise SectionRefError(f"no document {key!r}: the documents are {', '.join(self.keys()) or 'none'}",
                               "unknown_document")
+
+    def _book_name(self, key: str) -> str:
+        """The name the community's documents cite this document's book by (``BookEntry.cite_as``), if a row gives
+        one."""
+        for e in getattr(self.community, "book_entries", lambda: ())():
+            if getattr(e, "document", "") == key and getattr(e, "cite_as", ""):
+                return e.cite_as
+        return ""
 
     def document(self, key: str, as_of: date | None = None) -> tuple[CurrentDocument, Versions | None]:
         """The document as amended (on ``as_of``, or now) with its versions, or as its outline reads it. The one reader

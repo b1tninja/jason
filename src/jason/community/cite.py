@@ -43,6 +43,7 @@ class Kind(Enum):
     OUTLINE = "outline"          # a document, an article, a span, or siblings: the parts, not concatenated words
     RECORD = "record"            # a resolution, an instrument, minutes, a 5200 record kind
     STATUTE = "statute"          # a statute's words on disk, or an outline of a span
+    HISTORY = "history"          # a section's timeline: each version, and the numbers it went by
     MISS = "miss"
 
 
@@ -56,6 +57,7 @@ class Unit(Enum):
     INSTRUMENT = "instrument"
     MINUTES = "minutes"
     RECORD = "record"
+    BOOK = "book"                # an item of a series book named by an address (jason://budget/2099)
 
 
 class Reason(Enum):
@@ -80,6 +82,9 @@ class Reason(Enum):
     UNKNOWN_INSTRUMENT = "unknown_instrument"
     NO_MINUTES = "no_minutes"
     UNKNOWN_RECORD = "unknown_record"
+    RESTRICTED = "restricted"                        # a book the association may withhold (CIV 5215): ask privately
+    NO_VERSION = "no_such_version"                   # no version took effect that day, or no such stage on disk
+    NO_BOOK_DOCUMENT = "no_book_document"            # a book the profile maps no document to
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,10 @@ class Target:
     siblings: tuple[str, ...] = ()        # whole numbers named together ("6.2(a)", "6.2(b)")
     article: bool = False                 # named as an article ("Art. 6")
     as_of: date | None = None             # "@YYYY-MM-DD": the words in force on that day
+    version: str = ""                     # an address's version: "base", the day one took effect, or a stage
+                                          # ("proposed-2099-01-01"); jason.community.addresses
+    history: bool = False                 # an address's "/history": the timeline
+    fragment: str = ""                    # an address's "#item-4"
 
     @property
     def id(self) -> str:
@@ -116,9 +125,14 @@ class Target:
         elif self.unit is Unit.STATUTE:
             body = ",".join(self.siblings) if self.siblings else self.number + (f"-{self.end}" if self.end else "")
             out = f"{self.key} {body}"
+        elif self.unit is Unit.BOOK:
+            out = f"{self.key}/{self.number}" if self.number else self.key
         else:
             out = f"{self.unit.value}:{self.key}"
-        return out + (f"@{self.as_of.isoformat()}" if self.as_of else "")
+        out += f"@{self.as_of.isoformat()}" if self.as_of else ""
+        out += f"@@{self.version}" if self.version else ""
+        out += "/history" if self.history else ""
+        return out + (f"#{self.fragment}" if self.fragment else "")
 
     @property
     def base(self) -> str:
@@ -126,7 +140,7 @@ class Target:
         if self.unit is Unit.STATUTE:
             section = self.number.split("(", 1)[0]
             return f"{self.key} {section}"
-        return replace(self, as_of=None).id
+        return replace(self, as_of=None, version="", history=False, fragment="").id
 
     @property
     def labels(self) -> tuple[str, ...]:
@@ -159,7 +173,7 @@ _INSTRUMENT = re.compile(r"^(?:(?:Recorder'?s?\s+)?(?:Doc(?:ument)?\.?|Instrumen
                          r"(?P<num>(?:19|20)\d{10})$|^Book\s+(?P<book>\d{1,8})\s*,?\s*Page\s+(?P<page>\d{1,5})$", re.I)
 _MINUTES = re.compile(r"^(?:the\s+)?(?:(?:draft\s+)?minutes)\s*(?:of|for|from|:)?\s*(?:the\s+)?(?:\w+\s+)?"
                       r"(?:meeting\s+)?(?:of|on|held)?\s*(?P<day>\d{4}-\d{2}-\d{2})$", re.I)
-_CANONICAL = re.compile(r"^(?P<key>[a-z0-9][a-z0-9-]*)#(?P<body>\S+)$")
+_CANONICAL = re.compile(r"^(?P<key>[a-z0-9][a-z0-9.-]*)#(?P<body>\S+)$")
 _PREFIXED = re.compile(r"^(?P<unit>resolution|instrument|minutes|record):(?P<key>.+)$", re.I)
 _AS_OF = re.compile(r"\s*(?:@|,?\s*\bas\s+of\s+)(?P<day>\d{4}-\d{2}-\d{2})\s*$", re.I)
 
@@ -204,13 +218,66 @@ def _names_pattern(names: dict[str, str]) -> str:
     return "|".join(re.escape(n).replace(r"\ ", r"\s+") for n in alt)
 
 
-def parse(expression: str, names: dict[str, str]) -> Target | Miss:
+def of_address(text: str, keys: set[str], books: Any = None) -> Target | Miss:
+    """A ``jason://`` address (``jason.community.addresses``) as a target. A living book's key goes to the document the
+    profile maps to it (``books``: ``jason.community.books.Books``); a document's own key stands for itself. A version
+    made effective on a day is kept as the target's ``version`` (the reader checks a version took effect that day) and
+    read as of that day; a day in force (``:``) is ``as_of``."""
+    from jason.community.addresses import AddressError, parse as parse_address
+    from jason.community.books import Book
+
+    try:
+        a = parse_address(text)
+    except AddressError as exc:
+        return Miss(Reason.UNPARSED, str(exc), text)
+    label = a.label
+    as_of = a.in_force or (label.effective if label is not None else None)
+    version = a.version
+    if a.book is not None and a.book.info.shape.value == "group":
+        return Target(Unit.BOOK, a.key, a.item or a.section, version=version, fragment=a.fragment)
+    if a.series:
+        book, item = a.book, a.item
+        if book is Book.RES and item:
+            return Target(Unit.RESOLUTION, item, version=version, fragment=a.fragment)
+        if book is Book.MIN and item:
+            return Target(Unit.MINUTES, item, version=version, fragment=a.fragment)
+        if book is Book.INST and item:
+            return Target(Unit.INSTRUMENT, item, version=version, fragment=a.fragment)
+        return Target(Unit.BOOK, a.key, item, version=version, fragment=a.fragment)
+    document = books.document(a.key) if books is not None else a.key
+    if document not in keys:
+        book = a.book
+        if book is not None:
+            return Miss(Reason.NO_BOOK_DOCUMENT, f"the profile maps no document to {a.key} ({book.info.title}, "
+                        f"{book.info.statute or 'not in the Act'}): Community.book_entries()", text)
+        return Miss(Reason.UNKNOWN_DOCUMENT, f"no book or document {a.key!r}", text)
+    if not a.section:
+        return Target(Unit.DOCUMENT, document, as_of=as_of, version=version, history=a.history, fragment=a.fragment)
+    body = a.section
+    if ".." in body:
+        first, _, end = body.partition("..")
+        return Target(Unit.SECTION, document, normalize_number(first), end=normalize_number(end), as_of=as_of,
+                      version=version, fragment=a.fragment)
+    if "," in body:
+        numbers = tuple(normalize_number(n) for n in body.split(","))
+        return Target(Unit.SECTION, document, numbers[0], siblings=numbers, as_of=as_of, version=version,
+                      fragment=a.fragment)
+    number = body if "~" in body else normalize_number(body)
+    return Target(Unit.SECTION, document, number, as_of=as_of, version=version, history=a.history,
+                  fragment=a.fragment)
+
+
+def parse(expression: str, names: dict[str, str], books: Any = None) -> Target | Miss:
     """What ``expression`` names. ``names`` maps each name a document goes by (lowercase), and each document key, to
-    its key. A miss carries its reason: nothing here raises on what a person or a document wrote."""
+    its key; ``books`` (``jason.community.books.Books``) maps a book's key (``decl``) to its document, for an address
+    (``jason://decl/6.2(a)``) and a canonical ``decl#6.2(a)``. A miss carries its reason: nothing here raises on what a
+    person or a document wrote."""
     text = " ".join(str(expression or "").split()).strip().rstrip(".;:")
     if not text:
         return Miss(Reason.EMPTY, "name a document's section, a resolution, an instrument, minutes, or a statute",
                     str(expression or ""))
+    if text.lower().startswith("jason://"):
+        return of_address(text, set(names.values()), books)
     as_of = None
     if m := _AS_OF.search(text):
         try:
@@ -225,16 +292,19 @@ def parse(expression: str, names: dict[str, str]) -> Target | Miss:
         key = m.group("key").strip()
         return Target(unit, key, as_of=as_of)
     if m := _CANONICAL.match(text):
-        if m.group("key") not in keys:
+        key = m.group("key")
+        if key not in keys and books is not None and books.document(key) in keys:
+            key = books.document(key)                  # a book's key: decl#6.2(a)
+        if key not in keys:
             return Miss(Reason.UNKNOWN_DOCUMENT, f"no document {m.group('key')!r}", text)
         body = m.group("body")
         if ".." in body:
             first, _, end = body.partition("..")
-            return Target(Unit.SECTION, m.group("key"), normalize_number(first), end=normalize_number(end), as_of=as_of)
+            return Target(Unit.SECTION, key, normalize_number(first), end=normalize_number(end), as_of=as_of)
         if "," in body:
             numbers = tuple(normalize_number(n) for n in body.split(","))
-            return Target(Unit.SECTION, m.group("key"), numbers[0], siblings=numbers, as_of=as_of)
-        return Target(Unit.SECTION, m.group("key"), normalize_number(body), as_of=as_of)
+            return Target(Unit.SECTION, key, numbers[0], siblings=numbers, as_of=as_of)
+        return Target(Unit.SECTION, key, body if "~" in body else normalize_number(body), as_of=as_of)
     if text in keys:
         return Target(Unit.DOCUMENT, text, as_of=as_of)
     if m := _RESOLUTION.match(text):
@@ -502,7 +572,9 @@ class Treatment(Enum):
     WORDS_CHANGED = "words changed since read"           # the record quotes words no longer there
     REMOVED = "removed"
     RENUMBERED = "numbered differently"                  # the outline it was read from has the number; the text as
-                                                         # amended does not (a renumbering wants a mapping)
+                                                         # amended does not, and no permanent id finds it
+    RELOCATED = "renumbered, found by its permanent id"  # numbered otherwise in the text as amended (or printed twice,
+                                                         # or run inline): the permanent id finds the section
     MISSING = "missing"                                  # the document has no such section
     FILLED = "filled when rendered"                      # an embedded token: always the words in force
     NOT_CHECKED = "not checked"                          # a statute or a record: nothing to compare
@@ -619,5 +691,5 @@ def sentences(text: str) -> list[str]:
 
 
 __all__ = ["ABBREVIATIONS", "CAVEAT", "Citing", "Holder", "Kind", "Miss", "Node", "Reason", "STALE", "Scope", "Target",
-           "Treatment", "Unit", "label_text", "mermaid", "of_reference", "paragraphs", "parse", "scope_of", "sentences",
-           "targets_in", "tree_lines"]
+           "Treatment", "Unit", "label_text", "mermaid", "of_address", "of_reference", "paragraphs", "parse", "scope_of",
+           "sentences", "targets_in", "tree_lines"]

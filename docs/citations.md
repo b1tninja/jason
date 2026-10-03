@@ -10,6 +10,10 @@ Code: `jason.community.cite` (the grammar, the walk's nodes, the reverse edges; 
 `Shelf` and the `Citation` closure, on disk), `jason cite` (the command), and the governance tools `cite_document`
 and `section_refs` ([mcp.md](mcp.md)).
 
+Every resolved citation carries its record address (`jason://decl/6.2(a)`) and, for a section, its permanent id
+(`decl@base/6.2(a)`): [record-addresses.md](record-addresses.md) has the books, the address grammar, the ids, and the
+restricted books.
+
 ## The model, from lawlibrary
 
 lawlibrary's `places.Citation` is a code closed over by each unit call: `Citation(Code.CIVIL).section(4600)('b')`.
@@ -53,6 +57,8 @@ pins it).
 | `CIV 4000-6150` | a span of the law: the exported pages that cover it |
 | `Section 5200` | a bare four-digit section is the Civil Code, as the references grammar reads it |
 | `record:minutes` | a 5200 record kind |
+| `jason://decl/6.2(a)`, `jason://decl@2099-01-01/6.2(a)`, `jason://decl:2099-06-01/6.2(a)`, `jason://decl/history/6.2(a)`, `jason://res/20990101-1` | a record address ([record-addresses.md](record-addresses.md)) |
+| `CC & R's 6.2(a)`, `By-Laws 7.2` | a common name for a book, any case or punctuation (the canon) |
 
 The names are the profile's: each document's key, title, `cite_as`, and aliases, and each outline's key. A form
 jason does not read, a number with no document named, or an unknown name is a miss with its reason, never an
@@ -71,6 +77,8 @@ exception.
 | `no_resolution_prints_it`, `printed_by_several` | no resolution Doc prints the number; several do |
 | `unknown_instrument`, `no_minutes`, `unknown_record` | not a governing instrument, library file, or indexed instrument; no minutes for the day; not a 5200 kind |
 | `unreadable` | a source could not be read |
+| `restricted` | a restricted book (executive-session minutes, the membership list, election materials): ask with `private=True` |
+| `no_such_version`, `no_book_document` | no version took effect that day, or no such stage on disk; the profile maps no document to the book |
 
 A token fails with the same reason (`SectionRefError.reason`).
 
@@ -108,7 +116,8 @@ treatment now:
 | `current` | the words the record quotes (a duty's quote, a rendering's digest) are the words now |
 | `unamended`, `amended` | no amendment has set the section's words; one has, and the record stores no version to compare |
 | `words changed since read` | the record quotes words the section no longer has, as amended or in the outline it was read from (a stale duty reading, a rendering to redo) |
-| `numbered differently` | the outline the record was read from (a living document's working copy) numbers the section; the text as amended does not: a renumbering that wants a mapping |
+| `renumbered, found by its permanent id` | the record's number names the section under another reading (the working copy), as printed twice, or inline in its parent; the permanent id finds it, and its quote is there |
+| `numbered differently` | the outline the record was read from numbers the section; the text as amended does not, and no permanent id finds it |
 | `removed`, `missing` | the section was removed; the document has no such section |
 | `filled when rendered` | a token: always the words in force |
 | `not checked` | a statute, a record, or an outline: nothing to compare |
@@ -117,7 +126,8 @@ A section named by its title rather than a number ("RECITALS") is `not checked`.
 text as amended reads differently (an OCR slip in the base) is `current`, with a note to compare the two.
 
 `jason cite --stale` lists every citing record whose treatment is `words changed since read`, `numbered
-differently`, `removed`, or `missing`, and exits 1 when there is any. `jason cite --most-cited` ranks the sections and statutes named most across the documents and jason's
+differently`, `removed`, or `missing`, and exits 1 when there is any; `jason cite --renumbered` lists those a permanent
+id found again. `jason cite --most-cited` ranks the sections and statutes named most across the documents and jason's
 records: where verifying and transcribing the words matters most. `jason cite --survey` resolves every reference the
 governing documents make and counts the misses by reason.
 
@@ -145,9 +155,10 @@ exported section and says so; the whole section is the official text.
 
 - Statute-to-statute hops: the walk stops at a statute; lawlibrary's `Citation(...).refs` walks the codes.
 - `GAPS` (`structure.review`): a reference in the words the grammar cannot place is not reported per section.
-- Stable section identity: references, transcriptions, and Conflict rows key a section by its number; a renumbering
-  breaks them (a work-level id carried through amendments, with a renumbering as a mapping, is the design).
-- Defined terms: a capitalized term the document defines is not yet an edge to its definition.
+- Stable section identity: built ([record-addresses.md](record-addresses.md), Permanent ids). The references the
+  governing documents make (`references.json`) still key a section by its number, read from the current outlines.
+- Defined terms: built for the terms a profile keeps (`Community.defined_terms()`); a term defined outside a
+  definitions article is not read.
 - Per-document citation forms beyond `cite_as` (a rules book's "Rule" word, its own self-reference words) are not yet
   profile data.
 - Deep links stop at the Doc, the working copy, and the library file; a scan's page and a heading's `headingId` are

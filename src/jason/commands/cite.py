@@ -3,7 +3,8 @@
 The citation closure is ``jason.tasks.cite`` (modeled on lawlibrary's ``Citation``). An expression is what a person
 or a document writes: "Declaration § 6.2(a)", "Section 6.2(a) of the Declaration", "Bylaws Art. 6", "Owner's Manual
 R-3(e)", "Resolution 20990101-1", "Doc. No. 209901010001", "minutes 2099-01-01", "CIV 4920(a)", a canonical target
-(``decl#6.2(a)``), and ``@YYYY-MM-DD`` for the words in force on a day.
+(``decl#6.2(a)``), ``@YYYY-MM-DD`` for the words in force on a day, and a record address (``jason://decl/6.2(a)``,
+``jason://decl@2099-01-01/6.2(a)``, ``jason://decl/history/6.2(a)``, ``jason://res/20990101-1``; docs/record-addresses.md).
 
 - ``jason cite EXPRESSION`` recites the words whole, with the citation and the version in force; an outline for a
   document, an article, a span, or siblings; a miss with its reason.
@@ -11,9 +12,15 @@ R-3(e)", "Resolution 20990101-1", "Doc. No. 209901010001", "minutes 2099-01-01",
   governing documents and jason's own records), each with how the cited words stand now.
 - ``--md`` prints a page, ``--chart`` the Mermaid flowchart, ``--json`` the full answer.
 - ``--survey`` resolves every reference the governing documents make; ``--stale`` lists citing records whose cited
-  words are gone or changed; ``--most-cited`` ranks the sections and statutes named most.
+  words are gone or changed; ``--renumbered`` those a permanent id found under another number; ``--most-cited`` ranks
+  the sections and statutes named most.
+- ``--books`` lists the association's books (the statute's keys) and the profile's documents in each.
+- ``--private`` opens a restricted book (executive-session minutes, the membership list, election materials: CIV 5215).
+- ``--migrate-ids`` adds each citing record's permanent id and the version it cites (a dry run; ``--apply`` writes,
+  backing each file up first): jason.tasks.permanent_ids.
 
-Reading only: nothing here reaches Drive, PayHOA, or the mail.
+Reading only, except ``--migrate-ids --apply`` (data/ files, backed up) and the id tables it caches in
+data/section-refs: nothing here reaches Drive, PayHOA, or the mail.
 """
 
 from __future__ import annotations
@@ -45,7 +52,49 @@ def cmd_cite(args: argparse.Namespace) -> int:
     from jason.community.cite import tree_lines
     from jason.tasks.cite import Shelf, markdown
 
-    shelf = Shelf(community(), _data_dir(args))
+    shelf = Shelf(community(), _data_dir(args), private=args.private)
+    if args.books:
+        table = shelf.books.table()
+        if args.json:
+            print(json.dumps(table, indent=1))
+            return 0
+        for b in table:
+            docs = ", ".join(f"{d['document']}" + (f" ({d['key']})" if d["key"] != b["key"] else "")
+                             + (f" [{d['role']}]" if d["role"] != "text" else "") for d in b["documents"])
+            flag = f" restricted: {b['restricted']}" if b["restricted"] else ""
+            print(f"{b['key']:9} {b['statute'] or '(not in the Act)':16} {b['shape']:7} {b['title']}{flag}"
+                  + (f"\n{'':9} {docs}" if docs else ""))
+        return 0
+    if args.migrate_ids:
+        from jason.tasks.permanent_ids import migrate
+
+        found = migrate(shelf, apply=args.apply)
+        if args.json:
+            print(json.dumps(found, indent=1))
+            return 0
+        for kind, row in found["kinds"].items():
+            print(f"{kind}: {row['placed']} placed, {row['unplaced']} not")
+        print(f"register rows (the specification's records): {found['register']}")
+        for row in found["unplaced"][:40]:
+            print(f"  not placed: {row['record']} names {row['document']} {row['written']}")
+        for row in found["ambiguous"][:40]:
+            print(f"  more than one section answers: {row['record']} names {row['document']} {row['written']} "
+                  f"({', '.join(row['candidates'])}; nothing stored: a person picks)")
+        if args.apply:
+            print("written: " + (", ".join(found["written"]) or "nothing"))
+            print("backups: " + (", ".join(b for b in found["backups"] if b) or "none"))
+        else:
+            print("a dry run: --apply writes the fields, backing each file up first")
+        return 0
+    if args.renumbered:
+        rows = shelf.relocated()
+        if args.json:
+            print(json.dumps([r.as_dict() for r in rows], indent=1))
+            return 0
+        print(f"{len(rows)} citing records found again by their permanent id")
+        for r in rows:
+            print(f"  {r.holder.value} {r.key}: {r.target}: {r.note}")
+        return 0
     if args.survey:
         found = shelf.survey()
         if args.json:
@@ -63,7 +112,8 @@ def cmd_cite(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps([r.as_dict() for r in rows], indent=1))
             return 0
-        print(f"{len(rows)} citing records whose cited words are gone or changed")
+        print(f"{len(rows)} citing records whose cited words are gone or changed; {len(shelf.relocated())} more were "
+              "found again by their permanent id (--renumbered lists them)")
         for r in rows:
             print(f"  {r.holder.value} {r.key}: {r.target} {r.treatment.value}" + (f" ({r.note})" if r.note else ""))
         return 1 if rows else 0
@@ -124,7 +174,30 @@ def _print(c: Any, args: argparse.Namespace, tree_lines: Callable[..., list[str]
         print(f"  {c.in_force}")
     if st.version.get("note"):
         print(f"  note: {st.version['note']}")
+    if c.address:
+        pid = c.pid if st.found else ""
+        print(f"  address: {c.address}" + (f"; permanent id {pid}" if pid else ""))
+    for row in c.terms:
+        print(f"  defined term: \"{row['term']}\", {row['citation']} ({row['address']})")
+    for row in st.extra.get("readings") or ():
+        print(f"  {row['says']}")
+    diff = st.extra.get("differences")
+    if diff:
+        print(f"  only in the documents' own term: {', '.join(diff['onlyInTheDocuments']) or 'none'}; only in the "
+              f"statute's list: {', '.join(diff['onlyInTheStatute']) or 'none'}"
+              + (f"; also named: {'; '.join(diff['alsoNamed'])}" if diff["alsoNamed"] else ""))
+        for n in diff["notes"]:
+            print(f"  {n}")
     for node in st.nodes[:60]:
+        if "book" in node:                     # the governing documents: a set of books
+            docs = ", ".join(node["documents"]) or node.get("series") or "none mapped"
+            print(f"  - {node['set']}: {node['book']} ({node['title']}): {docs}")
+            continue
+        if "version" in node:                  # a section's history
+            print(f"  - {node['version']} {node['number'] or '(not yet)'}: {node['through']}"
+                  + (" (words changed)" if node.get("changed") else "")
+                  + ("" if node.get("inForce", True) else " (not in force)"))
+            continue
         label = node.get("number") or node.get("first", "")
         caption = node.get("caption") or node.get("title") or node.get("kind") or node.get("where") or ""
         flag = "" if node.get("found", True) else f" [missing: {node.get('reason', '')}]"
@@ -191,6 +264,16 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                                                         "(exit 1 when any)")
     p.add_argument("--most-cited", type=int, nargs="?", const=30, metavar="N",
                    help="the sections and statutes named most (default 30)")
+    p.add_argument("--renumbered", action="store_true", help="citing records a permanent id found under another "
+                                                             "number (renumbered, printed twice, or run inline)")
+    p.add_argument("--books", action="store_true", help="the association's books (decl, bylaws, rules, res, min, ...), "
+                                                        "each with its statute and the profile's documents")
+    p.add_argument("--private", action="store_true", help="open a restricted book (executive-session minutes, the "
+                                                          "membership list, election materials: CIV 5215)")
+    p.add_argument("--migrate-ids", action="store_true", help="add each citing record's permanent id and the version "
+                                                              "it cites (a dry run unless --apply)")
+    p.add_argument("--apply", action="store_true", help="with --migrate-ids: write the fields (each file backed up "
+                                                        "first)")
     p.set_defaults(func=cmd_cite)
 
 
