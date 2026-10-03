@@ -19,6 +19,15 @@
     },
     "AppShell": {
       "cardMode": "column"
+    },
+    "DecisionCard": {
+      "cardMode": "column"
+    },
+    "RegisterGrid": {
+      "cardMode": "column"
+    },
+    "RollCall": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

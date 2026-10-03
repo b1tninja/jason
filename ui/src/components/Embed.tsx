@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import "./embed.css";
 
 export type EmbedKind =
   | "doc" | "sheet" | "slides" | "form" | "drive" | "image" | "pdf" | "url"

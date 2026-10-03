@@ -6,7 +6,9 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   library build: `cd ui && npm run build:lib` (`vite.lib.config.ts` + `tsconfig.lib.json`) writes
   `ui/dist-lib/index.js` and the `.d.ts` tree under `ui/dist-lib/components/`. Run it before the converter;
   `--entry ./ui/dist-lib/index.js --node-modules ./ui/node_modules`, from the repo root.
-- **Component CSS is global.** The components carry no CSS imports; everything is `ui/src/styles.css`
+- **Component CSS is global.** The components carry no CSS imports (a per-component `.css` import makes the library
+  build emit a separate `style.css` the converter never ships, so designs lose those rules; `Embed`'s link-card rules
+  were folded into `styles.css` for that reason); everything is `ui/src/styles.css`
   (`cfg.cssEntry`). Tokens are the `:root` custom properties in that file (`--bg`, `--panel`, `--ink`, `--muted`,
   `--line`, `--accent`, `--good`, `--warn`, `--bad`), with a dark variant under `prefers-color-scheme`. The font is
   `system-ui`: no `@font-face`, nothing to ship, no `[FONT_MISSING]`.
@@ -24,7 +26,8 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - **`Findings` with `ok={false}` and no items renders nothing** by design; never use that as a cell. `Caveats`
   returns null for an empty list, same rule.
 - **Wide components.** `.kanban` is `grid-auto-columns: minmax(260px, 1fr)`, so five lanes need ~1350px: Kanban
-  has `cardMode: column` and a `1400x700` viewport in `cfg.overrides`; AppShell is column mode. `.stats` is
+  has `cardMode: column` and a `1400x700` viewport in `cfg.overrides`; AppShell, DecisionCard, RegisterGrid, and
+  RollCall are column mode (their tables and two-column `.fields` grids overflow a grid cell). `.stats` is
   `minmax(150px, 1fr)` and clips six-figure money at ~500px; the Stat and Card previews widen the columns with
   inline grid glue (`.stat` itself has no overflow handling, a component note).
 - **`Confirm`'s armed state is internal** and cannot render statically; its preview shows the idle button and a
@@ -56,5 +59,12 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `npm i esbuild ts-morph @types/react playwright@1.56.1` there, fetch the project's `_ds_sync.json` to
   `.design-sync/.cache/remote-sync.json`, then
   `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node .ds-sync/resync.mjs --config .design-sync/config.json --node-modules ./ui/node_modules --entry ./ui/dist-lib/index.js --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json`.
-- All 20 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
+- All 28 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
   until its preview is authored.
+- `RollCall` and `ConfirmList` are controlled (`votes`/`onChange`, `rows`/`onToggle`): their previews wrap them in a
+  `useState` component, as `Tabs` and `SearchBox` do. `DecisionCard` keeps its own state from `initial`, so its
+  cells are static props. `RegisterGrid`'s board cells post to `/api/write/registers/...` only on save, so the grid
+  renders without a server; the `Clock` previews pass `today` like `DueDate`.
+- The conventions header (`.design-sync/conventions.md`) still names only the first 23 components; the five from
+  the board loop (`Clock`, `ConfirmList`, `RollCall`, `DecisionCard`, `RegisterGrid`) are described only by their
+  `.prompt.md`. Every name it does use verified against the 2026-10-03 build.

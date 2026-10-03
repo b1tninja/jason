@@ -1,8 +1,0 @@
-/* Embed: the audio player and the link card that stands in for a frame (a Gmail thread, or a frame that never loaded).
- * The figure, iframe, img, and figcaption rules stay in styles.css (.embed). */
-.embed audio { width: 100%; display: block; }
-.embed-link { display: grid; gap: .25rem; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
-.embed-link-title { font-weight: 600; }
-.embed-link-host { color: var(--muted); font-size: .85rem; }
-.embed-link a { color: var(--accent); }
-.embed-link-note { margin: .25rem 0 0; color: var(--muted); font-size: .85rem; }
