@@ -6,20 +6,19 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-140 commands, by area:
+144 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
-- [Documents & library](#documents--library) (12)
-- [Meetings, board & minutes](#meetings-board--minutes) (9)
-- [Owners, requests, notices & forms](#owners-requests-notices--forms) (21)
-- [Law, legal, insurance & claims](#law-legal-insurance--claims) (13)
+- [Documents & library](#documents--library) (18)
+- [Meetings, board & minutes](#meetings-board--minutes) (12)
+- [Owners, requests, notices & forms](#owners-requests-notices--forms) (24)
+- [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
-- [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (12)
+- [Setup & maintenance](#setup--maintenance) (6)
 
 ## PayHOA & finance
 
@@ -451,6 +450,125 @@ Run a report a document names ({REPORT:key}) and keep it as its own document
 | `--doc` |  | also rewrite each report's own Google Doc, and file a packet run's PDF, in Drive (--yes) |
 | `--yes` |  | confirm --doc |
 
+### `jason living`
+
+Documents kept as amended: the current text from the base and the amendments in effect, with provenance, drift, and annotations
+
+| Option | Value | Help |
+|---|---|---|
+| `key` | optional (?) | the document (ccrs); none lists them |
+| `--fetch` |  | read the Docs again first (read-only) |
+| `--working` |  | compare the working copy kept by hand: the amended sections |
+| `--all-sections` |  | compare every section of the working copy (a base read by OCR differs mostly by its slips) |
+| `--as-of` | AS_OF | the text in force on this date (YYYY-MM-DD) |
+| `--redline` | INSTRUMENT | an amendment's words with their marks (ccrs-2nd-amendment) |
+| `--section` | SECTION | one provision with its history (4.15(a)) |
+| `--annotations` |  | read the working copy's comments (read-only) into data/annotations and place them |
+| `--reread` | {cli,pymupdf} | read a scanned base again (cli: Tesseract's tool) beside the reading in use; migrate the transcriptions and write the comparison (a dry run: nothing in use changes) |
+| `--no-lexicon` |  | with --reread: count questions without the text rules |
+| `--numbering` | {text,labels,aligned} | with --reread: how both readings get their section numbers (default: as builds number them); a switch needs a dry run numbered as the builds are |
+| `--use-reread` | {cli,pymupdf} | switch to a re-read (a person's decision; needs --yes --by NAME and a dry run first) |
+| `--page-lines` |  | keep the OCR lines of the scanned base's reading in use (read once more, kept only when they give its words), so the current page-furniture pass applies to it |
+| `--yes` |  | with --use-reread: switch |
+| `--by` | BY | with --use-reread: the person who chose it |
+
+### `jason section-refs`
+
+Embedded references ({QUOTE:ccrs#4.2(b)}, {CITE:...}) in place of copied governing-document passages; find the copies; compile the guide
+
+| Option | Value | Help |
+|---|---|---|
+| `--show` | KEY#N | print a section as a quote renders it (ccrs#4.2(b)) |
+| `--as-of` | AS_OF | with --show: the words in force on this date (YYYY-MM-DD) |
+| `--render` | FILE | fill a Markdown or HTML file's references; writes --out and its .refs.json record |
+| `--out` | OUT | with --render: where to write (default FILE.rendered.EXT beside it) |
+| `--check` | FILE | resolve the references in files; fail on any that cannot be filled |
+| `--scan` |  | find copies of the sections in other documents (read-only) |
+| `--document` | KEY | with --scan or --patch: the documents to look for (default: those kept as amended) |
+| `--no-library` |  | with --scan: leave the library's extracts out |
+| `--confidential` |  | with --scan: include confidential library files |
+| `--patch` |  | show the tokens that would replace whole-section copies in jason's own sources |
+| `--apply` | PATH | write the proposal for this file (needs --yes) |
+| `--yes` |  | with --apply: write it |
+| `--guide` | KEY | compile the guide to the documents (default: all) in data/section-refs/guide |
+| `--refresh` |  | rebuild the cached versions of the living documents first |
+
+### `jason cite`
+
+Cite and recite the association's documents and records (Declaration 6.2(a), Resolution N, Doc. No. N, minutes, CIV 4920(a)); follow references both ways
+
+| Option | Value | Help |
+|---|---|---|
+| `expression` | optional (?) | what to cite: "Declaration 6.2(a)", "Section 6.2(a) of the Declaration", "Resolution 20990101-1", decl#6.2(a)@2099-01-01 |
+| `--as-of` | AS_OF | the words in force on this date (YYYY-MM-DD) |
+| `--refs` |  | follow what it cites |
+| `--hops` | HOPS | with --refs: how many hops (default 1); all follows until a target repeats |
+| `--same` |  | with --refs: stay inside this document |
+| `--only` | ONLY | with --refs: follow only these kinds (statute,section,document,resolution,instrument) |
+| `--cited-by` |  | what names it: the governing documents and jason's own records, with how the cited words stand now |
+| `--no-text` |  | leave the words out |
+| `--md` |  | print a Markdown page |
+| `--chart` |  | print the reference walk as a Mermaid flowchart |
+| `--json` |  | print the full answer as JSON |
+| `--survey` |  | resolve every reference the governing documents make |
+| `--stale` |  | citing records whose cited words are gone or changed (exit 1 when any) |
+| `--most-cited` | N | the sections and statutes named most (default 30) |
+| `--renumbered` |  | citing records a permanent id found under another number (renumbered, printed twice, or run inline) |
+| `--books` |  | the association's books (decl, bylaws, rules, res, min, ...), each with its statute and the profile's documents |
+| `--private` |  | open a restricted book (executive-session minutes, the membership list, election materials: CIV 5215) |
+| `--html` | DIR | write the record reader: static pages for each book, section, history, and version, linked by address (default data/reader; restricted books only with --private) |
+| `--migrate-ids` |  | add each citing record's permanent id and the version it cites (a dry run unless --apply) |
+| `--apply` |  | with --migrate-ids: write the fields (each file backed up first) |
+
+### `jason intake`
+
+Questions jason could not decide while taking documents in: classify, OCR readings, amendments, drift, orphaned notes
+
+| Option | Value | Help |
+|---|---|---|
+| `--scan` |  | run the readers and park each uncertainty as a question |
+| `--kind` | KIND | list one kind (classify, ocr reading, drift, before differs, ...) |
+| `--subject` | SUBJECT | list one subject's questions (a prefix: ccrs#4.15, library:) |
+| `--likely` |  | list only the likely ones |
+| `--limit` | LIMIT |  |
+| `--answer` | ID TEXT | answer one (a choice's number or words; dismiss) |
+| `--accept-likely` |  | answer every open likely OCR reading with its suggestion (after looking at --likely) |
+| `--confirm` | ID | a second person confirms an answered high-stakes question (with --by; not who answered) |
+| `--by` | BY | the person answering or confirming (required) |
+| `--apply` |  | turn answers into the records the next run uses |
+| `--model` |  | with --scan: the local text model reads the doubtful words too (a second reader) |
+| `--vision` |  | with --scan: the vision model reads the page's crop of a number or operative word in doubt |
+| `--library-ocr` |  | write OCR suggestions beside the library's OCR texts and list the worst-read files |
+| `--library-kind` | LIBRARY_KIND | with --library-ocr: only this kind (repeatable) |
+
+### `jason manual`
+
+The owner's manual taken apart: which sections are the operating rules, copies, policies, and guidance; the official rules and the generated manual
+
+| Option | Value | Help |
+|---|---|---|
+| `--classify` |  | classify every section with its evidence (the default) |
+| `--asks` |  | with --classify: put the open questions in the intake store |
+| `--concordance` |  | every old address to its new one, and every existing citation of the manual resolved |
+| `--render` |  | write the official rules and the generated manual to data/drafts, with the diff against the Doc's text |
+
+### `jason revisions`
+
+Find a document's versions (email, PayHOA, the site, Drive files and revisions) and say what changed in each section, and whether an adoption is on record (read-only)
+
+| Option | Value | Help |
+|---|---|---|
+| `document` | optional (?) | the document's outline key; 'all' for every one |
+| `--list` |  | list the documents that can be compared |
+| `--fetch` |  | read the Doc's Drive revisions and the Drive and PayHOA files named like it first |
+| `--no-payhoa` |  | with --fetch, skip PayHOA |
+| `--ocr` |  | read an image-only PDF with Tesseract |
+| `--versions` |  | print the versions table |
+| `--section` | N | one section's lineage and changes (a number or a lineage id) |
+| `--diff` | A B | compare two versions directly: an id (v3), a date (the version current on it), or a hash |
+| `--stored` |  | print the stored history; do not rebuild it |
+| `--json` |  | print JSON |
+
 ## Meetings, board & minutes
 
 ### `jason hearing`
@@ -509,6 +627,7 @@ The board's action items; draft the next agenda and minutes from the last agenda
 | `--agenda` | AGENDA | Draft the next agenda from this agenda Google Doc id (read-only) |
 | `--members` |  | Read the members PayHOA tags 'Board Member' (current and archived) into data/payhoa/board-members.json |
 | `--minutes` | DATE | Draft the minutes of the board meeting on DATE from its Zoom record with the local model (open meeting only) |
+| `--recheck` |  | With --minutes: count the quorum and find confidential subjects in the draft already written; no model |
 | `--date` | DATE | The meeting date (default: the next third Tuesday) |
 | `--previous` | PREVIOUS | The previous meeting's date, for the minutes to approve |
 | `--directors` | DIRECTORS | Comma-separated directors for the minutes template |
@@ -572,12 +691,61 @@ Member notice, agenda item, and adoption notice for a proposed rule change (Civi
 |---|---|---|
 | `change` | optional (?) | the proposed change's key (see --list) |
 | `--list` |  | list the proposed rule changes in the specification |
+| `--from-manual` |  | draft the 4360 notice publishing the official rules extracted from the owner's manual (jason manual --render, jason revisions); writes data/drafts only |
 | `--notice-date` | DATE | the day the member notice goes out (default: today) |
 | `--decision` | DATE | the decision meeting (default: first meeting 28+ days out) |
 | `--comment-deadline` | DATE | members' written comments due (default: the day before) |
 | `--regular-months-only` |  | count only the resolution's regular months, not the monthly practice |
 | `--draft-email` |  | preview the member notice as a Gmail draft |
 | `--yes` |  | with --draft-email: save the draft (never sent) |
+
+### `jason schedule`
+
+Who does each duty and when: what falls due, the assignments, and the duties nobody owns
+
+| Option | Value | Help |
+|---|---|---|
+| `--days` | DAYS | how far ahead (default 60) |
+| `--past` | PAST | how far back, for what is overdue (default 30) |
+| `--role` | ROLE | one role's items (treasurer, secretary, board, ...) |
+| `--assignments` |  | list the assignments and their standing |
+| `--coverage` |  | the duties no assignment covers |
+| `--limit` | LIMIT |  |
+| `--done` | KEY DUE | record an occurrence done (with --by, --evidence) |
+| `--on` | ON | with --done: the day it was done (default today); with --people: the day read as today |
+| `--by` | BY | with --done: who did it |
+| `--evidence` | EVIDENCE | with --done: what shows it (the minutes' date and item, a payment, a proof) |
+| `--calendar` |  | each dated occurrence as an all-day event on Google Calendar (dry run unless --yes) |
+| `--tasks` |  | each open occurrence as a Google Task on its role's list; a task checked off is recorded done (dry run unless --yes) |
+| `--calendar-id` | CALENDAR_ID | with --calendar: the calendar (default primary) |
+| `--months` | MONTHS | with --calendar or --tasks: months ahead (default 3) |
+| `--plan-only` |  | with --calendar or --tasks: the plan from disk, no Google call |
+| `--yes` |  | with --calendar or --tasks: write to Google |
+| `--read-google` |  | read the calendar's events and every Google Tasks list into the private store (reads only; never signs in) |
+| `--people` |  | people's own tasks and events beside what jason tracks: covered, untracked recurring, one-off, stale (from the stored read) |
+| `--private` |  | with --people: print each rule's label, not the titles |
+| `--all` |  | with --people: every open item by its class |
+| `--json` |  | with --people: as JSON |
+
+### `jason schedule-evidence`
+
+Evidence on disk that each scheduled duty was done, proposed for a person to confirm and record
+
+| Option | Value | Help |
+|---|---|---|
+| `--since` | SINCE | from this day (YYYY-MM-DD; default a year ago) |
+| `--until` | UNTIL | to this day (YYYY-MM-DD; default today) |
+| `--key` | KEY | one assignment's occurrences (repeatable) |
+| `--all` |  | also list the occurrences with no evidence |
+| `--json` |  | the proposals as JSON |
+| `--record` | KEY DUE | record one occurrence a person confirms (with --by; --evidence to give your own) |
+| `--by` | BY | with --record: who read the evidence and confirms it |
+| `--on` | ON | with --record: the day it was done (default the evidence's date) |
+| `--evidence` | EVIDENCE | with --record: the evidence in the person's own words |
+| `--watch` |  | read forward instead: each board meeting's notice deadline (CIV 4920) and minutes deadline (4950(a)), and what is on record for each so far |
+| `--ahead` | AHEAD | with --watch: days ahead to look for meetings (default 60) |
+| `--past` | PAST | with --watch: days back a passed clock is still shown (default 30) |
+| `--as-of` | AS_OF | with --watch: the day to read as today (YYYY-MM-DD; default today) |
 
 ### `jason record-stages`
 
@@ -592,6 +760,19 @@ Revision histories of the rule changes (Civil Code 4360) and the minutes (4950):
 | `--since` | DATE | minutes of meetings from this day (default January 1 last year) |
 | `--as-of` | DATE | read this day as today (YYYY-MM-DD) |
 | `--json` |  | the rows a tool would show, as JSON |
+
+### `jason attention`
+
+What needs attention across the governance systems: clocks passed or near, questions open, follow-ups owed; most urgent first
+
+| Option | Value | Help |
+|---|---|---|
+| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake} | one section (repeatable) |
+| `--limit` | LIMIT | lines per section (default 8) |
+| `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
+| `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
+| `--private` |  | leave units out, as the board packet does |
+| `--json` |  | print JSON |
 
 ## Owners, requests, notices & forms
 
@@ -879,6 +1060,58 @@ Read the leases the Association holds: tenants and property managers
 | `--read` |  | read each with the local model |
 | `--model` | MODEL | the local model (default qwen3.5:9b) |
 
+### `jason notices`
+
+Each notice's delivery to every member, bounces and returns, and the follow-ups the law asks for
+
+| Option | Value | Help |
+|---|---|---|
+| `key` | optional (?) | the notice: its batches' id prefix (owner-info-2027) |
+| `--mark-general` |  | with KEY, --posted, and --by: record that the notice is a general notice (CIV 4045) that was posted, so every later reading (and jason attention) weighs a failed message as noted |
+| `--by` | BY | with --mark-general: who records it |
+| `--sync` |  | read the notice's batches and their outcomes from PayHOA (read-only) |
+| `--subject` | SUBJECT | with --sync: also every message in PayHOA's log whose subject contains this (a notice sent from PayHOA's screens: a meeting notice, a broadcast) |
+| `--since` | SINCE | with --sync: the day the notice went out (default: its first batch's) |
+| `--general` |  | a general notice (Civil Code 4045: a meeting notice) that was also posted where the annual policy statement designates, so the posting delivered it: a failed message is noted, a resend is owed only to a member who asked for individual delivery (4045(b)), and a bounce still asks for a working email. Not posted: leave this off, since the messages were the delivery |
+| `--json` |  | print JSON |
+| `--catalog` |  | the notice requirements the law sets (no KEY: all of them; KEY: one, with the governing documents' clauses and the stricter clock). Reads no PayHOA |
+| `--proof` |  | the proof-of-notice record for KEY: the evidence its requirement calls for, the window, and who was reached late, from the ledger (sync first) |
+| `--requirement` | REQUIREMENT | with --proof: the catalog key, when KEY does not start with one |
+| `--event` | EVENT | with --proof: the day of the meeting, hearing, due date, or other anchor |
+| `--sent` | SENT | with --proof: the day it was mailed or sent (default: the ledger's first attempt) |
+| `--posted` | POSTED | with --proof --general: the day it was posted; with --mark-general: where and when it was posted, with the day as YYYY-MM-DD ("the posting board, 2099-01-10"), which dates the notice's delivery (jason://notice/KEY) |
+| `--have` | HAVE | with --proof: evidence on file, comma-separated (text_as_sent,mailing_declaration) |
+
+### `jason notice-check`
+
+Check notices and jason's base templates for the elements the law requires (read-only)
+
+| Option | Value | Help |
+|---|---|---|
+| `keys` | optional (*) | the requirement keys to check (default: every base template) |
+| `--file` | PATH | a rendered notice to check instead of the bases |
+| `--requirement` | KEY | with --file: the catalog requirement it serves |
+| `--no-law` |  | leave out the statements of law and the statutes' words |
+| `--json` |  | print the findings as JSON |
+
+### `jason respond`
+
+Each request of the association: its kind, its clock, its owner, and whether the answer is on time
+
+| Option | Value | Help |
+|---|---|---|
+| `--all` |  | also the answered requests, and how many were on time |
+| `--kind` | KIND | one kind (records request, maintenance request, ...) |
+| `--limit` | LIMIT |  |
+| `--no-email` |  | leave out members' requests made by email |
+| `--sources` |  | add the leads to where each answer is written: governing document passages, library documents, and precedent violations for a complaint |
+| `--draft` | ID\|all | draft the acknowledgment for an open, unacknowledged request (or all of them), for a person to read and send |
+| `--gmail` |  | with --draft: an email request's acknowledgment as a Gmail draft reply in its thread (dry run unless --yes; never sent) |
+| `--to` | ADDRESS | with --gmail: the recipient, instead of the writer of the thread's last message |
+| `--yes` |  | with --draft --gmail: save the Gmail drafts (default: dry run) |
+| `--measure` | GOLD | score the kinds against the hand-labelled gold set (data/responses/kind-gold.json) |
+| `--json` |  | print JSON |
+
 ## Law, legal, insurance & claims
 
 ### `jason export-authorities`
@@ -1064,6 +1297,19 @@ Map provisions between two versions of the Davis-Stirling Act (former 1350-1378 
 | `--before` | BEFORE | with --amended: the earlier edition (2023) |
 | `--after` | AFTER | with --amended: the later edition (2025) |
 | `--json` |  | Print JSON |
+
+### `jason conflicts`
+
+Written provisions a higher authority displaces: what still governs and what yields (Civil Code 4205)
+
+| Option | Value | Help |
+|---|---|---|
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing, onboarding |
+| `--open` |  | leave out the resolved ones |
+| `--leads` |  | find candidates: each change in the Davis-Stirling Act since 2014 that may postdate a document, with the section that cites it or speaks to its subject (reads the stored outlines and law history) |
+| `--document` | DOCUMENT | with --leads: one document's outline key (bylaws, enforcement-policy) |
+| `--since` | SINCE | with --leads: only changes operative on or after this date (2026-01-01: this year's laws) |
+| `--json` |  | print JSON |
 
 ## Google Workspace
 
@@ -1606,15 +1852,13 @@ Run the job queue: one job at a time per resource (GPU, Google, PayHOA, local)
 | `--once` |  | Stop when nothing is due |
 | `--poll` | POLL | Seconds between looks at the queue |
 
-## Other
-
 ### `jason lessons`
 
 What went wrong, what changed, and what is still open
 
 | Option | Value | Help |
 |---|---|---|
-| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing |
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing, onboarding |
 | `--open` |  | only lessons still to act on (open or awaiting a decision) |
 | `--json` |  | print JSON |
 
@@ -1626,199 +1870,25 @@ Standard operating procedures: a task's steps, commands, checks, and reading
 |---|---|---|
 | `key` | optional (?) | the procedure to print (none: list them) |
 
-### `jason conflicts`
+### `jason onboard`
 
-Written provisions a higher authority displaces: what still governs and what yields (Civil Code 4205)
-
-| Option | Value | Help |
-|---|---|---|
-| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing |
-| `--open` |  | leave out the resolved ones |
-| `--leads` |  | find candidates: each change in the Davis-Stirling Act since 2014 that may postdate a document, with the section that cites it or speaks to its subject (reads the stored outlines and law history) |
-| `--document` | DOCUMENT | with --leads: one document's outline key (bylaws, enforcement-policy) |
-| `--since` | SINCE | with --leads: only changes operative on or after this date (2026-01-01: this year's laws) |
-| `--json` |  | print JSON |
-
-### `jason notices`
-
-Each notice's delivery to every member, bounces and returns, and the follow-ups the law asks for
+Onboarding as a session: progress, stage gates, and the next questions ranked by what each answer unblocks; the checklist; answers that become records
 
 | Option | Value | Help |
 |---|---|---|
-| `key` | optional (?) | the notice: its batches' id prefix (owner-info-2027) |
-| `--mark-general` |  | with KEY, --posted, and --by: record that the notice is a general notice (CIV 4045) that was posted, so every later reading (and jason attention) weighs a failed message as noted |
-| `--by` | BY | with --mark-general: who records it |
-| `--sync` |  | read the notice's batches and their outcomes from PayHOA (read-only) |
-| `--subject` | SUBJECT | with --sync: also every message in PayHOA's log whose subject contains this (a notice sent from PayHOA's screens: a meeting notice, a broadcast) |
-| `--since` | SINCE | with --sync: the day the notice went out (default: its first batch's) |
-| `--general` |  | a general notice (Civil Code 4045: a meeting notice) that was also posted where the annual policy statement designates, so the posting delivered it: a failed message is noted, a resend is owed only to a member who asked for individual delivery (4045(b)), and a bounce still asks for a working email. Not posted: leave this off, since the messages were the delivery |
-| `--json` |  | print JSON |
-| `--catalog` |  | the notice requirements the law sets (no KEY: all of them; KEY: one, with the governing documents' clauses and the stricter clock). Reads no PayHOA |
-| `--proof` |  | the proof-of-notice record for KEY: the evidence its requirement calls for, the window, and who was reached late, from the ledger (sync first) |
-| `--requirement` | REQUIREMENT | with --proof: the catalog key, when KEY does not start with one |
-| `--event` | EVENT | with --proof: the day of the meeting, hearing, due date, or other anchor |
-| `--sent` | SENT | with --proof: the day it was mailed or sent (default: the ledger's first attempt) |
-| `--posted` | POSTED | with --proof --general: the day it was posted; with --mark-general: where and when it was posted |
-| `--have` | HAVE | with --proof: evidence on file, comma-separated (text_as_sent,mailing_declaration) |
-
-### `jason living`
-
-Documents kept as amended: the current text from the base and the amendments in effect, with provenance, drift, and annotations
-
-| Option | Value | Help |
-|---|---|---|
-| `key` | optional (?) | the document (ccrs); none lists them |
-| `--fetch` |  | read the Docs again first (read-only) |
-| `--working` |  | compare the working copy kept by hand: the amended sections |
-| `--all-sections` |  | compare every section of the working copy (a base read by OCR differs mostly by its slips) |
-| `--as-of` | AS_OF | the text in force on this date (YYYY-MM-DD) |
-| `--redline` | INSTRUMENT | an amendment's words with their marks (ccrs-2nd-amendment) |
-| `--section` | SECTION | one provision with its history (4.15(a)) |
-| `--annotations` |  | read the working copy's comments (read-only) into data/annotations and place them |
-| `--reread` | {cli,pymupdf} | read a scanned base again (cli: Tesseract's tool) beside the reading in use; migrate the transcriptions and write the comparison (a dry run: nothing in use changes) |
-| `--no-lexicon` |  | with --reread: count questions without the text rules |
-| `--numbering` | {text,labels,aligned} | with --reread: how both readings get their section numbers (default: as builds number them); a switch needs a dry run numbered as the builds are |
-| `--use-reread` | {cli,pymupdf} | switch to a re-read (a person's decision; needs --yes --by NAME and a dry run first) |
-| `--yes` |  | with --use-reread: switch |
-| `--by` | BY | with --use-reread: the person who chose it |
-
-### `jason section-refs`
-
-Embedded references ({QUOTE:ccrs#4.2(b)}, {CITE:...}) in place of copied governing-document passages; find the copies; compile the guide
-
-| Option | Value | Help |
-|---|---|---|
-| `--show` | KEY#N | print a section as a quote renders it (ccrs#4.2(b)) |
-| `--as-of` | AS_OF | with --show: the words in force on this date (YYYY-MM-DD) |
-| `--render` | FILE | fill a Markdown or HTML file's references; writes --out and its .refs.json record |
-| `--out` | OUT | with --render: where to write (default FILE.rendered.EXT beside it) |
-| `--check` | FILE | resolve the references in files; fail on any that cannot be filled |
-| `--scan` |  | find copies of the sections in other documents (read-only) |
-| `--document` | KEY | with --scan or --patch: the documents to look for (default: those kept as amended) |
-| `--no-library` |  | with --scan: leave the library's extracts out |
-| `--confidential` |  | with --scan: include confidential library files |
-| `--patch` |  | show the tokens that would replace whole-section copies in jason's own sources |
-| `--apply` | PATH | write the proposal for this file (needs --yes) |
-| `--yes` |  | with --apply: write it |
-| `--guide` | KEY | compile the guide to the documents (default: all) in data/section-refs/guide |
-| `--refresh` |  | rebuild the cached versions of the living documents first |
-
-### `jason cite`
-
-Cite and recite the association's documents and records (Declaration 6.2(a), Resolution N, Doc. No. N, minutes, CIV 4920(a)); follow references both ways
-
-| Option | Value | Help |
-|---|---|---|
-| `expression` | optional (?) | what to cite: "Declaration 6.2(a)", "Section 6.2(a) of the Declaration", "Resolution 20990101-1", decl#6.2(a)@2099-01-01 |
-| `--as-of` | AS_OF | the words in force on this date (YYYY-MM-DD) |
-| `--refs` |  | follow what it cites |
-| `--hops` | HOPS | with --refs: how many hops (default 1); all follows until a target repeats |
-| `--same` |  | with --refs: stay inside this document |
-| `--only` | ONLY | with --refs: follow only these kinds (statute,section,document,resolution,instrument) |
-| `--cited-by` |  | what names it: the governing documents and jason's own records, with how the cited words stand now |
-| `--no-text` |  | leave the words out |
-| `--md` |  | print a Markdown page |
-| `--chart` |  | print the reference walk as a Mermaid flowchart |
-| `--json` |  | print the full answer as JSON |
-| `--survey` |  | resolve every reference the governing documents make |
-| `--stale` |  | citing records whose cited words are gone or changed (exit 1 when any) |
-| `--most-cited` | N | the sections and statutes named most (default 30) |
-
-### `jason intake`
-
-Questions jason could not decide while taking documents in: classify, OCR readings, amendments, drift, orphaned notes
-
-| Option | Value | Help |
-|---|---|---|
-| `--scan` |  | run the readers and park each uncertainty as a question |
-| `--kind` | KIND | list one kind (classify, ocr reading, drift, before differs, ...) |
-| `--subject` | SUBJECT | list one subject's questions (a prefix: ccrs#4.15, library:) |
-| `--likely` |  | list only the likely ones |
-| `--limit` | LIMIT |  |
-| `--answer` | ID TEXT | answer one (a choice's number or words; dismiss) |
-| `--accept-likely` |  | answer every open likely OCR reading with its suggestion (after looking at --likely) |
-| `--by` | BY | the person answering (required to answer) |
-| `--apply` |  | turn answers into the records the next run uses |
-| `--model` |  | with --scan: the local text model reads the doubtful words too (a second reader) |
-| `--vision` |  | with --scan: the vision model reads the page's crop of a number or operative word in doubt |
-| `--library-ocr` |  | write OCR suggestions beside the library's OCR texts and list the worst-read files |
-| `--library-kind` | LIBRARY_KIND | with --library-ocr: only this kind (repeatable) |
-
-### `jason schedule`
-
-Who does each duty and when: what falls due, the assignments, and the duties nobody owns
-
-| Option | Value | Help |
-|---|---|---|
-| `--days` | DAYS | how far ahead (default 60) |
-| `--past` | PAST | how far back, for what is overdue (default 30) |
-| `--role` | ROLE | one role's items (treasurer, secretary, board, ...) |
-| `--assignments` |  | list the assignments and their standing |
-| `--coverage` |  | the duties no assignment covers |
-| `--limit` | LIMIT |  |
-| `--done` | KEY DUE | record an occurrence done (with --by, --evidence) |
-| `--on` | ON | with --done: the day it was done (default today); with --people: the day read as today |
-| `--by` | BY | with --done: who did it |
-| `--evidence` | EVIDENCE | with --done: what shows it (the minutes' date and item, a payment, a proof) |
-| `--calendar` |  | each dated occurrence as an all-day event on Google Calendar (dry run unless --yes) |
-| `--tasks` |  | each open occurrence as a Google Task on its role's list; a task checked off is recorded done (dry run unless --yes) |
-| `--calendar-id` | CALENDAR_ID | with --calendar: the calendar (default primary) |
-| `--months` | MONTHS | with --calendar or --tasks: months ahead (default 3) |
-| `--plan-only` |  | with --calendar or --tasks: the plan from disk, no Google call |
-| `--yes` |  | with --calendar or --tasks: write to Google |
-| `--read-google` |  | read the calendar's events and every Google Tasks list into the private store (reads only; never signs in) |
-| `--people` |  | people's own tasks and events beside what jason tracks: covered, untracked recurring, one-off, stale (from the stored read) |
-| `--private` |  | with --people: print each rule's label, not the titles |
-| `--all` |  | with --people: every open item by its class |
-| `--json` |  | with --people: as JSON |
-
-### `jason schedule-evidence`
-
-Evidence on disk that each scheduled duty was done, proposed for a person to confirm and record
-
-| Option | Value | Help |
-|---|---|---|
-| `--since` | SINCE | from this day (YYYY-MM-DD; default a year ago) |
-| `--until` | UNTIL | to this day (YYYY-MM-DD; default today) |
-| `--key` | KEY | one assignment's occurrences (repeatable) |
-| `--all` |  | also list the occurrences with no evidence |
-| `--json` |  | the proposals as JSON |
-| `--record` | KEY DUE | record one occurrence a person confirms (with --by; --evidence to give your own) |
-| `--by` | BY | with --record: who read the evidence and confirms it |
-| `--on` | ON | with --record: the day it was done (default the evidence's date) |
-| `--evidence` | EVIDENCE | with --record: the evidence in the person's own words |
-| `--watch` |  | read forward instead: each board meeting's notice deadline (CIV 4920) and minutes deadline (4950(a)), and what is on record for each so far |
-| `--ahead` | AHEAD | with --watch: days ahead to look for meetings (default 60) |
-| `--past` | PAST | with --watch: days back a passed clock is still shown (default 30) |
-| `--as-of` | AS_OF | with --watch: the day to read as today (YYYY-MM-DD; default today) |
-
-### `jason respond`
-
-Each request of the association: its kind, its clock, its owner, and whether the answer is on time
-
-| Option | Value | Help |
-|---|---|---|
-| `--all` |  | also the answered requests, and how many were on time |
-| `--kind` | KIND | one kind (records request, maintenance request, ...) |
-| `--limit` | LIMIT |  |
-| `--no-email` |  | leave out members' requests made by email |
-| `--sources` |  | add the leads to where each answer is written: governing document passages, library documents, and precedent violations for a complaint |
-| `--draft` | ID\|all | draft the acknowledgment for an open, unacknowledged request (or all of them), for a person to read and send |
-| `--gmail` |  | with --draft: an email request's acknowledgment as a Gmail draft reply in its thread (dry run unless --yes; never sent) |
-| `--to` | ADDRESS | with --gmail: the recipient, instead of the writer of the thread's last message |
-| `--yes` |  | with --draft --gmail: save the Gmail drafts (default: dry run) |
-| `--measure` | GOLD | score the kinds against the hand-labelled gold set (data/responses/kind-gold.json) |
-| `--json` |  | print JSON |
-
-### `jason attention`
-
-What needs attention across the governance systems: clocks passed or near, questions open, follow-ups owed; most urgent first
-
-| Option | Value | Help |
-|---|---|---|
-| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake} | one section (repeatable) |
-| `--limit` | LIMIT | lines per section (default 8) |
-| `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
-| `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
-| `--private` |  | leave units out, as the board packet does |
+| `--questions` |  | list the open questions by priority (--group, --stage, --limit) |
+| `--stage` | STAGE | with --questions: one stage (start, ingest, establish, operate, adopt) |
+| `--limit` | LIMIT | with --questions: how many (default 20) |
+| `--scan` |  | park the onboarding questions in the intake queue (data/intake) |
+| `--answer` | ID TEXT | answer one question (a choice's number or words; dismiss); a secret is refused, never stored |
+| `--confirm` | ID | a second person confirms a high-stakes answer (with --by) |
+| `--by` | BY | the person answering or confirming (required to answer or confirm) |
+| `--apply` |  | turn answers into records: private facts (with a backup and a diff), Keeper notes, proposed profile patches in data/onboarding/proposals/ |
+| `--replace` |  | with --apply: let a new answer replace a different private fact |
+| `--checklist` |  | check each item: present, partial, or missing, with the evidence |
+| `--items` |  | print the checklist itself: each item, why, where it comes from, and what it fills |
+| `--request` | SOURCE | print the items to ask one source for (default: the prior manager) |
+| `--group` | GROUP | one group, e.g. finance or insurance (the checklist, or --questions) |
+| `--status` | {present,partial,missing} | with --checklist: only items with this status |
+| `--write` |  | with --checklist: keep the report in data/onboarding/ (private) |
 | `--json` |  | print JSON |

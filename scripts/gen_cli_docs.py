@@ -88,7 +88,22 @@ GROUPS: dict[str, str] = {
     "calendar": "Meetings, board & minutes",
     "rule-change": "Meetings, board & minutes",
     "record-stages": "Meetings, board & minutes",
+    "schedule": "Meetings, board & minutes",
+    "schedule-evidence": "Meetings, board & minutes",
+    "attention": "Meetings, board & minutes",
     # Owners, requests, notices & forms
+    "notices": "Owners, requests, notices & forms",
+    "respond": "Owners, requests, notices & forms",
+    # Documents & library
+    "living": "Documents & library",
+    "section-refs": "Documents & library",
+    "cite": "Documents & library",
+    "intake": "Documents & library",
+    # Law, legal, insurance & claims
+    "conflicts": "Law, legal, insurance & claims",
+    # Setup & maintenance
+    "lessons": "Setup & maintenance",
+    "sop": "Setup & maintenance",
     "request-sheet": "Owners, requests, notices & forms",
     "notice-check": "Owners, requests, notices & forms",
     "export-requests": "Owners, requests, notices & forms",
