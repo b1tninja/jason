@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-135 commands, by area:
+138 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (18)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (5)
 - [Setup & maintenance](#setup--maintenance) (3)
-- [Other](#other) (8)
+- [Other](#other) (11)
 
 ## PayHOA & finance
 
@@ -1632,6 +1632,8 @@ Each notice's delivery to every member, bounces and returns, and the follow-ups 
 | Option | Value | Help |
 |---|---|---|
 | `key` | optional (?) | the notice: its batches' id prefix (owner-info-2027) |
+| `--mark-general` |  | with KEY, --posted, and --by: record that the notice is a general notice (CIV 4045) that was posted, so every later reading (and jason attention) weighs a failed message as noted |
+| `--by` | BY | with --mark-general: who records it |
 | `--sync` |  | read the notice's batches and their outcomes from PayHOA (read-only) |
 | `--subject` | SUBJECT | with --sync: also every message in PayHOA's log whose subject contains this (a notice sent from PayHOA's screens: a meeting notice, a broadcast) |
 | `--since` | SINCE | with --sync: the day the notice went out (default: its first batch's) |
@@ -1642,7 +1644,7 @@ Each notice's delivery to every member, bounces and returns, and the follow-ups 
 | `--requirement` | REQUIREMENT | with --proof: the catalog key, when KEY does not start with one |
 | `--event` | EVENT | with --proof: the day of the meeting, hearing, due date, or other anchor |
 | `--sent` | SENT | with --proof: the day it was mailed or sent (default: the ledger's first attempt) |
-| `--posted` | POSTED | with --proof --general: the day it was posted |
+| `--posted` | POSTED | with --proof --general: the day it was posted; with --mark-general: where and when it was posted |
 | `--have` | HAVE | with --proof: evidence on file, comma-separated (text_as_sent,mailing_declaration) |
 
 ### `jason living`
@@ -1659,6 +1661,33 @@ Documents kept as amended: the current text from the base and the amendments in 
 | `--redline` | INSTRUMENT | an amendment's words with their marks (ccrs-2nd-amendment) |
 | `--section` | SECTION | one provision with its history (4.15(a)) |
 | `--annotations` |  | read the working copy's comments (read-only) into data/annotations and place them |
+| `--reread` | {cli,pymupdf} | read a scanned base again (cli: Tesseract's tool) beside the reading in use; migrate the transcriptions and write the comparison (a dry run: nothing in use changes) |
+| `--no-lexicon` |  | with --reread: count questions without the text rules |
+| `--numbering` | {text,labels,aligned} | with --reread: how both readings get their section numbers (default: as builds number them); a switch needs a dry run numbered as the builds are |
+| `--use-reread` | {cli,pymupdf} | switch to a re-read (a person's decision; needs --yes --by NAME and a dry run first) |
+| `--yes` |  | with --use-reread: switch |
+| `--by` | BY | with --use-reread: the person who chose it |
+
+### `jason section-refs`
+
+Embedded references ({QUOTE:ccrs#4.2(b)}, {CITE:...}) in place of copied governing-document passages; find the copies; compile the guide
+
+| Option | Value | Help |
+|---|---|---|
+| `--show` | KEY#N | print a section as a quote renders it (ccrs#4.2(b)) |
+| `--as-of` | AS_OF | with --show: the words in force on this date (YYYY-MM-DD) |
+| `--render` | FILE | fill a Markdown or HTML file's references; writes --out and its .refs.json record |
+| `--out` | OUT | with --render: where to write (default FILE.rendered.EXT beside it) |
+| `--check` | FILE | resolve the references in files; fail on any that cannot be filled |
+| `--scan` |  | find copies of the sections in other documents (read-only) |
+| `--document` | KEY | with --scan or --patch: the documents to look for (default: those kept as amended) |
+| `--no-library` |  | with --scan: leave the library's extracts out |
+| `--confidential` |  | with --scan: include confidential library files |
+| `--patch` |  | show the tokens that would replace whole-section copies in jason's own sources |
+| `--apply` | PATH | write the proposal for this file (needs --yes) |
+| `--yes` |  | with --apply: write it |
+| `--guide` | KEY | compile the guide to the documents (default: all) in data/section-refs/guide |
+| `--refresh` |  | rebuild the cached versions of the living documents first |
 
 ### `jason intake`
 
@@ -1696,6 +1725,32 @@ Who does each duty and when: what falls due, the assignments, and the duties nob
 | `--on` | ON | with --done: the day it was done (default today) |
 | `--by` | BY | with --done: who did it |
 | `--evidence` | EVIDENCE | with --done: what shows it (the minutes' date and item, a payment, a proof) |
+| `--calendar` |  | each dated occurrence as an all-day event on Google Calendar (dry run unless --yes) |
+| `--tasks` |  | each open occurrence as a Google Task on its role's list; a task checked off is recorded done (dry run unless --yes) |
+| `--calendar-id` | CALENDAR_ID | with --calendar: the calendar (default primary) |
+| `--months` | MONTHS | with --calendar or --tasks: months ahead (default 3) |
+| `--plan-only` |  | with --calendar or --tasks: the plan from disk, no Google call |
+| `--yes` |  | with --calendar or --tasks: write to Google |
+
+### `jason schedule-evidence`
+
+Evidence on disk that each scheduled duty was done, proposed for a person to confirm and record
+
+| Option | Value | Help |
+|---|---|---|
+| `--since` | SINCE | from this day (YYYY-MM-DD; default a year ago) |
+| `--until` | UNTIL | to this day (YYYY-MM-DD; default today) |
+| `--key` | KEY | one assignment's occurrences (repeatable) |
+| `--all` |  | also list the occurrences with no evidence |
+| `--json` |  | the proposals as JSON |
+| `--record` | KEY DUE | record one occurrence a person confirms (with --by; --evidence to give your own) |
+| `--by` | BY | with --record: who read the evidence and confirms it |
+| `--on` | ON | with --record: the day it was done (default the evidence's date) |
+| `--evidence` | EVIDENCE | with --record: the evidence in the person's own words |
+| `--watch` |  | read forward instead: each board meeting's notice deadline (CIV 4920) and minutes deadline (4950(a)), and what is on record for each so far |
+| `--ahead` | AHEAD | with --watch: days ahead to look for meetings (default 60) |
+| `--past` | PAST | with --watch: days back a passed clock is still shown (default 30) |
+| `--as-of` | AS_OF | with --watch: the day to read as today (YYYY-MM-DD; default today) |
 
 ### `jason respond`
 
@@ -1707,5 +1762,23 @@ Each request of the association: its kind, its clock, its owner, and whether the
 | `--kind` | KIND | one kind (records request, maintenance request, ...) |
 | `--limit` | LIMIT |  |
 | `--no-email` |  | leave out members' requests made by email |
+| `--sources` |  | add the leads to where each answer is written: governing document passages, library documents, and precedent violations for a complaint |
 | `--draft` | ID\|all | draft the acknowledgment for an open, unacknowledged request (or all of them), for a person to read and send |
+| `--gmail` |  | with --draft: an email request's acknowledgment as a Gmail draft reply in its thread (dry run unless --yes; never sent) |
+| `--to` | ADDRESS | with --gmail: the recipient, instead of the writer of the thread's last message |
+| `--yes` |  | with --draft --gmail: save the Gmail drafts (default: dry run) |
+| `--measure` | GOLD | score the kinds against the hand-labelled gold set (data/responses/kind-gold.json) |
+| `--json` |  | print JSON |
+
+### `jason attention`
+
+What needs attention across the governance systems: clocks passed or near, questions open, follow-ups owed; most urgent first
+
+| Option | Value | Help |
+|---|---|---|
+| `--section` | {meetings,requests,schedule,notices,living,conflicts,duties,intake} | one section (repeatable) |
+| `--limit` | LIMIT | lines per section (default 8) |
+| `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
+| `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
+| `--private` |  | leave units out, as the board packet does |
 | `--json` |  | print JSON |

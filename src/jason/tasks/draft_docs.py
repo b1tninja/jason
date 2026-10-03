@@ -136,8 +136,11 @@ def push_markdown(drive: Any, source: Path, *, name: str, folder: str, letterhea
     from jason.google.docs_markdown import LETTER, REPORT
     from jason.tasks.letters import markdown_doc
 
+    from jason.tasks.section_refs import fill_markdown
+
     entry = state.get(source.name) or {}
-    text, _ = fill_help_markdown(source.read_text(encoding="utf-8"), articles)
+    text, _ = fill_markdown(source.read_text(encoding="utf-8"))     # {QUOTE:ccrs#4.2(b)}: raises on a bad reference
+    text, _ = fill_help_markdown(text, articles)
     made = markdown_doc(drive, drive.docs(), link_citations_markdown(text).splitlines(), name=name,
                         folder_id=folder, letterhead_id=letterhead_id, footer=footer, doc_id=entry.get("docId", ""),
                         style=LETTER if style == "letter" else REPORT,

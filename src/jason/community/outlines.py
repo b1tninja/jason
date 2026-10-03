@@ -33,6 +33,8 @@ class CitableDocument:
     written: str = ""                      # when its text was adopted or last restated: "2007-09-17", or "2024" when the
                                            # evidence gives only the year; empty when unknown
     written_from: str = ""                 # the evidence for ``written``
+    cite_as: str = ""                      # the short name a citation uses ("Bylaws" in "Bylaws Section 7.2"); empty
+                                           # for the title (``jason.community.section_refs.citation_of``)
 
 
 @dataclass

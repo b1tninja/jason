@@ -108,8 +108,9 @@ def fill_letter(ref: str, values: dict[str, str]) -> tuple[str, list[str]]:
     carries ``EMAIL_SUBJECT`` when the values have one), and the tokens left open (a QR token whose value is not a link
     yet among them)."""
     from jason.community.qr import fill_qr_tokens
+    from jason.tasks.section_refs import fill_html
 
-    text = letter_text(ref)
+    text, _ = fill_html(letter_text(ref))       # {QUOTE:ccrs#4.2(b)}, {CITE:...}: raises on a reference that cannot be filled
     left = [t for t in dict.fromkeys(TOKEN.findall(text)) if not values.get(t)]
     # a value of several lines (an address block) keeps its lines; a ``*_LIST`` token's lines are list items
     def value(name: str) -> str:
@@ -207,7 +208,10 @@ def template_markdown(source: str) -> list[str]:
         key = source.split(":", 1)[1]
         form = next(f for f in spec_module("forms").FORM_TEMPLATES if f.key.value == key)
         return paper_markdown(form, preamble=FORM_PREAMBLE, closing=FORM_CLOSING)
-    return template_file(source).read_text(encoding="utf-8").splitlines()
+    from jason.tasks.section_refs import fill_markdown
+
+    text, _ = fill_markdown(template_file(source).read_text(encoding="utf-8"))   # {QUOTE:...}/{CITE:...}; raises on a bad one
+    return text.splitlines()
 
 
 LINE_BOX = 11.0          # points a line of underscores takes at the template's 11 point text; the rest of a writing

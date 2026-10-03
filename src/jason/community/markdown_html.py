@@ -103,8 +103,17 @@ def render(markdown: str | list[str]) -> str:
 
 
 def message_html(text: str, suffix: str) -> str:
-    """A message file's body as HTML: rendered from Markdown (``.md``), else as written."""
-    return render(text) if suffix.lower() in (".md", ".markdown") else text
+    """A message file's body as HTML: rendered from Markdown (``.md``), else as written. Its references to governing
+    document sections (``{QUOTE:ccrs#4.2(b)}``, ``{CITE:...}``; ``jason.community.section_refs``) are filled first;
+    one that cannot be filled raises ``SectionRefError`` and the message is not made."""
+    from jason.community.section_refs import TOKEN
+
+    markdown = suffix.lower() in (".md", ".markdown")
+    if TOKEN.search(text or ""):
+        from jason.tasks.section_refs import fill_html, fill_markdown
+
+        text, _ = (fill_markdown if markdown else fill_html)(text)
+    return render(text) if markdown else text
 
 
 __all__ = ["message_html", "render"]

@@ -42,6 +42,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [attention.md](attention.md): what needs attention across the governance systems in one digest, most urgent first (`jason attention`, `governance_digest`, `{REPORT:attention}`).
 - [intake.md](intake.md): taking documents in: the questions jason parks for a person (classification, OCR readings, an amendment's silent changes, drift), and answers kept as records.
 - [living-documents.md](living-documents.md): each governing document as amended, section by section, with the instrument that set its words; corrections and annotations kept apart.
+- [embedded-references.md](embedded-references.md): `{QUOTE:key#n}` and `{CITE:key#n}` in place of copied governing-document passages; finding the copies (current, stale, draft) and who may change them; the compiled guide agents read.
 - [document-duties.md](document-duties.md): the duties, prohibitions, permissions, rights, and conditions the governing documents state, read by a phrase grammar and a local model, measured, and reviewed by a person.
 - [ocr-correction.md](ocr-correction.md): reading OCR into words: the English prior (Gov. Code 27293), the text rules, local models and word crops as second readers, agreement as confidence, and the measurements.
 - [document-tools.md](document-tools.md): the open-source tools for the scans (Ollama, AnythingLLM, OCR engines) and how each joins jason.

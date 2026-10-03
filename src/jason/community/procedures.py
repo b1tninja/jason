@@ -214,6 +214,12 @@ PROCEDURES: tuple[Procedure, ...] = (
                  lessons=("law-outdates-provisions",)),
             Step("Check jason's own rules and pages for the same changes.",
                  command="jason law-history --sweep --since YEAR", check="data/reports/law-sweep.md"),
+            Step("After an amendment is recorded (and each January), find the copies of each changed section: stale "
+                 "copies in adopted documents are findings for their next revision and conflict leads; jason's own "
+                 "bases are patched to tokens on a person's word.",
+                 command="jason section-refs --refresh --scan --guide; jason section-refs --patch",
+                 check="no stale copy in a base jason renders; the guide rebuilt",
+                 refs=("docs/embedded-references.md",), lessons=("copied-passages-go-stale",)),
             Step("Put each new conflict on the board's action register, and carry them into the next packet.",
                  command="jason board --set ITEM ...", refs=("{REPORT:conflicts}",), person=True),
         ),
@@ -362,6 +368,10 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Write it in Markdown under data/drafts (pictures as ![alt](file){width=560}).",
                  refs=("docs/drafts-and-forms.md (one Markdown source)",), lessons=("one-source-per-document",)),
+            Step("Quote a governing-document section as {QUOTE:key#n} (or cite it as {CITE:key#n}), never a pasted copy, "
+                 "and check the references before sending.", command="jason section-refs --check FILE",
+                 check="every reference fills; a quote noted 'check before sending' is read against the recorded copy",
+                 refs=("docs/embedded-references.md",), lessons=("copied-passages-go-stale", "quotes-carry-ocr-slips")),
             Step("Keep its Doc on the letterhead for review.", command="jason broadcast FILE.md --to-doc --yes"),
             Step("For a page to post or attach, export the PDF.",
                  command="jason letter --markdown FILE.md --pdf OUT.pdf --yes", refs=("docs/letters.md",)),

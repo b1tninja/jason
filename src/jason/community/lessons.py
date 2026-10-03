@@ -319,6 +319,32 @@ LESSONS: tuple[Lesson, ...] = (
                                  "tests/test_outline_labels.py (another engine's failure patterns)",
                                  "procedure document-intake (re-read step)"),
            docs=("docs/living-documents.md (Re-reading a base)",)),
+    Lesson("copied-passages-go-stale", OCT_2026, (Area.GOVERNING, Area.DOCUMENTS),
+           "Notices, templates, rules, and vendor forms carry copies of governing-document sections, and a copy keeps "
+           "the words of the day it was made after an amendment changes the section.",
+           "A pasted passage has no link back to the section it copies.",
+           "jason's own documents quote by reference ({QUOTE:key#n}, {CITE:key#n}), filled from the living document "
+           "when rendered and refusing to render on a miss; a scan finds copies elsewhere and marks each current, stale, "
+           "or draft. Adopted documents are not edited: a stale copy is a finding for their next revision.",
+           Status.OPEN, guards=("jason.community.section_refs (fail-loud rendering)", "jason section-refs --scan",
+                                "tests/test_section_refs.py", "procedure owner-document", "procedure law-review"),
+           docs=("docs/embedded-references.md",),
+           notes=("Fixed for jason's sources; open for adopted documents until their next revision.",)),
+    Lesson("quotes-carry-ocr-slips", OCT_2026, (Area.DOCUMENTS,),
+           "A section quoted from a base read by OCR prints the OCR's run-together words to owners.",
+           "The living text is built from the recorded scan; transcriptions do not yet cover every section.",
+           "A quote takes the working copy's spacing only where its letters are identical, and otherwise carries a "
+           "note to check it before sending.",
+           Status.OPEN, guards=("section_refs DiskResolver typesetting note",),
+           docs=("docs/embedded-references.md",)),
+    Lesson("base-swallows-notary-page", OCT_2026, (Area.DOCUMENTS,),
+           "The last section of a base read by OCR ran into the signature page and notary acknowledgment, so the copy "
+           "detector matched unrelated deeds by their notary text.",
+           "The outline reader ends a section only at the next label, and the execution block has none.",
+           "The detector drops runs common to many documents and requires an excerpt to cover part of its section; "
+           "the base reading still needs the execution block split off.",
+           Status.OPEN, guards=("embedded_copies boilerplate filter and EXCERPT_COVERAGE",),
+           docs=("docs/embedded-references.md",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
