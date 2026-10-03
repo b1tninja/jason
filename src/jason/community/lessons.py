@@ -717,8 +717,9 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("profile-root-finds-jason-subpackages", OCT_2026, (Area.ONBOARDING,),
            "A profile key such as 'tasks' would resolve to jason's own subpackage.",
            "The profile loader walks every parent of jason's community package.",
-           "The scaffold refuses such keys; the loader itself should skip jason's tree.",
-           Status.OPEN, guards=("profile_scaffold key refusal",)),
+           "The scaffold refuses such keys, and the loader skips jason's own tree.",
+           Status.FIXED, guards=("profile_scaffold key refusal", "profile.profile_root",
+                                 "tests/test_profile.py (jason's subpackages are never a profile)")),
     Lesson("recorder-empty-or-unreachable", OCT_2026, (Area.ONBOARDING,),
            "A county recorder search returns no rows when its session fails to open, so 'nothing recorded' and "
            "'index unreachable' look the same.",

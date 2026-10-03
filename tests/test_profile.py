@@ -174,3 +174,9 @@ def test_general_code_reads_the_letterhead_and_folders_through_the_interface():
     readers = [p.relative_to(source).as_posix() for p in source.rglob("*.py")
                if 'spec_module("templates")' in p.read_text(encoding="utf-8")]
     assert readers == []
+
+
+def test_jasons_own_subpackages_are_never_a_profile():
+    from jason.community.profile import profile_root
+
+    assert profile_root("tasks") is None and profile_root("community") is None

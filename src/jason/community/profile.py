@@ -82,8 +82,11 @@ def profile_root(name: str | None = None) -> Path | None:
             return root
         raise ProfileNotFound(f"JASON_PROFILE_DIR has no __init__.py: {root}")
     here = Path(__file__).resolve()
+    jason_tree = here.parents[1]                   # src/jason: its own subpackages are never a profile
     for parent in here.parents:
         for candidate in (parent / "profiles" / name, parent / name):
+            if candidate.resolve().is_relative_to(jason_tree):
+                continue
             if (candidate / "__init__.py").is_file():
                 return candidate
     return None
