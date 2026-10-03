@@ -1,6 +1,15 @@
 # Requests
 
-`/requests`, `/requests/{id}` · phase 2 · CLI: `jason respond`
+A new screen, `#/requests` (`?id=` for one request), in the Overview group · phase 2 · CLI: `jason respond`
+
+## In the console
+
+No screen lists every member request with its clock. Three screens hold parts of it:
+- **Inbox** (`#/inbox`, `open_items`) lists PayHOA requests pending among everything waiting on the association;
+- **Drafts** (`#/drafts`, `request_links.drafts`) lists emailed requests PayHOA does not have, each with the command that enters it;
+- **Records requests** (`#/records-requests`) handles one kind, a member's request for records, with its 5210 clock and the board's decisions.
+
+**What this spec adds:** the whole screen, from `jason respond`: every request with the clock that runs on it, who set that clock, its standing, the leads to where the answer is written, and the acknowledgment draft. The loader to add is `member-requests` (`?open=1`, `?id=`, `?sources=1`), over `jason.api.member_requests` and `acknowledgment_draft`. Records requests keep their own screen; this one links to it for that kind.
 
 ## Purpose and personas
 
@@ -60,8 +69,8 @@ Members' requests and their clocks: what each one is, when it came in, which clo
 | THE CLOCK                                                                                |
 | Received Sep 1, 2099 · due Oct 16, 2099 [13 days left] [Legal]                            |
 | Set by: the governing documents · owner: the board                                       |
-| [recitation] Declaration 8.2 ... the words whole, version in force, caveat ...           |
-| [reading-label: jason's reading] The 45 days run from the day the request was received.  |
+| [Recitation] Declaration 8.2 ... the words whole, version in force, caveat ...           |
+| [ReadingLabel: jason's reading] The 45 days run from the day the request was received.   |
 +------------------------------------------------------------------------------------------+
 | PAYHOA'S FIELDS                     | WHERE THE ANSWER IS WRITTEN (leads)                 |
 | Due date: Oct 15 · tags: ARC        | Declaration 8.2 [Document] · Rules R-3 [Document]   |
@@ -79,20 +88,20 @@ Members' requests and their clocks: what each one is, when it came in, which clo
 
 ## Components
 
-`page-header`, `data-table`, `filters-bar`, `status-badge` (`--overdue`, `--due-soon`, `--open`), `deadline-badge` (`--legal` when `clockSource` is a statute or the documents), `section-card`, `freshness`, `cli-hint`, `recitation`, `reading-label`, `evidence-chip`, `clock-row`, `states` (empty), `states` (unavailable).
+`ScreenHeader`, `DataTable`, `Pill` (the standing words), `DueDate`, `Card`, `Recitation`, `ReadingLabel`, `Evidence`, `Clock`, `Caveats` (verbatim), `Command`, `RemoteView`.
 
 ## Actions
 
 | Control | Does | Approval? | CLI |
 |---|---|---|---|
-| Filter | GET with `kind`, `standing`, `owner` (a role) | No | `jason respond --kind KIND` |
-| Show leads | Re-renders with `sources=True` | No | `jason respond --sources` |
+| Filter | the loader's `kind`, `standing`, `owner` (a role) | No | `jason respond --kind KIND` |
+| Show leads | Reads again with `sources=1` | No | `jason respond --sources` |
 | Copy the acknowledgment | Copies the draft text | No | `jason respond --draft ID` |
-| Save as a Gmail draft (an emailed request) | Plans `gmail.draft` (covers `respond --draft ID --gmail`) | **Creates an approval** (phase 3, R1) | `jason respond --draft ID --gmail` |
-| Enter an emailed request in PayHOA | Plans `payhoa.request.create`. The request is entered, never approved, denied, or assigned | **Creates an approval** (phase 3, R2, no undo: the owner sees it) | `jason request-links --create THREAD` |
-| Open the unit | `/members/units/{unit_id}` (roles that may) | No | — |
+| Save as a Gmail draft (an emailed request) | shown as a command; later the `gmail.draft` kind (phase 3) | Later: an approval (R1) | `jason respond --draft ID --gmail --yes` |
+| Enter an emailed request in PayHOA | the command `#/drafts` already shows; later `payhoa.request.create`. The request is entered, never approved, denied, or assigned | Later: an approval (R2, no undo: the owner sees it) | `jason request-links --create THREAD --yes` |
+| Open the unit | `#/members?unit=<id>`, once that screen exists | No | — |
 
-**Posting the acknowledgment to PayHOA is not a console action.** `jason request-comment ID "text"` posts a comment that PayHOA emails to the owner, and it has no dry run and no `--yes` today. Until it has a registry row and a gate ([approval-workflow.md](../approval-workflow.md#writes-with-no-gate-today)), the console shows the text to copy and says: "Send it from PayHOA, on the request's page." (Open question 3 in the report.)
+**Posting the acknowledgment to PayHOA is not a console action.** `jason request-comment ID "text"` posts a comment that PayHOA emails to the owner, and it has no dry run and no `--yes` today (lesson `google-writes-without-yes`). Until it has a gate and a registry row ([approval-workflow.md](../approval-workflow.md#writes-with-no-gate-today)), the console shows the text to copy and says: "Send it from PayHOA, on the request's page."
 
 ## States
 
@@ -109,10 +118,11 @@ Members' requests and their clocks: what each one is, when it came in, which clo
 - An emailed request's sender is shown by name; the address is P2, masked, with Show.
 - The thread's body is not on this screen. It opens in Gmail through its link.
 - Precedent violations among the leads show the unit and kind only; their detail is P3 in the private view.
+- The screen is not in the owner view. An owner asks for records through `#/records-requests?view=owner`, as built.
 
 ## Acceptance criteria
 
-1. The rendered HTML of both pages contains no button or link labeled approve, deny, assign, or close for a request.
+1. Neither the list nor one request has a button or link labeled approve, deny, assign, or close for a request.
 2. Rows sort as `member_requests` sorts them: open first, then by due day.
 3. Each standing renders with `responses._standing`'s words.
 4. A statute's clock links its recitation, and the recitation renders before any reading of it.

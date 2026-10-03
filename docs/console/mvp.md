@@ -1,155 +1,120 @@
-# The first build
+# From here: the first build, and what follows
 
-The MVP is:
-- `jason serve`;
-- the Today screen;
-- the Approvals screen, carrying one kind end to end: the owner-information cycle's PayHOA tags, and the request completions that follow them;
-- `jason approvals` in the CLI, read-only approvals tools in `jason-mcp`, and the audit log.
+The console is jason-ui served by jason-web ([architecture.md](architecture.md)). Much of what this page once listed as the first build already exists. This page says what is built, what the first build still needs (the engine's approvals in the browser), its acceptance criteria, how the CLI's `--yes` paths move onto approvals, what to do with the HTML prototype library, and the decisions still open.
 
-Every criterion below is a test, or a check a person makes once. A criterion names the function it relies on.
+## Built
 
-## Prerequisites in jason
+| Piece | Where | Notes |
+|---|---|---|
+| The console frame, the dock, and the screens | `ui/` (`ConsoleShell`, `SCREENS` in `App.tsx`), `src/jason/web/` | [web-ui.md](../web-ui.md) lists every view and loader |
+| Letters through their stages | `jason.tasks.approvals`, `#/approvals` (`ApprovalsInbox`, `DraftLetter`) | A board approval is a vote recorded by the president or the secretary with the meeting's date |
+| The board loop | `#/agenda`, `#/room`, `#/decisions`, `#/meetings`, `#/minutes-review` | Votes by name, the CIV 4930 guard, executive session as the host's act |
+| The approvals engine | `jason.approvals`: model, registry (`owner-info-tags`), store, audit, engine | `pytest tests/test_approvals.py` |
+| `jason approvals` | `jason.commands.approvals` | Plan, show, decide, submit, confirm, decline, withdraw, apply (check without `--yes`), audit |
+| Read-only MCP tools | `approvals_list`, `approval_show` (governance profile) | No tool decides or applies |
+| The CLI's `--yes` in the audit log | `jason owner-info --apply --payhoa --yes [--by NAME]` → `audit.record_cli` | One line a write and a completion, then `cli.applied` |
+| The prerequisites the earlier spec listed | one live read (`owner_info_apply.ReadOnce`), a result for each write (`execute_each`), unapplied writes stay pending, stable ids and bases, a rule on each write, `community()` in the adapter, `--by` on the CLI, `jason approvals` registered | Lessons `plan-reads-once`, `apply-loses-partial-results`, `complete-only-after-writes` (fixed) |
 
-The build depends on these changes outside the console. Each comes from reading `commands/owner_info.py`, `tasks/owner_info.py`, and `tasks/owner_responses.py` as they are today.
+**Being added now:** the write guard (`jason.web.guard`) and the approvals routes (`jason.web.approvals`, with `--allow-apply`), and the jason-ui plan review (`PlanReview`, listed by the `PlanApprovals` view in `#/approvals`, with `WriteRow`, `HeldNote`, `ChangedBanner`, `ApproveBar`, `SecondConfirm`, `CostLine`, `ApplyResult`, `AuditLog`) and for the later screens (`Recitation`, `ReadingLabel`, `QuestionCard`, `StageSteps`).
 
-1. **One live read, in a task.** `_answers`, `_rows`, and `_live` live in `jason.commands.owner_info`, and `owner_responses.contexts` imports `_live` from there: a task importing a command.
-   - They move into `jason.tasks.owner_info` as `read_live(client, org, data_dir, community, forms, *, payhoa) -> Snapshot`, holding units, people, answers, the ledger rows, and the contexts.
-   - `contexts` takes the snapshot's units and people instead of reading again.
-   - One plan then reads PayHOA once. Today it reads three times: `_apply`'s read, and two `contexts` calls.
-2. **A result for each item from `execute`.** `owner_info.execute` returns counts, and a failure part-way through loses which writes were made. It needs `on_item(write, ok, detail)` (or a list of results returned) so the audit can record each write.
-3. **The writes not applied stay pending.** `_apply` sets `writes = []` after `execute`. With item approval, `_complete_requests` (and the adapter) must receive the writes not applied, so `to_complete` keeps those requests open.
-4. **Stable ids and bases.** The adapter computes `PlanItem.id` from `Write(kind, target, value)`. It computes `basis` from the snapshot: a member's `tag_names(person)`, a unit's `tag_names(unit)`, and a submission's status and answers ([approval-workflow.md](approval-workflow.md#fingerprints)).
-5. **The rule behind each write, as a citation.**
-   - `plan_writes` gives `why` in words.
-   - The adapter adds `rule`:
-     - `CIV 4040(a)(2)` for the default delivery tag;
-     - the earlier-elections rule row for an earlier written election;
-     - the response policy's `delivery` row for a this-cycle answer.
-   - A completion cites the board's owner-information rule row.
-6. **Profile access by the current names.** `_complete_requests` calls `mystique()` and `cmd_owner_info` calls `spec_module`. The adapter uses `community()` and the profile's forms through `Community`, as AGENTS.md asks of new code.
-7. **`--by` on the CLI's apply.** `jason owner-info --apply --payhoa --yes --by NAME` names the person for the audit log. Without `--by`, the operating-system user is recorded.
-8. **Registering `jason serve` and `jason approvals`** in `src/jason/cli.py`: one line each.
+## The first build: engine approvals in `#/approvals`
 
-## `jason serve`
+The `owner-info-tags` kind, end to end in the browser, beside the letters. Every criterion is a test, or a check a person makes once.
 
-- [ ] `jason serve` starts uvicorn on `127.0.0.1:8770`, and `--port` changes the port. There is no option to bind another address.
-- [ ] It prints the sign-in link once, with the token in the URL fragment. `--open` opens the browser on it. `--print-token` prints it again while running. `--rotate` makes a new token and ends every session.
-- [ ] A request with a `Host` other than `127.0.0.1:<port>` or `localhost:<port>` gets 421. A non-loopback peer is refused.
-- [ ] Every route but `/login` and `/static/` redirects to `/login` without a session, or returns 401 for JSON.
-- [ ] `POST /login` with the token sets `jc_session` (`HttpOnly; SameSite=Strict`). A second exchange of the same token is refused.
-- [ ] Every POST without the session's CSRF token, with a foreign `Origin`, or with `Sec-Fetch-Site: cross-site` gets 403 before its handler runs.
-- [ ] No GET changes `approvals.db`, `audit.jsonl`, or any store. A test walks every route to check.
-- [ ] Every response carries the CSP and the other headers in [security-and-privacy.md](security-and-privacy.md#where-it-listens). Pages with member data carry `Cache-Control: no-store`.
-- [ ] After sign-in, the person picks who they are acting as, and their role, from the roster (the private facts). The header shows it.
-- [ ] The `jason-console` entry in `.claude/launch.json` starts it ([architecture.md](architecture.md#launch-configuration)).
+### The server
 
-## Today
+- [ ] `jason-web` binds `127.0.0.1:8080` by default. A request to `/api/*` with a foreign `Host` gets 421; a write with a foreign or missing `Origin`, a cross-site `Sec-Fetch-Site`, or no token gets 403 before its handler runs.
+- [ ] No GET changes `data/approvals/`. A test walks every GET route.
+- [ ] `POST /api/approvals/<id>/apply` is refused without `--allow-apply`, with the terminal command in the answer. With it, the server prints that apply is on, and `GET /api/session` reports `applyEnabled`.
+- [ ] An apply needs the token in `X-Jason-Token` (not the cookie alone), a `by`, and `confirm` equal to the approval's fingerprint; otherwise nothing is written.
+- [ ] `check` and `apply` with no Keeper session answer 503 with "run `jason login` in a terminal". No route asks for a credential.
+- [ ] Every answer that leaves the approvals routes has emails and phone numbers masked.
 
-- [ ] It renders `api.governance_digest(limit=8, private=True)`, one section per system, most urgent first. Each line has its urgency badge (`LEGAL` as a legal deadline badge), its text, its due date, and its command.
-- [ ] A section whose store is missing is shown as unavailable, with its `error`. The page still renders.
-- [ ] It shows the waiting approvals: the count, the oldest first, and those waiting on a second person apart.
-- [ ] It shows the top five of `api.next_questions()`, each linking to Onboarding to answer.
-- [ ] It shows running work (`runner` jobs, `jobs.jobs`, `batches.batches`, `locks.holders()`), and each store's freshness with its refresh command.
-- [ ] With the private view off, no unit or owner name appears in the digest. This is the `private=True` rendering.
+### The screen
 
-## Approvals: the owner-information kind, end to end
-
-### Plan
-
-- [ ] On Approvals, "Plan: owner information (PayHOA)" starts a `runner` job on the `payhoa` class. It holds `Resource.PAYHOA` for the read, and reads PayHOA live once (prerequisite 1).
-- [ ] Without a Keeper session, the job fails fast with "run `jason login` in a terminal". The browser never shows a credential field.
-- [ ] The job stores one `Approval` of kind `payhoa.owner-info.tags`, with:
-  - `requested_by` the acting person, `requested_via: "console"`, `read_at`, and `fingerprint`;
-  - `scope: {"payhoa": true, "cycle": <the cycle's year>}`;
-  - **approvable** items, one per `Write` from `plan_writes`, each with id, basis, why, rule, and evidence (the ledger row, and the PayHOA submission for an answer);
-  - **held for the board** items: the unit occupancy writes `_apply` holds today (a `triage` finding with `Outcome.BOARD` and rule `occupancy-vs-tag`), each with its `Finding.text` and `board_item`;
-  - **for a person** items: each `to_complete(...).left` entry that names a person's entry (`FOR_A_PERSON`, `PERSON_FIELDS`), and each `Outcome.PERSON` finding;
-  - **confirm with the owner** items, from each `Outcome.CONFIRM` finding;
-  - **completion** items (`payhoa.owner-info.complete`, approver `BOARD_RULE`). There is one for each pending request whose `left` would be empty once its writes apply. Each has `depends_on` set to those writes, and the comment text (`OWNER_INFO_COMPLETED_COMMENT`, read through the profile) shown in full, because it is emailed to the owner;
-  - **informational** items: each pending request that stays open, with its `left`.
-- [ ] No item targets a test membership (`config.test_memberships`). Their count is shown as "test accounts left out: N".
-- [ ] A newer plan of the same kind and scope supersedes any open one.
-
-### Review
-
-- [ ] `/approvals/{id}` shows the header: kind, status badge, planned by jason, requested by, the read time, the fingerprint's first 12 hex, and the cycle's nearest deadline (`summary(...)["deadlines"]`).
-- [ ] Items are grouped by owner (member and unit). Each row shows the change, before and after, why, the rule as a short citation opening its recitation (`api.cite_document`), and the evidence chips.
-- [ ] Held items are in a "Held for the board" section with the held banner. Items for a person and items to confirm with the owner are in their own sections. **None has a checkbox**, and no request or form field can approve one: the server refuses an item that is not `APPROVABLE`.
-- [ ] Owners' names are shown (P1). Emails and mailing addresses in the evidence are masked (P2), and a reveal is logged by field kind.
-- [ ] The cost summary says "No charge: PayHOA tag changes and request status".
-
-### Decide and submit
-
-- [ ] Each approvable item can be approved, rejected (reason required), or held for the board (reason required). "Approve all approvable" sets each one, and each is logged as its own decision.
-- [ ] Decisions save as they are made. The approval moves to `in review`, and leaving and returning keeps them.
-- [ ] A completion item whose writes are not all approved shows "will stay open". It cannot be approved: its approval is refused with the writes it waits on.
-- [ ] Submit posts the name (pre-filled with the acting person), the fingerprint, and the CSRF token. The result is `approved` if every approvable item is approved, else `partially approved`. With none approved, it is `withdrawn` ("nothing approved").
-- [ ] A person's hold proposes a board item through `tasks.board_items.propose`, signed with the name. The approval links it.
-
-### Re-plan and fingerprint check
-
-- [ ] "Apply" runs a `runner` job holding `Resource.PAYHOA` for `approval-<id>`. It re-reads live and re-plans with the same scope.
-- [ ] If any approved item is missing, has a different basis, or is now held: **nothing is written**. The approval becomes `superseded`. A new approval is made from the re-plan, showing the earlier decisions as hints but not counting them. The page shows the changed-since-review banner, with both fingerprints and the changed items.
-- [ ] Items new in the re-plan do not block an apply. They are listed as "new since review, not included".
-- [ ] The test: change one approved member's tags in the fake client between submit and apply. The apply refuses, writes nothing, and the audit has `apply.refused` with that item.
-
-### Apply
-
-- [ ] Only approved items are written, through the adapter calling `owner_info.execute` (with prerequisite 2) for tags, and `owner_info.complete` for completions.
-- [ ] Each write logs `item.applying` before its request and `item.applied` or `item.failed` after it. A write with no answer back is `uncertain`.
-- [ ] A completion is applied only when every write it depends on is `applied`, and `to_complete` (with the writes not applied as pending) leaves it nothing. Otherwise it is `blocked`, and its request stays open.
-- [ ] The approval ends `applied` (every approved item applied) or `failed` (each failure with its error). A failed write is never retried automatically.
-- [ ] The result panel replaces the approve bar, with the counts and lists (`role="status"`).
-
-### Audit
-
-- [ ] `data/console/audit.jsonl` has one line for each event in [approval-workflow.md](approval-workflow.md#9-the-audit-log), each with `prev` and `hash`.
-- [ ] `jason approvals audit --verify` passes on an untouched log, and names the first broken line after a hand edit.
-- [ ] No line holds an email, a mailing address, an account number, or a token. A test scans the log after the end-to-end run for `@` and long digit runs.
-- [ ] The approval page's audit timeline shows its events in order.
+- [ ] `#/approvals` lists letters and engine approvals in one inbox, each row saying which it is. The nav count is the letters awaiting approval plus the plans waiting on a person.
+- [ ] One approval shows its header: the kind's title, status, requested by, the read time, the fingerprint's first 12 hex, the clock (`summary.deadlines` for the cycle), the cost (`CostLine`: "No cost" for tag changes), and reversibility from the kind.
+- [ ] Items are grouped by owner (`group`). Each `WriteRow` shows the change before → after, why, the rule (opening its `Recitation` where `cite_document` resolves it), and the evidence.
+- [ ] Held for the board, for a person, confirm with the owner, and what follows are in their own sections, with `HeldNote` on the held. **None has a checkbox**, and the server refuses a decision on one.
+- [ ] A completion whose writes are not all approved says it will stay open, and approving it is refused with the writes it waits on.
+- [ ] `ApproveBar` approves, rejects (reason required), or holds (reason required) the selected items, each through `Confirm`. Its submit button names the count and the person: "Approve 5 of 8 changes as Jane Example"; undecided items keep it unavailable, saying how many are left.
+- [ ] Decisions save as made (`in_review`); leaving and returning keeps them.
+- [ ] `SecondConfirm` appears when the kind or a high-stakes item needs a second person. Its name field starts empty; the first signer and the requester are refused.
+- [ ] **Check** re-reads live and shows what apply would do (`ChangedBanner` when anything changed), writing nothing.
+- [ ] With apply off, the approved approval shows the `Command` (`jason approvals apply ID --yes --by NAME`). With apply on, **Apply** goes through `Confirm`, echoing the fingerprint shown.
+- [ ] A refused apply (changed since review) shows that nothing was written and links the new approval, which shows the earlier decisions as hints only.
+- [ ] `ApplyResult` shows applied, failed, uncertain, blocked, and not applied, failures open, matching the audit log's `item.*` events.
+- [ ] `AuditLog` shows the approval's events in order, and "chain verified" or the first broken line from `GET /api/approvals/audit?verify=1`.
+- [ ] A person's hold shows "held for the board by NAME", apart from the planner's "held for the board", and the `jason board` command that proposes its board item until the engine proposes it ([approval-workflow.md](approval-workflow.md#12-the-board-decides-by-vote)).
 
 ### Parity
 
-- [ ] `jason approvals`, `show`, `decide`, `submit`, `apply`, and `audit` work on the same records the console made, and the reverse holds too. A plan made in the CLI can be approved in the console.
-- [ ] `jason-mcp --profile governance` lists `approvals_list`, `approval_show`, and `approval_audit`. No MCP tool decides, submits, confirms, or applies.
-- [ ] `jason owner-info --apply --payhoa --yes [--by NAME]` still works as today, and now writes the same audit lines with `via: "cli"`.
+- [ ] A plan made with `jason approvals plan owner-info-tags --by NAME` is decided in the browser and applied in the terminal, and the other way round. The audit log records `via` for each act.
+- [ ] `jason-mcp --profile governance` still has only `approvals_list` and `approval_show` for approvals.
+- [ ] `jason owner-info --apply --payhoa --yes --by NAME` works as before and writes the same audit lines with `via: "cli"`.
 
-## Non-functional
+### Non-functional
 
-- [ ] All MVP pages pass the HTML accessibility checks in [architecture.md](architecture.md#testing). A person does a keyboard-only pass of plan, review, submit, and apply, and a screen-reader pass of the approval page.
-- [ ] Nothing in `src/jason/console/` or `src/jason/approvals/` names an association fact. The boundary test covers both folders.
+- [ ] A keyboard-only pass of review, decide, submit, confirm, and apply, with focus never under the sticky `ApproveBar`; a screen-reader pass of the approval page.
+- [ ] Each new component has a test and a design-sync preview with plainly fake data.
+- [ ] Nothing in `src/jason/web/`, `ui/src/`, or `docs/console/` names an association fact (`tests/test_profile.py`).
 - [ ] The test suite runs with no network, no Keeper, and no Google token.
-- [ ] The pages render with the network unplugged, apart from the plan and apply jobs, which fail fast and say so.
+
+## After the first build
+
+| Phase | What ships | Writes it adds |
+|---|---|---|
+| **2. The governance screens** | The screens with no counterpart, read-only first: Requests, Notices, Governing documents (with `Recitation`, `ReadingLabel`, and a cite box), the onboarding session (`StageSteps`, `QuestionCard`), and the bands the specs add to existing screens ([information-architecture.md](information-architecture.md#where-the-proposed-screens-go)) | `data/` records a person signs: an intake answer and its second person (`answer_intake_question`, `onboarding_confirm`), a duty done (`record_completion`), a posting recorded |
+| **3. More kinds** | Registry rows with planners and appliers: Gmail drafts, calendar, Tasks, private Docs (a letter's Doc after its words are approved), PayHOA form updates, `delivery --audit --apply` | Each kind's own write, behind its row and `--allow-apply` |
+| **4. Money and members** | Mailroom sends, owner email and mail batches, publishing forms, Vault holds: the two-person kinds. Members and units, once P2 masking exists | Postage, notices to members, legal holds |
+| **5. Sign-in** | A credential for each officer, roles enforced at each loader, the private view | The same writes, with authenticated names; apply without a server-wide flag, if the board so decides |
 
 ## Moving the CLI's `--yes` paths onto approvals
 
-The CLI keeps working at every step. Each step is a change to one kind at a time, made when its planner and applier exist.
+The CLI keeps working at every step. Each step changes one kind at a time, when its planner and applier exist.
 
 | Step | What changes | `--yes` then means |
 |---|---|---|
-| **1. Audit everything** (MVP) | Every `--yes` path writes `approval.applied`-style lines to the audit log, with `via: "cli"`, the person from `--by` or `--confirmed-by`, else the operating-system user, and a fingerprint of what it wrote. Paths not yet in the registry log at least the kind (the command) and the counts | What it means today, now on the record |
-| **2. Plan and apply through the engine** (each kind in phase 3) | The kind's planner and applier exist. `jason <command> --yes --by NAME` becomes sugar: plan, approve every approvable item as NAME, submit, apply, in one run, with the same re-plan check. `--by` becomes required for R2 kinds | "I approve all of this plan", recorded as an approval |
-| **3. Two people where the registry says so** (phase 4) | A 2P kind refuses a bare `--yes`. The command takes `--approval ID` instead, and applies only an approval with both signatures. Examples: `jason mailroom --send --approval ID`, `jason owner-info --email-batch --approval ID` | Not accepted for 2P kinds |
-| **4. Jobs carry the approval** | `jason jobs add --confirm NAME -- approvals apply ID --by NAME`. The worker runs approvals by id, never a bare `--yes` | — |
-| **5. Retire bare `--yes` for R2 and R3** | `--yes` stays for R0 and R1 (local and private) with `--by`. R2 and R3 go through an approval, from the console or the CLI | R0 and R1 only |
+| **1. Audit everything** | Every `--yes` path writes `cli.applied` with `via: "cli"`, the person from `--by` or `--confirmed-by`, else the operating-system user. Built for `owner-info --apply --payhoa`; the rest follow | What it means today, now on the record |
+| **2. Plan and apply through the engine** | The kind's planner and applier exist. `jason <command> --yes --by NAME` becomes sugar: plan, approve every approvable item as NAME, submit, apply, with the same re-plan check. `--by` becomes required for R2 kinds | "I approve all of this plan", recorded as an approval |
+| **3. Two people where the registry says so** | A two-person kind refuses a bare `--yes` and takes `--approval ID` instead, applying only an approval with both signatures (`jason mailroom --send --approval ID`) | Not accepted for two-person kinds |
+| **4. Jobs carry the approval** | `jason jobs add --confirm NAME -- approvals apply ID --yes --by NAME`. The worker runs approvals by id | — |
+| **5. Retire bare `--yes` for R2 and R3** | `--yes` stays for R0 and R1 with `--by`. R2 and R3 go through an approval | R0 and R1 only |
 
-The survey's ungated writes are treated first in step 1, given a dry run and a registry row:
-- `board --sheet`;
-- `board --create-sheet`;
-- `board --tasks`;
-- `property-history --sheet`.
+The ungated writes come first, given a dry run, `--yes`, and then a registry row: `board --sheet`, `board --create-sheet`, `board --tasks`, `property-history --sheet`, and `request-comment` (lesson `google-writes-without-yes`, open).
+
+## The HTML prototype library
+
+`src/jason/console/ui/` is a static HTML and CSS component library (tokens, base styles, 30 components, previews, and four sample screens), uncommitted. It was written for the withdrawn server-rendered plan, and its ideas are being ported into jason-ui (the components marked being added in [components.md](components.md)).
+
+**Recommendation: keep it as a design reference outside the package until the port is done, then drop it.**
+
+1. **Now:** move it to `docs/console/prototypes/` (a person does this; it is not moved here). It is documentation, not code: nothing imports it, and under `src/jason/` it would ship in the wheel and read as a second UI. Keep its README, with a first line saying it is a reference for jason-ui and not served.
+2. **What to carry over before dropping it:**
+   - the measured contrast table for both schemes (jason-ui's tokens need the same table, measured against its own `--bg` and `--panel`, and a profile's brand tokens);
+   - the `held` role color, as a jason-ui token for `HeldNote`;
+   - the four sample screens (`approvals.html`, `approvals-changed.html`, `today.html`, `reader.html`) as design-sync previews of the composed screens;
+   - the accessibility notes: the approve bar's reserved height, write rows that become cards under 760 px, row checkboxes in a label that fills the cell;
+   - `masked-field`, `private-switch`, and `job-status`, which it lists as still to build, stay in [components.md](components.md#still-proposed).
+3. **Drop it** once each jason-ui counterpart has a design-sync preview and the contrast table exists. Its `@dsCard` markers are for a design system that would duplicate jason-ui's; it should not be published as one.
+
+Two design systems for one console would drift. jason-ui is the one that ships, so it is the one the design project syncs.
 
 ## Open decisions
 
-For the person deciding the build:
+For the person deciding the build. Each has a recommendation; none is decided here.
 
-1. **Templates.** Add `jinja2` (autoescaping, macros match the UI library) as the one new dependency, or build a small escaping HTML builder with none ([architecture.md](architecture.md#stack))? Recommended: Jinja2.
-2. **A change at apply.** Refuse the whole apply when any approved item changed, as specified, or apply the unchanged items and re-plan only the rest? Recommended: refuse the whole apply. A person reviewed a picture, not a list of independent lines.
-3. **Which kinds need two people.** As proposed: Mailroom sends, email and mail batches, publishing a Google Form, Vault holds, scheduling a hearing, switching a document's reading, and a PayHOA form update that changes an answered question. Should completing an owner-information request, which emails the owner the board's comment, be one person (as proposed, under the board's rule) or two?
-4. **The roster and roles.** Who holds which role, and is that a board decision to record as a rule row? Until sign-in, is a self-asserted name at the manager's machine acceptable for first signatures?
-5. **Plan age.** Is 24 hours the right `max_age` before a plan must be read again, for every kind, or shorter for sends?
-6. **A person's hold.** Should "hold for the board" propose a board item automatically (as specified), or only note it for the manager to add?
-7. **MCP.** Should the approvals tools stay read-only, as specified, so an assistant can explain a plan but never act on one?
-8. **The audit log.** Is a hash-chained local file enough, or should each day's last hash also go somewhere a person keeps apart from this machine, such as the board's records?
-9. **Port.** 8770, or another free port.
-10. **Remote access.** Out of scope until the board adopts a written policy on who may see what. Confirm that it stays out.
+1. **The approvals store.** Keep the engine's JSON store as built (`data/approvals/apr-*.json`, `audit.jsonl`), beside the letters' store, rather than the earlier SQLite plan? Recommended: keep it, and close the lesson `approvals-store-location`.
+2. **Names on engine approvals.** Should the console's door refuse a `by` that is not one of the profile's officers, as the letters' approvals already do? Recommended: yes for `via: "console"`; the CLI's `--by` stays free text until sign-in.
+3. **Which kinds need two people.** As proposed: Mailroom sends, email and mail batches, publishing a Google Form, Vault holds, scheduling a hearing, switching a document's reading, and a PayHOA form update that changes an answered question (as a high-stakes item). Should completing an owner-information request, which emails the owner the board's comment, be one person under the board's rule (as built) or two?
+4. **Reviewer and counsel.** `OfficerRole` has neither. Add them as roles, or as a separate grant in the profile? Until sign-in, is a self-asserted name acceptable for first signatures?
+5. **Plan age.** Is 24 hours the right `max_age_hours` for every kind, or shorter for sends?
+6. **A person's hold.** Should submitting a hold propose its board item automatically (`tasks.board_items.propose`, signed by the person), so it reaches the agenda without a second step? Recommended: yes; the engine records the hold only today.
+7. **Plans from the browser.** Plans are made in the terminal; there is no plan route. Keep it so (a plan reads PayHOA live), or add a plan route behind the same flag as apply?
+8. **The audit log off the machine.** Is a hash-chained local file enough, or should each day's last hash go somewhere a person keeps apart from this machine, such as the board's records?
+9. **Outside resources.** Self-host Mermaid and the profile's font so the bundle loads nothing from elsewhere, and set a Content-Security-Policy naming only the Google and Zoom frames? Recommended: yes.
+10. **The owner view of the new screens.** Requests, Notices, and Governing documents start board-only. Which, if any, get an owner version, and with what left out?
+11. **The prototype library.** Move it to `docs/console/prototypes/` now and drop it after the port, as recommended above, or drop it now?
+12. **Remote access.** Out of scope until the board adopts a written policy on who may see what, and there is sign-in. Confirm that it stays out.
+
+**Decided, and where.** The stack (React and Flask under waitress, not Starlette and Jinja2), the port (8080), and the absence of a token sign-in page were decided by what was built ([web-ui.md](../web-ui.md#why-this-shape)). Refusing the whole apply when any approved item changed, and keeping the MCP tools read-only, are built into the engine ([approval-workflow.md](approval-workflow.md#6-re-plan-before-apply)). The board's approval as a recorded vote, polls as member input, roll calls by name, executive session kept out, and no recommendation on a brief are the design handoff's ([web-ui-decisions.md](../web-ui-decisions.md#built-the-console-approvals-decisions-agenda-meeting-room-the-dock)).

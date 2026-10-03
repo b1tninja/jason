@@ -1,206 +1,119 @@
 # Architecture
 
-How the console is built: the stack, the modules, how pages reach jason, locking and long work, launching, and testing. The approvals engine (`jason.approvals`) is specified in [approval-workflow.md](approval-workflow.md) and built separately. The console is one of its three doors.
+How the console is built. The console is two pieces that already exist, plus the approvals engine behind them:
 
-## Stack
+- **jason-ui** (`ui/`): a React 18 library and single-page app (Vite, TypeScript). Its components are also the design system: the library build exposes them as `window.JasonUI` to the claude.ai design project ([.design-sync/](../../.design-sync/conventions.md)).
+- **jason-web** (`src/jason/web/`): a Flask app under waitress that serves the built UI and the `/api/*` loaders over the stores on disk.
+- **The approvals engine** (`src/jason/approvals/`): plans of writes outside jason, decided item by item, re-planned and fingerprinted before apply, with a hash-chained audit log. Its spec is [approval-workflow.md](approval-workflow.md). jason-web reaches it through the `/api/approvals*` routes (`jason.web.approvals`, being added), behind the write guard (`jason.web.guard`).
 
-**The choice:**
-- Starlette, served by uvicorn;
-- HTML rendered on the server, with Jinja2 templates;
-- plain HTML forms that work with no script;
-- a few small scripts, served by the console itself, that enhance the forms;
-- no JavaScript build step, no framework, no CDN.
+How to run it, the API (including [the approvals routes](../web-ui.md#approvals) and [the write guard](../web-ui.md#the-write-guard)), and every view are in [web-ui.md](../web-ui.md). What each screen decides, and the component behind each task, is in [web-ui-decisions.md](../web-ui-decisions.md). This page records the shape, what was decided and where, and what the console adds on top.
 
-**Why it fits the repo:**
-- **Starlette and uvicorn are already installed.** They come in with `mcp`. The console adds no web framework the project does not already carry.
-- **The work is reads of Python functions.** Every screen is a call to `jason.api` or a task function that returns a dict or dataclasses, rendered once. A server-rendered page is the shortest path from that dict to the screen. A single-page app would need a JSON API for every screen, plus a client-side copy of the data model, the masking, and the role checks. Those checks must stay on the server ([security-and-privacy.md](security-and-privacy.md#data-levels)).
-- **Forms are the approval model.**
-  - Approving is a form post: the selected items, a name, the fingerprint, and the CSRF token.
-  - It works with no script, which is also the accessible baseline.
-  - The UI library already builds on this: its write-row checkboxes join the approve bar's form with `form="approve-form"`.
-  - Scripts add "select all", the live count, the same-name check before sending, and toasts. They never decide anything.
-- **No build step means nothing to break between Python releases.** The repo has no Node toolchain, and a manager's machine should not need one. The CSS and JS in `src/jason/console/ui/` are served as written.
-- **Local-first holds.** Every asset ships in the package, and the Content-Security-Policy is `'self'` only.
+## What was decided, and where
 
-**Templates: Jinja2, as an optional extra.** Jinja2 is not installed today. It is the one new dependency the console should take, for two reasons:
-- **autoescaping by default.** Owners' names, request text, and document words are rendered into HTML, so an unescaped value is the console's most likely injection bug. Jinja2 makes escaping the default and raw HTML the explicit exception (`|safe`, used only on HTML jason rendered itself, such as `reader.Sheet`).
-- **one macro per component.** The UI library's components (`ui/components/*.html`) are reference markup with their states and variants in comments, and they become macros one for one. Starlette's `Jinja2Templates` loads them.
+| Decision | Where it was made | What it means here |
+|---|---|---|
+| A React SPA, no server rendering | [web-ui.md](../web-ui.md#why-this-shape) | A static bundle with content-hashed assets. No Node at runtime: `npm run build` once, then `jason-web` serves `ui/dist` |
+| WSGI (Flask under waitress), not ASGI | [web-ui.md](../web-ui.md#why-this-shape) | jason's readers and stores are synchronous and take file locks. Waitress is pure Python and runs on Windows |
+| One process, one origin | [web-ui.md](../web-ui.md#why-this-shape) | `/api/*` and the bundle on one port. No CORS, no proxy |
+| Loopback by default | `jason.web.app.main` | `--host 127.0.0.1`, port 8080. Another host is a person's choice, and is out of scope until there is sign-in ([security-and-privacy.md](security-and-privacy.md)) |
+| A write guard on every write | `jason.web.guard` | A Host check on the API, and on every write an Origin check and a per-process token (`X-Jason-Token`). Not a sign-in ([security-and-privacy.md](security-and-privacy.md#the-write-guard)) |
+| Apply off by default | `jason-web --allow-apply` | The one write outside jason the console can make. Without the flag, `POST /api/approvals/<id>/apply` is refused and the page shows the terminal command |
+| Reads are the MCP tools' | `jason.web.sources.default_loaders` | Each `GET /api/<source>` wraps a read-only `jason.mcp` tool or a task reader. Nothing on load calls PayHOA, Google, Zoom, or Keeper |
+| Writes are jason's own stores | [web-ui.md](../web-ui.md#api) | Each write records a person's act (`by`) in a store under `data/`. None acts outward. A writer set to `None` in `create_app` answers 405 "writes are off", and `/api/health` lists the writes that are on |
+| The console screens and the dock | the design handoff of 2026-10-03 ([web-ui-decisions.md](../web-ui-decisions.md#built-the-console-approvals-decisions-agenda-meeting-room-the-dock)) | `ConsoleShell` with four nav groups, the Board / Owner view, a sample "Signed in as" picker over the profile's officers, the dock |
+| The handoff's rules | the same | Nothing is sent, posted, recorded, or filed without approval, and every write is a `Confirm` that spells out what changes. A board approval is a vote at a meeting that an officer records. Polls are member input; director votes are a roll call by name. Executive session stays out of open recordings, transcripts, and minutes. jason never recommends on a decision brief |
+| The design system | `.design-sync/config.json` | jason-ui is the design system's source, as `window.JasonUI`. A component changed in `ui/src/components` is re-synced to the design project ([.design-sync/NOTES.md](../../.design-sync/NOTES.md)) |
+| Approvals as a plan, then apply | `jason.approvals`, [approval-workflow.md](approval-workflow.md) | Built, with `jason approvals` in the CLI and read-only tools in `jason-mcp` |
+| Approvals stored as JSON | `jason.approvals.store` | One file per approval in `data/approvals/`, with `audit.jsonl` beside it. The earlier SQLite plan is open as a decision only until a person confirms it ([mvp.md](mvp.md#open-decisions)) |
 
-The alternative, recorded as an open decision in [mvp.md](mvp.md#open-decisions), is a small `jason.console.html` builder: an escaping `Html` string type plus functions for each component, with no dependency. It is workable, but it re-implements autoescaping and makes the markup harder to compare with the library's reference files.
+The plan this page used to describe (Starlette and uvicorn, Jinja2 templates, `jason serve` on port 8770, a token sign-in, and HTML forms posting to server-rendered pages) is withdrawn. Nothing was built from it.
 
-**Progress for long work:**
-- **With script:** a small poller (`static/console.js`) fetches `GET /jobs/{id}` as JSON every two seconds, and announces the result through a `role="status"` region (WCAG 4.1.3).
-- **Without script:** the job page carries a "Refresh" link.
-
-No WebSocket and no server-sent events: polling a local server costs nothing, and survives a laptop's sleep.
-
-## Module layout
+## The pieces
 
 ```
-src/jason/approvals/            the engine (built separately; approval-workflow.md is its spec)
-  model.py                      Approval, PlanItem, Decision, ApprovalStatus, ItemClass, Result, Signature
-  registry.py                   ActionKind rows (KINDS)
-  fingerprint.py                item ids, bases, plan fingerprints
-  store.py                      data/console/approvals.db
-  audit.py                      data/console/audit.jsonl: append, read, verify
-  kinds/owner_info.py           plan(scope, client) and apply(approval, client): the owner-information adapters
-  cli.py                        jason approvals
-  schemas/                      JSON Schemas of the records
+ui/                                  jason-ui
+  src/components/                    the library: one export per component (index.ts); also window.JasonUI
+  src/views/                         one view per screen, by hash route (#/approvals, #/meetings, ...)
+  src/App.tsx                        SCREENS: every screen, its nav group, and whether the owner view shows it
+  src/lib/                           useApi, useHash, session (the sample sign-in), theme, format
+  vite.lib.config.ts                 the library build for the design system (npm run build:lib -> ui/dist-lib)
 
-src/jason/console/
-  __init__.py                   create_app() re-exported
-  app.py                        create_app(*, data_dir=None, token=None, community=None) -> Starlette
-  serve.py                      jason serve: the subcommand (register, cmd_serve)
-  security.py                   host guard, login and session, CSRF, the security headers
-  identity.py                   Role, Actor, the roster (private facts), permits(actor, action)
-  privacy.py                    Level, mask(value, kind), reveal (logged)
-  render.py                     the Jinja environment: filters (cents to dollars, dates in the association's
-                                time zone, data levels), globals (the profile's name, the acting person)
-  runner.py                     long work: one job at a time per resource, progress, results
-  pages/
-    today.py  approvals.py  members.py  requests.py  notices.py  meetings.py
-    documents.py  schedule.py  records.py  finance.py  onboarding.py  settings.py  audit.py
-  templates/                    base.html and one folder per page; components imported as macros from ui/
-  ui/                           the component library (tokens.css, base.css, components/*), served at /static/ui/
-  static/console.js             login fragment, the job poller, the progressive enhancements
+src/jason/web/                       jason-web
+  app.py                             create_app(): the routes, the write switches, the bundle
+  sources.py                         default_loaders(): GET /api/<source>; the core writers
+  extra/                             one module per console store: a loader and write(key, body),
+                                     registered in sources.EXTRA_LOADERS / EXTRA_WRITERS
+
+src/jason/approvals/                 the engine
+  model.py  registry.py  store.py  audit.py  engine.py  kinds/owner_info.py  schemas/
+
+src/jason/tasks/approvals.py         the letters jason drafted and their stages (data/approvals/letters.json)
+src/jason/commands/approvals.py      jason approvals
+src/jason/mcp/governance.py          approvals_list, approval_show (read only)
 ```
 
-Rules the layout keeps:
+### How a screen reaches jason
 
-- **A page module only reads and renders.** It calls `jason.api`, a `jason.mcp.*` function, a task function, or `jason.approvals`, and passes the result to a template. It derives no fact itself. When a page needs a fact jason does not yet return, the fact is added to the task (or to `Community`, with an empty default) first. That is the AGENTS.md rule for tasks, applied to pages.
-- **No association in the console's code.** The profile's name, roster, letterhead, and rules come from `jason.community.community()` and the private facts. Nothing in `src/jason/console/` names an association, a street, a vendor, or a person. The UI library's sample markup uses plainly fake values.
-- **Importing the console loads no profile.** `create_app()` resolves the profile when it is called, not at import time.
-- **Each page module exposes `routes() -> list[Route]`.** `app.py` mounts them. The pages hold no state between requests apart from the session.
-- **Handlers are plain `def`, not `async def`.** jason's functions block: they read files and call PayHOA. Starlette runs a sync endpoint in its thread pool, so a slow read never stalls the event loop. Live reads go through `runner.py`, never in the request itself.
-
-### How a page calls jason
-
-| Need | Call |
+| Need | Path |
 |---|---|
-| The data folder | `jason.config.data_dir()`: the profile's own, as the CLI reads it. Never a path written into the console |
-| The profile | `jason.community.community()` |
-| A governance read | `jason.api.<tool>(...)`, which returns a JSON-ready dict |
-| A board read | `jason.mcp.county.<tool>(...)` (`budget_status`, `board_items`, `unit_brief`, ...) |
-| A record page | `jason.api.read_record(address)`, or `jason.tasks.reader.sheet(...)` for the HTML sheet |
-| A live read or write | `jason.agent.Jason(interactive=False)`, inside a `runner` job. A missing Keeper or Google session raises `KeeperAuthRequired` or `GoogleAuthRequired`, and the job fails fast with "run `jason login` in a terminal" |
-| A plan, decision, or apply | `jason.approvals.<function>(...)` |
-| A signed `data/` write | `api.answer_intake_question`, `api.onboarding_confirm`, `api.record_completion`. They take their own locks and require `by` |
+| A read | `GET /api/<source>` → a loader in `sources.py` or `extra/` → a `jason.mcp` tool or a task reader. The loader returns a JSON-ready dict; a missing store is the tool's own `{found: false, note}` |
+| A person's act on jason's own store | `POST /api/<store>/<key>` or `POST /api/write/<store>/<key>` with `by` → the task module's writer, under that store's lock (`jason.locks`) |
+| A letter's stage | `GET /api/approvals`, `POST /api/write/approvals/<key>` → `jason.tasks.approvals` |
+| An engine approval | `/api/approvals*` (`jason.web.approvals`) → `jason.approvals.engine` (`decide`, `submit`, `confirm`, `decline`, `withdraw`, `check`, `apply`). A plan is made in the terminal (`jason approvals plan KIND --by NAME`) |
+| The profile | `jason.community.community()`, through `Community` methods only. The officers who may approve come from `Community.officers()` |
+| The data folder | the profile's own (`jason.config.data_dir`, through `jason.mcp.county._data_dir`), never a path written into the app |
+
+The rules a loader keeps are AGENTS.md's rules for tasks: it derives no fact of its own, it names no association, and importing jason-web loads no profile (loaders import lazily).
+
+## The approvals engine behind jason-web
+
+The engine is complete without the browser: `jason approvals plan`, `decide`, `submit`, `confirm`, `apply` work today. jason-web adds a door, not logic (`jason.web.approvals`, the same functions the CLI calls):
+
+| Route | Engine call | Writes |
+|---|---|---|
+| `GET /api/approvals` | the letters inbox as before, with the engine's approvals beside it (`approvals`, `approvalsOpen`; `?status=`, `?kind=`) | nothing |
+| `GET /api/approvals/<id>` | the approval as stored (`approval.schema.json`) | nothing |
+| `GET /api/approvals/audit` | the log (`?approval=`, `?verify=1`) | nothing |
+| `POST /api/approvals/<id>/check` | `engine.check`: re-plan live and compare | nothing, but it reads PayHOA live, so it is a POST behind the guard and the token header, never a link or a prefetch |
+| `POST /api/approvals/<id>/decide` | `engine.decide` (`items`, `decision`, `reason`, `by`) | the approvals store and the log |
+| `POST /api/approvals/<id>/submit`, `/confirm`, `/decline`, `/withdraw` | the same steps (`by`, `reason`, `role`) | the approvals store and the log |
+| `POST /api/approvals/<id>/apply` | `engine.apply` (`by`, and `confirm`: the fingerprint the person reviewed) | **PayHOA**, only with `--allow-apply` |
+
+- **Plan stays in the terminal.** A plan reads PayHOA live and is made with `jason approvals plan owner-info-tags --by NAME`. The console shows the plans that exist.
+- **A live read fails fast.** `check` and `apply` sign in non-interactively. A missing Keeper session answers 503 with "run `jason login` in a terminal"; the browser never asks for a credential.
+- **Apply is off by default.** Without `--allow-apply` the apply route is refused (403) with the terminal command, `jason approvals apply ID --yes --by NAME`, which the page shows instead. With it, the server says so on start ("apply is ON"), `GET /api/session` reports `applyEnabled`, and an apply must carry the token in its header and echo the fingerprint the person reviewed; a fingerprint that is not the approval's is refused (409) with nothing written. A re-plan that differs supersedes the approval and answers 409 with the new plan's id.
+- **Answers in the engine's words.** A refusal is 400 with the engine's sentence; a lock held elsewhere is 409; a missing approval 404.
+- **Privacy.** Anything that looks like an email address or a phone number is masked before it leaves the server.
+
+Why apply stays behind a flag: the server has no sign-in, so a name on an apply is a pick from a list, not an authenticated person ([security-and-privacy.md](security-and-privacy.md#identity)). The terminal is where the live sessions (Keeper, Google) already are, and where the CLI's `--yes` has always been a person's act. Starting jason-web with `--allow-apply` is that same act, made once for the session.
+
+### One inbox, two kinds of approval
+
+`#/approvals` already lists the letters jason drafted (`jason.tasks.approvals`, `DraftLetter`, `ApprovalsInbox`). Engine approvals join the same inbox as a second kind, with the same count in the nav. How the two relate is in [approval-workflow.md](approval-workflow.md#11-letters-and-plans-one-inbox).
 
 ## Locking
 
-The console is one more jason process beside the CLI, the MCP server, and the worker. It uses `jason.locks` exactly as they do:
+jason-web is one more jason process beside the CLI, `jason-mcp`, and the worker. It uses `jason.locks` as they do:
 
 | Work | Lock |
 |---|---|
-| A change to the approvals store | `hold(Resource.STORE, "approvals", timeout=30, purpose=...)` around each transition. SQLite runs in WAL mode, so reads need no lock |
-| A plan's live read | `hold(Resource.PAYHOA, "plan-<kind>", timeout=5)`. On `ResourceBusy`, the job fails with who holds the lock (`locks.holders()`): "PayHOA is busy: batch owner-info-… is sending" |
-| An apply | The kind's `resource` lock for the whole re-plan and write (`hold(Resource.PAYHOA, "approval-<id>")`), as `jason.batches.run` holds `batch-<id>` |
-| A Google write | `hold(Resource.GOOGLE, ...)`, where the task already takes it |
-| Local model work | Never in the console's process. It is queued to `jason.jobs` (`JobClass.GPU`), whose worker runs `local_ai.preflight` first |
+| A write to a console store | that store's lock, taken by the task module (`canvases`, `board-decisions`, `approvals`, ...) |
+| A change to an engine approval | `hold(Resource.STORE, "approvals")` around each transition (`store.locked`) |
+| An engine apply | `hold(Resource.STORE, "approval-<id>")`, then the kind's resource (`Resource.PAYHOA`) for the re-plan and every write |
+| Local model work | never in jason-web's process. It is a `jason jobs` job (`JobClass.GPU`) whose worker runs `local_ai.preflight` first |
 
-A store jason writes whole (JSON) can be read while it is half-written. A page that gets a decode error reads it once more, then shows the section as unavailable. It never shows a partial read as data.
+The letters store (`data/approvals/letters.json`) and the engine (`data/approvals/apr-*.json`, `audit.jsonl`) share the folder and the store lock key `approvals`. That is safe (each holds the lock only for one read, change, and write), but a slow apply's re-plan does not hold it.
 
-## Long work: jobs and progress
-
-`runner.py` is a small in-process queue for work started from the console:
-- one worker thread per resource class: `payhoa`, `google`, `local`;
-- each job records its kind, who started it, its state (queued, running, done, failed), its last lines of progress, and its result. The result is the new approval's id, or an error with the command to fix it;
-- jobs live in memory, and their outcome lands in the approvals store and the audit log. A restart loses only the progress text.
-
-**Hand-off to the job queue.** For work that should outlive the console, or must run on the GPU, the console adds a job to `jason.jobs` instead, with the acting person as `confirmed_by`. That is the queue's own rule: a write is queued only with the name of the person who confirmed it. Examples:
-- `jobs.add(data_dir, ["approvals", "apply", ID, "--by", NAME], confirmed_by=NAME)`;
-- `["owner-info", "--email-batch", ...]`, from phase 4.
-
-The worker never adds `--yes`, and never retries a write. The console shows queued jobs from `jobs.jobs(data_dir)`, with each one's log (`jobs.log_path`).
-
-**Batches stay batches.** An approved email or mail batch (phase 4) is created through `jason.batches.create(..., confirmed_by=...)` and run by the command that owns it. The console shows `batches.items` and `batches.events`, and offers `--retry-failed`, `--resolve`, and `--cancel` as their own approvals.
-
-## `jason serve`
-
-```
-jason serve [--port 8770] [--open] [--rotate] [--print-token]
-```
-
-- It binds 127.0.0.1 only. There is no `--host` option ([security-and-privacy.md](security-and-privacy.md#where-it-listens)).
-- It prints the sign-in link (the token in the fragment) once. `--open` opens the default browser on it.
-- It refuses to start if the port is taken, and says which process holds it.
-- It runs uvicorn in the foreground with one worker process; the console's runner threads live in that process. Ctrl-C stops it, and a running apply finishes its current item first.
-- It is registered from `src/jason/commands/serve.py` (or `jason.console.serve.register`). `src/jason/cli.py` needs one line to add it, which is part of the build, not this spec.
-
-## Launch configuration
-
-The entry to add to `.claude/launch.json`, beside the existing preview entry:
-
-```json
-{
-  "name": "jason-console",
-  "runtimeExecutable": "D:\\code\\jason\\.venv\\Scripts\\python.exe",
-  "runtimeArgs": ["-m", "jason", "serve", "--port", "8770"],
-  "port": 8770
-}
-```
-
-- Port 8770 keeps clear of the owner-information preview server's 8765.
-- The preview pane opens the origin, `http://127.0.0.1:8770`. The console shows `/login`, which asks for the token `jason serve` printed in the server's output (`preview_logs`).
-- The entry carries no token, because a launch file can be committed.
+Waitress serves requests on worker threads, so a long engine call (a plan's live read, an apply) holds one thread while it runs. The UI shows it as busy and does not retry. A plan or apply that should outlive the browser goes to `jason jobs` with the person's name (`--confirm NAME`), never with a `--yes` the person did not give.
 
 ## Testing
 
-Tests run under `pytest`, with the made-up private facts in `tests/fixtures/spec`, which `conftest.py` sets through `JASON_SPEC_DIR`. They give the same results on any checkout.
-
-- **Pages.** `starlette.testclient.TestClient(create_app(data_dir=tmp_path, token="t"))`. TestClient needs `httpx`, which is installed with `mcp`. A fixture logs in (`POST /login` with the token) and carries the session cookie and CSRF token. Each page has a test that it:
-  - renders with a missing store (shows "unavailable", not a 500);
-  - renders with a fixture store;
-  - shows no P2 value unmasked.
-- **Security.** These requests are refused:
-  - a `Host` other than loopback (421);
-  - a POST without the CSRF token, or with a foreign `Origin`, or with `Sec-Fetch-Site: cross-site` (403);
-  - a second login with a used token;
-  - every route without a session (redirect to `/login`, or 401 for JSON).
-
-  A test walks every route and asserts that GET never changes the approvals store or the audit log.
-- **The approval flow, end to end, with no network.** It uses a fake PayHOA client like the one in `tests/test_owner_info.py` (`update_member_tags`, `add_unit_tag`, `set_submission_complete`, `add_submission_comment`, `list_units`, `iter_people`, and the form submissions):
-  1. plan;
-  2. decide some items, with a rejection reason;
-  3. submit with a name;
-  4. change the fake's state for one approved member;
-  5. apply, and assert `superseded`, no client write, and a new approval;
-  6. plan again, approve, and apply;
-  7. assert exactly the approved calls were made, and that the request completion was blocked where a write was rejected;
-  8. verify the audit chain.
-- **Second person.** The same name is refused (casefold and trimmed). A re-plan clears both signatures.
-- **Accessibility, in tests.** Every page's HTML is parsed and checked for:
-  - one `<h1>`;
-  - a `<main>` landmark;
-  - a label on every form control;
-  - no positive `tabindex`;
-  - `<th scope>` on table headers;
-  - `aria-live` or `role="status"` on the regions that change.
-
-  Contrast is checked once, in the token file's own test: the tokens.css header states its ratios.
-- **The boundary.** `tests/test_profile.py` already checks that general docs name no profile fact. A console test asserts that `src/jason/console/` names none either. It reuses `jason.community.boundary` terms, as the docs check does.
+- **Server.** `pytest tests/test_web.py`: each loader with a missing store and with a fixture store; each write refused without `by`; the write switches off (405). The guard and the engine routes add: a write with a foreign `Host` (421), a foreign or missing `Origin`, or no token (403) refused before its handler; a decision on a held item refused (400); apply refused without `--allow-apply`; an apply whose echoed fingerprint is not the approval's refused with nothing written (409); and no GET that changes `data/approvals/`.
+- **Engine.** `pytest tests/test_approvals.py`: the end-to-end plan, decide, submit, change the fake client, apply refused and superseded, re-plan, apply, audit chain verified.
+- **Components.** `npm test` in `ui/` (Vitest and Testing Library). A new component ships with a test and a design-sync preview (`.design-sync/previews/<Name>.tsx`).
+- **The boundary.** `tests/test_profile.py` checks that no general doc, `docs/console/` included, names a profile's facts. Samples in previews and tests use plainly fake values.
+- **Accessibility.** The component tests query by role and label; a person does a keyboard pass of each new screen before it ships ([components.md](components.md#accessibility)).
 
 ## Dependencies
 
-What the console would add. **pyproject is not edited here**; this is the list for the build.
-
-| Package | Why | Where |
-|---|---|---|
-| `starlette>=0.40` | The app. Already installed through `mcp`, but not declared | a new `console` extra |
-| `uvicorn>=0.30` | The server. Already installed through `mcp` | `console` |
-| `python-multipart>=0.0.9` | Starlette's form parsing (`await request.form()`). Already installed through `mcp` | `console` |
-| `jinja2>=3.1` | Templates with autoescaping (pulls in `markupsafe`). **New** | `console` (an open decision: [mvp.md](mvp.md#open-decisions)) |
-| `httpx>=0.27` | `TestClient`. Already installed through `mcp` | `dev` |
-
-The extra:
-
-```toml
-console = [
-    "starlette>=0.40",
-    "uvicorn>=0.30",
-    "python-multipart>=0.0.9",
-    "jinja2>=3.1",
-]
-```
-
-There are no new dependencies in phases 1 through 4 beyond this. Phase 5's passkeys would add a WebAuthn library (`webauthn`), decided then.
+Nothing new. The console uses the `web` extra (Flask, waitress) and `ui/package.json` (React, marked, DOMPurify). The design-sync tooling lives outside the package.

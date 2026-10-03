@@ -1,112 +1,120 @@
 # Components
 
-The inventory every screen draws from. The library lives in `src/jason/console/ui/`:
-- `tokens.css`, the design tokens;
-- `base.css`;
-- `components/<name>.html`, `<name>.css`, and an optional `<name>.js`.
+The console draws every screen from **jason-ui** (`ui/src/components`, exported from `index.ts`). The same components are the design system: the library build exposes them as `window.JasonUI` to the claude.ai design project, with one authored preview each in `.design-sync/previews/` ([conventions](../../.design-sync/conventions.md), [notes](../../.design-sync/NOTES.md)). [web-ui.md](../web-ui.md#components-uisrccomponents) lists them as built.
 
-Each `.html` file is reference markup with its states and variants in a header comment. The templates turn each one into a Jinja macro of the same name ([architecture.md](architecture.md#stack)).
+This page maps what the console needs onto them. Where the earlier spec named a component of the static prototype library (`src/jason/console/ui/`, the `jc-` names), the table gives the jason-ui component that does the job. Components marked **being added** are being written now for the engine's approvals screen; the names are that work's to settle, and this page follows them.
 
-This page holds the names, purposes, states, and variants: the contract between the screens and the library. Per-screen layouts are in [screens/](screens/). The words on screen are in [content/style.md](content/style.md) and [content/patterns.md](content/patterns.md).
+**Conventions** (jason-ui's, from the conventions header):
+- **Tokens, not hues.** `--bg`, `--panel`, `--ink`, `--muted`, `--line`, `--accent`, `--good`, `--warn`, `--bad`, with a dark variant under `prefers-color-scheme`, and the brand tokens the profile's theme adds (`--brand-font`, `--hero`, ...). The prototype's `held` role has no jason-ui token yet; `HeldNote` should add one (`--held`) rather than borrow `--warn`, since held is not late.
+- **A small class vocabulary**, global in `styles.css`: `.stack`, `.row`, `.wrap`, `.grid-2`, `.muted`, `.num`, `.chip`, `.notice`, `.notice-warn`, `.notice-error`. Components carry no CSS imports.
+- **Every state is a word.** `Pill` takes the word and its meaning; a color only repeats it.
+- **Writes go through `Confirm`** (two clicks, the change spelled out) or `ConfirmList` (a name on each tick). Nothing writes on a single click.
+- **Samples are plainly fake:** "Example Village HOA", "Owner A", "Jane Example", "123 Main St".
 
-**Conventions** (from the library as built):
-- **Classes** are `jc-<component>`, with BEM elements and modifiers: `.jc-write__why`, `.jc-badge--held`.
-- **Colors are roles, never hues.** `--jc-accent`, `success`, `warning`, `danger`, `info`, `held`, and `neutral`, each with `-soft` and `-border`.
-- **Every state is in words.** Color and icon only repeat the word, and an icon is `aria-hidden`.
-- **No component needs script to do its job.** A `.js` file enhances; the server enforces.
-- **Sample markup uses plainly fake values:** "Example Village HOA", "Jordan Example", "123 Main St".
+## Layout and frame
 
-## Layout
+| The console needs | jason-ui | Notes |
+|---|---|---|
+| The frame: wordmark, legal name, sign-in pick, dock, Board / Owner view, grouped nav, a "Go to" select under 720 px | `ConsoleShell` | Replaces the prototype's `app-shell` and `nav`. Nav counts come from the screen list (`count`); the approvals count is the inbox's pending count |
+| The page header | `ScreenHeader` (`title`, `summary`, `actions`) | Replaces `page-header`. One `h1` per screen |
+| A titled section | `Card` (`title`, `actions`) | Replaces `section-card`. Its freshness line and command go inside it (below) |
+| Bands of one screen | `Tabs` (controlled) | |
+| A plain frame without the console | `AppShell` | Older views; new screens use `ConsoleShell` |
+| The dock | `DockToolbar`, `Drawer`, `DockDrawerBody`, and the drawers `DeadlineList`, `ActionRegister`, `Scratchpad`, `AskPanel` | Built. Deadlines, tasks, notes, and Ask, floating or pinned at 1200 px |
 
-| Component | File | Purpose | States and variants |
-|---|---|---|---|
-| App shell | `app-shell` | The frame of every page: the skip link, the top bar (jason, the profile's name, the acting person), the nav, and `<main id="main">` | Under 960 px the nav goes above the content. Private view on: the top bar shows a `held`-role strip, "Private view: restricted records shown", with "turn off" |
-| Nav | `nav` | The sections in [information-architecture.md](information-architecture.md#navigation) order. Counts have words for a screen reader | `aria-current="page"` on the current section. `.jc-nav__count--attention` when something there is past a clock. Onboarding is shown only while a gate is closed |
-| Page header | `page-header` | The page's only `<h1>`. Optional breadcrumb, subtitle, meta line (badges, freshness), and actions | The primary action goes last. The meta line carries "read from disk, synced <time>" or "read live <time>" |
+## Status and time
 
-## Status and identity
-
-| Component | File | Purpose | States and variants |
-|---|---|---|---|
-| Status badge | `status-badge` | The state of an approval, an item, or a record, as a word | **Approval:** `--planned --review --approved --partial --applying --applied --failed --superseded --withdrawn`, matching `ApprovalStatus` one for one. **Item result:** `--applied --failed --changed --blocked --uncertain --not-applied`. **Item class:** `--held` (for the board), `--person`, `--confirm` (with the owner). **Records:** `--open --overdue --due-soon`. Size `--sm` for table cells |
-| Clock or deadline badge | `deadline-badge` | Time left or past, with the date in `<time>` | `--soon` (7 days or fewer), `--today`, `--passed`, `--met`. `--legal` adds "Legal", with a title naming the source; the citation is the item's own (`attention.Urgency.LEGAL`). It maps to the digest's urgencies: LEGAL is `--legal --passed`, OVERDUE is `--passed`, due soon is `--soon` |
-| Stage-gate stepper | `stage-stepper` | The onboarding stages in order (start, ingest, establish, operate, adopt), from `onboarding_status()["gates"]` | Each stage is closed (its gate passed, with the date) or open, naming what it waits on (`waiting`, `checks`). `aria-current="step"` on the stage being worked |
-| Person chip | `person-chip` | Who requested, decided, confirmed, or applied: initials (hidden), the full name, an optional role | `--agent` for jason: a plan or a reading, **never** a decision or a signature. `--board` for the board as a body. `--you` for the acting person. An approval card shows "planned by" jason (`--agent`) and "requested by" a person; they are two chips, never one |
-| Held-for-board banner | `held-banner` | Above items the board must decide first: how many, why, and the board item | `role="note"`. `--inline` for one line in a write row or card. It always says that approving the rest never approves a held item |
+| The console needs | jason-ui | Notes |
+|---|---|---|
+| A status or standing word | `Pill` (`word`, `meaning`) | Replaces `status-badge`. Approval statuses, item results, and clock standings are words from the code (`ApprovalStatus`, `Result`, `meeting_watch.Standing`) |
+| A category or a count | `Badge` | |
+| A deadline: time left or past, with the date | `DueDate` (`iso`, `today`) | Replaces `deadline-badge`. A statute's clock is marked by its citation beside it, not by a color of its own |
+| A statutory clock as stages | `Clock` (stages with `who`, `note`, `evidence`, `decision`) | Replaces `clock-row`. Used for 4360, 5210, 5515, 5855 |
+| Onboarding's stage gates in order | `StageSteps` (**being added**) | Replaces `stage-stepper`: each stage with its gate in words ("Gate open", or what it waits on), the stage being worked marked `aria-current="step"`. A gate is jason's reading; the board decides what is done |
+| Dated events | `Timeline` | |
+| Required contents, ready or missing | `Checklist`; `ConfirmList` when a person must tick | |
+| Who did it | the name in text, from the record | The prototype's `person-chip` is not carried over. `DraftLetter`'s log and `AuditLog` name each person; jason is named "jason" and never as a signer |
 
 ## Approval
 
-| Component | File | Purpose | States and variants |
-|---|---|---|---|
-| Approval card | `approval-card` | One approval in a list: kind (the `ActionKind.title`), a summary, planned by and requested by, the counts, the status, and the clock | Counts are writes, targets, held, for a person, and to confirm with the owner. A zero count is left out. A 2P kind shows "needs a second person". It carries a deadline badge when the kind has a clock |
-| Write or diff row | `write-row` | One `PlanItem`: select, the change (`+` add, `-` remove, `~` change, with words for a screen reader), before → after (`<del>` and `<ins>`), why, the rule (a short recited citation linking the recitation), the evidence chips, and the state. One `<tbody>` per target group, starting with a header row; `.jc-writes__then` shows what follows the group (a completion waiting on its writes) | `--held` (planner's class): no checkbox and an inline held note. `--person`: no checkbox, with the task for a person. `--confirm`: no checkbox. `--changed`: changed since review, with the old and new basis on request. After a decision: approved, rejected (with the reason), or held by a person (with the reason). After apply: a result badge |
-| Evidence chip | `evidence-chip` | A link to what an item rests on. The kind is a word | `--form`, `--document`, `--email`, `--record`, `--ledger`, and **`--rule`** (a statute or rule row: it opens the recitation). `--missing` is a span, not a link. `--confidential` is held back unless asked. A P2 or P3 target asks before revealing |
-| Changed-since-review banner | `changed-banner` | The live state moved: both fingerprints (12 hex), what changed, the new approval's link, and a re-plan action that works without script | Static with a heading on load. `role="alert"` when inserted after load. It disables the approve bar's Approve |
-| Approve bar | `approve-bar` | A sticky form: the selected count, the name field (pre-filled with the acting name), the cost line, and the actions **Approve selected**, **Reject selected** (with a reason), and **Hold for the board** (with a reason). It posts the fingerprint and the CSRF token | `--blocked` (changed since review). `--submitted`, which swaps in "Apply", "Withdraw", and, for a 2P kind, "Waiting for a second person". No action is enabled with nothing selected. Its height is set as `scroll-padding-bottom` on the page, so a focused row is never under it (WCAG 2.4.11) |
-| Second-person confirm | `confirm-panel` | States the two-person rule in words, shows who answered or approved, and asks for the confirmer's full name. The same panel serves an approval's second signature and a high-stakes intake answer (`onboarding_confirm`) | Waiting (the default), `--refused` (same name: the script says so before sending, the server refuses anyway), `--confirmed` (both people shown), and `--declined` (with the reason). The name field starts **empty** |
-| Cost summary | `cost-summary` | What the action will charge, line by line, in dollars from integer cents. Whether it is an estimate, who is charged, and the price source (`payhoa.pricing`, PayHOA's preview) | `--none` ("No charge: PayHOA tag changes"), `--over` (over a limit, flagged in words). It shows the billed pages per letter, and the extra postage past the fifth billed page |
-| Result panel | `result-panel` | What an apply did: the counts of applied, failed, changed, blocked, and not applied, each list in a `<details>` (failed open by default) | Default (all applied), `--failures`, `--refused` (a re-plan found a change, nothing written: it links the new approval). `role="status"` when it replaces the approve bar |
+The letters' approvals are built (`DraftLetter`, `ApprovalsInbox`). The engine's plan review is **being added**.
+
+| The console needs | jason-ui | Notes |
+|---|---|---|
+| The inbox: everything waiting on a person, by stage | `ApprovalsInbox`; `PlanApprovals` (a view, **being added**) beside it | Built for letters. The engine's plans are listed beside them on the same screen ([approval-workflow.md](approval-workflow.md#11-letters-and-plans-one-inbox)) |
+| A drafted letter through its stages | `DraftLetter` | Built: draft, saved, awaiting approval, approved, sent; each step a `Confirm` in a person's name; the approved stage shows a `Command`, never a send button. A board approval names the meeting |
+| One engine approval, whole | `PlanReview` (**being added**), listed by the `PlanApprovals` view inside `ApprovalsView` | Header (kind, status, requested by, read time, fingerprint's first 12 hex, clock, reversibility), the approvable items grouped by target, then the sections that are never approvable, the cost, the decisions, and the audit |
+| One plan item | `WriteRow` (**being added**) | Replaces `write-row`: the change as before → after with its sign in words, why, the rule (opening its `Recitation`), the evidence, and the decision. A held, for-a-person, or confirm-with-owner item has no control at all |
+| What an item rests on | `Evidence` | Takes strings today. The engine's evidence is `{label, address}`; `WriteRow` renders the label with the address as the chip, or `Evidence` grows an object form |
+| Held for the board | `HeldNote` (**being added**) | Replaces `held-banner`: how many, why, the board item, and that approving the rest never approves a held item. It says the item goes to the board's agenda, never that someone may approve it here |
+| Changed since review | `ChangedBanner` (**being added**) | Superseded, changed since review (a `check` that differs, or an apply refused), or read longer ago than the kind allows: what changed, the new approval, and the terminal command to plan again. A change blocks `ApproveBar`; a plan that is only old keeps its decisions, since apply re-plans first |
+| Deciding and signing | `ApproveBar` (**being added**) | Replaces `approve-bar`: decide the selected items (approve, or reject and hold with a reason), then sign with the tally, the cost, and the name (pre-filled from "Signed in as", never "jason"): "Approve 5 of 8 changes as Jane Example". Each write goes through `Confirm` |
+| The second person | `SecondConfirm` (**being added**) | Replaces `confirm-panel`: the rule in words, who signed first, a name field that starts empty, refused for the same name |
+| A two-click write | `Confirm` | Built. Every write outside the engine uses it |
+| What it costs | `CostLine` (**being added**), with `Money` | Replaces `cost-summary`: integer cents as dollars, "estimated", who is charged, the price source. "No cost" is stated, never blank |
+| What an apply did | `ApplyResult` (**being added**) | Replaces `result-panel`: applied, failed, uncertain, blocked, not applied, and changed, each listed; failures open. With apply off, it shows the `Command` to run instead |
+| A command to run | `Command` | Built: copies, never runs. Replaces `cli-hint` |
+| The audit | `AuditLog` (**being added**) | Replaces `audit-timeline`: an approval's events in order, with "chain verified" or "chain broken at line N" from `audit.verify` |
 
 ## Text and data
 
-| Component | File | Purpose | States and variants |
-|---|---|---|---|
-| Recitation block | `recitation` | The words whole from the stored text, the citation, the version in force, and the caveat (`community.cite.CAVEAT`) | `--not-in-force` (not the version in force on the date asked). `.jc-omission` for a marked omission. `<mark>` for the words that answer. `.jc-term` linking a definition, which is recited too. `.jc-recited` for a short recital in running text. A reading never goes inside it |
-| Reading label | `reading-label` | A reading of recited words, labeled with whose it is: jason's, the board's (with its adoption date), or counsel's | `--open`: two readings remain, and the board asks counsel. `.jc-decision` for a person's decision, set apart from both recited words and a reading |
-| Data table | `data-table` | Dense rows, a sticky header, sortable columns, inside a scrolling `.jc-table-wrap` with `tabindex="0"`, `role="region"`, and a label | `--zebra`, `--compact`. `data-sort-value` for dates and money. Row selection by checkbox only (no drag, WCAG 2.5.7). A masked P2 cell uses the masked field |
-| Filters bar | `filters-bar` | A GET form: search, selects, and toggle chips. `role="search"`. The summary line says "12 of 80 shown" | It works with no script. **Searches for a person by name or email are a POST** with no query string ([security-and-privacy.md](security-and-privacy.md#urls)) |
-| Empty, loading, and error states | `states` | Empty: what is not there, and what to do. Loading: `aria-busy` with words. Error: what failed, where it stopped, and the next action | **Unavailable** (a missing store: the reason and the command that fills it, from `attention.Section.error`). **Sign-in needed** (`KeeperAuthRequired` or `GoogleAuthRequired`: "run `jason login` in a terminal"; never a password field). **Busy** (`ResourceBusy`: who holds the lock) |
-| Toast | `toast` | A short message after an action, with a link to it | `--success`, `--error` (`role="alert"`), `--held`. No timer: it stays until dismissed (WCAG 2.2.1) |
+| The console needs | jason-ui | Notes |
+|---|---|---|
+| A rule's words, recited whole | `Recitation` (**being added**) | The words, the citation, the version in force, the caveat. A reading never goes inside it |
+| A reading, labeled with whose | `ReadingLabel` (**being added**) | jason's, the board's (with its adoption date), or counsel's; "two readings remain" when open |
+| Findings a person reads | `Findings` | |
+| A tool's caveats, always visible | `Caveats` | Rendered verbatim, never behind a toggle |
+| Dense rows | `DataTable` (sort, filter, row selection, `date` column kind) | Replaces `data-table` and the prototype's `filters-bar`; `SearchBox` for a search field |
+| A register with the board's columns | `RegisterGrid` | |
+| Money | `Money` (integer cents) | |
+| A figure | `Stat` | |
+| Markdown, with Mermaid | `Markdown` | |
+| A Doc, Sheet, PDF, or photo | `Embed` | |
+| A ranked question with its answer form | `QuestionCard` (**being added**) | Replaces `queue-item`: what it unblocks, the question, jason's suggestion labeled as jason's, the evidence, the answer with "by", and the second-person state for a high-stakes answer |
+| Loading, error, empty, and the tool's own `found: false` | `RemoteView`, `Loading`, `ErrorNotice`, `EmptyState` | Replaces `states`. "Unavailable" is the tool's note with its command; never an empty table |
+| A view that throws on a shape it did not expect | `ViewBoundary` (in `RemoteView`) | Shows the raw result, so a person still sees what the tool returned |
+| A result message | inline `.notice` with `role="status"` or `role="alert"` | The prototype's `toast` is not carried over: results stay where the action was taken ([patterns.md](content/patterns.md#notifications)) |
 
-## Activity
+## Meetings and decisions
 
-These two are not in the library yet.
+Built from the design handoff; listed here so the screen specs can name them.
 
-| Component | File | Purpose | States and variants |
-|---|---|---|---|
-| Audit timeline | `audit-timeline` | An approval's (or the whole log's) events, newest last: the time, the person chip, the event in words, the item, and the result. It is an ordered list (`<ol>`), not a table, so it reads in order | Event kinds in the log's own words: planned, decided, submitted, confirmed, declined, apply started, refused (changed), applied, failed, superseded, withdrawn, revealed (the field's kind only), private view on or off. `--compact` inside an approval. A "chain verified" or "chain broken at line N" line from `audit.verify` |
-| Queue item | `queue-item` | One ranked question or task in a queue: the rank, what it unblocks (`Unblocks`: a legal clock first), the question, the choices with jason's suggestion (labeled as jason's), the evidence chips, and the answer form | `--likely` (a suggestion strong enough to accept after a look), `--high-stakes` (needs a second person: the confirm panel follows), `--answered` (by whom, and when), `--refused` (a secret: the `SecretRefused` message; nothing kept). Used on Today (the next questions) and Onboarding |
+| Component | Job |
+|---|---|
+| `DecisionBrief` | The question, the criteria, lettered options, and the facts. Never a recommendation (`BRIEF_FOOTER`) |
+| `DecisionCard` | The board's decision on one item: motion, mover and second, the roll call, the outcome in the board's word |
+| `RollCall` | Each director's vote by name, with `present`, `recused`, and `threshold` |
+| `AgendaWizard`, `ReadinessRow`, `DriveAttach` | Planning a meeting: items, order, motions, packet, notice. jason reports computed checks only |
+| `MeetingStage`, `HostPanel` | The meeting room: the stage, attendance, motions, votes, the CIV 4930 guard, executive session as the host's act |
+| `BoardFields` | The board's columns on a board item, old → new behind a confirm |
+| `RequestForm` | An owner's records request, with the 5210 clock it starts |
 
-## Also needed
+## Still proposed
 
-The screens need these, and the library does not have them yet:
+Not in jason-ui and not being added now. Each waits on a decision in [mvp.md](mvp.md#open-decisions) or on its screen.
 
-| Component | File | Purpose | States and variants |
-|---|---|---|---|
-| Masked field | `masked-field` | A P2 value as the server masked it (`a••••@example.com`), with "Show". Show is a POST that returns this one field and logs the reveal | Masked, revealed (with "Hide"), and not allowed (the role cannot reveal: no button, and a note). The full value is never in the page until revealed |
-| Private-view switch | `private-switch` | Turns the private view on, asking for a reason, and off. It is in the page header | Off (the default) or on (the strip in the app shell). Expiring: 2 minutes before the idle limit it offers to extend (WCAG 2.2.1) |
-| Job status | `job-status` | Long work started from the console: what runs, who started it, the last lines of progress, and the result link | Queued, running (`aria-busy`, with progress in `role="status"`), done (a link to the new approval), failed (the error and the fix command). No script: a Refresh link |
-| Freshness line | `freshness` | When a section's store was last synced, and the command that refreshes it | Fresh, stale (older than the section's own limit), never synced (unavailable) |
+| Component | Job | Waits on |
+|---|---|---|
+| `MaskedField` | A contact value masked by the server, with a logged reveal of one field | The data levels and roles ([security-and-privacy.md](security-and-privacy.md#data-levels)) |
+| `PrivateSwitch` | Opening restricted material for a stated reason, logged | The same |
+| `Freshness` | When a section's store was last synced, and the command that refreshes it | Each loader returning its sync time. `ConsoleShell`'s `recordsAsOf` covers the page; a section line is the gap |
+| `JobStatus` | A plan or sync running as a job, its log tail, and its result | Whether engine plans run in the request or as jobs ([architecture.md](architecture.md#locking)) |
+| `CiteBox` | Any expression `jason cite` takes, answered as a `Recitation` | The governing-documents reader ([screens/governing-documents.md](screens/governing-documents.md)) |
+| `DiffTable` | Before and after for a text: a section's versions, a notice's text against what was kept | The same, and the notices screen |
 
 ## Accessibility
 
-The console meets WCAG 2.2 AA ([W3C](https://www.w3.org/TR/WCAG22/)). A dense admin console stresses these criteria most, so each component owns them:
+The console meets WCAG 2.2 AA ([W3C](https://www.w3.org/TR/WCAG22/)). jason-ui is a React app: there is no no-script baseline, so each component carries these duties itself.
 
-- **Keyboard (2.1.1, 2.4.3, 2.4.7).**
-  - Every action is a native control in DOM order.
-  - The skip link comes first.
-  - The focus ring uses `--jc-focus`.
-  - No `tabindex` above 0.
-  - Table scrolling regions are focusable and labeled.
-- **Focus not obscured (2.4.11).** The sticky approve bar and the top bar are offset with `scroll-padding`, so a focused row is never hidden under them.
-- **Target size (2.5.8).**
-  - Controls are 28 px high (`tokens.css`).
-  - Row checkboxes sit in a label that fills the cell, so the target is at least 24 by 24 px.
-  - Chips in a filters bar are whole-label targets.
-- **Dragging (2.5.7).** Nothing needs a drag: selecting, ordering, and resizing all have buttons.
-- **Contrast (1.4.3, 1.4.11).** Role text is at least 4.5:1 on its surface and soft fill, and borders on components at least 3:1, as `tokens.css` states. Dark mode keeps the same ratios.
+- **Keyboard (2.1.1, 2.4.3, 2.4.7).** Every action is a native `button`, `a`, or form field, in DOM order. No `tabindex` above 0. The focus ring is visible on every focusable element, and table regions that scroll are focusable and labeled.
+- **Focus not obscured (2.4.11).** `ApproveBar` is sticky; the page reserves its height (`scroll-padding-bottom`) so a focused row is never under it.
+- **Target size (2.5.8).** Row checkboxes and decision buttons are at least 24 by 24 CSS pixels, or spaced to pass.
+- **Dragging (2.5.7).** Nothing needs a drag. `Kanban` lays out cards without moving them, and `AgendaWizard` orders items with buttons. A new component keeps it that way.
+- **Contrast (1.4.3, 1.4.11).** Text 4.5:1 and component edges 3:1 against `--bg` and `--panel`, in both schemes and under a profile's brand tokens. The prototype measured its pairs ([its README](../../src/jason/console/ui/README.md)); jason-ui's tokens need the same table.
 - **Use of color (1.4.1).** Every state is a word first.
-- **Reflow (1.4.10).** At 320 CSS px wide, the page does not scroll sideways. Wide tables scroll inside their own region.
-- **Status messages (4.1.3).**
-  - Toasts, the job status, the result panel, and the approve bar's live count use `role="status"` or `aria-live="polite"`.
-  - Errors that replace content use `role="alert"`.
-- **Labels and errors (1.3.1, 3.3.1, 3.3.2, 3.3.3).**
-  - Every control has a visible label.
-  - An error names the field and says how to fix it: "That is the name that approved it. A second person confirms."
-- **Timing (2.2.1).**
-  - The idle limits (the session, and the private view) warn first and can be extended.
-  - Toasts never time out.
-  - A form in progress is never lost to a timeout: decisions are saved as made (`in review`).
-- **Redundant entry (3.3.7).** The approver's name is pre-filled. Only the second person's field starts empty, under the criterion's security exception.
-- **Accessible authentication (3.3.8).** The sign-in token can be pasted, or carried by the link. It is never typed from memory, and nothing asks for a transcription or a puzzle.
-- **Consistent help (3.2.6).** Each page's "how this works" link (to its CLI command and doc) sits in the same place in the page header.
+- **Reflow (1.4.10).** At 320 CSS px the page does not scroll sideways; `ConsoleShell` turns the nav into a select under 720 px, and wide tables scroll inside their own region.
+- **Status messages (4.1.3).** The approve bar's count, an apply's progress, and a result use `role="status"`; a refusal that stops the work uses `role="alert"`.
+- **Labels and errors (1.3.1, 3.3.1 to 3.3.3).** Every control has a visible label. An error names the field and how to fix it: "That is the name that approved it. A second person confirms."
+- **Redundant entry (3.3.7).** The approver's name comes from "Signed in as". Only the second person's field starts empty, under the criterion's security exception.
+- **Timing (2.2.1).** Nothing times out. Decisions save as they are made (`in_review`), so a person can leave and come back.
+- **Consistent help (3.2.6).** Each screen's command (`Command`) sits in the same place under its header.

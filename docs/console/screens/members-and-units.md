@@ -1,6 +1,12 @@
 # Members & units
 
-`/members`, `/members/units/{unit_id}` · phase 1 (the owners table), phase 2 (one unit) · CLI: `jason owner-info`, `jason party`, `jason delivery`
+A new screen, `#/members` (`?unit=` a PayHOA unit id only), in the Governance group · phase 4, after P2 masking · CLI: `jason owner-info`, `jason party`, `jason delivery`
+
+## In the console
+
+None. **Owner information** (`#/owner-info`) shows the cycle's planned writes as a `ConfirmList` and the owners by standing, and the engine's plan for the same cycle is reviewed in `#/approvals`. Nothing lists the owners with how notices reach each, or brings one unit together.
+
+**This spec is the whole screen, as proposed.** The loaders to add are `members` (`owner_info.ledger` and `summary` from the stored catalog, and `notice_delivery.plan`) and `unit` (`party_brief`, `unit_brief`, `parcel_liens`, `association_collections`' row, `new_owners`). Because a unit's page shows contact details and occupancy (P2), it waits on server-side masking with a logged reveal (`MaskedField`); the owners table alone (names, units, statuses, delivery channel: P1) could come first.
 
 ## Purpose and personas
 
@@ -75,7 +81,7 @@ A unit's URL carries its PayHOA unit id only. Finding a unit by owner name or ad
 | OCCUPANCY                                                                                 |
 | As the owner stated it:  [Show]  (Owner A's answer, Oct 2)                                |
 | As the records show it:  no rental tag · no lease on file                                 |
-| [held-banner inline] The two differ. Held for the board: BI-2099-04. No owner contact.   |
+| [HeldNote inline] The two differ. Held for the board: BI-2099-04. No owner contact.      |
 +------------------------------------------------------------------------------------------+
 | REQUESTS (2)                               | VIOLATIONS (1)                              |
 | 1042 architectural · OVERDUE 6 days >      | Sep 2099 · landscaping · open               |
@@ -94,7 +100,7 @@ Below 768 px the two-column bands stack, in the order shown.
 
 ## Components
 
-`page-header`, `data-table`, `filters-bar`, `section-card`, `freshness`, `cli-hint`, `status-badge`, `deadline-badge` (`--legal` on the cycle's statutory deadlines), `masked-field`, `evidence-chip`, `held-banner --inline`, `person-chip`, `states` (empty), `states` (unavailable), `job-status` (the live triage).
+`ScreenHeader`, `DataTable`, `SearchBox`, `Card`, `Pill` (`OwnerStatus`'s words), `DueDate` (the cycle's deadlines), `MaskedField` (proposed), `Evidence`, `HeldNote` (inline, on an `occupancy-vs-tag` finding), `Money`, `Command`, `RemoteView`.
 
 The owner statuses are `OwnerStatus`'s own words: "answered this cycle", "election on file in PayHOA", "an earlier written election, applied (confirm this cycle)", "an earlier answer to confirm", "no election: first-class mail (4040(a)(2))". The table may shorten them with the full words in the cell's accessible name.
 
@@ -102,13 +108,13 @@ The owner statuses are `OwnerStatus`'s own words: "answered this cycle", "electi
 
 | Control | Does | Approval? | CLI |
 |---|---|---|---|
-| Plan the cycle's writes | Starts the `payhoa.owner-info.tags` planner as a job, with `scope` `{payhoa: true, cycle}` | **Creates an approval** (and, for requests ready to complete, items of `payhoa.owner-info.complete`) | `jason owner-info --apply --payhoa` (the dry run) |
+| Plan the cycle's writes | shown as the command; the plan then appears in `#/approvals` | Makes an `owner-info-tags` approval: the tags, and the request completions that follow them | `jason approvals plan owner-info-tags --by NAME` |
 | Plan the delivery tags | The `payhoa.delivery.tags` planner (phase 3) | Creates an approval | `jason delivery --audit --apply` |
 | Filter | GET with `status`, `delivery` | No | `jason owner-info` |
 | Find a unit or owner | POST search; results without a query string | No | `jason party "123 MAIN"` |
 | Show (a P2 field) | The reveal endpoint for one field of one row | No; logged as `reveal` by kind | — |
-| Read the response policy for this unit | `owner_responses.triage` over the unit's context, live, as a job | No | `jason owner-info --responses` |
-| Open a request | `/requests/{id}` | No | — |
+| Read the response policy for this unit | shown as a command (a live read) | No | `jason owner-info --responses` |
+| Open a request | `#/requests?id=<id>` | No | — |
 
 **There is no control** to message an owner about occupancy, change an occupancy tag, or decide a rental question. A finding of `occupancy-vs-tag` is held for the board, and any owner contact about occupancy waits until the board takes up the board item. There is no control to send an account to collection, record a lien, or start a foreclosure: `association_collections` says these are the board's decisions, and the screen recites that note.
 
@@ -121,7 +127,7 @@ The owner statuses are `OwnerStatus`'s own words: "answered this cycle", "electi
 - **No answer this cycle:** "No answer this cycle." Never "did not answer", which would claim more than the record shows.
 - **Occupancy with no answer:** "As the owner stated it: no answer on record."
 - **Violations unavailable:** the section says so with `jason sync-catalog`; the rest of the unit stands.
-- **Triage job failed:** the job's error and fix, in place of the policy findings. The rest of the unit stands.
+- **Triage not on disk:** the policy findings are replaced by the command that reads them. The rest of the unit stands.
 
 ## Privacy
 
@@ -136,12 +142,12 @@ The owner statuses are `OwnerStatus`'s own words: "answered this cycle", "electi
 | Delinquency detail beyond the unit (payment plans, notes) | Private view | Private view | Private view | — |
 | A disciplinary matter's detail | Private view | Private view | Not shown | — |
 
-The reasoning: a balance discussed as a member's delinquency belongs to executive session (Civil Code 4935(a)), so a director sees the amount in the private view, which records why it was opened. The manager and treasurer work the ledger daily and see the amount. This split is proposed; open question 4 in the report.
+The reasoning: a balance discussed as a member's delinquency belongs to executive session (Civil Code 4935(a)), so a director sees the amount in the private view, which records why it was opened. The manager and treasurer work the ledger daily and see the amount. This split is proposed, with the roles ([security-and-privacy.md](../security-and-privacy.md#roles)).
 
 ## Acceptance criteria
 
 1. The owners table's counts match `owner_info.summary` for the fixture, with test accounts labeled and not counted.
-2. "Plan the cycle's writes" creates exactly one approval of kind `payhoa.owner-info.tags`, and supersedes an open one of the same scope.
+2. The plan command, run, makes exactly one `owner-info-tags` approval and supersedes an open one of the same scope; the screen links it in `#/approvals`.
 3. The unit page renders with the unit id in the URL and no name or address in any query string.
 4. For a treasurer, no email, address, phone, or occupancy statement appears in the HTML, masked or not.
 5. With the private view off, a director's unit page shows the balance's standing word and no amount.

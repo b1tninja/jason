@@ -1,6 +1,12 @@
 # Governing documents
 
-`/documents`, `/r/{address}`, `/cite?q=` · phase 2 · CLI: `jason cite`, `jason living`, `jason conflicts`
+A new screen, `#/documents` (`?q=` an expression `jason cite` takes, `?address=` a `jason://` address), in the Records group · phase 2 · CLI: `jason cite`, `jason living`, `jason conflicts`
+
+## In the console
+
+None. `#/records` lists the governing instruments as a timeline, and `#/duties` opens a duty's brief with the documents' passages, but nothing recites a section on request.
+
+**This spec is the whole screen, as proposed.** The loaders to add are `cite` (`jason.api.cite_document`, with `as_of`) and `record` (`read_record`, `section_refs`), plus `living_document` and `document_conflicts` for the bands. The components are being added: `Recitation` and `ReadingLabel`. The same `cite` loader serves the "recite" disclosure on an approval's rule ([approvals.md](approvals.md)). It reads only.
 
 ## Purpose and personas
 
@@ -70,23 +76,23 @@ Below 768 px the three columns stack: history, cites, cited by.
 
 ## Components
 
-`page-header`, `cite-box`, `recitation` (with `--not-in-force` when the words asked for are not the version in force), `reading-label` (`jason's reading`, `--board` with the adoption date, `--open` for two readings), `evidence-chip` (`--record`, `--document`), `diff-table` (versions side by side), `status-badge`, `section-card`, `states` (empty), `states` (unavailable), `data-table` (conflicts, duties).
+`ScreenHeader`, a cite box (`SearchBox` until `CiteBox` exists), `Recitation` (saying so when the words asked for are not the version in force), `ReadingLabel` (jason's; the board's with the adoption date; or two readings remaining), `Evidence`, `Pill`, `Card`, `DataTable` (conflicts, duties), `RemoteView`. Versions side by side wait on `DiffTable` ([components.md](../components.md#still-proposed)).
 
-**The readings band is the only place a reading appears.** It always follows the recitation and the defined terms. A reading is never inline in the recited words, never in the heading, and never in a tooltip on the words. Each reading names whose it is ([style.md](../content/style.md#recited-read-decided)).
+**The readings band is the only place a reading appears.** It always follows the recitation and the defined terms. A reading is never inline in the recited words, never in the heading, and never in a tooltip on the words. Each reading names whose it is ([style.md](../content/style.md#who-said-it-recited-read-decided)).
 
 ## Actions
 
 | Control | Does | Approval? | CLI |
 |---|---|---|---|
-| Cite | `cite_document(expression, as_of)`. The expression is a GET parameter (`/cite?q=`): it names a document, never a person | No | `jason cite "EXPR" [--as-of DATE]` |
+| Cite | `cite_document(expression, as_of)`. The expression is in the route (`#/documents?q=`): it names a document, never a person | No | `jason cite "EXPR" [--as-of DATE]` |
 | As of a date | Re-reads the words in force on that day (`jason://decl:2099-06-01/7.3`) | No | `jason cite EXPR --as-of DATE` |
 | Copy the citation | Copies "Declaration § 7.3" in the document's own style | No | — |
 | Copy the address | Copies `jason://decl/7.3` | No | — |
 | Copy the words with citation | Copies the words whole, the citation, the version, and the caveat together. Never the words alone | No | `jason cite EXPR --md` |
-| Open a reference | `/r/{address}` | No | `jason cite EXPR --refs` / `--cited-by` |
-| Open a version | `/r/decl@{version}/7.3` | No | — |
-| Compare two versions | `diff-table` over the two versions' words | No | `jason revisions KEY --diff A B` |
-| Open the private view (restricted book) | The header's switch, with a reason | No; logged as `private_view.on` | `jason cite EXPR --private` |
+| Open a reference | `#/documents?address=jason://...` | No | `jason cite EXPR --refs` / `--cited-by` |
+| Open a version | `#/documents?address=jason://decl@{version}/7.3` | No | — |
+| Compare two versions | the two versions' words side by side | No | `jason revisions KEY --diff A B` |
+| Read a restricted book | the private view, once it exists; until then the command | No; logged as `private_view.on` | `jason cite EXPR --private` |
 
 No action on this screen writes. A reading cannot be added here: a board reading is adopted at a meeting and enters the profile as a rule row; jason's readings come from its own records.
 
@@ -110,9 +116,9 @@ No action on this screen writes. A reading cannot be added here: a board reading
 
 1. For every section, the recitation (words, citation, version in force, caveat) renders before any reading, defined term, or history, and nothing renders between the words and the citation.
 2. Every reading block names whose reading it is. A test renders a section with all three kinds and checks each label.
-3. `/r/{address}` shows the same words and citation as `read_record(address)` for the fixture.
+3. `#/documents?address=…` shows the same words and citation as `read_record(address)` for the fixture.
 4. Copy-the-words always copies the citation and caveat with the words.
 5. An as-of date before an amendment shows the earlier words with the earlier version, and the not-in-force line when the day asked about is not today's version.
-6. A restricted address with the private view off returns the restricted state, and no words of it are in the HTML.
+6. A restricted address outside the private view returns the restricted state, and the loader's answer holds no words of it.
 7. A miss renders the resolver's reason and never an empty recitation.
 8. Conflicts show the caveat verbatim, and their status words come from the row.

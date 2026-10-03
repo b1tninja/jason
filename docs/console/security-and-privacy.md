@@ -1,133 +1,130 @@
 # Security and privacy
 
-The console holds the association's members' data and can write to PayHOA and Google. These are its requirements. Each one is testable, and [mvp.md](mvp.md) lists the tests.
+The console (jason-ui served by jason-web) holds the association's members' data, writes jason's own stores, and, with one flag, writes PayHOA through an approved plan. These are its requirements: what is built, and what is still proposed. Each is testable.
 
 ## Where it listens
 
-- **127.0.0.1 only.** `jason serve` binds to `127.0.0.1` and has no option for another address in phases 1 through 4. A request whose socket peer is not loopback is refused, whatever the bind says.
-- **The Host header is checked.** Every request's `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`. Anything else gets 421 Misdirected Request. This stops a DNS-rebinding page in the person's browser from reaching the console under another name.
-- **No CORS.** The console sends no `Access-Control-Allow-*` headers, and refuses a preflight.
-- **Headers on every response:**
-  - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'`;
-  - `X-Content-Type-Options: nosniff`;
-  - `Referrer-Policy: no-referrer`;
-  - `Cache-Control: no-store` on every page that shows member data.
+- **127.0.0.1 by default.** `jason-web` binds `127.0.0.1:8080`. `--host` is a person's choice, and the guard then accepts that name too. Serving beyond the machine is out of scope until there is sign-in for each person and a written policy on who may see what (below).
+- **No CORS.** jason-web sends no `Access-Control-Allow-*` headers. The UI and the API share one origin.
+- **No credential in the browser.** jason-web never asks for a Keeper, PayHOA, or Google credential. A live read that needs a session that is missing (`KeeperAuthRequired`, `GoogleAuthRequired`) fails fast with "run `jason login` in a terminal" (503). This is the non-interactive rule in AGENTS.md.
+- **Files under `data/` only.** `GET /api/file` serves a photo, PDF, audio, or text file under `data/`, path-checked, known types only, with `Content-Security-Policy: sandbox`.
 
-  No inline script runs. The one small script is a file the console serves itself ([architecture.md](architecture.md#stack)).
-- **No outside resources.** No CDN, web font, or analytics. The console works with the network unplugged, apart from the live reads that need PayHOA or Google.
+## The write guard
 
-## The session token
+Loopback is not a boundary: any browser tab or program on the machine can reach 127.0.0.1. `jason.web.guard` puts three layers in front of every write (OWASP's [CSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)):
 
-Being on loopback is not enough: any program or browser tab on the machine can reach 127.0.0.1. The console therefore needs a secret that only the person who started it holds. This is the model Jupyter uses.
+| Layer | Rule | Refused with |
+|---|---|---|
+| **Host** | Every `/api/*` request and every write names a loopback host (`127.0.0.1`, `localhost`, `::1`) or the `--host` a person passed. This stops a DNS-rebinding page from reaching the API under its own name | 421 |
+| **Origin** | A write (POST, PUT, PATCH, DELETE) carries `Origin` equal to the server's own host. A missing or `null` Origin is refused, and so is `Sec-Fetch-Site` other than `same-origin` | 403 |
+| **Token** | A random token made when the app starts, held in memory only, never written to `data/` or a log. The page reads it from `<meta name="jason-token">` in `index.html` or `GET /api/session` and sends it as `X-Jason-Token`. Every response also sets it as an `HttpOnly; SameSite=Strict` cookie, so the older pages keep writing jason's own stores. A write outside jason (an approval's `check` or `apply`) takes the header only | 403 |
 
-1. On start, `jason serve` makes a random token (`secrets.token_urlsafe(32)`). It keeps the token in memory and prints a sign-in link once to the terminal: `http://127.0.0.1:<port>/login#<token>`.
-   - The token is in the URL **fragment**, which the browser never sends to the server or puts in a Referer.
-   - The login page's script reads the fragment, POSTs it, then clears it with `history.replaceState`.
-   - Without script, the login page has a field to paste the token into.
-2. The POST exchanges the token for a session cookie:
-   - `jc_session`, a separate random value;
-   - `HttpOnly; SameSite=Strict; Path=/`;
-   - `Secure` is not possible over plain-http loopback, and is omitted.
+**What the guard is not.** The token is not a sign-in: a program on the machine can read `/api/session` as the page does. It is a second, independent layer against a web page in the person's browser, which the Origin check already refuses.
 
-   The session expires after 12 hours, or 30 minutes idle. The start token is single-use: once exchanged, a second exchange is refused until `jason serve --rotate` or a restart.
-3. `jason serve --open` opens the default browser on the link, so the person never copies it.
-4. The token is never written to `data/`, to a log, or to the audit log. `jason serve --print-token` prints it again while the server runs, from the terminal that owns it.
+**No state change on GET.** Every write is a POST. An approval's `check` reads PayHOA live, so it is a POST too: a link, a prefetch, or another site's `<img>` never sets it off.
 
-**The launch entry** (`.claude/launch.json`) opens the console's origin with no path, so the browser lands on `/login`, which asks for the token ([architecture.md](architecture.md#launch-configuration)).
+**The write switches.** `create_app` turns each group of writes off (`board_writer=None`, `extra_writes=False`, `approvals_writes=False`); a write that is off answers "writes are off". `/api/health` lists the writes that are on, and `/api/session` says whether apply and live checks are on.
 
-## CSRF
+## Apply: off unless a person turns it on
 
-This follows OWASP's CSRF guidance ([cheat sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)). The layers are:
-- **A synchronizer token.** Each session has a random CSRF token, kept on the server. Every form carries it in a hidden field. Every POST, PUT, or DELETE must carry the session's token, or the request is refused (403) before the handler runs.
-- **Origin and Fetch Metadata.** A state-changing request must have `Origin` equal to the console's own origin. If the browser sends `Sec-Fetch-Site`, it must be `same-origin`. A missing `Origin` on a state-changing request is refused.
-- **`SameSite=Strict`** on the session cookie.
-- **No state change on GET.** Every action is a POST, and a GET never writes. This includes "reveal": a reveal is a POST that returns the value and logs it.
-- **The approval fingerprint is a guard of its own.** Approve, confirm, and apply each POST the fingerprint the person saw. The server refuses if it is not the current one ("the plan changed since you opened this page").
+`POST /api/approvals/<id>/apply` is the one route that writes outside jason. It is refused unless the person who starts the server passes `--allow-apply`:
+
+- **Off (the default).** The route is refused with the command a person runs instead: `jason approvals apply ID --yes --by NAME`. The page shows that command, as every other outward write in the console does.
+- **On.** The server prints "apply is ON" when it starts. An apply carries the token in its header (the cookie alone is not enough), names its person (`by`), and echoes the fingerprint that person reviewed (`confirm`); a fingerprint that is not the approval's is refused, with nothing written. The engine then re-reads live and refuses again if anything changed since review ([approval-workflow.md](approval-workflow.md#6-re-plan-before-apply)).
+
+Why a flag and not a role: until each person signs in, a name on an apply is a pick from a list. Starting the server with `--allow-apply` is a person's act at the terminal, like the CLI's `--yes`, made once for the session.
 
 ## Identity
 
-### Phases 1 to 4: a named person, not a login
+### Today: a named person, not a login
 
-- **Acting as.** At session start, the person picks who they are acting as from the roster, and their role. The roster is a private fact, in `data/spec/<profile>.json`, read through `jason.community.private.facts`. The session carries the pair. The page header shows it, with "change".
-- **The approve bar's name field** comes pre-filled with the acting name. This follows WCAG 3.3.7, which asks a site not to make a person retype what they entered earlier in the same process. The person can correct it. Submitting signs with exactly what the field holds.
-- **The second person's name field starts empty.** Retyping is the point of the step, and that falls under 3.3.7's security exception. The console refuses the same name as the first signer or the requester.
-- **What a name proves.** On a shared machine, a name is a claim, not an authentication. The audit log records beside it:
-  - the session id;
-  - the operating-system user (`getpass.getuser()`);
-  - the time.
+- **"Signed in as" is a sample picker** over the profile's officers (`Community.officers()`, the names from the private facts). The pick is kept in the browser's `localStorage` (`jason-console-user`), a name only. It grants nothing.
+- **The server checks what it can.** A letter's approval is refused unless `by` is an officer whose `approves` names the letter's approver; for the board, the president or the secretary, with the meeting's date (`tasks.approvals`). Every write requires `by`.
+- **An engine approval checks names against each other, not against the officers.** The engine refuses an empty name, and refuses a second person who is the first signer or the requester (casefold, trimmed). It does not yet refuse a name that is not an officer; whether the console's door should is an open decision ([mvp.md](mvp.md#open-decisions)).
+- **The second person's name starts empty** in `SecondConfirm`. Retyping is the point of that step, which falls under WCAG 3.3.7's security exception. The first signer's name is pre-filled from "Signed in as".
+- **What a name proves.** On a shared machine, a name is a claim, not an authentication. The audit log records the operating-system user beside each name (`os_user`), and `via: "console"` or `"cli"`. The log does not prove who clicked. The console's caveats say so plainly.
 
-  The log does not prove who clicked. It proves which session did, at the manager's machine. The docs and the console's own help say so plainly.
-- **No password field anywhere.** The console never asks for a Keeper, PayHOA, or Google credential. When a live read needs a session that is missing (`KeeperAuthRequired`, `GoogleAuthRequired`), the job fails fast with the command to run in a terminal (`jason login`). This is the non-interactive rule in AGENTS.md.
+### Later: sign-in for each person
 
-### Phase 5: board sign-in, later
+Each person gets their own credential, so a name is authenticated. The preferred path is a passkey (WebAuthn) for each officer, registered at the manager's machine (public keys only under `data/`): phishing-resistant, and nothing to remember or transcribe (WCAG 3.3.8). Until then:
+- apply stays behind `--allow-apply`;
+- the second-person rule guards against mistakes, not a determined person;
+- serving beyond loopback stays out of scope.
 
-Each person gets their own credential, so a name is authenticated:
-- **The preferred path:** a passkey (WebAuthn) for each roster person, registered at the manager's machine and kept in `data/console/` (public keys only). A passkey is phishing-resistant, and meets WCAG 3.3.8 (accessible authentication), because nothing has to be remembered or transcribed.
-- **The fallback:** a one-time link emailed to the roster person's address, through a Gmail draft a person sends. That is the only send path jason has.
-
-**Remote access stays out of scope** until the board decides it. Serving outside 127.0.0.1 would need, at least:
-- TLS;
-- sign-in for each person;
-- rate limits;
-- the board's written policy on who may see what (a rule row, by the "where the law is silent" axiom).
-
-Until then, a director uses the console at the manager's machine, or reads exports.
+**Remote access** would need, at least: TLS, sign-in for each person, rate limits, and the board's written policy on who may see what (a rule row, by the "where the law is silent" axiom).
 
 ## Roles
 
-`jason.console.identity.Role` is a closed set:
+**Built.** The roster is `Community.officers()`: each `Officer` has an `OfficerRole` (president, vice president, secretary, treasurer, director, manager) and `approves` (what that person may approve on their own, such as "the treasurer" or "a fluent reviewer"). "The board" is never a person's approval: it is a vote at a meeting that the president or the secretary records (`Officer.can_approve`).
 
-| Role | Screens | Can approve | Data levels |
+**The Board / Owner view is a view, not a permission.** The owner view (`?view=owner`) shows the read-only screens an owner would see, with a banner. Anyone at the machine can switch back. It decides what a screen shows, never who may see it.
+
+**Proposed.** Screen-level access by role, enforced on the server at each loader and write (hiding a button is not a check):
+
+| Role | Screens | Can sign | Data levels |
 |---|---|---|---|
-| `manager` | All | MANAGER and BOARD_RULE kinds; first signature on TWO_PERSON kinds | P0 to P2, with P2 revealed on request. P3 in the private view |
-| `director` | All but Settings → connections | First or second signature | P0 and P1. P2 on an item they are deciding. P3 executive session in the private view |
-| `secretary` | Today, Meetings, Notices, Governing documents, Schedule, Records | Google Doc kinds; second signature | P0 and P1. P3 executive-session minutes in the private view |
-| `treasurer` | Today, Finance, Schedule, Members (no contact) | Second signature on money kinds | P0 and P1. Account numbers by last four only |
-| `reviewer` | Approvals (waiting on a second person), and their evidence | Second signature only | As the approval shows |
-| `counsel` | Governing documents, conflicts, notices' requirements and proof, and granted matters | None | P0, plus the granted P3 matter files |
+| manager | All | First signature; one-person kinds | P0 to P2, with P2 revealed on request. P3 in the private view |
+| director (president, vice president included) | All but connections | First or second signature | P0 and P1. P2 on an item they are deciding. P3 executive session in the private view |
+| secretary | Overview, Governance, Records | Second signature; records the board's vote | P0 and P1. P3 executive-session minutes in the private view |
+| treasurer | Overview, Money | Second signature on money kinds | P0 and P1. Account numbers by last four only |
+| reviewer | Approvals waiting on a second person, and their evidence | Second signature only | As the approval shows |
+| counsel | Governing documents, conflicts, notices' requirements and proof, granted matters | None | P0, plus granted P3 matter files |
 
-The role table is **data**: a `RoleGrant` row in the profile names who holds which role. It is not code. Each check is made on the server, at the route; hiding a button is not a check.
+`OfficerRole` has no reviewer or counsel. Whether they become officer roles, or a separate grant in the profile, is open ([mvp.md](mvp.md#open-decisions)).
 
 ## Data levels
 
 | Level | What | Shown | Example source |
 |---|---|---|---|
 | **P0** | The association's documents and the law | Always | `cite_document`, `living_document` |
-| **P1** | Members' names and units, tag names, request kinds and clocks | To roles that work with members | `owner_info.ledger`, `member_requests` |
-| **P2** | Contact: emails, phone numbers, mailing addresses, a unit's occupancy as an owner reported it | **Masked** (`a••••@example.com`, `123 M••• St`). Revealed by a POST, one field at a time, logged by kind | PayHOA people rows, `owner_responses.Context.answers` |
-| **P3** | Restricted: executive-session minutes and material; the membership list as a book; ballots and election materials (Civil Code 5215, 5200(c)); legal matters and case files; delinquency detail beyond the unit; private facts (`data/spec`); the profile's private notes | Only in the **private view**, which is off by default. Turning it on asks for a reason, is logged, and lasts until turned off or 30 minutes idle. Restricted books follow `jason cite --private` | `reader` with `private=True`; `case_file`; `private.facts` |
+| **P1** | Members' names and units, tag names, request kinds and clocks | To the people who work with members | `owner_info.ledger`, `member_requests` |
+| **P2** | Contact: emails, phone numbers, mailing addresses, a unit's occupancy as an owner reported it | **Masked** by the server (`a••••@example.com`); revealed one field at a time, logged by kind | PayHOA people rows, `owner_responses.Context.answers` |
+| **P3** | Restricted: executive-session minutes and material; the membership list as a book; ballots and election materials (Civil Code 5215, 5200(c)); legal matters and case files; delinquency detail beyond the unit; private facts (`data/spec`) | Only in the **private view**, off by default, opened for a stated reason and logged. Restricted books follow `jason cite --private` | `reader` with `private=True`; `case_file`; `private.facts` |
 | **P4** | Secrets: passwords, tokens, PINs, API keys, account and routing numbers in full, Keeper record values | **Never**: not shown, stored, logged, or asked for | — |
 
-**Masking is the server's job.** A masked value never reaches the browser. Hiding it with CSS is not masking. The reveal endpoint returns one field, for one row, to a role allowed to see it.
+**Built.** The approvals routes mask anything that looks like an email address or a phone number before it leaves the server; the audit log masks email addresses before a line is written; a plan item never carries a value `intake.secret_reason` flags. The money screens mark delinquency as an executive-session subject; the legal and hearing screens are for directors and counsel by their caveats. The owner view leaves out the screens that are the board's.
 
-**Account numbers** are shown by their last four digits, as `finance.balances` names accounts. A full number is P4, and the console has no field that holds one.
+**Proposed.** P2 masking for each field, with a logged reveal (`MaskedField`), and the private view for P3 (`PrivateSwitch`), both server-side. **Masking is the server's job**: a masked value never reaches the browser, and hiding it with CSS is not masking. Until these exist, a screen that would show P2 or P3 values (Members and units, a notice's member rows) is not built.
 
-**Test accounts** (`config.test_memberships`) are labeled "test" everywhere they appear. They never count as owners.
+**Account numbers** show their last four digits, as `finance.balances` names accounts. A full number is P4.
+
+**Test accounts** (`config.test_memberships`) are labeled "test" wherever they appear, and never count as owners.
 
 ### URLs
 
-A URL carries an id or a filter: a unit id, a request id, a notice key, `?status=open`. It never carries a name, an email, an address, or a search for one. A search for a person is a POST, and its results page has no query string. This keeps member data out of the browser's history, out of server access logs, and out of any Referer.
+A URL carries an id or a filter: a screen, a unit id, a request id, a notice key, a date, `?view=owner`. It never carries a name, an email, an address, or a search for one. A search for a person is a POST. This keeps member data out of browser history, any server log, and any Referer.
 
-### Exports
+### Exports (proposed)
 
-A table can be downloaded as CSV with the columns shown. P2 is masked in the export unless it was revealed. P3 is exported only in the private view. Each export is logged with its column list and row count. Like `jason owner-info --out`, an export carries names and no addresses unless addresses were asked for.
+A table downloaded as CSV has the columns shown. P2 is masked unless revealed; P3 only in the private view. Each export is logged with its column list and row count.
+
+## Outside resources
+
+The earlier spec required no CDN, web font, or remote frame. jason-ui made three exceptions, each on first use:
+- `Markdown` loads Mermaid from a CDN the first time a page has a diagram (`setMermaidUrl` overrides it);
+- `GET /api/theme` may give the profile's font stylesheet URL;
+- `Embed` frames Google Docs, Sheets, Slides, Forms, Drive, Calendar, and a Zoom recording, for a viewer already allowed to see them.
+
+None of them sends member data: they load a library, a font, or a file the viewer's own Google session opens. A Content-Security-Policy for the bundle would name exactly these origins and nothing else. Whether to self-host Mermaid and the font is open ([mvp.md](mvp.md#open-decisions)).
 
 ## Secrets
 
-- **No secret is ever in the UI.** That includes values from `.env`, the Google token, Keeper, PayHOA's session, and the console's own start token after login.
-- **Settings shows only whether a connection is present**, yes or no, and the command to fix it.
-- **Keeper records are named by title**, never by UID or value. The intake rule answers with "the Keeper record's name".
-- **Every text field that stores** (an intake answer, a rejection reason, a withdrawal reason) goes through `intake.secret_reason`. A value that looks like a secret is refused with the same message the CLI gives, and nothing is kept.
-- **Error pages** show a short message and a reference to the server log. They never show a traceback, a request header, or a settings value. The server log redacts `Cookie`, `Authorization`, and form fields named like secrets.
+- **No secret is ever in the UI.** That includes values from `.env`, the Google token, Keeper, PayHOA's session, and the guard's token (which the page holds only in memory and the cookie).
+- **Status shows only whether a connection is present**, yes or no, and the command that fixes it.
+- **Keeper records are named by title**, never by UID or value.
+- **Every text field that stores** (a reason, an answer, a note) goes through `intake.secret_reason` where the task already checks it. A value that looks like a secret is refused with the CLI's message, and nothing is kept.
+- **Errors** say what did not happen and what to do, in jason's words. They never show a traceback, a request header, or a setting.
 
 ## What the console stores
 
-Everything is under `config.data_dir()/console/`, which is private and never checked in:
+Everything is under the profile's data folder (`jason.config.data_dir`), private and never checked in:
 
-| File | Holds | Level |
+| Path | Holds | Level |
 |---|---|---|
-| `approvals.db` | Approvals and their items | P1. Evidence links point to P2 or P3 sources; they do not copy them |
-| `audit.jsonl` | The audit log | P1 at most |
-| `prefs.json` | A person's console preferences (filters, density) | P0 |
+| `approvals/apr-*.json` | Engine approvals and their items | P1. Evidence points to P2 or P3 sources; it does not copy them |
+| `approvals/audit.jsonl` | The approvals audit log | P1 at most |
+| `approvals/letters.json` | The letters jason drafted, their stages and trail | The letter's own level: a notice to members is P1; a letter to one owner names that owner |
+| `board/decisions.json`, `meetings/plan-<date>.json`, `meetings/room-<date>.json` | The board's decisions, a meeting's plan, the room's record | P1; executive-session items by general nature only |
+| `canvases/`, `dock/dock.json`, `registers/`, and the other console stores ([web-ui.md](../web-ui.md#api)) | A person's work and the board's columns | P1, and P3 where the subject is (a canvas on a legal matter) |
 
-Sessions and the CSRF tokens live in memory only. A restart signs everyone out.
+The guard's token lives in memory only; a restart makes a new one. The browser keeps the "Signed in as" name and nothing else.

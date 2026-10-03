@@ -7,7 +7,7 @@ The quotes were checked against the pages on Oct 3, 2026. Each is under 15 words
 ## Showing a plan as a diff
 
 **Recommendation**
-- **One row per write, as before → after.** The `write-row` shows the change's sign as a word with a mark: "+ add", "− remove", "~ change", the old value struck (`<del>`) and the new one inserted (`<ins>`). The sign is never color alone.
+- **One row per write, as before → after.** `WriteRow` shows the change's sign as a word with a mark: "+ add", "− remove", "~ change", the old value struck (`<del>`) and the new one inserted (`<ins>`). The sign is never color alone.
 - **Group by target.** One owner's or one unit's changes read together, with a group header and group-level approve and reject. A dependent item (a request completion) sits at the end of its group as "Then: …", naming what it waits on.
 - **The reason sits on the row.** The planner's `why`, then the rule with **recite**, then the evidence chips. A person should never leave the row to learn why a write exists.
 - **What will not happen is in the plan.** Held for the board, for a person, confirm with the owner, and test accounts left out each have their own section under the approvable writes, with counts in the header. A plan that hides what it will not do misleads by omission.
@@ -37,10 +37,10 @@ The quotes were checked against the pages on Oct 3, 2026. Each is under 15 words
 ## Stale-plan detection
 
 **Recommendation**
-- **Bind every signature to a fingerprint.** Approve, confirm, and apply each POST the fingerprint the page showed. The server refuses a mismatch and changes nothing: "This plan changed since you opened it. Reload to see the new plan." This is optimistic concurrency, as HTTP's `If-Match` and 412 do.
+- **Bind every signature to a fingerprint.** A stored approval's items never change: a re-plan is a new approval. So a decision or a signature names the approval by id, and the engine refuses one on an approval that is superseded or withdrawn. Apply goes further: it echoes the fingerprint the person reviewed, and the server refuses a mismatch (409) and changes nothing: "This plan changed since you opened it. Reload to see the new plan." This is optimistic concurrency, as HTTP's `If-Match` and 412 do.
 - **Re-plan at apply, always.** A stored plan's live state is never trusted. If an approved item's basis differs, refuse the whole apply, supersede the approval, and open a new one with the changed items marked and earlier decisions shown as hints.
 - **Show the age of the read** in the header ("live read Oct 3, 08:40"), and refuse apply past the kind's `max_age_hours` with a re-plan button.
-- **Changed-since-review is a banner first in the content,** with both fingerprints, what changed, and one action: "Re-plan and review again" (`changed-banner`). The approve bar is blocked while it shows.
+- **Changed-since-review is a banner first in the content,** with what changed and one action, the new plan to review (`ChangedBanner`). `ApproveBar` is blocked while it shows.
 - **New items do not block.** Writes new since review are noted ("3 writes new since review, not included") and wait for the next plan.
 
 **Sources**
@@ -67,8 +67,8 @@ Most of jason's PayHOA writes can be reversed by another write: a tag added can 
 ## Notifications
 
 **Recommendation**
-- **Inline first.** A result appears where the action was taken: the result panel replaces the approve bar; a refused field shows its error beside it.
-- **No timed toasts.** The library's `toast` has no timer and stays until dismissed, and it only points at the result; the result itself (applied, failed, refused) stays inline on the page where the person can read it again.
+- **Inline first.** A result appears where the action was taken: `ApplyResult` replaces `ApproveBar`; a refused field shows its error beside it.
+- **No toasts.** jason-ui has none. The result itself (applied, failed, refused) stays inline on the page, where the person can read it again.
 - **Status messages are announced without moving focus** (`role="status"`); a failure that stops the work uses `role="alert"`.
 - **The navigation's counts are the console's notification center.** "Approvals 2", "Requests 3", with words for a screen reader. Nothing pops up.
 - **The digest decides what is urgent,** not the console. LEGAL first, then overdue, due soon, open, noted. The console adds no urgency of its own.
@@ -81,7 +81,7 @@ Most of jason's PayHOA writes can be reversed by another write: a tag added can 
 ## Dense tables
 
 **Recommendation**
-- **Built for the four jobs:** find a row, compare rows, read one row, act on rows. Sorting in the column headers, filters in a `filters-bar` above, a search where names are involved (a POST, never a query string).
+- **Built for the four jobs:** find a row, compare rows, read one row, act on rows. Sorting in the column headers and a filter box (`DataTable`), and a search where names are involved that never puts the words in the route.
 - **Sticky header row; first column fixed** when the table scrolls sideways inside its own frame. The page itself never scrolls sideways.
 - **Two densities:** comfortable (40 px rows) by default, compact (32 px) as a stored preference. Never below the 24 px target size for a row's controls.
 - **Numbers right-aligned, in tabular figures.** Dates in one format. Status as a word badge.
@@ -97,10 +97,10 @@ Most of jason's PayHOA writes can be reversed by another write: a tag added can 
 
 **Recommendation**
 - **Everything works with Tab, Shift+Tab, Enter, and Space.** Every control is a real `<button>`, `<a>`, or form field, in reading order.
-- **The skip link** goes to `<main>` (`app-shell` has it).
+- **The skip link** goes to `<main>`. `ConsoleShell` has none yet; it should come first in the header.
 - **Approval rows are a list of form controls, not an ARIA grid.** A grid's arrow-key model suits a spreadsheet; an approval needs each decision reachable by Tab, read in order. Groups are `<fieldset>`s with legends naming the owner.
-- **Shortcuts on the approval page, with a modifier or only while a row has focus:** `j`/`k` move between rows, `a` approves and `r` rejects the focused row, `?` lists the shortcuts. Single-key shortcuts can be turned off in Settings, and are off by default for a speech-input user who asks.
-- **Focus moves with the work:** after a group is decided, to the next undecided group; after submit, to the result panel's heading; after a refusal, to the error.
+- **Shortcuts on the approval page, with a modifier or only while a row has focus:** `j`/`k` move between rows, `a` approves and `r` rejects the focused row, `?` lists the shortcuts. Single-key shortcuts can be turned off (a preference kept in the browser), and are off by default for a speech-input user who asks.
+- **Focus moves with the work:** after a group is decided, to the next undecided group; after apply, to `ApplyResult`'s heading; after a refusal, to the error.
 - **Returning from a recitation** (opened from an item's **recite**) puts focus back on that item.
 
 **Sources**
@@ -119,7 +119,7 @@ The console meets WCAG 2.2 AA. These criteria matter most in a dense approval co
 | **2.5.8 Target size (minimum)** | Every checkbox, decision button, chip, and copy button is at least 24 by 24 CSS pixels, or spaced so a 24 px circle around it touches no other target. The row checkbox's label is the whole first cell |
 | **4.1.3 Status messages** | The selected count, "Approved 8 of 10 changes", "Applied 3 of 5", "Reading the store…", and a re-check's result are in `role="status"` regions. A refusal that stops the work uses `role="alert"`. Focus does not move to announce them |
 | **3.3.7 Redundant entry** | The approver's name is pre-filled with the acting person. A rejection reason given for a group is not asked again per item. The second person's name starts empty, under the exception for security |
-| **3.3.8 Accessible authentication (minimum)** | The session token can be pasted; no memory test or puzzle. Phase 5's passkeys meet it without anything to transcribe |
+| **3.3.8 Accessible authentication (minimum)** | There is no sign-in today: "Signed in as" is a pick from a list. Sign-in, when it comes, uses passkeys, with nothing to remember or transcribe |
 | **1.4.3 Contrast (minimum)** | 4.5:1 for text, including badge text and muted metadata; 3:1 for icons and borders that carry meaning |
 | **1.4.1 Use of color** | Every status, sign, and urgency is a word; color and mark only repeat it |
 | **1.3.1 Info and relationships** | Tables have captions and header cells; groups are fieldsets with legends; a recitation is a `<figure>` with `<blockquote>` and `<figcaption>` |

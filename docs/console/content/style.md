@@ -1,9 +1,10 @@
 # Content style
 
-How the console's words read. jason's CLI already has a voice: short, plain, exact about what it knows and what it does not. The console keeps that voice. Most of the phrases below are jason's own, taken from the task modules the screens render (`onboarding_session`, `notice_record`, `owner_info`, `minutes_draft`, `meeting_watch`, `attention`, `responses`), so the browser and the terminal say the same thing in the same words.
+How the console's words read. jason's CLI already has a voice: short, plain, exact about what it knows and what it does not. jason-ui keeps it, and its conventions put it in one line: the console "shows what the association's records say and never decides: a reading, a match, or a gap is a lead, not a finding" ([.design-sync/conventions.md](../../../.design-sync/conventions.md)). Most of the phrases below are jason's own, taken from the task modules the screens render (`onboarding_session`, `notice_record`, `owner_info`, `minutes_draft`, `meeting_watch`, `attention`, `responses`, `tasks.approvals`), so the browser and the terminal say the same thing in the same words. The tools' caveats are rendered verbatim (`Caveats`), never paraphrased.
 
 ## Voice
 
+- **A lead, not a finding.** A reading, a match, a gap, a computed clock, or a related item is something to read, not a conclusion. jason never decides, and its words never sound as if it did: "a match is a lead, not proof", "a payment is evidence, not proof", "a gate is jason's reading of the checklist; the board decides what is done".
 - **Plain.** Say what happened and what to do. "Nothing to write. Every owner's tags already match their answers."
 - **Short.** One idea to a sentence. A label is a word or two; a message is a sentence or two.
 - **Exact.** Say what the record shows, not what it suggests. "No answer this cycle", not "did not answer". "None on record yet", not "missing".
@@ -19,9 +20,9 @@ Every screen keeps three kinds of words apart, and labels each. This is the cons
 
 | Kind | What it is | Label | Component |
 |---|---|---|---|
-| **Recited** | A rule's own words, quoted whole from the stored copy: a statute, a governing document's section, a rule row the board adopted | "Recited words", with the citation, the version in force, and the caveat under them | `recitation` |
-| **Read** | How someone reads those words | "jason's reading", "The board's reading" (with the date adopted), "Counsel's reading", or "Two readings remain" | `reading-label` |
-| **Decided** | A person's or the board's act: an approval, a confirmation, an answer, a board decision recorded in minutes | The person's name and the time; for the board, the meeting and where it is recorded | `person-chip`, the audit timeline |
+| **Recited** | A rule's own words, quoted whole from the stored copy: a statute, a governing document's section, a rule row the board adopted | "Recited words", with the citation, the version in force, and the caveat under them | `Recitation` |
+| **Read** | How someone reads those words | "jason's reading", "The board's reading" (with the date adopted), "Counsel's reading", or "Two readings remain" | `ReadingLabel` |
+| **Decided** | A person's or the board's act: an approval, a confirmation, an answer, a board decision | The person's name and the time; for the board, the vote, the meeting, and the officer who recorded it | the record's own trail (`DraftLetter`'s log, `AuditLog`, `DecisionCard`) |
 
 The rules:
 - **Recited comes first.** A reading never appears without the recitation above it on the same screen.
@@ -46,7 +47,9 @@ These phrases carry a precise meaning. Use them as written, and do not use near-
 | **No adoption found** | A change in a document's words for which jason found no adoption in the board's records. "Words changed between v2 and v3 with no adoption found in the board's records." A finding, not a ruling | "unauthorized", "invalid", "illegal" |
 | **An adoption on record** | The minutes or a rule-change row show the board adopted it | "approved version" |
 | **Proposed, not adopted** | An assignment, clock, or rule jason proposes until the board adopts it. "A proposed clock is a target until the board adopts it." | "default", "standard" |
-| **A lead, not a finding** | A source to read, not a conclusion. "Each source is a lead to read, not a ruling." | "match", "answer" |
+| **A lead, not a finding** | A reading, a match, a gap, or a source: something to read, not a conclusion. "Each source is a lead to read, not a ruling." "A match is a lead, not proof." | "match" or "answer" alone, "confirmed", "verified" |
+| **Approved by the board at its meeting of Oct 7** | The board's vote, recorded by the president or the secretary, with the meeting's date (CIV 4910). "The board approved it by vote at its meeting of 2099-10-07 (CIV 4910); recorded by Sam Placeholder, secretary." Never a person's click | "approved by board member", "board approval clicked" |
+| **On the board's agenda** | Where a held item goes: a board item, then a noticed meeting | "escalated", "sent to the board" |
 | **Unavailable** | jason could not read the store. Always with the reason and the command that fills it | "empty", "none", "error" |
 | **Nothing needs attention** | The store was read and nothing is owed | "all clear!", "you're all caught up" |
 | **Changed since review** | The live state moved after a person reviewed the plan; nothing was written | "conflict", "stale" in user-facing text |
@@ -60,7 +63,7 @@ These phrases carry a precise meaning. Use them as written, and do not use near-
 - **Times:** "Oct 3, 15:02" in the console's own logs and timelines. In text written for owners or the board, a clock time the way the minutes write it: "7:02 PM".
 - **Machine form:** `<time datetime="2099-10-03">` on every date, ISO 8601 inside. A stored date is ISO; a displayed date is the form above.
 - **Time zone:** the association's. A request's received day is the day in the association's time zone, as `responses` computes it. The audit log is UTC and labeled so.
-- **Relative time beside the date, never instead of it:** "5 days left · Oct 8", "Passed 3 days ago · Sep 30". The `deadline-badge` does this.
+- **Relative time beside the date, never instead of it:** "5 days left · Oct 8", "Passed 3 days ago · Sep 30". `DueDate` does this.
 - **Business days:** say so. "10 business days (weekends skipped, holidays not): the earliest the deadline can fall."
 - **Ranges:** "from Sep 2 through Oct 1". Not "Sep 2 – Oct 1", which hides whether the ends count.
 - **Ages in queues:** "2 h", "1 d", "3 d" in a table column; "planned 2 hours ago" in a header.
@@ -117,7 +120,9 @@ The words on a button are what the person signs. They say the action, the count,
 | Reject an item | **Reject** opens a reason field: "Why? A few words, for the log." |
 | Second person | **Confirm as Casey Sample** (the field starts empty), and the rule above it in words |
 | Second person declines | **Decline and send back**, with a reason |
-| Apply, reversible | **Apply 8 changes now** |
+| Apply, reversible (with `--allow-apply`) | **Apply 8 changes now** |
+| Apply, when apply is off | No button. "Apply is off in this console: a person applies from a terminal." and the `Command` to copy |
+| A letter for the board | **Record the board's approval**, with the meeting's date, for the president or the secretary only. Never "Approve for the board" |
 | Apply, irreversible | "This mails 4 letters and charges the association $8.16. A letter cannot be recalled once it is mailed. Type 4 to apply." Then **Mail 4 letters** |
 | Withdraw | **Withdraw this plan**, with a reason |
 | Record done | **Record done as Casey Sample** |
@@ -125,7 +130,7 @@ The words on a button are what the person signs. They say the action, the count,
 
 The rules:
 - **No "Are you sure?"** A confirmation restates what will happen, with the numbers.
-- **Name what is not included.** Beside the approve bar: "2 held for the board and 1 for a person are not part of this approval."
+- **Name what is not included.** Beside `ApproveBar`: "2 held for the board and 1 for a person are not part of this approval."
 - **Name the record.** Under the bar: "Your name, the time, and the plan's fingerprint 3f9a02c1d4e7 are recorded. jason re-plans before it applies; if the plan changed, nothing is applied."
 - **Say which part cannot be undone,** in the plan, before anyone approves: "Status yes; the owner's email no."
 - **After the act, the result in a status message:** "Approved 8 of 10 changes. Submitted as Jane Example." "Applied 8 of 8 writes."

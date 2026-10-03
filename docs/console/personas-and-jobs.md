@@ -2,13 +2,13 @@
 
 Who uses the console, the jobs each one does there, and what each must never see or do.
 
-Until the console has sign-in (phase 5, [security-and-privacy.md](security-and-privacy.md#identity)), there is one user: the person at the manager's machine. Every visit, they say who they are acting as (a named person) and in what role. A role decides:
+Until the console has sign-in ([security-and-privacy.md](security-and-privacy.md#identity)), there is one user: the person at the manager's machine. They pick who they are in "Signed in as", a sample picker over the profile's officers (`Community.officers()`: a name, an `OfficerRole`, and what that person may approve). The pick puts their name on the record; it grants nothing. Today the console has one audience switch, Board or Owner view, and no roles. Once roles are enforced, a role decides:
 - which screens and data levels the session shows;
 - which approvals the person may give.
 
-The console never infers a role from a name. The roster of names and roles is a private fact. It lives in `data/spec/<profile>.json`, read through `jason.community.private.facts`, and is never checked in.
+The console never infers a role from a name. The names come from the private facts (`data/spec/<profile>.json`, read through `jason.community.private.facts`), never checked in.
 
-Roles are a closed set: `Role` in `jason.console.identity` (see [security-and-privacy.md](security-and-privacy.md#roles)). The data levels are defined in [security-and-privacy.md](security-and-privacy.md#data-levels):
+The roles below are proposed ([security-and-privacy.md](security-and-privacy.md#roles)): manager, director, secretary, and treasurer match `OfficerRole`; reviewer and counsel are not in it yet. The data levels are defined in [security-and-privacy.md](security-and-privacy.md#data-levels):
 - **P0:** the association's public documents;
 - **P1:** members' names and units;
 - **P2:** contact details;
@@ -129,8 +129,9 @@ The association's attorney: a narrower, read-only view, granted when the board a
 
 | Kind of decision | Who | Where it is recorded |
 |---|---|---|
-| A routine write jason planned (the registry's approver rule `manager`) | One named person in the manager or director role | The approval and the audit log |
-| A write a board rule already authorizes (approver rule `board-rule`) | One named person, with the rule row recited on the item | The approval cites the rule row |
-| A high-stakes write (approver rule `two-person`) | Two different named people, neither the requester | The approval, with both names and times |
-| A question no rule answers (`Outcome.BOARD`) | The board, in a meeting | The board item and the minutes. The console only shows it |
+| A routine write jason planned (approver `one person`) | One named person in the manager or director role | The approval and the audit log |
+| A write a board rule already authorizes (approver `one person`, the rule in `rule`) | One named person, with the rule row recited on the item | The approval cites the rule row |
+| A two-person kind, or a high-stakes item (approver `two person`, or `high_stakes`) | Two different named people, neither the requester | The approval, with both names and times |
+| A letter's words | The letter's named approver: an officer whose `approves` names it | The letter's own log |
+| A letter for the board, or a question no rule answers (`Outcome.BOARD`) | The board, by a vote at a meeting, recorded by the president or the secretary with the meeting's date. Never a click | The board item, the decision (`data/board/decisions.json`), the minutes, and for a letter its log |
 | A high-stakes intake answer | The person answering, then a different person confirming | `data/intake/asks.json` (`answered_by`, `confirmed_by`) |

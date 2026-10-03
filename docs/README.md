@@ -19,16 +19,21 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
 - [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes; each notice's delivery to every member, and the follow-ups the law asks for (`jason notices`).
 
-## Console (requirements, not built)
+## Console (jason-ui + jason-web)
 
-- [console/README.md](console/README.md): the property management console: its vision, principles, phases, and prior art.
+The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine behind it. These pages reconcile its requirements with what is built.
+
+- [console/README.md](console/README.md): the console as jason-ui served by jason-web: its principles, the phases from here, and prior art.
+- [console/architecture.md](console/architecture.md): the stack as built (jason-ui, jason-web, the approvals engine behind `/api/approvals*`), what was decided and where, apply behind `--allow-apply`, locks, and tests.
+- [console/approval-workflow.md](console/approval-workflow.md): the approvals engine's spec: every `--yes` write surveyed, the `Approval` record, its states, approval by item, re-plan with a fingerprint check, the second-person rule, the registry, the audit log, `jason approvals`; letters and plans in one inbox; and the board deciding by vote.
+- [console/information-architecture.md](console/information-architecture.md): `ConsoleShell`'s navigation, each spec screen mapped to its console screen, and the screens still to add with their loaders.
+- [console/screens/README.md](console/screens/README.md): one spec per screen, saying what it adds to the console screen that exists, or the whole screen where none does.
+- [console/components.md](console/components.md): each component the console needs mapped to jason-ui's (built, being added, or proposed), and the WCAG 2.2 AA duties.
+- [console/security-and-privacy.md](console/security-and-privacy.md): loopback, the write guard (Host, Origin, token), apply off by default, identity, roles, data levels, and no secrets.
 - [console/personas-and-jobs.md](console/personas-and-jobs.md): the manager, directors, officers, a second-person reviewer, and counsel; what each does and must never see or do.
-- [console/information-architecture.md](console/information-architecture.md): the navigation and each screen's data source (the jason function or MCP tool) and actions.
-- [console/approval-workflow.md](console/approval-workflow.md): every `--yes` write surveyed and classified, then the `Approval` record, its states, approval by item, re-plan with a fingerprint check, the second-person rule, the action-kind registry, the audit log, and `jason approvals`.
-- [console/security-and-privacy.md](console/security-and-privacy.md): loopback only, the session token and CSRF, approver identity, roles, data levels, and no secrets.
-- [console/architecture.md](console/architecture.md): Starlette with server-rendered HTML, the module layout, locks and jobs, `jason serve`, the launch entry, tests, and dependencies.
-- [console/components.md](console/components.md): the component inventory for `src/jason/console/ui/`, with states and variants, and the WCAG 2.2 AA duties.
-- [console/mvp.md](console/mvp.md): the first build as acceptance criteria, the prerequisites in jason, moving `--yes` onto approvals, and the open decisions.
+- [console/journeys.md](console/journeys.md): six walks across the screens, step by step, and the gaps they found.
+- [console/content/style.md](console/content/style.md) and [console/content/patterns.md](console/content/patterns.md): the words on screen, and the interaction patterns.
+- [console/mvp.md](console/mvp.md): what is built, the first build from here with acceptance criteria, moving `--yes` onto approvals, the HTML prototype library, and the open decisions.
 
 ## PayHOA and finance
 

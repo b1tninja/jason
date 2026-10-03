@@ -1,6 +1,12 @@
 # Onboarding
 
-`/onboarding` · phase 2 · CLI: `jason onboard`, `jason onboard --questions`, `jason intake`
+A band added to `#/onboarding`: the onboarding session · phase 2 · CLI: `jason onboard`, `jason onboard --questions`, `jason intake`
+
+## In the console
+
+**Communities** (`#/communities`) and **Onboarding** (`#/onboarding`) are built from [onboarding-ux.md](../../onboarding-ux.md): the portal of every profile with the active one's progress; and, for the active community, its accounts (set or not, never a value), its facts by duty, the request list a manager sends with the stores' own reading beside each item, its letter, and the gaps. A person records what they did about each item (`POST /api/onboarding/<key>`).
+
+**What this spec adds** is the **onboarding session** (`jason onboard`), as a band of `#/onboarding`: the stage gates in order, the open questions ranked by what each answer unblocks, a signed answer to each, and a second person on a high-stakes answer. The request list says what to ask for; the session says what is still unanswered and what each answer unlocks. The loaders to add are `onboarding-session` (over `jason.api.onboarding_status`) and `next-questions`; the writes are `answer_intake_question` and `onboarding_confirm`, both of which already take `by`. The components are being added: `StageSteps` and `QuestionCard`.
 
 ## Purpose and personas
 
@@ -11,7 +17,7 @@ Taking an association on: the checklist read against the profile and the data on
 - **Reviewer:** confirms high-stakes answers.
 - **Counsel:** no access.
 
-The screen is in the navigation while any stage gate is closed (`onboarding.GATES`), and under Settings after that.
+The band shows while any stage gate is closed (`onboarding.GATES`: its checks have not all passed). Once every gate is open, it shrinks to one line.
 
 ## Data
 
@@ -33,22 +39,23 @@ The screen is in the navigation while any stage gate is closed (`onboarding.GATE
 ```
 +------------------------------------------------------------------------------------------+
 | Onboarding: Example Village HOA                                                          |
-| [start: closed Sep 12] > [ingest: closed Sep 30] > [establish: OPEN] > [operate] > [adopt]|
-| Establish waits on: insurance policies (partial), bank signers (missing), 2 questions     |
+| [start: gate open] > [ingest: gate open] > [establish: working now] > [operate] > [adopt]  |
+| Establish's gate is closed. It waits on: insurance policies (partial), bank signers       |
+| (missing), 2 questions                                                                     |
 | A gate is jason's reading of the checklist; the board decides what is done.              |
 +------------------------------------------------------------------------------------------+
 | PROGRESS  86 items: 51 present · 14 partial · 21 missing                                 |
 | governing 18/20 · finance 9/16 · insurance 3/8 · records 12/14 · ... [by group]          |
 +------------------------------------------------------------------------------------------+
 | WAITING ON A SECOND PERSON (1)                                                           |
-| [confirm-panel] Which version of the declaration is in force?                            |
+| [SecondConfirm] Which version of the declaration is in force?                            |
 |   Answer: the restated declaration of 2090, with Amendment 2                             |
 |   Answered by Jordan Example, Oct 2, 14:10                                               |
 |   Your full name [________________]  Someone other than Jordan Example.                  |
 |                                                         [Confirm the answer]              |
 +------------------------------------------------------------------------------------------+
 | NEXT QUESTIONS                         Group [All v] Stage [establish v]                  |
-| [queue-item]                                                                             |
+| [QuestionCard]                                                                           |
 | FACT · high stakes · priority 9                                                          |
 | Who are the signers on the association's bank accounts? The answer goes in the private   |
 | facts (data/spec), never the specification.                                              |
@@ -72,21 +79,21 @@ The screen is in the navigation while any stage gate is closed (`onboarding.GATE
 
 ## Components
 
-`page-header`, `stage-stepper` (closed as "Closed Sep 12", open with what it waits on, `aria-current="step"` on the stage being worked), `section-card`, `queue-item`, `confirm-panel` (waiting, `--refused`, `--confirmed`), `person-chip`, `evidence-chip`, `status-badge`, `filters-bar`, `cli-hint`, `states` (empty), `states` (unavailable), `reading-label` (a suggestion is labeled "jason's suggestion", never pre-selected).
+`StageSteps` (each stage's gate in words: "Gate open" once its checks pass, or "Gate closed" with what it waits on; `aria-current="step"` on the stage being worked), `Card`, `QuestionCard` (what it unblocks, the question, jason's suggestion labeled and never pre-selected, the evidence, and the answer behind `Confirm` as a named person), `SecondConfirm` (the second person on a high-stakes answer; the same component as an approval's), `Evidence`, `Pill`, `Command`, `RemoteView`, `ReadingLabel` (a suggestion is "jason's suggestion").
 
 ## Actions
 
 | Control | Does | Approval? | CLI |
 |---|---|---|---|
-| Save the answer | `api.answer_intake_question(id, answer, by)`: writes only `data/intake/asks.json`. An onboarding question not yet in the queue is parked first | No approval: signed (`local.intake.answer`, SIGNED). Logged | `jason onboard --answer ID TEXT --by NAME` |
+| Save the answer | `api.answer_intake_question(id, answer, by)`: writes only `data/intake/asks.json`. An onboarding question not yet in the queue is parked first | No approval: a signed `data/` record, not an engine kind | `jason onboard --answer ID TEXT --by NAME` |
 | Dismiss a question | The same, with the answer "dismiss" | Signed | `jason onboard --answer ID dismiss --by NAME` |
-| Confirm the answer (second person) | `api.onboarding_confirm(id, by)`. Refused for the name that answered | Signed by a second person (`local.intake.confirm`, TWO_PERSON). Logged | `jason onboard --confirm ID --by NAME` |
-| Park the onboarding questions | Parks the generated questions in the queue | No approval: a `data/` write, logged | `jason onboard --scan` |
-| Look up public records | `--lookup` as a job: searches the county recorder's public index, read-only. Each find becomes a FACT question with the found value as its suggestion | No | `jason onboard --lookup` |
-| Filter by group, stage | GET `group`, `stage` | No | `jason onboard --questions --group G --stage S` |
+| Confirm the answer (second person) | `api.onboarding_confirm(id, by)`. Refused for the name that answered | Signed by a second, distinct person (`intake.confirm`) | `jason onboard --confirm ID --by NAME` |
+| Park the onboarding questions | shown as a command | No | `jason onboard --scan` |
+| Look up public records | shown as a command: a read-only search of the county recorder's public index; each find becomes a FACT question with the found value as its suggestion | No | `jason onboard --lookup` |
+| Filter by group, stage | the loader's `group`, `stage` | No | `jason onboard --questions --group G --stage S` |
 | Read a proposal | Shows the patch file, read-only | No | — |
 
-**Applying answers stays in the terminal in phase 2.** `jason onboard --apply` merges private facts (with a backup and a diff), writes Keeper notes, and writes profile proposals. The console shows the count and the command. Whether the console should offer it, as a SIGNED job with the diff shown first, is open question 6 in the report.
+**Applying answers stays in the terminal in phase 2.** `jason onboard --apply` merges private facts (with a backup and a diff), writes Keeper notes, and writes profile proposals. The console shows the count and the command. Whether the console should offer it, as a signed job with the diff shown first, is open.
 
 **A secret is refused, and nothing is kept.** When `intake.secret_reason` flags the answer, the form shows: "This looks like a secret: it gives a password. jason keeps no secrets. Put it in Keeper, and answer with the Keeper record's name." The typed value is cleared from the field and never stored or logged.
 
@@ -94,11 +101,11 @@ The screen is in the navigation while any stage gate is closed (`onboarding.GATE
 
 ## States
 
-- **All gates open:** "Every stage gate is open. The association is operating." The screen moves under Settings.
+- **All gates open:** "Every stage gate is open. The association is operating." The band shrinks to that line.
 - **No questions:** "No open questions." With the count answered and applied.
 - **A question not in the queue yet:** marked "new". Saving an answer parks it first, as `answer_intake_question` does.
 - **The session cannot be built:** `onboarding_status`'s error, and "Check the profile with `jason spec`."
-- **Confirm refused (same name):** `confirm-panel --refused`: "Jordan Example gave this answer, so Jordan Example cannot confirm it. A second person confirms." The server refuses it whatever the browser does.
+- **Confirm refused (same name):** `SecondConfirm` refuses it: "Jordan Example gave this answer, so Jordan Example cannot confirm it. A second person confirms." The server refuses it whatever the browser does.
 - **A new answer after a confirmation:** the confirmation is cleared, and the question returns to "waiting on a second person", with "The answer changed, so the earlier confirmation no longer applies."
 
 ## Privacy
@@ -110,7 +117,7 @@ The screen is in the navigation while any stage gate is closed (`onboarding.GATE
 
 ## Acceptance criteria
 
-1. The stepper shows the five stages in order, each closed with its date or open with what it waits on, in words.
+1. `StageSteps` shows the five stages in order, each gate open, or closed with what it waits on, in words.
 2. Questions render in `next_questions` order, each with what it unblocks and where its answer goes.
 3. No choice is pre-selected.
 4. Saving an answer without a name is refused with "An answer names who gave it."

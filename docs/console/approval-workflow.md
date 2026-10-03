@@ -1,13 +1,18 @@
 # The approval workflow
 
-This is the core of the console. jason plans a write. A named person reviews it item by item and approves some or all of it. jason reads the live state again, refuses if anything the approval relied on has changed, applies only what was approved, and records every step.
+This is the core of the console. jason plans a write outside itself. A named person reviews it item by item and approves some or all of it. jason reads the live state again, refuses if anything the approval relied on has changed, applies only what was approved, and records every step.
 
-The model lives in `jason.approvals` (new, `src/jason/approvals/`), not in the console. The console, the CLI (`jason approvals`), and `jason-mcp` are three doors onto one store ([CLI and MCP parity](#cli-and-mcp-parity)).
+**Status: built.** The engine is `jason.approvals` (`src/jason/approvals/`), with one action kind, `owner-info-tags`. Its doors:
+- **the CLI**, `jason approvals` (built);
+- **`jason-mcp`**, `approvals_list` and `approval_show`, read only (built);
+- **jason-web**, the `/api/approvals*` routes (`jason.web.approvals`) and `PlanReview` in jason-ui's `#/approvals` (being added; [web-ui.md](../web-ui.md#approvals)). Apply there is off unless the server is started with `--allow-apply` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web)).
 
 This page is the engine's contract:
-- **Names are binding.** The record and field names, the states, and the transitions below are the names the engine uses: `Approval`, `PlanItem`, `Decision`, `ApprovalStatus`, `ActionKind`.
+- **Names are binding.** The record and field names, the states, and the transitions below are the names the engine uses: `Approval`, `PlanItem`, `Change`, `DecisionRecord`, `Signature`, `ApprovalStatus`, `ItemClass`, `Decision`, `Result`, `ActionKind`, `Approver`, `Risk`.
 - **The JSON Schemas in `src/jason/approvals/schemas/` mirror the dataclasses.** If the two ever differ, this page and the schema are corrected together.
-- **Where each piece goes.** Per-screen layouts are in [screens/](screens/), and the components are in [components.md](components.md).
+- **Where each piece goes.** The screen is [screens/approvals.md](screens/approvals.md), and the components are in [components.md](components.md#approval).
+
+Two other kinds of approval live beside this one and are not the engine's: a **letter's stages** (`jason.tasks.approvals`, [section 11](#11-letters-and-plans-one-inbox)) and the **board's decisions**, which are votes at a meeting and never an approval click ([section 12](#12-the-board-decides-by-vote)).
 
 ## 1. The first case: the owner-information cycle
 
@@ -41,10 +46,10 @@ The rest of this page generalizes `jason owner-info --apply --payhoa`, as writte
 | `BOARD` | A question of policy | A **held for the board** item, with its `Finding.board_item`. Never approvable |
 | `IGNORE` | A test account's answer | Hidden by default, and counted |
 
-Three facts in today's code shape the requirements. They are listed again in [mvp.md](mvp.md#prerequisites-in-jason).
-- `execute` returns counts, not a result for each item. A failure part-way through raises, and loses which writes were made. **The audit needs a result for each item.**
-- After `execute`, `_apply` sets `writes = []`, so `_complete_requests` treats every write as made. **With approval by item, the pending list must be the writes not applied**, whether rejected, skipped, or failed. Then a request whose write was not approved stays open.
-- `owner_responses.contexts` calls `_live` again, and `_apply` calls `contexts` twice (once for the held writes, once in `_complete_requests`). One plan reads PayHOA three times. **A plan should read live once**, and give the planner, the triage, and the fingerprint the same snapshot.
+Three facts in the code as it was shaped the engine. Each is now fixed, with its guard (the lessons `apply-loses-partial-results`, `complete-only-after-writes`, and `plan-reads-once`):
+- `execute` returned counts, not a result for each item, so a failure part-way through lost which writes were made. **Now each write has its own result and audit line** (`owner_info_apply.execute_each`).
+- After `execute`, the pending list was cleared, so every planned write counted as made. **Now a write not actually made stays pending**, and its request stays open (`Result.BLOCKED` in an approval).
+- One plan read PayHOA three times. **Now a plan reads live once** (`owner_info_apply.ReadOnce`, which also refuses any write while planning), and the triage reuses that read (`owner_responses.contexts(live=...)`).
 
 ## 2. Survey: every write jason gates today
 
@@ -136,136 +141,164 @@ The tables classify every path found by grepping `--yes`, `--confirmed-by`, `--c
 
 ### Writes with no gate today
 
-These are findings for later, not part of this spec. Each should get a registry row and a dry run before the console offers it:
+These are findings for later, not part of this spec (the lesson `google-writes-without-yes`, open). Each should get a dry run and `--yes`, then a registry row, before the console offers it:
 - `board --sheet`, `board --create-sheet`, and `board --tasks` write the board's Google Sheet and Tasks without `--yes`.
 - `property-history --sheet` creates a spreadsheet without `--yes`.
+- `request-comment` posts a PayHOA comment that PayHOA emails to the owner, with no dry run or `--yes`.
 - `board --set` and `schedule --done --by` write local records. Signed, they are fine as R0.
 
 ## 3. The `Approval` record
 
+As built in `jason.approvals.model`. Enum values are stored as their snake-case words and turned back into members on load, the way AGENTS.md asks.
+
 ```python
 class ApprovalStatus(Enum):
-    PLANNED = "planned"                    # jason made the plan; nobody has decided an item
-    IN_REVIEW = "in review"                # at least one item decided, not yet submitted
-    APPROVED = "approved"                  # submitted: every approvable item approved
-    PARTIALLY_APPROVED = "partially approved"   # submitted: some approved, the rest rejected or held
-    APPLYING = "applying"                  # re-plan passed; writes under way
-    APPLIED = "applied"                    # every approved item applied
-    FAILED = "failed"                      # one or more approved items failed; waits for a person
-    SUPERSEDED = "superseded"              # a re-plan found the live state changed, or a newer plan replaced it
-    WITHDRAWN = "withdrawn"                # a person withdrew it before apply
+    PLANNED = "planned"                        # jason made the plan; nobody has decided an item
+    IN_REVIEW = "in_review"                    # at least one item decided, not yet submitted
+    APPROVED = "approved"                      # submitted: every approvable item approved
+    PARTIALLY_APPROVED = "partially_approved"  # submitted: some approved, the rest rejected or held
+    APPLYING = "applying"                      # the re-plan matched; writes under way
+    APPLIED = "applied"                        # every approved item applied
+    FAILED = "failed"                          # one or more approved items failed; waits for a person
+    SUPERSEDED = "superseded"                  # the live state changed, or a newer plan replaced it
+    WITHDRAWN = "withdrawn"                    # withdrawn before apply, or nothing was approved
 
 
 class ItemClass(Enum):
     APPROVABLE = "approvable"
-    HELD_FOR_BOARD = "held for the board"       # Outcome.BOARD: never approvable
-    FOR_A_PERSON = "for a person"               # Outcome.PERSON: done by a person in the system itself
-    CONFIRM_WITH_OWNER = "confirm with the owner"   # Outcome.CONFIRM: a message is its own kind
-    INFORMATIONAL = "informational"             # what would follow (a request that stays open, and why)
+    HELD_FOR_BOARD = "held_for_board"          # Outcome.BOARD: a question of policy, never approvable
+    FOR_A_PERSON = "for_a_person"              # Outcome.PERSON: a person does it in the system itself
+    CONFIRM_WITH_OWNER = "confirm_with_owner"  # Outcome.CONFIRM: ask the owner first; a message is its own kind
+    INFORMATIONAL = "informational"            # what follows: a request that stays open, and why
 
 
 class Decision(Enum):
     UNDECIDED = "undecided"
     APPROVED = "approved"
-    REJECTED = "rejected"                  # not written; needs a reason
-    HELD = "held for the board"            # a person refers an approvable item to the board; not written; needs a reason
+    REJECTED = "rejected"                      # a person leaves it out; a reason is required
+    HELD = "held"                              # a person holds it for the board; a reason is required
 
 
 class Result(Enum):
     PENDING = "pending"
     APPLIED = "applied"
-    NOT_APPLIED = "not applied"            # rejected, held, or not approvable
-    CHANGED = "changed since review"       # refused at apply: its basis moved
-    BLOCKED = "blocked"                    # a prerequisite item did not apply
+    NOT_APPLIED = "not_applied"                # rejected, held, never approvable, or not attempted
+    CHANGED = "changed"                        # refused at apply: its basis moved since review
+    BLOCKED = "blocked"                        # something it waits on was not applied
     FAILED = "failed"
-    UNCERTAIN = "uncertain"                # the request went out and no answer came back: verify before anything else
+    UNCERTAIN = "uncertain"                    # the request went out and no answer came back: verify first
+
+
+@dataclass(frozen=True)
+class Change:                                  # what the item changes, for the before -> after row
+    op: ChangeOp                               # ADD, REMOVE, SET
+    field: str                                 # "member tags", "unit tags", "request status"
+    value: str = ""
+    before: str = ""
+    after: str = ""
 
 
 @dataclass(frozen=True)
 class Evidence:
-    label: str                             # "PayHOA submission 1234", "Civil Code 4040(a)(2)"
-    address: str                           # a jason:// address, a console path, or a local file under data/
-    level: str = "P1"                      # the data level it opens (security-and-privacy.md)
+    label: str                                 # "PayHOA request 1234", "Civil Code 4040(a)(2)"
+    address: str = ""                          # a citation jason cite resolves, a command, or a record's address
 
 
 @dataclass
 class PlanItem:
-    id: str                                # stable: sha256(kind|op|target|value)[:16]
-    op: str                                # the kind's verb: "member tag +", "complete request"
-    target: str                            # "member:123", "unit:45", "submission:678"
-    label: str                             # who or what, for the reader: "Unit A: an owner" (P1)
-    value: str                             # the tag, the field's text
-    why: str                               # the planner's reason, as today's Write.why
-    rule: str = ""                         # a citation expression jason cite resolves: "CIV 4040(a)(2)"
+    id: str                                    # stable: item_id(kind, op, target, value)
+    op: str                                    # the kind's verb: "member tag +", "complete request"
+    target: str                                # "member:123", "unit:45", "submission:678"
+    label: str                                 # who or what, for the reader: "Unit 12: Owner A"
+    value: str                                 # the tag, the status, the text
+    why: str                                   # the planner's reason
+    group: str = ""                            # the items read together: one owner
+    change: Change | None = None
+    rule: str = ""                             # the rule that calls for it: a citation or a rule row's address
     evidence: tuple[Evidence, ...] = ()
-    basis: str = ""                        # sha256 of the target's live state this item relies on
+    basis: str = ""                            # sha256 of the live state this item relies on
     klass: ItemClass = ItemClass.APPROVABLE
-    board_item: str = ""                   # for HELD_FOR_BOARD: the board item it waits on
-    depends_on: tuple[str, ...] = ()       # item ids that must apply first (a completion on its writes)
+    board_item: str = ""                       # held for the board: the board item it waits on
+    depends_on: tuple[str, ...] = ()           # item ids that must apply first (a completion on its writes)
+    high_stakes: bool = False                  # a second, distinct person must sign before it applies
+    cost_cents: int = 0                        # what applying it charges the association
     decision: Decision = Decision.UNDECIDED
     decided_by: str = ""
     decided_at: str = ""
-    reason: str = ""                       # required to reject
+    reason: str = ""
     result: Result = Result.PENDING
     result_detail: str = ""
 
 
 @dataclass(frozen=True)
+class DecisionRecord:                          # one decision as made, kept in order on the approval
+    by: str
+    at: str
+    items: tuple[str, ...]
+    decision: Decision
+    reason: str = ""
+    fingerprint: str = ""                      # the plan fingerprint it was made on
+    via: str = "cli"                           # "cli" or "console"
+
+
+@dataclass(frozen=True)
 class Signature:
-    name: str                              # the named person (security-and-privacy.md: identity)
-    role: str                              # Role.value
-    at: str                                # UTC, ISO 8601, seconds
-    fingerprint: str                       # the plan fingerprint the person signed
-    via: str                               # "console", "cli"
+    name: str                                  # the named person
+    at: str                                    # UTC, ISO 8601, seconds
+    fingerprint: str                           # the plan fingerprint signed
+    role: str = "manager"
+    via: str = "cli"
 
 
 @dataclass
 class Approval:
-    id: str                                # "apr-" + UTC stamp + 4 random hex: apr-20990101T120000-1a2b
-    kind: str                              # an ActionKind key: "payhoa.owner-info.tags"
-    scope: dict                            # the planner's arguments: {"payhoa": true, "cycle": 2099}
-    profile: str                           # the active profile's name when planned
+    id: str                                    # "apr-" + UTC stamp + 4 hex: apr-20990101T120000-1a2b
+    kind: str                                  # an ActionKind key: "owner-info-tags"
+    title: str
     items: list[PlanItem]
-    fingerprint: str                       # sha256 over (kind, scope, approvable items' id and basis)
-    read_at: str                           # when the live state was read
-    requested_by: str                      # the person who asked for the plan
+    fingerprint: str                           # plan_fingerprint(kind, scope, items)
+    read_at: str                               # when the live state was read
+    requested_by: str
     requested_at: str
-    requested_via: str                     # "console", "cli"
+    requested_via: str = "cli"
+    scope: dict = field(default_factory=dict)  # the planner's arguments
+    profile: str = ""                          # the active profile's name when planned
     status: ApprovalStatus = ApprovalStatus.PLANNED
-    first: Signature | None = None         # who submitted the decisions
-    second: Signature | None = None        # the second person, for a two-person kind
-    cost: dict | None = None               # the kind's cost estimate, integer cents
-    clock: dict | None = None              # the legal clock: {"what", "due", "authority"}
+    evidence: tuple[Evidence, ...] = ()
+    decisions: list[DecisionRecord] = field(default_factory=list)
+    first: Signature | None = None             # who submitted the decisions
+    second: Signature | None = None            # the second person, where one is needed
+    cost_cents: int | None = None              # None when the kind has no cost
+    clock: dict | None = None                  # the legal clock it serves: {"what", "due", "daysLeft"}
+    summary: dict = field(default_factory=dict)
+    result: dict = field(default_factory=dict) # after apply: counts by result; after a refusal: what changed
     supersedes: str = ""
     superseded_by: str = ""
-    notes: list[str] = field(default_factory=list)   # e.g. "4 writes new since review, not included"
+    notes: list[str] = field(default_factory=list)   # "2 approvable item(s) new since review, not included"
 ```
 
-**The plan as JSON.** The record is stored whole, items included, as JSON in `data/console/approvals.db`: SQLite, like `jobs.db` and `batches.db`. One row per approval, plus an `items` table for queries. Enums are stored as their values and turned back into members on load, the way AGENTS.md asks.
+**The store.** One JSON file per approval, `data/approvals/<id>.json` under the active profile's data folder, written whole (a temporary file, then a replace) under the store lock, never checked in. The audit log is `data/approvals/audit.jsonl` beside them. The earlier plan for a SQLite `approvals.db` under a console folder was not built; the lesson `approvals-store-location` holds it as a decision until a person confirms the JSON store ([mvp.md](mvp.md#open-decisions)). The letters' store, `data/approvals/letters.json`, shares the folder and the lock key ([section 11](#11-letters-and-plans-one-inbox)).
 
-**Held items and items for a person** are items with their class set. They are stored, shown in their own sections, and counted. They are never decided. Keeping them in the record means the approval is the full picture a person reviewed, not just the writes.
+**Held items and items for a person** are items with their class set. They are stored, shown in their own sections, and counted. They are never decided: `decide` refuses them by name ("held for the board (board item …): never approvable"). Keeping them in the record means the approval is the full picture a person reviewed, not just the writes.
 
-**Evidence links.** The planner attaches its evidence:
-- the PayHOA submission, as a console path to the owner's response;
-- the rule, as a `jason://` address or a statute citation;
-- the board item;
-- the ledger row.
+**Evidence.** The planner attaches its evidence as `{label, address}`: the PayHOA submission, the rule as a citation, the board item, the ledger row. A label is a name and a tag at most; an email address in any field is masked before the record or the log is written.
 
-An evidence chip opens the evidence at its data level. A P2 chip asks before revealing.
+**Secrets.** The planner refuses an item whose value `intake.secret_reason` flags, and an approvable item with no basis ("an apply could not tell whether it changed").
 
 ### Fingerprints
 
-- **The item id** is `sha256(f"{kind}|{op}|{target}|{value}")[:16]`. It is the same on every re-plan for the same write.
+- **The item id** is `sha256(f"{kind}|{op}|{target}|{value}")[:16]` (`item_id`). It is the same on every re-plan for the same write.
 - **The basis** is a sha256 over a canonical serialization of what the item relies on, read live:
 
   | Item | Its basis |
   |---|---|
-  | A member tag | the member's sorted tag names, and for a removal the tag row's id |
-  | A unit tag | the unit's sorted tag names |
-  | A request completion | the submission's status, a hash of its answers, and the triage findings' rule keys |
-  | A Mailroom send | the PDF's sha256, the resolved recipients' ids, and PayHOA's addresses for them |
+  | A member tag | the member's tag rows |
+  | A unit tag | the unit's tags |
+  | A request completion | the submission's status, its answers, and the triage findings |
+  | A Mailroom send (proposed) | the PDF's sha256, the resolved recipients' ids, and PayHOA's addresses for them |
 
-- **The plan fingerprint** is `sha256(json.dumps({"kind", "scope", "items": sorted([id, basis] for approvable items)}, sort_keys=True, separators=(",", ":")))`. It is shown as its first 12 hex digits. The canonical form (sorted keys, no spaces) makes it reproducible on any machine.
+- **The plan fingerprint** is `sha256` over the canonical JSON (sorted keys, no spaces) of `{"kind", "scope", "items": sorted([id, basis] for approvable items)}` (`plan_fingerprint`), shown as its first 12 hex digits.
+- **The basis fingerprint** is the same over the approved items only (`basis_fingerprint`); `check` and `apply` compare it before and after the re-plan.
 - A signature records the fingerprint it signed. A second person signs **the same** fingerprint, or nothing.
 
 ## 4. The state machine
@@ -290,6 +323,8 @@ stateDiagram-v2
     in_review --> withdrawn
     approved --> withdrawn
     partially_approved --> withdrawn
+    approved --> in_review: second person declines
+    partially_approved --> in_review: second person declines
     applied --> [*]
     failed --> [*]
     superseded --> [*]
@@ -300,15 +335,17 @@ stateDiagram-v2
 |---|---|---|---|
 | — | plan | planned | The kind's planner ran on a live read. If an open approval of the same kind and scope exists, it becomes superseded |
 | planned, in review | decide an item | in review | The item is approvable. A rejection or a hold needs a reason |
-| in review | submit (name) | approved (every approvable item approved), or partially approved (some approved, the rest rejected or held) | Every approvable item is decided: approved, rejected, or held. At least one is approved; if none is, the approval becomes **withdrawn**, with "nothing approved", and its holds still propose their board items |
-| approved, partially approved | second-person confirm (name) | unchanged; `second` set | The kind is 2P. The name differs from `first.name` and from `requested_by` (casefold, trimmed) |
+| in review | submit (name) | approved (every approvable item approved), or partially approved (some approved, the rest rejected or held) | Every approvable item is decided: approved, rejected, or held, and no approved item waits on one that is not. At least one is approved; if none is, the approval becomes **withdrawn**, with "nothing approved". Its holds still go to the board ([section 12](#12-the-board-decides-by-vote)) |
+| approved, partially approved | second-person confirm (name) | unchanged; `second` set | A second person is needed: a two-person kind, or a high-stakes approved item (`needs_second`). The name differs from `first.name` and from `requested_by` (casefold, trimmed) |
 | approved, partially approved | second-person decline (name, reason) | in review | The decisions are kept and `first` is cleared. The first person must submit again |
-| approved, partially approved | apply (name) | applying | 2P kinds have `second`. The plan is no older than the kind's `max_age` |
+| approved, partially approved | apply (name) | applying | Submitted; `second` set where one is needed; the plan is no older than the kind's `max_age_hours`. From jason-web, only when the server's apply flag is on |
 | applying | re-plan differs | superseded | Nothing is written. A new approval is made from the re-plan, with `supersedes` set |
 | applying | done | applied, or failed | — |
 | any but applying and terminal | withdraw (name, reason) | withdrawn | — |
 
 **Approved and partially approved** are separate states because a reader of the log must see at a glance that a person chose to leave writes out.
+
+The table is `model.TRANSITIONS`; `model.transition` is the only way a status changes, and it refuses a move the table does not allow.
 
 **Terminal states are final.** A failed approval is never retried automatically, which is the rule `jason.jobs` keeps for writes. A person reads why, plans again, and approves the new plan.
 
@@ -320,24 +357,23 @@ stateDiagram-v2
 - **A person can hold an approvable item for the board** (`Decision.HELD`). This is for a write the rules allow but the person thinks the board should see first.
   - It needs a reason, as a rejection does.
   - The item is not written.
-  - Submitting proposes a board item with the reason and the item's evidence, through `tasks.board_items.propose`, signed by the person. It goes to `data/board/items.json`, which the board owns from then on.
-  - The approval links the board item.
   - Unlike the planner's `HELD_FOR_BOARD` class, a person's hold is a decision, and is logged as one.
+  - Where it goes next is [section 12](#12-the-board-decides-by-vote): a board item, then the meeting's agenda. **As built, the engine records the hold and its reason only**; proposing the board item on submit (`tasks.board_items.propose`, signed by the person) is still to build, and until it is, the screen shows the `jason board` command that proposes it.
 - **Groups.** Items are grouped by target, such as a member, or a unit and its members. One person's changes read together.
   - A group can be approved or rejected at once.
   - A dependent item (a request completion) sits in its target's group, and shows which writes it waits on.
-- **What follows a rejection.** A rejected write leaves its request open. The completion item shows that it will be blocked (`Result.BLOCKED`), because `to_complete` lists the unwritten write in `left`.
+- **What follows a rejection.** A rejected write leaves its request open. Approving a completion whose writes are not all approved is refused ("waits on …: approve those first"), and rejecting or holding a write makes an approved completion that waits on it undecided again. At apply, a completion whose writes did not all apply is `Result.BLOCKED`.
 - **Items for a person** come with the task they need: "enter the mailing address in PayHOA" for that owner. They link to the owner in PayHOA's own interface (the `jason party` link). There is no checkbox, because jason does not do them.
 
 ## 6. Re-plan before apply
 
 Apply always re-reads. It never trusts the stored plan's live state.
 
-1. Under the store lock (`hold(Resource.STORE, "approvals")`), move the approval to `applying`. Refuse if:
-   - it is not approved or partially approved;
-   - a 2P kind has no second signature;
-   - `read_at` is older than the kind's `max_age`.
-2. Take the kind's resource lock for the whole apply (`hold(Resource.PAYHOA, "approval-<id>")` for PayHOA kinds). This is the pattern `jason.batches` uses.
+1. Hold the approval's own lock (`hold(Resource.STORE, "approval-<id>")`), so one apply runs at a time. Refuse, and log `apply.refused`, if:
+   - it is not approved or partially approved, or not submitted;
+   - a second person is needed and has not signed;
+   - `read_at` is older than the kind's `max_age_hours`.
+2. Take the kind's resource lock for the whole re-plan and apply (`hold(Resource.PAYHOA, "approval-<id>")` for a PayHOA kind). This is the pattern `jason.batches` uses.
 3. Run the kind's planner again with the same `scope`, on one live read.
 4. Compare each **approved** item with the re-plan:
    - **Same id, same basis, still approvable:** it goes ahead.
@@ -374,7 +410,9 @@ A **two-person (2P) kind** needs two signatures on the same fingerprint.
 **What lapses**
 - Any re-plan that changes the fingerprint clears both signatures, because the new plan is a new approval.
 
-**Which kinds are 2P** (the registry's `approver` column):
+**When a second person is needed** (`engine.needs_second`): the kind's `approver` is `TWO_PERSON`, or any approved item is `high_stakes`. A one-person kind can still carry a high-stakes item.
+
+**Which kinds are proposed as 2P** (none is built yet; the registry's `approver` column below):
 - sends to members, by email or mail;
 - money: Mailroom postage;
 - publishing to anyone with a link;
@@ -382,13 +420,13 @@ A **two-person (2P) kind** needs two signatures on the same fingerprint.
 - a change to which words are in force: `living --use-reread`, and the high-stakes intake kinds.
 
 **The limits, stated plainly**
-- Until sign-in exists, a name is self-asserted at a shared machine. The rule then guards against mistakes, not against a determined person.
-- The log records the session and the operating-system user beside each name, so a misuse leaves a trace ([security-and-privacy.md](security-and-privacy.md#identity)).
-- Phase 5's sign-in for each person makes the names authenticated.
+- Until sign-in exists, a name is self-asserted: a `--by` in the terminal, or the "Signed in as" pick in jason-web. The rule then guards against mistakes, not against a determined person.
+- The log records the operating-system user beside each name (`os_user`), so a misuse leaves a trace ([security-and-privacy.md](security-and-privacy.md#identity)).
+- Sign-in for each person, a later phase, makes the names authenticated.
 
 ## 8. The action-kind registry
 
-A kind is a row, not a branch in the console. The registry `jason.approvals.registry.KINDS` is a tuple of `ActionKind` records. Adding a `--yes` path to the console means adding a row, plus a planner and an applier that call the task functions the CLI already calls.
+A kind is a row, not a branch in the console. The registry is `jason.approvals.registry`: the built rows in `KINDS`, plus any a module or a test adds with `register`. Adding a `--yes` path to approvals means adding a row, plus a planner and an applier that call the task functions the CLI already calls.
 
 ```python
 class Risk(Enum):
@@ -399,76 +437,83 @@ class Risk(Enum):
 
 
 class Approver(Enum):
-    SIGNED = "signed"            # a data/ record with by: no approval record, an audit entry
-    MANAGER = "manager"          # one named person in an approving role
-    BOARD_RULE = "board rule"    # one named person; the item recites the rule row that authorizes it
-    TWO_PERSON = "two person"    # two different named people on the same fingerprint
+    ONE_PERSON = "one person"    # one named person decides and submits; a high-stakes item still needs a second
+    TWO_PERSON = "two person"    # a second, distinct person signs the same fingerprint before any apply
 
 
 @dataclass(frozen=True)
 class ActionKind:
-    key: str                     # "payhoa.owner-info.tags"
-    title: str                   # "Owner information: PayHOA tags"
-    cli: str                     # the command it replaces: "jason owner-info --apply --payhoa --yes"
-    system: str                  # "payhoa", "google", "zoom", "local"
+    key: str                     # "owner-info-tags"
+    title: str
+    cli: str                     # the command it stands beside: "jason owner-info --apply --payhoa --yes"
+    system: str                  # "payhoa", "google", "zoom", "local": what the live read needs
     resource: Resource           # the lock held during apply
     risk: Risk
     approver: Approver
-    reversible: str              # "yes: remove the tag" / "no: the letter is mailed"
-    cost: str = ""               # how the cost is shown, "" for none
-    clock: str = ""              # the notice-catalog key or statute whose clock it serves
-    rule: str = ""               # for BOARD_RULE: the rule row's address
-    max_age_hours: int = 24      # a plan older than this is planned again before apply
-    planner: str = ""            # dotted path: "jason.approvals.kinds.owner_info:plan"
-    applier: str = ""            # dotted path: "jason.approvals.kinds.owner_info:apply"
-    phase: int = 1
+    reversible: str              # "tags: yes, ...; the comment emailed to the owner: no"
+    planner: str | Callable      # "module:function": planner(live, scope) -> Planned, read only
+    applier: str | Callable      # applier(live, planned, items, recorder): only the approved items
+    cost: str = ""               # how its cost is shown; "" for none
+    clock: str = ""              # the clock it serves
+    rule: str = ""               # the rule that authorizes it, where one does
+    max_age_hours: int = 24      # an approval older than this is planned again before apply
+    default_scope: dict = field(default_factory=dict)
+    aliases: tuple[str, ...] = ()
 ```
 
-The rows. The CLI path for each is in the survey above.
+The earlier spec had four approver rules. As built there are two, and the other two are carried differently:
+- **A board rule** is not an approver. A kind the board's rule authorizes is `ONE_PERSON`, names the rule in `rule`, and each item it covers recites it in `PlanItem.rule`.
+- **A signed `data/` record** (an intake answer, a completion recorded with `by`) is not an engine kind at all. It is the task's own write with `by`, logged where the task logs it.
 
-| Key | Risk | Approver | Reversible | Cost shown | Clock | Phase |
+**Built.** One row:
+
+| Key | Covers | Risk | Approver | Reversible | Clock | Rule |
 |---|---|---|---|---|---|---|
-| `payhoa.owner-info.tags` | R2 | MANAGER | Yes: the tag is removed or added back | — | The owner-information cycle | 1 |
-| `payhoa.owner-info.complete` | R2 | BOARD_RULE | Status yes; the owner's email no | — | — | 1 |
-| `payhoa.delivery.tags` | R2 | MANAGER | Yes | — | 4040, 4041 | 3 |
-| `payhoa.form.create` | R1 | MANAGER | Yes, while unlinked | — | — | 3 |
-| `payhoa.form.update` | R2 | MANAGER; TWO_PERSON when a question with answers changes | By another update | — | The cycle | 3 |
-| `payhoa.form.test-submit` | R1 | MANAGER | Test data | — | — | 3 |
-| `payhoa.request.create` | R2 | MANAGER | No | — | The request's kind | 3 |
-| `payhoa.broadcast.upload` | R1 | MANAGER | Yes | — | — | 3 |
-| `payhoa.broadcast.sample` | R1 | MANAGER | To the admin only | — | — | 3 |
-| `payhoa.broadcast.template` | R2 | MANAGER | By saving again | — | — | 3 |
-| `payhoa.mailroom.send` | R3 | TWO_PERSON | No | Pages × price, plus postage, from PayHOA's preview and `payhoa.pricing` | The notice's | 4 |
-| `payhoa.mailroom.cancel` | R2 | MANAGER | No | The charge saved | The notice's | 4 |
-| `payhoa.owner-info.email-batch` | R3 | TWO_PERSON | No | — | The cycle, and the notice's | 4 |
-| `payhoa.owner-info.mail-batch` | R3 | TWO_PERSON | No | Per letter, as above | The cycle, and the notice's | 4 |
-| `batches.cancel` | R0 | MANAGER | Pending items can be restored | — | The notice's | 3 |
-| `gmail.draft` (covers `draft`, `respond --gmail`, `rule-change --draft-email`, `hold --notices`) | R1 | MANAGER | Yes | — | The draft's notice or request | 3 |
-| `google.form.create` | R1 | MANAGER | Yes | — | — | 3 |
-| `google.form.publish` | R3 | TWO_PERSON | Unpublishing; answers stay | — | — | 4 |
-| `google.calendar` (covers `calendar`, `schedule --calendar`) | R1 | MANAGER | Yes | — | — | 3 |
-| `google.tasks` (`schedule --tasks`) | R1 | MANAGER | Yes | — | — | 3 |
-| `google.doc` (covers templates, letter, board doc, report doc, packet, hearing doc) | R1 | MANAGER | Through revisions | — | That of the document | 3 |
-| `google.sheet.register` | R1 | MANAGER | Yes | — | — | 3 |
-| `google.drive.labels` | R1 | MANAGER | Yes | — | — | 3 |
-| `google.photos` | R1 | MANAGER | Yes | — | — | 3 |
-| `google.vault.hold` | R3 | TWO_PERSON | Release, with counsel | — | The duty to preserve | 4 |
-| `zoom.hearing.create` | R3 | TWO_PERSON | Deleting a meeting does not undo a notice sent | — | 5855 | 4 |
-| `local.spec.migrate` | R0 | MANAGER | From the backup | — | — | 3 |
-| `local.living.reread` | R0 | TWO_PERSON | Switch back | — | — | 3 |
-| `local.section-refs.apply` | R0 | MANAGER | Edit the file | — | — | 3 |
-| `local.ingest.apply` | R0 | MANAGER | Remove the rows | — | — | 3 |
-| `local.intake.answer`, `local.intake.confirm` | R0 | SIGNED; TWO_PERSON for `high_stakes` | A new answer | — | The answer's clock | 2 |
-| `local.schedule.done` | R0 | SIGNED | Edit the record | — | — | 2 |
+| `owner-info-tags` (alias `payhoa.owner-info.tags`) | The owner-information cycle's PayHOA member and unit tags, and the request completions that follow them (`jason owner-info --apply --payhoa --yes`) | R2 | one person | Tags yes; a completed request's status yes; the comment emailed to the owner no | The owner-information cycle (Civil Code 4040, 4041) | The board's owner-information completion rule |
 
-Machine operations (`anythingllm`, `local-ai`) are not association records, and stay in the CLI.
+**Proposed.** Each row waits on its planner and applier. The CLI path for each is in the survey above. "One person, rule" means `ONE_PERSON` with the authorizing rule recited.
+
+| Key | Risk | Approver | Reversible | Cost shown | Clock |
+|---|---|---|---|---|---|
+| `payhoa.delivery.tags` | R2 | one person | Yes | — | 4040, 4041 |
+| `payhoa.form.create` | R1 | one person | Yes, while unlinked | — | — |
+| `payhoa.form.update` | R2 | one person; a high-stakes item when a question with answers changes | By another update | — | The cycle |
+| `payhoa.form.test-submit` | R1 | one person | Test data | — | — |
+| `payhoa.request.create` | R2 | one person | No | — | The request's kind |
+| `payhoa.broadcast.upload` | R1 | one person | Yes | — | — |
+| `payhoa.broadcast.sample` | R1 | one person | To the admin only | — | — |
+| `payhoa.broadcast.template` | R2 | one person | By saving again | — | — |
+| `payhoa.mailroom.send` | R3 | two person | No | Pages × price, plus postage, from PayHOA's preview and `payhoa.pricing` | The notice's |
+| `payhoa.mailroom.cancel` | R2 | one person | No | The charge saved | The notice's |
+| `payhoa.owner-info.email-batch` | R3 | two person | No | — | The cycle, and the notice's |
+| `payhoa.owner-info.mail-batch` | R3 | two person | No | Per letter, as above | The cycle, and the notice's |
+| `batches.cancel` | R0 | one person | Pending items can be restored | — | The notice's |
+| `gmail.draft` (covers `draft`, `respond --gmail`, `rule-change --draft-email`, `hold --notices`) | R1 | one person | Yes | — | The draft's notice or request |
+| `google.form.create` | R1 | one person | Yes | — | — |
+| `google.form.publish` | R3 | two person | Unpublishing; answers stay | — | — |
+| `google.calendar` (covers `calendar`, `schedule --calendar`) | R1 | one person | Yes | — | — |
+| `google.tasks` (`schedule --tasks`) | R1 | one person | Yes | — | — |
+| `google.doc` (covers templates, letter, board doc, report doc, packet, hearing doc) | R1 | one person | Through revisions | — | That of the document |
+| `google.sheet.register` | R1 | one person | Yes | — | — |
+| `google.drive.labels` | R1 | one person | Yes | — | — |
+| `google.photos` | R1 | one person | Yes | — | — |
+| `google.vault.hold` | R3 | two person | Release, with counsel | — | The duty to preserve |
+| `zoom.hearing.create` | R3 | two person | Deleting a meeting does not undo a notice sent | — | 5855 |
+| `local.spec.migrate` | R0 | one person | From the backup | — | — |
+| `local.living.reread` | R0 | two person | Switch back | — | — |
+| `local.section-refs.apply` | R0 | one person | Edit the file | — | — |
+| `local.ingest.apply` | R0 | one person | Remove the rows | — | — |
+
+Not engine kinds: `intake --answer` and `--confirm` (a signed record; a second person for a `high_stakes` answer, through `intake.confirm`), and `schedule --done --by` (a signed record). Machine operations (`anythingllm`, `local-ai`) are not association records, and stay in the CLI.
+
+A letter jason drafts from a template (`google.doc`) has a second, earlier approval of its own: the letter's stages ([section 11](#11-letters-and-plans-one-inbox)). That approval is of the words; this one is of the write.
 
 ### What never appears as approvable
 
 There is no approve control for any of these, at any phase:
-- an item held for the board (`Outcome.BOARD`), or any question no rule row answers;
+- an item held for the board (`Outcome.BOARD`), or any question no rule row answers ([section 12](#12-the-board-decides-by-vote));
 - an item for a person (`Outcome.PERSON`) or for the owner to confirm (`Outcome.CONFIRM`);
-- a write on a test membership (`config.test_memberships`). It is dropped before the plan, as `_apply` drops it today;
+- a write on a test membership (`config.test_memberships`). It is dropped before the plan;
 - what jason never does (AGENTS.md boundaries):
   - approving, denying, or assigning a member's request;
   - submitting to a collection agency;
@@ -481,69 +526,109 @@ There is no approve control for any of these, at any phase:
 
 ## 9. The audit log
 
-`data/console/audit.jsonl` is append-only, private, and never checked in. One JSON object per line:
+`data/approvals/audit.jsonl` is append-only, private, and never checked in. One canonical JSON object per line (`jason.approvals.audit`), appended under its own lock (`approvals-audit`):
 
 ```json
-{"seq": 41, "at": "2099-01-01T12:00:03Z", "event": "item.applied",
- "approval": "apr-20990101T115500-1a2b", "kind": "payhoa.owner-info.tags",
- "item": "3f9c0a7e5b2d4c18", "op": "member tag +", "target": "member:123",
- "fingerprint": "9e2f4b7c1d0a", "basis": "c41d...", "actor": "A Person", "role": "manager",
- "via": "console", "session": "s-7c2e", "os_user": "manager", "result": "applied", "detail": "",
- "prev": "sha256 of line 40", "hash": "sha256 of this line without hash"}
+{"seq": 41, "at": "2099-01-01T12:00:03+00:00", "event": "item.applied", "os_user": "manager",
+ "approval": "apr-20990101T115500-1a2b", "kind": "owner-info-tags", "actor": "Jane Example", "via": "console",
+ "item": "3f9c0a7e5b2d4c18", "op": "member tag +", "target": "member:123", "label": "Unit 12: Owner A",
+ "value": "Notices: mail", "basis": "c41d...", "fingerprint": "9e2f4b7c1d0a...", "result": "applied",
+ "prev": "the hash of line 40", "hash": "sha256 of this line without hash"}
 ```
 
-**Events**
-- `plan.created`, `plan.failed`: a live read that could not be made, and why;
+Empty fields are left out of a line.
+
+**Events** (`audit.EVENTS`; an unknown event is refused)
+- `plan.created`, `plan.failed` (a live read that could not be made, and why);
 - `item.decided`, `approval.submitted`, `approval.confirmed`, `approval.declined`;
-- `apply.started`, `apply.refused`, with the changed items;
-- `item.applying`, `item.applied`, `item.failed`, `item.uncertain`;
+- `apply.started`, `apply.refused` (with the changed items, or the reason it could not start);
+- `item.applying`, `item.applied`, `item.failed`, `item.uncertain`, `item.blocked`, `item.not_applied`;
 - `approval.applied`, `approval.failed`, `approval.superseded`, `approval.withdrawn`;
-- `reveal`: a P2 or P3 field shown, with the field's kind and never its value;
-- `private_view.on`, `private_view.off`;
-- `session.start`, `session.end`, `token.rotated`.
+- `cli.applied`: a `--yes` from the CLI, with a fingerprint of what it wrote.
+
+Proposed with the data levels, not built: `reveal` (a masked field shown, by its kind and never its value) and `private_view.on` / `.off` ([security-and-privacy.md](security-and-privacy.md#data-levels)). The earlier spec's session and token events went with the withdrawn token sign-in.
 
 **Rules**
-- **Append only.** No code path rewrites or deletes a line. Every line carries the hash of the line before it, so an edit breaks the chain. `jason approvals audit --verify` walks the chain and reports the first break. This makes tampering detectable, not impossible. Copying the log off the machine with the backups is the board's choice.
-- **The log holds no values above P1.** A tag name, a unit label, and an owner's name are P1. An email, a mailing address, or an account number is never logged. Their reveals are logged by kind.
-- **The existing ledgers are kept.** jason's own ledgers record the same sends:
-  - `data/batches.db` events;
-  - `data/mailroom/sent.jsonl`;
-  - the notice text in `data/notices/KEY/`;
-  - `confirmed_by` in `data/jobs.db`.
-
-  The audit log links to them by id and replaces none of them.
-- **A `--yes` from the CLI is logged too**, from phase 1 on, so the log is complete whichever door was used. A CLI apply records `via: "cli"` and the person named by `--by` (or `--confirmed-by`). Until `--by` is required, it records the operating-system user.
+- **Append only.** No code path rewrites or deletes a line. Every line carries the hash of the line before it, so an edit breaks the chain. `jason approvals audit --verify` walks the chain and names the first break. This makes tampering detectable, not impossible. Copying the log off the machine with the backups is the board's choice.
+- **The log holds names and tags, never contact details.** An email address in any field is masked (`[email]`) before the line is written. A mailing address or an account number is never put in an item.
+- **The existing ledgers are kept.** jason's own ledgers record the same sends: `data/batches.db` events, `data/mailroom/sent.jsonl`, the notice text in `data/notices/KEY/`, and `confirmed_by` in `data/jobs.db`. The audit log links to them by id and replaces none of them.
+- **A `--yes` from the CLI is logged too.** `jason owner-info --apply --payhoa --yes` writes one line a write and a completed request, then `cli.applied`, with `via: "cli"` and the person from `--by` (or `--confirmed-by`), else the operating-system user. The log is whole whichever door wrote to PayHOA.
+- **The letters keep their own trail.** A letter's stages are logged on the letter (`log`), not here ([section 11](#11-letters-and-plans-one-inbox)).
 
 ## 10. CLI and MCP parity
 
-### CLI: `jason approvals`
+### CLI: `jason approvals` (built)
 
 | Command | Does |
 |---|---|
-| `jason approvals` | Lists approvals, open ones first: id, kind, status, items, held, and age |
-| `jason approvals show ID [--json]` | The approval as the console shows it: the items grouped, held and for-a-person apart, the cost, the clock, and the signatures |
-| `jason approvals plan KIND [--payhoa ...] --by NAME` | Runs the kind's planner on a live read and stores the approval |
-| `jason approvals decide ID --approve ITEM... \| --approve-all \| --reject ITEM --reason TEXT --by NAME` | Decides items |
-| `jason approvals submit ID --by NAME` | Submits |
-| `jason approvals confirm ID --by NAME` | The second person. Refused for the same name |
-| `jason approvals decline ID --by NAME --reason TEXT` | The second person declines |
-| `jason approvals apply ID --by NAME` | Re-plans, checks, applies, and logs. Queueable: `jason jobs add --confirm NAME -- approvals apply ID --by NAME` |
+| `jason approvals` | Lists approvals, open ones first (`--status`, `--kind` filter) |
+| `jason approvals kinds` | The registry: each kind's key, risk, approver, and reversibility |
+| `jason approvals plan KIND --by NAME` | Runs the kind's planner on a live read and stores the approval. Writes nothing outside jason |
+| `jason approvals show ID [--json]` | The items by section: to decide, held for the board, for a person, confirm with the owner, what follows; the decisions, signatures, clock, and cost |
+| `jason approvals decide ID --items ITEM... \| --all [--reject \| --hold --reason TEXT] --by NAME` | Decides items. Approve is the default; reject and hold need `--reason` |
+| `jason approvals submit ID --by NAME` | Signs the decisions |
+| `jason approvals confirm ID --by NAME` | The second person. Refused for the first signer and the requester |
+| `jason approvals decline ID --by NAME --reason TEXT` | The second person declines: back to review |
+| `jason approvals apply ID` | Re-plans live and shows whether anything changed since review, **writing nothing** (`engine.check`) |
+| `jason approvals apply ID --yes --by NAME` | Applies only the approved items, or supersedes the approval with a new plan and writes nothing. Queueable: `jason jobs add --confirm NAME -- approvals apply ID --yes --by NAME` |
 | `jason approvals withdraw ID --by NAME --reason TEXT` | Withdraws |
-| `jason approvals audit [--approval ID] [--verify]` | Reads the log, and checks the chain |
+| `jason approvals audit [ID] [--verify]` | Reads the log, and checks the chain |
 
-An item can be named by its id or by a unique prefix of at least 6 hex digits, as git names a commit.
+An approval or an item can be named by a unique prefix (at least 6 characters for an item), as git names a commit.
 
-### MCP
+### MCP (built)
 
-`jason-mcp` stays a reader of disk that never calls PayHOA, Google, or Keeper (AGENTS.md). It serves three read-only tools in the `governance` profile:
-- `approvals_list(status, kind)`;
-- `approval_show(id)`;
-- `approval_audit(id)`.
+`jason-mcp` stays a reader of disk that never calls PayHOA, Google, or Keeper (AGENTS.md). The `governance` profile serves two read-only tools:
+- `approvals_list(status, kind)`: each approval's id, kind, status, counts by class, how many approved, and who asked;
+- `approval_show(id)`: one approval as stored, with its audit entries.
 
 An assistant can explain a plan to a person, cite its rules, and say what is held for the board.
 
 **No MCP tool decides, submits, confirms, or applies.** An approval is a person's act at the console or in the terminal. It is never an assistant's tool call, even one a person asked for in chat. A model can read text in a document that tells it to approve something, so this is the one write `jason-mcp` must not have.
 
+### jason-web (being added)
+
+`jason.web.approvals` calls the same engine functions with `via: "console"`, and the name from "Signed in as" as `by` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web) has the route table):
+- reads: `GET /api/approvals` (the letters inbox as before, with the engine's approvals beside it), `GET /api/approvals/<id>`, and `GET /api/approvals/audit`;
+- `POST /api/approvals/<id>/check`: `engine.check`, a live read that writes nothing, behind the write guard's token header;
+- a person's acts: `POST /api/approvals/<id>/decide`, `/submit`, `/confirm`, `/decline`, `/withdraw`. A stored approval's items never change (a re-plan is a new approval), so these act on its id, and a superseded or withdrawn approval refuses them by its status;
+- `POST /api/approvals/<id>/apply`, only when the server was started with `--allow-apply`, with the token in its header and the fingerprint the person reviewed echoed back (`confirm`). Without the flag it is refused, and the page shows `jason approvals apply ID --yes --by NAME`.
+
+There is no plan route: a plan is made in the terminal (`jason approvals plan KIND --by NAME`).
+
 ### Python
 
-The same functions live in `jason.approvals`: `plan`, `decide`, `submit`, `confirm`, `apply`, `withdraw`, `audit.read`, and `audit.verify`. The console's routes and the CLI call them. Neither has logic of its own.
+The same functions live in `jason.approvals`: `plan`, `decide`, `submit`, `confirm`, `decline`, `withdraw`, `check`, `apply`, and `audit.read` and `audit.verify`. The CLI and the routes call them. Neither has logic of its own.
+
+## 11. Letters and plans: one inbox
+
+jason asks a person's approval for two different things, and the console keeps both in `#/approvals`:
+
+| | A letter | A plan of writes |
+|---|---|---|
+| What is approved | The words of a document jason drafted: a notice, a letter, draft minutes, a translation | A set of writes to another system: tags, a request's status, later a Doc, a send |
+| Where | `jason.tasks.approvals`, `data/approvals/letters.json` | `jason.approvals`, `data/approvals/apr-*.json` and `audit.jsonl` |
+| Stages | draft → saved → requested → approved → sent (`STAGES`) | planned → in review → approved or partially approved → applying → applied (`ApprovalStatus`) |
+| Who approves | The letter's named approver: an officer whose `approves` names it, or **the board**, recorded by the president or the secretary with the meeting's date (`Community.officers()`, `Officer.can_approve`) | A named person per the kind's `approver`; a second, distinct person where one is needed |
+| By item | No: the letter is one thing | Yes: each item is decided |
+| What goes out | Nothing. The approved stage shows the command (`jason letter … --yes`, `jason mailroom --send --yes`); a person runs it and records where the send was logged (`sentRef`) | Only the approved items, at apply, after a re-plan matches |
+| The trail | The letter's own `log`, every line naming its person | The audit log, hash-chained |
+| The component | `DraftLetter`, `ApprovalsInbox` | `PlanReview`, listed by `PlanApprovals`, with `WriteRow`, `HeldNote`, `ApproveBar`, `SecondConfirm`, `ChangedBanner`, `CostLine`, `ApplyResult`, `AuditLog` (being added) |
+
+**One inbox.** `#/approvals` lists both kinds, the letters in `ApprovalsInbox` and the plans in `PlanApprovals`, each row saying which it is. The nav count today is the letters awaiting approval (`pending`); it should be the sum of those and the plans waiting on a person (a decision, a submission, or a second signature: `approvalsOpen` less the approved ones not waiting on a second person).
+
+**How they meet.** A letter and a plan can be two halves of one act: a letter approved for its words, then a write that sends or files it. When a sending kind exists (`payhoa.mailroom.send`, `google.doc`), its plan names the approved letter as evidence, and the planner refuses a letter that is not at `approved`. The approval of the words never stands in for the approval of the write, or the other way round.
+
+**What they share.** The folder `data/approvals/` and the store lock key `approvals`. Each takes the lock for one read, change, and write.
+
+## 12. The board decides by vote
+
+From the design handoff, and the letters' store already keeps it: **board approvals are votes at a meeting, recorded by an officer. No one clicks "approve" for the board.**
+
+- **No board approver in the engine.** `Approver` has no board value. An item that needs the board is `HELD_FOR_BOARD` (the planner's finding) or `Decision.HELD` (a person's hold), and neither is ever approvable.
+- **Held items go to the meeting's agenda.** The path for a held item is the board loop: a board item (`tasks.board_items`, with the reason and the item's evidence), a place on a noticed agenda (`#/agenda`, CIV 4920 and 4930), a motion and a roll call by name at the meeting (`#/room`, `RollCall`), and the decision recorded by the secretary or the president (`data/board/decisions.json`). `HeldNote` says this, and links the board item and its meeting when there is one.
+- **The decision comes back as a rule, not a click.** Once the board decides, the decision becomes a rule row in the specification (AGENTS.md: "a new decision is a new rule row"). Items of that kind are then classed approvable by the planner, and a person approves them under the rule, which each item recites. An approval never cites a vote as its authority directly.
+- **A letter the board approves** is approved by the officer who records the vote, with the meeting's date (`tasks.approvals.step(..., meeting=...)`); a board approval without a meeting date is refused.
+- **Polls are member input, not votes.** A poll in the meeting room informs; a director's vote is a roll call by name.
+- **Executive session stays out.** An item held for the board on an executive-session subject (delinquency, discipline, litigation; CIV 4935) goes on the agenda by its general nature only, and stays out of open recordings, transcripts, and minutes.
+- **jason never recommends.** A decision brief lays out the options with the same criteria and the facts (`DecisionBrief`); the store refuses a body that names a recommendation.
