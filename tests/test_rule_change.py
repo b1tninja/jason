@@ -136,6 +136,82 @@ def test_draft_has_no_recipients_and_no_send_path():
     assert ".send(" not in source and "messages/send" not in source
 
 
+LAW = {"CIV 4360(a)": "The notice shall include the text of the proposed rule change and a description of the "
+                      "purpose and effect of the proposed rule change."}
+
+
+def test_member_notice_follows_4360a_order_and_labels_the_description():
+    when = rc.timeline(SCHEDULE, notice_date=date(2026, 9, 30))
+    text = rc.member_notice(CHANGE, when, {}, "Example Commons Owners Association", SCHEDULE, law=LAW).text
+    assert text.index(rc.TEXT_HEADING) < text.index(rc.DESCRIPTION_HEADING) < text.index("PURPOSE OF THE PROPOSED")
+    assert "the Board's own explanation" in text
+    assert 'provides: "The notice shall include the text of the proposed rule change' in " ".join(text.split())
+    from jason.community.notice_catalog import requirement
+    from jason.community.notice_elements import check
+
+    assert all(f.ok for f in check(requirement("rule-change-proposed"), text))
+
+
+def test_member_notice_without_the_law_states_it_in_its_own_words():
+    when = rc.timeline(SCHEDULE, notice_date=date(2026, 9, 30))
+    text = rc.member_notice(CHANGE, when, {}, "M", SCHEDULE).text
+    assert "provides:" not in text and "requires the Board to give members notice" in " ".join(text.split())
+
+
+def test_adoption_notice_recites_the_adopted_text():
+    when = rc.timeline(SCHEDULE, notice_date=date(2026, 9, 30))
+    text = rc.adoption_notice(CHANGE, when, "M").text
+    assert rc.ADOPTED_TEXT_HEADING in text
+    assert '"in certified funds." are replaced with "by an accepted method."' in " ".join(text.split())
+    assert "Pay online from [effective date]." in text
+
+
+def test_proposed_text_is_a_stage_version_cited_as_itself():
+    when = rc.timeline(SCHEDULE, notice_date=date(2026, 9, 30))
+    version = rc.proposed_version(CHANGE, when, book="pol")
+    assert version.label() == "@proposed-2026-09-30"
+    assert not version.in_force_on(date(2030, 1, 1))
+    assert rc.version_address(version, "20") == "jason://pol@proposed-2026-09-30/20"
+
+
+class _Found:
+    def __init__(self, number: str, words: str):
+        self.found, self.text, self.reason = bool(words), words, None
+        self.address, self.pid = f"jason://pol/{number}", f"pol@base/{number}"
+        self.in_force = "as written in the Example Policy"
+        self._n = number
+
+    def __str__(self):
+        return f"Example Policy Section {self._n}"
+
+    def section(self, number):
+        return _Found(number, {"10": "10. Notice. Pay in certified funds."}.get(number, ""))
+
+
+class _Shelf:
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+
+    def doc(self, name):
+        return _Found("", "x")
+
+
+def test_sections_are_recited_through_the_shelf_with_the_outline_as_fallback(tmp_path):
+    data = _outline(tmp_path)
+    recitals = rc.recite_sections(CHANGE, shelf=_Shelf(data))
+    assert recitals["10"].source == "shelf" and recitals["10"].address == "jason://pol/10"
+    assert recitals["10"].pid == "pol@base/10" and "certified funds" in recitals["10"].words
+    # The shelf has no section 20: it is read from the outline, and the page says so.
+    assert recitals["20"].source == "outline" and "lockbox" in recitals["20"].words
+    when = rc.timeline(SCHEDULE, notice_date=date(2026, 9, 30))
+    version = rc.proposed_version(CHANGE, when, book="pol")
+    md = rc.render_markdown(CHANGE, when, rc.words_of(recitals), "M", SCHEDULE, [], recitals=recitals,
+                            version=version, law=LAW)
+    assert "## The versions cited" in md and "`jason://pol@proposed-2026-09-30/20`" in md
+    assert "pol@base/10" in md and "the outline, read directly" in md
+    assert "Required elements of `rule-change-proposed`" in md
+
+
 def test_specification_row_is_well_formed():
     from jason.community import mystique
 

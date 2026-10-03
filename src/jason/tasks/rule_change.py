@@ -10,9 +10,23 @@ goes out, this builds three things and writes them to ``data/board/rule-change-<
 (c) the **notice of adoption** to deliver within 15 days after the decision (4360(c)), with the members' right to call
     a vote to reverse it (4365).
 
-The decision meeting defaults to the first meeting on the schedule at least 28 days after the notice date. The current
-words of each section come from the rule's outline on disk (``data/outlines/<document>.json``). The statutes are quoted
-from ``data/authorities`` when exported; a citation not found there is marked unverified, never paraphrased as a quote.
+The decision meeting defaults to the first meeting on the schedule at least 28 days after the notice date.
+
+**The words.** Each section's current words come through the shared reader (``recite_sections``: the ``Shelf`` of
+``jason.tasks.cite``, which reads the living document kept as amended, else the outline on disk), with the section's
+citation, address (``jason://coll/14``), permanent id, and the version in force; the outline is read directly
+(``current_sections``) only when the shelf cannot place a section, and the page says so. The proposed text is a stage
+version of its own (``proposed_version``: ``coll@proposed-2026-11-01``, ``Stage.PROPOSED``): cited as itself, never
+merged into the text in force.
+
+**The order.** The member notice follows 4360(a), whose words are recited from disk: "the text of the proposed rule
+change", then "a description of the purpose and effect of the proposed rule change", labeled as the board's own
+description. The adoption notice (4360(c)) recites the text as adopted (the noticed text, for the secretary to correct
+if the board changed it). Each notice is also checked against the catalog's required elements
+(``jason.community.notice_elements``).
+
+The statutes are quoted from ``data/authorities`` when exported; a citation not found there is marked unverified,
+never paraphrased as a quote.
 
 jason sends nothing. ``email_draft`` builds a Gmail draft with no recipients, which a person addresses and sends from
 Gmail; ``save_draft`` only creates it. Fees and dates the board must decide stay as ``[bracketed]`` placeholders.
@@ -29,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from jason.community.base import MeetingSchedule
+from jason.community.revisions import RecordVersion, Stage
 from jason.community.rule_changes import RuleChange, SectionChange
 
 NOTICE_DAYS = 28            # Civil Code 4360(a)
@@ -111,6 +126,105 @@ def current_sections(data_dir: Path, document: str) -> dict[str, str]:
     return out
 
 
+@dataclass(frozen=True)
+class Recital:
+    """One section's current words as the shared reader recites them, and where they came from. ``source`` is
+    ``shelf`` (the living document or the outline, through ``jason.tasks.cite``) or ``outline`` (read directly when the
+    shelf could not place the section; ``reason`` says why)."""
+
+    number: str
+    words: str
+    citation: str = ""
+    address: str = ""
+    pid: str = ""
+    in_force: str = ""
+    source: str = "shelf"
+    reason: str = ""
+
+
+def open_shelf(data_dir: Path | None = None, community: Any = None) -> Any:
+    """The shared reader (``jason.tasks.cite.Shelf``): reading only."""
+    from jason.tasks.cite import Shelf
+
+    return Shelf(community, data_dir)
+
+
+def recite_sections(change: RuleChange, *, shelf: Any = None, data_dir: Path | None = None,
+                    community: Any = None) -> dict[str, Recital]:
+    """Each section's current words, through the shelf by its address, with its citation, permanent id, and the
+    version in force. A section the shelf cannot place is read from the outline on disk, marked so; a new section has
+    no current words."""
+    shelf = shelf if shelf is not None else open_shelf(data_dir, community)
+    data_dir = Path(data_dir) if data_dir is not None else Path(shelf.data_dir)
+    outline: dict[str, str] | None = None
+    out: dict[str, Recital] = {}
+    for section in change.sections:
+        if section.new:
+            continue
+        found = None
+        try:
+            found = shelf.doc(change.document).section(section.number)
+            ok = found.found and bool(found.text)
+        except Exception:       # a reader that fails is a miss here, read from the outline instead
+            ok = False
+        if ok:
+            out[section.number] = Recital(section.number, found.text, str(found), found.address, found.pid,
+                                          found.in_force, "shelf")
+            continue
+        if outline is None:
+            outline = current_sections(data_dir, change.document)
+        words = outline.get(section.number, "")
+        reason = (found.reason.value if found is not None and found.reason else "") or "not on the shelf"
+        if words:
+            out[section.number] = Recital(section.number, words, f"{change.document_title} {section.label}", "", "",
+                                          f"data/outlines/{change.document}.json, read directly", "outline", reason)
+    return out
+
+
+def words_of(recitals: dict[str, Recital]) -> dict[str, str]:
+    """The words alone, by section number (what ``current_sections`` returns)."""
+    return {number: r.words for number, r in recitals.items()}
+
+
+def proposed_version(change: RuleChange, when: Timeline, *, book: str = "", source: str = "") -> RecordVersion:
+    """The proposed text as a stage version of the rule (``rules@proposed-2026-11-01``): noticed on the notice date,
+    never in force, cited as itself and never merged into the text in force."""
+    return RecordVersion(book or change.document, "", Stage.PROPOSED, when.notice_date, None,
+                         source or f"specification:rule_changes/{change.key}",
+                         "the notice of the proposed rule change (Civil Code 4360(a))",
+                         "the text as proposed: not in force; cited as itself, never merged into the text in force")
+
+
+def version_address(version: RecordVersion, number: str = "") -> str:
+    """A stage version's address: ``jason://coll@proposed-2026-11-01/14``."""
+    from jason.community.addresses import Address
+
+    return Address(version.book, number, version=version.label().lstrip("@")).format()
+
+
+LAW_SENTENCES: tuple[tuple[str, str], ...] = (
+    ("CIV 4360(a)", "The notice shall include"),
+    ("CIV 4360(c)", "As soon as possible after making a rule change"),
+)
+
+
+def recite_law(shelf: Any = None, *, data_dir: Path | None = None, community: Any = None) -> dict[str, str]:
+    """The statute's own words the notices quote, read from ``data/authorities`` through the shelf: for 4360(a) and
+    (c), the sentence that says what the notice must carry. A citation not on disk is left out (the notice then states
+    the rule in its own words, and the page marks it unverified)."""
+    shelf = shelf if shelf is not None else open_shelf(data_dir, community)
+    out: dict[str, str] = {}
+    for citation, phrase in LAW_SENTENCES:
+        try:
+            c = shelf(citation)
+            words = (c.containing(phrase) if phrase else c.text) if c.found else ""
+        except Exception:
+            words = ""
+        if words:
+            out[citation] = _fold(re.sub(r"^\([a-z0-9]+\)\s*", "", words))
+    return out
+
+
 def _fold(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -127,20 +241,42 @@ def proposed_section_text(section: SectionChange, current: str) -> str:
     return section.proposed
 
 
-def section_blocks(change: RuleChange, current: dict[str, str]) -> list[str]:
-    """Markdown blocks, one per section: the instruction, the current words, and the proposed words."""
+def _recited_from(r: Recital | None) -> str:
+    """Where the current words were read: the citation, the address and permanent id, and the version in force."""
+    if r is None:
+        return ""
+    bits = [r.citation] if r.citation else []
+    if r.address:
+        bits.append(f"`{r.address}`" + (f", permanent id `{r.pid}`" if r.pid else ""))
+    if r.in_force:
+        bits.append(r.in_force)
+    if r.source == "outline":
+        bits.append(f"the shelf could not place it ({r.reason})")
+    return "; ".join(bits)
+
+
+def section_blocks(change: RuleChange, current: dict[str, str], *, recitals: dict[str, Recital] | None = None,
+                   version: RecordVersion | None = None) -> list[str]:
+    """Markdown blocks, one per section: the instruction, the current words (recited, with where they came from), and
+    the proposed words (the stage version's own address when given)."""
     blocks: list[str] = []
+    recitals = recitals or {}
     for section in change.sections:
-        now = current.get(section.number, "")
+        now = current.get(section.number, "") or (recitals[section.number].words if section.number in recitals else "")
         head = f"### {section.label}: {section.title}"
+        source = _recited_from(recitals.get(section.number))
+        cur_label = "Current text" + (f" ({source})" if source else "") + ":"
+        prop = f" (`{version_address(version, section.number)}`; not in force)" if version is not None else ""
         if section.new:
-            lines = [head, "", "Add a new section:", "", _quote(section.proposed)]
+            lines = [head, "", f"Add a new section{prop}:", "", _quote(section.proposed)]
         elif section.strike:
-            lines = [head, "", f"Replace the words \"{section.strike}\" with \"{section.proposed}\"", "", "As amended:", "",
-                     _quote(proposed_section_text(section, now))]
+            lines = [head, "", f"Replace the words \"{section.strike}\" with \"{section.proposed}\"", "",
+                     f"As amended{prop}:", "", _quote(proposed_section_text(section, now))]
+            if source:
+                lines += ["", f"*Read from:* {source}."]
         else:
-            lines = [head, "", "Current text:", "", _quote(now or "[current text not on disk]"), "",
-                     "Proposed text (replaces the section):", "", _quote(proposed_section_text(section, now))]
+            lines = [head, "", cur_label, "", _quote(now or "[current text not on disk]"), "",
+                     f"Proposed text (replaces the section){prop}:", "", _quote(proposed_section_text(section, now))]
         if section.note:
             lines += ["", f"*Note:* {section.note}"]
         blocks.append("\n".join(lines))
@@ -168,39 +304,78 @@ class Notice:
     text: str
 
 
+TEXT_HEADING = "THE TEXT OF THE PROPOSED RULE CHANGE"
+DESCRIPTION_HEADING = "THE BOARD'S DESCRIPTION OF THE PURPOSE AND EFFECT OF THE PROPOSED RULE CHANGE"
+DESCRIPTION_LABEL = ("This description is the Board's own explanation; the proposed rule change itself is the text "
+                     "above.")
+
+
+def text_lines(change: RuleChange, current: dict[str, str] | None = None, *, current_label: str = "") -> list[str]:
+    """The text of the proposed change, section by section, as the member notice prints it. With ``current_label``
+    each replaced section also shows the words it replaces under that label ("Now reads")."""
+    parts: list[str] = []
+    for section in change.sections:
+        parts.append("")
+        now = (current or {}).get(section.number, "")
+        if section.strike:
+            parts.append(f"{section.label} ({section.title}): replace the words \"{section.strike}\" with "
+                         f"\"{section.proposed}\".")
+        elif section.repeal:
+            parts.append(f"{section.label} ({section.title}): repeal.")
+            if current_label and now:
+                parts += [f"{current_label}:", _plain(now)]
+        else:
+            verb = "add" if section.new else "replace the section with"
+            if current_label and now and not section.new:
+                parts += [f"{section.label} ({section.title}).", f"{current_label}:", _plain(now),
+                          "Proposed to read:", _plain(section.proposed)]
+            else:
+                parts.append(f"{section.label} ({section.title}): {verb}:")
+                parts.append(_plain(section.proposed))
+    return parts
+
+
 def member_notice(change: RuleChange, when: Timeline, current: dict[str, str], association: str,
-                  schedule: MeetingSchedule | None = None) -> Notice:
-    """The general notice of the proposed rule change (Civil Code 4360(a)), as plain text for mail or email."""
+                  schedule: MeetingSchedule | None = None, *, law: dict[str, str] | None = None,
+                  text_part: list[str] | None = None, current_label: str = "") -> Notice:
+    """The general notice of the proposed rule change (Civil Code 4360(a)), as plain text for mail or email.
+
+    It follows the subdivision's order: the text of the proposed rule change, then the board's description of its
+    purpose and effect, labeled as the board's. ``law`` holds the statute's words (``recite_law``); with 4360(a)'s
+    sentence on disk the notice quotes it, otherwise it states the rule in its own words. ``text_part`` replaces the
+    section-by-section text (a whole document proposed as the change)."""
     place = f" at {schedule.time} on {schedule.place}" if schedule else ""
+    law = law or {}
+    rule = law.get("CIV 4360(a)", "")
+    if rule:
+        said = f"Civil Code section 4360(a) provides: \"{rule}\" The notice is given at least 28 days before the " \
+               f"Board decides."
+    else:
+        said = ("Civil Code section 4360(a) requires the Board to give members notice of a proposed rule change at "
+                "least 28 days before making it, with the text of the change and a description of its purpose and "
+                "effect.")
     parts = [
         f"{association.upper()}",
         "NOTICE OF PROPOSED RULE CHANGE",
         f"Date of this notice: {_day(when.notice_date)}",
         "",
-        _plain(f"The Board of Directors proposes to amend the {change.document_title}. Civil Code section 4360(a) "
-               f"requires the Board to give members notice of a proposed rule change at least 28 days before making "
-               f"it, with the text of the change and a description of its purpose and effect. The Board will consider "
+        _plain(f"The Board of Directors proposes to amend the {change.document_title}. {said} The Board will consider "
                f"members' comments and decide on the change at its open meeting on {_day(when.decision)}{place}."),
+        "",
+        TEXT_HEADING,
+    ]
+    parts += text_part if text_part is not None else text_lines(change, current, current_label=current_label)
+    parts += [
+        "",
+        DESCRIPTION_HEADING,
+        _plain(DESCRIPTION_LABEL),
         "",
         "PURPOSE OF THE PROPOSED CHANGE",
         _plain(change.purpose),
         "",
         "EFFECT OF THE PROPOSED CHANGE",
         _plain(change.effect),
-        "",
-        "TEXT OF THE PROPOSED CHANGE",
     ]
-    for section in change.sections:
-        parts.append("")
-        if section.strike:
-            parts.append(f"{section.label} ({section.title}): replace the words \"{section.strike}\" with "
-                         f"\"{section.proposed}\".")
-        elif section.repeal:
-            parts.append(f"{section.label} ({section.title}): repeal.")
-        else:
-            verb = "add" if section.new else "replace the section with"
-            parts.append(f"{section.label} ({section.title}): {verb}:")
-            parts.append(_plain(section.proposed))
     parts += [
         "",
         "HOW TO COMMENT",
@@ -268,8 +443,33 @@ def agenda_item(change: RuleChange, when: Timeline) -> str:
     ])
 
 
-def adoption_notice(change: RuleChange, when: Timeline, association: str) -> Notice:
-    """The general notice of the adopted rule change (Civil Code 4360(c)), a template the secretary completes."""
+ADOPTED_TEXT_HEADING = "THE TEXT OF THE RULE CHANGE AS ADOPTED"
+
+
+def adopted_lines(change: RuleChange) -> list[str]:
+    """The adopted text, recited section by section: the words as noticed, which the secretary replaces where the
+    board adopted other words."""
+    parts: list[str] = []
+    for section in change.sections:
+        parts.append("")
+        if section.repeal:
+            parts.append(f"{section.label} ({section.title}): repealed.")
+        elif section.strike:
+            parts.append(f"{section.label} ({section.title}): the words \"{section.strike}\" are replaced with "
+                         f"\"{section.proposed}\".")
+        else:
+            parts.append(f"{section.label} ({section.title})" + (", a new section" if section.new else "") + ", now reads:")
+            parts.append(_plain(section.proposed))
+    return parts
+
+
+def adoption_notice(change: RuleChange, when: Timeline, association: str, *, law: dict[str, str] | None = None,
+                    text_part: list[str] | None = None) -> Notice:
+    """The general notice of the adopted rule change (Civil Code 4360(c)), a template the secretary completes. It
+    recites the text as adopted (the noticed words; the secretary replaces any the board changed), then the board's
+    description, labeled as such."""
+    rule = (law or {}).get("CIV 4360(c)", "")
+    said = f" Civil Code section 4360(c) provides: \"{rule}\"" if rule else ""
     parts = [
         association.upper(),
         "NOTICE OF ADOPTED RULE CHANGE",
@@ -277,12 +477,18 @@ def adoption_notice(change: RuleChange, when: Timeline, association: str) -> Not
         "",
         _plain(f"At its open meeting on {_day(when.decision)}, the Board of Directors adopted an amendment to the "
                f"{change.document_title}, after considering the comments members made on the proposed change noticed "
-               f"on {_day(when.notice_date)}. The amendment takes effect on [effective date]."),
+               f"on {_day(when.notice_date)}. The amendment takes effect on [effective date].{said}"),
         "",
-        "WHAT CHANGED",
+        ADOPTED_TEXT_HEADING,
+    ]
+    parts += text_part if text_part is not None else adopted_lines(change)
+    parts += [
+        "",
+        "[If the Board adopted words other than those noticed, replace the text above with the words adopted, from the "
+        "minutes.]",
+        "",
+        "WHAT CHANGED (the Board's description)",
         _plain(change.effect),
-        "",
-        "[Attach or quote the text as adopted. If the Board changed the noticed text, quote the adopted words.]",
         "",
         "YOUR RIGHT TO CALL A VOTE TO REVERSE THE CHANGE",
         _plain("Under Civil Code section 4365, members owning 5 percent or more of the separate interests may call a "
@@ -314,11 +520,48 @@ def authority_status(data_dir: Path, change: RuleChange) -> list[dict[str, Any]]
 # --- the page and the draft ----------------------------------------------------------------------------------------
 
 
+def element_lines(key: str, text: str) -> list[str]:
+    """The catalog's required elements for one notice (``jason notice-check``'s check), as Markdown lines."""
+    from jason.community.notice_catalog import requirement
+    from jason.community.notice_elements import Status, check
+
+    out = [f"Required elements of `{key}` (the catalog's reading; the statute's words are on disk):", ""]
+    for f in check(requirement(key), text):
+        mark = "x" if f.ok else (" " if f.status is not Status.UNCHECKED else "?")
+        tail = f": {f.where}" if f.where else ""
+        cond = f" (only for {f.applies})" if f.applies and not f.ok else ""
+        out.append(f"- [{mark}] {f.element} ({f.cite}) {f.status.value}{cond}{tail}")
+    return out
+
+
+def versions_lines(change: RuleChange, recitals: dict[str, Recital], version: RecordVersion | None) -> list[str]:
+    """The versions the page cites: each section's current words (the version in force, its address and permanent
+    id), and the proposed stage version."""
+    lines = ["## The versions cited", "",
+             "| Section | Current words | Address | Permanent id | Version in force | Proposed (not in force) |",
+             "|---|---|---|---|---|---|"]
+    for section in change.sections:
+        r = recitals.get(section.number)
+        prop = f"`{version_address(version, section.number)}`" if version is not None else ""
+        if r is None:
+            lines.append(f"| {section.label} | {'a new section' if section.new else 'not on disk'} | | | | {prop} |")
+            continue
+        read = "the shelf" if r.source == "shelf" else f"the outline, read directly ({r.reason})"
+        lines.append(f"| {section.label} | {read} | `{r.address}` | `{r.pid}` | {r.in_force} | {prop} |"
+                     .replace("``", ""))
+    if version is not None:
+        lines += ["", f"The proposed text is the stage version `{version.book}{version.label()}` "
+                      f"({version.stage.value}, noticed {version.on}): {version.note}. Its source: {version.source}."]
+    return lines
+
+
 def render_markdown(change: RuleChange, when: Timeline, current: dict[str, str], association: str,
-                    schedule: MeetingSchedule | None, authorities: list[dict[str, Any]]) -> str:
-    notice = member_notice(change, when, current, association, schedule)
+                    schedule: MeetingSchedule | None, authorities: list[dict[str, Any]], *,
+                    recitals: dict[str, Recital] | None = None, version: RecordVersion | None = None,
+                    law: dict[str, str] | None = None) -> str:
+    notice = member_notice(change, when, current, association, schedule, law=law)
     elements = required_elements(notice, change, when)
-    adopted = adoption_notice(change, when, association)
+    adopted = adoption_notice(change, when, association, law=law)
     lines = [
         f"# Rule change: {change.title}",
         "",
@@ -350,18 +593,25 @@ def render_markdown(change: RuleChange, when: Timeline, current: dict[str, str],
     lines += [f"{i}. {d}" for i, d in enumerate(change.decisions, 1)]
     lines += ["", "Placeholders in the proposed text: " + ", ".join(f"`{p}`" for p in change.placeholders()) + ".",
               "", "## The proposed amendment, section by section", ""]
-    lines += ["\n\n".join(section_blocks(change, current)), ""]
+    lines += ["\n\n".join(section_blocks(change, current, recitals=recitals, version=version)), ""]
+    if recitals is not None or version is not None:
+        lines += versions_lines(change, recitals or {}, version) + [""]
     lines += ["## (a) Member notice of the proposed rule change (4360(a))", "",
               f"Subject: {notice.subject}", "", "```text", notice.text, "```", "",
               "Required elements:", ""]
     lines += [f"- [{'x' if ok else ' '}] {name} ({cite})" for name, cite, ok in elements]
+    lines += [""] + element_lines("rule-change-proposed", notice.text)
+    if "CIV 4360(a)" not in (law or {}):
+        lines += ["", "The notice states 4360(a) in its own words: the statute was not read from data/authorities "
+                      "(jason export-authorities)."]
     lines += ["", "Delivery: by general notice under Civil Code 4045 (individual delivery to members who asked for it, "
               "4045(b), by each member's preferred delivery method under 4040 and 4041). Email only the members whose "
               "preferred method is email; mail the rest.", "",
               "## (b) Agenda item for the decision meeting", "", agenda_item(change, when), "",
               "## (c) Notice of the adopted rule change (4360(c)), template", "",
-              f"Subject: {adopted.subject}", "", "```text", adopted.text, "```", "",
-              "## The law, as exported to data/authorities", ""]
+              f"Subject: {adopted.subject}", "", "```text", adopted.text, "```", ""]
+    lines += element_lines("rule-change-adopted", adopted.text) + [""]
+    lines += ["## The law, as exported to data/authorities", ""]
     for row in authorities:
         if row["found"]:
             lines += [f"### {row['citation']} ({row['page']}{', ' + str(row['session']) + ' session' if row['session'] else ''})",
@@ -393,6 +643,8 @@ def save_draft(gmail: Any, draft: Any) -> dict[str, Any]:
     return gmail.create(draft)
 
 
-__all__ = ["Notice", "Timeline", "adoption_notice", "agenda_item", "authority_status", "current_sections", "email_draft",
-           "find_change", "first_decision_date", "member_notice", "render_markdown", "required_elements", "save_draft",
-           "timeline", "write"]
+__all__ = ["ADOPTED_TEXT_HEADING", "DESCRIPTION_HEADING", "Notice", "Recital", "TEXT_HEADING", "Timeline",
+           "adopted_lines", "adoption_notice", "agenda_item", "authority_status", "current_sections", "element_lines",
+           "email_draft", "find_change", "first_decision_date", "member_notice", "open_shelf", "proposed_version",
+           "recite_law", "recite_sections", "render_markdown", "required_elements", "save_draft", "text_lines",
+           "timeline", "version_address", "versions_lines", "words_of", "write"]
