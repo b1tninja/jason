@@ -67,6 +67,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [meetings.md](meetings.md): the meeting records catalog across Zoom, Drive, and PayHOA, and its checks.
 - [calendar.md](calendar.md): meetings, notice and hearing deadlines, and recurring deadlines on Google Calendar.
 - [zoom.md](zoom.md): the Zoom meeting history and disciplinary hearings under Civil Code 5855.
+- [zoom-attend.md](zoom-attend.md): research on attending meetings: what the Server-to-Server app reaches, RTMS, a Meeting SDK bot, a Zoom App, captions, and AI Companion, and what jason would do with each.
 
 ## Owners, notices, and forms
 
