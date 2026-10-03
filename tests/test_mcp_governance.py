@@ -37,3 +37,11 @@ def test_misses_are_reported_not_raised(tmp_path):
     assert "error" in api.notice_delivery("no-such-notice", data_dir=tmp_path)
     assert "error" in api.document_conflicts(area="no-such-area")
     assert api.notice_requirements()["requirements"]
+    assert "error" in api.request_kinds_measure(data_dir=tmp_path)          # no gold set here
+
+
+def test_requests_carry_leads_only_when_asked(tmp_path):
+    plain = api.member_requests(include_email=False, data_dir=tmp_path)
+    led = api.member_requests(include_email=False, sources=True, data_dir=tmp_path)
+    assert all("sources" not in r for r in plain["requests"])
+    assert "lead" in led["caveat"] and "lead" not in plain["caveat"]

@@ -209,10 +209,12 @@ def record_completion(key: str, due: str, by: str, evidence: str, done_on: str =
 # --- Members' requests ------------------------------------------------------------------------------------------------
 
 def member_requests(open_only: bool = True, kind: str = "", include_email: bool = True, limit: int = 60,
-                    data_dir: Path | None = None) -> dict[str, Any]:
+                    sources: bool = False, data_dir: Path | None = None) -> dict[str, Any]:
     """Each member's request (PayHOA, and the owners' email threads): its kind, the day received, the clock (the
     statute's, the documents', or a proposed policy's), the due day, the owner's role, whether it was acknowledged and
-    answered, its standing, and the next step. It never approves, denies, or assigns a request."""
+    answered, its standing, and the next step. ``sources`` adds leads to where each answer is written: the governing
+    documents' passages, library files by name, and precedent violations for a complaint. It never approves, denies,
+    or assigns a request."""
     from jason.community.responses import ResponseKind
     from jason.tasks import responses as task
 
@@ -227,14 +229,43 @@ def member_requests(open_only: bool = True, kind: str = "", include_email: bool 
     if open_only:
         found = [h for h in found if h.closed is None]
     found.sort(key=lambda h: (h.closed is not None, h.due or date.max))
-    return {"summary": task.summary(found), "requests": [{
-        "id": h.request["id"], "kind": h.kind.value, "unit": h.request.get("unit"), "title": h.request.get("title"),
-        "received": _day(h.received), "due": _day(h.due), "clock": h.clock,
-        "clockSource": h.rule.source.value if h.rule else None, "owner": h.rule.assignment if h.rule else None,
-        "acknowledged": _day(h.acknowledged), "answered": _day(h.answered), "closed": _day(h.closed),
-        "standing": h.standing, "next": h.rule.first_step if h.rule else "", "classifiedBy": h.why}
-        for h in found[: max(1, int(limit))]],
-        "caveat": "Email kinds come from subjects; a proposed clock is a target until the board adopts it."}
+    shown = found[: max(1, int(limit))]
+    leads: dict[str, Any] = {}
+    if sources:
+        from jason.tasks.response_sources import SourceContext, sources_for
+
+        ctx = SourceContext(root, c)
+        leads = {str(h.request["id"]): sources_for(h, c, ctx) for h in shown}
+    rows = []
+    for h in shown:
+        row = {"id": h.request["id"], "kind": h.kind.value, "unit": h.request.get("unit"), "title": h.request.get("title"),
+               "received": _day(h.received), "due": _day(h.due), "clock": h.clock,
+               "clockSource": h.rule.source.value if h.rule else None, "owner": h.rule.assignment if h.rule else None,
+               "acknowledged": _day(h.acknowledged), "answered": _day(h.answered), "closed": _day(h.closed),
+               "standing": h.standing, "next": h.rule.first_step if h.rule else "", "classifiedBy": h.why}
+        if sources:
+            row["sources"] = leads.get(str(h.request["id"]), {})
+        rows.append(row)
+    caveat = "Email kinds come from subjects; a proposed clock is a target until the board adopts it."
+    if sources:
+        caveat += " Each source is a lead to read, not a ruling; a precedent shows past handling, not this matter's facts."
+    return {"summary": task.summary(found), "requests": rows, "caveat": caveat}
+
+
+def request_kinds_measure(misses: bool = False, data_dir: Path | None = None) -> dict[str, Any]:
+    """How well requests' kinds are read: precision and recall per kind against the hand-labelled gold set
+    (``data/responses/kind-gold.json``, private), for PayHOA requests, email threads, and both. ``misses`` adds each
+    request read wrongly with the rule that decided it."""
+    from jason.tasks import request_kinds
+
+    try:
+        result = request_kinds.measure(_root(data_dir), _community())
+    except FileNotFoundError:
+        return {"error": "no gold set: label requests in data/responses/kind-gold.json (docs/responses.md)"}
+    if not misses:
+        result = {k: v for k, v in result.items() if k != "misses"}
+    result["caveat"] = "The rules were tuned on this set, so the scores are an upper bound until new requests are labelled."
+    return result
 
 
 def acknowledgment_draft(request_id: str, data_dir: Path | None = None) -> dict[str, Any]:
@@ -247,7 +278,8 @@ def acknowledgment_draft(request_id: str, data_dir: Path | None = None) -> dict[
     for h in task.handle(c, root) + task.email_requests(c, root):
         if str(h.request["id"]) == str(request_id):
             send = (f'jason request-comment {h.request["id"]} "<the text>"' if str(h.request["id"]).isdigit()
-                    else f"reply in the email thread: {h.request.get('link', '')}")
+                    else f"jason respond --draft {h.request['id']} --gmail (a dry run; --yes saves a Gmail draft in "
+                         f"the thread for a person to send): {h.request.get('link', '')}")
             return {"id": h.request["id"], "draft": task.acknowledgment(h, c), "send": send,
                     "acknowledged": _day(h.acknowledged)}
     return {"error": f"no request {request_id}"}
@@ -340,7 +372,7 @@ def governance_digest(section: str = "", limit: int = 8, past: int = 30, private
 
 
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
-         schedule_assignments, record_completion, member_requests, acknowledgment_draft, notice_requirements,
-         notice_delivery, document_duties, governance_digest)
+         schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
+         notice_requirements, notice_delivery, document_duties, governance_digest)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

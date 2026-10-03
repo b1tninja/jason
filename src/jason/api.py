@@ -31,6 +31,7 @@ from jason.mcp.governance import (
     notice_delivery,
     notice_requirements,
     record_completion,
+    request_kinds_measure,
     schedule_agenda,
     schedule_assignments,
 )
