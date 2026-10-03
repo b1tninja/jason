@@ -50,6 +50,7 @@ MODULES: tuple[str, ...] = (
     "manual",
     "respond",
     "attention",
+    "revisions",
 )
 
 

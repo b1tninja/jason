@@ -893,6 +893,12 @@ class Community(ABC):
         """The Google Docs other documents cite, with their aliases (``jason.community.outlines.CitableDocument``)."""
         return ()
 
+    def revision_series(self) -> tuple:
+        """Documents whose versions ``jason revisions`` compares, with file names that hold an older version beyond
+        the document's title and aliases (``jason.community.revision_detection.RevisionSeries``). Empty: each citable
+        document, found by its title and aliases only."""
+        return ()
+
     def book_entries(self) -> tuple:
         """Which of the association's documents fills which book (``jason.community.books.BookEntry``): the
         declaration's document in ``decl``, a separately adopted set of rules as a part of ``rules``. A record

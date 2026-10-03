@@ -166,6 +166,46 @@ class GoogleDrive:
             raise GoogleError(f"HTTP {response.status_code} exporting {file_id} as {mime_type}")
         return response.content
 
+    def list_revisions(self, file_id: str) -> list[dict[str, Any]]:
+        """Every revision Drive keeps of a file, oldest first (read-only): its id, when it was saved, and for a Google
+        Doc the links that export its text then (``exportLinks``). Drive merges a Doc's older edits, so the list is
+        the revisions kept, not every edit made."""
+        rows: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"fields": "nextPageToken,revisions(id,modifiedTime,mimeType,size,keepForever,"
+                                                "published,exportLinks)", "pageSize": 200}
+            if page_token:
+                params["pageToken"] = page_token
+            body = self._get(f"/files/{file_id}/revisions", params)
+            rows.extend(body.get("revisions") or [])
+            page_token = body.get("nextPageToken")
+            if not page_token:
+                return rows
+
+    def export_revision(self, link: str, *, attempts: int = 6, pause: float = 5.0) -> bytes:
+        """The bytes behind one revision's export link (read-only). Google limits these exports tightly: a 429 or
+        503 is retried after its Retry-After, or after ``pause`` seconds doubled each time."""
+        import time
+
+        for attempt in range(attempts):
+            response = self._http.get(link, headers=self._headers(), follow_redirects=True)
+            if response.is_success:
+                return response.content
+            if response.status_code not in (429, 503) or attempt == attempts - 1:
+                break
+            wait = response.headers.get("Retry-After", "")
+            time.sleep(float(wait) if wait.isdigit() else pause * (2 ** attempt))
+        raise GoogleError(f"HTTP {response.status_code} exporting a revision")
+
+    def download_revision(self, file_id: str, revision_id: str) -> bytes:
+        """One revision of a binary file (a PDF or a Word file Drive keeps versions of), read-only."""
+        response = self._http.get(f"{_API}/files/{file_id}/revisions/{revision_id}", params={"alt": "media"},
+                                  headers=self._headers())
+        if not response.is_success:
+            raise GoogleError(f"HTTP {response.status_code} downloading revision {revision_id} of {file_id}")
+        return response.content
+
     def docs(self) -> GoogleDocs:
         """Docs client on this same access token. Does not close the Drive HTTP client."""
         return GoogleDocs(self._token, http=self._http)

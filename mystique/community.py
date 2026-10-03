@@ -467,6 +467,12 @@ class Mystique(Community):
 
         return CITABLE_DOCUMENTS
 
+    def revision_series(self):
+        """The documents whose versions jason revisions compares, and the older file names they went by (revisions.py)."""
+        from .revisions import REVISION_SERIES
+
+        return REVISION_SERIES
+
     def book_entries(self):
         """Which document fills which book, for record addresses (books.py)."""
         from .books import BOOK_ENTRIES

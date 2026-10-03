@@ -27,4 +27,12 @@ LESSONS = (
            "The CPA confirms the form the 2025 return used; then the rev-rul-70-604 assignment drops its condition or "
            "is marked not applicable.",
            Status.DECISION, docs=("mystique/schedule.py (rev-rul-70-604)",)),
+    Lesson("rules-changed-without-adoption", date(2026, 10, 2), (Area.GOVERNING,),
+           "Revision detection found rule text in circulation with no adoption on record: the election rules' electronic "
+           "voting provisions in copies emailed from May 2025; the fine schedule's 2024 changes (the resident permit fee "
+           "and struck fee lines); the license plate data opt-out removed in September 2024.",
+           "The working Docs were edited and their copies sent as the rules, with no rule-change notice or minutes found.",
+           "A decision for the board, with counsel: which text is in force, and whether to notice and adopt the changes "
+           "(Civil Code 4360) or restore the adopted text.", Status.DECISION,
+           docs=("data/reports/revisions-owners-manual.md", "data/reports/revisions-election-rules.md")),
 )

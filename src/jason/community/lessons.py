@@ -497,6 +497,32 @@ LESSONS: tuple[Lesson, ...] = (
            "A document's address key is its first book entry, so both books produced the same addresses.",
            "The resource listing skips a document already listed.",
            Status.FIXED, guards=("tests/test_record_resources.py (no address listed twice)",)),
+    Lesson("docx-carries-pending-suggestions", OCT_2026, (Area.DOCUMENTS,),
+           "A Doc's Word and Markdown exports carried its unaccepted suggestions as if they were the text, so a rules "
+           "Doc's local export, and a dozen apparent rule changes, came from suggestions no one had accepted.",
+           "Suggestions arrive as tracked changes; a reader that keeps every run reads them as text, and the Markdown "
+           "export applies them.",
+           "The revision reader reads the text as it stands (insertions out, deletions kept) and lists the suggestions "
+           "apart. Other readers of a Markdown export still get the suggested text.",
+           Status.OPEN, guards=("revision_detection.docx_text", "revision_detection.docx_suggestions",
+                                "tests/test_revision_detection.py"), docs=("docs/revision-detection.md",)),
+    Lesson("drive-revision-exports-rate-limited", OCT_2026, (Area.DOCUMENTS,),
+           "Exporting a Doc's revision history failed with HTTP 429 after a few revisions.",
+           "Drive throttles revision exports tightly.",
+           "The export retries on Retry-After or backoff, and the fetch paces itself.",
+           Status.FIXED, guards=("GoogleDrive.export_revision", "revision_detection EXPORT_PAUSE")),
+    Lesson("library-resolves-by-name-only", OCT_2026, (Area.DOCUMENTS,),
+           "Uploads of different sizes under one name all carried one file's hash in the library index, so a different "
+           "version was attributed to the wrong copy.",
+           "The library resolves a PayHOA file to its local mirror by name alone.",
+           "Revision detection counts a mirror only when its size agrees; the library index itself still resolves by name.",
+           Status.OPEN, guards=("revision_detection mirror size check",)),
+    Lesson("effective-date-is-a-claim", OCT_2026, (Area.DOCUMENTS,),
+           "Later copies of a manual kept printing an old 'EFFECTIVE' date, and ordering versions by it put recent "
+           "copies before old ones.",
+           "A date the text prints is what the text claims, not when the copy existed.",
+           "A version keeps its existed-by dates (email, upload, Drive, PDF metadata) apart from the dates it claims, and is "
+           "ordered by the former.", Status.FIXED, guards=("revision_detection Version.existed / claims",)),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
