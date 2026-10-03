@@ -812,6 +812,16 @@ LESSONS: tuple[Lesson, ...] = (
            "The live context was built before the engine's checks ran.",
            "The engine's problems are checked, and the refusal audited, before any live context is built.",
            Status.FIXED, guards=("approvals.engine.problems", "tests/test_web_approvals.py")),
+    Lesson("shadowed-community-method", OCT_2026, (Area.GOVERNING,),
+           "A new Community.developers (the people who maintain jason, for the console's view-as) replaced the "
+           "existing Community.developers (the subdividers) in the same class, and 78 tests in the recorder, history, "
+           "and filings modules failed with no error near the change.",
+           "Python lets a second definition of a name in one class silently replace the first, and \"developer\" "
+           "already meant the subdivider in jason's vocabulary.",
+           "The grant is now Maintainer / Community.maintainers / maintainers.json. A test refuses any name defined "
+           "twice in one class or module across src/jason and the profile. Before adding a Community method, grep "
+           "for the name.",
+           Status.FIXED, guards=("tests/test_no_shadowed_names.py",)),
     Lesson("ui-tests-on-the-wrong-shape", OCT_2026, (Area.GOVERNING,),
            "The Approvals screen failed on the first real plan (\"items.filter is not a function\"): its tests fed the "
            "list the full approval, while GET /api/approvals sends a summary row whose items is a count.",

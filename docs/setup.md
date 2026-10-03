@@ -103,7 +103,13 @@ How it works: jason-web runs OpenID Connect's authorization-code flow on the ser
    ```
 
    A row without `email` cannot sign in. A shared role account (such as the treasurer's address) signs in as whoever holds that seat on the roster. Who holds a seat is the board's record, so update the roster when a seat changes hands.
+
+   **Two offices.** Where the bylaws let one person hold two offices, give the row a list: `"role": ["secretary", "treasurer"]`. Sign-in matches the person once, with both offices. They may approve what either office approves.
+
+   **Maintainers.** The people who build and maintain jason go in `data/spec/maintainers.json` as `[{"name": "...", "email": "..."}]`. ("Developer" in jason means the subdivider.) Being a maintainer grants nothing unless jason-web runs with `--dev` (step 3).
 3. **Start it.** Run `jason-web` to offer sign-in beside the sample picker, or `jason-web --require-sign-in` to refuse every write until an officer signs in. jason-web says at startup which client it signs in with. **Sign in with Google** appears at the top of the console. After sign-in, the header shows the officer's name and a **Sign out** button.
+
+   **Not production: `jason-web --dev`.** A signed-in maintainer gets a **Maintainer view** control in the header. With it, they see the console as any person on the roster or any office, to build and check role-based views. While they view as someone else, every write is refused, so no record ever carries a name its person did not sign in as. Choosing "myself" restores writes. Each switch is logged in `data/web/sign-ins.jsonl`.
 
 **Optional: a Web application client.** You need one only to serve the console on a name other than loopback, which needs HTTPS and is out of scope for now (below). You also need one if Google ever refuses the Desktop client's return address with `redirect_uri_mismatch`. Google's guide names `http://127.0.0.1:port` for Desktop clients and is silent on a path after the port, but Google accepted `http://127.0.0.1:8080/auth/google/callback` from jason's Desktop client when this was first tried (October 2026).
 1. In the Cloud console, open **Google Auth Platform → Clients → Create client**, with the type **Web application** and the name `jason console`.

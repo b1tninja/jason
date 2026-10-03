@@ -156,9 +156,12 @@ def _approval_check(letter: dict[str, Any], by: str, meeting: str | None) -> str
     officers = community().officers()
     if not officers:
         raise ValueError("the profile names no officers (officers.json), so no approval can be recorded")
-    person = next((o for o in officers if o.name == by), None)
-    if person is None:
+    from jason.community.base import offices_of
+
+    held = offices_of(officers, by)                    # a person may hold two offices: one row each
+    if not held:
         raise ValueError(f"{by} is not one of the association's officers")
+    person = next((o for o in held if o.can_approve(approver)), held[0])
     if approver == BOARD:
         if not person.can_approve(BOARD):
             raise ValueError("the board's approval is a vote at a meeting (CIV 4910); the president or the secretary records it")
@@ -167,7 +170,7 @@ def _approval_check(letter: dict[str, Any], by: str, meeting: str | None) -> str
         day = date.fromisoformat(str(meeting).strip())
         return f"The board approved it by vote at its meeting of {day.isoformat()} (CIV 4910); recorded by {by}, {person.role.value}"
     if not person.can_approve(approver):
-        raise ValueError(f"{by} ({person.role.value}) is not {approver} and cannot approve for them")
+        raise ValueError(f"{by} ({', '.join(o.role.value for o in held)}) is not {approver} and cannot approve for them")
     return f"Approved by {by} ({person.role.value}) as {approver}"
 
 

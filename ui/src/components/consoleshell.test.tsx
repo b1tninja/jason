@@ -57,6 +57,21 @@ describe("ConsoleShell", () => {
     expect(onSignOut).toHaveBeenCalled();
   });
 
+  it("lets a maintainer view as a person or an office under --dev, and says writes are off meanwhile", async () => {
+    const onChange = vi.fn();
+    const people = [{ name: "Sam Example", role: "secretary, treasurer" }, { name: "Pat Example", role: "president" }];
+    shell({ session: { me: "Pat Example", setMe: vi.fn(), people, account: { name: "Sam Example", role: "secretary, treasurer" },
+      actAs: { people, roles: ["president", "director"], acting: { name: "Pat Example", role: "president" }, onChange } } });
+    const view = screen.getByLabelText("Maintainer view");
+    expect(view).toHaveValue("p:Pat Example");
+    expect(within(view).queryByText("Sam Example, secretary, treasurer")).toBeNull();     // not oneself twice
+    expect(screen.getByRole("status")).toHaveTextContent("Viewing as Pat Example (maintainer view): writes are off");
+    await userEvent.selectOptions(view, "r:director");
+    expect(onChange).toHaveBeenCalledWith({ role: "director" });
+    await userEvent.selectOptions(view, "");
+    expect(onChange).toHaveBeenLastCalledWith({});
+  });
+
   it("offers Sign in with Google beside the picker when the server has it, and says a refusal", () => {
     const people = [{ name: "D. Okafor", role: "president" }];
     shell({ session: { me: "", setMe: vi.fn(), people, signInHref: "/auth/google?next=%23%2Fdigest", signInError: "x@example.org is not an officer's account" } });

@@ -528,6 +528,13 @@ class Mystique(Community):
 
         return officers()
 
+    def maintainers(self):
+        """The people who build and maintain jason, from the private facts (officers.py); a view-as grant under
+        jason-web --dev."""
+        from .officers import maintainers
+
+        return maintainers()
+
     def board_meeting_policy(self):
         """A board meeting is a 90-minute Zoom meeting with a waiting room, recorded to the cloud (zoom.py)."""
         from .zoom import BOARD_MEETING_POLICY

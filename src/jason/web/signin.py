@@ -20,6 +20,11 @@ record names who actually signed in; the approvals routes take the name from the
 ``console:google``. ``jason-web --require-sign-in`` refuses every write until someone signs in. Sign-in is not a role:
 what a person may approve is still the roster's (``Officer.approves``), and the write guard (``jason.web.guard``)
 still applies to every write.
+
+One person may hold two offices (two roster rows with one name): sign-in matches them once, with the offices joined.
+Under ``jason-web --dev`` (not production), a signed-in maintainer (``Community.maintainers``) may view the console as
+any person on the roster or any office (``POST /auth/act-as``), to build and check role-based views. Every write is
+refused while they view as someone else, so no record ever carries a name its person did not sign in as.
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ SCOPES = "openid email profile"
 START = "/auth/google"
 CALLBACK = "/auth/google/callback"
 SIGN_OUT = "/auth/signout"
+ACT_AS = "/auth/act-as"
 RECORD_KEY = "google_signin_record_uid"     # .env: a Web application client's Keeper record (optional)
 DESKTOP_KEY = "google_oauth_record_uid"     # .env: jason's own Desktop client, used when RECORD_KEY is not set
 LIFETIME = timedelta(hours=12)
@@ -74,15 +80,26 @@ class Account:
     email: str
     sub: str = ""
     at: str = ""
+    maintainer: bool = False
 
 
 @dataclass(frozen=True)
 class Person:
-    """One roster row sign-in can match: an officer with an email."""
+    """One person on the roster: their offices joined (``"secretary, treasurer"``), the address they sign in with
+    (empty: cannot sign in), and whether they build jason (``Community.maintainers``)."""
 
     name: str
     role: str
     email: str
+    maintainer: bool = False
+
+
+@dataclass(frozen=True)
+class Acting:
+    """Who a maintainer views the console as under ``--dev``: a person on the roster, or an office with no person."""
+
+    name: str
+    role: str
 
 
 Exchange = Callable[[Client, str, str, str], dict[str, Any]]   # client, code, redirect_uri, verifier -> token reply
@@ -99,6 +116,7 @@ class SignIn:
     exchange: Exchange
     required: bool = False
     log: Path | None = None
+    dev: bool = False                         # jason-web --dev: a maintainer may view the console as anyone
     _client: Client | None = field(default=None, repr=False)
 
     def load_client(self) -> Client:
@@ -140,10 +158,30 @@ def default_client() -> Client:
     return Client(cid, secret)
 
 
+def roster_of(officers: Any, maintainers: Any = ()) -> tuple[Person, ...]:
+    """One ``Person`` a name: a person's offices joined, their first address; maintainers marked, and a maintainer who
+    holds no office added with the role ``maintainer``."""
+    people: dict[str, Person] = {}
+    for o in officers:
+        p = people.get(o.name)
+        role = ", ".join(r for r in ((p.role if p else ""), o.role.value) if r)
+        email = (p.email if p and p.email else o.email.strip().lower())
+        people[o.name] = Person(o.name, role, email)
+    for d in maintainers:
+        email = d.email.strip().lower()
+        hit = next((p for p in people.values() if p.email == email), None)
+        if hit is not None:
+            people[hit.name] = Person(hit.name, hit.role, hit.email, True)
+        else:
+            people[d.name] = Person(d.name, "maintainer", email, True)
+    return tuple(people.values())
+
+
 def default_roster() -> tuple[Person, ...]:
     from jason.community import community
 
-    return tuple(Person(o.name, o.role.value, o.email.strip().lower()) for o in community().officers() if o.email.strip())
+    c = community()
+    return roster_of(c.officers(), c.maintainers())
 
 
 def default_domains() -> tuple[str, ...]:
@@ -165,7 +203,7 @@ def default_exchange(client: Client, code: str, redirect_uri: str, verifier: str
     return body
 
 
-def default_sign_in(*, required: bool = False) -> SignIn:
+def default_sign_in(*, required: bool = False, dev: bool = False) -> SignIn:
     """Sign-in as the .env and the profile set it up: ``configured`` when either client record is set."""
     try:
         configured = bool(client_record(_settings())[0])
@@ -174,7 +212,7 @@ def default_sign_in(*, required: bool = False) -> SignIn:
     from jason.mcp.county import _data_dir
 
     return SignIn(configured=configured, client=default_client, roster=default_roster, domains=default_domains,
-                  exchange=default_exchange, required=required, log=_data_dir(None) / "web" / "sign-ins.jsonl")
+                  exchange=default_exchange, required=required, log=_data_dir(None) / "web" / "sign-ins.jsonl", dev=dev)
 
 
 def _b64(raw: bytes) -> str:
@@ -221,14 +259,14 @@ def account_for(claims: dict[str, Any], *, client_id: str, nonce: str, roster: t
     hd = str(claims.get("hd") or "").strip().lower()
     if domains and hd not in domains:
         raise Refused(f"{email} is not an account of the association's Google Workspace")
-    match = [p for p in roster if p.email == email]
+    match = [p for p in roster if p.email and p.email == email]
     if not match:
         raise Refused(f"{email} is not an officer's account: the manager adds its email to the officers' roster")
-    if len(match) > 1:
+    if len({p.name for p in match}) > 1:
         raise Refused(f"{email} is on the roster for more than one person: the manager corrects the roster")
     p = match[0]
     return Account(p.name, p.role, email, str(claims.get("sub") or ""),
-                   datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                   datetime.now(timezone.utc).isoformat(timespec="seconds"), p.maintainer)
 
 
 def current_account() -> Account | None:
@@ -237,9 +275,18 @@ def current_account() -> Account | None:
     if not isinstance(raw, dict) or not raw.get("name"):
         return None
     try:
-        return Account(**{k: str(raw.get(k, "")) for k in ("name", "role", "email", "sub", "at")})
+        return Account(**{k: str(raw.get(k, "")) for k in ("name", "role", "email", "sub", "at")},
+                       maintainer=raw.get("maintainer") is True)
     except TypeError:
         return None
+
+
+def acting_as() -> Acting | None:
+    """Who a maintainer is viewing the console as (``--dev``); None when they view it as themselves."""
+    raw = session.get("acting")
+    if not isinstance(raw, dict) or not (raw.get("name") or raw.get("role")):
+        return None
+    return Acting(str(raw.get("name", "")), str(raw.get("role", "")))
 
 
 def signed_in_name() -> str:
@@ -349,11 +396,48 @@ def install(app: Flask, sign_in: SignIn) -> None:
             _log(sign_in, "signed out", name=a.name, email=a.email)
         return jsonify(ok=True, signedIn=None)
 
+    @app.post(ACT_AS)
+    def act_as():
+        """Under ``--dev``, a signed-in maintainer views the console as a person on the roster (``{"name": ...}``) or
+        an office (``{"role": ...}``); ``{}`` goes back to themselves. Writes are refused while acting."""
+        from jason.community.base import OfficerRole
+
+        a = current_account()
+        if not sign_in.dev:
+            return jsonify(error="viewing as someone else needs jason-web --dev (not production)"), 403
+        if a is None or not a.maintainer:
+            return jsonify(error="only a maintainer (maintainers.json) who is signed in may view as someone else"), 403
+        body = request.get_json(silent=True) or {}
+        name, role = str(body.get("name") or "").strip(), str(body.get("role") or "").strip().lower()
+        if name:
+            p = next((p for p in sign_in.roster() if p.name == name), None)
+            if p is None:
+                return jsonify(error=f"{name} is not on the roster"), 400
+            acting = None if p.name == a.name else Acting(p.name, p.role)
+        elif role:
+            if role not in {r.value for r in OfficerRole}:
+                return jsonify(error=f"no office {role}: one of {', '.join(r.value for r in OfficerRole)}"), 400
+            acting = Acting("", role)
+        else:
+            acting = None
+        if acting is None:
+            session.pop("acting", None)
+        else:
+            session["acting"] = asdict(acting)
+        _log(sign_in, "acting as" if acting else "stopped acting", name=a.name,
+             **({"as": acting.name or acting.role} if acting else {}))
+        return jsonify(ok=True, acting=asdict(acting) if acting else None)
+
     @app.before_request
     def _signed_in():
-        """On a write: refuse it without a sign-in when one is required; with one, the record names that person."""
+        """On a write: refuse it without a sign-in when one is required; with one, the record names that person; while
+        a maintainer views as someone else, refuse it."""
         if request.method in SAFE or not request.path.startswith("/api/"):
             return None
+        acting = acting_as()
+        if acting is not None:
+            return jsonify(error=f"viewing as {acting.name or 'the ' + acting.role} (maintainer view): writes are "
+                                 "refused. Go back to yourself to write in your own name"), 403
         a = current_account()
         if a is None:
             if sign_in.required:
@@ -378,15 +462,25 @@ def session_info() -> dict[str, Any]:
     """What ``GET /api/session`` adds: who is signed in, whether sign-in is set up or required, its last refusal."""
     from flask import current_app
 
+    from jason.community.base import OfficerRole
+
     sign_in: SignIn | None = current_app.extensions.get("jason_sign_in")
     a = current_account()
     error = session.pop("signInError", "") if "signInError" in session else ""
-    return {"signedIn": {"name": a.name, "role": a.role, "email": a.email, "provider": "google", "at": a.at} if a else None,
+    can_act = bool(sign_in and sign_in.dev and a and a.maintainer)
+    acting = acting_as() if can_act else None
+    return {"signedIn": {"name": a.name, "role": a.role, "email": a.email, "provider": "google", "at": a.at,
+                         "maintainer": a.maintainer} if a else None,
             "signIn": {"provider": "google", "configured": bool(sign_in and sign_in.configured),
-                       "required": bool(sign_in and sign_in.required), "start": START, "signOut": SIGN_OUT},
-            "signInError": error}
+                       "required": bool(sign_in and sign_in.required), "start": START, "signOut": SIGN_OUT,
+                       "dev": bool(sign_in and sign_in.dev), "actAs": ACT_AS},
+            "signInError": error,
+            "canActAs": can_act,
+            "acting": asdict(acting) if acting else None,
+            "actAsPeople": [{"name": p.name, "role": p.role} for p in sign_in.roster()] if can_act and sign_in else [],
+            "actAsRoles": [r.value for r in OfficerRole] if can_act else []}
 
 
-__all__ = ["Account", "CALLBACK", "Client", "Person", "RECORD_KEY", "Refused", "SCOPES", "SIGN_OUT", "START", "SignIn",
-           "VIA", "account_for", "claims_of", "current_account", "default_sign_in", "install", "session_info",
+__all__ = ["ACT_AS", "Account", "Acting", "CALLBACK", "Client", "Person", "RECORD_KEY", "Refused", "SCOPES", "SIGN_OUT", "START", "SignIn",
+           "VIA", "account_for", "acting_as", "claims_of", "current_account", "roster_of", "default_sign_in", "install", "session_info",
            "signed_in_name"]

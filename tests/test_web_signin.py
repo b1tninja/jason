@@ -89,7 +89,7 @@ def test_round_trip_signs_in_the_officer(tmp_path):
     assert back.status_code == 302 and back.headers["Location"] == "/#/approvals"
     s = c.get("/api/session").json
     assert s["signedIn"] == {"name": "A Manager", "role": "manager", "email": "a.manager@example.org",
-                             "provider": "google", "at": s["signedIn"]["at"]}
+                             "provider": "google", "at": s["signedIn"]["at"], "maintainer": False}
     assert s["signIn"]["configured"] is True and s["signIn"]["required"] is False and s["signInError"] == ""
     log = [json.loads(line) for line in (tmp_path / "sign-ins.jsonl").read_text(encoding="utf-8").splitlines()]
     assert log[-1]["event"] == "signed in" and log[-1]["name"] == "A Manager"
@@ -249,3 +249,79 @@ def test_approvals_record_the_signed_in_officer(village, monkeypatch, tmp_path):
     r = c.post(f"/api/approvals/{a.id}/decide", json={"items": [item], "decision": "rejected", "by": "Pat Example",
                                                      "reason": "x"})
     assert r.status_code == 403
+
+
+# --- two offices, maintainers, and viewing as someone else (--dev) ------------------------------------------------
+
+def _officer(role, name, email=""):
+    from jason.community.base import Officer, OfficerRole
+    from mystique.officers import DEFAULT_APPROVES
+
+    r = OfficerRole(role)
+    return Officer(r, name, DEFAULT_APPROVES[r], email)
+
+
+def test_two_offices_are_one_person_and_maintainers_are_marked():
+    from jason.community.base import Maintainer
+
+    rows = (_officer("secretary", "Sam Example", "sam@example.org"), _officer("treasurer", "Sam Example", "sam@example.org"),
+            _officer("president", "Pat Example"))
+    people = signin.roster_of(rows, (Maintainer("Sam Example", "SAM@example.org"), Maintainer("Dev Outside", "dev@example.org")))
+    by = {p.name: p for p in people}
+    assert by["Sam Example"] == Person("Sam Example", "secretary, treasurer", "sam@example.org", True)
+    assert by["Pat Example"] == Person("Pat Example", "president", "", False)            # no address: cannot sign in
+    assert by["Dev Outside"] == Person("Dev Outside", "maintainer", "dev@example.org", True)
+    a = account_for(_claims("n", email="sam@example.org"), client_id="cid", nonce="n", roster=people, domains=())
+    assert (a.name, a.role, a.maintainer) == ("Sam Example", "secretary, treasurer", True)
+
+
+def test_the_letters_check_reads_every_office_a_person_holds(monkeypatch):
+    from jason.tasks import approvals as letters
+
+    class C:
+        def officers(self):
+            return (_officer("secretary", "Sam Example"), _officer("treasurer", "Sam Example"))
+
+    monkeypatch.setattr("jason.community.community", lambda: C())
+    assert "as the treasurer" in letters._approval_check({"approver": "the treasurer"}, "Sam Example", None)
+    assert "recorded by Sam Example, secretary" in letters._approval_check({"approver": "the board"}, "Sam Example", "2026-10-20")
+
+
+DEV_ROSTER = (Person("Sam Example", "secretary, treasurer", "sam@example.org", True), Person("Pat Example", "president", ""),
+              Person("A Manager", "manager", "a.manager@example.org"))
+
+
+def _dev_app(tmp_path, *, dev=True):
+    google = FakeGoogle()
+    si = SignIn(configured=True, client=lambda: Client("cid", "secret"), roster=lambda: DEV_ROSTER,
+                domains=lambda: ("example.org",), exchange=google, dev=dev)
+    return webclient.client(_app(tmp_path, si)), google
+
+
+def test_a_maintainer_views_as_anyone_under_dev_and_writes_nothing_meanwhile(tmp_path):
+    c, google = _dev_app(tmp_path)
+    _go(c, google, email="sam@example.org")
+    s = c.get("/api/session").json
+    assert s["canActAs"] is True and s["signedIn"]["maintainer"] is True and "director" in s["actAsRoles"]
+    assert [p["name"] for p in s["actAsPeople"]] == ["Sam Example", "Pat Example", "A Manager"]
+    r = c.post("/auth/act-as", json={"name": "Pat Example"})
+    assert r.status_code == 200 and r.json["acting"] == {"name": "Pat Example", "role": "president"}
+    assert c.get("/api/session").json["acting"] == {"name": "Pat Example", "role": "president"}
+    w = c.post("/api/board-items/x", json={"by": ""})
+    assert w.status_code == 403 and "maintainer view" in w.json["error"]
+    assert c.post("/auth/act-as", json={"role": "director"}).json["acting"] == {"name": "", "role": "director"}
+    assert c.post("/auth/act-as", json={"role": "emperor"}).status_code == 400
+    assert c.post("/auth/act-as", json={"name": "Nobody"}).status_code == 400
+    assert c.post("/auth/act-as", json={}).json["acting"] is None
+    assert c.post("/api/board-items/x", json={"by": ""}).json["by"] == "Sam Example"     # back to themselves
+
+
+def test_viewing_as_someone_else_needs_dev_and_a_maintainer(tmp_path):
+    c, google = _dev_app(tmp_path, dev=False)
+    _go(c, google, email="sam@example.org")
+    assert c.get("/api/session").json["canActAs"] is False
+    assert c.post("/auth/act-as", json={"name": "Pat Example"}).status_code == 403      # production: no
+    c2, google2 = _dev_app(tmp_path)
+    _go(c2, google2, email="a.manager@example.org")
+    assert c2.get("/api/session").json["canActAs"] is False
+    assert c2.post("/auth/act-as", json={"name": "Pat Example"}).status_code == 403    # not a maintainer

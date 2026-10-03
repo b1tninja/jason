@@ -24,8 +24,13 @@ def _people() -> list[dict[str, Any]]:
     from jason.community import community
     from jason.tasks.approvals import BOARD
 
-    return [{"name": o.name, "role": o.role.value, "approves": list(o.approves), "canApproveBoard": o.can_approve(BOARD)}
-            for o in community().officers()]
+    people: dict[str, dict[str, Any]] = {}             # one entry a person: two offices are one person, roles joined
+    for o in community().officers():
+        p = people.setdefault(o.name, {"name": o.name, "role": "", "approves": [], "canApproveBoard": False})
+        p["role"] = ", ".join(r for r in (p["role"], o.role.value) if r)
+        p["approves"] += [a for a in o.approves if a not in p["approves"]]
+        p["canApproveBoard"] = p["canApproveBoard"] or o.can_approve(BOARD)
+    return list(people.values())
 
 
 def approvals(args: Args) -> dict[str, Any]:

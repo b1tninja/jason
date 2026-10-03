@@ -9,7 +9,7 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from jason.community.documents import DocumentPin, GoverningDocument
 from jason.community.symbols import (
@@ -548,6 +548,22 @@ class Officer:
         return approver in self.approves
 
 
+def offices_of(officers: Iterable[Officer], name: str) -> tuple[Officer, ...]:
+    """Every row a person holds: one person may hold more than one office where the bylaws allow (a secretary who is
+    also the treasurer is two rows with the same name)."""
+    return tuple(o for o in officers if o.name == name)
+
+
+@dataclass(frozen=True)
+class Maintainer:
+    """A person who builds and maintains jason and, only when jason-web runs with ``--dev``, may view the console as any
+    officer or office (``jason.web.signin``). Not an office and grants nothing in production; a private fact
+    (``maintainers.json``). Not the ``Developer``, which is the subdivider."""
+
+    name: str
+    email: str
+
+
 @dataclass(frozen=True)
 class SitePageRef:
     page: SitePage
@@ -703,7 +719,13 @@ class Community(ABC):
         return None
 
     def officers(self) -> tuple[Officer, ...]:
-        """The board's officers and the manager by role (``Officer``), names from the private facts; empty until set."""
+        """The board's officers and the manager by role (``Officer``), names from the private facts; empty until set.
+        A person who holds two offices is two rows (``offices_of``)."""
+        return ()
+
+    def maintainers(self) -> tuple[Maintainer, ...]:
+        """The people who build and maintain jason (``Maintainer``), who may view the console as any officer when
+        jason-web runs with ``--dev``; a private fact, empty until set."""
         return ()
 
     def copy_priority(self):

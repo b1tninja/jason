@@ -220,10 +220,16 @@ def main(argv: list[str] | None = None) -> None:
                         "re-read, by the named person who echoes its fingerprint. Off by default")
     p.add_argument("--require-sign-in", action="store_true",
                    help="refuse every write until an officer signs in with Google (docs/setup.md, Console sign-in)")
+    p.add_argument("--dev", action="store_true",
+                   help="not production: a signed-in maintainer (maintainers.json) may view the console as any officer "
+                        "or office; writes are refused while they do")
     a = p.parse_args(argv)
     from waitress import serve
 
-    sign_in = signin.default_sign_in(required=a.require_sign_in)
+    sign_in = signin.default_sign_in(required=a.require_sign_in, dev=a.dev)
+    if a.dev:
+        print("jason-web: --dev: a signed-in maintainer may view the console as anyone (writes refused meanwhile)",
+              file=sys.stderr)
     if a.require_sign_in and not sign_in.configured:
         p.error(f"--require-sign-in needs Google sign-in set up: {signin.DESKTOP_KEY} or {signin.RECORD_KEY} in .env "
                 "(docs/setup.md, Console sign-in)")

@@ -187,7 +187,12 @@ export function App() {
       audience={audience}
       onAudience={setAudience}
       session={{ me: session.me, setMe: session.setMe, people: session.people, account: session.account,
-                 signInHref: session.signInHref, signInError: session.signInError, onSignOut: () => { void session.signOut(); } }}
+                 signInHref: session.signInHref, signInError: session.signInError, onSignOut: () => { void session.signOut(); },
+                 actAs: session.canActAs ? {
+                   people: session.actAsPeople, roles: session.actAsRoles, acting: session.acting,
+                   // every screen reads who is viewing from the server's session, so a change reloads the page
+                   onChange: (t) => { void session.actAs(t).then(() => window.location.reload()); },
+                 } : undefined }}
       dock={<DockToolbar open={drawer} onToggle={(id) => setDrawer((d) => (d === id ? null : id))} counts={counts} audience={audience} />}
       pinned={pinned && wide ? drawerNode : undefined}
       floating={!(pinned && wide) ? drawerNode : undefined}

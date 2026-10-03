@@ -34,6 +34,9 @@ export interface ConsoleShellProps {
     me: string; setMe: (name: string) => void; people: readonly ConsolePerson[];
     account?: { name: string; role?: string; email?: string } | null;
     signInHref?: string; signInError?: string; onSignOut?: () => void;
+    /** Under `jason-web --dev`, a signed-in maintainer's "View as": the people and offices to view the console as,
+     * whom they view it as now (`acting`), and the change. Writes are refused while acting. */
+    actAs?: { people: readonly ConsolePerson[]; roles: readonly string[]; acting?: { name: string; role: string } | null; onChange: (target: { name?: string; role?: string }) => void };
   };
   /** The dock toolbar, rendered in the header. */
   dock?: ReactNode;
@@ -66,6 +69,10 @@ export function visibleScreens(screens: readonly ConsoleScreen[], audience: Audi
 
 const nameOf = (s: ConsoleScreen, audience: Audience) => (audience === "owner" && s.ownerLabel) || s.label;
 
+const actingValue = (a?: { name: string; role: string } | null) => (!a ? "" : a.name ? `p:${a.name}` : `r:${a.role}`);
+const actingTarget = (v: string): { name?: string; role?: string } =>
+  v.startsWith("p:") ? { name: v.slice(2) } : v.startsWith("r:") ? { role: v.slice(2) } : {};
+
 /** The console's frame: a sticky header (wordmark, legal name, records date, the sign-in pick, the dock, the Board /
  * Owner view control), a grouped left nav that becomes a "Go to" select under 720px, the main column, and the slots
  * for a pinned or a floating drawer. The shell routes; it decides nothing. */
@@ -90,6 +97,27 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
             <span className="console-signin" title={account.email ? `${account.email}, signed in with Google` : "Signed in with Google"}>
               Signed in as <strong className="console-signin-name">{account.role ? `${account.name}, ${account.role}` : account.name}</strong>
               {session?.onSignOut && <button className="link" onClick={session.onSignOut}>Sign out</button>}
+            </span>
+          )}
+          {account && session?.actAs && (
+            <label className="console-signin console-actas">
+              Maintainer view
+              <select value={actingValue(session.actAs.acting)} onChange={(e) => session.actAs!.onChange(actingTarget(e.target.value))}>
+                <option value="">myself</option>
+                <optgroup label="A person">
+                  {session.actAs.people.filter((p) => p.name !== account.name).map((p) => (
+                    <option key={p.name} value={`p:${p.name}`}>{p.role ? `${p.name}, ${p.role}` : p.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="An office">
+                  {session.actAs.roles.map((r) => <option key={r} value={`r:${r}`}>the {r}</option>)}
+                </optgroup>
+              </select>
+            </label>
+          )}
+          {account && session?.actAs?.acting && (
+            <span className="console-acting" role="status">
+              Viewing as {session.actAs.acting.name || `the ${session.actAs.acting.role}`} (maintainer view): writes are off
             </span>
           )}
           {showPicker && (

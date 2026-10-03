@@ -62,6 +62,14 @@ An officer can sign in with their Workspace account (`jason.web.signin`; set up 
   - Apply still needs `--allow-apply`.
   - The console still listens on loopback only.
 
+**Two offices, one person.** A person who holds two offices is two roster rows with one name. Sign-in matches them once, with the offices joined. The letters' approval check and the console's people list read every office the person holds.
+
+**Maintainer view (`--dev`, not production).** A signed-in maintainer (`Community.maintainers`, a private fact) may view the console as any person on the roster, or as an office with no person (`POST /auth/act-as`, a guarded write). This is for building and checking role-based views. While they view as someone else:
+- every write is refused (403), so no record ever carries a name its person did not sign in as;
+- the switch and its return are logged.
+
+Without `--dev`, being a maintainer grants nothing.
+
 Without sign-in set up, or with no one signed in and sign-in not required, the console behaves as before (below).
 
 ### Without sign-in: a named person, not a login

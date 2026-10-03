@@ -125,6 +125,7 @@ button.primary { color: var(--on-accent, #fff); }
 .console-signin-google { font-size: 13px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: var(--bg); white-space: nowrap; }
 .console-signin-google:hover, .console-signin-google:focus-visible { border-color: var(--accent); }
 .console-signin-error { color: var(--bad); font-size: 13px; max-width: 360px; }
+.console-acting { font-size: 13px; color: var(--warn); border: 1px dashed var(--warn); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
 .console-seg, .dock { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
 .console-seg button { border: 0; border-radius: 999px; padding: 4px 14px; font-size: 13px; white-space: nowrap; background: transparent; color: var(--muted); }
 .console-seg button[aria-checked="true"] { background: var(--ink); color: var(--panel); }

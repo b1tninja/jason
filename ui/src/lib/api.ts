@@ -23,11 +23,14 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
   return body as T;
 }
 
-/** Who signed in with Google: the officer the account matched (`jason.web.signin`). */
-export interface SignedIn { name: string; role?: string; email?: string; provider?: string; at?: string }
+/** Who signed in with Google: the officer the account matched (`jason.web.signin`); `role` joins two offices. */
+export interface SignedIn { name: string; role?: string; email?: string; provider?: string; at?: string; maintainer?: boolean }
 
-/** Whether Google sign-in is set up on this server, whether writes need it, and its two routes. */
-export interface SignInSetup { provider?: string; configured?: boolean; required?: boolean; start?: string; signOut?: string }
+/** Whether Google sign-in is set up on this server, whether writes need it, its routes, and `--dev`. */
+export interface SignInSetup { provider?: string; configured?: boolean; required?: boolean; start?: string; signOut?: string; dev?: boolean; actAs?: string }
+
+/** Who a maintainer views the console as under `--dev`: a person (`name`) or an office alone (`role`, no name). */
+export interface Acting { name: string; role: string }
 
 /** What `GET /api/session` says about this server process: the write token and its header, which approval steps it
  * allows (`applyEnabled` only when started with `--allow-apply`; `liveChecks` when a re-plan may read live), and who is
@@ -35,6 +38,7 @@ export interface SignInSetup { provider?: string; configured?: boolean; required
 export interface ServerSession {
   token?: string; header?: string; applyEnabled?: boolean; liveChecks?: boolean; approvalsWrites?: boolean;
   signedIn?: SignedIn | null; signIn?: SignInSetup; signInError?: string;
+  canActAs?: boolean; acting?: Acting | null; actAsPeople?: { name: string; role: string }[]; actAsRoles?: string[];
 }
 
 let session: Promise<ServerSession> | null = null;
@@ -67,6 +71,13 @@ export function signInHref(setup: SignInSetup | undefined, hash: string): string
 export async function signOut(setup?: SignInSetup): Promise<void> {
   await postJson(setup?.signOut || "/auth/signout", {});
   resetServerSession();
+}
+
+/** Under `--dev`, view the console as a person (`{name}`) or an office (`{role}`); `{}` goes back to oneself. */
+export async function actAs(setup: SignInSetup | undefined, target: { name?: string; role?: string }): Promise<Acting | null> {
+  const out = await postJson<{ acting?: Acting | null }>(setup?.actAs || "/auth/act-as", target);
+  resetServerSession();
+  return out.acting ?? null;
 }
 
 /** The per-process write token: the page's `<meta name="jason-token">`, else `GET /api/session`. Empty when neither has
