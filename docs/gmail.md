@@ -8,6 +8,8 @@ jason gmail                 # the PostScanMail check and the correspondence summ
 jason contacts --fetch      # PayHOA's vendor-info report, then the contact directory
 ```
 
+**The window.** The store holds the messages of the last sync's window: 730 days by default (`tasks.gmail.sync(days=730)`), counted back from that sync, and kept in `data/gmail` with the `days` the sync used. A question about anything older, such as a change of manager years ago, is a live read-only Gmail search, not a search of the store; say which one an answer came from.
+
 ## PostScanMail's notices
 
 PostScanMail sends each item to the association's Google Group "Mail", so it lands in Gmail twice:

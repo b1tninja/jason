@@ -570,8 +570,9 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("gmail-store-window", OCT_2026, (Area.EMAIL,),
            "A history search found nothing in the stored Gmail because the store keeps a limited window.",
            "The Gmail sync stores a rolling window of messages.",
-           "An older search is a live read-only search; the window should be recorded in docs/gmail.md or extended.",
-           Status.OPEN, docs=("docs/gmail.md",)),
+           "The window is written down (730 days from the last sync, kept with the store); an older search is a live "
+           "read-only search, and an answer says which it came from.",
+           Status.FIXED, guards=("docs/gmail.md (The window)", "the store's recorded days"), docs=("docs/gmail.md",)),
     Lesson("tuned-on-the-test", OCT_2026, (Area.DOCUMENTS,),
            "The hybrid search's fusion settings were tuned on the same 24 questions that reported their gain.",
            "One gold set served both to choose the settings and to score them.",
