@@ -31,8 +31,9 @@ UNKNOWN = "___ (not in the record)"
 
 SECTIONS: tuple[MinutesSection, ...] = (
     MinutesSection("meeting", "Meeting",
-                   "State the meeting's type (regular, special, emergency, annual, or organizational), its date, and that it "
-                   "was held by teleconference (Zoom), with the physical location if there was one.",
+                   "State the meeting's type (regular, special, emergency, annual, or organizational) as the meeting record "
+                   "gives it, its date, and that it was held by teleconference (Zoom), with the physical location if there "
+                   "was one.",
                    "CIV 4920, 4926", ("meeting_date", "meeting_type", "draft")),
     MinutesSection("call_to_order", "Call to order",
                    "The time the chair called the meeting to order, as the record shows it happening (not the scheduled "
@@ -40,18 +41,26 @@ SECTIONS: tuple[MinutesSection, ...] = (
     MinutesSection("attendance", "Attendance and quorum",
                    "A roll call: each director by name, present or absent, and when a director joined late or left early. "
                    "Others present by role (manager, counsel), and members by count. The number of directors in office, "
-                   "and whether a quorum (a majority of the directors in office, at least two) was present.",
+                   "and whether a quorum was present, as the meeting record counts it: write that a quorum was present only "
+                   "when the count shows it. When it was not, say so, and record the business as discussion; a motion "
+                   "taken anyway is recorded as taken without a quorum.",
                    "Bylaws 7.10, 10.10", ("quorum", "directors_present")),
     MinutesSection("prior_minutes", "Approval of prior minutes",
                    "Each earlier meeting's minutes the board considered, any corrections, and the motion approving them "
-                   "with each director's vote.", "CIV 4950", ("prior_minutes_approved",)),
+                   "with each director's vote, written as an outcome: \"The board approved the minutes of DATE as presented "
+                   "(or as corrected); moved by NAME, seconded by NAME; carried.\" When the record shows the item but no "
+                   "vote, say the record does not show a vote; never write that minutes were approved without one.",
+                   "CIV 4950", ("prior_minutes_approved",)),
     MinutesSection("business", "Business",
                    "For each agenda item: one to three sentences on the discussion. Then each motion: its words, who moved "
                    "and who seconded, each director's vote by roll call, and whether it carried or failed. Give every dollar "
                    "amount approved and what it is for. A transfer or loan from the reserves records the board's written "
                    "finding: the reason and how and when it will be repaid. Record no action on a matter that was not on "
                    "the agenda. Never name a member, or give a member's balance, in a delinquency, payment plan, violation, "
-                   "discipline, or foreclosure: those are executive session matters, noted only generally.",
+                   "discipline, or foreclosure: those are executive session matters, noted only generally. When the open "
+                   "meeting itself discussed a matter the law lets the board take up in executive session (litigation, a "
+                   "member's discipline or hearing, a member's assessment payment, personnel, a contract being formed), "
+                   "record it here in general terms too: no member's name, unit, amount owed, or the details said.",
                    "CIV 4926(a)(3), 4930, 4935, 5515(c)",
                    ("decision_topics", "vote_recorded", "roll_call", "amounts_approved", "reserve_transfer"), per_item=True),
     MinutesSection("open_forum", "Open forum",

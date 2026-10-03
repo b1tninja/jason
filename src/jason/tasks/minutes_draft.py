@@ -63,6 +63,8 @@ def prompt(day: date, record: dict[str, Any]) -> str:
                if any(not c.get("director") for c in record.get("knownCallers", {}).values()) else []),
              *([f"Unidentified callers: {', '.join(record['unidentified'])}."] if record.get("unidentified") else
                ["There are no unidentified callers."] if record.get("directors") else []),
+             *([f"Meeting type (from the meeting's title, \"{record['topic']}\"): {record['kind']}."] if record.get("kind") else []),
+             *([_quorum_fact(record["quorum"])] if (record.get("quorum") or {}).get("needed") else []),
              "Sections:"]
     for s in SECTIONS:
         lines.append(f"- {s.key}: {s.prompt}" + (" Write one entry per agenda item, in the agenda's order." if s.per_item else ""))
@@ -72,6 +74,15 @@ def prompt(day: date, record: dict[str, Any]) -> str:
               *([f"- {n}: {m}" for n, m in record["attendance"]] or ["- (none)"]),
               "", "Transcript of the open meeting:", "<<<", record["transcript"], ">>>"]
     return "\n".join(lines)
+
+
+KINDS = ("emergency", "special", "annual", "organizational", "regular")
+
+
+def meeting_kind(title: str) -> str:
+    """The meeting's type as its title names it ("Special Meeting of the Board of Directors"), or empty."""
+    words = title.casefold()
+    return next((k for k in KINDS if re.search(rf"\b{k}\b", words)), "")
 
 
 def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
@@ -142,7 +153,8 @@ def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
     callers = json.loads(callers_file.read_text(encoding="utf-8")) if callers_file.is_file() else {}
     known_callers = {n: c for n, c in callers.items() if n in attendance}
     unidentified = [n for n in attendance if re.fullmatch(r"[\d\s()+-]{7,}", n) and n not in callers]
-    return {"zoom": row["uuid"], "items": list(dict.fromkeys(items)), "executive": list(dict.fromkeys(executive)),
+    return {"zoom": row["uuid"], "topic": str(row.get("topic") or ""), "kind": meeting_kind(str(row.get("topic") or "")),
+            "items": list(dict.fromkeys(items)), "executive": list(dict.fromkeys(executive)),
             "knownCallers": known_callers, "unidentified": unidentified,
             "directors": directors,
             "attendance": [(n, round(s / 60)) for n, s in sorted(attendance.items(), key=lambda kv: -kv[1])],
@@ -194,11 +206,32 @@ CONFIDENTIAL = re.compile(r"\blawsuits?\b|\blitigation\b|\bsued\b|\bevict\w*|\bd
                           r"\breimbursement assessment|\bpersonnel\b", re.I)
 
 
+def _quorum_fact(q: dict[str, Any]) -> str:
+    """The counted quorum, as a fact the model is given rather than asked to work out."""
+    named = ", ".join(q["present"]) or "none"
+    if q["standing"] == "present":
+        result = "so a quorum was present"
+    elif q["standing"] == "depends on an unidentified caller":
+        result = "so whether a quorum was present depends on an unidentified caller: write it as unknown"
+    else:
+        result = "so a quorum was NOT present on the record: say so, and never write that a quorum was present"
+    return (f"Quorum (counted by jason): directors in office {q['inOffice']}; a quorum is {q['needed']}; directors "
+            f"identified on the call {len(q['present'])} ({named}); unidentified callers {q['unidentified']}; {result}.")
+
+
+PRONOUNS = re.compile(r"\b(?:he|she|him|her|his|hers|himself|herself)\b", re.I)
+
+
 def checks(record: dict[str, Any], text: str, community: Any) -> dict[str, Any]:
-    """What jason counts rather than the model: the quorum, and the lines naming a subject the open minutes give only
-    in general terms."""
+    """What jason counts rather than the model: the quorum, the meeting's type, the lines naming a subject the open
+    minutes give only in general terms, and lines that call a person he or she."""
     quorum = quorum_check(record, community)
-    claims = bool(re.search(r"\ba quorum was present\b", text, re.I))
+    claims = bool(re.search(r"\ba quorum was present\b", text, re.I) and
+                  not re.search(r"\bno quorum\b|\bquorum was not present\b|\bnot a quorum\b", text, re.I))
+    meeting = re.search(r"## Meeting\s+(.*?)(?=\n## )", text, re.S)
+    said = meeting_kind(meeting.group(1)) if meeting else ""
+    kind_differs = bool(record.get("kind") and said and said != record["kind"])
+    pronouns = [ln.strip() for ln in text.splitlines() if PRONOUNS.search(ln) and not ln.startswith(("_", "#", "-  "))]
     lines, heading = [], ""
     for ln in text.splitlines():
         if ln.startswith("## "):
@@ -208,7 +241,8 @@ def checks(record: dict[str, Any], text: str, community: Any) -> dict[str, Any]:
                 and CONFIDENTIAL.search(ln):
             lines.append(ln.strip())
     motions = len(re.findall(r"^\s*- \*\*Motion:\*\*", text, re.M))
-    return {"quorum": quorum, "claimsQuorum": claims, "motions": motions, "confidential": lines}
+    return {"quorum": quorum, "claimsQuorum": claims, "motions": motions, "confidential": lines,
+            "kind": record.get("kind", ""), "kindSaid": said, "kindDiffers": kind_differs, "pronouns": pronouns}
 
 
 def check_lines(found: dict[str, Any]) -> list[str]:
@@ -229,6 +263,10 @@ def check_lines(found: dict[str, Any]) -> list[str]:
                 out.append(f"  - {found['motions']} motion(s) are recorded as acted on without a quorum on the record. "
                            "Recite the bylaws' quorum provision to the board; whether to ratify at a meeting with a "
                            "quorum is the board's decision.")
+    if found.get("kindDiffers"):
+        out.append(f"- Meeting type: the draft says {found['kindSaid']}, but the meeting's title says {found['kind']}.")
+    if found.get("pronouns"):
+        out.append(f"- {len(found['pronouns'])} line(s) call a person he or she: use the person's name.")
     if found["confidential"]:
         out.append(f"- {len(found['confidential'])} line(s) name a subject the open minutes give only by its general "
                    "nature (Civil Code 4935): read each before the draft is shared, and keep members' names and "
@@ -294,6 +332,7 @@ def draft(data_dir: Path, community: Any, day: date, *, model: str = "",
     record = meeting_record(data_dir, community, day)
     if not record["transcript"]:
         raise ValueError(f"the {day} meeting has no open-session transcript to draft from")
+    record["quorum"] = quorum_check(record, community)        # given to the model as a counted fact
     if ask is None:
         from jason.community.ollama_extractor import DEFAULT_MODEL
         from jason.local_ai import preflight

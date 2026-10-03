@@ -39,3 +39,21 @@ def test_a_lawsuit_discussed_in_the_open_business_is_listed_for_the_secretary():
     text = "## Business\n\nThe directors discussed the lawsuit against the association.\n"
     found = checks(_record([("Ana Example", 1), ("Ben Sample", 1), ("Cy Placeholder", 1)]), text, COMMUNITY)
     assert found["quorum"]["standing"] == "present" and len(found["confidential"]) == 1
+
+
+def test_the_meeting_type_and_pronouns_are_checked_and_the_quorum_is_given_as_a_fact():
+    from jason.tasks.minutes_draft import _quorum_fact, meeting_kind
+
+    assert meeting_kind("Special Meeting of the Board of Directors") == "special" and meeting_kind("Board call") == ""
+    record = {**_record([("Ana Example", 30), ("Ben Sample", 20)]), "kind": "special"}
+    text = "## Meeting\n\nRegular meeting held by Zoom.\n\n## Business\n\nBen Sample said he would call the vendor.\n"
+    found = checks(record, text, COMMUNITY)
+    assert found["kindDiffers"] and found["kindSaid"] == "regular" and len(found["pronouns"]) == 1
+    block = "\n".join(check_lines(found))
+    assert "the meeting's title says special" in block and "he or she" in block
+    assert "NOT present" in _quorum_fact(found["quorum"])
+
+
+def test_a_draft_that_says_no_quorum_is_not_read_as_claiming_one():
+    text = "## Attendance and quorum\n\nNo quorum was present; a quorum was present only for the first item.\n"
+    assert not checks(_record([("Ana Example", 1)]), text, COMMUNITY)["claimsQuorum"]
