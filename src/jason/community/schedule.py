@@ -6,7 +6,7 @@ covers, the role that owns them, and when they fall due:
 
 - **CADENCE**: on a calendar: monthly (on a day), every N months, or each year on a month and day;
 - **ANCHORED**: a clock from an anchor the association already keeps: each board meeting, the annual meeting, the
-  fiscal year's end (``offset_days`` before or after);
+  fiscal year's end, each insurance policy's renewal (``offset_days`` before or after);
 - **EVENT**: a clock an event starts (a records request, a hearing request, a payment of a lien): the module that
   handles the event runs it (``handled_by``), so the schedule names who and where, not a date;
 - **STANDING**: a continuing rule with no occurrence (never spend reserve funds otherwise), owned all the same.
@@ -50,6 +50,7 @@ class Anchor(Enum):
     BOARD_MEETING = "each board meeting"
     ANNUAL_MEETING = "the annual meeting"
     FISCAL_YEAR_END = "the fiscal year's end"
+    POLICY_RENEWAL = "each insurance policy's renewal"   # the end of each term the insurance store keeps
 
 
 class Adoption(Enum):
@@ -66,8 +67,8 @@ class Assignment:
     role: Role
     covers: tuple[str, ...]              # "CIV 5500", "bylaws#9.6", "notice:board-meeting", "obligation:<name>"
     trigger: Trigger
-    every_months: int = 0                # CADENCE: 1 monthly, 3 quarterly, 12 yearly
-    month: int = 0                       # CADENCE yearly: the month and day it is due
+    every_months: int = 0                # CADENCE: 1 monthly, 3 quarterly, 12 yearly, 24 every two years
+    month: int = 0                       # CADENCE yearly (or every N years): the month and day it is due
     day: int = 0                         # CADENCE monthly: the day of the month (0: the month's last day)
     anchor: Anchor = Anchor.NONE         # ANCHORED: what the clock runs from
     offset_days: int = 0                 # ANCHORED: days after the anchor (negative: before)
@@ -78,6 +79,8 @@ class Assignment:
     adoption: Adoption = Adoption.PROPOSED
     adopted: str = ""                    # the minutes or resolution that adopted it
     note: str = ""
+    from_year: int = 0                   # CADENCE every N years: a year it falls in (2027: odd years for a biennial one)
+    applies_if: str = ""                 # a condition the duty depends on ("the association files Form 1120"); shown
 
     def covers_ref(self, ref: str) -> bool:
         """Whether this assignment covers a duty reference: equal, a section inside one it names ("bylaws#9.6(a)"
@@ -89,6 +92,10 @@ class Assignment:
         if self.trigger is Trigger.CADENCE:
             if self.every_months == 12 and self.month:
                 return f"each year by {calendar.month_name[self.month]} {self.day or 'end'}"
+            if self.every_months % 12 == 0 and self.month:
+                years = self.every_months // 12
+                parity = f", in {self.from_year} and every {years} years from it" if self.from_year else ""
+                return f"every {years} years by {calendar.month_name[self.month]} {self.day or 'end'}{parity}"
             name = {1: "monthly", 3: "quarterly", 6: "semiannually", 12: "yearly"}.get(self.every_months,
                                                                                       f"every {self.every_months} months")
             return name + (f", by day {self.day}" if self.day else "")
@@ -110,8 +117,11 @@ def occurrences(a: Assignment, start: date, end: date, anchors: dict[Anchor, lis
     """The days ``a`` falls due between ``start`` and ``end`` (inclusive). An event or a standing duty has none."""
     out: list[date] = []
     if a.trigger is Trigger.CADENCE and a.every_months:
-        if a.every_months == 12 and a.month:
+        if a.every_months % 12 == 0 and a.month:
+            step = a.every_months // 12
             for year in range(start.year, end.year + 1):
+                if step > 1 and a.from_year and (year - a.from_year) % step:
+                    continue
                 due = date(year, a.month, min(a.day or 31, calendar.monthrange(year, a.month)[1]))
                 if start <= due <= end:
                     out.append(due)
@@ -130,12 +140,13 @@ def occurrences(a: Assignment, start: date, end: date, anchors: dict[Anchor, lis
             due = day + timedelta(days=a.offset_days)
             if start <= due <= end:
                 out.append(due)
-    return sorted(out)
+    return sorted(set(out))
 
 
 def anchors_for(community: object, start: date, end: date) -> dict[Anchor, list[date]]:
     """The anchor days the specification gives: each regular board meeting (monthly in practice, as the schedule says),
-    the annual meeting (the same weekday in its month), and the fiscal year's end."""
+    the annual meeting (the same weekday in its month), the fiscal year's end, and each insurance policy's renewal (the
+    month and day its term in force ends, each year; policies renewing the same day give one day)."""
     out: dict[Anchor, list[date]] = {a: [] for a in Anchor}
     schedule = getattr(community, "meeting_schedule", lambda: None)()
     if schedule is not None:
@@ -153,7 +164,27 @@ def anchors_for(community: object, start: date, end: date) -> dict[Anchor, list[
             day = date(year, fy[0], fy[1])
             if start <= day <= end:
                 out[Anchor.FISCAL_YEAR_END].append(day)
+    out[Anchor.POLICY_RENEWAL] = policy_renewals(community, start, end)
     return out
+
+
+def policy_renewals(community: object, start: date, end: date) -> list[date]:
+    """Each day an insurance policy's term ends between ``start`` and ``end``: the month and day of the term in force
+    (``Policy.renewal``), each year. A profile with no insurance store has none."""
+    try:
+        catalog = getattr(community, "insurance", lambda: None)()
+    except Exception:  # a profile whose insurance store cannot be read: no anchor, not a crash
+        return []
+    days: set[date] = set()
+    for policy in getattr(catalog, "policies", ()) or ():
+        renewal = getattr(policy, "renewal", None)
+        if not isinstance(renewal, date):
+            continue
+        for year in range(start.year, end.year + 1):
+            day = date(year, renewal.month, min(renewal.day, calendar.monthrange(year, renewal.month)[1]))
+            if start <= day <= end:
+                days.add(day)
+    return sorted(days)
 
 
 def assignments(community: object | None = None) -> tuple[Assignment, ...]:
@@ -165,4 +196,4 @@ def covering(ref: str, rows: tuple[Assignment, ...]) -> list[Assignment]:
 
 
 __all__ = ["Adoption", "Anchor", "Assignment", "Role", "Trigger", "anchors_for", "assignments", "covering",
-           "occurrences"]
+           "occurrences", "policy_renewals"]

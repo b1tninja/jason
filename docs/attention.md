@@ -6,6 +6,7 @@
 jason attention                       # every section, eight lines each
 jason attention --section requests    # one section (repeatable)
 jason attention --section meetings    # the board meetings' notice and minutes clocks
+jason attention --section people      # people's own Google Tasks and calendar events
 jason attention --limit 20 --json     # more lines, as JSON
 jason attention --private             # units left out, as the packet prints it
 jason attention --on 2026-11-01       # read a given day as today
@@ -17,6 +18,7 @@ jason attention --on 2026-11-01       # read a given day as today
 | --- | --- | --- | --- |
 | The board meetings' clocks | the meeting schedule, `data/meetings/catalog.json`, the Zoom index, `data/schedule/done.jsonl` | each board meeting's notice to members (Civil Code 4920) and minutes (4950(a)) against the record: a deadline passed with none on record or a record dated past it, a deadline within two weeks with none on record yet, minutes on file undated past their deadline, a scheduled day behind with nothing on record. The counts carry every meeting watched. | `jason schedule-evidence --watch` |
 | The schedule | the assignments, `data/schedule/done.jsonl`, the duties store | each occurrence overdue (the last 30 days, `--past`) or due within two weeks, by role; the duties nobody owns | `jason schedule --role ROLE`, `--coverage` |
+| People's own tasks and events | `data/schedule/google-read.json` (`jason schedule --read-google`), the assignments, the recurring deadlines, the action register | open Google Tasks past their due day, oldest first (ten one by one, the rest on one line), with what each matches; a task whose duty a rule says no longer exists, as a proposal to close it; the untracked recurring items, as proposed clocks. Matching is a lead: nothing in Google is marked or closed. | `jason schedule --people` |
 | Members' requests | the stored PayHOA requests and the owners' email threads | each unanswered request past or near its clock, or past its acknowledgment day; a statute's clock first | `jason respond --kind KIND` |
 | Intake questions | `data/intake/asks.json` | open questions by kind (what an amendment changed first, OCR slips last), the likely ones apart, answers not yet applied | `jason intake --kind KIND`, `--likely`, `--apply` |
 | Conflicts | the specification's conflict rows | open conflicts: with counsel, on the board's register, then noted with no one acting | `jason conflicts --open` |
@@ -48,4 +50,5 @@ Each section is read on its own. One whose store is missing or broken is reporte
 - It writes nothing. Opening the notice ledger never creates it, and a missing duties store stays missing.
 - It decides nothing. A clock is computed; a conflict is noted; a follow-up is a person's send through the command that guards it; an assignment is a proposal until the board adopts it. A schedule item done but not recorded shows as overdue until someone records it (`jason schedule --done`).
 - A meeting's clock with none on record is not proof none was given: a posting is not on disk. Once a person confirms one, `jason schedule --done KEY DUE --by NAME --evidence TEXT` records it and the meetings section counts it. The meetings section reads the catalog as last built (`jason meetings --sync` reads Zoom and PayHOA's log and rebuilds it), and leaves the schedule section the assignments it reads, so a meeting's notice is not listed twice ([schedule.md](schedule.md), The watch).
+- People's own tasks and events are read as last read from Google (`jason schedule --read-google`). A stale task may be done and not checked off; a match says what jason tracks it by, not that it was done. With `--private` (and in the packet) a title is replaced by its rule's label, since a title can name an owner or a unit ([schedule.md](schedule.md), People's own tasks and events).
 - A notice is read as individually delivered. A general notice that was also posted owes fewer resends: `jason notices KEY --general` says which.

@@ -159,7 +159,8 @@ def lines(found: list[Occurrence]) -> list[str]:
         a = o.assignment
         mark = {"done": "done", "overdue": "OVERDUE", "due soon": "due soon", "upcoming": "upcoming"}[o.standing]
         tail = f" (done {o.done['done']} by {o.done['by']}: {o.done['evidence']})" if o.done else ""
-        out.append(f"{o.due}  {mark:9} {a.role.value:22} {a.title} [{a.key}; {a.adoption.value}]{tail}")
+        cond = f" (only if {a.applies_if})" if a.applies_if else ""
+        out.append(f"{o.due}  {mark:9} {a.role.value:22} {a.title}{cond} [{a.key}; {a.adoption.value}]{tail}")
     return out
 
 
@@ -167,7 +168,8 @@ def assignment_lines(rows: tuple[Assignment, ...]) -> list[str]:
     out = []
     for a in rows:
         extra = f"; backup {a.backup.value}" if a.backup else ""
-        out.append(f"- **{a.key}** ({a.adoption.value}): {a.title}. {a.role.value}{extra}; {a.cadence()}."
+        cond = f" Only if {a.applies_if}." if a.applies_if else ""
+        out.append(f"- **{a.key}** ({a.adoption.value}): {a.title}. {a.role.value}{extra}; {a.cadence()}.{cond}"
                    + (f" Evidence: {a.evidence}." if a.evidence else "") + (f" jason: `{a.jason}`." if a.jason else "")
                    + (f" {a.note}" if a.note else ""))
     return out

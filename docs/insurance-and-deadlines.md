@@ -45,4 +45,23 @@ A deadline no store shows, such as the annual budget report or the reviewed fina
 
 A payment is evidence, not proof. The filing, the inspection report, the receipt, or the notice is the record; a payment PayHOA posted days after the county received it can read as late when it was not.
 
+## In the schedule
+
+The deadlines give dates; the schedule ([schedule.md](schedule.md)) gives each one an owner. Two clocks come from these stores:
+
+- **Insurance renewals.** The anchor `POLICY_RENEWAL` is each policy's term end in the insurance store, each year. A profile can set a step before it (quotes and the board's decision) and one after it (the renewal confirmed bound: the new declarations or certificate, the premium paid or financed, the policy sheet updated; and, if a policy lapsed and was not replaced, the members' notice under Civil Code 5810).
+- **Biennial filings.** The Secretary of State's statement of information (Corporations Code 8210) and the statement by a common interest development (Civil Code 5405(b)) are filed together every two years, in the month the articles were filed and the five months before it. A `CADENCE` assignment with `every_months=24` and `from_year` gives the last day of that period in the right years.
+
+People's own reminders of these deadlines are read beside them (`jason schedule --people`). A reminder should fall on a statutory day. For California property tax:
+
+| Bill | Due | Delinquent after | Authority |
+| --- | --- | --- | --- |
+| Secured, first installment | November 1 | December 10 | Rev. & Tax. Code 2617 |
+| Secured, second installment | February 1 | April 10 | Rev. & Tax. Code 2618 |
+| Unsecured | the lien date | August 31 | Rev. & Tax. Code 2922(a) |
+| Supplemental, mailed July to October | | December 10 and April 10 | Rev. & Tax. Code 75.52 |
+| Supplemental, mailed November to June | | the last day of the month after the month it was mailed, then the last day of the fourth month after that | Rev. & Tax. Code 75.52 |
+
+So a "taxes due" reminder on any other day is a reminder, not a deadline: check it against the bills on disk (`jason sync-tax` keeps them; the MCP tool `tax_status` reads them) before relying on it.
+
 This association's findings are in its private notes (mystique/notes/insurance-and-deadlines.md).

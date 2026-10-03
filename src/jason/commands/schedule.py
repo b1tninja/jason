@@ -6,6 +6,8 @@ duty jason knows of (the documents' duties, the notice catalog, the recurring de
 lists the ones nobody owns. ``--done KEY DUE --by NAME --evidence TEXT`` records that an occurrence was done.
 ``--calendar`` puts each dated occurrence on Google Calendar and ``--tasks`` each open one on its role's Google Tasks
 list (``jason.tasks.schedule_sync``): a dry run beside Google unless ``--yes``; ``--plan-only`` makes no Google call.
+``--read-google`` reads the calendar and every Google Tasks list into a private store (reads only, never signs in), and
+``--people`` sets people's own tasks and events beside what jason tracks (``jason.tasks.people_tasks``).
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ def cmd_schedule(args: argparse.Namespace) -> int:
 
     c, data_dir = community(), _data_dir(args)
     rows = assignments(c)
+    if args.read_google or args.people:
+        return _people(args, c, data_dir)
     if args.calendar or args.tasks:
         return _sync(args, c, data_dir)
     if args.done:
@@ -83,6 +87,40 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     events = [a for a in rows if a.trigger.value in ("event", "standing")]
     print(f"\nAlso owned, with no date of their own: {len(events)} event-driven or standing assignments "
           "(jason schedule --assignments).")
+    return 0
+
+
+def _people(args: argparse.Namespace, c: Any, data_dir: Any) -> int:
+    """``--read-google`` refreshes the private read of Google Tasks and the calendar (reads only, never signs in);
+    ``--people`` sets people's own tasks and events beside what jason tracks."""
+    import json
+
+    from jason.tasks import people_tasks as pt
+
+    if args.read_google:
+        if getattr(args, "interactive", False):
+            print("--read-google never signs in: run it without --interactive (sign in first with `jason board --tasks "
+                  "--interactive` or the Google login)", file=sys.stderr)
+            return 2
+        factory = getattr(args, "agent_factory", None)
+        if factory is None:
+            print("no agent factory: run this through the jason CLI", file=sys.stderr)
+            return 1
+        from jason.google.calendar import GoogleCalendar
+
+        with factory(args) as agent:
+            # Non-interactive: a missing token fails fast (GoogleAuthRequired) before anything is read.
+            with GoogleCalendar.from_drive(agent.drive(interactive=False)) as calendar, agent.google_tasks() as tasks:
+                result = pt.read_google(calendar, tasks, data_dir, calendar_id=args.calendar_id)
+        print("\n".join(pt.read_lines(result)))
+        if not args.people:
+            return 0
+        print()
+    reading = pt.classify(c, data_dir, on=date.fromisoformat(args.on) if args.on else None)
+    if args.json:
+        print(json.dumps(reading.as_dict(private=args.private), indent=1))
+    else:
+        print("\n".join(pt.lines(reading, private=args.private, every=args.all)))
     return 0
 
 
@@ -143,7 +181,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--coverage", action="store_true", help="the duties no assignment covers")
     p.add_argument("--limit", type=int, default=40)
     p.add_argument("--done", nargs=2, metavar=("KEY", "DUE"), help="record an occurrence done (with --by, --evidence)")
-    p.add_argument("--on", help="with --done: the day it was done (default today)")
+    p.add_argument("--on", help="with --done: the day it was done (default today); with --people: the day read as today")
     p.add_argument("--by", help="with --done: who did it")
     p.add_argument("--evidence", help="with --done: what shows it (the minutes' date and item, a payment, a proof)")
     p.add_argument("--calendar", action="store_true",
@@ -155,4 +193,13 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--months", type=int, default=3, help="with --calendar or --tasks: months ahead (default 3)")
     p.add_argument("--plan-only", action="store_true", help="with --calendar or --tasks: the plan from disk, no Google call")
     p.add_argument("--yes", action="store_true", help="with --calendar or --tasks: write to Google")
+    p.add_argument("--read-google", action="store_true",
+                   help="read the calendar's events and every Google Tasks list into the private store (reads only; "
+                        "never signs in)")
+    p.add_argument("--people", action="store_true",
+                   help="people's own tasks and events beside what jason tracks: covered, untracked recurring, "
+                        "one-off, stale (from the stored read)")
+    p.add_argument("--private", action="store_true", help="with --people: print each rule's label, not the titles")
+    p.add_argument("--all", action="store_true", help="with --people: every open item by its class")
+    p.add_argument("--json", action="store_true", help="with --people: as JSON")
     p.set_defaults(func=cmd_schedule, agent_factory=agent_factory)

@@ -1,0 +1,41 @@
+{
+ "read": "2026-10-01T18:00:00+00:00",
+ "from": "2024-10-01",
+ "until": "2027-10-01",
+ "calendars": [
+  {"id": "primary", "events": [
+   {"id": "m1", "summary": "Regular Meeting of the Board of Directors", "recurringEventId": "s1",
+    "start": {"dateTime": "2026-09-15T19:00:00-07:00"}},
+   {"id": "m2", "summary": "Regular Meeting of the Board of Directors", "recurringEventId": "s1",
+    "start": {"dateTime": "2026-10-20T19:00:00-07:00"}},
+   {"id": "p1", "summary": "Pool opening", "recurringEventId": "s2", "start": {"date": "2026-05-01"}},
+   {"id": "p2", "summary": "Pool opening", "recurringEventId": "s2", "start": {"date": "2027-05-01"}},
+   {"id": "a1", "summary": "Meet the auditor", "start": {"date": "2026-11-05"}},
+   {"id": "o1", "summary": "Old event", "start": {"date": "2025-01-01"}},
+   {"id": "w1", "summary": "Widget license renewal", "start": {"date": "2027-03-01"}, "recurringEventId": "s3"},
+   {"id": "x1", "summary": "Call the plumber", "start": {"date": "2026-09-01"},
+    "description": "Changes made to the title, description, or attachments will not be saved. To make edits, open the task."},
+   {"id": "j1", "summary": "Monthly review (treasurer)", "start": {"date": "2026-10-15"},
+    "extendedProperties": {"private": {"jason": "schedule:monthly-review:2026-10-15"}}},
+   {"id": "j2", "summary": "Due: Monthly review (treasurer)", "start": {"date": "2026-11-15"}}
+  ]}
+ ],
+ "tasklists": [
+  {"id": "L1", "title": "My Tasks", "tasks": [
+   {"id": "t1", "title": "Renew widget license", "due": "2026-03-01T00:00:00.000Z", "status": "needsAction"},
+   {"id": "t2", "title": "Call the plumber", "due": "2026-09-01T00:00:00.000Z", "status": "needsAction"},
+   {"id": "t3", "title": "Trim the hedges", "due": "2025-05-01T00:00:00.000Z", "status": "completed",
+    "completed": "2025-05-03T16:00:00.000Z"},
+   {"id": "t4", "title": "Trim the hedges!", "due": "2026-05-01T00:00:00.000Z", "status": "needsAction"},
+   {"id": "t5", "title": "File the old report", "due": "2025-12-31T00:00:00.000Z", "status": "needsAction"},
+   {"id": "t6", "title": "Paint the fence at 123 Main St", "status": "needsAction"},
+   {"id": "t7", "title": "Monthly review", "due": "2026-10-20T00:00:00.000Z", "status": "needsAction"},
+   {"id": "t8", "title": "Replace the lobby bulb", "status": "needsAction"},
+   {"id": "t9", "title": "Our own", "notes": "Ask: something\njason:schedule:monthly-review:2026-10-15",
+    "status": "needsAction"}
+  ]},
+  {"id": "L2", "title": "Schedule: treasurer", "tasks": [
+   {"id": "s9", "title": "Due: Monthly review", "status": "needsAction"}
+  ]}
+ ]
+}

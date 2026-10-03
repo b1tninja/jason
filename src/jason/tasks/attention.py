@@ -6,6 +6,8 @@
   minutes (4950(a)) read against the record: a deadline passed with none on record, a record late, a deadline near;
 - **schedule** (``jason schedule``): occurrences overdue or due soon, by role, and the duties nobody owns (the
   meetings' notice and minutes are left to the meetings section when both are read);
+- **people** (``jason schedule --people``): people's own Google Tasks and calendar events read beside what jason
+  tracks: open tasks past their due day, tasks a rule says to close, and untracked recurring items as proposed clocks;
 - **requests** (``jason respond``): members' requests past or near their clocks, a statute's clock first;
 - **intake** (``jason intake``): open questions by kind, the likely ones apart, and answers not yet applied;
 - **conflicts** (``jason conflicts``): open conflicts by status (with counsel, on the board's register, noted);
@@ -204,12 +206,15 @@ def schedule_section(community: Any, root: Path, on: date, *, past: int = PAST_D
             elsewhere[a.key] += 1
             continue
         rank = cover_rank(a.covers)
+        # a duty that applies only on a condition (``applies_if``) is not a passed legal clock until a person says it
+        # applies
         urgency = (Urgency.SOON if o.standing == "due soon"
-                   else Urgency.LEGAL if rank <= DOCUMENTS else Urgency.OVERDUE)
+                   else Urgency.LEGAL if rank <= DOCUMENTS and not a.applies_if else Urgency.OVERDUE)
         by_role.setdefault(a.role.value, Counter())[o.standing] += 1
         late = f", {_days((on - o.due).days)} late" if o.standing == "overdue" else ""
         proposed = "; proposed, not yet adopted" if a.adoption is Adoption.PROPOSED else ""
-        s.items.append(Item(urgency, f"{a.role.value}: {a.title}, due {o.due.isoformat()}{late} [{a.key}{proposed}]",
+        cond = f" (only if {a.applies_if})" if a.applies_if else ""
+        s.items.append(Item(urgency, f"{a.role.value}: {a.title}{cond}, due {o.due.isoformat()}{late} [{a.key}{proposed}]",
                             f"jason schedule --role {_q(a.role.value)}", rank, o.due))
     s.counts = {"byRole": {r: dict(c) for r, c in sorted(by_role.items())}}
     overdue = sum(c["overdue"] for c in by_role.values())
@@ -571,12 +576,61 @@ def duties_section(community: Any, root: Path) -> Section:
     return s
 
 
+# --- The people's own tasks and events --------------------------------------------------------------------------------
+
+STALE_SHOWN = 10                           # stale tasks listed one by one; the rest on one line
+
+
+def people_section(community: Any, root: Path, on: date, *, private: bool = False) -> Section:
+    """People's own Google Tasks and calendar events (``jason.tasks.people_tasks``), read beside what jason tracks:
+    open tasks past their due day, oldest first (capped), with what each matches; a task whose duty a rule says no
+    longer exists, as a proposal to close it; and the untracked recurring items, as proposed clocks. ``private`` prints
+    each rule's label for a title (a title can name an owner or a unit). Nothing in Google is marked or closed."""
+    from jason.tasks import people_tasks as pt
+
+    s = _new("people")
+    reading = pt.classify(community, root, on=on)
+    command = "jason schedule --people"
+    stale = reading.stale()
+    for i in stale[:STALE_SHOWN]:
+        days = (on - i.due).days if i.due else 0
+        what = f"; matches {i.matched()}" if i.match else ""
+        close = f"; propose closing it: {i.retire}" if i.retire else ""
+        s.items.append(Item(Urgency.OPEN, f"{i.label(private)}: an open {i.source.value} due {i.due}, {_days(days)} past "
+                                          f"[{i.kind.value}{what}]{close}", command, NONE, i.due))
+    if len(stale) > STALE_SHOWN:
+        rest = stale[STALE_SHOWN:]
+        s.items.append(Item(Urgency.NOTED, f"{len(rest)} more stale open tasks, due {rest[0].due} to {rest[-1].due}",
+                            command))
+    for i in reading.current:
+        if i.retire and not i.stale:
+            s.items.append(Item(Urgency.OPEN, f"{i.label(private)}: propose closing it: {i.retire}", command))
+    for p in reading.proposals():
+        name = (p["label"] or "a recurring item with no rule") if private else p["title"]
+        seen = ", ".join(p["seen"][-3:])
+        s.items.append(Item(Urgency.NOTED, f"propose a clock: {name} (seen {seen}; {len(p['seen'])} days"
+                                           f"{'; a calendar series' if p['series'] else ''}): untracked recurring",
+                            command))
+    c = reading.counts()
+    s.counts = {k: v for k, v in c.items() if k != "leftOut"} | {"leftOut": c["leftOut"],
+                                                                 "proposals": len(reading.proposals())}
+    s.summary = (f"{c['open']} open ({c['openTasks']} tasks, {c['calendarItems']} calendar items), read "
+                 f"{reading.read[:10] or '-'}: {c['covered']} covered, {c['untracked recurring']} untracked recurring, "
+                 f"{c['one-off']} one-off; {c['stale']} stale; {c['undated']} open tasks with no due day."
+                 if reading.read or reading.found else reading.notes[0])
+    s.notes += [n for n in reading.notes if n != s.summary]
+    if reading.found:
+        s.notes.append("A match is a lead: jason marks and closes nothing in Google; a person does.")
+    return s
+
+
 # --- The digest -------------------------------------------------------------------------------------------------------
 
-SECTIONS = ("meetings", "requests", "schedule", "notices", "living", "conflicts", "duties", "intake")
+SECTIONS = ("meetings", "requests", "schedule", "people", "notices", "living", "conflicts", "duties", "intake")
 TITLES = {"meetings": ("The board meetings' clocks: notice and minutes", "jason schedule-evidence --watch",
                        "governance_digest (section meetings)"),
           "schedule": ("The schedule: overdue and due soon", "jason schedule", "schedule_agenda"),
+          "people": ("People's own tasks and events", "jason schedule --people", "governance_digest (section people)"),
           "requests": ("Members' requests and their clocks", "jason respond", "member_requests"),
           "intake": ("Intake questions", "jason intake", "intake_questions"),
           "conflicts": ("Provisions that yield to a higher authority", "jason conflicts", "document_conflicts"),
@@ -619,6 +673,7 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
         "meetings": lambda: meetings_section(community, root, on, past=past),
         "schedule": lambda: schedule_section(community, root, on, past=past, watched=watched()),
         "requests": lambda: requests_section(community, root, on, private=private),
+        "people": lambda: people_section(community, root, on, private=private),
         "intake": lambda: intake_section(root),
         "conflicts": lambda: conflicts_section(community),
         "notices": lambda: notices_section(root),
@@ -633,4 +688,4 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
 
 __all__ = ["CAVEAT", "Digest", "Item", "LIMIT", "SECTIONS", "Section", "Urgency", "conflicts_section", "cover_rank",
            "digest", "duties_section", "intake_section", "living_section", "meetings_section", "notices_section",
-           "request_rank", "requests_section", "schedule_section"]
+           "people_section", "request_rank", "requests_section", "schedule_section"]

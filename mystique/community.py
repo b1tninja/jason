@@ -511,6 +511,12 @@ class Mystique(Community):
 
         return ASSIGNMENTS
 
+    def people_task_rules(self):
+        """How people's own Google Tasks and calendar events match what jason tracks (people_tasks.py)."""
+        from .people_tasks import PEOPLE_TASK_RULES
+
+        return PEOPLE_TASK_RULES
+
     def evidence_rules(self):
         """What shows done the duties Mystique covers by its own documents' sections (evidence.py)."""
         from .evidence import EVIDENCE_RULES

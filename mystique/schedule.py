@@ -63,9 +63,17 @@ ASSIGNMENTS = (
                ("CIV 4950", "notice:minutes-available", "bylaws#7.11"),
                Trigger.ANCHORED, anchor=Anchor.BOARD_MEETING, offset_days=30, evidence="the minutes posted",
                jason="jason meetings (the 30-day check)"),
+    # Corp. Code 8210(a), (c) (read on leginfo October 2, 2026): within 90 days of the original articles, then biennially
+    # in the filing period, the month the articles were filed and the five months before it; Civil Code 5405(b): the
+    # SI-CID goes in at the same time. The articles were filed May 16, 2007 (the endorsed copy in the library), so the
+    # period is December 1 to May 31 of each odd year. The last filing is the SI-CID filed May 5, 2025 (bizfile's
+    # approval, document BA20251018479, attached to the PayHOA payment of May 12, 2025); the next is due by May 31, 2027.
     Assignment("statement-of-information", "The Secretary of State's statement of information and SI-CID",
                Role.SECRETARY, ("CIV 5405", "obligation:Statement of information and SI-CID"),
-               Trigger.EVENT, handled_by="jason deadlines (every two years)", evidence="the filing"),
+               Trigger.CADENCE, every_months=24, month=5, day=31, from_year=2027,
+               evidence="bizfile's approval of the filing", jason="jason deadlines",
+               note="Corp. Code 8210(a), (c); Civil Code 5405(b). The filing period opens December 1 of the year before; "
+                    "the date shown is its last day."),
     Assignment("records-requests", "Members' records requests, answered on the statute's clocks", Role.SECRETARY,
                ("CIV 5205", "CIV 5210", "bylaws#9.1", "bylaws#12", "notice:records-current-year",
                 "notice:records-prior-years", "notice:records-committee-minutes", "notice:records-withheld-explanation",
@@ -123,6 +131,53 @@ ASSIGNMENTS = (
                ("CIV 5800", "CIV 5805", "CIV 5806", "CIV 5810", "ccrs#8", "ccrs#11", "ccrs#12", "bylaws#9.8",
                 "notice:insurance-change", "notice:disaster-rebuild-completeness"),
                Trigger.EVENT, handled_by="jason policies; jason insurance", evidence="the declarations and notice proof"),
+    # Each policy's term end, from the insurance store (insurance.py: the flood policies by building, and the master,
+    # umbrella, crime, D&O, and workers' compensation terms ending September 28). People kept these as calendar events
+    # ("Insurance Renewal - ..."); the action register's "Confirm the 2026-27 ... renewals" item is the bound step.
+    Assignment("insurance-renewal-quotes", "Each policy's renewal: the carrier's terms or quotes, and the board's "
+               "decision before the term ends", Role.TREASURER, ("ccrs#8.1", "CIV 5805"),
+               Trigger.ANCHORED, anchor=Anchor.POLICY_RENEWAL, offset_days=-45, backup=Role.BOARD,
+               evidence="the renewal notice or quote, and the minutes approving it", jason="jason insurance",
+               note="Forty-five days ahead leaves a regular meeting before the term ends. CC&Rs 8.1 sets the coverages; "
+                    "Civil Code 5805 the general liability and D&O limits that shield the volunteers."),
+    Assignment("insurance-renewal-bound", "Each policy's renewal confirmed bound: the new declarations or certificate, "
+               "the premium paid or financed, the policy sheet updated", Role.TREASURER, ("CIV 5810", "ccrs#8.1"),
+               Trigger.ANCHORED, anchor=Anchor.POLICY_RENEWAL, offset_days=7, backup=Role.SECRETARY,
+               evidence="the new declarations or certificate, and the premium's payment in PayHOA",
+               jason="jason insurance; jason deadlines",
+               note="A week after each term ends. If a policy lapsed or was not renewed and not replaced, Civil Code 5810 "
+                    "requires notice to members as soon as reasonably practicable (notice:insurance-change); the new "
+                    "number and term go into insurance.py."),
+    # The reserve CD: $150,000 of reserves placed in a certificate of deposit under the Fiscal Management resolution,
+    # maturing July 3 (the calendar's yearly "Certificate of Deposit Vests" event); people's "Renegotiate C/D" tasks
+    # recur around it. The resolution: "All money borrowed will be restored at the end of the investment period, unless
+    # the board finds that a temporary delay, and further investment would be in the best interests" of the association,
+    # and "All interest accrued will be contributed to the reserve fund". It cites Civil Code 5380 (the board's written
+    # approval before a transfer out of the reserve account) and 5510 (two signatures to withdraw reserve funds).
+    Assignment("reserve-cd-maturity", "The reserve CD's maturity: renew, move, or redeem it on the board's written "
+               "approval, with principal and interest kept in reserves", Role.TREASURER,
+               ("resolution-policy-resolution-fiscal-management-17d3#INVESTMENT OF RESERVE FUNDS", "CIV 5380",
+                "CIV 5510"),
+               Trigger.CADENCE, every_months=12, month=7, day=3, backup=Role.BOARD,
+               evidence="the minutes' approval and the bank's renewal or redemption notice", jason="jason reserves",
+               note="Decided at the June meeting, before the CD renews on its own terms; the yearly investment plan "
+                    "review (reserve-investment-review) can be held at the same time."),
+    # IRS Revenue Ruling 70-604 (1970-2 C.B. 9): the members, at a meeting, decide each year whether excess assessments
+    # are returned or applied to the next year's; it matters only on Form 1120. The Form 1120-H instructions (irs.gov,
+    # read October 2, 2026): "The election is made separately for each tax year", and the estimated tax requirements
+    # "do not apply to homeowners associations electing to file Form 1120-H". Which form this association files is
+    # not settled on disk: the 2021 and 2023 returns are 1120-H (the CPA's 2021 review; the 2023 return's letter); the
+    # 2024 reserve study and annual disclosures assume 1120H; but the members voted under 70-604 on November 18, 2025,
+    # the board's 2025 resolution followed, and the September 11, 2026 IRS payment is an estimated tax applied to
+    # "Form 1120 Corporation Income Tax" for 2026, which an 1120-H filer need not make.
+    Assignment("rev-rul-70-604", "The members' Revenue Ruling 70-604 vote on excess income, and the board's "
+               "resolution, before the year ends", Role.TREASURER,
+               ("Rev. Rul. 70-604", "resolution-special-resolution-irs-70-604-resolution-2025-1rpf"),
+               Trigger.ANCHORED, anchor=Anchor.FISCAL_YEAR_END, offset_days=0, backup=Role.SECRETARY,
+               applies_if="the association files Form 1120 for the year (the CPA confirms 1120 or 1120-H)",
+               evidence="the annual meeting's minutes (the members' vote) and the signed resolution",
+               note="The members vote at the annual meeting; the date shown is the fiscal year's last day. On Form "
+                    "1120-H no resolution is needed (the CPA's representation letter says so)."),
     Assignment("disputes", "Internal dispute resolution and ADR", Role.BOARD,
                ("CIV 5900", "CIV 5915", "CIV 5935", "CIV 6000", "CIV 6100", "bylaws#14", "notice:meet-and-confer",
                 "notice:request-for-resolution", "notice:defect-action-meeting", "notice:defect-settlement",
@@ -156,6 +211,22 @@ ASSIGNMENTS = (
                 "notice:termite-relocation", "notice:mechanics-lien-claim"),
                Trigger.EVENT, handled_by="the response handler (maintenance requests); jason pests",
                evidence="the work order, the notice of entry or pesticide application", backup=Role.MANAGER),
+    # The grounds' seasonal work people kept in Google Tasks and on the calendar (read October 2, 2026): no law sets
+    # these; CC&Rs 7.1(a) and 7.1(b)(v) make the landscaping the association's to maintain. Each month is when people
+    # did it (tree maintenance August 11, 2025; citrus harvest by March 15, 2026; rose bushes November 2024; yard
+    # waste put out January 8, 2024); the board sets its own.
+    Assignment("grounds-trees", "Tree maintenance on the common area", Role.BOARD, ("ccrs#7.1(b)(v)",),
+               Trigger.CADENCE, every_months=12, month=8, day=31, evidence="the landscaper's or arborist's invoice",
+               note="No legal clock; the month people kept."),
+    Assignment("grounds-citrus", "The citrus trees harvested", Role.BOARD, ("ccrs#7.1(b)(v)",),
+               Trigger.CADENCE, every_months=12, month=3, day=15, evidence="the landscaper's invoice or a note",
+               note="No legal clock; the day people kept."),
+    Assignment("grounds-roses", "The rose bushes pruned", Role.BOARD, ("ccrs#7.1(b)(v)",),
+               Trigger.CADENCE, every_months=12, month=11, day=30, evidence="the landscaper's invoice or a note",
+               note="No legal clock; the month people kept."),
+    Assignment("grounds-yard-waste", "Yard waste out after the season's pruning", Role.BOARD, ("ccrs#7.1(a)",),
+               Trigger.CADENCE, every_months=12, month=1, day=15, evidence="a note",
+               note="No legal clock; the month people kept."),
     Assignment("manager", "The managing agent's disclosures, when one is hired", Role.BOARD, ("CIV 5375", "CIV 5380",
                "CIV 5385", "notice:manager-disclosure"), Trigger.EVENT, handled_by="the management agreement",
                evidence="the disclosure on file"),

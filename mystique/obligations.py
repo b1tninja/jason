@@ -31,15 +31,28 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     Obligation("Income tax returns prepared", "IRC 6072, 6081; Rev. & Tax. Code 18601, 18604: April 15, or October 15 on extension",
                every_years=1, categories=("Tax Preparation (CPA)",),
                note="The CPA's invoice shows the returns were prepared, not when they were filed."),
-    Obligation("Statement of information and SI-CID", "Corp. Code 8210; Civil Code 5405: every two years",
-               every_years=2, categories=("Secretary of State",),
-               note="Filed in the period set by the month of incorporation."),
-    Obligation("Backflow assembly test", "State Water Board Cross-Connection Control Policy Handbook and the City of Sacramento's "
-               "annual test notice: each assembly tested yearly by a certified tester",
+    # Corp. Code 8210(a), (c) and Civil Code 5405(b), read October 2, 2026: biennially in the filing period, the month the
+    # articles were filed (May 2007) and the five months before it, so December 1 to May 31 of each odd year.
+    Obligation("Statement of information and SI-CID", "Corp. Code 8210(a), (c); Civil Code 5405(b): every two years, "
+               "December 1 to May 31 of each odd year (articles filed May 16, 2007)",
+               every_years=2, categories=("Secretary of State",), done_on=date(2025, 5, 5),
+               note="Last filed May 5, 2025 (bizfile's approval, attached to the May 12, 2025 payment); the next is due "
+                    "by May 31, 2027. Counted from the filing, so the date shown runs a few weeks early. The $5 "
+                    "payment of December 2025 is not counted: it comes within the interval, and what it paid for is not on disk."),
+    # CCCPH 3.3.3(a), (b) (adopted December 19, 2023, effective July 1, 2024; the State Water Board's adopted text, read
+    # October 2, 2026): "BPAs must be field tested at least annually" by "certified backflow prevention assembly
+    # testers". The City's own code (City Code ch. 13.04) was not reachable; secondary sources say the same.
+    Obligation("Backflow assembly test", "State Water Board Cross-Connection Control Policy Handbook 3.3.3(b) (effective July 1, "
+               "2024) and the City of Sacramento's annual test notice: each assembly tested at least yearly by a certified tester",
                every_years=1, categories=("Backflow Prevention",), payee_words=("LEDOUX", "LE DOUX"),
                note="LeDoux tests the six assemblies (June 2024, June 2025, May 2026). NFPA 25's forward-flow test is separate."),
     # Fire protection, researched 2026-09-29: HSC 13195 and 19 CCR 904 adopt NFPA 25 (California edition) for sprinklers;
-    # the 2025 California Fire Code (901.6, 907.8) adopts NFPA 72-2025 for the alarm. The sprinkler and alarm rows count
+    # the 2025 California Fire Code (901.6, 907.8) adopts NFPA 72-2025 for the alarm. Checked October 2, 2026: 19 CCR 904
+    # as Cornell LII prints it adopts "NFPA 25 (2011 edition) ... (Published as NFPA 25, 2013 California Edition)"
+    # (whether the State Fire Marshal has adopted a later edition is unverified); CFC 901.6 ("maintained in an operative
+    # condition at all times") and Table 901.6.1 (NFPA 72 for fire alarms, NFPA 25 for water-based systems) as UpCodes
+    # prints them. The frequencies inside NFPA 25 and NFPA 72 are the standards' own, not freely published: unverified
+    # from their text here. The sprinkler and alarm rows count
     # from the last report on record, not from payments: Signal Service's quarterly payments are monitoring and the panel
     # lease, and The Fire Sprinkler Company's payments since 2024 are repairs (their invoices say so).
     Obligation("Fire alarm inspection and test", "Cal. Fire Code 907.8 (NFPA 72-2025, ch. 14): waterflow and tamper switches and "

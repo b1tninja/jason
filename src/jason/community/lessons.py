@@ -345,6 +345,34 @@ LESSONS: tuple[Lesson, ...] = (
            "the base reading still needs the execution block split off.",
            Status.OPEN, guards=("embedded_copies boilerplate filter and EXCERPT_COVERAGE",),
            docs=("docs/embedded-references.md",)),
+    Lesson("people-keep-clocks-by-hand", OCT_2026, (Area.GOVERNING,),
+           "People kept clocks in Google Tasks and the calendar that jason had no assignment for (policy renewals, a "
+           "reserve CD, seasonal grounds work, a tax resolution), and open tasks past their due day showed in no digest.",
+           "jason read only its own keyed tasks and events.",
+           "jason reads the people's tasks and events (read-only), matches each to what it tracks, proposes a clock "
+           "for each untracked recurring item, and lists stale tasks in jason attention. It marks nothing in Google.",
+           Status.FIXED, guards=("jason schedule --read-google --people", "people_tasks.classify",
+                                 "attention people section", "tests/test_people_tasks.py", "procedure duty-schedule"),
+           docs=("docs/schedule.md (People's own tasks and events)",)),
+    Lesson("reminder-is-not-a-deadline", OCT_2026, (Area.GOVERNING,),
+           "A person's 'Property Taxes Due' calendar event fell on a day that is no statutory tax date of any kind.",
+           "The event mirrored a real delinquency date by six months; a reminder was kept as if it were the deadline.",
+           "The tax dates are tabled from the statutes; a check that a covered event falls on one of its obligation's "
+           "dates is still to build.",
+           Status.OPEN, docs=("docs/insurance-and-deadlines.md",)),
+    Lesson("task-due-day-is-not-a-filing", OCT_2026, (Area.GOVERNING,),
+           "A filing task's due day was read as the day the last filing was made, a year off from the filing's own "
+           "record.",
+           "A task's due day is a person's plan, not evidence of the act.",
+           "An obligation counts from the filing's own record (done_on), and a biennial filing is a cadence from its "
+           "year.",
+           Status.FIXED, guards=("Obligation done_on", "Assignment.from_year", "tests/test_schedule.py")),
+    Lesson("stored-read-keeps-the-key", OCT_2026, (Area.GOVERNING,),
+           "The first stored read of the calendar kept no event ids or private keys, so jason's own events could be "
+           "told from people's only by their titles.",
+           "The read copied a few display fields.",
+           "The read keeps each event's id and extendedProperties.",
+           Status.FIXED, guards=("people_tasks EVENT_FIELDS", "tests/test_people_tasks.py")),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",

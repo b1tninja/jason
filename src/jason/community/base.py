@@ -942,6 +942,11 @@ class Community(ABC):
         proposes and the board adopts. Empty until the specification keeps some."""
         return ()
 
+    def people_task_rules(self) -> tuple:
+        """How people's own Google Tasks and calendar events match what jason tracks
+        (``jason.community.people_tasks.PeopleTaskRule``), tried in order before the general matches. Empty until set."""
+        return ()
+
     def evidence_rules(self) -> tuple:
         """The profile's own evidence rules (``jason.community.schedule_evidence.EvidenceRule``): what shows a duty
         done that it covers by its own documents' sections, or the words its minutes use. Tried before jason's.

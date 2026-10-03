@@ -16,10 +16,11 @@ An `Assignment` has:
   - a recurring deadline (`"obligation:<name>"`).
 - **The role that owns it:** the board, an officer, the inspector of elections, the manager, counsel, jason, or the owners, with an optional backup. A role is the office. Who holds it is the board's record, kept privately.
 - **When it falls due:**
-  - `CADENCE`: monthly on a day, every N months, or each year on a month and day.
-  - `ANCHORED`: a clock from an anchor the specification already keeps, either each board meeting (`MeetingSchedule`), the annual meeting, or the fiscal year's end (`Community.fiscal_year_end()`), so many days before or after it.
+  - `CADENCE`: monthly on a day, every N months, each year on a month and day, or every N years on a month and day (`every_months=24`), in the years `from_year` gives (a biennial filing in odd years).
+  - `ANCHORED`: a clock from an anchor the specification already keeps, either each board meeting (`MeetingSchedule`), the annual meeting, the fiscal year's end (`Community.fiscal_year_end()`), or each insurance policy's renewal (the month and day each term in the insurance store ends; policies renewing the same day give one occurrence), so many days before or after it.
   - `EVENT`: a clock that an event starts (a records request, a hearing request, a lien payment). `handled_by` names the module that runs it.
   - `STANDING`: a continuing rule, owned but with no occurrence.
+- **A condition** it depends on (`applies_if`), such as the form of tax return the association files. It is shown on every line, and an overdue occurrence of a conditional row is OVERDUE in `jason attention`, never LEGAL, until a person says it applies.
 - **What shows it done:** the minutes, a payment, a jason store, or a notice proof.
 - **The jason command** that does it or checks it.
 - **Its adoption:**
@@ -148,8 +149,43 @@ jason schedule-evidence --watch --ahead 30 --json
 
 `jason attention` carries the watch as its first section (`meetings`): a deadline passed with none on record, or a record dated past it, is LEGAL; a deadline within two weeks with none on record yet is due soon. When both sections are read, the schedule section leaves the assignments the watch reads (the meetings' notice and minutes) to it.
 
+## People's own tasks and events
+
+People keep their own reminders beside jason's: a renewal on the calendar each year, a seasonal chore in Google Tasks, a call to make. Those are clocks someone already keeps by hand, and some of them are duties jason has no clock for. `jason.tasks.people_tasks` reads them, sets each beside what jason tracks, and says which are covered, which recur without a clock, and which are stale. It reads only: it never completes, edits, or closes a person's task or event. The records are `jason.community.people_tasks`; the profile's rule rows are `Community.people_task_rules()`.
+
+```bash
+jason schedule --read-google              # read the calendar and every Tasks list into the private store
+jason schedule --people                   # covered, untracked recurring, one-off; the stale tasks, oldest first
+jason schedule --people --all             # every open item by its class, with what it matched and how
+jason schedule --people --private --json  # rule labels in place of titles
+jason schedule --read-google --people     # both
+```
+
+- **The read.** `--read-google` reads the primary calendar (`--calendar-id`) from two years back to a year ahead, and every Google Tasks list the Tasks token signs in to, into `data/schedule/google-read.json`. It never signs in: without a token it fails fast (`GoogleAuthRequired`), and it refuses `--interactive`. A part Google refuses (a scope the token lacks) is kept as its error and said in the notes.
+- **What is left out:**
+  - jason's own items: a task with jason's marker (`jason:<key>` in its notes) or on a `Schedule: <role>` list; an event with jason's private key; in a read made before the key was kept, an event titled as only the board calendar titles its own ("Due: ", "Deadline: ", the notice and hearing titles);
+  - a calendar event that is only a task's mirror (Google shows a task with a due day on the calendar).
+- **Matching**, first fit wins:
+  1. the profile's rule rows, in order: a pattern on the title, what jason tracks it by (an assignment, a recurring deadline, an action register item, a request kind, the board's meetings, an insurance policy), whether the duty recurs, and a label;
+  2. an action register item, an assignment, or a recurring deadline with the same title;
+  3. the calendar policy's words for a board meeting.
+
+  A rule that names something jason does not keep is a miss, and the notes say which rule.
+- **Classes**, for what is current (open tasks, and calendar items with a day ahead):
+  - **covered**: jason tracks it;
+  - **untracked recurring**: a calendar series, a title that comes back in different months, or a rule that says the duty recurs, with nothing in jason to clock it. Each is a proposed clock: a new assignment for the board, like the schedule's own;
+  - **one-off**.
+
+  **Stale** is an open task past its due day, whatever its class. An open task with no due day is counted apart. Completed tasks and past events are read for what recurs, not counted.
+- **Retiring.** A rule may say why a task's duty no longer exists (a filing the law no longer requires). The task is then a proposal to close it, which a person does in Google.
+- **Privacy.** A title can name an owner or a unit. The store and the full output are private; `--private`, the packet, and `jason attention --private` print each rule's label instead, or what the item matched, and never a list's title.
+- **In `jason attention`** the `people` section lists the stale tasks, oldest first (ten, then one line for the rest), the tasks proposed to close, and the untracked recurring items as proposed clocks.
+
+A match is a lead. A stale task may be done and not checked off, and a covered one says what jason tracks it by, not that the duty was met. Once jason's record shows a duty done, the person closes their own task.
+
 ## Not built yet
 
+- Reading a calendar other than the primary one: listing calendars needs the `calendar.readonly` scope, which the main token does not carry.
 - A notice's proof-of-notice record (`jason notices KEY --proof`) as evidence for the notice assignments. The evidence finder reads the meeting catalog's notice days and the ledger's sends, not the proof's window.
 - Where and when members could read the minutes. The catalog keeps when a copy was sent or created, not when it was posted where members can read it, so the watch's minutes clock is met by a dated copy; a posting date would need its own record.
 - The watch reads the catalog as last built. Rebuilding it on a schedule (or reading PayHOA's communications log directly) would show a notice the day it goes out.

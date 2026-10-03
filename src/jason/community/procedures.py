@@ -214,6 +214,9 @@ PROCEDURES: tuple[Procedure, ...] = (
                  lessons=("law-outdates-provisions",)),
             Step("Check jason's own rules and pages for the same changes.",
                  command="jason law-history --sweep --since YEAR", check="data/reports/law-sweep.md"),
+            Step("Check each people-task rule that retires a duty against its source (an exemption, a repealed "
+                 "filing).", command="jason schedule --people --all", check="each retire reason still true at its source",
+                 lessons=("people-keep-clocks-by-hand",)),
             Step("After an amendment is recorded (and each January), find the copies of each changed section: stale "
                  "copies in adopted documents are findings for their next revision and conflict leads; jason's own "
                  "bases are patched to tokens on a person's word.",
@@ -314,6 +317,12 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Read what falls due, by role.", command="jason schedule --days 45",
                  check="overdue items: done and not recorded, or not done"),
+            Step("Read people's own Google Tasks and calendar beside the schedule.",
+                 command="jason schedule --read-google --people",
+                 check="each untracked recurring item becomes a proposed assignment or a rule row; stale tasks go to "
+                       "their owner; a task proposed to close is closed by a person in Google; jason marks nothing",
+                 refs=("docs/schedule.md (People's own tasks and events)",),
+                 lessons=("people-keep-clocks-by-hand", "reminder-is-not-a-deadline")),
             Step("Find the evidence on disk for what fell due: the minutes, the reports they name, the notices, the "
                  "mailings, and the payments.", command="jason schedule-evidence --since DATE --all",
                  check="a proposal is read in its source before it is recorded; 'contrary' (a late notice, a late "

@@ -20,4 +20,11 @@ LESSONS = (
            "Follow-ups to owners about occupancy are held until the board decides rental-approvals-4-15; the "
            "occupancy-signals report carries the evidence to the meeting.",
            Status.DECISION, docs=("board item rental-approvals-4-15", "jason report occupancy-signals")),
+    Lesson("tax-form-unsettled", date(2026, 10, 2), (Area.GOVERNING,),
+           "The association's filed returns are Form 1120-H, but the members voted a Revenue Ruling 70-604 resolution "
+           "and a 2026 estimated payment was applied to Form 1120, which an 1120-H filer does not make.",
+           "Which return the association files was never recorded where jason reads it.",
+           "The CPA confirms the form the 2025 return used; then the rev-rul-70-604 assignment drops its condition or "
+           "is marked not applicable.",
+           Status.DECISION, docs=("mystique/schedule.py (rev-rul-70-604)",)),
 )
