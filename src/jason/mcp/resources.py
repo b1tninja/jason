@@ -1,9 +1,10 @@
 """MCP resources over the record addresses: each ``jason://`` address (docs/record-addresses.md) is a resource, read
 by the same resolver ``jason cite`` and ``cite_document`` use (``jason.tasks.cite``).
 
-- ``resources/list`` lists the books, each part a profile maps, and each living book's top-level articles or
-  sections, capped (``LIST_CAP``, ``PER_BOOK``). A restricted book (``exec``, ``members``, ``ballots``) is listed by
-  name only, with a note: a read of it is refused.
+- ``resources/list`` lists the books, each part a profile maps, the most recent notices given to members
+  (``NOTICES``, by their delivery ledger's key: ``jason://notice/KEY``; counts only), and each living book's
+  top-level articles or sections, capped (``LIST_CAP``, ``PER_BOOK``). A restricted book (``exec``, ``members``,
+  ``ballots``) is listed by name only, with a note: a read of it is refused.
 - ``resources/templates/list`` gives the address forms (``TEMPLATES``).
 - ``resources/read`` returns ``text/markdown``: the recitation first (the words whole, the citation, the version in
   force, and the caveat), then the address and permanent id, the defined terms the words use with their definitions'
@@ -31,6 +32,7 @@ from jason.community.cite import CAVEAT
 MIME = "text/markdown"
 LIST_CAP = 200                     # resources listed in all
 PER_BOOK = 40                      # a living book's articles or sections listed
+NOTICES = 20                       # the most recent notices listed (the template reads any other)
 PROFILES = ("all", "governance")   # the server profiles that serve the resources
 
 
@@ -72,6 +74,17 @@ TEMPLATES: tuple[Template, ...] = (
     Template("jason://{book}:{date}/{+section}", "record_in_force", "A section in force on a day",
              "The words in force on a day (YYYY-MM-DD).",
              lambda book, date, section: f"jason://{book}:{date}/{section}"),
+    Template("jason://notice/{key}/proof", "notice_proof", "A notice's proof",
+             "The proof-of-notice record of a notice given to members, by its delivery ledger's key: the evidence its "
+             "requirement calls for, on file or owed, the window, and how many members were reached late (counts "
+             "only). Whether notice was sufficient is for the board or counsel.",
+             lambda key: f"jason://notice/{key}/proof"),
+    Template("jason://notice/{key}", "notice", "A notice given to members",
+             "A notice by its delivery ledger's key: the requirement recited (the statute's words and the governing "
+             "documents' clauses), the text sent if jason has it, its fill records, the recipients' counts, the "
+             "delivery standing (delivered, sent with follow-ups owed, sent, or a file), the proof, and the stage it "
+             "served. Counts only: no member's name or unit.",
+             lambda key: f"jason://notice/{key}"),
     Template("jason://res/{number}", "resolution", "A resolution",
              "A board resolution by its number, as the Doc on disk prints it.",
              lambda number: f"jason://res/{number}"),
@@ -130,6 +143,8 @@ def markdown(s: Any) -> str:
         meta.append(f"- History: `{s.history}`")
     if meta:
         lines += meta + [""]
+    for title, rows in s.sections:
+        lines += [f"## {title}", ""] + [r if r.startswith(">") or not r else f"- {r}" for r in rows] + [""]
     if s.terms:
         lines += ["## Defined terms", "", "The document defines words this section uses; its definition governs them "
                   "here (Civil Code 1644). Each is recited from its own section.", ""]
@@ -193,6 +208,24 @@ def _book_row(b: Any, shelf: Any) -> dict[str, Any]:
             "audience": ["user", "assistant"], "priority": priority}
 
 
+def notice_rows(shelf: Any, limit: int = NOTICES) -> list[dict[str, Any]]:
+    """The ``limit`` most recent notices in the delivery ledger, by their latest attempt, each with how strongly the
+    record shows it given (counts only). The rest are read by the template (``jason://notice/{key}``)."""
+    from jason.tasks.notice_evidence import ledger, recent
+    from jason.tasks.schedule_evidence import Stores
+
+    found = ledger(shelf.data_dir, Stores(shelf.data_dir, shelf.community).local_day)
+    rows = []
+    for key, sent in recent(shelf.data_dir, limit):
+        rec = found.get(key)
+        rows.append({"uri": f"jason://notice/{key}", "name": f"notice/{key}", "title": f"Notice {key}",
+                     "description": "A notice given to members (counts only): "
+                                    + (rec.describe() if rec else "nothing weighed in the ledger") + ".",
+                     "audience": ["user", "assistant"], "priority": 0.5,
+                     "lastModified": (rec.on.isoformat() if rec and rec.on else (sent or "")[:10]) or None})
+    return rows
+
+
 def listing(*, community: Any = None, data_dir: Path | None = None, shelf: Any = None, cap: int = LIST_CAP,
             per_book: int = PER_BOOK) -> list[dict[str, Any]]:
     """The resources a client lists: every book (a restricted one by name only) and each part the profile maps,
@@ -216,6 +249,10 @@ def listing(*, community: Any = None, data_dir: Path | None = None, shelf: Any =
                          "description": f"A part of {e.book.info.title}: {title}" + (f" ({e.note})" if e.note else "")
                                         + ".", "audience": ["user", "assistant"],
                          "priority": 0.7 if e.book.governing else 0.4})
+    try:
+        rows += notice_rows(shelf)
+    except Exception as exc:  # a ledger that cannot be read leaves the books
+        shelf.unread.append(f"notices: {exc}")
     listed: set[str] = set()
     for key, book in living:
         doc = shelf.books.document(key)
@@ -302,5 +339,5 @@ def _signed(fn: Callable[..., str], params: list[str], name: str) -> Callable[..
     return call
 
 
-__all__ = ["AddressNotFound", "CAVEAT", "LIST_CAP", "MIME", "PER_BOOK", "PROFILES", "Page", "TEMPLATES", "Template",
-           "listing", "markdown", "read", "register"]
+__all__ = ["AddressNotFound", "CAVEAT", "LIST_CAP", "MIME", "NOTICES", "PER_BOOK", "PROFILES", "Page", "TEMPLATES",
+           "Template", "listing", "markdown", "notice_rows", "read", "register"]

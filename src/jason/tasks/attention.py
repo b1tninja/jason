@@ -275,6 +275,24 @@ def meetings_section(community: Any, root: Path, on: date, *, past: int = PAST_D
                 elif c.standing is mw.Standing.OPEN and (c.deadline - on).days <= SOON_DAYS:
                     urgency, text = Urgency.SOON, (f"{label}: give members notice and the agenda by {c.deadline} "
                                                    f"({when}); none on record yet")
+                elif c.standing in (mw.Standing.FILE_ONLY, mw.Standing.FILE_LATE, mw.Standing.UNDATED):
+                    # A file never meets the clock: near its deadline, or past it, a person says how it went out.
+                    if on > c.deadline:
+                        urgency = Urgency.LEGAL
+                    elif (c.deadline - on).days <= SOON_DAYS:
+                        urgency = Urgency.SOON
+                    text = (f"{label}: the notice to members is met only by a file ({c.record}"
+                            + (f", {c.on}" if c.on else "") + f"; due by {c.deadline}, {when}): if it went out, sync "
+                            f"it (jason notices board-meeting-{m.day} --sync --subject SUBJECT --since DAY) or record "
+                            f"the posting (jason notices board-meeting-{m.day} --mark-general --posted WHERE-AND-WHEN "
+                            "--by NAME)")
+                elif c.unsynced and abs((c.deadline - on).days) <= SOON_DAYS:
+                    key = c.notice[len("jason://notice/"):] if c.notice else f"board-meeting-{m.day}"
+                    urgency, text = Urgency.SOON, (
+                        f"{label}: the notice to members was sent ({c.record}, {c.on}) but its outcomes are not "
+                        f"synced: jason notices {key} --sync" + ("" if c.notice else " --subject SUBJECT --since DAY")
+                        + f" reads them, or record the posting (jason notices {key} --mark-general --posted "
+                        "WHERE-AND-WHEN --by NAME)")
             else:
                 if c.standing is mw.Standing.LATE:
                     urgency, text = Urgency.LEGAL, (f"{label}: minutes were due to members by {c.deadline} ({when}); "

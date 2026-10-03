@@ -13,8 +13,10 @@ The records are code, so jason can act on them:
 | `NoticeRule` | the profile's `notices.py` (`Community.notice_rules()`) | who receives a notice the association sends, by PayHOA tags; `requirements` links it to the catalog |
 | `InstrumentType` | `src/jason/community/instruments.py` | the kinds of instrument that change a governing document |
 | `ProofOfNotice` | `src/jason/tasks/notice_proof.py` | one notice's evidence, window, and late or unreached members |
+| `NoticeStrength` | `notices.py` | how strongly the record shows a notice given: delivered, sent with follow-ups owed, sent, or a file |
+| `NoticeRecord` | `src/jason/tasks/notice_evidence.py` | one record that a notice went out (or was written), with its strength; counts only |
 
-Commands: `jason notices --catalog` lists the requirements; `jason notices KEY --catalog` prints one with the documents' clauses and the stricter clock; `jason notices KEY --proof --event DATE` prints a notice's proof (below). The tests (`tests/test_notice_catalog.py`) check every verified row's words against the statute on disk and every pinned period against `statutory_terms`, so a change in the law fails the build instead of leaving a row stale.
+Commands: `jason notice-check` checks a notice or jason's base templates for each required element (below); `jason notices --catalog` lists the requirements; `jason notices KEY --catalog` prints one with the documents' clauses and the stricter clock; `jason notices KEY --proof --event DATE` prints a notice's proof (below); `jason cite jason://notice/KEY` prints the notice as a record (below). The tests (`tests/test_notice_catalog.py`) check every verified row's words against the statute on disk and every pinned period against `statutory_terms`, so a change in the law fails the build instead of leaving a row stale.
 
 ## Instruments that change a governing document
 
@@ -300,6 +302,73 @@ jason notices board-meeting-2026-10-20 --proof --event 2026-10-20 --general --po
 - the documents' clauses that changed the clock, and the row's caveat for counsel.
 
 A clock that governs another act (the 4041 answers entered 30 days before the annual reports; a payment-plan meeting) is shown but does not judge the delivery (`Timing.delivery`).
+
+## How strongly the record shows a notice given
+
+Three readers judge a notice clock against the record: `jason record-stages` (a rule change's 4360 notices), the meeting watch (`jason schedule-evidence --watch` and `jason attention`: each board meeting's 4920 notice), and the evidence finder (`jason schedule-evidence`). They read the evidence in one place, `jason.tasks.notice_evidence`, from the ledger's standing (`notice_ledger.standing`) rather than from a notice's first attempt. Each record has a strength (`NoticeStrength`):
+
+| Strength | When | Meets a clock on time? |
+| --- | --- | --- |
+| delivered | every member the ledger holds was reached by a method the notice allows (an email the receiving server accepted, a letter in the mail: 4050); or a general notice recorded as posted where the policy statement designates (4045(a)), with the individual deliveries owed under 4045(b) | yes |
+| sent, with follow-ups owed | the ledger shows members owed a resend: a bounce (4041(e)), a returned letter not reached another way, a member with no email and no letter | yes, with the follow-ups listed |
+| sent | it went out, but its outcomes are not synced: PayHOA's log, a copy from the association's mail, the Mailroom, a ledger whose attempts have no outcome yet | yes, with that said; `jason attention` asks a person to sync it near its deadline |
+| file | jason has the notice's file (Drive, the library) but no record that it went out | never |
+
+How a ledger notice is weighed (`notice_evidence.weigh`):
+- A member owed a resend who has another attempt with no outcome yet (the resend itself, not synced) counts as not synced, not owed.
+- A requirement whose methods the ledger cannot show (certified mail, personal service, personal delivery) is at most "sent": its receipts are the proof.
+- A general notice recorded as posted (`jason notices KEY --mark-general --posted "WHERE, YYYY-MM-DD" --by NAME`) is delivered on the day the posting carries, with or without messages in the ledger. A posting recorded with no day in it is undated and meets no clock.
+
+Of the records on time, the notice before its agenda, then the strongest, then the earliest judges the clock (`notice_evidence.choose`); with none on time, the first late send; with no send, the earliest file. A meeting's notice is read from the ledger's notices whose key carries the day, the meeting catalog's notice sent, and the catalog's notice file (Drive, dated by the day it was written), with the agenda only when no notice is on record (`notice_evidence.meeting_notices`). jason's own drafts are left out.
+
+In `jason attention`, a board meeting's notice clock met only by a file is due soon near its deadline and a legal clock past it, and a clock met by a send whose outcomes are not synced is due soon within the schedule's two weeks of its deadline: a person syncs it (`jason notices KEY --sync`) or records the posting. A notice with follow-ups owed is in the notices section, as before.
+
+## A notice as a record
+
+A notice given to members is a record in the series book `notice`, keyed by its ledger key: `jason cite jason://notice/KEY` gives the requirement recited (the statute's words and the governing documents' clauses, each recited from its own text), the text sent if jason has it, the `{QUOTE:}` fill records with their version digests, the recipients plan's counts, the delivery standing, the proof, and the stage it served. `jason://notice/KEY/proof` is the proof alone. Counts only: a member's unit appears only with `jason cite --private`. The details are in [record-addresses.md](record-addresses.md#a-notice-as-a-record).
+
+What jason keeps beside a notice, so its record is whole:
+- `data/notices/KEY/` holds the text as sent (the rendered Markdown or HTML, with its `.refs.json` from `jason section-refs --render`), any PDF, and the recipients plan (`jason delivery --notice RULE --ids data/notices/KEY/recipients.json`);
+- a batch that names its message (`params.message`, as the owner-information email batch now does) or its body gives the text when the folder does not;
+- a key that starts with the requirement's key (`board-meeting-2099-01-14`) links the notice to its requirement and its stage; a key that does not names no requirement, and its proof needs `--requirement`.
+
+## What a notice must say, checked
+
+Each requirement's `content` is jason's reading of what the section requires a notice to carry. `jason.community.notice_elements` holds a `Sign` row for each element: the subdivision it is read from and the words that show it in a notice. `check(requirement, text)` reads a rendered notice or a base template and reports each element as present (with its line and heading), supplied by a token (`{HEARING_DATE}`, filled when the notice is), said to be enclosed (the 5300(b)(9) insurance summary), missing, or not checkable by words (5310(a)(12)'s "any other information"). A conditional element (an emergency rule change's expiry, a teleconference meeting's instructions) is reported with its condition. The statute's own words that a notice recites ("Civil Code section 4360(a) provides: "...") are not counted as the element: quoting what the law requires does not carry it.
+
+```
+jason notice-check                                   # every base template; writes data/reports/notice-templates.md
+jason notice-check discipline-hearing board-meeting  # some of them
+jason notice-check --file data/drafts/NOTICE.md --requirement rule-change-proposed
+```
+
+The bases checked (`jason.tasks.notice_templates.BASES`): the rule change notices (4360(a), (c)), the hearing notice (5855), the board meeting agenda (4920, 4926), the annual policy statement (5310), the annual budget report (5300), and the insurance change notice (5810). The pre-lien notice (5660) has no base yet, so every element is missing; its checklist is in `jason.community.models.legal_collections`. A test keeps the signs in step with the catalog: an element added to a row without a sign fails the build, and a base that drops an unconditional element fails it too.
+
+The check reads words, not law. A notice that passes still goes to a person, and the `where` of each finding is there so the person can look.
+
+### Where a template states the law in its own words
+
+The same command lists each sentence where a base states the law in its own words (jason's reading), the statute's words for each subdivision it cites (the rule, recited from `data/authorities`), and the reference that would cite it (`{CITE:CIV#5855(c)}`). Headings and bare citations are listed apart. The references are proposals: a statute is not yet a target of `{QUOTE:}` or `{CITE:}`. The extension the reference tokens need: let the key be an upper-case code (`CIV`, `CORP`, `CCP`, `GOV`); resolve such a key through the exported statutes (`export_authorities.authority_text`, then `cite.label_text` for a subdivision); cite it as "Civil Code Section 5855(c)"; record the session the words were read from; and refuse `as-of` (jason holds one edition of the law). A copied governing-document passage in a template is proposed with `jason section-refs --patch`, as before ([embedded-references.md](embedded-references.md)).
+
+## Rule changes: the words, the versions, and the order
+
+`jason rule-change KEY` (`jason.tasks.rule_change`):
+
+- **The current words** of each section come through the shared reader (`recite_sections`: the `Shelf` of `jason.tasks.cite`, which reads the living document kept as amended, else the outline), with the section's citation, address (`jason://coll/14`), permanent id, and the version in force. A section the shelf cannot place is read from `data/outlines` directly, and the page says so.
+- **The proposed text** is a stage version of its own (`proposed_version`: `coll@proposed-2026-11-01`, `Stage.PROPOSED`), cited by its address (`jason://coll@proposed-2026-11-01/14`) and never merged into the text in force. The page's "versions cited" table lists both.
+- **The member notice** follows 4360(a)'s order, whose sentence it quotes from disk: "the text of the proposed rule change", then "a description of the purpose and effect of the proposed rule change", headed as the board's own description.
+- **The adoption notice** (4360(c)) recites the text as adopted: the noticed words, which the secretary replaces with the minutes' words where the board changed them.
+- Both notices are checked against the catalog's required elements on the page.
+
+### Publishing official rules extracted from a manual
+
+`jason rule-change --from-manual` (`jason.tasks.manual_rule_change`) drafts the board's 4360 course for publishing the official rules that `jason manual --render` extracted from an owner's manual. The text of the proposed rule change is the official rules document (Enclosure A) with its concordance (Enclosure B), as the stage version `rules@proposed-DATE`. The manual's working Doc is not all adopted text, so the revision history (`jason revisions KEY`) separates it:
+
+- **(a) adopted, or unchanged since the earliest version on disk**: everything not listed below, and any change a later adoption on record names (counted here, and listed);
+- **(b) changed with no adoption found**: each passage with its earlier words and the words now in the manual, labeled. The notice proposes the words now in the manual; the board adopts them through 4360 or restores the earlier words. Part 2 is the rules; Part 3 the policies bound in the manual (a penalty schedule is an operating rule, 4355(a)(3)). "No adoption found" is a finding for a person, not proof that none happened;
+- **(c) pending suggestions** in the working Doc: never accepted, not part of the text. The outline reader reads a Doc with its suggestions inline, so the official rules draft can carry a suggested insertion as if accepted; the draft notice finds each one and strikes it from Enclosure A. A suggested deletion's words stand until a person accepts it.
+
+It also lists the changes it could not place in the concordance and the count of guidance-only changes. It writes `data/drafts/rule-change-official-rules-<notice date>.md` and nothing else; the purpose and effect are drafts for the board to adopt as its own description, and counsel reads the notice before it goes out.
 
 ## Open questions for counsel
 

@@ -26,7 +26,7 @@ A version not in force is cited by its stage and day (`RecordVersion.label()`): 
 | Stage | The event | The law | Evidence jason reads |
 |---|---|---|---|
 | `draft` | the text as written | | a file of the rule's text dated before the decision; for a draft in the specification, its row and its board page |
-| `proposed` | general notice with "the text of the proposed rule change and a description of the purpose and effect", at least 28 days before the decision | 4360(a) | the notice's file (its source, which every proposed version cites), and its delivery: PayHOA's log, the Mailroom, the notice ledger (`rule-change-proposed-<key>`) |
+| `proposed` | general notice with "the text of the proposed rule change and a description of the purpose and effect", at least 28 days before the decision | 4360(a) | the notice's file (its source, which every proposed version cites), and its delivery: the notice ledger (`rule-change-proposed-<key>`, at its strength), PayHOA's log, the Mailroom |
 | `adopted` | the decision at a board meeting, after considering members' comments | 4360(b) | the minutes of the decision meeting, where they name the change |
 | `distributed` | general notice of the change, not more than 15 days after it | 4360(c) | the notice of the adopted change: its file and its delivery |
 
@@ -57,16 +57,29 @@ Then the members' right to reverse it (4365):
 
 ### The evidence, by strength
 
+A notice's evidence is read by one shared reader, `jason.tasks.notice_evidence`, which the meeting watch and the evidence finder use too ([notices.md](notices.md#how-strongly-the-record-shows-a-notice-given)). Its strengths come first:
+
 | Strength | Meaning |
 |---|---|
-| delivered | a send on record: PayHOA's communications log, jason's sends, the Mailroom, the notice ledger |
+| delivered | the notice ledger shows every member it holds reached by a method the notice allows; or a general notice recorded as posted where the policy statement designates (4045(a)), with the 4045(b) individual deliveries |
+| sent, with follow-ups owed | the ledger shows members owed a resend: a bounce (4041(e)), a returned letter, a member with no address on file; the follow-ups are listed with the clock |
+| sent | it went out, but its outcomes are not synced: PayHOA's communications log, jason's sends, the Mailroom, a ledger whose attempts have no outcome yet |
 | stated | the minutes say it was done |
 | listed | named on an item the minutes carry; the outcome is not written |
 | emailed | a copy sent from the association's mail; to whom is not read |
 | file | a file written that day (the earlier of Drive's created and modified days); its delivery is not on record |
 | planned | a Google Task to do it; never counted as done |
 
-A clock is met only by a delivery. A file in time is "a file in time; its delivery is not on record", and a person confirms how and when it went out.
+A 4360 clock is met by "delivered" on time, or by "sent" (with follow-ups owed, or not synced) on time, with what is owed in the clock's note. Of the records on time, the strongest judges the clock, then the earliest. A file never meets a clock: a file in time is "a file in time; its delivery is not on record", and a person confirms how and when it went out (`jason notices KEY --sync`, or `--mark-general` for a posting).
+
+### The notices' addresses
+
+When the notice ledger holds a stage's notice, the history names it:
+- each clock carries the notice's address (`jason://notice/rule-change-proposed-<key>`), in its row (`notice`) and its line;
+- `RuleChangeHistory.notices()` (the row's `notices`) gives each stage's notice addresses;
+- a proposed version with no file for its words cites the notice's address.
+
+The link runs both ways: `jason cite jason://notice/rule-change-proposed-<key>` names the rule change, the stage it served, its version, and its clock ([record-addresses.md](record-addresses.md#a-notice-as-a-record)).
 
 Whether a rule is on a 4355(a) subject is for counsel. So is whether a change was one the law required with no discretion (4355(b)(4)). jason reads every change against 4360.
 
@@ -102,5 +115,6 @@ For the board meetings since `--since` whose 30 days have run, the summary count
 ## Caveats
 
 - None on record is not none given. A notice posted or mailed where jason does not look, or minutes made available that way, are not on disk. A person confirms what was done and records it (`jason schedule --done`).
+- "Delivered" is the ledger's word for every member it holds; the members the plan named but no batch reached are not in the ledger. Compare the recipients plan's counts on the notice's record.
 - A file's date is the day it was written by, not the day it reached the members.
 - A history is read from the stores as last built: the meeting catalog (`jason meetings`), the Drive index, the library, the readings, PayHOA's communications log, and Gmail.

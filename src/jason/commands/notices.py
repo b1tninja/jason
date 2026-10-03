@@ -195,6 +195,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--event", help="with --proof: the day of the meeting, hearing, due date, or other anchor")
     p.add_argument("--sent", help="with --proof: the day it was mailed or sent (default: the ledger's first attempt)")
     p.add_argument("--posted", help="with --proof --general: the day it was posted; with --mark-general: where and "
-                                    "when it was posted")
+                                    "when it was posted, with the day as YYYY-MM-DD (\"the posting board, "
+                                    "2099-01-10\"), which dates the notice's delivery (jason://notice/KEY)")
     p.add_argument("--have", help="with --proof: evidence on file, comma-separated (text_as_sent,mailing_declaration)")
     p.set_defaults(func=lambda a: cmd_notices(a, agent_factory))

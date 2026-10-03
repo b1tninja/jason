@@ -204,6 +204,10 @@ def _print(c: Any, args: argparse.Namespace, tree_lines: Callable[..., list[str]
         print(f"  address: {c.address}" + (f"; permanent id {pid}" if pid else ""))
     for row in c.terms:
         print(f"  defined term: \"{row['term']}\", {row['citation']} ({row['address']})")
+    for title, rows in st.extra.get("sections") or ():
+        print(f"  {title}:")
+        for line in rows:
+            print(f"    {line}" if line else "")
     for row in st.extra.get("readings") or ():
         print(f"  {row['says']}")
     diff = st.extra.get("differences")
@@ -222,6 +226,9 @@ def _print(c: Any, args: argparse.Namespace, tree_lines: Callable[..., list[str]
             print(f"  - {node['version']} {node['number'] or '(not yet)'}: {node['through']}"
                   + (" (words changed)" if node.get("changed") else "")
                   + ("" if node.get("inForce", True) else " (not in force)"))
+            continue
+        if node.get("address") and node.get("kind"):    # a record's link (a notice's proof, its statute)
+            print(f"  - {node['kind']}: {node.get('caption', '')} ({node['address']})")
             continue
         label = node.get("number") or node.get("first", "")
         caption = node.get("caption") or node.get("title") or node.get("kind") or node.get("where") or ""

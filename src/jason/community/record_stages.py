@@ -46,14 +46,25 @@ REVERSAL_REQUEST_DAYS = 30                    # Civil Code 4365(b): the request,
 
 
 class Strength(Enum):
-    """How strongly a record shows a stage happened."""
+    """How strongly a record shows a stage happened. The first three, and ``FILE``, are a notice's strengths
+    (``notices.NoticeStrength``, read by ``jason.tasks.notice_evidence``)."""
 
-    DELIVERED = "delivered"        # a send on record: a mailing, the delivery ledger, PayHOA's log
+    DELIVERED = "delivered"        # the delivery ledger shows every member reached, or a general notice posted
+    FOLLOW_UPS = "sent, with follow-ups owed"      # the ledger shows a send with resends owed (a bounce, a return)
+    SENT = "sent"                  # a send on record whose outcomes are not synced: PayHOA's log, the Mailroom
     STATED = "stated"              # the minutes say it was done ("approved the minutes", "adopted")
     LISTED = "listed"              # named on an item the minutes carry; the outcome is not written
     EMAILED = "emailed"            # a copy emailed; to whom is not read here
     FILE = "file"                  # a file written that day; when it reached members is not on record
     PLANNED = "planned"            # a task to do it, not that it was done
+
+    @property
+    def counts(self) -> bool:
+        """Whether a notice of this strength, on time, meets a notice clock (a file or an emailed copy never does)."""
+        return self in COUNTING
+
+
+COUNTING = (Strength.DELIVERED, Strength.FOLLOW_UPS, Strength.SENT)
 
 
 class Standing(Enum):
@@ -128,12 +139,13 @@ class StageClock:
     standing: Standing
     evidence: Evidence | None = None
     note: str = ""
+    notice: str = ""              # the notice's address (jason://notice/KEY) when the delivery ledger holds it
 
     def row(self) -> dict[str, Any]:
         return {"requirement": self.requirement, "authority": self.authority, "timing": self.timing,
                 "anchor": self.anchor.isoformat() if self.anchor else None,
                 "deadline": self.deadline.isoformat() if self.deadline else None, "standing": self.standing.value,
-                "evidence": self.evidence.row() if self.evidence else None, "note": self.note}
+                "evidence": self.evidence.row() if self.evidence else None, "note": self.note, "notice": self.notice}
 
 
 def version_row(v: RecordVersion) -> dict[str, Any]:
@@ -153,30 +165,53 @@ def _timing(key: str):
     return row, row.timing[0]
 
 
+def _notice_of(e: Evidence | None) -> str:
+    return e.source if e is not None and e.source.startswith("jason://notice/") else ""
+
+
+def _with(note: str, e: Evidence) -> str:
+    """The clock's note with what the send left owed: a send met the clock, its follow-ups listed (or not yet synced)."""
+    if e.strength in (Strength.FOLLOW_UPS, Strength.SENT) and e.note:
+        return "; ".join(x for x in (note, e.note) if x)
+    return note
+
+
 def notice_clock(key: str, authority: str, anchor: date | None, found: list[Evidence], on: date, *,
                  applies: bool = True, note: str = "") -> StageClock:
-    """A notice's clock from ``anchor`` (the decision), with the best record found: a delivery first, then a file or an
-    emailed copy, which shows the notice was written, not that it reached the members."""
+    """A notice's clock from ``anchor`` (the decision), with the record that judges it (as
+    ``jason.tasks.notice_evidence.choose`` picks one): of the records that count (delivered, sent with follow-ups
+    owed, sent), the strongest on time, then the earliest; then the first late; then a file or an emailed copy, which
+    shows the notice was written, not that it reached the members, and never meets the clock. A send that met it
+    carries its follow-ups (or that its outcomes are not synced) in the note, and the clock names the notice's
+    address when the delivery ledger holds it."""
     _, timing = _timing(key)
     if not applies:
         return StageClock(key, authority, timing.describe(), anchor, None, Standing.NOT_APPLICABLE, note=note)
     if anchor is None:
-        first = min((e for e in found if e.on), key=lambda e: e.on, default=None)
-        return StageClock(key, authority, timing.describe(), None, None, Standing.NOT_DUE, first, note)
+        sent = [e for e in found if e.on and e.strength.counts]
+        first = min(sent or [e for e in found if e.on], key=lambda e: e.on, default=None)
+        return StageClock(key, authority, timing.describe(), None, None, Standing.NOT_DUE, first, note,
+                          _notice_of(first))
     deadline = timing.window(anchor)[1]
-    delivered = sorted((e for e in found if e.strength is Strength.DELIVERED and e.on), key=lambda e: e.on)
-    if delivered:
-        first = delivered[0]
-        return StageClock(key, authority, timing.describe(), anchor, deadline,
-                          Standing.MET if first.on <= deadline else Standing.LATE, first, note)
+    counting = [e for e in found if e.strength.counts and e.on]
+    on_time = sorted((e for e in counting if e.on <= deadline), key=lambda e: (COUNTING.index(e.strength), e.on))
+    if on_time:
+        first = on_time[0]
+        return StageClock(key, authority, timing.describe(), anchor, deadline, Standing.MET, first,
+                          _with(note, first), _notice_of(first))
+    if counting:
+        first = min(counting, key=lambda e: e.on)
+        return StageClock(key, authority, timing.describe(), anchor, deadline, Standing.LATE, first,
+                          _with(note, first), _notice_of(first))
     files = sorted((e for e in found if e.strength in (Strength.FILE, Strength.EMAILED) and e.on), key=lambda e: e.on)
     if files:
         first = files[0]
         return StageClock(key, authority, timing.describe(), anchor, deadline,
                           Standing.FILE_ONLY if first.on <= deadline else Standing.FILE_LATE, first, note)
-    undated = [e for e in found if e.strength in (Strength.FILE, Strength.DELIVERED, Strength.EMAILED)]
+    undated = [e for e in found if e.strength in (Strength.FILE, Strength.EMAILED) or e.strength.counts]
     if undated:
-        return StageClock(key, authority, timing.describe(), anchor, deadline, Standing.UNDATED, undated[0], note)
+        return StageClock(key, authority, timing.describe(), anchor, deadline, Standing.UNDATED, undated[0], note,
+                          _notice_of(undated[0]))
     return StageClock(key, authority, timing.describe(), anchor, deadline,
                       Standing.PASSED if on > deadline else Standing.OPEN, None, note)
 
@@ -225,11 +260,20 @@ class RuleChangeHistory:
             out[stage.value] = min(found, key=order.index).value if found else "none"
         return out
 
+    def notices(self) -> dict[str, list[str]]:
+        """Each stage and the addresses of the notices the delivery ledger holds for it (``jason://notice/KEY``)."""
+        out: dict[str, list[str]] = {}
+        for e in self.evidence:
+            if e.source.startswith("jason://notice/") and e.source not in out.get(e.stage.value, []):
+                out.setdefault(e.stage.value, []).append(e.source)
+        return out
+
     def row(self) -> dict[str, Any]:
         return {"key": self.key, "title": self.title, "document": self.document, "documentTitle": self.document_title,
                 "origin": self.origin, "outcome": self.outcome.value,
                 "decided": self.decided.isoformat() if self.decided else None,
-                "stages": self.stages_with_evidence(), "versions": [version_row(v) for v in self.versions],
+                "stages": self.stages_with_evidence(), "notices": self.notices(),
+                "versions": [version_row(v) for v in self.versions],
                 "clocks": [c.row() for c in self.clocks], "evidence": [e.row() for e in self.evidence],
                 "reversal": self.reversal, "actions": self.actions, "notes": self.notes}
 
@@ -244,9 +288,12 @@ class RuleChangeHistory:
             tail = f": {c.evidence.what}, {c.evidence.on}" if c.evidence and c.evidence.on else (
                 f": {c.evidence.what}" if c.evidence else "")
             out.append(f"    clock {c.authority} ({c.timing}"
-                       + (f", by {c.deadline}" if c.deadline else "") + f"): {c.standing.value}{tail}")
+                       + (f", by {c.deadline}" if c.deadline else "") + f"): {c.standing.value}{tail}"
+                       + (f" [{c.notice}]" if c.notice else ""))
             if c.note:
                 out.append(f"        {c.note}")
+        for stage, addresses in self.notices().items():
+            out.append(f"    notice of the {stage} stage: {', '.join(addresses)}")
         if self.reversal:
             out.append(f"    4365: {self.reversal}")
         for e in self.evidence:
@@ -277,10 +324,13 @@ def rule_change_history(record: RuleChangeRecord, evidence: list[Evidence], *, o
     if sources:
         # The day: the first delivery, else the first file or copy. The words: a file kept (Drive, the library, the
         # specification), else whatever holds them.
-        best = next((e for e in sources if e.strength is Strength.DELIVERED), sources[0])
+        best = min((e for e in sources if e.strength.counts), key=lambda e: COUNTING.index(e.strength),
+                   default=sources[0])
         kept = next((e for e in sources if e.source.startswith(("drive:", "library:", "specification:", "data/"))),
                     best)
         how = {Strength.DELIVERED: "the notice of the proposed change, delivered",
+               Strength.FOLLOW_UPS: "the notice of the proposed change, sent (follow-ups owed)",
+               Strength.SENT: "the notice of the proposed change, sent (its outcomes not synced)",
                Strength.EMAILED: "the notice of the proposed change, a copy emailed",
                Strength.FILE: "the notice of the proposed change, as written (its delivery is not on record)"}
         note = kept.what if kept is best else f"Its words: {kept.what}. Delivered: {best.what}."
@@ -300,7 +350,8 @@ def rule_change_history(record: RuleChangeRecord, evidence: list[Evidence], *, o
         h.versions.append(RecordVersion(record.document, "", Stage.ADOPTED, decided, record.effective or decided,
                                         source, f"board meeting {decided}", note))
     if distributed:
-        best = next((e for e in distributed if e.strength is Strength.DELIVERED), distributed[0])
+        best = min((e for e in distributed if e.strength.counts), key=lambda e: COUNTING.index(e.strength),
+                   default=distributed[0])
         h.versions.append(RecordVersion(record.document, "", Stage.DISTRIBUTED, best.on, None, best.source,
                                         "the notice of the adopted change (4360(c))", best.what))
 
@@ -583,7 +634,7 @@ def minutes_versions(h: MinutesHistory) -> list[RecordVersion]:
     return out
 
 
-__all__ = ["ADOPTED_NOTICE", "Approval", "ApprovalItem", "CORRECTED_NAME", "DRAFT_NAME", "Evidence", "MINUTES_AVAILABLE",
+__all__ = ["ADOPTED_NOTICE", "Approval", "ApprovalItem", "CORRECTED_NAME", "COUNTING", "DRAFT_NAME", "Evidence", "MINUTES_AVAILABLE",
            "MINUTES_BOOK", "MeetingKind", "MinutesCopy", "MinutesHistory", "Outcome", "PROPOSED_NOTICE",
            "REVERSAL_REQUEST_DAYS", "RULE_CHANGE_FILE", "RuleChangeHistory", "RuleChangeRecord", "StageClock",
            "Standing", "Strength", "approval_items", "file_stage", "minutes_versions", "named_dates", "notice_clock",

@@ -516,7 +516,8 @@ def _email_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], 
         batches.create(data_dir, batch_id, "owner-info-email",
                        f"Owner information request {year}: " + (f"follow-up ({args.follow_up})" if args.follow_up
                                                                  else "emailed copies"),
-                       items, confirmed_by=args.confirmed_by, params={"subject": args.subject})
+                       items, confirmed_by=args.confirmed_by,
+                       params={"subject": args.subject, "message": str(message_file)})   # the notice's text: jason://notice/KEY
         message = _compose(message_text, community, year, message_file.parent, lambda path: client.upload_file(
             path, filename=path.name, content_type="image/png", context="communication")["viewUrl"])
         google_form, channel = None, getattr(forms, "GOOGLE_FORMS", {}).get(forms.OWNER_INFO.key)

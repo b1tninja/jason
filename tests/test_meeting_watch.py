@@ -111,10 +111,13 @@ def test_each_meeting_its_clocks_and_what_is_on_record(data):
 def test_a_passed_clock_ranks_first_then_what_is_due_soon(data):
     s = attention.meetings_section(_community(), data, date(2031, 3, 3))
     items = s.ordered()
-    assert [i.urgency for i in items] == [Urgency.LEGAL, Urgency.SOON, Urgency.SOON]
+    assert [i.urgency for i in items] == [Urgency.LEGAL, Urgency.SOON, Urgency.SOON, Urgency.SOON]
     assert "minutes were due to members by 2031-02-07" in items[0].text and "43 days after" in items[0].text
-    assert items[1].due == date(2031, 3, 8) and "give members notice and the agenda by 2031-03-08" in items[1].text
-    assert items[2].due == date(2031, 3, 14) and "[meeting-minutes]" in items[2].text
+    # the executive session's notice met its clock by a send whose outcomes are not synced, near its deadline
+    assert items[1].due == date(2031, 2, 18) and "outcomes are not synced" in items[1].text
+    assert "jason notices board-meeting-2031-02-20 --sync" in items[1].text and "--mark-general" in items[1].text
+    assert items[2].due == date(2031, 3, 8) and "give members notice and the agenda by 2031-03-08" in items[2].text
+    assert items[3].due == date(2031, 3, 14) and "[meeting-minutes]" in items[3].text
     assert all(i.command == mw.COMMAND for i in items)
     # January's late notice is older than the 30 days behind: the evidence finder's to read, not the digest's
     assert not any("notice to members on record" in i.text for i in items)

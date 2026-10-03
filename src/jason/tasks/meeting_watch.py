@@ -7,8 +7,11 @@ gives two clocks and what is on record for each so far:
 
 - **the notice to members** (Civil Code 4920): the notice catalog's ``board-meeting`` clock, made stricter by any
   governing document that asks more (``notice_catalog.effective``; 4920(b)(3)); for a meeting the Zoom index shows
-  held solely in executive session, ``board-meeting-executive`` (4920(b)(2)). The record is the first notice (or,
-  failing one, the agenda emailed) on or before the meeting: the evidence finder's ``notice_on_record``.
+  held solely in executive session, ``board-meeting-executive`` (4920(b)(2)). The record is read by the shared notice
+  reader (``notice_evidence.meeting_notices``): the delivery ledger's notice for the day (delivered, sent with its
+  follow-ups owed, or sent and not synced), the catalog's notice sent, the notice's file (or, failing a notice, the
+  agenda). A delivery, or a send with its follow-ups listed, on time meets the clock; a file never does
+  (``Standing.FILE_ONLY``). The clock names the notice's address (``jason://notice/KEY``) when the ledger holds it.
 - **the minutes available to members** (4950(a)): the ``minutes-available`` clock, for a meeting that was not solely
   an executive session. The record is the earliest dated copy of the minutes or of a draft marked as one: the
   evidence finder's ``minutes_on_record``.
@@ -58,6 +61,8 @@ CAVEATS = (
 class Standing(Enum):
     MET = "on record in time"
     LATE = "on record late"
+    FILE_ONLY = "a file in time; its delivery is not on record"
+    FILE_LATE = "a file, written after the deadline; its delivery is not on record"
     UNDATED = "on record, undated"
     OPEN = "none on record yet"
     PASSED = "none on record; the deadline passed"
@@ -76,16 +81,24 @@ class Clock:
     note: str = ""
     assignment: str = ""               # the schedule's assignment that owns the clock
     due: date | None = None            # that assignment's due day for this meeting
+    strength: str = ""                 # a notice's: delivered, sent with follow-ups owed, sent, or file
+    notice: str = ""                   # the notice's address (jason://notice/KEY) when the delivery ledger holds it
 
     @property
     def done(self) -> bool:
         return self.standing is Standing.MET
 
+    @property
+    def unsynced(self) -> bool:
+        """A notice clock met by a send whose outcomes are not synced: a person syncs it, or records the posting."""
+        return self.what == "notice" and self.standing in (Standing.MET, Standing.LATE) and self.strength == "sent"
+
     def row(self) -> dict[str, Any]:
         return {"what": self.what, "requirement": self.requirement, "authority": self.authority,
                 "timing": self.timing, "deadline": self.deadline.isoformat(), "standing": self.standing.value,
                 "record": self.record, "on": self.on.isoformat() if self.on else None, "note": self.note,
-                "assignment": self.assignment, "due": self.due.isoformat() if self.due else None}
+                "assignment": self.assignment, "due": self.due.isoformat() if self.due else None,
+                "strength": self.strength, "notice": self.notice}
 
 
 @dataclass
@@ -131,7 +144,8 @@ class Watch:
             for c in m.clocks:
                 rec = f": {c.record}" + (f", {c.on}" if c.on else "") if c.record else ""
                 owner = f" [{c.assignment} due {c.due}]" if c.assignment and c.due else ""
-                out.append(f"    {c.what:8} by {c.deadline} ({c.timing}, {c.authority}): {c.standing.value}{rec}{owner}")
+                out.append(f"    {c.what:8} by {c.deadline} ({c.timing}, {c.authority}): {c.standing.value}{rec}{owner}"
+                           + (f" [{c.notice}]" if c.notice else ""))
                 if c.note:
                     out.append(f"        {c.note}")
             out += [f"    * {n}" for n in m.notes]
@@ -179,30 +193,40 @@ def _recorded(done: dict[tuple[str, str], dict[str, Any]], key: str, due: date |
     return when, f"recorded done by {row.get('by')}: {row.get('evidence')}"
 
 
+VERDICTS = {"met": Standing.MET, "late": Standing.LATE, "file": Standing.FILE_ONLY, "file late": Standing.FILE_LATE,
+            "undated": Standing.UNDATED, "open": Standing.OPEN, "passed": Standing.PASSED}
+
+
 def _notice_clock(stores: Any, day: date, key: str, on: date, community: Any, rows: tuple[Any, ...],
                   done: dict[tuple[str, str], dict[str, Any]]) -> Clock:
-    from jason.tasks.schedule_evidence import notice_on_record
+    """The notice's clock, judged by the shared reader (``notice_evidence``): a delivery, or a send with its follow-ups
+    listed, on time meets it; a file never does. A person's record of the notice given (a posting) is a delivery."""
+    from jason.tasks.notice_evidence import NoticeRecord, Strength, judge, meeting_notices
 
     authority, timing = _clock(key, community)
     deadline = timing.window(day)[1]
     owner, due = _owner(f"notice:{key}", day, rows)
-    found: list[tuple[date, str, str]] = []
-    first = notice_on_record(stores, day)
-    if first:
-        found.append(first)
+    found = meeting_notices(stores, day)
     person = _recorded(done, owner, due)
     if person:
-        found.append((person[0], person[1], ""))
-    if found:
-        sent, record, note = min(found, key=lambda f: f[0])
-        lead = (day - sent).days
-        standing = Standing.MET if sent <= deadline else Standing.LATE
-        text = f"given {lead} day{'s' if lead != 1 else ''} before the meeting" + (f"; {note}" if note else "")
+        found.append(NoticeRecord(person[1], person[0], Strength.DELIVERED, "jason schedule --done",
+                                  note="a person recorded it given"))
+    verdict, r = judge(found, deadline, on)
+    standing = VERDICTS[verdict.value]
+    if r is None:
+        return Clock("notice", key, authority, timing.describe(), deadline, standing, assignment=owner, due=due)
+    how = r.describe() if r.key else (r.note if r.strength is Strength.DELIVERED else
+                                      f"{r.strength.value}" + (f" ({r.note})" if r.note else ""))
+    if r.strength.counts:
+        lead = (day - r.on).days
+        text = f"given {lead} day{'s' if lead != 1 else ''} before the meeting; {how}"
         if standing is Standing.LATE:
             text += f"; at least {timing.least} are required"
-        return Clock("notice", key, authority, timing.describe(), deadline, standing, record, sent, text, owner, due)
-    standing = Standing.PASSED if on > deadline else Standing.OPEN
-    return Clock("notice", key, authority, timing.describe(), deadline, standing, assignment=owner, due=due)
+    else:
+        text = (f"{how}: the notice's file is on record, not that it went out; if it did, sync it (jason notices "
+                f"KEY --sync) or record the posting")
+    return Clock("notice", key, authority, timing.describe(), deadline, standing, r.what, r.on, text, owner, due,
+                 r.strength.value, r.address)
 
 
 def _minutes_clock(stores: Any, day: date, on: date, community: Any, rows: tuple[Any, ...],

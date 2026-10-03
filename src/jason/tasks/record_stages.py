@@ -8,8 +8,11 @@ proposed change (4360(a)), the decision (4360(b)), and the notice of the adopted
 
 - **files** whose names the row's pattern matches, on Drive (``data/drive/files.json``: the earlier of a file's created
   and modified days, the day it was written by) and in the PayHOA library (undated);
-- **sends**: PayHOA's communications log, jason's sends, the Mailroom log, and the notice delivery ledger (keys
-  ``rule-change-proposed-<key>`` and ``rule-change-adopted-<key>``);
+- **sends**, read by the shared notice reader (``tasks.notice_evidence``): the notice delivery ledger (keys
+  ``rule-change-proposed-<key>`` and ``rule-change-adopted-<key>``), delivered, or sent with its follow-ups owed, or
+  sent and not yet synced, and cited by the notice's address (``jason://notice/KEY``); PayHOA's communications log,
+  jason's sends, and the Mailroom log, sent (their outcomes are not synced). A delivery, or a send with its follow-ups
+  listed, on time meets a clock; a file never does;
 - **email**: a copy sent from the association's mail (``data/gmail/correspondence.json``); to whom is not read;
 - **the minutes** of the decision meeting: the passage that names the change;
 - **tasks**: a Google Task that plans a step (``data/schedule/google-read.json``), as a plan, never as done;
@@ -34,7 +37,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from jason.community.record_stages import (CORRECTED_NAME, DRAFT_NAME, MINUTES_AVAILABLE, RULE_CHANGE_FILE, Approval,
+from jason.community.record_stages import (ADOPTED_NOTICE, CORRECTED_NAME, DRAFT_NAME, MINUTES_AVAILABLE,
+                                           PROPOSED_NOTICE, RULE_CHANGE_FILE, Approval,
                                            Evidence, MeetingKind, MinutesCopy, MinutesHistory, Outcome,
                                            RuleChangeHistory, RuleChangeRecord, StageClock, Standing, Strength,
                                            approval_items, file_stage, minutes_versions, rule_change_history)
@@ -53,6 +57,9 @@ CAVEATS = (
     "that way, are not on disk. A person confirms and records what was done.",
     "A file's date is the day it was written by (the earlier of Drive's created and modified days), not the day it "
     "reached the members.",
+    "A notice is delivered only when the delivery ledger shows every member it holds reached (or a general notice "
+    "posted); a send whose outcomes are not synced is 'sent', and meets a clock with that said (jason notices KEY "
+    "--sync reads them).",
     "An approval named on a later meeting's approval item, with no words saying it passed, is 'listed', not 'stated'.",
     "Minutes on record in time means a copy dated by the deadline (sent, or created on Drive), as the meeting watch "
     "reads it; when members could first read it is not kept.",
@@ -141,16 +148,28 @@ def _file_evidence(record: RuleChangeRecord, stores: Any) -> list[Evidence]:
 
 
 def _send_evidence(record: RuleChangeRecord, stores: Any, extra: tuple[str, ...] = ()) -> list[Evidence]:
+    """The notices' sends, read by the shared reader (``notice_evidence``): the delivery ledger's notices keyed
+    ``rule-change-proposed-<key>`` and ``rule-change-adopted-<key>`` at the strength the ledger shows (delivered, or
+    sent with its follow-ups owed, or sent and not synced), cited by the notice's address; and the other sends on
+    record (PayHOA's log, jason's sends, the Mailroom) that name the change: sent, their outcomes not synced."""
     pattern = re.compile(record.files, re.I) if record.files else None
     out = []
+    for key, rec in sorted(stores.ledger().items()):
+        if not (key.startswith((PROPOSED_NOTICE, ADOPTED_NOTICE)) and record.key in key):
+            continue
+        stage = Stage.DISTRIBUTED if key.startswith(ADOPTED_NOTICE) else Stage.PROPOSED
+        out.append(Evidence(stage, f"{key} (notice ledger)", rec.address, rec.on, Strength(rec.strength.value),
+                            note=rec.describe()))
     for day, what, where in sorted(stores.mailings()):
-        ledger = what.startswith(("rule-change-proposed", "rule-change-adopted")) and record.key in what
+        if where == "notice ledger":
+            continue                                  # read above, with its strength
         named = bool(pattern and pattern.search(what)) or any(e.lower() in what.lower() for e in extra)
-        if not (ledger or named):
+        if not named:
             continue
         stage = (Stage.DISTRIBUTED if "adopted" in what.lower() else
-                 Stage.PROPOSED if "proposed" in what.lower() or ledger else file_stage(what))
-        out.append(Evidence(stage, f"{what} ({where})", f"{where}: {what}", day, Strength.DELIVERED))
+                 Stage.PROPOSED if "proposed" in what.lower() else file_stage(what))
+        out.append(Evidence(stage, f"{what} ({where})", f"{where}: {what}", day, Strength.SENT,
+                            note="sent: its outcomes are not synced"))
     return out
 
 

@@ -110,6 +110,30 @@ def test_a_notice_sent_late_is_evidence_against(data):
     assert late.standing == "contrary" and late.findings[0].weight is Weight.AGAINST
 
 
+def test_a_notice_file_only_supports_and_the_ledger_gives_its_strength(data):
+    from jason.tasks.notice_ledger import Attempt, Delivery, save
+
+    catalog = json.loads((data / "meetings" / "catalog.json").read_text(encoding="utf-8"))
+    catalog["meetings"].append({"date": "2026-03-17", "has": {"meeting notice": {"Drive": 1}}, "records": [
+        {"kind": "meeting notice", "where": "Drive", "name": "Notice of the March meeting", "ref": "mar", "sent": ""}]})
+    _catalog(data, catalog["meetings"])
+    (data / "drive").mkdir()
+    (data / "drive" / "files.json").write_text(json.dumps({"files": [{"id": "mar", "created": "2026-03-10"}]}),
+                                               encoding="utf-8")
+    save(data, [Attempt("board-meeting-2026-01-20", 1, 1, "UNIT 1", "email", "b", "r1", "2026-01-14T18:00:00Z",
+                        Delivery.BOUNCED, reason="550 no such user")])
+    found = {p.due.isoformat(): p for p in task.propose(_community(NOTICE), data, start=date(2026, 1, 1),
+                                                        end=date(2026, 3, 31))}
+    jan = found["2026-01-16"].findings[0]
+    # the ledger's notice beats the catalog's send: sent on time, with its follow-up listed, cited by its address
+    assert jan.weight is Weight.DIRECT and jan.file == "jason://notice/board-meeting-2026-01-20"
+    assert "sent, with follow-ups owed" in jan.note and "email-bounced" in jan.note
+    mar = found["2026-03-13"]
+    assert mar.standing == "partial" and mar.findings[0].weight is Weight.SUPPORTING
+    assert "its delivery is not on record" in mar.findings[0].note
+    assert isinstance(task.Stores(data).ledger()["board-meeting-2026-01-20"].strength.value, str)
+
+
 def test_a_mailing_in_the_window_and_a_payment_for_an_obligation(data, monkeypatch):
     (data / "payhoa").mkdir()
     (data / "payhoa" / "communications.json").write_text(json.dumps({"notices": [

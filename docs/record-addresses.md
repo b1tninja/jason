@@ -37,6 +37,7 @@ it, read from the statute's text on disk (`jason export-authorities`).
 | `inst` | recorded instruments, by the county's document number | CIV 4270(a)(3) (no section defines one) | series |
 | `members` | the membership list | CIV 5200(a)(9) | series, restricted: 5215(a)(4), 5220 |
 | `ballots` | the association election materials | CIV 5200(c) | series, restricted: 5200(c), 5125 |
+| `notice` | each notice given to members, by its delivery ledger's key; jason's own record, so no profile maps it | CIV 4050 (delivery: 4040, 4045) | series; counts only, a member's unit only privately |
 | `gov` | the governing documents as a set | CIV 4150 | group |
 | `manual` | an owner's manual: a guide, not a governing document | (not in the Act) | living |
 
@@ -121,6 +122,9 @@ jason://KEY/ITEM[@VERSION][/SECTION][#FRAGMENT]                a series book
 | `jason://min/2099-01-01#item-4` | minutes by the meeting's day, and an item in them |
 | `jason://inst/209901010001` | a recorded instrument |
 | `jason://budget/2099` | a series item: its record kind and statute, and where the profile keeps it |
+| `jason://notice/board-meeting-2099-01-14` | a notice given to members, by its delivery ledger's key (below) |
+| `jason://notice/board-meeting-2099-01-14/proof` | that notice's proof-of-notice record alone |
+| `jason://notice` | every notice in the ledger, newest first, with how strongly the record shows it given |
 | `jason://bylaws/7.2` | a document's own key standing for its book |
 
 A stage version jason holds on disk today is a living document's draft amendment. Any other stage (a proposed rule
@@ -129,14 +133,44 @@ change, draft minutes) is a miss naming the record's stages, which their own rea
 In Python, `jason.community.addresses.parse(text)` returns an `Address`, and `Address.format()` prints it back.
 `jason.tasks.cite.resolve(address)` resolves one.
 
+### A notice as a record
+
+A notice given to members is a record in the series book `notice`, keyed by its delivery ledger's key
+(`jason notices KEY --sync`, [notices.md](notices.md)). `jason cite jason://notice/KEY` (`jason.tasks.notice_record`)
+gives, read only:
+
+- **the requirement** the key names: the longest catalog key it starts with (`board-meeting-2099-01-14` is a
+  `board-meeting` notice), or the form whose request it is (`owner-info-2099` is the 4041 solicitation). It is recited
+  from the catalog with its statute's words from `data/authorities`, its clocks made stricter by the governing
+  documents (`notice_catalog.effective`), and each document clause recited from its own text. The profile's
+  paraphrase of a clause is labeled as jason's reading, never the clause;
+- **the text sent**, if jason has it: a rendered Markdown or HTML file kept in `data/notices/KEY/`, else the body or
+  message file a batch names; with the subject and the letter's PDF;
+- **the fill records** of its `{QUOTE:}` and `{CITE:}` tokens (`*.refs.json` beside the text), each with the
+  version's digest and whether the words now differ;
+- **the recipients plan's counts**: `data/notices/KEY/recipients.json` (`jason delivery --notice RULE --ids ...`) and
+  the notice's batches;
+- **the delivery standing**: delivered, sent with follow-ups owed, sent, or a file (`jason.tasks.notice_evidence`),
+  with the counts by channel and outcome and the follow-ups owed;
+- **the proof-of-notice record** (`notice_proof.build`), dated by the stage it served;
+- **the stage it served**: a rule change's `proposed` or `distributed` stage (with its version and clock), a board
+  meeting's notice (with `jason://agenda/DAY` and `jason://min/DAY`), or the minutes' availability. A key that names
+  no requirement but carries a meeting's day is read as that meeting's notice, and says it is a reading.
+
+Reading a notice is not restricted, but a member's identity never appears in what is shared: counts only. A member's
+unit and ledger id appear only with `private` (`jason cite --private`); the ledger holds no names. The record's
+words are the text as sent; everything else is jason's record of it, and whether notice was sufficient is for the
+board or counsel.
+
 ### Reading an address
 
 - **As an MCP resource.** `jason-mcp` serves every address as a resource, with templates for each form above and a
-  listing of the books and their top-level articles ([mcp.md](mcp.md#resources)). A read returns Markdown, the
-  recitation first. A restricted book is listed by name only and never read there.
+  listing of the books, the 20 most recent notices, and the books' top-level articles ([mcp.md](mcp.md#resources)).
+  A read returns Markdown, the recitation first. A restricted book is listed by name only and never read there.
 - **As pages.** `jason cite --html` writes the record reader into `data/reader`: a static page per book, part,
-  section, history, and version, linked by address (`jason.tasks.reader`). Serve it with
-  `python -m http.server -d data/reader 8765`. Restricted books are written only with `--private`.
+  section, history, version, and notice (each with its proof), linked by address (`jason.tasks.reader`). Serve it
+  with `python -m http.server -d data/reader 8765`. Restricted books are written only with `--private`; a notice's
+  page carries counts only unless `--private`.
 
 ## Permanent ids
 
@@ -200,7 +234,8 @@ quote is not in the section it was found as is still `words changed since read`.
 `exec`, `members`, and `ballots` hold what the association may withhold (Civil Code 5215) or may not let be copied
 (5200(c)). A read of one is refused with reason `restricted`, naming the statute, unless the caller opens the shelf
 with `private=True` (`jason cite --private`). The refusal is the default for every tool and agent. A confidential
-library file stays held back as before.
+library file stays held back as before. A notice (`notice`) is read by anyone, but shares counts only; a member's
+unit appears only with `private`.
 
 ## Caveats
 

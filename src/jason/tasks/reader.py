@@ -77,6 +77,8 @@ class Sheet:
     cited_by: list[Link] = field(default_factory=list)
     records: list[Link] = field(default_factory=list)       # jason's own records that name it (no page of their own)
     links: list[dict[str, str]] = field(default_factory=list)
+    sections: list[tuple[str, list[str]]] = field(default_factory=list)   # a record's own parts (a notice's); a
+                                                                          # line that starts with "> " is quoted words
     target: Target | None = None
 
 
@@ -141,7 +143,11 @@ def sheet(shelf: Any, c: Any) -> Sheet:
     out.words = st.text or ""
     out.in_force = c.in_force if st.text else ""
     out.note = str(st.version.get("note") or "")
-    if st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE):
+    if t is not None and t.unit is Unit.NOTICE:
+        from jason.tasks.notice_record import CAVEAT as NOTICE_CAVEAT
+
+        out.caveat = NOTICE_CAVEAT                    # jason's record of a notice, not the association's documents
+    elif st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE):
         out.caveat = CAVEAT
     elif st.kind is Kind.HISTORY:
         out.caveat = ID_CAVEAT
@@ -159,7 +165,11 @@ def sheet(shelf: Any, c: Any) -> Sheet:
         out.terms.append({"term": row["term"], "key": row.get("address", ""), "citation": row.get("citation", ""),
                           "definition": row.get("definition", ""), "found": row.get("found", True)})
     for node in st.nodes:
-        if "book" in node:                            # the governing documents: a set of books
+        if node.get("address"):                       # a record's link to another page (a notice's proof, statute)
+            label = node.get("kind") or node.get("number") or node.get("caption") or node["address"]
+            note = node.get("caption", "") if node.get("kind") else node.get("caption", "")
+            out.outline.append(Link(node["address"], str(label), str(note if note != label else "")))
+        elif "book" in node:                          # the governing documents: a set of books
             docs = ", ".join(node.get("documents") or ()) or node.get("series") or node.get("note") or ""
             out.outline.append(Link(f"jason://{node['book']}", f"{node['book']}: {node.get('title', '')}",
                                     f"{node.get('set', '')}; {docs}".strip("; ")))
@@ -191,6 +201,7 @@ def sheet(shelf: Any, c: Any) -> Sheet:
             out.outline.append(Link("", str(label), str(note)))
     for row in st.extra.get("readings") or ():
         out.readings.append(str(row.get("says") or row))
+    out.sections = [(str(title), [str(x) for x in rows]) for title, rows in st.extra.get("sections") or ()]
     return out
 
 
@@ -322,6 +333,9 @@ def _seeds(shelf: Any, private: bool) -> tuple[list[str], dict[str, tuple[str, s
         if e.part and e.role.value != "amendment" and e.key not in living_keys:
             seeds.append(f"jason://{e.key}")
             living_keys.append(e.key)
+    from jason.tasks.notice_evidence import recent
+
+    seeds += [f"jason://notice/{key}" for key, _ in recent(shelf.data_dir)]      # each notice; its page links its proof
     for k in living_keys:
         doc = shelf.books.document(k)
         try:
@@ -420,6 +434,34 @@ def _e(text: Any) -> str:
     return html.escape(str(text or ""))
 
 
+def _section_html(rows: list[str]) -> str:
+    """A record's section: its lines as a list, a run of quoted lines ("> ") as one block of words."""
+    out: list[str] = []
+    items: list[str] = []
+    quoted: list[str] = []
+
+    def flush() -> None:
+        if items:
+            out.append("<ul>" + "".join(f"<li>{_e(x)}</li>" for x in items) + "</ul>")
+            items.clear()
+        if quoted:
+            words = "\n".join(quoted).strip()
+            out.append(f"<blockquote>{_e(words)}</blockquote>")
+            quoted.clear()
+
+    for row in rows:
+        if row.startswith(">"):
+            if items:
+                flush()
+            quoted.append(row[2:] if row.startswith("> ") else "")
+        elif row.strip():
+            if quoted:
+                flush()
+            items.append(row)
+    flush()
+    return "\n".join(out)
+
+
 class _Writer:
     def __init__(self, pages: dict[str, Sheet], report: Report, order: dict[str, tuple[str, str]], when: str):
         self.pages, self.report, self.order, self.when = pages, report, order, when
@@ -504,6 +546,9 @@ class _Writer:
                 body.append(f"<li>{item}" + (f" <span class=\"note\">{_e(r.note)}</span>" if r.note else "")
                             + (f" <span class=\"note\">(missing: {_e(r.reason)})</span>" if lost else "") + "</li>")
             body.append("</ul>")
+        for title, rows in s.sections:
+            body.append(f"<h2>{_e(title)}</h2>")
+            body.append(_section_html(rows))
         if s.readings:
             body.append("<h2>Other readings' numbers</h2><ul>" + "".join(f"<li>{_e(r)}</li>" for r in s.readings)
                         + "</ul>")

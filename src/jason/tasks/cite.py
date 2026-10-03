@@ -236,6 +236,12 @@ class Shelf:
         value = getattr(kind, "value", str(kind)).strip()
         return Citation(self, Target(Unit.RECORD, value), expression=f"record:{value}")
 
+    def notice(self, key: str, *, proof: bool = False) -> Citation:
+        """A notice given to members, by its delivery ledger's key (``jason://notice/KEY``); ``proof`` its proof."""
+        key = str(key).strip()
+        return Citation(self, Target(Unit.NOTICE, key, "proof" if proof else ""),
+                        expression=f"jason://notice/{key}" + ("/proof" if proof else ""))
+
     # --- What the shelf holds ----------------------------------------------------------------------------------------
 
     def outlines(self) -> dict[str, DocumentOutline]:
@@ -325,6 +331,8 @@ class Shelf:
             return Address(series[t.unit], item=t.key, version=t.version, fragment=t.fragment).format()
         if t.unit is Unit.BOOK:
             return Address(t.key, item=t.number, version=t.version, fragment=t.fragment).format()
+        if t.unit is Unit.NOTICE:
+            return Address(Book.NOTICE.value, t.number, t.key, fragment=t.fragment).format()
         return ""
 
     def pid(self, t: Target | None) -> str:
@@ -376,6 +384,8 @@ class Shelf:
             return self._instrument(t)
         if t.unit is Unit.MINUTES:
             return self._minutes(t)
+        if t.unit is Unit.NOTICE:
+            return self._notice(t)
         return self._record(t)
 
     def _book(self, t: Target) -> State:
@@ -392,6 +402,8 @@ class Shelf:
                          "private=True (jason cite --private)", cite, statute=book.restricted)
         if book is Book.GOV:
             return self._governing()
+        if book is Book.NOTICE and not t.number:
+            return self._notices()
         if book is Book.AGENDA and t.number:
             from jason.tasks.meeting_catalog import load
 
@@ -780,6 +792,57 @@ class Shelf:
         return State(Kind.RECORD, True, citation=cite, title=chosen.get("name", ""), text=words, version=version,
                      nodes=[{"kind": r["kind"], "where": r.get("where"), "location": r.get("location"),
                              "confidential": r.get("confidential", False)} for r in records])
+
+    def _notices(self) -> State:
+        """The notice book: every notice in the delivery ledger, newest first, with how strongly it shows the notice
+        given (counts only)."""
+        from jason.tasks.notice_evidence import ledger, recent
+        from jason.tasks.schedule_evidence import Stores
+
+        found = ledger(self.data_dir, Stores(self.data_dir, self.community).local_day)
+        nodes = [{"number": key, "address": f"jason://notice/{key}", "caption": found[key].describe() if key in found
+                  else "", "sent": (sent or "")[:10]} for key, sent in recent(self.data_dir)]
+        law = self(Book.NOTICE.info.statute).state
+        return State(Kind.RECORD, True, citation=Book.NOTICE.info.title, title=Book.NOTICE.info.title,
+                     text=law.text if law.found else "", nodes=nodes,
+                     version={"statute": Book.NOTICE.info.statute, "book": Book.NOTICE.value,
+                              "note": "jason's own record of each notice, by its delivery ledger's key (jason notices "
+                                      "KEY --sync); counts only, a member's unit only privately"})
+
+    def _notice(self, t: Target) -> State:
+        """A notice as a record (``jason.tasks.notice_record``): the requirement recited, the text sent, the fill
+        records, the recipients' counts, the delivery standing, the proof, and the stage it served. ``/proof`` is the
+        proof alone. Counts only unless the shelf is private."""
+        from jason.tasks import notice_record as nr
+
+        cite = f"notice {t.key}" + (", proof of notice" if t.number == "proof" else "")
+        if t.number not in ("", "proof"):
+            return _miss(Reason.UNPARSED, f"a notice has its record and its proof: jason://notice/{t.key} or "
+                         f"jason://notice/{t.key}/proof, not {t.number!r}", cite)
+        r = nr.build(t.key, shelf=self, private=self.private)
+        if r is None:
+            return _miss(Reason.UNKNOWN_RECORD, f"nothing under {t.key} in the delivery ledger, the batches, or "
+                         "data/notices (jason notices lists the ledger; jason notices KEY --sync reads one)", cite)
+        req = r.get("requirement") or {}
+        title = f"{req.get('title')} ({t.key})" if req else t.key
+        standing = (r.get("standing") or {}).get("describe", "nothing in the delivery ledger")
+        if t.number == "proof":
+            p = r.get("proof")
+            if p is None:
+                return _miss(Reason.UNKNOWN_RECORD, "no catalog requirement fits this key, so its proof cannot be "
+                             f"built: jason notices {t.key} --proof --requirement KEY", cite)
+            return State(Kind.RECORD, True, citation=cite, title=f"Proof of notice: {title}",
+                         version={"requirement": p["requirement"], "complete": p["complete"],
+                                  "note": "jason's record of the evidence; whether notice was sufficient is for the "
+                                          "board or counsel"},
+                         nodes=nr.nodes(r, proof_page=True),
+                         extra={"proof": p, "sections": [("Proof of notice", nr.proof_lines(p))]})
+        text = r["text"]
+        version = {"source": text["source"], "requirement": req.get("key", ""), "standing": standing,
+                   "note": ("the notice as sent" if text["words"] else
+                            "jason does not have the text as sent; the record below is what it keeps")}
+        return State(Kind.RECORD, True, citation=cite, title=title, text=text["words"], version=version,
+                     nodes=nr.nodes(r), extra={"notice": r, "sections": nr.sections(r)})
 
     def _minutes_text(self, record: dict[str, Any]) -> tuple[str, str]:
         ref = record.get("ref") or ""
@@ -1584,7 +1647,7 @@ class Citation:
         if st.text and self.in_force:
             out["inForce"] = self.in_force
         if st.found and st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE):
-            out["caveat"] = CAVEAT
+            out["caveat"] = _caveat(self.target)
         address = self.shelf.address(self.target)
         if address:
             out["address"] = address
@@ -1641,6 +1704,8 @@ def markdown(c: Citation) -> str:
     address = c.address
     if address:
         lines += [f"Address: `{address}`" + (f"; permanent id `{c.pid}`" if st.found and c.pid else "") + ".", ""]
+    for title, rows in st.extra.get("sections") or ():
+        lines += [f"## {title}", ""] + [r if r.startswith(">") or not r else f"- {r}" for r in rows] + [""]
     terms = c.terms
     if terms:
         lines += ["## Defined terms", "", "The document defines words this section uses; its definition governs them "
@@ -1682,8 +1747,17 @@ def markdown(c: Citation) -> str:
                 if r.words:
                     lines += [f"> {line}" if line.strip() else ">" for line in r.words.strip().splitlines()] + [""]
     if st.found and st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE):
-        lines += [f"_{CAVEAT}_", ""]
+        lines += [f"_{_caveat(c.target)}_", ""]
     return "\n".join(lines)
+
+
+def _caveat(t: Target | None) -> str:
+    """The caveat a found citation carries: a notice's (jason's record of it), else the documents' (CAVEAT)."""
+    if t is not None and t.unit is Unit.NOTICE:
+        from jason.tasks.notice_record import CAVEAT as NOTICE_CAVEAT
+
+        return NOTICE_CAVEAT
+    return CAVEAT
 
 
 def cite(community: Any = None, data_dir: Path | None = None, *, log=None, private: bool = False) -> Shelf:

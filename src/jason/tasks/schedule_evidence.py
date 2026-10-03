@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -284,27 +283,19 @@ class Stores:
                     pdf = Path(str(n.get("pdf") or "").replace("\\", "/"))
                     if day:
                         out.append((day, f"{pdf.parent.name}/{pdf.name}", "Mailroom"))
-            for key, sent in self.ledger().items():
-                day = self.local_day(sent)
-                if day:
-                    out.append((day, key, "notice ledger"))
+            for key, rec in self.ledger().items():
+                if rec.on:
+                    out.append((rec.on, key, "notice ledger"))
             return out
         return self._once("mailings", make)
 
-    def ledger(self) -> dict[str, str]:
-        """Each notice in the delivery ledger with its first attempt's time (read only)."""
-        def make() -> dict[str, str]:
-            path = self.root / "notices" / "deliveries.db"
-            if not path.is_file():
-                return {}
-            con = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
-            try:
-                return {str(k): str(s) for k, s in con.execute(
-                    "select notice, min(sent_at) from attempts where sent_at != '' group by notice")}
-            except sqlite3.Error:
-                return {}
-            finally:
-                con.close()
+    def ledger(self) -> dict[str, Any]:
+        """Each notice in the delivery ledger as a record of its delivery, with its strength (delivered, sent with
+        follow-ups owed, sent): ``notice_evidence.ledger``, read only."""
+        def make() -> dict[str, Any]:
+            from jason.tasks.notice_evidence import ledger
+
+            return ledger(self.root, self.local_day)
         return self._once("ledger", make)
 
     def obligations(self) -> list[dict[str, Any]]:
@@ -456,26 +447,17 @@ def _minutes_report(a: Assignment, due: date, rule: EvidenceRule, stores: Stores
     return out
 
 
-def notice_on_record(stores: Stores, day: date) -> tuple[date, str, str] | None:
-    """The first notice to members of the meeting on ``day`` on record, as (the day sent, the record and where it is,
-    its note): PayHOA's log, its Gmail copy, the delivery ledger; an agenda emailed on its own only when no notice is
-    on record. None when none is: a miss, not proof that none was given (a posting is not kept here)."""
-    notices: list[tuple[date, str, str]] = []
-    agendas: list[tuple[date, str, str]] = []
-    for rec in stores.meetings().get(day, {}).get("records", []):
-        if rec.get("kind") in ("meeting notice", "agenda") and rec.get("sent"):
-            d = stores.local_day(rec["sent"])
-            if d and d <= day:
-                (notices if rec["kind"] == "meeting notice" else agendas).append(
-                    (d, f"{rec.get('name')} ({rec.get('where')})", rec.get("note") or ""))
-    for key, stamp in stores.ledger().items():
-        d = stores.local_day(stamp)
-        if day.isoformat() in key and d and d <= day:
-            notices.append((d, f"{key} (notice ledger)", ""))
-    sent = notices or agendas
-    if not sent:
+def notice_on_record(stores: Stores, day: date, deadline: date | None = None) -> tuple[date, str, str] | None:
+    """The notice to members of the meeting on ``day`` that judges its clock, as (the day it went out, the record and
+    where it is, how strongly it shows the notice given): the shared reader's choice (``notice_evidence.choose``) among
+    the records that count (a delivery, or a send), never a file. None when none is: a miss, not proof that none was
+    given (a posting is not kept here). ``notice_evidence.meeting_notices`` gives every record, files included."""
+    from jason.tasks.notice_evidence import choose, meeting_notices
+
+    found = choose([r for r in meeting_notices(stores, day) if r.strength.counts], deadline)
+    if found is None or found.on is None:
         return None
-    return min(sent, key=lambda s: (s[0], "preview" in s[1].lower(), s[1]))
+    return found.on, found.what, found.describe() if found.key else found.note
 
 
 MINUTES_KINDS = ("minutes", "draft minutes")    # 4950(a): the minutes, a draft marked as one, or a summary
@@ -511,17 +493,31 @@ def minutes_on_record(stores: Stores, day: date) -> tuple[list[tuple[date, str]]
 
 
 def _meeting_notice(a: Assignment, due: date, rule: EvidenceRule, stores: Stores) -> list[Finding]:
+    """The meeting's notice, read by the shared reader (``notice_evidence``): a delivery or a send in time is the rule's
+    evidence, with its strength and any follow-ups owed; a send too late is against; a file alone only supports (its
+    delivery is not on record)."""
+    from jason.tasks.notice_evidence import choose, meeting_notices
+
     out = []
     for day in meeting_days(a, due, rule, stores):
-        first = notice_on_record(stores, day)
+        deadline = day - timedelta(days=rule.days)
+        first = choose(meeting_notices(stores, day), deadline)
         if first is None:
             continue
-        lead = (day - first[0]).days
-        if lead >= rule.days:
-            out.append(Finding(rule.key, rule.weight, rule.source, first[1], first[0], "",
-                               f"sent {lead} days before the meeting of {day}" + (f"; {first[2]}" if first[2] else "")))
+        how = first.describe() if first.key else (first.note or first.strength.value)
+        where = first.address or first.what
+        if not first.strength.counts:
+            out.append(Finding(rule.key, Weight.SUPPORTING, rule.source, where, first.on, "",
+                               f"{first.describe()}: a file of the notice of the meeting of {day}, and its delivery "
+                               "is not on record"))
+            continue
+        lead = (day - first.on).days
+        if first.on <= deadline:
+            out.append(Finding(rule.key, rule.weight, rule.source, where, first.on, "",
+                               f"sent {lead} days before the meeting of {day}; {first.strength.value}"
+                               + (f": {how}" if how and how != first.strength.value else "")))
         else:
-            out.append(Finding(rule.key, Weight.AGAINST, rule.source, first[1], first[0], "",
+            out.append(Finding(rule.key, Weight.AGAINST, rule.source, where, first.on, "",
                                f"sent only {lead} day{'s' if lead != 1 else ''} before the meeting of {day}; "
                                f"at least {rule.days} are required"))
     return out

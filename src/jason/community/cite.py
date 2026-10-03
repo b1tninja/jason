@@ -58,6 +58,7 @@ class Unit(Enum):
     MINUTES = "minutes"
     RECORD = "record"
     BOOK = "book"                # an item of a series book named by an address (jason://budget/2099)
+    NOTICE = "notice"            # a notice given to members, by its delivery ledger's key; "proof" its proof
 
 
 class Reason(Enum):
@@ -127,6 +128,8 @@ class Target:
             out = f"{self.key} {body}"
         elif self.unit is Unit.BOOK:
             out = f"{self.key}/{self.number}" if self.number else self.key
+        elif self.unit is Unit.NOTICE:
+            out = f"notice:{self.key}" + (f"/{self.number}" if self.number else "")
         else:
             out = f"{self.unit.value}:{self.key}"
         out += f"@{self.as_of.isoformat()}" if self.as_of else ""
@@ -174,7 +177,7 @@ _INSTRUMENT = re.compile(r"^(?:(?:Recorder'?s?\s+)?(?:Doc(?:ument)?\.?|Instrumen
 _MINUTES = re.compile(r"^(?:the\s+)?(?:(?:draft\s+)?minutes)\s*(?:of|for|from|:)?\s*(?:the\s+)?(?:\w+\s+)?"
                       r"(?:meeting\s+)?(?:of|on|held)?\s*(?P<day>\d{4}-\d{2}-\d{2})$", re.I)
 _CANONICAL = re.compile(r"^(?P<key>[a-z0-9][a-z0-9.-]*)#(?P<body>\S+)$")
-_PREFIXED = re.compile(r"^(?P<unit>resolution|instrument|minutes|record):(?P<key>.+)$", re.I)
+_PREFIXED = re.compile(r"^(?P<unit>resolution|instrument|minutes|record|notice):(?P<key>.+)$", re.I)
 _AS_OF = re.compile(r"\s*(?:@|,?\s*\bas\s+of\s+)(?P<day>\d{4}-\d{2}-\d{2})\s*$", re.I)
 
 
@@ -243,6 +246,8 @@ def of_address(text: str, keys: set[str], books: Any = None) -> Target | Miss:
             return Target(Unit.MINUTES, item, version=version, fragment=a.fragment)
         if book is Book.INST and item:
             return Target(Unit.INSTRUMENT, item, version=version, fragment=a.fragment)
+        if book is Book.NOTICE and item:
+            return Target(Unit.NOTICE, item, a.section, version=version, fragment=a.fragment)
         return Target(Unit.BOOK, a.key, item, version=version, fragment=a.fragment)
     document = books.document(a.key) if books is not None else a.key
     if document not in keys:
@@ -290,6 +295,9 @@ def parse(expression: str, names: dict[str, str], books: Any = None) -> Target |
     if m := _PREFIXED.match(text):
         unit = Unit(m.group("unit").lower())
         key = m.group("key").strip()
+        if unit is Unit.NOTICE:
+            key, _, part = key.partition("/")
+            return Target(unit, key, part)
         return Target(unit, key, as_of=as_of)
     if m := _CANONICAL.match(text):
         key = m.group("key")

@@ -15,7 +15,7 @@ jason-mcp --profile governance    # the governance systems
 
 - `.mcp.json` at the project root registers `jason` as `.venv\Scripts\jason-mcp.exe` for Claude Code.
 - The server runs from `JASON_CWD` when a client sets it, else the folder that holds `.env`. The stores are addressed as `data/...` from there.
-- **Profiles.** With no profile (or `all`) every tool is served: 124 today, with the record resources ([Resources](#resources): nine templates, and about 130 listed resources for a profile with a declaration, rules, and annexations). `--profile governance` serves the seventeen governance tools below and the same resources. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
+- **Profiles.** With no profile (or `all`) every tool is served: 124 today, with the record resources ([Resources](#resources): eleven templates, and about 130 listed resources for a profile with a declaration, rules, and annexations, plus up to twenty notices). `--profile governance` serves the seventeen governance tools below and the same resources. `--profile board` (or `JASON_MCP_PROFILE=board`) serves thirty-eight: the digest, the briefs, the budget, utility, vendor, pest, incident, insurance policy, reserve, reserve transfer, invoice, and reconciliation reviews, the mail, the Zoom meetings, the meeting records, and hearings, insurance, deadlines, open items, and party briefs, the lien and solar standings, the duties, and the law. The list is `PROFILES["board"]` in `server.py`. An unknown profile stops the server.
 - **AnythingLLM.** `jason anythingllm --write` registers jason-mcp in AnythingLLM Desktop's `anythingllm_mcp_servers.json` with the board profile; `--profile all` registers every tool. A small local model chooses better from the board set.
 
 ## Rules for a client
@@ -238,6 +238,7 @@ The association's books are MCP resources, by their `jason://` addresses ([recor
 | `jason://{book}/history/{+section}` | a section's timeline: each version, the number it went by, whether its words changed |
 | `jason://{book}@{version}/{+section}` | a section at a version: `base`, the day one took effect, or a stage (`draft-2099-01-01`, never in force) |
 | `jason://{book}:{date}/{+section}` | the words in force on a day |
+| `jason://notice/{key}/proof`, `jason://notice/{key}` | a notice given to members, by its delivery ledger's key, and its proof alone (counts only) |
 | `jason://res/{number}`, `jason://min/{day}`, `jason://inst/{number}` | a resolution, minutes, a recorded instrument |
 | `jason://{book}/{item}{#fragment}` | a series item with a fragment (`#item-4`); the item is read whole |
 | `jason://{book}/{+section}` | the current text of a section, a span (`6.2..6.4`), siblings (`6.2(a),6.2(b)`), or a series item |
@@ -245,7 +246,7 @@ The association's books are MCP resources, by their `jason://` addresses ([recor
 
 A section label holds dots, parentheses, `~`, and commas, so it is a reserved expansion (`{+section}`): a simple `{var}` stops at a comma. The SDK's path checks pass a span (`6.2..6.4` is not a `..` segment). Each template reads the address its parameters spell, so a URI two templates match reads the same either way.
 
-**`resources/list`** lists every book, each part the profile maps (`rules.parking`), and each living book's top-level articles or sections (forty a book; the sections stop at two hundred in all). A restricted book (`exec`, `members`, `ballots`) is listed by name only, with a note that a read is refused. Annotations:
+**`resources/list`** lists every book, each part the profile maps (`rules.parking`), the twenty most recent notices in the delivery ledger (`jason://notice/KEY`, each with how strongly the record shows it given; the template reads any other), and each living book's top-level articles or sections (forty a book; the list stops at two hundred in all). A restricted book (`exec`, `members`, `ballots`) is listed by name only, with a note that a read is refused. A notice's page carries counts, never a member's name or unit. Annotations:
 
 - `audience`: the user and the assistant; the user alone for a restricted book.
 - `priority`: 0.9 for a governing document's book, 0.7 for its parts, 0.6 for its articles, 0.5 for the other books (0.4 for their parts and articles), 0.3 for the manual, 0.1 for a restricted one.

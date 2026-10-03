@@ -9,7 +9,8 @@ Code. Each key cites the section of the Davis-Stirling Act that defines it or re
   that is not in force (``rules@proposed-2026-11-01``, ``jason.community.revisions``).
 - **Series books** are one record per item and cited by the item: a resolution by its number (``res/20990101-1``),
   minutes and agendas by the meeting's day, a budget or policy statement by its fiscal year, a recorded instrument by
-  the county's document number.
+  the county's document number, a notice given to members by its delivery ledger's key (``notice/board-meeting-2099-01-14``:
+  jason's own record, so no profile maps it; it shares counts, never a member's name or unit unless asked privately).
 - **Restricted books** hold what Civil Code 5200 and 5215 let the association withhold or keep from copying:
   executive-session minutes (``exec``), the membership list (``members``), and election materials (``ballots``). A read
   of one is refused unless the caller asks with ``private=True``; the refusal names the statute.
@@ -89,6 +90,7 @@ class Book(Enum):
     INST = "inst"
     MEMBERS = "members"
     BALLOTS = "ballots"
+    NOTICE = "notice"            # each notice given to members, by its delivery ledger's key
     GOV = "gov"                  # the governing documents as a set (CIV 4150)
     MANUAL = "manual"            # not a governing document: an owner's guide that reprints the rules
 
@@ -177,6 +179,11 @@ INFO: dict[Book, BookInfo] = {
                            R.ELECTION_MATERIALS, restricted="CIV 5200(c)", kinds=(DocumentKind.BALLOT,),
                            note="signed voter envelopes may be inspected but not copied (5200(c)); in the inspector's "
                                 "custody until the challenge period ends (5125)"),
+    Book.NOTICE: BookInfo("the notices given to members", "CIV 4050", _S, "the delivery ledger's key",
+                          note="each notice as sent, its requirement, its delivery to each member (counts only; "
+                               "names and units only privately), its follow-ups, and its proof; delivery is complete "
+                               "on deposit or transmission (4050), individually (4040) or generally (4045). Kept by "
+                               "jason (jason notices KEY --sync): no profile maps it"),
     Book.GOV: BookInfo("the governing documents", "CIV 4150", Shape.GROUP, record=R.GOVERNING_DOCUMENTS,
                        note="the declaration and any other documents, such as bylaws, operating rules, and articles, "
                             "which govern the operation of the development or association: a list, not a closed set"),

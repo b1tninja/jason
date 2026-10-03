@@ -151,6 +151,27 @@ class Evidence(Enum):
     ANCHOR_DATE = "the date of the event the clock runs from (the meeting, the due date, the recording)"
 
 
+class NoticeStrength(Enum):
+    """How strongly the record shows a notice was given, strongest first (``jason.tasks.notice_evidence`` reads it).
+
+    A clock (4360, 4920) is met by a delivery on time, or by a send on time with its outstanding follow-ups listed. A
+    file never meets one: it shows the notice was written, not that it went out."""
+
+    DELIVERED = "delivered"                        # every member the ledger holds reached; or a general notice posted
+    FOLLOW_UPS = "sent, with follow-ups owed"      # a bounce owed a resend (4041(e)), a returned letter, no address
+    SENT = "sent"                                  # it went out; its outcomes are not synced
+    FILE = "file"                                  # jason has the notice's file; no record it went out
+
+    @property
+    def counts(self) -> bool:
+        """Whether a record of this strength, on time, meets a notice clock."""
+        return self is not NoticeStrength.FILE
+
+    @property
+    def rank(self) -> int:
+        return list(NoticeStrength).index(self)
+
+
 class Comparison(Enum):
     """How a governing document's notice clause compares with the statute's requirement."""
 
@@ -349,4 +370,4 @@ def combined(statute: Iterable[Timing], provisions: Iterable[NoticeProvision] = 
 
 
 __all__ = ["Anchor", "Comparison", "Evidence", "Method", "NoticeKind", "NoticeProvision", "NoticeRequirement",
-           "NoticeRule", "Recipients", "Timing", "Unit", "combined"]
+           "NoticeRule", "NoticeStrength", "Recipients", "Timing", "Unit", "combined"]
