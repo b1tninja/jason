@@ -28,6 +28,30 @@
     },
     "RollCall": {
       "cardMode": "column"
+    },
+    "ConsoleShell": {
+      "cardMode": "column",
+      "viewport": "1400x900"
+    },
+    "AgendaWizard": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "HostPanel": {
+      "cardMode": "column"
+    },
+    "BoardFields": {
+      "cardMode": "column"
+    },
+    "Drawer": {
+      "cardMode": "single",
+      "primaryStory": "Floating"
+    },
+    "DriveAttach": {
+      "cardMode": "column"
+    },
+    "MeetingStage": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

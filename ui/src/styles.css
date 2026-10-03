@@ -212,7 +212,7 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .checklist-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; font-size: 14px; }
 
 /* == section: DecisionBrief + AgendaWizard + DriveAttach (agent B) == */
-.screen-head { display: grid; gap: 6px; } .screen-head h1 { margin: 0; font-family: var(--brand-font, system-ui); font-weight: var(--brand-weight, 650); font-size: 30px; line-height: 1.15; } .screen-head p { margin: 0; max-width: 48em; }
+.screen-head > div { display: grid; gap: 6px; } .screen-head p { max-width: 48em; }  /* the flex rule above places the actions at the right */
 .brief { display: grid; gap: 12px; } .brief-q { margin: 0; font-size: 16px; font-weight: 600; text-wrap: pretty; }
 .brief-options { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
 .brief-columns .brief-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } .brief-columns .brief-q { font-size: 20px; }
@@ -280,6 +280,10 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stage-doc { width: 100%; height: 26cqw; border: 0; border-radius: 1cqw; background: #fff; }
 .stage-doc-sample { height: 24cqw; border: .15cqw solid var(--hero-line, rgba(255,255,255,.25)); background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 1cqw, transparent 1cqw 2cqw); display: grid; place-items: center; text-align: center; padding: 2cqw; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.6cqw; color: var(--hero-muted, rgba(255,255,255,.7)); }
 .stage-options { font-size: 1.6cqw; } .stage-options .muted { color: var(--hero-muted, rgba(255,255,255,.7)); }
+/* The options view on the stage keeps the hero's ink: the option cards take a translucent surface, never the page's panel. */
+.stage-options .brief-option { background: rgba(255,255,255,.08); border-color: var(--hero-line, rgba(255,255,255,.25)); color: inherit; padding: 1cqw 1.2cqw; gap: .8cqw; }
+.stage-options .brief-option-head strong { font-size: 1.9cqw; } .stage-options .brief-letter, .stage-options .brief-option dt { color: var(--hero-muted, rgba(255,255,255,.7)); font-size: 1.4cqw; }
+.stage-options .brief-option dd { font-size: 1.6cqw; } .stage-options .brief-q { font-size: 2.2cqw; } .stage-options .brief-options { gap: 1cqw; }
 .stage-foot { display: grid; gap: 1.2cqw; padding: 0 3.2cqw 2cqw; }
 .stage-caption { justify-self: center; max-width: 88%; background: rgba(0,0,0,.55); color: #fff; border-radius: .8cqw; padding: .9cqw 1.6cqw; font-size: 1.7cqw; line-height: 1.4; text-align: center; text-wrap: pretty; }
 .stage-caption:empty { display: none; }

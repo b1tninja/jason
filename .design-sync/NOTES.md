@@ -45,6 +45,29 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - **`data:` and `blob:` refs.** `embedUrls` passes them through (anything else is a path under data/), and
   `Markdown` allows them as image sources (DOMPurify's default strips both); the preview images rely on it.
 
+## The console components (design handoff 2026-10-03)
+
+- **Twenty components fetch nothing or post only on `Confirm`** (DraftLetter, ApprovalsInbox, Checklist, BoardFields,
+  RequestForm, ScreenHeader, ConsoleShell, DecisionBrief, AgendaWizard, ReadinessRow, DriveAttach, MeetingStage,
+  HostPanel, DockToolbar, Drawer); their previews are plain props. Who may approve in `DraftLetter`/`ApprovalsInbox`
+  comes from `me` + `people` (`{name, role, approves[], canApproveBoard}`), so stage x signed-in person is the axis.
+- **The dock bodies fetch `/api/dock?part=<deadlines|tasks|notes|ask>`** (DeadlineList, ActionRegister, Scratchpad,
+  AskPanel, DockDrawerBody). Their previews install a module-scope `fetch` stub with the loader's shapes from
+  `src/jason/web/extra/dock.py` and `today: "2026-10-03"`; a `WithFixture` wrapper sets a module-level variant the
+  stub reads, so one URL serves an empty and a full cell. `found: false` renders only the loader's note.
+- **Internal state is driven by a post-mount click** where no prop exists: `AgendaWizard` steps (`.wizard-steps
+  button`) and `HostPanel` tabs (`[role="tab"]`). States behind typed input (a changed BoardFields, a ready
+  RequestForm, Scratchpad's editor, AskPanel's Translate tab) are not cells; the UI tests cover them.
+- **Sizing.** `MeetingStage` sizes by `cqw`, so each cell wraps it in a 720px div. The floating `Drawer` is
+  `position: fixed` and needs a sized `transform: translateZ(0)` stand-in page or it collapses. `ConsoleShell`
+  (1400x900), `AgendaWizard` (1000x1400), and `HostPanel` are column cards (`cfg.overrides`); steps 3 and 4 of the
+  wizard are taller than a 700px capture, hence the tall viewport.
+- **Drift to watch.** `ApprovalsInbox`'s "Sent this month" uses `new Date()` with no `today` prop, so the preview's
+  October `sentOn` dates read 0 after October 2026. `AskPanel`'s "Your name" input sits outside `.dock-panel` and is
+  browser-styled in the real drawer; the preview frame adds the class.
+- **Fixed during this sync.** The stage's options view kept the page's `--panel` behind the brief's cards (invisible
+  values on the dark stage) and `.screen-head` was defined twice; both are `styles.css` fixes, not preview ones.
+
 ## Known render warns
 
 - `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's
@@ -59,7 +82,7 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `npm i esbuild ts-morph @types/react playwright@1.56.1` there, fetch the project's `_ds_sync.json` to
   `.design-sync/.cache/remote-sync.json`, then
   `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node .ds-sync/resync.mjs --config .design-sync/config.json --node-modules ./ui/node_modules --entry ./ui/dist-lib/index.js --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json`.
-- All 28 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
+- All 48 components have authored previews in `.design-sync/previews/`; a new component ships the floor card
   until its preview is authored.
 - `RollCall` and `ConfirmList` are controlled (`votes`/`onChange`, `rows`/`onToggle`): their previews wrap them in a
   `useState` component, as `Tabs` and `SearchBox` do. `DecisionCard` keeps its own state from `initial`, so its
