@@ -4,6 +4,9 @@ import { useApi } from "./lib/useApi";
 import { useHash } from "./lib/useHash";
 import { AssociationRecordsView } from "./views/AssociationRecordsView";
 import { BoardItemsView } from "./views/BoardItemsView";
+import { BooksChecksView } from "./views/BooksChecksView";
+import { JobsView } from "./views/JobsView";
+import { LegalView } from "./views/LegalView";
 import { CalendarView } from "./views/CalendarView";
 import { DutiesView } from "./views/DutiesView";
 import { HearingsView } from "./views/HearingsView";
@@ -46,6 +49,9 @@ const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
   { id: "reserves", label: "Reserves", view: ReservesView },
   { id: "title", label: "Title watch", view: TitleWatchView },
   { id: "hearings", label: "Hearings", view: HearingsView },
+  { id: "books", label: "Books checks", view: BooksChecksView },
+  { id: "legal", label: "Legal", view: LegalView },
+  { id: "jobs", label: "Jobs", view: JobsView },
   { id: "board", label: "Board items", view: BoardItemsView },
   { id: "records", label: "Association records", view: AssociationRecordsView },
   { id: "ingestion", label: "Document ingestion", view: IngestionView },
