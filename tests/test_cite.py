@@ -219,6 +219,36 @@ def test_narrowing_step_by_step_gives_the_documents_own_citation_and_words(world
     assert c.containing("hardship").startswith("No more than fifteen")
 
 
+def test_a_parent_names_the_subsection_an_amendment_changed(world):
+    shelf, _ = world
+    c = shelf("Covenants 6.2")
+    assert "fifteen percent (15%)" in c.text and c.version["setBy"] == "decl"
+    assert c.in_force.startswith("as written in the Covenants, except 6.2(a), as amended by First Amendment")
+    assert "in force from 2024-03-01" in c.in_force
+    assert c.version["amended"] and [p["section"] for p in c.version["parts"]] == ["6.2(a)"]
+    text, _ = expand_markdown("{QUOTE:decl#6.2}", shelf)
+    assert "except 6.2(a), as amended by First Amendment" in text
+
+
+def test_every_sections_history_and_provenance_agree(world):
+    """A guard: a section whose history lists an instrument in force reads as amended, and its provenance names that
+    instrument; a section with no such history reads as written."""
+    shelf, _ = world
+    doc, _ = shelf.resolver.document("decl")
+    for p in doc.provisions:
+        if not p.number or p.removed:
+            continue
+        c = shelf(f"decl#{p.number}")
+        if c.kind is not Kind.SECTION:                  # an article is an outline: each node carries its own flag
+            continue
+        applied =[h for h in c.history if h.get("applied") and h.get("instrument")]
+        assert bool(applied) == bool(c.version["amended"]), p.number
+        for h in applied:
+            assert h["describe"] in c.version["provenance"], (p.number, h["describe"], c.version["provenance"])
+        if not applied:
+            assert c.version["provenance"].startswith("as written in") and " except " not in c.version["provenance"]
+
+
 def test_the_closure_and_a_token_share_one_reader(world):
     shelf, _ = world
     text, records = expand_markdown("{QUOTE:decl#6.2(a)}", shelf)          # the shelf is a Resolver

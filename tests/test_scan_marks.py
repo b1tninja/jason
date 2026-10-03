@@ -15,6 +15,53 @@ def test_running_footers_are_dropped_even_when_ocr_reads_them_differently():
     assert kept == ["the words of page one", "the words of page two", "a one-off line in the margin"]
 
 
+def _at(page, block, text, top):
+    return ScanLine(page, block, top, top + 0.008, tuple(ScanChar(c, False, 0.0) for c in text))
+
+
+def _pages():
+    """Three pages of a made-up declaration: a running footer and a page number on each; page one's footer sits just
+    above the margin band (a page scanned a little askew), and a sentence runs from page one onto page two."""
+    return [
+        _at(0, 0, "12", 0.05),                                    # a section's label at the top: not a page number
+        _at(0, 1, "(m) Rental Agreement. Any rental shall be by written agreement that it is subject to all of the", 0.5),
+        _at(0, 1, "provisions", 0.52),
+        _at(0, 2, "Example Homes", 0.892),
+        _at(0, 3, "- 17 -", 0.904),
+        _at(1, 0, "of the Governing Documents, and that the tenants shall comply with them.", 0.11),
+        _at(1, 1, "Example Homes", 0.897),
+        _at(1, 2, "-18-", 0.905),
+        _at(2, 0, "(n) Signs. No sign may be displayed.", 0.11),
+        _at(2, 1, "Examp1e Homes", 0.898),
+        _at(2, 2, "iad 19 -", 0.906),                             # OCR's garbled page number, where the others sit
+    ]
+
+
+def test_a_header_and_page_number_at_a_page_break_never_split_a_sentence():
+    from jason.community.scan_marks import lines_text
+
+    text = lines_text(_pages())
+    assert text == ("12\n(m) Rental Agreement. Any rental shall be by written agreement that it is subject to all of the "
+                    "provisions\nof the Governing Documents, and that the tenants shall comply with them.\n"
+                    "(n) Signs. No sign may be displayed.")
+    # A line just above the band stays when nothing like it sits at its height in another page's margin.
+    lone = [_at(0, 1, "the last words of a page", 0.5), _at(0, 2, "A heading at the foot", 0.895),
+            _at(1, 1, "Example Homes", 0.95), _at(2, 1, "Example Homes", 0.95)]
+    assert "A heading at the foot" in lines_text(lone)
+
+
+def test_kept_lines_must_be_the_ocr_that_made_the_cached_text():
+    from jason.community.scan_marks import lines_from_rows, lines_to_rows, same_words
+
+    lines = lines_from_rows(lines_to_rows(_pages()))
+    older = ("12\n(m) Rental Agreement. Any rental shall be by written agreement that it is subject to all of the "
+             "provisions\nExample Homes\n- 17 -\nof the Governing Documents, and that the tenants shall comply with "
+             "them.\n-18-\n(n) Signs. No sign may be displayed.\niad 19 -")
+    assert same_words(older, lines) == ""
+    assert "differ" in same_words(older.replace("tenants", "tennants"), lines)
+    assert "not on a line" in same_words(older.replace("Signs.", "Signs. Large"), lines)
+
+
 def test_bold_is_judged_by_the_word_and_strike_by_the_character():
     text = "not more than ten fifteen units"
     struck = set(range(text.index("ten"), text.index("ten") + 3))

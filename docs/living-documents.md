@@ -140,6 +140,7 @@ jason living ccrs --annotations           # the working copy's comments, read-on
 ```
 
 - `jason living KEY --reread cli` and `--use-reread cli --yes --by NAME`: reading a scanned base again (below).
+- `jason living KEY --page-lines`: keep the OCR lines of a reading cached before lines were kept (below, "Page furniture").
 - The generated text reads "as amended through" its last instrument, with a note under each amended section and a list of what is not in effect. It is not an official restatement; the recorded instruments control.
 - An annotation is placed on the current text, else on the working copy (where a base read by OCR garbles the quoted words), else reported as orphaned. A comment's kind is first read from its words (`living_docs.kind_of`) and a person corrects it.
 - Not built yet: the scan reader in `jason.community` (the rule and stroke measures above) and a text-PDF reader; the generated Doc; an MCP tool.
@@ -208,6 +209,22 @@ No cached text is deleted. The next `jason intake --scan` marks stale the open q
 
 A profile's trials are in its own docs (for this profile, [mystique/docs/living.md](../mystique/docs/living.md)). A switch is refused when the dry run was numbered otherwise than the builds.
 
+## Page furniture
+
+A page break inside a sentence must not leave the page's furniture in the sentence ("subject to all of the provisions / Example Homes / -17- / of the Governing Documents"). `scan_marks.drop_furniture` leaves out:
+
+- a line in the top or bottom tenth of the page whose letters recur, nearly alike, in another page's margin (a running header or footer);
+- the same line just outside that band (`NEAR`), at the height it sits at on another page (`SAME_HEIGHT`): a page scanned a little askew;
+- a page number: "- 17 -", "-ii-", "Page 3 of 10", a number alone at the foot, or a short garbled line with a digit or a dash ("iad 1 -") at the height page numbers sit on two other pages. A number alone at the top stays: it may be a section's label.
+
+A reading keeps its OCR lines beside its text (`sources/<drive id>.<digest16>[.<reading>].lines.json`: page, block, height, words), and every build makes the text from them with the furniture pass as it is now. A better pass needs no new OCR and changes no word of the reading. A reading cached before lines were kept is read as its text until `jason living KEY --page-lines` reads the scan once more and keeps the lines, and only when they give the cached text's words less the lines now dropped (`scan_marks.same_words`), since the transcriptions are keyed to those words. The versions cache (`section_refs._fingerprint`) counts `scan_marks` among the code it depends on.
+
+## An instruction's lead-in
+
+An instruction names its target with captions: `Section 4.2 ("Use"), subsection (b) ("Pets"), subpart (iii) is hereby amended and restated as follows:`. A caption belongs to the label it follows, so the target's caption is only the one right after its last label; (iii) above has none, and "Pets" is (b)'s. OCR reads a caption's quotes either way round and often as single quotes ("‘Pets”"), and an instrument may leave a closing parenthesis out; `living.read_instruction` accepts each. The instruction ends at the first colon after its verb outside parentheses (past a legend), and words after it in the same paragraph are the operation's first words. The words end at the next instruction, the instrument's next article, "IN WITNESS WHEREOF", or a signature block ("DATED:", "EXHIBIT A", "ACKNOWLEDGMENT").
+
+A section recited with its subsections names, in its provenance, each subsection another instrument set: "as written in the Declaration, except 4.2(b)(iii), as amended by the Second Amendment ..., in force from ...". Its `amended` flag and date are the words recited, so they agree with its history (`tests/test_cite.py`).
+
 ## Numbering a base read by OCR
 
 A base read from a scan gets its section numbers from the label grammar (`outline_labels.outline_from_ocr`), not from `outline_from_text`. The grammar reads garbled labels as the label the order expects ("41" as 4.1, "Gj)" as (j)) and skips a table of contents. Where the document has a working copy, the build also lets it place what the grammar could not read, such as an inline "(iv)" or a garbled "63)" (`numbering="aligned"`, the default then; `"labels"` without one; `living_docs.default_numbering`). A label read clearly and in order is never renumbered, and each difference with the copy is a note in `report.json` under `numbering`. `numbering="text"` keeps the old reader. The re-read's dry run numbers its readings by the same default. The method and a trial are in [document-readings.md](document-readings.md), "Section numbers from a scan's OCR".
@@ -219,7 +236,7 @@ A base read from a scan gets its section numbers from the label grammar (`outlin
 - **Two amendments touch one section.** They apply in date order; each sets the words and the history shows both. A later instrument's before words should equal the earlier one's after words; when they do not, `BEFORE_DIFFERS` names the gap.
 - **A draft, or an unrecorded amendment to the declaration.** Never applied, listed as pending. A copy that already carries its change is drift.
 - **A draft with copy-paste errors.** An operation whose section is absent and whose words are another section's gets `TARGET_MISSING` with that section named.
-- **Scans.** Struck words OCR badly or not at all; read the rules and stroke widths, and confirm against a draft. Page furniture (running footers) must be dropped before the words are read.
+- **Scans.** Struck words OCR badly or not at all; read the rules and stroke widths, and confirm against a draft. Page furniture (running footers, page numbers) must be dropped before the words are read ("Page furniture" above).
 - **The instrument's own slips.** A witness clause naming the wrong ordinal or a lower-case defined term in restated words: the instrument's identity comes from its title, recitals, and recording, and its words are applied as recorded. A correction can fix a slip in the reading copy, never in the operative text.
 - **A miss stays a miss.** An instruction jason cannot parse yields no operation; the profile's list of sections the instrument changes then disagrees with the operations read, which is itself a finding.
 

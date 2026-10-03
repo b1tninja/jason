@@ -117,17 +117,54 @@ class SectionText:
     as_of: date | None = None         # the date asked for, or None for the current text
     source: str = ""                  # where the base text came from ("the recorded copy", "the Doc, revision ...")
     note: str = ""                    # a caution for the person sending it ("check the words: OCR")
+    # The subsections inside the words that an instrument other than the one that set the section's own words changed
+    # ("4.15(m)(iii)" restated by the Second Amendment inside 4.15(m), written in the base): their words are recited
+    # too, so the provenance names them.
+    parts: tuple[AmendedPart, ...] = ()
 
     @property
     def digest(self) -> str:
         return hashlib.sha256(re.sub(r"\s+", " ", self.words).strip().encode("utf-8")).hexdigest()[:16]
 
+    @property
+    def changed(self) -> bool:
+        """Whether an amendment set any of the words recited: the section's own, or a subsection's."""
+        return self.amended or bool(self.parts)
+
+    @property
+    def changed_on(self) -> date | None:
+        """When the words recited, as a whole, took their present form: the latest amendment among them."""
+        days = [d for d in ((self.dated if self.amended else None), *(p.dated for p in self.parts)) if d is not None]
+        return max(days) if days else None
+
     def provenance(self) -> str:
-        """Who set the words, in a phrase: "as amended by ...", or "as written in ..."."""
+        """Who set the words, in a phrase: "as amended by ...", or "as written in ...", and the subsections another
+        instrument changed: "as written in the Declaration, except 4.2(b)(iii), as amended by the Second Amendment"."""
         if self.amended:
-            return f"as amended by {self.set_by_title}"
-        title = self.set_by_title or self.document
-        return f"as written in {title if title.lower().startswith('the ') else 'the ' + title}"
+            head = f"as amended by {self.set_by_title}"
+        else:
+            title = self.set_by_title or self.document
+            head = f"as written in {title if title.lower().startswith('the ') else 'the ' + title}"
+        groups: dict[str, list[str]] = {}
+        for part in self.parts:
+            groups.setdefault(part.set_by_title, []).append(part.number)
+        if not groups:
+            return head
+        said = [f"{_listed(numbers)}, as amended by {title}" for title, numbers in groups.items()]
+        return f"{head}, except {'; and '.join(said)}"
+
+
+@dataclass(frozen=True)
+class AmendedPart:
+    """A subsection inside a recited section whose words another instrument set."""
+
+    number: str
+    set_by_title: str
+    dated: date | None = None
+
+
+def _listed(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 class Resolver(Protocol):
@@ -221,7 +258,7 @@ def _when(found: SectionText) -> str:
 
 
 def _dated(found: SectionText) -> str:
-    return f", in force from {found.dated.isoformat()}" if found.amended and found.dated else ""
+    return f", in force from {found.changed_on.isoformat()}" if found.changed_on else ""
 
 
 def expand_markdown(text: str, resolver: Resolver, *, caveat: bool = True) -> tuple[str, list[Embedded]]:
@@ -267,5 +304,5 @@ def expand_html(text: str, resolver: Resolver, *, caveat: bool = True) -> tuple[
     return out, records
 
 
-__all__ = ["CAVEAT", "Embedded", "Ref", "Resolver", "SETTINGS", "SectionRefError", "SectionText", "TOKEN", "Verb",
-           "citation_of", "expand_html", "expand_markdown", "parse", "refs_in"]
+__all__ = ["AmendedPart", "CAVEAT", "Embedded", "Ref", "Resolver", "SETTINGS", "SectionRefError", "SectionText", "TOKEN",
+           "Verb", "citation_of", "expand_html", "expand_markdown", "parse", "refs_in"]

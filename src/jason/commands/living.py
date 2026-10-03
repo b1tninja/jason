@@ -6,7 +6,9 @@ copy a person keeps by hand. ``--redline INSTRUMENT`` prints an amendment's mark
 provision with its history. ``--annotations`` reads the working copy's comments (read-only) into
 ``data/annotations/KEY.json`` and places each on the current text. jason never edits the working copy.
 ``--reread cli`` reads a scanned base again beside the reading in use and writes the evidence for switching
-(``tasks.ocr_reread``); ``--use-reread cli --yes --by NAME`` is the person's switch.
+(``tasks.ocr_reread``); ``--use-reread cli --yes --by NAME`` is the person's switch. ``--page-lines`` keeps the
+OCR lines of a reading cached before lines were kept, once they are shown to give its words, so the page-furniture pass
+(running headers, footers, page numbers) improves without changing a word of the reading.
 """
 
 from __future__ import annotations
@@ -42,6 +44,17 @@ def cmd_living(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
     data_dir = _data_dir(args)
     if args.reread or args.use_reread:
         return _reread(args, ld, data_dir)
+    if args.page_lines:
+        if ld.base.kind.value != "scan":
+            print(f"{ld.key}: the base is not a scan", file=sys.stderr)
+            return 2
+        try:
+            print(living_docs.save_page_lines(ld.base, living_docs.living_dir(data_dir, ld.key) / "sources"))
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(f"next: jason living {ld.key} (builds read the reading through its lines from now on)")
+        return 0
     as_of = date.fromisoformat(args.as_of) if args.as_of else None
     comments = None
     if args.fetch or args.annotations:
@@ -136,6 +149,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                         "a switch needs a dry run numbered as the builds are")
     p.add_argument("--use-reread", choices=readings, metavar="READING",
                    help="switch to a re-read (a person's decision; needs --yes --by NAME and a dry run first)")
+    p.add_argument("--page-lines", action="store_true",
+                   help="keep the OCR lines of the scanned base's reading in use (read once more, kept only when they "
+                        "give its words), so the current page-furniture pass applies to it")
     p.add_argument("--yes", action="store_true", help="with --use-reread: switch")
     p.add_argument("--by", help="with --use-reread: the person who chose it")
     p.set_defaults(func=lambda a: cmd_living(a, agent_factory))

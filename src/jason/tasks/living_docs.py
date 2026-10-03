@@ -140,12 +140,15 @@ def base_text_path(ref: SourceRef, cache: Path, digest: str, reading: str = "") 
     return cache / (f"{ref.ref}.{digest[:16]}.{reading}.txt" if reading else f"{ref.ref}.{digest[:16]}.txt")
 
 
-def scan_base_text(ref: SourceRef, cache: Path, drive: Any = None, *, reading: str | None = None) -> str:
-    """A scanned base document's text by OCR (``scan_marks.scan_text``), cached under the file's digest so the OCR runs
-    once per file. ``reading`` names a re-read (``READINGS``), cached beside the original under its own name; None is
-    the reading a person chose (``reading.json`` beside ``cache``), else the original. A cached text is never
-    replaced. Raises when the scan is not read or has changed since it was reviewed."""
-    from jason.community.scan_marks import scan_text
+def base_lines_path(text_path: Path) -> Path:
+    """The OCR lines of a reading, kept beside its text (``<text name less .txt>.lines.json``): their places on the
+    page, so the furniture pass (``scan_marks.drop_furniture``) can improve without a new OCR."""
+    return text_path.with_name(text_path.name[: -len(".txt")] + ".lines.json")
+
+
+def _scanned(ref: SourceRef, cache: Path, drive: Any, reading: str | None) -> tuple[Path, Path, str]:
+    """(the scan, its reading's text path, the reading) for a scanned base; raises when it cannot be read."""
+    import hashlib
 
     if reading is None:
         reading = _chosen_in(cache.parent)
@@ -154,19 +157,62 @@ def scan_base_text(ref: SourceRef, cache: Path, drive: Any = None, *, reading: s
     path, why = scan_file(ref, cache, drive)
     if path is None:
         raise ValueError(f"the base text cannot be read: {why}")
-    import hashlib
-
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    text_path = base_text_path(ref, cache, digest, reading)
+    return path, base_text_path(ref, cache, digest, reading), reading
+
+
+def scan_base_text(ref: SourceRef, cache: Path, drive: Any = None, *, reading: str | None = None) -> str:
+    """A scanned base document's text by OCR, cached under the file's digest so the OCR runs once per file. The OCR's
+    lines are kept too (``base_lines_path``), and the text is theirs less the page furniture as ``scan_marks``
+    judges it now (``lines_text``); a reading cached before lines were kept is its text as cached, until ``save_page_lines``
+    adds them. ``reading`` names a re-read (``READINGS``), cached beside the original under its own name; None is the
+    reading a person chose (``reading.json`` beside ``cache``), else the original. A cached text is never replaced.
+    Raises when the scan is not read or has changed since it was reviewed."""
+    from jason.community import scan_marks
+
+    path, text_path, reading = _scanned(ref, cache, drive, reading)
+    lines_path = base_lines_path(text_path)
+    if lines_path.is_file():
+        return scan_marks.lines_text(scan_marks.lines_from_rows(json.loads(lines_path.read_text(encoding="utf-8"))))
     if not text_path.is_file():
         if reading == "cli":
             from jason.community.ocr import TesseractCli
 
             if not TesseractCli.available():
                 raise ValueError("the cli reading needs Tesseract's command-line tool (docs/setup.md; TESSERACT_EXE)")
-        text = scan_text(path, engine=READINGS[reading]) if reading else scan_text(path)
-        text_path.write_text(text, encoding="utf-8")
+        lines = scan_marks.scan_lines(path, engine=READINGS[reading]) if reading else scan_marks.scan_lines(path)
+        lines_path.write_text(json.dumps(scan_marks.lines_to_rows(lines)), encoding="utf-8")
+        text_path.write_text(scan_marks.lines_text(lines), encoding="utf-8")
     return text_path.read_text(encoding="utf-8")
+
+
+def save_page_lines(ref: SourceRef, cache: Path, drive: Any = None, *, reading: str | None = None) -> str:
+    """Keep the OCR lines of a reading cached as text alone, so the current furniture pass applies to it: the scan is
+    read again by the reading's engine (the original's is not recorded: PyMuPDF's, then the Tesseract tool's, is
+    tried) and the lines are kept only when they are the OCR that made the cached text (``scan_marks.same_words``),
+    since a person's transcriptions are keyed to its words. Returns what was done, or raises with why not."""
+    from jason.community import scan_marks
+    from jason.community.ocr import TesseractCli
+
+    path, text_path, reading = _scanned(ref, cache, drive, reading)
+    lines_path = base_lines_path(text_path)
+    if lines_path.is_file():
+        return f"{lines_path.name}: kept already"
+    if not text_path.is_file():
+        scan_base_text(ref, cache, drive, reading=reading)
+        return f"{lines_path.name}: read with the text"
+    cached = text_path.read_text(encoding="utf-8")
+    engines = [READINGS[reading]] if reading else ["pymupdf", *(["tesseract-cli"] if TesseractCli.available() else [])]
+    why = []
+    for engine in engines:
+        lines = scan_marks.scan_lines(path, engine=engine)
+        differs = scan_marks.same_words(cached, lines)
+        if not differs:
+            lines_path.write_text(json.dumps(scan_marks.lines_to_rows(lines)), encoding="utf-8")
+            dropped = len(cached.split()) - len(scan_marks.lines_text(lines).split())
+            return f"{lines_path.name}: kept ({engine}); the furniture pass now leaves out {dropped} more words"
+        why.append(f"{engine}: {differs}")
+    raise ValueError(f"{text_path.name}: no OCR of the scan gives its words, so its lines are not kept: " + "; ".join(why))
 
 
 def operations(ref: SourceRef, data_dir: Path, cache: Path, *, docs: Any = None, drive: Any = None

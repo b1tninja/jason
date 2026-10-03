@@ -36,8 +36,8 @@ from jason.community.embedded_copies import (Copy, CopyKind, Currency, Index, Se
                                              paraphrases, shared_runs, without)
 from jason.community.living import CurrentDocument, Provision, Standing, provisions_of
 from jason.community.outlines import DocumentOutline, normalize_number
-from jason.community.section_refs import (CAVEAT, Embedded, SectionRefError, SectionText, TOKEN, citation_of,
-                                          expand_html, expand_markdown)
+from jason.community.section_refs import (CAVEAT, AmendedPart, Embedded, SectionRefError, SectionText, TOKEN,
+                                          citation_of, expand_html, expand_markdown)
 
 VERSIONS_FORMAT = 1
 
@@ -74,7 +74,7 @@ def _provision(raw: dict[str, Any]) -> Provision:
 
 def _fingerprint(living: Any, data_dir: Path) -> str:
     """What a living document's versions depend on: its specification row, its sources and transcriptions on disk,
-    and the code that consolidates them."""
+    and the code that reads and consolidates them."""
     from jason.tasks import living_docs
 
     h = hashlib.sha256(re.sub(r" object at 0x[0-9A-Fa-f]+", "", repr(living)).encode("utf-8"))
@@ -89,7 +89,9 @@ def _fingerprint(living: Any, data_dir: Path) -> str:
             st = path.stat()
             h.update(f"{path.name}:{st.st_size}:{int(st.st_mtime)}".encode())
     import jason.community.living as living_mod
-    for module in (living_mod, living_docs):
+    import jason.community.scan_marks as scan_marks
+    # scan_marks: a scanned base's text is its kept OCR lines less the furniture as the pass judges it at each read.
+    for module in (living_mod, living_docs, scan_marks):
         h.update(hashlib.sha256(Path(module.__file__).read_bytes()).digest())
     return h.hexdigest()[:24]
 
@@ -341,9 +343,17 @@ class DiskResolver:
         words = doc.text_of(number)
         amended = p.standing is not None
         note = ""
+        parts: tuple[AmendedPart, ...] = ()
         if versions is not None:
             info = versions.instruments.get(p.set_by) or {}
             set_by_title = (info.get("describe") or p.set_by) if amended else versions.title
+            # A subsection another instrument set is part of the words recited: the provenance names it, so it agrees
+            # with the section's history (``Citation.history``, which lists its subsections' instruments too).
+            parts = tuple(AmendedPart(q.number, (versions.instruments.get(q.set_by) or {}).get("describe") or q.set_by,
+                                      q.dated)
+                          for q in doc.provisions
+                          if q.number != number and (q.number.startswith(number + "(") or q.number.startswith(number + "."))
+                          and q.standing is not None and not (amended and q.set_by == p.set_by))
             source = versions.base
             now = versions.now.current(versions.key, versions.title, versions.base)
             if as_of is None or now.text_of(number) == words:
@@ -353,7 +363,7 @@ class DiskResolver:
         else:
             set_by_title, source = doc.title, doc.base
         return SectionText(key, number, p.caption, words, self.citation(key, number), doc.title, p.set_by,
-                           set_by_title, p.dated, amended, as_of, source, note)
+                           set_by_title, p.dated, amended, as_of, source, note, parts)
 
     def _typeset(self, key: str, number: str, words: str) -> tuple[str, str]:
         """A base read by OCR runs words together ("EachOwner shallpurchase"). When the working copy kept by hand has

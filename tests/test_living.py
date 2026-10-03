@@ -54,8 +54,7 @@ def _amendment_doc():
 
 def test_an_instruction_names_its_section_verb_and_caption():
     assert read_instruction("Article 2, Section 2.4 (“Pets”), subsection (c) (“Rental Agreement”), "
-                            "subpart (iii) is hereby amended and restated as follows:") == ("2.4(c)(iii)", Verb.RESTATE,
-                                                                                            "Rental Agreement")
+                            "subpart (iii) is hereby amended and restated as follows:") == ("2.4(c)(iii)", Verb.RESTATE, "")
     assert read_instruction("Section 2.4 of the Declaration is amended to add the following subsection:")[1] is Verb.ADD
     assert read_instruction("Section 2.4(b) is hereby removed.")[:2] == ("2.4(b)", Verb.REMOVE)
     assert read_instruction("The Owners shall comply with Section 2.4.") is None
@@ -138,6 +137,48 @@ def test_an_added_subsection_lands_after_its_parent_with_its_own_subsections():
     assert numbers[numbers.index("2.4(o)") + 1: numbers.index("2.5")] == ["2.4(o)(i)", "2.4(o)(ii)"]
     assert current.provision("2.4(o)(ii)").body == "owned by the lender."
     assert "Miscellaneous" not in current.text_of("2.4(o)")
+
+
+def test_a_caption_belongs_to_the_label_it_follows_with_any_quotes():
+    # Straight quotes, curly quotes, and the mix OCR makes of them (an opening read as a single quote, a closing
+    # parenthesis the instrument left out): each caption is its own part's, and the target's is the last label's.
+    for left, right in (('"', '"'), ("“", "”"), ("‘", "”"), ("“", "’"), ("'", "'")):
+        named = (f"Article 2, Section 2.4 ({left}Pets{right}), subsection (c) ({left}Rental Agreement{right}) is hereby "
+                 "amended and restated as follows:")
+        assert read_instruction(named) == ("2.4(c)", Verb.RESTATE, "Rental Agreement"), named
+        deeper = (f"Article 2, Section 2.4 ({left}Pets{right}, subsection (c) ({left}Rental Agreement{right}), subpart "
+                  "(iii) is hereby amended and restated as follows:")
+        assert read_instruction(deeper) == ("2.4(c)(iii)", Verb.RESTATE, ""), deeper
+    assert read_instruction("Section 2.4(c), entitled “Rental Agreement,” is hereby amended to read as follows:") == (
+        "2.4(c)", Verb.RESTATE, "Rental Agreement")
+    assert read_instruction("Section 2.4 (“Pets”), subsection (b) is hereby removed.") == ("2.4(b)", Verb.REMOVE, "")
+    assert read_instruction("Section 2.4(d) (‘Owner’s Indemnity”) is hereby amended to read as follows:")[2] == \
+        "Owner’s Indemnity"
+
+
+def test_an_instructions_lead_in_never_joins_the_restated_words():
+    """The lead-in names the section and a subsection with captions (OCR's mixed quotes); the words start after "as
+    follows:", even in the instruction's own paragraph, and end before the signature block when OCR lost "IN WITNESS
+    WHEREOF"."""
+    text = ("NOW, THEREFORE, Section 2.4 of the Declaration is hereby amended as follows:\n\n"
+            "1. Article 2, Section 2.4 (“Pets’, subsection (c) (‘Rental Agreement”), subpart (iii) is hereby amended "
+            "and restated as follows: that the term is at least thirty (30) days.\n\n"
+            "2. Article 2, Section 2.4 (“Pets”), subsection (a) (‘Number”) is hereby amended and restated as follows:\n\n"
+            "Not more than three (3) pets may be kept in a Unit at any time.\n\n"
+            "Exhibit B shall list the pets kept.\n\n"
+            "DATED: January 5, 2024 EXAMPLE HOMES ASSOCIATION\n\nPresident\n\nEXHIBIT A\n\nLegal Description\n")
+    ops = operations_from_text(text)
+    assert [(o.section, o.caption, o.after) for o in ops] == [
+        ("2.4(c)(iii)", "", "that the term is at least thirty (30) days."),
+        ("2.4(a)", "Number", "Not more than three (3) pets may be kept in a Unit at any time.\n"
+                             "Exhibit B shall list the pets kept.")]
+    assert ops[0].instruction.endswith("restated as follows:")
+    current = consolidate(_base(), [Instrument("amend-1", "decl", Standing.RECORDED, ops, recorded=date(2024, 2, 1))])
+    iii = current.provision("2.4(c)(iii)")
+    assert (iii.caption, iii.body) == ("", "that the term is at least thirty (30) days.")
+    whole = current.text_of("2.4(c)")
+    assert "Rental Agreement." in whole and "subsection" not in whole and "Pets" not in whole
+    assert current.provision("2.4(a)").caption == "Number."            # the base's own caption stays
 
 
 def test_a_hand_amended_copy_is_drift_and_its_bracketed_notes_are_not_text():

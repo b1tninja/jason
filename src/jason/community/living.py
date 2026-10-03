@@ -189,7 +189,15 @@ _VERB = re.compile(
     re.I)
 _SECTION = re.compile(r"\bSections?\s+(\d+(?:\.\d+)+)((?:\s*\(\s*[a-z0-9]{1,5}\s*\))*)", re.I)
 _SUBPART = re.compile(r"\b(?:subsection|subpart|paragraph|subparagraph|clause)\s*\(\s*([a-z0-9]{1,5})\s*\)", re.I)
-_CAPTION = re.compile(r"[\"“]([^\"“”]{2,90}?)[\"”]")
+# A caption's quotes. OCR reads a curly quote either way round, and often as a single one ("‘Restrictions…”").
+_QUOTE = "\"'`“”‘’„"
+# The caption that follows a part's label: (“Use”), (‘Use’), ("Use"), entitled “Use,”; a closing parenthesis or quote
+# the instrument or the OCR left out is allowed. Only what lies between the last label and the verb is the target's.
+_OWN_CAPTION = re.compile(rf"^\s*,?\s*(?:(?:entitled|captioned|titled)\s+)?\(?\s*[{_QUOTE}]\s*([^()]{{2,90}}?)"
+                          rf"[\s,.;:]*[{_QUOTE}]?\s*\)?\s*[,.;:]?\s*$", re.I)
+# The signature block, which ends the last operation's words even where OCR lost "IN WITNESS WHEREOF".
+# In capitals, as the block sets them: restated words may well begin "Exhibit B shall ...".
+_SIGNATURE = re.compile(r"^\W*(?:DATED\s*:|EXHIBIT\s+[A-Z0-9]{1,2}\W*$|ACKNOWLEDGE?MENT\b)")
 _LEADING_TOKEN = re.compile(r"^\s*\(\s*([a-z0-9]{1,5})\s*\)\s*", re.I)
 _LEADING_LABEL = re.compile(r"^\s*(?:\(\s*[a-z0-9]{1,5}\s*\)|\d+(?:\.\d+)+\.?(?=\s))\s*", re.I)
 _INLINE_CAPTION = re.compile(r"^((?:[A-Z][\w'’&/-]*)(?:\s+(?:[A-Z][\w'’&/-]*|of|on|the|and|or|to|for|in|a|an|by|with)){0,12}\.)\s+")
@@ -205,8 +213,10 @@ def _verb(word: str) -> Verb:
 
 
 def read_instruction(text: str) -> tuple[str, Verb, str] | None:
-    """The section, verb, and quoted caption of one instruction ("Section 4.2 (“Use”), subsection (b) is hereby
-    removed"), or None when the text gives no section and verb."""
+    """The section, verb, and caption of one instruction ("Section 4.2 (“Use”), subsection (b) (“Pets”) is hereby
+    removed" is 4.2(b), removed, "Pets"), or None when the text gives no section and verb. The caption is the target's
+    own, the one quoted right after its last label: in "Section 4.2 (“Use”), subsection (b), subpart (ii) is amended",
+    "Use" is 4.2's caption and (ii) has none."""
     verb = _VERB.search(text)
     if not verb:
         return None
@@ -216,11 +226,42 @@ def read_instruction(text: str) -> tuple[str, Verb, str] | None:
         return None
     m = found[-1]
     number = m.group(1) + re.sub(r"\s+", "", m.group(2) or "")
-    for sub in _SUBPART.finditer(head[m.end():]):
+    last = m.end()
+    for sub in _SUBPART.finditer(head, m.end()):
         number += f"({sub.group(1).lower()})"
-    captions = _CAPTION.findall(head[m.end():])
-    caption = captions[-1].strip() if captions else ""
+        last = sub.end()
+    own = _OWN_CAPTION.match(head[last:])
+    caption = own.group(1).strip(" ,.;:") if own else ""
     return normalize_number(number), _verb(verb.group(1)), caption
+
+
+def _instruction_end(text: str) -> int:
+    """Where an instruction's words end in its paragraph: after the first colon past its verb that is outside
+    parentheses (the legend's), else the paragraph's end. Words after it are the operation's own."""
+    verb = _VERB.search(text)
+    if not verb:
+        return len(text)
+    depth = 0
+    for k in range(verb.end(), len(text)):
+        c = text[k]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth = max(0, depth - 1)
+        elif c == ":" and depth == 0:
+            return k + 1
+    return len(text)
+
+
+def _runs_after(runs: Sequence[StyledRun], offset: int) -> list[StyledRun]:
+    """The styled runs of a paragraph from character ``offset`` on."""
+    out, at = [], 0
+    for r in runs:
+        end = at + len(r.text)
+        if end > offset:
+            out.append(r if at >= offset else replace(r, text=r.text[offset - at:]))
+        at = end
+    return out
 
 
 def legend(paragraphs: Sequence[Sequence[StyledRun]]) -> str:
@@ -282,7 +323,7 @@ def read_operations(paragraphs: Iterable[Sequence[StyledRun]], *, styled: bool =
             return
         section, verb, caption, instruction = pending
         runs = _tidy(body)
-        if verb is Verb.ADD and runs and not caption:
+        if verb is Verb.ADD and runs:
             # "is amended to add the following subsection: (o) Caption. Words": the number and caption lead the words.
             text = runs[0].text
             if m := _LEADING_TOKEN.match(text):
@@ -290,13 +331,23 @@ def read_operations(paragraphs: Iterable[Sequence[StyledRun]], *, styled: bool =
                 token = "o" if m.group(1) == "0" else m.group(1).lower()
                 section = normalize_number(f"{section}({token})")
                 text = text[m.end():]
-            if c := _INLINE_CAPTION.match(text):
+                caption = ""                  # a caption in the instruction was the parent's, not the new part's
+            if not caption and (c := _INLINE_CAPTION.match(text)):
                 caption, text = c.group(1), text[c.end():]
             runs = _tidy([Run(text, runs[0].mark), *runs[1:]])
         if not runs and verb is not Verb.REMOVE:
             return
         lost = has_legend and not added_by and verb is Verb.RESTATE
         ops.append(Operation(section, verb, runs, caption, instruction, lost))
+
+    def words(runs: Sequence[StyledRun]) -> None:
+        if body:
+            body.append(Run("\n"))
+        first = True
+        for r in runs:
+            t = r.text.lstrip("\t") if first else r.text
+            first = False
+            body.append(Run(t.replace("\n", ""), _mark(r, added_by)))
 
     for runs in paragraphs:
         text = "".join(r.text for r in runs).strip()
@@ -306,24 +357,24 @@ def read_operations(paragraphs: Iterable[Sequence[StyledRun]], *, styled: bool =
             if not _OPERATIVE.search(text):
                 continue
             started = True
-        if _WITNESS.match(text):
+        if _WITNESS.match(text) or _SIGNATURE.match(text):
             break
         if found := read_instruction(text):
             flush()
-            pending, body = (*found, text), []
+            # The instruction ends at its operative phrase ("... as follows:"); words after it are the operation's.
+            joined = "".join(r.text for r in runs)
+            end = _instruction_end(joined)
+            pending, body = (*found, joined[:end].strip()), []
+            rest = _runs_after(runs, end)
+            if "".join(r.text for r in rest).strip():
+                words([StyledRun(rest[0].text.lstrip(), rest[0].struck, rest[0].bold, rest[0].underlined), *rest[1:]])
             continue
         if _OWN_ARTICLE.match(text):
             flush()
             pending, body = None, []
             continue
         if pending is not None:
-            if body:
-                body.append(Run("\n"))
-            first = True
-            for r in runs:
-                t = r.text.lstrip("\t") if first else r.text
-                first = False
-                body.append(Run(t.replace("\n", ""), _mark(r, added_by)))
+            words(runs)
     flush()
     return tuple(ops)
 

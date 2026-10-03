@@ -113,11 +113,13 @@ def scanned(tmp_path, monkeypatch):
 
     calls = []
 
-    def fake_scan_text(pdf, *, dpi=300, engine="auto"):
+    def fake_scan_lines(pdf, *, dpi=300, engine="auto"):
         calls.append(engine)
-        return NEW if engine == "tesseract-cli" else OLD
+        text = NEW if engine == "tesseract-cli" else OLD
+        return [scan_marks.ScanLine(0, k, 0.5, 0.52, tuple(scan_marks.ScanChar(c, False, 0.0) for c in line))
+                for k, line in enumerate(text.splitlines())]
 
-    monkeypatch.setattr(scan_marks, "scan_text", fake_scan_text)
+    monkeypatch.setattr(scan_marks, "scan_lines", fake_scan_lines)
     monkeypatch.setattr(ocr.TesseractCli, "available", classmethod(lambda cls: True))
     living = LivingDocument("decl", "Declaration", DocumentKind.DECLARATION,
                             base=SourceRef(SourceKind.SCAN, "scan-1"), base_from="the recorded copy")
@@ -135,7 +137,7 @@ def scanned(tmp_path, monkeypatch):
 def test_a_reread_is_cached_beside_the_original_and_the_original_stays_in_use(scanned):
     original = scanned.cache / f"scan-1.{scanned.digest[:16]}.txt"
     assert ld.scan_base_text(scanned.living.base, scanned.cache) == OLD and scanned.calls == []
-    assert ld.scan_base_text(scanned.living.base, scanned.cache, reading="cli") == NEW
+    assert ld.scan_base_text(scanned.living.base, scanned.cache, reading="cli") == NEW.strip()
     assert (scanned.cache / f"scan-1.{scanned.digest[:16]}.cli.txt").is_file() and scanned.calls == ["tesseract-cli"]
     assert original.read_text(encoding="utf-8") == OLD
     assert "keep of the Unit" in ld.build(scanned.living, scanned.data).current.text_of("1.1(a)")

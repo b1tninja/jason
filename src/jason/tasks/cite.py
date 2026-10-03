@@ -557,10 +557,14 @@ class Shelf:
             return _miss(Reason.REMOVED, f"removed by {p.set_by}" + (f" ({p.dated.isoformat()})" if p.dated else "")
                          + "; cite it as of an earlier day", cite)
         st = self.resolver.section(t.key, t.number, t.as_of)
-        version = {"document": st.document, "setBy": st.set_by, "setByTitle": st.set_by_title, "dated": _day(st.dated),
-                   "amended": st.amended, "asOf": _day(st.as_of), "source": st.source, "note": st.note,
-                   "provenance": st.provenance(), "digest": st.digest, "caption": st.caption,
-                   "living": versions is not None}
+        # "amended" and "dated" are the words recited, subsections and all, so they agree with the history; "setBy" is
+        # who set the section's own words, and "parts" the subsections another instrument set.
+        version = {"document": st.document, "setBy": st.set_by, "setByTitle": st.set_by_title,
+                   "dated": _day(st.changed_on), "amended": st.changed, "asOf": _day(st.as_of), "source": st.source,
+                   "note": st.note, "provenance": st.provenance(), "digest": st.digest, "caption": st.caption,
+                   "living": versions is not None,
+                   "parts": [{"section": q.number, "setByTitle": q.set_by_title, "dated": _day(q.dated)}
+                             for q in st.parts]}
         return State(Kind.SECTION, True, citation=st.citation, title=doc.title, text=st.words, version=version,
                      outline=t.key, numbers=(t.number,), links=self._links(t.key))
 
@@ -1087,14 +1091,14 @@ class Shelf:
                 return Treatment.CURRENT, ""
             if wanted and copy and wanted in _letters(copy):
                 if st.version.get("amended"):
-                    return Treatment.AMENDED, (f"the quote is the outline's words; {st.version.get('setByTitle')} "
-                                               "set the section's words")
+                    return Treatment.AMENDED, ("the quote is the outline's words; the section reads "
+                                               f"{st.version.get('provenance')}")
                 return Treatment.CURRENT, ("the quote is the working copy's words; the text as amended reads them "
                                            "differently (an OCR slip, or drift: jason living KEY --working)"
                                            ).replace("KEY", cited.key)
             return Treatment.WORDS_CHANGED, "the words the record quotes are not in the section now"
         if st.version.get("amended"):
-            return Treatment.AMENDED, f"set by {st.version.get('setByTitle')}; the record stores no version"
+            return Treatment.AMENDED, f"{st.version.get('provenance')}; the record stores no version"
         return Treatment.UNAMENDED, ""
 
     def _relocated(self, cited: Target, st: State, copy: str | None, *, quote: str = "", pid: str = "",

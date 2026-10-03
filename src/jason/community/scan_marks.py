@@ -9,7 +9,8 @@ one font). The marks survive in the pixels, so this reads them there:
 - **bold**: stroke width, the median length of the dark runs inside a character's box. A word whose letters' mean
   stroke is well above the page's median is bold.
 - **page furniture**: a line in the top or bottom margin whose words recur on another page (a running header, a
-  footer with the document's name) is dropped, so it never joins an operation's words.
+  footer with the document's name), the same line just outside the margin at its usual height, and a page number are
+  dropped (``drop_furniture``), so none joins an operation's words or a sentence split across a page break.
 
 The result is ``StyledRun`` paragraphs for ``living.read_operations``. OCR still misreads some letters; a slip in the
 operative words is a ``Correction`` row, and a second reading (the draft Doc) compares the words.
@@ -99,13 +100,51 @@ def _key(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
+# A page number: arabic (OCR may space its digits, "- 1 6 -") or roman. A footer's page number differs on every page,
+# and its letters are too few for the likeness test, so it is known by its shape.
+_NUMBER = r"(?:\d(?:\s?\d){0,3}|[ivxlc]{1,6})"
+# Set off by dashes or tildes ("- 17 -", "-ii-", "~25 -"), or written out ("Page 3", "Page 3 of 10", "3 of 10").
+_DECORATED_NUMBER = re.compile(rf"\s*(?:[-–—~]\s*{_NUMBER}\s*[-–—~]?|{_NUMBER}\s*[-–—~]|page\s*{_NUMBER}(?:\s+of\s+\d{{1,4}})?"
+                               rf"|\d{{1,4}}\s+of\s+\d{{1,4}})\s*", re.I)
+# A number alone: a page number only in the bottom margin, since a top line may be a section's label ("12", "iv").
+_BARE_NUMBER = re.compile(rf"\s*{_NUMBER}\s*", re.I)
+NEAR = 0.05                      # how far outside the margin band a running header or footer may still sit
+SAME_HEIGHT = 0.02               # ... when it is at the height (a share of the page) where it sits on other pages
+
+
+def page_number(line: ScanLine) -> bool:
+    """Whether a margin line is a page number: "- 17 -", "-ii-", "Page 3 of 10", or a number alone at the foot."""
+    text = line.text.strip()
+    if _DECORATED_NUMBER.fullmatch(text):
+        return True
+    return line.bottom > 1 - MARGIN and bool(_BARE_NUMBER.fullmatch(text))
+
+
 def drop_furniture(lines: list[ScanLine], *, alike: float = 0.7) -> list[ScanLine]:
-    """Leave out lines in the top or bottom margin whose letters recur, nearly alike, on another page: running headers
-    and footers. OCR reads the same footer a little differently on each page, so the test is a likeness, not equality."""
+    """Leave out the page furniture, so it never joins the words of a section split across a page break:
+
+    - a line in the top or bottom margin whose letters recur, nearly alike, on another page (running headers and
+      footers). OCR reads the same footer a little differently on each page, so the test is a likeness, not equality;
+    - a line just outside the margin band (``NEAR``) that is alike to such a footer on another page and sits at its
+      height there (``SAME_HEIGHT``): a page scanned a little askew puts its footer just above the band;
+    - a page number in the margin (``page_number``), which differs on every page and is too short for a likeness."""
     from difflib import SequenceMatcher
 
-    margin = [line for line in lines if line.top < MARGIN or line.bottom > 1 - MARGIN]
-    drop = set()
+    def strict(line: ScanLine) -> bool:
+        return line.top < MARGIN or line.bottom > 1 - MARGIN
+
+    def near(line: ScanLine) -> bool:
+        return not strict(line) and (line.top < MARGIN + NEAR or line.bottom > 1 - MARGIN - NEAR)
+
+    margin = [line for line in lines if strict(line)]
+    numbers = [line for line in margin if page_number(line)]
+    drop = {id(line) for line in numbers}
+    # OCR garbles some page numbers ("iad 1 -", "~1V-"): a short margin line with a digit or a dash, at the height where
+    # page numbers sit on two other pages, is one too.
+    for a in margin:
+        if id(a) not in drop and 0 < len(_key(a.text)) <= 5 and re.search(r"[\d\-–—~]", a.text) and len(
+                {b.page for b in numbers if b.page != a.page and abs(b.top - a.top) <= SAME_HEIGHT}) >= 2:
+            drop.add(id(a))
     for i, a in enumerate(margin):
         ka = _key(a.text)
         if len(ka) < 4:
@@ -113,6 +152,12 @@ def drop_furniture(lines: list[ScanLine], *, alike: float = 0.7) -> list[ScanLin
         for b in margin[i + 1:]:
             if b.page != a.page and SequenceMatcher(None, ka, _key(b.text)).ratio() >= alike:
                 drop.update((id(a), id(b)))
+    footers = [line for line in margin if id(line) in drop and len(_key(line.text)) >= 4]
+    for a in (line for line in lines if near(line)):
+        ka = _key(a.text)
+        if len(ka) >= 4 and any(b.page != a.page and abs(b.top - a.top) <= SAME_HEIGHT
+                                and SequenceMatcher(None, ka, _key(b.text)).ratio() >= alike for b in footers):
+            drop.add(id(a))
     return [line for line in lines if id(line) not in drop]
 
 
@@ -193,23 +238,26 @@ def tesseract_text_lines(pdf: Path, *, dpi: int = DPI) -> list[ScanLine]:
     return out
 
 
-def scan_text(pdf: Path, *, dpi: int = DPI, engine: str = "auto") -> str:
-    """A scanned document's text by OCR, page by page, without its running headers and footers: each OCR block a
-    paragraph, so a section number starts its own line as an outline expects. ``engine``: "tesseract-cli" (the
-    tool's own words; the default when the tool is installed), "pymupdf" (PyMuPDF's page OCR, which runs narrow-spaced
-    words together), or "auto"."""
+def scan_lines(pdf: Path, *, dpi: int = DPI, engine: str = "auto") -> list[ScanLine]:
+    """A scanned document's lines by OCR, each with its page, block, and height on the page, its furniture still in:
+    what ``lines_text`` makes a text of. ``engine``: "tesseract-cli" (the tool's own words; the default when the tool
+    is installed), "pymupdf" (PyMuPDF's page OCR, which runs narrow-spaced words together), or "auto"."""
     import pymupdf
 
     from jason.community.ocr import TesseractCli
 
     if engine == "tesseract-cli" or (engine == "auto" and TesseractCli.available()):
-        raw_lines = tesseract_text_lines(pdf, dpi=dpi)
-    else:
-        doc = pymupdf.open(str(pdf))
-        raw_lines = [line for n in range(doc.page_count) for line in page_text_lines(doc[n], n, dpi=dpi)]
-    lines = drop_furniture(raw_lines)
-    out, last = [], None
-    for line in lines:
+        return tesseract_text_lines(pdf, dpi=dpi)
+    with pymupdf.open(str(pdf)) as doc:
+        return [line for n in range(doc.page_count) for line in page_text_lines(doc[n], n, dpi=dpi)]
+
+
+def lines_text(lines: list[ScanLine]) -> str:
+    """OCR lines as text, without the page furniture (``drop_furniture``): each OCR block a paragraph, so a section
+    number starts its own line as an outline expects."""
+    out: list[str] = []
+    last = None
+    for line in drop_furniture(lines):
         if (line.page, line.block) != last and out:
             out.append("\n")
         elif out:
@@ -217,6 +265,45 @@ def scan_text(pdf: Path, *, dpi: int = DPI, engine: str = "auto") -> str:
         out.append(line.text.strip())
         last = (line.page, line.block)
     return "".join(out)
+
+
+def scan_text(pdf: Path, *, dpi: int = DPI, engine: str = "auto") -> str:
+    """A scanned document's text by OCR, page by page, without its page furniture (``scan_lines``, ``lines_text``)."""
+    return lines_text(scan_lines(pdf, dpi=dpi, engine=engine))
+
+
+def lines_to_rows(lines: list[ScanLine]) -> list[dict[str, Any]]:
+    """OCR text lines as JSON rows (their words and place; a text line has no marks), to keep beside a reading."""
+    return [{"page": line.page, "block": line.block, "top": round(line.top, 5), "bottom": round(line.bottom, 5),
+             "text": line.text} for line in lines]
+
+
+def lines_from_rows(rows: list[dict[str, Any]]) -> list[ScanLine]:
+    return [ScanLine(int(r["page"]), int(r["block"]), float(r["top"]), float(r["bottom"]),
+                     tuple(ScanChar(c, False, 0.0) for c in str(r["text"]))) for r in rows]
+
+
+def same_words(text: str, lines: list[ScanLine]) -> str:
+    """Why ``lines`` are not the OCR that made ``text`` (empty when they are): their text (``lines_text``) must be
+    ``text``'s words less words of lines the furniture pass now drops. A reading made by an older furniture pass keeps
+    some furniture; any other difference is a different OCR, whose words a person's transcriptions were not keyed to."""
+    from collections import Counter
+    from difflib import SequenceMatcher
+
+    kept = {id(line) for line in drop_furniture(lines)}
+    spare = Counter(w for line in lines if id(line) not in kept for w in line.text.split())
+    old, new = text.split(), lines_text(lines).split()
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        where = " ".join(old[max(0, i1 - 4): i2 + 4])
+        if tag != "delete":
+            return f'the words differ near "{where}": "{" ".join(old[i1:i2])}" -> "{" ".join(new[j1:j2])}"'
+        for w in old[i1:i2]:
+            if spare[w] <= 0:
+                return f'"{w}" near "{where}" is not on a line the furniture pass drops'
+            spare[w] -= 1
+    return ""
 
 
 def operations_from_scan(pdf: Path, *, pages: tuple[int, ...] = ()):
@@ -227,5 +314,6 @@ def operations_from_scan(pdf: Path, *, pages: tuple[int, ...] = ()):
     return tuple(replace(op, struck_by_ocr=True) for op in read_operations(scan_paragraphs(pdf, pages=pages), styled=True))
 
 
-__all__ = ["ScanChar", "ScanLine", "drop_furniture", "operations_from_scan", "page_lines", "page_text_lines", "scan_paragraphs", "scan_text", "tesseract_text_lines",
-           "styled_paragraphs"]
+__all__ = ["ScanChar", "ScanLine", "drop_furniture", "lines_from_rows", "lines_text", "lines_to_rows",
+           "operations_from_scan", "page_lines", "page_number", "page_text_lines", "same_words", "scan_lines",
+           "scan_paragraphs", "scan_text", "tesseract_text_lines", "styled_paragraphs"]

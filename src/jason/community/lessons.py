@@ -523,6 +523,30 @@ LESSONS: tuple[Lesson, ...] = (
            "A date the text prints is what the text claims, not when the copy existed.",
            "A version keeps its existed-by dates (email, upload, Drive, PDF metadata) apart from the dates it claims, and is "
            "ordered by the former.", Status.FIXED, guards=("revision_detection Version.existed / claims",)),
+    Lesson("page-numbers-survived-furniture", OCT_2026, (Area.DOCUMENTS, Area.GOVERNING),
+           "Page numbers and a footer just above the margin band survived the furniture pass and split a recited "
+           "section's sentence.",
+           "The pass dropped only margin lines whose letters recurred on another page; a page number differs on every "
+           "page and is too short for a likeness, and a footer on a page scanned askew sat just inside the band.",
+           "Page numbers are matched by shape and height; footers just outside the band by likeness at the same height; "
+           "OCR lines are kept so the pass can improve without new OCR (jason living KEY --page-lines, kept only when the "
+           "words match).",
+           Status.FIXED, guards=("scan_marks.drop_furniture", "tests/test_scan_marks.py"),
+           docs=("docs/living-documents.md (Page furniture)",)),
+    Lesson("instruction-lead-in-joined-the-words", OCT_2026, (Area.GOVERNING,),
+           "An amendment's instruction ('Section X (“Caption”), subsection (m) (‘Caption’)') became a "
+           "subpart's caption and was recited inside the section.",
+           "The caption was the last quoted run anywhere after the section number, and OCR mixed curly and single quotes.",
+           "A caption belongs only to the label it follows, any quote style is read, an instruction ends at its colon, and "
+           "the operation's words end at the next instruction or the signature block.",
+           Status.FIXED, guards=("living.read_instruction", "living.read_operations", "tests/test_living.py"),
+           docs=("docs/living-documents.md (An instruction's lead-in)",)),
+    Lesson("history-and-provenance-disagreed", OCT_2026, (Area.GOVERNING,),
+           "A section's history listed an amendment while its provenance said it was written in the original.",
+           "The provenance described only the section's own words; the recitation and the history include its "
+           "subsections.",
+           "The provenance names each subsection another instrument set, and the version fields describe the words "
+           "recited.", Status.FIXED, guards=("SectionText.parts", "tests/test_cite.py (history and provenance agree)")),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
