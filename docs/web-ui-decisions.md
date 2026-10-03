@@ -85,15 +85,27 @@ The verbs with a store behind them each get a view:
   that print its number (a cancellation or non-renewal red), its findings, the terms as a timeline, and the
   claims the mail acknowledges.
 
+### The next verbs (`#/inbox`, `#/reserves`, `#/title`, `#/hearings`)
+
+- **Inbox** (`open_items`): what is waiting on the association, in one place: email threads awaiting a reply
+  (with how often that sender was answered before, the nearest thing to a confidence number), PayHOA requests
+  pending, deadlines due, insurance findings, letters to act on with the deadlines they state, mail not yet
+  scanned, and lien notices. jason answers, pays, and files nothing.
+- **Reserves** (`reserve_transfers`): a card per borrowing with the Civil Code 5515 record as four ticks (notice
+  of intent on an agenda, minutes with the finding, a resolution, restored within a year), the restore-by date,
+  repaid and outstanding, and the gaps red; then contributions against the budget, and the movements no
+  schedule or loan explains. Whether the statute was met is the board's call.
+- **Title watch** (`title_watch`): every recorded lien by standing, the four a person acts on first (in default,
+  stands against the current owner, a prior owner's lien with no sale since, a release the association owes
+  under 5685), with a namesake flag when the filing names a bare name. What the index shows, not a title report.
+- **Hearings** (`hearings`): each planned hearing against the 5855 clocks (notice ten days ahead, delivered or
+  due; the written decision within fourteen days), whether a meeting is scheduled, and its problems. Directors
+  only; jason never sends the notice or decides.
+
 ## Next, by what a person decides
 
-**Review queues (a treasurer or manager works a list).** `utility_payments` (same shape as invoices),
-`ledger_validation` (printed against ledger), `title_watch --attention` (the four standings a person acts
-on), `open_items` and `reply_needed` (an inbox). Table with facets, expandable rows, `Findings`, `Pill`, `DueDate`.
-
-**Compliance records (the board judges whether a statute was met).** `reserve_transfers` (a card per borrowing
-with the 5515 documents ticked and `gaps` red), `hearings` (the 5855 clocks), `legal_cases.openDuties`.
-Checklist plus `Timeline`.
+**Review queues.** `utility_payments` (same shape as invoices), `ledger_validation` (printed against ledger),
+`reply_needed` on its own with its basis, `legal_cases.openDuties`, `audit_chains`.
 
 **Drafts for approval (a person reads, then runs the command).** `request_links.drafts` (a proposed PayHOA
 request per thread), agenda, minutes, hearing and rule-change drafts, letters from templates, Gmail drafts, the

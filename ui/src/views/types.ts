@@ -87,3 +87,37 @@ export interface CollectionRow {
   lien?: string; lienRecorded?: string; lienStatus?: string; lienDays?: number; floorQuestion?: string; nextStep: string;
 }
 export interface Collections { found?: boolean; note?: string; counts: Record<string, number>; rows: CollectionRow[]; pastDueCents: number; note2?: string }
+
+export interface Move { day: string; cents: number; account: string; kind: string; purpose: string; number: string; memo: string; description: string; matched?: boolean }
+export interface Borrowing extends Move {
+  deadline: string; repaidCents: number; outstandingCents: number; repaidOn: string | null; exactRepayment: boolean; repayments: Move[];
+  documents: { notice: { path?: string; cites?: string } | null; minutes: { path?: string; draft?: boolean } | null; resolution: { path?: string } | null };
+  gaps: string[];
+}
+export interface Reserves {
+  found?: boolean; note?: string; ledgerThrough: string; reserveAccounts: string[]; borrowings: Borrowing[];
+  budgetYears: { year: number; through?: string; contributionBudgetCents: number; contributionPaidCents: number; repaymentBudgetCents?: number; repaymentPaidCents?: number; short?: string[]; late?: { month: string; daysLate: number }[] }[];
+  otherWithdrawals: Move[]; unappliedContributions: Move[]; catchUps: Move[]; investments: Move[]; caveats?: string[];
+}
+export interface Hearing {
+  address: string; building?: string | number; start: string; noticeBy: string; noticeOn?: string; decisionByIfHeld: string; statement?: string;
+  standing: string; scheduled: boolean; zoom?: { id?: string; joinUrl?: string } | null; notice?: string; problems?: string[];
+}
+export interface Hearings { found?: boolean; note?: string; hearings: Hearing[] }
+export interface TitleRow {
+  apn: string; address: string; building: string | number; owner: string; currentOwners: string[]; process: string; number: string; recorded: string;
+  claimant: string[]; status: string; standing: string; meaning: string; presumedPaidAt: string; namesakeRisk: boolean; enforceableUntil: string; sharedWith: string[]; latestStep: string; taxBillYear?: number | string;
+}
+export interface TitleWatch { found?: boolean; note?: string; counts: Record<string, number>; rows: TitleRow[] }
+export interface OpenItems {
+  found?: boolean; note?: string; counts: Record<string, number>;
+  threadsAwaitingUs: { threadId?: string; last: string; ageDays: number; who: string; subject: string; topics: string[]; link?: string; likelyNeedsResponse?: boolean; pastUsualTime?: boolean; replyRate?: number }[];
+  requestsPending: { id?: string | number; form?: string; unit?: string; title?: string; created?: string; status?: string }[];
+  emailedRequests?: unknown[];
+  deadlines: { name: string; next: string | null; daysLeft: number | null; standing: string; note?: string }[];
+  insurance: { policy: string; standing: string; finding: string }[];
+  mailNotScanned: { mailId?: string; received: string; from?: string; kind?: string }[];
+  lettersToAct: { received: string; from: string; kind: string; deadlines: string[]; mailId?: string }[];
+  lienNotices: { received?: string; from?: string; kind?: string; amountCents?: number; subject?: string }[];
+  caveats?: string[];
+}

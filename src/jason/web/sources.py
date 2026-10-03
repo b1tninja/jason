@@ -119,6 +119,30 @@ def collections(args: Args) -> dict[str, Any]:
     return tool()
 
 
+def reserves(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import reserve_transfers as tool
+
+    return tool()
+
+
+def hearings(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import hearings as tool
+
+    return tool()
+
+
+def title_watch(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import title_watch as tool
+
+    return tool(apn=args.get("apn", ""), standing=args.get("standing", ""), attention=_flag(args, "attention"))
+
+
+def open_items(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import open_items as tool
+
+    return tool(days=int(args.get("days", "30") or 30))
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -192,6 +216,10 @@ def default_loaders() -> dict[str, Any]:
         "reconciliations": reconciliations,
         "invoices": invoices,
         "collections": collections,
+        "reserves": reserves,
+        "hearings": hearings,
+        "title-watch": title_watch,
+        "open-items": open_items,
     }
 
 

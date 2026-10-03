@@ -72,3 +72,4 @@ button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .kv { display: grid; grid-template-columns: 9rem 1fr; gap: .3rem .75rem; margin: 0; } .kv dt { color: var(--muted); } .kv dd { margin: 0; }
 .passage { margin: .5rem 0; padding: .4rem .8rem; border-left: 3px solid var(--line); background: var(--bg); border-radius: 0 6px 6px 0; } .passage p { margin: 0 0 .3rem; }
 @media (max-width: 640px) { .kv { grid-template-columns: 1fr; } }
+.ticks { list-style: none; margin: .5rem 0; padding: 0; } .tick { margin: .2rem 0; }

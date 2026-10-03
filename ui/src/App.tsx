@@ -6,6 +6,10 @@ import { AssociationRecordsView } from "./views/AssociationRecordsView";
 import { BoardItemsView } from "./views/BoardItemsView";
 import { CalendarView } from "./views/CalendarView";
 import { DutiesView } from "./views/DutiesView";
+import { HearingsView } from "./views/HearingsView";
+import { InboxView } from "./views/InboxView";
+import { ReservesView } from "./views/ReservesView";
+import { TitleWatchView } from "./views/TitleWatchView";
 import { InsuranceView } from "./views/InsuranceView";
 import { MeetingsView } from "./views/MeetingsView";
 import { MoneyView } from "./views/MoneyView";
@@ -34,10 +38,14 @@ function Status() {
 const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
   { id: "digest", label: "Digest", view: BoardDigest },
   { id: "duties", label: "Duties", view: DutiesView },
+  { id: "inbox", label: "Inbox", view: InboxView },
   { id: "calendar", label: "Deadlines", view: CalendarView },
   { id: "money", label: "Money", view: MoneyView },
   { id: "meetings", label: "Meetings", view: MeetingsView },
   { id: "insurance", label: "Insurance", view: InsuranceView },
+  { id: "reserves", label: "Reserves", view: ReservesView },
+  { id: "title", label: "Title watch", view: TitleWatchView },
+  { id: "hearings", label: "Hearings", view: HearingsView },
   { id: "board", label: "Board items", view: BoardItemsView },
   { id: "records", label: "Association records", view: AssociationRecordsView },
   { id: "ingestion", label: "Document ingestion", view: IngestionView },
