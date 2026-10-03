@@ -86,11 +86,11 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info", "rule-changes"} == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
-        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info"):  # stores under data/ or the profile, not county tools; their own tests below
+        if name in ("canvases", "templates", "drive-files", "photos", "meeting", "decisions", "embeds", "communities", "onboarding", "request-letter", "owner-info", "rule-changes"):  # stores under data/ or the profile, not county tools; their own tests below
             continue
         out = fn({})
         assert isinstance(out, dict), name
@@ -505,3 +505,47 @@ def test_library_forwards(county):
 
     library({"kind": "minutes", "record": "minutes", "period": "2026", "words": "quorum", "confidential": "1", "limit": "5"})
     assert county.calls[-1] == ("library_search", (), {"kind": "minutes", "record": "minutes", "period": "2026", "words": "quorum", "include_confidential": True, "limit": 5})
+
+
+def test_rule_changes_list_timeline_and_fill(county, tmp_path, monkeypatch):
+    import sys
+    from datetime import date, timedelta
+
+    from jason.community.rule_changes import RuleChange, SectionChange
+    from jason.web import sources
+
+    class Schedule:
+        def next_meeting(self, after, *, monthly=True):
+            d = after + timedelta(days=1)
+            while d.day != 15:
+                d += timedelta(days=1)
+            return d
+
+    change = RuleChange("parking-tags", "Visitor parking tags", "parking-rules", "Parking Rules", "fewer tows", "owners register visitors",
+                        (SectionChange("4", "Visitor parking", proposed="A visitor may park for [number of days] days with a tag."),
+                         SectionChange("9", "Towing", strike="24 hours", proposed="48 hours")),
+                        decisions=("the number of days",), caveats=("a lead,",))
+
+    class Community(_FakeCommunity):
+        def rule_changes(self):
+            return (change,)
+
+        def meeting_schedule(self):
+            return Schedule()
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    monkeypatch.setattr(sources, "_community", lambda: Community())
+    listing = sources.rule_changes({})
+    assert listing["found"] and listing["changes"][0]["placeholders"] == ["[number of days]"] and listing["changes"][0]["sections"] == 2
+    one = sources.rule_changes({"key": "parking-tags", "notice": "2026-10-03"})
+    assert one["found"] and one["open"] == ["[number of days]"] and "[number of days]" in one["sectionsMarkdown"]
+    stages = {s["key"]: s["date"] for s in one["stages"]}
+    assert stages["notice"] == "2026-10-03" and date.fromisoformat(stages["decision"]) >= date(2026, 10, 31) and stages["decision"].endswith("-15")
+    assert date.fromisoformat(stages["adoptionNoticeBy"]) > date.fromisoformat(stages["decision"])
+    assert one["command"] == "jason rule-change parking-tags --notice-date 2026-10-03 --draft-email --yes"
+    filled = sources.rule_changes({"key": "parking-tags", "V_number of days": "3"})
+    assert filled["open"] == [] and "for 3 days" in filled["sectionsMarkdown"]
+    assert "current text not on disk" in filled["sectionsMarkdown"] or filled["currentNote"]
+    soon = sources.rule_changes({"key": "parking-tags", "notice": "2026-10-03", "decision": "2026-10-10"})
+    assert soon["stages"] == [] and "28" in soon["timelineNote"]
+    assert sources.rule_changes({"key": "nope"})["found"] is False

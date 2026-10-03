@@ -2,6 +2,7 @@ export { AppShell } from "./AppShell";
 export { Badge, type Tone } from "./Badge";
 export { Card } from "./Card";
 export { Caveats } from "./Caveats";
+export { Clock, type ClockStage } from "./Clock";
 export { Command } from "./Command";
 export { Embed, embedUrls, googleId, type Attachment, type EmbedKind } from "./Embed";
 export { Markdown, setMermaidUrl } from "./Markdown";

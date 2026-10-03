@@ -569,6 +569,73 @@ def owner_info(args: Args) -> dict[str, Any]:
     return status(_data_dir(None))
 
 
+def rule_changes(args: Args) -> dict[str, Any]:
+    """The proposed rule changes in the specification (`jason rule-change --list`). With ``key``: the change's sections
+    as current and proposed text (from the outline on disk), its placeholders ``[in brackets]`` with any ``V_`` values
+    filled for the preview, the decisions the board and counsel settle first, and the Civil Code 4360 timeline from
+    ``notice`` (default today) to ``decision`` (default the first meeting 28 days out) with ``comment``. Reads disk only;
+    the member notice is a Gmail draft a person saves with --yes and sends."""
+    import re
+    from datetime import date as _date
+
+    from jason.mcp.county import _data_dir
+    from jason.tasks import rule_change as rc
+
+    community = _community()
+    changes = tuple(community.rule_changes())
+    key = args.get("key", "").strip()
+    if not key:
+        return {"found": bool(changes), "changes": [
+            {"key": c.key, "slug": c.slug, "title": c.title, "document": c.document, "documentTitle": c.document_title, "purpose": c.purpose,
+             "effect": c.effect, "sections": len(c.sections), "placeholders": list(c.placeholders()), "decisions": list(c.decisions),
+             "authorities": list(c.authorities)} for c in changes]}
+    try:
+        change = rc.find_change(changes, key)
+    except LookupError as exc:
+        return {"found": False, "note": str(exc)}
+    root = _data_dir(None)
+    try:
+        current = rc.current_sections(root, change.document)
+    except Exception as exc:  # no outline on disk: the proposed text still shows
+        current = {}
+        current_note = f"the current text is not on disk ({type(exc).__name__}); run jason outlines"
+    else:
+        current_note = ""
+    values = {k[2:]: v for k, v in args.items() if k.startswith("V_") and v.strip()}
+
+    def fill(text: str) -> str:
+        return re.sub(r"\[([^\[\]]+)\]", lambda m: values.get(m.group(1), m.group(0)), text)
+
+    blocks = [fill(b) for b in rc.section_blocks(change, current)]
+    today = _date.today()
+    try:
+        notice = _date.fromisoformat(args["notice"]) if args.get("notice") else today
+        decision = _date.fromisoformat(args["decision"]) if args.get("decision") else None
+        comment = _date.fromisoformat(args["comment"]) if args.get("comment") else None
+        schedule = community.meeting_schedule()
+        when = rc.timeline(schedule, notice_date=notice, decision=decision, comment_deadline=comment)
+        stages = [
+            {"key": "notice", "label": "Member notice goes out", "date": when.notice_date.isoformat(), "authority": "CIV 4360(a)"},
+            {"key": "noticeBy", "label": "Last day for the notice", "date": when.notice_by.isoformat(), "authority": "28 days before the decision"},
+            {"key": "agendaNoticeBy", "label": "Agenda notice for the decision meeting", "date": when.agenda_notice_by.isoformat(), "authority": "CIV 4920"},
+            {"key": "comment", "label": "Members' comments due", "date": when.comment_deadline.isoformat(), "authority": "CIV 4360(a)"},
+            {"key": "decision", "label": "Board decides", "date": when.decision.isoformat(), "authority": "CIV 4360(a)"},
+            {"key": "adoptionNoticeBy", "label": "Notice of adoption to members", "date": when.adoption_notice_by.isoformat(), "authority": "CIV 4360(c)"},
+            {"key": "reversalBy", "label": "Members' reversal request window closes", "date": when.reversal_request_by.isoformat(), "authority": "CIV 4365"},
+        ]
+        timeline_note = ""
+    except (ValueError, KeyError) as exc:
+        stages, timeline_note = [], str(exc)
+    cmd = " ".join(["jason rule-change", change.key, *([f"--notice-date {notice.isoformat()}"] if args.get("notice") else []),
+                    *([f"--decision {args['decision']}"] if args.get("decision") else []), "--draft-email --yes"])
+    return {"found": True, "key": change.key, "title": change.title, "documentTitle": change.document_title, "purpose": change.purpose, "effect": change.effect,
+            "authorities": list(change.authorities), "decisions": list(change.decisions), "placeholders": list(change.placeholders()),
+            "open": [p for p in change.placeholders() if p[1:-1] not in values], "sectionsMarkdown": "\n\n".join(blocks), "currentNote": current_note,
+            "stages": stages, "timelineNote": timeline_note, "today": today.isoformat(), "command": cmd,
+            "caveats": list(change.caveats) + ["A bracketed choice is the board's; jason never fills it. Whether CIV 4355 covers the rule is the board's call with counsel.",
+                                               "The member notice is saved as a Gmail draft with no recipients; a person addresses and sends it."]}
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -660,6 +727,7 @@ def default_loaders() -> dict[str, Any]:
         "request-letter": request_letter,
         "library": library,
         "owner-info": owner_info,
+        "rule-changes": rule_changes,
         "drive-files": drive_files,
         "photos": photos,
         "embeds": embeds,

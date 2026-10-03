@@ -189,12 +189,19 @@ writes as a `ConfirmList`: a person enters their name and confirms each after re
 command appears only when every write is confirmed, and it stays a terminal command. `ConfirmList` is the
 component for every apply step that a person should look at row by row first.
 
+### Built: rule changes (`#/rules`)
+
+Each proposed change in the specification: the board's bracketed choices as a form (filled for the preview only;
+jason never fills one), the decisions to settle with counsel first, the sections as current text from the outline
+and proposed text, the Civil Code 4360 clock as a `Clock` (notice, last day for notice, agenda notice, comments
+due, decision, adoption notice, reversal window) from a chosen notice date and decision meeting, and the command
+that saves the member notice as a Gmail draft a person sends.
+
 ### Open: what still needs a screen, and the decision in each
 
 | Workflow | The board's decision | What jason has | What the screen would add |
 |---|---|---|---|
 | **Minutes to approve** | approve the prior minutes, with corrections | `--minutes DATE` draft with blanks; `minutes-privacy --correct` | the draft as a form: each blank a field, the privacy flags beside the names they concern |
-| **Rule change (CIV 4360)** | adopt, amend, or withdraw; whether 4355 covers it | `jason rule-change`: timeline, member notice, agenda item, adoption notice, `[brackets]` the board fills | the brackets as a form, the 28-day comment clock, the notice and adoption drafts with their commands |
 | **Hearing decision (5855(f))** | the discipline, within 14 days | the hearing clocks; `letter --template decision-notice --set DECISION=` | the decision entered once, the notice previewed from the template, the command |
 | **Delinquency steps** | release, pre-lien notice, lien (open session by roll call, 5673), foreclosure floor (5720) | collections standings with `nextStep`; `who-owes-sheet` | per account: the step the board takes, its vote, and the handoff; jason records and submits nothing |
 | **Reserve borrowing finding (5515)** | the finding, and a noticed finding when restoring late | the 5515 checklist per loan | the finding's text drafted into the packet and minutes |
