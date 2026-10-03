@@ -8,6 +8,7 @@ import { BooksChecksView } from "./views/BooksChecksView";
 import { JobsView } from "./views/JobsView";
 import { LegalView } from "./views/LegalView";
 import { CalendarView } from "./views/CalendarView";
+import { CanvasesView } from "./views/CanvasesView";
 import { DraftsView } from "./views/DraftsView";
 import { DutiesView } from "./views/DutiesView";
 import { HearingsView } from "./views/HearingsView";
@@ -44,6 +45,7 @@ const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
   { id: "duties", label: "Duties", view: DutiesView },
   { id: "inbox", label: "Inbox", view: InboxView },
   { id: "drafts", label: "Drafts", view: DraftsView },
+  { id: "canvases", label: "Canvases", view: CanvasesView },
   { id: "calendar", label: "Deadlines", view: CalendarView },
   { id: "money", label: "Money", view: MoneyView },
   { id: "meetings", label: "Meetings", view: MeetingsView },
@@ -63,7 +65,7 @@ const VIEWS: { id: string; label: string; view: () => JSX.Element }[] = [
 
 export function App() {
   const [hash, go] = useHash("digest");
-  const current = VIEWS.find((v) => v.id === hash) ?? VIEWS[0];
+  const current = VIEWS.find((v) => v.id === hash.split("/")[0]) ?? VIEWS[0];
   const View = current.view;
   return (
     <AppShell

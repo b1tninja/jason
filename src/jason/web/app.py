@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from jason.web.sources import default_loaders, set_board_item
+from jason.web.sources import default_loaders, set_board_item, write_canvas
 
 DEFAULT_DIST = Path(__file__).resolve().parents[3] / "ui" / "dist"
 
@@ -24,7 +24,8 @@ Loader = Callable[[dict[str, str]], dict[str, Any]]
 Writer = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
-def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None, board_writer: Writer | None = set_board_item) -> Flask:
+def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = None, board_writer: Writer | None = set_board_item,
+               canvas_writer: Writer | None = write_canvas) -> Flask:
     dist = Path(dist) if dist else Path(os.environ.get("JASON_UI_DIST", DEFAULT_DIST))
     sources = default_loaders() if loaders is None else loaders
     app = Flask(__name__, static_folder=None)
@@ -42,9 +43,23 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
+    @app.post("/api/canvases")
+    @app.post("/api/canvases/<key>")
+    def canvas(key: str = ""):
+        """A person's scratchpad: create, edit the editable fields, or add a clip. jason's own store, nothing outward."""
+        if canvas_writer is None:
+            return jsonify(error="writes are off"), 405
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify(canvas_writer(key, body))
+        except KeyError:
+            return jsonify(error=f"no canvas {key}"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
     @app.get("/api/health")
     def health():
-        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=["board-items"] if board_writer else [])
+        return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer)) if on])
 
     @app.get("/api/<name>")
     def source(name: str):

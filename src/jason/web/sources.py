@@ -173,6 +173,22 @@ def request_links(args: Args) -> dict[str, Any]:
     return tool(unit=args.get("unit", ""), drafts_only=_flag(args, "drafts"), limit=int(args.get("limit", "40") or 40))
 
 
+def canvases(args: Args) -> dict[str, Any]:
+    """The canvases on disk; ``key`` gives one in full."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks import canvases as store
+
+    key = args.get("key", "").strip()
+    if key:
+        try:
+            return {"found": True, "canvas": store.encode(store.load(_data_dir(None), key))}
+        except KeyError:
+            return {"found": False, "note": f"no canvas {key}"}
+    items = store.load_all(_data_dir(None))
+    return {"found": True, "count": len(items), "statuses": [s.value for s in store.CanvasStatus],
+            "canvases": [{**store.encode(c), "clips": len(c.clips), "notes": ""} for c in items]}
+
+
 def leads(args: Args) -> dict[str, Any]:
     """Everything the stores show that no person has pinned yet, in one shape: ``source`` names the tool, ``kind``
     the sort of lead, ``title`` the thing, ``detail`` why it is a lead, and ``next`` what a person would do."""
@@ -255,6 +271,7 @@ def default_loaders() -> dict[str, Any]:
         "legal-cases": legal_cases,
         "audit-chains": audit_chains,
         "request-links": request_links,
+        "canvases": canvases,
     }
 
 
@@ -273,3 +290,25 @@ def set_board_item(item_id: str, changes: dict[str, Any]) -> dict[str, Any]:
     if not clean:
         raise ValueError("nothing to change")
     return _encode(set_fields(_data_dir(None), item_id, **clean))
+
+
+def write_canvas(key: str, body: dict[str, Any]) -> dict[str, Any]:
+    """The canvas writes: ``key`` empty creates one from ``body.title``; a body with ``clip`` adds a clip; otherwise the
+    editable fields change in place. A person's scratchpad, jason's own store; nothing outward."""
+    from jason.mcp.county import _data_dir
+    from jason.tasks import canvases as store
+
+    root = _data_dir(None)
+    if not key:
+        return store.encode(store.create(root, str(body.get("title", "")), question=str(body.get("question", "")),
+                                         duty=str(body.get("duty", "")), matter=str(body.get("matter", ""))))
+    clip = body.get("clip")
+    if clip is not None:
+        if not isinstance(clip, dict):
+            raise ValueError("clip is an object with source and text")
+        return store.encode(store.add_clip(root, key, source=str(clip.get("source", "")), text=str(clip.get("text", "")),
+                                           label=str(clip.get("label", "")), args=clip.get("args") if isinstance(clip.get("args"), dict) else None))
+    changes = {k: v for k, v in body.items() if v is not None}
+    if not changes:
+        raise ValueError("nothing to change")
+    return store.encode(store.update(root, key, **changes))

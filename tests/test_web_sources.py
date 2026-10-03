@@ -85,10 +85,12 @@ def _one(county):
 
 def test_every_loader_is_kebab_case_and_callable_with_empty_args(county):
     loaders = sources.default_loaders()
-    assert set(TOOLS) | {"leads", "duties"} == set(loaders)
+    assert set(TOOLS) | {"leads", "duties", "canvases"} == set(loaders)
     for name, fn in loaders.items():
         assert re.fullmatch(r"[a-z]+(-[a-z]+)*", name), name
         assert callable(fn)
+        if name == "canvases":  # a store under data/, not a county tool; its own test below
+            continue
         out = fn({})
         assert isinstance(out, dict), name
 
@@ -279,3 +281,23 @@ def test_request_links_forwards(county):
 
     request_links({"unit": "12", "drafts": "1", "limit": "5"})
     assert county.calls[-1] == ("request_links", (), {"unit": "12", "drafts_only": True, "limit": 5})
+
+
+def test_canvases_source_reads_the_store(county, tmp_path, monkeypatch):
+    import sys
+
+    from jason.tasks import canvases as store
+    from jason.web.sources import canvases, write_canvas
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    assert canvases({}) == {"found": True, "count": 0, "statuses": ["research", "preparing", "on agenda", "done"], "canvases": []}
+    made = write_canvas("", {"title": "Pool deck bids", "duty": "Money"})
+    assert made["key"] == "pool-deck-bids" and made["status"] == "research"
+    write_canvas("pool-deck-bids", {"clip": {"source": "budget_status", "text": "Pool: $3,000 over budget", "args": {"year": 2026}}})
+    write_canvas("pool-deck-bids", {"notes": "three quotes in hand", "status": "preparing"})
+    one = canvases({"key": "pool-deck-bids"})["canvas"]
+    assert one["notes"] == "three quotes in hand" and one["clips"][0]["source"] == "budget_status" and one["status"] == "preparing"
+    listed = canvases({})["canvases"][0]
+    assert listed["clips"] == 1 and listed["notes"] == ""
+    assert canvases({"key": "nope"})["found"] is False
+    assert store.load(tmp_path, "pool-deck-bids").history[-1].endswith("research -> preparing")

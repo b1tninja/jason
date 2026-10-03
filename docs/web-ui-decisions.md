@@ -114,6 +114,16 @@ The verbs with a store behind them each get a view:
   a write. The UI adds, runs, and cancels nothing; a write runs only because a person queued it with
   `--confirm NAME`.
 
+### Canvases (`#/canvases`)
+
+A canvas is the scratchpad for one topic a person is researching or preparing for board action: the work
+before a board item. It holds the question, the person's notes (Markdown), **clips** (a row, a passage, or a
+figure kept from a tool, with the tool and query it came from, so it can be re-read), links, a checklist, a duty
+anchor, and a status (research, preparing, on agenda, done) with its history. The list is a kanban by status; a
+canvas opens to its workspace. "To the board" shows the commands that turn it into a board item and a packet
+section; the page runs neither. A clip is evidence a person kept, not a pin in the specification's sense. The
+store is jason's own (`data/canvases/`), which is why the UI may write it.
+
 ### Drafts for approval (`#/drafts`)
 
 The bridge between the read-only views and the gated writes: a draft is shown next to the exact `--yes` command a
