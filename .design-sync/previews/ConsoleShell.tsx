@@ -38,8 +38,10 @@ function Body({ audience }: { audience: Audience }) {
   );
 }
 
-function Shell({ audience: initial, current: start = "digest", recordsAsOf, me: startMe = "D. Okafor", dock }: {
-  audience: Audience; current?: string; recordsAsOf?: string; me?: string; dock?: boolean;
+type Extra = Partial<Pick<NonNullable<Parameters<typeof ConsoleShell>[0]["session"]>, "account" | "signInLinks" | "signInError" | "onSignOut" | "actAs">>;
+
+function Shell({ audience: initial, current: start = "digest", recordsAsOf, me: startMe = "D. Okafor", dock, extra }: {
+  audience: Audience; current?: string; recordsAsOf?: string; me?: string; dock?: boolean; extra?: Extra;
 }) {
   const [audience, setAudience] = useState<Audience>(initial);
   const [current, setCurrent] = useState(start);
@@ -55,7 +57,7 @@ function Shell({ audience: initial, current: start = "digest", recordsAsOf, me: 
       onGo={setCurrent}
       audience={audience}
       onAudience={setAudience}
-      session={{ me, setMe, people: PEOPLE }}
+      session={{ me, setMe, people: PEOPLE, ...extra }}
       dock={dock && audience === "board" ? <div className="dock"><button className="link">Inbox (3)</button><button className="link">Scratchpad</button></div> : undefined}
     >
       <Body audience={audience} />
@@ -71,3 +73,29 @@ export const Owner = () => <Shell audience="owner" recordsAsOf="2026-10-02" dock
 
 /** No records date (no loader gave one, so none is shown), no dock, and no one picked as signed in yet. */
 export const Bare = () => <Shell audience="board" current="liens" me="" />;
+
+/** Signed in with Google: the person's name and offices fixed by the server, a Sign out button, and no picker. */
+export const SignedIn = () => (
+  <Shell audience="board" recordsAsOf="2026-10-02" dock me="R. Lind"
+    extra={{ account: { name: "R. Lind", role: "secretary, treasurer", email: "secretary@example.org" }, onSignOut: () => {} }} />
+);
+
+/** Not signed in, with two ways to sign in (the community's Workspace and the management company's), beside the sample
+ * picker, and the last refusal said once. */
+export const SignInChoices = () => (
+  <Shell audience="board" me=""
+    extra={{
+      signInLinks: [{ label: "Sign in with Google (Board)", href: "#" }, { label: "Sign in with Google (Management company)", href: "#" }],
+      signInError: "visitor@example.net is not on the roster: add it to the officers (or to jason's admins or managers)",
+    }} />
+);
+
+/** jason-web --dev: a signed-in admin viewing the console as another officer; writes are off until they go back to themselves. */
+export const AdminView = () => (
+  <Shell audience="board" recordsAsOf="2026-10-02" me="D. Okafor"
+    extra={{
+      account: { name: "A. Admin", role: "admin" }, onSignOut: () => {},
+      actAs: { people: [...PEOPLE, { name: "A. Admin", role: "admin" }], roles: ["president", "vice president", "secretary", "treasurer", "director", "manager"],
+        acting: { name: "D. Okafor", role: "president" }, onChange: () => {} },
+    }} />
+);
