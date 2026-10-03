@@ -45,7 +45,8 @@ SCOPES = "openid email profile"
 START = "/auth/google"
 CALLBACK = "/auth/google/callback"
 SIGN_OUT = "/auth/signout"
-RECORD_KEY = "google_signin_record_uid"     # .env: the Keeper record holding the Web client's id and secret
+RECORD_KEY = "google_signin_record_uid"     # .env: a Web application client's Keeper record (optional)
+DESKTOP_KEY = "google_oauth_record_uid"     # .env: jason's own Desktop client, used when RECORD_KEY is not set
 LIFETIME = timedelta(hours=12)
 PENDING_SECONDS = 600                        # a sign-in started and not finished in ten minutes starts over
 VIA = "console:google"
@@ -112,15 +113,26 @@ def _settings():
     return Settings.load()
 
 
+def client_record(settings: Any) -> tuple[str, str]:
+    """Which Keeper record holds the sign-in client, and which .env key named it: a Web application client
+    (``google_signin_record_uid``) when one is set, else jason's own Desktop client (``google_oauth_record_uid``),
+    which Google lets redirect to any loopback address and port with nothing registered. ``("", "")`` when neither."""
+    web = str(getattr(settings, "record_uids", {}).get(RECORD_KEY, "") or "")
+    if web:
+        return web, RECORD_KEY
+    desktop = str(getattr(settings, DESKTOP_KEY, "") or "")
+    return (desktop, DESKTOP_KEY) if desktop else ("", "")
+
+
 def default_client() -> Client:
-    """The Web client from Keeper: the record named by ``google_signin_record_uid`` in .env, with custom fields
-    ``client_id`` and ``client_secret``. Read without a prompt; a missing Keeper login raises KeeperAuthRequired."""
+    """The client from Keeper (``client_record``), with custom fields ``client_id`` and ``client_secret``. Read
+    without a prompt; a missing Keeper login raises KeeperAuthRequired."""
     from jason.secrets import VaultSession, extract_custom_fields
 
     settings = _settings()
-    uid = settings.record_uids.get(RECORD_KEY, "")
+    uid, _ = client_record(settings)
     if not uid:
-        raise Refused(f"{RECORD_KEY} is not set in .env")
+        raise Refused(f"neither {RECORD_KEY} nor {DESKTOP_KEY} is set in .env")
     custom = extract_custom_fields(VaultSession.from_settings(settings, interactive=False).load_record(uid))
     cid, secret = str(custom.get("client_id") or "").strip(), str(custom.get("client_secret") or "").strip()
     if not cid or not secret:
@@ -154,9 +166,9 @@ def default_exchange(client: Client, code: str, redirect_uri: str, verifier: str
 
 
 def default_sign_in(*, required: bool = False) -> SignIn:
-    """Sign-in as the .env and the profile set it up. ``configured`` only when ``google_signin_record_uid`` is set."""
+    """Sign-in as the .env and the profile set it up: ``configured`` when either client record is set."""
     try:
-        configured = bool(_settings().record_uids.get(RECORD_KEY))
+        configured = bool(client_record(_settings())[0])
     except Exception:  # noqa: BLE001 - no .env is no sign-in, not a crash
         configured = False
     from jason.mcp.county import _data_dir
@@ -276,11 +288,12 @@ def install(app: Flask, sign_in: SignIn) -> None:
             return "jason-web answers on its loopback name", 421
         to = _next(request.args.get("next", ""))
         if not sign_in.configured:
-            return back(f"Google sign-in is not set up: see docs/setup.md, Console sign-in ({RECORD_KEY})", to)
+            return back(f"Google sign-in is not set up: see docs/setup.md, Console sign-in ({DESKTOP_KEY})", to)
         try:
             client = sign_in.load_client()
         except Exception as exc:  # noqa: BLE001 - said on the page, not a crash
             hint = " (run `jason login` in a terminal)" if type(exc).__name__.endswith("AuthRequired") else ""
+            _log(sign_in, "client failed", why=f"{type(exc).__name__}: {exc}")
             return back(f"Google sign-in could not read its client: {exc}{hint}", to)
         verifier = _b64(secrets.token_bytes(48))
         pending = {"state": secrets.token_urlsafe(24), "nonce": secrets.token_urlsafe(24), "verifier": verifier,

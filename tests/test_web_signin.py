@@ -130,7 +130,18 @@ def test_google_error_and_unset_client_are_said(tmp_path):
     assert "access_denied" in c.get("/api/session").json["signInError"]
     off = webclient.client(_app(tmp_path, _sign_in(google, configured=False)))
     assert off.get("/auth/google?next=%23%2Fapprovals").headers["Location"] == "/#/approvals"
-    assert signin.RECORD_KEY in off.get("/api/session").json["signInError"]
+    assert signin.DESKTOP_KEY in off.get("/api/session").json["signInError"]
+
+
+def test_the_client_is_the_web_one_when_set_else_jasons_desktop_one():
+    class S:
+        def __init__(self, web="", desktop=""):
+            self.record_uids = {signin.RECORD_KEY: web} if web else {}
+            self.google_oauth_record_uid = desktop
+
+    assert signin.client_record(S(desktop="D")) == ("D", signin.DESKTOP_KEY)
+    assert signin.client_record(S(web="W", desktop="D")) == ("W", signin.RECORD_KEY)
+    assert signin.client_record(S()) == ("", "")
 
 
 def test_next_is_a_console_route_only(tmp_path):

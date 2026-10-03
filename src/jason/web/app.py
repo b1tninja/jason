@@ -225,12 +225,15 @@ def main(argv: list[str] | None = None) -> None:
 
     sign_in = signin.default_sign_in(required=a.require_sign_in)
     if a.require_sign_in and not sign_in.configured:
-        p.error(f"--require-sign-in needs Google sign-in set up: {signin.RECORD_KEY} in .env (docs/setup.md)")
+        p.error(f"--require-sign-in needs Google sign-in set up: {signin.DESKTOP_KEY} or {signin.RECORD_KEY} in .env "
+                "(docs/setup.md, Console sign-in)")
     if a.allow_apply:
         print("jason-web: apply is ON: an approved plan can be written to PayHOA from the console", file=sys.stderr)
     if sign_in.configured:
-        print(f"jason-web: Google sign-in is on{' and required for writes' if a.require_sign_in else ''}; its "
-              f"redirect is http://{a.host}:{a.port}{signin.CALLBACK}", file=sys.stderr)
+        key = signin.client_record(signin._settings())[1]
+        which = "jason's Desktop client" if key == signin.DESKTOP_KEY else "the Web client"
+        print(f"jason-web: Google sign-in is on with {which} ({key}){' and required for writes' if a.require_sign_in else ''}; "
+              f"its redirect is http://{a.host}:{a.port}{signin.CALLBACK}", file=sys.stderr)
     serve(create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,), sign_in=sign_in), host=a.host, port=a.port)
 
 
