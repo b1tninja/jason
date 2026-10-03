@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Clock, Confirm, DataTable, DueDate, Findings, Pill, RemoteView, type ClockStage, type Column } from "../components";
+import { Badge, Card, Caveats, Clock, Confirm, DataTable, DueDate, Findings, Pill, RemoteView, RequestForm, type ClockStage, type Column } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import "./recordsrequests.css";
@@ -149,34 +149,70 @@ function RequestPanel({ r, kinds, today, onSaved }: { r: Req; kinds: Kind[]; tod
   );
 }
 
-/** Members' requests for association records (CIV 5200-5240), against the 5210 clocks, with the decisions a person recorded. */
-export function RecordsRequestsView() {
+/** Whether the page is in the owner view: the prop, else `?view=owner` in the hash. */
+function ownerFromHash(): boolean {
+  if (typeof window === "undefined") return false;
+  const q = window.location.hash.split("?")[1] ?? "";
+  return new URLSearchParams(q).get("view") === "owner";
+}
+
+const OWNER_CAVEATS = [
+  "The membership list is shared only for purposes related to membership (CIV 5230).",
+  "A request recorded here is received by the association; a person answers it. jason produces nothing on its own.",
+];
+
+/** The owner view: the records members may inspect, and a form that records a request for any of them. */
+function OwnerRecords({ raw }: { raw: Source }) {
+  const cols: Column<Kind>[] = [
+    { key: "label", header: "Record" },
+    { key: "citation", header: "Civil Code" },
+    { key: "files", header: "On the shelf", value: (k) => k.files ?? -1, render: (k) => (k.files == null ? <span className="muted">—</span> : <Badge tone={k.files > 0 ? "good" : "neutral"}>{k.files > 0 ? `${k.files} on file` : "not on file"}</Badge>) },
+  ];
+  return (
+    <div className="stack">
+      <Caveats items={OWNER_CAVEATS} />
+      <Card title="Request a record">
+        <p className="muted">The records members may inspect or copy (CIV 5205). Pick what you need and how you'd like it; the association's clock under CIV 5210 starts when the request is received.</p>
+        <RequestForm kinds={raw.kinds} />
+      </Card>
+      <Card title="Record kinds">
+        <DataTable rows={raw.kinds} columns={cols} rowKey={(k) => k.record} searchable={false} />
+      </Card>
+    </div>
+  );
+}
+
+/** Members' requests for association records (CIV 5200-5240), against the 5210 clocks, with the decisions a person recorded.
+ * In the owner view (`audience="owner"` or `?view=owner`) it is the request form and the record kinds, nothing of other members' requests. */
+export function RecordsRequestsView({ audience }: { audience?: "board" | "owner" } = {}) {
   const r = useApi<Source>("/api/records-requests");
   const [open, setOpen] = useState("");
   const [patched, setPatched] = useState<Record<string, Req>>({});
   const [added, setAdded] = useState<Req[]>([]);
   const today = new Date();
+  const owner = audience ? audience === "owner" : ownerFromHash();
   return (
     <RemoteView r={r}>
       {(raw) => {
+        if (owner) return <OwnerRecords raw={raw} />;
         const rows = [...added, ...raw.requests].map((x) => patched[x.id] ?? x).sort((a, b) => b.receivedOn.localeCompare(a.receivedOn));
         const current = rows.find((x) => x.id === open);
         const cols: Column<Req>[] = [
-          { key: "receivedOn", header: "Received" },
+          { key: "receivedOn", header: "Received", kind: "date" },
           { key: "unit", header: "Unit" },
           { key: "via", header: "Via", render: (x) => <Badge>{x.via}</Badge> },
           { key: "records", header: "Records", render: (x) => <>{x.records.map((k) => label(raw.kinds, k)).join(", ")}{x.membershipList && <> <Badge tone="warn">list</Badge></>}</>, value: (x) => x.records.length },
           { key: "dueBy", header: "Due by (5210)", render: (x) => x.decisions.producedOn ? <Badge tone="good">{`produced ${x.decisions.producedOn}`}</Badge> : <DueDate iso={x.dueBy} today={today} /> },
           { key: "standing", header: "Standing", render: (x) => <Pill word={x.standing} /> },
           { key: "withheld", header: "Withheld", render: (x) => <Findings items={x.decisions.withheld.map((w) => `${label(raw.kinds, w.record)}: ${w.reason}`)} empty="none" />, value: (x) => x.decisions.withheld.length },
-          { key: "open", header: "", render: (x) => <button className={open === x.id ? "" : "primary"} onClick={() => setOpen(open === x.id ? "" : x.id)}>{open === x.id ? "Close" : "Open"}</button> },
+          { key: "open", header: "", render: (x) => <button className="link" onClick={(e) => { e.stopPropagation(); setOpen(open === x.id ? "" : x.id); }}>{open === x.id ? "Close" : "Open"}</button> },
         ];
         return (
           <div className="stack">
             <Caveats items={raw.caveats} />
             {raw.note && <p className="notice notice-warn">{raw.note}</p>}
             <Card title={`Records requests (${rows.length})`}>
-              {rows.length === 0 ? <p className="muted">No request recorded yet.</p> : <DataTable rows={rows} columns={cols} searchable={false} />}
+              {rows.length === 0 ? <p className="muted">No request recorded yet.</p> : <DataTable rows={rows} columns={cols} searchable={false} rowKey={(x) => x.id} selectedKey={open} onSelect={(x) => setOpen(open === x.id ? "" : x.id)} />}
             </Card>
             {current && <RequestPanel key={current.id + current.updated} r={current} kinds={raw.kinds} today={today} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
             <ReceiveForm kinds={raw.kinds} vias={raw.vias ?? ["email", "mail", "form"]} onSaved={(n) => { setAdded((xs) => [n, ...xs]); setOpen(n.id); }} />

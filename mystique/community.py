@@ -473,6 +473,18 @@ class Mystique(Community):
 
         return TEMPLATES
 
+    def theme(self):
+        """The association's brand: accent, brand font, and the hero surface (theme.py)."""
+        from .theme import THEME
+
+        return THEME
+
+    def officers(self):
+        """The board's officers and the manager by role, names from the private facts (officers.py)."""
+        from .officers import officers
+
+        return officers()
+
     def hearing_policy(self):
         """A hearing is its own Zoom meeting, 30 minutes, with a waiting room, not recorded (zoom.py)."""
         from .zoom import HEARING_POLICY

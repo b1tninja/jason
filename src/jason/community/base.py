@@ -486,6 +486,67 @@ class InsuranceCatalog:
 
 
 @dataclass(frozen=True)
+class Theme:
+    """A community's brand tokens: the accent and what sits on it, the brand font, and the hero surface the public page
+    and the meeting stage use. Light values first; ``dark`` carries the dark-scheme overrides by the same keys. The
+    console applies them on ``[data-community=<slug>]``; its data views take the brand only, the public page the full
+    surface (``surface``) when ``data-reach="full"``. ``font_url`` is a stylesheet link the page may load (Google Fonts)."""
+
+    wordmark: str                               # the short name shown as the brand ("Mystique")
+    accent: str                                 # "#5b3f8f"
+    on_accent: str = "#fff"
+    accent_2: str = ""
+    on_accent_2: str = ""
+    brand_font: str = "system-ui"
+    brand_weight: int = 700
+    brand_case: str = "none"                    # "uppercase" | "none"
+    brand_tracking: str = "0"
+    hero: str = ""
+    hero_ink: str = ""
+    hero_muted: str = ""
+    hero_line: str = ""
+    font_url: str = ""
+    dark: dict[str, str] | None = None          # same keys, dark-scheme values
+    surface: dict[str, str] | None = None       # bg/panel/ink/muted/line for the public page
+    surface_dark: dict[str, str] | None = None
+
+    def tokens(self, scheme: str = "light") -> dict[str, str]:
+        """The CSS custom properties for one scheme, by name without the ``--``."""
+        base = {"accent": self.accent, "on-accent": self.on_accent, "accent-2": self.accent_2, "on-accent-2": self.on_accent_2,
+                "brand-font": self.brand_font, "brand-weight": str(self.brand_weight), "brand-case": self.brand_case,
+                "brand-tracking": self.brand_tracking, "hero": self.hero, "hero-ink": self.hero_ink, "hero-muted": self.hero_muted,
+                "hero-line": self.hero_line}
+        if scheme == "dark":
+            base.update({k.replace("_", "-"): v for k, v in (self.dark or {}).items()})
+        return {k: v for k, v in base.items() if v}
+
+
+class OfficerRole(Enum):
+    PRESIDENT = "president"
+    VICE_PRESIDENT = "vice president"
+    SECRETARY = "secretary"
+    TREASURER = "treasurer"
+    DIRECTOR = "director"
+    MANAGER = "manager"
+
+
+@dataclass(frozen=True)
+class Officer:
+    """One person in a board or management role. ``approves`` names what the role may approve on its own
+    (``"the treasurer"``, ``"a fluent reviewer"``); ``"the board"`` is never a person's: it is a vote at a meeting
+    (CIV 4910) that the president or the secretary records."""
+
+    role: OfficerRole
+    name: str
+    approves: tuple[str, ...] = ()
+
+    def can_approve(self, approver: str) -> bool:
+        if approver == "the board":
+            return self.role in (OfficerRole.PRESIDENT, OfficerRole.SECRETARY)
+        return approver in self.approves
+
+
+@dataclass(frozen=True)
 class SitePageRef:
     page: SitePage
     path: str
@@ -624,6 +685,18 @@ class Community(ABC):
     def premium_rules(self) -> PremiumRules | None:
         """How approvals in the minutes are followed to insurance premiums (``PremiumRules``), or None until set."""
         return None
+
+    def site(self) -> str:
+        """The association's public website URL, or "" when it has none."""
+        return ""
+
+    def theme(self) -> Theme | None:
+        """The association's brand for the console and its public owner page (``Theme``), or None for jason's neutral look."""
+        return None
+
+    def officers(self) -> tuple[Officer, ...]:
+        """The board's officers and the manager by role (``Officer``), names from the private facts; empty until set."""
+        return ()
 
     def copy_priority(self):
         """Which channel's copy of a document to read first (``jason.community.copies.Channel``), best first."""

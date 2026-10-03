@@ -1,32 +1,19 @@
 import { useState } from "react";
-import { Badge, Card, Confirm, DueDate, Evidence, Kanban, Pill, RemoteView } from "../components";
-import { postJson } from "../lib/api";
+import { Badge, BoardFields, Card, DueDate, Evidence, Kanban, Pill, RemoteView, Timeline, type TimelineEvent } from "../components";
 import { useApi } from "../lib/useApi";
 import { BOARD_STATUSES, type BoardItem } from "./types";
 
-type Fields = Pick<BoardItem, "status" | "owner" | "meeting" | "notes">;
+/** An item's history lines ("YYYY-MM-DD: what") as Timeline events; a line without a day is undated. */
+function historyEvents(history: readonly string[]): TimelineEvent[] {
+  return history.map((h, i) => {
+    const m = h.match(/^(\d{4}-\d{2}-\d{2})[:\s]\s*(.*)$/);
+    return { id: String(i), date: m ? m[1] : "", title: m ? m[2] : h };
+  });
+}
 
-/** One matter the board is asked to decide. jason's columns are read-only; the board's four are editable. */
+/** One matter the board is asked to decide. jason's columns are read-only; the board's four are editable (BoardFields). */
 export function BoardItemCard({ item, onSaved }: { item: BoardItem; onSaved: (next: BoardItem) => void }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Fields>({ status: item.status, owner: item.owner, meeting: item.meeting, notes: item.notes });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const changes = (Object.keys(draft) as (keyof Fields)[]).filter((k) => draft[k] !== item[k]);
-
-  const save = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const body = Object.fromEntries(changes.map((k) => [k, draft[k]]));
-      onSaved(await postJson<BoardItem>(`/api/board-items/${encodeURIComponent(item.id)}`, body));
-      setOpen(false);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <article className="item" data-priority={item.priority}>
@@ -49,51 +36,11 @@ export function BoardItemCard({ item, onSaved }: { item: BoardItem; onSaved: (ne
         <div className="stack">
           <p>{item.summary}</p>
           <Evidence items={item.evidence} />
-          <div className="fields">
-            <label>
-              Status
-              <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                {BOARD_STATUSES.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Owner <input value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} />
-            </label>
-            <label>
-              Meeting <input value={draft.meeting} placeholder="YYYY-MM-DD" onChange={(e) => setDraft({ ...draft, meeting: e.target.value })} />
-            </label>
-            <label className="wide">
-              Notes <textarea value={draft.notes} rows={2} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
-            </label>
-          </div>
-          {changes.length > 0 && (
-            <Confirm
-              busy={busy}
-              onConfirm={save}
-              summary={
-                <ul>
-                  {changes.map((k) => (
-                    <li key={k}>
-                      {k}: <s>{String(item[k]) || "—"}</s> → {draft[k] || "—"}
-                    </li>
-                  ))}
-                </ul>
-              }
-            >
-              Save board fields
-            </Confirm>
-          )}
-          {error && <p className="notice notice-error">{error}</p>}
+          <BoardFields key={item.id + item.history.length} item={item} statuses={BOARD_STATUSES} onSaved={(n) => { onSaved(n); setOpen(false); }} />
           {item.history.length > 0 && (
             <details>
               <summary>History ({item.history.length})</summary>
-              <ul className="muted">
-                {item.history.map((h, i) => (
-                  <li key={i}>{h}</li>
-                ))}
-              </ul>
+              <Timeline events={historyEvents(item.history)} />
             </details>
           )}
         </div>

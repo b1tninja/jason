@@ -715,6 +715,12 @@ EXTRA_LOADERS: dict[str, str] = {
     "reserve-findings": "jason.web.extra.reserve_findings:reserve_findings",
     "records-requests": "jason.web.extra.records_requests:records_requests",
     "mail-triage": "jason.web.extra.mail_triage:mail_triage",
+    "approvals": "jason.web.extra.approvals:approvals",
+    "agenda-plan": "jason.web.extra.agenda_plan:agenda_plan",
+    "meeting-room": "jason.web.extra.meeting_room:meeting_room",
+    "dock": "jason.web.extra.dock:dock",
+    "theme": "jason.web.extra.theme:theme",
+    "community-profile": "jason.web.extra.community_profile:community_profile",
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
@@ -724,6 +730,10 @@ EXTRA_WRITERS: dict[str, str] = {
     "reserve-findings": "jason.web.extra.reserve_findings:write",
     "records-requests": "jason.web.extra.records_requests:write",
     "mail-triage": "jason.web.extra.mail_triage:write",
+    "approvals": "jason.web.extra.approvals:write",
+    "agenda-plan": "jason.web.extra.agenda_plan:write",
+    "meeting-room": "jason.web.extra.meeting_room:write",
+    "dock": "jason.web.extra.dock:write",
 }
 
 

@@ -226,6 +226,18 @@ entered once by a person, a preview from the same template the Doc is built from
 A decision is recorded where jason already keeps it (the board's columns, a register, the minutes); the UI adds
 no second place for it.
 
+### Built: the console (`#/approvals`, `#/decisions`, `#/agenda`, `#/meeting-room`, the dock)
+
+The design handoff of 2026-10-03 rebuilt as components and stores (`docs/web-ui.md`). What a person decides on each:
+
+- **Approvals.** A person saves a draft jason wrote, asks the named approver, and approves in their own name; the board's approval is a vote at a meeting (CIV 4910) that the president or secretary records with the meeting date. The approved stage shows the terminal command (`jason letter … --yes`, `jason mailroom --send --yes`); a person runs it and then records where the send was logged. jason drafts and records; it sends nothing and moves no letter on its own. "Signed in as" is a sample picker over the profile's officers, not an account.
+- **Plan a meeting.** A person chooses which items to include, their kind, order, minutes, motion, and packet; jason reports only computed checks (motion drafted, documents attached, executive matter marked, notice still possible) and a one-line suggestion. Putting an item on the noticed agenda and writing the Doc stay `jason board` commands; the notice is a letter drafted in Approvals; no jason command creates a Zoom meeting, so its fields are typed in.
+- **Decisions.** A person writes the brief (question, criteria, options, facts) and records the board's decision; jason never recommends an option, and the store refuses a body that names one.
+- **Meeting room.** The chair runs the meeting and the board decides; jason records. A person records attendance, puts a motion on the floor (two different present directors, a quorum from the profile's board rule), enters each director's vote by name, and records the result: a majority of directors present, or two-thirds under CIV 4930(d)(2); a recused director counts toward the quorum and not the vote. A topic not on the agenda is logged only under one of the five CIV 4930 paths. Executive session, polls (member input only), and admissions are logged as the host's acts in Zoom; jason admits, mutes, records, and ends nothing. Draft minutes go to Approvals for the secretary.
+- **Dock.** A person adds, owns, dates, and completes register tasks (completion stamps who and when). Ask answers only from sourced material and otherwise routes the question to a person as a task. A translation is a person's draft marked needs review until a fluent reviewer approves it in Approvals; the English notice controls. Scratchpad notes are working notes, not association records.
+- **Board fields and owner requests.** `BoardFields` saves the board's columns behind a confirm that lists old → new, appended to the item's history. `RequestForm` records an owner's records request (CIV 5205) and shows the 5210 clock the association now owes; a person answers it.
+- **Theme and the owner page** are read-only; nothing on them is decided. The brand lives in the profile (`Community.theme()`).
+
 ## Next, by what a person decides
 
 **Drafts.** The agenda and minutes drafts (`data/board/*.md`), hearing and meeting-notice Gmail drafts, letters

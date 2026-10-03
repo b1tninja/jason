@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EmptyState } from "./States";
 import { SearchBox } from "./SearchBox";
 
@@ -9,20 +9,30 @@ export interface Column<T> {
   /** Sort/filter value; defaults to row[key]. */
   value?: (row: T) => string | number;
   align?: "left" | "right";
+  /** `date`: an ISO day that never wraps and uses tabular figures. */
+  kind?: "date";
 }
 
 type Dir = "asc" | "desc";
 
+/** A sortable, filterable table. With `onSelect`, a whole-row click or Enter selects the row (`aria-selected`, the
+ * `selected` class), which replaces an "Open" column; `rowKey` names rows for `selectedKey`. */
 export function DataTable<T extends object>({
   rows,
   columns,
   searchable = true,
   caption,
+  rowKey,
+  selectedKey,
+  onSelect,
 }: {
   rows: readonly T[];
   columns: Column<T>[];
   searchable?: boolean;
   caption?: string;
+  rowKey?: (row: T) => string;
+  selectedKey?: string;
+  onSelect?: (row: T) => void;
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: string; dir: Dir } | null>(null);
@@ -47,20 +57,26 @@ export function DataTable<T extends object>({
   const toggle = (key: string) =>
     setSort((s) => (s?.key !== key ? { key, dir: "asc" } : s.dir === "asc" ? { key, dir: "desc" } : null));
 
+  const cellClass = (c: Column<T>) => [c.align === "right" ? "num" : "", c.kind === "date" ? "date" : ""].filter(Boolean).join(" ") || undefined;
+  const keyOf = (r: T, i: number) => (rowKey ? rowKey(r) : String(i));
+  const onKey = (r: T) => (e: KeyboardEvent<HTMLTableRowElement>) => {
+    if (onSelect && e.key === "Enter" && e.target === e.currentTarget) { e.preventDefault(); onSelect(r); }
+  };
+
   return (
     <div className="table-wrap">
       {searchable && rows.length > 5 && <SearchBox value={query} onChange={setQuery} />}
       {shown.length === 0 ? (
         <EmptyState>{rows.length ? "No rows match." : "Nothing to show."}</EmptyState>
       ) : (
-        <table>
+        <table className={onSelect ? "selectable" : undefined}>
           {caption && <caption>{caption}</caption>}
           <thead>
             <tr>
               {columns.map((c) => (
                 <th
                   key={c.key}
-                  className={c.align === "right" ? "num" : undefined}
+                  className={cellClass(c)}
                   aria-sort={sort?.key === c.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button onClick={() => toggle(c.key)}>{c.header}</button>
@@ -69,15 +85,26 @@ export function DataTable<T extends object>({
             </tr>
           </thead>
           <tbody>
-            {shown.map((r, i) => (
-              <tr key={i}>
-                {columns.map((c) => (
-                  <td key={c.key} className={c.align === "right" ? "num" : undefined}>
-                    {c.render ? c.render(r) : String(val(c, r))}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {shown.map((r, i) => {
+              const k = keyOf(r, i);
+              const selected = onSelect ? selectedKey !== undefined && selectedKey === k : undefined;
+              return (
+                <tr
+                  key={k}
+                  className={selected ? "selected" : undefined}
+                  aria-selected={selected}
+                  tabIndex={onSelect ? 0 : undefined}
+                  onClick={onSelect ? () => onSelect(r) : undefined}
+                  onKeyDown={onSelect ? onKey(r) : undefined}
+                >
+                  {columns.map((c) => (
+                    <td key={c.key} className={cellClass(c)}>
+                      {c.render ? c.render(r) : String(val(c, r))}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
