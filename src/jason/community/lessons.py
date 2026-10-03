@@ -812,6 +812,16 @@ LESSONS: tuple[Lesson, ...] = (
            "The live context was built before the engine's checks ran.",
            "The engine's problems are checked, and the refusal audited, before any live context is built.",
            Status.FIXED, guards=("approvals.engine.problems", "tests/test_web_approvals.py")),
+    Lesson("console-sticky-offsets", OCT_2026, (Area.GOVERNING,),
+           "Scrolling the console was strange once sign-in was added: the page kept scrolling into blank space past "
+           "short screens, and jumped-to headings and a docked drawer landed under the header.",
+           "The left nav (38 screens) was never sticky, so it set the page's height; the sticky header grew to two "
+           "rows with the sign-in and admin-view controls, while the drawer's offset and the page's scroll padding "
+           "assumed a fixed, short header.",
+           "ConsoleShell measures the header (ResizeObserver) into --console-bar-h; the nav sticks below it and "
+           "scrolls on its own, a pinned drawer sticks below it, and html scroll-padding-top reserves it. Check a "
+           "header change by scrolling a short and a long screen.",
+           Status.FIXED, guards=("ui/src/components/consoleshell.test.tsx (the header's height is published)",)),
     Lesson("shadowed-community-method", OCT_2026, (Area.GOVERNING,),
            "A new Community.developers (the people who maintain jason, for the console's view-as) replaced the "
            "existing Community.developers (the subdividers) in the same class, and 78 tests in the recorder, history, "

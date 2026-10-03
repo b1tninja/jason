@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export type Audience = "board" | "owner";
 
@@ -62,6 +62,25 @@ function useNarrow(): boolean {
   return narrow;
 }
 
+/** The sticky header's height as `--console-bar-h` on the page root, kept current as it wraps (sign-in, the admin
+ * view, the dock): the nav and a pinned drawer stick below it, and `scroll-padding-top` keeps a jumped-to heading
+ * from landing under it. */
+function useBarHeight() {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const set = () => root.style.setProperty("--console-bar-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    set();
+    if (typeof ResizeObserver === "undefined") return () => root.style.removeProperty("--console-bar-h");
+    const watch = new ResizeObserver(set);
+    watch.observe(el);
+    return () => { watch.disconnect(); root.style.removeProperty("--console-bar-h"); };
+  }, []);
+  return ref;
+}
+
 /** The screens an audience sees, in nav order. */
 export function visibleScreens(screens: readonly ConsoleScreen[], audience: Audience): ConsoleScreen[] {
   return screens.filter((s) => audience === "board" || s.owner);
@@ -78,6 +97,7 @@ const actingTarget = (v: string): { name?: string; role?: string } =>
  * for a pinned or a floating drawer. The shell routes; it decides nothing. */
 export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, current, onGo, audience, onAudience, session, dock, pinned, floating, children }: ConsoleShellProps) {
   const narrow = useNarrow();
+  const bar = useBarHeight();
   const visible = visibleScreens(screens, audience);
   const owner = audience === "owner";
   const grouped = groups.map((g) => ({ label: g, items: visible.filter((s) => s.group === g) })).filter((g) => g.items.length);
@@ -86,7 +106,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
   const googleLinks = !owner && !account ? session?.signInLinks ?? [] : [];
   return (
     <div className="console">
-      <header className="console-bar">
+      <header className="console-bar" ref={bar}>
         <div className="console-bar-inner">
           <div className="console-brand">
             <span className="brand console-wordmark">{wordmark}</span>

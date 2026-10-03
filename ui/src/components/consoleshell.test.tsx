@@ -38,6 +38,17 @@ describe("ConsoleShell", () => {
     expect(screen.queryByText(/Records as of/)).toBeNull(); // no loader gave a date: nothing is invented
   });
 
+  it("publishes the header's height for the sticky nav and drawer, and clears it on unmount", () => {
+    const { unmount } = render(
+      <ConsoleShell wordmark="W" legal="L" groups={GROUPS} screens={SCREENS} current="digest" onGo={vi.fn()} audience="board" onAudience={vi.fn()}>
+        <p>body</p>
+      </ConsoleShell>,
+    );
+    expect(document.documentElement.style.getPropertyValue("--console-bar-h")).toMatch(/^\d+px$/);
+    unmount();
+    expect(document.documentElement.style.getPropertyValue("--console-bar-h")).toBe("");
+  });
+
   it("lets the person pick who they are signed in as", async () => {
     const { setMe } = shell();
     const pick = screen.getByLabelText("Signed in as");
