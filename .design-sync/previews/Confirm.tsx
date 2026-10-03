@@ -38,6 +38,7 @@ export const InCard = () => (
 /** What the armed state shows (the summary and Yes/Cancel), rendered with the same markup since the armed state is internal and cannot be set from props. */
 export const ArmedLookalike = () => (
   <div className="confirm" role="group" aria-label="Confirm">
+    <span className="confirm-label" aria-hidden="true">Confirm</span>
     <div>{summary}</div>
     <div className="row">
       <button className="primary">Yes, do it</button>
