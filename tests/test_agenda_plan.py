@@ -115,7 +115,8 @@ def test_loader_computes_readiness_from_the_plan_and_the_meeting(fakes, tmp_path
     conflict = {c["label"]: c for c in by_id["paint-contract"]["readiness"]["checks"]}
     assert conflict["Conflict disclosure recorded (Corp. Code 7233; CIV 5350)"]["ok"] is False
     assert out["candidates"][-1]["id"] == "payment-plan-7", "executive matters sort after open ones"
-    assert out["zoom"]["command"] is None and "no command" in out["zoom"]["note"]
+    assert out["zoom"]["command"] == "jason zoom --create-board-meeting --date 2026-10-21 --yes" and "Not scheduled" in out["zoom"]["note"]
+    assert out["zoom"]["joinUrl"] == "" and out["zoom"]["dialIn"] == ""
     assert out["commands"]["onAgenda"] == [] and out["notice"]["by"] == "2026-10-17"
     required = {r["label"]: r for r in out["notice"]["required"]}
     assert required["Time and place of the meeting (CIV 4920)"]["ready"] is False
@@ -166,3 +167,23 @@ def test_writer_refuses_a_recommendation_and_passes_not_found_through(fakes):
         write("2026-10-21", {"items": {"reserve-loan": {"include": True}}})
     fakes["meeting"] = {"found": False, "note": "date is YYYY-MM-DD"}
     assert agenda_plan({"date": "x"}) == {"found": False, "note": "date is YYYY-MM-DD"}
+
+
+def test_the_scheduled_board_meeting_fills_the_zoom_fields_unless_typed_over(tmp_path, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from jason.tasks.zoom import board_meeting, save_board_meeting
+    from jason.web.extra import agenda_plan as mod
+    from jason.zoom.models import BoardMeetingPlan, BoardMeetingPolicy
+
+    policy = BoardMeetingPolicy(timezone="America/Los_Angeles", topic="Sample Commons board meeting")
+    plan = BoardMeetingPlan(start=datetime(2026, 10, 21, 19, 0, tzinfo=ZoneInfo(policy.timezone)), policy=policy,
+                            zoom={"id": 1, "joinUrl": "https://zoom.us/j/1", "passcode": "123456", "dialIn": ["+1 555 0100 (San Jose)"]})
+    saved = save_board_meeting(tmp_path, plan)
+    assert saved["topic"] == "Sample Commons board meeting 2026-10-21" and board_meeting(tmp_path, "2026-10-21")["zoom"]["passcode"] == "123456"
+    assert board_meeting(tmp_path, "2026-11-18") is None
+    filled = mod._zoom(tmp_path, "2026-10-21", {"topic": "", "joinUrl": "", "dialIn": ""})
+    assert filled["joinUrl"] == "https://zoom.us/j/1" and filled["dialIn"] == "+1 555 0100 (San Jose)" and "Scheduled" in filled["note"]
+    typed = mod._zoom(tmp_path, "2026-10-21", {"topic": "", "joinUrl": "https://zoom.us/j/typed", "dialIn": ""})
+    assert typed["joinUrl"] == "https://zoom.us/j/typed" and typed["topic"] == "Sample Commons board meeting 2026-10-21"

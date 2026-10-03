@@ -980,6 +980,10 @@ class Community(ABC):
         """How a disciplinary hearing is held on Zoom (``jason.zoom.models.HearingPolicy``). None until set."""
         return None
 
+    def board_meeting_policy(self):
+        """How a board meeting is held on Zoom (``jason.zoom.models.BoardMeetingPolicy``). None until set."""
+        return None
+
     def board(self) -> BoardRule | None:
         """The board's size and quorum rule. None until the specification sets it. Who holds the seats is PayHOA's
         "Board Member" tag, read live, not a fact here."""

@@ -1078,6 +1078,14 @@ class Jason:
             plan.zoom = zoom_details(client.create_meeting(plan.meeting_body()))
         return plan.zoom
 
+    def schedule_board_meeting(self, plan) -> dict[str, Any]:
+        """Create the board meeting's Zoom meeting and keep what its notice may carry (never the host's start link)."""
+        from jason.zoom.models import zoom_details
+
+        with self.zoom() as client:
+            plan.zoom = zoom_details(client.create_meeting(plan.meeting_body()))
+        return plan.zoom
+
     def sync_vendor_portal(self, key: str, *, full: bool = False, log: Any = None):
         """Sync one vendor portal to ``data/vendors/<key>``: account, visits, products, files, and checked invoices."""
         from jason.tasks.vendor_portals import sync_portal

@@ -1504,6 +1504,24 @@ def cmd_zoom(args: argparse.Namespace) -> int:
     if args.meeting:
         print(json.dumps(meeting_text(data_dir, args.meeting, include_confidential=args.confidential), indent=2, default=str))
         return 0
+    if args.create_board_meeting:
+        from jason.tasks.zoom import plan_board_meeting, save_board_meeting
+
+        try:
+            plan = plan_board_meeting(mystique(), on=date.fromisoformat(args.date) if args.date else None, at=args.time)
+        except ValueError as exc:
+            print(f"error: {exc}")
+            return 2
+        if not args.yes:
+            print(f"--create-board-meeting schedules '{plan.meeting_body()['topic']}' at {plan.start.isoformat(timespec='minutes')} "
+                  "on the association's account; add --yes to do it")
+            return 2
+        with _agent(args) as agent:
+            agent.schedule_board_meeting(plan)
+        record = save_board_meeting(data_dir, plan)
+        print(json.dumps(record, indent=2, default=str) if args.json else
+              f"scheduled {record['topic']} at {record['start']}: join {record['zoom'].get('joinUrl')}; dial-in {', '.join(record['zoom'].get('dialIn') or [])}")
+        return 0
     if not args.offline:
         with _agent(args) as agent:
             since = date.fromisoformat(args.since) if args.since else None
@@ -3736,6 +3754,11 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Create the Keeper record for the Zoom app (with --account-id, --client-id); the secret is filled in Keeper")
     zoom.add_argument("--account-id", default="", help="With --store-app: the app's account id")
     zoom.add_argument("--client-id", default="", help="With --store-app: the app's client id")
+    zoom.add_argument("--create-board-meeting", action="store_true",
+                      help="Schedule the board meeting on Zoom under the profile's board meeting policy (needs --yes); the join link and dial-in go to the notice")
+    zoom.add_argument("--date", default="", help="With --create-board-meeting: the meeting date YYYY-MM-DD (default the schedule's next)")
+    zoom.add_argument("--time", default="", help="With --create-board-meeting: the start, e.g. '7:00 pm' (default the schedule's hour)")
+    zoom.add_argument("--yes", action="store_true", help="Confirm --create-board-meeting")
     zoom.add_argument("--json", action="store_true", help="Print JSON")
     zoom.set_defaults(func=cmd_zoom)
 

@@ -125,6 +125,21 @@ def _required(basics: dict[str, Any], zoom: dict[str, Any], included: list[dict[
     return rows
 
 
+def _zoom(root: Any, day: str, saved: dict[str, Any]) -> dict[str, Any]:
+    """The plan's Zoom fields, filled from the meeting ``jason zoom --create-board-meeting`` scheduled for the day when a
+    person has not typed them, with that command for a person to run."""
+    from jason.tasks.zoom import board_meeting
+
+    created = board_meeting(root, day) or {}
+    details = created.get("zoom") or {}
+    out = {"topic": saved.get("topic") or created.get("topic") or "", "joinUrl": saved.get("joinUrl") or details.get("joinUrl") or "",
+           "dialIn": saved.get("dialIn") or ", ".join(details.get("dialIn") or []), "passcode": details.get("passcode") or "",
+           "scheduled": created.get("start") or "", "command": f"jason zoom --create-board-meeting --date {day} --yes"}
+    out["note"] = (f"Scheduled on the association's account at {out['scheduled']}; the fields come from it unless typed over." if created
+                   else "Not scheduled on Zoom yet. A person runs the command; the join link and dial-in then fill in here for the notice.")
+    return out
+
+
 def agenda_plan(args: Args) -> dict[str, Any]:
     """The meeting loader's output merged with the saved plan: ``candidates`` with computed readiness, ``notice`` with
     the required contents, the ``steps``, the ``commands``, and the ``zoom`` fields a person enters by hand."""
@@ -162,8 +177,7 @@ def agenda_plan(args: Args) -> dict[str, Any]:
     return {
         "found": True, "date": day, "today": today, "noticeBy": notice_by, "executiveNoticeBy": executive_by,
         "directors": list(m.get("directors") or []), "decisions": list(m.get("decisions") or []),
-        "basics": plan["basics"], "zoom": {**plan["zoom"], "command": None,
-                                           "note": "jason has no command that creates a board meeting on Zoom (jason hearing --create --yes schedules a hearing only). Create it on the association's account and enter the join link and dial-in here."},
+        "basics": plan["basics"], "zoom": _zoom(root, day, plan["zoom"]),
         "candidates": candidates, "kinds": list(store.KINDS), "formats": list(store.FORMATS),
         "rules": list(BASE_RULES) + list(FORMAT_RULES.get(plan["basics"].get("format", ""), ())),
         "notice": {"by": notice_by, "executiveBy": executive_by, "required": _required(plan["basics"], plan["zoom"], included, today, notice_by)},

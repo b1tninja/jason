@@ -56,6 +56,15 @@ It also lists the **schedule gaps**: each of the schedule's meeting days in the 
 - **Recordings can include the executive session.** A board meeting's recording can run on into the executive session that follows it.
 - **Confidential kinds are held back.** An executive session's or a hearing's transcript, summary, and next steps are held back unless asked for (Civil Code 4935).
 
+## Scheduling the board meeting: `jason zoom --create-board-meeting`
+
+`jason zoom --create-board-meeting --date YYYY-MM-DD --yes` creates the board meeting on the association's account under
+the profile's board meeting policy (`Community.board_meeting_policy()`: the length, the waiting room, the cloud
+recording, the topic); without `--date` it takes the schedule's next meeting day, and `--time` overrides the schedule's
+hour. Without `--yes` it prints what it would schedule. What the notice may carry (the join link, the passcode, the
+US dial-in numbers) is kept in `data/zoom/board-meetings.json`, one row per date; the host's start link is dropped. The
+Plan a meeting page reads that row to fill the notice's join and dial-in fields unless a person types them over.
+
 ## Disciplinary hearings: `jason hearing`
 
 `jason hearing --address A --violation "..."` plans a hearing and drafts its notice. It changes nothing in Zoom.

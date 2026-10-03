@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from jason.community import mystique
-from jason.tasks.zoom import hearings, meeting_text, meetings_brief, plan_hearing, save_hearing, sync
+from jason.tasks.zoom import hearings, meeting_text, meetings_brief, plan_board_meeting, plan_hearing, save_hearing, sync
 from jason.zoom.client import Zoom, ZoomAuthError, ZoomCredentials, encode_uuid
 from jason.zoom.models import MeetingKind, classify_meeting, notice_text, parse_vtt, summary_record, zoom_details
 
@@ -243,3 +243,14 @@ def test_a_late_notice_or_a_stranger_address_is_refused() -> None:
     assert plan_hearing(m, address="3030 Macon Dr", violation=" ", on=date(2026, 11, 17)).problems
     with pytest.raises(ValueError):
         plan_hearing(m, address="1 Main St", violation="x")
+
+
+def test_a_board_meeting_follows_the_profiles_policy_and_schedule() -> None:
+    plan = plan_board_meeting(mystique(), today=date(2026, 10, 3))
+    body = plan.meeting_body()
+    assert plan.start.date() == mystique().meeting_schedule().next_meeting(date(2026, 10, 3), monthly=True)
+    assert body["settings"]["auto_recording"] == "cloud" and body["settings"]["waiting_room"] is True and body["type"] == 2
+    assert body["topic"].endswith(plan.start.date().isoformat()) and "start_url" not in body
+    assert plan.record()["zoom"] == {} and plan.record()["date"] == plan.start.date().isoformat()
+    with pytest.raises(ValueError):
+        plan_board_meeting(mystique(), at="noonish")
