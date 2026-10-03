@@ -484,6 +484,30 @@ PROCEDURES: tuple[Procedure, ...] = (
         refs=("docs/onboarding.md",),
     ),
     Procedure(
+        "ingest", "Taking in a folder of documents",
+        "When a person hands over records: a folder, a zip, or a Drive folder (onboarding, a change of manager, a box "
+        "of scans).",
+        (Area.ONBOARDING, Area.DOCUMENTS),
+        "Know every file, take in what is new, and file each where it belongs, with nothing guessed.",
+        (
+            Step("Read the dry run: duplicates, files already held, versions, copies, questions, and the checklist items "
+                 "and gates that would move.", command="jason ingest SOURCE",
+                 check="a new version of a living or citable document is read beside the current text, never applied",
+                 lessons=("packet-read-as-version",)),
+            Step("If many files have no kind, add the local model.", command="jason ingest SOURCE --model",
+                 check="preflight passes; the model is unloaded afterwards (jason local-ai)"),
+            Step("Park the questions and answer them in the ranked queue.",
+                 command="jason ingest SOURCE --park; jason onboard; jason intake --apply",
+                 lessons=("ingest-catch-all-folder",), person=True),
+            Step("Run the dry run again, then take the ready files in.", command="jason ingest SOURCE --apply",
+                 check="the filed count; jason ingest --gate; a later jason library run keeps the ingested rows",
+                 lessons=("library-run-drops-ingested-rows",)),
+            Step("For a version of a known document, read its history; ingest changes no document.",
+                 command="jason revisions KEY", refs=("procedure rule-history",)),
+        ),
+        refs=("docs/onboarding.md (Ingest)",),
+    ),
+    Procedure(
         "owner-document", "An owner-facing document: email, guide, or notice",
         "Whenever the association writes to owners.",
         (Area.DOCUMENTS, Area.EMAIL),

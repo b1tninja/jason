@@ -672,6 +672,26 @@ LESSONS: tuple[Lesson, ...] = (
            "ever applies the patch.",
            "The applier's job ends at writing the proposal.",
            "Track a proposal's state, or ask again when its checklist item is still not present.", Status.OPEN),
+    Lesson("packet-read-as-version", OCT_2026, (Area.DOCUMENTS, Area.ONBOARDING),
+           "Taking in a folder, annual disclosure packets that carry a policy whole were reported as new versions of the "
+           "policy.",
+           "The version test measured how much of the document a file holds; with no name to narrow the candidates, a "
+           "packet holding the whole policy passed.",
+           "A version must also be mostly the document's own words; otherwise it is a copy carried inside another file "
+           "and gets no book from the document.",
+           Status.FIXED, guards=("ingest.find_versions / is_version", "tests/test_ingest.py")),
+    Lesson("library-run-drops-ingested-rows", OCT_2026, (Area.DOCUMENTS,),
+           "A library run rebuilds its documents table from the PayHOA catalog, so files taken in by hand would have "
+           "vanished from it.",
+           "save() drops and rebuilds the table.",
+           "Files taken in are also kept in an ingested table, and save() copies them back.",
+           Status.FIXED, guards=("library.keep_ingested", "tests/test_ingest.py")),
+    Lesson("ingest-catch-all-folder", OCT_2026, (Area.ONBOARDING,),
+           "Taking in a folder as new, most files would be proposed for a catch-all correspondence folder, because "
+           "that is where the library files most statements and letters today.",
+           "A file's folder is proposed from where the library already files its kind.",
+           "Whether new files go to a catch-all folder is the board's or manager's call; a rule could prefer a folder "
+           "pinned to the file's record.", Status.DECISION),
     Lesson("notice-labels-match-outline", OCT_2026, (Area.GOVERNING,),
            "Read for notice duties, the documents showed 52 untracked, though several already had a notice-clause row: "
            "the rows named sections the outline does not use ('(b) Due Process', '6.12 (payment plan)').",
