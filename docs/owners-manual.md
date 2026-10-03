@@ -93,7 +93,7 @@ The target then gives the number the document prints, and the old number resolve
 
 ## The official rules document
 
-Its base is `src/jason/templates/manual/rules.md`, and it renders to `data/drafts/rules-and-regulations.md`. It holds only what the board adopted as its rules, verbatim:
+Its base is `src/jason/templates/manual/rules.md`, and it renders to `data/drafts/rules-and-regulations.md`. It holds only what the board adopted as its rules, verbatim, in the last adopted words (below):
 
 - **Rule text** (a) is printed as written.
 - **A copy the board adopted as a rule's words** (b) stays in place, followed by a bracketed note naming its source and state. Leaving it out would read as a repeal (4340(b)).
@@ -103,7 +103,23 @@ Its base is `src/jason/templates/manual/rules.md`, and it renders to `data/draft
 
 Bracketed notes are editorial and are not part of the rules.
 
-**The adoption history** (`{ADOPTION_HISTORY}`) lists each recorded step: noticed, adopted, delivered, tabled, listed, no action, in force. Its sources are:
+### The last adopted words, not the working ones
+
+The manual's Doc is edited between adoptions, so its current words are not all adopted text. The revision history (`jason revisions KEY`, `data/revisions/KEY.json`) separates them, as `jason rule-change --from-manual` does (`jason.tasks.manual_rule_change.partition`):
+
+- **(a) adopted, or unchanged since the earliest version on disk**: printed as written;
+- **(b) changed with no adoption found**: the official rules print the passage's **last adopted words**, then jason's bracketed note: `_[jason's note, not rule text: Changed between DATE and DATE; no adoption found. The words printed are the last adopted (adopted DATE, RECORD). The working text reads: “…”]_`. A removed passage keeps its adopted words, after the piece it followed, and its note says the working text leaves them out;
+- **(c) pending suggestions** in the Doc: never printed, not in the rules' words and not in the working words a note recites. A suggested deletion's words stand until a person accepts it.
+
+**Whose words the earlier ones are.** They are the last adopted words only when an adoption on record covers them: an adoption that cured an earlier change of the passage, an adoption naming the section (or one that holds it, or its book) before the change was first saved, or a change the detector itself tied to an adoption. That adoption must be no later than the version the earlier words are read from: one that falls between that version and the change may have adopted other words, which no version on disk shows. **Where no adopted version is on record**, the note says so ("its adopted words are not known and none are printed as a rule"), recites the earlier version's words as that version's, and recites the working words. jason does not guess which words are adopted.
+
+**`--current`** renders the working words instead, to `data/drafts/rules-and-regulations-current.md`, with the same notes: each (b) passage is followed by a note reciting its last adopted words, or saying that none are on record. This is the text `jason rule-change --from-manual` proposes; it reads it in memory (`jason.tasks.manual.working_rules`).
+
+The template's `{TEXT_BASIS}` says which words a rendering holds. `data/manual/KEY/render.json` records the separation under `adoption`: the mode, the (b) passages with their basis and the pieces they are placed on, and the suggestions left out. With no revision history on disk the rules are the working words, and the rendering says so.
+
+Where a passage sits: the concordance names its piece, and the passage covers every other piece of rule text its working words run over (`place_passages`). A passage the concordance cannot place is shown at the end of the rules; a policy's passage (the fine schedule) is listed in the adoption history only.
+
+**The adoption history** (`{ADOPTION_HISTORY}`) lists each recorded step: noticed, adopted, delivered, tabled, listed, no action, in force; then each (b) passage, the policies' too, with when it changed and whether its last adopted words are on record. Its sources are:
 
 - the profile's `AdoptionEvent` rows, read from the minutes and the library;
 - the rule-change records that name the manual, when no row names them (`Community.rule_change_records()`);
@@ -121,8 +137,9 @@ The base is `src/jason/templates/manual/owners-manual.md`. It is general, and th
 | `{EXCERPTS}` | the governing-document sections the profile quotes (`Excerpt` rows), each a `{QUOTE:key#n}` ([embedded-references.md](embedded-references.md)) |
 | `{INCLUDE:book}`, `{INCLUDE:book#N}` | a whole book or one section with its subsections; `official` renders the rule text only; `optional` renders nothing for a book the profile does not fill |
 | `{LAW:CIV 5730(a) quoted}` | a statute's words from disk, or the passage the subdivision prints in quotation marks |
-| `{ADOPTION_HISTORY}` | the history table |
+| `{ADOPTION_HISTORY}` | the history table, and the passages changed with no adoption found |
 | `{ASSOCIATION_NAME}` and the other identity tokens; `{RULES_TITLE}`, `{MANUAL_TITLE}`, `{SOURCE_TITLE}`, `{SOURCE_REVISION}` | the profile's values |
+| `{TEXT_BASIS}` | in the official rules: which words the rendering holds (the last adopted, or the working words) |
 
 Each piece's words come from its source:
 
@@ -147,6 +164,7 @@ jason manual --classify             # data/manual/KEY/classification.{json,md}
 jason manual --classify --asks      # also the open questions into the intake store
 jason manual --concordance          # concordance.{json,md}, and every existing citation resolved
 jason manual --render               # data/drafts/rules-and-regulations.md, owners-manual.md, owners-manual.diff
+jason manual --render --current     # the rules in the working words: rules-and-regulations-current.md
 ```
 
 The manual's text is the outline on disk (`jason outlines --fetch`, read-only). Nothing is written to Drive, PayHOA, or the mail, and the Doc is never edited.

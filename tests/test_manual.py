@@ -198,6 +198,85 @@ def test_the_official_rules_hold_the_rule_text_and_name_what_was_left():
     assert "| 2020-01-02 | adopted | R-1 |" in md
 
 
+RULES = "# {RULES_TITLE}\n\n{ADOPTION_HISTORY}\n\n{INCLUDE:rules official}\n"
+WORKING_R1 = "R-1. PETS Pets shall be leashed in the common area."
+
+
+def _passages():
+    from jason.community.manual import Passage
+
+    return [
+        # known: an adoption on record covers the earlier words
+        Passage("rules#R-1", "R-1", "reworded", "2098-01-01", "2098-06-01", "R-1. PETS Pets shall be leashed everywhere.",
+                WORKING_R1, "2097-09-01, rc-2097", segments=("R-1",), book_title="Example Rules"),
+        # not known: no adopted version on record
+        Passage("rules#R-2", "R-2", "reworded", "2098-01-01", "2098-06-01", "R-2. NOISE No Unit shall be altered.",
+                "R-2. NOISE No Unit shall be altered so as to increase sound transmission.", "", segments=("R-2",),
+                book_title="Example Rules"),
+        # removed, with its adopted words known
+        Passage("rules#R-1(c)", "R-1(c)", "removed", "2098-01-01", "2098-06-01",
+                "Residents may opt out of the visitor log.", "", "2097-09-01, rc-2097", follows="R-1(a)",
+                book_title="Example Rules"),
+        # a policy bound in the manual: listed in the history, not in the rules
+        Passage("disc#C(b)", "R-3(C)(1)", "added", "2098-01-01", "2098-06-01", "", "First violation $25.", "",
+                book_title="Discipline Policy"),
+    ]
+
+
+def _rule_lines(md: str) -> list[str]:
+    """The lines printed as rule text: not a note, not the history's table."""
+    return [ln for ln in md.splitlines() if ln.strip() and not ln.startswith(("_[", "_", "|", "#"))]
+
+
+def test_the_official_rules_print_the_last_adopted_words_with_jasons_note():
+    o = outline()
+    result = classify(o, spec(), NORMS, hits(o), law=law, answers={"R-3": "rule", "WHAT IS AN ASSOCIATION?": "guidance"})
+    md, chunks = render(RULES, result, spec(rules_title="Example Rules"), Source(o), o.text, passages=_passages())
+    rules = "\n".join(_rule_lines(md))
+    # (b) with adopted words on record: those words are the rule; the working words only in jason's note
+    assert "R-1. PETS Pets shall be leashed everywhere." in rules and "in the common area" not in rules
+    assert ("_[jason's note, not rule text: Changed between 2098-01-01 and 2098-06-01; no adoption found. The words "
+            "printed are the last adopted (adopted 2097-09-01, rc-2097). The working text reads: “" + WORKING_R1 + "”]_"
+            ) in md
+    # no adopted version on record: no rule words, and the note says so without guessing
+    assert "sound transmission" not in rules and "No Unit shall be altered" not in rules
+    assert "No adopted version of this passage is on record, so its adopted words are not known and none are " \
+           "printed as a rule. The version of 2098-01-01 reads: “R-2. NOISE No Unit shall be altered.”" in md
+    # a removed passage keeps its adopted words, after the piece it followed
+    assert "Residents may opt out of the visitor log." in rules
+    assert "Removed (the manual's R-1(c)) between 2098-01-01 and 2098-06-01; no adoption found." in md
+    assert md.index("No pet shall be left alone") < md.index("Residents may opt out")
+    # the history lists every (b) passage, the policies' too
+    assert "| Example Rules R-1 | reworded, 2098-01-01 to 2098-06-01 | adopted 2097-09-01, rc-2097 |" in md
+    assert "| Discipline Policy C(b) | added, 2098-01-01 to 2098-06-01 | not known: no adopted version on record |" in md
+    assert all(c.kind != "adopted" or c.start < 0 for c in chunks)          # the adopted words are not the Doc's span
+
+
+def test_current_renders_the_working_words_with_the_same_notes():
+    o = outline()
+    result = classify(o, spec(), NORMS, hits(o), law=law, answers={"R-3": "rule", "WHAT IS AN ASSOCIATION?": "guidance"})
+    md, _ = render(RULES, result, spec(rules_title="Example Rules"), Source(o), o.text, passages=_passages(),
+                   current=True)
+    rules = "\n".join(_rule_lines(md))
+    assert "Pets shall be leashed in the common area." in rules and "leashed everywhere" not in rules
+    assert "The last adopted words (adopted 2097-09-01, rc-2097) read: “R-1. PETS Pets shall be leashed everywhere.”" in md
+    assert "No Unit shall be altered so as to increase sound transmission." in rules
+    assert "so its adopted words are not known. The version of 2098-01-01 reads:" in md
+    assert "Residents may opt out" not in rules and "The working text leaves them out." in md
+    assert "the working words are printed and jason's note recites the last adopted words" in md
+
+
+def test_pending_insertions_are_taken_out_together():
+    from types import SimpleNamespace as S
+
+    from jason.tasks.manual import strip_inserts
+
+    text = "Pets such as birds, cats, or dogs may be kept maintained in a unit."
+    inserts = [S(words="cats, or dogs", where="Pets such as birds,"), S(words="kept", where="birds, cats, or dogs may be")]
+    out, removed = strip_inserts(text, inserts)
+    assert out == "Pets such as birds, may be maintained in a unit." and sorted(removed) == ["cats, or dogs", "kept"]
+
+
 def test_a_book_the_profile_does_not_fill_fails_unless_optional():
     o = outline()
     result = classify(o, spec(), NORMS, hits(o), law=law)

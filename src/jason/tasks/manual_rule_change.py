@@ -1,9 +1,10 @@
 """The board's Civil Code 4360 course for publishing the official rules: a draft notice whose "text of the proposed
 rule change" is the official rules document extracted from the owner's manual, with its concordance.
 
-``jason manual --render`` writes the official rules (``data/drafts/rules-and-regulations.md``) from the manual's current
-Doc, word for word. The Doc is not all adopted text, so the notice does not present it whole as the rules in force. The
-revision history (``jason revisions KEY``, ``data/revisions/KEY.json``) separates three things:
+The official rules' working text is rendered from the manual's current Doc, word for word (``jason manual --render
+--current``; in memory here). The Doc is not all adopted text, so neither the notice nor the official rules present it
+whole as the rules in force. The revision history (``jason revisions KEY``, ``data/revisions/KEY.json``) separates three
+things, and ``jason manual --render`` uses the same separation to print the last adopted words in the official rules:
 
 - **(a) the text as adopted, or unchanged since the earliest version on disk**: the rules' words with no change
   between versions, or whose change an adoption on record names (the detector's finding is empty, or a later adoption
@@ -12,8 +13,8 @@ revision history (``jason revisions KEY``, ``data/revisions/KEY.json``) separate
   proposes the words now in the manual, so the board adopts them through 4360 or restores the earlier words. "No
   adoption found" is a finding for a person, not proof that none happened;
 - **(c) pending suggestions** in the working Doc: words proposed in the Doc and never accepted. They are not the text
-  in force and not part of the proposed text. The Docs API reads them inline, so the official rules draft may carry
-  them; this module finds them there and strikes them from the enclosed text.
+  in force and not part of the proposed text. An outline read before outlines were read without suggestions carries
+  them inline, so the working text may too; this module finds them there and strikes them from the enclosed text.
 
 The draft (``data/drafts/rule-change-official-rules-<notice date>.md``) carries the member notice in 4360(a)'s order,
 the agenda item, the adoption notice, the required-elements check, the proposed text as a stage version
@@ -35,7 +36,8 @@ from typing import Any
 from jason.community.rule_changes import RuleChange, SectionChange
 
 DRAFTS = "drafts"
-RULES_DRAFT = "rules-and-regulations.md"
+RULES_DRAFT = "rules-and-regulations.md"                   # the official rules: the last adopted words, with notes
+CURRENT_DRAFT = "rules-and-regulations-current.md"         # jason manual --render --current: the working words
 WORD_CHANGES = ("reworded", "added", "removed", "split", "merged")      # moved and renumbered keep their words
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _WORD = re.compile(r"[A-Za-z0-9$%]+(?:['’][A-Za-z]+)?")
@@ -59,9 +61,10 @@ class Unadopted:
     first_saved: str
     finding: str
     steps: int = 1                   # how many changes between milestones this lineage made with no adoption found
-    in_draft: bool | None = None     # whether the official rules draft carries the words now in the manual
+    in_draft: bool | None = None     # whether the rules' working text carries the words now in the manual
     suggested: bool = False          # the new words include a pending insertion: the Doc never accepted them
     ops: tuple[tuple[str, str], ...] = ()   # the words that changed, each (before, after), in order
+    basis: str = ""                  # the adoption on record the earlier words carry; empty: none is on record
 
     def changed_words(self) -> list[str]:
         """Each change of words, as a phrase: “before” became “after”; words added; words struck."""
@@ -91,7 +94,7 @@ class Suggestion:
     kind: str                        # "insert" or "delete"
     words: str
     since: str
-    in_draft: bool | None            # whether the official rules draft carries the words (None: too short to say)
+    in_draft: bool | None            # whether the working text carries the words (None: too short to say)
     where: str = ""                  # the words around it, as the Doc reads them
     struck: bool = False             # struck from Enclosure A
 
@@ -112,6 +115,10 @@ class Partition:
     guidance: int = 0                # changes only to guidance (left in the manual)
     concordance: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    text: str = ""                   # the working text of the official rules the separation read (else ``draft``'s)
+
+    def words(self) -> str:
+        return self.text or self.draft.read_text(encoding="utf-8")
 
     @property
     def official(self) -> list[Unadopted]:
@@ -226,33 +233,79 @@ def _parent(number: str) -> str:
     return m.group(1) if m else ""
 
 
+def _names(e: Any, u: Unadopted, rows: list[Any]) -> bool:
+    """Whether an adoption names the section, one that holds it, or its whole book."""
+    from jason.community.manual import resolve_old
+
+    for s in e.sections:
+        if "#" not in s and s == u.book.split(".")[0]:
+            return True
+        new = s if "#" in s else (resolve_old(rows, s) or "")
+        for name in (new, s):
+            if not name:
+                continue
+            num = name.split("#", 1)[1] if "#" in name else name
+            book = name.split("#", 1)[0] if "#" in name else ""
+            if book and book != u.book:
+                continue
+            if u.number == num or u.number.startswith(num + "(") or u.outline == num \
+                    or u.outline.startswith(num + "("):
+                return True
+    return False
+
+
+def _label(e: Any) -> str:
+    return f"{e.on}, {e.record or e.evidence[:60]}"
+
+
 def _adopted_later(u: Unadopted, events: list[Any], rows: list[Any]) -> str:
     """An adoption on record, on or after the change was first saved, naming the section or one that holds it."""
-    from jason.community.manual import AdoptionAction, resolve_old
+    from jason.community.manual import AdoptionAction
 
     saved = u.first_saved or u.to_on
     for e in events:
         if e.action is not AdoptionAction.ADOPTED or e.on is None or e.on.isoformat() < saved:
             continue
-        for s in e.sections:
-            if "#" not in s and s == u.book.split(".")[0]:
-                return f"{e.on} ({e.record or e.evidence[:60]})"
-            new = s if "#" in s else (resolve_old(rows, s) or "")
-            for name in (new, s):
-                if not name:
-                    continue
-                num = name.split("#", 1)[1] if "#" in name else name
-                book = name.split("#", 1)[0] if "#" in name else ""
-                if book and book != u.book:
-                    continue
-                if u.number == num or u.number.startswith(num + "(") or u.outline == num \
-                        or u.outline.startswith(num + "("):
-                    return f"{e.on} ({e.record or e.evidence[:60]})"
+        if _names(e, u, rows):
+            return _label(e)
     return ""
 
 
-def partition(data_dir: Path, community: Any) -> Partition:
-    """The official rules draft separated into (a), (b), and (c), from the revision history on disk."""
+def _adopted_before(u: Unadopted, events: list[Any], rows: list[Any]) -> tuple[str, str]:
+    """The latest adoption on record before the change was first saved that names the section: the earlier words are
+    the ones it adopted, since any change between it and this one would be part of this one or cured. ``(day,
+    label)``; empty when none."""
+    from jason.community.manual import AdoptionAction
+
+    saved = u.first_saved or u.to_on
+    found = [e for e in events if e.action is AdoptionAction.ADOPTED and e.on is not None
+             and e.on.isoformat() < saved and _names(e, u, rows)]
+    if not found:
+        return "", ""
+    e = max(found, key=lambda x: x.on)
+    return e.on.isoformat(), _label(e)
+
+
+def _detector_adopted(changes: list[dict[str, Any]], before: str) -> tuple[str, str]:
+    """The latest change of the lineage the detector itself tied to an adoption (no finding), before ``before``."""
+    from jason.tasks.revision_detection import STRONG
+
+    best = ("", "")
+    for c in changes:
+        if c.get("finding") or c["kind"] not in WORD_CHANGES or c["toOn"] > before:
+            continue
+        strong = [a for a in c.get("adoption") or () if isinstance(a, dict) and a.get("strength") in STRONG]
+        day = next((str(a.get("on") or "") for a in strong if a.get("on")), "") or c["toOn"]
+        what = next((str(a.get("what") or "") for a in strong if a.get("what")), "") or "an adoption the detector found"
+        if day >= best[0]:
+            best = (day, f"{day}, {what}")
+    return best
+
+
+def partition(data_dir: Path, community: Any, text: str | None = None) -> Partition:
+    """The official rules' working text separated into (a), (b), and (c), from the revision history on disk. ``text``
+    is the working text as ``jason manual --render`` renders it before any note is added; by default it is rendered
+    here, in memory (the file ``jason manual --render`` writes holds the last adopted words, not the working ones)."""
     from jason.community.manual import ManualError
     from jason.tasks import manual as manual_task
     from jason.tasks import revision_detection as rd
@@ -260,18 +313,17 @@ def partition(data_dir: Path, community: Any) -> Partition:
     data_dir = Path(data_dir)
     spec = manual_task.spec_of(community)
     key = spec.document
-    draft = data_dir / DRAFTS / RULES_DRAFT
-    if not draft.is_file():
-        raise ManualError(f"no official rules draft at {draft}: run jason manual --render first")
+    draft = data_dir / DRAFTS / CURRENT_DRAFT
     result = rd.load(data_dir, key)
     if result is None:
         raise ManualError(f"no revision history for {key}: run jason revisions {key} first")
-    text = draft.read_text(encoding="utf-8")
+    if text is None:
+        text = manual_task.working_rules(data_dir, community)
     rows = _concordance(data_dir, key)
     outline = manual_task.load_outline(data_dir, key)
     part = Partition(key, outline.title or key, spec.rules_title, result.get("current", ""),
                      (outline.revision or "")[:16], draft, hashlib.sha256(text.encode("utf-8")).hexdigest()[:16],
-                     concordance=[r.__dict__ for r in rows if r.official])
+                     concordance=[r.__dict__ for r in rows if r.official], text=text)
     names = rd.outline_names(data_dir, key, _current_units(data_dir, result))
     events = manual_task.adoption_history(data_dir, community, spec)
     contexts: list[tuple[str, str, str]] = []
@@ -294,10 +346,13 @@ def separate(part: Partition, result: dict[str, Any], rows: list[Any], names: di
     for r in rows:
         by_old.setdefault(r.old, []).append(r)
     grouped: dict[str, list[dict[str, Any]]] = {}
+    every: dict[str, list[dict[str, Any]]] = {}
     for c in result.get("changes") or []:
-        if not c.get("finding") or c["kind"] not in WORD_CHANGES:
+        if c["kind"] not in WORD_CHANGES:
             continue
-        grouped.setdefault(c["lineage"], []).append(c)
+        every.setdefault(c["lineage"], []).append(c)
+        if c.get("finding"):
+            grouped.setdefault(c["lineage"], []).append(c)
     stream = _stream(text)
     for lineage, all_changes in grouped.items():
         all_changes.sort(key=lambda c: c["toOn"])
@@ -315,16 +370,29 @@ def separate(part: Partition, result: dict[str, Any], rows: list[Any], names: di
             continue
         # A change a later adoption on record names is cured (a); the changes after the last such adoption are (b).
         changes: list[dict[str, Any]] = []
+        last_cure = ("", "")
         for c in all_changes:
             probe = _unadopted(lineage, piece, old, [c], lin, stream)
             cured = _adopted_later(probe, events, rows)
             if cured:
                 part.cured.append((probe, cured))
                 changes = []            # an adoption covers the words as they then stood: start again after it
+                last_cure = (cured[:10], cured)
             else:
                 changes.append(c)
         if changes:
-            part.unadopted.append(_unadopted(lineage, piece, old, changes, lin, stream))
+            u = _unadopted(lineage, piece, old, changes, lin, stream)
+            # Whose words are the earlier ones: the latest adoption on record that covers them (a cure before this run,
+            # an adoption naming the section before the change was saved, or a change the detector tied to one).
+            # None: the earlier words are only a version's, and the adopted words are not known.
+            # The adoption must be no later than the version the earlier words are read from: one between that version
+            # and the change may have adopted other words, which no version on disk shows.
+            start = changes[0]["fromOn"]
+            found = [x for x in (last_cure, _adopted_before(u, events, rows),
+                                 _detector_adopted(every.get(lineage, []), start)) if x[0] and x[0] <= start]
+            if found:
+                u = replace(u, basis=max(found)[1])
+            part.unadopted.append(u)
     part.unadopted.sort(key=lambda u: (not u.official, u.address, u.to_on))
     _suggestions(part, result, text, list(contexts))
     return part
@@ -386,7 +454,7 @@ def _suggestions(part: Partition, result: dict[str, Any], text: str, contexts: l
 def enclosure(part: Partition) -> tuple[str, list[Suggestion]]:
     """The official rules draft with each pending insertion it carries struck through and labeled. A deletion the Doc
     suggests is left in: its words are the text until a person accepts the suggestion."""
-    text = part.draft.read_text(encoding="utf-8")
+    text = part.words()
     spans: list[tuple[int, int, Suggestion]] = []
     for s in part.suggestions:
         if s.kind != "insert" or not s.in_draft:
@@ -514,8 +582,9 @@ def proposed(part: Partition, notice_date: date, book: str = "rules"):
     from jason.community.revisions import RecordVersion, Stage
 
     return RecordVersion(book, "", Stage.PROPOSED, notice_date, None,
-                         f"data/{DRAFTS}/{RULES_DRAFT} (sha256 {part.digest}, from {part.document} revision "
-                         f"{part.revision})",
+                         f"the working text of the official rules, from {part.document} revision {part.revision} "
+                         f"(sha256 {part.digest} of the words without jason's notes; jason manual --render --current "
+                         f"writes it with them to data/{DRAFTS}/{CURRENT_DRAFT})",
                          "the notice of the proposed rule change (Civil Code 4360(a))",
                          "the official rules as proposed: not in force; cited as itself, never merged into the text "
                          "in force")
@@ -541,7 +610,8 @@ def render(part: Partition, when: Any, association: str, schedule: Any = None, *
     lines = [f"# Rule change: {change.title}", "",
              "**" + " ".join(change.caveats) + "**", "",
              f"The text of the proposed rule change is the official {part.rules_title} extracted from the "
-             f"{part.title} (`data/{DRAFTS}/{RULES_DRAFT}`, sha256 {part.digest}), as the stage version "
+             f"{part.title}, its working text (`jason manual --render --current`; sha256 {part.digest} of the words "
+             f"without jason's notes), as the stage version "
              f"`{version.book}{version.label()}` (`{rc.version_address(version)}`): {version.note}.", "",
              "## What the text is", "",
              f"Read from the revision history (`jason revisions {part.document}`, current version {part.current}).", "",
@@ -555,17 +625,18 @@ def render(part: Partition, when: Any, association: str, schedule: Any = None, *
              f"proposed text.", ""]
     carried_b = [u for u in part.official if u.in_draft]
     carried_c = [s for s in part.suggestions if s.in_draft]
-    lines += ["### What the official rules draft carries that it should not, or not unlabeled", "",
-              f"- (b) words: {len(carried_b)} of the {len(part.official)} changed passages of the rules are in the draft "
-              f"as plain rule text, with nothing to say no adoption was found. This notice is how they are adopted or "
-              f"restored.",
-              f"- (c) words: {len([s for s in carried_c if s.kind == 'insert'])} suggested insertions are in the draft "
-              f"as if accepted (the outline the draft is rendered from reads the Doc with its suggestions inline, so "
-              f"an insertion proposed and the words it would delete both appear); {len(struck)} are struck from "
-              f"Enclosure A below, and any other is listed for a person. The "
-              f"{len([s for s in carried_c if s.kind == 'delete'])} suggested deletions in the draft are right to be "
-              f"there: the words stand until a person accepts the suggestion. The fix belongs in the outline reader "
-              f"(read the Doc without its suggestions), not here.", ""]
+    lines += ["### What the working text carries that is not adopted text", "",
+              f"- (b) words: {len(carried_b)} of the {len(part.official)} changed passages of the rules are in the "
+              f"working text. The official rules (`jason manual --render`) print the last adopted words in their place "
+              f"where they are known, with jason's note; this notice is how the working words are adopted or the "
+              f"earlier words restored.",
+              f"- (c) words: {len([s for s in carried_c if s.kind == 'insert'])} suggested insertions are in the "
+              f"working text as if accepted (an outline read before outlines were read without suggestions carries "
+              f"them inline, so an insertion proposed and the words it would delete both appear); {len(struck)} are "
+              f"struck from Enclosure A below, and any other is listed for a person. The "
+              f"{len([s for s in carried_c if s.kind == 'delete'])} suggested deletions in it are right to be "
+              f"there: the words stand until a person accepts the suggestion. `jason outlines --fetch` reads the Doc "
+              f"without its suggestions.", ""]
     for p_ in part.notes:
         lines.append(f"- Note: {p_}")
     lines += ["", "## (b) The passages changed with no adoption found", ""]
@@ -575,7 +646,9 @@ def render(part: Partition, when: Any, association: str, schedule: Any = None, *
                   f"- {u.kind}" + (f" [{', '.join(u.flags)}]" if u.flags else "") + f"; {u.steps} change(s) between "
                   f"{u.from_on} and {u.to_on}, first saved {u.first_saved or u.to_on}; the manual's {u.outline}.",
                   f"- Finding: {u.finding}.",
-                  f"- In the official rules draft: {'yes' if u.in_draft else ('no' if u.in_draft is False else 'removed')}.",
+                  f"- In the working text: {'yes' if u.in_draft else ('no' if u.in_draft is False else 'removed')}.",
+                  f"- The earlier words: " + (f"adopted {u.basis}." if u.basis else
+                                              "no adopted version on record; they are only the version's words."),
                   *(["- The new words include a pending suggestion (c): the Doc never accepted them, so they are "
                      "struck from Enclosure A; adopting them is the Board's choice like any other."]
                     if u.suggested else []),
@@ -617,7 +690,7 @@ def render(part: Partition, when: Any, association: str, schedule: Any = None, *
         for citation, words in law.items():
             lines += [f"**{citation}:** \"{words}\"", ""]
     lines += ["## Enclosure A: the text of the proposed rule change", "",
-              "_Rendered by `jason manual --render`; pending insertions struck. A bracketed note is editorial, not part "
+              "_The working text (`jason manual --render --current`, without its notes); pending insertions struck. A bracketed note is editorial, not part "
               "of the rules._", "", body.strip(), "",
               "## Enclosure B: the concordance (the manual's number to the rules' number)", "",
               "| The manual | The rules | Status |", "|---|---|---|"]

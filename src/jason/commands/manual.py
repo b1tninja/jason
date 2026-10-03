@@ -6,7 +6,10 @@ rows (``Community.owners_manual()``), checks each against the deontic grammar's 
 intake`` answers them). ``--concordance`` writes ``concordance.{json,md}``: every old address to its new one, and every
 existing citation of the manual resolved through it. ``--render`` fills the base templates
 (``src/jason/templates/manual``) and writes the official rules and the generated manual to ``data/drafts/``, with the
-manual's diff against the Doc's text. Reading only: nothing in Drive, PayHOA, or the mail changes.
+manual's diff against the Doc's text. The official rules hold the last adopted words: a passage changed with no adoption
+found (``jason revisions``) shows them where an adoption on record covers them, with jason's note reciting the working
+words, and a note alone where none is on record; ``--current`` renders the working words with the same notes. Pending
+suggestions never appear. Reading only: nothing in Drive, PayHOA, or the mail changes.
 """
 
 from __future__ import annotations
@@ -63,12 +66,24 @@ def cmd_manual(args: argparse.Namespace) -> int:
             print(f"wrote {paths['concordance_md']}")
     if args.render:
         try:
-            out = task.render(data_dir, community())
+            out = task.render(data_dir, community(), current=args.current)
         except ManualError as exc:
             print(f"jason manual: {exc}", file=sys.stderr)
             return 1
         found = out["check"]
         print(f"rendered: {out['paths']['rules']} and {out['paths']['manual']}")
+        a = out["adoption"]
+        if not a["separated"]:
+            print(f"the official rules are the working words, labeled so: {a['why']}")
+        else:
+            words = "the working words" if a["mode"] == "current" else "the last adopted words where known"
+            print(f"the official rules hold {words}: {a['passages']} passages changed with no adoption found "
+                  f"({a['known']} with adopted words on record, {a['unknown']} with none: a note only"
+                  + ("" if a["mode"] == "current" else ", no rule words") + f"; {a['placed']} placed), "
+                  f"{a['policies']} more in the policies bound in the manual (listed in the adoption history); "
+                  f"{len(a['suggestionsRemoved'])} pending suggestions left out")
+            for words_ in a["suggestionsLeft"]:
+                print(f"  CHECK a pending suggestion still in the rules: {words_[:80]!r}")
         print(f"the manual beside the Doc: {'every word placed' if found.covered else 'MISSING ' + '; '.join(found.missing)}"
               f"{', in order' if not found.out_of_order else ', OUT OF ORDER'}; {found.same} pieces the same, "
               f"{len(found.labeled)} labeled changes, {len(found.unlabeled)} unlabeled")
@@ -90,7 +105,10 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--concordance", action="store_true", help="every old address to its new one, and every existing "
                                                               "citation of the manual resolved")
     p.add_argument("--render", action="store_true", help="write the official rules and the generated manual to "
-                                                         "data/drafts, with the diff against the Doc's text")
+                                                         "data/drafts, with the diff against the Doc's text; the "
+                                                         "rules hold the last adopted words, with jason's notes")
+    p.add_argument("--current", action="store_true", help="with --render: the official rules in the working words "
+                                                          "(rules-and-regulations-current.md), with the same notes")
     p.set_defaults(func=cmd_manual)
 
 

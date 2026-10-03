@@ -96,6 +96,27 @@ def test_the_three_kinds_are_kept_apart(tmp_path):
     assert fee.steps == 2 and fee.before == "Permit $10 a month." and fee.after == "Permit $20."
 
 
+def test_the_earlier_words_are_adopted_only_when_an_adoption_on_record_covers_them(tmp_path):
+    draft = tmp_path / "rules-and-regulations.md"
+    draft.write_text(DRAFT, encoding="utf-8")
+
+    def separated(events):
+        part = mrc.Partition("example-manual", "Example Owner's Guide", "Example Rules", "v3", "rev123", draft, "d1",
+                             text=DRAFT)
+        return {u.address: u for u in mrc.separate(part, RESULT, ROWS, NAMES, events, DRAFT, CONTEXTS).unadopted}
+
+    # no adoption on record: the earlier words are only a version's
+    assert separated(EVENTS)["rules#R-2"].basis == ""
+    # an adoption naming R-2 before the version the earlier words are read from: they are the adopted words
+    before = AdoptionEvent(date(2097, 9, 1), AdoptionAction.ADOPTED, ("R-2",), "minutes of 2097-09-01", "rc-2097")
+    assert separated(EVENTS + [before])["rules#R-2"].basis == "2097-09-01, rc-2097"
+    # one between that version and the change may have adopted other words: not known, so not guessed
+    between = AdoptionEvent(date(2098, 3, 1), AdoptionAction.ADOPTED, ("R-2",), "minutes of 2098-03-01", "rc-2098")
+    assert separated(EVENTS + [between])["rules#R-2"].basis == ""
+    # an adoption names its own section only: the policy bound in the manual stays not known
+    assert separated(EVENTS + [before])["fees#F(a)"].basis == ""
+
+
 def test_pending_suggestions_are_found_and_struck_from_the_enclosure(tmp_path):
     part = _part(tmp_path)
     seen = {s.words: s.in_draft for s in part.suggestions}

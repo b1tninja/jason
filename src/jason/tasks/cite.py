@@ -839,8 +839,11 @@ class Shelf:
                          extra={"proof": p, "sections": [("Proof of notice", nr.proof_lines(p))]})
         text = r["text"]
         version = {"source": text["source"], "requirement": req.get("key", ""), "standing": standing,
-                   "note": ("the notice as sent" if text["words"] else
+                   "note": ("the notice as sent, edited since it was kept" if text["words"] and text.get("edited")
+                            else "the notice as sent" if text["words"] else
                             "jason does not have the text as sent; the record below is what it keeps")}
+        if text.get("digest"):
+            version["digest"] = text["digest"]
         return State(Kind.RECORD, True, citation=cite, title=title, text=text["words"], version=version,
                      nodes=nr.nodes(r), extra={"notice": r, "sections": nr.sections(r)})
 

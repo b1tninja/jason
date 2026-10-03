@@ -10,6 +10,11 @@ generated manual, and compare the rendering with the manual.
   duties store, other documents' references) through the concordance.
 - ``render`` fills the base templates (``src/jason/templates/manual``) and writes ``data/drafts/rules-and-regulations.md``,
   ``data/drafts/owners-manual.md``, and ``data/drafts/owners-manual.diff``; the check is in ``data/manual/KEY/render.json``.
+  The official rules hold the last adopted words: a passage the revision history finds changed with no adoption (the
+  (b) of ``manual_rule_change``) shows them where an adoption on record covers them, then jason's bracketed note with
+  the working words; where no adopted version is on record the note says so and no words are printed as the rule.
+  ``current=True`` writes the working words (``rules-and-regulations-current.md``) with the same notes. Pending
+  suggestions (c) never appear. ``working_rules`` is the working text in memory, with no notes.
 - ``adoption_history`` is the profile's recorded steps, the rule-change records that name the manual, and a
   detector's dated versions from ``history_path`` (``data/manual/KEY/history.json``, a list of
   ``AdoptionEvent.to_dict()`` rows).
@@ -23,13 +28,14 @@ from __future__ import annotations
 import difflib
 import json
 import re
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
 from jason.community.manual import (AdoptionAction, AdoptionEvent, Chunk, Classification, CopyHit, CopyState, ManualError,
-                                    ManualSpec, Norm, SectionKind, Segment, asks as asks_of, check, classify as classify_,
-                                    compare, concordance, places, render as render_, resolve_old, segments, words)
+                                    ManualSpec, Norm, Passage, SectionKind, Segment, asks as asks_of, check,
+                                    classify as classify_, compare, concordance, places, render as render_, resolve_old,
+                                    segments, words)
 from jason.community.outlines import DocumentOutline
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates" / "manual"
@@ -394,7 +400,8 @@ def template(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _values(community: Any, outline: DocumentOutline, spec: ManualSpec) -> dict[str, str]:
+def _values(community: Any, outline: DocumentOutline, spec: ManualSpec, *, basis: bool = True, current: bool = False,
+            separated: bool = False) -> dict[str, str]:
     values: dict[str, str] = {}
     try:
         values.update(community.identity().values())
@@ -402,12 +409,32 @@ def _values(community: Any, outline: DocumentOutline, spec: ManualSpec) -> dict[
         pass
     values["SOURCE_TITLE"] = outline.title or spec.document
     values["SOURCE_REVISION"] = (outline.revision or "")[:16]
+    if not basis:
+        values["TEXT_BASIS"] = ""
+    elif not separated:
+        values["TEXT_BASIS"] = (" These are the working words of the source document: no revision history is on disk "
+                                "(jason revisions), so which of them the board adopted is not shown.")
+    elif current:
+        values["TEXT_BASIS"] = (" These are the working words of the source document, not the adopted text. Where the "
+                                "words changed with no adoption found in the board's records, jason's bracketed note "
+                                "says so and recites the last adopted words, or says that no adopted version is on "
+                                "record. Pending suggestions in the source are left out.")
+    else:
+        values["TEXT_BASIS"] = (" Where the source's working words changed with no adoption found in the board's "
+                                "records, the last adopted words are printed and jason's bracketed note recites the "
+                                "working words; where no adopted version of the passage is on record, the note says so "
+                                "and no words are printed as the rule. Pending suggestions in the source are left out.")
     return values
 
 
-def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path | None = None) -> dict[str, Any]:
-    """Render the official rules and the generated manual to ``data/drafts`` and compare the manual's rendering with
-    the Doc's text. Returns the paths and the check."""
+RULES_FILE = "rules-and-regulations.md"                    # the official rules: the last adopted words, with notes
+CURRENT_FILE = "rules-and-regulations-current.md"          # --current: the working words, with notes
+
+
+def working_rules(data_dir: Path | None = None, community: Any = None) -> str:
+    """The official rules' working text, in memory: the rules template filled from the manual's current Doc as the
+    outline reads it, word for word, with no note on what was adopted. What ``jason rule-change --from-manual``
+    proposes, and what the (b) and (c) separation reads."""
     data_dir = Path(data_dir) if data_dir is not None else default_data_dir()
     if community is None:
         from jason.community import community as active
@@ -415,25 +442,190 @@ def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path
         community = active()
     result, outline, spec = classify(data_dir, community)
     source = DiskSource(data_dir, community, spec, outline)
-    values = _values(community, outline, spec)
-    rules_md, rules_chunks = render_(template("rules.md"), result, spec, source, outline.text, values=values)
-    manual_md, manual_chunks = render_(template("owners-manual.md"), result, spec, source, outline.text, values=values)
+    return render_(template("rules.md"), result, spec, source, outline.text,
+                   values=_values(community, outline, spec, basis=False))[0]
+
+
+def _span(text: str, words: str, near: int) -> tuple[int, int] | None:
+    """Where a passage's words (whitespace collapsed, as the revision history keeps them) sit in the outline's text,
+    near ``near``: the first to the last run of three or more words in common, in order. None when nothing matches."""
+    want = [m.group(0).casefold() for m in re.finditer(r"\w+", words or "")]
+    if not want:
+        return None
+    lo = max(0, near - 200)
+    hi = min(len(text), near + int(len(words) * 1.2) + 200)           # the words, and a little: not the next section
+    hay = [(m.group(0).casefold(), lo + m.start(), lo + m.end()) for m in re.finditer(r"\w+", text[lo:hi])]
+    sm = difflib.SequenceMatcher(None, [w for w, _, _ in hay], want, autojunk=False)
+    least = 3 if len(want) >= 3 else len(want)
+    blocks = [b for b in sm.get_matching_blocks() if b.size >= least]
+    if not blocks:
+        return None
+    return hay[blocks[0].a][1], hay[blocks[-1].a + blocks[-1].size - 1][2]
+
+
+def place_passages(part: Any, result: Classification, text: str, spec: ManualSpec) -> list[Passage]:
+    """The (b) passages of a separation (``manual_rule_change.partition``), each placed on the rendered pieces of the
+    official rules its working words are: the piece the concordance names for it, and every other piece of rule text
+    the words run over. A removed passage follows its section's last piece; one the concordance cannot place is shown
+    at the end of its book."""
+    rule = [s for s in result.segments if s.slot == "rules" and s.end > s.start and s.target.top == "rules"
+            and s.kind in (SectionKind.RULE, SectionKind.COPY)]
+    claimed: set[str] = set()
+    out: list[Passage] = []
+    for u in part.unadopted:
+        title = spec.title_of(u.book)
+        base = Passage(u.address, u.outline, u.kind, u.from_on, u.to_on, u.before, u.after, u.basis, book_title=title)
+        anchors = [s for s in rule if s.address == u.address]
+        anchors = [s for s in anchors if s.old == u.outline] or anchors
+        if u.book.split(".")[0] != "rules" or not anchors:
+            out.append(base)
+            continue
+        if not u.after:
+            group = [s for s in rule if s.old == anchors[0].old]
+            out.append(replace(base, follows=group[-1].id))
+            continue
+        span = _span(text, u.after, anchors[0].start)
+        mine = [anchors[0]]
+        if span is not None:
+            a, b = span
+            mine = [s for s in rule if s is anchors[0] or (s.start < b and s.end > a
+                                                          and min(s.end, b) - max(s.start, a) >= (s.end - s.start) / 2)]
+        free = [s.id for s in sorted(mine, key=lambda s: s.start) if s.id not in claimed]
+        if not free:
+            out.append(replace(base, follows=mine[-1].id))
+            continue
+        claimed.update(free)
+        out.append(replace(base, segments=tuple(free)))
+    return out
+
+
+def pending_inserts(part: Any) -> list[Any]:
+    """The pending insertions (c) the working text may carry (an outline read with suggestions inline)."""
+    return [s for s in (part.suggestions if part is not None else ()) if s.kind == "insert" and s.words.strip()
+            and s.in_draft is not False]
+
+
+def strip_inserts(text: str, inserts: list[Any]) -> tuple[str, list[str]]:
+    """``text`` with each pending insertion taken out where its words are found once, by the words before it in the
+    Doc. All are found in the text as given, then taken out together, so one insertion does not hide another's
+    context. A suggested deletion's words stay: they stand until a person accepts it."""
+    from jason.tasks.manual_rule_change import _find_words
+
+    spans = []
+    for s in inserts:
+        span = _find_words(text, s.words, s.where)
+        if span is not None:
+            spans.append((span[0], span[1], s.words))
+    out, at, removed = [], 0, []
+    for a, b, words_ in sorted(spans):
+        if a < at:
+            continue
+        if a > 0 and text[a - 1] == " " and (b >= len(text) or text[b] in " \n.,;:)]"):
+            a -= 1
+        out.append(text[at:a])
+        at = b
+        removed.append(words_)
+    out.append(text[at:])
+    return "".join(out), removed
+
+
+class WithoutSuggestions:
+    """A ``Source`` whose words leave the pending insertions out: each piece's words, as its source reads them, with
+    the insertions found in them taken out. Everything else is the source's."""
+
+    def __init__(self, source: Any, inserts: list[Any]):
+        self.source, self.inserts, self.removed = source, inserts, set()
+
+    def words(self, s: Segment) -> tuple[str, str]:
+        got, label = self.source.words(s)
+        text, removed = strip_inserts(got, self.inserts)
+        self.removed.update(removed)
+        return text, label
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.source, name)
+
+
+def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path | None = None,
+           current: bool = False) -> dict[str, Any]:
+    """Render the official rules and the generated manual to ``data/drafts`` and compare the manual's rendering with
+    the Doc's text. Returns the paths and the check.
+
+    The official rules hold the last adopted words: each passage the revision history finds changed with no adoption
+    (``manual_rule_change.partition``, (b)) shows its last adopted words where an adoption on record covers them, with
+    jason's note reciting the working words, and only the note where no adopted version is on record. ``current``
+    renders the working words instead (to ``rules-and-regulations-current.md``), with the same notes. Pending
+    suggestions (c) never appear. With no revision history on disk the rules are the working words, and say so."""
+    from jason.tasks import manual_rule_change as mrc
+
+    data_dir = Path(data_dir) if data_dir is not None else default_data_dir()
+    if community is None:
+        from jason.community import community as active
+
+        community = active()
+    result, outline, spec = classify(data_dir, community)
+    source = DiskSource(data_dir, community, spec, outline)
+    plain = _values(community, outline, spec, basis=False)
+    working = render_(template("rules.md"), result, spec, source, outline.text, values=plain)[0]
+    try:
+        part = mrc.partition(data_dir, community, text=working)
+    except ManualError as exc:
+        part, why = None, str(exc)
+    else:
+        why = ""
+    passages = place_passages(part, result, outline.text, spec) if part is not None else []
+    # (c) never appears: not in the rules' words, and not in the working words a note recites.
+    inserts = pending_inserts(part)
+    clean = WithoutSuggestions(source, inserts)
+    # A placed passage's working words are its pieces' words as rendered (the Doc's words with a pending deletion still
+    # standing); the revision history's copy of them reads the Doc as if every suggestion were accepted.
+    by_id = {s.id: s for s in result.segments}
+
+    def working_of(p: Passage) -> str:
+        if p.segments:
+            return " ".join(" ".join(clean.words(by_id[i])[0].split()) for i in p.segments if i in by_id)
+        return strip_inserts(p.working, inserts)[0]
+
+    passages = [replace(p, working=working_of(p),
+                        earlier=strip_inserts(p.earlier, [s for s in inserts if s.since and s.since <= p.from_on])[0])
+                for p in passages]
+    values = _values(community, outline, spec, basis=True, current=current, separated=part is not None)
+    rules_md, rules_chunks = render_(template("rules.md"), result, spec, clean, outline.text, values=values,
+                                     passages=passages, current=current)
+    from jason.tasks.manual_rule_change import _find_words
+
+    removed = sorted(clean.removed)
+    left = [s.words for s in inserts if s.words not in clean.removed and s.in_draft
+            and _find_words(rules_md, s.words, s.where) is not None]
+    manual_md, manual_chunks = render_(template("owners-manual.md"), result, spec, source, outline.text, values=plain,
+                                       passages=passages)
     found = check(manual_chunks, outline.text)
     drafts = Path(out_dir) if out_dir is not None else Path(data_dir) / "drafts"
     drafts.mkdir(parents=True, exist_ok=True)
-    paths = {"rules": drafts / "rules-and-regulations.md", "manual": drafts / "owners-manual.md",
+    paths = {"rules": drafts / (CURRENT_FILE if current else RULES_FILE), "manual": drafts / "owners-manual.md",
              "diff": drafts / "owners-manual.diff", "check": store(data_dir, spec.document) / "render.json"}
     paths["rules"].write_text(rules_md, encoding="utf-8")
     paths["manual"].write_text(manual_md, encoding="utf-8")
     paths["diff"].write_text(diff_text(manual_chunks, outline.text, spec.document), encoding="utf-8")
+    official = [p for p in passages if p.top == "rules"]
+    adoption = {
+        "mode": "current" if current else "adopted", "separated": part is not None, "why": why,
+        "passages": len(official), "known": sum(1 for p in official if p.known),
+        "unknown": sum(1 for p in official if not p.known),
+        "placed": sum(1 for p in official if p.segments or p.follows),
+        "policies": len([p for p in passages if p.top != "rules"]),
+        "suggestionsRemoved": removed, "suggestionsLeft": left,
+        "rows": [{"address": p.address, "number": p.number, "kind": p.kind, "from": p.from_on, "to": p.to_on,
+                  "basis": p.basis, "segments": list(p.segments), "follows": p.follows} for p in passages]}
     paths["check"].write_text(json.dumps({
         "covered": found.covered, "missing": found.missing, "outOfOrder": found.out_of_order, "same": found.same,
         "labeled": [asdict(d) for d in found.labeled], "unlabeled": [asdict(d) for d in found.unlabeled],
         "editorial": [{"label": c.label, "markdown": c.markdown[:200]} for c in manual_chunks if c.start < 0],
         "rulesLeftOut": [c.segment for c in rules_chunks if c.label == "left out of the official rules"],
+        "adoption": adoption,
     }, indent=1), encoding="utf-8")
     return {"paths": paths, "check": found, "rules_chunks": rules_chunks, "manual_chunks": manual_chunks,
-            "classification": result}
+            "classification": result, "passages": passages, "adoption": adoption}
 
 
 def diff_text(chunks: list[Chunk], text: str, key: str) -> str:
@@ -457,7 +649,8 @@ def diff_text(chunks: list[Chunk], text: str, key: str) -> str:
     return "\n".join(out) + "\n" if out else "no difference in the words\n"
 
 
-__all__ = ["DiskSource", "adoption_history", "answers", "classification_lines", "classify", "concordance_lines",
-           "copy_hits", "counts_by_letter", "diff_text", "history_path", "law_for", "load_outline", "merge_asks",
-           "norms", "quoted", "references", "render", "save_classification", "spec_of", "statute_words", "store",
-           "template", "unwrap"]
+__all__ = ["CURRENT_FILE", "DiskSource", "RULES_FILE", "adoption_history", "answers", "classification_lines",
+           "classify", "concordance_lines", "copy_hits", "counts_by_letter", "diff_text", "history_path", "law_for",
+           "load_outline", "merge_asks", "norms", "place_passages", "quoted", "references", "render",
+           "save_classification", "spec_of", "statute_words", "store", "strip_inserts", "template", "unwrap",
+           "working_rules"]

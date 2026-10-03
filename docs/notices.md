@@ -332,6 +332,22 @@ What jason keeps beside a notice, so its record is whole:
 - a batch that names its message (`params.message`, as the owner-information email batch now does) or its body gives the text when the folder does not;
 - a key that starts with the requirement's key (`board-meeting-2099-01-14`) links the notice to its requirement and its stage; a key that does not names no requirement, and its proof needs `--requirement`.
 
+### The text kept when it is sent
+
+When jason sends a notice, or saves one as a draft for a person to send, it keeps the words as it rendered them in `data/notices/KEY/` (`jason.tasks.notice_text.keep`). A dry run keeps nothing.
+
+| Sender | When it keeps | What | KEY |
+| --- | --- | --- | --- |
+| `jason broadcast FILE --notice KEY --yes` | with `--save-template` once the template is saved, else once the checks pass and it is handed to PayHOA's composer (jason does not send broadcasts; the state says so) | `message.html` (the body jason hands PayHOA, before PayHOA fills each member's placeholders), the subject, `message.html.refs.json`, and with `--tag`/`--member-tag` the recipients plan | given |
+| `jason rule-change CHANGE --draft-email --yes` | once the Gmail draft is saved (no recipients) | `notice.txt`, the subject, and the sections it recites with their digests and the proposed version (`notice.txt.refs.json`) | `rule-change-proposed-CHANGE-NOTICEDATE`, or `--notice` |
+| `jason owner-info --email-batch --yes --confirmed-by NAME` | once the batch is created, before the sends | `message.html` (before each owner's own fills), the subject, the fill records, and the owners and units it goes to | the notice its batches belong to (`owner-info-YEAR`, as `jason notices` syncs it); a test batch keeps nothing |
+| `jason owner-info --mail-batch --yes --confirmed-by NAME` | once the batch is created | `letter.pdf` as mailed, the owners each building's letters go to, the marker | the same notice |
+| `jason mailroom --pdf F --units U --send --yes --notice KEY` | after the Mailroom accepts it | `letter.pdf`, the unit and owner ids, the number of letters | given |
+
+`kept.json` lists each keeping: its kind, its state (sent, or saved for a person to send, and where), when, by whom, the batch, and each file with its sha256. A kept file is never overwritten: other words under the same key are kept beside it (`message-2.html`), and the same words kept again add nothing. The recipients plan holds ids and counts, never names or addresses.
+
+The record (`jason://notice/KEY`) reads `kept.json` first: the text, its digest, and whether each file still has it. A text edited since it was kept says so ("EDITED since it was kept: the words above are not the words sent") and does not count as the text as sent in the proof.
+
 ## What a notice must say, checked
 
 Each requirement's `content` is jason's reading of what the section requires a notice to carry. `jason.community.notice_elements` holds a `Sign` row for each element: the subdivision it is read from and the words that show it in a notice. `check(requirement, text)` reads a rendered notice or a base template and reports each element as present (with its line and heading), supplied by a token (`{HEARING_DATE}`, filled when the notice is), said to be enclosed (the 5300(b)(9) insurance summary), missing, or not checkable by words (5310(a)(12)'s "any other information"). A conditional element (an emergency rule change's expiry, a teleconference meeting's instructions) is reported with its condition. The statute's own words that a notice recites ("Civil Code section 4360(a) provides: "...") are not counted as the element: quoting what the law requires does not carry it.
@@ -366,7 +382,9 @@ The same command lists each sentence where a base states the law in its own word
 
 - **(a) adopted, or unchanged since the earliest version on disk**: everything not listed below, and any change a later adoption on record names (counted here, and listed);
 - **(b) changed with no adoption found**: each passage with its earlier words and the words now in the manual, labeled. The notice proposes the words now in the manual; the board adopts them through 4360 or restores the earlier words. Part 2 is the rules; Part 3 the policies bound in the manual (a penalty schedule is an operating rule, 4355(a)(3)). "No adoption found" is a finding for a person, not proof that none happened;
-- **(c) pending suggestions** in the working Doc: never accepted, not part of the text. The outline reader reads a Doc with its suggestions inline, so the official rules draft can carry a suggested insertion as if accepted; the draft notice finds each one and strikes it from Enclosure A. A suggested deletion's words stand until a person accepts it.
+- **(c) pending suggestions** in the working Doc: never accepted, not part of the text. An outline read before outlines were read without suggestions carries a suggested insertion as if accepted; the draft notice finds each one and strikes it from Enclosure A. A suggested deletion's words stand until a person accepts it.
+
+The proposed text is the working text (`jason manual --render --current`), read in memory. The official rules `jason manual --render` writes hold the last adopted words instead: each (b) passage shows them where an adoption on record covers them, with jason's note reciting the working words, and only the note where no adopted version is on record ([owners-manual.md](owners-manual.md#the-last-adopted-words-not-the-working-ones)). The draft lists, for each (b) passage, whether its earlier words are adopted ones.
 
 It also lists the changes it could not place in the concordance and the count of guidance-only changes. It writes `data/drafts/rule-change-official-rules-<notice date>.md` and nothing else; the purpose and effect are drafts for the board to adopt as its own description, and counsel reads the notice before it goes out.
 

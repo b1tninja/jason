@@ -271,5 +271,21 @@ def send(client: Any, org_id: int, data_dir: Path, prepared: Prepared, *, double
     return record
 
 
-__all__ = ["ADDRESS_PAGES", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "letter_history",
-           "price_check", "resolve_units", "status", "prepare", "send", "page_count", "printed"]
+def keep_notice(data_dir: Path, key: str, prepared: Prepared, record: dict[str, Any], *, by: str = "") -> dict[str, Any]:
+    """A mailed notice kept in ``data/notices/KEY/`` (``jason.tasks.notice_text``): the PDF as mailed and whom it went
+    to (unit and owner ids, and the count; no addresses). Called only after ``send``."""
+    from jason.tasks import notice_text
+
+    batches = ", ".join(str(b.get("id")) for b in record.get("batches") or ()) or "(not listed yet)"
+    plan = {"notice": "", "unitIds": prepared.unit_ids, "emailMembershipIds": [],
+            "mail": [{"ownerId": o} for o in prepared.owner_ids],
+            "letters": len([r for r in prepared.recipients if r.get("isIncluded", True)]), "secondary": [],
+            "sendTo": prepared.send_to, "source": "jason mailroom --pdf --send (PayHOA's recipients for the units)"}
+    return notice_text.keep(data_dir, key, kind="letter (PayHOA's Mailroom)",
+                            state=f"mailed through PayHOA's Mailroom, batch {batches}, {prepared.pages} pages "
+                                  f"(PayHOA adds its address page)", body=Path(prepared.pdf), body_name="letter.pdf",
+                            recipients=plan, batch=batches, by=by, source=str(prepared.pdf))
+
+
+__all__ = ["ADDRESS_PAGES", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "keep_notice",
+           "letter_history", "price_check", "resolve_units", "status", "prepare", "send", "page_count", "printed"]

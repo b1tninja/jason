@@ -470,9 +470,9 @@ def _email_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], 
     if not form_pdf.is_file() or not message_file.is_file():
         print(f"need {form_pdf} and {message_file}", file=sys.stderr)
         return 2
-    from jason.community.markdown_html import message_html
+    from jason.community.markdown_html import message_html_records
 
-    message_text = message_html(message_file.read_text(encoding="utf-8"), message_file.suffix)   # Markdown or HTML
+    message_text, fills = message_html_records(message_file.read_text(encoding="utf-8"), message_file.suffix)
     with agent_factory(args) as agent:
         client, org = agent.payhoa(), agent.org_id
         if _form_not_live(client, data_dir, forms, args, message_text):
@@ -518,6 +518,8 @@ def _email_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], 
                                                                  else "emailed copies"),
                        items, confirmed_by=args.confirmed_by,
                        params={"subject": args.subject, "message": str(message_file)})   # the notice's text: jason://notice/KEY
+        _keep_email(data_dir, f"{forms.OWNER_INFO.key.value}-{year}", batch_id, message_text, fills, args, rows,
+                    message_file)
         message = _compose(message_text, community, year, message_file.parent, lambda path: client.upload_file(
             path, filename=path.name, content_type="image/png", context="communication")["viewUrl"])
         google_form, channel = None, getattr(forms, "GOOGLE_FORMS", {}).get(forms.OWNER_INFO.key)
@@ -536,6 +538,49 @@ def _email_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], 
                              remaining=lambda: getattr(client, "rate_remaining", None))
     print("now: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + f"  (jason batches --show {batch_id})")
     return 0
+
+
+def _keep_email(data_dir: Path, notice: str, batch_id: str, message_text: str, fills: list[Any],
+                args: argparse.Namespace, rows: list[Any], message_file: Path) -> None:
+    """The emailed notice's words as rendered, kept in data/notices/KEY/ once the send is confirmed: the message before
+    each owner's own fills (their name, their filled form, their link), the subject, the fill records, and the owners
+    it is sent to (ids only). A test batch keeps nothing; a resend's text goes with the notice it resends."""
+    from jason.tasks import notice_text
+
+    if notice_text.notice_key(batch_id) is None:       # a test batch is no notice
+        return
+    key = notice
+    plan = {"notice": "owner-info-solicitation", "batch": batch_id,
+            "emailMembershipIds": sorted({int(r.membership_id) for r in rows}),
+            "unitIds": sorted({int(r.unit_id) for r in rows}), "mail": [], "secondary": [],
+            "source": "jason owner-info --email-batch (the send plan, read live)"}
+    entry = notice_text.keep(data_dir, key, kind="owner-information request (email)",
+                             state=f"sent by jason, one copy an owner, from batch {batch_id} (confirmed by "
+                                   f"{args.confirmed_by}); each owner's own fills are not in this text",
+                             body=message_text, body_name="message.html", subject=args.subject,
+                             refs=notice_text.fill_records(fills), recipients=plan, batch=batch_id,
+                             by=args.confirmed_by or "", source=str(message_file))
+    print(f"kept the message as rendered in {data_dir / 'notices' / key} (sha256 {entry['files'][0]['sha256'][:16]})")
+
+
+def _keep_letters(data_dir: Path, notice: str, batch_id: str, pdf: Path, items: list[Any], args: argparse.Namespace,
+                  marker: str) -> None:
+    """The mailed letter kept in data/notices/KEY/ once the mailing is confirmed: the PDF as mailed and the owners each
+    building's letters go to (ids only). A test batch keeps nothing."""
+    from jason.tasks import notice_text
+
+    if notice_text.notice_key(batch_id) is None:       # a test batch is no notice
+        return
+    key = notice
+    owners = sorted({int(o) for _, _, payload in items for o in payload.get("ownerIds") or ()})
+    plan = {"notice": "owner-info-solicitation", "batch": batch_id, "emailMembershipIds": [],
+            "mail": [{"ownerId": o} for o in owners], "secondary": [], "marker": marker,
+            "source": "jason owner-info --mail-batch (the send plan, read live)"}
+    entry = notice_text.keep(data_dir, key, kind="owner-information request (letters)",
+                             state=f"mailed through PayHOA's Mailroom from batch {batch_id} (confirmed by "
+                                   f"{args.confirmed_by})", body=pdf, body_name="letter.pdf", recipients=plan,
+                             batch=batch_id, by=args.confirmed_by or "", source=str(pdf))
+    print(f"kept the letter as mailed in {data_dir / 'notices' / key} (sha256 {entry['files'][0]['sha256'][:16]})")
 
 
 def _mail_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], community: Any, forms: Any,
@@ -592,6 +637,7 @@ def _mail_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], c
         batches.create(data_dir, batch_id, "owner-info-mail", f"Owner information request {year}: letters",
                        items, confirmed_by=args.confirmed_by,
                        params={"pdf": str(pdf), "pages": handler.pages, "marker": marker})
+        _keep_letters(data_dir, f"{forms.OWNER_INFO.key.value}-{year}", batch_id, pdf, items, args, marker)
         form_references.record(data_dir, marker, form=forms.OWNER_INFO.key.value, year=year, channel=engine.channel.name,
                                identity=engine.identity.value, batch=batch_id)
         counts = batches.run(data_dir, batch_id, handler, pace=engine.pace(), limit=args.limit,

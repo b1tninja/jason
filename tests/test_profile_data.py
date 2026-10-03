@@ -248,7 +248,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src" / "jason"
 # config.py names the data root once (``data_root``). The others are owned by another piece of work and are listed here
 # until it routes them through ``jason.config.data_dir()``; a fixed one fails this test until it is removed.
 _ALLOWED = {"config.py"}
-_PENDING = {"tasks/notice_record.py": 1}
+_PENDING: dict[str, int] = {}
 
 
 def _data_literals(text: str) -> int:

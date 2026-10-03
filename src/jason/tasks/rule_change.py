@@ -643,8 +643,48 @@ def save_draft(gmail: Any, draft: Any) -> dict[str, Any]:
     return gmail.create(draft)
 
 
+def notice_key(change: RuleChange, when: Timeline, *, adopted: bool = False) -> str:
+    """The notice's ledger key: the requirement's key, the change's key, and the notice date
+    (``rule-change-proposed-fines-2099-01-02``), so its record finds the requirement and the stage."""
+    return f"rule-change-{'adopted' if adopted else 'proposed'}-{change.slug}-{when.notice_date.isoformat()}"
+
+
+def fill_records(change: RuleChange, recitals: dict[str, Recital] | None, version: RecordVersion | None = None
+                 ) -> list[dict[str, Any]]:
+    """The sections the notice recites, as fill records (``.refs.json``): each section's citation, where its words were
+    read, and their digest, so a later change to the words in force shows against the notice."""
+    from jason.tasks.notice_text import words_digest
+
+    out = []
+    for number, r in (recitals or {}).items():
+        out.append({"token": f"recited {change.document}#{number}", "verb": "recite", "key": change.document,
+                    "section": number, "as_of": "", "citation": r.citation, "set_by": r.source,
+                    "set_by_title": r.in_force, "dated": "", "digest": words_digest(r.words),
+                    "note": r.reason or (f"read from {r.address}" if r.address else "")})
+    if version is not None:
+        out.append({"token": f"proposed {version_address(version)}", "verb": "propose", "key": change.document,
+                    "section": "", "as_of": "", "citation": version_address(version), "set_by": version.source,
+                    "set_by_title": version.note, "dated": version.on.isoformat() if version.on else "",
+                    "digest": words_digest("\n".join(s.proposed for s in change.sections)), "note": ""})
+    return out
+
+
+def keep_notice(data_dir: Path, key: str, notice: Notice, change: RuleChange, *, recitals: dict[str, Recital] | None,
+                version: RecordVersion | None, state: str, by: str = "") -> dict[str, Any]:
+    """Keep the member notice as rendered (``jason.tasks.notice_text``): its text, subject, and the sections it recites,
+    once it is saved as a draft for a person to send; never on a dry run. A Gmail draft has no recipients, so no plan
+    is kept: ``jason delivery --notice RULE --ids data/notices/KEY/recipients.json`` keeps one."""
+    from jason.tasks import notice_text
+
+    return notice_text.keep(data_dir, key, kind="rule-change notice (4360)", state=state, body=notice.text,
+                            body_name="notice.txt", subject=notice.subject,
+                            refs=fill_records(change, recitals, version), by=by,
+                            source=f"jason rule-change {change.key}")
+
+
 __all__ = ["ADOPTED_TEXT_HEADING", "DESCRIPTION_HEADING", "Notice", "Recital", "TEXT_HEADING", "Timeline",
            "adopted_lines", "adoption_notice", "agenda_item", "authority_status", "current_sections", "element_lines",
-           "email_draft", "find_change", "first_decision_date", "member_notice", "open_shelf", "proposed_version",
+           "email_draft", "fill_records", "find_change", "first_decision_date", "keep_notice", "member_notice",
+           "notice_key", "open_shelf", "proposed_version",
            "recite_law", "recite_sections", "render_markdown", "required_elements", "save_draft", "text_lines",
            "timeline", "version_address", "versions_lines", "words_of", "write"]

@@ -1072,13 +1072,28 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
             for r in prepared.recipients:
                 flags = ("" if r.get("isIncluded", True) else " (left out)") + (" (duplicate)" if r.get("isDuplicate") else "")
                 print(f"  {r.get('unitTitles')}: {r.get('address', '').replace(chr(10), ', ')}{flags}")
+            if args.notice:
+                from jason.tasks.notice_text import NoticeKeyError, check_key
+
+                try:
+                    check_key(args.notice)
+                except NoticeKeyError as exc:
+                    print(exc, file=sys.stderr)
+                    return 2
             if not (args.send and args.yes):
-                print("not mailed: read the preview, then rerun with --send --yes to print and mail it (postage is charged)")
+                print("not mailed: read the preview, then rerun with --send --yes to print and mail it (postage is charged)"
+                      + (f"; the letter is then kept in {data_dir / 'notices' / args.notice}" if args.notice else ""))
                 return 0
             record = send(client, org_id, data_dir, prepared, double_sided=args.double_sided, with_invoices=args.with_invoices)
             cost = sum(b["costCents"] for b in record["batches"])
             print(f"mailed: batch {', '.join(str(b['id']) for b in record['batches']) or '(not listed yet)'}"
                   f"{f', ${cost / 100:.2f}' if cost else ''}; logged in {data_dir / 'mailroom' / 'sent.jsonl'}")
+            if args.notice:
+                from jason.tasks.mailroom import keep_notice
+
+                entry = keep_notice(data_dir, args.notice, prepared, record, by=args.by or "")
+                print(f"kept the letter as mailed in {data_dir / 'notices' / args.notice} "
+                      f"(sha256 {entry['files'][0]['sha256'][:16]}); jason cite jason://notice/{args.notice}")
             return 0
         result = status(client, org_id, data_dir)
     if args.json:
@@ -3713,6 +3728,10 @@ def build_parser() -> argparse.ArgumentParser:
     mailroom.add_argument("--events", type=int, default=0, metavar="COMMUNICATION",
                           help="One letter's postal events, by its communication id (from --letters or --batch)")
     mailroom.add_argument("--months", metavar="YEAR", help="Pieces mailed each month of a year")
+    mailroom.add_argument("--notice", metavar="KEY",
+                          help="With --pdf --send: the notice's ledger key (it starts with the requirement's key); the "
+                               "letter as mailed and its recipients' ids are kept in data/notices/KEY/")
+    mailroom.add_argument("--by", metavar="NAME", help="With --notice: who mailed it")
     mailroom.add_argument("--yes", action="store_true", help="Confirm --send or --cancel")
     mailroom.add_argument("--json", action="store_true", help="Print JSON")
     mailroom.set_defaults(func=cmd_mailroom)

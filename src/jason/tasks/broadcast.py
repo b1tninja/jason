@@ -249,3 +249,31 @@ def save_preview(path: Path, page: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(page, encoding="utf-8")
     return path
+
+
+def recipients_plan(found: Recipients, *, rule: str = "", synced: str = "") -> dict[str, Any]:
+    """Who the broadcast reaches, as a notice keeps it (``recipients.json``): ids only, no addresses. A member PayHOA
+    marks as having no deliverable email is listed for a letter."""
+    bad = set(found.invalid_email)
+    return {"notice": rule, "unitTag": ", ".join(found.unit_tags), "memberTags": list(found.member_tags),
+            "unitIds": list(found.unit_ids), "emailMembershipIds": [m for m in found.membership_ids if m not in bad],
+            "mail": [{"membershipId": m, "why": "no deliverable email in PayHOA"} for m in sorted(bad)],
+            "secondary": [], "catalogSynced": synced, "source": "jason broadcast --tag/--member-tag (the catalog)"}
+
+
+def keep_notice(data_dir: Path, key: str, *, message: str, subject: str, refs: Iterable[Any] = (),
+                found: Recipients | None = None, synced: str = "", state: str, by: str = "",
+                attachments: Iterable[Attachment] = (), source: str = "") -> dict[str, Any]:
+    """Keep a broadcast notice's words as rendered (``jason.tasks.notice_text``): the body jason hands PayHOA, its
+    subject, the fill records of its references, and the recipients plan when tags named them. Only once it is saved
+    for a person to send; never on a dry run."""
+    from jason.tasks import notice_text
+    from jason.tasks.notice_record import requirement_for
+
+    row, _ = requirement_for(key)
+    files = ", ".join(a.document.path for a in attachments if a.document)
+    return notice_text.keep(data_dir, key, kind="broadcast", state=state + (f"; attachments: {files}" if files else ""),
+                            body=message, body_name="message.html", subject=subject,
+                            refs=notice_text.fill_records(refs),
+                            recipients=recipients_plan(found, rule=row.key if row else "", synced=synced)
+                            if found is not None else None, by=by, source=source)

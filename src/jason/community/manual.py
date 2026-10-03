@@ -779,16 +779,46 @@ def _slot_segments(classification: Classification, slot: str, number: str = "") 
 
 
 def _include(classification: Classification, source: Source, spec: ManualSpec, book: str, number: str,
-             official: bool, text: str) -> list[Chunk]:
+             official: bool, text: str, passages: Iterable[Passage] = (), current: bool = False) -> list[Chunk]:
     chunks: list[Chunk] = []
-    for s in _slot_segments(classification, book, number):
+    segs = _slot_segments(classification, book, number)
+    # The (b) passages, in the official rules only: shown in place of the working words they cover (or after them,
+    # with ``current``), and a removed passage after the piece it follows.
+    first: dict[str, list[Passage]] = {}
+    last: dict[str, list[Passage]] = {}
+    after: dict[str, list[Passage]] = {}
+    covered: set[str] = set()
+    loose: list[Passage] = []
+    if official and book == "rules":
+        ids = {s.id for s in segs}
+        for p in passages:
+            if p.top != "rules":
+                continue
+            mine = [i for i in p.segments if i in ids]
+            if mine:
+                first.setdefault(mine[0], []).append(p)
+                last.setdefault(mine[-1], []).append(p)
+                covered.update(mine)
+            elif p.follows in ids:
+                after.setdefault(p.follows, []).append(p)
+            elif not number and not p.segments and not p.follows:
+                loose.append(p)
+    for s in segs:
         rule_text = s.kind in (SectionKind.RULE, SectionKind.COPY) and s.target.top == "rules"
         if official and book == "rules" and not rule_text:
-            first = re.sub(r"\s+", " ", text[s.start:s.end]).strip()
+            first_words = re.sub(r"\s+", " ", text[s.start:s.end]).strip()
             what = {"guidance": "Guidance", "policy": "A policy"}.get(s.kind.value, s.kind.value.title())
-            chunks.append(Chunk(f"_[{what} left in the {spec.manual_title}: “{first[:60]}…” "
+            chunks.append(Chunk(f"_[{what} left in the {spec.manual_title}: “{first_words[:60]}…” "
                                 f"({s.old}{'/' + str(s.piece) if s.piece else ''}).]_", kind=EDITORIAL,
                                 label="left out of the official rules", segment=s.id))
+            for p in after.get(s.id, ()):
+                chunks += _passage_chunks(p, current=current)
+            continue
+        if s.id in covered and not current:
+            for p in first.get(s.id, ()):
+                chunks += _passage_chunks(p, current=False)
+            for p in after.get(s.id, ()):
+                chunks += _passage_chunks(p, current=False)
             continue
         got, label = source.words(s)
         chunks.append(Chunk(segment_markdown(s, got), got, s.start, s.end, s.id, label, s.kind.value))
@@ -803,27 +833,138 @@ def _include(classification: Classification, source: Source, spec: ManualSpec, b
             if len(chunks) > 1 and chunks[-2].kind == EDITORIAL and chunks[-2].markdown == note:
                 chunks.pop(-2)
             chunks.append(Chunk(note, kind=EDITORIAL, label="an open question", segment=s.id))
+        if current:
+            for p in last.get(s.id, ()):
+                chunks += _passage_chunks(p, current=True)
+        for p in after.get(s.id, ()):
+            chunks += _passage_chunks(p, current=current)
+    for p in loose:
+        chunks += _passage_chunks(p, current=current)
     return chunks
 
 
-def _history_lines(spec: ManualSpec, events: list[AdoptionEvent], rows: list[Concordance]) -> list[str]:
+@dataclass(frozen=True)
+class Passage:
+    """(b) A passage of the manual whose words changed in the working copy with no adoption found in the board's
+    records (the revision history, ``jason revisions``; separated by ``jason.tasks.manual_rule_change``).
+
+    ``earlier`` is the passage's words before the change ("" when the passage is new) and ``working`` its words now (""
+    when it was removed). ``basis`` names the adoption on record those earlier words carry ("2022-08-30 (a record)");
+    empty when no adopted version of the passage is on record, so its adopted words are not known. ``segments`` are the
+    rendered pieces the working words are; a passage with no working words is shown after ``follows``. A passage with
+    neither is shown at the end of its book."""
+
+    address: str
+    number: str                        # the manual's number as its outline reads it
+    kind: str                          # reworded, added, removed, split, merged
+    from_on: str
+    to_on: str
+    earlier: str
+    working: str
+    basis: str = ""
+    segments: tuple[str, ...] = ()
+    follows: str = ""
+    book_title: str = ""
+
+    @property
+    def known(self) -> bool:
+        return bool(self.basis)
+
+    @property
+    def top(self) -> str:
+        return self.address.split("#", 1)[0].partition(".")[0]
+
+
+PASSAGE_LABEL = "jason's note, not rule text"
+
+
+def _q(words: str) -> str:
+    return "“" + " ".join((words or "").split()) + "”"
+
+
+def passage_note(p: Passage, *, current: bool = False) -> str:
+    """jason's bracketed note on a (b) passage. With ``current`` the working words are printed and the note recites
+    the last adopted words; otherwise the last adopted words are printed (when known) and the note recites the working
+    words. Where no adopted version is on record the note says so and names the earlier words only as a version's."""
+    verb = {"added": "Added", "split": "Added (split from another passage)", "removed": "Removed",
+            "merged": "Removed (merged into another passage)"}.get(p.kind, "Changed")
+    if not p.segments and p.number:
+        verb += f" (the manual's {p.number})"
+    said = [f"{verb} between {p.from_on} and {p.to_on}; no adoption found."]
+    if p.known and not current:
+        if not p.earlier:
+            said.append(f"The last adopted version has no such passage (adopted {p.basis}), so none is printed as a "
+                        "rule.")
+        else:
+            said.append(f"The words printed are the last adopted (adopted {p.basis}).")
+        said.append(f"The working text reads: {_q(p.working)}" if p.working else "The working text leaves them out.")
+    elif p.known:
+        said.append(f"The last adopted words (adopted {p.basis}) read: {_q(p.earlier)}" if p.earlier else
+                    f"The last adopted version has no such passage (adopted {p.basis}).")
+        if not p.working:
+            said.append("The working text leaves them out.")
+    else:
+        said.append("No adopted version of this passage is on record, so its adopted words are not known"
+                    + ("." if current else " and none are printed as a rule."))
+        said.append(f"The version of {p.from_on} reads: {_q(p.earlier)}" if p.earlier else
+                    f"The version of {p.from_on} has no such passage.")
+        if not current:
+            said.append(f"The working text reads: {_q(p.working)}" if p.working else "The working text leaves it out.")
+        elif not p.working:
+            said.append("The working text leaves it out.")
+    return f"_[{PASSAGE_LABEL}: " + " ".join(said) + "]_"
+
+
+def _passage_chunks(p: Passage, *, current: bool) -> list[Chunk]:
+    """The passage in the official rules: the last adopted words (when known and not ``current``), then the note."""
+    out = []
+    if not current and p.known and p.earlier:
+        out.append(Chunk(_escape(" ".join(p.earlier.split())), p.earlier, kind="adopted",
+                         label="the last adopted words (b)", segment=p.address))
+    out.append(Chunk(passage_note(p, current=current), kind=EDITORIAL, label="changed with no adoption found",
+                     segment=p.address))
+    return out
+
+
+def _history_lines(spec: ManualSpec, events: list[AdoptionEvent], rows: list[Concordance],
+                   passages: Iterable[Passage] = (), *, current: bool = False) -> list[str]:
     if not events:
-        return ["_No adoption is recorded yet: the minutes and the library have none for these parts._"]
-    lines = ["| Date | Action | Parts | Evidence |", "|---|---|---|---|"]
-    for e in sorted(events, key=lambda e: (e.on or date.max, e.action.value)):
-        parts = []
-        for sec in e.sections:
-            new = resolve_old(rows, sec) or next((r.new for r in rows if r.new.endswith("#" + sec)), sec)
-            parts.append(new.split("#", 1)[1] if new.startswith("rules#") else new)
-        lines.append(f"| {e.on.isoformat() if e.on else '(undated)'} | {e.action.value} | {', '.join(parts)} | "
-                     f"{e.evidence}{' (' + e.record + ')' if e.record else ''}{'; ' + e.note if e.note else ''} |")
+        lines = ["_No adoption is recorded yet: the minutes and the library have none for these parts._"]
+    else:
+        lines = ["| Date | Action | Parts | Evidence |", "|---|---|---|---|"]
+        for e in sorted(events, key=lambda e: (e.on or date.max, e.action.value)):
+            parts = []
+            for sec in e.sections:
+                new = resolve_old(rows, sec) or next((r.new for r in rows if r.new.endswith("#" + sec)), sec)
+                parts.append(new.split("#", 1)[1] if new.startswith("rules#") else new)
+            lines.append(f"| {e.on.isoformat() if e.on else '(undated)'} | {e.action.value} | {', '.join(parts)} | "
+                         f"{e.evidence}{' (' + e.record + ')' if e.record else ''}{'; ' + e.note if e.note else ''} |")
+    passages = sorted(passages, key=lambda p: (p.top != "rules", p.address, p.to_on))
+    if passages:
+        shown = ("the working words are printed and jason's note recites the last adopted words" if current else
+                 "the last adopted words are printed where they are known, and jason's note recites the working words")
+        lines += ["", f"_Changed with no adoption found (jason's finding from the revision history, not a record of "
+                      f"the board; \"no adoption found\" is not proof that none happened). In the {spec.rules_title}, "
+                      f"{shown}._", "",
+                  "| Passage | Changed | The last adopted words |", "|---|---|---|"]
+        for p in passages:
+            where = p.book_title or spec.title_of(p.address.split("#", 1)[0])
+            number = p.address.split("#", 1)[1] if "#" in p.address else p.number
+            lines.append(f"| {where} {number} | {p.kind}, {p.from_on} to {p.to_on} | "
+                         f"{'adopted ' + p.basis if p.known else 'not known: no adopted version on record'} |")
     return lines
 
 
 def render(template: str, classification: Classification, spec: ManualSpec, source: Source, text: str, *,
-           values: dict[str, str] | None = None) -> tuple[str, list[Chunk]]:
+           values: dict[str, str] | None = None, passages: Iterable[Passage] = (),
+           current: bool = False) -> tuple[str, list[Chunk]]:
     """The template with its tokens filled. Returns the Markdown and the chunks. A token that cannot be filled raises
-    ``ManualError`` (a book the profile does not fill renders nothing only when the token says ``optional``)."""
+    ``ManualError`` (a book the profile does not fill renders nothing only when the token says ``optional``).
+
+    ``passages`` are the (b) passages: ``{INCLUDE:rules official}`` prints each one's last adopted words in place of its
+    working words, with jason's note (``current``: the working words, with the note reciting the adopted ones), and
+    ``{ADOPTION_HISTORY}`` lists them."""
+    passages = list(passages)
     values = dict(values or {})
     values.setdefault("RULES_TITLE", spec.rules_title)
     values.setdefault("MANUAL_TITLE", spec.manual_title)
@@ -849,7 +990,8 @@ def render(template: str, classification: Classification, spec: ManualSpec, sour
                     raise ManualError(f"{m.group(0)}: the profile puts nothing in the slot {arg!r}")
             elif verb == "INCLUDE":
                 book, _, number = arg.partition("#")
-                made = _include(classification, source, spec, book, number, "official" in flags, text)
+                made = _include(classification, source, spec, book, number, "official" in flags, text,
+                                passages, current)
                 if not made and "optional" not in flags:
                     raise ManualError(f"{m.group(0)}: the profile maps nothing to {arg!r}")
                 if made and "official" in flags and book == "rules":
@@ -866,8 +1008,8 @@ def render(template: str, classification: Classification, spec: ManualSpec, sour
             elif verb == "EXCERPTS":
                 made = [Chunk(source.excerpt(e.ref), kind="excerpt", label=f"quoted from {e.ref}") for e in spec.excerpts]
             elif verb == "ADOPTION_HISTORY":
-                made = [Chunk("\n".join(_history_lines(spec, source.history(), rows)), kind=EDITORIAL,
-                              label="adoption history")]
+                made = [Chunk("\n".join(_history_lines(spec, source.history(), rows, passages, current=current)),
+                              kind=EDITORIAL, label="adoption history")]
         except ManualError as exc:
             problems.append(str(exc))
             continue
@@ -930,6 +1072,7 @@ def check(chunks: list[Chunk], text: str) -> RenderCheck:
 
 __all__ = ["AdoptionAction", "AdoptionEvent", "BookChoice", "BookSource", "CHOICES", "Chunk", "Classification",
            "Concordance", "CopyHit", "CopyState", "Difference", "Excerpt", "FRONT", "Locator", "ManualError", "ManualRow",
-           "ManualSpec", "Norm", "Piece", "RenderCheck", "SectionClass", "SectionKind", "Segment", "Source", "Target",
-           "asks", "attach", "check", "classify", "compare", "concordance", "places", "render", "resolve_old",
+           "ManualSpec", "Norm", "PASSAGE_LABEL", "Passage", "Piece", "RenderCheck", "SectionClass", "SectionKind",
+           "Segment", "Source", "Target", "asks", "attach", "check", "classify", "compare", "concordance",
+           "passage_note", "places", "render", "resolve_old",
            "segment_markdown", "segments", "words"]

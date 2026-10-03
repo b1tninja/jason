@@ -7,8 +7,10 @@ A notice given to members is a series book (``books.Book.NOTICE``), keyed by its
   form whose request it is, ``FORM_REQUIREMENTS``), recited: the statute's words from ``data/authorities``, the
   clocks made stricter by the governing documents (``notice_catalog.effective``), and each document clause recited
   from its own text, with the profile's paraphrase labeled as jason's reading;
-- **the text sent**, if jason has it: the Markdown or HTML kept in ``data/notices/KEY/``, else the body or message
-  file a batch named (``params``: ``body``, ``message``), with the letter's PDF and the subject;
+- **the text sent**, if jason has it: what jason kept in ``data/notices/KEY/`` when it sent the notice or saved it as
+  a draft for sending (``jason.tasks.notice_text``: the body as rendered, the subject, and the files' sha256, compared
+  now so an edit since shows), else another Markdown or HTML file there, else the body or message file a batch named
+  (``params``: ``body``, ``message``), with the letter's PDF and the subject;
 - **the fill records** of its ``{QUOTE:}`` and ``{CITE:}`` tokens (``*.refs.json`` beside the text), each with the
   version's digest, and whether the words now differ;
 - **the recipients plan**: the counts of ``data/notices/KEY/recipients.json`` (``jason delivery --notice RULE --ids``)
@@ -139,24 +141,52 @@ def _fills(path: Path, shelf: Any = None) -> list[dict[str, Any]]:
 
 
 def text_sent(data_dir: Path, key: str, batches: list[dict[str, Any]], shelf: Any = None) -> dict[str, Any]:
-    """The text as sent, if jason has it, and the fill records of its tokens: ``data/notices/KEY/`` first (a rendered
-    Markdown or HTML file), then a batch's ``body`` or ``message``; the letter's PDF and the subject as named."""
+    """The text as sent, if jason has it, and the fill records of its tokens: first what jason kept when it sent or
+    saved the notice (``kept.json``, ``jason.tasks.notice_text``: the text with its sha256 then and now, so an edit
+    since shows as ``edited``), then any other rendered Markdown or HTML file in ``data/notices/KEY/``, then a batch's
+    ``body`` or ``message``; the letter's PDF and the subject as named."""
+    from jason.tasks import notice_text
+
     data_dir = Path(data_dir)
-    out: dict[str, Any] = {"words": "", "source": "", "subjects": [], "files": [], "fills": []}
+    out: dict[str, Any] = {"words": "", "source": "", "subjects": [], "files": [], "fills": [], "digest": "",
+                           "edited": False, "kept": []}
     folder = data_dir / "notices" / key
     sidecars: list[Path] = []
+    named: set[str] = set()
+    kept = notice_text.read(data_dir, key)
+    for e in (kept or {}).get("entries") or ():
+        if e.get("subject") and e["subject"] not in out["subjects"]:
+            out["subjects"].append(str(e["subject"]))
+        row = {"kind": e.get("kind", ""), "state": e.get("state", ""), "kept": e.get("kept", ""),
+               "batch": e.get("batch", ""), "by": e.get("by", ""), "files": []}
+        for f in e.get("files") or ():
+            named.add(f["path"])
+            path = folder / f["path"]
+            row["files"].append({"path": _rel(path, data_dir), "role": f.get("role", ""), "sha256": f["sha256"],
+                                 "same": f.get("same")})
+            if f.get("role") == "text" and not out["words"] and path.is_file():
+                out["words"] = path.read_text(encoding="utf-8", errors="replace")
+                out["source"] = _rel(path, data_dir)
+                out["digest"], out["edited"] = f["sha256"], f.get("same") is not True
+            elif f.get("role") in ("text", "letter", "attachment"):
+                out["files"].append({"what": f"kept with the notice ({f.get('role')}, {e.get('state', '')})",
+                                     "path": _rel(path, data_dir), "sha256": f["sha256"], "same": f.get("same")})
+            elif f.get("role") == "fills" and path.is_file():
+                sidecars.append(path)
+        out["kept"].append(row)
     if folder.is_dir():
         for ext in (".md", ".html", ".htm", ".txt"):
             for path in sorted(folder.glob(f"*{ext}")):
-                if ".preview." in path.name:
+                if ".preview." in path.name or path.name in named:
                     continue
                 if not out["words"]:
                     out["words"], out["source"] = path.read_text(encoding="utf-8", errors="replace"), _rel(path, data_dir)
                 else:
                     out["files"].append({"what": "kept with the notice", "path": _rel(path, data_dir)})
-        sidecars += sorted(folder.glob("*.refs.json"))
+        sidecars += [p for p in sorted(folder.glob("*.refs.json")) if p not in sidecars]
         for path in sorted(folder.glob("*.pdf")):
-            out["files"].append({"what": "kept with the notice (a PDF)", "path": _rel(path, data_dir)})
+            if path.name not in named:
+                out["files"].append({"what": "kept with the notice (a PDF)", "path": _rel(path, data_dir)})
     for b in batches:
         params = b.get("params") or {}
         if params.get("subject") and params["subject"] not in out["subjects"]:
@@ -192,8 +222,10 @@ def recipients(data_dir: Path, key: str, batches: list[dict[str, Any]]) -> dict[
     if path.is_file():
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
+            letters = raw.get("letters")
             out["plan"] = {"rule": raw.get("notice", ""), "unitTag": raw.get("unitTag", ""),
-                           "emails": len(raw.get("emailMembershipIds") or []), "letters": len(raw.get("mail") or []),
+                           "emails": len(raw.get("emailMembershipIds") or []),
+                           "letters": int(letters) if isinstance(letters, int) else len(raw.get("mail") or []),
                            "secondaryCopies": len(raw.get("secondary") or []), "source": _rel(path, data_dir)}
         except (OSError, ValueError):
             out["plan"] = {"source": _rel(path, data_dir), "unreadable": True}
@@ -403,7 +435,11 @@ def build(key: str, *, community: Any = None, data_dir: Path | None = None, shel
     if shelf is not None:
         community = community if community is not None else shelf.community
         data_dir = data_dir if data_dir is not None else shelf.data_dir
-    data_dir = Path(data_dir) if data_dir is not None else Path("data")
+    if data_dir is None:
+        from jason.config import data_dir as active_data_dir
+
+        data_dir = active_data_dir()
+    data_dir = Path(data_dir)
     today = today or date.today()
     stores = stores or Stores(data_dir, community)
     attempts_by, kinds, synced = read(data_dir)
@@ -442,7 +478,9 @@ def build(key: str, *, community: Any = None, data_dir: Path | None = None, shel
     else:
         out["standing"] = None
     if requirement is not None:
-        have = {Evidence.TEXT_AS_SENT} if text["words"] or text["files"] else set()
+        # A text edited since it was kept is not the text as sent: it is on file, but not as evidence.
+        have = {Evidence.TEXT_AS_SENT} if (text["words"] and not text["edited"]) or any(
+            f.get("same") is not False for f in text["files"]) else set()
         out["proof"] = proof(requirement, community, attempts, general=general, posted=posted, event=event, have=have,
                              key=key, private=private)
     else:
@@ -485,10 +523,20 @@ def sections(r: dict[str, Any]) -> list[tuple[str, list[str]]]:
                                         f"notices {r['key']} --proof --requirement KEY)."]))
     t = r["text"]
     lines = [f"Subject: {s}" for s in t["subjects"]]
-    lines.append(f"Text: {t['source']} (recited above)." if t["words"] else
-                 "jason does not have the text as sent: keep it in data/notices/KEY/ (the rendered Markdown), or "
-                 "send it from a batch that names its message.")
-    lines += [f"{f['what']}: {f['path']}" + (f" ({f['pages']} pages)" if f.get("pages") else "") for f in t["files"]]
+    if t["words"] and t.get("digest"):
+        lines.append(f"Text: {t['source']} (recited above), sha256 {t['digest'][:16]}: "
+                     + ("EDITED since it was kept: the words above are not the words sent" if t.get("edited") else
+                        "unchanged since it was kept") + ".")
+    else:
+        lines.append(f"Text: {t['source']} (recited above)." if t["words"] else
+                     "jason does not have the text as sent: jason keeps it in data/notices/KEY/ when it sends or "
+                     "saves a notice for sending, or send it from a batch that names its message.")
+    for k in t.get("kept") or ():
+        lines.append(f"Kept {str(k['kept'])[:16]}: {k['kind']}; {k['state']}" + (f"; batch {k['batch']}" if k["batch"]
+                                                                              else "") + ".")
+    lines += [f"{f['what']}: {f['path']}" + (f" ({f['pages']} pages)" if f.get("pages") else "")
+              + (f", sha256 {f['sha256'][:16]}" if f.get("sha256") else "")
+              + ("; EDITED since it was kept" if f.get("same") is False else "") for f in t["files"]]
     out.append(("The notice as sent", lines))
     if t["fills"]:
         lines = []

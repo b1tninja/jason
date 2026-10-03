@@ -106,14 +106,21 @@ def message_html(text: str, suffix: str) -> str:
     """A message file's body as HTML: rendered from Markdown (``.md``), else as written. Its references to governing
     document sections (``{QUOTE:ccrs#4.2(b)}``, ``{CITE:...}``; ``jason.community.section_refs``) are filled first;
     one that cannot be filled raises ``SectionRefError`` and the message is not made."""
+    return message_html_records(text, suffix)[0]
+
+
+def message_html_records(text: str, suffix: str) -> tuple[str, list[Any]]:
+    """``message_html``, with the fill record of each reference it filled (``section_refs.Embedded``): what a notice
+    keeps beside its text (``jason.tasks.notice_text``)."""
     from jason.community.section_refs import TOKEN
 
     markdown = suffix.lower() in (".md", ".markdown")
+    records: list[Any] = []
     if TOKEN.search(text or ""):
         from jason.tasks.section_refs import fill_html, fill_markdown
 
-        text, _ = (fill_markdown if markdown else fill_html)(text)
-    return render(text) if markdown else text
+        text, records = (fill_markdown if markdown else fill_html)(text)
+    return (render(text) if markdown else text), list(records)
 
 
-__all__ = ["message_html", "render"]
+__all__ = ["message_html", "message_html_records", "render"]

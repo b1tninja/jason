@@ -11,8 +11,10 @@ the text of the proposed rule change is the official rules document with its con
 adoption found are proposed with their earlier words, and the Doc's pending suggestions are left out. It writes
 ``data/drafts/rule-change-official-rules-<notice date>.md`` and nothing else.
 
-``--draft-email`` previews the member notice as a Gmail draft with no recipients; ``--draft-email --yes`` saves it.
-jason never sends email: a person addresses the draft and sends it from Gmail.
+``--draft-email`` previews the member notice as a Gmail draft with no recipients; ``--draft-email --yes`` saves it and
+keeps its text, subject, and the sections it recites in ``data/notices/KEY/`` (``jason.tasks.notice_text``; KEY is
+``rule-change-proposed-CHANGE-NOTICEDATE`` unless ``--notice`` names it). jason never sends email: a person addresses
+the draft and sends it from Gmail.
 """
 
 from __future__ import annotations
@@ -126,16 +128,29 @@ def cmd_rule_change(args: argparse.Namespace, agent_factory: Callable[[Any], Any
         return 0
     notice = rc.member_notice(change, when, current, community.name, schedule, law=law)
     draft = rc.email_draft(notice)
+    from jason.tasks.notice_text import NoticeKeyError, check_key
+
+    try:
+        key = check_key(args.notice or rc.notice_key(change, when))
+    except NoticeKeyError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     print(f"\nGmail draft preview (no recipients; a person addresses and sends it):\nSubject: {draft.subject}\n")
     print(draft.text)
     if not args.yes:
-        print("\nDry run: add --yes to save this as a Gmail draft (it is never sent).")
+        print("\nDry run: add --yes to save this as a Gmail draft (it is never sent); its text is then kept in "
+              f"{data_dir / 'notices' / key} (jason://notice/{key}).")
         return 0
     from jason.google.gmail_drafts import GmailDrafts
 
     with agent_factory(args) as agent:
         created = rc.save_draft(GmailDrafts.on(agent.drive()), draft)
     print(f"\nGmail draft {created.get('id')} created with no recipients; review, address, and send it from Gmail.")
+    entry = rc.keep_notice(data_dir, key, notice, change, recitals=recitals, version=version, by=args.by or "",
+                           state=f"saved as Gmail draft {created.get('id')} with no recipients, for a person to "
+                                 "address and send; not a record that it was sent")
+    print(f"Kept its text in {data_dir / 'notices' / key} (sha256 {entry['files'][0]['sha256'][:16]}); "
+          f"jason cite jason://notice/{key}")
     return 0
 
 
@@ -154,5 +169,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--regular-months-only", action="store_true",
                    help="count only the resolution's regular months, not the monthly practice")
     p.add_argument("--draft-email", action="store_true", help="preview the member notice as a Gmail draft")
-    p.add_argument("--yes", action="store_true", help="with --draft-email: save the draft (never sent)")
+    p.add_argument("--yes", action="store_true", help="with --draft-email: save the draft (never sent) and keep its "
+                                                      "text in data/notices/KEY/")
+    p.add_argument("--notice", metavar="KEY", help="with --draft-email: the notice's ledger key (default "
+                                                   "rule-change-proposed-CHANGE-NOTICEDATE)")
+    p.add_argument("--by", metavar="NAME", help="with --draft-email --yes: who saved the draft")
     p.set_defaults(func=lambda a: cmd_rule_change(a, agent_factory))

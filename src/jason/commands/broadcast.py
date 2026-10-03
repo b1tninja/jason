@@ -289,6 +289,7 @@ def _show_recipients(args: argparse.Namespace):
         print(f"  {len(found.invalid_email)} of them have no deliverable email in PayHOA; mail them the notice")
     if found.other_tags:
         print("  their units also carry: " + ", ".join(f"{t} ({n})" for t, n in sorted(found.other_tags.items())))
+    args.catalog_synced = synced
     if args.recipients_out:
         out = Path(args.recipients_out)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -332,10 +333,18 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
     source = Path(args.file)
     from jason.community.links import fill_help_tokens, linkify
 
-    from jason.community.markdown_html import message_html
+    from jason.community.markdown_html import message_html_records
 
-    message, no_help = fill_help_tokens(body_of(message_html(source.read_text(encoding="utf-8"), source.suffix)),
-                                        mystique().help_articles())
+    if args.notice:
+        from jason.tasks.notice_text import NoticeKeyError, check_key
+
+        try:
+            check_key(args.notice)
+        except NoticeKeyError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+    filled, refs = message_html_records(source.read_text(encoding="utf-8"), source.suffix)
+    message, no_help = fill_help_tokens(body_of(filled), mystique().help_articles())
     if no_help:
         print(f"no help article for {', '.join(no_help)} (mystique/help.py)", file=sys.stderr)
     message = linkify(message)                                          # citations, addresses, and emails as links
@@ -366,16 +375,24 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
             return 1
     for problem in checked.problems:
         print(f"check: {problem}")
-    if (args.tag or args.member_tag) and _show_recipients(args) is None:
-        return 1
+    found = None
+    if args.tag or args.member_tag:
+        found = _show_recipients(args)
+        if found is None:
+            return 1
     missing = [a.spec for a in attachments if a.document is None]
     if missing:
         print(f"attachments not found: {', '.join(missing)} (jason library --sync refreshes the catalog)", file=sys.stderr)
         return 1
     if args.critique:
         args.preview = True                          # the critique looks at PayHOA's own rendering
+    keep = lambda state: _keep_notice(args, message, subject, refs, found, attachments, checked, state)  # noqa: E731
+    composer = ("kept for a person to send from PayHOA's composer (jason does not send broadcasts); not a record that "
+                "it was sent")
     if not (args.preview or args.send_sample or (uploads and args.yes) or args.save_template is not None):
         print("local check only; --preview renders it through PayHOA, --send-sample --yes emails you a test copy")
+        if args.notice and keep(composer) is None:
+            return 1
         return 1 if checked.problems else 0
 
     with agent_factory(args) as agent:
@@ -420,9 +437,36 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
                                          from_email=sender or "", attachments=[a.id for a in attachments if a.id])
                 print(f"sent a test copy to your own membership {me}")
         if args.save_template is not None:
-            return _save_template(args, agent, subject, message, uploads)
+            code = _save_template(args, agent, subject, message, uploads)
+            if code == 0 and args.yes and args.notice:
+                keep(f"saved as PayHOA template {args.save_template} for a person to send")
+            return code
+    if args.notice and keep(composer) is None:
+        return 1
     print("jason does not send broadcasts: send it from PayHOA's composer")
     return 0
+
+
+def _keep_notice(args: argparse.Namespace, message: str, subject: str, refs: list[Any], found: Any,
+                 attachments: list[Any], checked: Any, state: str) -> dict[str, Any] | None:
+    """--notice KEY: keep the words as rendered in data/notices/KEY/ (jason.tasks.notice_text), only with --yes and
+    only when the checks pass; a dry run says what it would keep. None when the checks stop it."""
+    from jason.tasks.broadcast import keep_notice
+
+    where = _data_dir(args) / "notices" / args.notice
+    if checked.problems:
+        print(f"not keeping the notice's text until the checks pass ({where})", file=sys.stderr)
+        return None
+    if not args.yes:
+        print(f"would keep the text as rendered, its subject, {len(refs)} fill records"
+              + (", and the recipients plan" if found is not None else "") + f" in {where} (--yes keeps them)")
+        return {}
+    # The message as written in the PayHOA layout jason hands over; PayHOA fills each member's placeholders.
+    entry = keep_notice(_data_dir(args), args.notice, message=message, subject=subject, refs=refs, found=found,
+                        synced=getattr(args, "catalog_synced", ""), state=state, by=args.by or "",
+                        attachments=attachments, source=str(args.file))
+    print(f"kept the notice's text in {where} (sha256 {entry['files'][0]['sha256'][:16]}): {state}")
+    return entry
 
 
 def _save_template(args: argparse.Namespace, agent: Any, subject: str, message: str, uploads: list[tuple[Path, str]]) -> int:
@@ -519,5 +563,10 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                    help="write FILE's Google Doc back over FILE, pictures included (--yes writes; the old file kept as .bak)")
     p.add_argument("--from-doc", metavar="DOC_ID",
                    help="turn a Doc into the body (written to FILE or data/drafts/), then check it as usual")
+    p.add_argument("--notice", metavar="KEY",
+                   help="the notice's ledger key (it starts with the requirement's key: board-meeting-2099-01-14); with "
+                        "--yes, keep the text as rendered, its subject, fill records, and recipients plan in "
+                        "data/notices/KEY/ once it is saved for sending (--save-template) or handed to the composer")
+    p.add_argument("--by", metavar="NAME", help="with --notice: who saved it for sending")
     p.add_argument("--yes", action="store_true", help="write the Docs, upload, and send the test copy (default: dry run)")
     p.set_defaults(func=lambda a: cmd_broadcast(a, agent_factory))
