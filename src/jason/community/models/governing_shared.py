@@ -11,7 +11,7 @@ whose digits came apart (``Doc # 201 91 2201433``), a ``Doc#·`` with a stray ma
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from jason.community.document_models import Finding, Severity, dates_in, squash
@@ -336,7 +336,7 @@ def explain_missing(reading, notes: dict[str, tuple[str, str]]):
         key = f.code[len("missing-"):].replace("-", "_") if f.code.startswith("missing-") else ""
         if key in notes:
             message, authority = notes[key]
-            f = Finding(f.code, message, f.severity, authority or f.authority)
+            f = replace(f, message=message, authority=authority or f.authority)  # the same finding reworded; it keeps its basis
         out.append(f)
     reading.findings = tuple(out)
     return reading

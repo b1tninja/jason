@@ -17,6 +17,51 @@ A `DocumentKind` says what a file is. A document model says what is in it. Each 
 
 `jason models` runs the library, `jason models --kind minutes --show` prints the stored readings, and `jason models --file X.pdf --kind elevated_element_inspection` reads one file. The `document_models` MCP tool reads the stored readings and uses disk only.
 
+## What a reading records about its own making
+
+This is the inventory, step 1 of [ingestion-and-review.md](../ingestion-and-review.md). It changes no reader and no finding. It records where each came from.
+
+**Each stored row** carries, beside its fields and findings:
+
+| Key | What it holds |
+|---|---|
+| `textSha` | the SHA-256 of the text the reader was given |
+| `asOf` | the date the reader used as today |
+| `version` | the reader's version (below) |
+| `fieldsBasis` | what `parse` read to fill the fields |
+| `basis`, on each finding | what the call that produced the finding read |
+
+A row stored before these keys has none of them. Every reader of the store treats them as optional.
+
+**A basis** is a set from five words (`Basis`):
+
+| Word | Meaning | How it is observed |
+|---|---|---|
+| `text` | the document's own text | always, once a basis is observed |
+| `profile` | the specification | the reader read `context.community` |
+| `store` | another store on disk | the reader read `context.data_dir` |
+| `today` | the date of the reading | the reader read `context.today` |
+| `law` | a statute or standard | the finding has an `authority` |
+
+A finding whose basis is `text` alone is ingestion. Any other is a review.
+
+**The basis is observed, not declared.** `ModelContext` counts each read of its specification, data directory, and date. `DocumentModel.read` compares the counts before and after `parse`, and before and after `check`.
+
+**Its limits:**
+- **The granularity is the call, not the finding.** `check` returns its findings together, so each finding carries everything that call read. "Review" is therefore an upper bound: a finding marked `today` came from a check that read the date, whether or not that finding used it. A finding marked `text` alone needed nothing but the record.
+- **The fields have their own basis.** A text-only finding on a record whose fields were filled from the profile or a store is not ingestion yet.
+- **A reader's own `read`.** When a reader overrides `read`, what it reads after the base `read` is added to every finding of that reading (`settle`).
+- **What goes around the context is not seen:** a cache that an earlier call filled, or a clock a helper reads itself.
+- **The file's name, period, and confidential flag are not counted.** They describe the file being read. A field read from the file's name is still not a function of the file's bytes.
+
+**A reader's version** (`reader_version`) is the first twelve hex digits of a SHA-256 over the source of every module in the reader class's line of descent: its own module, its base readers' and mixins', and `document_models.py`. It changes when any of those files changes, and needs no constant to remember. It does not see a helper module the reader only calls into.
+
+`jason models --basis` prints the inventory from the stored rows and reads nothing again:
+- per reader and finding code: the count, how many read the text only, the basis, and the class (ingestion, review, or not observed);
+- the readers whose fields depend on the profile, a store, or today.
+
+Run `jason models` first when the rows are older than these keys.
+
 ## Questions for the local model
 
 A document model reads with rules. A question set (`jason.community.question_sets`) asks the local model the same things in words, plus what only a reader of the words can answer. It then sets each answer beside the rule reader's field. `jason models --ask --kind minutes` runs it and writes `data/documents/questions-<kind>.json`.

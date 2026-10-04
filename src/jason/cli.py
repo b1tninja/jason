@@ -2745,9 +2745,13 @@ def cmd_models(args: argparse.Namespace) -> int:
     from jason.community import community as active
     from jason.community.symbols import DocumentKind
     from jason.config import Settings
-    from jason.tasks.document_models import coverage_lines, read_file, run, summary
+    from jason.tasks.document_models import basis_lines, basis_report, coverage_lines, load, read_file, run, summary
 
     data_dir = Settings.load(args.env).payhoa_catalog.parent
+    if args.basis:
+        result = basis_report(load(data_dir), kind=args.kind)
+        print(json.dumps(result, indent=2, default=str) if args.json else "\n".join(basis_lines(result)))
+        return 0 if result["found"] else 1
     if args.ask:
         from jason.tasks.model_questions import run as ask_run, summary_lines as ask_lines
 
@@ -4078,6 +4082,9 @@ def build_parser() -> argparse.ArgumentParser:
     models.add_argument("--kind", default="", help="One document kind (e.g. minutes, elevated_element_inspection)")
     models.add_argument("--file", default="", help="Read one file on disk (PDF or text) as --kind instead of the library")
     models.add_argument("--show", action="store_true", help="Print the stored readings (with --kind, one kind) instead of reading again")
+    models.add_argument("--basis", action="store_true",
+                        help="From the stored readings: per reader and finding code, what the check read (text, profile, store, today, "
+                             "law), so which findings are ingestion and which are reviews; reads nothing again")
     models.add_argument("--ask", action="store_true",
                         help="Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's")
     models.add_argument("--confidential", action="store_true", help="--show: include confidential files' fields")

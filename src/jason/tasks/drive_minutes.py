@@ -48,9 +48,11 @@ def wanted(data_dir: Path) -> list[dict[str, Any]]:
 
 def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Callable[[str], None] | None = None) -> dict[str, Any]:
     from jason.community.document_models import ModelContext, read
+    from jason.tasks.document_models import provenance
     from jason.tasks.library import text_of
 
     data_dir = Path(data_dir)
+    today = date.today()  # one as-of date for the run, recorded on each row
     todo = wanted(data_dir)[: limit or None]
     folder = data_dir / FILES
     folder.mkdir(parents=True, exist_ok=True)
@@ -73,7 +75,8 @@ def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Call
                  "confidential": "executive" in w["name"].lower(),
                  "hasText": bool(text.strip()), "model": None, "source": "Drive"}
         if text.strip():
-            reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, date.today(), w["name"], w["date"]))
+            entry.update(provenance(text, today))
+            reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, today, w["name"], w["date"]))
             if reading is not None:
                 entry.update(reading.as_dict())
         added.append(entry)
@@ -91,8 +94,10 @@ def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Call
 def reread(data_dir: Path, community: Any) -> int:
     """Read the Drive minutes already fetched again with the current minutes model (after a rule changes)."""
     from jason.community.document_models import ModelContext, read
+    from jason.tasks.document_models import provenance
 
     data_dir = Path(data_dir)
+    today = date.today()
     store = data_dir / "documents" / "readings.json"
     body = json.loads(store.read_text(encoding="utf-8"))
     n = 0
@@ -103,9 +108,10 @@ def reread(data_dir: Path, community: Any) -> int:
         text = kept.read_text(encoding="utf-8", errors="ignore") if kept.is_file() else ""
         if not text.strip():
             continue
-        reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, date.today(), r.get("name") or "", r.get("period") or ""))
+        reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, today, r.get("name") or "", r.get("period") or ""))
         if reading is not None:
             r.update(reading.as_dict())
+            r.update(provenance(text, today))
             n += 1
     store.write_text(json.dumps(body, indent=1, default=str), encoding="utf-8")
     return n

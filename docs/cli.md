@@ -412,6 +412,7 @@ Read the library with the document models: typed records and findings per kind (
 | `--kind` | KIND | One document kind (e.g. minutes, elevated_element_inspection) |
 | `--file` | FILE | Read one file on disk (PDF or text) as --kind instead of the library |
 | `--show` |  | Print the stored readings (with --kind, one kind) instead of reading again |
+| `--basis` |  | From the stored readings: per reader and finding code, what the check read (text, profile, store, today, law), so which findings are ingestion and which are reviews; reads nothing again |
 | `--ask` |  | Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's |
 | `--confidential` |  | --show: include confidential files' fields |
 | `--limit` | LIMIT | --show: readings to print |
