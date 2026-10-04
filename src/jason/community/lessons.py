@@ -983,7 +983,8 @@ LESSONS: tuple[Lesson, ...] = (
                                  "ui/src/components/meetingstage.test.tsx (HostPanel executive tests)",
                                  "ui/src/views/meetingroom.test.tsx (the hold card)"),
            docs=("docs/console/screens/meetings-and-minutes.md", "docs/console/security-and-privacy.md"),
-           notes=("Still open: the agenda Doc's executive subitems reach the minutes model as headings.",)),
+           notes=("The agenda Doc's executive subitems reaching the minutes model: lesson "
+                  "agenda-executive-words-to-minutes-model.",)),
     Lesson("owner-view-showed-delinquency", date(2026, 10, 4), (Area.DOCUMENTS, Area.GOVERNING),
            "The owner view's Overview rendered the board's digest, with owners in default and liens on current "
            "owners, and its nav included Records (CIV 5200), which listed the liens the association placed. Other "

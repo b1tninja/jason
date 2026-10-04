@@ -4,9 +4,13 @@
 transcript up to the executive session's break (``jason.tasks.zoom.executive_break``), who joined and for how long,
 and the agenda's items (the Doc, ``data/meetings/agenda-docs``). Zoom's AI summary is not given: it can retell the
 executive session. The model writes each ``MinutesSection`` by its prompt (``jason.community.minutes_template``) as
-JSON, with the transcript's words that support each section; the executive session section gets only the agenda's
-general headings, the meeting room's general notes (its open file, never the executive record), and an executive
-decision's 4935 subject in general terms (CIV 4935(e)), never its title, motion, or votes. What the record does not show is written as a blank for the Secretary, never guessed.
+JSON, with the transcript's words that support each section. The executive session section gets only general words
+(CIV 4935(e)): each executive item on the agenda by its 4935 subject (``ExecutiveSubject``: the agenda plan's, else
+``classify_executive`` on the item's words) in the statute's words, never the agenda's own words for it, which can name
+a member, a party, or the matter; an item with no subject as a blank for the Secretary; the meeting room's general notes
+(its open file, never the executive record); and an executive decision's 4935 subject, never its title, motion, or
+votes. What the record does not show is written as a blank for the Secretary, never guessed. jason's checks list any
+line about the executive session that uses the agenda's own words for an executive item (counted, never quoted).
 
 The draft is written to ``data/board/minutes-draft-<date>.md`` and then asked the minutes questions
 (``jason.community.question_sets.MINUTES``): each gap left is a line the Secretary fills from memory or the video. jason
@@ -56,8 +60,10 @@ def prompt(day: date, record: dict[str, Any]) -> str:
              "name, never as he or she. A caller shown only by a telephone number may be a director who dialed in: when a director on the "
              "roster is not named on the call, write that director's attendance as unknown and note the unidentified "
              "caller, rather than absent, unless the transcript says the director was absent. The executive session "
-             "section states only general subjects: the headings listed as its agenda, or the general matters the chair "
-             "names when adjourning to it (for example \"delinquencies and legal matters\"), nothing else.", "",
+             "section states only general subjects, in the words listed for it below, or the general nature the chair "
+             "gives when adjourning to it (for example \"delinquencies and legal matters\"), nothing else: never a name, "
+             f"a unit, an amount, or a matter's particulars. Where a line below says \"{SUBJECT_NOT_ON_RECORD}\", write "
+             f"exactly \"{UNKNOWN}\" for that matter.", "",
              *(["Directors: " + ", ".join(record["directors"])] if record.get("directors") else []),
              *([f"Callers known not to be directors: {', '.join(n for n, c in record['knownCallers'].items() if not c.get('director'))}. "
                 "A roster director who is not on the call is absent when no unidentified caller remains."]
@@ -77,7 +83,9 @@ def prompt(day: date, record: dict[str, Any]) -> str:
                    + (f"; recused (disclosed an interest, did not vote) {', '.join(d['recused'])}" if d.get("recused") else "")
                    + f"; outcome {d.get('outcome') or 'not recorded'}"
                    for d in decided]] if decided else []),
-              "", "Executive session agenda headings:", *([f"- {h}" for h in record["executive"]] or ["- (none)"]),
+              # Only general words reach here (meeting_record): a 4935 subject's, or the blank for a matter without one.
+              "", "Executive session, in general terms only (Civil Code 4935(e)):",
+              *([f"- {h}" for h in record["executive"]] or ["- (none)"]),
               "", "Attendance (name, minutes on the call):",
               *([f"- {n}: {m}" for n, m in record["attendance"]] or ["- (none)"]),
               "", "Transcript of the open meeting:", "<<<", record["transcript"], ">>>"]
@@ -132,6 +140,8 @@ def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
     for p in json.loads(parts.read_text(encoding="utf-8")) if parts.is_file() else []:
         name = p.get("name") or p.get("email") or "unknown"
         attendance[name] = attendance.get(name, 0) + int(p.get("seconds") or 0)
+    # ``executive`` is the agenda's own words for its executive items: used to find each one's 4935 subject and for the
+    # checks, never given to the model (4935(e)).
     items, executive = [], []
     schedule = community.meeting_schedule()
     for path in (Path(data_dir) / "meetings" / "agenda-docs").glob("*.json"):
@@ -166,9 +176,15 @@ def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
     # The model is given the open record only: an executive-session decision is noted by its 4935 subject in general
     # terms (4935(e)), never by its title, motion, or votes; the room's executive sessions likewise (room_general).
     recorded = for_meeting(data_dir, day)
+    # The agenda's executive items likewise, each by its 4935 subject only; the item's words stay out.
+    found = executive_subjects(list(dict.fromkeys(executive)), planned_subjects(data_dir, day))
     return {"zoom": row["uuid"], "topic": str(row.get("topic") or ""), "kind": meeting_kind(str(row.get("topic") or "")),
             "items": list(dict.fromkeys(items)),
-            "executive": list(dict.fromkeys(executive + room_general(data_dir, day) + general_notes(recorded))),
+            "executive": list(dict.fromkeys(executive_agenda_notes(found) + room_general(data_dir, day) + general_notes(recorded))),
+            # For jason's checks only, never the prompt: where each subject came from (counts), and the agenda's words
+            # for its executive items that are not general (what could name a member, a party, or the matter).
+            "executiveSources": {k: sum(1 for _, how in found if how == k) for k in (PLAN, WORDING, NOT_NAMED)},
+            "executiveWords": particular_words(executive),
             "decisions": [as_dict(d) for d in open_only(recorded)],
             "knownCallers": known_callers, "unidentified": unidentified,
             "directors": directors,
@@ -193,6 +209,90 @@ def room_general(data_dir: Path, day: date) -> list[str]:
         said = executive_general_note(s.get("subjects") or [])
         if said:
             out.append(f"The board met in executive session to discuss {said}.")
+    return out
+
+
+# What the model is given for an agenda executive item whose 4935 subject is not on record: a blank for the Secretary,
+# never the item's words.
+SUBJECT_NOT_ON_RECORD = "an executive-session matter; its 4935 subject is not on record"
+# Where an executive item's subject came from: the agenda plan (a person named it), jason's reading of the agenda's
+# words (``classify_executive``; the Secretary confirms it), or nowhere.
+PLAN, WORDING, NOT_NAMED = "plan", "wording", "not named"
+
+
+def _words(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(text or "").casefold()))
+
+
+def planned_subjects(data_dir: Path, day: date) -> list[tuple[str, Any]]:
+    """Each board item the day's agenda plan gives a Civil Code 4935 subject (``data/meetings/plan-<date>.json``), as
+    (the item's title, its ``ExecutiveSubject``). The titles are for matching the agenda's items only."""
+    from jason.community.models.meetings import executive_subject
+    from jason.tasks import agenda_plan, board_items
+
+    try:
+        plan = agenda_plan.load(Path(data_dir), day.isoformat())
+        named = {k: executive_subject(v.get("subject")) for k, v in plan["items"].items() if isinstance(v, dict)}
+        named = {k: s for k, s in named.items() if s is not None}
+        titles = {i.id: i.title for i in board_items.load(Path(data_dir))} if named else {}
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    return [(titles[k], s) for k, s in named.items() if titles.get(k)]
+
+
+def executive_subjects(titles: list[str], planned: list[tuple[str, Any]]) -> list[tuple[Any, str]]:
+    """Each agenda executive item's 4935 subject and where it came from, in order: the agenda plan's, when the item's
+    words are a planned item's title or contain it (and the planned items it matches agree); else ``classify_executive``
+    on the item's words; else none (``NOT_NAMED``). A miss stays a miss."""
+    from jason.community.models.meetings import classify_executive
+
+    out: list[tuple[Any, str]] = []
+    for title in titles:
+        said = _words(title)
+        hits = {s for t, s in planned if _words(t) and f" {_words(t)} " in f" {said} "}
+        if len(hits) == 1:
+            out.append((hits.pop(), PLAN))
+            continue
+        guess = classify_executive(title)
+        out.append((guess, WORDING) if guess is not None else (None, NOT_NAMED))
+    return out
+
+
+def executive_agenda_notes(found: list[tuple[Any, str]]) -> list[str]:
+    """The agenda's executive items as the model is given them (Civil Code 4935(e)): their subjects together in the
+    statute's general words with the subdivisions, and one blank line for the items with none."""
+    from jason.community.models.meetings import executive_general_note
+
+    said = executive_general_note([s for s, _ in found if s is not None])
+    unnamed = sum(1 for s, _ in found if s is None)
+    return ([f"On the agenda for executive session: {said}."] if said else []) + \
+        ([SUBJECT_NOT_ON_RECORD + (f" ({unnamed} agenda items)" if unnamed > 1 else "") + "."] if unnamed else [])
+
+
+# Words of an executive item that say only its general nature (with the statute's words and ``CONFIDENTIAL``'s), never
+# who or what in particular.
+GENERAL_WORDS = frozenset((
+    "about adjourn adjourned agenda agreement agreements and any association board civil claim claims closed code "
+    "collection collections contract contracts delinquencies delinquency discuss discussion dispute executive for "
+    "from hearing hearings item items legal lien liens litigation matter matters meeting member members new none "
+    "other owner owners payment payments pending permits personnel plan plans possible potential proposal proposals "
+    "re regarding report request requests review section session sessions status the unit units update vendor vendors "
+    "with").split())
+
+
+def particular_words(titles: list[str]) -> list[str]:
+    """The words of the agenda's executive items that are not general: what could name a member, a party, or a
+    matter's particulars (three letters or more, or a number of three digits or more that is not a year). For the
+    checks only; never given to the model."""
+    from jason.community.models.meetings import EXECUTIVE_GENERAL_TERMS
+
+    general = GENERAL_WORDS | {w for said, _ in EXECUTIVE_GENERAL_TERMS.values() for w in _words(said).split()}
+    out: list[str] = []
+    for w in _words(" ".join(titles)).split():
+        if len(w) < 3 or w in general or CONFIDENTIAL.search(w) or re.fullmatch(r"(?:19|20)\d\d|4935", w):
+            continue
+        if w not in out:
+            out.append(w)
     return out
 
 
@@ -255,6 +355,7 @@ def _quorum_fact(q: dict[str, Any]) -> str:
 
 
 PRONOUNS = re.compile(r"\b(?:he|she|him|her|his|hers|himself|herself)\b", re.I)
+EXECUTIVE_HEADING = next(s.heading for s in SECTIONS if s.key == "executive_session").casefold()
 
 
 def checks(record: dict[str, Any], text: str, community: Any) -> dict[str, Any]:
@@ -267,16 +368,25 @@ def checks(record: dict[str, Any], text: str, community: Any) -> dict[str, Any]:
     said = meeting_kind(meeting.group(1)) if meeting else ""
     kind_differs = bool(record.get("kind") and said and said != record["kind"])
     pronouns = [ln.strip() for ln in text.splitlines() if PRONOUNS.search(ln) and not ln.startswith(("_", "#", "-  "))]
-    lines, heading = [], ""
+    private = set(record.get("executiveWords") or ())
+    lines, particulars, heading = [], [], ""
     for ln in text.splitlines():
         if ln.startswith("## "):
             heading = ln[3:].strip().casefold()
-        # The executive session section names its general headings by design (4935(e)); the checks block is jason's.
-        elif heading not in ("executive session", "jason's checks") and not ln.startswith(("_", "#")) \
-                and CONFIDENTIAL.search(ln):
+            continue
+        if heading == "jason's checks" or ln.startswith(("_", "#")):
+            continue
+        # The executive session section names its general subjects by design (4935(e)).
+        if heading != EXECUTIVE_HEADING and CONFIDENTIAL.search(ln):
             lines.append(ln.strip())
+        # A line about the executive session that uses the agenda's own words for an executive item (a name, a party,
+        # the matter): 4935(e) notes it only generally.
+        if private and (heading == EXECUTIVE_HEADING or re.search(r"executive session", ln, re.I)) \
+                and private & set(_words(ln).split()):
+            particulars.append(ln.strip())
     motions = len(re.findall(r"^\s*- \*\*Motion:\*\*", text, re.M))
     return {"quorum": quorum, "claimsQuorum": claims, "motions": motions, "confidential": lines,
+            "executiveParticulars": particulars, "executiveSources": dict(record.get("executiveSources") or {}),
             "kind": record.get("kind", ""), "kindSaid": said, "kindDiffers": kind_differs, "pronouns": pronouns}
 
 
@@ -306,6 +416,16 @@ def check_lines(found: dict[str, Any]) -> list[str]:
         out.append(f"- {len(found['confidential'])} line(s) name a subject the open minutes give only by its general "
                    "nature (Civil Code 4935): read each before the draft is shared, and keep members' names and "
                    "details out.")
+    if found.get("executiveParticulars"):
+        out.append(f"- {len(found['executiveParticulars'])} line(s) about the executive session use the agenda's own "
+                   "words for an executive item, which can name a member, a party, or the matter: the open minutes note "
+                   "it only generally, by its 4935 subject (Civil Code 4935(e)). Take them out before the draft is shared.")
+    src = found.get("executiveSources") or {}
+    if src.get(WORDING) or src.get(NOT_NAMED):
+        out.append(f"- Executive session: the agenda's {sum(src.values())} executive item(s) went to the model by their "
+                   f"4935 subject only: {src.get(PLAN, 0)} from the agenda plan, {src.get(WORDING, 0)} read by jason "
+                   f"from the agenda's wording (confirm the subject), {src.get(NOT_NAMED, 0)} not on record (a blank "
+                   "for the Secretary).")
     return out + [""]
 
 
@@ -387,11 +507,12 @@ def draft(data_dir: Path, community: Any, day: date, *, model: str = "",
     out.write_text(text, encoding="utf-8")
     # The draft asked the minutes questions: what it still lacks is for the Secretary.
     answers = ask(question_prompt(MINUTES, text), question_schema(MINUTES))
-    checks = [judge(q, answers.get(q.key) or {}, text, {}) for q in MINUTES.questions]
-    gaps = [c["key"] for c in checks if c["verdict"] == "gap"]
+    verdicts = [judge(q, answers.get(q.key) or {}, text, {}) for q in MINUTES.questions]
+    gaps = [c["key"] for c in verdicts if c["verdict"] == "gap"]
     return {"file": str(out), "zoom": record["zoom"], "items": len(record["items"]), "attendance": record["attendance"],
             "unsupported": unsupported, "gaps": gaps, "unknowns": text.count(UNKNOWN), "checks": found}
 
 
-__all__ = ["checks", "check_lines", "directors_on_call", "draft", "meeting_record", "prompt", "quorum_check", "recheck",
-           "render", "schema"]
+__all__ = ["SUBJECT_NOT_ON_RECORD", "checks", "check_lines", "directors_on_call", "draft", "executive_agenda_notes",
+           "executive_subjects", "meeting_record", "particular_words", "planned_subjects", "prompt", "quorum_check",
+           "recheck", "render", "schema"]

@@ -36,7 +36,7 @@ The Governance group already runs the board loop:
 | The meeting watch | `jason.tasks.meeting_watch.watch(community, data_dir)` → `Watch.as_dict()`: `asOf`, `from`, `until`, `meetings[]` (`date`, `kind`, `basis`, `titles`, `held`, `clocks[]`, `notes`), `unrecorded[]`, `notes`, `caveats` | `meeting-watch` (to add) |
 | A clock | `Clock.row()`: `what` (notice or minutes), `requirement`, `authority` (CIV 4920(a), 4920(b)(2), 4950(a)), `timing`, `deadline`, `standing`, `record`, `on`, `note`, `assignment`, `due`, `notice` (`jason://notice/KEY`) | the same |
 | The caveats | `meeting_watch.CAVEATS`, verbatim. The first: "None on record is not none given…" | the same |
-| The checks | `minutes_draft.checks(record, text, community)`: `quorum` (`inOffice`, `present`, `unidentified`, `needed`, `standing`), `claimsQuorum`, `motions`, `confidential[]`, `kind`, `kindDiffers`, `pronouns[]`; rendered as `minutes_draft.check_lines`; the draft's `unsupported`, `gaps`, `unknowns` | add to `minutes-review` |
+| The checks | `minutes_draft.checks(record, text, community)`: `quorum` (`inOffice`, `present`, `unidentified`, `needed`, `standing`), `claimsQuorum`, `motions`, `confidential[]`, `executiveParticulars[]`, `executiveSources` (`plan`, `wording`, `not named`), `kind`, `kindDiffers`, `pronouns[]`; rendered as `minutes_draft.check_lines`; the draft's `unsupported`, `gaps`, `unknowns` | add to `minutes-review` |
 | Record stages | `jason.tasks.record_stages.histories(community, data_dir)` | `meeting-watch` |
 
 ## Layout: the watch
@@ -150,7 +150,8 @@ The room counts by the profile's `BoardRule` and policies, never by jason. The l
 
 ## Privacy
 
-- Executive-session material is listed by date only. The draft never holds it: the model is given the transcript only up to the executive break, the room's open record only, and an executive decision only by its 4935 subject in general terms.
+- Executive-session material is listed by date only. The draft never holds it: the model is given the transcript only up to the executive break, the room's open record only, and an executive decision only by its 4935 subject in general terms. An executive item on the agenda Doc goes only by its 4935 subject (the agenda plan's, else `classify_executive` on its words), never its own words; one with no subject goes as a blank for the Secretary.
+- The checks count each line about the executive session that uses the agenda's own words for an executive item (`executiveParticulars`), and say how many items' subjects came from the plan, from jason's reading, or are not on record (`executiveSources`); the block never quotes them.
 - Confidential lines in the open draft (Civil Code 4935 subjects) are shown in full to the Secretary and manager, with the instruction to read each before the draft is shared.
 - A caller shown only by a telephone number is "unidentified caller" with the last four digits.
 - The owner view shows the meetings' records as built, not the watch's assignments or the checks. Its loader (`meetings?view=owner`) sends each meeting's open-session records on file alone: the notice, the agendas, and the minutes (draft or approved) where they are posted (the PayHOA library, Drive, a PayHOA communication), never confidential. No title (a call's topic can name a hearing), no transcript, recording, chat, or summary, no executive session agenda, no jason draft, no checks or schedule gaps, and no meeting with no member record.
