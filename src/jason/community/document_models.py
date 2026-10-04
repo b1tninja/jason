@@ -21,6 +21,12 @@ fields, and what ``check`` read as the basis of that call's findings. The granul
 finding stamped ``text`` only needed nothing but the record; one stamped ``today`` came from a call that read the date,
 whether or not that finding used it. What a reader reaches without the context (a module's cache filled by an earlier
 call, a clock read directly) is not seen.
+
+**A reading and its reviews** (docs/ingestion-and-review.md, step 2). A reader's ``parse`` and ``check`` say what the
+document says. What depends on the date belongs to a lens (``jason.community.reviews``): the reader lists the lens's
+checks in ``lens_checks``, and ``read`` joins their findings to its own, as of the context's date, so a reading shows
+what it always did. A finding from a lens carries the lens's key. A field that comes from another store is filled by
+``enrich``, a step of its own after ``parse``, and the reading says which fields those are.
 """
 
 from __future__ import annotations
@@ -70,6 +76,8 @@ class Finding:
     # What the call that produced the finding read, stamped by ``DocumentModel.read``; empty means not observed. It is
     # no part of the finding's identity: two findings equal before are equal now.
     basis: frozenset[Basis] = field(default=frozenset(), compare=False)
+    # The lens that produced the finding ("as-of"); "" for a finding of the reading itself. No part of its identity either.
+    lens: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.basis, frozenset):
@@ -79,6 +87,8 @@ class Finding:
         out = {"code": self.code, "message": self.message, "severity": self.severity.value, "authority": self.authority}
         if self.basis:
             out["basis"] = basis_values(self.basis)
+        if self.lens:
+            out["lens"] = self.lens
         return out
 
 
@@ -94,7 +104,10 @@ class ModelContext:
 
     The context counts each read of ``community``, ``data_dir``, and ``today``, whatever the value (a ``None``
     specification that a reader asks for is still asked for). ``mark`` takes the counts and ``since`` names the parts
-    read after a mark, so a caller can tell what one call read. The attributes return what they always did."""
+    read after a mark, so a caller can tell what one call read. The attributes return what they always did.
+
+    ``known`` holds the reviews the runner already has for this document and text, by lens key. A lens whose key and
+    inputs are unchanged takes its review from there instead of making it again."""
 
     community: Any = None
     data_dir: Path | None = None
@@ -102,6 +115,7 @@ class ModelContext:
     name: str = ""
     period: str = ""
     confidential: bool = False
+    known: Any = field(default=None, repr=False, compare=False)
 
     def __getattribute__(self, name: str) -> Any:
         part = _PARTS.get(name)
@@ -131,8 +145,9 @@ def _since(context: Any, mark: dict[Basis, int] | None) -> frozenset[Basis] | No
 
 
 def _stamp(finding: Finding, read: frozenset[Basis] | None) -> Finding:
-    """``finding`` with the text, what its call read, and the law when it cites one added to its basis."""
-    if read is None:
+    """``finding`` with the text, what its call read, and the law when it cites one added to its basis. A lens's finding
+    keeps the basis its lens gave it."""
+    if read is None or finding.lens:
         return finding
     basis = finding.basis | {Basis.TEXT} | read | ({Basis.LAW} if finding.authority else frozenset())
     return finding if basis == finding.basis else dataclasses.replace(finding, basis=basis)
@@ -148,10 +163,20 @@ class ModelReading:
     fields_basis: frozenset[Basis] = frozenset()  # what ``parse`` read to fill the record; empty means not observed
     version: str = ""                             # ``reader_version`` of the model that read it
     mark: dict[Basis, int] | None = field(default=None, repr=False, compare=False)  # the context's counts when the read ended
+    enriched: tuple[str, ...] = ()                  # the fields ``enrich`` may fill from another store, not from the text
+    enriched_basis: frozenset[Basis] = frozenset()  # what ``enrich`` read
+    reviews: tuple[Any, ...] = ()                   # the lenses' reviews joined into ``findings`` (``reviews.Review``)
+    # Per (lens, check): the findings from outside the lens that stood before the check's slot when the reading was made.
+    slots: dict[tuple[str, str], tuple[Finding, ...]] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def complete(self) -> bool:
         return not self.missing
+
+    @property
+    def own_findings(self) -> tuple[Finding, ...]:
+        """The reading's own findings: those no lens produced."""
+        return tuple(f for f in self.findings if not f.lens)
 
     def as_dict(self) -> dict[str, Any]:
         out = {"kind": self.kind.value, "model": self.model, "complete": self.complete, "missing": list(self.missing),
@@ -160,6 +185,22 @@ class ModelReading:
             out["version"] = self.version
         if self.fields_basis:
             out["fieldsBasis"] = basis_values(self.fields_basis)
+        if self.enriched:
+            out["enriched"] = {"fields": list(self.enriched), "basis": basis_values(self.enriched_basis)}
+        if self.reviews:
+            out["lenses"] = {r.lens: self._lens_stamp(r) for r in self.reviews}
+        return out
+
+    def _lens_stamp(self, review: Any) -> dict[str, Any]:
+        """What a row says of one lens joined into it: the lens's version, its as-of date, where each check's findings go
+        among the row's other findings, and the fields the lens derived."""
+        from jason.community.reviews import position
+
+        others = [f for f in self.findings if f.lens != review.lens]
+        out = {"version": review.lens_version, "asOf": review.as_of.isoformat() if review.as_of else None,
+               "slots": {key: position(self.slots.get((review.lens, key), ()), others) for key in review.checks}}
+        if review.fields:
+            out["fields"] = sorted(review.fields)
         return out
 
 
@@ -171,6 +212,8 @@ class DocumentModel:
     kinds: ClassVar[tuple[DocumentKind, ...]] = ()
     name: ClassVar[str] = ""
     required: ClassVar[tuple[str, ...]] = ()
+    enriched: ClassVar[tuple[str, ...]] = ()      # the record's fields ``enrich`` may fill
+    lens_checks: ClassVar[tuple[Any, ...]] = ()   # the lens checks that review this reader's records (``reviews.LensCheck``)
 
     def handles(self) -> tuple[DocumentKind, ...]:
         return self.kinds or ((self.kind,) if self.kind else ())
@@ -179,7 +222,13 @@ class DocumentModel:
         """The record, or None when the text is not this model's."""
         raise NotImplementedError
 
+    def enrich(self, record: Any, context: ModelContext) -> None:
+        """Fill the ``enriched`` fields from another store. ``parse`` reads the text; this is the one step of a reading
+        that looks a field up elsewhere, and what it read is recorded apart from the fields' own basis."""
+
     def check(self, record: Any, context: ModelContext) -> list[Finding]:
+        """The reading's own findings. A lens check among them (one of ``lens_checks``) is a slot: ``read`` puts that
+        check's findings there."""
         return []
 
     def read(self, text: str, context: ModelContext, kind: DocumentKind | None = None) -> ModelReading | None:
@@ -188,19 +237,55 @@ class DocumentModel:
         if record is None:
             return None
         parsed = _since(context, start)
+        looked_up = None
+        if self.enriched:
+            before = _mark(context)
+            self.enrich(record, context)
+            looked_up = _since(context, before)
         missing = tuple(f for f in self.required if _empty(getattr(record, f, None)))
         # A missing field's finding comes from the record alone, so its basis is the fields' own.
-        findings = [_stamp(Finding("missing-" + f.replace("_", "-"), f"the text gives no {f.replace('_', ' ')}", Severity.CHECK), parsed)
-                    for f in missing]
+        layout: list[Any] = [_stamp(Finding("missing-" + f.replace("_", "-"), f"the text gives no {f.replace('_', ' ')}", Severity.CHECK),
+                                    parsed | looked_up if f in self.enriched and parsed is not None and looked_up is not None else parsed)
+                             for f in missing]
         before = _mark(context)
         checked = self.check(record, context)
         # One basis for the whole call: ``check`` returns its findings together, so which read served which finding
         # is not observable. Each finding carries everything the call read.
         read = _since(context, before)
-        findings += [_stamp(f, read) for f in checked]
+        layout += [_stamp(f, read) if isinstance(f, Finding) else f for f in checked]
+        version = reader_version(self)
+        findings, reviews, slots = _join(self, record, layout, context, version)
         fields = frozenset() if parsed is None else frozenset({Basis.TEXT}) | parsed
         return ModelReading(kind or self.handles()[0], self.name or type(self).__name__, record, missing, tuple(findings),
-                            fields, reader_version(self), _mark(context))
+                            fields, version, _mark(context), self.enriched, looked_up or frozenset(), reviews, slots)
+
+
+def _join(model: DocumentModel, record: Any, layout: list[Any], context: Any, version: str) -> tuple[list[Finding], tuple[Any, ...], dict]:
+    """A reading's findings with its lenses' findings in their places, as of the context's date.
+
+    ``layout`` is the reading's own findings with a lens check where that check's findings go; a check the reader lists
+    and did not place goes last. Returns the joined findings, the reviews, and, per check, the findings from outside its
+    lens that stand before it."""
+    placed = [item for item in layout if not isinstance(item, Finding)]
+    if not placed and not model.lens_checks:
+        return layout, (), {}
+    stray = [item for item in placed if not any(item is c for c in model.lens_checks)]
+    if stray:
+        raise ValueError(f"{model.name or type(model).__name__}: check returned {stray!r}, which its lens_checks do not list")
+    layout = layout + [c for c in model.lens_checks if not any(c is p for p in placed)]
+    from jason.community.reviews import compose
+
+    reviews = compose(record, [item for item in layout if not isinstance(item, Finding)], context, reading_version=version)
+    by_lens = {review.lens: review for review in reviews}
+    findings: list[Finding] = []
+    slots = {}
+    for item in layout:
+        if isinstance(item, Finding):
+            findings.append(item)
+            continue
+        slots[(item.lens.key, item.key)] = tuple(f for f in findings if f.lens != item.lens.key)
+        findings += by_lens[item.lens.key].checks.get(item.key, ())
+    return findings, reviews, slots
 
 
 def reader_version(model: DocumentModel | type) -> str:

@@ -48,6 +48,7 @@ def wanted(data_dir: Path) -> list[dict[str, Any]]:
 
 def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Callable[[str], None] | None = None) -> dict[str, Any]:
     from jason.community.document_models import ModelContext, read
+    from jason.tasks import document_reviews
     from jason.tasks.document_models import provenance
     from jason.tasks.library import text_of
 
@@ -56,7 +57,7 @@ def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Call
     todo = wanted(data_dir)[: limit or None]
     folder = data_dir / FILES
     folder.mkdir(parents=True, exist_ok=True)
-    added, failed = [], []
+    added, failed, reviews = [], [], []
     for w in todo:
         pdf = folder / f"{w['ref']}.pdf"
         try:
@@ -79,9 +80,11 @@ def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Call
             reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, today, w["name"], w["date"]))
             if reading is not None:
                 entry.update(reading.as_dict())
+                reviews += document_reviews.of_reading(reading, entry["id"], entry["textSha"])
         added.append(entry)
         if log:
             log(f"{w['date']} {w['name']}: {'read' if entry.get('model') else 'no model recognized it' if text.strip() else 'no text'}")
+    document_reviews.save(data_dir, reviews)   # the as-of lens's findings, apart from the readings
     store = data_dir / "documents" / "readings.json"
     body = json.loads(store.read_text(encoding="utf-8")) if store.is_file() else {"readings": []}
     ids = {e["id"] for e in added}
@@ -94,6 +97,7 @@ def run(drive: Any, data_dir: Path, community: Any, *, limit: int = 0, log: Call
 def reread(data_dir: Path, community: Any) -> int:
     """Read the Drive minutes already fetched again with the current minutes model (after a rule changes)."""
     from jason.community.document_models import ModelContext, read
+    from jason.tasks import document_reviews
     from jason.tasks.document_models import provenance
 
     data_dir = Path(data_dir)
@@ -101,6 +105,7 @@ def reread(data_dir: Path, community: Any) -> int:
     store = data_dir / "documents" / "readings.json"
     body = json.loads(store.read_text(encoding="utf-8"))
     n = 0
+    reviews = []
     for r in body.get("readings", []):
         if r.get("source") != "Drive" or r.get("kind") != DocumentKind.MINUTES.value:
             continue
@@ -112,7 +117,9 @@ def reread(data_dir: Path, community: Any) -> int:
         if reading is not None:
             r.update(reading.as_dict())
             r.update(provenance(text, today))
+            reviews += document_reviews.of_reading(reading, str(r["id"]), r["textSha"])
             n += 1
+    document_reviews.save(data_dir, reviews)
     store.write_text(json.dumps(body, indent=1, default=str), encoding="utf-8")
     return n
 

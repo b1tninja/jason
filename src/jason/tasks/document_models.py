@@ -15,6 +15,14 @@ carries ``textSha`` (the SHA-256 of the text the reader was given), ``asOf`` (th
 and on each finding ``basis`` (what the call that produced it read). A row written before these keys has none of
 them, and every reader of the store treats them as optional. ``basis`` reports, from the stored rows alone, which
 findings are ingestion (the text only) and which are reviews.
+
+**A row is a joined view** (docs/ingestion-and-review.md, step 2). What depends on the date is made by the as-of lens
+(``jason.community.reviews``) and joined into the row, so the row shows what it always did. The row says which part is
+which: a finding from a lens carries ``lens``; ``lenses`` gives, per lens, its version, its as-of date, where each
+check's findings go among the others (``slots``), and the fields it derived; ``enriched`` names the fields looked up in
+another store after the parse and what that read. ``parts`` takes a row apart along those lines. ``run`` also saves each
+lens's review apart from the row (``jason.tasks.document_reviews``), and ``jason models --as-of DATE`` makes them again
+from the stored fields without reading a document.
 """
 
 from __future__ import annotations
@@ -51,12 +59,14 @@ def provenance(text: str, today: date) -> dict[str, str]:
 
 def run(data_dir: Path, community: Any, *, kinds: tuple[DocumentKind, ...] = (), today: date | None = None) -> dict[str, Any]:
     """Read the library with the document models and save the readings."""
+    from jason.tasks import document_reviews
     from jason.tasks.library import distinct, load, text_for
 
     data_dir = Path(data_dir)
     today = today or date.today()  # one as-of date for the whole run
     rows = distinct(load(data_dir))
-    readings = []
+    stored = document_reviews.known(data_dir, today)   # a review whose key and inputs are unchanged is not made again
+    readings, reviews = [], []
     for row in rows:
         kind = _kind(str(row.get("kind") or ""))
         if kind is None or (kinds and kind not in kinds):
@@ -66,8 +76,10 @@ def run(data_dir: Path, community: Any, *, kinds: tuple[DocumentKind, ...] = (),
                  "confidential": bool(row.get("confidential")), "hasText": bool(text.strip()), "model": None}
         if text.strip():
             entry.update(provenance(text, today))
+            sha = entry["textSha"]
             context = ModelContext(community, data_dir, today, str(row.get("name") or ""), str(row.get("period") or ""),
-                                   bool(row.get("confidential")))
+                                   bool(row.get("confidential")),
+                                   {lens: r for lens, r in stored.get(str(row["id"]), {}).items() if r.text_sha == sha})
             try:
                 reading = read(kind, text, context)
             except Exception as exc:  # one bad file does not stop the run; the error is the finding
@@ -75,7 +87,9 @@ def run(data_dir: Path, community: Any, *, kinds: tuple[DocumentKind, ...] = (),
                 reading = None
             if reading is not None:
                 entry.update(reading.as_dict())
+                reviews += document_reviews.of_reading(reading, str(row["id"]), sha)
         readings.append(entry)
+    document_reviews.save(data_dir, reviews)   # each lens's findings as of today, apart from the readings (data/reviews/documents)
     path = data_dir / STORE
     path.parent.mkdir(parents=True, exist_ok=True)
     result = {"readAt": datetime.now(timezone.utc).isoformat(timespec="seconds"), "readings": readings}
@@ -163,11 +177,13 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
     readers: dict[str, dict[str, Any]] = {}
     as_of: Counter = Counter()
     by_basis: Counter = Counter()
+    by_lens: Counter = Counter()
     for r in readings:
         if not r.get("model") or (kind and r.get("kind") != kind):
             continue
         row = readers.setdefault(r["model"], {"reader": r["model"], "kinds": set(), "versions": set(), "readings": 0, "observed": 0,
-                                              "fields": Counter(), "codes": {}})
+                                              "fields": Counter(), "codes": {}, "enriched": Counter(), "enrichedFields": set(),
+                                              "lensFields": set()})
         row["kinds"].add(r.get("kind") or "")
         row["readings"] += 1
         if r.get("version"):
@@ -178,11 +194,19 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
         if fields:
             row["observed"] += 1
             row["fields"].update(b for b in fields if b in _CONTEXT)
+        enriched = r.get("enriched") or {}
+        row["enrichedFields"].update(enriched.get("fields") or ())
+        row["enriched"].update(b for b in enriched.get("basis") or () if b in _CONTEXT)
+        for stamp in (r.get("lenses") or {}).values():
+            row["lensFields"].update(stamp.get("fields") or ())
         through = [b for b in fields or () if b in _CONTEXT]
         for f in r.get("findings") or []:
             code = row["codes"].setdefault(f["code"], {"code": f["code"], "count": 0, "observed": 0, "textOnly": 0, "throughFields": 0,
-                                                       "parts": Counter()})
+                                                       "lens": 0, "parts": Counter()})
             code["count"] += 1
+            if f.get("lens"):
+                code["lens"] += 1
+                by_lens[f["lens"]] += 1
             basis = f.get("basis") or []
             if not basis:
                 continue
@@ -200,32 +224,62 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
             parts = c.pop("parts")
             c["basis"] = basis_values({Basis(p) for p in parts})
             c["always"] = basis_values({Basis(p) for p, n in parts.items() if n == c["observed"]})
-            c["class"] = "not observed" if not c["observed"] else "ingestion" if c["textOnly"] == c["observed"] else "review"
+            # A lens's finding is a review made apart from the reading; "review" alone is one the reader's own check still makes.
+            c["class"] = "not observed" if not c["observed"] else "ingestion" if c["textOnly"] == c["observed"] else \
+                "lens" if c["lens"] == c["count"] else "review"
             codes.append(c)
         summed = Counter()
         for c in codes:
             summed.update({"findings": c["count"], "ingestion": c["textOnly"], "review": c["observed"] - c["textOnly"],
-                           "unobserved": c["count"] - c["observed"], "ingestionThroughFields": c["throughFields"]})
+                           "unobserved": c["count"] - c["observed"], "ingestionThroughFields": c["throughFields"], "lens": c["lens"]})
         totals.update(summed)
         totals.update({"readings": row["readings"], "observed": row["observed"]})
         out.append({"reader": name, "kinds": sorted(row["kinds"]), "versions": sorted(row["versions"]), "readings": row["readings"],
                     "observed": row["observed"], "fields": {b: row["fields"][b] for b in _CONTEXT if row["fields"][b]},
-                    **{k: summed[k] for k in ("findings", "ingestion", "review", "unobserved", "ingestionThroughFields")}, "codes": codes})
+                    "enriched": {"fields": sorted(row["enrichedFields"]), **{b: row["enriched"][b] for b in _CONTEXT if row["enriched"][b]}},
+                    "lensFields": sorted(row["lensFields"]),
+                    **{k: summed[k] for k in ("findings", "ingestion", "review", "unobserved", "ingestionThroughFields", "lens")}, "codes": codes})
     caveats = list(BASIS_CAVEATS)
     stale = totals["readings"] - totals["observed"]
     if stale:
         caveats.append(f"{stale} readings were stored before the basis was recorded; jason models reads them again.")
     return {"found": bool(out), "readings": totals["readings"], "observed": totals["observed"], "asOf": dict(sorted(as_of.items())),
             "totals": {k: totals[k] for k in ("findings", "ingestion", "review", "unobserved", "ingestionThroughFields")},
+            # Of the reviews: how many each lens made. The rest are still made inside a reader's own check.
+            "byLens": dict(sorted(by_lens.items())), "reviewInReaders": totals["review"] - totals["lens"],
             "byBasis": dict(sorted(by_basis.items(), key=lambda kv: (-kv[1], kv[0]))),
             "fieldsFromContext": [{"reader": r["reader"], "readings": r["observed"], **r["fields"]} for r in out if r["fields"]],
+            "fieldsEnriched": [{"reader": r["reader"], **r["enriched"]} for r in out if r["enriched"]["fields"]],
+            "fieldsFromLens": [{"reader": r["reader"], "fields": r["lensFields"]} for r in out if r["lensFields"]],
             "readers": out, "caveats": caveats}
+
+
+def parts(row: dict[str, Any]) -> dict[str, Any]:
+    """A stored row taken apart by where each part came from.
+
+    ``ingestion`` is what rests on the document: the fields ``parse`` filled, and the findings whose basis is the text
+    alone. ``enriched`` is the fields an enrichment looked up in another store. ``lens`` is each lens's findings and the
+    fields it derived. ``other`` is the findings a reader's own check still makes from the profile, a store, the date, or
+    the law. (``fieldsBasis`` still says whether the parse itself read the profile.)"""
+    fields = row.get("fields") if isinstance(row.get("fields"), dict) else {}
+    looked_up = set((row.get("enriched") or {}).get("fields") or ())
+    derived = {lens: set(stamp.get("fields") or ()) for lens, stamp in (row.get("lenses") or {}).items()}
+    outside = looked_up | {name for names in derived.values() for name in names}
+    findings = row.get("findings") or []
+    return {"ingestion": {"fields": {k: v for k, v in fields.items() if k not in outside},
+                          "findings": [f for f in findings if not f.get("lens") and f.get("basis") == [Basis.TEXT.value]]},
+            "enriched": {k: v for k, v in fields.items() if k in looked_up},
+            "lens": {lens: {"fields": {k: v for k, v in fields.items() if k in names},
+                            "findings": [f for f in findings if f.get("lens") == lens]} for lens, names in derived.items()},
+            "other": [f for f in findings if not f.get("lens") and f.get("basis") != [Basis.TEXT.value]]}
 
 
 def basis_lines(result: dict[str, Any]) -> list[str]:
     t = result["totals"]
+    lenses = "; ".join(f"{n} by the {lens} lens" for lens, n in result.get("byLens", {}).items())
+    split = f" ({lenses}; {result.get('reviewInReaders', t['review'])} in the readers' own checks)" if lenses else ""
     out = [f"{result['readings']} readings by {len(result['readers'])} readers ({result['observed']} with an observed basis); "
-           f"{t['findings']} findings: {t['ingestion']} ingestion (the text only), {t['review']} review, {t['unobserved']} not observed"]
+           f"{t['findings']} findings: {t['ingestion']} ingestion (the text only), {t['review']} review{split}, {t['unobserved']} not observed"]
     if t["ingestionThroughFields"]:
         out.append(f"  {t['ingestionThroughFields']} of the ingestion findings are on readings whose fields read the profile, a store, or today")
     if result["byBasis"]:
@@ -236,11 +290,19 @@ def basis_lines(result: dict[str, Any]) -> list[str]:
             f"  {'reader':<34} {'readings':>8} {'profile':>8} {'store':>6} {'today':>6}"]
     out += [f"  {r['reader']:<34} {r['readings']:>8} {r.get('profile', 0):>8} {r.get('store', 0):>6} {r.get('today', 0):>6}"
             for r in result["fieldsFromContext"]] or ["  (none)"]
+    if result.get("fieldsEnriched"):
+        out += ["", "Fields an enrichment fills after the parse, from another store (what it read, in how many readings):"]
+        out += [f"  {r['reader']:<34} {', '.join(r['fields'])}: " + ", ".join(f"{b} {r[b]}" for b in _CONTEXT if r.get(b))
+                for r in result["fieldsEnriched"]]
+    if result.get("fieldsFromLens"):
+        out += ["", "Fields a lens derives as of its date, not the parse:"]
+        out += [f"  {r['reader']:<34} {', '.join(r['fields'])}" for r in result["fieldsFromLens"]]
     out += ["", "Findings by reader and code (basis: every part any call read; always: the parts every call read):"]
     for r in result["readers"]:
         version = f" version {', '.join(r['versions'])}" if r["versions"] else ""
+        by_lens = f" ({r['lens']} by a lens)" if r.get("lens") else ""
         out += ["", f"{r['reader']} ({', '.join(r['kinds'])}){version}: {r['readings']} readings; {r['findings']} findings: "
-                    f"{r['ingestion']} ingestion, {r['review']} review" + (f", {r['unobserved']} not observed" if r["unobserved"] else ""),
+                    f"{r['ingestion']} ingestion, {r['review']} review{by_lens}" + (f", {r['unobserved']} not observed" if r["unobserved"] else ""),
                 f"  {'code':<40} {'count':>5} {'text only':>9}  {'class':<12}  basis"]
         for c in r["codes"]:
             always = "" if c["always"] == c["basis"] else f" (always: {', '.join(c['always'])})"
@@ -260,4 +322,4 @@ def coverage_lines(result: dict[str, Any]) -> list[str]:
 
 
 __all__ = ["run", "read_file", "load", "coverage", "summary", "coverage_lines", "text_sha", "provenance", "basis_report", "basis_lines",
-           "BASIS_CAVEATS"]
+           "parts", "BASIS_CAVEATS"]
