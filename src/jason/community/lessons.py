@@ -1088,6 +1088,20 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_meeting_room.py (no limit until the board sets one; the policy on "
                                  "file)", "ui/src/views/meetingroom.test.tsx (no \"3 minutes\")"),
            notes=("Adopting a limit is the board's decision.",)),
+    Lesson("commit-swept-another-sessions-hunk", date(2026, 10, 4), (Area.REPOSITORY,),
+           "A commit of a profile file took the whole working copy, with one line another session had not "
+           "committed. That line named an enum member and a field that existed only in that session's uncommitted "
+           "files, so a clean checkout of master could not import the profile. It was found only when a handoff "
+           "was tested in a separate worktree.",
+           "Several sessions share one working tree, and `git commit -- PATH` commits the working copy of PATH, "
+           "every session's hunks in it. The tests ran in the shared tree, where the other session's files made "
+           "the line work.",
+           "The line was taken out of the committed copy (f6b719f) and left in the working tree. A commit of a "
+           "file another session also edits stages only its own hunks (a temporary index from HEAD plus those "
+           "hunks). Work brought in from elsewhere is tested in a worktree at HEAD, where only committed code "
+           "runs, before it reaches the shared tree.",
+           Status.OPEN,
+           notes=("No check yet runs the tests on a clean checkout of each commit; until one does, this stays open.",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "
