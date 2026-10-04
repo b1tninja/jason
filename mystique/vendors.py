@@ -13,8 +13,8 @@ listed may be on the part not read. Check again at each contract renewal.
 
 from datetime import date
 
-from jason.community.base import LicensedPerson, VendorLicense, VendorPortal
-from jason.community.symbols import PortalPlatform
+from jason.community.base import EmailFiling, LicensedPerson, VendorLicense, VendorPortal
+from jason.community.symbols import DocumentKind, PortalPlatform
 
 PROACTIVE_LICENSE = VendorLicense(
     board="Structural Pest Control Board",
@@ -62,5 +62,19 @@ VENDOR_PORTALS: tuple[VendorPortal, ...] = (
         budget_line="Fire Alarm Monitoring",
         payhoa_words=("SIGNAL SERVICE",),
         service="Fire alarm monitoring, inspection, and equipment lease",
+        reports=PortalPlatform.FIRENSPEC,
+    ),
+)
+
+# Where vendors' email attachments are filed (jason gmail --file-vendor): a kind with its own shelf in My Drive goes
+# there; everything else to My Drive/Vendors/<vendor>/<year>. Folder ids read from the Drive sync of September 30, 2026.
+EMAIL_FILING = EmailFiling(
+    vendors_folder="1fQRi2-6n2GoeSKs-KV-BcT6t9pou-8XV",                       # My Drive/Vendors
+    by_kind=(
+        (DocumentKind.INSPECTION_REPORT, "1n3nEuzT3AvbORRR0yMxyKVZcB464rasN"),   # My Drive/Reports
+        (DocumentKind.ELEVATED_ELEMENT_INSPECTION, "1n3nEuzT3AvbORRR0yMxyKVZcB464rasN"),
+        (DocumentKind.CONTRACT, "1iLK8x2AIJb4ROO6scFuuK-N-AkPpdTsc"),            # My Drive/Contracts
+        (DocumentKind.PROPOSAL, "1NG5sYiX1s-rE2OhWKy5eglUGO7irAJb2"),            # My Drive/Proposals / Estimates
+        (DocumentKind.EVIDENCE_OF_INSURANCE, "1-YNfQtR9pgPNAreFZ4lIlb3mSzekW9r7"),  # My Drive/Vendors/W9 and Insurance
     ),
 )

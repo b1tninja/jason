@@ -85,9 +85,14 @@ KIND_RULES: tuple[KindRule, ...] = (
     KindRule(DocumentKind.CLAIM_ESTIMATE, ("ESTIMATE FOR REPAIRS *", "*Mitigation estimate*", "*Mitigation Estimate*")),
     KindRule(DocumentKind.POLICE_REPORT, ("*Police Report*", "*police report*")),
     KindRule(DocumentKind.MANAGER_CASE_REPORT, ("*Case Performance*",)),
-    KindRule(DocumentKind.PROPOSAL, ("*Proposal*", "* - Quote*")),
+    # A vendor's proposal or quote the board signed is the executed contract (Adobe Sign names it "... - signed").
+    KindRule(DocumentKind.CONTRACT, ("*Proposal*- signed*", "*Quote*- signed*")),
+    # The Fire Sprinkler Company's quotes ("Fire Sprinkler Repair Quote - ..."); LeDoux's estimates ("Est 15591.pdf").
+    KindRule(DocumentKind.PROPOSAL, ("*Proposal*", "* - Quote*", "*Repair Quote*", "Est [0-9]*")),
     KindRule(DocumentKind.INVOICE, ("Inv_*", "*Invoice*")),
     KindRule(DocumentKind.INSPECTION_REPORT, ("*inspection report*",)),
+    # LeDoux's backflow test reports ("3000 Macon Dr test reports 06-25-25.pdf"); Signal's NFPA 72 inspection form.
+    KindRule(DocumentKind.INSPECTION_REPORT, ("*test report*", "*NFPA 72*")),
     # RoofChecks' reports: "Roof Inspection - 2026 Report.pdf" and its signed copy "Good Life Roof Inspection / Repairs - ...".
     KindRule(DocumentKind.INSPECTION_REPORT, ("Roof Inspection - * Report*", "*Roof Inspection*Repairs*")),
     KindRule(DocumentKind.SETTLEMENT, ("*Settlement Agreement*",)),

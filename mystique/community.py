@@ -32,7 +32,7 @@ from .solar import SOLAR_PROGRAM
 from .utilities import UTILITY_ACCOUNTS, UTILITY_BUDGET_LINES, UTILITY_ROLL
 from .banking import BANK_ACCOUNTS, BOARD, BOARD_ITEMS_SHEET, MEETING_SCHEDULE, RESERVE_BUDGET_LINES
 from .cases import LEGAL_CASES
-from .vendors import VENDOR_PORTALS
+from .vendors import EMAIL_FILING, VENDOR_PORTALS
 from .reports import HELD_UNITS, PLAN_BLOCKS, UNIT_BLOCKS, REPORTS
 from .insurance import CATALOG
 from .reserves import COMPONENTS as RESERVE_COMPONENTS
@@ -133,6 +133,10 @@ class Mystique(Community):
     def vendor_portals(self):
         """Vendor customer portals (vendors.py)."""
         return VENDOR_PORTALS
+
+    def email_filing(self):
+        """Where vendors' email attachments go in Drive (vendors.py)."""
+        return EMAIL_FILING
 
     def copy_priority(self):
         """The channel order for choosing a document's copy (copies.py)."""

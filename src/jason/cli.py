@@ -2166,6 +2166,8 @@ def cmd_gmail(args: argparse.Namespace) -> int:
     from jason.tasks.gmail import CORRESPONDENCE, _load, check_lines, notice_check, sync
 
     data_dir = Settings.load(args.env).payhoa_catalog.parent
+    if args.file_vendor:
+        return _file_vendor_email(args, data_dir)
     if args.sync:
         with _agent(args) as agent:
             counts = sync(agent.gmail(), data_dir, mystique(), days=args.days, log=print)
@@ -2183,6 +2185,45 @@ def cmd_gmail(args: argparse.Namespace) -> int:
         for line in check_lines(check, corr):
             print(line)
     return 0 if check.get("found") else 1
+
+
+def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
+    """File vendors' email attachments in Drive (jason.tasks.vendor_files): the plan, then the uploads with --yes."""
+    import json
+
+    from jason.community import community
+    from jason.tasks.vendor_files import drive_index, file_plan, plan_lines, plan_vendor, vendors
+
+    profile = community()
+    if profile.email_filing() is None:
+        print("the specification sets no email filing (Community.email_filing)")
+        return 1
+    rows = vendors(profile, args.file_vendor)
+    if not rows:
+        print(f"no vendor {args.file_vendor!r} in the sender directory")
+        return 1
+    known, folders = drive_index(data_dir)
+    seen: set[str] = set()
+    out = []
+    with _agent(args) as agent:
+        drive = agent.drive(interactive=args.interactive)
+        gmail = drive.gmail()
+        for sender in rows:
+            plan, blobs = plan_vendor(gmail, drive, profile, sender, known=known, seen=seen, folders=folders,
+                                      data_dir=data_dir)
+            if args.json:
+                out.append({"vendor": plan.vendor, "query": plan.query, "messages": plan.messages,
+                            "attachments": [a.__dict__ for a in plan.attachments]})
+            else:
+                for line in plan_lines(plan):
+                    print(line)
+            if args.yes and blobs:
+                print(f"{plan.vendor}: filed {file_plan(drive, profile, plan, blobs, data_dir, log=print)}")
+    if args.json:
+        print(json.dumps(out, indent=1, default=str))
+    if not args.yes:
+        print("(plan only: --yes uploads the ones marked file)")
+    return 0
 
 
 def cmd_contacts(args: argparse.Namespace) -> int:
@@ -3940,6 +3981,10 @@ def build_parser() -> argparse.ArgumentParser:
     gm.add_argument("--sync", action="store_true", help="Read Gmail first (read-only; needs the Google token with the Gmail scope)")
     gm.add_argument("--days", type=int, default=730, help="How far back to read (default 730 days)")
     gm.add_argument("--files", action="store_true", help="Save the PDF attachments of business email that look like documents")
+    gm.add_argument("--file-vendor", metavar="NAME", default="",
+                    help="File the attachments a vendor sent from its known domains or emails in Drive (a sender directory name, "
+                         "or all): by kind, else Vendors/<vendor>/<year>; skips what Drive holds. Prints the plan; --yes uploads")
+    gm.add_argument("--yes", action="store_true", help="With --file-vendor: upload the attachments the plan marks file")
     gm.add_argument("--json", action="store_true", help="Print JSON")
     gm.set_defaults(func=cmd_gmail)
 

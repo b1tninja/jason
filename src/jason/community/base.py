@@ -287,6 +287,22 @@ class VendorPortal:
 
 
 @dataclass(frozen=True)
+class EmailFiling:
+    """Where a vendor's email attachments are filed in Drive (``jason.tasks.vendor_files``).
+
+    ``by_kind`` gives a Drive folder id for each ``DocumentKind`` that has its own shelf (inspection reports,
+    contracts, proposals, certificates of insurance); the order is the match order. Every other attachment goes to
+    the vendor's own folder, ``<vendors_folder>/<vendor>/<year>``, named by the sender directory."""
+
+    vendors_folder: str
+    by_kind: tuple[tuple[Any, str], ...] = ()
+
+    def folder_for(self, kind: Any) -> str:
+        """The shelf's folder id for a kind, or an empty string for the vendor's own folder."""
+        return next((folder for k, folder in self.by_kind if k is kind), "")
+
+
+@dataclass(frozen=True)
 class LibraryFolder:
     """A PayHOA folder and, when the public site embeds one, its Drive id."""
 
@@ -715,6 +731,10 @@ class Community(ABC):
     def senders(self):
         """The association's named counterparties (``jason.community.sources.Sender``). Empty until the specification sets them."""
         return ()
+
+    def email_filing(self) -> EmailFiling | None:
+        """Where vendors' email attachments are filed in Drive (``EmailFiling``), or None until the specification sets it."""
+        return None
 
     def premium_rules(self) -> PremiumRules | None:
         """How approvals in the minutes are followed to insurance premiums (``PremiumRules``), or None until set."""
