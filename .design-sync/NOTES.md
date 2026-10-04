@@ -144,3 +144,8 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   name a page render as a page.
 - The render check marks `RemoteView` bad on every run (its throwing cell is the point); `report_validate` carries
   `bad: 1` for it.
+- **Design handoffs ride the sync as guidelines (2026-10-04).** `cfg.guidelinesGlob` lists repo docs by literal path
+  (`../docs/...`, package-relative from `ui/`); the build copies them flat into `guidelines/` with an `index.md`, and
+  they upload under the plan's `guidelines/**`. Only general docs go there (the profile boundary test passes on
+  them): never `mystique/` or anything naming the association. Their relative links point at repo paths and break
+  in the project (the files are flat); the design agent finds them by name. Add a new handoff by appending its path.

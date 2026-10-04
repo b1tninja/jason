@@ -100,5 +100,12 @@
       "viewport": "1200x800"
     }
   },
-  "readmeHeader": ".design-sync/conventions.md"
+  "readmeHeader": ".design-sync/conventions.md",
+  "guidelinesGlob": [
+    "../docs/console/handoff-conversations-and-policies.md",
+    "../docs/conversations-design.md",
+    "../docs/response-standards-design.md",
+    "../docs/policy-catalog-design.md",
+    "../docs/console/doc-component.md"
+  ]
 }
