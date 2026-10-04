@@ -71,6 +71,177 @@ def reader_for(county: str) -> Any | None:
         return None
 
 
+# --- The county's associations (asspy's directory) ----------------------------------------------------------------------
+
+def directory_for(county: str) -> Any | None:
+    """The county's association directory as ``python -m asspy.associations_cli <county> --survey`` built it, or None
+    when the county has not been surveyed (no directory is created by asking)."""
+    try:
+        from asspy import County
+
+        place = County(county_key(county).replace("-", "_"))
+    except Exception:  # noqa: BLE001 - a county asspy does not know has no directory
+        return None
+    path = place.db_path.with_name("associations.db")
+    return place.associations(path) if path.is_file() else None
+
+
+def _association(item: Any) -> dict[str, Any]:
+    return {
+        "name": item.name,
+        "kind": item.kind.value,
+        "standing": item.standing.value,
+        "first": item.first.isoformat() if item.first else "",
+        "last": item.last.isoformat() if item.last else "",
+        "spellings": [name for name, _ in item.names.most_common(6)],
+        "evidence": dict(item.evidence),
+    }
+
+
+def known_associations(county: str, words: str = "") -> list[dict[str, Any]]:
+    """The owners', commercial, and maintenance associations the county's index shows, for a person to choose from:
+    name, kind, standing (confirmed: it records assessment liens or its declaration), the years it recorded, its
+    spellings, and the evidence. ``words`` narrows to names holding every word. A row is a lead, not a pin."""
+    directory = directory_for(county)
+    if directory is None:
+        return []
+    with directory:
+        chosen = {item.key for item in directory.all()}
+        rows = directory.find(words) if words.strip() else directory.all()
+        return [_association(item) for item in rows if item.key in chosen]
+
+
+SEARCH_RESULTS = 25                # directory rows a search returns by default
+DIRECTORY_CAVEATS = (
+    "A row is a lead, not a pin: the directory reads names on the county recorder's public index, not the "
+    "association's own records.",
+    "Standing is the index's evidence: confirmed means it records assessment liens or a declaration; likely means "
+    "other association business; neither says the association is active today.",
+    "The directory holds only the months its survey read; an association that recorded nothing in them is not listed.",
+)
+
+
+def survey_command(county: str) -> str:
+    """The asspy command that builds the county's directory (``--quick`` where asspy's CLI has it)."""
+    place = county_key(county).replace("-", "_") or "<county>"
+    try:
+        from importlib.util import find_spec
+
+        spec = find_spec("asspy.associations_cli")
+        quick = bool(spec and spec.origin and "--quick" in Path(spec.origin).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - without the source, the long survey's command is given
+        quick = False
+    if quick:
+        return f"python -m asspy.associations_cli {place} --quick"
+    return f"python -m asspy.associations_cli {place} --survey 2001-01 YYYY-MM"
+
+
+def _plain(value: Any) -> Any:
+    """A summary as JSON: dataclasses, enums, dates, and counters made plain."""
+    import dataclasses
+    from enum import Enum
+
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return _plain(dataclasses.asdict(value))
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(_plain(k)): _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_plain(v) for v in value]
+    return value
+
+
+def _summary(directory: Any) -> dict[str, Any]:
+    """``Directory.summary()`` where asspy has it; else the counts read here."""
+    if hasattr(directory, "summary"):
+        made = _plain(directory.summary())
+        if isinstance(made, dict):
+            return made
+    every = directory.associations()
+    governing = directory.governing()
+    return {
+        "associations": len(every),
+        "by_kind": dict(Counter(item.kind.value for item in every)),
+        "by_standing": dict(Counter(item.standing.value for item in every)),
+        "governing": len(governing),
+        "unassociated_governing": len(directory.governing(unassociated=True)),
+        "links": len(directory.links()),
+        "failures": len(directory.failures()),
+    }
+
+
+def directory_search(county: str, q: str = "", limit: int = SEARCH_RESULTS) -> dict[str, Any]:
+    """The county's association directory, searched, as data for the console and jason-mcp: ``surveyed``, the
+    directory's ``summary``, the ``results`` (owners', commercial, and maintenance associations with evidence, each
+    with its spellings, evidence, the governing instruments that name it or were linked to it, and the search score),
+    the caveats, and, when the county is not surveyed, the asspy ``command`` that surveys it. Reads disk only; asking
+    never creates a directory."""
+    limit = max(1, min(int(limit or SEARCH_RESULTS), 200))
+    out: dict[str, Any] = {"county": county, "surveyed": False, "query": q, "summary": {}, "results": [],
+                           "caveats": list(DIRECTORY_CAVEATS)}
+    if not county.strip():
+        out["note"] = "no county: give one (the profile names no region)"
+        return out
+    directory = directory_for(county)
+    if directory is None:
+        out["command"] = survey_command(county)
+        out["note"] = (f"{county}: no association directory yet. The survey reads the county recorder's public index "
+                       "for months; a person runs it.")
+        return out
+    from asspy.associations import key
+
+    out["surveyed"] = True
+    with directory:
+        chosen = {item.key for item in directory.all()}
+        if q.strip() and hasattr(directory, "search"):
+            hits = [(item, score) for item, score in directory.search(q, limit=max(limit * 4, limit))]
+        elif q.strip():
+            wanted = set(key(q).split())
+            hits = [(item, round(len(wanted) / max(1, len(item.key.split())), 3)) for item in directory.find(q)]
+            hits.sort(key=lambda pair: (-pair[1], pair[0].name))
+        else:
+            hits = [(item, None) for item in directory.all()]
+        hits = [(item, score) for item, score in hits if item.key in chosen][:limit]
+        governing = directory.governing()
+        links = directory.links()
+        for item, score in hits:
+            keys = {key(spelling) for spelling in item.names} | {item.key}
+            row = _association(item)
+            row = {"key": item.key, **row,
+                   "governing": sum(1 for g in governing if keys & set(g.associations)),
+                   "links": sum(1 for link in links if link.association in keys),
+                   "score": score}
+            out["results"].append(row)
+        out["summary"] = _summary(directory)
+    out["count"] = len(out["results"])
+    return out
+
+
+def directory_match(name: str, county: str) -> dict[str, Any] | None:
+    """The directory's association for this name: the same key, or the one association whose name holds every word."""
+    directory = directory_for(county)
+    if directory is None:
+        return None
+    from asspy.associations import key
+
+    with directory:
+        held = directory.get(key(name))
+        if held is None:
+            found = directory.find(name)
+            held = found[0] if len(found) == 1 else None
+        if held is None:
+            return None
+        out = _association(held)
+        keys = {key(spelling) for spelling in held.names}
+        # The governing instruments the survey saw naming it, and those its link pass tied to it by a neighbor.
+        out["governing"] = [g.number for g in directory.governing() if keys & set(g.associations)]
+        out["links"] = [(link.number, link.via) for link in directory.links() if link.association in keys]
+        return out
+
+
 # --- What the index rows say -------------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -117,10 +288,12 @@ def _row_choice(row: Any) -> str:
     return f"{row.number} ({day}, {str(row.filing_name).strip() or row.filing_code})"
 
 
-def leads_from_rows(name: str, query: str, rows: Iterable[Any], *, source: str, found: str) -> list[dict[str, Any]]:
+def leads_from_rows(name: str, query: str, rows: Iterable[Any], *, source: str, found: str,
+                    known: list[str] | None = None) -> list[dict[str, Any]]:
     """The leads one name search gives: one per kind of governing instrument found, and the name the index spells
     the association by. Counts, document numbers, dates, and the association's own spellings only: no other party's
-    name is kept (a lien names an owner)."""
+    name is kept (a lien names an owner). ``known`` are the spellings the county's association directory holds for
+    it (an older "... HOA" among them); they lead the spelling question."""
     rows = [r for r in rows if getattr(r, "number", "")]
     seen: set[str] = set()
     unique = []
@@ -153,6 +326,9 @@ def leads_from_rows(name: str, query: str, rows: Iterable[Any], *, source: str, 
             text = " ".join(str(party).upper().split())
             if text.startswith(query.upper()):
                 spellings[text] += 1
+    for rank, spelling in enumerate(known or ()):
+        # The directory counted every recording; keep its order ahead of this search's prefix matches.
+        spellings[" ".join(spelling.upper().split())] += len(unique) + len(known or ()) - rank
     if spellings:
         ranked = [s for s, _ in spellings.most_common(CHOICES)]
         out.append({"key": "indexed-name", "item": "recorded-liens", "method": "index_association",
@@ -176,9 +352,13 @@ class Lookup:
 
 
 def lookup(name: str, county: str, *, recorder: Any = None, today: date | None = None,
-           limit: int = SEARCH_LIMIT) -> Lookup:
+           limit: int = SEARCH_LIMIT, directory: bool | None = None) -> Lookup:
     """Search the county recorder's public index for the association's name, read-only. ``recorder`` replaces the
-    county's reader (tests). A county with no reader, or an index that cannot be read, is a note, not a failure."""
+    county's reader (tests). A county with no reader, or an index that cannot be read, is a note, not a failure.
+
+    When the county's association directory (asspy) knows the name, its other spellings are searched too, up to
+    three in all, and lead the spelling question. ``directory`` forces that on or off; by default it is consulted
+    only with the county's own reader."""
     from jason.community.recorder import index_name
 
     out = Lookup()
@@ -197,15 +377,29 @@ def lookup(name: str, county: str, *, recorder: Any = None, today: date | None =
     if not query:
         out.notes.append(f"county recorder: {name!r} gives no index query.")
         return out
-    try:
-        rows = tuple(reader.search(name=query, limit=limit))
-    except Exception as exc:  # noqa: BLE001 - a public source that fails is a note; the questions stay a person's
-        out.notes.append(f"county recorder: the search for {query!r} failed ({type(exc).__name__}); nothing was "
-                         f"found.")
+    consult = recorder is None if directory is None else directory
+    known = directory_match(name, county) if consult else None
+    queries = [query]
+    if known:
+        out.notes.append(f"county association directory: {known['name']} ({known['kind']}, {known['standing']}; "
+                         f"recorded {known['first']}..{known['last']}); its spellings are searched too.")
+        for spelling in known["spellings"]:
+            if spelling not in queries and len(queries) < 3:
+                queries.append(spelling)
+    rows: list[Any] = []
+    failed = 0
+    for each in queries:
+        try:
+            rows.extend(reader.search(name=each, limit=limit))
+        except Exception as exc:  # noqa: BLE001 - a public source that fails is a note; the questions stay a person's
+            failed += 1
+            out.notes.append(f"county recorder: the search for {each!r} failed ({type(exc).__name__}); nothing was "
+                             f"found under it.")
+    if failed == len(queries):
         return out
     day = (today or date.today()).isoformat()
-    out.leads = leads_from_rows(name, query, rows, source=label, found=day)
-    out.notes.append(f"county recorder: searched {query!r}: {len(rows)} rows"
+    out.leads = leads_from_rows(name, query, rows, source=label, found=day, known=known["spellings"] if known else None)
+    out.notes.append(f"county recorder: searched {', '.join(repr(q) for q in queries)}: {len(rows)} rows"
                      + (f" (stopped at {limit})" if len(rows) >= limit else "") + f", {len(out.leads)} leads.")
     return out
 
@@ -242,5 +436,5 @@ def save_leads(profile: str, leads: list[dict[str, Any]], *, spec_dir: Path | No
     return path
 
 
-__all__ = ["CHOICES", "Lookup", "READERS", "SEARCH_LIMIT", "SHELVES", "Shelf", "county_key", "leads_from_rows",
-           "lookup", "reader_for", "region_for", "save_leads", "shelf_of"]
+__all__ = ["CHOICES", "Lookup", "READERS", "SEARCH_LIMIT", "SHELVES", "Shelf", "county_key", "directory_search",
+           "leads_from_rows", "lookup", "reader_for", "region_for", "save_leads", "shelf_of", "survey_command"]

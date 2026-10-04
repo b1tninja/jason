@@ -3851,7 +3851,7 @@ def build_parser() -> argparse.ArgumentParser:
     jobs_parser = sub.add_parser("jobs", help="The job queue: add a jason command (jason jobs add -- gmail --sync), list, show, cancel")
     _add_common(jobs_parser)
     jobs_parser.add_argument("--confirm", default="", help="With add: the person who approved a command that writes (--yes)")
-    jobs_parser.add_argument("--resource", default="", choices=["", "gpu", "google", "payhoa", "local"],
+    jobs_parser.add_argument("--resource", default="", choices=["", "gpu", "google", "payhoa", "county", "local"],
                              help="With add: the resource the command uses, when the guess is wrong")
     jobs_parser.add_argument("--max-attempts", type=int, default=3, help="With add: tries for a read or sync (a write runs once)")
     jobs_parser.add_argument("--all", action="store_true", help="List every job, not only queued, running, and failed")

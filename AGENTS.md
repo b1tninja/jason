@@ -217,5 +217,7 @@ Every document is indexed in [docs/README.md](docs/README.md). Start with:
 - [docs/cli.md](docs/cli.md) — the commands
 - [docs/mcp.md](docs/mcp.md) — the MCP tools, profiles, and caveats
 - [docs/registers.md](docs/registers.md) — registers in Google Sheets, Forms, and Tasks, and what stays jason only
+- [docs/key-documents.md](docs/key-documents.md) and [docs/instrument-graph.md](docs/instrument-graph.md) — the key documents checklist with its links, and the instruments as a typed graph (any county)
+- [docs/placer.md](docs/placer.md) — each Sacramento document process and its Placer County counterpart (index cache, parcel history, builder descent, liens, formation bundles), built or the gap and why
 
 The profile's own docs start at [mystique/docs/README.md](mystique/docs/README.md). Its notes (ownership history, the two unit numberings, the loose ends, and each review's findings) live in `mystique/notes/`, which git ignores because they name owners and parties. Keep them out of commits, and never edit them to scrub them: they are the association's records.

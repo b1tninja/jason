@@ -193,6 +193,36 @@ def test_a_lookup_finds_leads_that_become_fact_questions_never_rows(village, tmp
     assert "DECLARATION = None" in (village.package / "governing.py").read_text(encoding="utf-8")
 
 
+def test_a_surveyed_countys_associations_are_a_list_to_choose_from_and_feed_the_lookup(tmp_path, monkeypatch, capsys):
+    from asspy.associations import Directory, Sighting, key
+
+    monkeypatch.setenv("ASSPY_HOME", str(tmp_path / "asspy"))
+    assert lookup.directory_for("Placer County") is None                   # not surveyed: nothing is created
+    assert not (tmp_path / "asspy").exists()
+    lien = "NOTICE OF DELINQUENT ASSESSMENT - HOMEOWNERS ASSOCIATION"
+    with Directory(tmp_path / "asspy" / "counties" / "placer" / "associations.db") as directory:
+        directory.store((
+            Sighting(key("EXAMPLE VILLAGE HOMEOWNERS ASSN"), "EXAMPLE VILLAGE HOMEOWNERS ASSN", "2020-0000001", lien, date(2020, 1, 2)),
+            Sighting(key("EXAMPLE VILLAGE HOA"), "EXAMPLE VILLAGE HOA", "2005-0000001", lien, date(2005, 1, 2)),
+            Sighting(key("EXAMPLE BANK NATIONAL ASSOCIATION"), "EXAMPLE BANK NATIONAL ASSOCIATION", "2020-0000002", "DEED OF TRUST", date(2020, 1, 2)),
+        ))
+    rows = lookup.known_associations("Placer County")
+    assert [r["name"] for r in rows] == ["EXAMPLE VILLAGE HOMEOWNERS ASSN"]   # the older HOA spelling folds into it; the bank is not listed
+    assert rows[0]["standing"] == "confirmed" and set(rows[0]["spellings"]) == {"EXAMPLE VILLAGE HOMEOWNERS ASSN", "EXAMPLE VILLAGE HOA"}
+    assert lookup.known_associations("Placer County", "bank") == []
+
+    index = _Index([_row("2005-0000003", "2005-03-01", "DECLARATION", "EXAMPLE VILLAGE HOA", "A DEVELOPER LLC")])
+    found = lookup.lookup(NAME, "Placer County", recorder=index, today=date(2099, 9, 1), directory=True)
+    assert index.asked[0] == "EXAMPLE VILLAGE" and set(index.asked[1:]) == {"EXAMPLE VILLAGE HOMEOWNERS ASSN", "EXAMPLE VILLAGE HOA"}
+    spelling = next(lead for lead in found.leads if lead["key"] == "indexed-name")
+    assert set(spelling["choices"][:2]) == {"EXAMPLE VILLAGE HOMEOWNERS ASSN", "EXAMPLE VILLAGE HOA"}
+    assert any("association directory" in note for note in found.notes)
+
+    args = build_parser().parse_args(["onboard", "--associations", "--county", "Placer County", "--find", "village"])
+    assert args.func(args) == 0
+    assert "EXAMPLE VILLAGE HOMEOWNERS ASSN  [homeowners, confirmed, 2005-2020]" in capsys.readouterr().out
+
+
 def test_a_county_without_a_reader_or_none_given_is_a_note():
     assert lookup.lookup(NAME, "").leads == []
     nowhere = lookup.lookup(NAME, "Nowhere County")
@@ -206,7 +236,8 @@ def test_the_prompts_are_served_with_the_onboarding_tools_and_the_board_set_is_u
     from jason.mcp.server import build, tools_for
 
     assert [t.__name__ for t in tools_for("onboarding")] == [
-        "onboarding_status", "next_questions", "intake_questions", "answer_intake_question", "onboarding_confirm"]
+        "onboarding_status", "next_questions", "intake_questions", "answer_intake_question", "onboarding_confirm",
+        "association_directory", "documents_located"]
     assert len(tools_for("board")) == 38
 
     async def listed(profile):

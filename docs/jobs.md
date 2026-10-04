@@ -12,6 +12,7 @@ Everything after `--` is the jason command, without the word "jason". The queue 
 - **gpu:** a local model, such as `outlines --model`, `models`, or anything with `--model`, `--extractor`, `--ocr`, or `--reader`;
 - **google:** the association's Google account, such as `gmail`, `drive`, `calendar`, `templates`, `board --sheet`, or `outlines --fetch`;
 - **payhoa:** the PayHOA session, such as `books`, `budget`, `reconcile`, or `invoices`;
+- **county:** a county's public index, such as `onboard --locate` or `onboard --lookup` (the console's "locate" button queues the first). A locate runs dozens of searches, so it keeps its own lane and never holds up the local jobs;
 - **local:** everything else.
 
 **Rules the queue keeps:**

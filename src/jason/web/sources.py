@@ -721,6 +721,10 @@ EXTRA_LOADERS: dict[str, str] = {
     "dock": "jason.web.extra.dock:dock",
     "theme": "jason.web.extra.theme:theme",
     "community-profile": "jason.web.extra.community_profile:community_profile",
+    "associations": "jason.web.extra.discovery:associations",
+    "documents-located": "jason.web.extra.discovery:documents_located",
+    "key-documents": "jason.web.extra.key_documents:key_documents",
+    "instrument-graph": "jason.web.extra.key_documents:instrument_graph",
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
@@ -734,6 +738,8 @@ EXTRA_WRITERS: dict[str, str] = {
     "agenda-plan": "jason.web.extra.agenda_plan:write",
     "meeting-room": "jason.web.extra.meeting_room:write",
     "dock": "jason.web.extra.dock:write",
+    "documents-located": "jason.web.extra.discovery:write",  # queues a locate job; the county is never read here
+    "key-documents": "jason.web.extra.key_documents:write",  # link, upload, unlink, status: jason's own store
 }
 
 

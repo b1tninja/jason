@@ -1,8 +1,8 @@
 """jason's job queue: commands to run later, one at a time per shared resource, with a record of each run.
 
 A job is a jason command line ("gmail --sync", "outlines --model --model-doc bylaws") with the resource it uses: the
-GPU (a local model), the association's Google account, the PayHOA session, or nothing shared. ``jason worker`` runs the
-queue: one job at a time per resource, jobs on different resources side by side, each in its own process with its output
+GPU (a local model), the association's Google account, the PayHOA session, a county's public index, or nothing
+shared. ``jason worker`` runs the queue: one job at a time per resource, jobs on different resources side by side, each in its own process with its output
 in ``data/jobs/logs/<id>.log``. The table (``data/jobs.db``) keeps every job: when it was added, by whom, each attempt,
 the exit code, and the last lines it printed.
 
@@ -52,6 +52,7 @@ class JobClass(Enum):
     GPU = "gpu"
     GOOGLE = "google"
     PAYHOA = "payhoa"
+    COUNTY = "county"   # a county's public index (the recorder): a long read, kept off the local lane
     LOCAL = "local"
 
 
@@ -81,6 +82,8 @@ def job_class(argv: list[str]) -> JobClass:
         return JobClass.GOOGLE
     if argv[0] == "outlines" and "--fetch" in argv[1:]:
         return JobClass.GOOGLE
+    if argv[0] == "onboard" and any(a in ("--locate", "--lookup") for a in argv[1:]):
+        return JobClass.COUNTY
     return _CLASS_OF_COMMAND.get(argv[0], JobClass.LOCAL)
 
 

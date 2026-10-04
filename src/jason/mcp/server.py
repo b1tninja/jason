@@ -14,6 +14,7 @@ from typing import Any
 
 from jason.catalog import PayhoaCatalog
 from jason.config import Settings
+from jason.mcp.discovery import TOOLS as DISCOVERY_TOOLS
 from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
 from jason.mcp.index import recorder_around, recorder_descend, recorder_detail, recorder_priors, recorder_search
 from jason.mcp.rolls import (
@@ -328,7 +329,7 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
-ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS
 
 # A profile is a named subset, in the order a client lists them. A small local model (AnythingLLM's agent) picks
 # better from the board set: the digest, the briefs, and the law, not the research tools behind them.
@@ -344,7 +345,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
     # Onboarding by conversation (docs/onboarding.md): the session, its questions, and the two writes, with the
     # onboard and onboard_review prompts. A small set, so a local model picks the right tool.
     "onboarding": ("onboarding_status", "next_questions", "intake_questions", "answer_intake_question",
-                   "onboarding_confirm"),
+                   "onboarding_confirm", "association_directory", "documents_located"),
 }
 
 

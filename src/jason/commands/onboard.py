@@ -23,6 +23,11 @@ book, a document key or alias, another profile, or a jason-mcp tool set. ``--cou
 each asked as a FACT question with the found value as its suggestion (``jason.tasks.onboarding_lookup``). Alone,
 ``--lookup`` does the same for the active profile.
 
+``--locate`` finds the association's recorded documents in the county index (``jason.tasks.document_locator``) and
+writes the board's list and the result as data under ``data/onboarding/`` (the console's ``/api/documents-located``
+reads the .json; its "locate" button queues this command as a job on the county lane, never running it in the web
+process). ``--associations --county C`` lists the county's associations from asspy's directory.
+
 Nothing here writes to PayHOA, Google, or the mail, or edits an existing profile.
 """
 
@@ -66,10 +71,14 @@ def cmd_onboard(args: argparse.Namespace) -> int:
                 if i.ask:
                     print(f"    asks: {i.ask.question} ({i.ask.record.value}{', high stakes' if i.ask.stakes else ''})")
         return 0
+    if args.associations:
+        return _associations(args)
     if args.new:
         return _new(args)
     if args.lookup:
         return _lookup_active(args)
+    if args.locate:
+        return _locate_active(args)
     if args.checklist:
         return _checklist(args, group)
     if args.answer or args.confirm or args.apply or args.scan:
@@ -179,6 +188,8 @@ def _new(args: argparse.Namespace) -> int:
     print(f"wrote empty private facts at {made.spec} (never checked in)")
     if args.lookup:
         _print_lookup(made.key, made.name, args.county or "")
+    if args.locate:
+        _print_locate(args, made.key, made.name, args.county or "")
     print("\nTo make it the active profile, set in .env (or the environment):")
     for line in scaffold.environment(made):
         print(f"  {line}")
@@ -201,6 +212,83 @@ def _print_lookup(profile: str, name: str, county: str) -> None:
         print("\nleads from public sources: none")
     for note in found.notes:
         print(f"  {note}")
+
+
+def _print_locate(args: argparse.Namespace, profile: str, name: str, county: str, *, own: bool = True) -> int:
+    """Locate the association's recorded documents; keep them as leads and write the board's list and the result as
+    data (``data/onboarding/<profile>-documents-located.md`` and ``.json``). ``own`` False is another association
+    (``--name`` not the profile's): its files are named by county and name, and no lead enters the profile."""
+    from datetime import date as _date
+
+    from jason.tasks import document_locator, onboarding_lookup as lookup
+
+    if not county:
+        print("--locate needs the county (--county, or the profile's region)")
+        return 2
+    found = document_locator.locate(name, county)
+    label = f"{lookup.county_key(county).replace('-', ' ').title()} County recorder's public index"
+    leads = found.leads(source=label, found=_date.today().isoformat())
+    if args.json:
+        print(json.dumps({"association": found.association, "located": [x.label for x in found.found],
+                          "liens": found.liens, "notes": found.notes, "leads": leads}, indent=2))
+        return 0
+    _, data_dir = _data_dir(args)
+    file_stem = document_locator.stem(profile, name=name, county=county, own=own)
+    as_json, report = document_locator.save(found, data_dir, file_stem)
+    if leads and own:
+        path = lookup.save_leads(profile, leads)
+        print(f"\ndocuments located for {found.association}: {len(found.found)} in {len(leads)} checklist items "
+              f"({found.searches} searches); kept as leads in {path} and asked as FACT questions:")
+        for lead in leads:
+            print(f"  {lead['item']}: {len(lead['choices']) - 1} choices; suggested {lead['suggestion'] or '(none)'}")
+    elif leads:
+        print(f"\ndocuments located for {found.association}: {len(found.found)} in {len(leads)} checklist items "
+              f"({found.searches} searches); not the profile's association, so no lead was kept (start it with "
+              f"jason onboard --new KEY --name \"{name}\" --county \"{county}\" --locate)")
+    else:
+        print(f"\ndocuments located for {found.association}: none ({found.searches} searches)")
+    for note in found.notes:
+        print(f"  {note}")
+    print(f"the board's list: {report} (private); as data: {as_json}")
+    return 0
+
+
+def _locate_active(args: argparse.Namespace) -> int:
+    """The locator for the active profile: its name, in the county its ``region`` names (or ``--county``). A
+    ``--name`` that is not the profile's association locates that one without touching the profile's leads."""
+    from jason.tasks import document_locator
+
+    profile, own_name, own_county = document_locator.active()
+    county = args.county or own_county
+    own = document_locator.is_own(args.name or "", own_name)
+    return _print_locate(args, profile, args.name or own_name, county, own=own)
+
+
+def _associations(args: argparse.Namespace) -> int:
+    """The county's associations from its public index, for a person to choose theirs (then ``--new KEY --name``)."""
+    from jason.tasks import onboarding_lookup as lookup
+
+    if not args.county:
+        print("--associations needs --county (the county whose recorder's index was surveyed)")
+        return 2
+    rows = lookup.known_associations(args.county, args.find or "")
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    if not rows:
+        if lookup.directory_for(args.county) is None:
+            print(f"{args.county}: no association directory yet; build it with {lookup.survey_command(args.county)}")
+        else:
+            print(f"{args.county}: no association matches {args.find!r}" if args.find else f"{args.county}: none found")
+        return 0
+    print(f"{len(rows)} associations in the {args.county} recorder's index "
+          "(confirmed: it records assessment liens or its declaration; a row is a lead, not a pin):")
+    for row in rows:
+        evidence = ", ".join(f"{label} {count}" for label, count in sorted(row["evidence"].items(), key=lambda kv: -kv[1]))
+        print(f"  {row['name']}  [{row['kind']}, {row['standing']}, {row['first'][:4]}-{row['last'][:4]}]  {evidence}")
+    print("\nstart one with: jason onboard --new KEY --name \"<name>\" --county "
+          f"\"{args.county}\" --lookup")
+    return 0
 
 
 def _lookup_active(args: argparse.Namespace) -> int:
@@ -272,6 +360,14 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--name", help="with --new: the association's name as its notices give it")
     p.add_argument("--county", help="with --new or --lookup: the county whose public records hold the association's")
     p.add_argument("--dir", help="with --new: where to write the package (default: beside the default profile)")
+    p.add_argument("--associations", action="store_true",
+                   help="with --county: the owners', commercial, and maintenance associations the county recorder's "
+                        "index shows (asspy's survey), to choose the association from; --find narrows by words")
+    p.add_argument("--find", help="with --associations: only names holding these words")
+    p.add_argument("--locate", action="store_true",
+                   help="locate the association's recorded documents in the county index (by its names, beside its "
+                        "governing instruments, and the builder's filings): leads for the session and the board's "
+                        "list in data/onboarding/ (alone: the active profile; with --new: the new one)")
     p.add_argument("--lookup", action="store_true",
                    help="search the county recorder's public index for the association's name, read-only; each find "
                         "becomes a FACT question with the found value as its suggestion (alone: the active profile)")
