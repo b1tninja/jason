@@ -11,7 +11,7 @@ A task prompt names topics and kinds of documents, never a section or a figure. 
    PDF's text, a scan's OCR) are folded into one.
 3. **R, the records**: for each other kind the task names (insurance policies, agendas, minutes, budgets), the best
    passages of the association's latest files of that kind in the classified library. A confidential file is read only
-   for the board.
+   for the board. (The passage index can answer in the library's place; see below.)
 4. **C, a collection's material**, only when the caller names a ``Collection`` (``document_collections``): the passages
    of the collection's index scope that best answer the task's questions, near copies folded, capped per file and
    overall. Each carries the collection's label in place of a tier ("evidence gathered for this matter: neither the
@@ -37,11 +37,26 @@ every file a tier would cut, the tier ranks the index's passages instead of cutt
   law's 50 gold questions (October 4, 2026; docs/document-tools.md): sections whole, hybrid recall@5 0.98 and MRR@10
   0.84; the index's passages 0.96 and 0.87; the two fused 0.96 and 0.88. Neither is clearly better, so it stays off.
   The section is recited whole either way.
-- R stays on the classified library, which the index does not hold yet. F and D read no passages.
+- R reads the classified library, as before, by default. ``records_index`` (``RECORDS_FROM_INDEX``) reads the index's
+  ``library`` catalog instead (``index_record_sources``), one of two ways (``records_reach``, ``RecordReach``):
+  ``LATEST`` takes the same latest files of each kind and their passages as the index holds them; ``KIND`` ranks every
+  file of the kind for the task's questions and fuses that with recency, one passage a file, so an older file that
+  answers can be chosen over the latest three. Either way a document the index holds back as confidential stays out
+  of a pack that is not the board's, with a gap line saying how many: the index holds back whole kinds the library
+  does not flag (``index_sources.HELD_KINDS``), so it is stricter than the library reader.
+  Measured on the profile's six tasks that name record kinds (October 4, 2026; docs/rag-roadmap.md): ``LATEST`` gave
+  the library reader's sources on none of them, keyword or hybrid. The index cuts a file on its sections and ranks
+  each passage with the file's context line; the library reader cuts 220-word windows and ranks the bare words. So
+  the passages differ even where the files agree, and nothing says which serve a task better: there is no gold set
+  for the pack. It stays off, and so does ``KIND``.
+- F and D read no passages.
 - C reads only the index: a collection is an index scope, so there are no folders to cut in its place.
 
-A tier is cut from the folders as before when the index is missing, lacks one of the tier's files, or holds one older
-than the file on disk (``index_covers``): a stale index never answers for a file that changed.
+A tier is cut from the folders (R: read from the library) as before when the index is missing, lacks one of the
+tier's files, or holds one older than the file on disk (``index_covers``): a stale index never answers for a file that
+changed. For R the files are those the library reader would read (and, across a kind, every file of the kind the
+index holds); a file whose words the library reader joins from a vision reading of some pages and the older text is
+in no one indexed file, so it sends the tier back too.
 """
 
 from __future__ import annotations
@@ -49,6 +64,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -79,6 +95,28 @@ RECORD_FILES = 3              # the latest files of each record kind read
 RECORD_PASSAGES = 2           # passages kept per record kind
 SAME_TEXT = 0.6               # Jaccard overlap above which two passages are copies of one
 LAW_FROM_INDEX = False        # rank the law by the index's passages (measured no better than sections whole; see above)
+
+
+class RecordReach(Enum):
+    """Which files of a record kind the records tier ranks when it reads the index (``index_record_sources``)."""
+
+    LATEST = "the latest files of the kind"      # the files the library reader takes
+    KIND = "every file of the kind"              # all of them, fused with recency
+
+
+# The records tier from the index's library catalog. Off: its passages are not the library reader's (see above), and
+# nothing yet says which serve a task better.
+RECORDS_FROM_INDEX = False
+RECORDS_REACH = RecordReach.LATEST
+RECORD_PER_FILE = 1           # across a kind, passages from any one file
+# Across a kind, the k that fuses the questions' rankings (small, as ``retrieval.HYBRID_RRF_K``, so a question's first
+# places count) and the weight of the files' order by period, which is fused at ``RRF_K``. Neither is tuned: there is
+# no gold set for the pack.
+RECORD_RRF_K = 10
+RECORD_RECENCY_WEIGHT = 1.0
+# Across a kind in dense and hybrid modes, the cosine below which the dense ranking's passage is left out. None: no
+# floor has been measured for the records (``retrieval.NO_ANSWER_COSINE`` found none on the governing documents).
+RECORD_DENSE_FLOOR: float | None = None
 COLLECTION_PASSAGES = 8       # a collection's passages in one pack
 COLLECTION_PER_FILE = 2       # of those, from any one file
 # Where each kind of source sits among sources of one tier: a collection's material after the records, before the facts.
@@ -450,6 +488,27 @@ def library_files(data_dir: Path, kind: DocumentKind, *, confidential: bool, fil
     return out
 
 
+def _best_passages(questions: Sequence[str], items: Sequence[Passage],
+                   rank: Callable[..., Sequence[Any]]) -> list[tuple[float, Passage]]:
+    """The passages that best answer any one of the questions: each question ranks them, a passage keeps its best
+    score, and the ``RECORD_PASSAGES`` best are kept."""
+    best: dict[tuple[str, int], tuple[float, Passage]] = {}
+    for question in questions:
+        for hit in rank(question, items, RECORD_PASSAGES * 2):
+            key = (str(hit.passage.path), hit.passage.index)
+            if key not in best or best[key][0] < hit.score:
+                best[key] = (float(hit.score), hit.passage)
+    return sorted(best.values(), key=lambda b: -b[0])[:RECORD_PASSAGES]
+
+
+def _record_title(path: str, period: str) -> str:
+    return f"{path}" + (f" ({period})" if period else "")
+
+
+def _record_place(kind: DocumentKind, passage: Passage) -> str:
+    return f"{kind.value.replace('_', ' ')}, passage {passage.index}"
+
+
 def record_sources(task: TaskPrompt, questions: Sequence[str], rank: Callable[..., Sequence[Any]], *,
                    files: Callable[[DocumentKind], list[tuple[str, str, str]]]) -> list[tuple[Tier, str, str, str, float]]:
     """For each record kind the task names, the passages of its latest files that best answer the questions."""
@@ -461,18 +520,179 @@ def record_sources(task: TaskPrompt, questions: Sequence[str], rank: Callable[..
         titles: dict[str, str] = {}
         for title, period, text in files(kind):
             path = Path(title)
-            titles[str(path)] = f"{title}" + (f" ({period})" if period else "")
+            titles[str(path)] = _record_title(title, period)
             items.extend(passages_of(path, text))
-        best: dict[tuple[str, int], tuple[float, Passage]] = {}
-        for question in questions:
-            for hit in rank(question, items, RECORD_PASSAGES * 2):
-                key = (str(hit.passage.path), hit.passage.index)
-                if key not in best or best[key][0] < hit.score:
-                    best[key] = (float(hit.score), hit.passage)
-        for score, passage in sorted(best.values(), key=lambda b: -b[0])[:RECORD_PASSAGES]:
+        for score, passage in _best_passages(questions, items, rank):
             out.append((tier_of_kind(kind), titles.get(str(passage.path), passage.path.name), passage.text,
-                        f"{kind.value.replace('_', ' ')}, passage {passage.index}", score))
+                        _record_place(kind, passage), score))
     return out
+
+
+def _library_index(data_dir: Path) -> dict[str, tuple[str, bool]] | None:
+    """Each file of the index's library catalog, with its kind and whether the index holds it back; None without an
+    index. Read only."""
+    import sqlite3
+
+    from jason.community import passage_index
+    from jason.tasks.index_sources import LIBRARY
+
+    path = passage_index.index_path(data_dir)
+    if not path.is_file():
+        return None
+    try:
+        db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            return {rel: (str(kind), bool(held)) for rel, kind, held in
+                    db.execute("SELECT path, kind, confidential FROM files WHERE catalog = ?", (LIBRARY,))}
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+
+
+def _held_back_line(count: int, kind: DocumentKind, task: TaskPrompt) -> str:
+    what = kind.value.replace("_", " ")
+    return (f"the passage index holds back {count} {what} file{'' if count == 1 else 's'} as confidential that the "
+            f"library does not flag; this task's audience is {task.audience.value}: nothing from "
+            f"{'it' if count == 1 else 'them'} is in this pack")
+
+
+def index_record_sources(task: TaskPrompt, questions: Sequence[str], data_dir: Path, *, confidential: bool,
+                         mode: str = "keyword", embedder: Any = None, reach: RecordReach = RecordReach.LATEST, k: int = 4,
+                         indexed: dict[str, float] | None = None
+                         ) -> tuple[list[tuple[Tier, str, str, str, float]], list[str]] | None:
+    """``record_sources`` from the passage index's library catalog: the sources, and the gap lines for what was held
+    back. None when the index cannot answer for the library reader: there is no index, it lacks a file that reader
+    would read, it holds one older than the file on disk (``index_covers``), or the reader would join a vision reading
+    of some pages with the older text, which no indexed file holds.
+
+    A document is the audience's to read only when both stores say so: the library's flag, as before, and the index's
+    (``index_sources.LibrarySource``, which also holds back whole kinds the library does not flag). Each document
+    the index alone holds back is counted in a gap line, never silently left out.
+
+    ``reach`` picks the files of each kind:
+
+    - ``LATEST``: the ``RECORD_FILES`` latest by period, as the library reader picks them, their passages as the index
+      cut them (on their sections, with the file's context line), ranked as ``record_sources`` ranks.
+    - ``KIND``: every file of the kind. Each question ranks the kind's passages (``k * 3`` deep, near copies folded
+      onto the latest file's copy), the rankings are fused by reciprocal rank (``RECORD_RRF_K``), and recency is one
+      more ranking in the fusion (``RECORD_RECENCY_WEIGHT``, at ``RRF_K``): the files by period, newest first, a
+      file with no period after them all. It orders passages the questions rank alike and does not lift one past a
+      clearly better answer. One file gives at most ``RECORD_PER_FILE`` passages, so an older file that answers
+      the questions can stand beside, or in place of, the latest. In dense and hybrid modes ``RECORD_DENSE_FLOOR``,
+      when set, leaves a passage far from a question out of that question's dense ranking."""
+    from jason.community import passage_index, retrieval
+    from jason.tasks.index_sources import LIBRARY
+    from jason.tasks.library import distinct, distinct_key, load, text_joined, text_owner, text_path
+
+    kinds = [kind for kind in task.documents if kind not in GOVERNING_KINDS]
+    if not kinds:
+        return [], []
+    indexed = _indexed(data_dir) if indexed is None else indexed
+    held = _library_index(data_dir) if indexed else None
+    if not indexed or held is None:
+        return None
+    copies = load(data_dir)
+    documents = {distinct_key(row): row for row in distinct(copies)}
+    copy_of = {str(row["id"]): row for row in copies}
+    # The index's file for each document: the file is named after one of the document's copies (``text_path``).
+    file_of: dict[str, str] = {}
+    for rel in held:
+        copy = copy_of.get(text_owner(rel))
+        if copy is not None:
+            file_of.setdefault(distinct_key(copy), rel)
+    dense = mode not in ("keyword", "exact")
+    live = (embedder or retrieval.default_embedder(data_dir)) if dense else None
+
+    def closed(row: dict[str, Any]) -> bool:
+        rel = file_of.get(distinct_key(row))
+        return rel is not None and held[rel][1]
+
+    out: list[tuple[Tier, str, str, str, float]] = []
+    gaps: list[str] = []
+    for kind in kinds:
+        rows = [row for row in documents.values() if row["kind"] == kind.value and (confidential or not row["confidential"])]
+        rows.sort(key=lambda row: str(row.get("period") or ""), reverse=True)
+        seen = rows if confidential else [row for row in rows if not closed(row)]
+        if len(seen) < len(rows):
+            gaps.append(_held_back_line(len(rows) - len(seen), kind, task))
+        # What the library reader would read: the latest files that have words. The index must hold each as it is.
+        latest: dict[str, dict[str, Any]] = {}
+        for row in seen[:RECORD_FILES]:
+            path = text_path(data_dir, row["id"])
+            if path is None:
+                continue
+            rel = _rel(path, data_dir)
+            if held.get(rel, ("", False))[0] != kind.value or text_joined(data_dir, row["id"]) \
+                    or not index_covers(data_dir, [rel], indexed):
+                return None
+            latest[rel] = row
+        if reach is RecordReach.LATEST:
+            if not latest:
+                continue
+            scope = passage_index.Scope(catalogs=(LIBRARY,), paths=tuple(latest), confidential=confidential)
+            loaded = passage_index.load(data_dir, scope, vectors=dense)
+            rank = _ranker(mode, data_dir, passage_index.StoredEmbedder(loaded.vectors, live) if dense else None)
+            for score, passage in _best_passages(questions, loaded.passages, rank):
+                row = latest[_rel(passage.path, data_dir)]
+                out.append((tier_of_kind(kind), _record_title(str(row["path"]), str(row.get("period") or "")), passage.text,
+                            _record_place(kind, passage), score))
+            continue
+        # Every file of the kind the audience may read, with the library's row for its title and period.
+        shelf: dict[str, dict[str, Any]] = {}
+        for rel, (file_kind, flag) in held.items():
+            copy = copy_of.get(text_owner(rel))
+            if file_kind != kind.value or copy is None or (flag and not confidential):
+                continue
+            document = documents[distinct_key(copy)]
+            if document["confidential"] and not confidential:
+                continue
+            # A document whose first copy was never classified is shelved under the copy that was.
+            shelf[rel] = document if document["kind"] == kind.value else copy
+        if not shelf:
+            continue
+        if not index_covers(data_dir, list(shelf), indexed):
+            return None
+        periods = sorted({str(row.get("period") or "") for row in shelf.values()} - {""}, reverse=True)
+        newest = {period: place for place, period in enumerate(periods, 1)}
+
+        def age(passage: Passage) -> int:
+            """The file's place by period, newest first; a file with no period is after them all."""
+            return newest.get(str(shelf[_rel(passage.path, data_dir)].get("period") or ""), len(newest) + 1)
+
+        scope = passage_index.Scope(catalogs=(LIBRARY,), kinds=(kind.value,), confidential=confidential)
+        fused: dict[tuple[str, int], float] = {}
+        found: dict[tuple[str, int], Passage] = {}
+        for question in questions:
+            place = 0
+            for hit in passage_index.search(question, data_dir=data_dir, scope=scope, k=k * 3, mode=mode, embedder=live,
+                                            dense_floor=RECORD_DENSE_FLOOR):
+                same = [p for p in (hit.hit.passage, *hit.hit.also) if _rel(p.path, data_dir) in shelf]
+                if not same:
+                    continue
+                passage = min(same, key=age)                 # of one passage's copies, the latest file's
+                place += 1
+                key = (_rel(passage.path, data_dir), passage.index)
+                fused[key] = fused.get(key, 0.0) + 1.0 / (RECORD_RRF_K + place)
+                found.setdefault(key, passage)
+        # Recency never brings in a passage no question reached. Its k is the large one, so the whole spread of the
+        # files' order is about one first place of one question: it orders passages the questions rank alike.
+        for key, passage in found.items():
+            fused[key] += RECORD_RECENCY_WEIGHT / (RRF_K + age(passage))
+        kept: list[Passage] = []
+        taken: dict[str, int] = {}
+        for key, score in sorted(fused.items(), key=lambda kv: -kv[1]):
+            passage = found[key]
+            if taken.get(key[0], 0) >= RECORD_PER_FILE or any(_same(passage.text, other.text) for other in kept):
+                continue
+            kept.append(passage)
+            taken[key[0]] = taken.get(key[0], 0) + 1
+            row = shelf[key[0]]
+            out.append((tier_of_kind(kind), _record_title(str(row["path"]), str(row.get("period") or "")), passage.text,
+                        _record_place(kind, passage), round(score, 4)))
+            if len(kept) >= RECORD_PASSAGES:
+                break
+    return out, gaps
 
 
 # --- a collection ----------------------------------------------------------------------------------------------------
@@ -611,12 +831,15 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
              mode: str = "keyword", follow_citations: bool = True, law: Sequence[LawSection] | None = None,
              search: Callable[..., Any] | None = None, files: Callable[[DocumentKind], list[tuple[str, str, str]]] | None = None,
              fact_runner: Callable[[str, dict[str, Any]], Any] | None = None, use_index: bool = True,
-             law_index: bool | None = None, embedder: Any = None, collection: Any = None) -> ContextPack:
+             law_index: bool | None = None, embedder: Any = None, collection: Any = None,
+             records_index: bool | None = None, records_reach: RecordReach | None = None) -> ContextPack:
     """The pack for one task. With ``use_index`` the governing documents come from the passage index when it covers
-    them (``index_covers``), and so does the law's ranking when ``law_index`` (default ``LAW_FROM_INDEX``); the rest are
-    cut from the folders. ``search``, ``law``, and ``files`` replace a tier's reader (tests). ``embedder`` replaces the
-    local embedder in dense and hybrid modes. ``collection`` (``document_collections.Collection``) adds the C sources
-    and the collection's context lines; without it the pack is what it was before collections."""
+    them (``index_covers``), and so does the law's ranking when ``law_index`` (default ``LAW_FROM_INDEX``) and the
+    records when ``records_index`` (default ``RECORDS_FROM_INDEX``; ``records_reach``, default ``RECORDS_REACH``, picks
+    the files of each kind); the rest are cut from the folders and the library. ``search``, ``law``, and ``files``
+    replace a tier's reader (tests). ``embedder`` replaces the local embedder in dense and hybrid modes. ``collection``
+    (``document_collections.Collection``) adds the C sources and the collection's context lines; without it the pack
+    is what it was before collections."""
     from jason.community.passage_index import Standing
 
     pack = ContextPack(task, ask=ask, draft=draft, association=tuple(community.prompt_context()), collection=collection)
@@ -671,8 +894,18 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
     for n, (tier, title, text, place, score) in enumerate(sorted(governing, key=lambda g: (g[0], -g[4])), 1):
         pack.sources.append(Source(f"G{n}", tier, title, text, place, score, standing=Standing.RECORD))
 
-    reader = files or (lambda kind: library_files(data_dir, kind, confidential=task.audience is Audience.BOARD))
-    for n, (tier, title, text, place, score) in enumerate(record_sources(task, questions, rank, files=reader), 1):
+    records = None
+    if files is None and indexed and (RECORDS_FROM_INDEX if records_index is None else records_index):
+        found = index_record_sources(task, questions, data_dir, confidential=task.audience is Audience.BOARD, mode=mode,
+                                     embedder=embedder, reach=RECORDS_REACH if records_reach is None else records_reach,
+                                     k=k, indexed=indexed)
+        if found is not None:
+            records, held_back = found
+            pack.gaps += held_back
+    if records is None:
+        reader = files or (lambda kind: library_files(data_dir, kind, confidential=task.audience is Audience.BOARD))
+        records = record_sources(task, questions, rank, files=reader)
+    for n, (tier, title, text, place, score) in enumerate(records, 1):
         pack.sources.append(Source(f"R{n}", tier, title, text, place, score, standing=Standing.RECORD))
 
     if collection is not None:
@@ -694,6 +927,7 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
     return pack
 
 
-__all__ = ["COLLECTION_PASSAGES", "COLLECTION_PER_FILE", "CORPUS", "GOVERNING_KINDS", "ContextPack", "LawSection", "Source",
-           "assemble", "cited_statutes", "collection_sources", "fact_sources", "governing_sources", "index_covers",
-           "index_law_ranking", "index_search", "law_corpus", "law_shelf", "law_sources", "library_files", "record_sources"]
+__all__ = ["COLLECTION_PASSAGES", "COLLECTION_PER_FILE", "CORPUS", "GOVERNING_KINDS", "ContextPack", "LawSection",
+           "RecordReach", "Source", "assemble", "cited_statutes", "collection_sources", "fact_sources", "governing_sources",
+           "index_covers", "index_law_ranking", "index_record_sources", "index_search", "law_corpus", "law_shelf",
+           "law_sources", "library_files", "record_sources"]

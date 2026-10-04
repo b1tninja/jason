@@ -450,6 +450,29 @@ def _has_words(path: Path) -> bool:
         return False
 
 
+def text_joined(root: Path, doc_id: str) -> bool:
+    """Whether ``text_for`` joins a vision reading of some pages with the older text. No one file holds that join, so
+    a reader of ``text_path``'s file (the passage index) then holds fewer words than ``text_for`` gives. Reads only."""
+    if str(doc_id).startswith("drive-"):
+        return False
+    folder = root / TEXT_DIR
+    path = text_path(root, doc_id)
+    return path == folder / f"{doc_id}.txt" and _has_words(folder / f"{doc_id}.vision.txt")
+
+
+def text_owner(rel: str) -> str:
+    """The id of the document whose words the file at ``rel`` (a path under the data directory) holds: ``text_path``
+    read backwards. "" for any other file."""
+    folder, _, name = str(rel).replace("\\", "/").rpartition("/")
+    if folder == TEXT_DIR:
+        for suffix in (".vision.txt", ".txt"):
+            if name.endswith(suffix):
+                return name[: -len(suffix)]
+    if folder == "meetings/minutes-files" and name.endswith(".txt"):
+        return "drive-" + name[:-4]
+    return ""
+
+
 def vision_read(root: Path, doc_id: str, *, pages: int | None = None, engine: Any = None, refresh: bool = False) -> str:
     """Read a library file's first ``pages`` (all when None) with the local vision model; kept beside its cached text.
 
@@ -571,5 +594,5 @@ def score(root: Path, rows: tuple[Classified, ...], *, model: ModelClassifier | 
     return card
 
 
-__all__ = ["ingest", "load", "save", "text_of", "text_for", "text_path", "distinct", "distinct_key", "fetch", "score", "Scorecard",
+__all__ = ["ingest", "load", "save", "text_of", "text_for", "text_path", "text_joined", "text_owner", "distinct", "distinct_key", "fetch", "score", "Scorecard",
            "IngestReport", "AssociationRecord", "io"]

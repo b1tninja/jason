@@ -349,7 +349,8 @@ def _put(db: sqlite3.Connection, key: str, model: str, vector: Any) -> None:
 class Scope:
     """Which rows a search may rank. Every field empty means every row a person may see; ``confidential`` adds the
     files held back unless asked. ``confidential_in`` adds them for the catalogs it names and no other: a confidential
-    catalog asked for by name (a legal case's) opens its own files, not another catalog's."""
+    catalog asked for by name (a legal case's) opens its own files, not another catalog's. ``paths`` names files one
+    by one, as the index names them; like every other field it narrows, and never opens a file held back."""
 
     catalogs: tuple[str, ...] = ()
     standings: tuple[Standing, ...] = ()
@@ -358,6 +359,7 @@ class Scope:
     confidential: bool = False
     generated: bool | None = None          # None: both; False: only what jason did not write
     confidential_in: tuple[str, ...] = ()
+    paths: tuple[str, ...] = ()            # these files only (their paths under the data directory)
 
     def where(self) -> tuple[str, list[Any]]:
         clauses: list[str] = []
@@ -372,6 +374,7 @@ class Scope:
         any_of("catalog", self.catalogs)
         any_of("standing", [s.value for s in self.standings])
         any_of("kind", self.kinds)
+        any_of("path", self.paths)
         if self.folders:
             clauses.append("(" + " OR ".join("f.path LIKE ? ESCAPE '\\'" for _ in self.folders) + ")")
             args.extend(_like_prefix(f) for f in self.folders)
@@ -486,9 +489,11 @@ class IndexHit:
 
 
 def search(query: str, *, data_dir: Path | str | None = None, scope: Scope = Scope(), k: int = 8, mode: str = "hybrid",
-           embedder: retrieval.Embedder | None = None, rerank: bool = False) -> tuple[IndexHit, ...]:
+           embedder: retrieval.Embedder | None = None, rerank: bool = False,
+           dense_floor: float | None = None) -> tuple[IndexHit, ...]:
     """The passages a scope allows, ranked as ``retrieval.search`` ranks a folder's: "keyword", "exact", "dense", or
-    "hybrid". Each hit carries its row (catalog, standing, kind)."""
+    "hybrid". Each hit carries its row (catalog, standing, kind). ``dense_floor`` leaves out of the dense ranking the
+    passages whose cosine to the question is below it (``retrieval.hybrid``)."""
     if data_dir is None:
         from jason.config import data_dir as active_data_dir
 
@@ -506,10 +511,11 @@ def search(query: str, *, data_dir: Path | str | None = None, scope: Scope = Sco
     elif mode in ("dense", "hybrid"):
         stored = StoredEmbedder(loaded.vectors, embedder or retrieval.default_embedder(data_dir))
         if mode == "dense":
-            hits = fold(retrieval.dense_rank(query, items, stored, k=depth))
+            hits = fold([h for h in retrieval.dense_rank(query, items, stored, k=depth)
+                         if dense_floor is None or h.score >= dense_floor])
         else:
             hits = retrieval.hybrid(query, items, k=k, embedder=stored,
-                                    reranker=retrieval.LlmReranker() if rerank else None)
+                                    reranker=retrieval.LlmReranker() if rerank else None, dense_floor=dense_floor)
     else:
         raise ValueError(f"unknown retrieval mode {mode!r}: keyword, exact, dense, or hybrid")
     return tuple(IndexHit(h, loaded.rows[(str(h.passage.path), h.passage.index)]) for h in hits)

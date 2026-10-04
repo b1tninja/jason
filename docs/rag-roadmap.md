@@ -10,7 +10,7 @@
 - **Context pack.** `context_pack.assemble` builds the S, G, R, F and D tiers. R takes the latest `RECORD_FILES=3` files per kind, by period. `prompts.verify` checks quotes.
   - G reads the passage index when it holds every governing file as it is on disk (`index_covers`), else cuts the folders. Measured October 4, 2026 on the profile's 11 tasks: the same G sources in the same order, keyword and hybrid, about 10 to 16 times faster.
   - S still ranks the law's sections whole. Ranking the index's law passages (`law_index`, off) replaced a quarter of a task's sections at the median and up to two thirds, with no gold questions for the law to say which is better.
-  - R stays on the library until the index holds it.
+  - R still reads the library. The index now holds it (catalog `library`), and R can read it there (`records_index`, off), two ways (`RecordReach`): the same latest files, or every file of the kind fused with recency. Measured October 4, 2026 on the 6 tasks that name record kinds: the same latest files from the index gave the library reader's sources on none of them, keyword or hybrid, because the index cuts a file on its sections and the library reader cuts 220-word windows. See "R-tier baseline" under Next.
 - **AnythingLLM.**
   - Catalogs: authorities, association-records, insurance, mail, jason-pages, and one `case-<key>` per legal case, plus the shared association workspace. The legacy "My Workspace" still holds 115 custom-documents.
   - `anythingllm.Source` keeps only title, text and score. `SHELF_OF_FOLDER` has no `insurance` entry.
@@ -328,6 +328,27 @@ Aim for 10 to 15 files per kind. Seed the review from disagreements, leaving out
 - Store the person-labelled expected-file lists beside `gold.json`.
 - The test case is recall of the fire-testing contract.
 - Measure per-query time and memory against the retrieval baseline. Ranking across a whole kind increases both BM25 recomputation and `.npy` loads. Cache the corpus index and the stacked vectors if the time grows.
+- **Built October 4, 2026, and left off** (`context_pack.RECORDS_FROM_INDEX`; `assemble(records_index=, records_reach=)`). `index_record_sources` reads the index's `library` catalog when it holds every file the library reader would read, as it is on disk; otherwise the library reader runs as before.
+  - `RecordReach.LATEST`: the same latest 3 files of each kind, their passages as the index holds them.
+  - `RecordReach.KIND`: every file of the kind. Each question ranks the kind's passages and the rankings are fused by reciprocal rank (k 10). Recency is one more ranking (k 60, files with no period last), so it orders passages the questions rank alike and no more. One passage a file; near copies fold onto the latest file's copy. The dense floor is a parameter (`RECORD_DENSE_FLOOR`, `retrieval.hybrid(dense_floor=)`) and is not set.
+  - Confidentiality is the stricter of the two stores. A task that is not the board's gets no document the index holds back, and a gap line counts them. On the real library that is the treasurer's reports: the library flags 46 of 70 and showed a members' task the other 24 (it read the latest 3); the index holds back all 70.
+- **Measured on the 6 tasks that name record kinds**, against the library reader's R sources. Read-only; per-task results are not kept under `data/`.
+
+  | | keyword | hybrid |
+  |---|---|---|
+  | `LATEST`: the same sources in the same order | 0 of 6 tasks | 0 of 6 |
+  | `LATEST`: the same files | 2 of 6 | 0 of 6 |
+  | `LATEST`: the library reader's passages found again (the same file, 90% of the words) | 14 of 36 | 9 of 37 |
+  | `LATEST`: R tier time, all 6 tasks (library reader, then index) | 1.3 s, 1.2 s | 5.0 s, 3.3 s |
+  | `KIND`: files added and dropped against the library reader's | 17 and 17, of 34 | 22 and 20, of 33 |
+  | `KIND`: R tier time, all 6 tasks | 4.5 s | 6.8 s |
+
+  - **Why `LATEST` differs.** The index cuts a file on its sections and ranks each passage with the file's context line. The library reader cuts 220-word windows and ranks the bare words. The passages differ even where the files agree, as the law's did (lesson `retrieval-tier-moved-unmeasured`). There is no gold set for the pack, so nothing says which serve a task better.
+  - **Time.** In keyword mode the index saves nothing: picking the files still reads the library's rows. In hybrid it reads stored vectors: no passage was embedded, where the library reader embedded 870 passages its cache lacked (74 s) on the first run. The hybrid times above are with every vector already in memory. Across a kind, one task for the board ranked 70 files of one kind in 3.8 s, against 0.25 s.
+  - **Stubs.** The section cut leaves heading-only passages on scanned forms. Between 2 and 6 of about 36 index sources were under 20 words, depending on the mode and the reach; the library reader's shortest was 64 words. A short passage ranks well (BM25's length norm; the context line carries the meaning for the embedder) and tells a reader nothing.
+  - **`KIND`, read by hand, a handful of cases, not a measure.** It found the fire alarm contract, which has no period and was never among the latest 3, though in keyword mode the passage it chose was a force majeure clause. For the flood renewal it replaced a newsletter and a contest poster with the lender's rules for the association's flood policy and the owners' insurance checklist. It also took a landscape contract's irrigation clause for "sprinkler". For the board's monthly reports it chose a report from 18 months earlier over the latest: where every file follows one template, the questions' ranking between months is noise, and recency as weighed here does not overcome it. "For small kinds", above, is the right limit.
+  - **The floor.** Cosine of a chosen source to its nearest question (bare words): 0.32 for the poster and 0.45 for the newsletter, but also 0.45 for a fire alarm inspection page that belongs. The median was 0.62. No floor separates them on this evidence.
+- **Before `KIND` can be turned on:** a gold set, `gold-records.json` beside `gold.json`. Each row: the task, the question (a topic of the task, or a matter), the record kind, the file that should be found (by its library path or sha256, not its text file), the audience, and the words that answer. It needs rows of four sorts: the answer is not among the latest 3 (the fire-testing contract); the kind is monthly and the latest file is the answer; nothing in the kind answers (to set the floor); and a member's question whose only answer is held back. Score recall of the file among the kind's 2 passages. The same set decides `LATEST`, the stub passages, and the recency weight.
 
 **Cheap trust fixes for long files (P1, first stage).**
 - Record `fullChars`, `prompt_eval_count`, `truncated` and the text's sha256 per file.

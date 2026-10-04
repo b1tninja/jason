@@ -522,10 +522,13 @@ def keyword_exact(query: str, items: Sequence[Passage], *, k: int = 8, copies: b
 
 def hybrid(query: str, items: Sequence[Passage], *, k: int = 8, embedder: Embedder | None = None,
            reranker: Reranker | None = None, depth: int = DENSE_DEPTH, rrf_k: int = HYBRID_RRF_K,
-           dense_weight: float = DENSE_WEIGHT, copies: bool | None = None) -> tuple[Hit, ...]:
+           dense_weight: float = DENSE_WEIGHT, copies: bool | None = None,
+           dense_floor: float | None = None) -> tuple[Hit, ...]:
     """Keyword (BM25) and dense rankings fused by RRF, the exact-token passages first, near copies folded (``copies``,
     default ``COLLAPSE_COPIES``), optionally reranked. A hit's score is its fused RRF score. Without an embedder this
-    is ``keyword_exact``."""
+    is ``keyword_exact``. The dense ranking places every passage, however far from the question; ``dense_floor``
+    leaves out of it the passages whose cosine is below the floor, so such a passage is a hit only when the keyword
+    or the exact ranking found it (no floor by default: none has been measured, see ``NO_ANSWER_COSINE``)."""
     items = tuple(items)
     if not items or not query.strip():
         return ()
@@ -535,6 +538,8 @@ def hybrid(query: str, items: Sequence[Passage], *, k: int = 8, embedder: Embedd
     else:
         keyword = rank(query, items, k=depth)
         dense = dense_rank(query, items, embedder, k=depth)
+        if dense_floor is not None:
+            dense = tuple(h for h in dense if h.score >= dense_floor)
         exact = exact_rank(query, items)
         rankings = [[_key(h.passage) for h in keyword], [_key(h.passage) for h in dense]]
         weights = [1.0, dense_weight]
