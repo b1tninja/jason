@@ -162,6 +162,8 @@ Attachments of the same name with different content are listed: another version,
 
 `jason gmail --filters-xml` writes Gmail's own filters, one per vendor with a known address, labeling its mail `Vendors/<vendor>`, for a person to import in Gmail's settings.
 
+**Reading what was filed.** The library does not hold a filed document, so `jason models` alone never reads it. `jason models --filed` does ([document-models/README.md](document-models/README.md#files-the-library-does-not-hold)): it reads each logged filing of a kind (inspection reports unless `--kind` names another) from the local copy `jason gmail --files` saved, and stores the reading under `drive-<file id>`.
+
 ### The gap: no API for Gmail's Save to Drive
 
 Gmail links an attachment to its Drive copy (the attachment then offers "Organize in Drive") only when a person saves it with Gmail's button. No API makes that link, so a file jason uploads, or moves into place, is not shown as linked in Gmail. jason records the link on the Drive file instead: `appProperties` and the description name the message.

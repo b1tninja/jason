@@ -17,6 +17,20 @@ A `DocumentKind` says what a file is. A document model says what is in it. Each 
 
 `jason models` runs the library, `jason models --kind minutes --show` prints the stored readings, and `jason models --file X.pdf --kind elevated_element_inspection` reads one file. The `document_models` MCP tool reads the stored readings and uses disk only.
 
+### Files the library does not hold
+
+A row's id says where its file is: a library id, or `drive-<Drive file id>` for a file read from Drive. Two passes write `drive-` rows, and `jason models` keeps every one of them (`outside_library`): it replaces only the library's rows.
+
+- **Drive's minutes** (`jason.tasks.drive_minutes`): the minutes the library lacks, one copy per meeting.
+- **Documents filed from email** (`jason models --filed`, `run_filed`): the documents `jason gmail --file-vendor` filed to Drive and logged in `data/drive/vendor-files.jsonl`.
+  - **Which.** The logged filings of one kind: inspection reports, or the kind `--kind` names. A filing whose bytes the library also holds is left to the library's reading.
+  - **The bytes.** The local copy of the attachment, found by its SHA-256 in the email files' index (`data/gmail/files.json`, `jason gmail --files`). A filing with no local copy is a miss: it gets no row and is listed.
+  - **The words.** The library's `text_of`: the text layer, else, for a scan, the OCR engines that run on this machine without the model server. `--vision` sends a scan to the local vision model, after the preflight and under the GPU lock; without it no model is asked. The words are kept in the library's text cache under the row's id (`data/library/text/drive-<file id>.txt`), so `text_for` finds them, and a file whose bytes are unchanged is not read again (`--refresh-text` reads it again).
+  - **The row.** Made by the code that makes a library row, so it carries the same keys (`textSha`, `version`, `asOf`, the basis, the lenses). It adds `source` and, under `filed`, the vendor, the day it was sent, the Drive folder, the message, the file's SHA-256, the local copy, and how its words were read (`textFrom`). Its `period` is empty: nothing is taken from the email's date or the file's name.
+  - **A miss.** A file with no words, or one no reader recognizes, gets a row with no model. `jason inspections` lists such a report as filed and not read, with why.
+
+Each pass reads `readings.json`, changes its own rows, and writes it back under the store's lock (`document-readings`).
+
 ## A reading and its reviews
 
 This is step 2 of [ingestion-and-review.md](../ingestion-and-review.md): the review store and the first lens. A reading says what the document says. What depends on the date is a **review**, made by a lens from the reading's stored fields.

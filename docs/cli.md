@@ -415,6 +415,9 @@ Read the library with the document models: typed records and findings per kind (
 | `--basis` |  | From the stored readings: per reader and finding code, what the check read (text, profile, store, today, law), so which findings are ingestion and which are reviews; reads nothing again |
 | `--as-of` | DATE | From the stored readings' fields: make the as-of lens's findings again for DATE (YYYY-MM-DD: terms ended, deadlines passed, what is due next), save them under data/reviews/documents, and print what changed since the rows were stored; reads no document and leaves the stored readings as they are |
 | `--ask` |  | Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's |
+| `--filed` |  | Read the documents filed to Drive from email (jason gmail --file-vendor) instead of the library: each filing's local copy, its words from the text layer or local OCR, stored as a reading under drive-<file id>; --kind names the kind (default inspection_report) |
+| `--vision` |  | With --filed: read a scan with the local vision model (preflight and the GPU lock first) |
+| `--refresh-text` |  | With --filed: read each file's words again, not the cached text |
 | `--confidential` |  | --show, --as-of: include confidential files' fields |
 | `--limit` | LIMIT | --show: readings to print |
 | `--json` |  | Print JSON |

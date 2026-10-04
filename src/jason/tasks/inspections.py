@@ -15,7 +15,9 @@ that it does not?
 A payment is not a record here (``jason deadlines`` shows payments), and a file's name places nothing. A reading that
 lacks a field is listed as **unplaced** with the field it lacks, never guessed into a period. A report jason has on
 disk but no reader has read (a library file with no reading, a vendor's report in the filing log,
-``data/drive/vendor-files.jsonl``) is listed as **not read**.
+``data/drive/vendor-files.jsonl``) is listed as **not read**. ``jason models --filed`` reads the filed reports into
+readings (``jason.tasks.document_models.run_filed``); one it tried and could not read stays listed as not read, with
+why: no words, or words no reader recognized.
 
 **Periods.** One scheduler: the frequency is the obligation row's (``Obligation.months``), the date arithmetic is
 ``jason.tasks.deadlines.add_months``, and each obligation's own calendar row (``deadlines.obligation_rows``: next due,
@@ -209,7 +211,8 @@ class Completion:
 
 @dataclass(frozen=True)
 class Filing:
-    """A report a vendor sent that the filing log shows filed, which no reading covers."""
+    """A report a vendor sent that the filing log shows filed, which no reading covers. ``note`` says why where the
+    filed pass tried it (``jason models --filed``): no words could be read, or no reader recognized them."""
 
     vendor: str
     name: str
@@ -217,10 +220,16 @@ class Filing:
     where: str = ""              # the folder it was filed in
     file_id: str = ""
     systems: tuple[str, ...] = ()    # the listed systems the specification names this vendor for
+    note: str = ""
+
+    @property
+    def label(self) -> str:
+        text = f"{self.name} (sent {self.sent or 'undated'} by {self.vendor}; filed in {self.where or 'Drive'})"
+        return f"{text}: {self.note}" if self.note else text
 
     def as_dict(self) -> dict[str, Any]:
         return {"vendor": self.vendor, "name": self.name, "sent": self.sent, "where": self.where,
-                "fileId": self.file_id, "systems": list(self.systems)}
+                "fileId": self.file_id, "systems": list(self.systems), "note": self.note}
 
 
 @dataclass(frozen=True)
@@ -684,8 +693,7 @@ def completeness(community: Any, readings: Iterable[Mapping[str, Any]], *, as_of
         if not keys:
             other += 1
         for key in keys:
-            by_vendor.setdefault(key, []).append(Filing(filing.vendor, filing.name, filing.sent, filing.where,
-                                                        filing.file_id, keys))
+            by_vendor.setdefault(key, []).append(replace(filing, systems=keys))
 
     out: list[SystemRecords] = []
     for system in systems:
@@ -753,9 +761,19 @@ def _library(data_dir: Path) -> tuple[dict[str, Any], ...]:
         return ()
 
 
-def _filings(data_dir: Path, read_ids: set[str], read_shas: set[str]) -> list[Filing]:
+def _tried_note(row: Mapping[str, Any]) -> str:
+    """Why the filed pass's row has no reading, in its own words."""
+    how = str((row.get("filed") or {}).get("textFrom") or "")
+    if not row.get("hasText"):
+        return "no words could be read from it" + (f" ({how})" if how else "")
+    return "no reader recognized its words" + (f" (read from the {how})" if how else "")
+
+
+def _filings(data_dir: Path, read_ids: set[str], read_shas: set[str],
+             tried: Mapping[str, Mapping[str, Any]] | None = None) -> list[Filing]:
     """The filing log's inspection reports that no reading covers: not the Drive file's own reading, and not a
-    library copy with the same bytes."""
+    library copy with the same bytes. ``tried`` are the rows the filed pass stored without a reading, by id: such a
+    filing carries why."""
     from jason.tasks.vendor_files import LOG
 
     path = Path(data_dir) / "drive" / LOG
@@ -772,8 +790,9 @@ def _filings(data_dir: Path, read_ids: set[str], read_shas: set[str]) -> list[Fi
         if (file_id or row.get("sha256")) in seen:
             continue
         seen.add(file_id or row.get("sha256"))
+        attempt = (tried or {}).get(f"drive-{file_id}")
         out.append(Filing(str(row.get("vendor") or ""), str(row.get("name") or ""), str(row.get("at") or "")[:10],
-                          str(row.get("where") or ""), file_id))
+                          str(row.get("where") or ""), file_id, note=_tried_note(attempt) if attempt else ""))
     return out
 
 
@@ -786,7 +805,11 @@ def review(data_dir: Path | str, community: Any, *, as_of: date | None = None) -
 
     data_dir = Path(data_dir)
     day = as_of or date.today()
-    readings = [r for r in load(data_dir) if r.get("kind") == REPORT_KIND]
+    stored = [r for r in load(data_dir) if r.get("kind") == REPORT_KIND]
+    # A filing the filed pass tried and could not read is still a filing no reading covers: it is listed under its
+    # vendor's system with why, the way an untried one is, and not as a reading.
+    tried = {str(r.get("id")): r for r in stored if r.get("filed") and not r.get("model")}
+    readings = [r for r in stored if str(r.get("id")) not in tried]
     read_ids = {str(r.get("id")) for r in readings if r.get("model")}
     have = {str(r.get("id")) for r in readings}
     library = _library(data_dir)
@@ -799,7 +822,7 @@ def review(data_dir: Path | str, community: Any, *, as_of: date | None = None) -
 
     found = completeness(
         community, readings, as_of=day, completions=_completions(data_dir, community),
-        filings=_filings(data_dir, read_ids, read_shas), calendar=obligation_rows(data_dir, community, today=day),
+        filings=_filings(data_dir, read_ids, read_shas, tried), calendar=obligation_rows(data_dir, community, today=day),
         recitals=[recite(data_dir, rule) for rule in RECORD_RULES], answers=answers(data_dir).facts)
     sources = ("documents/readings.json (jason models)", "library.db (jason library)", "schedule/done.jsonl",
                "drive/vendor-files.jsonl", "authorities/publications")
@@ -902,8 +925,9 @@ def lines(records: Records) -> list[str]:
             for p, why in s.unassigned:
                 out += [f"    {_report_line(p)}", f"      {why}"]
         if s.not_read:
-            out.append(f"  filed, not read ({len(s.not_read)}): from a vendor the specification names for this system")
-            out += [f"    {f.name} (sent {f.sent or 'undated'} by {f.vendor}; filed in {f.where or 'Drive'})" for f in s.not_read]
+            out.append(f"  filed, not read ({len(s.not_read)}): from a vendor the specification names for this system "
+                       "(jason models --filed reads the filed reports)")
+            out += [f"    {f.label}" for f in s.not_read]
         if s.undetermined:
             out.append(f"  undetermined ({len(s.undetermined)})")
             for f in s.undetermined:
@@ -982,8 +1006,8 @@ def markdown(records: Records) -> str:
             out += [f"- {_report_line(p)}. {why}." for p, why in s.unassigned] + [""]
         if s.not_read:
             out += ["### Filed, not read", "", "From a vendor the specification names for this system; no reader has "
-                    "read them, so none is placed in a period.", ""]
-            out += [f"- {f.name} (sent {f.sent or 'undated'} by {f.vendor}; filed in {f.where or 'Drive'})" for f in s.not_read] + [""]
+                    "read them, so none is placed in a period. `jason models --filed` reads the filed reports.", ""]
+            out += [f"- {f.label}" for f in s.not_read] + [""]
         if s.undetermined:
             out += ["### Undetermined", ""]
             out += [f"- {row_name(f.row)}: {f.question()}" for f in s.undetermined] + [""]

@@ -402,7 +402,9 @@ def text_for(root: Path, doc_id: str) -> str:
     those pages, OCR'd worse) follows."""
     if str(doc_id).startswith("drive-"):             # a file read from Drive, not the library (jason.tasks.drive_minutes)
         kept = root / "meetings" / "minutes-files" / f"{str(doc_id)[6:]}.txt"
-        return kept.read_text(encoding="utf-8", errors="ignore") if kept.is_file() else ""
+        if kept.is_file():
+            return kept.read_text(encoding="utf-8", errors="ignore")
+        # Else a document filed to Drive from email, whose text is cached here under its own id (``jason models --filed``).
     folder = root / TEXT_DIR
     cache = folder / f"{doc_id}.txt"
     text = cache.read_text(encoding="utf-8", errors="ignore") if cache.is_file() else ""
@@ -428,7 +430,8 @@ def text_path(root: Path, doc_id: str) -> Path | None:
     text covers every page, so it is the file."""
     if str(doc_id).startswith("drive-"):
         kept = root / "meetings" / "minutes-files" / f"{str(doc_id)[6:]}.txt"
-        return kept if _has_words(kept) else None
+        if _has_words(kept):
+            return kept
     folder = root / TEXT_DIR
     cache, vision = folder / f"{doc_id}.txt", folder / f"{doc_id}.vision.txt"
     if _has_words(vision):

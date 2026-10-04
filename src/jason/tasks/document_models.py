@@ -9,6 +9,13 @@ model reads yet. It reads disk only.
 
 A confidential library file's fields stay on disk; ``summary`` leaves them out unless asked.
 
+**Files the library does not hold.** ``run_filed`` reads the documents ``jason gmail --file-vendor`` filed to Drive from
+email (the filing log, ``data/drive/vendor-files.jsonl``): the local copy of each attachment, its words from the
+library's ``text_of`` (the text layer, else local OCR; the vision model only when a person asks) kept in the library's
+text cache under the row's id, and the row made the way ``run`` makes one, under the id ``drive-<Drive file id>``.
+``run`` keeps every row of a file the library does not hold (``outside_library``): those, and the Drive minutes'
+(``jason.tasks.drive_minutes``). Each pass writes the store under its lock.
+
 **What a row says about its own making** (docs/ingestion-and-review.md, the inventory). Beside the keys above, a row
 carries ``textSha`` (the SHA-256 of the text the reader was given), ``asOf`` (the date the reader used as today),
 ``version`` (``reader_version`` of the model that read it), ``fieldsBasis`` (what ``parse`` read to fill the fields),
@@ -32,12 +39,14 @@ import json
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Sequence
 
 from jason.community.document_models import Basis, ModelContext, basis_values, modeled_kinds, read
 from jason.community.symbols import DocumentKind
 
 STORE = Path("documents") / "readings.json"
+LOCK = "document-readings"                 # the store's lock: each pass reads the file, changes its own rows, and writes it back
+FILED_SOURCE = "Drive, filed from email"   # the ``source`` of a row ``run_filed`` writes
 
 
 def _kind(value: str) -> DocumentKind | None:
@@ -57,6 +66,51 @@ def provenance(text: str, today: date) -> dict[str, str]:
     return {"textSha": text_sha(text), "asOf": today.isoformat()}
 
 
+def _entry(data_dir: Path, community: Any, today: date, stored: dict[str, Any], *, ident: str, name: str, period: str,
+           kind: DocumentKind, confidential: bool, text: str) -> tuple[dict[str, Any], list[Any]]:
+    """One file's row of the store, and the lens reviews joined into it: the one way a row is made, whichever pass
+    found the file. ``stored`` is ``document_reviews.known`` for the run's date."""
+    from jason.tasks import document_reviews
+
+    entry = {"id": ident, "name": name, "period": period, "kind": kind.value, "confidential": confidential,
+             "hasText": bool(text.strip()), "model": None}
+    if not text.strip():
+        return entry, []
+    entry.update(provenance(text, today))
+    sha = entry["textSha"]
+    context = ModelContext(community, data_dir, today, str(name or ""), str(period or ""), confidential,
+                           {lens: r for lens, r in stored.get(str(ident), {}).items() if r.text_sha == sha})
+    try:
+        reading = read(kind, text, context)
+    except Exception as exc:  # one bad file does not stop the run; the error is the finding
+        entry["error"] = f"{type(exc).__name__}: {exc}"
+        reading = None
+    if reading is None:
+        return entry, []
+    entry.update(reading.as_dict())
+    return entry, document_reviews.of_reading(reading, str(ident), sha)
+
+
+def outside_library(row: dict[str, Any]) -> bool:
+    """A row of a file the library does not hold: one read from Drive (``jason.tasks.drive_minutes``) or filed to Drive
+    from email (``run_filed``). A library run did not write it and keeps it."""
+    return row.get("source") == "Drive" or str(row.get("id") or "").startswith("drive-")
+
+
+def _replace(data_dir: Path, readings: list[dict[str, Any]], keep: Any) -> list[dict[str, Any]]:
+    """Write the store as the rows ``keep`` takes from it followed by ``readings``, under the store's lock."""
+    from jason.locks import Resource, hold
+
+    path = Path(data_dir) / STORE
+    with hold(Resource.STORE, LOCK, timeout=120, purpose="jason models"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        old = json.loads(path.read_text(encoding="utf-8")).get("readings", []) if path.is_file() else []
+        result = {"readAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  "readings": [r for r in old if keep(r)] + readings}
+        path.write_text(json.dumps(result, indent=1, default=str), encoding="utf-8")
+    return result["readings"]
+
+
 def run(data_dir: Path, community: Any, *, kinds: tuple[DocumentKind, ...] = (), today: date | None = None) -> dict[str, Any]:
     """Read the library with the document models and save the readings."""
     from jason.tasks import document_reviews
@@ -71,36 +125,184 @@ def run(data_dir: Path, community: Any, *, kinds: tuple[DocumentKind, ...] = (),
         kind = _kind(str(row.get("kind") or ""))
         if kind is None or (kinds and kind not in kinds):
             continue
-        text = text_for(data_dir, row["id"])
-        entry = {"id": row["id"], "name": row.get("name"), "period": row.get("period"), "kind": kind.value,
-                 "confidential": bool(row.get("confidential")), "hasText": bool(text.strip()), "model": None}
-        if text.strip():
-            entry.update(provenance(text, today))
-            sha = entry["textSha"]
-            context = ModelContext(community, data_dir, today, str(row.get("name") or ""), str(row.get("period") or ""),
-                                   bool(row.get("confidential")),
-                                   {lens: r for lens, r in stored.get(str(row["id"]), {}).items() if r.text_sha == sha})
-            try:
-                reading = read(kind, text, context)
-            except Exception as exc:  # one bad file does not stop the run; the error is the finding
-                entry["error"] = f"{type(exc).__name__}: {exc}"
-                reading = None
-            if reading is not None:
-                entry.update(reading.as_dict())
-                reviews += document_reviews.of_reading(reading, str(row["id"]), sha)
+        entry, made = _entry(data_dir, community, today, stored, ident=row["id"], name=row.get("name"), period=row.get("period"),
+                             kind=kind, confidential=bool(row.get("confidential")), text=text_for(data_dir, row["id"]))
         readings.append(entry)
+        reviews += made
     document_reviews.save(data_dir, reviews)   # each lens's findings as of today, apart from the readings (data/reviews/documents)
-    path = data_dir / STORE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    result = {"readAt": datetime.now(timezone.utc).isoformat(timespec="seconds"), "readings": readings}
-    if path.is_file():
-        # A run over some kinds keeps the other kinds' readings; every run keeps the readings of files read from Drive
-        # (``jason.tasks.drive_minutes``), which the library does not hold.
-        old = json.loads(path.read_text(encoding="utf-8")).get("readings", [])
-        kept = [r for r in old if r.get("source") == "Drive" or (kinds and _kind(r["kind"]) not in kinds)]
-        result["readings"] = kept + readings
-    path.write_text(json.dumps(result, indent=1, default=str), encoding="utf-8")
-    return coverage(result["readings"])
+    # A run over some kinds keeps the other kinds' readings; every run keeps the readings of files the library does not
+    # hold (Drive's minutes, the documents filed from email), which their own passes write.
+    return coverage(_replace(data_dir, readings, lambda r: outside_library(r) or (kinds and _kind(r["kind"]) not in kinds)))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The documents filed to Drive from email (``jason gmail --file-vendor``), which the library does not hold.
+
+
+def filed(data_dir: Path, kinds: tuple[DocumentKind, ...]) -> list[dict[str, Any]]:
+    """The filing log's rows of ``kinds`` (``data/drive/vendor-files.jsonl``), one per Drive file, in the log's order."""
+    from jason.tasks.vendor_files import LOG
+
+    path = Path(data_dir) / "drive" / LOG
+    if not path.is_file():
+        return []
+    wanted = {k.value for k in kinds}
+    out: dict[str, dict[str, Any]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("kind") in wanted and row.get("file_id"):
+            out[str(row["file_id"])] = row            # a file moved or tagged again is logged again: the last row stands
+    return list(out.values())
+
+
+def local_copies(data_dir: Path) -> dict[str, Path]:
+    """Where the bytes of an email attachment are on disk, by SHA-256: the files ``jason gmail --files`` saved, from
+    their index (``data/gmail/files.json``). Only files that are there."""
+    from jason.tasks.gmail import email_files
+
+    out: dict[str, Path] = {}
+    for f in email_files(Path(data_dir)):
+        path = Path(data_dir) / str(f.get("path") or "").replace("\\", "/")   # the index may hold another system's separators
+        if f.get("sha256") and f["sha256"] not in out and path.is_file():
+            out[str(f["sha256"])] = path
+    return out
+
+
+def _vision_page_read(data_dir: Path, ident: str) -> str:
+    """How much of a file the vision model read, from its note beside the cached text; "" when it read none."""
+    from jason.tasks.library import TEXT_DIR
+
+    try:
+        note = json.loads((Path(data_dir) / TEXT_DIR / f"{ident}.vision.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return f"vision model {note.get('model') or note.get('engine') or ''}, {note.get('pagesRead')} of {note.get('pages')} pages".replace("  ", " ")
+
+
+# How ``text_of`` says it could not read a file. Such a file is tried again on the next pass: an OCR engine may be there by then.
+_NOT_READ = ("image-only", "image;", "unreadable", "no text reader", "PyMuPDF not installed")
+
+
+def filed_text(data_dir: Path, ident: str, path: Path, sha256: str, *, engines: Sequence[Any] | None = None, vision: Any = None,
+               refresh: bool = False, label: str = "") -> tuple[str, str]:
+    """The words of a filed document and how they were read, kept in the library's text cache under the row's id.
+
+    The library's ``text_of`` reads them: the text layer, else, for a scan, the OCR engines that run on this machine
+    without the model server (``engines``; None is ``ocr.local_engines``). A file whose bytes are unchanged since its
+    text was cached is not read again; ``refresh`` reads it again. ``vision`` is the vision model's reader, only when a
+    person asked: it reads a file that has no text layer, under the GPU lock, and its reading is kept beside the cached
+    text the way ``library.vision_read`` keeps one. Returns ("", reason) when nothing could be read."""
+    from jason.community import ocr
+    from jason.tasks.library import TEXT_DIR, text_for, text_of, vision_read
+
+    folder = Path(data_dir) / TEXT_DIR
+    cache, note_path = folder / f"{ident}.txt", folder / f"{ident}.json"
+    try:
+        note = json.loads(note_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        note = {}
+    settled = note.get("sha256") == sha256 and not str(note.get("source") or "").startswith(_NOT_READ)
+    if not refresh and settled and cache.is_file() and cache.read_text(encoding="utf-8", errors="ignore").strip():
+        how = str(note.get("source") or "cached text")
+    else:
+        text, how = text_of(path, ocr_engines=tuple(ocr.local_engines() if engines is None else engines))
+        folder.mkdir(parents=True, exist_ok=True)
+        cache.write_text(text, encoding="utf-8")
+        note_path.write_text(json.dumps({"path": label or path.name, "file": str(path), "source": how, "sha256": sha256,
+                                         "chars": len(text)}), encoding="utf-8")
+        for stale in (folder / f"{ident}.vision.txt", folder / f"{ident}.vision.json"):
+            if stale.is_file():
+                stale.unlink()                          # a vision reading of other bytes, or one a refresh asks for again
+    if vision is not None and not how.startswith("text layer"):
+        from jason.locks import Resource, hold
+
+        with hold(Resource.GPU, purpose=f"jason models --filed --vision: {path.name}"):
+            vision_read(Path(data_dir), ident, engine=vision)
+    text = text_for(Path(data_dir), ident)
+    seen = _vision_page_read(data_dir, ident)
+    if seen:
+        how = f"{seen}; else {how}"
+    return (text, how) if text.strip() else ("", how or "no words in the file")
+
+
+def run_filed(data_dir: Path, community: Any, *, kinds: tuple[DocumentKind, ...] = (DocumentKind.INSPECTION_REPORT,),
+              today: date | None = None, engines: Sequence[Any] | None = None, vision: Any = None, refresh: bool = False,
+              log: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """Read the documents filed to Drive from email with the document models, and save their readings.
+
+    ``jason gmail --file-vendor`` files a vendor's attachments to Drive and logs each filing; the library does not hold
+    them, so ``run`` never reads them. For each logged filing of ``kinds`` this reads the local copy of the attachment
+    (``local_copies``) with its kind's readers, the way ``run`` reads a library file, and stores the row under the id
+    ``drive-<Drive file id>`` with ``source`` and, under ``filed``, where it came from and how its words were read.
+
+    - A filing whose bytes the library also holds is left to the library's reading.
+    - A filing with no local copy is a miss: it gets no row and is listed (``jason gmail --files`` saves the copies).
+    - A file no reader recognizes, or one with no words, gets a row with no model, so the next pass and a person can
+      see it was tried and why it was not read.
+
+    It reads disk only. ``vision`` (the vision model's reader, after ``local_ai.preflight``) is for a person who asked;
+    without it a scan goes to the local OCR engines and never to a model."""
+    from jason.community.content import private_content
+    from jason.community.library import CONFIDENTIAL_KINDS
+    from jason.tasks import document_reviews
+    from jason.tasks.library import load as library_rows
+
+    data_dir = Path(data_dir)
+    today = today or date.today()
+    say = log or (lambda _m: None)
+    in_library = {str(r.get("sha256")) for r in library_rows(data_dir) if r.get("sha256")}
+    copies = local_copies(data_dir)
+    stored = document_reviews.known(data_dir, today)
+    rows, reviews = [], []
+    result: dict[str, Any] = {"kinds": [k.value for k in kinds], "filed": 0, "inLibrary": [], "noLocalCopy": [], "noText": [],
+                              "noModel": [], "read": [], "how": Counter()}
+    for filing in filed(data_dir, kinds):
+        result["filed"] += 1
+        name, sha = str(filing.get("name") or ""), str(filing.get("sha256") or "")
+        ident = f"drive-{filing['file_id']}"
+        if sha and sha in in_library:
+            result["inLibrary"].append(name)
+            continue
+        path = copies.get(sha)
+        if path is None:
+            result["noLocalCopy"].append(name)
+            say(f"{name}: no local copy of the attachment (jason gmail --files saves them)")
+            continue
+        text, how = filed_text(data_dir, ident, path, sha, engines=engines, vision=vision, refresh=refresh,
+                               label=f"{filing.get('where') or 'Drive'}/{name}")
+        kind = DocumentKind(filing["kind"])
+        # Confidential by the library's own rule: the kind, or member-level detail in the words.
+        held = kind in CONFIDENTIAL_KINDS or bool(private_content(kind, text))
+        entry, made = _entry(data_dir, community, today, stored, ident=ident, name=name, period="", kind=kind,
+                             confidential=held, text=text)
+        entry["source"] = FILED_SOURCE
+        entry["filed"] = {"vendor": filing.get("vendor"), "sent": str(filing.get("at") or "")[:10], "where": filing.get("where"),
+                          "messageId": filing.get("message_id"), "sha256": sha,
+                          "file": path.relative_to(data_dir).as_posix(), "textFrom": how}
+        rows.append(entry)
+        reviews += made
+        result["how"][how if text.strip() else "no words"] += 1
+        result["read" if entry.get("model") else "noModel" if text.strip() else "noText"].append(name)
+        say(f"{name}: " + (f"read by {entry['model']} ({how})" if entry.get("model")
+                           else f"no reader recognized it ({how})" if text.strip() else f"no words ({how})"))
+    document_reviews.save(data_dir, reviews)
+    ids = {r["id"] for r in rows}
+    _replace(data_dir, rows, lambda r: r.get("id") not in ids)
+    return {**result, "how": dict(result["how"]), "rows": rows}
+
+
+def filed_lines(result: dict[str, Any]) -> list[str]:
+    out = [f"{result['filed']} filed document(s) of kind {', '.join(result['kinds'])} in the filing log: {len(result['read'])} read, "
+           f"{len(result['noModel'])} no reader recognized, {len(result['noText'])} with no words, "
+           f"{len(result['noLocalCopy'])} with no local copy, {len(result['inLibrary'])} the library holds"]
+    if result["how"]:
+        out.append("  words from: " + "; ".join(f"{how} ({n})" for how, n in sorted(result["how"].items())))
+    for key, label in (("noModel", "no reader recognized"), ("noText", "no words"),
+                       ("noLocalCopy", "no local copy (jason gmail --files saves the attachments)")):
+        out += [f"  {label}: {name}" for name in result[key]]
+    return out
 
 
 def read_file(path: Path, kind: DocumentKind, community: Any, *, data_dir: Path | None = None, today: date | None = None) -> dict[str, Any]:
@@ -321,5 +523,6 @@ def coverage_lines(result: dict[str, Any]) -> list[str]:
     return out
 
 
-__all__ = ["run", "read_file", "load", "coverage", "summary", "coverage_lines", "text_sha", "provenance", "basis_report", "basis_lines",
-           "parts", "BASIS_CAVEATS"]
+__all__ = ["run", "run_filed", "filed", "filed_lines", "filed_text", "local_copies", "outside_library", "read_file", "load", "coverage",
+           "summary", "coverage_lines", "text_sha", "provenance", "basis_report", "basis_lines", "parts", "BASIS_CAVEATS",
+           "FILED_SOURCE", "LOCK", "STORE"]

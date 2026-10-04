@@ -2818,6 +2818,24 @@ def cmd_models(args: argparse.Namespace) -> int:
         result = summary(data_dir, kind=args.kind, include_confidential=args.confidential, limit=args.limit)
         print(json.dumps(result, indent=2, default=str))
         return 0 if result.get("found") else 1
+    if args.filed:
+        from jason.tasks.document_models import filed_lines, run_filed
+
+        vision = None
+        if args.vision:                                  # only when a person asks: the preflight first, then the GPU lock
+            from jason.local_ai import LocalAIUnavailable
+            from jason.tasks.case_files import vision_reader
+
+            try:
+                vision = vision_reader()
+            except LocalAIUnavailable as exc:
+                print(exc, file=sys.stderr)
+                return 1
+        kinds = (DocumentKind(args.kind),) if args.kind else (DocumentKind.INSPECTION_REPORT,)
+        result = run_filed(data_dir, active(), kinds=kinds, vision=vision, refresh=args.refresh_text, log=None if args.json else print)
+        print(json.dumps({k: v for k, v in result.items() if k != "rows"}, indent=2, default=str) if args.json
+              else "\n".join(filed_lines(result)))
+        return 0
     kinds = (DocumentKind(args.kind),) if args.kind else ()
     result = run(data_dir, active(), kinds=kinds)
     if args.json:
@@ -4144,6 +4162,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "the rows were stored; reads no document and leaves the stored readings as they are")
     models.add_argument("--ask", action="store_true",
                         help="Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's")
+    models.add_argument("--filed", action="store_true",
+                        help="Read the documents filed to Drive from email (jason gmail --file-vendor) instead of the library: each "
+                             "filing's local copy, its words from the text layer or local OCR, stored as a reading under "
+                             "drive-<file id>; --kind names the kind (default inspection_report)")
+    models.add_argument("--vision", action="store_true",
+                        help="With --filed: read a scan with the local vision model (preflight and the GPU lock first)")
+    models.add_argument("--refresh-text", action="store_true", help="With --filed: read each file's words again, not the cached text")
     models.add_argument("--confidential", action="store_true", help="--show, --as-of: include confidential files' fields")
     models.add_argument("--limit", type=int, default=50, help="--show: readings to print")
     models.add_argument("--json", action="store_true", help="Print JSON")
