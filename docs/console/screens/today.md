@@ -69,6 +69,17 @@ Under 720 px the bands stack full width and the totals line wraps.
 
 `ScreenHeader` (the totals line as its summary), `Card` per band, `Pill` for the urgency words (LEGAL, OVERDUE, due soon, open, noted), `DueDate`, `Command`, `RemoteView` (a section unavailable shows its `error` and command), `QuestionCard` (compact), `Caveats` for the digest's caveat.
 
+## Documents: the dock's Ask and Scratchpad
+
+The dock's sources are shown with `Doc`, fed the loader's references ([doc-component.md](../doc-component.md)); never a path as text or a raw `/api/file` link.
+
+| Drawer | Document | Reference (loader) | Variant | Level |
+|---|---|---|---|---|
+| **Ask** | The sources an answer cites: a citation (`CIV 4920`), a library document a search found, a Drive file or a file under data/ named exactly | `GET /api/dock?part=ask` → `sourceRefs` beside `sources`, one for one, on each common question, each earlier ask, and a new ask's answer (`jason.web.extra.dock.source_refs`): `citation_ref`, `library_ref` from the hit's `id` (an earlier ask's library path is looked up exactly), else `refs_from_strings`. A tool call jason read (`meeting()`, `library_search(...)`) is a command to copy; anything else stays text | `chip` | the server's: a citation P0; a library file by its flag |
+| **Scratchpad** | The sources a note rests on, as a person typed them | `GET /api/dock?part=notes` → each note's `sourceRefs`, one for one with its saved `sources`; a source added since the last save is text until it is saved | `chip` | the server's |
+
+The caveats stay where they were: an answer from a library search says "this is where the words were found, not a finding", and notes are "Working notes, not association records."
+
 ## Actions
 
 | Control | Does | Approval? |

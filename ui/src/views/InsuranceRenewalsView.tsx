@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Clock, Confirm, DataTable, DueDate, Findings, Money, Pill, RemoteView, type Column } from "../components";
+import { Badge, Card, Caveats, Clock, Confirm, DataTable, DocList, DueDate, Findings, Money, Pill, RemoteView, type Column } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
+import { scansOf } from "./InsuranceView";
 import type { Policy } from "./types";
 import "./findings.css";
 
@@ -47,6 +48,7 @@ function RenewalPanel({ p, decisions, today, onSaved }: { p: Row; decisions: str
   const stages = [p.termEnd ? { key: "termEnd", label: "Term in force ends", date: p.termEnd } : null, r ? { key: "decided", label: `Board decided: ${r.decision}`, date: r.decidedOn, done: true } : null]
     .filter((s): s is NonNullable<typeof s> => s != null);
   const changed = !r || decision !== r.decision || decidedOn !== r.decidedOn || premiumCents !== r.premiumCents || limitsChanged !== r.limitsChanged || note !== r.note;
+  const notices = scansOf(p.notices);
   return (
     <div className="stack">
       {stages.length > 0 && <Clock stages={stages} today={today} />}
@@ -70,6 +72,7 @@ function RenewalPanel({ p, decisions, today, onSaved }: { p: Row; decisions: str
         <Card title="On the record">
           {r ? <Recorded d={r} /> : <p className="muted">No decision recorded for this policy.</p>}
           <Findings items={p.findings} empty="the review flags nothing" />
+          {notices.length > 0 && <DocList docs={notices} variant="row" title="Notices in the mail" />}
         </Card>
       </div>
     </div>

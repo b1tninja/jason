@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { Badge, Caveats, Confirm, DecisionBrief, DecisionCard, RemoteView, type AgendaCandidate, type AgendaPlan, type Brief, type DecisionDraft } from "../components";
+import { Badge, Caveats, Confirm, DecisionBrief, DecisionCard, RemoteView, type AgendaCandidate, type AgendaPlan, type Brief, type DecisionDraft, type EvidenceEntry } from "../components";
+import { EvidenceEntries } from "../components/EvidenceEntries";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 
 interface Decision extends DecisionDraft { id: string; meeting: string; item: string; session: string; recorded: string; updated: string; history: string[]; tally: Record<string, number>; suggested: string }
-type Plan = Omit<AgendaPlan, "decisions"> & { decisions: Decision[] };
+/** A candidate with its evidence as the loader mapped it (`evidenceRefs`: a document reference, a command, or text). */
+type Candidate = AgendaCandidate & { evidenceRefs?: EvidenceEntry[] };
+type Plan = Omit<AgendaPlan, "decisions" | "candidates"> & { decisions: Decision[]; candidates: Candidate[] };
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
 /** A person writes the brief: the question, the criteria (one per line), each option's label and its value for each
  * criterion, and the facts on file. There is no field for a recommendation, and the store refuses one. */
-function BriefForm({ item, by, busy, onSave }: { item: AgendaCandidate; by: string; busy: boolean; onSave: (brief: Brief) => void }) {
+function BriefForm({ item, by, busy, onSave }: { item: Candidate; by: string; busy: boolean; onSave: (brief: Brief) => void }) {
   const [question, setQuestion] = useState(item.ask ? `${item.ask}?`.replace(/\?\?$/, "?") : "");
   const [criteria, setCriteria] = useState("");
   const [options, setOptions] = useState<{ label: string; values: string }[]>([{ label: "", values: "" }, { label: "", values: "" }]);
@@ -33,6 +36,7 @@ function BriefForm({ item, by, busy, onSave }: { item: AgendaCandidate; by: stri
         <label className="wide"><span /><button onClick={() => setOptions([...options, { label: "", values: "" }])}>Add an option</button></label>
         <label className="wide">Facts on file, one per line<textarea rows={3} value={facts} onChange={(e) => setFacts(e.target.value)} /></label>
       </div>
+      <EvidenceEntries entries={item.evidenceRefs} label="Sources" />
       {ready && by.trim() ? (
         <Confirm busy={busy} onConfirm={() => onSave(brief)} summary={<div><p>Save the brief for "{item.title}" to the plan, written by {by}: the question, {brief.criteria.length} criteria, {brief.options.length} options ({brief.options.map((o) => o.label).join(", ")}), {brief.facts?.length ?? 0} facts. No recommendation is saved; the board chooses.</p></div>}>
           Save the brief
@@ -54,7 +58,7 @@ export function DecisionsView() {
     setBusy(true); setError("");
     try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
-  const saveBrief = (date: string, item: AgendaCandidate, brief: Brief) => run(async () => {
+  const saveBrief = (date: string, item: Candidate, brief: Brief) => run(async () => {
     await postJson(`/api/write/agenda-plan/${date}`, { by, items: { [item.id]: { brief } } });
     r.reload();
   });
@@ -84,7 +88,7 @@ export function DecisionsView() {
                     {c.session === "executive session" && <Badge tone="warn">executive session</Badge>}
                     {existing?.outcome && <Badge tone="good">{existing.outcome}</Badge>}
                   </div>
-                  {c.brief ? <DecisionBrief decision={c.brief} /> : <BriefForm item={c} by={by} busy={busy} onSave={(b) => saveBrief(d.date, c, b)} />}
+                  {c.brief ? <DecisionBrief decision={c.brief} sources={c.evidenceRefs} /> :<BriefForm item={c} by={by} busy={busy} onSave={(b) => saveBrief(d.date, c, b)} />}
                   <DecisionCard key={c.id + (existing?.updated ?? "")} title={c.title} directors={d.directors} initial={existing ? { ...existing } : { session: c.session, motion: c.motion }} busy={busy} onSave={(dd) => saveDecision(d.date, c, dd)} />
                 </section>
               );

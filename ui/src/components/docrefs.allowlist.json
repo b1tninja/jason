@@ -1,12 +1,5 @@
 {
   "about": "Raw document links the screens hold today (docs/console/doc-component.md). docrefs.guard.test.tsx fails on any new one, and on an entry whose count fell: when a fan-out group moves a screen to Doc, it lowers or removes its entries here. Each entry names the group that removes it.",
   "patterns": ["/api/file?path=", "docs.google.com", "drive.google.com", "<iframe"],
-  "entries": [
-    { "file": "CanvasesView.tsx", "pattern": "/api/file?path=", "count": 1, "group": "Requests and links",
-      "where": "the Notes field's help text shows Markdown embedding a photo by /api/file; it should name a file: reference (Markdown now renders it as a Doc card)" },
-    { "file": "CanvasesView.tsx", "pattern": "docs.google.com", "count": 1, "group": "Requests and links",
-      "where": "the attachment field's placeholder suggests a Google link; Canvases' Drive and file attachments move to Doc" },
-    { "file": "TemplatesView.tsx", "pattern": "docs.google.com", "count": 1, "group": "Requests and links",
-      "where": "a template's header links its Doc by a hand-built Google URL; it becomes the Doc card's original (Open in Google)" }
-  ]
+  "entries": []
 }

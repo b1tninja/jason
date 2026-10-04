@@ -539,7 +539,8 @@ def review(data_dir: Path, community: Any, roots: dict, *, formats: tuple[Invoic
             "key": pay.key, "date": pay.day.isoformat(), "amountCents": pay.amount_cents, "payee": pay.payee,
             "description": pay.description[:120], "utility": pay.utility, "note": findings_note,
             "categories": [r["category"] for r in pay.rows],
-            "documents": [{"filename": d.filename, "kind": d.kind, "utility": d.utility,
+            "documents": [{"id": d.attachment_id, "filename": d.filename, "path": data_path(data_dir, d.path),
+                           "kind": d.kind, "utility": d.utility,
                            "invoice": None if d.invoice is None else {
                                "vendor": d.invoice.vendor, "number": d.invoice.number,
                                "date": d.invoice.invoice_date.isoformat() if d.invoice.invoice_date else None,
@@ -636,6 +637,89 @@ def load_review(data_dir: Path) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+# --- the attachments as document references (docs/console/doc-component.md) ---------------------------------------------
+
+def data_path(data_dir: Path, path: str | Path) -> str:
+    """A file's path under the data folder, posix (``transactions/2099/01/invoices/1-a.pdf``); "" for none, or for a
+    file outside the folder (a portal's own bill): a loader never carries an absolute path."""
+    if not path:
+        return ""
+    try:
+        return Path(path).resolve().relative_to(Path(data_dir).resolve()).as_posix()
+    except (OSError, ValueError):
+        return ""
+
+
+_PLACES: dict[str, tuple[tuple[int, int], dict[tuple[int, str], str]]] = {}
+
+
+def attachment_places(data_dir: Path, store: str = TRANSACTIONS) -> dict[tuple[int, str], str]:
+    """Where a stored transactions file's attachments (``transactions.json``, ``utility-transactions.json``) are kept
+    under the data folder: ``(payment key, "#<attachment id>")`` and ``(payment key, filename)`` -> the path of the copy
+    ``local_attachment`` finds there. The payment key is the parent transaction's id, or the transaction's own. An
+    attachment with no copy under the folder has none. Read once a version of the file (the store is large)."""
+    source = _payhoa_dir(data_dir) / store
+    try:
+        stat = source.stat()
+    except OSError:
+        return {}
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _PLACES.get(str(source.resolve()))
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    found: dict[tuple[int, str], str] = {}
+    for tx in json.loads(source.read_text(encoding="utf-8")).get("transactions") or []:
+        if tx.get("id") is None:
+            continue
+        key = int(tx.get("parentId") or tx["id"])
+        for raw in tx.get("attachments") or []:
+            if raw.get("id") is None:
+                continue
+            rel = data_path(data_dir, local_attachment(data_dir, tx, raw, {}))
+            if rel and (Path(data_dir) / rel).is_file():
+                found.setdefault((key, f"#{raw['id']}"), rel)
+                found.setdefault((key, str(raw.get("filename") or "")), rel)
+    _PLACES[str(source.resolve())] = (stamp, found)
+    return found
+
+
+def attachment_ref(data_dir: Path, rel: str, name: str = "") -> dict[str, Any] | None:
+    """The ``DocRef`` of an attachment kept under the data folder (``file:transactions/...``), when the evidence opens it
+    there (a place ``jason.web.access`` names, a kind the viewer shows); None otherwise."""
+    from jason.approvals.docref import file_ref
+    from jason.approvals.evidence_documents import file_place
+
+    if not rel or file_place(Path(data_dir), rel) is None:
+        return None
+    ref = file_ref(rel, name=name or None, data_dir=data_dir)
+    # The address folds runs of spaces; a file whose name holds two in a row is not the file the address names.
+    return ref if ref["address"] == f"file:{rel}" else None
+
+
+def document_refs(data_dir: Path, rows: list[dict[str, Any]], *, store: str = TRANSACTIONS,
+                  field: str = "documents") -> list[dict[str, Any]]:
+    """Each payment row's attachments (``field``) with ``doc``, its ``DocRef``, beside the filename, when jason keeps a
+    copy the evidence opens. The path a review recorded is used first; an older review's is found from the stored
+    transactions (``store``). Changes ``rows`` in place and returns them."""
+    places: dict[tuple[int, str], str] | None = None
+    for row in rows:
+        try:
+            key = int(row.get("key"))
+        except (TypeError, ValueError):
+            continue
+        for doc in row.get(field) or []:
+            rel = str(doc.get("path") or "")
+            if not rel:
+                if places is None:
+                    places = attachment_places(data_dir, store)
+                rel = (places.get((key, f"#{doc['id']}")) if doc.get("id") is not None else "") \
+                    or places.get((key, str(doc.get("filename") or ""))) or ""
+            ref = attachment_ref(data_dir, rel, str(doc.get("filename") or ""))
+            if ref is not None:
+                doc["doc"] = ref
+    return rows
+
+
 def review_lines(result: dict[str, Any], *, limit: int = 60, payee: str = "") -> list[str]:
     if not result.get("found"):
         return [result.get("note", "no review")]
@@ -664,4 +748,4 @@ def review_lines(result: dict[str, Any], *, limit: int = 60, payee: str = "") ->
 
 
 __all__ = ["fetch", "review", "load_review", "review_lines", "payments", "needs_document", "category_counts", "rare_category",
-           "scorecard", "local_attachment"]
+           "scorecard", "local_attachment", "data_path", "attachment_places", "attachment_ref", "document_refs"]

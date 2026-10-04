@@ -194,6 +194,40 @@ class _Community:
         return REPORTS
 
 
+def test_the_checklist_names_each_copy_by_a_document_reference(tmp_path, monkeypatch):
+    """Copies and links are ``DocRef``s (docs/console/doc-component.md): a recorded copy on disk is a ``file:`` reference
+    labelled "Recorded copy", a Drive pin or link a ``drive:`` one with Open in Google; never a URL into data/. Each
+    resolves."""
+    from jason.approvals.evidence import resolve
+
+    root = tmp_path / "data"
+    (root / "governing").mkdir(parents=True)
+    (root / "governing" / "Condominium Plan 2001-0000012.pdf").write_bytes(b"%PDF")
+    monkeypatch.setenv("JASON_SPEC_DIR", str(tmp_path / "spec"))
+    (root / "drive").mkdir()
+    listed = [p.drive_id for p in PINS] + ["1AbCdEfGhIjKlMnOp"]
+    (root / "drive" / "files.json").write_text(json.dumps({"syncedAt": "2099-01-05T00:00:00+00:00", "files": [
+        {"id": i, "name": f"File {i}.pdf", "path": f"Board/File {i}.pdf", "mimeType": "application/pdf"} for i in listed]}),
+        encoding="utf-8")
+    kd.link("maps", by="Jane Example", drive="1AbCdEfGhIjKlMnOp", root=root, profile="example")
+    kd.upload("articles", by="Jane Example", name="Articles.pdf", base64_body=base64.b64encode(b"%PDF articles").decode(),
+              root=root, profile="example")
+    data = kd.checklist(_Community(), root, "example")
+    assert "/api/file" not in json.dumps(data) and str(root) not in json.dumps(data)
+    entries = [e for g in data["groups"] for e in g["entries"]]
+    disk = [c for e in entries for c in e["copies"] if c["kind"] == "disk"]
+    drive = [c for e in entries for c in e["copies"] if c["kind"] == "drive"]
+    links = {lk["kind"]: lk for e in entries for lk in e["links"]}
+    assert disk and all(c["doc"]["source"] == "Recorded copy" and c["doc"]["address"] == f"file:{c['ref']}" and "url" not in c
+                        for c in disk)
+    assert drive and all(c["doc"]["address"] == f"drive:{c['ref']}" and c["doc"]["original"]["label"] == "Open in Google"
+                         for c in drive)
+    assert links["drive"]["doc"]["address"] == "drive:1AbCdEfGhIjKlMnOp" and links["drive"]["url"]
+    assert links["upload"]["doc"]["address"].startswith("file:key-documents/example/files/") and "url" not in links["upload"]
+    for doc in [c["doc"] for c in disk + drive] + [links["drive"]["doc"], links["upload"]["doc"]]:
+        assert resolve(doc["address"], data_dir=root)["found"], doc["address"]
+
+
 def test_the_checklist_and_the_task_writes(tmp_path, monkeypatch):
     root = tmp_path / "data"
     (root / "governing").mkdir(parents=True)
@@ -218,7 +252,8 @@ def test_the_checklist_and_the_task_writes(tmp_path, monkeypatch):
     # A file under data/ links; one outside it is uploaded instead.
     (root / "governing" / "Bylaws.pdf").write_bytes(b"%PDF bylaws")
     linked = kd.link("bylaws", by="Jane Example", file="governing/Bylaws.pdf", root=root, profile="example")
-    assert linked["kind"] == "file" and linked["url"].startswith("/api/file?path=") and len(linked["sha256"]) == 64
+    assert linked["kind"] == "file" and "url" not in linked and len(linked["sha256"]) == 64
+    assert linked["doc"]["address"] == "file:governing/Bylaws.pdf" and linked["doc"]["level"] == "P0"
     outside = tmp_path / "Articles.pdf"
     outside.write_bytes(b"%PDF articles")
     with pytest.raises(ValueError):

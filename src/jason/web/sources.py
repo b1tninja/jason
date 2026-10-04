@@ -23,10 +23,23 @@ def board_digest(args: Args) -> dict[str, Any]:
     return tool(since=args.get("since", ""), days=int(args.get("days", "30") or 30))
 
 
-def board_items(args: Args) -> dict[str, Any]:
-    from jason.mcp.county import board_items as tool
+def _with_evidence_refs(item: dict[str, Any], root: Any = None) -> dict[str, Any]:
+    """A board item with ``evidenceRefs`` beside its ``evidence`` strings (docs/console/doc-component.md): a ``DocRef``
+    for each string that names a document jason keeps, ``{command}`` for a ``jason ...`` command, ``{text}`` otherwise.
+    The strings stay for the callers that read them."""
+    from jason.approvals.docref import refs_from_strings
 
-    return tool(include_closed=_flag(args, "closed"))
+    return {**item, "evidenceRefs": refs_from_strings(item.get("evidence") or [], data_dir=root)}
+
+
+def board_items(args: Args) -> dict[str, Any]:
+    from jason.mcp.county import _data_dir, board_items as tool
+
+    out = tool(include_closed=_flag(args, "closed"))
+    if not out.get("items"):
+        return out
+    root = _data_dir(None)
+    return {**out, "items": [_with_evidence_refs(i, root) for i in out["items"]]}
 
 
 def association_records(args: Args) -> dict[str, Any]:
@@ -83,9 +96,16 @@ def calendar(args: Args) -> dict[str, Any]:
 
 
 def meetings(args: Args) -> dict[str, Any]:
-    from jason.mcp.county import meeting_records as tool
+    """Every meeting's records as the catalog keeps them; with ``date``, one meeting's, and its documents as
+    references grouped by kind (``docs``, ``jason.web.extra.meeting_docs.record_refs``)."""
+    from jason.mcp.county import _data_dir, meeting_records as tool
 
-    return tool(date=args.get("date", ""))
+    out = tool(date=args.get("date", ""))
+    if args.get("date") and out.get("found"):
+        from jason.web.extra.meeting_docs import record_refs
+
+        out = {**out, "docs": record_refs(out.get("records") or [], _data_dir(None))}
+    return out
 
 
 def insurance(args: Args) -> dict[str, Any]:
@@ -107,10 +127,16 @@ def reconciliations(args: Args) -> dict[str, Any]:
 
 
 def invoices(args: Args) -> dict[str, Any]:
-    from jason.mcp.county import invoice_review as tool
+    """The invoice review, each payment's attachments with ``doc``, the ``DocRef`` of jason's copy (P2,
+    ``transactions/``)."""
+    from jason.mcp.county import _data_dir, invoice_review as tool
+    from jason.tasks.invoice_review import document_refs
 
-    return tool(payee=args.get("payee", ""), problems_only=not _flag(args, "all"), since=args.get("since", ""),
-                limit=int(args.get("limit", "80") or 80))
+    out = tool(payee=args.get("payee", ""), problems_only=not _flag(args, "all"), since=args.get("since", ""),
+               limit=int(args.get("limit", "80") or 80))
+    if out.get("payments"):
+        document_refs(_data_dir(None), out["payments"])
+    return out
 
 
 def collections(args: Args) -> dict[str, Any]:
@@ -120,18 +146,29 @@ def collections(args: Args) -> dict[str, Any]:
 
 
 def reserves(args: Args) -> dict[str, Any]:
-    from jason.mcp.county import reserve_transfers as tool
+    """The reserve transfers (each borrowing's 5515 documents carry ``doc``), with ``study``, the latest reserve
+    study's ``DocRef`` (P1), when one is on disk."""
+    from jason.mcp.county import _data_dir, reserve_transfers as tool
+    from jason.tasks.reserves import latest_study_ref
 
-    return tool()
+    out = tool()
+    try:
+        study = latest_study_ref(_data_dir(None))
+    except Exception:  # noqa: BLE001 - a study that cannot be read leaves the transfers as they are
+        study = None
+    return {**out, "study": study} if study else out
 
 
 def hearings(args: Args) -> dict[str, Any]:
     """The hearings as `jason hearing` saved them, each with its key (its day and address), the 5855 clock as stages,
-    and the decision recorded on it when there is one. Confidential: for directors."""
-    from jason.mcp.county import hearings as tool
+    and the decision recorded on it when there is one, and its notice as references (``noticeRefs``: the Doc, then
+    jason's draft; P3). Confidential: for directors."""
+    from jason.mcp.county import _data_dir, hearings as tool
     from jason.tasks.hearing_decisions import key_of
+    from jason.web.extra.meeting_docs import hearing_refs
 
     out = tool()
+    root = _data_dir(None)
     rows = []
     for h in out.get("hearings", []):
         decision = h.get("decision") or None
@@ -141,7 +178,8 @@ def hearings(args: Args) -> dict[str, Any]:
             stages.append({"key": "noticeDueBy", "label": "Written decision to the owner by", "date": decision["noticeDueBy"], "authority": "CIV 5855(f)"})
         elif h.get("decisionByIfHeld"):
             stages.append({"key": "decisionBy", "label": "Written decision by, if the board acts at the hearing", "date": str(h["decisionByIfHeld"])[:10], "authority": "CIV 5855(f)"})
-        rows.append({**h, "key": key_of(h), "stages": [st for st in stages if st["date"]], "decision": decision})
+        rows.append({**h, "key": key_of(h), "stages": [st for st in stages if st["date"]], "decision": decision,
+                     "noticeRefs": hearing_refs(h, root)})
     return {**out, "hearings": rows}
 
 
@@ -158,15 +196,24 @@ def open_items(args: Args) -> dict[str, Any]:
 
 
 def utility_payments(args: Args) -> dict[str, Any]:
-    from jason.mcp.county import utility_payments as tool
+    """The utility payments' audit, each attachment with ``doc``, the ``DocRef`` of jason's copy (P2,
+    ``transactions/``)."""
+    from jason.mcp.county import _data_dir, utility_payments as tool
+    from jason.tasks.utility_payments import attachment_refs
 
-    return tool(problems_only=not _flag(args, "all"), since=args.get("since", ""), limit=int(args.get("limit", "80") or 80))
+    out = tool(problems_only=not _flag(args, "all"), since=args.get("since", ""), limit=int(args.get("limit", "80") or 80))
+    if out.get("payments"):
+        attachment_refs(_data_dir(None), out["payments"])
+    return out
 
 
 def ledger_validation(args: Args) -> dict[str, Any]:
-    from jason.mcp.county import ledger_validation as tool
+    """The ledger validation, each library copy as a ``DocRef`` (``libraryDocs`` on a run, ``doc`` on a row)."""
+    from jason.mcp.county import _data_dir, ledger_validation as tool
+    from jason.tasks.ledger_reports import library_refs
 
-    return tool()
+    out = tool()
+    return library_refs(_data_dir(None), out) if out.get("found") else out
 
 
 def legal_cases(args: Args) -> dict[str, Any]:
@@ -195,7 +242,8 @@ def canvases(args: Args) -> dict[str, Any]:
     key = args.get("key", "").strip()
     if key:
         try:
-            return {"found": True, "canvas": store.encode(store.load(_data_dir(None), key))}
+            root = _data_dir(None)
+            return {"found": True, "canvas": store.with_refs(store.encode(store.load(root, key)), root)}
         except KeyError:
             return {"found": False, "note": f"no canvas {key}"}
     items = store.load_all(_data_dir(None))
@@ -228,10 +276,21 @@ def templates(args: Args) -> dict[str, Any]:
     found = rows(community, state)
     kind = args.get("kind", "").strip()
     if not kind:
+        root = _data_dir(None)
+
+        def template_doc(t: Any) -> dict[str, Any]:
+            """The template's Doc as a document reference (``drive:<id>``), its original "Open in Google"."""
+            from jason.approvals.docref import drive_ref
+
+            try:
+                return {"doc": drive_ref(t.drive_id, name=t.title, data_dir=root)} if t.drive_id else {}
+            except ValueError:
+                return {}
+
         return {"found": bool(found), "templates": [
             {"kind": t.kind.slug, "title": t.title, "driveId": t.drive_id, "folderId": t.folder_id, "authority": t.authority,
              "optional": list(t.optional), "linkTokens": list(t.link_tokens), "tokens": list(t.tokens),
-             "lint": {"profile": list(l.profile), "general": list(l.general), "run": list(l.run)}}
+             "lint": {"profile": list(l.profile), "general": list(l.general), "run": list(l.run)}, **template_doc(t)}
             for t in found for l in [lint(t.title, t.tokens, community)]]}
     try:
         tk = TemplateKind.from_slug(kind) if hasattr(TemplateKind, "from_slug") else next(k for k in TemplateKind if k.slug == kind)
@@ -819,7 +878,8 @@ def set_board_item(item_id: str, changes: dict[str, Any]) -> dict[str, Any]:
     clean = {k: str(v) for k, v in changes.items() if v is not None}
     if not clean:
         raise ValueError("nothing to change")
-    return _encode(set_fields(_data_dir(None), item_id, **clean))
+    root = _data_dir(None)
+    return _with_evidence_refs(_encode(set_fields(root, item_id, **clean)), root)
 
 
 def write_canvas(key: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -836,12 +896,12 @@ def write_canvas(key: str, body: dict[str, Any]) -> dict[str, Any]:
     if clip is not None:
         if not isinstance(clip, dict):
             raise ValueError("clip is an object with source and text")
-        return store.encode(store.add_clip(root, key, source=str(clip.get("source", "")), text=str(clip.get("text", "")),
-                                           label=str(clip.get("label", "")), args=clip.get("args") if isinstance(clip.get("args"), dict) else None))
+        return store.with_refs(store.encode(store.add_clip(root, key, source=str(clip.get("source", "")), text=str(clip.get("text", "")),
+                                           label=str(clip.get("label", "")), args=clip.get("args") if isinstance(clip.get("args"), dict) else None)), root)
     changes = {k: v for k, v in body.items() if v is not None}
     if not changes:
         raise ValueError("nothing to change")
-    return store.encode(store.update(root, key, **changes))
+    return store.with_refs(store.encode(store.update(root, key, **changes)), root)
 
 
 def write_decision(decision_id: str, body: dict[str, Any]) -> dict[str, Any]:

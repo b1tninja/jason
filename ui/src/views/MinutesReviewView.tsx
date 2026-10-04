@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Card, Caveats, Command, Confirm, DataTable, Findings, Markdown, RemoteView, type Column } from "../components";
+import { Badge, Card, Caveats, Command, Confirm, DataTable, Doc, Findings, Markdown, RemoteView, type Column, type DocRef } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import "./minutesreview.css";
 
-interface DraftRow { date: string; file: string; blanks: number; filled: number; reviewed: boolean; reviewedBy: string; savedAt: string; minutesFile: string; privacyFlags: number }
+/** A draft's documents as the loader names them (docs/console/doc-component.md): the draft, the filled copy when one is
+ * saved, and the Zoom transcript the draft was read from. Paths are under the data folder (`board/...`). */
+interface DraftDocs { draftDoc?: DocRef | null; minutesDoc?: DocRef | null; transcriptDoc?: DocRef | null }
+interface DraftRow extends DraftDocs { date: string; file: string; blanks: number; filled: number; reviewed: boolean; reviewedBy: string; savedAt: string; minutesFile: string; privacyFlags: number }
 interface Listing { found?: boolean; note?: string; count: number; drafts: DraftRow[]; caveats?: string[] }
 interface Blank { id: string; section: string; context: string; marker: string; value: string }
 interface Flag { line: number; text: string; member: string; replacement: string; why: string }
 interface Section { heading: string; level: number; body: string; blanks: string[] }
-interface Review {
+interface Review extends DraftDocs {
   found?: boolean; note?: string; date: string; draft: string; markdown: string; blanks: Blank[]; open: number; privacy: Flag[]; namesFrom?: string;
   sections: Section[]; reviewedBy: string; savedAt: string; history: string[]; minutesFile: string; command: string; commands: { redraft: string; privacy?: string }; caveats?: string[];
 }
@@ -42,7 +45,7 @@ function Review({ date, back }: { date: string; back: () => void }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [by, setBy] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState("");
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     if (r.status === "ready") setValues(Object.fromEntries(r.data.blanks.map((b) => [b.id, b.value])));
@@ -50,10 +53,10 @@ function Review({ date, back }: { date: string; back: () => void }) {
   const preview = useMemo(() => (r.status === "ready" ? fillDraft(r.data.draft, values) : ""), [r, values]);
   const changed = r.status === "ready" ? r.data.blanks.filter((b) => (values[b.id] ?? "") !== b.value) : [];
   const save = async () => {
-    setSaving(true); setError(""); setSaved("");
+    setSaving(true); setError(""); setSaved(false);
     try {
-      const out = await postJson<Review>(`/api/write/minutes-review/${encodeURIComponent(date)}`, { values: Object.fromEntries(changed.map((b) => [b.id, values[b.id] ?? ""])), by });
-      setSaved(out.minutesFile || "saved");
+      await postJson<Review>(`/api/write/minutes-review/${encodeURIComponent(date)}`, { values: Object.fromEntries(changed.map((b) => [b.id, values[b.id] ?? ""])), by });
+      setSaved(true);
       r.reload();
     } catch (e) {
       setError((e as Error).message);
@@ -75,6 +78,7 @@ function Review({ date, back }: { date: string; back: () => void }) {
               <Badge tone={open ? "warn" : "good"}>{open ? `${open} blank${open === 1 ? "" : "s"} open` : "every blank filled"}</Badge>
               {d.privacy.length > 0 && <Badge tone="warn">{`${d.privacy.length} privacy flag${d.privacy.length === 1 ? "" : "s"}`}</Badge>}
               {d.reviewedBy && <span className="muted">last saved by {d.reviewedBy} {d.savedAt && `at ${d.savedAt}`}</span>}
+              {d.minutesDoc && !saved && <span className="row">Filled copy <Doc doc={d.minutesDoc} variant="chip" /></span>}
             </div>
             <Caveats items={d.caveats} />
             <div className="grid-2">
@@ -102,14 +106,23 @@ function Review({ date, back }: { date: string; back: () => void }) {
                     summary={<span>Saves {changed.length} answer{changed.length === 1 ? "" : "s"} beside the draft and writes the filled copy <code className="chip">minutes-{d.date}.md</code>. The draft is not changed; nothing is posted.</span>}>
                     Save review
                   </Confirm>
-                  {saved && <span className="muted">saved: {saved}</span>}
+                  {saved && <span className="muted">Saved{d.minutesDoc ? ": the filled copy is " : "."}</span>}
+                  {saved && d.minutesDoc && <Doc doc={d.minutesDoc} variant="chip" />}
                   {error && <span className="notice notice-warn">{error}</span>}
                 </div>
                 {d.history.length > 0 && <ul className="muted history">{d.history.map((h, i) => <li key={i}>{h}</li>)}</ul>}
               </Card>
-              <Card title="As it would read">
-                <div className="preview"><Markdown text={preview} /></div>
-              </Card>
+              <div className="stack">
+                <Card title="As it would read">
+                  <div className="preview"><Markdown text={preview} /></div>
+                </Card>
+                <Card title="The Zoom record it was drafted from">
+                  <p className="muted">Check each line of the draft against the transcript: speech recognition misreads names and numbers. The draft was read only up to the executive session's break.</p>
+                  {d.transcriptDoc
+                    ? <Doc doc={d.transcriptDoc} variant="inline" headingLevel={3} />
+                    : <div className="stack"><p className="muted">No board meeting on {d.date} in the Zoom index, so no transcript to check the draft against.</p><Command cmd="jason zoom --sync" /></div>}
+                </Card>
+              </div>
             </div>
             <Card title={`Privacy (${d.privacy.length})`}>
               <p className="muted">A member's name beside a delinquency, fine, hearing, lien, or collections word; names read from {d.namesFrom ?? "the text"}. A flag is a lead for the Secretary, not a finding.</p>
@@ -131,7 +144,7 @@ const cols: Column<DraftRow>[] = [
   { key: "blanks", header: "Blanks", render: (d) => <span>{d.filled}/{d.blanks} filled</span> },
   { key: "privacyFlags", header: "Privacy", render: (d) => d.privacyFlags ? <Badge tone="warn">{`${d.privacyFlags} flag${d.privacyFlags === 1 ? "" : "s"}`}</Badge> : <span className="muted">none</span> },
   { key: "reviewedBy", header: "Reviewed", render: (d) => d.reviewed ? <span>{d.reviewedBy} <span className="muted">{d.savedAt}</span></span> : <Badge tone="warn">not yet</Badge> },
-  { key: "minutesFile", header: "Filled copy", render: (d) => d.minutesFile ? <code className="chip">minutes-{d.date}.md</code> : <span className="muted">none</span> },
+  { key: "minutesFile", header: "Filled copy", render: (d) => d.minutesDoc ? <Doc doc={d.minutesDoc} variant="chip" /> : <span className="muted">none</span>, value: (d) => d.minutesFile },
 ];
 
 /** The minutes drafts `jason board --minutes DATE` wrote, and one as a form the Secretary fills. */

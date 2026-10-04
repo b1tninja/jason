@@ -49,7 +49,7 @@ CAVEATS = (
     "Unlinking removes the link, never the file; the store keeps who linked and unlinked each copy.",
 )
 
-# Suffixes the console can open through /api/file.
+# Suffixes the console opens as a document (a `file:` reference the document service views).
 _SERVED = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".md", ".txt"})
 _EXTRACT_FOLDERS = (
     ("artifacts", "site-docs", "governing_documents"),
@@ -295,32 +295,63 @@ def entry_dict(entry: Entry, stored: dict[str, Any] | None, status: KeyStatus, w
     }
 
 
-def _open_path(rel: str, root: Path) -> str:
-    from urllib.parse import quote
+RECORDED_COPY = "Recorded copy"
 
-    if rel and Path(rel).suffix.lower() in _SERVED and (root / rel).is_file():
-        return f"/api/file?path={quote(rel)}"
-    return ""
+
+def _file_doc(rel: str, name: str, root: Path, source: str = "") -> dict[str, Any] | None:
+    """A file under data/ as a document reference (``file:<path>``), when it is one the console can open: on disk and of
+    a type it shows. ``source`` names the copy ("Recorded copy") over the place's own word."""
+    from jason.approvals.docref import file_ref
+
+    if not rel or Path(rel).suffix.lower() not in _SERVED or not (root / rel).is_file():
+        return None
+    try:
+        ref = file_ref(rel, name=name or None, data_dir=root)
+    except ValueError:
+        return None
+    return {**ref, "source": source} if source else ref
+
+
+def _drive_doc(ident: str, name: str, root: Path) -> dict[str, Any] | None:
+    """A Drive file as a document reference (``drive:<id>``): jason's copy of it, with Open in Google as its original."""
+    from jason.approvals.docref import drive_ref
+
+    try:
+        return drive_ref(ident, name=name or None, data_dir=root) if ident else None
+    except ValueError:
+        return None
 
 
 def _copy_dict(copy: Any, root: Path) -> dict[str, Any]:
+    """One copy jason sees, with ``doc``, its document reference: a recorded copy on disk as "Recorded copy", a Drive pin
+    as jason's copy of it. A file on disk carries no URL into data/; a Drive pin keeps its Google ``url``."""
     out = copy.as_dict()
     if copy.kind == "disk":
-        out["url"] = _open_path(copy.ref, root)
+        out.pop("url", None)
+        doc = _file_doc(copy.ref, copy.name, root, RECORDED_COPY)
+    else:
+        doc = _drive_doc(copy.ref, copy.name, root)
+    if doc:
+        out["doc"] = doc
     return out
 
 
 def _link_dict(link: dict[str, Any], root: Path) -> dict[str, Any]:
-    out = dict(link)
+    """One copy a person linked, with ``doc``, its document reference: a file under data/ or an upload (``file:``), a
+    Drive file (``drive:``), or a PayHOA library document by its copy on disk. A file carries no URL into data/."""
+    out = {k: v for k, v in link.items() if k != "url"}
     kind = link.get("kind")
+    name = str(link.get("name") or "")
+    doc = None
     if kind in (LinkKind.FILE.value, LinkKind.UPLOAD.value):
-        out["url"] = _open_path(link.get("ref", ""), root)
+        doc = _file_doc(str(link.get("ref") or ""), name, root)
     elif kind == LinkKind.DRIVE.value:
         out["url"] = drive_url(link.get("ref", ""))
-    elif kind == LinkKind.PAYHOA.value:
-        out["url"] = _open_path(link.get("localPath", ""), root) if link.get("localPath") else ""
-    else:
-        out["url"] = ""
+        doc = _drive_doc(str(link.get("ref") or ""), name, root)
+    elif kind == LinkKind.PAYHOA.value and link.get("localPath"):
+        doc = _file_doc(str(link["localPath"]), name, root)
+    if doc:
+        out["doc"] = doc
     return out
 
 

@@ -19,16 +19,40 @@ CAVEATS = (
 )
 
 
+def _ref(root: Any, rel: str, name: str) -> dict[str, Any] | None:
+    """A file under the data folder as a ``DocRef`` (docs/console/doc-component.md), or None for no path."""
+    from jason.approvals.docref import file_ref
+
+    if not rel:
+        return None
+    try:
+        return file_ref(rel, name=name, data_dir=root)
+    except ValueError:
+        return None
+
+
+def _draft_refs(root: Any, day: str, draft: str, minutes: str) -> dict[str, Any]:
+    """The draft's documents as references: the draft, the filled copy when there is one, and the Zoom transcript it
+    was read from (its level is the Zoom index's: P1 for an open meeting, P3 for an executive session or a hearing)."""
+    from jason.tasks import minutes_review as task
+
+    return {"draftDoc": _ref(root, draft, f"Minutes draft, {day}"),
+            "minutesDoc": _ref(root, minutes, f"Filled minutes, {day}"),
+            "transcriptDoc": _ref(root, task.transcript_file(root, day), f"Zoom transcript, {day}")}
+
+
 def minutes_review(args: Args) -> dict[str, Any]:
     """Without ``date``: the drafts list. With it: the draft filled with the saved answers, its blanks (with their saved
-    values and the line each sits in), the privacy flags by line, the sections, who reviewed it, and the commands."""
+    values and the line each sits in), the privacy flags by line, the sections, who reviewed it, and the commands.
+    Files are named by paths under the data folder, with a ``DocRef`` beside each (``draftDoc``, ``minutesDoc``, and
+    ``transcriptDoc``, the Zoom transcript the draft was read from)."""
     from jason.mcp.county import _data_dir
     from jason.tasks import minutes_review as task
 
     root = _data_dir(None)
     day = args.get("date", "").strip()
     if not day:
-        drafts = task.list_drafts(root)
+        drafts = [{**d, **_draft_refs(root, d["date"], d["file"], d["minutesFile"])} for d in task.list_drafts(root)]
         return {"found": bool(drafts), "count": len(drafts), "drafts": drafts, "caveats": list(CAVEATS),
                 "note": "" if drafts else "no minutes draft under data/board; run jason board --minutes DATE"}
     src = task.draft_path(root, day)
@@ -45,11 +69,12 @@ def minutes_review(args: Args) -> dict[str, Any]:
     commands = {"redraft": f"jason board --minutes {day}"}
     if privacy:
         commands["privacy"] = "jason minutes-privacy --correct"
+    minutes = task.minutes_file(root, day)
     return {"found": True, "date": day, "draft": text, "markdown": task.fill(text, values), "blanks": blanks,
             "open": sum(1 for b in blanks if not b["value"].strip()), "privacy": privacy, "namesFrom": "PayHOA" if names else "a conservative reading",
             "sections": [task.encode_section(s) for s in parsed["sections"]],
             "reviewedBy": review.get("by", ""), "savedAt": review.get("savedAt", ""), "history": review.get("history", []),
-            "minutesFile": str(task.minutes_path(root, day)) if task.minutes_path(root, day).is_file() else "",
+            "minutesFile": minutes, **_draft_refs(root, day, task.relative(src), minutes),
             "command": commands["redraft"], "commands": commands, "caveats": list(CAVEATS)}
 
 

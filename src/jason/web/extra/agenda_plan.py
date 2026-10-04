@@ -143,6 +143,7 @@ def _zoom(root: Any, day: str, saved: dict[str, Any]) -> dict[str, Any]:
 def agenda_plan(args: Args) -> dict[str, Any]:
     """The meeting loader's output merged with the saved plan: ``candidates`` with computed readiness, ``notice`` with
     the required contents, the ``steps``, the ``commands``, and the ``zoom`` fields a person enters by hand."""
+    from jason.approvals.docref import refs_from_strings
     from jason.tasks import agenda_plan as store
     from jason.web.sources import meeting
 
@@ -163,6 +164,7 @@ def agenda_plan(args: Args) -> dict[str, Any]:
         candidates.append({
             "id": item["id"], "title": item.get("title", ""), "ask": item.get("ask", ""), "session": item.get("agendaSession", ""),
             "authority": item.get("authority", ""), "priority": item.get("priority", ""), "evidence": list(item.get("evidence") or []),
+            "evidenceRefs": refs_from_strings(item.get("evidence") or [], data_dir=root),
             "kind": kind, "include": bool(saved.get("include", False)),
             "motion": str(saved.get("motion", "") or "") or _packet_motion(packet_md, item),
             "allot": int(saved.get("allot", 10)), "order": int(saved.get("order", n)),

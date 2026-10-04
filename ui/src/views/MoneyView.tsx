@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, DataTable, Findings, Money, Pill, RemoteView, Stat, Tabs, type Column } from "../components";
+import { Badge, Card, Caveats, DataTable, Doc, Findings, Money, Pill, RemoteView, Stat, Tabs, type Column } from "../components";
 import { useApi } from "../lib/useApi";
-import type { Account, Budget, CollectionRow, Collections, Invoices, Payment, Reconciliations, Side } from "./types";
+import type { Account, Budget, CollectionRow, Collections, Invoices, Payment, PaymentDocument, Reconciliations, Side } from "./types";
 
 const side = (v: Side | number | undefined) => (typeof v === "object" && v ? v : undefined);
 
@@ -79,6 +79,12 @@ function ReconciliationsView() {
   );
 }
 
+/** One attachment: jason's copy as a `Doc` chip (opening it is a logged view), else its filename as PayHOA gives it
+ * (no copy on disk to open). */
+function Attachment({ x }: { x: PaymentDocument }) {
+  return x.doc ? <Doc doc={x.doc} /> : <code className="chip" title="No copy on disk">{x.filename}</code>;
+}
+
 function InvoicesView() {
   const r = useApi<Invoices>("/api/invoices");
   const cols: Column<Payment>[] = [
@@ -86,7 +92,7 @@ function InvoicesView() {
     { key: "payee", header: "Payee" },
     { key: "amountCents", header: "Amount", align: "right", render: (p) => <Money cents={p.amountCents} /> },
     { key: "categories", header: "Category", value: (p) => p.categories.join(", ") },
-    { key: "documents", header: "Attached", value: (p) => p.documents.length, render: (p) => p.documents.length ? <span className="row wrap">{p.documents.map((x, i) => <code key={i} className="chip">{x.filename}</code>)}</span> : <Badge tone="bad">none</Badge> },
+    { key: "documents", header: "Attached", value: (p) => p.documents.length, render: (p) => p.documents.length ? <span className="row wrap">{p.documents.map((x, i) => <Attachment key={i} x={x} />)}</span> : <Badge tone="bad">none</Badge> },
     { key: "findings", header: "Questions", render: (p) => <Findings items={p.findings} ok={p.ok} />, value: (p) => p.findings.length },
   ];
   return (

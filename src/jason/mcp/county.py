@@ -974,12 +974,15 @@ def request_links(unit: str = "", drafts_only: bool = False, limit: int = 40, da
     --yes`, and no request is ever approved, denied, or assigned. Repeat the caveats."""
     from jason.community import mystique
     from jason.tasks.request_links import request_links as build
+    from jason.tasks.request_links import with_refs
 
-    result = build(_data_dir(data_dir), mystique())
+    root = _data_dir(data_dir)
+    result = build(root, mystique())
     u = unit.upper()
     rows = [] if drafts_only else [r for r in result["rows"] if (not u or u in r["unit"]) and (r["notices"] or r["ownerThreads"])]
     drafts = [d for d in result["drafts"] if not u or u in d["unit"]]
-    return {**{k: v for k, v in result.items() if k not in ("rows", "drafts")}, "rows": rows[:limit], "drafts": drafts[:limit]}
+    return {**{k: v for k, v in result.items() if k not in ("rows", "drafts")}, "rows": with_refs(rows[:limit], root),
+            "drafts": drafts[:limit]}
 
 
 def permits(number: str = "", data_dir: Path | None = None) -> dict[str, Any]:

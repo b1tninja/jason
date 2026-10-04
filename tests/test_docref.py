@@ -44,8 +44,8 @@ def data(tmp_path, monkeypatch):
     (tmp_path / "governing" / "Example Declaration.pdf").write_bytes(b"%PDF-1.4 example")
     (tmp_path / "mail" / "100").mkdir(parents=True)
     (tmp_path / "mail" / "100" / "contents.pdf").write_bytes(b"%PDF-1.4 letter")
-    (tmp_path / "reports").mkdir()
-    (tmp_path / "reports" / "unplaced.md").write_text("# a report", encoding="utf-8")
+    (tmp_path / "scratch-unplaced").mkdir()
+    (tmp_path / "scratch-unplaced" / "unplaced.md").write_text("# a report", encoding="utf-8")
     copies = tmp_path / "drive" / "copies"
     copies.mkdir(parents=True)
     (copies / f"{DRIVE_ID}.pdf").write_bytes(b"%PDF-1.4 copy")
@@ -208,7 +208,7 @@ def test_refs_from_strings_maps_each_form_and_never_guesses(data):
         "Drive: Twice.pdf",                           # two files by that name: text
         "Drive: Board",                               # a folder: text
         "data/governing/Example Declaration.pdf",     # placed, on disk
-        "data/reports/unplaced.md",                   # on disk, but no rule places it: text
+        "data/scratch-unplaced/unplaced.md",          # on disk, but no rule places it: text
         "data/governing/missing.pdf",                 # placed, not on disk: text
         "jason board --sheet",                        # a command
         "CIV 4920(a)",                                # a citation

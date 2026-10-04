@@ -21,7 +21,7 @@ describe("BorrowingCard", () => {
     render(<BorrowingCard b={{
       day: "2025-03-01", cents: 1000000, account: "Reserve", kind: "withdrawal", purpose: "borrowing", number: "77", memo: "roof", description: "",
       deadline: "2026-03-01", repaidCents: 400000, outstandingCents: 600000, repaidOn: null, exactRepayment: false, repayments: [],
-      documents: { notice: { path: "a.pdf" }, minutes: { path: "m.pdf", draft: true }, resolution: null },
+      documents: { notice: { id: "a1", name: "a.pdf" }, minutes: { id: "m1", name: "m.pdf", draft: true }, resolution: null },
       gaps: ["the library holds only DRAFT minutes of that meeting", "no resolution in the library authorizes it"],
     }} />);
     expect(screen.getByText("$10,000.00")).toBeInTheDocument();

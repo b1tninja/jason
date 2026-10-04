@@ -103,7 +103,7 @@ export function OwnerPageView() {
             {p.calendarId && (
               <section className="stack">
                 <h2 className="brand">Calendar</h2>
-                <Embed a={{ kind: "calendar", ref: p.calendarId, title: `${legal || "Association"} calendar`, opts: { mode: "AGENDA", tz: p.timeZone || undefined } }} height={400} />
+                <Embed a={{ kind: "calendar", ref: p.calendarId, title: `${legal || "Association"} calendar`, opts: { mode: "AGENDA", tz: p.timeZone || undefined } }} height={400} load="mount" />
               </section>
             )}
 

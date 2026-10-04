@@ -15,8 +15,11 @@ One page per screen of the earlier spec, now read against the console that exist
 | [members-and-units.md](members-and-units.md) | none | Proposed whole, `#/members` | 4 (needs P2 masking) |
 | [notices.md](notices.md) | none | Proposed whole, `#/notices` | 2 |
 | [governing-documents.md](governing-documents.md) | none | Proposed whole, `#/documents` | 2 |
+| [mail.md](mail.md) | `#/mail-triage`, `#/inbox`'s letters and requests, `#/insurance`, `#/renewals` | Their documents on `Doc` (built) | 2 |
+| [board-items.md](board-items.md) | `#/actions` (`ConsoleActions`) | Its evidence on `Doc` (built) | 2 |
+| [requests-and-links.md](requests-and-links.md) | `#/drafts`, the key documents tab, `#/canvases`, `#/templates`, and `Embed` | Their documents on `Doc` (built) | 2 |
 
-Screens built with no spec here: the meeting room, decisions, and agenda (from the design handoff), insurance and renewals (`ConsoleInsurance`), board action items (`ConsoleActions`), canvases, templates, registers, legal, mail triage, and the community profile page ([web-ui.md](../../web-ui.md#views-uisrcviews-hash-routes)).
+Screens built with no spec here: the meeting room, decisions, and agenda (from the design handoff), insurance and renewals (`ConsoleInsurance`; their documents are in [mail.md](mail.md)), canvases and templates (their documents are in [requests-and-links.md](requests-and-links.md)), registers, legal, and the community profile page ([web-ui.md](../../web-ui.md#views-uisrcviews-hash-routes)).
 
 The journeys that cross these screens are in [journeys.md](../journeys.md).
 

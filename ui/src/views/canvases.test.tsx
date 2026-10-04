@@ -2,6 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasList, CanvasWorkspace } from "./CanvasesView";
+import { resetServerSession } from "../lib/api";
+import { DOC_WORDS } from "../components";
 
 const canvas = {
   key: "pool-deck-bids", title: "Pool deck bids", question: "Which bidder?", status: "research", matter: "", duty: "Money", notes: "three quotes",
@@ -23,7 +25,7 @@ function mockFetch(onPost: (url: string, body: unknown) => unknown) {
   vi.stubGlobal("fetch", f);
   return f;
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); resetServerSession(); });
 
 describe("CanvasList", () => {
   it("lanes canvases by status and opens one", async () => {
@@ -78,5 +80,77 @@ describe("CanvasWorkspace", () => {
     expect(kind.value).toBe("audio");
     expect(ref()).toBe("zoom/2026-10-20/audio_only.m4a");
     expect(screen.queryByRole("button", { name: "shared_screen.mp4" })).not.toBeInTheDocument();
+  });
+});
+
+describe("CanvasWorkspace: attachments and clip sources are Docs", () => {
+  const photo = { address: "file:photos/east-bed.jpg", document: "image", name: "East bed", kind: "image", level: "P1", source: "File on disk" };
+  const rules = { address: "drive:1ExampleDriveFile01", name: "Example rules", kind: "pdf", level: "P0", source: "Drive copy",
+    original: { url: "https://docs.google.com/document/d/1ExampleDriveFile01/edit", label: "Open in Google" } };
+  const recorded = { address: "file:governing/Example Declaration.pdf", document: "pdf", name: "Example Declaration.pdf", kind: "pdf", level: "P0", source: "Recorded copy" };
+  const withDocs = {
+    ...canvas,
+    clips: [{ at: "2026-10-03T10:00:00+00:00", source: "file:governing/Example Declaration.pdf", text: "the recital", label: "", args: {}, doc: recorded },
+      { at: "2026-10-03T10:00:00+00:00", source: "budget_status", text: "a row", label: "", args: {} }],
+    attachments: [
+      { kind: "doc", ref: "1ExampleDriveFile01", title: "Example rules", doc: rules },
+      { kind: "image", ref: "photos/east-bed.jpg", title: "East bed", doc: photo },
+      { kind: "calendar", ref: "abc@group.calendar.google.com", title: "Association calendar" },
+    ],
+  };
+  function serve(session: object, view: { status: number; body: object }) {
+    const posts: [string, unknown][] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (init?.method === "POST") {
+        posts.push([url, JSON.parse(String(init.body))]);
+        return url === "/api/evidence/view" ? json(view.body, view.status) : json(withDocs);
+      }
+      if (url.startsWith("/api/session")) return json(session);
+      if (url.startsWith("/api/evidence?")) return json({ found: true, address: rules.address, label: rules.name, kind: "drive", sources: [], changed: null, changedNote: "", link: "", refresh: [], caveats: [], note: "", refreshable: null, documents: [] });
+      if (url.includes("key=")) return json({ found: true, canvas: withDocs });
+      return json({ found: false, note: "none" });
+    }));
+    return posts;
+  }
+  const IN = { signedIn: { name: "A Manager" }, signIn: { configured: true, start: "/auth/google" } };
+  const imageView = { kind: "image", name: "East bed", readAt: "", url: "/api/evidence/document/p", expires: "", caveats: [] };
+
+  it("renders each variant from the loader's references: a Drive card, a P1 photo inline (one view on mount), a clip chip", async () => {
+    const posts = serve(IN, { status: 200, body: imageView });
+    const { container } = render(<CanvasWorkspace keyName="pool-deck-bids" back={() => {}} />);
+    expect(await screen.findByRole("region", { name: "East bed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview Example rules" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open in Google/ })).toHaveAttribute("href", rules.original.url);
+    expect(screen.getByRole("button", { name: "Open Example Declaration.pdf" })).toBeInTheDocument();
+    expect(screen.getByText("budget_status")).toBeInTheDocument();                       // a tool's name stays text
+    await waitFor(() => expect(posts).toEqual([["/api/evidence/view", { address: photo.address, document: "image", by: "A Manager" }]]));
+    expect(container.querySelector("iframe")).toBeNull();                                 // the calendar waits for a click
+    expect(screen.getByRole("button", { name: "Load Association calendar from calendar.google.com" })).toBeInTheDocument();
+    expect(container.querySelector('a[href*="/api/file"], img[src*="/api/file"]')).toBeNull();
+    expect(container.innerHTML).not.toMatch(/[A-Za-z]:\|"\/(?:Users|home)\//);
+  });
+
+  it("opening a clip's chip posts a view; signed out and not allowed say their words", async () => {
+    let posts = serve(IN, { status: 403, body: { error: "The treasurer's office doesn't open this file." } });
+    const { unmount } = render(<CanvasWorkspace keyName="pool-deck-bids" back={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open Example Declaration.pdf" }));
+    await waitFor(() => expect(posts.some(([u, b]) => u === "/api/evidence/view" && (b as { address: string }).address === recorded.address)).toBe(true));
+    expect((await screen.findAllByText(/The treasurer's office doesn't open this file/)).length).toBeGreaterThan(0);
+    unmount();
+    posts = serve({ signedIn: null, signIn: { configured: true, start: "/auth/google" } }, { status: 200, body: imageView });
+    render(<CanvasWorkspace keyName="pool-deck-bids" back={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open Example Declaration.pdf" }));
+    expect((await screen.findAllByText(new RegExp(DOC_WORDS.signedOut))).length).toBeGreaterThan(0);
+    expect(posts).toEqual([]);
+  });
+
+  it("removing an attachment sends the others back without their references", async () => {
+    const posts = serve(IN, { status: 200, body: imageView });
+    render(<CanvasWorkspace keyName="pool-deck-bids" back={() => {}} />);
+    await screen.findByRole("region", { name: "East bed" });
+    await userEvent.click(screen.getAllByRole("button", { name: "remove from the canvas" })[2]);
+    await waitFor(() => expect(posts.find(([u]) => u === "/api/canvases/pool-deck-bids")?.[1]).toEqual({ attachments: [
+      { kind: "doc", ref: "1ExampleDriveFile01", title: "Example rules" }, { kind: "image", ref: "photos/east-bed.jpg", title: "East bed" }] }));
   });
 });

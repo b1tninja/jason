@@ -111,3 +111,20 @@ describe("TemplatesView: the Doc column", () => {
     expect(screen.getByRole("button", { name: "Read Notice of Hearing from Drive" })).toHaveAttribute("aria-disabled", "true");
   });
 });
+
+describe("TemplatesView: the header's template Doc", () => {
+  it("links the loader's drive reference's original, never a hand-built Google link", async () => {
+    const doc = { address: "drive:1DocIdHearing", name: "Notice of Hearing", kind: "pdf", level: "P0", source: "Drive copy",
+      original: { url: "https://docs.example/1DocIdHearing/edit", label: "Open in Google" } };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.startsWith("/api/canvases") ? { found: true, canvases: [] }
+        : url.includes("kind=") ? { found: true, kind: "hearing-notice", title: "Notice of Hearing", driveId: "1DocIdHearing", markdown: "# Notice", tokens: [], open: [], command: "jason letter --yes" }
+        : url.startsWith("/api/session") ? { signedIn: null, signIn: { configured: true } }
+        : { found: true, templates: [{ ...row, doc }, { ...row, kind: "fine-notice", title: "Notice of Fine", driveId: "" }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } })));
+    const { container } = render(<TemplatesView />);
+    await userEvent.click((await screen.findAllByRole("button", { name: "Fill" }))[0]);
+    expect(screen.getByRole("link", { name: /the template Doc/ })).toHaveAttribute("href", "https://docs.example/1DocIdHearing/edit");
+    expect(container.querySelector('a[href*="/api/file"], iframe')).toBeNull();
+  });
+});

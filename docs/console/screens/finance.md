@@ -60,9 +60,28 @@ Each band shows its snapshot's `syncedAt` (or `ledgerSynced`).
 
 Wide tables scroll inside their own frame with the first column fixed; the page never scrolls sideways.
 
+## Documents
+
+Each document these screens name is a `Doc` fed a `DocRef` from its loader ([doc-component.md](../doc-component.md)). Opening one is a logged view; nothing opens on load.
+
+| Screen | Document | Reference (loader field) | Level | Variant |
+|---|---|---|---|---|
+| Invoice review (`#/payments`) | Each payment's attachment, jason's copy under `transactions/` | `file:` (`payments[].documents[].doc`, beside `filename`) | P2 | `chip` in the Attached cell |
+| Books checks, utility payments (`#/books`) | Each utility payment's attached bill, jason's copy under `transactions/` | `file:` (`payments[].attachments[].doc`) | P2 | `chip` in the Attached cell |
+| Books checks, ledger validation (`#/books`) | The library's copy of each treasurer's report a run or a checklist row names | `library:` (`runs[].libraryDocs`, `<row>.doc` beside `path`) | the library's flag | `chip` in the Library copies and Copy cells |
+| Reserves (`#/reserves`) and Reserve findings (`#/reserve-findings`) | Each borrowing's 5515 record: the agenda giving notice, the minutes of that meeting, the resolution | `library:` (`borrowings[].documents.<notice\|minutes\|resolution>.doc`); a minutes row read from Drive is `drive:` | the library's flag | `chip` on its tick |
+| Reserves (`#/reserves`), board view only | The latest reserve study, the one the funding plan is read from | `file:` (`study`) | P1 (`reserve-studies/`) or the library's flag | `card` |
+
+**What stays a name:**
+- An attachment PayHOA gave no link for, or one kept only in a portal's folder outside `data/`, keeps its filename, marked "No copy on disk": nothing opens.
+- A file whose name holds two spaces in a row stays a name too, until the evidence address keeps the spaces.
+- A treasurer's report copy the library no longer holds stays its file name.
+
+The owner view of `#/reserves` leaves the study out (Privacy, below).
+
 ## Components
 
-`Card`, `DataTable` (amounts right-aligned, tabular figures), `Money`, `Stat`, `Pill`, `DueDate`, `Caveats`, `Command`, `RemoteView`.
+`Card`, `DataTable` (amounts right-aligned, tabular figures), `Money`, `Stat`, `Pill`, `DueDate`, `Caveats`, `Command`, `RemoteView`, `Doc`.
 
 ## Actions
 

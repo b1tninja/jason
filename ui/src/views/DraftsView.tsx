@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Command, DataTable, EmptyState, Pill, RemoteView, Stat, type Column } from "../components";
+import { Badge, Card, Caveats, Command, DataTable, Doc, EmptyState, Pill, RemoteView, Stat, type Column, type DocRef } from "../components";
 import { useApi } from "../lib/useApi";
 
 export interface RequestDraft {
@@ -9,6 +9,8 @@ export interface RequestDraft {
 export interface LinkedRequest {
   id: number | string; form: string; unit: string; status: string; created: string; title: string; topics: string[];
   notices: { threadId: string; at: string; subject: string; how: string }[];
+  /** The request's submission as a document reference (`payhoa:submission:<id>`, named by its title), from the loader. */
+  doc?: DocRef;
   ownerThreads: { threadId: string; first: string; last: string; subject: string; status: string; score: number; how: string; link?: string }[];
 }
 export interface RequestLinks {
@@ -39,7 +41,8 @@ const cols: Column<LinkedRequest>[] = [
   { key: "created", header: "Created" },
   { key: "unit", header: "Unit" },
   { key: "form", header: "Form" },
-  { key: "title", header: "Request" },
+  // The request's submission as a Doc chip: one logged view of jason's kept read, the form the owner filled in.
+  { key: "title", header: "Request", render: (r) => r.doc ? <Doc doc={r.doc} variant="chip" /> : r.title },
   { key: "status", header: "Status", render: (r) => <Pill word={r.status} /> },
   { key: "notices", header: "PayHOA notices", align: "right", value: (r) => r.notices.length },
   { key: "ownerThreads", header: "Owner's email", value: (r) => r.ownerThreads.length,

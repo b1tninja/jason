@@ -315,9 +315,9 @@ These were found while writing this page. Each is a lead for the build order bel
 
 | Gap | Risk | Fix |
 |---|---|---|
-| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only while the person's private view is open, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Still open: moving the callers (Embed's local refs, KeyDocuments, packets) to the document service |
+| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only while the person's private view is open, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Embed's photos and PDFs and KeyDocuments' copies moved to `Doc` ([requests-and-links.md](screens/requests-and-links.md)). Still open: Embed's audio under data/ (the evidence's `file:` row shows no audio yet) |
 | ~~`/api/library?confidential=1`~~ **Closed** | Lists confidential rows to anyone on the loopback | Done: the confidential rows are held back (`heldBack: n`) unless the person's private view is open (P3); `/api/embeds?confidential=1` too |
-| `Embed` frames any ref | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | See [The Embed component](#the-embed-component) |
+| ~~`Embed` frames any ref~~ **Closed** | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | Done: see [The Embed component](#the-embed-component) |
 | ~~`MeetingStage` packet frames~~ **Closed** | A bare iframe, no fallback, no sandbox | Done: for the board and the host, a packet file on the stage is jason's copy, opened as one logged view (`POST /api/evidence/view`) and shown by `DocumentViewer` inline from its document link; with no copy, its `DocumentPreview` card (Read from Drive, Open in Google). Members (`audience=owner`, not signed in) see only a card: "The host is showing <name>; members receive the packet with the agenda". Nothing marks a packet file for members, so none is shown to them (a decision for the board). The stage never frames Google |
 | Registers carry no Sheet link | A person can't reach the source | Return the spreadsheet's `webViewLink` with the snapshot |
 | A file answer shows ids | "9,9" instead of names | In progress (the submission rules above) |
@@ -331,11 +331,13 @@ These were found while writing this page. Each is a lead for the build order bel
 - a map;
 - audio and images served by jason.
 
-It changes in four ways (proposed):
+It changed in four ways (built; [requests-and-links.md](screens/requests-and-links.md#embed) has the kinds and hosts):
 1. **A host allowlist per kind.** Anything else is a link card.
 2. **Every frame gets `sandbox`** with the kind's minimum tokens, `referrerpolicy="no-referrer"`, and a `title`.
 3. **Private Google files** (`doc`, `sheet`, `slides`, `form`, `drive` refs without a published URL) render as a document card that opens `DocumentViewer` on jason's copy, plus "Open in Google", instead of a frame that may be blank.
-4. **Click to load.** A frame to an outside host loads on a person's click, not on page load (rule 2).
+4. **Click to load.** A frame to an outside host loads on a person's click, not on page load (rule 2). A screen whose subject is a public frame passes `load="mount"` (the Calendar screen's and the owner page's calendar), as an `inline` P0 document is viewed on mount.
+
+Photos and PDFs under data/ render as `Doc` on `file:<path>`. Audio under data/ stays the browser's player, signed in, until the evidence's `file:` row shows audio.
 
 ## Build order
 
@@ -343,7 +345,7 @@ It changes in four ways (proposed):
 2. **Close the serving gaps:** `/api/file` callers to the document service; the library's confidential flag to the private view (built: the switch, the band, and the evidence's confidential documents).
 3. **The viewer's header actions:** Open the original, ↻ inside the viewer, and the held-back count.
 4. **Drive copies** (built, but the `table` renderer): the `drive:` resolver row with its export refresher, thumbnails, and the Doc, Sheet, and Slides renderers (pdf and markdown built; a Sheet's CSV opens as text until the `table` renderer). `DrivePreview` shows a file as jason's copy on the Templates screen. Built since: the `file:` resolver row and `GET /api/thumb?path=` for recorded copies on disk; `DocumentPreview` (a Drive file, a file on disk, or both, labelled) on the Records screen's governing documents, the agenda wizard's and the meeting view's packet files, and the meeting stage's packet cell. Drafts are next, then the `Doc` component that absorbs these ([doc-component.md](doc-component.md)).
-5. **Embed's allowlist, sandbox, and document cards.**
+5. **Embed's allowlist, sandbox, and document cards** (built).
 6. **Google Forms:** the blank form and responses as submissions.
 7. **Gmail messages:** sanitized bodies, blocked remote images, attachments.
 8. **Mail scans, Mailroom letters, drafts, minutes, and transcripts** through the document service.

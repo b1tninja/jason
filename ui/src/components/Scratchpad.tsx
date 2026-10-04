@@ -1,16 +1,29 @@
 import { useEffect, useState } from "react";
 import { Confirm } from "./Confirm";
 import { Evidence } from "./Evidence";
+import { EvidenceEntries } from "./EvidenceEntries";
 import { Markdown } from "./Markdown";
 import { Pill } from "./Pill";
 import { RemoteView } from "./Remote";
 import { useApi } from "../lib/useApi";
+import type { EvidenceEntry } from "../lib/docref";
 import { DOCK_EVENT, dockWrite } from "./Dock";
 
-export interface DockNote { id: string; title: string; status: string; body: string; sources: string[]; created: string; updated: string; by: string; history?: string[] }
+/** `sourceRefs` are the saved sources as the loader mapped them, one for one (a reference, a command, or text); an older
+ * server leaves them out. */
+export interface DockNote { id: string; title: string; status: string; body: string; sources: string[]; sourceRefs?: EvidenceEntry[]; created: string; updated: string; by: string; history?: string[] }
 export interface DockNotes { found?: boolean; note?: string; count: number; notes: DockNote[]; statuses: string[]; caveat: string }
 
 const NOTE_CAVEAT = "Working notes, not association records.";
+
+/** The sources being edited as entries: a saved source takes the loader's reference; one added since the last save is
+ * text until it is saved and the server maps it. Null when the loader gave no references. */
+function sourceEntries(note: DockNote, sources: readonly string[]): EvidenceEntry[] | null {
+  const refs = note.sourceRefs;
+  if (!refs || refs.length !== note.sources.length) return null;
+  const saved = new Map(note.sources.map((s, i) => [s, refs[i]] as const));
+  return sources.map((s) => saved.get(s) ?? { text: s });
+}
 
 /** Working notes: a title, a status, a Markdown body, and the sources a note rests on. A note can hand a follow-up to
  * the action register. Notes are a person's working material, never association records; the label says so. */
@@ -86,7 +99,10 @@ export function Scratchpad({ me }: { me?: string }) {
                   : <textarea rows={10} value={e.body} onChange={(ev) => setEdit({ ...e, body: ev.target.value })} aria-label="Notes" />}
                 <div className="stack-tight">
                   <span className="dock-sub">Sources</span>
-                  <Evidence label="" items={e.sources} />
+                  {(() => {
+                    const entries = sourceEntries(cur, e.sources);
+                    return entries ? <EvidenceEntries label="" entries={entries} /> : <Evidence label="" items={e.sources} />;
+                  })()}
                   <div className="dock-add-row">
                     <input value={src} onChange={(ev) => setSrc(ev.target.value)} placeholder="A record, a Drive path, or a code section" aria-label="Add a source" />
                     <button type="button" onClick={() => { if (src.trim()) { setEdit({ ...e, sources: [...e.sources, src.trim()] }); setSrc(""); } }}>Add</button>

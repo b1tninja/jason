@@ -1,11 +1,12 @@
-import { Badge, Card, Caveats, DataTable, DueDate, Findings, Money, RemoteView, Stat, type Column } from "../components";
+import { Badge, Card, Caveats, DataTable, Doc, DueDate, Findings, Money, RemoteView, Stat, type Audience, type Column, type DocRef } from "../components";
 import { useApi } from "../lib/useApi";
 import type { Borrowing, Move, Reserves } from "./types";
 
-function Tick({ ok, label, hint }: { ok: boolean; label: string; hint?: string }) {
+/** One line of the 5515 record: met or not, and the library's document that shows it, as a `Doc` chip to open. */
+function Tick({ ok, label, doc }: { ok: boolean; label: string; doc?: DocRef }) {
   return (
-    <li className="tick" title={hint}>
-      <Badge tone={ok ? "good" : "bad"}>{ok ? "✓" : "✗"}</Badge> {label}
+    <li className="tick">
+      <Badge tone={ok ? "good" : "bad"}>{ok ? "✓" : "✗"}</Badge> {label}{doc && <> <Doc doc={doc} /></>}
     </li>
   );
 }
@@ -23,9 +24,9 @@ export function BorrowingCard({ b }: { b: Borrowing }) {
       {b.memo && <p className="muted">{b.memo}</p>}
       <div className="grid-2">
         <ul className="ticks">
-          <Tick ok={!!d.notice} label="Notice of intent to borrow on an agenda (5515(a))" hint={d.notice?.path} />
-          <Tick ok={!!d.minutes && !d.minutes.draft} label={d.minutes?.draft ? "Minutes with the finding (5515(c)): DRAFT only" : "Minutes with the finding (5515(c))"} hint={d.minutes?.path} />
-          <Tick ok={!!d.resolution} label="Resolution authorizing it" hint={d.resolution?.path} />
+          <Tick ok={!!d.notice} label="Notice of intent to borrow on an agenda (5515(a))" doc={d.notice?.doc} />
+          <Tick ok={!!d.minutes && !d.minutes.draft} label={d.minutes?.draft ? "Minutes with the finding (5515(c)): DRAFT only" : "Minutes with the finding (5515(c))"} doc={d.minutes?.doc} />
+          <Tick ok={!!d.resolution} label="Resolution authorizing it" doc={d.resolution?.doc} />
           <Tick ok={!b.outstandingCents} label="Restored to the reserve within a year (5515(d))" />
         </ul>
         <div className="stats">
@@ -47,12 +48,21 @@ const moveCols: Column<Move>[] = [
   { key: "memo", header: "Memo", value: (m) => m.memo || m.description },
 ];
 
-export function ReservesView() {
+/** The reserves: each borrowing's 5515 record, contributions against the budget, and the movements nothing explains.
+ * The board's view adds the latest reserve study as a card; the owner view leaves it out until the board decides what
+ * owners see of it (docs/console/screens/finance.md, Privacy). */
+export function ReservesView({ audience = "board" }: { audience?: Audience } = {}) {
   const r = useApi<Reserves>("/api/reserves");
   return (
     <RemoteView r={r}>
       {(d) => (
         <div className="stack">
+          {d.study && audience !== "owner" && (
+            <Card title="The reserve study">
+              <p className="muted">The latest study on disk, the one the funding plan is read from. Its figures are the preparer's estimates; the board adopts the plan.</p>
+              <Doc doc={d.study} variant="card" />
+            </Card>
+          )}
           <Card title={`Borrowings from the reserve (${d.borrowings.length})`} actions={<span className="muted">ledger through {d.ledgerThrough}</span>}>
             <p className="muted">Each card is one loan's 5515 record as the library shows it. A match is a lead; only the board's resolution says which loan a payment restored.</p>
             {d.borrowings.length === 0 && <p className="muted">No borrowing in the ledger.</p>}

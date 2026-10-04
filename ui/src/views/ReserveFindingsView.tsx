@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Clock, Confirm, DataTable, DueDate, Findings, Money, Pill, RemoteView, type Column } from "../components";
+import { Badge, Card, Caveats, Clock, Confirm, DataTable, Doc, DueDate, Findings, Money, Pill, RemoteView, type Column, type DocRef } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import type { Borrowing } from "./types";
@@ -9,8 +9,9 @@ export interface ReserveFinding { key: string; finding: string; kind: string; au
 type Row = Borrowing & { key: string; finding: ReserveFinding | null; findingNeeded: boolean };
 interface Findings_ { found?: boolean; note?: string; ledgerThrough: string; kinds: string[]; needed: number; borrowings: Row[]; caveats?: string[] }
 
-function Doc({ ok, label, hint }: { ok: boolean; label: string; hint?: string }) {
-  return <li className="tick" title={hint}><Badge tone={ok ? "good" : "bad"}>{ok ? "✓" : "✗"}</Badge> {label}</li>;
+/** One line of the 5515 record: met or not, and the library's document that shows it, as a `Doc` chip to open. */
+function Tick({ ok, label, doc }: { ok: boolean; label: string; doc?: DocRef }) {
+  return <li className="tick"><Badge tone={ok ? "good" : "bad"}>{ok ? "✓" : "✗"}</Badge> {label}{doc && <> <Doc doc={doc} /></>}</li>;
 }
 
 /** The recorded finding, as a person entered it: the board's words, the meeting, who recorded them, and when. */
@@ -70,10 +71,10 @@ function FindingPanel({ b, kinds, today, onSaved }: { b: Row; kinds: string[]; t
         </Card>
         <Card title="The record as the library shows it">
           <ul className="ticks">
-            <Doc ok={!!d.notice} label="Notice of intent to borrow on an agenda (5515(a))" hint={d.notice?.path} />
-            <Doc ok={!!d.minutes && !d.minutes.draft} label={d.minutes?.draft ? "Minutes with the finding (5515(c)): DRAFT only" : "Minutes with the finding (5515(c))"} hint={d.minutes?.path} />
-            <Doc ok={!!d.resolution} label="Resolution authorizing it" hint={d.resolution?.path} />
-            <Doc ok={!b.outstandingCents} label="Restored to the reserve within a year (5515(d))" />
+            <Tick ok={!!d.notice} label="Notice of intent to borrow on an agenda (5515(a))" doc={d.notice?.doc} />
+            <Tick ok={!!d.minutes && !d.minutes.draft} label={d.minutes?.draft ? "Minutes with the finding (5515(c)): DRAFT only" : "Minutes with the finding (5515(c))"} doc={d.minutes?.doc} />
+            <Tick ok={!!d.resolution} label="Resolution authorizing it" doc={d.resolution?.doc} />
+            <Tick ok={!b.outstandingCents} label="Restored to the reserve within a year (5515(d))" />
           </ul>
           <Findings items={b.gaps} empty="the record is complete" />
           {f ? <Recorded f={f} /> : <p className="muted">No finding recorded here.</p>}

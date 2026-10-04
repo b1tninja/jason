@@ -213,6 +213,22 @@ def request_links(data_dir: Path, community: Any, *, today: datetime | None = No
     return result
 
 
+def with_refs(rows: list[dict[str, Any]], data_dir: Path) -> list[dict[str, Any]]:
+    """Each request row with ``doc``, its submission as a document reference (``payhoa:submission:<id>``, named by its
+    title), beside the old fields; the console's Request column shows it as a ``Doc`` chip. A light resolve of the
+    catalog row and the kept read, so call it on the rows shown, not every request."""
+    from jason.approvals.docref import submission_ref
+
+    out = []
+    for r in rows:
+        try:
+            doc = submission_ref(r["id"], name=str(r.get("title") or "") or None, data_dir=Path(data_dir))
+        except (TypeError, ValueError):
+            doc = None
+        out.append({**r, "doc": doc} if doc else dict(r))
+    return out
+
+
 def _unit_ids(data_dir: Path) -> dict[str, int]:
     path = Path(data_dir) / "payhoa.db"
     if not path.is_file():
@@ -257,4 +273,4 @@ def link_lines(result: dict[str, Any], *, limit: int = 25) -> list[str]:
     return out
 
 
-__all__ = ["request_links", "load_requests", "create", "link_lines"]
+__all__ = ["request_links", "load_requests", "create", "link_lines", "with_refs"]

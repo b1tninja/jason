@@ -102,7 +102,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "registers", label: "Registers", group: "Governance", view: () => <RegistersView /> },
   // Money
   { id: "payments", label: "Payments with questions", group: "Money", aliases: ["money"], view: () => <MoneyView /> },
-  { id: "reserves", label: "Reserves and budget", group: "Money", owner: true, view: () => <ReservesView /> },
+  { id: "reserves", label: "Reserves and budget", group: "Money", owner: true, view: ({ audience }) => <ReservesView audience={audience} /> },
   { id: "reserve-findings", label: "Reserve findings", group: "Money", view: () => <ReserveFindingsView /> },
   { id: "liens", label: "Liens and delinquency", group: "Money", aliases: ["delinquency"], view: () => <DelinquencyView /> },
   { id: "books", label: "Books checks", group: "Money", view: () => <BooksChecksView /> },

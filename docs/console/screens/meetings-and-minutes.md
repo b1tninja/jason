@@ -76,6 +76,21 @@ The Governance group already runs the board loop:
 
 A check that points at a line links to it. Under 960 px the checks come first, above the draft.
 
+## Documents
+
+Each screen shows its documents with `Doc`, fed the loader's `DocRef`s ([doc-component.md](../doc-component.md)); never a raw `/api/file` link, a frame of Zoom or Google, or a path as text.
+
+| Screen | Document | Reference (loader) | Variant | Level |
+|---|---|---|---|---|
+| Meetings and minutes (`#/meetings`) | A meeting's notice, agendas, minutes (draft and final), transcript, and recordings, by record kind, the posted copy first; shown when a person opens the meeting's **Records** | `GET /api/meetings?date=` → `docs: [{kind, docs: [DocRef]}]` (`jason.web.extra.meeting_docs.record_refs`): `library:<id>` for the PayHOA library, `drive:<id>` for Drive, `file:` for jason's drafts, its Zoom copies, and Gmail attachments | `row` (a `DocList` per kind) | the server's: a library or Drive file by its flag, `board/` P1 (executive minutes P3), `zoom/meetings/` by the Zoom index |
+| | Zoom's cloud, a Gmail message, PayHOA's mailing log | none yet (no resolver): they stay badges in the table | — | — |
+| Minutes review (`#/minutes-review`) | The Zoom transcript the draft was read from, beside the draft, so the Secretary checks each line against it | `transcriptDoc`: `file:zoom/meetings/<folder>/transcript.txt`, the day's board meeting in the Zoom index (`minutes_review.transcript_file`) | `inline` (viewed on mount at P1; "Show the document" first at P3) | P1 for an open meeting; P3 when the index marks it confidential, an executive session, or a hearing |
+| | The filled minutes | `minutesDoc`: `file:board/minutes-<date>.md`; `minutesFile` is that path under the data folder | `chip` (the drafts table, the review's header, after a save) | P1 |
+| | The draft | `draftDoc`: `file:board/minutes-draft-<date>.md`; the list's `file` is that path under the data folder | (the form and its preview show it) | P1 |
+| Hearings (`#/hearings`) | The hearing notice: the Doc made from the template, then jason's draft beside the plan | `noticeRefs`: `drive:<noticeDoc.id>`, then `file:zoom/hearings/<file>` (`meeting_docs.hearing_refs`) | `card` (a `DocList`) | P3: opened only in the private view |
+| Next meeting (`#/meeting`) | The meeting's Zoom recording | Zoom's share page is the original, an **Open in Zoom** link in a new tab, never a frame. The kept audio (`zoom/meetings/<folder>/audio.m4a`) is still an `Embed` of `/api/file`: `Doc` does not play audio inline yet, and the `file:` resolver serves no `.m4a` | link; audio pending | the Zoom index's |
+| Decisions (`#/decisions`) | The documents a matter's evidence names, as the brief's **Sources**, under the facts a person wrote (which stay text); the same chips under the brief form while no brief is written | `GET /api/agenda-plan` → each candidate's `evidenceRefs` beside its `evidence` strings (`jason.approvals.docref.refs_from_strings`): `library:`, `drive:`, `file:`, or a citation; a `jason …` command stays a command to copy and anything else stays text | `chip` (`DecisionBrief`'s optional `sources`) | the server's |
+
 ## Components
 
 `Card`, `Clock` (a meeting's two clocks as stages), `Pill` (the standing words), `DueDate`, `Findings` (the checks, under the heading "jason's checks"), `Caveats` (verbatim), `Evidence`, `Command`, `Confirm` (record a posting), `Recitation` (the clock's authority, on demand), `ReadingLabel` (a check is jason's count, never the minutes' words).

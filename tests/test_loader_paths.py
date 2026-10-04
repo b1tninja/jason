@@ -18,7 +18,6 @@ ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[\\/]|/(?:Users|home|tmp|var|mnt|private|da
 # loader name -> (the JSON path that carries an absolute path today, any index, the group that removes it)
 ALLOWED: dict[str, tuple[str, str]] = {
     "communities": (".communities[].where", "associations picker (not a screen group): the profile's folder, not data/"),
-    "minutes-review": (".drafts[].file", "Meetings: Minutes review's relative paths"),
 }
 
 

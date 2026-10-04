@@ -117,7 +117,7 @@ export function MeetingView() {
           </div>
           {em && em.calendarId && week && (
             <Card title="That week on the calendar">
-              <Embed a={{ kind: "calendar", ref: em.calendarId, title: `Association calendar, week of ${d.date}`, opts: { mode: "WEEK", dates: week, tz: em.timeZone } }} height={260} />
+              <Embed a={{ kind: "calendar", ref: em.calendarId, title: `Association calendar, week of ${d.date}`, opts: { mode: "WEEK", dates: week, tz: em.timeZone } }} height={260} load="mount" />
             </Card>
           )}
           <div className="stats">
@@ -154,7 +154,13 @@ export function MeetingView() {
                 {d.directors.length === 0 && <p className="notice notice-warn">No directors on file (`jason board --members`); type names into the roll call as you go.</p>}
                 {recording && (
                   <div className="stack">
-                    {(recording.shareUrl || recording.playUrl) && <Embed a={{ kind: "zoom", ref: recording.shareUrl || recording.playUrl, title: recording.topic }} height={300} />}
+                    {/* Zoom's own page is the original, opened in a new tab with the person's own session; never a frame of it
+                        (docs/console/doc-component.md, "No frames of outside hosts"). */}
+                    {(recording.shareUrl || recording.playUrl) && (
+                      <p><a href={recording.shareUrl || recording.playUrl} target="_blank" rel="noreferrer">Open in Zoom<span className="visually-hidden"> ({recording.topic}, opens in a new tab)</span></a></p>
+                    )}
+                    {/* The kept audio stays an Embed until Doc plays audio inline: Doc's inline body renders pdf, image, text,
+                        and submission only, and the file: resolver serves no .m4a (reported to the foundation). */}
                     {(recording.files ?? []).filter(isAudioFile).map((f) => <Embed key={f.path} a={{ kind: "audio", ref: f.path, title: f.name || `${recording.topic} (audio)` }} />)}
                     <p className="muted">A kept recording may be under a litigation hold; the page shows it and deletes nothing.</p>
                   </div>

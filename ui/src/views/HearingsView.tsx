@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { Badge, Card, Clock, Command, Confirm, DataTable, DueDate, Findings, Markdown, Pill, RemoteView, type Column } from "../components";
+import { Badge, Card, Clock, Command, Confirm, DataTable, DocList, DueDate, Findings, Markdown, Pill, RemoteView, type Column, type DocRef } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import type { Hearing as Base } from "./types";
 
-type Hearing = Base & { key: string; stages: { key: string; label: string; date: string; authority?: string; done?: boolean }[]; decision: { findings: string; decidedOn: string; noticeDueBy: string; by: string; recorded: string; history: string[] } | null; violation?: string; owner?: string };
+/** `noticeRefs`: the hearing notice as the loader names it (docs/console/doc-component.md), the Doc made from the template
+ * first, then jason's draft under `zoom/hearings/`; both P3, opened only in the private view. */
+type Hearing = Base & { key: string; stages: { key: string; label: string; date: string; authority?: string; done?: boolean }[]; decision: { findings: string; decidedOn: string; noticeDueBy: string; by: string; recorded: string; history: string[] } | null; violation?: string; owner?: string; noticeRefs?: DocRef[] };
 interface Hearings { found?: boolean; note?: string; hearings: Hearing[] }
 
 /** The decision notice as it would read, from the decision-notice template with the hearing's facts, and the command that fills a Drive copy. */
@@ -47,6 +49,11 @@ function HearingPanel({ h, today, onSaved }: { h: Hearing; today: Date; onSaved:
   return (
     <div className="stack">
       <Clock stages={h.stages} today={today} />
+      <Card title="The hearing notice">
+        {h.noticeRefs?.length
+          ? <DocList docs={h.noticeRefs} variant="card" title="" />
+          : <p className="muted">No notice saved with this hearing; `jason hearing` writes its draft beside the plan.</p>}
+      </Card>
       <div className="grid-2">
         <Card title={h.decision ? "The board's decision" : "Record the board's decision"}>
           <p className="muted">The findings in the board's words, decided at or after the hearing. The written notice is due to the owner within fourteen days of the board's action. jason records the decision; it decides nothing.</p>

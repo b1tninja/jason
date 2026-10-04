@@ -1,7 +1,12 @@
 import { useState } from "react";
-import { Badge, BoardFields, Card, DueDate, Evidence, Kanban, Pill, RemoteView, Timeline, type TimelineEvent } from "../components";
+import { Badge, BoardFields, Card, DueDate, Evidence, Kanban, Pill, RemoteView, Timeline, type EvidenceEntry, type TimelineEvent } from "../components";
+import { EvidenceEntries } from "../components/EvidenceEntries";
 import { useApi } from "../lib/useApi";
 import { BOARD_STATUSES, type BoardItem } from "./types";
+
+/** A board item as `/api/board-items` answers it: its evidence strings, and beside them `evidenceRefs`, each string as
+ * the server mapped it (a document reference, a command, or text; docs/console/doc-component.md). */
+export type BoardItemWithRefs = BoardItem & { evidenceRefs?: EvidenceEntry[] };
 
 /** An item's history lines ("YYYY-MM-DD: what") as Timeline events; a line without a day is undated. */
 function historyEvents(history: readonly string[]): TimelineEvent[] {
@@ -12,7 +17,7 @@ function historyEvents(history: readonly string[]): TimelineEvent[] {
 }
 
 /** One matter the board is asked to decide. jason's columns are read-only; the board's four are editable (BoardFields). */
-export function BoardItemCard({ item, onSaved }: { item: BoardItem; onSaved: (next: BoardItem) => void }) {
+export function BoardItemCard({ item, onSaved }: { item: BoardItemWithRefs; onSaved: (next: BoardItemWithRefs) => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -35,7 +40,8 @@ export function BoardItemCard({ item, onSaved }: { item: BoardItem; onSaved: (ne
       {open && (
         <div className="stack">
           <p>{item.summary}</p>
-          <Evidence items={item.evidence} />
+          {/* Each string as the server mapped it: a document opens as a Doc chip; an older server's strings stay chips. */}
+          {item.evidenceRefs ? <EvidenceEntries entries={item.evidenceRefs} /> : <Evidence items={item.evidence} />}
           <BoardFields key={item.id + item.history.length} item={item} statuses={BOARD_STATUSES} onSaved={(n) => { onSaved(n); setOpen(false); }} />
           {item.history.length > 0 && (
             <details>
@@ -51,8 +57,8 @@ export function BoardItemCard({ item, onSaved }: { item: BoardItem; onSaved: (ne
 
 export function BoardItemsView() {
   const [closed, setClosed] = useState(false);
-  const r = useApi<{ found: boolean; items: BoardItem[] }>(`/api/board-items?closed=${closed}`);
-  const [patched, setPatched] = useState<Record<string, BoardItem>>({});
+  const r = useApi<{ found: boolean; items: BoardItemWithRefs[] }>(`/api/board-items?closed=${closed}`);
+  const [patched, setPatched] = useState<Record<string, BoardItemWithRefs>>({});
   return (
     <div className="stack">
       <Card title="Board action items" actions={<label><input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} /> show closed</label>}>
@@ -60,7 +66,7 @@ export function BoardItemsView() {
       </Card>
       <RemoteView r={r}>
         {(d) => {
-          const items = d.items.map((i) => patched[i.id] ?? i);
+          const items = d.items.map((i) => (patched[i.id] ? { ...i, ...patched[i.id] } : i));
           return (
             <Kanban
               lanes={closed ? BOARD_STATUSES : BOARD_STATUSES.filter((s) => s !== "closed")}

@@ -80,8 +80,41 @@ def minutes_path(data_dir: Path, day: str) -> Path:
     return Path(data_dir) / BOARD / f"minutes-{day}.md"
 
 
+def relative(path: Path) -> str:
+    """A file of this module (``data/board/<name>``) as the console names it, under the data folder
+    (``board/<name>``): never an absolute path."""
+    return f"{BOARD.as_posix()}/{Path(path).name}"
+
+
+def minutes_file(data_dir: Path, day: str) -> str:
+    """The filled copy's path under the data folder (``board/minutes-<date>.md``) when it is on disk, else ""."""
+    path = minutes_path(data_dir, day)
+    return relative(path) if path.is_file() else ""
+
+
+def transcript_file(data_dir: Path, day: str) -> str:
+    """The Zoom transcript the draft of ``day`` was read from, as a path under the data folder
+    (``zoom/meetings/<folder>/transcript.txt``): the board meeting of that day in the Zoom index, the longest when
+    there are several (``jason.tasks.minutes_draft.meeting_record``'s choice). "" when the index lists none; the file
+    itself may be missing."""
+    from jason.tasks.zoom import ZOOM_DIR, load_index
+
+    try:
+        rows = load_index(data_dir).get("meetings", [])
+    except (OSError, ValueError, AttributeError):
+        return ""
+    rows = [m for m in rows if isinstance(m, dict) and m.get("date") == day and m.get("folder")
+            and "board" in str(m.get("kind", ""))]
+    if not rows:
+        return ""
+    row = max(rows, key=lambda m: m.get("duration") or 0)
+    folder = str(row["folder"]).replace("\\", "/").strip("/")
+    return f"{Path(ZOOM_DIR).as_posix()}/{folder}/transcript.txt"
+
+
 def list_drafts(data_dir: Path) -> list[dict[str, Any]]:
-    """The minutes drafts under data/board, newest first, each with whether a review and a filled copy exist."""
+    """The minutes drafts under data/board, newest first, each with whether a review and a filled copy exist. Files
+    are named by their paths under the data folder (``board/...``), never absolute."""
     folder = Path(data_dir) / BOARD
     out = []
     for path in folder.glob("minutes-draft-*.md") if folder.is_dir() else []:
@@ -92,10 +125,10 @@ def list_drafts(data_dir: Path) -> list[dict[str, Any]]:
         text = path.read_text(encoding="utf-8", errors="replace")
         review = load_review(data_dir, day)
         blanks = parse(text)["blanks"]
-        out.append({"date": day, "file": str(path), "blanks": len(blanks),
+        out.append({"date": day, "file": relative(path), "blanks": len(blanks),
                     "filled": sum(1 for b in blanks if review.get("values", {}).get(b.id, "").strip()),
                     "reviewed": bool(review), "reviewedBy": review.get("by", ""), "savedAt": review.get("savedAt", ""),
-                    "minutesFile": str(minutes_path(data_dir, day)) if minutes_path(data_dir, day).is_file() else "",
+                    "minutesFile": minutes_file(data_dir, day),
                     "privacyFlags": len(privacy_flags(text, names=_names(data_dir)))})
     return sorted(out, key=lambda r: r["date"], reverse=True)
 
@@ -224,12 +257,12 @@ def save_review(data_dir: Path, day: str, values: dict[str, str], by: str) -> di
     changed = sorted(k for k in clean if previous.get("values", {}).get(k, "") != clean[k])
     history = list(previous.get("history", []))
     history.append(f"{now[:10]}: {by} filled {len(changed)} blank(s)" + (f" ({', '.join(changed)})" if changed else ""))
-    review = {"date": day, "values": merged, "by": by, "savedAt": now, "history": history, "draft": str(src)}
+    review = {"date": day, "values": merged, "by": by, "savedAt": now, "history": history, "draft": relative(src)}
     review_path(data_dir, day).write_text(json.dumps(review, indent=1, ensure_ascii=False), encoding="utf-8")
     filled = fill(text, merged)
     out = minutes_path(data_dir, day)
     out.write_text(filled, encoding="utf-8")
-    review["minutesFile"] = str(out)
+    review["minutesFile"] = relative(out)
     review["open"] = len(known) - sum(1 for k in known if merged.get(k, "").strip())
     return review
 
@@ -243,4 +276,5 @@ def encode_section(s: Section) -> dict[str, Any]:
 
 
 __all__ = ["Blank", "Section", "draft_path", "encode_blank", "encode_section", "fill", "list_drafts", "load_review",
-           "minutes_path", "parse", "privacy_flags", "review_path", "save_review"]
+           "minutes_file", "minutes_path", "parse", "privacy_flags", "relative", "review_path", "save_review",
+           "transcript_file"]

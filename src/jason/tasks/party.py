@@ -135,6 +135,17 @@ def new_owners(data_dir: Path, community: Any, *, days: int = 365, today: date |
                         "before the recording; a reply by phone or from another mailbox is not seen."]}
 
 
+def _request_ref(data_dir: Path, number: Any) -> dict[str, Any] | None:
+    """A PayHOA request's submission as a reference for the console's ``Doc`` (``payhoa:submission:<n>``, P2), the same
+    evidence a plan's requests carry; None for a row without a request number."""
+    from jason.approvals.docref import submission_ref
+
+    try:
+        return submission_ref(int(number), data_dir=data_dir)
+    except (TypeError, ValueError):
+        return None
+
+
 def open_items(data_dir: Path, community: Any, *, days: int = 30, today: date | None = None) -> dict[str, Any]:
     day = today or date.today()
     since = (day - timedelta(days=days)).isoformat()
@@ -159,7 +170,8 @@ def open_items(data_dir: Path, community: Any, *, days: int = 30, today: date | 
     awaiting.sort(key=lambda t: (not t["likelyNeedsResponse"], -(t["replyRate"] or 0), -t["ageDays"]))
     items["threadsAwaitingUs"] = awaiting
     _units, requests, _violations = _catalog(data_dir)
-    items["requestsPending"] = sorted((r for r in requests if r["status"].lower() == "pending"), key=lambda r: r["created"])
+    items["requestsPending"] = sorted(({**r, "doc": _request_ref(data_dir, r.get("id"))} for r in requests if r["status"].lower() == "pending"),
+                                      key=lambda r: r["created"])
     try:
         from jason.tasks.request_links import request_links
 
@@ -188,10 +200,11 @@ def open_items(data_dir: Path, community: Any, *, days: int = 30, today: date | 
         items["mailNotScanned"] = [d for d in check.get("deliveredNotScanned") or [] if d["deliveredAt"][:10] >= (day - timedelta(days=90)).isoformat()]
     except Exception:
         items["mailNotScanned"] = []
-    from jason.tasks.mail import load_items
+    from jason.tasks.mail import load_items, scan_ref
 
     items["lettersToAct"] = sorted(({"received": r["received"][:10], "from": r.get("from"), "kind": r.get("kind"),
-                                     "deadlines": [d["date"] for d in r.get("deadlines") or []], "mailId": r["mailId"]}
+                                     "deadlines": [d["date"] for d in r.get("deadlines") or []], "mailId": r["mailId"],
+                                     "scan": scan_ref(data_dir, r)}
                                     for r in load_items(data_dir).values() if r.get("urgency") == "act" and (r.get("received") or "") >= since
                                     and not (r.get("source") or {}).get("misdirected")), key=lambda r: r["received"], reverse=True)
     try:

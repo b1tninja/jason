@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
-import { Badge, Card, Command, Confirm, Embed, EmptyState, Kanban, Markdown, Pill, RemoteView, type Attachment, type EmbedKind } from "../components";
+import { Badge, Card, Command, Confirm, Doc, Embed, EmptyState, Kanban, Markdown, Pill, RemoteView, type Attachment, type DocRef, type EmbedKind } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
 
-export interface Clip { at: string; source: string; text: string; label: string; args: Record<string, unknown> }
+/** A clip; `doc` is its source as a document reference when the source names one (an address, a path under data/, a
+ * citation), from the loader. */
+export interface Clip { at: string; source: string; text: string; label: string; args: Record<string, unknown>; doc?: DocRef }
+/** An attachment; `doc` is the Drive file or the photo or PDF under data/ it names, from the loader. */
+export type CanvasAttachment = Attachment & { doc?: DocRef };
 export interface Canvas {
   key: string; title: string; question: string; status: string; matter: string; duty: string; notes: string;
-  clips: Clip[]; links: { label: string; url: string }[]; checklist: { text: string; done: boolean }[]; attachments: Attachment[]; created: string; updated: string; history: string[];
+  clips: Clip[]; links: { label: string; url: string }[]; checklist: { text: string; done: boolean }[]; attachments: CanvasAttachment[]; created: string; updated: string; history: string[];
 }
 const KINDS: { kind: EmbedKind; label: string }[] = [
   { kind: "doc", label: "Google Doc" }, { kind: "sheet", label: "Google Sheet" }, { kind: "slides", label: "Google Slides" }, { kind: "form", label: "Google Form" },
@@ -117,7 +121,7 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
             <label>Status <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>{["research", "preparing", "on agenda", "done"].map((s) => <option key={s}>{s}</option>)}</select></label>
             <label>Duty <select value={draft.duty} onChange={(e) => setDraft({ ...draft, duty: e.target.value })}>{DUTIES.map((d) => <option key={d} value={d}>{d || "—"}</option>)}</select></label>
             <label className="wide">Board item id, once one exists <input value={draft.matter} onChange={(e) => setDraft({ ...draft, matter: e.target.value })} placeholder="reserve-loan-not-restored" /></label>
-            <label className="wide">Notes (Markdown; a ```mermaid fence draws a diagram; ![photo](/api/file?path=photos/x.jpg) shows a photo under data/)
+            <label className="wide">Notes (Markdown; a ```mermaid fence draws a diagram; put a photo on the canvas below to show it beside the notes)
               <textarea rows={12} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
             </label>
           </div>
@@ -131,7 +135,7 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
             {c.clips.map((k, i) => (
               <blockquote key={i} className="passage">
                 {k.label && <strong>{k.label} </strong>}<span>{k.text}</span>
-                <footer className="muted"><code className="chip">{k.source}</code> {k.at.slice(0, 10)}{Object.keys(k.args).length > 0 && <> · {JSON.stringify(k.args)}</>}</footer>
+                <footer className="muted">{k.doc ? <Doc doc={k.doc} variant="chip" /> : <code className="chip">{k.source}</code>} {k.at.slice(0, 10)}{Object.keys(k.args).length > 0 && <> · {JSON.stringify(k.args)}</>}</footer>
               </blockquote>
             ))}
             <div className="fields">
@@ -156,22 +160,22 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
         </div>
       </div>
       <Card title={`On the canvas (${(c.attachments ?? []).length})`}>
-        <p className="muted">Google Docs, Sheets, Slides, Forms, and Drive files show in place for anyone already allowed to see them; photos and PDFs under data/ are served read-only.</p>
+        <p className="muted">A Google file, or a photo or PDF under data/, shows as jason's copy: opening it is a view logged under your name, and a Drive file keeps Open in Google beside it. A calendar, map, published chart, or Zoom recording loads when you click it.</p>
         <div className="embeds">
           {(c.attachments ?? []).map((a, i) => (
             <div key={i} className="stack">
-              <Embed a={a} />
-              <button className="link" onClick={() => put({ attachments: (c.attachments ?? []).filter((_, j) => j !== i) })}>remove from the canvas</button>
+              <AttachmentView a={a} />
+              <button className="link" onClick={() => put({ attachments: (c.attachments ?? []).filter((_, j) => j !== i).map(plain) })}>remove from the canvas</button>
             </div>
           ))}
         </div>
         <div className="fields">
           <label>Kind <select value={newAtt.kind} onChange={(e) => setNewAtt({ ...newAtt, kind: e.target.value as EmbedKind })}>{KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}</select></label>
           <label>Title <input value={newAtt.title ?? ""} onChange={(e) => setNewAtt({ ...newAtt, title: e.target.value })} /></label>
-          <label className="wide">Link, Google file id, or path under data/ <input value={newAtt.ref} onChange={(e) => setNewAtt({ ...newAtt, ref: e.target.value })} placeholder="https://docs.google.com/document/d/… or photos/east-bed.jpg" /></label>
+          <label className="wide">Link, Google file id, or path under data/ <input value={newAtt.ref} onChange={(e) => setNewAtt({ ...newAtt, ref: e.target.value })} placeholder="a Google file's link or id, or photos/east-bed.jpg" /></label>
         </div>
         <Picker onPick={(a) => setNewAtt(a)} />
-        <button onClick={() => put({ attachments: [...(c.attachments ?? []), newAtt] }).then(() => setNewAtt({ kind: "doc", ref: "", title: "" }))} disabled={!newAtt.ref.trim() || busy}>Add to the canvas</button>
+        <button onClick={() => put({ attachments: [...(c.attachments ?? []).map(plain), newAtt] }).then(() => setNewAtt({ kind: "doc", ref: "", title: "" }))} disabled={!newAtt.ref.trim() || busy}>Add to the canvas</button>
       </Card>
       <Card title="To the board">
         <p className="muted">When the research is done, it becomes a board item (a matter to decide, never the decision) and a packet section. The page runs nothing.</p>
@@ -190,6 +194,20 @@ function Editor({ initial, back }: { initial: Canvas; back: () => void }) {
       </Card>
     </div>
   );
+}
+
+/** An attachment as the store keeps it: its reference is the loader's, built afresh on each read. */
+const plain = ({ doc: _doc, ...a }: CanvasAttachment): Attachment => a;
+
+const DRIVE_KIND: Partial<Record<EmbedKind, "doc" | "sheet" | "slides" | "drive">> = { doc: "doc", sheet: "sheet", slides: "slides", form: "drive", drive: "drive" };
+
+/** One attachment: the document it names as a `Doc` (a photo inline, a Drive file or a PDF as a card), from the loader's
+ * reference; anything else (a calendar, a map, a chart, a Zoom recording, audio, a web page, a mail thread) as `Embed`
+ * shows it. */
+function AttachmentView({ a }: { a: CanvasAttachment }) {
+  if (!a.doc) return <Embed a={plain(a)} />;
+  const driveKind = DRIVE_KIND[a.kind];
+  return <Doc doc={a.doc} variant={a.kind === "image" ? "inline" : "card"} {...(driveKind ? { driveKind } : {})} />;
 }
 
 interface DriveFile { id: string; name: string; path: string; kind: EmbedKind; link: string }

@@ -54,12 +54,14 @@ class _Recorder:
 
 
 @pytest.fixture
-def county():
-    """A fake ``jason.mcp.county`` whose every attribute records its call; ``county.calls`` is the log."""
+def county(tmp_path):
+    """A fake ``jason.mcp.county`` whose every attribute records its call; ``county.calls`` is the log. Its data folder
+    (``_data_dir``, which loaders that build document references ask for) is an empty made-up one."""
     saved = {k: sys.modules.get(k) for k in ("jason.mcp", "jason.mcp.county")}
     calls: list = []
     fake = types.ModuleType("jason.mcp.county")
     fake.calls = calls
+    fake._data_dir = lambda data_dir=None: data_dir if data_dir is not None else tmp_path
     for name in set(TOOLS.values()) | {"duty_brief"}:
         setattr(fake, name, _Recorder(name, calls))
     pkg = types.ModuleType("jason.mcp")
@@ -332,6 +334,9 @@ def test_templates_lists_lint_and_previews(county, tmp_path, monkeypatch):
     assert listing["found"] and listing["templates"][0]["kind"] == "hearing-notice"
     t = listing["templates"][0]
     assert set(t["lint"]) == {"profile", "general", "run"} and set(t["tokens"]) >= set(t["lint"]["run"])
+    # The template's Doc is a document reference; its original is the header's "the template Doc" link.
+    assert t["doc"]["address"] == "drive:1DocIdHearing" and t["doc"]["original"]["label"] == "Open in Google"
+    assert "1DocIdHearing" in t["doc"]["original"]["url"]
     one = sources.templates({"kind": "hearing-notice", "name": "Hearing, unit 12", "V_OWNER_NAME": "J. Doe", "V_IGNORED": ""})
     assert one["found"] and "J. Doe" in one["markdown"] or "OWNER_NAME" not in one["tokens"]
     assert one["command"].startswith("jason letter --template hearing-notice --name 'Hearing, unit 12'") and one["command"].endswith("--yes")

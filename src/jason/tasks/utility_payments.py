@@ -192,6 +192,15 @@ def load_audit(data_dir: Path) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+def attachment_refs(data_dir: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each audited payment's attachments with ``doc``, the ``DocRef`` of the copy kept under the data folder
+    (``transactions/<year>/<month>/invoices/``), when the evidence opens it (docs/console/doc-component.md). A bill
+    whose only copy is the portal's, outside the folder, has none. Changes ``rows`` in place and returns them."""
+    from jason.tasks.invoice_review import document_refs
+
+    return document_refs(data_dir, rows, store=TRANSACTIONS, field="attachments")
+
+
 def dollars(cents: int | None) -> str:
     return "-" if cents is None else f"${cents / 100:,.2f}"
 
@@ -221,4 +230,4 @@ def audit_lines(result: dict[str, Any], *, only_problems: bool = True, limit: in
     return out
 
 
-__all__ = ["fetch", "run_audit", "load_audit", "audit_lines", "attachment_path"]
+__all__ = ["fetch", "run_audit", "load_audit", "audit_lines", "attachment_path", "attachment_refs"]

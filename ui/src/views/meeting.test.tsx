@@ -49,8 +49,13 @@ describe("MeetingView", () => {
     expect(weekOf("2026-10-18")).toBe("20261018/20261024");
     expect(weekOf("2026-10-24")).toBe("20261018/20261024");
     await userEvent.click(screen.getByRole("tab", { name: /Decisions/ }));
-    const zoom = screen.getByTitle("Board meeting") as HTMLIFrameElement;
-    expect(zoom.src).toBe("https://zoom.us/rec/share/abc");
+    // Zoom's share page is the original, a link in a new tab, never a frame
+    const zoom = screen.getByRole("link", { name: /^Open in Zoom/ });
+    expect(zoom).toHaveAttribute("href", "https://zoom.us/rec/share/abc");
+    expect(zoom).toHaveAttribute("target", "_blank");
+    expect(zoom).toHaveAttribute("rel", "noreferrer");
+    expect(document.querySelector('iframe[src*="zoom.us"]')).toBeNull();
+    // the kept audio stays an Embed until Doc plays audio (docs/console/doc-component.md; reported to the foundation)
     await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
     const audio = document.querySelector("audio") as HTMLAudioElement;
     expect(audio.getAttribute("src")).toBe("/api/file?path=zoom%2F2026-10-20%2Faudio_only.m4a");

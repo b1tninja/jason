@@ -1,15 +1,19 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Badge, type Tone } from "./Badge";
 import { Caveats } from "./Caveats";
 import { Confirm } from "./Confirm";
+import { Doc, type DocStatic } from "./Doc";
 import { postJson } from "../lib/api";
+import type { DocRef } from "../lib/docref";
 
-/** One copy jason sees without a person's link: a Drive pin in the specification, or a recorded copy on disk. */
-export interface KeyCopy { kind: "drive" | "disk" | string; ref: string; name: string; source: string; url?: string }
-/** A copy a person linked here (`file`, `drive`, `payhoa`, `upload`), and who unlinked it when they did. */
+/** One copy jason sees without a person's link: a Drive pin in the specification, or a recorded copy on disk. `doc` is
+ * its document reference (`drive:<id>`, or `file:<path>` as "Recorded copy"), shown as a `Doc` chip. */
+export interface KeyCopy { kind: "drive" | "disk" | string; ref: string; name: string; source: string; url?: string; doc?: DocRef }
+/** A copy a person linked here (`file`, `drive`, `payhoa`, `upload`), and who unlinked it when they did; `doc` is its
+ * document reference when jason can show it. */
 export interface KeyLink {
   id: string; kind: string; ref: string; name: string; by: string; at: string; note?: string; url?: string; sha256?: string;
-  unlinked?: { by: string; at: string; note?: string } | null;
+  unlinked?: { by: string; at: string; note?: string } | null; doc?: DocRef;
 }
 /** A locator's find for this entry: a lead, not a pin. */
 export interface KeyLead { number?: string; recorded?: string; filing?: string; tie?: string; via?: string; source?: string }
@@ -48,8 +52,10 @@ function StatusWord({ word, why }: { word: KeyStatusWord; why?: string }) {
  * the copies people linked (open, unlink), the locator's lead labeled as a lead, and a link, upload, or status action
  * behind a `Confirm` in a person's name. Every write goes to `POST /api/write/key-documents/<key>`; nothing reaches
  * Drive, PayHOA, or the county. */
-export function KeyDocuments({ data, by = "", onChanged, post = postJson }: {
+export function KeyDocuments({ data, by = "", onChanged, post = postJson, docProps }: {
   data: KeyDocumentsData; by?: string; onChanged?: () => void; post?: Post;
+  /** Passed to each copy's `Doc` (previews, tests): the sign-in, the view, the private view. */
+  docProps?: DocStatic;
 }) {
   const [name, setName] = useState(by);
   const [show, setShow] = useState<"all" | "open">("all");
@@ -86,7 +92,7 @@ export function KeyDocuments({ data, by = "", onChanged, post = postJson }: {
             {g.why && <p className="muted">{g.why}</p>}
             {!rows.length ? <p className="muted">None on record yet. None on record is not none given.</p> : (
               <ul className="stack-sm" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {rows.map((e) => <EntryRow key={e.key} entry={e} by={by || name} post={post} onChanged={onChanged} limits={data.limits} />)}
+                {rows.map((e) => <EntryRow key={e.key} entry={e} by={by || name} post={post} onChanged={onChanged} limits={data.limits} docProps={docProps} />)}
               </ul>
             )}
           </section>
@@ -98,12 +104,20 @@ export function KeyDocuments({ data, by = "", onChanged, post = postJson }: {
   );
 }
 
-function Opener({ url, children }: { url?: string; children: ReactNode }) {
-  return url ? <a href={url} target="_blank" rel="noopener noreferrer">{children}</a> : <>{children}</>;
+/** A copy by its document reference: a `Doc` chip (one logged view on a click) with its original ("Open in Google")
+ * beside it; with no reference (a PayHOA document jason keeps no copy of), its name as text. Never a URL into data/. */
+function CopyDoc({ doc, name, docProps }: { doc?: DocRef; name: string; docProps?: DocStatic }) {
+  if (!doc) return <span>{name}</span>;
+  return (
+    <>
+      <Doc doc={doc} variant="chip" {...docProps} />
+      {doc.original && <> <a href={doc.original.url} target="_blank" rel="noreferrer">{doc.original.label}<span className="visually-hidden"> (opens in a new tab)</span></a></>}
+    </>
+  );
 }
 
-function EntryRow({ entry: e, by, post, onChanged, limits }: {
-  entry: KeyEntry; by: string; post: Post; onChanged?: () => void; limits?: KeyDocumentsData["limits"];
+function EntryRow({ entry: e, by, post, onChanged, limits, docProps }: {
+  entry: KeyEntry; by: string; post: Post; onChanged?: () => void; limits?: KeyDocumentsData["limits"]; docProps?: DocStatic;
 }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -143,7 +157,8 @@ function EntryRow({ entry: e, by, post, onChanged, limits }: {
           <span className="muted">Copies jason sees</span>
           <ul>
             {e.copies.map((c) => (
-              <li key={`${c.kind}:${c.ref}`}><Badge>{KIND_WORD[c.kind] ?? c.kind}</Badge> <Opener url={c.url}>{c.name}</Opener> <span className="muted">· {c.source}</span></li>
+              <li key={`${c.kind}:${c.ref}`}><Badge>{KIND_WORD[c.kind] ?? c.kind}</Badge> <CopyDoc doc={c.doc} name={c.name} docProps={docProps} />{" "}
+                <span className="muted">· {c.kind === "disk" ? c.doc?.source ?? c.source : c.doc?.source ? `${c.doc.source} (${c.source})` : c.source}</span></li>
             ))}
           </ul>
         </div>
@@ -155,7 +170,7 @@ function EntryRow({ entry: e, by, post, onChanged, limits }: {
             {e.links.map((l) => (
               <li key={l.id} className="row wrap">
                 <Badge tone="good">{KIND_WORD[l.kind] ?? l.kind}</Badge>
-                <Opener url={l.url}>{l.name}</Opener>
+                <CopyDoc doc={l.doc} name={l.name} docProps={docProps} />
                 <span className="muted">by {l.by}, <Day iso={l.at} /></span>
                 <Confirm label="Unlink" busy={busy || !by} onConfirm={() => write({ action: "unlink", link: l.id }, `Unlinked ${l.name} as ${by}. The file stays where it is.`)}
                   summary={<>Unlink <strong>{l.name}</strong> from {label} as {by || "(your name)"}. The file is not deleted; the record keeps who linked and who unlinked it.</>}>

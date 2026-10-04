@@ -116,8 +116,21 @@ def _dollars_pattern(cents: int) -> re.Pattern:
     return re.compile(r"\$?\s*" + re.escape(whole) + r"(\.\d\d)?\b")
 
 
+def library_doc(data_dir: Path, doc_id: str, name: str) -> dict[str, Any] | None:
+    """A library row's ``DocRef`` (docs/console/doc-component.md): ``library:<id>``, or the Drive file a ``drive-<id>``
+    row was read from; None for an id neither takes."""
+    from jason.approvals.docref import drive_ref, library_ref
+
+    try:
+        if str(doc_id).startswith("drive-"):
+            return drive_ref(str(doc_id)[6:], name=name or None, data_dir=data_dir)
+        return library_ref(str(doc_id), name=name or None, data_dir=data_dir)
+    except ValueError:
+        return None
+
+
 def documents(data_dir: Path, loan: Borrowing, *, notice_days: int = 60) -> dict[str, Any]:
-    """The notice, minutes, and resolution the library holds for one borrowing."""
+    """The notice, minutes, and resolution the library holds for one borrowing, each with ``doc``, its ``DocRef``."""
     from jason.tasks.library import load, text_for
 
     rows = load(Path(data_dir))
@@ -152,6 +165,11 @@ def documents(data_dir: Path, loan: Borrowing, *, notice_days: int = 60) -> dict
         if BORROW.search(row["name"]) and amount.search(text):
             resolution = {"id": row["id"], "name": row["name"]}
             break
+    for found_doc in (notice, minutes, resolution):
+        if found_doc is not None:
+            ref = library_doc(Path(data_dir), found_doc["id"], found_doc["name"])
+            if ref is not None:
+                found_doc["doc"] = ref
     return {"notice": notice, "minutes": minutes, "resolution": resolution}
 
 
@@ -281,4 +299,4 @@ def review_lines(result: dict[str, Any]) -> list[str]:
     return out
 
 
-__all__ = ["review", "review_lines", "documents", "account_numbers", "deleted_reserve_liabilities", "fetch_budgets", "contribution_check", "budget_path"]
+__all__ = ["review", "review_lines", "documents", "library_doc","account_numbers", "deleted_reserve_liabilities", "fetch_budgets", "contribution_check", "budget_path"]

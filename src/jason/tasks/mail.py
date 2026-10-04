@@ -39,6 +39,28 @@ def load_items(data_dir: Path) -> dict[str, dict[str, Any]]:
     return {row["mailId"]: row for row in json.loads(path.read_text(encoding="utf-8")).get("items", [])}
 
 
+SCAN = "contents.pdf"
+COVER = "cover.jpg"
+_MAIL_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def scan_ref(data_dir: Path, row: dict[str, Any]) -> dict[str, Any] | None:
+    """A letter's document as a reference for the console's ``Doc`` (docs/console/doc-component.md): its scan,
+    ``mail/<id>/contents.pdf``, when PostScanMail scanned it (or the scan is on disk), else its envelope,
+    ``mail/<id>/cover.jpg``. Neither on disk is still a reference, which the ``Doc`` says is not on disk. The level is
+    ``jason.web.access``'s for ``mail/`` (P2). Reads metadata only; None for a row without a usable mail id."""
+    from jason.approvals.docref import file_ref
+
+    mail_id = str(row.get("mailId") or "").strip()
+    if not _MAIL_ID.fullmatch(mail_id):
+        return None
+    scanned = bool(row.get("scanned")) or (mail_dir(data_dir) / mail_id / SCAN).is_file()
+    who = " ".join(str(row.get("from") or row.get("sender") or "").split())
+    day = str(row.get("received") or "")[:10]
+    name = ("Letter" if scanned else "Envelope") + (f" from {who}" if who else "") + (f", {day}" if day else "")
+    return file_ref(f"{MAIL_DIR}/{mail_id}/{SCAN if scanned else COVER}", name=name, data_dir=data_dir)
+
+
 def _text_of(pdf: Path) -> tuple[str, str]:
     """The PDF's text layer, else OCR; with where it came from."""
     from jason.tasks.utilities import pdf_text

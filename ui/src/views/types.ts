@@ -1,3 +1,5 @@
+import type { DocRef } from "../lib/docref";
+
 export interface BoardItem {
   id: string; title: string; summary: string; ask: string; category: string; priority: string; status: string;
   authority: string; evidence: string[]; session: string | null; special_notice: string; due: string | null; opened: string | null;
@@ -72,9 +74,12 @@ export interface Meetings { found?: boolean; note?: string; builtAt?: string; co
 export interface Policy {
   kind: string; building?: string | number | null; number: string; priorNumbers: string[]; carrier: string; program: string; agent: string;
   standing: string; termEnd: string | null; terms: { start?: string; end?: string; paidCents?: number }[]; nextTermPayments: { date: string; amountCents: number }[];
-  letters: unknown[]; letterCount?: number; notices: { kind: string; received: string; subject?: string }[]; findings: string[];
+  letters: unknown[]; letterCount?: number; notices: InsuranceLetter[]; findings: string[];
 }
-export interface Insurance { found?: boolean; note?: string; asOf: string; paymentsSynced?: string; policies: Policy[]; unplacedFloodPayments: unknown[]; claims: { received: string; claimNumber?: string; dateOfLoss?: string; kind?: string }[]; caveats?: string[] }
+/** A letter the insurance review reads (a notice or a claim), with its scan as a `DocRef` (`mail/<id>/contents.pdf`, P2). */
+export interface InsuranceLetter { kind: string; received: string; subject?: string; mailId?: string; from?: string | null; scan?: import("../lib/docref").DocRef | null }
+export interface InsuranceClaim { received: string; claimNumber?: string; dateOfLoss?: string; kind?: string; mailId?: string; from?: string | null; scan?: import("../lib/docref").DocRef | null }
+export interface Insurance { found?: boolean; note?: string; asOf: string; paymentsSynced?: string; policies: Policy[]; unplacedFloodPayments: unknown[]; claims: InsuranceClaim[]; caveats?: string[] }
 
 export interface Side { budget?: number; actual?: number; variance?: number; budgeted?: number }
 export interface Budget {
@@ -90,9 +95,11 @@ export interface Account {
   ledgerMismatches: { end: string; statementCents: number; ledgerCents: number; differenceCents: number; explained: boolean }[];
 }
 export interface Reconciliations { found?: boolean; note?: string; accounts: Account[]; openTransfers: unknown[]; caveats?: string[] }
+/** An attachment as the invoice review gives it: its filename, and `doc`, the reference to jason's copy when it keeps one. */
+export interface PaymentDocument { id?: number; filename: string; kind?: string; doc?: DocRef }
 export interface Payment {
   key: string; date: string; amountCents: number; payee: string; description: string; categories: string[];
-  documents: { filename: string; kind?: string }[]; findings: string[]; ok: boolean;
+  documents: PaymentDocument[]; findings: string[]; ok: boolean;
 }
 export interface Invoices { found?: boolean; note?: string; summary: Record<string, number>; payments: Payment[]; more?: string; caveats?: string[] }
 export interface CollectionRow {
@@ -104,13 +111,20 @@ export interface Collections { found?: boolean; note?: string; counts: Record<st
 export interface Move { day: string; cents: number; account: string; kind: string; purpose: string; number: string; memo: string; description: string; matched?: boolean }
 export interface Borrowing extends Move {
   deadline: string; repaidCents: number; outstandingCents: number; repaidOn: string | null; exactRepayment: boolean; repayments: Move[];
-  documents: { notice: { path?: string; cites?: string } | null; minutes: { path?: string; draft?: boolean } | null; resolution: { path?: string } | null };
+  /** The 5515 record the library holds, each with `doc`, its reference. */
+  documents: {
+    notice: { id?: string; name?: string; meeting?: string; cites?: string; doc?: DocRef } | null;
+    minutes: { id?: string; name?: string; draft?: boolean; mentionsBorrowing?: boolean; doc?: DocRef } | null;
+    resolution: { id?: string; name?: string; doc?: DocRef } | null;
+  };
   gaps: string[];
 }
 export interface Reserves {
   found?: boolean; note?: string; ledgerThrough: string; reserveAccounts: string[]; borrowings: Borrowing[];
   budgetYears: { year: number; through?: string; contributionBudgetCents: number; contributionPaidCents: number; repaymentBudgetCents?: number; repaymentPaidCents?: number; short?: string[]; late?: { month: string; daysLate: number }[] }[];
   otherWithdrawals: Move[]; unappliedContributions: Move[]; catchUps: Move[]; investments: Move[]; caveats?: string[];
+  /** The latest reserve study's reference, when one is on disk. */
+  study?: DocRef;
 }
 export interface Hearing {
   address: string; building?: string | number; start: string; noticeBy: string; noticeOn?: string; decisionByIfHeld: string; statement?: string;
@@ -125,12 +139,12 @@ export interface TitleWatch { found?: boolean; note?: string; counts: Record<str
 export interface OpenItems {
   found?: boolean; note?: string; counts: Record<string, number>;
   threadsAwaitingUs: { threadId?: string; last: string; ageDays: number; who: string; subject: string; topics: string[]; link?: string; likelyNeedsResponse?: boolean; pastUsualTime?: boolean; replyRate?: number }[];
-  requestsPending: { id?: string | number; form?: string; unit?: string; title?: string; created?: string; status?: string }[];
+  requestsPending: { id?: string | number; form?: string; unit?: string; title?: string; created?: string; status?: string; doc?: import("../lib/docref").DocRef | null }[];
   emailedRequests?: unknown[];
   deadlines: { name: string; next: string | null; daysLeft: number | null; standing: string; note?: string }[];
   insurance: { policy: string; standing: string; finding: string }[];
   mailNotScanned: { mailId?: string; received: string; from?: string; kind?: string }[];
-  lettersToAct: { received: string; from: string; kind: string; deadlines: string[]; mailId?: string }[];
+  lettersToAct: { received: string; from: string; kind: string; deadlines: string[]; mailId?: string; scan?: import("../lib/docref").DocRef | null }[];
   lienNotices: { received?: string; from?: string; kind?: string; amountCents?: number; subject?: string }[];
   caveats?: string[];
 }

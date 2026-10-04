@@ -72,6 +72,47 @@ def load_studies(data_dir: Path) -> list[ReserveStudy]:
     return sorted(studies, key=lambda s: (s.fiscal_year or 0, s.prepared or date.min))
 
 
+def latest_study(studies: list[ReserveStudy]) -> ReserveStudy | None:
+    """The study the brief reads its plan from: the latest with a projection, else the latest (``studies`` oldest first)."""
+    if not studies:
+        return None
+    return max((s for s in studies if s.projection), key=lambda s: (s.fiscal_year or 0, s.prepared or date.min), default=studies[-1])
+
+
+_LATEST: dict[str, tuple[tuple[tuple[str, int], ...], tuple[str, str]]] = {}
+
+
+def latest_study_ref(data_dir: Path) -> dict[str, Any] | None:
+    """The latest reserve study's ``DocRef`` (docs/console/doc-component.md): its PDF under the data folder
+    (``file:reserve-studies/...`` or the library's copy), named by its fiscal year. None when no study is on disk. The
+    choice is read once a version of the files (reading the studies parses each PDF); the reference, with its level, is
+    built each time."""
+    from jason.approvals.docref import file_ref
+
+    files = study_files(data_dir)
+    stamp = tuple((str(p), p.stat().st_mtime_ns) for p in files)
+    key = str(Path(data_dir).resolve())
+    cached = _LATEST.get(key)
+    if cached is None or cached[0] != stamp:
+        studies = sorted((read_study(p) for p in files), key=lambda s: (s.fiscal_year or 0, s.prepared or date.min))
+        latest = latest_study(studies)
+        rel = name = ""
+        if latest is not None:
+            try:
+                rel = Path(latest.source).resolve().relative_to(Path(data_dir).resolve()).as_posix()
+            except (OSError, ValueError):
+                rel = ""
+            name = f"Reserve study, fiscal year {latest.fiscal_year}" if latest.fiscal_year else ""
+        cached = _LATEST[key] = (stamp, (rel, name))
+    rel, name = cached[1]
+    if not rel:
+        return None
+    try:
+        return file_ref(rel, name=name or None, data_dir=data_dir)
+    except ValueError:
+        return None
+
+
 def _percent(study: ReserveStudy) -> float | None:
     d = study.disclosure
     if d.percent_funded is not None:
@@ -298,7 +339,7 @@ def reserve_brief(data_dir: Path, community: Any, *, year: int | None = None, to
     if reports:
         period, report = list(reports.items())[-1]
         latest_report = {"period": period, **report}
-    latest = max((s for s in studies if s.projection), key=lambda s: (s.fiscal_year or 0, s.prepared or date.min), default=studies[-1])
+    latest = latest_study(studies)
     plan = latest.year(wanted)
     now = latest.year(day.year)
     budget = _budget(data_dir, community)
@@ -398,4 +439,4 @@ def brief_lines(brief: dict[str, Any]) -> list[str]:
     return out
 
 
-__all__ = ["treasurer_reserves", "ledger_month_ends", "merge_reserve_sources", "report_checks", "study_files", "load_studies", "history", "checks", "site_visit_due", "reserve_brief", "brief_lines"]
+__all__ = ["treasurer_reserves", "ledger_month_ends", "merge_reserve_sources", "report_checks", "study_files", "load_studies", "history", "checks", "site_visit_due", "reserve_brief", "brief_lines", "latest_study", "latest_study_ref"]

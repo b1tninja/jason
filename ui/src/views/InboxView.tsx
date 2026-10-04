@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, DataTable, DueDate, Findings, Money, Pill, RemoteView, Tabs } from "../components";
+import { Badge, Card, Caveats, DataTable, Doc, DueDate, Findings, Money, Pill, RemoteView, Tabs } from "../components";
 import { useApi } from "../lib/useApi";
 import type { OpenItems } from "./types";
 
@@ -21,19 +21,21 @@ export function InboxView() {
                 { key: "last", header: "Last" },
                 { key: "ageDays", header: "Age (days)", align: "right" },
                 { key: "who", header: "Who" },
-                { key: "subject", header: "Subject", render: (t) => t.link ? <a href={t.link} target="_blank" rel="noreferrer">{t.subject}</a> : t.subject },
+                { key: "subject", header: "Subject", render: (t) => <>{t.subject}{t.link && <> <a href={t.link} target="_blank" rel="noreferrer" aria-label={`Open in Gmail: ${t.subject} (opens in a new tab)`}>Open in Gmail</a></>}</> },
                 { key: "topics", header: "Topics", value: (t) => t.topics.join(", ") },
                 { key: "likely", header: "Reply?", value: (t) => (t.likelyNeedsResponse ? 1 : 0),
                   render: (t) => <>{t.likelyNeedsResponse && <Badge tone="warn">likely</Badge>} {t.pastUsualTime && <Badge tone="bad">past usual time</Badge>} {t.replyRate != null && <span className="muted">{Math.round(t.replyRate * 100)}% replied before</span>}</> },
               ]} /> ) },
             { id: "requests", label: `Requests pending (${d.requestsPending.length})`, content: (
-              <DataTable rows={d.requestsPending} columns={[{ key: "created", header: "Created", value: (x) => x.created ?? "" }, { key: "form", header: "Form", value: (x) => x.form ?? "" }, { key: "unit", header: "Unit", value: (x) => x.unit ?? "" }, { key: "title", header: "Title", value: (x) => x.title ?? "" }, { key: "status", header: "Status", render: (x) => <Pill word={x.status} />, value: (x) => x.status ?? "" }]} /> ) },
+              <DataTable rows={d.requestsPending} columns={[{ key: "created", header: "Created", value: (x) => x.created ?? "" }, { key: "form", header: "Form", value: (x) => x.form ?? "" }, { key: "unit", header: "Unit", value: (x) => x.unit ?? "" }, { key: "title", header: "Title", value: (x) => x.title ?? "" }, { key: "status", header: "Status", render: (x) => <Pill word={x.status} />, value: (x) => x.status ?? "" },
+                { key: "doc", header: "Request", value: (x) => String(x.id ?? ""), render: (x) => x.doc ? <Doc doc={x.doc} variant="chip" /> : <span className="muted">—</span> }]} /> ) },
             { id: "deadlines", label: `Deadlines (${d.deadlines.length})`, content: (
               <DataTable rows={d.deadlines} columns={[{ key: "standing", header: "Standing", render: (x) => <Pill word={x.standing} meaning={x.note} /> }, { key: "name", header: "Obligation" }, { key: "next", header: "Next", render: (x) => <DueDate iso={x.next} />, value: (x) => x.next ?? "9999" }]} searchable={false} /> ) },
             { id: "insurance", label: `Insurance (${d.insurance.length})`, content: (
               <DataTable rows={d.insurance} columns={[{ key: "policy", header: "Policy" }, { key: "standing", header: "Standing", render: (x) => <Pill word={x.standing} /> }, { key: "finding", header: "Finding", render: (x) => <Findings items={[x.finding]} /> }]} searchable={false} /> ) },
             { id: "letters", label: `Letters to act on (${d.lettersToAct.length})`, content: (
-              <DataTable rows={d.lettersToAct} columns={[{ key: "received", header: "Received" }, { key: "from", header: "From" }, { key: "kind", header: "Kind", render: (x) => <Badge>{x.kind}</Badge> }, { key: "deadlines", header: "Deadlines it states", render: (x) => <Findings items={x.deadlines} empty="none" />, value: (x) => x.deadlines.length }]} /> ) },
+              <DataTable rows={d.lettersToAct} columns={[{ key: "received", header: "Received" }, { key: "from", header: "From" }, { key: "kind", header: "Kind", render: (x) => <Badge>{x.kind}</Badge> }, { key: "deadlines", header: "Deadlines it states", render: (x) => <Findings items={x.deadlines} empty="none" />, value: (x) => x.deadlines.length },
+                { key: "scan", header: "Letter", value: (x) => x.scan?.name ?? "", render: (x) => x.scan ? <Doc doc={x.scan} variant="chip" /> : <span className="muted">—</span> }]} /> ) },
             { id: "mail", label: `Mail not scanned (${d.mailNotScanned.length})`, content: (
               <DataTable rows={d.mailNotScanned} columns={[{ key: "received", header: "Received" }, { key: "from", header: "From", value: (x) => x.from ?? "" }, { key: "kind", header: "Kind", value: (x) => x.kind ?? "" }]} /> ) },
             { id: "liens", label: `Lien notices (${d.lienNotices.length})`, content: (

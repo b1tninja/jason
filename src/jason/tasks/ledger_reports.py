@@ -174,9 +174,11 @@ def validate(data_dir: Path) -> dict[str, Any]:
         copies = [d["path"] for d in by_hash.get(file_hash, [])]
         matched_hashes.add(file_hash)
         run_rows.append({"id": run["id"], "name": run["name"], "period": period, "completedAt": run.get("completedAt"),
-                         "pages": run.get("totalPages"), "libraryCopies": copies, "notes": notes})
+                         "pages": run.get("totalPages"), "libraryCopies": copies,
+                         "libraryIds": [d["id"] for d in by_hash.get(file_hash, [])], "notes": notes})
     # The library's copies that are no PayHOA run as generated: redacted, edited, or from elsewhere.
-    altered = [{"path": d["path"], "period": d["period"]} for d in library if d["sha256"] and d["sha256"] not in matched_hashes]
+    altered = [{"id": d["id"], "path": d["path"], "period": d["period"]} for d in library
+               if d["sha256"] and d["sha256"] not in matched_hashes]
     # A copy that is a run takes the run's period; any other copy has only its file name to go by.
     period_of_hash = {(r.get("uploadedFile") or {}).get("fileHash", ""): run_period(r)[0] for r in runs}
     # Where each account's balance stood at each month end, to recognise a copy filed under the wrong month.
@@ -203,7 +205,8 @@ def validate(data_dir: Path) -> dict[str, Any]:
             if printed == account["cents"]:
                 continue
             elsewhere = [p for p in seen_at.get((account["label"], printed), []) if p != period]
-            row = {"period": period, "periodFrom": "run" if doc["sha256"] in period_of_hash else "file name", "path": doc["path"],
+            row = {"period": period, "periodFrom": "run" if doc["sha256"] in period_of_hash else "file name",
+                   "id": doc["id"], "path": doc["path"],
                    "account": account["label"], "printedCents": printed, "ledgerCents": account["cents"], "asOf": sheet["asOf"]}
             if elsewhere and row["periodFrom"] == "file name":
                 misfiled.append({**row, "matchesPeriods": elsewhere})
@@ -221,7 +224,8 @@ def validate(data_dir: Path) -> dict[str, Any]:
         for label in sorted(label for label in labels if _key(label) not in present):
             printed = printed_amount(doc["text"], label)
             if printed is not None and printed != 0:
-                rewritten.append({"period": period, "account": label, "printedCents": printed, "path": doc["path"]})
+                rewritten.append({"period": period, "account": label, "printedCents": printed, "id": doc["id"],
+                                  "path": doc["path"]})
     missing = [r for r in run_rows if not r["libraryCopies"]]
     result = {
         "found": True,
@@ -259,6 +263,37 @@ def _dedupe(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _key(label: str) -> str:
     """An account label without its bank in parentheses, folded."""
     return re.sub(r"\s+", " ", re.sub(r"\([^)]*\)", "", label)).strip().casefold()
+
+
+LIBRARY_ROWS = ("libraryCopiesNotFromARun", "balanceChanges", "copiesUnderAnotherMonth", "accountsTheLedgerDropped")
+
+
+def library_refs(data_dir: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """The validation with each library copy as a ``DocRef`` (``library:<id>``, docs/console/doc-component.md): a run's
+    ``libraryDocs`` beside its ``libraryCopies``, and ``doc`` on each checklist row beside its ``path``. A copy the
+    library no longer holds is still a reference, which says so when opened. Changes ``result`` in place."""
+    from jason.approvals.docref import library_ref
+
+    made: dict[str, dict[str, Any] | None] = {}
+
+    def ref(ident: Any, path: str) -> dict[str, Any] | None:
+        key = str(ident or "")
+        if key and key not in made:
+            try:
+                made[key] = library_ref(key, name=Path(str(path or "")).name or None, data_dir=data_dir)
+            except ValueError:
+                made[key] = None
+        return made.get(key)
+
+    for run in result.get("runs") or []:
+        ids, paths = run.get("libraryIds") or [], run.get("libraryCopies") or []
+        run["libraryDocs"] = [r for r in (ref(i, p) for i, p in zip(ids, paths)) if r is not None]
+    for name in LIBRARY_ROWS:
+        for row in result.get(name) or []:
+            got = ref(row.get("id"), str(row.get("path") or ""))
+            if got is not None:
+                row["doc"] = got
+    return result
 
 
 def _dedupe_dropped(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -351,4 +386,5 @@ def validation_lines(result: dict[str, Any]) -> list[str]:
     return out
 
 
-__all__ = ["fetch", "validate", "run_period", "printed_amount", "ledger_reserves", "library_reports", "validation_lines"]
+__all__ = ["fetch", "validate", "run_period", "printed_amount", "ledger_reserves", "library_reports", "validation_lines",
+           "library_refs"]

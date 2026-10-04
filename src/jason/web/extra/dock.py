@@ -10,6 +10,7 @@ guesses. There is no translator in this build: a translation draft is a person's
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -110,11 +111,58 @@ def _tasks(today: date) -> dict[str, Any]:
             "editable": list(store.TASK_EDITABLE), "caveats": ["The register is what people said needs doing; jason assigns nothing and marks nothing done."]}
 
 
+_TOOL_CALL = re.compile(r"^[a-z_]+\(.*\)$", re.S)
+
+
+def source_ref(text: str, root: Any = None) -> dict[str, Any]:
+    """One source an answer or a note names, as the console's ``Doc`` takes it (docs/console/doc-component.md): a tool
+    call jason read (``meeting()``) is ``{command}``; a citation, a library document, a Drive file, or a file under data/
+    is a ``DocRef`` (``jason.approvals.docref``); a bare library path is looked up as one exactly; anything else stays
+    ``{text}``, never a guess."""
+    from jason.approvals.docref import ref_from_string
+    from jason.approvals.evidence import mask_text
+
+    said = " ".join(str(text or "").split())
+    if _TOOL_CALL.match(said):
+        return {"command": mask_text(said)[0]}
+    try:
+        got = ref_from_string(said, data_dir=root)
+        if "text" in got and "/" in said and not said.lower().startswith(("data/", "library", "drive")):
+            lib = ref_from_string(f"library: {said}", data_dir=root)
+            if "address" in lib:
+                return lib
+        return got
+    except (OSError, ValueError):
+        return {"text": mask_text(said)[0]}
+
+
+def source_refs(sources: Any, root: Any = None, known: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """``source_ref`` for each source, in order, one for one; ``known`` gives the reference already built for a source
+    (a library hit by its id)."""
+    known = known or {}
+    return [known.get(str(s)) or source_ref(str(s), root) for s in sources or ()]
+
+
+def _library_refs(rows: list[dict[str, Any]], root: Any) -> dict[str, dict[str, Any]]:
+    """Each library hit's reference by its path, from the hit's id."""
+    from jason.approvals.docref import library_ref
+
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        try:
+            out[str(r["path"])] = library_ref(str(r["id"]), data_dir=root)
+        except (KeyError, OSError, ValueError):
+            continue
+    return out
+
+
 def _notes() -> dict[str, Any]:
     from jason.tasks import dock as store
 
-    rows = store.load(_root())["notes"]
-    return {"found": True, "count": len(rows), "notes": sorted(rows, key=lambda n: n.get("updated", ""), reverse=True),
+    root = _root()
+    rows = store.load(root)["notes"]
+    notes = [{**n, "sourceRefs": source_refs(n.get("sources"), root)} for n in rows]
+    return {"found": True, "count": len(rows), "notes": sorted(notes, key=lambda n: n.get("updated", ""), reverse=True),
             "statuses": list(store.NOTE_STATUSES), "caveat": store.NOTE_CAVEAT}
 
 
@@ -182,14 +230,17 @@ def _q_minutes() -> dict[str, Any]:
                 sources += ["records_inventory()", str(rec.get("citation") or "CIV 5200(a)(8)")]
     except Exception:
         pass
+    refs: dict[str, dict[str, Any]] = {}
     try:
         hits = library_search(kind="minutes", limit=3)
         if hits.get("found"):
             parts.append("Newest in the library: " + "; ".join(f"{r['path']} ({r.get('period') or '?'})" for r in hits["rows"]) + ".")
             sources.append("library_search(kind=minutes)")
+            refs = _library_refs(hits["rows"], _root())
+            sources += [p for p in refs if p not in sources]
     except Exception:
         pass
-    return {"answer": " ".join(parts), "sources": sources if parts else []}
+    return {"answer": " ".join(parts), "sources": sources if parts else [], "refs": refs}
 
 
 def common_questions(today: date | None = None) -> list[dict[str, Any]]:
@@ -209,7 +260,9 @@ def common_questions(today: date | None = None) -> list[dict[str, Any]]:
         except Exception as exc:  # a store not on disk is no answer, never a guess
             got = {"answer": "", "sources": [], "note": f"{type(exc).__name__}: {exc}"}
         sourced = bool(got.get("sources")) and bool(got.get("answer"))
-        out.append({"question": question, "screen": screen, "answer": got["answer"] if sourced else "", "sources": got.get("sources", []) if sourced else [],
+        sources = got.get("sources", []) if sourced else []
+        out.append({"question": question, "screen": screen, "answer": got["answer"] if sourced else "", "sources": sources,
+                    "sourceRefs": source_refs(sources, _root(), got.get("refs")) if sources else [],
                     "routed": not sourced, "note": got.get("note", "")})
     return out
 
@@ -217,8 +270,10 @@ def common_questions(today: date | None = None) -> list[dict[str, Any]]:
 def _ask(today: date) -> dict[str, Any]:
     from jason.tasks import dock as store
 
-    data = store.load(_root())
-    return {"found": True, "common": common_questions(today), "asks": sorted(data["asks"], key=lambda a: a.get("at", ""), reverse=True)[:20],
+    root = _root()
+    data = store.load(root)
+    asks = sorted(data["asks"], key=lambda a: a.get("at", ""), reverse=True)[:20]
+    return {"found": True, "common": common_questions(today), "asks": [{**a, "sourceRefs": source_refs(a.get("sources"), root)} for a in asks],
             "translations": sorted(data["translations"], key=lambda t: t.get("at", ""), reverse=True), "translationStates": list(store.TRANSLATION_STATES),
             "translateCommand": "", "routedAnswer": store.ROUTED_ANSWER, "caveats": list(ASK_CAVEATS) + [store.TRANSLATION_CAVEAT]}
 
@@ -262,10 +317,12 @@ def _answer_free(question: str, by: str, screen: str) -> dict[str, Any]:
     from jason.mcp.county import library_search
     from jason.tasks import dock as store
 
+    root = _root()
     words = _norm_words(question)
     for c in common_questions():
         if c["sources"] and len(words & _norm_words(c["question"])) >= max(2, len(_norm_words(c["question"])) - 1):
-            return store.record_ask(_root(), question, by=by, answer=c["answer"], sources=c["sources"], screen=c["screen"])
+            row = store.record_ask(root, question, by=by, answer=c["answer"], sources=c["sources"], screen=c["screen"])
+            return {**row, "sourceRefs": list(c.get("sourceRefs") or [])}
     try:
         hits = library_search(words=question, limit=5)
     except Exception:
@@ -274,8 +331,10 @@ def _answer_free(question: str, by: str, screen: str) -> dict[str, Any]:
         rows = hits["rows"]
         answer = f"The phrase appears in {hits.get('count', len(rows))} library file(s): " + "; ".join(
             f"{r['path']} ({r.get('kind') or 'unclassified'}" + (f", {r['period']}" if r.get("period") else "") + ")" for r in rows) + ". Read the file; this is where the words were found, not a finding."
-        return store.record_ask(_root(), question, by=by, answer=answer, sources=[f"library_search(words={question!r})"] + [r["path"] for r in rows], screen="records")
-    return store.record_ask(_root(), question, by=by, answer="", sources=[], screen=screen)
+        sources = [f"library_search(words={question!r})"] + [r["path"] for r in rows]
+        row = store.record_ask(root, question, by=by, answer=answer, sources=sources, screen="records")
+        return {**row, "sourceRefs": source_refs(row.get("sources"), root, _library_refs(rows, root))}
+    return {**store.record_ask(root, question, by=by, answer="", sources=[], screen=screen), "sourceRefs": []}
 
 
 def _send_for_review(row: dict[str, Any], by: str) -> str:
@@ -319,11 +378,13 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     if action == "task_done":
         return store.complete_task(root, key, by=by, done=bool(body.get("done", True)))
     if action == "note_add":
-        return store.add_note(root, str(body.get("title", "")), by=by, body=str(body.get("body", "") or ""), status=str(body.get("status", "researching") or "researching"),
+        note = store.add_note(root, str(body.get("title", "")), by=by, body=str(body.get("body", "") or ""), status=str(body.get("status", "researching") or "researching"),
                               sources=body.get("sources") if isinstance(body.get("sources"), list) else None)
+        return {**note, "sourceRefs": source_refs(note.get("sources"), root)}
     if action == "note_update":
         changes = {k: v for k, v in body.items() if k in store.NOTE_EDITABLE}
-        return store.update_note(root, key, by=by, **changes)
+        note = store.update_note(root, key, by=by, **changes)
+        return {**note, "sourceRefs": source_refs(note.get("sources"), root)}
     if action == "ask":
         return _answer_free(str(body.get("question", "")), by, str(body.get("screen", "") or ""))
     if action == "translate":
@@ -339,4 +400,5 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     return store.translation_state(root, key, state, by=by, note=note)
 
 
-__all__ = ["ACTIONS", "ASK_CAVEATS", "PARTS", "SCREEN_RULES", "common_questions", "deadlines", "dock", "screen_for", "write"]
+__all__ = ["ACTIONS", "ASK_CAVEATS", "PARTS", "SCREEN_RULES", "common_questions", "deadlines", "dock", "screen_for",
+           "source_ref", "source_refs", "write"]

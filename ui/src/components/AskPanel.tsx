@@ -3,14 +3,19 @@ import { Badge } from "./Badge";
 import { Command } from "./Command";
 import { Confirm } from "./Confirm";
 import { Evidence } from "./Evidence";
+import { EvidenceEntries } from "./EvidenceEntries";
 import { RemoteView } from "./Remote";
 import { Tabs } from "./Tabs";
 import { Caveats } from "./Caveats";
 import { useApi } from "../lib/useApi";
+import type { EvidenceEntry } from "../lib/docref";
 import { dockWrite, screenLabel } from "./Dock";
 
-export interface CommonQuestion { question: string; screen: string; answer: string; sources: string[]; routed: boolean; note?: string }
-export interface Ask { id: string; question: string; answer: string; sources: string[]; screen: string; routed: boolean; at: string; by: string; task?: string }
+/** `sourceRefs` are the sources as the loader mapped them, one for one: a citation or a library document is a reference
+ * (a `Doc` chip), a tool call jason read is a command, anything else text. An older server leaves them out. */
+export interface CommonQuestion { question: string; screen: string; answer: string; sources: string[]; sourceRefs?: EvidenceEntry[]; routed: boolean; note?: string }
+export interface Ask { id: string; question: string; answer: string; sources: string[]; sourceRefs?: EvidenceEntry[]; screen: string; routed: boolean; at: string; by: string; task?: string }
+type Shown = { q: string; answer: string; sources: string[]; refs?: EvidenceEntry[]; screen: string };
 export interface Translation { id: string; englishKey: string; english: string; language: string; draft: string; state: string; by: string; at: string; history?: string[] }
 export interface AskData {
   found?: boolean; note?: string; common: CommonQuestion[]; asks: Ask[]; translations: Translation[]; translationStates: string[];
@@ -21,7 +26,7 @@ const ROUTED = "jason has no sourced answer for this. It went to the action regi
 const CONTROLS = "The English notice controls.";
 
 /** An answer jason found, with where it was read; or the routed state when it found none. An answer with no source is no answer. */
-function Answer({ q, answer, sources, screen, go }: { q: string; answer: string; sources: string[]; screen: string; go: (s: string) => void }) {
+function Answer({ q, answer, sources, refs, screen, go }: Shown & { go: (s: string) => void }) {
   if (!sources.length)
     return (
       <article className="dock-answer dock-routed" aria-label="No sourced answer">
@@ -33,7 +38,7 @@ function Answer({ q, answer, sources, screen, go }: { q: string; answer: string;
     <article className="dock-answer" aria-label="Answer">
       <strong>{q}</strong>
       <p>{answer}</p>
-      <Evidence label="Sources" items={sources} />
+      {refs?.length ? <EvidenceEntries label="Sources" entries={refs} /> : <Evidence label="Sources" items={sources} />}
       {screen && <div><button type="button" className="link" onClick={() => go(screen)}>Open {screenLabel(screen)}</button></div>}
     </article>
   );
@@ -47,7 +52,7 @@ export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string
   const [tab, setTab] = useState("ask");
   const [name, setName] = useState("");
   const [q, setQ] = useState("");
-  const [shown, setShown] = useState<{ q: string; answer: string; sources: string[]; screen: string } | null>(null);
+  const [shown, setShown] = useState<Shown | null>(null);
   const [pick, setPick] = useState<string>("");
   const [tr, setTr] = useState({ englishKey: "", english: "", language: "", draft: "" });
   const [error, setError] = useState("");
@@ -68,7 +73,7 @@ export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask about the rules or the records" aria-label="Question" />
               <Confirm busy={!q.trim() || !by}
                 summary={<span>Ask jason "{q.trim()}" as {by}. It answers only from the library and its stores; with no sourced answer the question goes to the action register for the manager.</span>}
-                onConfirm={async () => { const a = await write<Ask>("new", { action: "ask", by, question: q.trim() }); if (a) { setShown({ q: a.question, answer: a.answer, sources: a.sources, screen: a.screen }); setQ(""); } }}>
+                onConfirm={async () => { const a = await write<Ask>("new", { action: "ask", by, question: q.trim() }); if (a) { setShown({ q: a.question, answer: a.answer, sources: a.sources, refs: a.sourceRefs, screen: a.screen }); setQ(""); } }}>
                 Ask
               </Confirm>
             </div>
@@ -78,21 +83,21 @@ export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string
               <ul className="dock-list dock-common">
                 {d.common.map((c) => (
                   <li key={c.question}>
-                    <button type="button" className="dock-q" onClick={() => setShown({ q: c.question, answer: c.answer, sources: c.sources, screen: c.screen })}>
+                    <button type="button" className="dock-q" onClick={() => setShown({ q: c.question, answer: c.answer, sources: c.sources, refs: c.sourceRefs, screen: c.screen })}>
                       <span>{c.question}</span><span aria-hidden="true" className="muted">›</span>
                     </button>
                   </li>
                 ))}
               </ul>
             </div>
-            {shown && <Answer q={shown.q} answer={shown.answer} sources={shown.sources} screen={shown.screen} go={go} />}
+            {shown && <Answer {...shown} go={go} />}
             {d.asks.length > 0 && (
               <details>
                 <summary className="dock-sub muted">Asked before ({d.asks.length})</summary>
                 <ul className="dock-list">
                   {d.asks.map((a) => (
                     <li key={a.id} className="dock-sub">
-                      <button type="button" className="link" onClick={() => setShown({ q: a.question, answer: a.answer, sources: a.sources, screen: a.screen })}>{a.question}</button>
+                      <button type="button" className="link" onClick={() => setShown({ q: a.question, answer: a.answer, sources: a.sources, refs: a.sourceRefs, screen: a.screen })}>{a.question}</button>
                       {" "}· {a.at.slice(0, 10)} {a.routed && <Badge tone="warn">routed</Badge>}
                     </li>
                   ))}

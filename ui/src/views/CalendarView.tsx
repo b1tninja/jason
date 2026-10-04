@@ -35,7 +35,7 @@ export function CalendarView() {
             </Card>
             {em && (
               <Card title="The calendar jason writes to">
-                <Embed a={{ kind: "calendar", ref: em.calendarId, title: "Association calendar", opts: { mode: "MONTH", tz: em.timeZone } }} height={520} />
+                <Embed a={{ kind: "calendar", ref: em.calendarId, title: "Association calendar", opts: { mode: "MONTH", tz: em.timeZone } }} height={520} load="mount" />
                 <p className="muted">The deadlines above are what jason computed; the calendar is where <code>jason calendar --yes</code> wrote them. A viewer must already be allowed to see it.</p>
               </Card>
             )}

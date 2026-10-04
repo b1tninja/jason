@@ -73,6 +73,60 @@ def encode(c: Canvas) -> dict[str, Any]:
     return raw
 
 
+# Attachment kinds that name a Drive file by its id or link, and kinds that name a file under data/ by its path.
+DRIVE_KINDS = ("doc", "sheet", "slides", "form", "drive")
+# Audio stays the console's player (Embed) until the evidence's `file:` row shows audio (it shows PDFs, images, text).
+FILE_KINDS = ("image", "pdf")
+_WEB = re.compile(r"^(?:https?|blob|data):", re.IGNORECASE)
+_GOOGLE_ID = (re.compile(r"/(?:d|folders|file/d)/([A-Za-z0-9_-]{10,})"), re.compile(r"[?&]id=([A-Za-z0-9_-]{10,})"))
+
+
+def attachment_ref(a: dict[str, Any], data_dir: Path) -> dict[str, Any] | None:
+    """An attachment's document reference (docs/console/doc-component.md): a Drive kind's ``drive:<id>`` (from the id or
+    a private link; a published ``/d/e/`` link is no file of the association's Drive and stays a frame), a photo or PDF
+    under data/ as ``file:<path>``; None for anything else (a web page, the calendar, a map, a chart, a Zoom share
+    page, a Gmail thread, and audio, which the evidence does not show yet), which stays what it is."""
+    from jason.approvals.docref import drive_ref, file_ref
+
+    kind, ref = str(a.get("kind") or ""), str(a.get("ref") or "").strip()
+    title = str(a.get("title") or "") or None
+    try:
+        if kind in DRIVE_KINDS:
+            if "/d/e/" in ref:
+                return None
+            found = next((m.group(1) for p in _GOOGLE_ID for m in [p.search(ref)] if m), ref)
+            return drive_ref(found, name=title, data_dir=data_dir)
+        if kind in FILE_KINDS and ref and not _WEB.match(ref):
+            return file_ref(ref, name=title, data_dir=data_dir)
+    except ValueError:
+        return None
+    return None
+
+
+def with_refs(raw: dict[str, Any], data_dir: Path) -> dict[str, Any]:
+    """An encoded canvas with document references beside the old fields: ``doc`` on each attachment that names a Drive
+    file or a file under data/, and on each clip whose source names a document (an evidence address, ``data/<path>``,
+    ``library: <path>``, or a citation; ``refs_from_strings``). Anything else stays as written. Reads disk only."""
+    from jason.approvals.docref import ref_from_string
+
+    out = dict(raw)
+    attachments = []
+    for a in raw.get("attachments") or []:
+        doc = attachment_ref(a, data_dir) if isinstance(a, dict) else None
+        attachments.append({**a, "doc": doc} if doc else a)
+    out["attachments"] = attachments
+    clips = []
+    for c in raw.get("clips") or []:
+        said = str(c.get("source") or "") if isinstance(c, dict) else ""
+        try:
+            got = ref_from_string(said, data_dir=data_dir) if said.strip() else {}
+        except (OSError, ValueError):
+            got = {}
+        clips.append({**c, "doc": got} if "address" in got else c)
+    out["clips"] = clips
+    return out
+
+
 def decode(raw: dict[str, Any]) -> Canvas:
     data = dict(raw)
     data["status"] = CanvasStatus(data.get("status") or "research")
@@ -155,6 +209,8 @@ def update(data_dir: Path, key: str, **changes: Any) -> Canvas:
         if k in ("links", "checklist", "attachments") and not isinstance(v, list):
             raise ValueError(f"{k} is a list")
         if k == "attachments":
+            # A reference is the loader's (with_refs), built afresh on each read: never kept in the store.
+            v = [{x: y for x, y in a.items() if x != "doc"} if isinstance(a, dict) else a for a in v]
             bad = [a for a in v if not isinstance(a, dict) or a.get("kind") not in ATTACHMENT_KINDS or not str(a.get("ref", "")).strip()]
             if bad:
                 raise ValueError(f"an attachment is {{kind: one of {', '.join(ATTACHMENT_KINDS)}, ref, title, opts?}}")

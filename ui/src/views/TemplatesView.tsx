@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Card, Command, DataTable, DrivePreview, EvidenceVersion, Markdown, ReadAllFromDrive, RemoteView, type Column } from "../components";
+import { Badge, Card, Command, DataTable, DrivePreview, EvidenceVersion, Markdown, ReadAllFromDrive, RemoteView, type Column, type DocRef } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 
-interface TemplateRow { kind: string; title: string; driveId: string; folderId: string; authority: string; optional: string[]; linkTokens: string[]; tokens: string[]; lint: { profile: string[]; general: string[]; run: string[] } }
+/** A template; `doc` is its Doc as a document reference (`drive:<id>`), whose original is "Open in Google". */
+interface TemplateRow { kind: string; title: string; driveId: string; folderId: string; authority: string; optional: string[]; linkTokens: string[]; tokens: string[]; lint: { profile: string[]; general: string[]; run: string[] }; doc?: DocRef }
 interface Listing { found?: boolean; note?: string; templates: TemplateRow[] }
 interface Preview { found?: boolean; note?: string; kind: string; title: string; driveId: string; markdown: string; tokens: string[]; open: string[]; command: string }
 interface CanvasRow { key: string; title: string; status: string }
@@ -31,7 +32,7 @@ function Fill({ t, back }: { t: TemplateRow; back: () => void }) {
   };
   return (
     <div className="stack">
-      <div className="row wrap"><button onClick={back}>← Templates</button><strong>{t.title}</strong>{t.authority && <span className="muted">{t.authority}</span>}{t.driveId && <a href={`https://docs.google.com/document/d/${t.driveId}/edit`} target="_blank" rel="noreferrer">the template Doc</a>}</div>
+      <div className="row wrap"><button onClick={back}>← Templates</button><strong>{t.title}</strong>{t.authority && <span className="muted">{t.authority}</span>}{t.doc?.original && <a href={t.doc.original.url} target="_blank" rel="noreferrer">the template Doc<span className="visually-hidden"> ({t.doc.original.label}, opens in a new tab)</span></a>}</div>
       <div className="grid-2">
         <Card title="Fill">
           <div className="fields">

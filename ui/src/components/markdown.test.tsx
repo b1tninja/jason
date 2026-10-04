@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Embed, embedUrls, googleId } from "./Embed";
 import { Markdown } from "./Markdown";
 
@@ -33,13 +33,12 @@ describe("Embed", () => {
     expect(embedUrls({ kind: "image", ref: "blob:http://x/1" }).frame).toBe("blob:http://x/1");
     expect(embedUrls({ kind: "image", ref: "data:image/png;base64,AAAA" }).frame).toBe("data:image/png;base64,AAAA");
   });
-  it("renders an image as img and a doc as an iframe", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ signedIn: { name: "A Manager" } }), { status: 200 })));
-    const { rerender } = render(<Embed a={{ kind: "image", ref: "photos/a.jpg", title: "before" }} />);
-    expect(await screen.findByRole("img", { name: "before" })).toHaveAttribute("src", "/api/file?path=photos%2Fa.jpg");
-    vi.unstubAllGlobals();
-    rerender(<Embed a={{ kind: "doc", ref: "1AbCdEfGhIjKlMnOpQ", title: "Minutes" }} />);
-    expect(document.querySelector("iframe")).toHaveAttribute("src", "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQ/preview");
-    expect(screen.getByRole("link", { name: "open" })).toHaveAttribute("href", "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQ/edit");
+  it("renders a photo under data/ and a private Doc as Doc references, never a frame or /api/file (embed.test.tsx has the rest)", () => {
+    const { rerender } = render(<Embed a={{ kind: "image", ref: "photos/a.jpg", title: "before" }} docProps={{ signedIn: true, evidence: null }} />);
+    expect(screen.getByRole("region", { name: "before" })).toBeInTheDocument();
+    expect(document.querySelector('img[src*="/api/file"]')).toBeNull();
+    rerender(<Embed a={{ kind: "doc", ref: "1AbCdEfGhIjKlMnOpQ", title: "Minutes" }} docProps={{ signedIn: true, evidence: null }} />);
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(screen.getByRole("link", { name: /Open in Google/ })).toHaveAttribute("href", "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQ/edit");
   });
 });

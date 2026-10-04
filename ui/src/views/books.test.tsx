@@ -15,8 +15,8 @@ describe("BooksChecksView", () => {
   it("lists utility payments with their questions, then the ledger checklist", async () => {
     mockFetch({
       "/api/utility-payments": { found: true, transactionsSyncedAt: "2026-10-01", summary: { "no attachment": 1, water: 2 }, payments: [
-        { key: "a", date: "2026-09-02", amountCents: 6120, payee: "City Water", description: "water", categories: ["Utilities: Water"], documents: [{ filename: "bill-sep.pdf", kind: "bill" }], findings: [], ok: true, utility: "water" },
-        { key: "b", date: "2026-09-05", amountCents: 12000, payee: "Power Co", description: "power", categories: ["Utilities: Electric"], documents: [], findings: ["no attachment"], ok: false, utility: "electric" },
+        { key: 1, provider: "water", date: "2026-09-02", amountCents: 6120, rows: [{ txId: 1, category: "Utilities: Water", amountCents: 6120 }], attachments: [{ id: 11, filename: "bill-sep.pdf", kind: "utility_bill" }], split: "matches the bills", findings: [], ok: true },
+        { key: 2, provider: "electric", date: "2026-09-05", amountCents: 12000, rows: [{ txId: 2, category: "Utilities: Electric", amountCents: 12000 }], attachments: [], split: "no bill to split by", findings: ["no attachment"], ok: false },
       ], caveats: ["A finding is a question, not a verdict."] },
       "/api/ledger-validation": { found: true, balancesChecked: 3, latestSheet: { period: "2026-09", asOf: "2026-09-30", accounts: [] },
         runs: [{ id: 1, name: "Treasurer Packet 2026-08", period: "2026-08", completedAt: "2026-09-02", pages: 12, libraryCopies: ["Finance/2026-08 report.pdf"], notes: [] },
@@ -28,8 +28,9 @@ describe("BooksChecksView", () => {
         caveats: ["The report the board saw is the record of what it was told."] },
     });
     render(<BooksChecksView />);
-    expect(await screen.findByText("City Water")).toBeInTheDocument();
-    expect(screen.getByText("bill-sep.pdf")).toBeInTheDocument();
+    expect(await screen.findByText("Utilities: Water")).toBeInTheDocument();
+    expect(screen.getAllByText("water").length).toBeGreaterThanOrEqual(2);   // the summary's count and the payment's utility
+    expect(screen.getByText("bill-sep.pdf")).toBeInTheDocument();          // no copy on disk: the name, not a chip to open
     expect(screen.getByText("none")).toBeInTheDocument();
     expect(screen.getByText("$61.20")).toBeInTheDocument();
     expect(screen.getAllByText("no attachment").length).toBeGreaterThanOrEqual(2);
