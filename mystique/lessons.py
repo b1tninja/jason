@@ -58,4 +58,14 @@ LESSONS = (
            "(Reports/Fire Protection) and a non-public PayHOA folder synced from it, with a kind rule that files each "
            "vendor report there. Until then the reports stay where they are.",
            Status.DECISION, docs=("mystique/notes/fire-protection-records.md", "board item fire-alarm-deficiencies")),
+    Lesson("signed-inspection-never-scheduled", date(2026, 10, 3), (Area.DOCUMENTS,),
+           "The board signed The Fire Sprinkler Company's annual and quarterly inspection proposal on April 17, 2024, and no "
+           "inspection followed; the company's June 18, 2025 email offering to schedule the annual went unanswered. An "
+           "invoice titled a flow switch replacement was an investigation, and the problem was still open.",
+           "A signed proposal is not a schedule: nothing turned it into dates, and the vendor's own scheduling email sat in a "
+           "mailbox as one more thread awaiting us. Invoice subjects were read as what the work was.",
+           "The obligation rows (mystique/obligations.py) now carry the contract and the open waterflow issue, so jason "
+           "deadlines shows them overdue; the board sets the inspection dates. Still open: a check that reads each "
+           "vendor invoice's line description, not its email subject.",
+           Status.OPEN, docs=("mystique/notes/fire-protection-records.md", "board item fire-sprinkler-inspections")),
 )
