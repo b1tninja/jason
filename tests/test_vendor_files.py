@@ -200,3 +200,19 @@ def test_held_documents_are_not_uploaded(tmp_path) -> None:
     assert [a.name for a in held] == ["Invoice_12.pdf"] and held[0].action == "held"
     file_plan(drive, Profile(), plan, blobs, tmp_path)
     assert "Invoice_12.pdf" not in [name for name, _ in drive.uploads]
+
+
+def test_gmail_filters_label_each_vendor_by_its_known_addresses(tmp_path) -> None:
+    import xml.etree.ElementTree as ET
+
+    from jason.tasks.vendor_files import filters_xml
+
+    _vendor_info(tmp_path)
+    xml, skipped = filters_xml(Profile(), tmp_path)
+    ns = {"a": "http://www.w3.org/2005/Atom", "apps": "http://schemas.google.com/apps/2006"}
+    entries = ET.fromstring(xml).findall("a:entry", ns)
+    props = [{p.get("name"): p.get("value") for p in e.findall("apps:property", ns)} for e in entries]
+    assert props[0]["from"] == "alarm-billing.test OR examplealarm.test" and props[0]["label"] == "Vendors/Example Alarm Co"
+    assert props[1]["from"] == "handyman123@gmail.com" and props[1]["label"] == "Vendors/Example Handyman"
+    assert skipped == [] and len(entries) == 2
+    assert filters_xml(Profile())[1] == ["Example Handyman"]

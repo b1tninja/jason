@@ -2168,6 +2168,19 @@ def cmd_gmail(args: argparse.Namespace) -> int:
     data_dir = Settings.load(args.env).payhoa_catalog.parent
     if args.file_vendor:
         return _file_vendor_email(args, data_dir)
+    if args.filters_xml:
+        from jason.community import community
+        from jason.tasks.vendor_files import filters_xml
+
+        xml, skipped = filters_xml(community(), data_dir)
+        out = Path(args.filters_xml)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(xml, encoding="utf-8")
+        print(f"wrote {out} ({xml.count('<entry>')} filters); import it in Gmail: Settings, Filters and Blocked Addresses, "
+              "Import filters")
+        if skipped:
+            print(f"no known address, so no filter: {', '.join(skipped)}")
+        return 0
     if args.sync:
         with _agent(args) as agent:
             counts = sync(agent.gmail(), data_dir, mystique(), days=args.days, log=print)
@@ -3987,6 +4000,9 @@ def build_parser() -> argparse.ArgumentParser:
     gm.add_argument("--yes", action="store_true", help="With --file-vendor: upload the attachments the plan marks file")
     gm.add_argument("--hold", action="append", metavar="GLOB",
                     help="With --file-vendor: hold back attachments whose names match (repeatable), for a person to verify")
+    gm.add_argument("--filters-xml", metavar="PATH", nargs="?", const="data/gmail/vendor-filters.xml", default="",
+                    help="Write Gmail filters (the file Gmail imports) that label each vendor's mail Vendors/<vendor> by "
+                         "its known domains and emails (default data/gmail/vendor-filters.xml)")
     gm.add_argument("--json", action="store_true", help="Print JSON")
     gm.set_defaults(func=cmd_gmail)
 

@@ -122,6 +122,35 @@ def query_for(known: Known) -> str:
     return " OR ".join(f"from:{a} OR to:{a}" for a in (*known.domains, *known.emails))
 
 
+LABEL_ROOT = "Vendors"
+
+
+def filters_xml(community: Any, data_dir: Path | None = None, *, label_root: str = LABEL_ROOT) -> tuple[str, list[str]]:
+    """Gmail's own filters, as the file Gmail imports (Settings, Filters and Blocked Addresses, Import filters): one
+    filter a vendor with a known address, labeling its mail ``<label_root>/<vendor>`` as it arrives. Gmail applies them
+    itself; importing can also apply them to existing mail. Returns the XML and the vendors it skipped (no known
+    address). jason only writes the file; a person imports it."""
+    from xml.sax.saxutils import quoteattr
+
+    entries, skipped = [], []
+    for sender in vendors(community):
+        known = known_addresses(sender, data_dir)
+        if not known:
+            skipped.append(sender.name)
+            continue
+        source = " OR ".join((*known.domains, *known.emails))
+        entries.append(
+            "  <entry>\n    <category term='filter'></category>\n    <title>Mail Filter</title>\n    <content></content>\n"
+            f"    <apps:property name='from' value={quoteattr(source)}/>\n"
+            f"    <apps:property name='label' value={quoteattr(f'{label_root}/{sender.name}')}/>\n"
+            "    <apps:property name='sizeOperator' value='s_sl'/>\n    <apps:property name='sizeUnit' value='s_smb'/>\n"
+            "  </entry>")
+    xml = ("<?xml version='1.0' encoding='UTF-8'?>\n"
+           "<feed xmlns='http://www.w3.org/2005/Atom' xmlns:apps='http://schemas.google.com/apps/2006'>\n"
+           "  <title>Mail Filters</title>\n" + "\n".join(entries) + "\n</feed>\n")
+    return xml, skipped
+
+
 def sent_by(known: Known, from_header: str) -> bool:
     """One of its known addresses sent it: an address at a known domain (or a subdomain), or a known address."""
     address = from_header.rsplit("<", 1)[-1].strip(" >").lower()
@@ -357,4 +386,4 @@ def plan_lines(plan: VendorPlan) -> list[str]:
 
 
 __all__ = ["Attachment", "Known", "VendorPlan", "vendors", "known_addresses", "query_for", "sent_by", "classify", "in_drive", "plan_vendor",
-           "file_plan", "hold", "plan_lines", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
+           "file_plan", "filters_xml", "hold", "plan_lines", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
