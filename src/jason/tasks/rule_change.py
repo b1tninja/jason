@@ -533,7 +533,7 @@ def element_lines(key: str, text: str) -> list[str]:
     for f in check(requirement(key), text):
         mark = "x" if f.ok else (" " if f.status is not Status.UNCHECKED else "?")
         tail = f": {f.where}" if f.where else ""
-        cond = f" (only for {f.applies})" if f.applies and not f.ok else ""
+        cond = f" ({f.condition()})" if f.applies and not f.ok and f.required is not False else ""
         out.append(f"- [{mark}] {f.element} ({f.cite}) {f.status.value}{cond}{tail}")
     return out
 

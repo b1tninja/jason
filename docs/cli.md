@@ -1136,6 +1136,7 @@ Check notices and jason's base templates for the elements the law requires (read
 | `keys` | optional (*) | the requirement keys to check (default: every base template) |
 | `--file` | PATH | a rendered notice to check instead of the bases |
 | `--requirement` | KEY | with --file: the catalog requirement it serves |
+| `--event` | FACT=WORD | a fact about the meeting, rule change, or election the notice is for, which decides an element only some notices need: meeting_format=entirely_by_teleconference, rule_change=emergency, electronic_voting=opt_out (repeatable) |
 | `--no-law` |  | leave out the statements of law and the statutes' words |
 | `--json` |  | print the findings as JSON |
 

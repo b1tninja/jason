@@ -116,26 +116,28 @@ class TemplateCheck:
         return [f for f in self.findings if f.status is Status.MISSING]
 
 
-def check_base(base: BaseTemplate) -> TemplateCheck:
+def check_base(base: BaseTemplate, facts: Any = None) -> TemplateCheck:
+    """``facts`` are the event's facts as the caller has them (``jason.community.applicability.Facts``); without them
+    a conditional element stays undetermined, and is reported with its condition."""
     row = requirement(base.requirement)
     if base.load is None:
-        return TemplateCheck(base, check(row, ""), [], "no base template")
+        return TemplateCheck(base, check(row, "", facts), [], "no base template")
     try:
         text = base.load()
     except Exception as exc:          # a base that cannot be read is a finding, not a crash
-        return TemplateCheck(base, check(row, ""), [], f"could not read: {exc}")
-    return TemplateCheck(base, check(row, text), law_statements(text))
+        return TemplateCheck(base, check(row, "", facts), [], f"could not read: {exc}")
+    return TemplateCheck(base, check(row, text, facts), law_statements(text))
 
 
-def check_all(keys: tuple[str, ...] = ()) -> list[TemplateCheck]:
-    return [check_base(b) for b in BASES if not keys or b.requirement in keys]
+def check_all(keys: tuple[str, ...] = (), facts: Any = None) -> list[TemplateCheck]:
+    return [check_base(b, facts) for b in BASES if not keys or b.requirement in keys]
 
 
-def check_file(path: Path, key: str) -> TemplateCheck:
+def check_file(path: Path, key: str, facts: Any = None) -> TemplateCheck:
     """A rendered notice (a draft, a filled letter) against one requirement."""
     text = Path(path).read_text(encoding="utf-8")
     base = BaseTemplate(key, Path(path).name, str(path), lambda: text)
-    return check_base(base)
+    return check_base(base, facts)
 
 
 def recite(citations: tuple[str, ...], shelf: Any) -> dict[str, tuple[bool, str]]:
@@ -174,7 +176,7 @@ def report_lines(checks: list[TemplateCheck], *, shelf: Any = None, law: bool = 
         lines += ["", f"## `{c.base.requirement}`: {c.base.title}", "", f"Base: `{c.base.where}`. Statute: "
                   f"{row.statute}." + (f" **{c.error}.**" if c.error else ""), ""]
         for f in c.findings:
-            cond = f" (only for {f.applies})" if f.applies and not f.ok else ""
+            cond = f" ({f.condition()})" if f.applies and not f.ok and f.required is not False else ""
             lines.append(f"- **{f.status.value}**{cond}: {f.element} ({f.cite})" + (f"; {f.where}" if f.where else ""))
         statements = [s for s in c.law if not s.heading]
         named = [x for s in c.law if s.heading for x in s.citations]

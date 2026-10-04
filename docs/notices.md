@@ -350,13 +350,28 @@ The record (`jason://notice/KEY`) reads `kept.json` first: the text, its digest,
 
 ## What a notice must say, checked
 
-Each requirement's `content` is jason's reading of what the section requires a notice to carry. `jason.community.notice_elements` holds a `Sign` row for each element: the subdivision it is read from and the words that show it in a notice. `check(requirement, text)` reads a rendered notice or a base template and reports each element as present (with its line and heading), supplied by a token (`{HEARING_DATE}`, filled when the notice is), said to be enclosed (the 5300(b)(9) insurance summary), missing, or not checkable by words (5310(a)(12)'s "any other information"). A conditional element (an emergency rule change's expiry, a teleconference meeting's instructions) is reported with its condition. The statute's own words that a notice recites ("Civil Code section 4360(a) provides: "...") are not counted as the element: quoting what the law requires does not carry it.
+Each requirement's `content` is jason's reading of what the section requires a notice to carry. `jason.community.notice_elements` holds a `Sign` row for each element: the subdivision it is read from and the words that show it in a notice. `check(requirement, text)` reads a rendered notice or a base template and reports each element as present (with its line and heading), supplied by a token (`{HEARING_DATE}`, filled when the notice is), said to be enclosed (the 5300(b)(9) insurance summary), missing, or not checkable by words (5310(a)(12)'s "any other information"). A conditional element (an emergency rule change's expiry, a teleconference meeting's instructions) is reported with its condition. The condition is data (`Sign.applies`, an [applicability](applicability.md) condition over the event's facts), and the words printed beside a finding are the row's `when`. The statute's own words that a notice recites ("Civil Code section 4360(a) provides: "...") are not counted as the element: quoting what the law requires does not carry it.
 
 ```
 jason notice-check                                   # every base template; writes data/reports/notice-templates.md
 jason notice-check discipline-hearing board-meeting  # some of them
 jason notice-check --file data/drafts/NOTICE.md --requirement rule-change-proposed
+jason notice-check --file data/drafts/NOTICE.md --requirement rule-change-adopted --event rule_change=noticed
 ```
+
+**The event's facts.** A conditional element turns on a fact about the meeting, rule change, or election. Each fact is a closed set whose members are the statute's own distinctions:
+
+| Fact | Members | From |
+|---|---|---|
+| `meeting_format` | `in_person`, `teleconference_with_location`, `entirely_by_teleconference` | Civil Code 4090(a), 4090(b), and 4926(a) (and 5450(b)) |
+| `rule_change` | `noticed`, `emergency` | Civil Code 4360(a) and (d) |
+| `electronic_voting` | `none`, `opt_out`, `opt_in` | Civil Code 5105(i)(1)(C)(i) and (ii) |
+
+- **Said by a person.** `--event FACT=WORD` states one, and may be repeated. The profile's own facts (`Community.applicability_facts()`) are read beside it, so an association whose election rules settle electronic voting states it once.
+- **Three answers.**
+  - The facts rule the element out: it does not apply, with the fact that decided it.
+  - The facts call for it: it is required here, and a notice that lacks it has a gap.
+  - No fact says: it is undetermined. The words are still checked, a missing element is reported "only for" its condition as before, and the fact that would settle it is named.
 
 The bases checked (`jason.tasks.notice_templates.BASES`): the rule change notices (4360(a), (c)), the hearing notice (5855), the board meeting agenda (4920, 4926), the annual policy statement (5310), the annual budget report (5300), and the insurance change notice (5810). The pre-lien notice (5660) has no base yet, so every element is missing; its checklist is in `jason.community.models.legal_collections`. A test keeps the signs in step with the catalog: an element added to a row without a sign fails the build, and a base that drops an unconditional element fails it too.
 

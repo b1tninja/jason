@@ -11,8 +11,17 @@ statute subdivision the element is read from, so a report recites the law beside
 - ``PRESENT``: the words are in the notice, at the line given;
 - ``TOKEN``: a template token stands for it (``{HEARING_DATE}``) and supplies it when the notice is filled;
 - ``ENCLOSED``: the notice says the element is enclosed; the enclosure is checked on its own;
-- ``MISSING``: no sign of it. A conditional element (``applies``) missing is reported with its condition;
-- ``UNCHECKED``: an element words cannot settle ("anything else the law or the documents require"): a person reads it.
+- ``MISSING``: no sign of it. A conditional element missing is reported with its condition;
+- ``UNCHECKED``: an element words cannot settle ("anything else the law or the documents require"): a person reads it;
+- ``NOT_REQUIRED``: a conditional element the event's facts rule out, with the fact that decided it.
+
+**A conditional element.** An element only some notices need carries ``applies``, a condition over the event's facts
+(``jason.community.applicability``: how the meeting is held, whether the rule change is an emergency one, whether an
+election rule allows electronic secret ballots), and ``when``, the same condition in the catalog's words. ``check``
+takes the facts the caller has. With none, the condition is undetermined and the finding names the missing fact
+(``needs``); the words are still checked, and a missing element is reported with ``when``, as before the condition
+was data. With facts, an element that does not apply is ``NOT_REQUIRED``, and one that applies and is missing is a gap
+like any other.
 
 The signs are a check of words, not of law: a notice that passes still goes to a person, and a sign that matches may
 match the wrong sentence. The ``where`` of each finding is there so the person can look. Pure: no disk, no profile.
@@ -30,6 +39,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
 
+from jason.community.applicability import (ALWAYS, Answer, Condition, ElectronicVoting, Facet, Fact, Facts, FactValue,
+                                           In, Is, MeetingFormat, RuleChangeKind, Source, Verdict, evaluate)
 from jason.community.notices import NoticeRequirement
 
 
@@ -39,21 +50,28 @@ class Status(Enum):
     ENCLOSED = "said to be enclosed"
     MISSING = "missing"
     UNCHECKED = "not checkable by words: a person reads it"
+    NOT_REQUIRED = "does not apply"
 
 
 @dataclass(frozen=True)
 class Sign:
     """How one required element shows in a notice. ``element`` is the catalog's ``content`` phrase, exactly. ``cite``
-    is the subdivision the element is read from. ``applies`` names the condition for an element only some notices
-    need ("a meeting held entirely by teleconference"). ``checkable`` False: words cannot settle it."""
+    is the subdivision the element is read from. ``applies`` is the condition for an element only some notices need,
+    over the event's facts, and ``when`` says it in the catalog's words ("a meeting held entirely by
+    teleconference"); an element every notice needs has neither. ``checkable`` False: words cannot settle it."""
 
     element: str
     cite: str
     any_of: tuple[str, ...] = ()
     all_of: tuple[str, ...] = ()
     enclosed: tuple[str, ...] = ()
-    applies: str = ""
+    applies: Condition = ALWAYS
+    when: str = ""
     checkable: bool = True
+
+    def __post_init__(self) -> None:
+        if (self.applies is ALWAYS) != (not self.when):
+            raise ValueError(f"{self.element!r}: a conditional element has both its condition and its words")
 
 
 @dataclass(frozen=True)
@@ -63,18 +81,50 @@ class ElementFinding:
     cite: str
     status: Status
     where: str = ""               # "line 14, under 'Your rights': ..."
-    applies: str = ""
+    applies: str = ""             # a conditional element's condition, in the catalog's words (``Sign.when``)
+    verdict: Verdict | None = None  # that condition asked of the caller's facts; None for an element every notice needs
 
     @property
     def ok(self) -> bool:
         return self.status in (Status.PRESENT, Status.TOKEN, Status.ENCLOSED)
 
+    @property
+    def required(self) -> bool | None:
+        """Whether this notice needs the element: True, False (its condition does not hold), or None when the facts
+        on hand do not say. None is never read as False."""
+        if self.verdict is None or self.verdict.answer is Answer.APPLIES:
+            return True
+        return False if self.verdict.answer is Answer.DOES_NOT_APPLY else None
+
+    def needs(self) -> str:
+        """For a conditional element the facts do not settle: the fact that is missing; empty otherwise."""
+        return self.verdict.question() if self.verdict is not None else ""
+
+    def condition(self) -> str:
+        """How the condition reads beside a finding: "only for ..." while it is undetermined, "required here: ..."
+        once the facts say it applies. Empty for an element every notice needs."""
+        if not self.applies:
+            return ""
+        return f"required here: {self.applies}" if self.verdict is not None and self.verdict.applies \
+            else f"only for {self.applies}"
+
     def row(self) -> dict[str, str]:
-        return {"requirement": self.requirement, "element": self.element, "cite": self.cite,
-                "status": self.status.value, "where": self.where, "applies": self.applies}
+        out = {"requirement": self.requirement, "element": self.element, "cite": self.cite,
+               "status": self.status.value, "where": self.where, "applies": self.applies}
+        if self.verdict is not None:
+            out["answer"] = self.verdict.answer.value
+            out["needs"] = self.needs()
+        return out
 
 
 _TOK = r"\{[A-Z][A-Z0-9_]*\}"
+
+# The conditions the conditional elements turn on. Each is the statute's own distinction (the closed sets in
+# ``jason.community.applicability``), and each ``when`` beside it is the catalog's words for it.
+EMERGENCY_RULE_CHANGE: Condition = Is(Fact.RULE_CHANGE, RuleChangeKind.EMERGENCY)
+ENTIRELY_BY_TELECONFERENCE: Condition = Is(Fact.MEETING_FORMAT, MeetingFormat.ENTIRELY_BY_TELECONFERENCE)
+ELECTRONIC_VOTING_USED: Condition = In(Fact.ELECTRONIC_VOTING, frozenset({ElectronicVoting.OPT_OUT, ElectronicVoting.OPT_IN}),
+                                       "used under an election operating rule (5105(i))")
 
 # The signs, by requirement key, in the order of the requirement's ``content``. A test holds the two in step: an
 # element added to the catalog without a sign fails the build.
@@ -91,7 +141,7 @@ SIGNS: dict[str, tuple[Sign, ...]] = {
                      r"what changed")),
         Sign("for an emergency rule change: its text, purpose and effect, and the date it expires (it lasts at most "
              "120 days)", "CIV 4360(c), (d)", all_of=(r"\bpurpose\b", r"\bexpires?\b"),
-             applies="an emergency rule change (4360(d))"),
+             applies=EMERGENCY_RULE_CHANGE, when="an emergency rule change (4360(d))"),
     ),
     "discipline-hearing": (
         Sign("the date, time, and place of the meeting", "CIV 5855(b)",
@@ -116,7 +166,7 @@ SIGNS: dict[str, tuple[Sign, ...]] = {
         Sign("for a teleconference meeting: technical instructions, a contact for help, and a reminder that a member "
              "may ask for individual delivery (4926(a)(1))", "CIV 4926(a)(1)",
              all_of=(r"technical|how to (?:join|participate)", r"\bhelp\b", r"individual delivery"),
-             applies="a meeting held entirely by teleconference (4926)"),
+             applies=ENTIRELY_BY_TELECONFERENCE, when="a meeting held entirely by teleconference (4926)"),
     ),
     "annual-policy-statement": (
         Sign("who receives official communications for the association (4035)", "CIV 5310(a)(1)",
@@ -142,7 +192,7 @@ SIGNS: dict[str, tuple[Sign, ...]] = {
              any_of=(r"overnight",)),
         Sign("electronic voting opt-in or opt-out procedures (5105(i)(1)(D)), if used", "CIV 5105(i)(1)(D)",
              any_of=(r"electronic (?:secret )?ballot", r"opt (?:in|out)", r"how you vote"),
-             applies="an association that uses electronic voting"),
+             applies=ELECTRONIC_VOTING_USED, when="an association that uses electronic voting"),
         Sign("anything else the law or the documents require", "CIV 5310(a)(12)", checkable=False),
     ),
     "annual-budget-report": (
@@ -241,9 +291,15 @@ def _find(pattern: str, text: str) -> re.Match | None:
     return re.search(pattern, text, re.I)
 
 
-def check_element(sign: Sign, text: str, requirement: str = "") -> ElementFinding:
-    """One element against a notice's plain words."""
-    base = dict(requirement=requirement, element=sign.element, cite=sign.cite, applies=sign.applies)
+def check_element(sign: Sign, text: str, requirement: str = "", facts: Facts | None = None) -> ElementFinding:
+    """One element against a notice's plain words. ``facts`` are what the caller knows of the event; a conditional
+    element they rule out is ``NOT_REQUIRED`` with the fact that decided it, and one they do not settle is checked as
+    before, with the missing fact named (``ElementFinding.needs``)."""
+    verdict = evaluate(sign.applies, facts or Facts()) if sign.applies is not ALWAYS else None
+    base = dict(requirement=requirement, element=sign.element, cite=sign.cite, applies=sign.when, verdict=verdict)
+    if verdict is not None and verdict.answer is Answer.DOES_NOT_APPLY:
+        return ElementFinding(status=Status.NOT_REQUIRED,
+                              where="decided by " + "; ".join(v.describe() for v in verdict.deciding), **base)
     if not sign.checkable:
         return ElementFinding(status=Status.UNCHECKED, **base)
     hits: list[re.Match] = []
@@ -276,11 +332,35 @@ def mask_recitals(text: str) -> str:
     return _RECITED.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
 
 
-def check(requirement: NoticeRequirement, text: str) -> list[ElementFinding]:
+def check(requirement: NoticeRequirement, text: str, facts: Facts | None = None) -> list[ElementFinding]:
     """Each required element of ``requirement`` (its ``content``), present or missing in ``text``, with where. The
-    statute's words the notice recites are not counted as the element."""
+    statute's words the notice recites are not counted as the element. ``facts`` are the event's facts as the caller
+    has them (``event_facts``, the profile's); without them a conditional element stays undetermined."""
     words = mask_recitals(plain(text))
-    return [check_element(s, words, requirement.key) for s in signs_for(requirement)]
+    return [check_element(s, words, requirement.key, facts) for s in signs_for(requirement)]
+
+
+EVENT_FACTS: tuple[Fact, ...] = tuple(f for f in Fact if f.facet is Facet.EVENT)
+
+
+def event_facts(pairs: Iterable[str], *, where: str = "") -> Facts:
+    """The event's facts from a person's words, each ``FACT=WORD`` (``meeting_format=entirely_by_teleconference``):
+    the fact one of ``EVENT_FACTS`` and the word one of its closed set. Source ``ANSWER``: a person says them.
+    ValueError names what may be said."""
+    said = []
+    for pair in pairs:
+        name, _, word = pair.partition("=")
+        fact = next((f for f in EVENT_FACTS if f.value == name.strip()), None)
+        if fact is None:
+            raise ValueError(f"{name.strip()!r} is not a fact about the event; one of: "
+                             + ", ".join(f.value for f in EVENT_FACTS))
+        try:
+            value = fact.parse(word.strip())
+        except ValueError:
+            raise ValueError(f"{fact.value}: {word.strip()!r} is not one of: "
+                             + ", ".join(str(m.value) for m in fact.spec.kind)) from None
+        said.append(FactValue(fact, value, Source.ANSWER, where))
+    return Facts(tuple(said))
 
 
 def missing(findings: Iterable[ElementFinding]) -> list[ElementFinding]:
@@ -356,4 +436,5 @@ def law_statements(text: str) -> list[LawStatement]:
 
 
 __all__ = ["ElementFinding", "LawStatement", "SIGNS", "STATUTE_TOKEN_NOTE", "Sign", "Status", "check",
-           "check_element", "law_statements", "mask_recitals", "missing", "plain", "signs_for"]
+           "check_element", "law_statements", "mask_recitals", "missing", "plain", "signs_for", "EVENT_FACTS",
+           "event_facts", "EMERGENCY_RULE_CHANGE", "ENTIRELY_BY_TELECONFERENCE", "ELECTRONIC_VOTING_USED"]
