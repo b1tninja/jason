@@ -13,7 +13,7 @@ export const Offices = () => (
 export const WithPerson = () => (
   <div style={row}>
     <RoutingTag owner={{ role: "treasurer", name: "Jane Example" }} />
-    <RoutingTag owner={{ role: "secretary", name: "Owner A" }} />
+    <RoutingTag owner={{ role: "secretary", name: "Sam Example" }} />
     <RoutingTag owner={{ role: "manager", adoption: "proposed" }} />
   </div>
 );

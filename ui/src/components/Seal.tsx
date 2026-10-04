@@ -38,7 +38,7 @@ const warned = new Set<string>();
 /** What jason did, and whether a person still has to act: a round seal with jason's eave on top and a box that is
  * empty (open), checked (jason's part is done), questioned (unresolved), or struck (not jason's to do). Never a
  * person's or the board's word; those are `Stamp`s. */
-export function Seal({ word, detail, instrument, date, size = "5em", tone, inline = false, className }: SealProps) {
+export function Seal({ word, detail, instrument, date, size = "6em", tone, inline = false, className }: SealProps) {
   const w = norm(word);
   if (!isSealWord(w)) {
     if (w && !warned.has(w)) { warned.add(w); console.warn(`Seal: ${JSON.stringify(word)} is not a seal word (what jason did); a decision is a Stamp`); }
