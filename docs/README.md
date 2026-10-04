@@ -90,6 +90,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [document-models/meetings.md](document-models/meetings.md): minutes, agendas, resolutions, and elections.
 - [document-models/roof-inspections.md](document-models/roof-inspections.md): what governs the roofs, the roof inspection reader, and the leak calls by building.
 - [rag-roadmap.md](rag-roadmap.md): document models, kinds, and retrieval contexts; what exists and what is next.
+- [applicability.md](applicability.md): proposed: what a provision applies to (facets, three answers), the facts in ingestion, one search index with columns in place of AnythingLLM's workspaces (measured against it), companion pages, and the stack.
 
 ## Meetings, board, and minutes
 

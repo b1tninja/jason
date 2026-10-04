@@ -1,0 +1,187 @@
+# Applicability, ingestion, and the search index
+
+**Status:** proposed design, October 4, 2026. Nothing here is built yet, except the measurement in "Why jason's own index" below. The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
+
+## The problem
+
+A provision applies only to some things. A statute applies to some systems and not others. A contract term binds one party, on one site, for one kind of work. A rule applies to rentals and not to owners in residence. A version of a statute is in force only between two dates.
+
+jason handles one of these well, which is time: `in_force`, `statutory_terms.Prior`, and supersession. The others are scattered:
+- a gate inside the contract reader decides when the fire-protection deliverable rules apply;
+- `FilingRule` has its senders and source kinds;
+- the profile's kind rules;
+- prose in the notice catalog ("applies to ...");
+- obligation rows that simply leave out what they do not cover.
+
+Retrieval does not know any of it. A question about one kind of system retrieves a standard's text just as readily when the standard excludes that system.
+
+## 1. One record: what a row applies to
+
+Add a module, `jason.community.applicability`. A rule-like row (an obligation, a deliverable rule, a statutory notice, a filing rule, a catalog rule, a term's scope) carries an `applies` condition built from closed sets.
+
+| Facet | What it names | Where the fact comes from |
+|---|---|---|
+| Document | the document kind: contract, home improvement contract, proposal, inspection report | the classifier (`DocumentKind`) |
+| Subject | the system or topic: a fire sprinkler by its installation standard, a fire alarm, backflow, a roof, a balcony | the document's words; the profile's systems |
+| Party | the vendor's role, its license classes, the association, an owner, a tenant | the vendor directory; the license reader |
+| Property | condominium or planned development; the occupancy class; the number of units | the profile |
+| Place | state, county, city, water purveyor | the profile's region |
+| Transaction | the amount; where it was signed; who the buyer is | the contract's own figures and dates |
+| Time | in force between two dates; the edition adopted; within N years of an event | the existing `in_force` and `Prior`, folded in |
+
+- **Combining conditions.** A condition is all-of, any-of, or not, over facet tests, with exclusions spelled out. Example: a standard applies to water-based systems, except those installed under the one- and two-family standard.
+- **Facets are enums.** A JSON row stores the word, and the loader turns it into a symbol (AGENTS.md). A profile's own members (its systems and buildings) stay in the profile.
+- **Shape of a row.** A condition is a frozen dataclass beside the row it governs. It is never a function with one association's id inside it, so a new decision is a new row.
+
+## 2. Three answers, never two
+
+`evaluate(condition, facts)` returns one of three answers:
+- **Applies.**
+- **Does not apply**, with the fact that decided it.
+- **Undetermined**, with the missing fact named.
+
+Undetermined is never read as "does not apply". It becomes a question for a person: an intake question, or a canvas item when the answer is a reading for counsel. This is the "a miss stays a miss" rule. Example: whether common-area work for an association is "home improvement" for a home improvement contract's notices is a reading for counsel, so it stays undetermined until then.
+
+Every output records:
+- the rule row that applied;
+- the facts that decided it, and where each fact came from;
+- the facts that were missing.
+
+## 3. Facts in ingestion
+
+```
+classify  ->  document facts      ->  join profile facts      ->  apply only the rows that apply
+              (kind, vendor,          (the system at that
+              license classes,        address and its
+              systems named,          standard, the units,
+              amounts, dates,         the region, the date)
+              sites)
+```
+
+- **Document facts** come from what jason already reads: the classifier, the vendor directory, the license reader, the contract-terms reader, the dates.
+- **Profile facts** come from `Community` methods with empty defaults. A profile that lacks a fact gets "undetermined", never a crash. Systems are the first new fact needed: the `LifeSafetySystem` record proposed in [console/screens/life-safety.md](console/screens/life-safety.md).
+- **The contract reader's fire gate becomes one row.** The fire-protection deliverable rules apply when the subject is a fire protection system and the vendor inspects, tests, or maintains it. The decision moves out of the reader's code and into data. This is for the contracts session to agree to.
+
+## 4. Scope stated inside a document
+
+Governing documents and contracts state their own scope:
+- "this Section applies only to ...";
+- "with respect to the Phase 1 Property";
+- "shall not apply to ...";
+- an exclusions list in a proposal.
+
+The term readers should read this into each term as its scope, using the same facets. Then:
+- a cost-center component in an annexation scopes its maintenance terms;
+- a proposal's exclusions become the exemption kind already proposed to the contracts session;
+- a split between in-unit parts and common parts is two scopes, not one term.
+
+A scope read from the text is evidence, not a pin, like any other reading: it is recited with its words, and the reading is labeled ("Recite the rule; label the reading").
+
+## 5. Why jason's own index, measured
+
+The plan for retrieval rests on one measurement, taken October 4, 2026 on the 140 gold questions. The tables are in [document-tools.md](document-tools.md) (model trials) and the per-question results in `data/retrieval/runs/2026-10-04-anythingllm.json`.
+
+| | recall@5 | MRR@10 | a query |
+|---|---|---|---|
+| jason's hybrid (BM25 + `qwen3-embedding:8b` + the exact-token boost, near copies folded) | 0.89 | 0.76 | 0.46 s |
+| AnythingLLM, the shared workspace (the same embedder, its own chunks) | 0.47 | 0.32 | 2.2 s |
+| AnythingLLM, on the 110 questions whose answer it holds | 0.60 | — | — |
+| jason's hybrid, on the same 110 | 0.91 | — | — |
+
+- **Why AnythingLLM misses.** It answers 4 questions the hybrid misses, and misses 62 that the hybrid answers.
+  - 25 of the 62 have no answer anywhere in its stored text. Some are thin parses of a scanned PDF; others are documents never uploaded, such as Google Doc exports.
+  - The other 37 are ranking misses. Its losses concentrate on exact tokens (recording, rule, and resolution numbers, statute citations), where it has only the dense ranking and no keyword ranking.
+- **It cannot be scoped.** AnythingLLM has no metadata filtering. The request for it ([#1858](https://github.com/Mintplex-Labs/anything-llm/issues/1858)) was closed as not planned, so a workspace is its only boundary.
+- **Merging catalogs does not help.** Merging the record, insurance, and page catalogs by score was no better than the shared workspace. Separate workspaces add nothing without a filter.
+
+## 6. The index: one store with columns
+
+jason's vectors move from one `.npy` file per passage (`data/retrieval/vectors`) into an embedded store with columns. A filter is then a column condition, not a second workspace.
+
+**Engine.** [LanceDB](https://docs.lancedb.com/core/filtering) is the proposal: a pip package with no server, vector and full-text indexes, and filters. It is the engine AnythingLLM itself runs on. sqlite-vec is the plainer fallback, since SQLite already ships with Python. The choice is measured on the gold set, under these conditions:
+- it must at least match today's hybrid;
+- it must keep the exact-token boost and the near-copy fold;
+- the query time must not grow.
+
+**One row per passage:**
+
+| Column | From |
+|---|---|
+| text, vector, section heading, position | `passages`, `retrieval` |
+| source file, sha256, library id | the library and the catalogs' `Source` rows |
+| standing: authority, record, reference, jason's page, mail | `authority_order.Tier` and the catalog |
+| kind and shelf | `DocumentKind`, `DocumentCategory` |
+| period, in force from and to | the reading's dates; the statute's history |
+| subject, party, place | the applicability facts (sections 1 and 3) |
+| confidential, and who may see it | the library's flag, OR-ed across copies |
+| generated | a jason page, never quoted as authority |
+
+**At question time:**
+- **Scope.** A caller passes facets (`passage_search(..., standing=, kind=, subject=, as_of=)`).
+- **Self-query.** jason may draw the facets out of the question itself ("the 2023 sprinkler reports"), shown to the person as the filter it used.
+- **Applicability.** A passage whose applicability is "does not apply" for the facts in hand is dropped. An "undetermined" one is kept and flagged with the missing fact.
+- **Confidentiality.** A confidential row is filtered by the caller's role, the way the MCP tools hold confidential files back now.
+
+**Context headers.** Before a passage is embedded and indexed, jason prepends a short header of where it sits: the document, section, standing, date, and what it applies to. This follows Anthropic's [contextual retrieval](https://anthropic.com/news/contextual-retrieval): contextual embeddings cut retrieval failures by 35%, 49% with keyword search, and 67% with reranking. The header is built from jason's own records, not written by a model. That makes it cheap, repeatable, and the same on every run. It is measured on the gold set before it is kept.
+
+## 7. Companion pages
+
+jason writes pages for what the documents do not say themselves, and indexes them beside the documents with `generated` set:
+
+| Page | Built from |
+|---|---|
+| One page a subject: what governs it, who does the work, how often, where the records are | obligations, the deliverable rules, the filing map, the subject's reference page |
+| What applies: for a subject, the provisions that apply to the association's facts, those that do not and why, and those undetermined with the question that settles each | the evaluator (section 2) |
+| One page a vendor or system: the contract, its duties and deliverables, licenses, invoices, open deficiencies, board items | contract terms, obligations, vendor files, board items |
+
+The rules for these pages:
+- **A page is a summary and says so.** It carries a header saying it is generated, and an answer that uses it points to the record it summarizes. A page is never quoted as the rule ("Only stored words").
+- **Pages are rebuilt, never edited.** Each is regenerated from the stores when they change.
+- **Private facts stay private.** A page that names owners or parties gets the confidential flag.
+
+## 8. The stack
+
+Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's calls hold the GPU lock and run `preflight`. AnythingLLM's calls do neither: it loads its chat model whenever someone chats, at a window it keeps in its own settings file. `jason local-ai` can only warn when the two swap each other out.
+
+**The proposal: jason makes every model call.** One lock then covers them all, and loading and unloading become jason's decision through Ollama's `keep_alive` and `/api/ps`:
+- load the reader for a batch;
+- free it before an embedding run;
+- keep the chat model warm only while a person is asking.
+
+**No model router.** Tools such as llama-swap add a process that Ollama's own controls already make unnecessary.
+
+**What AnythingLLM still does, and where each job goes:**
+
+| Job | Goes to |
+|---|---|
+| Retrieval | jason's index (section 6) |
+| Catalogs | the `Catalog` and `Source` rows in `anythingllm_sync` stay as the definition of what is indexed and at what standing. Only the destination changes: rows in the index instead of uploads. |
+| A chat window | the console's Ask, or any MCP client with `jason-mcp` |
+| Hosting `jason-mcp`'s tools for a local model | any MCP client |
+| OCR | already jason's; the `anythingllm-collector` engine goes when the app does |
+| A one-step install | `pip install -e .` and Ollama. This is the real cost of leaving, and why the last step waits for the console. |
+
+**Not a swap for another app.** Open WebUI and LibreChat bring their own vector store, model settings, and server, which are the same costs as AnythingLLM.
+
+## 9. Order of work
+
+1. **Done:** the measurement (section 5) and `scripts/eval_anythingllm.py`.
+2. **The applicability module.** Conditions, the three-valued `evaluate`, and tests on made-up rows. General code only.
+3. **The first profile fact: systems** (`LifeSafetySystem`). The obligation rows that leave systems out become conditions.
+4. **The index.**
+   - Move the passages and their vectors into the store, with the columns above. `passage_search` and `context_pack` read from it.
+   - The gold set must hold at 0.89 recall@5 or better, and its corpus grows to every catalog's sources.
+5. **Context headers.** Kept only if the gold set improves.
+6. **Companion pages,** starting with the fire and life safety subject, whose sources are gathered.
+7. **The contract reader's gate and term scopes.** In the contracts session's code, once it agrees to the interface.
+8. **Retiring AnythingLLM.**
+   - First its sync becomes optional (a flag), and its workspaces are no longer the place people ask.
+   - Once the console's Ask serves the board, `anythingllm_sync`, `anythingllm_admin`, the collector engine, and their checks in `local_ai` are removed.
+   - A snapshot of every workspace's document list is taken first (`jason anythingllm --snapshot`).
+
+## Open questions
+
+- **Who asks, and where.** Which people still chat in AnythingLLM today, and whether the console's Ask must be ready before step 8.
+- **Engine and footprint.** LanceDB or sqlite-vec, settled by the gold set and by the index's size on disk.
+- **The gold set's reach.** Questions for the mail, authorities, and vendor-records catalogs, which it does not cover today.
+- **Undetermined answers.** Where they go: the intake questions, the canvas, or both, by facet.

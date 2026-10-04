@@ -213,7 +213,7 @@ Add vision-layout fixtures (pipe tables and header-row tables) to the 214 model 
   - Take a snapshot first and upload before removing. The item 1 exception applies to any removal.
   - Leave case catalogs untouched.
   - Approve this as an explicit catalog flag, not `generated=True`.
-- **Scorer first.** Write a small `vector-search` scorer over gold before retitling all of the ~214 library documents or splitting the 497 statute sections into separate pages.
+- **Scorer first.** Write a small `vector-search` scorer over gold before retitling all of the ~214 library documents or splitting the 497 statute sections into separate pages. Done October 4, 2026 (`scripts/eval_anythingllm.py`): AnythingLLM's shared workspace scores recall@5 0.47 against the hybrid's 0.89 on the 140 gold questions, and 25 of its misses are text it does not hold. [applicability.md](applicability.md) proposes moving retrieval into jason's own index rather than repairing the catalogs.
 
 **Retrieval baseline on gold (no P number).** Done October 2, 2026: the row in docs/document-tools.md (model trials); per-question results in data/retrieval/runs/. Hybrid (RRF) leads on MRR@10 (0.73) but gives up dense's paraphrase recall (0.78 to 0.67), so the fusion's weights are the next thing to measure. Originally: record keyword, dense and hybrid rows from `eval_retrieval.py` on the 24 gold questions, run as a queued GPU job. `manager_review` defaults to hybrid, which is unmeasured. Record the per-query time of BM25 and `dense_rank` as well. This is the baseline for the R-tier change, for P12 and for the thin-parse scorer.
 

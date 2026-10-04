@@ -1088,6 +1088,19 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_meeting_room.py (no limit until the board sets one; the policy on "
                                  "file)", "ui/src/views/meetingroom.test.tsx (no \"3 minutes\")"),
            notes=("Adopting a limit is the board's decision.",)),
+    Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
+           "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "
+           "top five 47% of the time; the hybrid, 89%.",
+           "Each retriever was judged on its own terms: the hybrid had a gold set, and the catalogs had none. 25 of "
+           "AnythingLLM's misses are text it never held (thin parses, documents never uploaded); the rest are "
+           "exact numbers and citations it ranks by embedding alone, and it cannot be filtered by kind or scope.",
+           "scripts/eval_anythingllm.py scores any workspace on the gold set beside eval_retrieval.py. Still to do "
+           "(docs/applicability.md): one index in jason with columns for standing, kind, and applicability; the "
+           "catalogs' sources indexed there; anythingllm_query answering from it; AnythingLLM retired once the "
+           "console's Ask serves the board.",
+           Status.OPEN, guards=("scripts/eval_anythingllm.py",),
+           docs=("docs/applicability.md", "docs/document-tools.md (model trials)")),
 )
 
 
