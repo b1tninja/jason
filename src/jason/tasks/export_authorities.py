@@ -341,6 +341,8 @@ def publication_text(pdf: Path) -> str:
         return ""
     if not any(page.strip() for page in pages):
         return ""
+    # A page set in columns or with struck text comes out as runs of blank lines: one blank line between blocks.
+    pages = [re.sub(r"[ \t]*\n(?:[ \t]*\n)+", "\n\n", page).strip() for page in pages]
     return "\n".join(f"\n<<PAGE {n}>>\n{page}" for n, page in enumerate(pages, start=1))
 
 

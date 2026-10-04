@@ -134,7 +134,12 @@ SOURCES: tuple[IndexSource, ...] = (
     IndexSource("records", "reserve-studies", Standing.RECORD),
     IndexSource("insurance", "artifacts/site-docs/insurance", Standing.RECORD),
     IndexSource("insurance", "insurance/pages", Standing.PAGE, generated=True),
-    IndexSource("authorities", "authorities", Standing.AUTHORITY, exclude=("publications/*",)),
+    # A law page opens with its title and "- Label: value" lines (source, path, why it is held). That passage carries
+    # the topic's words and none of the law's, so it is left out: measured October 4, 2026 on the law's gold questions
+    # over the whole index, hybrid MRR@10 0.71 to 0.75 with recall unchanged, and no change on the other gold sets.
+    # A context line on each passage (the chapter path, why it is held, the standing) was measured too and gained
+    # nothing clear, so the law's passages carry none (docs/document-tools.md, model trials).
+    IndexSource("authorities", "authorities", Standing.AUTHORITY, exclude=("publications/*",), front_matter=True),
     IndexSource("reference", "reference", Standing.REFERENCE, exclude=("*.pdf.md",)),
 )
 
