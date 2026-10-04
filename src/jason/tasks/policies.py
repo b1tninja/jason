@@ -14,8 +14,8 @@ premium by year, and links the policy files. This task:
 4. puts each policy's terms, limits, deductibles, premiums, and documents on one page (``data/insurance/pages``) and
    compares the specification, the sheet, and the documents.
 
-The pages and the documents are the AnythingLLM ``insurance`` catalog (``jason anythingllm --sync --catalog insurance``),
-so questions about coverage are answered from the policies themselves. A claim's papers stay in the incident history,
+The pages and the documents' text are the passage index's ``insurance`` catalog (``jason index --build``; a page is
+generated, a summary), so questions about coverage are answered from the policies themselves. A claim's papers stay in the incident history,
 not here. Nothing is sent, moved, or changed in Drive, the sheet, or PayHOA.
 """
 
@@ -426,7 +426,7 @@ def _dollars(cents_value: Any) -> str:
 
 
 def page(policy: dict[str, Any]) -> str:
-    """One policy as a page for people and for AnythingLLM: what it covers, each term, the sheet, the documents, findings."""
+    """One policy as a page for people and for the passage index: what it covers, each term, the sheet, the documents, findings."""
     title = policy["kind"].replace("_", " ").title() + (f" - Building {policy['building']}" if policy["building"] else "")
     lines = [f"# {title} policy", "",
              f"Carrier: {policy['carrier'] or '-'}. Program: {policy['program'] or '-'}. Agent: {policy['agent'] or '-'}.",

@@ -2,8 +2,8 @@
 
 ``jason.community.passages`` ranks passages by BM25 over the question's words. That ranker is exact about rare
 tokens (a recording number, an APN, a policy number) and blind to paraphrase ("who fixes the garage door" against
-"Owner Maintenance Responsibility ... Garage Doors"). The embedder AnythingLLM already uses, ``qwen3-embedding:8b``
-on the system Ollama, is the reverse. This module fuses the two:
+"Owner Maintenance Responsibility ... Garage Doors"). The embedder, ``qwen3-embedding:8b`` on the system Ollama, is
+the reverse. This module fuses the two:
 
 - ``rrf`` is reciprocal rank fusion: each ranking adds ``1 / (k + rank)`` to an item, so an item near the top of
   either list rises, and no score scale has to agree with another's.
@@ -214,7 +214,7 @@ class OllamaEmbedder:
 
     def context(self) -> int | None:
         """The context window the resident embedder was loaded with, so a request does not reload it; ``None`` when
-        it is not loaded (Ollama then loads it at its default, as AnythingLLM's requests do)."""
+        it is not loaded (Ollama then loads it at its default)."""
         if self._context is None:
             try:
                 for m in self._get(f"{self.base_url}/api/ps").get("models", []):

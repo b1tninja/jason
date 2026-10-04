@@ -21,7 +21,7 @@ from jason.community.model_extractor import PROMPT, page_images, parse_answer
 from jason.community.readings import DocumentReading
 
 OLLAMA_URL = "http://localhost:11434"
-# The one local model jason's readers, the classifier, OCR, and AnythingLLM's chat share, at one context window:
+# The one local model jason's readers, the classifier, and OCR share, at one context window:
 # Ollama reloads a model whose num_ctx differs, and a second large model does not fit beside it and the embedder
 # on the 32 GB card (qwen3.6:27b at 65536 is 20.6 GB; qwen3-embedding:8b is 6.6 GB).
 DEFAULT_MODEL = "qwen3.6:27b"

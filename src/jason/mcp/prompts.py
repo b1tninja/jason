@@ -5,7 +5,7 @@
 - ``onboard_review``: a second person confirms the high-stakes answers another person gave.
 
 The steps are written once (``STEPS``, ``REVIEW_STEPS``, ``RULES``). ``system_prompt()`` is the same text for a client
-that takes a system prompt instead of MCP prompts (AnythingLLM's agent, a Claude Desktop project); docs/onboarding.md
+that takes a system prompt instead of MCP prompts (a Claude Desktop project); docs/onboarding.md
 carries it ("Onboarding by conversation"). The prompts are plain functions returning text, so they can be read and
 tested without the mcp package; only ``register`` imports it. They name no association: the session's tools do.
 """

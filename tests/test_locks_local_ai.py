@@ -75,7 +75,7 @@ def test_findings_name_each_problem_and_its_fix():
         "jasonModel": "qwen3.6:27b",
         "ollama": {"up": True, "devices": [{"library": "cpu", "description": "cpu"}], "orphans": [29744],
                    "loaded": [{"name": "qwen3.6:27b", "size": 20 * GB, "vram": 0}, {"name": "qwen3.5:9b", "size": 8 * GB, "vram": 8 * GB}]},
-        "anythingllm": {"up": True, "settings": {"OLLAMA_MODEL_PREF": "qwen3.6:27b", "EMBEDDING_MODEL_PREF": "qwen3-embedding:8b"}},
+        "embedModel": "qwen3-embedding:8b",
         "memory": {"commitLimit": 66 * GB, "committed": 62 * GB, "pageFiles": [{"file": "C:\\pagefile.sys", "size": 5 * GB}],
                    "pageFilesConfigured": ["d:\\pagefile.sys 32768 65535"]},
     }
@@ -84,7 +84,6 @@ def test_findings_name_each_problem_and_its_fix():
                      "loaded outside the plan: qwen3.5:9b", "commit is nearly full", "d:\\pagefile.sys", "next restart"):
         assert expected in text
     healthy = {"jasonModel": "m", "ollama": {"up": True, "devices": [{"library": "CUDA"}], "loaded": [{"name": "m", "size": 1, "vram": 1}]},
-               "anythingllm": {"up": True, "settings": {"OLLAMA_MODEL_PREF": "m"}},
                "memory": {"commitLimit": 90 * GB, "committed": 40 * GB, "pageFiles": [{"file": "D:\\pagefile.sys"}],
                           "pageFilesConfigured": ["d:\\pagefile.sys 32768 65535"]}}
     assert local_ai.findings(healthy) == []

@@ -137,10 +137,10 @@ class Document:
 
 
 def _ocr_engine() -> Any:
-    """The first OCR engine that reads a file directly (Tesseract, Docling); AnythingLLM's collector only covers its uploads."""
+    """The first OCR engine that can run here (a vision model, Docling, Tesseract), or None."""
     from jason.community.ocr import engines
 
-    return next((e for e in engines() if e.name != "anythingllm-collector"), None)
+    return next(iter(engines()), None)
 
 
 def _ocr_text(data_dir: Path, path: Path, digest: str, engine: Any) -> str:

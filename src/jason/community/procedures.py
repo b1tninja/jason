@@ -489,7 +489,7 @@ PROCEDURES: tuple[Procedure, ...] = (
                  person=True),
             Step("Or answer by conversation: register the onboarding tool set and use the onboard prompt; a second "
                  "person runs onboard_review for the high-stakes answers.",
-                 command="jason-mcp --profile onboarding; jason anythingllm --write --profile onboarding",
+                 command="jason-mcp --profile onboarding",
                  check="every answer's by is a person's name; no secret recorded; the person who confirms is not the "
                        "one who answered",
                  refs=("docs/onboarding.md (Onboarding by conversation)", "docs/mcp.md (Prompts)"),

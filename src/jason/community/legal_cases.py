@@ -97,9 +97,9 @@ class LegalCase:
     duties: tuple[CaseDuty, ...] = ()
     board_item: str = ""                   # the board action item that tracks it (data/board/items.json)
     confidential: bool = True
-    # The folder under My Drive that holds the case file; the case gets its own AnythingLLM catalog from it.
+    # The folder under My Drive that holds the case file; its text is the passage index's confidential case-<key> catalog.
     drive_folder: str = ""
-    # File names (globs) in that folder held back from the catalog unless a person asks: medical and veterinary records.
+    # File names (globs) in that folder held back from disk and the index unless a person asks: medical and veterinary records.
     held_back: tuple[str, ...] = ()
     # What the settlement released, priced by the claimant's consultant; the repair plan's scope.
     settled_items: tuple[SettledItem, ...] = ()

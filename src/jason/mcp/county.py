@@ -485,22 +485,13 @@ def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: s
 
     if pi.index_path(root).is_file():
         try:
-            catalogs = () if catalog.strip().lower() == "all" else tuple(c.strip() for c in (catalog or "records").split(",") if c.strip())
-            standings = tuple(pi.Standing(s.strip()) for s in standing.split(",") if s.strip())
-            found = pi.search(query, data_dir=root, scope=pi.Scope(catalogs=catalogs, standings=standings),
-                              k=max(1, min(int(k), 30)), mode=mode or "keyword")
+            found = _index_search(root, query, catalog=catalog or "records", standing=standing, k=k, mode=mode or "keyword")
         except ValueError as exc:
-            return {"query": query, "available": False, "note": f"{exc}; standings: {', '.join(s.value for s in pi.Standing)}"}
+            return {"query": query, "available": False, "note": str(exc)}
         except retrieval.EmbeddingUnavailable as exc:
             return {"query": query, "mode": mode, "available": False, "note": str(exc)}
-        return {
-            "query": query, **({"mode": mode} if mode and mode != "keyword" else {}), "count": len(found), "index": True,
-            "hits": [{"file": h.hit.passage.title, "path": str(h.hit.passage.path), "passage": h.hit.passage.index,
-                      "startWord": h.hit.passage.start_word, "score": h.hit.score, "text": h.hit.passage.text,
-                      "section": h.hit.passage.heading or "", "catalog": h.row.catalog, "standing": h.row.standing.value,
-                      "kind": h.row.kind, "generated": h.row.generated,
-                      "alsoIn": [str(p.path) for p in h.hit.also]} for h in found],
-        }
+        return {"query": query, **({"mode": mode} if mode and mode != "keyword" else {}), "count": len(found), "index": True,
+                "hits": [_index_hit(h) for h in found]}
     folders = (
         root / "artifacts" / "site-docs" / "governing_documents", root / "artifacts" / "site-docs" / "governing_documents_Annexations",
         root / "artifacts" / "site-docs" / "governing_documents_Policies", root / "artifacts" / "site-docs" / "governing_documents_Resolutions",
@@ -579,49 +570,82 @@ def extraction_scorecard(extractor: str = "regex", model: str = "", data_dir: Pa
     return {"available": True, "caseFiles": [c.path.name for c in items], **card.as_dict()}
 
 
-def anythingllm_query(question: str, catalog: str = "", workspace: str = "", mode: str = "query") -> dict[str, Any]:
-    """Ask the local AnythingLLM catalogs. ``catalog`` is authorities (the law and DRE publications),
-    association-records (the governing documents and public reports), or jason-pages (Jason's own pages,
-    summaries only), mail, or a legal case's own catalog, case-<key> (e.g. case-sacramento-26cv016125: the case
-    file from Drive; confidential, for directors and counsel, and never in the shared workspace); empty asks the shared
-    Mystique workspace that holds the others. Each source says its
-    catalog, so an answer resting on a summary is read as one. ``query`` answers only from the documents;
-    ``chat`` keeps a thread. Needs ANYTHINGLLM_API_KEY, else this says so and sends nothing. An answer is
-    evidence to read, and it pins nothing."""
-    from jason.community import community as active
-    from jason.community.anythingllm import AnythingLLM, AnythingLLMUnavailable
-    from jason.tasks.anythingllm_sync import ask
-    from jason.tasks.case_files import case_catalogs
+# What every document_search answer carries: the index finds passages, and the reader quotes the record.
+DOCUMENT_SEARCH_CAVEATS = (
+    "A hit is evidence to read, not a pin: quote the passage's own words with its file and section, and decide nothing "
+    "from a hit alone.",
+    "A hit whose standing is page (generated) is jason's own summary, never the rule: quote the record or the law it "
+    "points to.",
+    "A reference hit is learned from, never quoted as binding; an authority hit is the law, a record hit the "
+    "association's own document.",
+    "A confidential hit (a case file) is for directors and counsel: never an owner, the newsletter, or an open meeting.",
+    "No model wrote an answer here: read the passages and answer from them, or say they do not answer the question.",
+)
 
+
+def _index_search(root: Path, query: str, *, catalog: str = "", standing: str = "", k: int = 8, mode: str = "hybrid",
+                  confidential: bool = False) -> tuple:
+    """``passage_index.search`` with the tools' string arguments: comma-separated catalogs ("" or "all" for every
+    catalog) and standings. A case catalog named (case-<key>) is a confidential catalog asked for by name, so its files
+    are included. Raises ``ValueError`` for an unknown standing or mode."""
+    from jason.community import passage_index as pi
+    from jason.tasks.case_files import is_case_catalog
+
+    wanted = catalog.strip()
+    catalogs = () if wanted.lower() in ("", "all") else tuple(c.strip() for c in wanted.split(",") if c.strip())
     try:
-        return ask(AnythingLLM(), question, workspace=workspace, catalog=catalog, mode=mode,
-                   extra=case_catalogs(active().legal_cases()))
-    except AnythingLLMUnavailable as exc:
-        return {"available": False, "note": str(exc)}
+        standings = tuple(pi.Standing(s.strip()) for s in standing.split(",") if s.strip())
+    except ValueError as exc:
+        raise ValueError(f"{exc}; standings: {', '.join(s.value for s in pi.Standing)}") from exc
+    asked = confidential or any(is_case_catalog(c) for c in catalogs)
+    return pi.search(query, data_dir=root, scope=pi.Scope(catalogs=catalogs, standings=standings, confidential=asked),
+                     k=max(1, min(int(k), 30)), mode=mode)
 
 
-def anythingllm_status() -> dict[str, Any]:
-    """AnythingLLM as jason manages it: whether the app answers, its chat and embedding settings beside jason's
-    (``drift``), each workspace's embedded documents and retrieval, the catalogs with no workspace, the workspaces no
-    catalog owns, and the stored documents no workspace embeds, with ``findings`` saying what is wrong and the command
-    that fixes it. Read-only: starting the app, applying settings, and re-embedding are `jason anythingllm` commands a
-    person runs with --yes. Needs ANYTHINGLLM_API_KEY for everything past the ping."""
-    from jason import anythingllm_admin as admin
-    from jason.community import community as active
-    from jason.community.anythingllm import AnythingLLM, AnythingLLMUnavailable
-    from jason.tasks.anythingllm_sync import CATALOGS
-    from jason.tasks.case_files import case_catalogs
+def _index_hit(h: Any) -> dict[str, Any]:
+    p = h.hit.passage
+    return {"file": p.title, "path": str(p.path), "passage": p.index, "startWord": p.start_word, "score": h.hit.score,
+            "text": p.text, "section": p.heading or "", "catalog": h.row.catalog, "standing": h.row.standing.value,
+            "kind": h.row.kind, "generated": h.row.generated, "confidential": h.row.confidential,
+            "alsoIn": [str(q.path) for q in h.hit.also]}
 
-    if not admin.online():
-        return {"online": False, "findings": ["AnythingLLM is not answering: jason anythingllm --start --yes"]}
+
+def document_search(question: str, catalog: str = "", standing: str = "", k: int = 8, mode: str = "hybrid",
+                    data_dir: Path | None = None) -> dict[str, Any]:
+    """Search jason's passage index (``jason index --build``) for a question: the law, the association's records, the
+    insurance documents, the reference shelf, and jason's own pages. Returns passages, not an answer: each hit names its
+    file, section, catalog, standing (authority, record, reference, page), kind, and whether jason generated it.
+
+    ``catalog`` scopes it (records, insurance, authorities, reference, or a legal case's own catalog, case-<key>;
+    comma-separated; empty for every catalog a person may see). A case catalog is confidential, for directors and
+    counsel, and is searched only when named. ``standing`` scopes by how far the words can be relied on. ``mode`` is
+    hybrid (keyword and embedding, exact numbers first), keyword, exact, or dense; when the embedder is not running a
+    hybrid search falls back to the exact keyword ranking and says so. A hit is evidence, not a pin; a page hit is a
+    summary, never the rule: quote the record or the law."""
+    from jason.community import passage_index as pi
+    from jason.community import retrieval
+
+    root = _data_dir(data_dir)
+    if not pi.index_path(root).is_file():
+        return {"question": question, "available": False,
+                "note": f"no passage index at {pi.index_path(root)}: build it with jason index --build"}
+    note = ""
     try:
-        client = AnythingLLM()
-        current = admin.settings(client)
-        inv = admin.inventory(client, (*CATALOGS, *case_catalogs(active().legal_cases())))
-    except AnythingLLMUnavailable as exc:
-        return {"online": True, "available": False, "note": str(exc)}
-    return {"online": True, "settings": current, "drift": admin.drift(current), "inventory": inv,
-            "findings": admin.findings(current, inv)}
+        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode or "hybrid")
+    except ValueError as exc:
+        return {"question": question, "available": False, "note": str(exc)}
+    except retrieval.EmbeddingUnavailable as exc:
+        note = f"the embedder is not available ({exc}); ranked by keyword with exact numbers first"
+        mode = "exact"
+        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode)
+    result: dict[str, Any] = {"question": question, "available": True, "mode": mode or "hybrid", "count": len(found),
+                              "hits": [_index_hit(h) for h in found], "caveats": list(DOCUMENT_SEARCH_CAVEATS)}
+    if note:
+        result["note"] = note
+    if not found:
+        result["note"] = (note + "; " if note else "") + "no passage matched: the index may not hold the document " \
+            "(jason index --status lists its catalogs)"
+    return result
 
 
 def read_scan(path: str, model: str = "") -> dict[str, Any]:
@@ -1588,7 +1612,7 @@ def insurance_policies(policy: str = "", data_dir: Path | None = None) -> dict[s
     and findings: the sheet out of step with the policies, a renewed term whose declarations are not on file, a mailing
     address that is not the association's, the Civil Code 5800/5805/5806 limits, protective safeguards, and exclusions.
     `policy` narrows to one ("master", "fidelity", "flood-3"). Amounts are integer cents. The declarations and forms govern;
-    this is a reading. Reads disk only; ask the insurance catalog in AnythingLLM for the policies' own words."""
+    this is a reading. Reads disk only; document_search with catalog insurance finds the policies' own words."""
     from jason.tasks.policies import load
 
     report = load(_data_dir(data_dir))

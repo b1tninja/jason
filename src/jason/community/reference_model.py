@@ -225,7 +225,7 @@ class ReferenceModel:
             raise ValueError(f"the reference model reads only through an Ollama on this machine, not {self.base_url}")
         self._fetch = fetch
         self.timeout = timeout
-        # The model is the one AnythingLLM chats with: a short keep_alive would only unload it from under it.
+        # The model is the one the readers and OCR share: a short keep_alive would only unload it from under them.
         self.keep_alive = keep_alive
         self._checked = False
 

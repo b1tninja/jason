@@ -110,10 +110,3 @@ def test_the_report_counts_payments_not_money_coming_in(tmp_path) -> None:
     assert rows["First Citizens Bank"]["payments"] == 0
     assert rows["ProActive Pest Control"]["paidCents"] == 16500
     assert any("ProActive Pest Control" in line for line in report_lines(report))
-
-
-def test_a_letter_page_is_known_by_its_mail_id() -> None:
-    from jason.tasks.anythingllm_sync import _mail_id
-
-    assert _mail_id("2025-04-07 Vierra Moore (other) [mail 115069]") == "115069"
-    assert _mail_id("Mail brief") == ""

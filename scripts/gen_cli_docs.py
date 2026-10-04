@@ -186,7 +186,6 @@ GROUPS: dict[str, str] = {
     "securities": "Property records & county",
     # Local AI & search
     "local-ai": "Local AI & search",
-    "anythingllm": "Local AI & search",
     "read-documents": "Local AI & search",
     "read-scans": "Local AI & search",
     "ocr-documents": "Local AI & search",

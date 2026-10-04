@@ -227,8 +227,6 @@ class Settings:
     google_oauth_token_file: Path = Path("secrets/google-token.json")
     google_notebook_url: str = ""
     google_sheets_spreadsheet_id: str = ""
-    anythingllm_api_key: str = ""
-    anythingllm_record_uid: str = ""
     lawlibrary_home: Path = Path("../lawlibrary")
     env_path: Path | None = None
     # Every "<name>_record_uid" in .env or the environment, by lower-case key: a vendor portal's Keeper record.
@@ -374,18 +372,6 @@ class Settings:
             "GOOGLE_SHEETS_SPREADSHEET_ID",
             default="",
         )
-        anythingllm_api_key = _get(
-            values,
-            "anythingllm_api_key",
-            "ANYTHINGLLM_API_KEY",
-            default="",
-        )
-        anythingllm_record_uid = _get(
-            values,
-            "anythingllm_record_uid",
-            "ANYTHINGLLM_RECORD_UID",
-            default="",
-        )
         lawlibrary_home = _get(
             values,
             "lawlibrary_home",
@@ -429,8 +415,6 @@ class Settings:
                 else Path("secrets/google-token.json")
             ),
             google_sheets_spreadsheet_id=google_sheets_spreadsheet_id,
-            anythingllm_api_key=anythingllm_api_key,
-            anythingllm_record_uid=anythingllm_record_uid,
             lawlibrary_home=Path(lawlibrary_home),
             env_path=env_path if env_path.is_file() else None,
             record_uids=_record_uids(values),

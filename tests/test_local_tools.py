@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-from jason.community.anythingllm import AnythingLLM, AnythingLLMUnavailable, mcp_server_entry, merged_mcp_config
 from jason.community.ocr import OcrReport, ocr_folder
 from jason.community.ollama_extractor import READING_SCHEMA, OllamaExtractor, OllamaUnavailable, vision_models
 
@@ -55,40 +54,6 @@ def test_the_ollama_reader_thinks_again_only_for_a_stamp_it_could_not_read(tmp_p
 
     reading = OllamaExtractor(fetch=fetch).extract(tmp_path / "ccrs.pdf")
     assert thinking == [False, True] and reading.number == "200709120758"
-
-
-def test_the_anythingllm_client_fails_fast_without_a_key_and_reads_answers_with_it():
-    try:
-        AnythingLLM(api_key="").workspaces()
-    except AnythingLLMUnavailable as exc:
-        assert "ANYTHINGLLM_API_KEY" in str(exc)
-    else:
-        raise AssertionError("sent without a key")
-    calls = []
-
-    def fetch(method, url, payload):
-        calls.append((method, url, payload))
-        if url.endswith("/workspaces"):
-            return {"workspaces": [{"name": "My Workspace", "slug": "my-workspace"}]}
-        if url.endswith("/documents"):
-            return {"localFiles": {"items": [{"type": "folder", "items": [{"type": "file", "title": "CCRs.pdf"}]}]}}
-        if url.endswith("/workspace/my-workspace/chat"):
-            return {"textResponse": "Section 5.2 sets it.", "sources": [{"title": "CCRs.pdf", "text": "Section 5.2 ...", "score": 0.81}]}
-        raise AssertionError(url)
-
-    client = AnythingLLM(api_key="k", fetch=fetch)
-    assert client.workspaces()[0]["slug"] == "my-workspace" and client.documents()[0]["title"] == "CCRs.pdf"
-    answer = client.query("my-workspace", "which section sets the lien threshold")
-    assert answer.text.startswith("Section 5.2") and answer.sources[0].title == "CCRs.pdf" and answer.sources[0].score == 0.81
-    assert calls[-1][0] == "POST" and calls[-1][2] == {"message": "which section sets the lien threshold", "mode": "query"}
-
-
-def test_the_mcp_entry_merges_into_an_existing_config():
-    entry = mcp_server_entry(r"D:\code\jason\.venv\Scripts\jason-mcp.exe", cwd=r"D:\code\jason")
-    merged = merged_mcp_config({"mcpServers": {"other": {"command": "x"}}}, entry)
-    assert set(merged["mcpServers"]) == {"other", "jason"}
-    assert merged["mcpServers"]["jason"]["command"].endswith("jason-mcp.exe") and merged["mcpServers"]["jason"]["anythingllm"] == {"autoStart": False}
-    assert merged_mcp_config({}, entry)["mcpServers"]["jason"]["env"]["JASON_CWD"] == r"D:\code\jason"
 
 
 def test_ocr_with_no_engine_writes_nothing_and_says_so(tmp_path: Path, monkeypatch):
@@ -150,9 +115,9 @@ def test_the_vault_session_creates_a_login_record_and_reads_the_secret_back(monk
         return "UID123"
 
     monkeypatch.setattr(record_management, "add_record_to_folder", fake_add)
-    uid = session.create_login_record("AnythingLLM Desktop API key", password="secret-value", url="http://localhost:3001", notes="n")
+    uid = session.create_login_record("Example portal login", password="secret-value", url="http://localhost:3001", notes="n")
     record = made["record"]
-    assert uid == "UID123" and record.record_type == "login" and record.title == "AnythingLLM Desktop API key"
+    assert uid == "UID123" and record.record_type == "login" and record.title == "Example portal login"
     assert [(f.type, f.value) for f in record.fields] == [("login", []), ("password", ["secret-value"]), ("url", ["http://localhost:3001"])]
     monkeypatch.setattr(session, "load_record", lambda uid: record)
     assert session.get_secret("UID123") == "secret-value"
@@ -179,21 +144,7 @@ def test_the_ollama_vision_engine_reads_each_page_without_thinking(tmp_path: Pat
     assert not engine.available() and "ollama-vision" not in [e.name for e in engines()]
 
 
-def test_the_anythingllm_collector_engine_reads_the_apps_extracted_text(tmp_path: Path):
-    import json
-
-    from jason.community.ocr import AnythingLLMCollector
-
-    store = tmp_path / "documents" / "custom-documents"
-    store.mkdir(parents=True)
-    (store / "a.json").write_text(json.dumps({"title": "CCRs - 1st Amendment.pdf", "pageContent": "Doc# 202001170712 FIRST AMENDMENT"}), encoding="utf-8")
-    (store / "b.json").write_text(json.dumps({"title": "Other.pdf", "pageContent": "x"}), encoding="utf-8")
-    engine = AnythingLLMCollector(tmp_path / "documents")
-    assert engine.available() and engine.text_of(Path("CCRs - 1st Amendment.pdf")).startswith("Doc# 202001170712")
-    assert engine.text_of(Path("Missing.pdf")) == "" and not AnythingLLMCollector(tmp_path / "nowhere").available()
-
-
-def test_the_board_profile_serves_a_short_list_and_anythingllm_registers_it():
+def test_the_board_profile_serves_a_short_list_with_the_index_search():
     import pytest
 
     from jason.mcp.server import ALL_TOOLS, PROFILES, tools_for
@@ -203,6 +154,4 @@ def test_the_board_profile_serves_a_short_list_and_anythingllm_registers_it():
     assert set(board) <= {tool.__name__ for tool in ALL_TOOLS} and len(tools_for("")) == len(ALL_TOOLS) == len(tools_for("all"))
     with pytest.raises(SystemExit):
         tools_for("nope")
-    entry = mcp_server_entry("jason-mcp.exe", cwd="D:/code/jason")["jason"]
-    assert entry["args"] == ["--profile", "board"] and entry["env"]["JASON_CWD"] == "D:/code/jason"
-    assert mcp_server_entry("jason-mcp.exe", profile="all")["jason"]["args"] == []
+    assert "document_search" in board and "anythingllm_query" not in {tool.__name__ for tool in ALL_TOOLS}

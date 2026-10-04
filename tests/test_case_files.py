@@ -1,15 +1,14 @@
-"""A legal case's file as its own AnythingLLM catalog: fetched from the Drive listing, medical records held back, never in
-the shared workspace, synced only when named, and never moved into or out of the association's records."""
+"""A legal case's file as its own confidential catalog in the passage index: fetched from the Drive listing, medical
+records held back, and searched only when a person names the case's catalog."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from jason.community.anythingllm import AnythingLLM
+from jason.community import passage_index as pi
 from jason.community.legal_cases import CaseRole, CaseStatus, Forum, LegalCase
-from jason.tasks.anythingllm_sync import ask, chosen_catalogs, sync_catalogs
-from jason.tasks.case_files import case_catalogs, fetch, plan
+from jason.tasks.case_files import fetch, index_sources, is_case_catalog, plan
 
 CASE = LegalCase("example-26cv000001", "Example suit", Forum.SUPERIOR_COURT, CaseRole.DEFENDANT, CaseStatus.PENDING,
                  case_number="26CV000001", drive_folder="26CV000001 - Example", held_back=("*VCA *", "*Medical*"))
@@ -48,7 +47,7 @@ class Drive:
         return self.download(file_id, dest)
 
 
-def test_the_plan_takes_what_anythingllm_reads_and_lists_the_rest(tmp_path: Path) -> None:
+def test_the_plan_takes_the_readable_files_and_lists_the_rest(tmp_path: Path) -> None:
     _listing(tmp_path)
     rows = {r["name"]: r for r in plan(tmp_path, CASE)}
     assert set(rows) == {"Complaint.pdf", "20250623 VCA Invoice.pdf", "Defense Request", "Meeting.transcript.vtt", "photo.jpeg",
@@ -81,81 +80,31 @@ def test_fetch_holds_back_medical_records_and_keeps_an_unchanged_copy(tmp_path: 
     assert {r["name"]: r["action"] for r in manifest["files"]}["20250623 VCA Invoice.pdf"] == "held back"
 
 
-def test_a_case_catalog_is_its_own_and_is_synced_only_when_named() -> None:
-    (catalog,) = case_catalogs((CASE, NO_FOLDER))
-    assert (catalog.name, catalog.workspace) == ("case-example-26cv000001", "Case 26CV000001")
-    assert catalog.confidential and catalog.explicit and not catalog.shared
-    assert catalog not in chosen_catalogs((), (catalog,))
-    assert chosen_catalogs(("case-example-26cv000001",), (catalog,)) == (catalog,)
-    assert chosen_catalogs(("cases",), (catalog,)) == (catalog,)
+def test_a_case_is_its_own_confidential_catalog_in_the_index() -> None:
+    (source,) = index_sources((CASE, NO_FOLDER))
+    assert (source.catalog, source.folder) == ("case-example-26cv000001", "cases/example-26cv000001/files")
+    assert source.confidential and source.standing is pi.Standing.EVIDENCE and not source.generated
+    assert is_case_catalog("case-example-26cv000001") and not is_case_catalog("records")
 
 
-def test_the_sync_keeps_a_case_out_of_the_shared_workspace_and_moves_nothing(tmp_path: Path) -> None:
+def test_a_case_file_is_searched_only_when_its_catalog_is_named(tmp_path: Path) -> None:
+    from jason.mcp.county import document_search
+
     _listing(tmp_path)
     fetch(Drive(), tmp_path, CASE)
-    catalogs = case_catalogs((CASE,))
-    calls = []
+    files = tmp_path / "cases" / CASE.key / "files"
+    (files / "Recordings" / "Meeting.transcript.vtt.txt").write_text(
+        "The board agreed to preserve all video of the garage.\n", encoding="utf-8")
+    (tmp_path / "governing").mkdir()
+    (tmp_path / "governing" / "rules.md").write_text("# Rules\n\nNo video recording in the pool area.\n", encoding="utf-8")
+    sources = (pi.IndexSource("records", "governing", pi.Standing.RECORD), *index_sources((CASE,)))
+    report = pi.build(tmp_path, sources=sources, kind_of=lambda name: "")
+    # The PDFs have no text extract: only the transcript and the rules are cut.
+    assert report.files == 2
 
-    def portal(method, url, payload):
-        calls.append((method, url, payload))
-        if url.endswith("/workspaces"):
-            return {"workspaces": [{"slug": "mystique", "name": "Mystique"}]}
-        if url.endswith("/workspace/new"):
-            return {"workspace": {"slug": payload["name"].lower().replace(" ", "-")}}
-        if url.endswith("/documents"):
-            # The same title already in the association's records must not be moved into the case.
-            return {"localFiles": {"items": [{"type": "folder", "name": "association-records", "items": [
-                {"type": "file", "name": "c.json", "title": "26CV000001: Complaint.pdf"}]}]}}
-        return {"success": True}
-
-    report = sync_catalogs(AnythingLLM(api_key="k", fetch=portal), tmp_path, None, names=("cases",), extra=catalogs)
-    assert report.moved == [] and report.errors == []
-    assert sorted(report.uploaded) == ["26CV000001: Complaint.pdf", "26CV000001: Defense Request.pdf", "26CV000001: Q_ what_.pdf",
-                                       "26CV000001: Recordings/Meeting.transcript.vtt.txt"]
-    uploads = [c for c in calls if "/document/upload/" in c[1]]
-    assert {c[1].rsplit("/", 1)[-1] for c in uploads} == {"case-example-26cv000001"}
-    assert {c[2]["addToWorkspaces"] for c in uploads} == {"case-26cv000001"}
-    assert not any(c[1].endswith("/document/move-files") for c in calls)
-
-    # Everything else never takes the case: a sync of all catalogs leaves it out.
-    everything = sync_catalogs(AnythingLLM(api_key="k", fetch=portal), tmp_path, None, extra=catalogs)
-    assert "case-example-26cv000001" not in everything.workspaces
-
-
-def test_asking_a_case_labels_its_sources_confidential() -> None:
-    def portal(method, url, payload):
-        if url.endswith("/workspaces"):
-            return {"workspaces": [{"slug": "case-26cv000001", "name": "Case 26CV000001"}]}
-        if url.endswith("/chat"):
-            return {"textResponse": "June 24.", "sources": [{"title": "26CV000001: Letter.pdf", "text": "preserve"}]}
-        if url.endswith("/documents"):
-            return {"localFiles": {"items": [{"type": "folder", "name": "case-example-26cv000001", "items": [
-                {"type": "file", "name": "l.json", "title": "26CV000001: Letter.pdf"}]}]}}
-        return {}
-
-    result = ask(AnythingLLM(api_key="k", fetch=portal), "when?", catalog="case-example-26cv000001", extra=case_catalogs((CASE,)))
-    assert result["sources"][0]["shelf"].startswith("case file") and "confidential" in result["note"]
-
-
-def test_a_failed_chat_model_still_gives_the_retrieved_passages() -> None:
-    searched = []
-
-    def portal(method, url, payload):
-        if url.endswith("/workspaces"):
-            return {"workspaces": [{"slug": "case-26cv000001", "name": "Case 26CV000001"}]}
-        if url.endswith("/chat"):
-            return {"type": "abort", "textResponse": None, "sources": [],
-                    "error": "AnythingLLM::getChatCompletion failed to communicate with AnythingLLM internal ollama. cudaMalloc failed"}
-        if url.endswith("/vector-search"):
-            searched.append(payload["query"])
-            return {"results": [{"text": "preserve all video", "score": 0.59, "metadata": {"title": "26CV000001: Letter.pdf"}}]}
-        if url.endswith("/documents"):
-            return {"localFiles": {"items": [{"type": "folder", "name": "case-example-26cv000001", "items": [
-                {"type": "file", "name": "l.json", "title": "26CV000001: Letter.pdf"}]}]}}
-        return {}
-
-    result = ask(AnythingLLM(api_key="k", fetch=portal), "what to preserve?", catalog="case-example-26cv000001",
-                 extra=case_catalogs((CASE,)))
-    assert searched == ["what to preserve?"] and result["answer"] == "" and "cudaMalloc" in result["modelError"]
-    assert result["sources"][0]["title"] == "26CV000001: Letter.pdf" and result["sources"][0]["shelf"].startswith("case file")
-    assert result["note"].startswith("AnythingLLM's chat model failed")
+    shared = document_search("preserve video", data_dir=tmp_path, mode="keyword")
+    assert {h["catalog"] for h in shared["hits"]} == {"records"}
+    case = document_search("preserve video", data_dir=tmp_path, mode="keyword", catalog="case-example-26cv000001")
+    assert [h["file"] for h in case["hits"]] == ["Meeting.transcript.vtt.txt"]
+    assert case["hits"][0]["confidential"] and case["hits"][0]["standing"] == "evidence"
+    assert any("directors and counsel" in c for c in case["caveats"])

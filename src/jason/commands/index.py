@@ -1,7 +1,8 @@
 """``jason index``: the passage index (``jason.community.passage_index``), one store a search can be scoped by.
 
 ``--build`` cuts the sources' text files into passages and embeds what has no vector yet. It copies the old cache's
-vectors and re-cuts only changed files, so a second build is quick. ``--no-embed`` cuts without the GPU.
+vectors and re-cuts only changed files, so a second build is quick. ``--no-embed`` cuts without the GPU. A legal case's
+fetched file (``jason cases --fetch-files``) is its own confidential catalog, ``case-<key>``.
 ``--status`` reports what the index holds.
 ``--search QUESTION`` ranks the passages, optionally scoped by ``--catalog``, ``--standing``, ``--kind``, or
 ``--folder``, with the confidential files only on ``--confidential``.
@@ -16,6 +17,16 @@ import sys
 from typing import Any, Callable
 
 
+def sources() -> tuple:
+    """What a build takes: ``passage_index.SOURCES``, and each legal case's fetched file as its own confidential catalog
+    (``case_files.index_sources``, read from the active profile when the build runs)."""
+    from jason.community import community
+    from jason.community import passage_index as pi
+    from jason.tasks.case_files import index_sources
+
+    return (*pi.SOURCES, *index_sources(community().legal_cases()))
+
+
 def cmd_index(args: argparse.Namespace) -> int:
     from jason.community import passage_index as pi
     from jason.config import data_dir as active_data_dir
@@ -27,7 +38,7 @@ def cmd_index(args: argparse.Namespace) -> int:
 
         embedder = None if args.no_embed else retrieval.OllamaEmbedder()
         with hold(Resource.STORE, "retrieval-index", purpose="build the passage index"):
-            report = pi.build(data, embedder=embedder, say=lambda line: print(line, file=sys.stderr))
+            report = pi.build(data, sources=sources(), embedder=embedder, say=lambda line: print(line, file=sys.stderr))
         for line in report.lines():
             print(line)
         return 1 if report.missing and embedder is not None else 0

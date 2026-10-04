@@ -31,10 +31,9 @@ from jason.mcp.rolls import (
 from jason.mcp.county import (
     association_records,
     audit_chains,
-    anythingllm_query,
     manager_context,
-    anythingllm_status,
     assessment_liens,
+    document_search,
     document_readings,
     extraction_scorecard,
     passage_search,
@@ -207,8 +206,8 @@ def read_exported_file(request_id: int, name: str, *, max_bytes: int = 262144) -
 def _working_directory() -> None:
     """Run from the project: ``JASON_CWD`` when a client sets it, else the folder that holds ``.env``.
 
-    An MCP client such as AnythingLLM launches the server from its own
-    folder, and the stores are addressed as ``data/...`` from the project.
+    An MCP client launches the server from its own folder, and the stores
+    are addressed as ``data/...`` from the project.
     """
     import os
 
@@ -310,9 +309,8 @@ ALL_TOOLS = (
     passage_search,
     extraction_scorecard,
     read_scan,
-    anythingllm_query,
+    document_search,
     manager_context,
-    anythingllm_status,
     recorder_search,
     recorder_detail,
     recorder_around,
@@ -331,13 +329,13 @@ ALL_TOOLS = (
 
 ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS
 
-# A profile is a named subset, in the order a client lists them. A small local model (AnythingLLM's agent) picks
-# better from the board set: the digest, the briefs, and the law, not the research tools behind them.
+# A profile is a named subset, in the order a client lists them. A client picks better from the board set: the
+# digest, the briefs, the law, and the index search, not the research tools behind them.
 PROFILES: dict[str, tuple[str, ...]] = {
     "board": (
         "board_digest", "title_watch", "association_collections", "budget_status", "bank_accounts", "utility_brief", "utility_payments", "vendor_portal", "pest_program", "incident_history", "insurance_policies", "reserve_study", "reserve_transfers", "invoice_review", "bank_reconciliations", "mail_brief", "zoom_meetings", "meeting_records", "hearings", "insurance_review", "association_calendar", "open_items", "party_brief", "unit_brief", "escrow_brief", "recent_filings", "lifecycle_of", "assessment_liens",
         "explain_filing", "solar_status", "unit_characteristics", "duty_brief", "records_inventory", "authorities",
-        "records_request", "passage_search", "library_search", "manager_context",
+        "records_request", "document_search", "library_search", "manager_context",
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.

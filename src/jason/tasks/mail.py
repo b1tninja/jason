@@ -95,8 +95,6 @@ def _text_of(pdf: Path) -> tuple[str, str]:
     from jason.community.ocr import engines
 
     for engine in engines():
-        if engine.name == "anythingllm-collector":
-            continue
         try:
             read = engine.text_of(pdf)
         except Exception:
@@ -167,7 +165,7 @@ def shareable(row: dict[str, Any], *, include_confidential: bool = False) -> boo
 
 
 def letter_page(row: dict[str, Any], text: str) -> str:
-    """One letter as a page for AnythingLLM: a heading that names it, the sort and the facts, then the scanned text."""
+    """One letter as a page: a heading that names it, the sort and the facts, then the scanned text."""
     day = (row.get("received") or "")[:10]
     who = row.get("from") or row.get("sender") or "unknown sender"
     facts = row.get("facts") or {}

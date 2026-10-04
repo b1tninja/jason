@@ -327,39 +327,6 @@ class Jason:
         with IndexCache(self.settings.ownership_db.parent / "index-cache.db") as cache:
             return run_sync_solar(cache, Sacramento.county_recorder, program)
 
-    def anythingllm_key(self) -> str:
-        """The AnythingLLM API key: from the Keeper record named in settings, else the environment or ``.env``."""
-        if self.settings.anythingllm_record_uid:
-            return self._vault_session().get_secret(self.settings.anythingllm_record_uid)
-        return self.settings.anythingllm_api_key
-
-    def store_anythingllm_key(self, key: str) -> str:
-        """Put the key in a new Keeper login record and return its UID. The value is not logged."""
-        return self._vault_session().create_login_record(
-            "AnythingLLM Desktop API key",
-            password=key,
-            url="http://localhost:3001",
-            notes="Developer API key for AnythingLLM Desktop on this machine, generated in the app under Settings, API Keys. Jason reads it as anythingllm_record_uid.",
-        )
-
-    def anythingllm(self):
-        """The AnythingLLM client with the key resolved; fails fast without one."""
-        from jason.community.anythingllm import AnythingLLM
-
-        return AnythingLLM(api_key=self.anythingllm_key())
-
-    def sync_anythingllm(self, *, catalogs: tuple[str, ...] = (), combined: str | None = None, refresh: bool = False,
-                         include_confidential_mail: bool = False):
-        """Push the authorities, the association's records, the mail, and Jason's pages into their AnythingLLM catalogs."""
-        from jason.tasks.anythingllm_sync import COMBINED_WORKSPACE, sync_catalogs
-        from jason.tasks.case_files import case_catalogs
-
-        root = self.settings.ownership_db.parent
-        project_root = self.settings.env_path.parent if self.settings.env_path else Path.cwd()
-        return sync_catalogs(self.anythingllm(), root, project_root, names=catalogs, combined=COMBINED_WORKSPACE if combined is None else combined,
-                             refresh=refresh, include_confidential_mail=include_confidential_mail,
-                             extra=case_catalogs(self.community.legal_cases()))
-
     def sync_finance(self, *, year: int | None = None):
         """Fetch the year's budget against actual and the bank balances from PayHOA into data/payhoa/finance-<year>.json."""
         from datetime import date

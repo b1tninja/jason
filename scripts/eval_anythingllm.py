@@ -1,6 +1,6 @@
 """Score AnythingLLM's vector search against the same gold questions as scripts/eval_retrieval.py.
 
-    python scripts/eval_anythingllm.py                                   # the shared workspace, both gold files
+    python scripts/eval_anythingllm.py --workspace SLUG                  # one workspace, both gold files
     python scripts/eval_anythingllm.py --workspace association-records --workspace insurance
                                                                          # each workspace, and their union by score
     python scripts/eval_anythingllm.py --json data/retrieval/runs/DATE-anythingllm.json
@@ -10,6 +10,10 @@ A hit is relevant by the same rule as eval_retrieval: every phrase in the chunk'
 question's file names. ``folded`` counts a chunk whose text repeats one ranked above it once, as eval_retrieval's
 near-copy fold does. Each request embeds the question on the shared Ollama, so the run holds the GPU lock.
 It only reads: no document, workspace, or setting changes.
+
+jason no longer runs AnythingLLM (its own passage index replaced it; docs/applicability.md), so this script keeps the
+measurement repeatable on its own: it calls the app's API directly, with the key from ``--key`` or
+``ANYTHINGLLM_API_KEY``, and needs nothing of jason but the GPU lock.
 """
 
 from __future__ import annotations
@@ -20,7 +24,9 @@ import re
 import sys
 import time
 from pathlib import Path
+from urllib.request import Request, urlopen
 
+API = "http://localhost:3001/api/v1"
 HEADER = re.compile(r"^\s*<document_metadata>.*?</document_metadata>\s*", re.S)
 
 
@@ -52,26 +58,35 @@ def first_rank(chunks: list[dict], item: dict) -> int:
     return next((i for i, c in enumerate(chunks[:10], 1) if relevant(c, item)), 0)
 
 
+def vector_search(key: str, slug: str, query: str, depth: int, api: str = API) -> list[dict]:
+    body = json.dumps({"query": query, "topN": depth, "scoreThreshold": 0}).encode("utf-8")
+    request = Request(f"{api}/workspace/{slug}/vector-search", data=body, method="POST",
+                      headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"})
+    with urlopen(request, timeout=300) as response:
+        return json.loads(response.read().decode("utf-8") or "{}").get("results") or []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data")
     parser.add_argument("--gold", action="append", default=[])
-    parser.add_argument("--workspace", action="append", default=[], help="a workspace slug; repeat (default: the shared one)")
+    parser.add_argument("--workspace", action="append", default=[], help="a workspace slug; repeat")
+    parser.add_argument("--key", default="", help="the app's API key (default: ANYTHINGLLM_API_KEY)")
+    parser.add_argument("--api", default=API)
     parser.add_argument("--depth", type=int, default=30, help="chunks asked of each workspace before folding")
     parser.add_argument("--json", default="")
     args = parser.parse_args(argv)
     data = Path(args.data)
     golds = [Path(p) for p in args.gold] or [data / "retrieval" / "gold.json", data / "retrieval" / "gold-heldout.json"]
 
-    from jason.agent import Jason
-    from jason.community import community
+    import os
+
     from jason.locks import Resource, hold
 
-    client = Jason().anythingllm()
-    spaces = args.workspace or [community().anythingllm_workspace if hasattr(community(), "anythingllm_workspace") else ""]
-    spaces = [s for s in spaces if s]
-    if not spaces:
-        print("name a workspace with --workspace", file=sys.stderr)
+    key = args.key or os.environ.get("ANYTHINGLLM_API_KEY", "")
+    spaces = [s for s in args.workspace if s]
+    if not spaces or not key:
+        print("name a workspace with --workspace and give the key (--key or ANYTHINGLLM_API_KEY)", file=sys.stderr)
         return 2
     methods = [*spaces, *(["union"] if len(spaces) > 1 else [])]
     result: dict = {"workspaces": spaces, "runs": []}
@@ -85,8 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                 pooled: list[dict] = []
                 for slug in spaces:
                     started = time.monotonic()
-                    found = client._call("POST", f"/workspace/{slug}/vector-search",
-                                         {"query": q["q"], "topN": args.depth, "scoreThreshold": 0}).get("results") or []
+                    found = vector_search(key, slug, q["q"], args.depth, api=args.api)
                     seconds[slug] += time.monotonic() - started
                     pooled += found
                     detail.setdefault(q["id"], {})[slug] = first_rank(found, q)

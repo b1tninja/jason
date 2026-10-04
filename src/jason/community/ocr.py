@@ -6,8 +6,7 @@ same shape the other extracts have, so nothing downstream changes. The
 engines, best first: a local vision model on Ollama (``OllamaVisionOcr``,
 when Ollama is running with the model pulled); Docling, a Python package
 with a Python-only OCR engine (RapidOCR) that runs on Python 3.14 from
-Docling 2.59; PyMuPDF's own OCR, which needs Tesseract's language data;
-and the text AnythingLLM's collector already extracted. ``engines`` says
+Docling 2.59; and PyMuPDF's own OCR, which needs Tesseract's language data. ``engines`` says
 which can run, and a run with none writes nothing and says so. OCR output is a text layer, not a fact: the
 readers and the scorecard still decide what it says.
 """
@@ -225,7 +224,7 @@ class DoclingRapidOcr:
 
 from jason.community.ollama_extractor import DEFAULT_CONTEXT, DEFAULT_MODEL, OLLAMA_URL
 
-# The shared local model (AnythingLLM chats with it too), at the shared window: Ollama reloads a model whose
+# The shared local model, at the shared window: Ollama reloads a model whose
 # context differs, so OCR asks for the same window rather than a smaller one.
 OLLAMA_OCR_MODEL = DEFAULT_MODEL
 OLLAMA_OCR_CONTEXT = DEFAULT_CONTEXT
@@ -333,42 +332,6 @@ def _vision_ready(base_url: str, model: str) -> bool:
     return _READY[key]
 
 
-class AnythingLLMCollector:
-    """The text AnythingLLM's document collector already extracted, read from its storage folder.
-
-    The collector runs OCR on an image-only PDF when it is uploaded, and
-    keeps the result as ``pageContent`` in a JSON under
-    ``storage/documents``. Nothing is sent anywhere: this reads that folder
-    for the document whose title is the file's name.
-    """
-
-    name = "anythingllm-collector"
-
-    def __init__(self, storage: Path | None = None) -> None:
-        import os
-
-        self.storage = storage or Path(os.environ.get("APPDATA", "")) / "anythingllm-desktop" / "storage" / "documents"
-
-    def available(self) -> bool:
-        return self.storage.is_dir()
-
-    def text_of(self, path: Path) -> str:
-        import json
-
-        best = ""
-        for candidate in self.storage.rglob("*.json"):
-            try:
-                data = json.loads(candidate.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-            if str(data.get("title") or "") != path.name:
-                continue
-            text = str(data.get("pageContent") or "")
-            if len(text) > len(best):
-                best = text
-        return best
-
-
 def engines() -> tuple[OcrEngine, ...]:
     """The engines that can run on this machine, best first."""
     found: list[OcrEngine] = []
@@ -381,9 +344,6 @@ def engines() -> tuple[OcrEngine, ...]:
         found.append(TesseractCli())        # Tesseract's own word spacing; PyMuPDF's runs words together
     if PyMuPdfTesseract.available():
         found.append(PyMuPdfTesseract())
-    collector = AnythingLLMCollector()
-    if collector.available():
-        found.append(collector)
     return tuple(found)
 
 

@@ -152,8 +152,6 @@ def text_of(path: Path) -> tuple[str, str]:
         from jason.community.ocr import engines
 
         for engine in engines():
-            if engine.name == "anythingllm-collector":
-                continue
             try:
                 read = engine.text_of(path)
             except Exception:

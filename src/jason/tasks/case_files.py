@@ -1,14 +1,18 @@
-"""A legal case's file from Drive, on disk and as its own AnythingLLM catalog.
+"""A legal case's file from Drive, on disk and as its own confidential catalog in the passage index.
 
-A case in the specification (``mystique/cases.py``) with a ``drive_folder`` has a case file: every Drive file under that
-folder, as the last ``jason drive --sync`` listed it. ``fetch`` downloads the files AnythingLLM can read into
+A case in the specification (the profile's ``legal_cases()``) with a ``drive_folder`` has a case file: every Drive file
+under that folder, as the last ``jason drive --sync`` listed it. ``fetch`` downloads the readable files into
 ``data/cases/<key>/files`` (a Google Doc as PDF, a caption transcript as text) and writes ``manifest.json`` with every file
 and what became of it. A file whose name matches the case's ``held_back`` globs (medical and veterinary records) is not
-downloaded unless a person passes ``include_held``. Images, recordings, archives, and shortcuts are listed, not taken.
+downloaded unless a person passes ``include_held``, and a copy from an earlier run that included it is removed.
+Images, recordings, archives, and shortcuts are listed, not taken.
 
-``case_catalogs`` gives each such case its own catalog: its own folder and workspace, never the shared Mystique
-workspace, and synced only when named. Titles carry the case number, so a case file is never taken for, or moved
-out of, the association's records. Nothing in Drive is changed.
+``index_sources`` gives each such case its own catalog in the passage index (``case-<key>``), which ``jason index
+--build`` includes: confidential, so a search sees it only when it names the catalog or asks for confidential files,
+with the standing ``evidence`` (neither the association's record nor the law). The index reads the ``.md`` and ``.txt``
+files only (the caption transcripts, and any text extract); a PDF, Word file, or e-mail without one is on disk but
+not searched.
+Nothing in Drive is changed.
 """
 
 from __future__ import annotations
@@ -20,7 +24,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from jason.tasks.anythingllm_sync import Catalog, Root, Source
 
 CASES_DIR = "cases"
 _DOCUMENT = "application/vnd.google-apps.document"
@@ -34,24 +37,23 @@ def case_dir(data_dir: Path, case: Any) -> Path:
     return Path(data_dir) / CASES_DIR / case.key
 
 
+CATALOG_PREFIX = "case-"
+
+
 def catalog_name(case: Any) -> str:
-    return f"case-{case.key}"
+    return f"{CATALOG_PREFIX}{case.key}"
 
 
-def case_catalogs(cases: tuple) -> tuple[Catalog, ...]:
-    """One confidential catalog per case with a Drive folder."""
-    return tuple(
-        Catalog(
-            catalog_name(case), catalog_name(case), f"Case {case.case_number or case.key}", "the association's case file",
-            f"a file in the association's case file for {case.title} ({case.case_number or case.key}): evidence, pleadings, "
-            "correspondence, and invoices gathered for the matter; confidential, for directors and counsel; not the "
-            "association's record and not an authority",
-            (Source(Root.DATA, f"{CASES_DIR}/{case.key}/files", "*", recursive=True, prefix=case.case_number or case.key,
-                    relative_title=True),),
-            shared=False, explicit=True, confidential=True,
-        )
-        for case in cases if getattr(case, "drive_folder", "")
-    )
+def is_case_catalog(name: str) -> bool:
+    return name.strip().lower().startswith(CATALOG_PREFIX)
+
+
+def index_sources(cases: tuple) -> tuple:
+    """One confidential ``IndexSource`` per case with a Drive folder: its fetched files' text, as catalog case-<key>."""
+    from jason.community.passage_index import IndexSource, Standing
+
+    return tuple(IndexSource(catalog_name(case), f"{CASES_DIR}/{case.key}/files", Standing.EVIDENCE, confidential=True)
+                 for case in cases if getattr(case, "drive_folder", ""))
 
 
 def is_held(name: str, case: Any) -> bool:
@@ -109,7 +111,7 @@ def fetch(drive: Any, data_dir: Path, case: Any, *, include_held: bool = False,
             continue
         target = files / row["local"]
         if row["heldBack"] and not include_held:
-            # jason's own copy from a run that included it goes, so the catalog cannot take it; Drive keeps the file.
+            # jason's own copy from a run that included it goes, so the index cannot take it; Drive keeps the file.
             if target.is_file():
                 target.unlink()
             row["action"] = "held back"
@@ -138,4 +140,5 @@ def fetch(drive: Any, data_dir: Path, case: Any, *, include_held: bool = False,
     return counts
 
 
-__all__ = ["CASES_DIR", "case_catalogs", "case_dir", "catalog_name", "fetch", "is_held", "plan"]
+__all__ = ["CASES_DIR", "CATALOG_PREFIX", "case_dir", "catalog_name", "fetch", "index_sources", "is_case_catalog",
+           "is_held", "plan"]

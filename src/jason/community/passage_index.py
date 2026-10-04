@@ -46,6 +46,7 @@ class Standing(Enum):
     RECORD = "record"                # the association's governing documents and records, quoted as the record
     REFERENCE = "reference"          # learned from, never quoted as binding
     PAGE = "page"                    # a page jason wrote from its stores: a summary, never quoted as the rule
+    EVIDENCE = "evidence"            # gathered for one matter (a legal case's file): neither the record nor the law
 
 
 @dataclass(frozen=True)

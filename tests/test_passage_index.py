@@ -146,3 +146,36 @@ def test_no_index_says_how_to_build_one(tmp_path):
     with pytest.raises(FileNotFoundError, match="jason index --build"):
         pi.load(tmp_path)
     assert pi.status(tmp_path)["built"] is False
+
+
+def test_document_search_returns_passages_with_their_caveats_and_no_answer(data):
+    from jason.mcp.county import document_search
+
+    missing = document_search("garage door", data_dir=data)
+    assert missing["available"] is False and "jason index --build" in missing["note"]
+    build(data, FakeEmbedder())
+    found = document_search("garage door", data_dir=data, mode="exact")
+    assert found["available"] and "answer" not in found and any("not a pin" in c for c in found["caveats"])
+    assert {h["catalog"] for h in found["hits"]} == {"records"} and not any(h["confidential"] for h in found["hits"])
+    hit = found["hits"][0]
+    assert hit["file"] == "ccrs.md" and hit["section"] and hit["standing"] == "record" and hit["kind"] == "ccrs"
+    assert hit["generated"] is False
+    law = document_search("notify the member in writing", data_dir=data, mode="keyword", standing="authority")
+    assert [h["file"] for h in law["hits"]] == ["civ-5855.md"]
+    assert document_search("x", data_dir=data, standing="binding")["available"] is False
+
+
+def test_document_search_falls_back_to_keywords_without_the_embedder(data, monkeypatch):
+    from jason.mcp.county import document_search
+
+    class Down:
+        def embed_passages(self, texts):
+            raise retrieval.EmbeddingUnavailable("down")
+
+        def embed_query(self, text):
+            raise retrieval.EmbeddingUnavailable("down")
+
+    build(data)
+    monkeypatch.setattr(retrieval, "default_embedder", lambda data_dir, **kw: Down())
+    found = document_search("garage door", data_dir=data)
+    assert found["available"] and found["mode"] == "exact" and "embedder" in found["note"] and found["hits"]

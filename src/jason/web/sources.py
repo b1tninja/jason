@@ -562,7 +562,6 @@ ACCOUNTS: tuple[tuple[str, str, str], ...] = (
     ("SMUD (utility portal)", "smud_record_uid", "jason sync-bills"),
     ("City utility (i-doxs)", "idoxs_record_uid", "jason sync-bills"),
     ("City permits (Accela)", "accela_record_uid", "jason permit-status --sync"),
-    ("AnythingLLM", "anythingllm_record_uid", "jason anythingllm --status"),
 )
 
 

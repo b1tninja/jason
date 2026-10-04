@@ -191,30 +191,6 @@ def test_the_scorecard_measures_a_reader_against_the_names_and_takes_a_sample_pe
     assert sample.cases == 2 and sample.as_dict()["perKind"]["treasurer_report"]["cases"] == 1
 
 
-def test_the_records_catalog_takes_what_a_member_could_see_and_nothing_confidential(tmp_path: Path):
-    from jason.tasks.anythingllm_sync import library_items
-    from jason.tasks.library import FILES_DIR, save
-
-    community = mystique()
-    paths = {
-        "Meetings/2025/Minutes of 1_21_25.pdf": "1",
-        "Confidential/Complete Financial Statements/2025/Statements/20250131-statements-5286-.pdf": "2",
-        "PayHOA Resources and Templates (Populated by PayHOA)/Meeting Resources/Board Meeting Agenda.docx": "3",
-        "Grant Deeds/GD 202405240894.pdf": "4",
-        "Governing Documents/CCRs.pdf": "5",
-    }
-    rows = []
-    for path, doc_id in paths.items():
-        file = tmp_path / FILES_DIR / path
-        file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_bytes(b"%PDF-1.4")
-        rows.append(classify_by_name(community, _doc(path, doc_id)))
-    save(tmp_path, tuple(rows))
-    items = library_items(tmp_path, {"CCRs.pdf"})
-    assert [title for _, title, _ in items] == ["Minutes of 1_21_25.pdf"]
-    assert "minutes; period 2025-01-21; Civil Code 5200: minutes; library path Meetings/2025/Minutes of 1_21_25.pdf" in items[0][2]
-
-
 def test_copies_of_one_file_collapse_and_keep_every_record_their_folders_give():
     from jason.tasks.library import distinct
 

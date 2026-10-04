@@ -801,160 +801,6 @@ def cmd_ocr_documents(args: argparse.Namespace) -> int:
     return 0
 
 
-def _anythingllm_admin(args: argparse.Namespace) -> int | None:
-    """The app, its settings, its workspaces, and their embeddings (``jason.anythingllm_admin``); None when no
-    management option was given. Starting, stopping, applying settings, and re-embedding need --yes."""
-    import json
-
-    from jason import anythingllm_admin as admin
-    from jason.community.anythingllm import AnythingLLMUnavailable
-
-    acting = args.start or args.stop or args.restart or args.apply or args.reembed
-    if not (acting or args.status or args.snapshot):
-        return None
-    if acting and not args.yes:
-        print("starting, stopping, applying settings, and re-embedding change the app: add --yes", file=sys.stderr)
-        return 2
-    if args.embedder and not args.reembed:
-        print("a new embedder empties every workspace: --apply --embedder needs --reembed too (a snapshot is taken first)",
-              file=sys.stderr)
-        return 2
-    try:
-        if args.stop:
-            print(f"stop {admin.stop()}")
-            return 0
-        if args.restart:
-            print(f"restart {admin.restart()}")
-        elif args.start:
-            print(f"start {admin.start()}")
-        with _agent(args) as agent:
-            client = agent.anythingllm()
-            data_dir = agent.settings.ownership_db.parent
-            snap = None
-            if args.snapshot or (args.reembed and (args.reset or args.embedder)):
-                snap = admin.snapshot(client, data_dir, label="before-reset" if args.reset or args.embedder else "")
-                print(f"snapshot {snap}")
-            if args.apply:
-                print(f"apply {admin.apply(client, embedder=args.embedder)}")
-            if args.reembed:
-                source = Path(args.from_snapshot) if args.from_snapshot else snap or admin.latest_snapshot(data_dir)
-                if source is None:
-                    print("no snapshot to re-embed from: run jason anythingllm --snapshot first", file=sys.stderr)
-                    return 1
-                report = admin.reembed(client, source, only=tuple(args.only or ()), reset=args.reset or args.embedder, log=print)
-                for line in report.lines():
-                    print(line)
-            if args.status or acting:
-                from jason.tasks.anythingllm_sync import CATALOGS
-                from jason.tasks.case_files import case_catalogs
-
-                current = admin.settings(client)
-                inv = admin.inventory(client, (*CATALOGS, *case_catalogs(agent.community.legal_cases())))
-                if args.json:
-                    print(json.dumps({"settings": current, "drift": admin.drift(current), "inventory": inv,
-                                      "findings": admin.findings(current, inv)}, indent=2, default=str))
-                    return 0
-                print(f"AnythingLLM: chat {current.get('OllamaLLMModelPref')} ({current.get('LLMProvider')}, window "
-                      f"{current.get('OllamaLLMTokenLimit')}), embedder {current.get('EmbeddingModelPref')} "
-                      f"({current.get('EmbeddingEngine')})")
-                for space in inv["workspaces"]:
-                    print(f"  {space['slug']}: {space['documents']} documents")
-                print(f"  stored documents: {inv['storedDocuments']}; in no workspace: {len(inv['notEmbedded'])}")
-                found = admin.findings(current, inv)
-                print("")
-                for line in found or ["no problems found"]:
-                    print(f"! {line}" if found else line)
-    except (admin.AnythingLLMAdminError, AnythingLLMUnavailable) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    return 0
-
-
-def cmd_anythingllm(args: argparse.Namespace) -> int:
-    """Print the jason-mcp entry for AnythingLLM's agent tools, or ask its workspace a question."""
-    import json
-
-    from jason.community.anythingllm import mcp_server_entry, mcp_servers_path, merged_mcp_config
-    from jason.mcp.county import anythingllm_query
-
-    from jason.community.anythingllm import AnythingLLMUnavailable
-
-    managed = _anythingllm_admin(args)
-    if managed is not None:
-        return managed
-
-    if args.store_key:
-        with _agent(args) as agent:
-            key = agent.settings.anythingllm_api_key or os.environ.get("ANYTHINGLLM_API_KEY", "")
-            if not key:
-                print("no key to store: put it in .env as anythingllm_api_key or in ANYTHINGLLM_API_KEY first", file=sys.stderr)
-                return 1
-            uid = agent.store_anythingllm_key(key)
-            env_path = agent.settings.env_path
-        print(f"stored in Keeper record {uid}")
-        if env_path and env_path.is_file():
-            lines = env_path.read_text(encoding="utf-8").splitlines()
-            kept = [line for line in lines if not line.strip().lower().startswith("anythingllm_api_key")]
-            kept.append(f'anythingllm_record_uid = "{uid}"')
-            env_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
-            print(f"{env_path}: anythingllm_api_key removed, anythingllm_record_uid written")
-        return 0
-    if args.ask:
-        from jason.tasks.anythingllm_sync import ask
-        from jason.tasks.case_files import case_catalogs
-
-        with _agent(args) as agent:
-            try:
-                result = ask(agent.anythingllm(), args.ask, workspace=args.workspace, catalog=(args.catalog or [""])[0],
-                             extra=case_catalogs(agent.community.legal_cases()))
-            except AnythingLLMUnavailable as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-        if not result.get("found"):
-            print(result.get("note", "no answer"), file=sys.stderr)
-            return 1
-        for source in result["sources"]:
-            source["text"] = source["text"][:400]
-        print(json.dumps(result, indent=2, default=str))
-        return 0
-    if args.sync:
-        with _agent(args) as agent:
-            try:
-                report = agent.sync_anythingllm(catalogs=tuple(args.catalog or ()), combined=args.combined, refresh=args.refresh,
-                                                include_confidential_mail=args.include_confidential_mail)
-            except AnythingLLMUnavailable as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-        print(report.summary())
-        for title in report.uploaded:
-            print(f"  uploaded: {title}")
-        for title in report.moved:
-            print(f"  moved: {title}")
-        for title in report.refreshed:
-            print(f"  refreshed: {title}")
-        for err in report.errors:
-            print(f"  error: {err}", file=sys.stderr)
-        return 0
-    command = str(Path(sys.executable).with_name("jason-mcp.exe" if sys.platform == "win32" else "jason-mcp"))
-    entry = mcp_server_entry(command, cwd=str(Path.cwd()), profile=args.profile)
-    path = mcp_servers_path()
-    existing = {}
-    if path.is_file():
-        try:
-            existing = json.loads(path.read_text(encoding="utf-8") or "{}")
-        except json.JSONDecodeError:
-            existing = {}
-    merged = merged_mcp_config(existing, entry)
-    if args.write:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
-        print(f"wrote {path}")
-    else:
-        print(f"# add to {path} (or run with --write):")
-        print(json.dumps(merged, indent=2))
-    return 0
-
-
 def cmd_read_documents(args: argparse.Namespace) -> int:
     """Score a document reader against the pinned facts, or search the extracts by passage."""
     import json
@@ -1839,7 +1685,7 @@ def _outlines_model(args: argparse.Namespace, data_dir) -> int:
 
 
 def cmd_local_ai(args: argparse.Namespace) -> int:
-    """The local AI stack: Ollama and its GPU, loaded models, AnythingLLM, Windows commit and page files, jason's locks."""
+    """The local AI stack: Ollama and its GPU, loaded models, Windows commit and page files, jason's locks."""
     import json
 
     from jason.local_ai import LocalAIUnavailable, restart_ollama, status, status_lines, unload
@@ -2614,7 +2460,8 @@ def cmd_cases(args: argparse.Namespace) -> int:
                 print(f"{c.case_number or c.key}: My Drive/{c.drive_folder}")
                 counts = fetch(agent.drive(), data_dir, c, include_held=args.include_held, log=print)
                 print(f"  {counts}")
-                print(f"  catalog {catalog_name(c)}: jason anythingllm --sync --catalog {catalog_name(c)}")
+                print(f"  catalog {catalog_name(c)} (confidential): jason index --build, then "
+                      f"jason index --search QUESTION --catalog {catalog_name(c)} --confidential")
         return 0
     if args.json:
         print(json.dumps([to_plain(c) for c in cases], indent=2))
@@ -3753,36 +3600,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(ocr)
     ocr.set_defaults(func=cmd_ocr_documents)
 
-    allm = sub.add_parser("anythingllm", help="Print the jason-mcp entry for AnythingLLM's agent tools (--write installs it), or --ask a question of its workspace")
-    _add_common(allm)
-    allm.add_argument("--write", action="store_true", help="Write the entry into AnythingLLM's anythingllm_mcp_servers.json")
-    allm.add_argument("--ask", default="", help="Ask the workspace this question (needs ANYTHINGLLM_API_KEY)")
-    allm.add_argument("--store-key", action="store_true", help="Move the key from .env or ANYTHINGLLM_API_KEY into a new Keeper login record and point .env at it")
-    allm.add_argument("--sync", action="store_true", help="Push the catalogs (authorities, association-records, mail, jason-pages) into their folders and workspaces")
-    allm.add_argument("--include-confidential-mail", action="store_true",
-                      help="With --sync: also send attorney letters, bank statements, checks, and escrow requests to the mail catalog "
-                           "(a letter carrying a PIN or access code never goes)")
-    allm.add_argument("--catalog", action="append", help="Sync only this catalog (repeatable; a legal case's catalog, case-<key>, "
-                      "or cases for all of them, is synced only when named); with --ask, ask this catalog's workspace")
-    allm.add_argument("--refresh", action="store_true", help="Replace a page Jason generated when the file on disk is newer than the stored copy (never the association's records)")
-    allm.add_argument("--combined", default=None, help="Also add every document to this shared workspace (default the association's shared workspace; empty string for none)")
-    allm.add_argument("--workspace", default="", help="Workspace slug for --ask (default: the --catalog workspace, else the association's shared workspace)")
-    allm.add_argument("--profile", default="board", help="jason-mcp tool set to register: board (the board's tools, the default), onboarding (onboarding by conversation), governance, or all")
-    allm.add_argument("--status", action="store_true", help="The app's model settings against jason's, each workspace's documents, and what is wrong")
-    allm.add_argument("--start", action="store_true", help="Start the AnythingLLM desktop app and wait for its API (--yes)")
-    allm.add_argument("--stop", action="store_true", help="Close the AnythingLLM desktop app (--yes)")
-    allm.add_argument("--restart", action="store_true", help="Close and start the app (--yes)")
-    allm.add_argument("--apply", action="store_true", help="Set the chat model and window, and each workspace's retrieval, to jason's (--yes)")
-    allm.add_argument("--embedder", action="store_true", help="With --apply and --reembed: also set the embedder, which empties every workspace")
-    allm.add_argument("--snapshot", action="store_true", help="Save each workspace's document list to data/anythingllm/snapshots")
-    allm.add_argument("--reembed", action="store_true", help="Put the last snapshot's documents back into their workspaces, resuming (--yes)")
-    allm.add_argument("--reset", action="store_true", help="With --reembed: first remove every embedding and the app's vector cache (a snapshot is taken first)")
-    allm.add_argument("--from-snapshot", default="", help="With --reembed: the snapshot file to restore (default: the latest)")
-    allm.add_argument("--only", action="append", help="With --reembed: only this workspace slug (repeatable)")
-    allm.add_argument("--json", action="store_true", help="With --status: print JSON")
-    allm.add_argument("--yes", action="store_true", help="Confirm starting, stopping, applying settings, or re-embedding")
-    allm.set_defaults(func=cmd_anythingllm)
-
     auth = sub.add_parser("export-authorities", help="Export the words of the law Jason relies on from lawlibrary into data/authorities, or --list what is there")
     _add_common(auth)
     auth.add_argument("--list", action="store_true", help="List the exported pages and the pointers without calling lawlibrary")
@@ -3962,7 +3779,7 @@ def build_parser() -> argparse.ArgumentParser:
     outlines.add_argument("--model-limit", type=int, default=20, help="With --model: at most this many sections (0 for no limit)")
     outlines.add_argument("--model-again", action="store_true", help="With --model: read sections read before with the same words again")
     outlines.set_defaults(func=cmd_outlines)
-    local_ai = sub.add_parser("local-ai", help="Ollama, its GPU, the loaded models, AnythingLLM, Windows commit and page files, and jason's locks")
+    local_ai = sub.add_parser("local-ai", help="Ollama, its GPU, the loaded models, Windows commit and page files, and jason's locks")
     local_ai.add_argument("--json", action="store_true", help="Print JSON")
     local_ai.add_argument("--check", action="store_true", help="Exit 1 when there is a finding (for a script or scheduled task)")
     local_ai.add_argument("--restart-ollama", action="store_true", help="Restart the Ollama app so it finds the GPU again (needs --yes)")
@@ -4164,7 +3981,7 @@ def build_parser() -> argparse.ArgumentParser:
     cases = sub.add_parser("cases", help="The association's legal matters and each statutory duty's standing (confidential)")
     cases.add_argument("--json", action="store_true", help="Print JSON")
     cases.add_argument("--fetch-files", action="store_true",
-                       help="Download each case's Drive folder (read-only) into data/cases/<key> for its own AnythingLLM catalog")
+                       help="Download each case's Drive folder (read-only) into data/cases/<key>; jason index --build makes its text searchable as its own confidential catalog")
     cases.add_argument("--case", default="", help="With --fetch-files: only this case (its key or case number)")
     cases.add_argument("--include-held", action="store_true",
                        help="With --fetch-files: also take the medical and veterinary records the case holds back")

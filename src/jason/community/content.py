@@ -372,7 +372,7 @@ class ModelClassifier:
         self._fetch = fetch
         self.timeout = timeout
         self.max_chars = max_chars
-        # How long Ollama keeps the model loaded after the last call. The default model is the one AnythingLLM and OCR
+        # How long Ollama keeps the model loaded after the last call. The default model is the one the readers and OCR
         # also use, so a short keep_alive would only unload it from under them; five minutes is Ollama's own default.
         self.keep_alive = keep_alive
 

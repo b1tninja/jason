@@ -1,7 +1,7 @@
-"""The local AI stack as jason depends on it: Ollama and its GPU, the models loaded, AnythingLLM, and Windows' memory.
+"""The local AI stack as jason depends on it: Ollama and its GPU, the models loaded, and Windows' memory.
 
-jason's readers, classifier, and OCR, and AnythingLLM's chat, share one model on one card (``DEFAULT_MODEL`` in
-``jason.community.ollama_extractor``). Three things have gone wrong on this machine, each silently:
+jason's readers, classifier, and OCR share one model on one card (``DEFAULT_MODEL`` in
+``jason.community.ollama_extractor``), beside the embedder the passage index uses (``retrieval.EMBED_MODEL``). Three things have gone wrong on this machine, each silently:
 
 - after a GPU driver change Ollama keeps running on the CPU until it is restarted, because it looks for GPUs only when
   it starts (September 30, 2026: the 9B model ran at 12.7 tokens a second instead of 136);
@@ -9,12 +9,12 @@ jason's readers, classifier, and OCR, and AnythingLLM's chat, share one model on
   once can exhaust it and the model server dies mid-request (``std::bad_alloc``);
 - a page file set in System Properties applies only at the next boot, so the limit stays where it was.
 
-``status`` reads each (Ollama's API and its server log, AnythingLLM's ping and its model settings, the kernel's commit
+``status`` reads each (Ollama's API and its server log, the kernel's commit
 figures and active page files, the registry's configured ones, and the holders of jason's locks) and ``findings`` says
 what is wrong and what fixes it. ``preflight`` is the same check before a job that needs a model: it raises
 ``LocalAIUnavailable`` rather than let the job land on the CPU or run the machine out of memory. ``restart_ollama``
 and ``unload`` act, and only when a person asks (``jason local-ai --restart-ollama --yes``). jason changes no setting
-of Ollama, AnythingLLM, the driver, or Windows.
+of Ollama, the driver, or Windows.
 """
 
 from __future__ import annotations
@@ -32,10 +32,8 @@ from urllib.request import Request, urlopen
 from jason.community.ollama_extractor import DEFAULT_MODEL, OLLAMA_URL
 from jason.locks import Resource, hold, holders
 
-ANYTHINGLLM_URL = "http://localhost:3001"
 GB = 1 << 30
 COMMIT_MARGIN = 4 * GB           # headroom to keep free beyond a model about to load
-ANYTHINGLLM_KEYS = ("LLM_PROVIDER", "OLLAMA_MODEL_PREF", "OLLAMA_MODEL_TOKEN_LIMIT", "EMBEDDING_ENGINE", "EMBEDDING_MODEL_PREF")
 
 
 class LocalAIUnavailable(RuntimeError):
@@ -165,24 +163,10 @@ def orphan_servers(procs: list[dict[str, Any]] | None = None) -> list[int]:
     return [p["pid"] for p in procs if p["name"].lower() == "llama-server.exe" and p["parent"] not in ollama]
 
 
-def _anythingllm_settings() -> dict[str, str]:
-    """AnythingLLM desktop's model choices from its settings file; only the keys named here are read (the file also
-    holds keys and secrets)."""
-    path = Path(os.environ.get("APPDATA") or Path.home()) / "anythingllm-desktop" / "storage" / ".env"
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {}
-    found = {}
-    for key in ANYTHINGLLM_KEYS:
-        m = re.search(rf"^{key}=['\"]?([^'\"\r\n]*)", text, re.M)
-        if m:
-            found[key] = m.group(1)
-    return found
+def status(*, ollama_url: str = OLLAMA_URL) -> dict[str, Any]:
+    from jason.community.retrieval import EMBED_MODEL
 
-
-def status(*, ollama_url: str = OLLAMA_URL, anythingllm_url: str = ANYTHINGLLM_URL) -> dict[str, Any]:
-    out: dict[str, Any] = {"ollama": {"url": ollama_url, "up": False}, "anythingllm": {"url": anythingllm_url, "up": False}}
+    out: dict[str, Any] = {"ollama": {"url": ollama_url, "up": False}}
     try:
         out["ollama"]["version"] = _get(f"{ollama_url}/api/version").get("version", "")
         out["ollama"]["up"] = True
@@ -192,12 +176,8 @@ def status(*, ollama_url: str = OLLAMA_URL, anythingllm_url: str = ANYTHINGLLM_U
     except (OSError, ValueError):
         pass
     out["ollama"]["devices"] = gpu_discovery()
-    try:
-        out["anythingllm"]["up"] = bool(_get(f"{anythingllm_url}/api/ping").get("online"))
-    except (OSError, ValueError):
-        pass
-    out["anythingllm"]["settings"] = _anythingllm_settings()
     out["jasonModel"] = DEFAULT_MODEL
+    out["embedModel"] = EMBED_MODEL
     out["memory"] = _windows_memory()
     out["ollama"]["orphans"] = orphan_servers()
     out["locks"] = holders()
@@ -228,12 +208,7 @@ def findings(s: dict[str, Any]) -> list[str]:
         out.append(f"model servers left running by an Ollama that is gone (process {', '.join(map(str, ollama['orphans']))}): "
                    "each holds its model's memory; restart Ollama (jason local-ai --restart-ollama --yes), which stops them")
     names = [m["name"] for m in ollama.get("loaded") or []]
-    settings = s.get("anythingllm", {}).get("settings") or {}
-    chat = settings.get("OLLAMA_MODEL_PREF", "")
-    if chat and s.get("jasonModel") and chat != s["jasonModel"]:
-        out.append(f"AnythingLLM chats with {chat} and jason reads with {s['jasonModel']}: the two swap in and out of the GPU; "
-                   "set them to the same model")
-    extra = [n for n in names if n not in (s.get("jasonModel"), chat, settings.get("EMBEDDING_MODEL_PREF", ""))]
+    extra = [n for n in names if n not in (s.get("jasonModel"), s.get("embedModel"))]
     if extra:
         out.append(f"loaded outside the plan: {', '.join(extra)} (unload with jason local-ai --unload NAME --yes)")
     mem = s.get("memory") or {}
@@ -255,8 +230,6 @@ def findings(s: dict[str, Any]) -> list[str]:
         elif missing:
             out.append(f"page file set but not in use: {', '.join(missing)}; a page file setting applies at the next restart"
                        + (" (Windows made a temporary page file at the last boot)" if mem.get("tempPageFile") else ""))
-    if s.get("anythingllm") and not s["anythingllm"].get("up"):
-        out.append("AnythingLLM is not answering: jason anythingllm --start --yes")
     return out
 
 
@@ -294,7 +267,7 @@ def unload(model: str, *, ollama_url: str = OLLAMA_URL) -> list[str]:
 
 def restart_ollama(*, ollama_url: str = OLLAMA_URL, wait: float = 60) -> dict[str, Any]:
     """Stop and start the Ollama app (Windows), so it looks for GPUs again, holding the GPU lock so no jason request is
-    cut off. Anything else using Ollama (AnythingLLM) sees it drop for a few seconds."""
+    cut off. Anything else using Ollama sees it drop for a few seconds."""
     if sys.platform != "win32":
         raise LocalAIUnavailable("restarting Ollama is written for the Windows app")
     app = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Programs" / "Ollama" / "ollama app.exe"
@@ -319,16 +292,14 @@ def restart_ollama(*, ollama_url: str = OLLAMA_URL, wait: float = 60) -> dict[st
 
 
 def status_lines(s: dict[str, Any]) -> list[str]:
-    o, a, mem = s["ollama"], s["anythingllm"], s.get("memory") or {}
+    o, mem = s["ollama"], s.get("memory") or {}
     out = [f"Ollama {o.get('version', '')} at {o['url']}: {'up' if o['up'] else 'NOT ANSWERING'}"]
     for d in o.get("devices") or []:
         out.append(f"  device: {d['library']} {d['description']} (driver {d.get('driver') or '-'}, {d.get('total') or '-'})")
     for m in o.get("loaded") or []:
         where = "all on the GPU" if m["vram"] >= m["size"] * 0.95 else f"{_gb(m['vram'])} on the GPU, the rest on the CPU"
         out.append(f"  loaded: {m['name']} {_gb(m['size'])}, {where}")
-    out.append(f"AnythingLLM at {a['url']}: {'up' if a['up'] else 'NOT ANSWERING'}; chat "
-               f"{a['settings'].get('OLLAMA_MODEL_PREF', '?')}, embedder {a['settings'].get('EMBEDDING_MODEL_PREF', '?')}")
-    out.append(f"jason's model: {s['jasonModel']}")
+    out.append(f"jason's model: {s['jasonModel']}; embedder {s.get('embedModel', '?')}")
     if mem.get("commitLimit"):
         out.append(f"Windows commit: {_gb(mem['committed'])} of {_gb(mem['commitLimit'])} used; RAM {_gb(mem['ram'])}")
         out.append("  page files in use: " + (", ".join(f"{p['file']} {_gb(p['size'])}" for p in mem.get("pageFiles") or []) or "none"))

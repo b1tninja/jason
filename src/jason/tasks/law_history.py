@@ -9,7 +9,7 @@ Two readings, kept under ``data/authorities/history`` and read by ``jason.commun
   lawlibrary holds (from 2011): added, amended, repealed, with the statute, effective and operative dates, and a short
   word count of the change.
 
-Two pages render them for a person and for the AnythingLLM ``authorities`` catalog: the recodification table and the
+Two pages render them for a person and for the passage index's ``authorities`` catalog: the recodification table and the
 change list. A page is a reading of the official sources; the statute text is the law.
 """
 
