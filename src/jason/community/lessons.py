@@ -1103,6 +1103,16 @@ LESSONS: tuple[Lesson, ...] = (
            "runs, before it reaches the shared tree.",
            Status.OPEN,
            notes=("No check yet runs the tests on a clean checkout of each commit; until one does, this stays open.",)),
+    Lesson("retrieval-tier-moved-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "Moving the context pack's law tier to the passage index changed what it chose: ranked by the index's "
+           "passages, the law replaced a quarter of each task's sections at the median, and up to two thirds.",
+           "A new store can rank the same text differently (passages against whole sections), and agreement with the "
+           "old ranking says nothing about which is better without gold questions.",
+           "Only the governing-documents tier moved, after a comparison of all eleven tasks showed the same sources "
+           "in the same order. The law tier stays on its old ranking (context_pack.LAW_FROM_INDEX off) until the two "
+           "are compared on data/retrieval/gold-law.json.",
+           Status.FIXED, guards=("context_pack.LAW_FROM_INDEX = False", "tests/test_context_pack_index.py"),
+           docs=("docs/applicability.md", "docs/rag-roadmap.md")),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "

@@ -178,8 +178,8 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
      - the catalog, standing, kind, confidential, and generated columns;
      - `passage_search` reads from it.
    - The gold set holds: 0.89 recall@5 scoped to the gold folders, the same as cutting them, and 0.88 over the whole index.
+   - `context_pack`: the governing-documents tier reads the index (same sources as before, about 10 times faster). The law tier waits for a comparison on the law's gold set; the records tier waits for the library source.
    - Still to do:
-     - `context_pack`;
      - the mail, reports, and library sources, once their confidentiality rows are set (docs/rag-roadmap.md, items 1 and 2);
      - the applicability columns;
    - Gold questions for the law: done (`data/retrieval/gold-law.json`, 50 questions, every phrase checked against the file).
