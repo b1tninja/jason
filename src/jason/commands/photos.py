@@ -36,7 +36,7 @@ def _print(result: Any, as_json: bool) -> None:
 
 
 def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks import photos as task
 
@@ -46,7 +46,7 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
         print(json.dumps(rows, indent=2) if args.json else "\n".join(task.status_lines(rows)))
         return 0
 
-    community = mystique()
+    community = active()
     with agent_factory(args) as agent:
         data_dir = agent.settings.payhoa_catalog.parent
         if args.login:

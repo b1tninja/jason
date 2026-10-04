@@ -11,9 +11,9 @@ from pathlib import Path
 
 def _bill_sources() -> tuple[str, ...]:
     """The bill sources `--source` accepts: the two utilities, then each vendor portal in the specification."""
-    from jason.community import mystique
+    from jason.community import community as active
 
-    return ("smud", "idoxs", *(p.key for p in mystique().vendor_portals()))
+    return ("smud", "idoxs", *(p.key for p in active().vendor_portals()))
 
 
 def _agent(args: argparse.Namespace):
@@ -1214,7 +1214,7 @@ def cmd_utilities(args: argparse.Namespace) -> int:
     import json
     from datetime import date
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.utility import Service
     from jason.config import Settings
     from jason.tasks.utilities import bill_roots, load_bills, store_path, sync, usage_history, utilities_brief, brief_lines
@@ -1236,7 +1236,7 @@ def cmd_utilities(args: argparse.Namespace) -> int:
             with _agent(args) as agent:
                 counts = fetch(agent.payhoa(), agent.org_id, data_dir, bill_roots(settings), log=print)
             print(f"fetched {counts}")
-        result = run_audit(data_dir, mystique(), bill_roots(settings))
+        result = run_audit(data_dir, active(), bill_roots(settings))
         if args.json:
             print(json.dumps(result, indent=2, default=str))
         else:
@@ -1253,7 +1253,7 @@ def cmd_utilities(args: argparse.Namespace) -> int:
                   f"{row['perDay']:>9,.1f}/day  ${row['costCents'] / 100:>9,.2f}")
         return 0 if rows else 1
     brief = utilities_brief(
-        data_dir, mystique(), year=args.year or None, water_increase=args.water_increase,
+        data_dir, active(), year=args.year or None, water_increase=args.water_increase,
         since=date.fromisoformat(args.since) if args.since else None,
     )
     if args.json:
@@ -1267,7 +1267,7 @@ def cmd_reserves(args: argparse.Namespace) -> int:
     """Read every reserve study on disk; print next year's funding plan beside the budget and the reserve accounts."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.reserves import brief_lines, reserve_brief
 
@@ -1280,14 +1280,14 @@ def cmd_reserves(args: argparse.Namespace) -> int:
         if args.fetch:
             with _agent(args) as agent:
                 print(f"budgets {fetch_budgets(agent.payhoa(), agent.org_id, data_dir, list(range(2024, date.today().year + 1)))}")
-        result = review(data_dir, mystique())
+        result = review(data_dir, active())
         if args.json:
             print(json.dumps(result, indent=2, default=str))
         else:
             for line in review_lines(result):
                 print(line)
         return 0 if result.get("found") else 1
-    brief = reserve_brief(data_dir, mystique(), year=args.year or None)
+    brief = reserve_brief(data_dir, active(), year=args.year or None)
     if args.json:
         print(json.dumps(brief, indent=2, default=str))
     else:
@@ -1300,7 +1300,7 @@ def cmd_invoices(args: argparse.Namespace) -> int:
     """Check every PayHOA expense payment against its attached documents (amount, vendor, date, reuse, category)."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.invoice_review import fetch, review, review_lines
     from jason.tasks.utilities import bill_roots
@@ -1311,7 +1311,7 @@ def cmd_invoices(args: argparse.Namespace) -> int:
         with _agent(args) as agent:
             counts = fetch(agent.payhoa(), agent.org_id, data_dir, bill_roots(settings), log=print)
         print(f"fetched {counts}")
-    result = review(data_dir, mystique(), bill_roots(settings))
+    result = review(data_dir, active(), bill_roots(settings))
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -1324,7 +1324,7 @@ def cmd_policies(args: argparse.Namespace) -> int:
     """Each insurance policy term by term from its declarations, beside the policy sheet and the specification."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.policies import fetch, find, lines, load, read_sheet, run
 
@@ -1336,10 +1336,10 @@ def cmd_policies(args: argparse.Namespace) -> int:
 
         with _agent(args) as agent:
             drive = agent.drive(interactive=False)
-            sheet = read_sheet(drive.sheets(), mystique().insurance_workbook_id())
-            found = find(drive, mystique(), sheet, {f["id"]: f for f in load_files(data_dir)})
+            sheet = read_sheet(drive.sheets(), active().insurance_workbook_id())
+            found = find(drive, active(), sheet, {f["id"]: f for f in load_files(data_dir)})
             print(f"fetched {fetch(drive, data_dir, found, log=print)}")
-    report = load(data_dir) if args.stored else run(data_dir, mystique(), sheet=sheet)
+    report = load(data_dir) if args.stored else run(data_dir, active(), sheet=sheet)
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -1352,7 +1352,7 @@ def cmd_incidents(args: argparse.Namespace) -> int:
     """The maintenance history and insurance claims from the repair paperwork, by unit and building (--fetch pulls Drive's)."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.incidents import fetch, lines, load, run, select
     from jason.tasks.utilities import bill_roots
@@ -1361,8 +1361,8 @@ def cmd_incidents(args: argparse.Namespace) -> int:
     data_dir = settings.payhoa_catalog.parent
     if args.fetch:
         with _agent(args) as agent:
-            print(f"fetched {fetch(agent.drive(interactive=False), data_dir, mystique(), log=print)}")
-    report = load(data_dir) if args.stored else run(data_dir, mystique(), bill_roots(settings), ocr=not args.no_ocr,
+            print(f"fetched {fetch(agent.drive(interactive=False), data_dir, active(), log=print)}")
+    report = load(data_dir) if args.stored else run(data_dir, active(), bill_roots(settings), ocr=not args.no_ocr,
                                                      private=args.private, log=print)
     if args.link or args.links:
         from jason.tasks.incident_links import link, link_lines, load_links
@@ -1370,11 +1370,11 @@ def cmd_incidents(args: argparse.Namespace) -> int:
         if args.link:
             with _agent(args) as agent:
                 drive = agent.drive(interactive=False)
-                result = link(data_dir, mystique(), drive=drive, gmail=drive.gmail(), log=print)
+                result = link(data_dir, active(), drive=drive, gmail=drive.gmail(), log=print)
             print(f"linked; fetched {result.get('fetched', 0)} new files, pruned {result.get('pruned', 0)} Drive and "
                   f"{result.get('prunedMail', 0)} email files no longer linked")
             if result.get("fetched") or result.get("pruned") or result.get("prunedMail"):
-                report = run(data_dir, mystique(), bill_roots(settings), ocr=not args.no_ocr, private=args.private, log=print)
+                report = run(data_dir, active(), bill_roots(settings), ocr=not args.no_ocr, private=args.private, log=print)
         for line in link_lines(load_links(data_dir), event=args.address or "", limit=args.limit):
             print(line)
         return 0
@@ -1393,13 +1393,13 @@ def cmd_pests(args: argparse.Namespace) -> int:
     """The pest control program from the vendor portal: products (with labels and safety data sheets when fetched), rodents, visits."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.pests import brief_lines, pest_brief
 
     settings = Settings.load(args.env)
     data_dir = settings.payhoa_catalog.parent
-    portal = next((p for p in mystique().vendor_portals() if p.key == args.key), None)
+    portal = next((p for p in active().vendor_portals() if p.key == args.key), None)
     if portal is None:
         print(f"no vendor portal {args.key!r} in mystique/vendors.py")
         return 1
@@ -1416,14 +1416,14 @@ def cmd_vendors(args: argparse.Namespace) -> int:
     """Sync (--sync) and verify (--verify) the vendor portals, then print what each says."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.vendor_portals import brief_lines, portal_brief
     from jason.tasks.vendor_verify import verify, verify_lines
 
     settings = Settings.load(args.env)
     data_dir = settings.payhoa_catalog.parent
-    portals = [p for p in mystique().vendor_portals() if not args.key or p.key == args.key]
+    portals = [p for p in active().vendor_portals() if not args.key or p.key == args.key]
     if not portals:
         print(f"no vendor portal {args.key!r} in mystique/vendors.py")
         return 1
@@ -1462,12 +1462,12 @@ def cmd_mail(args: argparse.Namespace) -> int:
         print(json.dumps(mail_text(data_dir, args.item), indent=2, default=str))
         return 0
     if args.checks:
-        from jason.community import mystique
+        from jason.community import community as active
         from jason.tasks.mail_links import links_lines, mail_links
 
         from jason.tasks.utilities import bill_roots
 
-        links = mail_links(data_dir, mystique(), roots=bill_roots(Settings.load(args.env)))
+        links = mail_links(data_dir, active(), roots=bill_roots(Settings.load(args.env)))
         if args.json:
             print(json.dumps(links, indent=2, default=str))
         else:
@@ -1475,16 +1475,16 @@ def cmd_mail(args: argparse.Namespace) -> int:
                 print(line)
         return 0
     if args.reread_ocr:
-        from jason.community import mystique
+        from jason.community import community as active
         from jason.local_ai import preflight
         from jason.tasks.mail import reread_ocr
 
         preflight()
-        print(f"read again: {reread_ocr(data_dir, mystique(), limit=args.limit, log=print)}")
+        print(f"read again: {reread_ocr(data_dir, active(), limit=args.limit, log=print)}")
     elif args.resort:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        print(f"sorted {resort(data_dir, mystique())} items again")
+        print(f"sorted {resort(data_dir, active())} items again")
     elif not args.offline:
         with _agent(args) as agent:
             counts = agent.sync_mail(full=args.full, log=print)
@@ -1503,7 +1503,7 @@ def cmd_zoom(args: argparse.Namespace) -> int:
     import json
     from datetime import date
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.zoom import brief_lines, meeting_text, meetings_brief
 
@@ -1537,7 +1537,7 @@ def cmd_zoom(args: argparse.Namespace) -> int:
         from jason.tasks.zoom import plan_board_meeting, save_board_meeting
 
         try:
-            plan = plan_board_meeting(mystique(), on=date.fromisoformat(args.date) if args.date else None, at=args.time)
+            plan = plan_board_meeting(active(), on=date.fromisoformat(args.date) if args.date else None, at=args.time)
         except ValueError as exc:
             print(f"error: {exc}")
             return 2
@@ -1555,7 +1555,7 @@ def cmd_zoom(args: argparse.Namespace) -> int:
         with _agent(args) as agent:
             since = date.fromisoformat(args.since) if args.since else None
             print(f"synced {agent.sync_zoom(full=args.full, since=since, media=args.media, log=print)}")
-    brief = meetings_brief(data_dir, mystique(), days=args.days or None, kind=args.kind)
+    brief = meetings_brief(data_dir, active(), days=args.days or None, kind=args.kind)
     if args.json:
         print(json.dumps(brief, indent=2, default=str))
     else:
@@ -1569,7 +1569,7 @@ def cmd_hearing(args: argparse.Namespace) -> int:
     import json
     from datetime import date
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.zoom import hearing_lines, hearings, plan_hearing, save_hearing
 
@@ -1583,7 +1583,7 @@ def cmd_hearing(args: argparse.Namespace) -> int:
             for row in result["hearings"]:
                 print(f"- {row['start']}  {row['address']}: {row['standing']}{'' if row['scheduled'] else ' (no Zoom meeting yet)'}")
         return 0
-    community = mystique()
+    community = active()
     try:
         plan = plan_hearing(community, address=args.address, violation=args.violation,
                             on=date.fromisoformat(args.date) if args.date else None, at=args.time,
@@ -1646,7 +1646,7 @@ def cmd_meetings(args: argparse.Namespace) -> int:
     """Catalog every meeting record on disk (Zoom, Drive, PayHOA library, jason's drafts) by meeting, with its checks."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.meeting_catalog import build, meeting, report_lines, write
 
@@ -1656,25 +1656,25 @@ def cmd_meetings(args: argparse.Namespace) -> int:
 
         with _agent(args) as agent:
             print(f"zoom: {agent.sync_zoom(log=print)}")
-            print(f"payhoa: {sync_communications(agent.payhoa(), agent.org_id, data_dir, mystique(), log=print)}")
+            print(f"payhoa: {sync_communications(agent.payhoa(), agent.org_id, data_dir, active(), log=print)}")
     if args.links:
         from jason.tasks.agenda_links import build as build_links, fetch as fetch_links, summary_lines
 
         if not args.offline_links:
             with _agent(args) as agent:
-                print(f"agenda docs: {fetch_links(agent.docs(), data_dir, mystique(), log=print)}")
-        print("\n".join(summary_lines(build_links(data_dir, mystique()), limit=args.limit)))
+                print(f"agenda docs: {fetch_links(agent.docs(), data_dir, active(), log=print)}")
+        print("\n".join(summary_lines(build_links(data_dir, active()), limit=args.limit)))
     if args.items:
         from jason.tasks.agenda_items import build as build_items, summary_lines as item_lines
         from jason.tasks.agenda_kinds import fetch as fetch_agenda_files, resolve, summary_lines as kind_lines
 
-        print("\n".join(item_lines(build_items(data_dir, mystique()), limit=args.limit)))
+        print("\n".join(item_lines(build_items(data_dir, active()), limit=args.limit)))
         print("")
         if args.fetch_items:
-            resolve(data_dir, mystique())                  # which files are undecided with no text on disk
+            resolve(data_dir, active())                  # which files are undecided with no text on disk
             with _agent(args) as agent:
                 print(f"agenda files: {fetch_agenda_files(agent.drive(), data_dir, log=print)}")
-        print("\n".join(kind_lines(resolve(data_dir, mystique()), limit=args.limit)))
+        print("\n".join(kind_lines(resolve(data_dir, active()), limit=args.limit)))
     if args.file:
         from jason.tasks.agenda_links import lookup
 
@@ -1683,7 +1683,7 @@ def cmd_meetings(args: argparse.Namespace) -> int:
     if args.date:
         print(json.dumps(meeting(data_dir, args.date), indent=2))
         return 0
-    catalog = build(data_dir, mystique())
+    catalog = build(data_dir, active())
     out, report = write(data_dir, catalog)
     if args.json:
         print(json.dumps(catalog, indent=2))
@@ -1750,7 +1750,7 @@ def cmd_outlines(args: argparse.Namespace) -> int:
     """Outline the governing documents and resolutions, and map the references among them and to the law."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks import outlines as task
 
@@ -1760,7 +1760,7 @@ def cmd_outlines(args: argparse.Namespace) -> int:
     if args.fetch:
         with _agent(args) as agent:
             drive = agent.drive()
-            docs = task.build(drive.docs(), drive, mystique(), data_dir)
+            docs = task.build(drive.docs(), drive, active(), data_dir)
         result = task.run(data_dir, docs)
     elif not (args.doc or args.section or args.cites):
         result = task.run(data_dir)
@@ -1940,14 +1940,14 @@ def cmd_templates(args: argparse.Namespace) -> int:
     """The letter templates in the specification; with --build --yes, build the missing ones from the Letterhead."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.spec import spec_module
 
     from jason.community.profile import load_profile
 
     home, head = load_profile().drive_home(), load_profile().letterhead()
 
-    community = mystique()
+    community = active()
     rows = [{"kind": t.kind.slug, "title": t.title, "id": t.drive_id, "tokens": list(t.tokens), "optional": list(t.optional),
              "authority": t.authority} for t in community.document_templates()]
     if args.generate:
@@ -2011,7 +2011,7 @@ def _markdown_letter(args: argparse.Namespace) -> int:
     PayHOA upload links; Docs keeps its own copies."""
     from pathlib import Path
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.spec import spec_module
     from jason.google.docs_markdown import Kind, parse
     from jason.tasks import draft_docs
@@ -2043,7 +2043,7 @@ def _markdown_letter(args: argparse.Namespace) -> int:
         made = draft_docs.push_markdown(
             agent.drive(), source, name=name, folder=folder, letterhead_id=head.doc_id, footer=head.footer,
             state=state, style=args.style, pdf=Path(args.pdf) if args.pdf else None,
-            articles=mystique().help_articles(),
+            articles=active().help_articles(),
             picture_link=lambda path: client.upload_file(path, filename=path.name, content_type="image/png",
                                                          context="communication")["viewUrl"])
     draft_docs.save_state(source.parent, state)
@@ -2055,7 +2055,7 @@ def cmd_letter(args: argparse.Namespace) -> int:
     """Fill a copy of a letter template with --set KEY=value pairs, into --folder (or the template's folder)."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.templates import TemplateKind
     from jason.community.template_values import profile_values
     from jason.tasks.letters import fill_letter, parse_assignments
@@ -2065,7 +2065,7 @@ def cmd_letter(args: argparse.Namespace) -> int:
     if not args.template:
         print("give --template (letterhead, hearing-notice, decision-notice) or --markdown FILE")
         return 2
-    community = mystique()
+    community = active()
     try:
         from jason.community.profile import profile_name
         from jason.config import Settings
@@ -2087,7 +2087,7 @@ def cmd_letter(args: argparse.Namespace) -> int:
     with _agent(args) as agent:
         drive = agent.drive()
         letter = fill_letter(drive, drive.docs(), template, values, name=args.name, folder_id=folder,
-                             defaults=profile_values(mystique()))
+                             defaults=profile_values(active()))
     print(json.dumps(letter, indent=2))
     return 0
 
@@ -2096,11 +2096,11 @@ def cmd_insurance(args: argparse.Namespace) -> int:
     """Each policy's term against the carriers' letters and the premiums PayHOA paid; renewals, notices, and claims."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.insurance import review, review_lines
 
-    result = review(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = review(Settings.load(args.env).payhoa_catalog.parent, active())
     if args.policy:
         result = {**result, "policies": [p for p in result["policies"] if policy_matches(p, args.policy)]}
         if not result["policies"]:
@@ -2136,11 +2136,11 @@ def cmd_deadlines(args: argparse.Namespace) -> int:
     """The association's recurring deadlines: next due, last done, and past deadlines done late or with no evidence."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.deadlines import calendar, calendar_lines
 
-    result = calendar(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = calendar(Settings.load(args.env).payhoa_catalog.parent, active())
     rows = result["obligations"]
     if args.overdue:
         rows = [r for r in rows if r["standing"] == "overdue"]
@@ -2161,7 +2161,7 @@ def cmd_gmail(args: argparse.Namespace) -> int:
     """Read the association's Gmail (headers only): PostScanMail's notices against the synced mail, and correspondence."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.gmail import CORRESPONDENCE, _load, check_lines, notice_check, sync
 
@@ -2183,13 +2183,13 @@ def cmd_gmail(args: argparse.Namespace) -> int:
         return 0
     if args.sync:
         with _agent(args) as agent:
-            counts = sync(agent.gmail(), data_dir, mystique(), days=args.days, log=print)
+            counts = sync(agent.gmail(), data_dir, active(), days=args.days, log=print)
         print(f"synced {counts}")
     if args.files:
         from jason.tasks.gmail import fetch_documents
 
         with _agent(args) as agent:
-            print(f"attachments {fetch_documents(agent.gmail(), data_dir, mystique(), log=print)}")
+            print(f"attachments {fetch_documents(agent.gmail(), data_dir, active(), log=print)}")
     check = notice_check(data_dir)
     corr = _load(data_dir, CORRESPONDENCE)
     if args.json:
@@ -2271,7 +2271,7 @@ def cmd_contacts(args: argparse.Namespace) -> int:
     """Vendor contacts: PayHOA's vendor directory against who writes from each vendor in Gmail, with what to update."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.contacts import directory, directory_lines, fetch
 
@@ -2279,7 +2279,7 @@ def cmd_contacts(args: argparse.Namespace) -> int:
     if args.fetch:
         with _agent(args) as agent:
             print(f"saved {fetch(agent.payhoa(), agent.org_id, data_dir)}")
-    result = directory(data_dir, mystique())
+    result = directory(data_dir, active())
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2292,13 +2292,13 @@ def cmd_copies(args: argparse.Namespace) -> int:
     """Every copy of every invoice and bill (portal, email, PayHOA, paper) grouped into documents, the best copy, and the payment."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.copies import catalog, catalog_lines
     from jason.tasks.utilities import bill_roots
 
     settings = Settings.load(args.env)
-    result = catalog(settings.payhoa_catalog.parent, mystique(), bill_roots(settings), log=None if args.json else print)
+    result = catalog(settings.payhoa_catalog.parent, active(), bill_roots(settings), log=None if args.json else print)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2312,7 +2312,7 @@ def cmd_drive(args: argparse.Namespace) -> int:
     """Where each association record is in Drive, by the path rules and by content; duplicates and versions."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.drive_catalog import holdings, holdings_lines, sync
 
@@ -2320,7 +2320,7 @@ def cmd_drive(args: argparse.Namespace) -> int:
     if args.sync:
         with _agent(args) as agent:
             print(f"synced {sync(agent.drive(), data_dir, log=print)}")
-    result = holdings(data_dir, mystique(), log=print)
+    result = holdings(data_dir, active(), log=print)
     if args.gmail:
         from jason.tasks.drive_gmail import link, link_lines
 
@@ -2341,11 +2341,11 @@ def cmd_threads(args: argparse.Namespace) -> int:
     """Email threads as work: whose move it is, with the payments, letters, documents, Drive copies, and unit activity near each."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.threads import thread_lines, threads
 
-    result = threads(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = threads(Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2358,11 +2358,11 @@ def cmd_party(args: argparse.Namespace) -> int:
     """One unit or counterparty across every store: owners, PayHOA, requests, threads, letters, payments, documents, contacts."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.party import party_brief, party_lines
 
-    brief = party_brief(args.query, Settings.load(args.env).payhoa_catalog.parent, mystique())
+    brief = party_brief(args.query, Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(brief, indent=2, default=str))
     else:
@@ -2375,11 +2375,11 @@ def cmd_topics(args: argparse.Namespace) -> int:
     """What the association hears about, by topic: threads, units, recent and open, and the FAQ candidates."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.party import thread_topics
 
-    result = thread_topics(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = thread_topics(Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(result, indent=2, default=str))
         return 0
@@ -2399,11 +2399,11 @@ def cmd_new_owners(args: argparse.Namespace) -> int:
     """Units conveyed in the window: the buyer's threads and topics, PayHOA link, balance, and requests."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.party import new_owners
 
-    result = new_owners(Settings.load(args.env).payhoa_catalog.parent, mystique(), days=args.days)
+    result = new_owners(Settings.load(args.env).payhoa_catalog.parent, active(), days=args.days)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
         return 0
@@ -2424,11 +2424,11 @@ def cmd_open_items(args: argparse.Namespace) -> int:
     """What is waiting on the association across email, PayHOA, deadlines, insurance, and the mail."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.party import open_items, open_lines
 
-    result = open_items(Settings.load(args.env).payhoa_catalog.parent, mystique(), days=args.days)
+    result = open_items(Settings.load(args.env).payhoa_catalog.parent, active(), days=args.days)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2441,12 +2441,12 @@ def cmd_request_links(args: argparse.Namespace) -> int:
     """PayHOA requests beside the email about them; drafts for emailed requests PayHOA lacks; enter one only when named."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.request_links import create, link_lines, request_links
 
     data_dir = Settings.load(args.env).payhoa_catalog.parent
-    result = request_links(data_dir, mystique())
+    result = request_links(data_dir, active())
     if args.create:
         draft = next((d for d in result["drafts"] if d["threadId"] == args.create), None)
         if draft is None:
@@ -2457,7 +2457,7 @@ def cmd_request_links(args: argparse.Namespace) -> int:
             print("Not entered: read the thread, then run again with --yes (and --message with the owner's request in full).")
             return 1
         with _agent(args) as agent:
-            ids = create(agent.payhoa(), agent.org_id, mystique(), draft, message=args.message, notify_owner=args.notify_owner)
+            ids = create(agent.payhoa(), agent.org_id, active(), draft, message=args.message, notify_owner=args.notify_owner)
         print(f"entered as PayHOA request {ids}")
         return 0
     if args.json:
@@ -2472,11 +2472,11 @@ def cmd_inbox(args: argparse.Namespace) -> int:
     """What each email asks (complaint, maintenance, information, billing, question) and where the answer is likely written."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.intents import email_intents, intent_lines
 
-    result = email_intents(Settings.load(args.env).payhoa_catalog.parent, mystique(), days=args.days)
+    result = email_intents(Settings.load(args.env).payhoa_catalog.parent, active(), days=args.days)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2489,11 +2489,11 @@ def cmd_case(args: argparse.Namespace) -> int:
     """One matter across the stores by its words: threads, violations, requests, letters, Drive files, library documents."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.intents import case_file
 
-    result = case_file(args.terms, Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = case_file(args.terms, Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(result, indent=2, default=str))
         return 0 if result.get("found") else 1
@@ -2509,11 +2509,11 @@ def cmd_replies(args: argparse.Namespace) -> int:
     """Which email the association answers, learned from its replies, and the open threads that likely need one."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.replies import reply_lines, reply_needed
 
-    result = reply_needed(Settings.load(args.env).payhoa_catalog.parent, mystique(), open_days=args.days)
+    result = reply_needed(Settings.load(args.env).payhoa_catalog.parent, active(), open_days=args.days)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2526,7 +2526,7 @@ def cmd_permit_status(args: argparse.Namespace) -> int:
     """The association's building permits from the City's Accela portal: status, fees due and paid, workflow, conditions."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.permits import permit_lines, permits, sync
 
@@ -2534,7 +2534,7 @@ def cmd_permit_status(args: argparse.Namespace) -> int:
     if args.sync:
         with _agent(args) as agent:
             client = agent.citizen_access()
-            community = mystique()
+            community = active()
             print(f"synced {sync(client, data_dir, community.permit_portal(), community.closed_permit_statuses(), everything=args.all, log=print)}")
     result = permits(data_dir, number=args.number)
     if args.json:
@@ -2549,11 +2549,11 @@ def cmd_sources(args: argparse.Namespace) -> int:
     """The association's counterparties from disk: who writes, who is paid, what kind of source each is, and what is unnamed."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.sources import report_lines, sources_report
 
-    report = sources_report(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    report = sources_report(Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -2596,11 +2596,11 @@ def cmd_cases(args: argparse.Namespace) -> int:
     """The association's legal matters: forum, role, status, events, money, and each statutory duty's standing."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.document_models import to_plain
     from jason.community.legal_cases import settled_lines
 
-    cases = mystique().legal_cases()
+    cases = active().legal_cases()
     if args.fetch_files:
         from jason.tasks.case_files import catalog_name, fetch
 
@@ -2659,7 +2659,7 @@ def cmd_board(args: argparse.Namespace) -> int:
     import json
     from datetime import date
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.board_items import TAB, create_sheet, list_lines, load, set_fields, sync_sheet, sync_tasks, to_rows
     from jason.tasks.meeting_agenda import draft, minutes_template, read_doc
@@ -2675,7 +2675,7 @@ def cmd_board(args: argparse.Namespace) -> int:
             print(f"created {create_sheet(agent.sheets())}; save the id and pass --sheet to sync")
         return 0
     if args.sheet:
-        sheet_id = mystique().board_items_sheet() if args.sheet == "spec" else args.sheet
+        sheet_id = active().board_items_sheet() if args.sheet == "spec" else args.sheet
         if not sheet_id:
             print("no board Sheet in the specification; pass its id or run --create-sheet", file=sys.stderr)
             return 1
@@ -2688,7 +2688,7 @@ def cmd_board(args: argparse.Namespace) -> int:
                 agent.sheets().values_update(sheet_id, f"{TAB}!A1", to_rows(load(data_dir)))
     elif args.tasks:
         with _agent(args) as agent, agent.google_tasks() as tasks:
-            print(f"tasks {sync_tasks(tasks, data_dir, sheet_id=mystique().board_items_sheet())}")
+            print(f"tasks {sync_tasks(tasks, data_dir, sheet_id=active().board_items_sheet())}")
     if args.packet:
         from jason.tasks.board_packet import packet
 
@@ -2696,16 +2696,16 @@ def cmd_board(args: argparse.Namespace) -> int:
             from jason.commands.report import named_reports
             from jason.tasks.live_reports import refresh
 
-            on = date.fromisoformat(args.date) if args.date else mystique().meeting_schedule().next_meeting(date.today(), monthly=True)
+            on = date.fromisoformat(args.date) if args.date else active().meeting_schedule().next_meeting(date.today(), monthly=True)
             for key, params in named_reports(data_dir):
-                snap = refresh(key, data_dir, mystique(), params, context={"on": on})
+                snap = refresh(key, data_dir, active(), params, context={"on": on})
                 print(f"report {key}: " + (f"could not run ({snap.error})" if snap.error else f"ran {snap.ran_at}"))
 
-        schedule = mystique().meeting_schedule()
+        schedule = active().meeting_schedule()
         meeting = date.fromisoformat(args.date) if args.date else schedule.next_meeting(date.today(), monthly=True)
         out = data_dir / "board" / f"packet-{meeting.isoformat()}.md"
         out.parent.mkdir(parents=True, exist_ok=True)
-        lines = packet(data_dir, mystique(), meeting)
+        lines = packet(data_dir, active(), meeting)
         out.write_text("\n".join(lines), encoding="utf-8")
         print(f"wrote {out}")
         if args.doc:
@@ -2749,11 +2749,11 @@ def cmd_board(args: argparse.Namespace) -> int:
         from jason.tasks.minutes_draft import draft as draft_minutes
 
         if args.recheck:
-            found = recheck(data_dir, mystique(), date.fromisoformat(args.minutes))
+            found = recheck(data_dir, active(), date.fromisoformat(args.minutes))
             print(f"checked {found['file']} (DRAFT; nothing posted)")
             print("\n".join(check_lines(found)[2:]).rstrip())
             return 0
-        result = draft_minutes(data_dir, mystique(), date.fromisoformat(args.minutes))
+        result = draft_minutes(data_dir, active(), date.fromisoformat(args.minutes))
         print(f"wrote {result['file']} (DRAFT; nothing posted)")
         print("\n".join(check_lines(result["checks"])[2:]).rstrip())
         print(f"  {result['unknowns']} blanks for the Secretary; the draft's own check still lacks: {', '.join(result['gaps']) or 'nothing'}")
@@ -2761,7 +2761,7 @@ def cmd_board(args: argparse.Namespace) -> int:
             print(f"  sections whose quotes are not in the transcript (check them): {', '.join(result['unsupported'])}")
         return 0
     if args.agenda:
-        schedule = mystique().meeting_schedule()
+        schedule = active().meeting_schedule()
         meeting = date.fromisoformat(args.date) if args.date else schedule.next_meeting(date.today(), monthly=True)
         with _agent(args) as agent:
             previous = read_doc(agent.docs(), args.agenda)
@@ -2770,7 +2770,7 @@ def cmd_board(args: argparse.Namespace) -> int:
         out = data_dir / "board" / f"agenda-{meeting.isoformat()}.md"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines), encoding="utf-8")
-        board = mystique().board()
+        board = active().board()
         directors = [d.strip() for d in args.directors.split(",") if d.strip()] or [f"Director {n}" for n in range(1, board.seats + 1)]
         minutes = minutes_template(meeting, directors, lines, quorum=board.quorum(len(directors)))
         (data_dir / "board" / f"minutes-template-{meeting.isoformat()}.md").write_text("\n".join(minutes), encoding="utf-8")
@@ -2792,7 +2792,7 @@ def cmd_board(args: argparse.Namespace) -> int:
             from jason.community.profile import profile_name
             from jason.tasks.template_gen import template_for
 
-            template = template_for(mystique(), TemplateKind.AGENDA, data_dir, profile_name())
+            template = template_for(active(), TemplateKind.AGENDA, data_dir, profile_name())
             body = agenda_items(previous, load(data_dir), meeting, schedule, previous_meeting=before)
             values = agenda_values(previous, meeting, schedule, tech_contact=args.tech_contact)
             short = f"{meeting.month}/{meeting.day}/{meeting.year % 100:02d}"
@@ -2807,7 +2807,7 @@ def cmd_board(args: argparse.Namespace) -> int:
                     folder = drive.child_folder(home.meetings, str(meeting.year)) or drive.create_folder(str(meeting.year), home.meetings)
                     name = f"DRAFT Agenda for {short}"
                 made = fill_with_markdown(drive, drive.docs(), template, values, body, name=name, folder_id=folder,
-                                          defaults=profile_values(mystique()),
+                                          defaults=profile_values(active()),
                                           doc_id=known.get(key, ""))
             known[key] = made["id"]
             docs_file.write_text(json.dumps(known, indent=2), encoding="utf-8")
@@ -2828,11 +2828,11 @@ def cmd_cost_centers(args: argparse.Namespace) -> int:
     """Whether the association keeps the two assessment cost centers its annexations require (disk only)."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.cost_centers import review, review_lines
 
-    result = review(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = review(Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2845,11 +2845,11 @@ def cmd_securities(args: argparse.Namespace) -> int:
     """The subdivider's DRE securities by phase: agreements, bonds, and releases (disk only)."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.developer_security import register, register_lines
 
-    result = register(Settings.load(args.env).payhoa_catalog.parent, mystique())
+    result = register(Settings.load(args.env).payhoa_catalog.parent, active())
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
@@ -2862,7 +2862,7 @@ def cmd_models(args: argparse.Namespace) -> int:
     """Read the library (or one file) with the document models: typed records and findings per document kind."""
     import json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.symbols import DocumentKind
     from jason.config import Settings
     from jason.tasks.document_models import coverage_lines, read_file, run, summary
@@ -2874,14 +2874,14 @@ def cmd_models(args: argparse.Namespace) -> int:
         if not args.kind:
             print("--ask needs --kind (a kind with a question set, e.g. minutes)")
             return 2
-        result = ask_run(data_dir, mystique(), DocumentKind(args.kind), limit=args.limit if args.limit != 50 else 0, log=print)
+        result = ask_run(data_dir, active(), DocumentKind(args.kind), limit=args.limit if args.limit != 50 else 0, log=print)
         print("\n".join(ask_lines(result)))
         return 0
     if args.file:
         if not args.kind:
             print("--file needs --kind")
             return 2
-        result = read_file(Path(args.file), DocumentKind(args.kind), mystique(), data_dir=data_dir)
+        result = read_file(Path(args.file), DocumentKind(args.kind), active(), data_dir=data_dir)
         print(json.dumps(result, indent=2, default=str))
         return 0 if result.get("model") else 1
     if args.show:
@@ -2889,7 +2889,7 @@ def cmd_models(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, default=str))
         return 0 if result.get("found") else 1
     kinds = (DocumentKind(args.kind),) if args.kind else ()
-    result = run(data_dir, mystique(), kinds=kinds)
+    result = run(data_dir, active(), kinds=kinds)
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:

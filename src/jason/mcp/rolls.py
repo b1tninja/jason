@@ -213,14 +213,14 @@ def unit_characteristics(apn: str = "", data_dir: Path | None = None) -> dict[st
     developer's plan nearest the measured area, or empty when none is within
     tolerance. Reads disk only; ``jason sync-characteristics`` fills the store.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.characteristics import CharacteristicsStore, classify_plan
 
     root = _data_dir(data_dir)
     path = root / "characteristics.db"
     if not path.is_file():
         return {"found": False, "count": 0, "units": [], "note": "run jason sync-characteristics"}
-    community = mystique()
+    community = active()
     plans = community.floor_plans()
     with CharacteristicsStore(path) as store:
         records = store.all()
@@ -263,6 +263,6 @@ def _roll_path(root: Path, roll: str) -> Path:
 
 
 def _community_parcels() -> tuple[str, ...]:
-    from jason.community import mystique
+    from jason.community import community as active
 
-    return mystique().parcels()
+    return active().parcels()

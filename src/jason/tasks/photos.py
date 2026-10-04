@@ -40,9 +40,9 @@ class PickTimeout(GoogleError):
 def _spec(community: Any) -> Any:
     """The mystique ``photos`` module (``ALBUM_NAME``, ``PHOTOS_DRIVE_FOLDER``), beside the community's own module."""
     if community is None:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        community = mystique()
+        community = active()
     package = type(community).__module__.rsplit(".", 1)[0]
     return importlib.import_module(f"{package}.photos")
 

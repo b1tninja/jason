@@ -90,10 +90,10 @@ def _carry_forward(state: dict[str, dict[str, Any]], drive: Any) -> dict[str, st
 
 def _body_only(message: str) -> str:
     """A template's body without the letterhead frame: the Doc holds the body; jason adds the frame (--letterhead)."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.email_html import strip_letterhead
 
-    letterhead = mystique().email_letterhead()
+    letterhead = active().email_letterhead()
     return strip_letterhead(message, letterhead)[0] if letterhead else message
 
 
@@ -187,7 +187,7 @@ def _from_doc(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> 
 def _draft_doc(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
     """Keep a local draft as a Google Doc (--to-doc) or bring a person's edits in the Doc back (--pull-doc), pictures
     included (``draft_docs``)."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.spec import spec_module
     from jason.tasks import draft_docs
 
@@ -214,7 +214,7 @@ def _draft_doc(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
             client = agent.payhoa()
             made = draft_docs.push_markdown(
                 agent.drive(), draft, name=title, folder=home.broadcasts, letterhead_id=head.doc_id,
-                footer=head.footer, state=state, articles=mystique().help_articles(),
+                footer=head.footer, state=state, articles=active().help_articles(),
                 picture_link=lambda path: client.upload_file(path, filename=path.name, content_type="image/png",
                                                              context="communication")["viewUrl"])
         draft_docs.save_state(draft.parent, state)
@@ -301,7 +301,7 @@ def _show_recipients(args: argparse.Namespace):
 
 
 def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.library import LibraryDocument, payhoa_documents
     from jason.community.symbols import PayhoaFolder
     from jason.tasks.broadcast import (PREVIEW_PREFIX, Attachment, body_of, check, own_membership, preview_page,
@@ -344,14 +344,14 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
             print(exc, file=sys.stderr)
             return 2
     filled, refs = message_html_records(source.read_text(encoding="utf-8"), source.suffix)
-    message, no_help = fill_help_tokens(body_of(filled), mystique().help_articles())
+    message, no_help = fill_help_tokens(body_of(filled), active().help_articles())
     if no_help:
         print(f"no help article for {', '.join(no_help)} (mystique/help.py)", file=sys.stderr)
     message = linkify(message)                                          # citations, addresses, and emails as links
     if args.letterhead:
         from jason.community.email_html import with_letterhead
 
-        letterhead = mystique().email_letterhead()
+        letterhead = active().email_letterhead()
         message = with_letterhead(message, letterhead)
         print("letterhead: name banner and address footer" + (" with the logo" if letterhead.logo_url else
                                                                " (PayHOA's layout shows the logo above the message)"))
@@ -399,7 +399,7 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
         client = agent.payhoa()
         org = agent.org_id
         if uploads and args.yes and args.save_template is None:
-            folder = mystique().library_folder(PayhoaFolder.EMAIL_ATTACHMENTS)
+            folder = active().library_folder(PayhoaFolder.EMAIL_ATTACHMENTS)
             for path, name in uploads:
                 row = client.create_document(org, folder.payhoa_id, path, file_name=name)
                 doc = LibraryDocument("payhoa", str(row["id"]), str(row.get("path") or folder.path + name), name,
@@ -421,7 +421,7 @@ def cmd_broadcast(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
 
                 from jason.tasks.email_review import WRAPPER_FILE
 
-                logo = mystique().letterhead().logo_path(_data_dir(args))
+                logo = active().letterhead().logo_path(_data_dir(args))
                 wrapper_file = _data_dir(args) / WRAPPER_FILE
                 wrapper = wrapper_file.read_text(encoding="utf-8") if wrapper_file.is_file() else ""
                 out, data = review(subject, rendered, source, logo=logo, model=args.model or "", wrapper=wrapper)
@@ -485,10 +485,10 @@ def _save_template(args: argparse.Namespace, agent: Any, subject: str, message: 
         return 1
     have = [str(a.get("fileName")) for a in current.get("attachments") or []]
     subject = subject or str(current.get("subject") or "")
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.email_html import strip_letterhead, with_letterhead
 
-    letterhead = mystique().email_letterhead()
+    letterhead = active().email_letterhead()
     if letterhead and strip_letterhead(str(current.get("message") or ""), letterhead)[1] and not args.letterhead:
         message = with_letterhead(message, letterhead)          # the template had the frame; keep it
         print("keeping the letterhead frame the template has")

@@ -418,10 +418,10 @@ def write_report(data_dir: Path, *, days: int = 365, today: date | None = None) 
             "A summary, not the letters: each line names a letter by its date and sender; the letter's own text is in the mail catalog.",
             "", "```"] + brief_lines(brief) + ["```", ""]
     try:
-        from jason.community import mystique
+        from jason.community import community as active
         from jason.tasks.mail_links import links_lines, mail_links
 
-        body += ["## The mail checked against jason's records", "", "```"] + links_lines(mail_links(data_dir, mystique(), today=today)) + ["```", ""]
+        body += ["## The mail checked against jason's records", "", "```"] + links_lines(mail_links(data_dir, active(), today=today)) + ["```", ""]
     except Exception as exc:  # the checks read other stores; a missing one does not stop the page
         body += [f"(the checks against jason's records did not run: {exc})", ""]
     path.write_text("\n".join(body), encoding="utf-8")

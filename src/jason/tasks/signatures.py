@@ -95,9 +95,9 @@ def plan(data_dir: Path, community: Any = None, *, per_sender: int = 2, domains:
     owners; ``limit`` caps the messages across them. A message already read is skipped unless ``refresh``.
     """
     if community is None:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        community = mystique()
+        community = active()
     senders = tuple(getattr(community, "senders", lambda: ())())
     own = set(community.email_domains())
     wanted_domains = {d.lower().lstrip("@") for d in domains}

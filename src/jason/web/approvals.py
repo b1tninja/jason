@@ -37,7 +37,6 @@ person typed, a result's detail) is masked before it leaves the server.
 
 from __future__ import annotations
 
-import re
 import secrets
 import threading
 from contextlib import contextmanager
@@ -59,23 +58,14 @@ APPLY_OFF = ("apply is off: jason-web was started without --allow-apply. A perso
              "`jason approvals apply ID --by NAME --yes`, or restarts jason-web with --allow-apply")
 STEPS = ("submit", "confirm", "decline", "withdraw")
 
-_PHONE = re.compile(r"(?<![\w-])(?:\+?1[-. ]?)?(?:\(\d{3}\)\s?|\d{3}[-. ])\d{3}[-. ]\d{4}(?![\w-])")
-
 
 def mask(value: Any) -> Any:
-    """``value`` with email addresses (``jason.approvals.audit.mask``) and phone numbers replaced."""
-    from jason.approvals.audit import mask as mask_email
+    """``value`` with email addresses and phone numbers replaced (``jason.approvals.audit.mask``), as it leaves the
+    server. A street address is left: a plan's value and a unit's label are what a person approves; the audit log, which
+    is written, masks those too."""
+    from jason.approvals.audit import mask as mask_contacts
 
-    def phones(v: Any) -> Any:
-        if isinstance(v, str):
-            return _PHONE.sub("[phone]", v)
-        if isinstance(v, dict):
-            return {k: phones(x) for k, x in v.items()}
-        if isinstance(v, list):
-            return [phones(x) for x in v]
-        return v
-
-    return phones(mask_email(value))
+    return mask_contacts(value, addresses=False)
 
 
 @contextmanager

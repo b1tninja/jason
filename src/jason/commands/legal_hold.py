@@ -23,12 +23,12 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
 
 
 def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks import legal_hold as task
 
     data_dir = Settings.load(args.env).payhoa_catalog.parent
-    community = mystique()
+    community = active()
     try:
         spec = task.hold_spec(community, args.key)
     except ValueError as exc:

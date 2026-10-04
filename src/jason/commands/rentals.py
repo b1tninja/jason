@@ -15,12 +15,12 @@ from typing import Any, Callable
 
 
 def cmd_rentals(args: argparse.Namespace) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.leasing import standing
     from jason.config import Settings
     from jason.tasks.broadcast import catalog_rows
 
-    community = mystique()
+    community = active()
     db = Settings.load(args.env).payhoa_catalog
     units, people_rows, synced = catalog_rows(db)
     found = standing(units, community.payhoa_tags(), community.leasing_rules())

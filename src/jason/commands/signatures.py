@@ -14,12 +14,12 @@ from typing import Any, Callable
 
 
 def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.signatures import fetch, plan, report, summary_lines
 
     data_dir = Settings.load(args.env).payhoa_catalog.parent
-    community = mystique()
+    community = active()
     targets = plan(data_dir, community, per_sender=args.per_sender, domains=args.domains or (), threads=args.threads or (),
                    non_owners=args.non_owners, limit=args.limit, include_automated=args.include_automated, refresh=args.refresh)
     messages = sum(len(t.messages) for t in targets)

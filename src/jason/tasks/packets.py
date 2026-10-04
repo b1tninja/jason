@@ -121,10 +121,10 @@ def fill_letter(ref: str, values: dict[str, str]) -> tuple[str, list[str]]:
 
     filled = TOKEN.sub(lambda m: value(m.group(1)) if values.get(m.group(1)) else m.group(0), text)
     filled, no_link = fill_qr_tokens(filled, values, labels=QR_LABELS)
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.links import fill_help_tokens, linkify
 
-    filled, no_help = fill_help_tokens(filled, mystique().help_articles())   # {HELP:key}: the vendor's own guides
+    filled, no_help = fill_help_tokens(filled, active().help_articles())   # {HELP:key}: the vendor's own guides
     filled = linkify(filled, subject=values.get("EMAIL_SUBJECT", ""))      # clickable in the PDF; the same in print
     return filled, left + [t for t in no_link if t not in left] + [f"HELP:{k}" for k in no_help]
 

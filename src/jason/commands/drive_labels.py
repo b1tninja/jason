@@ -32,7 +32,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
 
 
 def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks import drive_labels as task
 
@@ -52,7 +52,7 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
             print(f"{len(hits)} files with {key.strip()}={value.strip()!r}")
         return 0
 
-    community = mystique()
+    community = active()
     rows = task.schema(community)
     plan = task.plan(data_dir, community)
     if args.used:

@@ -102,10 +102,10 @@ class Jason:
 
     @property
     def community(self):
-        """Association specification (`mystique`), separate from task code."""
-        from jason.community import Community, mystique
+        """The active profile's association specification, separate from task code."""
+        from jason.community import Community, community as active
 
-        loaded: Community = mystique()
+        loaded: Community = active()
         return loaded
 
     def _vault_session(self) -> VaultSession:

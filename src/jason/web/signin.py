@@ -359,8 +359,14 @@ def _next(value: str) -> str:
 
 
 def _log(sign_in: SignIn, event: str, **fields: Any) -> None:
+    """One line in ``web/sign-ins.jsonl``. A ``why`` is free text (a refusal can name an address not on the roster):
+    contact details in it are masked as the audit log masks them. The signed-in account's own ``email`` is its id."""
+    from jason.approvals.audit import mask
+
     if sign_in.log is None:
         return
+    if "why" in fields:
+        fields["why"] = mask(str(fields["why"]))
     try:
         sign_in.log.parent.mkdir(parents=True, exist_ok=True)
         row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "event": event, **fields}

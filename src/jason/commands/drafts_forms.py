@@ -21,12 +21,12 @@ def _data_dir(args: argparse.Namespace) -> Path:
 
 
 def cmd_draft(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.google.gmail_drafts import GmailDrafts
     from jason.tasks.drafts import find_hearing, hearing_draft, meeting_notice_draft, save
 
     data_dir = _data_dir(args)
-    association = mystique().name
+    association = active().name
     if args.list:
         with agent_factory(args) as agent:
             gmail = GmailDrafts.on(agent.drive())
@@ -143,13 +143,13 @@ def cmd_forms(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> 
 
 def _form_pdf(args: argparse.Namespace, data_dir: Path) -> int:
     """A fillable PDF of a form, from its definition, on the letterhead; nothing is sent or uploaded."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.forms import form_pdf, template
 
     tpl = template(args.pdf)
     prefill = dict(p.split("=", 1) for p in args.prefill)
     out = Path(args.out) if args.out else data_dir / "forms" / f"{tpl.key.value}.pdf"
-    names = form_pdf(tpl, out, association=mystique().name, logo=mystique().letterhead().logo_path(data_dir),
+    names = form_pdf(tpl, out, association=active().name, logo=active().letterhead().logo_path(data_dir),
                      prefill=prefill or None)
     print(f"{out}: {len(names)} fields: {', '.join(names)}")
     return 0
@@ -252,7 +252,7 @@ def _payhoa_submissions(args: argparse.Namespace, agent_factory: Callable[[Any],
     """The PayHOA form's submissions read by field, checked, and matched to the current owners (signed in: by member)."""
     import csv
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.forms import answer_rows
     from jason.community.spec import spec_module
     from jason.config import Settings
@@ -273,7 +273,7 @@ def _payhoa_submissions(args: argparse.Namespace, agent_factory: Callable[[Any],
     with open(out, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows([header, *rows])
     matched = match(answers, payhoa_owners(Settings.load(args.env).payhoa_catalog, PartyResolver(data_dir).latest_deed),
-                    mystique().payhoa_tags(), cycle=spec_module("forms").OWNER_INFO_CYCLE)
+                    active().payhoa_tags(), cycle=spec_module("forms").OWNER_INFO_CYCLE)
     review = out.with_name(out.stem + "-review.csv")
     with open(review, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows([REVIEW_HEADER, *review_rows(matched)])
@@ -302,13 +302,13 @@ def _match(args: argparse.Namespace, agent_factory: Callable[[Any], Any], data_d
         with agent_factory(args) as agent:
             fetch_responses(GoogleForms.on(agent.drive()), args.match, data_dir)
     saved = json.loads((forms_dir(data_dir) / args.match / "responses.json").read_text(encoding="utf-8"))
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.parties import PartyResolver
 
     forms = spec_module("forms")
     deeds = PartyResolver(data_dir).latest_deed               # when each unit last changed hands, from the county
     matched = match(import_responses(saved, rules), payhoa_owners(Settings.load(args.env).payhoa_catalog, deeds),
-                    mystique().payhoa_tags(), cycle=forms.OWNER_INFO_CYCLE)
+                    active().payhoa_tags(), cycle=forms.OWNER_INFO_CYCLE)
     out = Path(args.out) if args.out else forms_dir(data_dir) / args.match / "payhoa-review.csv"
     with open(out, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows([REVIEW_HEADER, *review_rows(matched)])

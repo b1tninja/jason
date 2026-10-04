@@ -128,11 +128,11 @@ def recorder_descend(
     opened = _day(after) if after.strip() else None
     if after.strip() and opened is None:
         return {"number": stamp, "meets": [], "error": "after is YYYY-MM-DD."}
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.index_cache import IndexCache, descend
     from jason.config import Settings
 
-    community = mystique()
+    community = active()
     if opened is None:
         issued = [report.issued for report in community.public_reports() if report.issued is not None]
         opened = min(issued) if issued else None

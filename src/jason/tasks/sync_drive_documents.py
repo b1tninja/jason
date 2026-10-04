@@ -79,9 +79,9 @@ class DriveSyncReport:
 def load_sync_rules(path: str | Path | None = None) -> dict[str, Any]:
     """Load the community document-sync specification, or ``path`` when given."""
     if path is None:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        return mystique().document_sync_rules()
+        return active().document_sync_rules()
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
@@ -544,11 +544,11 @@ def _skip_reason_for_near_rule(
     rel = _plan._relative_folder(folder_path, drive_folder)
     rule_id = str(rule.get("id") or "")
     if rule_id == "insurance-current" and rel:
-        from jason.community import mystique
+        from jason.community import community as active
         from jason.community.symbols import InsuranceVisit
 
         path = f"{drive_folder}/{rel}"
-        if mystique().insurance().visit(path) is InsuranceVisit.YEAR_FOLDER:
+        if active().insurance().visit(path) is InsuranceVisit.YEAR_FOLDER:
             return "insurance-current: year folder, walk does not collect files"
         return "insurance-current: folder root only"
     if _plan._rule_excludes(rule, rel, name):

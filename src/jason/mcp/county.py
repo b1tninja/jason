@@ -56,10 +56,10 @@ def list_public_reports() -> list[dict[str, Any]]:
     ``assessmentCents`` is the monthly assessment. It is null when the
     Buildings tab left the amount blank. A related file is not the report.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.reports import catalog_reports
 
-    community = mystique()
+    community = active()
     catalog = catalog_reports(community.public_reports(), community.pins())
     return [_report(item) for item in catalog]
 
@@ -92,9 +92,9 @@ def _pin(row) -> dict[str, str]:
 
 def list_developers() -> list[dict[str, Any]]:
     """The subdividers pinned on the community, and each index spelling."""
-    from jason.community import mystique
+    from jason.community import community as active
 
-    community = mystique()
+    community = active()
     return [
         {"name": developer.name, "names": list(developer.names)}
         for developer in community.developers()
@@ -315,14 +315,14 @@ def audit_chains(apn: str = "", data_dir: Path | None = None) -> dict[str, Any]:
     with no deed behind it; a rise there is a market restoration. A finding
     names the record to read next. It is not a verdict.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.audit import audit_chain, reassessing_steps
     from jason.community.base import assign_building
     from jason.community.calendar import community_restoration_years
     from jason.community.tax_store import TaxStore
 
     root = _data_dir(data_dir)
-    community = mystique()
+    community = active()
     developers = community.developers()
     reports = {report.building: report for report in community.public_reports()}
     ranges = community.buildings()
@@ -388,10 +388,10 @@ def association_records(data_dir: Path | None = None) -> dict[str, Any]:
     association, such as utility liens and a tax-default notice. Nothing is
     searched; run the community name searches first to fill the cache.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.property_history import load_association_record
 
-    record = load_association_record(mystique(), _data_dir(data_dir))
+    record = load_association_record(active(), _data_dir(data_dir))
     return {
         "governing": [
             {"number": r.number, "recorded": r.recorded.isoformat() if r.recorded else "", "filing": r.filing, "role": r.role,
@@ -417,10 +417,10 @@ def parcel_liens(apn: str, data_dir: Path | None = None) -> dict[str, Any]:
     own assessment lien, or belongs to another time or property.
     """
     from jason.tasks.property_history import load_parcel_histories
-    from jason.community import mystique
+    from jason.community import community as active
 
     wanted = _digits(apn)
-    for item in load_parcel_histories(mystique(), _data_dir(data_dir)):
+    for item in load_parcel_histories(active(), _data_dir(data_dir)):
         if _digits(item.apn) == wanted:
             return {
                 "apn": parcel_number(item.apn),
@@ -448,7 +448,7 @@ def read_document(path: str) -> dict[str, Any]:
 def document_readings(data_dir: Path | None = None) -> dict[str, Any]:
     """Every governing and annexation extract on disk read at once, with the supersessions the texts state and
     whether the specification pins each, and the instrument numbers the recorded copies carry."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.readings import numbers_on_disk, proposed_supersessions, read_folder, reading_dict
 
     root = _data_dir(data_dir)
@@ -457,7 +457,7 @@ def document_readings(data_dir: Path | None = None) -> dict[str, Any]:
         root / "artifacts" / "site-docs" / "governing_documents_Annexations",
         root / "governing",
     )
-    proposals = proposed_supersessions(readings, mystique().supersessions())
+    proposals = proposed_supersessions(readings, active().supersessions())
     return {
         "count": len(readings),
         "recordedCopies": {number: str(path) for number, path in numbers_on_disk(readings).items()},
@@ -503,11 +503,11 @@ def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str
     decision-notice, question); ``subject`` picks it from a template's subject instead. ``draft`` is text to review,
     ``ask`` a question. Work from the sources, cite them by id, and quote them; the pack decides nothing. Without a
     task, lists the tasks."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.prompts import TaskKind
     from jason.tasks.manager_review import build
 
-    community = mystique()
+    community = active()
     if not task and not subject:
         return {"tasks": [{"task": t.kind.slug, "what": t.kind.value, "audience": t.audience.value, "topics": list(t.topics),
                            "read": [k.value for k in t.documents], "consider": list(t.considerations)} for t in community.task_prompts()]}
@@ -524,11 +524,11 @@ def extraction_scorecard(extractor: str = "regex", model: str = "", data_dir: Pa
     "regex" (the parsers over the extracts), "ollama" (a local vision model over the page images; ``model``
     names it, default qwen3.6:27b), or "claude" (needs the models extra and a key, else this says so and
     sends nothing)."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.extraction import RegexExtractor, cases, evaluate
     from jason.tasks.property_history import load_association_record
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     items = cases(community, load_association_record(community, root), root)
     if extractor == "claude":
@@ -562,14 +562,14 @@ def anythingllm_query(question: str, catalog: str = "", workspace: str = "", mod
     catalog, so an answer resting on a summary is read as one. ``query`` answers only from the documents;
     ``chat`` keeps a thread. Needs ANYTHINGLLM_API_KEY, else this says so and sends nothing. An answer is
     evidence to read, and it pins nothing."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.anythingllm import AnythingLLM, AnythingLLMUnavailable
     from jason.tasks.anythingllm_sync import ask
     from jason.tasks.case_files import case_catalogs
 
     try:
         return ask(AnythingLLM(), question, workspace=workspace, catalog=catalog, mode=mode,
-                   extra=case_catalogs(mystique().legal_cases()))
+                   extra=case_catalogs(active().legal_cases()))
     except AnythingLLMUnavailable as exc:
         return {"available": False, "note": str(exc)}
 
@@ -581,7 +581,7 @@ def anythingllm_status() -> dict[str, Any]:
     that fixes it. Read-only: starting the app, applying settings, and re-embedding are `jason anythingllm` commands a
     person runs with --yes. Needs ANYTHINGLLM_API_KEY for everything past the ping."""
     from jason import anythingllm_admin as admin
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.anythingllm import AnythingLLM, AnythingLLMUnavailable
     from jason.tasks.anythingllm_sync import CATALOGS
     from jason.tasks.case_files import case_catalogs
@@ -591,7 +591,7 @@ def anythingllm_status() -> dict[str, Any]:
     try:
         client = AnythingLLM()
         current = admin.settings(client)
-        inv = admin.inventory(client, (*CATALOGS, *case_catalogs(mystique().legal_cases())))
+        inv = admin.inventory(client, (*CATALOGS, *case_catalogs(active().legal_cases())))
     except AnythingLLMUnavailable as exc:
         return {"online": True, "available": False, "note": str(exc)}
     return {"online": True, "settings": current, "drift": admin.drift(current), "inventory": inv,
@@ -666,13 +666,13 @@ def index_coverage(examples: int = 4, data_dir: Path | None = None) -> dict[str,
     association's filings, solar notices), and what is left sorted by pattern (a re-recording of a chain step,
     a companion transfer at a closing, an owner's other property, the developer's other projects, the
     developer's insolvency, nothing yet), with examples. "No process yet" is the list to model next."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.coverage import coverage
     from jason.community.index_cache import IndexCache
     from jason.community.ownership import OwnershipStore
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     histories = load_parcel_histories(community, root)
     record = load_association_record(community, root)
@@ -694,11 +694,11 @@ def records_inventory(data_dir: Path | None = None) -> dict[str, Any]:
     specification keeps it (PayHOA folder, Drive sync rule, known file), how many files the catalog holds there, and
     the gap when nothing is pinned or nothing is on hand. The governing copies are listed with their recorded
     status. Reads disk only."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.association_pages import build_inventory, inventory_dicts
     from jason.tasks.property_history import load_association_record
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     holdings = build_inventory(community, root, governing=load_association_record(community, root).governing)
     return {"count": len(holdings), "gaps": [f"{h.kind.value}: {h.gap}" for h in holdings if h.gap], "records": inventory_dicts(holdings)}
@@ -720,12 +720,12 @@ def records_request(fetch_pages: bool = False, include_liens: bool = True, data_
     """The recorded instruments the association's record names and no recorded copy on disk carries, as a
     copy-order list for the county clerk/recorder: number, book and page, title, why it matters, page count,
     plain or certified, and the cost at the county's fees. ``fetch_pages`` reads page counts from the index now."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.records_request import MAIL_TO, ORDER_FORM, request_dicts
     from jason.tasks.property_history import load_association_record
     from jason.tasks.records_request import build_records_request
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     recorder = None
     if fetch_pages:
@@ -748,12 +748,12 @@ def title_watch(apn: str = "", standing: str = "", attention: bool = False, data
     standing by name (such as STANDS or RELEASE_DUE), ``attention`` to the ones a person acts on. Each row says
     when it names the owner by a bare name (a namesake risk) and which other units the same filing names.
     This is what the index shows, not a title report; a presumption is not a release."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.title import ATTENTION, LienStanding, standing_counts
     from jason.community.title import title_watch as watch
     from jason.tasks.property_history import load_parcel_histories
 
-    histories = load_parcel_histories(mystique(), _data_dir(data_dir))
+    histories = load_parcel_histories(active(), _data_dir(data_dir))
     wanted = _digits(apn)
     if wanted:
         histories = tuple(h for h in histories if _digits(h.apn) == wanted)
@@ -784,14 +784,14 @@ def unit_brief(apn: str, data_dir: Path | None = None) -> dict[str, Any]:
     is still of record, a cure is not a release, no solar filing is not
     proof of purchase, and no value figure is an appraisal.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.briefs import unit_brief as build
     from jason.community.characteristics import CharacteristicsStore, classify_plan
     from jason.tasks.equity_charts import unit_values
     from jason.tasks.market_report import valuations
     from jason.tasks.property_history import load_parcel_histories
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     wanted = _digits(apn)
     histories = load_parcel_histories(community, root)
@@ -819,11 +819,11 @@ def escrow_brief(apn: str, data_dir: Path | None = None) -> dict[str, Any]:
     The brief says what the records show and what they cannot prove. It
     does not state a demand amount; PayHOA holds the ledger.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.briefs import escrow_brief as build
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     wanted = _digits(apn)
     item = next((h for h in load_parcel_histories(community, root) if _digits(h.apn) == wanted), None)
@@ -838,7 +838,7 @@ def budget_status(year: int = 0, data_dir: Path | None = None) -> dict[str, Any]
     expense, the categories furthest from budget, collection progress, and the bank balances named from the
     specification (operating ...5286, reserve ...6177, reserve CD ...7476) with the reserve total. Amounts are integer
     cents. Reads disk only; the balances are Plaid's and can lag the bank."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.finance import finance_summary, latest_year, load
 
     root = _data_dir(data_dir)
@@ -846,7 +846,7 @@ def budget_status(year: int = 0, data_dir: Path | None = None) -> dict[str, Any]
     snap = load(root, wanted) if wanted else None
     if snap is None:
         return {"found": False, "note": "no finance snapshot; run jason budget"}
-    return {"found": True, **finance_summary(snap, mystique().bank_accounts())}
+    return {"found": True, **finance_summary(snap, active().bank_accounts())}
 
 
 def invoice_review(payee: str = "", problems_only: bool = True, since: str = "", limit: int = 80,
@@ -890,10 +890,10 @@ def zoom_meetings(days: int = 0, kind: str = "", since: str = "", data_dir: Path
     participants), and the summary's next steps; plus the schedule's meeting days with no Zoom meeting. ``days``,
     ``since`` (YYYY-MM-DD), and ``kind`` narrow it. Reads disk only. The AI summary is not the minutes (no roll call,
     motion, or vote); an executive session's or hearing's next steps are held back. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.zoom import meetings_brief
 
-    return meetings_brief(_data_dir(data_dir), mystique(), days=int(days) or None, kind=kind, since=since)
+    return meetings_brief(_data_dir(data_dir), active(), days=int(days) or None, kind=kind, since=since)
 
 
 def zoom_meeting(meeting: str, include_confidential: bool = False, max_chars: int = 60000, data_dir: Path | None = None) -> dict[str, Any]:
@@ -953,7 +953,7 @@ def mail_checks(data_dir: Path | None = None) -> dict[str, Any]:
     balance; each check against the PayHOA deposit of its amount; and each preliminary notice or lien claim against
     the payments to its claimant. Integer cents. Reads disk only; jason answers
     no request, pays no bill, and changes no address. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.mail_links import mail_links
 
     try:
@@ -963,7 +963,7 @@ def mail_checks(data_dir: Path | None = None) -> dict[str, Any]:
         roots = bill_roots(Settings.load(None))
     except Exception:  # without settings, the utility accounts' addresses are left out
         roots = None
-    return mail_links(_data_dir(data_dir), mystique(), roots=roots)
+    return mail_links(_data_dir(data_dir), active(), roots=roots)
 
 
 def request_links(unit: str = "", drafts_only: bool = False, limit: int = 40, data_dir: Path | None = None) -> dict[str, Any]:
@@ -972,12 +972,12 @@ def request_links(unit: str = "", drafts_only: bool = False, limit: int = 40, da
     the reasons), and the drafts for emailed requests PayHOA does not have (form, unit, title, a message pointing at the
     thread). Filter by ``unit``. Read-only: a draft is entered only by a person with `jason request-links --create THREAD
     --yes`, and no request is ever approved, denied, or assigned. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.request_links import request_links as build
     from jason.tasks.request_links import with_refs
 
     root = _data_dir(data_dir)
-    result = build(root, mystique())
+    result = build(root, active())
     u = unit.upper()
     rows = [] if drafts_only else [r for r in result["rows"] if (not u or u in r["unit"]) and (r["notices"] or r["ownerThreads"])]
     drafts = [d for d in result["drafts"] if not u or u in d["unit"]]
@@ -1005,10 +1005,10 @@ def email_intents(intent: str = "", topic: str = "", days: int = 365, limit: int
     passages (BM25), the library's documents of the kinds that speak to the topic, and the PayHOA violations that are its
     precedents with the restriction each cited and its hearing language. Filter by ``intent`` or ``topic``. A passage is
     text to read, not a ruling; a precedent is a pattern, not a decision. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.intents import email_intents as build
 
-    result = build(_data_dir(data_dir), mystique(), days=days)
+    result = build(_data_dir(data_dir), active(), days=days)
     rows = [r for r in result["rows"] if (not intent or intent in r["intents"]) and (not topic or topic in r["topics"])]
     return {**{k: v for k, v in result.items() if k not in ("rows", "violations")}, "matching": len(rows), "rows": rows[:limit],
             "violations": result["violations"]}
@@ -1019,10 +1019,10 @@ def case_file(terms: list[str], data_dir: Path | None = None) -> dict[str, Any]:
     ["water intrusion", "smith", "24CV000123"]): the email threads, PayHOA violations (with the restriction cited and the
     hearing date) and requests, the paper letters, the Drive files, and the library's documents, in date order. A match is
     by words in subjects, titles, names, and paths. Reads disk only. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.intents import case_file as build
 
-    return build(list(terms), _data_dir(data_dir), mystique())
+    return build(list(terms), _data_dir(data_dir), active())
 
 
 def reply_needed(party_class: str = "", days: int = 120, limit: int = 40, data_dir: Path | None = None) -> dict[str, Any]:
@@ -1031,10 +1031,10 @@ def reply_needed(party_class: str = "", days: int = 120, limit: int = 40, data_d
     what the subject asks, and by sender; and the open threads (the last message came in) that likely need a response,
     most likely and longest past the usual time first, each with the history it was judged by. Filter by ``party_class``.
     A reply from another mailbox, by phone, or through PayHOA is not seen. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.replies import reply_needed as build
 
-    result = build(_data_dir(data_dir), mystique(), open_days=days)
+    result = build(_data_dir(data_dir), active(), open_days=days)
     rows = [o for o in result["open"] if not party_class or o["partyClass"] == party_class]
     return {**{k: v for k, v in result.items() if k != "open"}, "matching": len(rows), "open": rows[:limit]}
 
@@ -1045,10 +1045,10 @@ def party_brief(query: str, data_dir: Path | None = None) -> dict[str, Any]:
     (title, liens, solar, taxes). A counterparty (by sender name, PayHOA vendor, or email domain): payments by year, its
     invoices and whether each is paid, threads awaiting us and them, letters, the people who write from its domains and the
     contact changes proposed for PayHOA, and the Drive files saved from its email. Reads disk only. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.party import party_brief as build
 
-    return build(query, _data_dir(data_dir), mystique())
+    return build(query, _data_dir(data_dir), active())
 
 
 def thread_topics(data_dir: Path | None = None) -> dict[str, Any]:
@@ -1056,30 +1056,30 @@ def thread_topics(data_dir: Path | None = None) -> dict[str, Any]:
     pests, architecture, neighbors, escrow, governance, security, utilities): threads this year, units raising it, threads in
     90 days, threads awaiting us, recent examples, and the FAQ candidates (three or more units in a year). Topics are read
     from subject words. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.party import thread_topics as build
 
-    return build(_data_dir(data_dir), mystique())
+    return build(_data_dir(data_dir), active())
 
 
 def new_owners(days: int = 365, data_dir: Path | None = None) -> dict[str, Any]:
     """Units whose latest deed recorded in the last ``days``: the recording date, whether a PayHOA member holds the unit, its
     balance, the buyer's email threads (from 60 days before the deed) with topics and status, and the unit's requests and
     violations since. Reads disk only. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.party import new_owners as build
 
-    return build(_data_dir(data_dir), mystique(), days=days)
+    return build(_data_dir(data_dir), active(), days=days)
 
 
 def open_items(days: int = 30, data_dir: Path | None = None) -> dict[str, Any]:
     """What is waiting on the association: email threads awaiting us (last ``days``), PayHOA requests pending, deadlines due
     soon or overdue, insurance findings, mail delivered and not scanned, letters to act on, and lien notices not paid.
     Jason answers, pays, and files nothing. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.party import open_items as build
 
-    return build(_data_dir(data_dir), mystique(), days=days)
+    return build(_data_dir(data_dir), active(), days=days)
 
 
 def email_threads(status: str = "", party: str = "", sender: str = "", days: int = 120, limit: int = 40,
@@ -1093,10 +1093,10 @@ def email_threads(status: str = "", party: str = "", sender: str = "", days: int
     Jason sends no email. Repeat the caveats."""
     from datetime import date as _date, timedelta as _td
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.threads import threads
 
-    result = threads(_data_dir(data_dir), mystique())
+    result = threads(_data_dir(data_dir), active())
     since = (_date.today() - _td(days=days)).isoformat()
     rows = [r for r in result["rows"] if r["last"] >= since
             and (not status or r["status"] == status)
@@ -1157,12 +1157,12 @@ def vendor_contacts(data_dir: Path | None = None) -> dict[str, Any]:
     sender row in mystique/senders.py does not list. Also the business domains no vendor claims, matched to a vendor by
     name where the words agree, and the PayHOA notices in Gmail against the synced mail (items the API sync lacks, items
     delivered and never scanned). Reads disk only; jason changes nothing in PayHOA and sends no email."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.contacts import directory
     from jason.tasks.gmail import notice_check
 
     root = _data_dir(data_dir)
-    return {**directory(root, mystique()), "postscanmailNotices": notice_check(root)}
+    return {**directory(root, active()), "postscanmailNotices": notice_check(root)}
 
 
 def association_calendar(data_dir: Path | None = None) -> dict[str, Any]:
@@ -1172,10 +1172,10 @@ def association_calendar(data_dir: Path | None = None) -> dict[str, Any]:
     the next deadline, the last time a PayHOA payment shows it done, and past deadlines done late or with no evidence.
     A payment is evidence, not proof; a deadline no store shows is listed as such. Integer cents. Reads disk only.
     Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.deadlines import calendar
 
-    return calendar(_data_dir(data_dir), mystique())
+    return calendar(_data_dir(data_dir), active())
 
 
 def insurance_review(data_dir: Path | None = None) -> dict[str, Any]:
@@ -1185,10 +1185,10 @@ def insurance_review(data_dir: Path | None = None) -> dict[str, Any]:
     payment placed on the building whose renewal bill prints its amount); the letters that print its number, with
     conditional renewals, non-renewals, and cancellations; and the claims the mail acknowledges. Integer cents. Reads
     disk only; jason buys, renews, cancels, and claims nothing. Repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.insurance import review
 
-    return review(_data_dir(data_dir), mystique())
+    return review(_data_dir(data_dir), active())
 
 
 def counterparties(data_dir: Path | None = None) -> dict[str, Any]:
@@ -1198,10 +1198,10 @@ def counterparties(data_dir: Path | None = None) -> dict[str, Any]:
     specification does not name, the letterheads no rule names yet, and the other associations the mail names (their
     own mail that came to the box, or an agency's record under their name). Integer cents. Reads disk only. Repeat
     the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.sources import sources_report
 
-    return sources_report(_data_dir(data_dir), mystique())
+    return sources_report(_data_dir(data_dir), active())
 
 
 def mail_item(mail_id: str, data_dir: Path | None = None) -> dict[str, Any]:
@@ -1277,10 +1277,10 @@ def legal_cases() -> dict[str, Any]:
     others, each with its forum, number, role, status, businesses involved (private persons by role only), counsel,
     insurer claims, events, money, and each statutory duty with whether the record shows it met. CONFIDENTIAL: litigation
     is an executive session matter (CIV 4935(a)); share only with directors and counsel."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.document_models import to_plain
 
-    cases = mystique().legal_cases()
+    cases = active().legal_cases()
     return {"found": bool(cases), "cases": [to_plain(c) for c in cases],
             "openDuties": [{"case": c.key, "statute": d.statute, "requirement": d.requirement, "met": d.met} for c in cases for d in c.open_duties],
             "caveats": ["Confidential: for directors and counsel.", "A duty 'not shown' may be met in records jason does not hold."]}
@@ -1303,10 +1303,10 @@ def cost_centers(data_dir: Path | None = None) -> dict[str, Any]:
     monthly assessments PayHOA charged each cost center's units, the budget's lines, and the reserve studies' funding
     plans. Integer cents. Reads disk only. A flat assessment could still be built from both components; the budget
     worksheets would show it. Restoring the cost centers is the board's, with counsel; repeat the caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.cost_centers import review
 
-    return review(_data_dir(data_dir), mystique())
+    return review(_data_dir(data_dir), active())
 
 
 def developer_securities(data_dir: Path | None = None) -> dict[str, Any]:
@@ -1316,10 +1316,10 @@ def developer_securities(data_dir: Path | None = None) -> dict[str, Any]:
     letters and resolutions) that name each bond. A bond with no release on file is listed as open on the record, and
     copies that read differently are flagged. Reads disk only (data/developer-security). A bond may have been released
     without a copy reaching Drive, and OCR can misread amounts; repeat both caveats."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.developer_security import register
 
-    return register(_data_dir(data_dir), mystique())
+    return register(_data_dir(data_dir), active())
 
 
 def document_models(kind: str = "", include_confidential: bool = False, limit: int = 50, data_dir: Path | None = None) -> dict[str, Any]:
@@ -1455,10 +1455,10 @@ def reserve_transfers(data_dir: Path | None = None) -> dict[str, Any]:
     operating expenses, forwarded deposits), catch-up contributions, and moves to certificates of deposit. Integer cents.
     Reads disk only. A repayment is matched by amount and a missing document may be in the board's files; repeat the
     caveats. Whether the statute was met is the board's to say."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.reserve_transfers import review
 
-    return review(_data_dir(data_dir), mystique())
+    return review(_data_dir(data_dir), active())
 
 
 def reserve_study(year: int = 0, data_dir: Path | None = None) -> dict[str, Any]:
@@ -1469,10 +1469,10 @@ def reserve_study(year: int = 0, data_dir: Path | None = None) -> dict[str, Any]
     plan the next study did not start from, a budget off the plan); and when the next site visit and review are due
     (Civil Code 5550). Integer cents. Reads disk only. The figures are the preparer's estimates; the board adopts the
     funding plan."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.reserves import reserve_brief
 
-    return reserve_brief(_data_dir(data_dir), mystique(), year=int(year) or None)
+    return reserve_brief(_data_dir(data_dir), active(), year=int(year) or None)
 
 
 def utility_brief(year: int = 0, water_increase: float = 0.0, since: str = "", data_dir: Path | None = None) -> dict[str, Any]:
@@ -1485,11 +1485,11 @@ def utility_brief(year: int = 0, water_increase: float = 0.0, since: str = "", d
     not an adopted City rate. Integer cents. Reads disk only; repeat the caveats."""
     from datetime import date as _date
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.utilities import utilities_brief
 
     return utilities_brief(
-        _data_dir(data_dir), mystique(), year=int(year) or None, water_increase=float(water_increase or 0.0),
+        _data_dir(data_dir), active(), year=int(year) or None, water_increase=float(water_increase or 0.0),
         since=_date.fromisoformat(since) if since else None,
     )
 
@@ -1511,13 +1511,13 @@ def utility_accounts(data_dir: Path | None = None) -> dict[str, Any]:
     """Every SMUD and City account: its purpose from the specification (building, ACA lot, pump room), and the meters,
     sizes, service address, parcel, and first and last bill the bills themselves state, with notes on replaced meters,
     accounts the specification does not name, and accounts with no recent bill."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.utilities import load_bills, service_map, store_path
 
     path = store_path(_data_dir(data_dir))
     if not path.is_file():
         return {"found": False, "note": "no utility store; run jason utilities"}
-    return {"found": True, "accounts": service_map(load_bills(path), mystique())}
+    return {"found": True, "accounts": service_map(load_bills(path), active())}
 
 
 def utility_payments(problems_only: bool = True, since: str = "", limit: int = 80, data_dir: Path | None = None) -> dict[str, Any]:
@@ -1545,10 +1545,10 @@ def pest_program(key: str = "proactive", data_dir: Path | None = None) -> dict[s
     stations' activity by month from the technicians' notes; visits by building; and the vendor's inspection reports
     with their quotes. The declaration decides who pays (CC&Rs Article 7, Section 7); the duty is "Pest control" in
     duty_brief. Reads disk only; the vendor's record is the vendor's."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.pests import pest_brief
 
-    portal = next((p for p in mystique().vendor_portals() if p.key == key), None)
+    portal = next((p for p in active().vendor_portals() if p.key == key), None)
     if portal is None:
         return {"found": False, "note": f"no vendor portal {key!r}"}
     return pest_brief(_data_dir(data_dir), portal)
@@ -1607,12 +1607,12 @@ def vendor_portal(key: str = "proactive", visits: int = 5, findings: bool = True
     same invoice on two payments). Integer cents. Reads disk only; findings are for the treasurer."""
     import json as _json
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.vendor_portals import portal_brief, portal_root
 
-    portal = next((p for p in mystique().vendor_portals() if p.key == key), None)
+    portal = next((p for p in active().vendor_portals() if p.key == key), None)
     if portal is None:
-        return {"found": False, "note": f"no vendor portal {key!r}; known: " + ", ".join(p.key for p in mystique().vendor_portals())}
+        return {"found": False, "note": f"no vendor portal {key!r}; known: " + ", ".join(p.key for p in active().vendor_portals())}
     root = _data_dir(data_dir)
     brief = portal_brief(root, portal, visits=int(visits))
     if findings and brief.get("found"):
@@ -1629,7 +1629,7 @@ def vendor_portal(key: str = "proactive", visits: int = 5, findings: bool = True
 def bank_accounts(data_dir: Path | None = None) -> dict[str, Any]:
     """The association's bank accounts and their balances at the last `jason budget` sync, named from the
     specification, plus every other account PayHOA lists (a former manager's accounts carry no balance). Integer cents."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.finance import balances, latest_year, load
 
     root = _data_dir(data_dir)
@@ -1637,7 +1637,7 @@ def bank_accounts(data_dir: Path | None = None) -> dict[str, Any]:
     snap = load(root, year) if year else None
     if snap is None:
         return {"found": False, "note": "no finance snapshot; run jason budget"}
-    named = balances(snap, mystique().bank_accounts())
+    named = balances(snap, active().bank_accounts())
     matched = {b.payhoa_name for b in named}
     others = [{"name": row.get("friendlyName"), "balanceCents": row.get("plaidBalance")} for row in snap.get("bankAccounts") or []
               if row.get("friendlyName") not in matched]
@@ -1730,7 +1730,7 @@ def association_collections(data_dir: Path | None = None) -> dict[str, Any]:
     CREDIT, with the statute's next step and the section 5720 foreclosure-floor question. Amounts are integer cents.
     The ledger's past-due figure can include late charges and fees the floor excludes. Jason does not send an account
     to a collection agency, record a lien, or start a foreclosure; those are the board's decisions."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.collections import collections, load_ledger
     from jason.tasks.property_history import load_parcel_histories
 
@@ -1738,7 +1738,7 @@ def association_collections(data_dir: Path | None = None) -> dict[str, Any]:
     ledger = load_ledger(root / "payhoa.db")
     if not ledger:
         return {"found": False, "note": "no PayHOA catalog at data/payhoa.db; run jason sync-catalog"}
-    rows = collections(load_parcel_histories(mystique(), root), ledger)
+    rows = collections(load_parcel_histories(active(), root), ledger)
     counts: dict[str, int] = {}
     for row in rows:
         counts[row.standing.name] = counts.get(row.standing.name, 0) + 1
@@ -1759,7 +1759,7 @@ def board_digest(since: str = "", days: int = 30, data_dir: Path | None = None) 
     from datetime import date as _date
     from datetime import timedelta
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.briefs import board_digest as build
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
@@ -1767,7 +1767,7 @@ def board_digest(since: str = "", days: int = 30, data_dir: Path | None = None) 
         day = _date.fromisoformat(since.strip()) if since.strip() else _date.today() - timedelta(days=max(1, int(days)))
     except ValueError:
         return {"error": "since is YYYY-MM-DD"}
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     from jason.community.collections import load_ledger
     from jason.tasks.finance import finance_summary, latest_year, load as load_finance
@@ -1786,7 +1786,7 @@ def recent_filings(since: str, data_dir: Path | None = None) -> dict[str, Any]:
     """
     from datetime import date as _date
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.briefs import recent_filings as build
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
@@ -1794,7 +1794,7 @@ def recent_filings(since: str, data_dir: Path | None = None) -> dict[str, Any]:
         day = _date.fromisoformat(since.strip())
     except ValueError:
         return {"error": "since is YYYY-MM-DD", "filings": []}
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     rows = build(load_parcel_histories(community, root), load_association_record(community, root), day)
     return {"since": day.isoformat(), "count": len(rows), "filings": rows}
@@ -1803,11 +1803,11 @@ def recent_filings(since: str, data_dir: Path | None = None) -> dict[str, Any]:
 def lifecycle_of(number: str, data_dir: Path | None = None) -> dict[str, Any]:
     """Where a recorded document number sits in the stores: on a chain, in an owner's lien lifecycle, as an owner
     event, in the association's record, or nowhere yet. A lifecycle comes back whole, with its status and the law."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.briefs import lifecycle_lookup
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     return lifecycle_lookup(load_parcel_histories(community, root), load_association_record(community, root), number)
 
@@ -1815,11 +1815,11 @@ def lifecycle_of(number: str, data_dir: Path | None = None) -> dict[str, Any]:
 def assessment_liens(data_dir: Path | None = None) -> dict[str, Any]:
     """The association's own assessment liens, unit by unit, with where each stands under Civil Code sections
     5650 to 5720. The sheet is the handoff; nothing is submitted to a collection agency."""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.briefs import assessment_liens as build
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     return build(load_parcel_histories(community, root), load_association_record(community, root))
 
@@ -1838,11 +1838,11 @@ def index_survey(data_dir: Path | None = None, limit: int = 40) -> dict[str, Any
     ``unmodeled`` lists filings whose class is ``other``, most common first,
     with how many name a community party. Reads disk only.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.filings import Family, instrument_class
     from jason.community.index_cache import IndexCache
 
-    community = mystique()
+    community = active()
     developers = community.developers()
     project = community.index_project().upper()
     families: dict[str, int] = {}
@@ -1886,11 +1886,11 @@ def mechanics_liens(data_dir: Path | None = None) -> dict[str, Any]:
     Civil Code section 8460: unenforceable, but of record until released.
     Reads disk only; ``jason sync-liens`` fetches the filings first.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.filings import Process
     from jason.tasks.property_history import load_association_record, load_parcel_histories
 
-    community = mystique()
+    community = active()
     root = _data_dir(data_dir)
     record = load_association_record(community, root)
     found: list[dict[str, Any]] = []
@@ -1918,11 +1918,11 @@ def solar_status(apn: str = "", data_dir: Path | None = None) -> dict[str, Any]:
     disk; ``jason sync-solar`` refreshes the filings first. No filing is not
     proof of purchase.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.property_report import shared_filing_notes
     from jason.tasks.property_history import load_parcel_histories
 
-    community = mystique()
+    community = active()
     program = community.solar_program()
     if program is None:
         return {"found": False, "units": [], "note": "the specification names no solar program"}
@@ -1962,10 +1962,10 @@ def unit_number(unit: int) -> dict[str, Any]:
     parcels each. ``ambiguous`` is true then. A unit number places a deed
     only on a 2007 deed that prints the block's parent parcel.
     """
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.reports import unit_parcels
 
-    community = mystique()
+    community = active()
     found = unit_parcels(int(unit), community.unit_blocks())
     return {
         "unit": int(unit),
@@ -2062,15 +2062,15 @@ def _store(root: Path) -> OwnershipStore:
 
 
 def _units() -> tuple[str, ...]:
-    from jason.community import mystique
+    from jason.community import community as active
 
-    return mystique().units()
+    return active().units()
 
 
 def _developers() -> tuple[Developer, ...]:
-    from jason.community import mystique
+    from jason.community import community as active
 
-    return mystique().developers()
+    return active().developers()
 
 
 def _find_record(store: OwnershipStore, apn: str) -> OwnershipRecord | None:

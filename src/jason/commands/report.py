@@ -38,9 +38,9 @@ def named_reports(data_dir) -> list[tuple[str, dict[str, str]]]:
 
 
 def _next_meeting() -> date:
-    from jason.community import mystique
+    from jason.community import community as active
 
-    return mystique().meeting_schedule().next_meeting(date.today(), monthly=True)
+    return active().meeting_schedule().next_meeting(date.today(), monthly=True)
 
 
 def _catalog(data_dir) -> int:
@@ -60,7 +60,7 @@ def _catalog(data_dir) -> int:
 
 
 def cmd_report(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks import live_reports
 
     data_dir = _data_dir(args)
@@ -97,7 +97,7 @@ def cmd_report(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) ->
         print("--doc rewrites each report's own Google Doc and files a packet run's PDF (private, My Drive/Meetings/"
               "Reports); add --yes", file=sys.stderr)
         return 2
-    community = mystique()
+    community = active()
     context = {"on": date.fromisoformat(args.date) if args.date else _next_meeting()}
     failed = 0
     for key, params in targets:

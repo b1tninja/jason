@@ -55,9 +55,9 @@ def is_city_sac_transaction(
 def _utility(tx: dict[str, Any], utility: Any, category_id: int | None | _UseSpec):
     from dataclasses import replace
 
-    from jason.community import first_utility, mystique
+    from jason.community import community as active, first_utility
 
-    rules = mystique().transaction_rules()
+    rules = active().transaction_rules()
     if not isinstance(category_id, _UseSpec):
         rules = tuple(
             replace(rule, category_id=category_id) if rule.utility is utility else rule

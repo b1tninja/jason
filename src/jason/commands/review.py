@@ -34,11 +34,11 @@ def plain(text: str) -> str:
 
 
 def cmd_review(args: argparse.Namespace) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.prompts import TaskKind
     from jason.tasks.manager_review import brief_path, build, run, save_pack, save_review
 
-    community = mystique()
+    community = active()
     if args.list:
         for task in community.task_prompts():
             print(f"{task.kind.slug:22} topics {len(task.topics):2}  kinds {len(task.documents):2}  "

@@ -97,10 +97,10 @@ def plans(community: Any, packet: Any, year: int, data_dir: Path, *, only: str =
 
 
 def cmd_packet(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.tasks.packets import packet_dir, plan_lines, varies
 
-    community = mystique()
+    community = active()
     packet = community.packet(args.packet)
     data_dir = _data_dir(args)
     every = plans(community, packet, args.year, data_dir, only=str(args.building or ""))

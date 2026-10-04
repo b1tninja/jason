@@ -48,9 +48,9 @@ def schema(community: Any = None) -> tuple[LabelProperty, ...]:
     rows = hook() if callable(hook) else None
     if rows:
         return tuple(rows)
-    from jason.community import mystique
+    from jason.community import community as active
 
-    mystique()                                   # registers the mystique package
+    active()                                   # registers the mystique package
     return tuple(importlib.import_module("mystique.labels").APP_PROPERTIES)
 
 

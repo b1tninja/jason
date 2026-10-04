@@ -19,12 +19,12 @@ from typing import Any, Callable
 
 
 def cmd_delivery(args: argparse.Namespace, agent_factory: Callable[[Any], Any] | None = None) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.config import Settings
     from jason.tasks.broadcast import catalog_rows
     from jason.tasks.notice_delivery import plan
 
-    community = mystique()
+    community = active()
     tags = community.payhoa_tags()
     units, people, synced = catalog_rows(Settings.load(args.env).payhoa_catalog)
     if args.tags:

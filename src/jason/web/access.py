@@ -616,9 +616,10 @@ def _viewer() -> tuple[Viewer | None, Response | None]:
 
 
 def clean_reason(reason: str) -> str:
-    """A stated reason as it is logged: one line, short, contact details masked; empty when it looks like a secret."""
+    """A stated reason as it is logged: one line, short, contact details (email, phone, street or mailing address)
+    masked as the audit log masks them; empty when it looks like a secret."""
+    from jason.approvals.audit import mask
     from jason.community.intake import secret_reason
-    from jason.web.approvals import mask
 
     text = " ".join(str(reason or "").split())[:REASON_CHARS]
     if not text or secret_reason(text):

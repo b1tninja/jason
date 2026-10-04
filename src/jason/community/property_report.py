@@ -517,10 +517,10 @@ def _unit_note(item: ParcelHistory) -> str:
     """The unit under its building's numbering, and the other parcel that shares the number."""
     if not item.unit:
         return ""
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.reports import unit_parcels
 
-    blocks = mystique().unit_blocks()
+    blocks = active().unit_blocks()
     others = [
         f"{parcel_number(apn)} on building {int(block.building)}"
         for block, apn in unit_parcels(item.unit, blocks)

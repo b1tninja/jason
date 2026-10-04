@@ -1025,6 +1025,28 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/web-ui.md (dock)", "docs/console/screens/today.md"),
            notes=("Still open: engine approvals are not counted; the Tasks \"Mine\" filter matches the name only; "
                   "generated calendar rows (insurance renewal, reserve-study visit) have no covering assignment.",)),
+    Lesson("profile-old-name", date(2026, 10, 4), (Area.REPOSITORY,),
+           "General code (about 300 references in 30 files, some 70 functions in mcp/county.py) still reached the "
+           "profile through mystique(), the name from before profiles.",
+           "The alias returns the same object, so nothing failed, and new code copied the old pattern.",
+           "Callers use `from jason.community import community as active` and `active()`; the alias stays for "
+           "callers outside src/jason. tasks/board_items.py is the one file left, held in the ratchet.",
+           Status.OPEN, guards=("tests/test_profile_access.py (an AST scan of src/jason; a ratchet that only goes "
+                                "down)",)),
+    Lesson("audit-log-masks-email-only", date(2026, 10, 4), (Area.DOCUMENTS, Area.REPOSITORY),
+           "approvals.audit.mask replaced email addresses only, so a phone number or mailing address in a detail "
+           "was written to the hash-chained audit.jsonl, masked only on the way out; a chained line cannot be "
+           "cleaned later. The private view's stated reason had no address masking, and a sign-in refusal's why "
+           "had none at all.",
+           "The console's outbound mask added phones on top of the audit's email mask, and the write-time mask "
+           "was never widened to match.",
+           "audit.mask masks emails, phones, and street or PO-box addresses when a line is written; "
+           "access.clean_reason and signin._log's why go through it; the console's outbound mask calls it with "
+           "addresses=False, so what it shows is unchanged. Lines already written are left: rewriting them breaks "
+           "the chain, a person's decision.",
+           Status.FIXED, guards=("tests/test_audit_mask.py (contacts masked; ids, dates, cents, and paths survive; "
+                                 "the chain verifies)",),
+           docs=("docs/console/security-and-privacy.md (audit.jsonl)",)),
 )
 
 

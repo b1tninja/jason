@@ -207,11 +207,12 @@ def test_the_command_plans_from_disk_and_fails_fast_without_google(tmp_path, mon
     from jason.cli import build_parser
     from jason.commands import schedule as command
 
+    parser = build_parser()                     # before the fake: the parser reads the profile's vendor portals
     monkeypatch.setattr(community_module, "community", _community)
     monkeypatch.setattr(command, "_data_dir", lambda args: tmp_path)
     monkeypatch.setattr(sync, "calendar_plan", lambda data_dir, c, **kw: {
         "from": date(2026, 9, 2), "until": date(2027, 1, 2), "events": [], "notes": []})
-    args = build_parser().parse_args(["schedule", "--tasks", "--calendar", "--plan-only"])
+    args = parser.parse_args(["schedule", "--tasks", "--calendar", "--plan-only"])
     called = []
     args.agent_factory = lambda a: called.append(a)
     assert command.cmd_schedule(args) == 0 and not called
@@ -228,7 +229,7 @@ def test_the_command_plans_from_disk_and_fails_fast_without_google(tmp_path, mon
         def google_tasks(self):
             raise GoogleAuthRequired("Google sign-in needs a browser. Pass interactive=True.")
 
-    args = build_parser().parse_args(["schedule", "--tasks"])
+    args = parser.parse_args(["schedule", "--tasks"])
     assert args.yes is False and args.interactive is False
     args.agent_factory = lambda a: Agent()
     with pytest.raises(GoogleAuthRequired):

@@ -16,7 +16,7 @@ from typing import Any, Callable
 def cmd_lessons(args: argparse.Namespace) -> int:
     from dataclasses import asdict
 
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.lessons import Area, Status, lessons
 
     try:
@@ -24,7 +24,7 @@ def cmd_lessons(args: argparse.Namespace) -> int:
     except ValueError:
         print(f"areas: {', '.join(a.value for a in Area)}", file=sys.stderr)
         return 2
-    found = [l for l in lessons(mystique()) if (area is None or l.applies_to(area))
+    found = [l for l in lessons(active()) if (area is None or l.applies_to(area))
              and (not args.open or l.status is not Status.FIXED)]
     if args.json:
         print(json.dumps([{**asdict(l), "learned": l.learned.isoformat(), "areas": [a.value for a in l.areas],
@@ -125,10 +125,10 @@ def register_conflicts(sub: Any, add_common: Callable[[Any], None]) -> None:
 
 
 def cmd_sop(args: argparse.Namespace) -> int:
-    from jason.community import mystique
+    from jason.community import community as active
     from jason.community.procedures import find, lines, procedures
 
-    community = mystique()
+    community = active()
     if not args.key:
         for proc in procedures(community):
             print(f"{proc.key}: {proc.title} ({len(proc.steps)} steps). {proc.when}")

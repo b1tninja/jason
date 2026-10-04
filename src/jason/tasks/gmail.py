@@ -262,9 +262,9 @@ def correspondence(data_dir: Path, names: tuple[str, ...] = (), community: Any =
     The sender is resolved when read, so a domain added to ``mystique/senders.py`` takes effect without a new sync.
     """
     if community is None:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        community = mystique()
+        community = active()
     senders = tuple(getattr(community, "senders", lambda: ())())
     rows = []
     for m in _load(data_dir, CORRESPONDENCE).get("messages") or []:
@@ -402,9 +402,9 @@ def check_lines(check: dict[str, Any], corr: dict[str, Any] | None = None) -> li
     if check["scannedWithoutNotice"]:
         out.append(f"  synced items with no Gmail notice: {len(check['scannedWithoutNotice'])}")
     if corr:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        senders = tuple(mystique().senders())
+        senders = tuple(active().senders())
         messages = [m for m in corr.get("messages") or [] if m.get("domains")]
         by_sender: dict[str, int] = {}
         unnamed: dict[str, int] = {}
@@ -423,7 +423,7 @@ def check_lines(check: dict[str, Any], corr: dict[str, Any] | None = None) -> li
         if unnamed:
             out.append("  domains no sender names (see jason contacts): "
                        + ", ".join(f"{d} {n}" for d, n in sorted(unnamed.items(), key=lambda kv: -kv[1])[:25]))
-        out.extend(group_lines(corr.get("messages") or [], tuple(mystique().google_groups())))
+        out.extend(group_lines(corr.get("messages") or [], tuple(active().google_groups())))
     out.append("")
     out.extend(f"* {c}" for c in check["caveats"])
     return out

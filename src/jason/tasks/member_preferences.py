@@ -318,10 +318,10 @@ def _to_record(answers: dict[str, Any], owner: Owner, submitted: str) -> tuple[d
             record["mailing address"] = ("the unit (the box: same as my unit address), but PayHOA's profile has "
                                          "another address: a person changes it")
     elif answers.get("mailing-address") and not newer_profile:
-        from jason.community import mystique
+        from jason.community import community as active
         from jason.community.postal import read_mailing_address
 
-        found, how = read_mailing_address(str(answers["mailing-address"]), mystique().unit_city_state_zip())
+        found, how = read_mailing_address(str(answers["mailing-address"]), active().unit_city_state_zip())
         record["mailing address"] = ("given on the form: compare with PayHOA's profile" if found is not None
                                      else "given on the form, but it does not read as an address: a person enters it")
         if how:

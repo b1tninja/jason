@@ -306,9 +306,9 @@ def meeting_text(data_dir: Path, key: str, *, include_confidential: bool = False
     and the rest is held back; Zoom's AI summary and the chat cover the whole call, so they are held back too. A
     meeting that mentions an executive session or hearing with no break found is held back whole."""
     if community is None:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        community = mystique()
+        community = active()
     root = zoom_dir(data_dir)
     found = _find(load_index(data_dir), key)
     if not found:

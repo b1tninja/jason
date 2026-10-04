@@ -5,8 +5,8 @@ CLI or the console), the operating-system user, the fingerprint, the items, the 
 carries the hash of the line before it (``prev``) and its own (``hash``), so an edit anywhere breaks the chain and
 ``verify`` names the first broken line. That makes tampering detectable, not impossible.
 
-No code path rewrites or deletes a line. A line holds nothing above a name and a tag: an email address in a detail is
-masked before it is written.
+No code path rewrites or deletes a line. A line holds nothing above a name and a tag: an email address, a phone number,
+or a street or mailing address in any field is masked before it is written (``mask``).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from jason.approvals.evidence import _PHONE
 from jason.approvals.model import canonical, digest
 
 EVENTS = (
@@ -27,6 +28,17 @@ EVENTS = (
     "cli.applied",
 )
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+# a street address: a house number, one to four capitalized words, a street type, then any unit and city, state, ZIP;
+# capitalized (or all caps) so a sentence ("2 in the same way") is not an address
+_TYPES = ("Street", "St", "Avenue", "Ave", "Boulevard", "Blvd", "Drive", "Dr", "Lane", "Ln", "Road", "Rd", "Way",
+          "Court", "Ct", "Circle", "Cir", "Place", "Pl", "Terrace", "Ter", "Parkway", "Pkwy", "Highway", "Hwy", "Walk",
+          "Loop", "Trail", "Trl")
+_WORD = r"(?:[A-Z][A-Za-z'.-]*|\d+(?:st|nd|rd|th))"
+_UNIT = r"(?:,?\s*(?:#\s*|(?:Apt|APT|Apartment|Unit|UNIT|Ste|STE|Suite|SUITE)\.?\s+)[\w-]+)?"
+_PLACE = rf"(?:,?\s+[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){{0,3}},?\s+[A-Z]{{2}},?\s+\d{{5}}(?:-\d{{4}})?)?"
+_STREET = re.compile(rf"(?<![\w$.,/-])\d{{1,6}}[A-Z]?(?:-\d{{1,6}})?(?:\s+{_WORD}){{1,4}}?\s+"
+                     rf"(?:{'|'.join(t for x in _TYPES for t in (x, x.upper()))})\b\.?{_UNIT}{_PLACE}")
+_PO_BOX = re.compile(rf"\b(?:P\.?\s?O\.?|Post\s+Office)\s*Box\s+\d+\b{_PLACE}", re.IGNORECASE)
 
 
 def path(data_dir: Path | None = None) -> Path:
@@ -43,14 +55,17 @@ def os_actor() -> str:
         return "os:unknown"
 
 
-def mask(value: Any) -> Any:
-    """``value`` with any email address replaced: the log holds names and tags, never contact details."""
+def mask(value: Any, *, addresses: bool = True) -> Any:
+    """``value`` with each email address, phone number (the evidence's pattern), and, unless ``addresses`` is False,
+    street or mailing address replaced (``[email]``, ``[phone]``, ``[address]``): the log holds names and tags, never
+    contact details. Ids, dates, cents, and paths are left as they are."""
     if isinstance(value, str):
-        return _EMAIL.sub("[email]", value)
+        out = _PHONE.sub("[phone]", _EMAIL.sub("[email]", value))
+        return _PO_BOX.sub("[address]", _STREET.sub("[address]", out)) if addresses else out
     if isinstance(value, dict):
-        return {k: mask(v) for k, v in value.items()}
+        return {k: mask(v, addresses=addresses) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [mask(v) for v in value]
+        return [mask(v, addresses=addresses) for v in value]
     return value
 
 
