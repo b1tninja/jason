@@ -988,7 +988,7 @@ class Jason:
             ),
         ]
         for portal in self.community.vendor_portals():
-            if self.settings.record_uid(portal.key):
+            if self.settings.record_uid(portal.key) and portal.platform.name == "FIELDPORTALS":
                 sources.append(VendorPortalBillSource(portal, self.settings.payhoa_catalog.parent))
         return BillSourceRegistry(sources)
 
@@ -997,16 +997,17 @@ class Jason:
         from jason.community.symbols import PortalPlatform
         from jason.fieldportals.client import FieldPortals
         from jason.secrets import get_vendor_credentials
+        from jason.signalservice.client import SignalService
 
         if key in self._portals:
             return self._portals[key]
         portal = next((p for p in self.community.vendor_portals() if p.key == key), None)
         if portal is None:
             raise LookupError(f"no vendor portal {key!r} in the specification")
-        if portal.platform is not PortalPlatform.FIELDPORTALS:
+        if portal.platform not in (PortalPlatform.FIELDPORTALS, PortalPlatform.SIGNAL_SERVICE):
             raise LookupError(f"no client for {portal.platform}")
         creds = get_vendor_credentials(key, settings=self.settings, interactive=self._interactive)
-        client = FieldPortals(portal.account)
+        client = FieldPortals(portal.account) if portal.platform is PortalPlatform.FIELDPORTALS else SignalService(portal.account)
         client.login(creds.login, creds.password)
         self._portals[key] = client
         return client
@@ -1124,9 +1125,14 @@ class Jason:
 
     def sync_vendor_portal(self, key: str, *, full: bool = False, log: Any = None):
         """Sync one vendor portal to ``data/vendors/<key>``: account, visits, products, files, and checked invoices."""
+        from jason.community.symbols import PortalPlatform
         from jason.tasks.vendor_portals import sync_portal
 
         portal = next(p for p in self.community.vendor_portals() if p.key == key)
+        if portal.platform is PortalPlatform.SIGNAL_SERVICE:
+            from jason.tasks.signal_service import sync_signal
+
+            return sync_signal(self.vendor_portal(key), portal, self.settings.payhoa_catalog.parent, full=full, log=log)
         return sync_portal(self.vendor_portal(key), portal, self.settings.payhoa_catalog.parent, full=full, log=log)
 
     def attach_bills(

@@ -52,4 +52,15 @@ VENDOR_PORTALS: tuple[VendorPortal, ...] = (
         service="Bi-weekly exterior pest control",
         license=PROACTIVE_LICENSE,
     ),
+    # Signal Service, Inc (fire alarm monitoring, Angels Camp): its portal is a Django site, account 15520 with a
+    # site per building. Quarterly invoices on the 16th-17th, one per building; PayHOA vendor "Signal Service Inc".
+    VendorPortal(
+        key="signalservice",
+        vendor="Signal Service, Inc",
+        platform=PortalPlatform.SIGNAL_SERVICE,
+        account="portal.signalserviceinc.com",
+        budget_line="Fire Alarm Monitoring",
+        payhoa_words=("SIGNAL SERVICE",),
+        service="Fire alarm monitoring, inspection, and equipment lease",
+    ),
 )

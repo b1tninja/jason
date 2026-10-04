@@ -331,6 +331,7 @@ class PortalPlatform(Enum):
     """The software a vendor's customer portal runs on; one client per platform, one spec row per vendor."""
 
     FIELDPORTALS = "fieldportals"
+    SIGNAL_SERVICE = "signal_service"
 
 
 class Utility(Enum):

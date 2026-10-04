@@ -259,6 +259,12 @@ def load_accounts(data_dir: Path, key: str) -> list[dict[str, Any]]:
 
 def portal_brief(data_dir: Path, portal: Any, *, visits: int = 5, today: date | None = None) -> dict[str, Any]:
     """What the portal says, from disk: each property's plan and balance, the latest visits, products this year, files."""
+    from jason.community.symbols import PortalPlatform
+
+    if portal.platform is PortalPlatform.SIGNAL_SERVICE:
+        from jason.tasks.signal_service import signal_brief
+
+        return signal_brief(data_dir, portal, today=today)
     day = today or date.today()
     root = portal_root(data_dir, portal.key)
     accounts = load_accounts(data_dir, portal.key)
@@ -304,6 +310,10 @@ def portal_brief(data_dir: Path, portal: Any, *, visits: int = 5, today: date | 
 def brief_lines(brief: dict[str, Any]) -> list[str]:
     if not brief.get("found"):
         return [brief.get("note", "no portal data")]
+    if "dueCents" in brief:
+        from jason.tasks.signal_service import signal_lines
+
+        return signal_lines(brief)
     out = [f"{brief['vendor']} ({brief['service']}; budget line {brief['budgetLine']})"]
     for p in brief["properties"]:
         plan = "; ".join(f"{s['title']} ${s['recurringCents'] / 100:,.2f} since {s['sold']}, next {', '.join(s['next'])}" for s in p["plan"])
