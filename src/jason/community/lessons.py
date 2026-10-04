@@ -1169,8 +1169,8 @@ LESSONS: tuple[Lesson, ...] = (
            "named after the vendor whose layout it reads may be pointed to in a code span.",
            Status.FIXED, guards=("tests/test_profile.py: a manager is an instance term; a manager named in a general "
                                  "pattern is found", "python -m jason.community.boundary"),
-           notes=("Not yet in the boundary's terms: the directory's other counterparties (law firms, vendors). One "
-                  "general reader still names a law firm in its patterns (models/legal_collections.py).",)),
+           notes=("The directory's other counterparties joined the terms, and the law firm left "
+                  "models/legal_collections.py: lesson counterparty-named-in-general-readers.",)),
     Lesson("reading-untied-from-the-words", date(2026, 10, 4), (Area.GOVERNING,),
            "A reading of a provision was kept as a sentence in a rule row or a doc, with nothing tying it to the words "
            "it read. When the statute was amended the sentence stayed, and nothing marked it for review.",
@@ -1301,6 +1301,29 @@ LESSONS: tuple[Lesson, ...] = (
            "Still to do: regenerate with scripts/gen_cli_docs.py once the sessions' command changes are committed, and "
            "a test that compares the page's commands with the parser's.",
            Status.OPEN, docs=("docs/cli.md",)),
+    Lesson("counterparty-named-in-general-readers", date(2026, 10, 4), (Area.REPOSITORY,),
+           "Three general readers recognized the association's law firms by name (a pre-lien notice's sender and who "
+           "printed its ledger, a lien's requester, a legal letter's and a brief's firm), and the reserve study reader "
+           "named its balcony inspector. The boundary did not see them. Where a module does read one vendor's own layout "
+           "(a bank's statement), the only way to pass the check was a baseline entry.",
+           "The boundary took managers from the sender directory and no other counterparty, and it had no way to tell a "
+           "reader of one vendor's layout from a general reader that names a counterparty.",
+           "sources.sender_in and sender_name find a counterparty of a given kind through the profile's senders; one the "
+           "directory does not list is a miss. boundary.sender_terms takes every counterparty's name and words (no "
+           "government agency, public utility, platform, or owner; no word with a digit, under five characters, or in "
+           "KIND_WORDS; a one-word name only when it is among the sender's words). A reader of one vendor's layout is "
+           "declared as an Adapter row (jason.community.adapters, or its InvoiceFormat row) and listed in "
+           "docs/adapters.md: the vendor's name is then allowed in that module and in a document's code span, nowhere "
+           "else, and a stale or unlisted declaration fails the check.",
+           Status.FIXED,
+           guards=("tests/test_profile.py: a counterparty is an instance term; a counterparty in a general pattern is "
+                   "found unless the module is its declared adapter; every adapter is listed and borne out; no general "
+                   "reader names a law firm", "python -m jason.community.boundary"),
+           docs=("docs/adapters.md",),
+           notes=("Not seen by the boundary (plain strings, tuples of patterns, patterns given to first()): "
+                  "models/insurance_claims.py _CARRIERS, models/developer_security.py, postscanmail/models.py, "
+                  "tasks/board_packet.py, tasks/request_sheet.py. Widening the sites to the model helpers' patterns adds "
+                  "ten pairs; to every string, ninety-one.",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "
