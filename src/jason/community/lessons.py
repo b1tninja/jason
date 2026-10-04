@@ -1132,10 +1132,14 @@ LESSONS: tuple[Lesson, ...] = (
            "of 980 findings came from a check that read more than the record, and three readers' fields were filled "
            "from a store or today during parse.",
            "One call parsed and checked, and a row recorded no digest of its text, no reader version, and no as-of date.",
-           "Each row now records textSha, version, asOf, fieldsBasis, and each finding's basis, observed from what the "
-           "call read (jason models --basis). Still to do: move the as-of and cross-document checks to a review store, "
-           "and stop readers reading stores during parse (docs/ingestion-and-review.md).",
+           "Each row now records textSha, version, asOf, fieldsBasis, and each finding's basis (jason models --basis). "
+           "The checks that need only the stored fields and a date are rows of the as-of lens "
+           "(jason.community.reviews), made from the stored fields and kept in data/reviews/documents (jason models "
+           "--as-of); a contract's parse reads no date and an agenda's reads no store. Still to do: the checks that "
+           "read another document or store, as a collection's lens, and the fields a parse fills from the profile.",
            Status.OPEN,
+           guards=("tests/test_reviews.py: a contract is parsed the same on any day; an agenda's notice fields come "
+                   "from the log after the parse; the as-of lens is a record of rows",),
            docs=("docs/ingestion-and-review.md", "docs/document-models/README.md (What a reading records about its own making)")),
     Lesson("index-flag-per-file-not-per-catalog", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The retired catalog sync decided confidentiality a catalog or a row at a time: a library file with one copy "
@@ -1215,6 +1219,88 @@ LESSONS: tuple[Lesson, ...] = (
            "dates_in wants one space before the year; a line break there is not one.",
            "Still to do: read dates across a line break (dates_in or the reader), with a fixture that wraps one.",
            Status.OPEN, docs=("docs/fire-protection.md",)),
+    Lesson("form-line-is-not-one-fact", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A rule that took the same dated words with different amounts for one fact reported a conflict that was ten "
+           "copies of one bill's stub, each for a different parcel.",
+           "A form's line or a table's row is the same words in every copy of the form. Sameness of words was read as "
+           "sameness of subject.",
+           "The rule takes only a sentence (fact_conflicts.is_prose), leaves out a sentence addressed to \"you\", and "
+           "leaves out one a single document repeats with different amounts. The stored-field rule says what a document "
+           "is about by FieldRule.same (the thing and its period), never by its words.",
+           Status.FIXED, guards=("tests/test_chronology.py: the text rules are narrow and name themselves",),
+           docs=("docs/collections.md",),
+           notes=("The text rules have no true positive on real documents yet: measure each on documents with known "
+                  "answers before it is relied on.",)),
+    Lesson("subject-is-the-thing-not-its-number", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "Comparing policies that share a policy number and a term found nothing; the real difference was two policy "
+           "numbers for one building and one term.",
+           "The identifier was used to say two documents are about the same thing, so a difference in the identifier "
+           "itself could never be seen.",
+           "A kind has a row by what the document covers and its period, with the identifier among the compared fields, "
+           "beside the row by identifier (fact_conflicts.FIELD_RULES).",
+           Status.FIXED, guards=("tests/test_chronology.py: a kind can have several rows and one difference is listed once",),
+           docs=("docs/collections.md",)),
+    Lesson("spoken-dates-carry-no-year", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "The chronology of a case file of caption transcripts was nearly empty: speech names a month and a day, "
+           "never a year, and a recording's date is only in its file name.",
+           "A transcript is cut from speech; the index held no other file of the case then.",
+           "A date a file's name prints is its own kind of event (DateRole.NAME), never the document's words, and the "
+           "page counts the month-and-day mentions it could not place. The case's PDFs now have text extracts, so its "
+           "chronology reads the filings. Still to do: a decision on placing a date with no year by its document's date.",
+           Status.OPEN, docs=("docs/collections.md",)),
+    Lesson("records-tier-index-cut-differs", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "Read from the passage index with the same latest files, the context pack's records tier gave the library "
+           "reader's sources on none of the six tasks that name record kinds.",
+           "The index cuts a file on its sections and ranks each passage with the file's context line; the library "
+           "reader cuts 220-word windows. There is no gold set for the pack. The section cut also leaves heading-only "
+           "passages under 20 words that rank well and say nothing.",
+           "The index reader is built and off (context_pack.RECORDS_FROM_INDEX = False), in both reaches; "
+           "tests/test_context_pack_records.py holds the fallback and the confidentiality. Still to do: a gold set "
+           "(gold-records.json), both reaches scored on it, and the stub passages merged into their neighbours.",
+           Status.OPEN, docs=("docs/rag-roadmap.md", "docs/applicability.md")),
+    Lesson("two-stores-two-confidentiality-answers", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "The library reader shows a members' task treasurer's reports that the passage index holds back: the "
+           "redacted copies, which the library does not flag and the index's held kinds include.",
+           "Two stores answer the same confidentiality question by different rules; the stricter is applied only when "
+           "the index is read.",
+           "A person decides which is right: the redacted copies are for members (then the index's rule is too strict "
+           "for them), or they are not (then the library reader holds them back too). One rule then serves both.",
+           Status.DECISION, docs=("docs/mcp.md (Confidential files in the index)",)),
+    Lesson("a-documents-list-is-not-the-whole-list", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A vendor's kinds of work read from a proposal were tested as complete, so a kind the proposal did not "
+           "mention read as \"does not apply\".",
+           "A many-valued fact was treated the same whatever stated it.",
+           "A set a document gives is partial: a value it leaves out is undetermined. A set the profile or a person "
+           "states is complete, and a reader that read the whole list says so (FactValue.complete).",
+           Status.FIXED, guards=("tests/test_applicability.py: a set read from a document is partial",),
+           docs=("docs/applicability.md",)),
+    Lesson("a-condition-kept-as-prose-cannot-be-asked", date(2026, 10, 4), (Area.GOVERNING,),
+           "Three notice elements carried \"only for ...\" as words, so no caller could state the event's facts and "
+           "every check left the condition to the reader.",
+           "The applicability module had no facet for a meeting or an event.",
+           "The event facet (how a meeting is held, an emergency rule change, electronic voting) and a condition on "
+           "each conditional element; with no facts the element is undetermined and names the fact (jason notice-check "
+           "--event). Conditions in NoticeRequirement.note are still prose.",
+           Status.FIXED, guards=("tests/test_notice_conditions.py", "notice_elements.Sign: a conditional element has "
+                                 "both its condition and its words"),
+           docs=("docs/notices.md", "docs/applicability.md")),
+    Lesson("answer-quotes-unchecked", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "Once the search tools returned passages and the client wrote the answer, nothing checked that the answer's "
+           "quotations were in the sources: an altered or invented quotation could reach a member as the rule's words.",
+           "prompts.verify checks only a manager review's quotes against its own pack; a free answer had no check.",
+           "quote_check.check gives each quotation a verdict (found, altered, misattributed, not found) with where it "
+           "is stored and its standing; verify_quotes and jason verify-quotes run it, and document_search's caveats "
+           "tell the client to.",
+           Status.FIXED, guards=("tests/test_quote_check.py", "jason verify-quotes FILE"),
+           docs=("docs/law-readings.md (Checking an answer's quotations)",),
+           notes=("The board profile does not serve verify_quotes: a person decides whether it joins that set.",)),
+    Lesson("cli-docs-drift-from-the-parser", date(2026, 10, 4), (Area.REPOSITORY,),
+           "docs/cli.md lists fewer commands than the parser has, and several new commands were added to it by hand.",
+           "The page is generated, but nothing checks it against the parser, and sessions working at once each hold "
+           "uncommitted command changes, so a regeneration by one would publish another's.",
+           "Still to do: regenerate with scripts/gen_cli_docs.py once the sessions' command changes are committed, and "
+           "a test that compares the page's commands with the parser's.",
+           Status.OPEN, docs=("docs/cli.md",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "
