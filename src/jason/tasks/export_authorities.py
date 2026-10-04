@@ -57,6 +57,9 @@ class Page:
     # A page a reader's miss brought down (jason.tasks.statute_fetch): the day, and what asked. Empty for the curated list.
     fetched: str = ""
     asked_by: str = ""
+    # Each section as [citation, the SHA-256 of its words], in the page's order (jason.community.law_text): what a
+    # reading is tied to. A section the page holds in two versions is there twice.
+    digests: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -67,11 +70,13 @@ class ExportReport:
     pointers: list[dict[str, str]] = field(default_factory=list)
     # Sections fetched on demand that no curated span covers: leads for a person to promote with a Basis and a reason.
     on_demand: list[Page] = field(default_factory=list)
+    # Sections whose words this export replaced: the rows added to changes.json, each with its history file.
+    changed: list[dict[str, Any]] = field(default_factory=list)
 
     def summary(self) -> str:
         sections = sum(len(p.sections) for p in self.pages)
         return (f"authorities session={self.session or '?'} pages={len(self.pages)} sections={sections} misses={len(self.misses)} "
-                f"pointers={len(self.pointers)} on_demand={len(self.on_demand)}")
+                f"pointers={len(self.pointers)} on_demand={len(self.on_demand)} changed={len(self.changed)}")
 
 
 @dataclass(frozen=True)
@@ -111,6 +116,12 @@ def export_authorities(library: LawLibrary, root: Path, *, spans: tuple[Authorit
                 if a.why not in reasons:
                     reasons.append(a.why)
             jobs.append(_Want(act.code, group.first, group.last, act.basis, tuple(reasons), group.heading))
+    from jason.locks import Resource, hold
+    from jason.tasks.authority_digests import keep_replaced, merged, snapshot
+
+    # The words on the shelf before anything is rewritten (the regulation pages are, just below).
+    with hold(Resource.STORE, STORE_KEY, purpose="jason export-authorities"):
+        before = snapshot(root)
     regulations = regulation_sections(root / PUBLICATIONS_DIR / REGULATIONS_FILE)
     for a in wanted:
         if a.shelf is Shelf.REGULATION and a.start == a.end and a.start in regulations:
@@ -126,11 +137,12 @@ def export_authorities(library: LawLibrary, root: Path, *, spans: tuple[Authorit
         report.pointers.append({"citation": pub.title, "shelf": Shelf.PUBLICATION.value, "source": pub.url, "why": pub.why})
 
     texts = library.spans([(j.code, j.start, j.end) for j in jobs])
-    from jason.locks import Resource, hold
-
     # The same lock a reader's read-through takes, so a page fetched on demand is not lost between read and write.
     with hold(Resource.STORE, STORE_KEY, purpose="jason export-authorities"):
+        before = merged(before, snapshot(root))     # with any page a reader fetched while lawlibrary was asked
         _write_export(root, report, jobs, texts)
+        # A section whose words changed keeps its replaced words (history/<citation>/<digest>.md, changes.json).
+        report.changed = keep_replaced(root, before)
     return report
 
 
@@ -162,6 +174,10 @@ def _write_export(root: Path, report: ExportReport, jobs: list[_Want], texts) ->
             continue
         if (root / page.file).is_file():
             report.on_demand.append(page)
+    from jason.tasks.authority_digests import page_digests
+
+    for page in (*report.pages, *report.on_demand):
+        page.digests = page_digests(root, page)
     out.mkdir(parents=True, exist_ok=True)
     (out / MANIFEST).write_text(json.dumps({
         "exported": date.today().isoformat(), "session": report.session, "pages": [asdict(p) for p in report.pages],

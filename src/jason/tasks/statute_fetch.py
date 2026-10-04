@@ -207,6 +207,9 @@ def _write(root: Path, code: str, start: str, end: str, sections, asked_by: str)
                     encoding="utf-8")
     page = Page(path.relative_to(root).as_posix(), citation, title, code, start, end, [s.number for s in sections],
                 "", [], session, fetched=today, asked_by=asked_by)
+    from jason.tasks.authority_digests import page_digests
+
+    page.digests = page_digests(root, page)
     manifest = read_manifest(root)
     rows = [p for p in manifest.get("on_demand") or [] if p.get("file") != page.file]
     manifest["on_demand"] = rows + [asdict(page)]

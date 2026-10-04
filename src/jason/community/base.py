@@ -1273,6 +1273,12 @@ class Community(ABC):
         allows. Empty until the specification records some."""
         return ()
 
+    def law_readings(self) -> tuple:
+        """The board's and counsel's readings of the law and of the governing documents
+        (``jason.community.law_readings.LawReading``), each tied to the digest of the words it reads. Empty until
+        the specification records some."""
+        return ()
+
     def owners_manual(self):
         """The owner's manual taken apart (``jason.community.manual.ManualSpec``): which of its sections are the
         operating rules, copies, policies, and guidance, and where each goes. None until the specification sets it."""

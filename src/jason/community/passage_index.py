@@ -140,7 +140,8 @@ SOURCES: tuple[IndexSource, ...] = (
     # over the whole index, hybrid MRR@10 0.71 to 0.75 with recall unchanged, and no change on the other gold sets.
     # A context line on each passage (the chapter path, why it is held, the standing) was measured too and gained
     # nothing clear, so the law's passages carry none (docs/document-tools.md, model trials).
-    IndexSource("authorities", "authorities", Standing.AUTHORITY, exclude=("publications/*",), front_matter=True),
+    # "history/*/*" is the words an export replaced (jason.community.law_text), kept by digest: never searched as the law.
+    IndexSource("authorities", "authorities", Standing.AUTHORITY, exclude=("publications/*", "history/*/*"), front_matter=True),
     IndexSource("reference", "reference", Standing.REFERENCE, exclude=("*.pdf.md",)),
 )
 

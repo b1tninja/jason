@@ -1041,6 +1041,13 @@ def cmd_export_authorities(args: argparse.Namespace) -> int:
                 print(f"  {item.citation}: {item.shelf.value}; {item.official}")
             _print_promotions(root)
             return 0
+        if args.digests:
+            # The pages already on disk: each section's digest goes into the manifest; lawlibrary is not asked.
+            from jason.tasks.authority_digests import backfill
+
+            for line in backfill(root).lines():
+                print(line)
+            return 0
         # The publications come first: the Commissioner's regulations PDF is where the Title 10 sections are read.
         if args.fetch_publications:
             for name in fetch_publications(root):
@@ -1053,6 +1060,10 @@ def cmd_export_authorities(args: argparse.Namespace) -> int:
         print(report.summary())
         for miss in report.misses:
             print(f"  miss: {miss}")
+        for row in report.changed:
+            print(f"  changed: {row['citation']}; the replaced words are kept in {row['history']}")
+        if report.changed:
+            print("  jason readings --stale lists the readings these changes made stale")
         _print_promotions(root)
     return 0
 
@@ -3641,6 +3652,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(auth)
     auth.add_argument("--list", action="store_true", help="List the exported pages and the pointers without calling lawlibrary")
     auth.add_argument("--fetch-publications", action="store_true", help="Also download the DRE publications into data/authorities/publications")
+    auth.add_argument("--digests", action="store_true", help="Record each section's digest in the manifest from the pages already on disk, without calling lawlibrary")
     auth.set_defaults(func=cmd_export_authorities)
 
     law_hist = sub.add_parser("law-history", help="The Davis-Stirling Act's history: where each former Civil Code 1350-1378 section "

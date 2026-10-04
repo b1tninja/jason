@@ -52,6 +52,7 @@ The companion axiom for what jason says, as against how it reads (AGENTS.md). Th
 - **Quote, cite, then read.** The operative words, quoted whole with their conditions and exceptions, and the citation (`{QUOTE:key#n}` in a document jason renders, [embedded-references.md](embedded-references.md); `jason cite` or the statute's text on disk otherwise). A reading follows, labeled as a reading and whose: "The board reads this to mean ...".
 - **Point to the words that answer.** Reciting is not a way to avoid the question. Courts reject "the document speaks for itself" as a response; say which words decide it.
 - **The governing version.** The words in force on the date that matters, from the recorded or adopted copy; jason's consolidated text carries its caveat.
+- **A stored reading follows the words.** A reading the board or counsel gave is a record tied to a digest of the words it read. It is recited after them, and set aside as stale when they change ([law-readings.md](law-readings.md), `jason readings`).
 - **Where it applies:** owner notices and letters, violation, hearing, and decision letters, answers to members' requests, board packets, and questions to counsel (which should recite the provisions they ask about).
 
 ### Where the idea comes from

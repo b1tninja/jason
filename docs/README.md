@@ -57,6 +57,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [drive-activity.md](drive-activity.md): who created, moved, renamed, trashed, or re-shared a Drive item, read from the Drive Activity API.
 - [document-readings.md](document-readings.md): reading the instruments' own text into concept records, and what OCR defeats.
 - [interpretation.md](interpretation.md): reading the law to give it effect: the statutes and cases behind the reading axiom, and its limits.
+- [law-readings.md](law-readings.md): the words apart from readings of them: a digest per section of the law, the history of replaced text, and reading records tied to the digest they read (`jason readings`), stale when the words change.
 - [responses.md](responses.md): each member's request with its kind, its clock (the statute's, the documents', or a proposed policy), its owner, and whether the answer is on time.
 - [schedule.md](schedule.md): every duty owned and every clock set: the assignments the board adopts, what falls due, and the coverage check.
 - [attention.md](attention.md): what needs attention across the governance systems in one digest, most urgent first (`jason attention`, `governance_digest`, `{REPORT:attention}`).
