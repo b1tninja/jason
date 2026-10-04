@@ -134,6 +134,10 @@ def data(tmp_path):
     ("key-documents/mystique.json", P1),
     ("board/minutes-exec-2026-09-15.md", P3), ("board/minutes-executive-session-2026-09-15.md", P3),
     ("board/minutes-2026-09-15.md", P1),
+    # placed before the screens fan out: Meetings (packets, meetings) and Money (insurance, reports, tax bills, vendors)
+    ("leases/unit/lease.pdf", P3), ("insurance/claims/letter.pdf", P2), ("reports/ledger.json", P2),
+    ("packets/2026-10-20/item.pdf", P1), ("meetings/plan-2026-10-20.json", P1), ("tax-bills/2026.pdf", P1),
+    ("vendors/acme/w9.pdf", P2),
 ])
 def test_level_of_path(data, rel, level):
     assert level_of_path(rel, data) is level

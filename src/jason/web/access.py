@@ -376,6 +376,13 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("board/packet*", Level.P1),
     PathRule("notices/*", Level.P1),           # notices given to members, and their delivery ledger
     PathRule("reserve-studies/*", Level.P1),
+    PathRule("leases/*", Level.P3),            # which unit an owner rents, and the tenant: a private fact (AGENTS.md)
+    PathRule("insurance/*", Level.P2),         # policies, claims, and the insurer's letters, with policy numbers
+    PathRule("reports/*", Level.P2),           # books and ledger reports: members' balances by unit
+    PathRule("packets/*", Level.P1),           # a meeting's packet as assembled; executive items go in their own P3 folders
+    PathRule("meetings/*", Level.P1),          # a meeting's plan and the room's record
+    PathRule("tax-bills/*", Level.P1),         # the association's own property tax bills
+    PathRule("vendors/*", Level.P2),           # vendors' records: a W-9's taxpayer id can be a sole proprietor's SSN
     PathRule("key-documents/*.json", Level.P1),     # the key documents' store: who linked what, and their notes
     PathRule("key-documents/*", Level.P0, _key_document),
     PathRule("authorities/*", Level.P0),
