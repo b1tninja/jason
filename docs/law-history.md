@@ -20,7 +20,7 @@ lawlibrary (`../lawlibrary`, its `history.py` and `succession.py`, see its `docs
 
 | Piece | What it does |
 |---|---|
-| `jason law-history --export` (`jason.tasks.law_history`) | Asks lawlibrary through the worker in `jason.sources.lawlibrary` (`recodification`, `changes`). It writes `data/authorities/history/former-sections.json` and `changes.json`, and two pages the AnythingLLM `authorities` catalog holds: `davis-stirling-recodification.md` and `davis-stirling-changes.md`. |
+| `jason law-history --export` (`jason.tasks.law_history`) | Asks lawlibrary through the worker in `jason.sources.lawlibrary` (`recodification`, `changes`). It writes `data/authorities/history/former-sections.json` and `changes.json`, and two pages the passage index's `authorities` catalog holds: `davis-stirling-recodification.md` and `davis-stirling-changes.md`. |
 | `jason law-history --section 1363(g)` | Where a former section went. |
 | `jason law-history --section 5855` | A current section's changes by edition. |
 | `jason.community.succession` | Reads the export from disk: `successors`, `now_at` ("1363(g) is now CIV 5855"), and `changes`. It never calls lawlibrary. |
@@ -65,7 +65,7 @@ The table's own word, "continued" (254 rows), says nothing about substance; the 
     - SB 900 (2024) amended 4775 and 5550;
     - AB 130 (2025) amended 5850 and 5855.
 - **Version stamps.** `succession.version_note` writes one line per section, for example: "continues former CIV 1363(g) with changes (2014); amended by Stats. 2025, Ch. 22 (AB 130), operative 2025-06-30".
-  - Each statute page under `data/authorities` carries it as "History:" under each section (234 sections), and so does the AnythingLLM `authorities` catalog once synced.
+  - Each statute page under `data/authorities` carries it as "History:" under each section (234 sections), and so does the passage index's `authorities` catalog once built.
   - Each duty brief in `duties.md` lists its cited sections whose law changed as "Law changes" (`succession.changed_in`).
 - **Statutory terms.** `jason.community.statutory_terms.TERMS` holds 28 deadlines and caps. Each row gives its section, its value, the words the current text must carry with that value, and every constant in jason that holds it.
   - `tests/test_statutory_terms.py` fails when a constant differs from its term or the exported statute no longer carries the value.

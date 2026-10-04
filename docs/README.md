@@ -69,7 +69,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [embedded-references.md](embedded-references.md): `{QUOTE:key#n}` and `{CITE:key#n}` in place of copied governing-document passages; finding the copies (current, stale, draft) and who may change them; the compiled guide agents read.
 - [document-duties.md](document-duties.md): the duties, prohibitions, permissions, rights, and conditions the governing documents state, read by a phrase grammar and a local model, measured, and reviewed by a person.
 - [ocr-correction.md](ocr-correction.md): reading OCR into words: the English prior (Gov. Code 27293), the text rules, local models and word crops as second readers, agreement as confidence, and the measurements.
-- [document-tools.md](document-tools.md): the open-source tools for the scans (Ollama, AnythingLLM, OCR engines) and how each joins jason.
+- [document-tools.md](document-tools.md): the open-source tools for the scans (Ollama, OCR engines; AnythingLLM until October 4, 2026) and how each joins jason.
 - [letters.md](letters.md): the letter templates in Drive, their `{VARIABLE}` tokens, and filling a copy.
 - [packets.md](packets.md): several documents (the annual disclosures) assembled into one PDF.
 - [mystique-site.md](mystique-site.md): the association's public Google Site, its embedded Drive folders, and the page-to-library map.

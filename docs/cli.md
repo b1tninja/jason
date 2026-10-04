@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-147 commands, by area:
+146 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
@@ -17,7 +17,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
 - [Property records & county](#property-records--county) (19)
-- [Local AI & search](#local-ai--search) (5)
+- [Local AI & search](#local-ai--search) (4)
 - [Setup & maintenance](#setup--maintenance) (7)
 
 ## PayHOA & finance
@@ -1222,7 +1222,7 @@ The association's legal matters and each statutory duty's standing (confidential
 | Option | Value | Help |
 |---|---|---|
 | `--json` |  | Print JSON |
-| `--fetch-files` |  | Download each case's Drive folder (read-only) into data/cases/<key> for its own AnythingLLM catalog |
+| `--fetch-files` |  | Download each case's Drive folder (read-only) into data/cases/<key>; jason index --build makes its text searchable as its own confidential catalog |
 | `--case` | CASE | With --fetch-files: only this case (its key or case number) |
 | `--include-held` |  | With --fetch-files: also take the medical and veterinary records the case holds back |
 
@@ -1818,39 +1818,9 @@ Read each image-only governing PDF with the local vision model through Ollama an
 
 Write a text layer beside each image-only governing PDF with the installed OCR engine (Docling with RapidOCR, or PyMuPDF with Tesseract)
 
-### `jason anythingllm`
-
-Print the jason-mcp entry for AnythingLLM's agent tools (--write installs it), or --ask a question of its workspace
-
-| Option | Value | Help |
-|---|---|---|
-| `--write` |  | Write the entry into AnythingLLM's anythingllm_mcp_servers.json |
-| `--ask` | ASK | Ask the workspace this question (needs ANYTHINGLLM_API_KEY) |
-| `--store-key` |  | Move the key from .env or ANYTHINGLLM_API_KEY into a new Keeper login record and point .env at it |
-| `--sync` |  | Push the catalogs (authorities, association-records, mail, jason-pages) into their folders and workspaces |
-| `--include-confidential-mail` |  | With --sync: also send attorney letters, bank statements, checks, and escrow requests to the mail catalog (a letter carrying a PIN or access code never goes) |
-| `--catalog` | CATALOG | Sync only this catalog (repeatable; a legal case's catalog, case-<key>, or cases for all of them, is synced only when named); with --ask, ask this catalog's workspace |
-| `--refresh` |  | Replace a page Jason generated when the file on disk is newer than the stored copy (never the association's records) |
-| `--combined` | COMBINED | Also add every document to this shared workspace (default the association's shared workspace; empty string for none) |
-| `--workspace` | WORKSPACE | Workspace slug for --ask (default: the --catalog workspace, else the association's shared workspace) |
-| `--profile` | PROFILE | jason-mcp tool set to register: board (the board's tools, the default), onboarding (onboarding by conversation), governance, or all |
-| `--status` |  | The app's model settings against jason's, each workspace's documents, and what is wrong |
-| `--start` |  | Start the AnythingLLM desktop app and wait for its API (--yes) |
-| `--stop` |  | Close the AnythingLLM desktop app (--yes) |
-| `--restart` |  | Close and start the app (--yes) |
-| `--apply` |  | Set the chat model and window, and each workspace's retrieval, to jason's (--yes) |
-| `--embedder` |  | With --apply and --reembed: also set the embedder, which empties every workspace |
-| `--snapshot` |  | Save each workspace's document list to data/anythingllm/snapshots |
-| `--reembed` |  | Put the last snapshot's documents back into their workspaces, resuming (--yes) |
-| `--reset` |  | With --reembed: first remove every embedding and the app's vector cache (a snapshot is taken first) |
-| `--from-snapshot` | FROM_SNAPSHOT | With --reembed: the snapshot file to restore (default: the latest) |
-| `--only` | ONLY | With --reembed: only this workspace slug (repeatable) |
-| `--json` |  | With --status: print JSON |
-| `--yes` |  | Confirm starting, stopping, applying settings, or re-embedding |
-
 ### `jason local-ai`
 
-Ollama, its GPU, the loaded models, AnythingLLM, Windows commit and page files, and jason's locks
+Ollama, its GPU, the loaded models, Windows commit and page files, and jason's locks
 
 | Option | Value | Help |
 |---|---|---|

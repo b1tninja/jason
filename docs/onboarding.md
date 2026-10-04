@@ -156,9 +156,9 @@ The questions can be answered in a conversation with an assistant instead of at 
 | `association_directory` | the county's associations from asspy's directory, searched by words (read only) |
 | `documents_located` | the recorded documents `jason onboard --locate` last saved, or the command (read only) |
 
-`jason-mcp --profile onboarding` serves just these seven, with two prompts (`jason.mcp.prompts`): `onboard`, the conversation, and `onboard_review`, a second person confirming the high-stakes answers. The governance set carries the first five and the prompts; the full set carries all seven (`jason.mcp.discovery` holds the last two, which never read the county). The board set (`--profile board`) is unchanged: onboarding happens once, and a small local model chooses better from fewer tools.
+`jason-mcp --profile onboarding` serves just these seven, with two prompts (`jason.mcp.prompts`): `onboard`, the conversation, and `onboard_review`, a second person confirming the high-stakes answers. The governance set carries the first five and the prompts; the full set carries all seven (`jason.mcp.discovery` holds the last two, which never read the county). The board set (`--profile board`) is unchanged: onboarding happens once, and a client chooses better from fewer tools.
 
-- **AnythingLLM.** Register the onboarding set with `jason anythingllm --write --profile onboarding`, and put the text below in the workspace's system prompt. AnythingLLM's agent reads MCP tools but not MCP prompts, so the system prompt carries the steps. Register the board set again when onboarding is done.
+- **A client without MCP prompts.** Register `jason-mcp --profile onboarding` in it and put the text below in its system prompt, which then carries the steps. Register the board set again when onboarding is done.
 - **Claude Desktop.** Add jason-mcp to `claude_desktop_config.json`, with `"args": ["--profile", "onboarding"]` and `"env": {"JASON_CWD": "<the jason folder>", "JASON_PROFILE": "<key>"}`. Then choose the `onboard` or `onboard_review` prompt. The text below also serves as a project's instructions.
 
 The system prompt (it is `system_prompt()` in `jason.mcp.prompts`, and a test keeps this copy the same):

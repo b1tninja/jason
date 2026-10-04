@@ -32,7 +32,7 @@ jason review question --ask "Who pays the master deductible after a leak from a 
 ```
 
 The pack page is useful on its own: it holds the base prompt, the task prompt, and the sources. A person, Claude,
-AnythingLLM, or another agent can work from it, and the `manager_context` MCP tool (board profile) serves it.
+or another agent can work from it, and the `manager_context` MCP tool (board profile) serves it.
 
 **Retrieval.** It is hybrid by default: BM25 fused with the local embedder `qwen3-embedding:8b`. The first build embeds
 the 497 law sections once into the vector cache; after that a pack takes seconds. If the embedder cannot load, the

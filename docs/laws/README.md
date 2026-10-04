@@ -2,7 +2,7 @@
 
 Source: the 2025 session publication at `downloads.leginfo.legislature.ca.gov` (`pubinfo_2025.zip`), read with lawlibrary’s code parser. lawlibrary's shelf now holds every edition through 2025, so `get_section("CIV", "5200")` returns the current section, and `jason export-authorities` writes the sections Jason relies on under `data/authorities/` (the `authorities` tool reads them by citation). Sacramento city and county ordinances are not in the index.
 
-These pages are Jason's summaries. The exported statute pages are the authority; the two are kept in separate AnythingLLM catalogs (`authorities`, `jason-pages`) so a retriever's answer says which it read.
+These pages are Jason's summaries. The exported statute pages are the authority; the passage index keeps the exported pages as the `authorities` catalog with the standing `authority`, so a hit says which it is. These summaries are not in the index yet.
 
 These pages are an obligation index for Jason. They are not legal advice, and they are not a substitute for the section text or for the association's governing documents. When a task needs the words of a section, read that section. Do not quote one of these pages as the statute.
 

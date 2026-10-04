@@ -137,7 +137,7 @@ The tables classify every path found by grepping `--yes`, `--confirmed-by`, `--c
 | `intake --answer/--confirm/--apply`, `onboard --answer/--confirm/--apply` | Answers, a second person, records, private facts with a backup and a diff, and profile proposals as patches under `data/onboarding/proposals/` | R0. A private-fact merge is P3 data | Signed. 2P for `high_stakes` answers. A proposal is applied by a person with `git apply` | The clock the answer sets, when it sets one (`FactAsk.clock`) |
 | `ingest SOURCE --apply` | Copies files into `data/library` and `library.db` | R0 | M | — |
 | `jobs add --confirm NAME -- CMD --yes` | Queues a write for the worker | As the command | As the command. The job keeps the name | As the command |
-| `anythingllm --start/--stop/--apply/--reembed --yes`, `local-ai --restart-ollama/--unload --yes` | The machine's own services, not the association's records | Ops | M | — |
+| `local-ai --restart-ollama/--unload --yes` | The machine's own services, not the association's records | Ops | M | — |
 
 ### Writes with no gate today
 
@@ -529,7 +529,7 @@ The earlier spec had four approver rules. As built there are two, and the other 
 | `local.section-refs.apply` | R0 | one person | Edit the file | — | — |
 | `local.ingest.apply` | R0 | one person | Remove the rows | — | — |
 
-Not engine kinds: `intake --answer` and `--confirm` (a signed record; a second person for a `high_stakes` answer, through `intake.confirm`), and `schedule --done --by` (a signed record). Machine operations (`anythingllm`, `local-ai`) are not association records, and stay in the CLI.
+Not engine kinds: `intake --answer` and `--confirm` (a signed record; a second person for a `high_stakes` answer, through `intake.confirm`), and `schedule --done --by` (a signed record). Machine operations (`local-ai`) are not association records, and stay in the CLI.
 
 A letter jason drafts from a template (`google.doc`) has a second, earlier approval of its own: the letter's stages ([section 11](#11-letters-and-plans-one-inbox)). That approval is of the words; this one is of the write.
 

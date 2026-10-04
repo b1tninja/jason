@@ -17,8 +17,8 @@ It was built for its first association, a condominium community in Sacramento (t
 - **Specification** (`mystique/`): the association's facts as data. This covers the buildings and units, rule rows (document kinds, sender and link rules, agenda item rules, privilege parties), the registers, and the legal holds. A new decision is a new rule row, not new code.
 - **Implementation** (`src/jason/community`, `src/jason/google`, `src/jason/...`): reusable readers, matchers, and clients. The document models read each kind of document into a typed record with findings, each citing the statute that shapes it.
 - **Tasks and commands** (`src/jason/tasks`, `jason <command>`): they apply the results. Local stores under `data/` hold what jason read, so most reports run from disk.
-- **Local AI:** Ollama models (OCR, classification, extraction, embeddings) and AnythingLLM, on the machine's GPU. A model's answer must quote the document, and it is checked against the rule reader.
-- **`jason-mcp`:** serves the stores on disk to Claude Code or AnythingLLM ([docs/mcp.md](docs/mcp.md)).
+- **Local AI:** Ollama models (OCR, classification, extraction, embeddings) on the machine's GPU, and jason's own passage index (`jason index`). A model's answer must quote the document, and it is checked against the rule reader.
+- **`jason-mcp`:** serves the stores on disk to Claude Code or another MCP client ([docs/mcp.md](docs/mcp.md)).
 
 Credentials live in Keeper. `.env` holds only record UIDs and paths. The conventions are in [AGENTS.md](AGENTS.md), and the workflows and their limits are in [SKILLS.md](SKILLS.md).
 
@@ -49,7 +49,7 @@ The full setup (Keeper, the Google OAuth client and consent, the local models) i
 | **Property and county records** | `property-history`, `brief`, `title-watch`, `recent-filings`, `sync-liens`, `sync-solar`, `records-request` | [property-histories](docs/property-histories.md), [recorded-instruments](docs/recorded-instruments.md), [document-readings](docs/document-readings.md) |
 | **Records and the law** | `duties` (the Civil Code 5200 inventory and the manager's duties), `export-authorities` (the statutes' words), `review` (a manager's review with every quote checked) | [community-manager](docs/community-manager.md), [manager-review](docs/manager-review.md), [laws](docs/laws/README.md) |
 | **Google Workspace** | `registers` (Sheets jason and the board keep together), `drive-activity`, `drive-labels`, `photos`, `vault` | [registers](docs/registers.md), [drive-activity](docs/drive-activity.md), [drive-labels](docs/drive-labels.md), [photos](docs/photos.md) |
-| **Local AI and search** | `local-ai`, `anythingllm` (catalogs, models, re-embedding), `ocr-documents`, `read-documents`, `index-coverage` | [document-tools](docs/document-tools.md), [rag-roadmap](docs/rag-roadmap.md) |
+| **Local AI and search** | `local-ai`, `index` (the passage index: build, status, search by scope), `ocr-documents`, `read-documents`, `index-coverage` | [document-tools](docs/document-tools.md), [rag-roadmap](docs/rag-roadmap.md) |
 
 ## Development
 

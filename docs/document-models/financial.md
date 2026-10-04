@@ -69,7 +69,7 @@ This is PayHOA's generated "Treasurer's Report" packet. It holds an index of the
 - **The rule.** Which version a copy is comes from its content, not its name or folder:
   - `content.aging_units` reads the unit addresses between the aging's first "Days Past Due" header and its Total row. A unit a ledger line names elsewhere does not count.
   - `content.PRIVATE_RULES` then makes any file with such units confidential, wherever it is filed.
-  - The library records why in `Classified.private`. `anythingllm_sync.library_items` walks distinct files, so one confidential copy keeps every copy of the same bytes out of the shared catalogs.
+  - The library records why in `Classified.private`. `library.distinct` folds the copies of one file, so one confidential copy keeps every copy of the same bytes out of anything shared.
 
 **Required:** the period, the generated date, total assets, liabilities plus equity, and the reconciliations.
 

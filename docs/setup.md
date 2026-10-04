@@ -35,7 +35,6 @@ Optional settings:
 - **PayHOA:** `payhoa_org_id`.
 - **Bill stores:** `smud_db`, `smud_bills_dir`, `idoxs_db`, `idoxs_bills_dir`.
 - **Google:** `google_oauth_record_uid`, `google_sheets_spreadsheet_id`, `google_notebook_url`, and, optionally, `google_signin_record_uid` for a separate console sign-in client ([step 5](#5-console-sign-in-jason-web)).
-- **AnythingLLM:** `anythingllm_record_uid`, a Keeper login record whose password field is the AnythingLLM API key. `jason anythingllm --store-key` creates it from a key in `.env` or `ANYTHINGLLM_API_KEY`.
 - **Law library:** `lawlibrary_home`, the lawlibrary checkout (default `../lawlibrary`).
 
 Other services keep their own Keeper records, named in `.env`:
@@ -197,7 +196,7 @@ What jason does with the mail it can read, and how it will rejoin conversations 
 
 ## Local AI
 
-jason's local models run on Ollama (`qwen3.6:27b` for OCR, classification, and extraction; `qwen3-embedding:8b` as the embedder), shared with AnythingLLM Desktop. `jason local-ai` reports the stack. A model job holds jason's GPU lock and runs a preflight that fails fast on the CPU or when Windows is short of commit charge. A system-managed page file is often too small; a fixed 32 to 64 GB page file is the fix ([document-tools.md](document-tools.md)).
+jason's local models run on Ollama (`qwen3.6:27b` for OCR, classification, and extraction; `qwen3-embedding:8b` as the passage index's embedder, `jason index --build`). `jason local-ai` reports the stack. A model job holds jason's GPU lock and runs a preflight that fails fast on the CPU or when Windows is short of commit charge. A system-managed page file is often too small; a fixed 32 to 64 GB page file is the fix ([document-tools.md](document-tools.md)).
 
 ## Using jason from Python
 

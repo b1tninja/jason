@@ -1,6 +1,6 @@
 # Insurance policies, term by term
 
-`jason policies` reads each insurance policy from its own papers. It sets them beside the board's policy sheet and the specification, and writes one page per policy. The pages and the papers are the AnythingLLM `insurance` catalog, so a question about coverage is answered from the policies themselves.
+`jason policies` reads each insurance policy from its own papers. It sets them beside the board's policy sheet and the specification, and writes one page per policy. The pages and the papers' text are the passage index's `insurance` catalog (`jason index --build`), so a question about coverage is answered from the policies themselves. A page is generated: a summary, never the policy's words.
 
 ## Where each fact comes from
 
@@ -53,12 +53,14 @@ jason policies --policy fidelity
 ```
 
 ```bash
-jason anythingllm --sync --catalog insurance
+jason index --build
 ```
 
 ```bash
-jason anythingllm --ask "What is the master policy's deductible and does it cover unit interiors?" --catalog insurance
+jason index --search "master policy deductible unit interiors" --catalog insurance
 ```
+
+The `document_search` board tool does the same search (`catalog` insurance) and returns the passages; the client answers from them.
 
 The `insurance_policies` board tool reads the stored report (`data/reports/policies.json`); `policy` narrows it to one policy. The pages are `data/insurance/pages/<policy>.md`, with `overview.md` covering every policy. Nothing is sent, moved, or changed in Drive, the sheet, or PayHOA.
 

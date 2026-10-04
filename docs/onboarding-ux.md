@@ -46,7 +46,7 @@ Each stage is a screen; the checklist spans them.
 
 1. **Accounts.** Which services the community will use and whether each is connected: PayHOA (org id, Keeper
    record), Google (OAuth client, token, the Drive home, groups, the calendar id), Keeper, Zoom, PostScanMail, the
-   county portals (recorder, assessor, tax, permits), the utility portals, each vendor portal, AnythingLLM. A row
+   county portals (recorder, assessor, tax, permits), the utility portals, each vendor portal. A row
    shows set or not set and the setup page that explains it; the page never shows a secret. Connecting is a
    person's step (`jason login`, Google consent); the screen shows the command.
 2. **Facts.** The profile's facts, grouped by duty: name, corporate name, identity and letterhead, buildings and

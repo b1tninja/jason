@@ -83,22 +83,17 @@ Who a letter comes from, and what kind of source that is, decides how to read it
 
 - **The directory.** `Mystique.senders()` (`mystique/senders.py`) is a `Sender` row per counterparty: its name, `SourceKind`, a government agency's `Level` (federal, state, county, city, special district), the words its letterhead or bank line carries, its PayHOA vendor name, and its role. A new counterparty is a new row.
 - **Resolving.** `jason.community.sources.resolve` tries the sender field, then the letterhead (the first 400 characters, with the association's own name removed, since that is the addressee), then the generic words in `KIND_WORDS` ("County of", "Insurance", "LLP"), then a named sender's words anywhere in the first 1,200 characters (a 1099's payer block, an invoice's "COMPANY:" line). A preliminary notice's sender is the claimant its form names. A miss stays unknown. A known source sorts a letter the words left as "other" (a utility's letter is a utility letter).
-- **Other associations.** `other_associations` reads the names of other community associations a letter mentions. A letter that names one and never names this association is that association's mail (`misdirected`), often an owner statement from another association a prior manager also manages. It stays out of AnythingLLM. A notice about the association's own account that names another association is a record under another name, for a person to correct with the sender.
-- **Owners.** The association's own assessment statement mailed back with a payment is an owner's account; it stays out of AnythingLLM (Civil Code 5215).
+- **Other associations.** `other_associations` reads the names of other community associations a letter mentions. A letter that names one and never names this association is that association's mail (`misdirected`), often an owner statement from another association a prior manager also manages. It never gets a letter page. A notice about the association's own account that names another association is a record under another name, for a person to correct with the sender.
+- **Owners.** The association's own assessment statement mailed back with a payment is an owner's account; it never gets a letter page (Civil Code 5215).
 - **The report.** `jason sources` (and the `counterparties` MCP tool) lists each named sender by kind, with its letters by kind and its PayHOA payments (money out only; a wire or deposit in is not a payment), the PayHOA vendors the directory does not name, the letterheads no rule names, and the other associations.
 
-## AnythingLLM
+## Letter pages
 
-The mail is a fourth catalog, `mail`, with its own folder and workspace beside `authorities`, `association-records`, and `jason-pages`. A source from it is labeled correspondence: the sender's words as scanned, not the association's record and not an authority.
+The sync writes `data/mail/<mail id>/letter.md` for each shareable letter: a heading with the date, sender, kind, and mail id; the sort, stated dates, and facts; PostScanMail's summary; and the scanned text. A letter page is correspondence: the sender's words as scanned, not the association's record and not an authority.
 
-- The sync writes `data/mail/<mail id>/letter.md` for each shareable letter. The page holds a heading with the date, sender, kind, and mail id; the sort, stated dates, and facts; PostScanMail's summary; and the scanned text. AnythingLLM gets the text, not the PDF, so it does not OCR the scans again.
-- A letter carrying a PIN or access code never goes, nor does another association's mail or an owner's own account. A letter that stops being shareable is removed from the store on the next sync. Attorney letters, bank statements, checks, and escrow requests stay out unless the sync is run with `--include-confidential-mail`.
-- `data/reports/mail.md` is the year's brief as a page, and it goes to `jason-pages` as a summary. Retrieval over OCR'd letters favors boilerplate, so a question about renewals is better answered from this page, or from `mail_brief`, than from the letters.
-
-```bash
-jason anythingllm --sync --catalog mail
-jason anythingllm --ask "Which flood policies renew this winter?" --catalog jason-pages
-```
+- A letter carrying a PIN or access code never gets a page, nor does another association's mail or an owner's own account. Attorney letters, bank statements, checks, and escrow requests are confidential kinds.
+- The pages are not in the passage index yet: the mail joins it once its confidentiality rows are written ([rag-roadmap.md](rag-roadmap.md), items 1 and 2). Until then `mail_brief` and `mail_item` read it, and `data/reports/mail.md` is the year's brief as a page. Retrieval over OCR'd letters favors boilerplate, so a question about renewals is better answered from the brief than from the letters.
+- Until October 4, 2026 the pages were AnythingLLM's `mail` catalog (`jason anythingllm --sync --catalog mail`); that command was removed with the app.
 
 ## Reading it
 
