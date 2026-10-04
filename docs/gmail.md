@@ -2,6 +2,8 @@
 
 The association's Google Workspace mailbox is a second source beside the paper mail and PayHOA. Jason reads it with the read-only Gmail scope, keeps headers only, and stores them under `data/gmail` (git-ignored). It sends no email and changes no label. The sync reads no message body; only `jason signatures --fetch` reads the bodies of a few selected messages, for their signature block, and keeps none of them ([Signatures](#signatures)).
 
+A thread here is Gmail's `threadId` in the one mailbox read. How jason should rejoin split conversations, tell who answered whom, and detect forwards (the threading headers, RFC 5256, a local conversation catalog) is proposed in [gmail-conversations.md](gmail-conversations.md).
+
 ```bash
 jason gmail --sync          # two years of headers (throttled under Gmail's per-minute quota)
 jason gmail                 # the PostScanMail check and the correspondence summary, from disk
