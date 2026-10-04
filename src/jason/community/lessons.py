@@ -1133,6 +1133,24 @@ LESSONS: tuple[Lesson, ...] = (
                                  "shrinks), the cleared modules kept out of it, and profile_imports empty",),
            notes=("Still in the baseline: the association's name in several model regexes, street names in "
                   "community/scans.py, mail_links.CURRENT_ZIP, and the spec_module callers.",)),
+    Lesson("agenda-executive-words-to-minutes-model", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "jason board --minutes DATE gave the local model the agenda Doc's executive-session subitems word for word "
+           "as headings, so an agenda that named a member, a party, or a matter under an executive item passed those "
+           "words into the draft of the open minutes. The checks skipped the Executive session section, so --recheck "
+           "could not catch it. Separately, draft() shadowed its own checks function with a local variable and would "
+           "have raised UnboundLocalError on every run.",
+           "The record treated the agenda's own wording as general words; nothing tied a subitem to an "
+           "ExecutiveSubject, though CIV 4935(e) has a matter \"generally noted in the minutes\".",
+           "Each agenda executive item reaches the model only by its 4935 subject in the statute's words: the agenda "
+           "plan's subject when its board item matches, else classify_executive (labeled as jason's reading for the "
+           "Secretary to confirm), else a blank for the Secretary. The checks and --recheck count lines about the "
+           "executive session that use an item's own words (executiveParticulars), never quoting them.",
+           Status.FIXED, guards=("tests/test_minutes_draft_executive.py (no executive item's words in the prompt "
+                                 "from meeting_record or draft(); plan, then wording, then blank; recheck counts "
+                                 "without quoting)",),
+           docs=("docs/board-agenda.md (The executive session note)",),
+           notes=("Still open: meeting_agenda.agenda_items carries the last agenda's executive headings into the new "
+                  "agenda word for word.",)),
 )
 
 
