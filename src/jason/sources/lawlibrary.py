@@ -70,6 +70,27 @@ if job.get("former") or job.get("changes"):
         out["former"].append({"code": code, "act": act, "sections": [succession.successors(code, n) for n in numbers]})
     out["changes"] = [history.changes(c["code"], [tuple(s) for s in c["spans"]], since=c.get("since"), until=c.get("until"))
                       for c in job.get("changes", [])]
+# Every row each session publication prints for the named sections: {"code", "sections": [numbers]}. A section a
+# publication prints twice comes back twice; "note" is the Legislature's history note read into days.
+if job.get("versions"):
+    import history
+    out["versions"] = []
+    for v in job["versions"]:
+        wanted = {query.section_address(n) for n in v["sections"]}
+        ordered = sorted(wanted, key=query.section_key)
+        carried = history.code_editions(v["code"])
+        rows = []
+        for session in carried:
+            r = query.range(v["code"], ordered[0], ordered[-1], text=True, session=session, limit=None) if ordered else {}
+            found = (r.get("sections") or []) if r.get("found") else []
+            if r.get("reason") == "span_too_large":
+                found = [s for n in ordered for s in (query.range(v["code"], n, n, text=True, session=session).get("sections") or [])]
+            for s in found:
+                if query.section_address(s.get("section")) in wanted:
+                    row = {k: s.get(k) for k in ("citation", "code", "section", "title", "text", "session", "history", "effective")}
+                    row["note"] = history.read_note(s.get("history") or "").record()
+                    rows.append(row)
+        out["versions"].append({"code": v["code"], "editions": carried, "rows": rows})
 json.dump(out, sys.stdout, default=str)
 '''
 
@@ -122,6 +143,8 @@ class Job:
     changes: list[dict[str, Any]] = field(default_factory=list)
     # {"code", "start", "end", "session"}: one edition's section text and outline nodes for a span (``edition``).
     editions: list[dict[str, Any]] = field(default_factory=list)
+    # {"code", "sections": [numbers]}: every row each session publication prints for those sections (``versions``).
+    versions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -168,7 +191,7 @@ class LawLibrary:
 
     def execute(self, job: Job) -> dict[str, Any]:
         payload = {"spans": [list(span) for span in job.spans], "acts": list(job.acts), "former": [list(f) for f in job.former],
-                   "changes": list(job.changes), "editions": list(job.editions)}
+                   "changes": list(job.changes), "editions": list(job.editions), "versions": list(job.versions)}
         if self._run is not None:
             return self._run(payload)
         if not (self.home / "query.py").is_file():
@@ -223,6 +246,16 @@ class LawLibrary:
         result = self.execute(Job(changes=[{"code": code, "spans": [list(s) for s in spans], "since": since, "until": until}]))
         rows = result.get("changes") or []
         return rows[0] if rows else {"found": False, "reason": "no_result"}
+
+    def versions(self, wanted: dict[str, list[str]]) -> list[dict[str, Any]]:
+        """For each code, the session publications that carry it (``editions``, oldest first) and every row each
+        prints for the named sections (``rows``: ``session``, ``section``, ``title``, ``text``, the Legislature's note
+        as ``history``, and the note read into days as ``note``). A section a publication prints in two versions has
+        two rows; one it does not print has none (a miss, never another publication's words)."""
+        if not wanted:
+            return []
+        result = self.execute(Job(versions=[{"code": code, "sections": list(numbers)} for code, numbers in wanted.items()]))
+        return list(result.get("versions") or [])
 
 
 def _span(row: dict[str, Any]) -> SpanText:

@@ -964,6 +964,10 @@ def cmd_law_history(args: argparse.Namespace) -> int:
 
     with _agent(args) as agent:
         root = agent.settings.ownership_db.parent
+        if args.versions or args.add_version:
+            from jason.commands.law_versions import run as law_versions
+
+            return law_versions(args, root, agent.lawlibrary)
         if args.export:
             from jason.sources.lawlibrary import LawLibraryUnavailable
             from jason.tasks.law_history import export
@@ -3755,6 +3759,9 @@ def build_parser() -> argparse.ArgumentParser:
     law_hist.add_argument("--sweep", action="store_true", help="List every place jason cites a section changed since --since "
                                                                "(renumbered with the same effect is not a change); writes data/reports/law-sweep.md")
     law_hist.add_argument("--json", action="store_true", help="Print JSON")
+    from jason.commands.law_versions import add_arguments as _law_versions_arguments
+
+    _law_versions_arguments(law_hist)
     law_hist.set_defaults(func=cmd_law_history)
 
     cover = sub.add_parser("index-coverage", help="Read every cached index document against the known processes and list what is left to model")

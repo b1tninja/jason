@@ -118,4 +118,49 @@ def changes_page(blocks: list[dict[str, Any]], stamp: str) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["export", "recodification_page", "changes_page"]
+def versions_wanted(root: Path, *, since: str = "", shelf: bool = False) -> list[str]:
+    """The sections whose earlier versions ``jason law-history --versions`` reads when none is named: each statute
+    section the association's documents cite (the outlines' references, a former number as written), then with
+    ``since`` (a year or a day) each section the Act's history says changed on or after it, then with ``shelf`` every
+    section the shelf holds. Each once, as the shelf writes a citation ("CIV 5855"); read from the disk only."""
+    from jason.community.authorities import LAWLIBRARY_CODES
+    from jason.community.law_text import normal_citation, shelf_sections
+    from jason.community.references import statute_key
+    from jason.community.succession import changes
+    from jason.tasks.outlines import load_rows
+
+    found: list[str] = []
+
+    def add(citation: str) -> None:
+        got = normal_citation(citation)
+        if got is not None and got[0].rpartition(" ")[0] in LAWLIBRARY_CODES and got[0] not in found:
+            found.append(got[0])
+
+    for row in load_rows(Path(root)):
+        if row.get("kind") == "statute":
+            add(statute_key(str(row.get("target") or ""))[0])
+    if since:
+        for c in changes(Path(root)):
+            when = str(c.get("operative") or c.get("effective") or c.get("after") or "")
+            if when >= since:
+                add(str(c.get("citation") or ""))
+    if shelf:
+        for text in shelf_sections(Path(root)):
+            add(text.citation)
+    return found
+
+
+def repeals(root: Path) -> dict[str, tuple[str, str]]:
+    """Each section the Act's history says was repealed, with the day and the act (a repeal leaves no note in the
+    publications; the recodification on record names it): what ends a former section's last version."""
+    from jason.community.succession import changes
+
+    out: dict[str, tuple[str, str]] = {}
+    for c in changes(Path(root)):
+        if c.get("change") == "repealed" and c.get("operative"):
+            by = str(c.get("statute") or "") + (f" ({c['bill']})" if c.get("bill") else "")
+            out[str(c.get("citation") or "")] = (str(c["operative"]), f"its repeal by {by}" if by else "its repeal")
+    return out
+
+
+__all__ = ["export", "recodification_page", "changes_page", "repeals", "versions_wanted"]

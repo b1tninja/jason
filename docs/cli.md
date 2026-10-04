@@ -1187,6 +1187,15 @@ The Davis-Stirling Act's history: where each former Civil Code 1350-1378 section
 | `--since` | SINCE | With a current section or none, only changes in editions from this year |
 | `--sweep` |  | List every place jason cites a section changed since --since (renumbered with the same effect is not a change); writes data/reports/law-sweep.md |
 | `--json` |  | Print JSON |
+| `--versions` |  | Read each section's earlier versions from the session publications lawlibrary holds and keep them with their ranges (data/authorities/history); with no --citation, the sections the association's documents cite, and with --since those the Act's history says changed since |
+| `--citation` | CITATION | With --versions or --add-version: a section (CIV-5855); may be given more than once |
+| `--shelf` |  | With --versions: also every section the shelf holds |
+| `--add-version` | FILE | Keep an earlier version a person read from an official source: a text file of its words; needs --citation, --source, and --by |
+| `--source` | SOURCE | With --add-version: the official source, as a citation a reader can check |
+| `--by` | BY | With --add-version: who read the source |
+| `--from` | START | With --add-version: the day the words came into force (YYYY-MM-DD) |
+| `--until` | UNTIL | With --add-version: the day they ceased (YYYY-MM-DD) |
+| `--act` | ACT | With --add-version: the act that made the words (Stats. 2099, Ch. 1, Sec. 2) |
 
 ### `jason vault`
 

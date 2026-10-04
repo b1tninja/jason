@@ -299,16 +299,31 @@ def _on_shelf(root: Path, code: str, number: str) -> dict[str, Any] | None:
                 continue
             path = root / page.file
             text = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else ""
-            for block in text.split("\n## ")[1:]:
-                head, _, body = block.partition("\n")
-                if head.strip() == f"{code} {number}":
-                    hit = {"found": True, "citation": f"{code} {number}", "page": page.file, "title": page.title,
-                           "session": page.session, "why": page.why, "text": body.strip()}
-                    if page.fetched:
-                        hit["fetched"] = page.fetched
-                    return hit
+            bodies = [body for head, _, body in (block.partition("\n") for block in text.split("\n## ")[1:])
+                      if head.strip() == f"{code} {number}"]
+            if bodies:
+                hit = {"found": True, "citation": f"{code} {number}", "page": page.file, "title": page.title,
+                       "session": page.session, "why": page.why, "text": _in_force_today(root, f"{code} {number}", bodies)}
+                if page.fetched:
+                    hit["fetched"] = page.fetched
+                return hit
             break
     return None
+
+
+def _in_force_today(root: Path, citation: str, bodies: list[str]) -> str:
+    """The body a reader quotes. A section the publication prints once is that print. Printed in two versions, it is
+    the one in force today where the versions' own operative words say which (``law_text.in_force``); the
+    publication's order is not the order they operate in. Where they do not say, the first, as before."""
+    if len(bodies) > 1:
+        from jason.community.law_text import in_force, words_digest
+
+        found = in_force(citation, root, date.today())
+        if found.text is not None:
+            for body in bodies:
+                if words_digest(body) == found.text.digest:
+                    return body.strip()
+    return bodies[0].strip()
 
 
 def authority_text(root: Path, citation: str, *, fetch: bool = True, asked_by: str = "") -> dict[str, Any]:

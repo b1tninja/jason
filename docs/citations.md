@@ -73,7 +73,7 @@ exception.
 | `not_in_document`, `parent_only`, `ambiguous` | no such section; the section is there but not the subsection; several sections numbered the same |
 | `removed` | an amendment removed it: cite it as of an earlier day |
 | `not_kept_as_amended` | a date asked of a document with no history |
-| `statute_not_on_disk`, `label_not_found`, `edition_not_held`, `prior_numbering` | not exported (lawlibrary's `cite` reads it); the subdivision is not in the stored words; jason holds one edition (lawlibrary's `.session(year)` reads another); a Davis-Stirling number from before 2014 (`jason law-history`) |
+| `statute_not_on_disk`, `label_not_found`, `edition_not_held`, `prior_numbering` | not exported (lawlibrary's `cite` reads it); the subdivision is not in the stored words; a statute asked as of a day, and the disk does not show the words in force that day (`jason law-history --versions` keeps the earlier versions; [law-readings.md](law-readings.md#the-words-in-force-on-a-day)); a Davis-Stirling number from before 2014 (`jason law-history`), unless a day is given and its words of that day are held |
 | `statute_not_in_library`, `library_unavailable`, `library_failed` | the read-through asked lawlibrary and it does not hold the section; no checkout at `lawlibrary_home`; its worker failed |
 | `no_resolution_prints_it`, `printed_by_several` | no resolution Doc prints the number; several do |
 | `unknown_instrument`, `no_minutes`, `unknown_record` | not a governing instrument, library file, or indexed instrument; no minutes for the day; not a 5200 kind |

@@ -23,6 +23,8 @@ lawlibrary (`../lawlibrary`, its `history.py` and `succession.py`, see its `docs
 | `jason law-history --export` (`jason.tasks.law_history`) | Asks lawlibrary through the worker in `jason.sources.lawlibrary` (`recodification`, `changes`). It writes `data/authorities/history/former-sections.json` and `changes.json`, and two pages the passage index's `authorities` catalog holds: `davis-stirling-recodification.md` and `davis-stirling-changes.md`. |
 | `jason law-history --section 1363(g)` | Where a former section went. |
 | `jason law-history --section 5855` | A current section's changes by edition. |
+| `jason law-history --versions` (`jason.tasks.statute_fetch.prior_versions`) | Reads each section's earlier versions from the session publications lawlibrary holds and keeps them, each with the range it was in force, under `data/authorities/history/<citation>`. With no `--citation` it reads the sections the documents cite; `--since` adds those this history says changed since; `--shelf` adds every section on the shelf. A former section's last version ends on the repeal day this history gives. See [law-readings.md](law-readings.md#the-words-in-force-on-a-day). |
+| `jason law-history --add-version FILE` | Keeps a version a person read from an official source, with its citation and range. |
 | `jason.community.succession` | Reads the export from disk: `successors`, `now_at` ("1363(g) is now CIV 5855"), and `changes`. It never calls lawlibrary. |
 | The `authorities` MCP tool | Given a former section, returns its successors and the caveat. Given a current one, adds its history to the text. |
 | Document models | The governing documents' `cites-repealed-sections` and the letters' `cites-former-sections` findings name each cited section's successor. The citation keeps the subdivision the document prints (`repealed_sections` returns "1363(g)", not "1363"). |
@@ -100,5 +102,6 @@ jason conflicts --leads --document enforcement-policy
 ## Limits
 
 - **One note per edition.** An edition carries only the latest history note. An act amended twice between two editions shows only the later one, and the shelf starts in 2011.
+- **The words of an earlier day** come from the same editions, so they have the same limit: [law-readings.md](law-readings.md#the-gap-october-4-2026) lists what is missing and how a person adds it.
 - **A reading, not the law.** A successor row reads the Commission's table and Comments. The statute text in force is the law.
 - **No automatic correction.** The board corrects a governing document's former cross-references by resolution (CIV 4235); jason only says where they point.

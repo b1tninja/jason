@@ -215,7 +215,7 @@ def test_a_section_held_in_two_versions_says_so(data):
     quote, cited = report.quotes[0], report.citations[0]
     assert quote.verdict is Verdict.FOUND and any("2 versions of CIV 9905" in w for w in quote.warnings)
     assert len(cited.versions) == 2 and cited.as_dict()["versions"][0]["digest"] == law_text.section_digest("CIV 9905", data)
-    assert any("jason does not say which is in force" in c for c in cited.caveats)
+    assert any("under the one number" in c and "--as-of" in c for c in cited.caveats)   # which operates is asked by day
     assert quote.places[0].digest == cited.versions[1]["digest"]        # the second version holds these words
 
 

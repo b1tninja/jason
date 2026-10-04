@@ -245,6 +245,12 @@ class ProvisionText:
     reason: str = ""
     # The other versions of a statute's section the shelf holds under the same number, each with its own digest.
     others: tuple[ProvisionText, ...] = ()
+    # For a statute asked as of a day (``law_text.in_force``): how jason knows these were the words in force that
+    # day ("prior", "current", "own_words"), or "not_shown" when the disk does not show it and the words given are
+    # the words on the shelf now; the basis in a sentence; and the section's own words that decide it.
+    decided: str = ""
+    basis: str = ""
+    quotes: tuple[str, ...] = ()
 
     @property
     def versions(self) -> tuple[ProvisionText, ...]:
@@ -266,31 +272,55 @@ def _statute_text(citation: str, data_dir: Path, as_of: date | None) -> Provisio
     from jason.community import law_text
 
     held = law_text.versions(citation, data_dir)
+    if as_of is not None:
+        return _statute_as_of(citation, data_dir, as_of, held)
     if not held:
+        earlier = law_text.history_texts(citation, data_dir)
         return ProvisionText(citation, False, reason="not on the shelf (data/authorities); jason export-authorities "
-                                                     "or jason cite brings it down")
+                                                     "or jason cite brings it down"
+                             + (f". The history holds {len(earlier)} earlier version(s): say the day asked about (--as-of)"
+                                if earlier else ""))
     found = held[0]
     caveats: list[str] = []
     if len(held) > 1:
         caveats.append(f"the shelf holds {len(held)} versions of {citation} under the one number; each is recited with "
-                       "its digest, and jason does not say which is in force on a given day")
-    if as_of is not None:
-        day = as_of.isoformat()
-        for row in law_text.changes(data_dir, citation):
-            if str(row.get("when") or "") > day:
-                caveats.append(f"jason's copy of these words was replaced on {row.get('when')}, after {day}; the words "
-                               f"held before are kept under digest {str(row.get('old') or '')[:MIN_DIGEST]} ({row.get('history')})")
-        code, _, number = citation.rpartition(" ")
-        if code == "CIV":
-            from jason.community.succession import changes as amendments
-
-            for c in amendments(data_dir, number):
-                if str(c.get("operative") or "") > day:
-                    caveats.append(f"{c.get('change') or 'changed'} by {c.get('statute') or 'a later act'}, operative "
-                                   f"{c.get('operative')}, after {day}: the words on disk may differ from the words in "
-                                   "force on that day")
+                       "its digest, in the publication's order, which is not the order they operate in. Say the day "
+                       "asked about (--as-of) and jason picks by the versions' own operative words, where they state them")
     others = tuple(ProvisionText(citation, True, t.words, t.digest, t.source, t.note) for t in held[1:])
     return ProvisionText(citation, True, found.words, found.digest, found.source, found.note, tuple(caveats), others=others)
+
+
+def _statute_as_of(citation: str, data_dir: Path, as_of: date, held: list[Any]) -> ProvisionText:
+    """A statute's section as of a day: the words in force that day where the disk shows which they were (an earlier
+    version with its range, or the current words), else the words on the shelf now, said plainly not to be shown as
+    the words of that day. Never a guess."""
+    from jason.community import law_text
+
+    day = as_of.isoformat()
+    found = law_text.in_force(citation, data_dir, as_of)
+    caveats = list(found.caveats)
+    if found.text is not None:
+        text = found.text
+        source = text.source or "not recorded"
+        if found.decided is law_text.Decided.PRIOR:
+            now = ", ".join(t.digest[:MIN_DIGEST] for t in held)
+            caveats.insert(0, "these are not the words on the shelf now" + (f" (digest {now})" if now else
+                                                                          f": {citation} is no longer on the shelf"))
+        return ProvisionText(citation, True, text.words, text.digest, source, text.note if text.current else "",
+                             tuple(caveats), decided=found.decided.value, basis=found.basis, quotes=found.quotes)
+    if not held:
+        return ProvisionText(citation, False, reason=f"{found.basis}: " + "; ".join(caveats), decided=found.decided.value)
+    for row in law_text.changes(data_dir, citation):
+        if str(row.get("when") or "") > day:
+            caveats.append(f"jason's copy of these words was replaced on {row.get('when')}, after {day}; the words "
+                           f"held before are kept under digest {str(row.get('old') or '')[:MIN_DIGEST]} ({row.get('history')})")
+    if len(held) > 1:
+        caveats.insert(0, f"the shelf holds {len(held)} versions of {citation} under the one number; each is recited "
+                          "with its digest, and their own words do not show which was in force that day")
+    first = held[0]
+    others = tuple(ProvisionText(citation, True, t.words, t.digest, t.source, t.note) for t in held[1:])
+    return ProvisionText(citation, True, first.words, first.digest, first.source, first.note, tuple(caveats), others=others,
+                         decided=found.decided.value, basis=found.basis)
 
 
 def _governing_text(target: str, data_dir: Path, community: Any, as_of: date | None) -> ProvisionText:
@@ -353,8 +383,12 @@ def status(reading: LawReading, data_dir: Path, *, community: Any = None, as_of:
             texts.append(read.words)
         else:
             kept = None if p.governing else law_text.law_text(p.base, data_dir, p.digest)
-            detail = (f"the words it read are kept: {law_text.HISTORY_DIR}/{law_text.slug(p.base)}/{kept.digest}.md"
-                      if kept is not None else "")
+            if kept is not None and kept.current:
+                # Asked as of a day: the words it read are on the shelf, and another version governed that day.
+                detail = "the words it read are on the shelf, and are not the words in force on the day asked"
+            else:
+                detail = (f"the words it read are kept: {law_text.HISTORY_DIR}/{law_text.slug(p.base)}/{kept.digest}.md"
+                          if kept is not None else "")
             found.append(ProvisionStatus(p.citation, ReadingState.STALE, p.digest, text.digest, detail))
     states = {p.state for p in found}
     if ReadingState.MISSING in states:
@@ -444,6 +478,17 @@ class Recital:
     not_applied: tuple[Recited, ...] = ()     # stale, missing, or misquoted: listed, never applied
     later: tuple[Recited, ...] = ()           # dated after ``as_of``: not a reading on that day
     others: tuple[ProvisionText, ...] = ()    # the other versions the shelf holds under the same number
+    # A statute asked as of a day: "prior", "current", or "own_words" when the disk shows these were the words in
+    # force that day (``basis`` says how, ``quotes`` the section's own deciding words); "not_shown" when it does not,
+    # and the words recited are the words on the shelf now.
+    decided: str = ""
+    basis: str = ""
+    quotes: tuple[str, ...] = ()
+
+    @property
+    def in_force(self) -> bool:
+        """Whether the words recited are shown to be the words in force on ``as_of``."""
+        return bool(self.decided) and self.decided != "not_shown"
 
     @property
     def stale(self) -> tuple[Recited, ...]:
@@ -463,6 +508,13 @@ class Recital:
                    f"Digest of these words: {self.digest}"]
             if self.as_of is not None:
                 out.append(f"As of: {self.as_of.isoformat()}")
+            if self.as_of is not None and self.decided:
+                day = self.as_of.isoformat()
+                if self.in_force:
+                    out.append(f"In force on {day}: {self.basis}")
+                    out += [f"Own words that decide it: \"{q}\"" for q in self.quotes]
+                else:
+                    out.append(f"Not shown to be in force on {day}: these are the words on the shelf now; {self.basis}")
             if self.note:
                 out.append(f"History (jason's note, not part of the words): {self.note}")
             out += ["", self.words, ""]
@@ -494,6 +546,8 @@ class Recital:
         return {"citation": self.citation, "found": self.found, "words": self.words, "digest": self.digest,
                 "source": self.source, "note": self.note, "reason": self.reason, "caveats": list(self.caveats),
                 "asOf": self.as_of.isoformat() if self.as_of else None,
+                "inForce": ({"shown": self.in_force, "decided": self.decided, "basis": self.basis,
+                             "quotes": list(self.quotes)} if self.decided else None),
                 "otherVersions": [{"words": o.words, "digest": o.digest, "source": o.source, "note": o.note}
                                   for o in self.others],
                 "readings": [r.as_dict() for r in self.readings],
@@ -505,8 +559,15 @@ def recite(citation: str, data_dir: Path, readings: Iterable[LawReading] = (), a
            community: Any = None) -> Recital:
     """A provision's words, verbatim from the shelf with their digest and source, and then each reading that reads
     it: the current ones labeled with whose they are, their standing, and their date; the stale ones apart, as stale.
-    With ``as_of``, a reading dated later is set apart too, and the words carry a caveat when jason knows they
-    changed after that day. This is what a review or an answer calls: the words come first, whatever is stored."""
+
+    With ``as_of``, a reading dated later is set apart too, and a statute's words are the words in force on that day
+    where the disk shows which they were (``law_text.in_force``): an earlier version from the history with the range
+    it was in force and its source, the current words where a record places them in force by then, or, of two
+    versions printed under one number, the one their own operative words pick, quoted. Where the disk does not show
+    it, the words on the shelf now are recited and said plainly not to be shown as the words of that day
+    (``Recital.in_force`` is false), with what is missing and what would bring it. Never a guess.
+
+    This is what a review or an answer calls: the words come first, whatever is stored."""
     target = target_of(citation) or citation
     text = provision_text(citation, Path(data_dir), community=community, as_of=as_of)
     current: list[Recited] = []
@@ -523,7 +584,7 @@ def recite(citation: str, data_dir: Path, readings: Iterable[LawReading] = (), a
         else:
             set_aside.append(row)
     return Recital(target, text.found, text.words, text.digest, text.source, text.note, text.reason, text.caveats, as_of,
-                   tuple(current), tuple(set_aside), tuple(later), text.others)
+                   tuple(current), tuple(set_aside), tuple(later), text.others, text.decided, text.basis, text.quotes)
 
 
 __all__ = ["Canon", "LawReading", "Provision", "ProvisionStatus", "ProvisionText", "ReadingStanding", "ReadingState",

@@ -10,7 +10,9 @@ takes a provision to mean. It is tied to the digest of the words it read, so it 
   governing document's).
 - ``--recite CITATION`` prints the provision's words with their source and digest, and then the readings of them,
   each labeled as a reading and whose it is; the ones that no longer read these words are listed apart.
-  ``--as-of YYYY-MM-DD`` sets apart a reading dated later and says when jason knows the words changed after that day.
+  ``--as-of YYYY-MM-DD`` sets apart a reading dated later, and recites a statute's words in force on that day where
+  the disk shows which they were (an earlier version kept by ``jason law-history --versions``, with its range and
+  source); where it does not, the current words, said plainly not to be shown as the words of that day.
 - ``--json`` prints the same as JSON.
 
 Reading only: nothing is written, and lawlibrary is not asked for a section that is not on disk.

@@ -647,6 +647,15 @@ class Shelf:
         pointer = {"lawlibrary": {"call": "cite", "expression": t.base if not t.end else t.id}}
         base_number = t.number.split("(", 1)[0]
         whole = re.match(r"\d+", base_number)
+        dated = None
+        if t.as_of is not None and not t.end and not t.siblings:
+            # The words in force that day, where the disk shows which they were (an earlier version kept with its
+            # range, or the current words): never another day's words in their place.
+            from jason.community import law_text
+
+            dated = law_text.in_force(t.base, self.data_dir, t.as_of)
+            if dated.text is not None:
+                return self._dated_statute(t, dated, pointer)
         if t.key == "CIV" and whole and 1350 <= int(whole.group(0)) <= 1378:
             return _miss(Reason.PRIOR_NUMBERING, "a Davis-Stirling number from before the 2014 renumbering: its successor "
                          f"is read with jason law-history, or lawlibrary succession.successors('CIV', '{base_number}')",
@@ -677,8 +686,9 @@ class Shelf:
             ok = all(n["found"] for n in nodes)
             return State(Kind.OUTLINE, ok, None if ok else Reason.LABEL_NOT_FOUND, "", cite, nodes=nodes)
         if t.as_of is not None:
-            return _miss(Reason.EDITION_NOT_HELD, "jason holds one edition of the law (data/authorities); lawlibrary's "
-                         "Citation(...).session(year) reads another", cite, pointer=pointer)
+            why = f"{dated.basis}; {dated.caveats[-1]}" if dated is not None and dated.caveats else \
+                "jason holds the words of a day only for one section at a time (jason law-history --versions)"
+            return _miss(Reason.EDITION_NOT_HELD, why, cite, pointer=pointer)
         got = authority_text(self.data_dir, t.base, asked_by=caller())
         if not got.get("found"):
             detail = got.get("reason", "") + (f" ({got['detail']})" if got.get("detail") else "")
@@ -697,6 +707,30 @@ class Shelf:
                                "is the official text")
         return State(Kind.STATUTE, True, citation=cite, title=got.get("title", ""), text=words, version=version,
                      extra={"pointer": pointer})
+
+    def _dated_statute(self, t: Target, dated: Any, pointer: dict[str, Any]) -> State:
+        """A statute's section as of a day, from ``law_text.in_force``: the words, the range they were in force, and
+        how jason knows."""
+        from jason.community import law_text
+
+        held = dated.text
+        words = held.words
+        version = {"source": held.page or f"{law_text.HISTORY_DIR}/{law_text.slug(held.citation)}/{held.digest}.md",
+                   "session": held.session, "publisher": held.source, "digest": held.digest, "official": not held.added,
+                   "asOf": t.as_of.isoformat(), "inForce": dated.basis, "decided": dated.decided.value,
+                   "current": held.current}
+        notes = list(dated.caveats)
+        if t.labels:
+            part = label_text(words, t.labels)
+            if not part:
+                return _miss(Reason.LABEL_NOT_FOUND, f"{t.base} as of {t.as_of.isoformat()} is on disk; jason could not "
+                             f"find {''.join(f'({x})' for x in t.labels)} in its words", t.id, pointer=pointer)
+            words = part
+            version["official"] = False
+            notes.append("the subdivision's words, split by jason from the section; the whole section is the official text")
+        if notes:
+            version["note"] = "; ".join(notes)
+        return State(Kind.STATUTE, True, citation=t.id, text=words, version=version, extra={"pointer": pointer})
 
     def _resolution(self, t: Target) -> State:
         claim = [o for o in self.outlines().values() if t.key in o.numbers]

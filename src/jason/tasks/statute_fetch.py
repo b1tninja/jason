@@ -12,6 +12,11 @@ person's.
 A miss stays a miss, with its reason told apart: lawlibrary does not hold the section (an edition it has not
 indexed, or no such section), the checkout is not there, or its worker failed. Text is only ever what lawlibrary
 returned and this module wrote to disk. JASON_AUTHORITIES_FETCH=0 turns the read-through off (the tests do).
+
+``prior_versions`` is not a read-through: a person runs it (``jason law-history --versions``). It asks the same local
+checkout for every row each session publication prints for a section, and keeps the earlier versions in the shelf's
+history with the range each was in force (``jason.tasks.authority_digests``), so a recital for an earlier day gives
+the words of that day (``jason.community.law_text.in_force``).
 """
 
 from __future__ import annotations
@@ -215,6 +220,99 @@ def _write(root: Path, code: str, start: str, end: str, sections, asked_by: str)
     manifest["on_demand"] = rows + [asdict(page)]
     (root / AUTHORITIES_DIR / MANIFEST).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return Fetched(code, start, end, True, page=page.file, session=session)
+
+
+@dataclass(frozen=True)
+class VersionsRead:
+    """What ``prior_versions`` found for one section."""
+
+    citation: str
+    found: bool
+    printed: tuple[str, ...] = ()                    # the session publications that print the section
+    versions: tuple[Any, ...] = ()                   # each version (``LawText``), oldest first, with its range
+    files: tuple[dict[str, str], ...] = ()           # the history files written or updated
+    differs: bool = False                            # the newest publication's words are not the words on the shelf
+    miss: Miss | None = None
+    detail: str = ""
+
+    def reason_text(self) -> str:
+        return _REASONS.get(self.miss, "") if self.miss else ""
+
+
+def prior_versions(root: Path, citations: list[str], *, library: LawLibrary | None = None, when: str = "",
+                   repeals: dict[str, tuple[str, str]] | None = None) -> list[VersionsRead]:
+    """Read each section's versions from the session publications lawlibrary holds, and keep them: every earlier
+    version as ``history/<citation>/<digest>.md`` with the act that made it, the range it was in force, and the
+    publications that printed it; and the day the current words came into force in the versions ledger. One request
+    to the local checkout for all of them (no internet), then the writes under the shelf's store lock.
+
+    This is a person's command (``jason law-history --versions``), not a read-through: no reader calls it. A section
+    lawlibrary prints in no publication is a miss and writes nothing. ``repeals`` gives, for a section the
+    publications stop printing, the day it was repealed and by what, where the caller knows (the Act's history);
+    without it that end is not recorded. ``library`` replaces the checkout in tests."""
+    from jason.community.law_text import normal_citation
+    from jason.locks import Resource, hold
+    from jason.tasks.authority_digests import edition_versions, keep_versions, snapshot, write_ledger
+    from jason.tasks.export_authorities import STORE_KEY
+
+    root = Path(root)
+    wanted: dict[str, list[str]] = {}
+    names: list[str] = []                # every section asked, each once, in the order asked
+    out: dict[str, VersionsRead] = {}
+    for citation in citations:
+        found = normal_citation(citation)
+        base = found[0] if found else citation
+        if base in names:
+            continue
+        names.append(base)
+        code, _, number = base.rpartition(" ")
+        if found is None or code not in LAWLIBRARY_CODES:
+            out[base] = VersionsRead(base, False, miss=Miss.NOT_IN_LIBRARY, detail="not a code on lawlibrary's California shelf")
+            continue
+        wanted.setdefault(code, []).append(number)
+    answer: list[dict[str, Any]] = []
+    failed: tuple[Miss, str] | None = None
+    if wanted:
+        try:
+            lib = library or default_library()
+            if not lib.available():
+                failed = (Miss.LIBRARY_UNAVAILABLE, f"lawlibrary checkout not found at {lib.home}; set lawlibrary_home in .env")
+            else:
+                answer = lib.versions(wanted)
+        except Exception as exc:  # noqa: BLE001 - no settings, no checkout, a failed or timed-out worker: a miss
+            failed = (Miss.WORKER_FAILED, f"{type(exc).__name__}: {exc}"[-300:])
+    by_code = {str(block.get("code") or ""): block for block in answer}
+    by_section: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for code, block in by_code.items():
+        for row in block.get("rows") or []:
+            by_section.setdefault((code, str(row.get("section") or "").lower()), []).append(row)
+    entries: dict[str, dict[str, Any]] = {}
+    with hold(Resource.STORE, STORE_KEY, purpose="jason law-history --versions"):
+        shelf = snapshot(root)
+        for base in names:
+            if base in out:
+                continue
+            if failed is not None:
+                out[base] = VersionsRead(base, False, miss=failed[0], detail=failed[1])
+                continue
+            code, _, number = base.rpartition(" ")
+            block = by_code.get(code) or {}
+            editions = [str(e) for e in block.get("editions") or []]
+            rows = by_section.get((code, number)) or []
+            if not rows:
+                out[base] = VersionsRead(base, False, miss=Miss.NOT_IN_LIBRARY,
+                                         detail="none of lawlibrary's session publications"
+                                                + (f" ({editions[0]} to {editions[-1]})" if editions else "") + " prints it")
+                continue
+            day, by = (repeals or {}).get(base, ("", ""))
+            found_versions = edition_versions(base, editions, rows, repealed=day, repealed_by=by)
+            entry = keep_versions(root, base, editions, found_versions, when=when,
+                                  shelf={t.digest for t in shelf.get(base) or []})
+            entries[base] = entry["ledger"]
+            out[base] = VersionsRead(base, True, tuple(entry["ledger"]["printed"]), tuple(found_versions),
+                                     tuple(entry["files"]), bool(entry["differs"]))
+        write_ledger(root, entries, when=when)
+    return [out[base] for base in names]
 
 
 def promotions(root: Path, curated=None) -> list[dict[str, Any]]:
