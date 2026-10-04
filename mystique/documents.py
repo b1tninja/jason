@@ -85,11 +85,26 @@ KIND_RULES: tuple[KindRule, ...] = (
     KindRule(DocumentKind.CLAIM_ESTIMATE, ("ESTIMATE FOR REPAIRS *", "*Mitigation estimate*", "*Mitigation Estimate*")),
     KindRule(DocumentKind.POLICE_REPORT, ("*Police Report*", "*police report*")),
     KindRule(DocumentKind.MANAGER_CASE_REPORT, ("*Case Performance*",)),
-    # A vendor's proposal or quote the board signed is the executed contract (Adobe Sign names it "... - signed").
-    KindRule(DocumentKind.CONTRACT, ("*Proposal*- signed*", "*Quote*- signed*")),
-    # The Fire Sprinkler Company's quotes ("Fire Sprinkler Repair Quote - ..."); LeDoux's estimates ("Est 15591.pdf").
-    KindRule(DocumentKind.PROPOSAL, ("*Proposal*", "* - Quote*", "*Repair Quote*", "Est [0-9]*")),
-    KindRule(DocumentKind.INVOICE, ("Inv_*", "*Invoice*")),
+    # A vendor's proposal or quote the board signed is the executed contract (Adobe Sign names it "... - signed"), and so
+    # is a change order to one (CalPro's "CHANGE ORDER 1-MYSTIQUE-BALCONY SEALING-23.PDF").
+    KindRule(DocumentKind.CONTRACT, ("*Proposal*- signed*", "*Quote*- signed*", "CHANGE ORDER*")),
+    # Vendors' own paperwork, filed in the vendor's folder: W-9s, and certificates of insurance ("NAHS WC COI 10-1-21 to
+    # 10-1-22.pdf", HighClass's "proof_of_insurance.pdf").
+    KindRule(DocumentKind.FORM, ("*W9*", "*W-9*")),
+    KindRule(DocumentKind.EVIDENCE_OF_INSURANCE, ("* COI *", "*_COI_*", "proof_of_insurance*")),
+    # California Builder Services' reserve studies: a full study ("Mystique_FS25_12.20.24.pdf") and an update
+    # ("Mystique_UD26_10.23.25.pdf"), drafts included.
+    KindRule(DocumentKind.RESERVE_STUDY, ("*_FS[0-9][0-9]_*", "*_UD[0-9][0-9]_*")),
+    # Notices a vendor sends: ProActive's pesticide use notice; Pro Elections' election notices.
+    KindRule(DocumentKind.NOTICE, ("*Pesticide_Use_Notice*", "*Pesticide Use Notice*", "120-Day Notice*",
+                                   "Notice of Voting Method*", "Pre-Ballot Notice*")),
+    # ProActive's service reports ("MYSTIQUE SRVC REPORT 9:17.pdf", "Service Notification OCT.pdf").
+    KindRule(DocumentKind.INSPECTION_REPORT, ("*Service Report*", "*SRVC REPORT*", "*Service Notification*")),
+    # The Fire Sprinkler Company's quotes ("Fire Sprinkler Repair Quote - ..."); LeDoux's estimates ("Est 15591.pdf"); a
+    # landscaper's ("mystique condos estimate for aireacion ... 2026.pdf"). The carrier's estimates matched above.
+    KindRule(DocumentKind.PROPOSAL, ("*Proposal*", "* - Quote*", "*Repair Quote*", "Est [0-9]*", "*estimate*")),
+    # CalPro's invoices are "INV 4239-MYSTIQUE HOA-HELSING-23.pdf".
+    KindRule(DocumentKind.INVOICE, ("Inv_*", "*Invoice*", "INV [0-9]*")),
     KindRule(DocumentKind.INSPECTION_REPORT, ("*inspection report*",)),
     # LeDoux's backflow test reports ("3000 Macon Dr test reports 06-25-25.pdf"); Signal's NFPA 72 inspection form.
     KindRule(DocumentKind.INSPECTION_REPORT, ("*test report*", "*NFPA 72*")),

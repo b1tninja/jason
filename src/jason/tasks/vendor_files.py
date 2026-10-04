@@ -143,6 +143,12 @@ def pdf_words(name: str, data: bytes) -> str:
     if not name.lower().endswith(".pdf"):
         return ""
     try:
+        import pymupdf
+
+        pymupdf.TOOLS.mupdf_display_errors(False)  # a malformed annotation is noise, not a failure
+    except ImportError:
+        pass
+    try:
         from jason.tasks.vendor_portals import _pdf_text
 
         return _pdf_text(data)[:20000]

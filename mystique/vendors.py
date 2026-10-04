@@ -79,13 +79,18 @@ EMAIL_FILING = EmailFiling(
         FilingRule(DocumentKind.INSPECTION_REPORT, (*_FIRE, "Backflow"), senders=("LeDoux Backflow Testing Services",)),
         FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "Roofs"),
                    senders=("North American Home Services", "GoodLife Construction", "Summit Roofing Company")),
+        FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "Pest Control"), senders=("ProActive Pest Control",)),
+        FilingRule(DocumentKind.NOTICE, ("Reports", "Pest Control"), senders=("ProActive Pest Control",)),
         FilingRule(DocumentKind.ELEVATED_ELEMENT_INSPECTION, ("Reports", "Balconies (SB 326)")),
         FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "{vendor}")),
         FilingRule(DocumentKind.CONTRACT, ("Contracts", "{vendor}")),
         FilingRule(DocumentKind.PROPOSAL, ("Proposals / Estimates", "{year}")),
         FilingRule(DocumentKind.INVOICE, ("Financials", "{year}", "Invoices", "{vendor}")),
+        FilingRule(DocumentKind.RESERVE_STUDY, ("Financials", "{year}")),
         FilingRule(DocumentKind.EVIDENCE_OF_INSURANCE, ("Vendors", "{vendor}")),
         FilingRule(DocumentKind.FORM, ("Vendors", "{vendor}")),
+        # The inspector of elections' materials are election records (Civil Code 5200(c)), not the vendor's file.
+        FilingRule(None, ("Elections", "{year}"), senders=("Pro Elections",)),
     ),
     fallback=("Vendors", "{vendor}", "{year}"),
 )
