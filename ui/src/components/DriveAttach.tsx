@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Badge } from "./Badge";
+import { DocumentPreview, attachedCopies } from "./DocumentPreview";
 import { getJson } from "../lib/api";
 
 export interface DriveFile { id: string; name: string; kind: string; url: string }
@@ -10,8 +11,11 @@ export const DRIVE_ATTACH_NOTE = "Google Picker is not configured; this searches
 const isReal = (url: string) => /^https?:\/\//.test(url);
 
 /** Attach Drive files to a record or an agenda item. The rows: kind badge, name, Open (real URL only), Remove. The
- * dialog searches the Drive catalog on disk (`/api/drive-files?q=`), never Drive itself, and says so. */
-export function DriveAttach({ files, onChange, searchPath = "/api/drive-files" }: { files: DriveFile[]; onChange: (files: DriveFile[]) => void; searchPath?: string }) {
+ * dialog searches the Drive catalog on disk (`/api/drive-files?q=`), never Drive itself, and says so.
+ *
+ * `previews` gives each attached file its `DocumentPreview` (jason's copy: a thumbnail, Preview, Read from Drive, Open in
+ * Google) in place of the bare Open link. */
+export function DriveAttach({ files, onChange, searchPath = "/api/drive-files", previews = false }: { files: DriveFile[]; onChange: (files: DriveFile[]) => void; searchPath?: string; previews?: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Record<string, boolean>>({});
@@ -39,15 +43,19 @@ export function DriveAttach({ files, onChange, searchPath = "/api/drive-files" }
     <div className="attach">
       {files.length > 0 && (
         <ul className="attach-list">
-          {files.map((f) => (
-            <li key={f.id}>
-              <span className="attach-name"><Badge>{f.kind || "file"}</Badge><span>{f.name}</span></span>
-              <span className="attach-acts">
-                {isReal(f.url) && <a href={f.url} target="_blank" rel="noopener noreferrer">Open</a>}
-                <button className="link" onClick={() => onChange(files.filter((x) => x.id !== f.id))}>Remove</button>
-              </span>
-            </li>
-          ))}
+          {files.map((f) => {
+            const copies = previews ? attachedCopies(f) : null;
+            return (
+              <li key={f.id} className={copies ? "attach-with-preview" : undefined}>
+                <span className="attach-name"><Badge>{f.kind || "file"}</Badge><span>{f.name}</span></span>
+                <span className="attach-acts">
+                  {!copies && isReal(f.url) && <a href={f.url} target="_blank" rel="noopener noreferrer">Open</a>}
+                  <button className="link" onClick={() => onChange(files.filter((x) => x.id !== f.id))}>Remove</button>
+                </span>
+                {copies && <DocumentPreview name={f.name} driveId={copies.driveId} kind={copies.kind} path={copies.path} recordedLabel="File on disk" />}
+              </li>
+            );
+          })}
         </ul>
       )}
       <div className="row wrap">

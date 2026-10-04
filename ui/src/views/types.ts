@@ -9,6 +9,19 @@ export interface Governing {
   number: string; recorded: string; filing: string; role: string; phase: string; delivery: string; recordedBy: string;
   parties: string[]; cites: string[]; status: string; supersededBy: string;
 }
+/** One copy of a governing document as `GET /api/governing-documents` gives it, in the shape docs/console/doc-component.md
+ * calls a `DocRef`: an evidence address (`file:<path under data/>` or `drive:<id>`), never a URL into data/. */
+export interface GoverningCopy {
+  address: string; document?: string; name: string; kind: string; level?: string; source: string; readAt?: string; size?: number;
+  thumb?: boolean; original?: { url: string; label: string }; refreshable?: { system: string; what: string }; stale?: string;
+}
+/** One of the association's governing documents: what it is, when it was recorded or adopted, and its copies: the recorded
+ * PDF (the copy that governs) and the Drive file (a working copy). */
+export interface GoverningDocumentRow {
+  key: string; title: string; kind: string; kindWord: string; recorded: string; adopted: string; written: string; number: string;
+  driveKind: string; recordedCopy: GoverningCopy | null; driveCopy: GoverningCopy | null; level: string; confidential: boolean;
+}
+export interface GoverningDocuments { found?: boolean; note?: string; count: number; rows: GoverningDocumentRow[]; heldBack: number; folders: string[]; caveats: string[] }
 export interface Lifecycle { process?: string; status?: string; opened?: string; closed?: string; number?: string; [k: string]: unknown }
 export interface AssociationRecords {
   found?: boolean; note?: string;

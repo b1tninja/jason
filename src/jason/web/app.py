@@ -51,6 +51,9 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     from jason.web.drive import blueprint as drive_routes
 
     app.register_blueprint(drive_routes())      # a Drive file's kept thumbnail, from disk (jason.tasks.drive_copies)
+    from jason.web.previews import blueprint as preview_routes
+
+    app.register_blueprint(preview_routes())    # page 1 of a recorded PDF under data/, rendered and kept (pdf_thumbs)
 
     @app.get("/api/session")
     def session():

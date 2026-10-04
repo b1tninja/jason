@@ -21,6 +21,9 @@ live system.
   catalog". ``changed`` is true when the catalog's ``modified`` is newer than the copy's ``modifiedTime`` ("Changed in
   Drive since this copy"). Its documents are the copy's PDF, text, and CSV; its refresher exports it again from Drive
   (``Google Drive``). A file the holdings mark confidential is held back outside the private view.
+- **A file on disk** (``file:<path>``, a path under the data folder): a recorded or adopted copy, "Recorded copy",
+  only in a place ``jason.web.access``'s ``PATH_RULES`` names and of a kind the viewer shows. Its level is the path's;
+  a confidential one is held back outside the private view. No refresher: a recorded instrument does not change.
 
 **The private view.** ``resolve(..., private=True)`` is what jason-web asks while a person's private view is open
 (``jason.web.access``): a restricted book is recited (``jason cite --private``), a citation's confidential documents
@@ -76,6 +79,7 @@ class EvidenceKind(Enum):
     CITATION = "citation"
     BOARD_ITEM = "board_item"
     DRIVE = "drive"
+    FILE = "file"
     COMMAND = "command"
     UNKNOWN = "unknown"
 
@@ -91,6 +95,7 @@ class SourceName(Enum):
     BOARD_ITEMS = "Board items"
     DRIVE_COPY = "Copy from Drive"
     DRIVE_CATALOG = "Drive catalog"
+    RECORDED = "Recorded copy"
 
 
 @dataclass(frozen=True)
@@ -688,6 +693,36 @@ def read_drive(ask: Ask) -> dict[str, Any]:
     return out
 
 
+def read_file(ask: Ask) -> dict[str, Any]:
+    """A file under the data folder (``file:<path>``): a recorded or adopted copy jason keeps, from disk. Only a place
+    ``jason.web.access``'s ``PATH_RULES`` names and a kind the viewer shows; its level is the path's
+    (``level_of_path``), a confidential one held back outside the private view. Nothing reads it again: a recorded
+    instrument does not change."""
+    from jason.approvals.evidence_documents import RECORDED_CAVEAT, file_documents, file_level, file_place
+    from jason.web.access import WORDS, Level
+
+    rel = ask.match.group(1).strip() if ask.match else ""
+    found = file_place(ask.root, rel)
+    out: dict[str, Any] = {"label": Path(rel.replace("\\", "/")).name or rel, "sources": [], "changed": None,
+                           "changedNote": "", "link": "", "caveats": [], "note": "", "found": found is not None}
+    if found is None:
+        out["note"] = (f"{rel or '(no path)'} is not a file jason shows: a PDF, an image, or a text file under the data "
+                       "folder, in a place jason's access rules name.")
+        return out
+    posix, path = found
+    level = file_level(ask.root, posix)
+    if level == "P4" or (level == "P3" and not ask.private):
+        out["note"] = "Confidential: the file and its text are held back; open the private view to see them."
+        return out
+    fields = [mask_field("Place", posix.rsplit("/", 1)[0] if "/" in posix else "the data folder"),
+              mask_field("Level", WORDS[Level(level)])]
+    out["sources"].append(source(SourceName.RECORDED, read_at=_mtime(path), fields=fields, caveat=RECORDED_CAVEAT,
+                                 note="Kept on disk; a recorded copy is not read again."))
+    out["caveats"].append(RECORDED_CAVEAT)
+    out["documents"] = [d.as_dict() for d in file_documents(ask.root, posix, private=ask.private)]
+    return out
+
+
 # What a command's words say it reads live, in order: the first that matches names the system.
 COMMAND_SYSTEMS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"--payhoa\b|\bsync-(catalog|request-files|bills|liens)\b|\bapprovals apply\b|\bmailroom\b"), "PayHOA"),
@@ -710,7 +745,8 @@ def _command_refresh(ask: Ask) -> list[dict[str, Any]]:
 def read_unknown(ask: Ask) -> dict[str, Any]:
     why = ("no address" if not ask.address else
            "jason cannot open this address: it is not a PayHOA request (payhoa:submission:N), a board item "
-           "(board-item:ID), a Drive file (drive:ID), a command (jason ...), or a citation jason cite reads")
+           "(board-item:ID), a Drive file (drive:ID), a file on disk (file:PATH), a command (jason ...), or a citation "
+           "jason cite reads")
     return {"label": ask.address, "sources": [], "changed": None, "changedNote": "", "link": "", "caveats": [],
             "note": why + ".", "found": False}
 
@@ -790,6 +826,7 @@ RULES: tuple[Resolver, ...] = (
                       "Google"),),
              live=True,
              refresher=Refresher("Google Drive", "Export this file again from Drive", refresh_drive, drive_live)),
+    Resolver(EvidenceKind.FILE, re.compile(r"^file:(.+)$").match, read_file, (), live=False),
     Resolver(EvidenceKind.COMMAND, re.compile(r"^jason\s+\S").match, read_command, (), live=False),
     Resolver(EvidenceKind.CITATION, _citation, read_citation,
              (Refresh("jason export-authorities", False,

@@ -54,7 +54,7 @@ export function copyDay(iso: string, today: Date = new Date()): string {
 }
 
 /** Whether the element has scrolled into view (once); true at once where the browser has no IntersectionObserver. */
-function useSeen(enabled: boolean) {
+export function useSeen(enabled: boolean) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [seen, setSeen] = useState(false);
   useEffect(() => {

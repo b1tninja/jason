@@ -1,7 +1,57 @@
-import { Badge, Card, DataTable, Findings, Pill, RemoteView, Tabs, Timeline, type Column } from "../components";
+import { Badge, Card, Caveats, DataTable, DocumentPreview, EvidenceVersion, Findings, Pill, ReadAllFromDrive, RemoteView, Tabs, Timeline, type Column, type DriveKind } from "../components";
 import { useState } from "react";
 import { useApi } from "../lib/useApi";
-import type { AssociationRecords, Governing, Inventory, InventoryRecord, Lifecycle } from "./types";
+import type { AssociationRecords, Governing, GoverningDocumentRow, GoverningDocuments, Inventory, InventoryRecord, Lifecycle } from "./types";
+
+const DRIVE_KINDS: readonly string[] = ["doc", "sheet", "slides", "pdf", "image", "drive"];
+const after = (address: string | undefined, prefix: string) => (address && address.startsWith(prefix) ? address.slice(prefix.length) : "");
+/** The Drive id of a row's Drive copy (its `drive:` address), or "". */
+export const governingDriveId = (r: GoverningDocumentRow) => after(r.driveCopy?.address, "drive:");
+
+/** When the document took effect, as the specification knows it: recorded, else adopted, else written. */
+function dated(r: GoverningDocumentRow): string {
+  return r.recorded ? `recorded ${r.recorded}` : r.adopted ? `adopted ${r.adopted}` : r.written ? `written ${r.written}` : "";
+}
+
+const governingDocCols: Column<GoverningDocumentRow>[] = [
+  { key: "title", header: "Document", render: (r) => (
+    <span className="stack-tight">
+      <strong>{r.title}</strong>
+      {r.number && <span className="muted"> {r.number}</span>}
+      {r.confidential && <> <Badge tone="warn">Confidential</Badge></>}
+    </span>
+  ) },
+  { key: "kindWord", header: "Kind", render: (r) => (r.kindWord ? <Badge>{r.kindWord}</Badge> : <span className="muted">not classified</span>) },
+  { key: "recorded", header: "Recorded or adopted", value: (r) => r.recorded || r.adopted || r.written, render: (r) => dated(r) || <span className="muted">unknown</span> },
+  { key: "copies", header: "Copies", value: () => "", render: (r) => (
+    <DocumentPreview name={r.title} labelled path={after(r.recordedCopy?.address, "file:")} driveId={governingDriveId(r)}
+      kind={(DRIVE_KINDS.includes(r.driveKind) ? r.driveKind : "doc") as DriveKind} />
+  ) },
+];
+
+/** The association's governing documents, each with its copies side by side: the recorded PDF on disk (the copy that
+ * governs a recorded instrument) and the Drive file (a working copy), and "Read every governing document from Drive" for
+ * those with a Drive file. A confidential one is listed only in the private view; the list says how many it held back. */
+export function GoverningDocumentsList({ data }: { data: GoverningDocuments }) {
+  const [version, setVersion] = useState(0);
+  return (
+    <Card title={`Governing documents (${data.count})`}>
+      <p className="muted">The recorded copy governs a recorded instrument; a Google Doc in Drive is a working copy. Each opens as jason's copy, and each view is logged.</p>
+      <ReadAllFromDrive driveIds={data.rows.map(governingDriveId)} what="governing document" batch="governing" onDone={() => setVersion((v) => v + 1)} />
+      {data.heldBack > 0 && <p className="muted">{data.note ?? `${data.heldBack} held back (confidential); open the private view to see them.`}</p>}
+      {data.rows.length === 0 && data.note && !data.heldBack && <p className="muted">{data.note}</p>}
+      <EvidenceVersion.Provider value={version}>
+        <DataTable rows={data.rows} columns={governingDocCols} searchable={false} />
+      </EvidenceVersion.Provider>
+      <Caveats items={data.caveats ?? []} />
+    </Card>
+  );
+}
+
+function GoverningDocumentsTab() {
+  const r = useApi<GoverningDocuments>("/api/governing-documents");
+  return <RemoteView r={r}>{(d) => <GoverningDocumentsList data={d} />}</RemoteView>;
+}
 
 const governingCols: Column<Governing>[] = [
   { key: "recorded", header: "Recorded" },
@@ -98,6 +148,7 @@ export function AssociationRecordsView() {
       onChange={setTab}
       tabs={[
         { id: "inventory", label: "Records inventory", content: <InventoryView /> },
+        { id: "governing", label: "Governing documents", content: <GoverningDocumentsTab /> },
         { id: "instruments", label: "Recorded instruments", content: <Instruments /> },
       ]}
     />

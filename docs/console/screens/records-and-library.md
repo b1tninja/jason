@@ -8,7 +8,7 @@ The Records group already shows the records' standing:
 
 | Console screen | What it shows | Loaders |
 |---|---|---|
-| **Records (CIV 5200)** (`#/records`, `ConsoleRecords`; owner view too) | Each 5200 record with its citation, retention, where the specification keeps it, how many files are there, and its gap; the governing instruments as a timeline; the developer deliveries found and missing; liens the association placed; filings against it | `association-records`, `records-inventory` |
+| **Records (CIV 5200)** (`#/records`, `ConsoleRecords`; owner view too) | Each 5200 record with its citation, retention, where the specification keeps it, how many files are there, and its gap; the governing documents, each with its recorded PDF and its Drive file previewed side by side (`DocumentPreview`: "Recorded copy" first, then "Drive copy") and "Read every governing document from Drive"; the governing instruments as a timeline; the developer deliveries found and missing; liens the association placed; filings against it | `association-records`, `records-inventory`, `governing-documents` |
 | **Document ingestion** (`#/ingestion`) | Files by classification method and by kind, the records covered, the unclassified list; what each recorded copy says about itself | `library-status`, `document-readings` |
 | **Leads** (`#/leads`) | Everything unpinned, in one list: unclassified files, records gaps, supersessions the specification does not pin, missing deliveries | `leads` |
 | **Records requests** (`#/records-requests`) | Member requests for records with their 5210 clocks and the board's decisions | `records-requests` |

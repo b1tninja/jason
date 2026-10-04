@@ -11,6 +11,9 @@
   does not hold it as confidential: the file itself, and the library's extracted text of it.
 - **A Drive file** (``drive:<id>``). jason's copy of it (``data/drive/copies``): its PDF (``pdf``), a Doc's text
   (``text``), a Sheet's first sheet (``csv``), a stored image (``image``), each when on disk.
+- **A file on disk** (``file:<path>``, a path under the data folder in a place ``jason.web.access``'s ``PATH_RULES``
+  names, of a kind the viewer shows): the file itself, and a PDF's text extract beside it (``<name>.pdf.md``), at the
+  file's level (``level_of_path``). A recorded copy: nothing reads it again.
 - **A board item or a command.** None.
 
 **Confidential documents** (a library file held as confidential, or any copy of one by its digest; a Drive file the
@@ -298,6 +301,60 @@ def drive_documents(root: Path, drive_id: str, *, private: bool = False) -> list
             continue
         out.append(Document(doc_id, shown, kind, _size(path), read_at, said, drive_copies.CAVEAT, path, folder))
     return confidential(out) if secret else out
+
+
+RECORDED_CAVEAT = ("jason's recorded or adopted copy on disk; a recorded instrument does not change, so it is not read "
+                   "again. The recorded original governs.")
+FILE_EXTRACT_NOTE = "the text read from the file (its text layer, or OCR when scanned)"
+FILE_KINDS = frozenset({"pdf", "image", "text"})
+
+
+def file_place(root: Path, rel: str) -> tuple[str, Path] | None:
+    """A file named by its path under the data folder, as the ``file:<path>`` address takes it: the path as posix and
+    the file, when it is a file inside the folder, in a place ``jason.web.access``'s ``PATH_RULES`` names, of a kind the
+    viewer shows (pdf, image, text); None otherwise (outside, missing, unplaced, or another kind)."""
+    from jason.web.access import placed
+
+    text = str(rel or "").strip().replace("\\", "/").lstrip("/")
+    if not text or "\x00" in text:
+        return None
+    base = Path(root).resolve()
+    try:
+        path = (base / text).resolve()
+        posix = path.relative_to(base).as_posix()
+    except (OSError, ValueError):
+        return None
+    if not path.is_file() or kind_of(path.name) not in FILE_KINDS or not placed(posix, base):
+        return None
+    return posix, path
+
+
+def file_level(root: Path, rel: str) -> str:
+    """The data level of a file under the data folder (``jason.web.access.level_of_path``): ``"P0"`` to ``"P4"``."""
+    from jason.web.access import level_of_path
+
+    return level_of_path(rel, Path(root)).value
+
+
+def file_documents(root: Path, rel: str, *, private: bool = False) -> list[Document]:
+    """A file under the data folder (``file:<path>``): the file itself (``pdf``, ``image``, or ``text`` by its
+    extension), then a PDF's text extract beside it (``<name>.pdf.md``) as ``text``, each only when on disk. A file
+    at P3 (confidential by ``jason.web.access``) only with ``private``, marked confidential; P4 never."""
+    found = file_place(root, rel)
+    if found is None:
+        return []
+    posix, path = found
+    level = file_level(root, posix)
+    if level == "P4" or (level == "P3" and not private):
+        return []
+    folder = path.parent
+    kind = kind_of(path.name)
+    out = [Document(kind, path.name, kind, _size(path), _mtime(path), "Recorded copy", RECORDED_CAVEAT, path, folder)]
+    extract = path.with_name(path.name + ".md")
+    if kind == "pdf" and inside(extract, folder):
+        out.append(Document("text", f"{path.name}, its text", "text", _size(extract), _mtime(extract),
+                            FILE_EXTRACT_NOTE, EXTRACT_CAVEAT, extract, folder))
+    return confidential(out) if level == "P3" else out
 
 
 def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_at: str = "",
@@ -765,6 +822,8 @@ def documents_for(address: str, root: Path, *, private: bool = False) -> tuple[s
         return rule.kind.value, request_documents(root, int(found.group(1)))
     if rule.kind is EvidenceKind.DRIVE and found is not None:
         return rule.kind.value, drive_documents(root, found.group(1), private=private)
+    if rule.kind is EvidenceKind.FILE and found is not None:
+        return rule.kind.value, file_documents(root, found.group(1), private=private)
     if rule.kind is EvidenceKind.CITATION:
         from jason.tasks import cite
 
@@ -863,6 +922,6 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
 
 
 __all__ = ["ATTACHMENT_CAVEAT", "CONFIDENTIAL", "CONFIDENTIAL_NOTE", "Document", "EXTENSIONS", "MAX_TEXT", "OCTET", "Opened", "UNMASKED", "VIEW_LOG",
-           "citation_documents", "confidential", "content_type", "documents_for", "drive_documents", "file_id",
-           "inside", "kind_of",
+           "citation_documents", "confidential", "content_type", "documents_for", "drive_documents", "file_documents",
+           "file_id", "file_level", "file_place", "inside", "kind_of",
            "request_documents", "submission_view", "view"]

@@ -234,7 +234,7 @@ export function AgendaWizard({ plan, onSave, busy }: { plan: AgendaPlan; onSave:
                         {r.cand.authority && <span className="muted">{r.cand.authority}</span>}
                       </span>
                       <label className="wfield">Proposed motion<textarea rows={2} value={r.draft.motion} onChange={(e) => setItem(r.id, { motion: e.target.value })} /></label>
-                      <div className="wfield-block"><span className="muted">Packet</span><DriveAttach files={r.draft.packet} onChange={(packet) => setItem(r.id, { packet })} /></div>
+                      <div className="wfield-block"><span className="muted">Packet</span><DriveAttach files={r.draft.packet} onChange={(packet) => setItem(r.id, { packet })} previews /></div>
                     </>
                   )}
                 </div>

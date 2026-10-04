@@ -39,7 +39,7 @@ What is built and what is proposed are marked in each section. The evidence rout
 
 | Record | What it is | Where |
 |---|---|---|
-| Address | What a piece of evidence names: `payhoa:submission:N`, `CIV 4041`, `jason://decl/6.2(a)`, `board-item:ID`, `drive:ID`, `gmail:MESSAGE` (proposed), `mail:ID` (proposed) | an `Evidence` row on a plan item, a canvas clip, a board item, a letter |
+| Address | What a piece of evidence names: `payhoa:submission:N`, `CIV 4041`, `jason://decl/6.2(a)`, `board-item:ID`, `drive:ID`, `file:PATH` (a file under data/), `gmail:MESSAGE` (proposed), `mail:ID` (proposed) | an `Evidence` row on a plan item, a canvas clip, a board item, a letter |
 | Document | One readable thing an address has: `{id, name, kind, size, readAt, note}` | `resolve(address).documents` |
 | Copy | The bytes or record jason keeps, with `readAt`, `via` (what read it), and a digest | `payhoa-files/requests/N/submission.json`, `library/files/...`, `drive/copies/ID.*`, `gmail/messages/ID.json` (proposed) |
 | Refresher | How one address is read again from its source, if it can be | a resolver row's `refresher` (`jason.approvals.evidence`) |
@@ -180,9 +180,17 @@ A modal `<dialog>` (`showModal()`), about 92vw by 90vh. Width is capped for read
 - **Level and caveats:** P0, unless a library row is confidential. It always carries the caveat that jason's text is not an official restatement, and the version in force.
 - **Proposed:** link the static reader (`jason cite --html`, `data/reader/`) as the original for a `jason://` address, so a person can walk to the neighbouring sections.
 
+**The governing documents' previews** (built). The Records screen's **Governing documents** tab (`#/records`) lists each of the association's governing documents (`GET /api/governing-documents`, `jason.web.extra.governing_documents`): the declaration and its amendments (`Community.ccrs`) and the documents others cite (`Community.citable_documents`), each once, with its kind and the date it was recorded, adopted, or written, and its copies as document references (`DocRef`, [doc-component.md](doc-component.md)):
+- **Recorded copy:** the recorded or adopted PDF on disk (`artifacts/site-docs/governing_documents/`, `governing/`), matched to its document by the Drive id its text extract's header names (`<name>.pdf.md`), else by name, else by recording number. A PDF no document claims is a row of its own. It is the copy that governs a recorded instrument (AGENTS.md, "Recite the version that governs").
+- **Drive copy:** the Doc in Drive the specification binds, a working copy, as jason's copy (`drive:<id>`).
+
+`DocumentPreview` shows both side by side, the recorded copy first, each labelled; a Drive file alone is `DrivePreview` as on the Templates screen. "Read every governing document from Drive" reads the Drive files on one sign-in (`refresh-many`). A row's level is the higher of its copies'; a confidential row is listed only in the private view, and the list says how many it held back.
+- **A file on disk as evidence:** `file:<path under data/>` is a resolver row (`EvidenceKind.FILE`): only a place `access.PATH_RULES` names (an unplaced folder fails closed), and only a kind the viewer shows (pdf, image, text). Its source is "Recorded copy" (the file's modified time); its documents `pdf` (or `image`, `text`) and, for a PDF, `text` from its extract beside it (`<name>.pdf.md`). The level is `level_of_path`; a P3 file is held back outside the private view. No refresher: a recorded instrument does not change.
+- **Page 1 as a thumbnail:** `GET /api/thumb?path=<path under data/>` (`jason.web.previews`) renders a PDF's first page with PyMuPDF, about 300 pixels wide, and keeps it as `data/thumbs/<sha256 of the path>.png`, rendered again when the PDF's modified time changes (`jason.tasks.pdf_thumbs`). It reads disk only, so a screen may load it. It is judged as `/api/file` is: 401 signed out, 404 for no PDF there, 403 for a level the person's offices do not open, each serve logged in `access/served.jsonl`; `Cache-Control: private, max-age=300`, `nosniff`, `CSP: sandbox`. `thumbs/*` is P3 by path, so a thumbnail never leaves by `/api/file`.
+
 ### Google Docs, Sheets, and Slides
 
-**Status:** built: the copy, its refresher, freshness, restrictions, the size limit, and the `drive:<id>` evidence row (`jason.tasks.drive_copies`, `jason.approvals.evidence`), with the Templates screen's Doc column as the first screen to show them (`DrivePreview`). A Sheet's CSV opens as text; the `table` renderer and a CSV per sheet are proposed.
+**Status:** built: the copy, its refresher, freshness, restrictions, the size limit, and the `drive:<id>` evidence row (`jason.tasks.drive_copies`, `jason.approvals.evidence`), with the Templates screen's Doc column as the first screen to show them (`DrivePreview`), then the governing documents and the meeting packets (`DocumentPreview`, above). A Sheet's CSV opens as text; the `table` renderer and a CSV per sheet are proposed.
 
 **Truth:** Drive. jason keeps Drive's metadata (`drive/files.json`), a copy when the same bytes arrived another way (`drive/holdings.json` `elsewhere`), and its own copy once a person reads a file from Drive.
 
@@ -310,7 +318,7 @@ These were found while writing this page. Each is a lead for the build order bel
 | ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only while the person's private view is open, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Still open: moving the callers (Embed's local refs, KeyDocuments, packets) to the document service |
 | ~~`/api/library?confidential=1`~~ **Closed** | Lists confidential rows to anyone on the loopback | Done: the confidential rows are held back (`heldBack: n`) unless the person's private view is open (P3); `/api/embeds?confidential=1` too |
 | `Embed` frames any ref | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | See [The Embed component](#the-embed-component) |
-| `MeetingStage` packet frames | A bare iframe, no fallback, no sandbox | Packet files open in `DocumentViewer`, or follow Embed's rules |
+| ~~`MeetingStage` packet frames~~ **Closed** | A bare iframe, no fallback, no sandbox | Done: for the board and the host, a packet file on the stage is jason's copy, opened as one logged view (`POST /api/evidence/view`) and shown by `DocumentViewer` inline from its document link; with no copy, its `DocumentPreview` card (Read from Drive, Open in Google). Members (`audience=owner`, not signed in) see only a card: "The host is showing <name>; members receive the packet with the agenda". Nothing marks a packet file for members, so none is shown to them (a decision for the board). The stage never frames Google |
 | Registers carry no Sheet link | A person can't reach the source | Return the spreadsheet's `webViewLink` with the snapshot |
 | A file answer shows ids | "9,9" instead of names | In progress (the submission rules above) |
 
@@ -334,7 +342,7 @@ It changes in four ways (proposed):
 1. **Submission rendering** (in progress): sections, grouped choices, same-as pairs, file names, help, and required.
 2. **Close the serving gaps:** `/api/file` callers to the document service; the library's confidential flag to the private view (built: the switch, the band, and the evidence's confidential documents).
 3. **The viewer's header actions:** Open the original, ↻ inside the viewer, and the held-back count.
-4. **Drive copies** (built, but the `table` renderer): the `drive:` resolver row with its export refresher, thumbnails, and the Doc, Sheet, and Slides renderers (pdf and markdown built; a Sheet's CSV opens as text until the `table` renderer). `DrivePreview` shows a file as jason's copy on the Templates screen; packets, governing documents, and drafts are next.
+4. **Drive copies** (built, but the `table` renderer): the `drive:` resolver row with its export refresher, thumbnails, and the Doc, Sheet, and Slides renderers (pdf and markdown built; a Sheet's CSV opens as text until the `table` renderer). `DrivePreview` shows a file as jason's copy on the Templates screen. Built since: the `file:` resolver row and `GET /api/thumb?path=` for recorded copies on disk; `DocumentPreview` (a Drive file, a file on disk, or both, labelled) on the Records screen's governing documents, the agenda wizard's and the meeting view's packet files, and the meeting stage's packet cell. Drafts are next, then the `Doc` component that absorbs these ([doc-component.md](doc-component.md)).
 5. **Embed's allowlist, sandbox, and document cards.**
 6. **Google Forms:** the blank form and responses as submissions.
 7. **Gmail messages:** sanitized bodies, blocked remote images, attachments.

@@ -294,6 +294,13 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stage-role { color: var(--hero-muted, rgba(255,255,255,.7)); font-size: 1.7cqw; } .stage-quorum { margin: .6cqw 0 0; font-size: 2.3cqw; }
 .stage-clock { font-size: 9cqw; line-height: 1; font-variant-numeric: tabular-nums; }
 .stage-doc { width: 100%; height: 26cqw; border: 0; border-radius: 1cqw; background: #fff; }
+/* A packet file on the stage: jason's copy in the viewer, inline (never a frame of Google) */
+.stage-doc-copy { overflow: hidden; color: var(--ink); }
+.stage-doc-copy dialog.doc-viewer.doc-viewer-inline { min-height: 0; height: 100%; border: 0; border-radius: 1cqw; }
+.stage-doc-copy .doc-viewer-pdf-frame, .stage-doc-copy .doc-pdf-frame { min-height: 0; }
+.stage-doc-card { height: auto; min-height: 12cqw; padding: 1.6cqw 2cqw; display: grid; gap: 1cqw; background: rgba(255,255,255,.06); border: .15cqw solid var(--hero-line, rgba(255,255,255,.25)); color: inherit; font-size: 1.7cqw; line-height: 1.35; }
+.stage-doc-card p { margin: 0; }
+.stage-doc-card .drive-preview, .stage-doc-card .doc-preview { color: var(--ink); background: var(--panel); border-radius: var(--r); padding: 8px; max-width: max-content; font-size: 12.5px; }
 .stage-doc-sample { height: 24cqw; border: .15cqw solid var(--hero-line, rgba(255,255,255,.25)); background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 1cqw, transparent 1cqw 2cqw); display: grid; place-items: center; text-align: center; padding: 2cqw; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.6cqw; color: var(--hero-muted, rgba(255,255,255,.7)); }
 .stage-options { font-size: 1.6cqw; } .stage-options .muted { color: var(--hero-muted, rgba(255,255,255,.7)); }
 /* The options view on the stage keeps the hero's ink: the option cards take a translucent surface, never the page's panel. */
@@ -590,6 +597,16 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .drive-preview-read[aria-busy="true"] .evidence-reread-icon { animation: none; } }
 .drive-preview-status:empty { display: none; }
 .drive-preview-status .notice { display: inline-block; margin: 0; padding: 2px 6px; }
+/* A document's copies side by side: the recorded copy (the one that governs) first, then the Drive copy */
+.doc-preview { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; }
+.doc-preview-copy { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.doc-preview-label { font-size: var(--label, 11px); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; color: var(--muted); }
+.doc-preview-none { font-size: 12.5px; }
+.packet-previews { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.packet-previews > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.packet-previews-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .packet-previews > li { grid-template-columns: minmax(0, 1fr); } }
+.attach-list li.attach-with-preview { align-items: flex-start; flex-wrap: wrap; }
 
 /* document viewer: the panel's Documents list, and the modal "pop out" that shows one document unmasked */
 .evidence-documents { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }

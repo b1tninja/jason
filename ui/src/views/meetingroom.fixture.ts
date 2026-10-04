@@ -2,6 +2,8 @@
 import type { MeetingRoomData } from "../components/MeetingStage";
 
 const FIVE = ["D. Okafor", "E. Lind", "F. Marsh", "G. Petrov", "H. Quinn"];
+/** A made-up Drive id: the second bid is a Doc in Drive, so the stage shows jason's copy of it (never a Google frame). */
+export const DRIVE_BID = "1FakeBidDoc00002";
 
 export function roomData(over: Partial<MeetingRoomData> = {}, room: Partial<MeetingRoomData["room"]> = {}): MeetingRoomData {
   return {
@@ -10,7 +12,8 @@ export function roomData(over: Partial<MeetingRoomData> = {}, room: Partial<Meet
       { id: "call", kind: "call", label: "Call to order", title: "Call to order and roll call", facts: [], motion: "", threshold: "majority", recused: [], allot: 3, packet: [], brief: null, session: "open session" },
       { id: "forum", kind: "forum", label: "Open forum", title: "Open forum", facts: [], motion: "", threshold: "majority", recused: [], allot: 15, packet: [], brief: null, session: "open session" },
       { id: "landscape", kind: "action", label: "Item 1 · Action", title: "Renew the landscape contract", facts: ["Two bids in the packet"], motion: "Move to approve the contract with Vendor A.", threshold: "majority", recused: ["H. Quinn"], allot: 15,
-        packet: [{ id: "f1", name: "Vendor A bid.pdf", kind: "pdf" }], brief: { question: "Which contract?", criteria: ["Cost"], options: [{ label: "A", values: ["$1"] }, { label: "B", values: ["$2"] }] }, session: "open session" },
+        packet: [{ id: "f1", name: "Vendor A bid.pdf", kind: "pdf" },
+          { id: DRIVE_BID, name: "Vendor B bid", kind: "doc", url: `https://docs.google.com/document/d/${DRIVE_BID}/edit`, real: true }], brief: { question: "Which contract?", criteria: ["Cost"], options: [{ label: "A", values: ["$1"] }, { label: "B", values: ["$2"] }] }, session: "open session" },
       { id: "adjourn", kind: "adjourn", label: "Adjournment", title: "Adjourn", facts: [], motion: "", threshold: "majority", recused: [], allot: 1, packet: [], brief: null, session: "open session" },
     ],
     room: {

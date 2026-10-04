@@ -1,8 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import { HostPanel, MeetingStage, type MinutesLetter } from "./MeetingStage";
-import { roomData } from "../views/meetingroom.fixture";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetServerSession } from "../lib/api";
+import type { EvidenceAnswer } from "./Evidence";
+import { HostPanel, MEMBERS_PACKET_LINE, MeetingStage, type MinutesLetter } from "./MeetingStage";
+import { DRIVE_BID, roomData } from "../views/meetingroom.fixture";
 import { RollCall, outcome } from "./RollCall";
 
 describe("RollCall, extended", () => {
@@ -54,6 +56,70 @@ describe("MeetingStage", () => {
     expect(screen.getByText("2:05")).toBeInTheDocument();
     rerender(<MeetingStage wordmark="S" item={{ label: "Item", title: "x" }} content={{ kind: "packet", file: { name: "Bid.pdf", kind: "pdf" } }} caption="" progress={0} />);
     expect(screen.getByText(/document preview/)).toBeInTheDocument();
+  });
+});
+
+describe("MeetingStage packet files", () => {
+  afterEach(() => { vi.unstubAllGlobals(); resetServerSession(); });
+  const bid = () => roomData().items[2].packet[1];
+  const stage = (props: Partial<Parameters<typeof MeetingStage>[0]> = {}) => (
+    <MeetingStage wordmark="S" item={{ label: "Item 1", title: "Renew the contract" }} content={{ kind: "packet", file: bid() }} caption="" progress={0} {...props} />
+  );
+  const noGoogleFrame = (root: HTMLElement) => {
+    for (const f of Array.from(root.querySelectorAll("iframe"))) expect(f.getAttribute("src") ?? "").not.toMatch(/google\.com/);
+  };
+  const copy = (): EvidenceAnswer => ({
+    found: true, address: `drive:${DRIVE_BID}`, label: "Vendor B bid", kind: "drive", sources: [], changed: false, changedNote: "",
+    link: `https://docs.google.com/document/d/${DRIVE_BID}/edit`, refresh: [], caveats: [], note: "",
+    documents: [{ id: "pdf", name: "Vendor B bid.pdf", kind: "pdf", size: 10, readAt: "2026-10-03T15:00:00+00:00", note: "" }],
+  });
+
+  it("shows the board jason's copy, inline, from its document link", () => {
+    const view = { kind: "pdf" as const, name: "Vendor B bid.pdf", readAt: "2026-10-03T15:00:00+00:00", url: "/api/evidence/document/tok", expires: "", caveats: [] };
+    const { container } = render(stage({ packetCopy: { evidence: copy(), view, signedIn: true } }));
+    const region = screen.getByRole("region", { name: "Vendor B bid, jason's copy" });
+    expect(within(region).getByTitle("Vendor B bid.pdf")).toHaveAttribute("src", "/api/evidence/document/tok");
+    noGoogleFrame(container);
+  });
+
+  it("with no copy, the board sees the preview card with Read from Drive and Open in Google, never a frame", () => {
+    const { container } = render(stage({ packetCopy: { evidence: { ...copy(), documents: [] }, signedIn: true } }));
+    expect(screen.getByText("Vendor B bid: No copy yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read Vendor B bid from Drive" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open in Google/ })).toHaveAttribute("href", `https://docs.google.com/document/d/${DRIVE_BID}/edit`);
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("members see only a card that names it", () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const { container } = render(stage({ audience: "owner" }));
+    expect(screen.getByRole("note")).toHaveTextContent(MEMBERS_PACKET_LINE("Vendor B bid"));
+    expect(screen.getByText("The host is showing Vendor B bid; members receive the packet with the agenda.")).toBeInTheDocument();
+    expect(container.querySelector("iframe, img")).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();                                                 // members are not signed in
+  });
+
+  it("opens the copy as one logged view, through jason only, and never frames Google", async () => {
+    const calls: [string, string][] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push([init?.method ?? "GET", url]);
+      const body = url.startsWith("/api/session") ? { token: "t", signedIn: { name: "A Manager" }, signIn: { configured: true } }
+        : url === "/api/evidence/view" ? { kind: "pdf", name: "Vendor B bid.pdf", readAt: "", url: "/api/evidence/document/tok", expires: "", caveats: [] }
+        : copy();
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const { container } = render(stage());
+    const frame = await screen.findByTitle("Vendor B bid.pdf");
+    expect(frame).toHaveAttribute("src", "/api/evidence/document/tok");
+    expect(calls.filter(([m]) => m === "POST")).toEqual([["POST", "/api/evidence/view"]]);
+    expect(calls.every(([, u]) => u.startsWith("/api/"))).toBe(true);
+    noGoogleFrame(container);
+  });
+
+  it("the host panel links the original, never frames it", () => {
+    const { container } = render(<HostPanel room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    expect(container.querySelector("iframe")).toBeNull();
   });
 });
 

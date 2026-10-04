@@ -7,7 +7,7 @@ import { DocumentViewer, documentKindWord, humanSize, isConfidential, viewDocume
 import { daysUntil } from "./DueDate";
 import { Recitation } from "./Recitation";
 
-export type EvidenceKind = "payhoa_submission" | "citation" | "board_item" | "command" | "unknown";
+export type EvidenceKind = "payhoa_submission" | "citation" | "board_item" | "drive" | "file" | "command" | "unknown";
 
 /** One field a source holds; a masked value is the server's mask, never the value itself. */
 export interface EvidenceField { name: string; value: string; masked: boolean }

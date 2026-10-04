@@ -191,7 +191,8 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
             <div className={vw === "host" ? "room-body" : "room-body room-shared"}>
               <div className="room-stage">
                 <MeetingStage stageRef={stageRef} wordmark={wordmark} legal={legal} item={{ label: item?.label ?? "", title: item?.title ?? "No agenda" }} content={content} caption={caption}
-                  progress={d.items.length ? (idx + 1) / d.items.length : 0} live={owner || vw === "shared"} time={item?.allot ? `${item.allot} min` : undefined} />
+                  progress={d.items.length ? (idx + 1) / d.items.length : 0} live={owner || vw === "shared"} time={item?.allot ? `${item.allot} min` : undefined}
+                  audience={owner ? "owner" : "board"} />
                 {!owner && (
                   <div className="room-nav">
                     {move(idx - 1, "← Previous")}

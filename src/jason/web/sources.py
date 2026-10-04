@@ -725,6 +725,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "documents-located": "jason.web.extra.discovery:documents_located",
     "key-documents": "jason.web.extra.key_documents:key_documents",
     "instrument-graph": "jason.web.extra.key_documents:instrument_graph",
+    "governing-documents": "jason.web.extra.governing_documents:governing_documents",  # with recorded and Drive copies
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",

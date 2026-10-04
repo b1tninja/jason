@@ -9,9 +9,9 @@ The Governance group already runs the board loop:
 | Console screen | What it does |
 |---|---|
 | **Meetings and minutes** (`#/meetings`, `ConsoleMeetings`; owner view too) | Each meeting's records on hand (agenda, notice, minutes, transcript, recording) and its checks (no minutes 30 days on, a recording held after the minutes, a transcript into executive session), with scheduled days that have no record |
-| **Next meeting** (`#/meeting`) | One meeting: the last days to give notice (CIV 4920), items by session (executive by title only), the agenda draft, the packet, the minutes frame, and the commands that write each Doc |
-| **Plan a meeting** (`#/agenda`, `ConsoleAgenda`) | The four-step `AgendaWizard`: meeting, ready to act, order and motions, notice |
-| **Meeting room** (`#/room`, `ConsoleMeetingRoom`) | `MeetingStage` and `HostPanel`: attendance, motions, roll calls by name, the CIV 4930 guard, executive session as the host's act; draft minutes go to Approvals for the secretary |
+| **Next meeting** (`#/meeting`) | One meeting: the last days to give notice (CIV 4920), items by session (executive by title only), the agenda draft, the packet with each item's packet files as jason's copies (`DocumentPreview`) and "Read every packet file from Drive", the minutes frame, and the commands that write each Doc |
+| **Plan a meeting** (`#/agenda`, `ConsoleAgenda`) | The four-step `AgendaWizard`: meeting, ready to act, order and motions (each packet file attached with its `DocumentPreview`: thumbnail, Preview, Read from Drive, Open in Google), notice |
+| **Meeting room** (`#/room`, `ConsoleMeetingRoom`) | `MeetingStage` and `HostPanel`: attendance, motions, roll calls by name, the CIV 4930 guard, executive session as the host's act; draft minutes go to Approvals for the secretary. A packet file "shown on stage" is jason's copy, opened as one logged view and shown inline for the board; with no copy, its preview card. Members (`audience=owner`) see only a card naming it ("members receive the packet with the agenda"). Never a frame of Google |
 | **Decisions** (`#/decisions`, `ConsoleDecisions`) | A `DecisionBrief` per matter above its `DecisionCard` |
 | **Minutes review** (`#/minutes-review`) | The minutes draft's blanks as a form, the privacy flags beside their lines; a filled copy saved, the draft never edited |
 | **Hearings**, **Rule changes** (`#/hearings`, `#/rules`) | The 5855 and 4360 clocks and the board's decisions on them |

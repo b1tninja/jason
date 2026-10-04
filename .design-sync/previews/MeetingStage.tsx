@@ -1,11 +1,28 @@
-import { MeetingStage, type StageContent } from "jason-ui";
+import { MeetingStage, type PacketCopy, type StageContent } from "jason-ui";
 
 // The stage is sized by its container (cqw units); each cell gives it a fixed width so the type scales the same way everywhere.
-const Frame = ({ content, item, caption, progress, live = true }: { content: StageContent; item: { label: string; title: string }; caption: string; progress: number; live?: boolean }) => (
+const Frame = ({ content, item, caption, progress, live = true, audience, packetCopy }: { content: StageContent; item: { label: string; title: string }; caption: string; progress: number; live?: boolean; audience?: "board" | "owner"; packetCopy?: PacketCopy }) => (
   <div style={{ width: 720 }}>
-    <MeetingStage wordmark="Juniper Court HOA" legal="Juniper Court Homeowners Association" item={item} content={content} caption={caption} progress={progress} live={live} time="6:47 pm" />
+    <MeetingStage wordmark="Juniper Court HOA" legal="Juniper Court Homeowners Association" item={item} content={content} caption={caption} progress={progress} live={live} time="6:47 pm"
+      audience={audience} packetCopy={packetCopy} />
   </div>
 );
+
+// A packet file in Drive, and jason's copy of it as the server answers it: static, so nothing is fetched. The opened view
+// is an image standing in for the copy's PDF, which the stage shows inline from jason's document link.
+const BID = "1ExampleBidDoc01";
+const bidFile = { id: BID, name: "Greenway Landscape bid 2027", kind: "doc", url: `https://docs.google.com/document/d/${BID}/edit`, real: true };
+const bidPage = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='850' height='420'><rect width='850' height='420' fill='#fff'/>"
+  + "<text x='40' y='56' font-family='Georgia' font-size='26' fill='#222'>Greenway Landscape: proposal for 2027</text>"
+  + [96, 124, 152, 180, 208, 236, 264, 292, 320].map((y) => `<rect x='40' y='${y}' width='${y % 56 ? 760 : 520}' height='8' fill='#d6d9de'/>`).join("")
+  + "</svg>",
+);
+const bidAnswer = {
+  found: true, address: `drive:${BID}`, label: bidFile.name, kind: "drive" as const, sources: [], changed: false, changedNote: "",
+  link: bidFile.url, refresh: [], caveats: [], note: "",
+  documents: [{ id: "pdf", name: `${bidFile.name}.pdf`, kind: "pdf" as const, size: 120_000, readAt: "2099-10-03T15:00:00+00:00", note: "" }],
+};
 
 /** Facts on an action item: jason's caption under the content, the progress bar part way. */
 export const Facts = () => (
@@ -54,6 +71,25 @@ export const Options = () => (
 export const PacketSample = () => (
   <Frame item={{ label: "Item 3 · Action", title: "Renew the landscape contract" }} progress={0.42} caption="Page 2 of the Greenway bid."
     content={{ kind: "packet", file: { id: "f1", name: "Greenway Landscape bid 2027.pdf", kind: "pdf" } }} />
+);
+
+/** The board's stage with a packet file up: jason's copy, opened as one logged view and shown inline; never a Google frame. */
+export const PacketCopyForBoard = () => (
+  <Frame item={{ label: "Item 3 · Action", title: "Renew the landscape contract" }} progress={0.42} caption="The Greenway bid, from jason's copy."
+    content={{ kind: "packet", file: bidFile }}
+    packetCopy={{ signedIn: true, evidence: bidAnswer, view: { kind: "image", name: `${bidFile.name}.pdf`, readAt: "2099-10-03T15:00:00+00:00", url: bidPage, expires: "", caveats: [] } }} />
+);
+
+/** No copy yet: the file's preview card on the stage, with Read from Drive and Open in Google for the host. */
+export const PacketNoCopy = () => (
+  <Frame item={{ label: "Item 3 · Action", title: "Renew the landscape contract" }} progress={0.42} caption="jason keeps no copy of the bid yet."
+    content={{ kind: "packet", file: bidFile }} packetCopy={{ signedIn: true, evidence: { ...bidAnswer, documents: [] } }} />
+);
+
+/** What members see while the host shows a packet file: a card that names it, never the file. */
+export const PacketForMembers = () => (
+  <Frame item={{ label: "Item 3 · Action", title: "Renew the landscape contract" }} progress={0.42} caption="The board discusses the bids."
+    content={{ kind: "packet", file: bidFile }} audience="owner" />
 );
 
 /** Adjourned: the closing line and the minutes deadline, the bar full. */

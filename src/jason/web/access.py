@@ -299,6 +299,7 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("cases/*", Level.P3),
     PathRule("legal/*", Level.P3),
     PathRule("access/*", Level.P3),
+    PathRule("thumbs/*", Level.P3),     # page 1 of any PDF; served only by /api/thumb, at the PDF's own level
     PathRule("library/files/*", Level.P2, _library_file),
     PathRule("library/text/*", Level.P2, _library_text),
     PathRule("zoom/meetings/*", Level.P2, _zoom_meeting),
@@ -338,6 +339,18 @@ def level_of_path(rel_path: str, data_dir: Path) -> Level:
         if rule.level is not None:
             return rule.level
     return UNPLACED
+
+
+def placed(rel_path: str, data_dir: Path) -> bool:
+    """Whether a ``PATH_RULES`` row with a level of its own places the file (the holdings' catch-all row places none):
+    a place jason knows under ``data_dir``, never one outside it. A route that opens a file by its path (the evidence's
+    ``file:<path>``) opens only such a place."""
+    root = Path(data_dir).resolve()
+    try:
+        key = (root / str(rel_path or "")).resolve().relative_to(root).as_posix().lower()
+    except ValueError:
+        return False
+    return any(rule.level is not None and fnmatch.fnmatchcase(key, rule.pattern) for rule in PATH_RULES)
 
 
 # --- the request's viewer, and the answers that refuse -----------------------------------------------------------------
@@ -775,4 +788,4 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
 __all__ = ["HELD_BACK", "Level", "NOT_SET_UP", "PATH_RULES", "PRIVATE_DEFAULT", "PRIVATE_LOG", "PRIVATE_MINUTES",
            "PRIVATE_ROUTE", "PathRule", "ROSTER", "SEE_RULES", "SERVED_LOG", "SIGN_IN", "SeeRule", "Viewer", "allow",
            "check", "clean_reason", "close_private", "install", "level_of_path", "log_or_refuse", "may_see", "now",
-           "private_info", "private_open", "private_window", "refusal", "require", "served", "signed_in"]
+           "placed", "private_info", "private_open", "private_window", "refusal", "require", "served", "signed_in"]

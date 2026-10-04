@@ -4,7 +4,7 @@ A new screen, `#/documents` (`?q=` an expression `jason cite` takes, `?address=`
 
 ## In the console
 
-None. `#/records` lists the governing instruments as a timeline, and `#/duties` opens a duty's brief with the documents' passages, but nothing recites a section on request.
+`#/records` lists the governing instruments as a timeline, and its **Governing documents** tab lists each governing document with its copies: the recorded PDF on disk ("Recorded copy", page 1 rendered by jason) and the Drive file ("Drive copy", jason's copy), side by side in `DocumentPreview`, with "Read every governing document from Drive" (`governing-documents` loader; [documents.md](../documents.md#statutes-and-the-associations-documents)). `#/duties` opens a duty's brief with the documents' passages. Nothing yet recites a section on request.
 
 **This spec is the whole screen, as proposed.** The loaders to add are `cite` (`jason.api.cite_document`, with `as_of`) and `record` (`read_record`, `section_refs`), plus `living_document` and `document_conflicts` for the bands. The components are being added: `Recitation` and `ReadingLabel`. The same `cite` loader serves the "recite" disclosure on an approval's rule ([approvals.md](approvals.md)). It reads only.
 

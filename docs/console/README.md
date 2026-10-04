@@ -29,6 +29,7 @@ It plans every write to PayHOA, Google, and the mail as a dry run. The console p
 | [personas-and-jobs.md](personas-and-jobs.md) | Who uses the console, the jobs each does, and what each must never see or do |
 | [journeys.md](journeys.md) | Six walks across the screens, step by step |
 | [content/style.md](content/style.md), [content/patterns.md](content/patterns.md) | The words on screen, and the interaction patterns |
+| [doc-component.md](doc-component.md) | `Doc`, the one component for every document reference: the `DocRef` a loader returns, the four variants (chip, row, card, inline), their states, and the checklist a screen follows to adopt it |
 | [documents.md](documents.md) | One viewer for every kind of document: the copy jason keeps, how each kind renders and refreshes, who may see it, serving untrusted bytes safely, the gaps to close, and the build order |
 | [redesign-review.md](redesign-review.md) | The design project's twelve redesign "rethinks", each kept, corrected, or held against the law, the roster, and the approvals engine, and the order to build them |
 | [handoff-discovery.md](handoff-discovery.md) | The design pass on finding the association, locating its documents, the key documents, and the instrument graph: the four components, their states and sample data, what the design must keep, and the decisions open |

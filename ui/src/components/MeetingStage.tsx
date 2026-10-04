@@ -1,9 +1,15 @@
-import { useState, type ReactNode, type Ref } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { getJson } from "../lib/api";
+import { useAccount, useMe } from "../lib/session";
 import { Badge } from "./Badge";
 import { Command } from "./Command";
 import { Confirm } from "./Confirm";
 import { DecisionBrief } from "./DecisionBrief";
+import { DocumentPreview, attachedCopies, fileAddress } from "./DocumentPreview";
+import { DocumentViewer, viewDocument, type DocumentView, type EvidenceDocument } from "./DocumentViewer";
+import { driveAddress, googleLink, type DriveKind } from "./DrivePreview";
 import { embedUrls, type EmbedKind } from "./Embed";
+import { evidenceUrl, type EvidenceAnswer } from "./Evidence";
 import { Tabs } from "./Tabs";
 import { RollCall, outcome, type Threshold } from "./RollCall";
 
@@ -55,7 +61,20 @@ export type StageContent =
 export interface MeetingStageProps {
   wordmark: string; legal?: string; item: { label: string; title: string }; content?: StageContent | null; caption: ReactNode; progress: number;
   live?: boolean; meta?: string; time?: string; stageRef?: Ref<HTMLDivElement>;
+  /** Who watches this stage: the board and the host (signed in; a packet file shows as jason's copy), or members
+   * (`owner`, not signed in; a packet file is never shown, only named). Default: the board. */
+  audience?: "board" | "owner";
+  /** For previews and tests: a packet file's copy as the server would answer it (nothing fetched). */
+  packetCopy?: PacketCopy;
 }
+
+/** A packet file's copy, fixed: the evidence answer (`GET /api/evidence`), the opened view (`POST /api/evidence/view`),
+ * and the sign-in. */
+export interface PacketCopy { evidence?: EvidenceAnswer | null; view?: DocumentView | null; signedIn?: boolean }
+
+/** What the members' stage says while the host shows a packet file: members are not signed in, and nothing marks a
+ * packet file as one for members, so the file itself never reaches their screen. */
+export const MEMBERS_PACKET_LINE = (name: string) => `The host is showing ${name}; members receive the packet with the agenda.`;
 
 const mmss = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.max(0, sec) % 60).padStart(2, "0")}`;
 
@@ -63,7 +82,8 @@ const mmss = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Mat
 const Brief = DecisionBrief as unknown as (p: { decision: DecisionBriefData; columns?: boolean }) => JSX.Element;
 
 const FILE_KINDS: Record<string, EmbedKind> = { doc: "doc", docx: "doc", document: "doc", sheet: "sheet", xlsx: "sheet", spreadsheet: "sheet", slides: "slides", presentation: "slides", pdf: "pdf", form: "form", image: "image", drive: "drive", url: "url" };
-/** Where a packet file previews, when it is a real file (a URL, a Drive id, or a path under data/); null for a sample. */
+/** Where a packet file previews in Google or on disk, when it is a real file (a URL, a Drive id, or a path under data/);
+ * null for a sample. Kept for links only: the stage never frames it (it shows jason's copy, `StagePacket`). */
 export function packetFrame(file: PacketFile): string | null {
   const ref = file.url || file.ref || (file.real ? file.id : "") || "";
   if (!ref) return null;
@@ -73,7 +93,7 @@ export function packetFrame(file: PacketFile): string | null {
 
 /** The 16:9 stage: wordmark, item label and title, one content block, jason's caption or the chair's line, and the progress bar.
  * Sized by its container (cqw type, nothing under 1.5cqw), so it fills a Zoom share, an immersive canvas, or a column alike. */
-export function MeetingStage({ wordmark, legal, item, content, caption, progress, live, meta = "Board of directors · open meeting", time, stageRef }: MeetingStageProps) {
+export function MeetingStage({ wordmark, legal, item, content, caption, progress, live, meta = "Board of directors · open meeting", time, stageRef, audience = "board", packetCopy }: MeetingStageProps) {
   const pct = Math.max(0, Math.min(1, progress || 0));
   return (
     <div className="stage" ref={stageRef} role="region" aria-label="Meeting stage" title={legal}>
@@ -85,7 +105,7 @@ export function MeetingStage({ wordmark, legal, item, content, caption, progress
       <div className="stage-body">
         <p className="stage-label">{item.label}</p>
         <h2 className="stage-title">{item.title}</h2>
-        {content && <StageBlock content={content} />}
+        {content && <StageBlock content={content} audience={audience} packetCopy={packetCopy} />}
       </div>
       <div className="stage-foot">
         <div className="stage-caption">{caption}</div>
@@ -97,7 +117,85 @@ export function MeetingStage({ wordmark, legal, item, content, caption, progress
   );
 }
 
-function StageBlock({ content }: { content: StageContent }) {
+/** The document a packet file opens on the stage: the copy's PDF, else its image, else its text. */
+function stageDocument(docs: EvidenceDocument[]): EvidenceDocument | undefined {
+  return ["pdf", "image", "text"].map((id) => docs.find((d) => d.id === id)).find(Boolean);
+}
+
+/** A packet file on the stage, never a frame of Google:
+ * - for members (`owner`): a card that names it; members receive the packet with the agenda;
+ * - for the board and the host: jason's copy of it, opened as one logged view (`POST /api/evidence/view`, the host's click
+ *   on "Show on stage") and shown by `DocumentViewer` inline; with no copy, the file's preview card, with "Read from
+ *   Drive" and "Open in Google";
+ * - a sample file (no Drive id, no path): the placeholder. */
+function StagePacket({ file, audience, copy }: { file: PacketFile; audience: "board" | "owner"; copy?: PacketCopy }) {
+  if (audience === "owner") {
+    return <div className="stage-doc stage-doc-card" role="note"><p>{MEMBERS_PACKET_LINE(file.name)}</p></div>;
+  }
+  const c = attachedCopies(file);
+  const address = c.driveId ? driveAddress(c.driveId) : c.path ? fileAddress(c.path) : "";
+  if (!address) return <div className="stage-doc stage-doc-sample"><span>document preview<br />{file.name}</span></div>;
+  return <StageCopy key={address} address={address} name={file.name} driveId={c.driveId} path={c.path} kind={c.kind} copy={copy} />;
+}
+
+function StageCopy({ address, name, driveId, path, kind, copy }: { address: string; name: string; driveId: string; path: string; kind: DriveKind; copy?: PacketCopy }) {
+  const fixed = copy !== undefined;
+  const account = useAccount(!fixed);
+  const signedIn = copy?.signedIn ?? (account.known ? !!account.account : undefined);
+  const me = useMe(!fixed);
+  const meRef = useRef(me);
+  meRef.current = me;
+  const [tries, setTries] = useState(0);
+  const [state, setState] = useState<{ view: DocumentView | null; doc?: EvidenceDocument; busy: boolean; why: string }>(
+    { view: copy?.view ?? null, busy: !fixed, why: "" });
+  useEffect(() => {
+    if (fixed) {
+      const doc = stageDocument(copy?.evidence?.documents ?? []);
+      setState({ view: copy?.view ?? null, doc, busy: false, why: copy?.view ? "" : doc ? "" : "No copy yet" });
+      return;
+    }
+    if (signedIn === undefined) return;
+    if (!signedIn) { setState({ view: null, busy: false, why: "Sign in with Google to show jason's copy" }); return; }
+    const ctl = new AbortController();
+    let on = true;
+    setState((s) => ({ ...s, busy: true }));
+    (async () => {
+      try {
+        const answer = await getJson<EvidenceAnswer>(evidenceUrl(address), ctl.signal);
+        const doc = stageDocument(answer.documents ?? []);
+        if (!doc) { if (on) setState({ view: null, busy: false, why: answer.note || "No copy yet" }); return; }
+        if (!on) return;
+        const view = await viewDocument({ address, document: doc.id, by: meRef.current.trim() });
+        if (on) setState({ view, doc, busy: false, why: "" });
+      } catch (e: unknown) {
+        if (on && !ctl.signal.aborted) setState({ view: null, busy: false, why: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+    return () => { on = false; ctl.abort(); };
+  }, [address, fixed, copy, signedIn, tries]);
+
+  if (state.view) {
+    return (
+      <div className="stage-doc stage-doc-copy" role="region" aria-label={`${name}, jason's copy`}>
+        <DocumentViewer inline data={state.view} document={state.doc} />
+      </div>
+    );
+  }
+  return (
+    <div className="stage-doc stage-doc-card" aria-busy={state.busy ? true : undefined}>
+      <p>{state.busy ? `Opening jason's copy of ${name}…` : `${name}: ${state.why || "No copy yet"}.`}</p>
+      {!state.busy && (
+        <>
+          <DocumentPreview name={name} driveId={driveId} path={path} kind={kind} recordedLabel="File on disk"
+            {...(fixed ? { driveEvidence: copy?.evidence ?? null, recordedEvidence: copy?.evidence ?? null, signedIn: copy?.signedIn ?? true } : {})} />
+          {!fixed && signedIn && <p><button type="button" className="link" onClick={() => setTries((t) => t + 1)}>Show jason's copy on the stage</button></p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function StageBlock({ content, audience = "board", packetCopy }: { content: StageContent; audience?: "board" | "owner"; packetCopy?: PacketCopy }) {
   switch (content.kind) {
     case "facts":
       return content.facts.length ? <ul className="stage-facts">{content.facts.map((f, i) => <li key={i}>{f}</li>)}</ul> : null;
@@ -137,12 +235,8 @@ function StageBlock({ content }: { content: StageContent }) {
       );
     case "options":
       return <div className="stage-options"><Brief decision={content.decision} columns /></div>;
-    case "packet": {
-      const src = packetFrame(content.file);
-      return src
-        ? <iframe className="stage-doc" src={src} title={content.file.name} />
-        : <div className="stage-doc stage-doc-sample"><span>document preview<br />{content.file.name}</span></div>;
-    }
+    case "packet":
+      return <StagePacket file={content.file} audience={audience} copy={packetCopy} />;
     case "adjourned":
       return (
         <>
@@ -408,12 +502,12 @@ function PacketTab({ item, shown, onShow }: { item: AgendaItem | undefined } & P
     <ul className="hp-files">
       {files.map((f, i) => {
         const on = shown?.packet && (shown.packet.id ?? shown.packet.name) === (f.id ?? f.name);
-        const frame = packetFrame(f);
+        const c = attachedCopies(f);
         return (
           <li key={f.id ?? i}>
             <span className="hp-file"><Badge>{(f.kind || "file").toLowerCase()}</Badge><span className="hp-filename">{f.name}</span></span>
             <span className="row">
-              {frame && <a href={frame} target="_blank" rel="noreferrer">open</a>}
+              {c.driveId && <a href={googleLink(c.driveId, c.kind)} target="_blank" rel="noreferrer">Open in Google<span className="visually-hidden"> (opens in a new tab)</span></a>}
               {onShow && (on ? <button className="link" onClick={() => onShow({ packet: null })}>Hide</button> : <button className="link" onClick={() => onShow({ packet: f, options: false })}>Show on stage</button>)}
             </span>
           </li>

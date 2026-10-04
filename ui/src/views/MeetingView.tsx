@@ -1,8 +1,56 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Command, DataTable, DecisionCard, DueDate, Embed, Markdown, Pill, RemoteView, Stat, Tabs, type Column, type DecisionDraft } from "../components";
+import { Badge, Card, Caveats, Command, DataTable, DecisionCard, DocumentPreview, DueDate, Embed, EvidenceVersion, Markdown, Pill, ReadAllFromDrive, RemoteView, Stat, Tabs, attachedCopies, type Column, type DecisionDraft } from "../components";
+import type { DriveFile } from "../components/DriveAttach";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import type { BoardItem } from "./types";
+
+/** One agenda item's packet files, as the plan for the meeting keeps them (`GET /api/agenda-plan`'s `candidates`). */
+export interface PacketItem { id: string; title: string; include?: boolean; session?: string; packet: DriveFile[] }
+
+/** The meeting's packet files, item by item, each as jason's copy (`DocumentPreview`: a thumbnail, Preview, Read from
+ * Drive, Open in Google), and "Read every packet file from Drive" for the Drive files among them: one sign-in, a
+ * person's click, never on load. Items not on the agenda and items with no file are left out. */
+export function PacketFiles({ items }: { items: PacketItem[] }) {
+  const [version, setVersion] = useState(0);
+  const shown = items.filter((i) => i.include !== false && (i.packet ?? []).length > 0);
+  if (!shown.length) return <p className="muted">No packet files are attached to the items on the agenda. Attach them in Plan a meeting.</p>;
+  const driveIds = shown.flatMap((i) => i.packet.map((f) => attachedCopies(f).driveId)).filter(Boolean);
+  return (
+    <div className="stack">
+      <ReadAllFromDrive driveIds={driveIds} what="packet file" batch="packet" onDone={() => setVersion((v) => v + 1)} />
+      <EvidenceVersion.Provider value={version}>
+        {shown.map((i) => (
+          <section key={i.id} aria-label={`Packet files for ${i.title}`}>
+            <h4>{i.title}{i.session === "executive session" && <> <Badge tone="warn">executive session</Badge></>}</h4>
+            <ul className="packet-previews">
+              {i.packet.map((f) => {
+                const c = attachedCopies(f);
+                return (
+                  <li key={f.id}>
+                    <span className="packet-previews-name"><Badge>{f.kind || "file"}</Badge><span>{f.name}</span></span>
+                    <DocumentPreview name={f.name} driveId={c.driveId} kind={c.kind} path={c.path} recordedLabel="File on disk" />
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </EvidenceVersion.Provider>
+    </div>
+  );
+}
+
+function MeetingPacketFiles({ date }: { date: string }) {
+  const r = useApi<{ found?: boolean; note?: string; candidates?: PacketItem[] }>(`/api/agenda-plan?date=${encodeURIComponent(date)}`);
+  return (
+    <Card title="Packet files">
+      <RemoteView r={r}>
+        {(p) => (p.found === false ? <p className="muted">{p.note ?? "No plan for this meeting."}</p> : <PacketFiles items={p.candidates ?? []} />)}
+      </RemoteView>
+    </Card>
+  );
+}
 
 type Row = BoardItem & { agendaSession: string };
 interface Decision extends DecisionDraft { id: string; meeting: string; item: string; session: string; recorded: string; updated: string; history: string[]; tally: Record<string, number>; suggested: string }
@@ -91,11 +139,14 @@ export function MeetingView() {
               </Card>
             ) },
             { id: "packet", label: "Board packet", content: (
+              <div className="stack">
+              <MeetingPacketFiles date={d.date} />
               <Card title="Packet">
                 <p className="muted">Each item: background, the question for the board, the law quoted, what the records show now, the board's notes with live reports, options, and a draft motion. Executive items by title only.</p>
                 {d.packetMarkdown ? <div className="preview"><Markdown text={d.packetMarkdown} /></div> : <p className="notice notice-warn">{d.notes.find((n) => n.startsWith("packet")) ?? "No packet for this meeting."}</p>}
                 <Command cmd={d.commands.packetDoc} note="Writes the packet as a confidential Doc, private until shared; a Drive write a person confirms." />
               </Card>
+              </div>
             ) },
             { id: "decisions", label: `Decisions (${d.decisions.length + Object.keys(saved).length})`, content: (
               <Card title="What the board did">
