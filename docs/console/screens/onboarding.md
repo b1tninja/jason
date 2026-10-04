@@ -8,6 +8,89 @@ A band added to `#/onboarding`: the onboarding session · phase 2 · CLI: `jason
 
 **What this spec adds** is the **onboarding session** (`jason onboard`), as a band of `#/onboarding`: the stage gates in order, the open questions ranked by what each answer unblocks, a signed answer to each, and a second person on a high-stakes answer. The request list says what to ask for; the session says what is still unanswered and what each answer unlocks. The loaders to add are `onboarding-session` (over `jason.api.onboarding_status`) and `next-questions`; the writes are `answer_intake_question` and `onboarding_confirm`, both of which already take `by`. The components are being added: `StageSteps` and `QuestionCard`.
 
+## Finding the association and its documents
+
+The first tab of `#/onboarding`, **Find the association**, comes before the document questions. Onboarding a community starts with choosing the association from the county's directory, then locating its recorded documents (declaration, amendments, annexations, condominium plans, maps, bylaws, common-area deeds, litigation, the statement) and asking the board about each: "Which is your declaration? Do you hold a copy of each?" It is built from `AssociationPicker` and `DocumentLocator` (`ui/src/components`), composed by `FindAssociation` in `OnboardingView.tsx`.
+
+### Data
+
+| Part | Source |
+|---|---|
+| The county's directory | `GET /api/associations?county=placer&q=oaks&limit=25`: `{county, surveyed, summary: {byStanding, byKind, ...}, results: [{key, name, kind, standing, first, last, spellings, evidence, governing, links, score}], caveats, command}`. Built from the county recorder's public index by asspy's survey. A row is an association-named party, never an owner |
+| The documents located | `GET /api/documents-located` (the active profile) or `?county=&name=` (the association chosen): `{association, county, located_at, searches, liens, spellings, items: [{item, title, question, stakes, located: [{number, recorded, filing, tie, tie_label, strong, via, parties}]}], not_located: [{item, title, ask}], notes, caveats, job?}`, or `{missing: true, command, note, job?}` (`jason.tasks.document_locator`) |
+| Locating | `POST /api/write/documents-located/locate` with `{county, name, by}` → `{job: {id, status}, command}`. It queues a read job; the console never calls the county. Empty `county` and `name` mean the active profile |
+
+### Layout
+
+```
++-------------------------------------------------------------------------------------------+
+| 1. CHOOSE THE ASSOCIATION                                                                 |
+| County [Placer v]   Association's name [oaks____________________]                         |
+| 25 associations match "oaks". Arrow keys move; Enter chooses.             (role=status)   |
+| The Placer directory holds 412 associations: 230 confirmed · 120 likely · 62 named.       |
+| +---------------------------------------------------------------------------------------+ |
+| | EXAMPLE OAKS OWNERS ASSN                                                   (listbox)  | |
+| | [homeowners] [confirmed] recorded from 2001 through 2024                              | |
+| | 386 assessment liens · 15 declaration filings · 3 spellings                           | |
+| +---------------------------------------------------------------------------------------+ |
+| A directory row is a lead, not a pin.                                                     |
++-------------------------------------------------------------------------------------------+
+| 2. LOCATE THE RECORDED DOCUMENTS OF EXAMPLE OAKS OWNERS ASSN                              |
+| [Command] jason onboard --new example-oaks --name "..." --county placer --locate          |
+| [By checklist item] [The board's list]                                                    |
+| Recorded documents located for Example Village HOA                                        |
+| Placer recorder's public index, Oct 2, 2026 · 42 searches · 3 documents in 2 checklist    |
+|   items · 386 of the association's own assessment liens and releases, counted, not listed |
+| > Searched under 2 spellings                                                              |
+| THE DECLARATION (CC&RS)    1 located: 1 strong tie    [a second person confirms]          |
+| Which is the association's declaration? Do you hold a copy of each?                       |
+| Document      Recorded     Filing       Why it is thought the association's  Found by  Parties |
+| 2004-0012345  Mar 1, 2004  DECLARATION  [names the association]             its name  EXAMPLE HOMES INC |
+| Answered in the onboarding questions as fact:lookup:located-declaration.                  |
+| ANNEXATIONS ... [the builder's filing] may be another community's                         |
+| NOT LOCATED: The subdivision maps. Ask the board or the prior manager for the number.     |
+| NOTES · CAVEATS                                                                           |
++-------------------------------------------------------------------------------------------+
+| 3. ASK THE BOARD ABOUT EACH                                                               |
+| Each item located becomes a FACT question ...  [Command] jason onboard --questions        |
++-------------------------------------------------------------------------------------------+
+```
+
+### States
+
+- **Directory not built for the county** (`surveyed: false`): "The Sacramento directory is not built yet." and the `Command` that builds it (the response's `command`). No list.
+- **No match:** "No association in the Placer directory matches "oaks"." Never an empty table.
+- **Chosen:** the search gives way to the chosen row: its facts, its governing instruments, its spellings behind "3 spellings in the index", and **Choose another**. Choosing writes nothing. The next card names the association and shows the terminal command that starts its profile (`jason onboard --new KEY --name NAME --county COUNTY --locate`); the console never writes a profile.
+- **Nothing located yet** (`missing: true`): the tool's note, its command, and **Locate documents** with "Queued by" pre-filled from the console's person. It goes through `Confirm`: "Queue a read of the Placer recorder's public index for NAME, as Jane Example. ... nothing is written to the county, PayHOA, or the profile."
+- **Queued or running:** "Queued: job 7. jason reads the county's public index in the background; this page checks again every 4 seconds." with a link to the job queue, in `role="status"`. The page reads the result again while the job is queued or running, keeping what it already shows.
+- **Failed or cancelled job:** "Job 9 failed. Nothing was located." in `role="alert"`, a link to its log, and the action again.
+- **Writes off** (405): "Writes are off in this console, so it cannot queue the job. Nothing was queued." and the command to run in a terminal.
+- **Located** (cached): grouped by checklist item, with **Read the index again** behind a disclosure, and the board's list.
+
+### Words
+
+- A directory row is "a lead, not a pin". A located document is "a lead, not a pin: the recorded copy is read before it is pinned." Both are always visible, with the tool's own caveats (`Caveats`).
+- Standing is asspy's word (confirmed, likely, named), with its meaning on hover: "records assessment liens or a declaration", "records other association business", "the name alone".
+- Evidence in words, largest first: "386 assessment liens · 15 declaration filings · 1 property filing".
+- Years: "recorded from 2004 through 2025", never a dash range.
+- Ties are the locator's words. "Names the association" and "recorded with the association's documents" are strong. "The builder's filing" is shown with "may be another community's", and is asked about, never suggested.
+- An item whose answer decides which words are in force (the declaration, the amendments) carries "a second person confirms".
+- The association's own liens are "counted, not listed". Parties are business and association parties only; an owner's name never appears.
+
+### The answers
+
+The located items are not answered here. Each becomes a FACT question in the onboarding session (subject `fact:lookup:located-ITEM`, from `onboarding_session.lead_asks`), answered with `QuestionCard` and a name, and confirmed by a second person when it has stakes. Each group names its question's subject, and links to it when the view passes `questionHref`. Until the session band is in the console, the third card shows `jason onboard --questions`.
+
+**The board's list** is the same data as a printable checklist: for each document, "We hold a copy" and "Order a copy" boxes to mark on paper. **Print the board's list** prints only the list. The page records no mark.
+
+### Accessibility
+
+- The search is a WAI-ARIA combobox (`role="combobox"`, `aria-expanded`, `aria-controls`, `aria-activedescendant`, `aria-autocomplete="list"`) over a `role="listbox"`. Down and Up move the active option, Enter chooses it, and Escape closes the list, then clears the words. Focus stays in the box; a click on an option does not take it. **Choose another** returns focus to the box.
+- The result count and "Searching the directory…" are a `role="status"` region, announced without moving focus. So are the job line and the name check. A failed job is `role="alert"`.
+- Every control has a visible label (County, Association's name, Queued by). The located tables have captions ("Annexations: documents located, oldest first"), header cells, and sortable headers. Each item is a region named by its heading.
+- Every tie, standing, and stake is a word; the badge's tone only repeats it. Colors are the tokens (`--accent`, `--warn`, `--muted`, `--line`), in both schemes.
+- The print boxes are hidden from a screen reader and labeled "to mark on paper". There are no on-screen checkboxes that would look like a record.
+
 ## Purpose and personas
 
 Taking an association on: the checklist read against the profile and the data on disk, the stage gates in order, and the open questions ranked by what each answer unblocks. A person answers, a second person confirms the high-stakes answers, and the answers become records.

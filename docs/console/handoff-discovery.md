@@ -1,0 +1,36 @@
+# Handoff: finding the association, its documents, and its instruments
+
+For the design pass on four components built in October 2026. They render today, in the Onboarding screen's first three tabs, with working data; what they need is the design system's look and a few decisions below. The behavior and the words are settled by [screens/onboarding.md](screens/onboarding.md#finding-the-association-and-its-documents), [components.md](components.md), [key-documents.md](../key-documents.md), and [instrument-graph.md](../instrument-graph.md).
+
+## The components
+
+| Component | Where it renders | Data | States to design |
+| --- | --- | --- | --- |
+| `AssociationPicker` | Onboarding → Find the association, card 1 | `GET /api/associations?county=&q=` | not surveyed (a command to run), searching, matches (a combobox listbox), no match, chosen (spellings behind a disclosure) |
+| `DocumentLocator` (and its parts `LocatedDocuments`, `BoardList`, `TieBadge`) | Find the association, card 2 | `GET /api/documents-located`; `POST /api/write/documents-located/locate` | missing (note, command, "Locate documents"), confirming, job queued or running (polls), job failed, writes off (the command instead of the button), located (grouped by checklist item), the board's printable list |
+| `KeyDocuments` | Onboarding → Key documents | `GET /api/key-documents`; `POST /api/write/key-documents/<key>` | each status word (expected, located, held, linked, missing), copies and links, link / upload / unlink / status behind `Confirm`, a refused write |
+| `InstrumentGraph` | Onboarding → Recorded instruments | `GET /api/instrument-graph?scope=association` | the timeline with its node list, a focused edge's provenance, family filters, cycles left out, the Mermaid view |
+
+Sample data, with made-up names only, is each component's test fixture: `ui/src/components/associationpicker.test.tsx`, `documentlocator.test.tsx`, `keydocuments.test.tsx`, `instrumentgraph.test.tsx`, and `ui/src/views/onboarding.test.tsx`. The real payloads have the same shape.
+
+## What the design must keep
+
+- **A lead is not a pin.** A directory row, a located document, and a graph edge marked a lead are readings to confirm, never findings. The tie words carry this: "names the association" and "recorded with the association's documents" are strong; "the builder's filing" is weak and "may be another community's". Keep the words, not only a color.
+- **Nothing reaches the county from the page.** "Locate documents" queues a read job a named person asks for; the page reads the job's result. Writes off shows the command.
+- **Every write names a person**, through `Confirm`; jason never writes as itself. Unlink never deletes a file.
+- **No private person in the shared view.** Business and association names only; an owner never appears.
+- **A second person confirms** the declaration and its amendments: the high-stakes mark stays visible.
+- WCAG 2.2 AA as in [components.md](components.md#accessibility): the combobox pattern, named regions per checklist item, status and alert regions, the graph's node list as the keyboard path.
+
+## Decisions for the design
+
+1. **Styles.** The finder's styles are in `ui/src/views/discovery.css` (a view, since components carry no CSS); in the design library `AssociationPicker` and `DocumentLocator` render unstyled. Fold them into the shared tokens and stylesheet. `KeyDocuments` and `InstrumentGraph` use the global classes already.
+2. **The first tab.** "Find the association" is listed first, but Onboarding opens on "Request list". A community with no profile facts yet may want to open on Find.
+3. **Answering a question.** Each located item names its onboarding question (`fact:lookup:located-<item>`); "Answer it" shows only when a `questionHref` is passed, and the console has no route for the onboarding questions yet. Design the route, or the link to it.
+4. **Slow loads.** Key documents and Recorded instruments each take about ten seconds to load on real data. Design a loading state worth that wait, or ask for a server cache first.
+5. **A large graph.** The timeline is a column per recording year; a subdivision with hundreds of instruments crowds it. Choose a layout (grouping by parcel or by formation bundle, a zoom, or the list first).
+6. **The board's list.** The printable checklist (hold a copy, order a copy) is a first pass at paper.
+
+## Not part of this pass
+
+The design-sync previews and the library exports for the design project are the design session's; `ui/src/components/index.ts` already exports all four components and their types.

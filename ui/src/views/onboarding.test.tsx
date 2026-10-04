@@ -46,6 +46,59 @@ describe("OnboardingView", () => {
   });
 });
 
+describe("OnboardingView: finding the association", () => {
+  it("chooses the association from the directory, then reads its documents located, writing nothing", async () => {
+    const urls: string[] = [];
+    const located = { association: "Example Village HOA", county: "placer", located_at: "2026-10-02", searches: 12, liens: 0, spellings: ["EXAMPLE VILLAGE HOA"],
+      items: [{ item: "declaration", title: "The declaration (CC&Rs), the recorded copy", question: "Which is the association's declaration?", stakes: true,
+        located: [{ number: "2004-0012345", recorded: "2004-03-01", filing: "DECLARATION", tie: "NAMED", tie_label: "names the association", strong: true, via: "", parties: ["EXAMPLE HOMES INC"] }] }],
+      not_located: [], notes: [], caveats: [] };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.startsWith("/api/associations")) return new Response(JSON.stringify({ county: "placer", surveyed: true, summary: {}, caveats: [],
+        results: [{ key: "example-oaks", name: "EXAMPLE OAKS OWNERS ASSN", kind: "homeowners", standing: "confirmed", first: "2001-01-01", last: "2024-01-01", spellings: ["EXAMPLE OAKS OWNERS ASSN"], evidence: { declaration: 4 }, governing: 4, links: 0, score: 1 }] }), { status: 200 });
+      if (url === "/api/documents-located") return new Response(JSON.stringify(located), { status: 200 });
+      if (url.startsWith("/api/documents-located?")) return new Response(JSON.stringify({ missing: true, command: "jason onboard --locate --county placer --name \"EXAMPLE OAKS OWNERS ASSN\"", note: "No documents located for EXAMPLE OAKS OWNERS ASSN yet." }), { status: 200 });
+      return new Response(JSON.stringify({ found: true, summary, accounts: [], facts: [], items: [], gaps: [], statuses: [], holders: [], groups: [], caveats: [] }), { status: 200 });
+    }));
+    render(<OnboardingView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Find the association" }));
+    expect(await screen.findByRole("heading", { name: "Recorded documents located for Example Village HOA" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "2. Locate the active community's recorded documents" })).toBeInTheDocument();
+    expect(screen.getByText("jason onboard --questions")).toBeInTheDocument();
+    await user.click(await screen.findByText("EXAMPLE OAKS OWNERS ASSN"));
+    expect(screen.getByRole("heading", { name: "2. Locate the recorded documents of EXAMPLE OAKS OWNERS ASSN" })).toBeInTheDocument();
+    expect(screen.getByText('jason onboard --new example-oaks --name "EXAMPLE OAKS OWNERS ASSN" --county placer --locate')).toBeInTheDocument();
+    expect(await screen.findByText("No documents located for EXAMPLE OAKS OWNERS ASSN yet.")).toBeInTheDocument();
+    expect(urls).toContain("GET /api/documents-located?county=placer&name=EXAMPLE+OAKS+OWNERS+ASSN");
+    expect(urls.filter((u) => u.startsWith("POST"))).toHaveLength(0);
+  });
+});
+
+describe("OnboardingView: key documents and recorded instruments", () => {
+  it("reads each tab's store only when the tab is opened", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.startsWith("/api/key-documents")) return new Response(JSON.stringify({ found: true, association: "Example Village HOA", counts: { held: 1 }, statuses: [], groups: [
+        { item: "declaration", title: "The declaration (CC&Rs), the recorded copy", entries: [
+          { key: "declaration", item: "declaration", title: "The declaration (CC&Rs), the recorded copy", number: "2001-0000020", recorded: "2001-03-08", status: "held", copies: [], links: [], leads: [], notes: [] }] }],
+        caveats: [] }), { status: 200 });
+      if (url.startsWith("/api/instrument-graph")) return new Response(JSON.stringify({ found: true, view: "shared", nodes: [
+        { id: "inst:example:2001-0000020", type: "instrument", label: "2001-0000020", number: "2001-0000020", recorded: "2001-03-08", role: "declaration" }], edges: [] }), { status: 200 });
+      return new Response(JSON.stringify({ found: true, summary, accounts: [], facts: [], items: [], gaps: [], statuses: [], holders: [], groups: [], caveats: [] }), { status: 200 });
+    }));
+    render(<OnboardingView />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Key documents" }));
+    expect((await screen.findAllByText(/2001-0000020/)).length).toBeGreaterThan(0);
+    expect(urls.some((u) => u.startsWith("/api/instrument-graph"))).toBe(false);
+    await user.click(screen.getByRole("tab", { name: "Recorded instruments" }));
+    await waitFor(() => expect(urls).toContain("/api/instrument-graph?scope=association"));
+  });
+});
+
 describe("CommunitiesView", () => {
   it("lists profiles with the active one's progress", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ found: true, count: 2, communities: [{ name: "mystique", where: "/x/mystique", active: true, progress: summary }, { name: "sample", where: "/x/profiles/sample", active: false }] }), { status: 200 })));

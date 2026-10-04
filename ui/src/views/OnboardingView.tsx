@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Card, Caveats, Command, DataTable, Findings, Markdown, Pill, RemoteView, Stat, Tabs, type Column } from "../components";
+import { Badge, Card, Caveats, Command, DataTable, Findings, InstrumentGraph, KeyDocuments, Markdown, Pill, RemoteView, Stat, Tabs, type Column, type InstrumentGraphData, type KeyDocumentsData } from "../components";
+import { AssociationPicker } from "../components/AssociationPicker";
+import { DocumentLocator } from "../components/DocumentLocator";
 import { postJson } from "../lib/api";
+import type { AssociationChoice } from "../lib/discovery";
+import { readMe } from "../lib/session";
 import { useApi } from "../lib/useApi";
+import "./discovery.css";
 
 interface Account { service: string; set: boolean | null; how: string; note?: string }
 interface Fact { name: string; supplied: boolean | null }
@@ -117,6 +122,56 @@ function Letter() {
   );
 }
 
+/** The counties whose recorder's index jason reads; a county with no directory says how to build one. */
+export const DIRECTORY_COUNTIES = ["placer", "sacramento"] as const;
+
+/** The first step: choose the association from the county's directory, locate its recorded documents, and ask the
+ * board about each through the onboarding questions. Choosing writes nothing; locating is a read job a person queues. */
+export function FindAssociation({ counties = DIRECTORY_COUNTIES, me = readMe(), pollMs }: { counties?: readonly string[]; me?: string; pollMs?: number }) {
+  const [choice, setChoice] = useState<AssociationChoice | null>(null);
+  return (
+    <div className="stack">
+      <Card title="1. Choose the association">
+        <p className="muted">From the county's association directory, built from the county recorder's public index. Choosing one writes nothing; it shows the next step.</p>
+        <AssociationPicker counties={counties} onPick={setChoice} onClear={() => setChoice(null)} picked={choice} />
+      </Card>
+      <Card title={choice ? `2. Locate the recorded documents of ${choice.name}` : "2. Locate the active community's recorded documents"}>
+        {choice ? (
+          <div className="stack-sm">
+            <p className="muted">The documents below are read for the association chosen above. If it is not the active community, a person starts its profile in a terminal; the console never writes a profile.</p>
+            <Command cmd={`jason onboard --new ${choice.key} --name "${choice.name}" --county ${choice.county} --locate`} note="Writes a new profile package and its empty private facts, never over an existing one, and keeps what it locates as onboarding questions." />
+          </div>
+        ) : (
+          <p className="muted">The active community's, as last located. Choose an association above to read another's.</p>
+        )}
+        <DocumentLocator county={choice?.county} name={choice?.name} me={me} pollMs={pollMs} />
+      </Card>
+      <Card title="3. Ask the board about each">
+        <p className="muted">
+          Each checklist item located becomes a FACT question in the onboarding session: which is the declaration, which
+          amendments are in force, and whether the association holds a copy of each. The answers are given there, with the
+          name of the person who gives them; a second person confirms the declaration and the amendments. The board's list
+          above is the same questions on paper.
+        </p>
+        <Command cmd="jason onboard --questions" note="Lists the open questions by priority; answer one with jason onboard --answer ID TEXT --by NAME." />
+      </Card>
+    </div>
+  );
+}
+
+/** The key documents: each expected document, the copies held or linked, and a person's link, upload, or unlink. */
+export function KeyDocumentsTab({ me = readMe() }: { me?: string }) {
+  const r = useApi<KeyDocumentsData>("/api/key-documents");
+  return <RemoteView r={r}>{(d) => <KeyDocuments data={d} by={me} onChanged={r.reload} />}</RemoteView>;
+}
+
+/** The recorded instruments as a graph: the association's chain, closings, governing documents, and loans, each edge
+ * with the rule that made it. Read from jason's stores; nothing is fetched from the county. */
+export function InstrumentGraphTab() {
+  const r = useApi<InstrumentGraphData>("/api/instrument-graph?scope=association");
+  return <RemoteView r={r}>{(d) => <InstrumentGraph data={d} />}</RemoteView>;
+}
+
 /** Onboarding the active community: accounts, facts, the request list and its letter, what arrived, and the gaps. */
 export function OnboardingView() {
   const r = useApi<Onboarding>("/api/onboarding");
@@ -130,6 +185,9 @@ export function OnboardingView() {
           <div className="stack">
             <SummaryStats s={d.summary} />
             <Tabs active={tab} onChange={setTab} tabs={[
+              { id: "find", label: "Find the association", content: <FindAssociation /> },
+              { id: "key-documents", label: "Key documents", content: <KeyDocumentsTab /> },
+              { id: "instruments", label: "Recorded instruments", content: <InstrumentGraphTab /> },
               { id: "accounts", label: "Accounts", content: (
                 <Card title="Services the community uses">
                   <p className="muted">Set or not set, never the value. Connecting is a person's step; the page shows how.</p>
