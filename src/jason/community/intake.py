@@ -47,6 +47,8 @@ class AskKind(Enum):
                                              # (jason.community.manual); the answer is read by the next run
     FACT = "fact"                            # a fact the onboarding checklist needs and no document holds
     MAP = "map"                              # which book or 5200 record a document or folder fills
+    APPLICABILITY = "applicability"          # a fact a rule row's condition needs and no record on hand states
+                                             # (jason.community.applicability_asks); the answer is read by the next run
 
 
 # The kinds whose answer decides which words are in force, or whether an instrument took effect: a second person

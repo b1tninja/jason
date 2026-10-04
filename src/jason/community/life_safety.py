@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from jason.community.applicability import (
     ALWAYS,
@@ -237,16 +237,22 @@ class SystemApplicability:
 
 
 def applicable(community: Any, rows: Iterable[Any] | None = None, *, as_of: date | None = None,
-               condition_of: Callable[[Any], Condition] = _condition) -> SystemApplicability:
+               condition_of: Callable[[Any], Condition] = _condition,
+               answers: Mapping[str | None, Iterable[FactValue]] | None = None) -> SystemApplicability:
     """Each row's answer for each of the community's systems; ``rows`` default to its obligations.
 
     A row whose condition tests a subject fact is asked of each system, with the system's facts beside the profile's
     own (``profile_facts``) and the date. A row that tests none is asked of the association once. A community that
     lists no systems leaves every system row undetermined, with the question of which systems it has.
+
+    ``answers`` are people's answers as facts (source ``ANSWER``), by the system's key, with None for the
+    association (``jason.community.applicability_asks.answered``). Each joins the facts of its subject. An answer that
+    disagrees with the profile leaves the row undetermined with both named; jason picks neither.
     """
     rows = tuple(community.obligations() or ()) if rows is None else tuple(rows)
     systems = tuple(community.life_safety_systems() or ())
-    base = Facts.build(profile=profile_facts(community), as_of=as_of)
+    answers = answers or {}
+    base = Facts.build(profile=profile_facts(community), as_of=as_of).merge(answers.get(None, ()))
     of_systems = tuple(r for r in rows if facts_tested(condition_of(r)) & SUBJECT_FACTS)
     of_association = tuple(r for r in rows if not facts_tested(condition_of(r)) & SUBJECT_FACTS)
     groups: dict[Answer, list[Finding]] = {answer: [] for answer in Answer}
@@ -258,7 +264,7 @@ def applicable(community: Any, rows: Iterable[Any] | None = None, *, as_of: date
             groups[answer].extend(Finding(row, system, verdict) for row, verdict in pairs)
 
     for system in systems:
-        add(base.merge(system_facts(system)), of_systems, system)
+        add(base.merge(system_facts(system), answers.get(system.key, ())), of_systems, system)
     if not systems:
         add(base, of_systems, None)
     add(base, of_association, None)

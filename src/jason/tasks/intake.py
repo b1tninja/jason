@@ -14,8 +14,10 @@
 ``apply`` turns answered asks into records the next run uses: an OCR reading becomes a transcription (a
 ``living.Correction`` kept in ``data/living/<key>/transcriptions.json``), a classification a person-chosen kind
 (``data/library/classified-by-person.json``), an onboarding fact a private fact, a Keeper note, or a proposed profile
-change, and a mapping a proposed profile change (``jason.tasks.onboarding_answers``). The other kinds are recorded
-answers for the board or counsel. A high-stakes answer waits for a second person's confirmation.
+change, and a mapping a proposed profile change (``jason.tasks.onboarding_answers``). An applicability fact
+(``jason.community.applicability_asks``) is checked and marked applied: the answer itself is the fact the next
+evaluation reads. The other kinds are recorded answers for the board or counsel. A high-stakes answer waits for a
+second person's confirmation.
 """
 
 from __future__ import annotations
@@ -325,6 +327,18 @@ def apply(asks: list[Ask], data_dir: Path, *, refused: list | None = None, shown
                 continue                              # not a kind's value: left answered for a person to fix
             library_task.set_person_kind(data_dir, a.detail["path"], kind.value, a.answered_by)
             a.status, a.applied_to = AskStatus.APPLIED, f"library kind {kind.value} (re-run jason library)"
+            done.append(a)
+        elif a.kind is AskKind.APPLICABILITY:
+            # The answer is the record: the next evaluation reads it as a fact (source ANSWER). Applying checks that
+            # it reads as the fact, and writes nothing else.
+            from jason.community.applicability_asks import applied_note
+
+            ok, note = applied_note(a)
+            if not ok:
+                if refused is not None:
+                    refused.append((a, note))
+                continue
+            a.status, a.applied_to = AskStatus.APPLIED, note
             done.append(a)
     return done
 

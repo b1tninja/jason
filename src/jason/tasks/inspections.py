@@ -625,7 +625,8 @@ def _corrected(placed: Sequence[Placed]) -> list[Placed]:
 def completeness(community: Any, readings: Iterable[Mapping[str, Any]], *, as_of: date,
                  completions: Iterable[Completion] = (), filings: Iterable[Filing] = (),
                  calendar: Iterable[Mapping[str, Any]] = (), recitals: Iterable[Recital] = (),
-                 applicability: SystemApplicability | None = None) -> Records:
+                 applicability: SystemApplicability | None = None,
+                 answers: Mapping[str | None, Iterable[Any]] | None = None) -> Records:
     """For each of the community's systems and each obligation that applies to it, the periods and what is on file
     in each; with what could not be placed and why, what does not apply and the fact that decided it, and what is
     undetermined as a question.
@@ -633,9 +634,11 @@ def completeness(community: Any, readings: Iterable[Mapping[str, Any]], *, as_of
     ``readings`` are rows of the readings store (other kinds are passed over). ``completions`` are a person's records
     with the obligations each one's assignment covers. ``filings`` are the filing log's reports no reading covers.
     ``calendar`` are the obligations' rows of ``jason deadlines``. ``recitals`` are the record-keeping provisions as
-    ``recite`` found them. Pure: it reads nothing.
+    ``recite`` found them. ``answers`` are people's answers as facts, by system key (None: the association), as
+    ``jason.community.applicability_asks.answered`` gives them. Pure: it reads nothing.
     """
-    result = applicability or applicable(community, as_of=as_of)
+    answers = answers or {}
+    result = applicability or applicable(community, as_of=as_of, answers=answers)
     systems = result.systems
     calendar_by = {str(r.get("name")): r for r in calendar}
     unplaced: list[Unplaced] = []
@@ -704,12 +707,12 @@ def completeness(community: Any, readings: Iterable[Mapping[str, Any]], *, as_of
         out.append(SystemRecords(system, obligations, tuple(unassigned), part.does_not_apply, part.undetermined,
                                  tuple(by_vendor.get(system.key, ()))))
 
-    base = Facts.build(profile=profile_facts(community), as_of=as_of)
+    base = Facts.build(profile=profile_facts(community), as_of=as_of).merge(answers.get(None, ()))
     reached: list[Recital] = []
     for recital in recitals:
         reaches, asks = [], []
         for system in systems:
-            parts = partition([recital.rule], base.merge(system_facts(system)))
+            parts = partition([recital.rule], base.merge(system_facts(system), answers.get(system.key, ())))
             if parts.applies:
                 reaches.append(system.name)
             for _, verdict in parts.undetermined:
@@ -792,10 +795,12 @@ def review(data_dir: Path | str, community: Any, *, as_of: date | None = None) -
         if row.get("kind") == REPORT_KIND and str(row.get("id")) not in have:
             readings.append({"id": row.get("id"), "name": row.get("name"), "kind": REPORT_KIND, "model": None,
                              "confidential": row.get("confidential"), "hasText": True})
+    from jason.tasks.applicability_asks import answers   # a person's answers in the intake queue, read as facts
+
     found = completeness(
         community, readings, as_of=day, completions=_completions(data_dir, community),
         filings=_filings(data_dir, read_ids, read_shas), calendar=obligation_rows(data_dir, community, today=day),
-        recitals=[recite(data_dir, rule) for rule in RECORD_RULES])
+        recitals=[recite(data_dir, rule) for rule in RECORD_RULES], answers=answers(data_dir).facts)
     sources = ("documents/readings.json (jason models)", "library.db (jason library)", "schedule/done.jsonl",
                "drive/vendor-files.jsonl", "authorities/publications")
     return replace(found, sources=sources)

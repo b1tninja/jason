@@ -116,8 +116,10 @@ def intake_questions(kind: str = "", subject: str = "", likely_only: bool = Fals
                      limit: int = 50, awaiting_confirmation: bool = False,
                      data_dir: Path | None = None) -> dict[str, Any]:
     """The questions jason parked while taking documents in (``jason intake --scan``): which kind a file is, what an
-    OCR'd word says, an amendment's silent change, drift in the working copy, an orphaned note, and onboarding's FACT
-    and MAP questions. Each with its evidence, choices, and jason's suggestion; ``likely`` means two independent readers
+    OCR'd word says, an amendment's silent change, drift in the working copy, an orphaned note, onboarding's FACT
+    and MAP questions, and the facts a rule row's condition needs (kind ``applicability``, parked by a person with
+    ``jason applies --file-questions``; an answer is read as a fact with source "answer", and one that disagrees with
+    the specification settles nothing). Each with its evidence, choices, and jason's suggestion; ``likely`` means two independent readers
     agree. ``status`` is open, answered, applied, dismissed, stale, or "" for all. ``awaiting_confirmation`` lists only
     the answered high-stakes questions no second person has confirmed (``onboarding_confirm``), whatever ``status``
     says."""

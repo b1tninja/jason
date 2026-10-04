@@ -42,6 +42,15 @@ jason intake --apply                     # answers into records: transcriptions,
 | `section kind` | a section of the owner's manual whose kind no rule settled | the kind the next `jason manual` run reads |
 | `fact` | an onboarding checklist item a person supplies, missing or partial ([onboarding.md](onboarding.md#questions-the-checklist-asks)) | a private fact in `data/spec/<profile>.json`, a note that it is kept in Keeper, or a proposed profile change |
 | `map` | a book a checklist item looks for that no document fills, or a 5200 record no folder is pinned to hold | a proposed profile change: a `.patch` under `data/onboarding/proposals/` |
+| `applicability` | a fact a rule row's condition needs and no record on hand states, or one its sources disagree on (`jason applies --questions`; [applicability.md](applicability.md)) | a fact with source `answer` for the next evaluation, with who answered and when |
+
+**Applicability questions are filed by a person.** `jason intake --scan` does not park them. `jason applies --questions` lists them, and `jason applies --file-questions` parks them.
+
+- **One question a subject and fact.** The same missing fact for the same system is one question, however many rows wait on it. Each names the rows its answer would decide and the kinds of record that would settle it.
+- **The answer.** It is the value, and after a semicolon the record that states it: `NFPA 13R; the 2006 permit`. A system's installation standard is read only with its record named.
+- **An answer that cannot be read** as the fact is listed with why and is not used. `--apply` refuses it, and the row stays undetermined.
+- **Disagreement.** An answer that disagrees with a document or the profile settles nothing. The row stays undetermined and lists both; jason picks neither.
+- **Applying.** `jason intake --apply` checks that the answer reads as the fact and marks it applied. The answer itself is the record.
 
 ## Guards on every answer
 
