@@ -1,6 +1,6 @@
 # Applicability, ingestion, and the search index
 
-**Status:** proposed design, October 4, 2026. Nothing here is built yet, except the measurement in "Why jason's own index" below. The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
+**Status:** proposed design, October 4, 2026. Built so far: the measurement in "Why jason's own index" and the first part of the index (step 4). The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
 
 ## The problem
 
@@ -168,9 +168,17 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
 1. **Done:** the measurement (section 5) and `scripts/eval_anythingllm.py`.
 2. **The applicability module.** Conditions, the three-valued `evaluate`, and tests on made-up rows. General code only.
 3. **The first profile fact: systems** (`LifeSafetySystem`). The obligation rows that leave systems out become conditions.
-4. **The index.**
-   - Move the passages and their vectors into the store, with the columns above. `passage_search` and `context_pack` read from it.
-   - The gold set must hold at 0.89 recall@5 or better, and its corpus grows to every catalog's sources.
+4. **The index.** First part built October 4, 2026: `jason.community.passage_index`, `jason index`. Its engine is SQLite with the vectors as blobs (no new dependency), ranked by `retrieval`'s own functions.
+   - Built:
+     - the records, insurance, authorities, and reference sources, 6,770 passages;
+     - the catalog, standing, kind, confidential, and generated columns;
+     - `passage_search` reads from it.
+   - The gold set holds: 0.89 recall@5 scoped to the gold folders, the same as cutting them, and 0.88 over the whole index.
+   - Still to do:
+     - `context_pack`;
+     - the mail, reports, and library sources, once their confidentiality rows are set (docs/rag-roadmap.md, items 1 and 2);
+     - the applicability columns;
+     - gold questions for the law.
 5. **Context headers.** Kept only if the gold set improves.
 6. **Companion pages,** starting with the fire and life safety subject, whose sources are gathered.
 7. **The contract reader's gate and term scopes.** In the contracts session's code, once it agrees to the interface.

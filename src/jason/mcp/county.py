@@ -467,14 +467,40 @@ def document_readings(data_dir: Path | None = None) -> dict[str, Any]:
     }
 
 
-def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: str = "keyword") -> dict[str, Any]:
+def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: str = "keyword",
+                   catalog: str = "", standing: str = "") -> dict[str, Any]:
     """Find the passages in the governing documents, annexations, policies, and deed extracts that best match
     a question, ranked by BM25. A hit is a passage to read, with its file and place; it pins nothing. ``mode``
     "hybrid" fuses BM25 with the local embedder (qwen3-embedding:8b on Ollama, under the GPU lock) and puts passages
-    carrying the question's exact numbers first; "exact" is BM25 with that boost and no model."""
+    carrying the question's exact numbers first; "exact" is BM25 with that boost and no model.
+
+    Once the passage index is built (``jason index --build``) the search runs over it, and each hit names its
+    ``catalog`` and ``standing``. ``catalog`` (records, insurance, authorities, reference; comma-separated, or "all")
+    and ``standing`` (authority, record, reference, page) scope it; the default is the association's records. A
+    "page" hit is jason's own summary, never the rule: quote the record or the law it points to."""
     from jason.community import retrieval
 
     root = _data_dir(data_dir)
+    from jason.community import passage_index as pi
+
+    if pi.index_path(root).is_file():
+        try:
+            catalogs = () if catalog.strip().lower() == "all" else tuple(c.strip() for c in (catalog or "records").split(",") if c.strip())
+            standings = tuple(pi.Standing(s.strip()) for s in standing.split(",") if s.strip())
+            found = pi.search(query, data_dir=root, scope=pi.Scope(catalogs=catalogs, standings=standings),
+                              k=max(1, min(int(k), 30)), mode=mode or "keyword")
+        except ValueError as exc:
+            return {"query": query, "available": False, "note": f"{exc}; standings: {', '.join(s.value for s in pi.Standing)}"}
+        except retrieval.EmbeddingUnavailable as exc:
+            return {"query": query, "mode": mode, "available": False, "note": str(exc)}
+        return {
+            "query": query, **({"mode": mode} if mode and mode != "keyword" else {}), "count": len(found), "index": True,
+            "hits": [{"file": h.hit.passage.title, "path": str(h.hit.passage.path), "passage": h.hit.passage.index,
+                      "startWord": h.hit.passage.start_word, "score": h.hit.score, "text": h.hit.passage.text,
+                      "section": h.hit.passage.heading or "", "catalog": h.row.catalog, "standing": h.row.standing.value,
+                      "kind": h.row.kind, "generated": h.row.generated,
+                      "alsoIn": [str(p.path) for p in h.hit.also]} for h in found],
+        }
     folders = (
         root / "artifacts" / "site-docs" / "governing_documents", root / "artifacts" / "site-docs" / "governing_documents_Annexations",
         root / "artifacts" / "site-docs" / "governing_documents_Policies", root / "artifacts" / "site-docs" / "governing_documents_Resolutions",

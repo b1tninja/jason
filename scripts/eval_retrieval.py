@@ -276,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compare", default="", help="an earlier run's --json: list the questions won and lost")
     parser.add_argument("--no-answer", action="store_true",
                         help="measure whether a threshold on the best score separates the questions with no answer")
+    parser.add_argument("--index", action="store_true",
+                        help="rank the passage index's passages under the gold folders (jason index --build) "
+                             "instead of cutting the folders; vectors come from the index")
+    parser.add_argument("--index-all", action="store_true",
+                        help="rank every passage in the index (all catalogs), the harder corpus")
     args = parser.parse_args(argv)
     data = Path(args.data)
     paths = [Path(p) for p in args.gold] or [data / "retrieval" / "gold.json"]
@@ -295,7 +300,16 @@ def main(argv: list[str] | None = None) -> int:
         folders = tuple(gold["folders"])
         if folders not in corpora:
             started = time.monotonic()
-            corpora[folders] = corpus(*(data / f for f in folders), chunking=args.chunking, outlines=data / "outlines")
+            if args.index or args.index_all:
+                from jason.community import passage_index
+
+                scope = passage_index.Scope() if args.index_all else passage_index.Scope(folders=folders)
+                loaded = passage_index.load(data, scope, vectors=embedder is not None)
+                corpora[folders] = loaded.passages
+                if embedder is not None and not isinstance(embedder, passage_index.StoredEmbedder):
+                    embedder = passage_index.StoredEmbedder(loaded.vectors, embedder)
+            else:
+                corpora[folders] = corpus(*(data / f for f in folders), chunking=args.chunking, outlines=data / "outlines")
             timings["corpus cut s"] = round(time.monotonic() - started, 1)
         items = corpora[folders]
         questions = gold["questions"]
@@ -308,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             started = time.monotonic()
             embedder.embed_passages([p.ranked for p in items])
             timings["corpus embed s"] = round(time.monotonic() - started, 1)
-            timings["passages sent"] = embedder.sent
+            timings["passages sent"] = getattr(embedder, "sent", getattr(embedder, "live", 0))
         methods = build_methods(items, embedder, reranker, fusions, copies=args.copies)
         names = list(methods)
         detail, seconds = first_ranks(questions, methods)
@@ -354,13 +368,14 @@ def main(argv: list[str] | None = None) -> int:
         pooled = {**table(pooled_questions, pooled_detail, names), **table(pooled_questions, pooled_detail, names, "kind")}
         print_table(f"pooled over {len(paths)} gold files: recall@5 / MRR@10", pooled, names)
     if embedder:
-        print("timings:", timings, "cache:", embedder.cache.stats() if embedder.cache else {})
+        cache = getattr(embedder, "cache", None)
+        print("timings:", timings, "cache:", cache.stats() if cache else {})
     if reranker:
         took = sorted(s for s in reranker.model_seconds if s)
         if took:
             print(f"rerank: {len(took)} requests, Ollama time median {took[len(took) // 2]:.1f} s, max {took[-1]:.1f} s")
     result = {"runs": runs, "pooled": pooled, "timings": timings}
-    if embedder and embedder.cache:
+    if embedder and getattr(embedder, "cache", None):
         result["cache"] = embedder.cache.stats()
     if args.compare:
         before = json.loads(Path(args.compare).read_text(encoding="utf-8"))

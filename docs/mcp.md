@@ -177,7 +177,7 @@ Tools marked **(board)** are in the board profile.
 | `document_references` | The outlines and references `jason outlines` stored (`data/outlines`): numbered sections, one section's text with what it cites and what cites it, every statute, section, or resolution reference, and findings. References are read by a citation grammar, a finding is a lead for a person, and a scanned annexation's outline can miss subsections. |
 | `read_document` | One recorded copy's text into the concept records (stamp, citations with relation, annexed property). A reading is evidence. |
 | `document_readings` | Every governing and annexation extract read at once, with the supersessions the texts state. A supersession is pinned in `mystique/annexations.py` only after a person reads it. |
-| `passage_search` **(board)** | Ranks the extracts' passages for a question. |
+| `passage_search` **(board)** | Ranks the extracts' passages for a question. Once `jason index --build` has run, it searches the passage index: `catalog` (records by default, or "all") and `standing` scope it, and each hit names its catalog and standing. A `page` hit is jason's summary; quote the record or law it points to. |
 | `extraction_scorecard` | Scores a reader (regex, the local vision model through Ollama, or the hosted model) against the pinned facts. |
 | `read_scan` | Reads one image-only PDF with the local vision model through Ollama. |
 | `jobs_status` | The job queue (`jason jobs`, run by `jason worker`; [jobs.md](jobs.md)): each job's command, resource, status, attempts, who confirmed a write, and the end of its log. It adds, runs, and cancels nothing. |
