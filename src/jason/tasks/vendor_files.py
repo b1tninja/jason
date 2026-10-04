@@ -291,6 +291,20 @@ def plan_vendor(gmail: Any, drive: Any, community: Any, sender: Any, *, known: d
     return result, blobs
 
 
+def hold(plan: VendorPlan, blobs: dict[str, bytes], patterns: tuple[str, ...]) -> list[Attachment]:
+    """Hold back the attachments to file whose names match a pattern (case ignored): a document a person must verify
+    first, such as emailed wire instructions. A held document is not uploaded; the plan says so."""
+    import fnmatch
+
+    held = []
+    for att in plan.attachments:
+        if att.action == "file" and any(fnmatch.fnmatch(att.name.casefold(), p.casefold()) for p in patterns):
+            att.action, att.where = "held", "held back for a person to verify"
+            blobs.pop(att.sha256, None)
+            held.append(att)
+    return held
+
+
 def _folder(drive: Any, parent: str, name: str, made: dict[tuple[str, str], str]) -> str:
     key = (parent, name)
     if key not in made:
@@ -343,4 +357,4 @@ def plan_lines(plan: VendorPlan) -> list[str]:
 
 
 __all__ = ["Attachment", "Known", "VendorPlan", "vendors", "known_addresses", "query_for", "sent_by", "classify", "in_drive", "plan_vendor",
-           "file_plan", "plan_lines", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
+           "file_plan", "hold", "plan_lines", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]

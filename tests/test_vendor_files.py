@@ -189,3 +189,14 @@ def test_fiscal_year_is_named_by_its_end() -> None:
     assert fiscal_year("2026-07-15T00:00:00+00:00", (6, 30)) == 2027
     assert fiscal_year("2026-06-30T00:00:00+00:00", (6, 30)) == 2026
     assert fiscal_year("2026-07-15T00:00:00+00:00", None) == 2026
+
+
+def test_held_documents_are_not_uploaded(tmp_path) -> None:
+    from jason.tasks.vendor_files import hold
+
+    drive = Drive()
+    plan, blobs = plan_vendor(Gmail(), drive, Profile(), ALARM, known={}, seen=set())
+    held = hold(plan, blobs, ("invoice_*",))
+    assert [a.name for a in held] == ["Invoice_12.pdf"] and held[0].action == "held"
+    file_plan(drive, Profile(), plan, blobs, tmp_path)
+    assert "Invoice_12.pdf" not in [name for name, _ in drive.uploads]
