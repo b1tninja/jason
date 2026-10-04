@@ -17,6 +17,20 @@ A task prompt names topics and kinds of documents, never a section or a figure. 
 
 The law on hand is also listed by chapter (``shelf``), so a reader can see what the pack could have drawn on and say
 when the law it expected is not there. ``markdown`` writes the base prompt, the task prompt, and the sources as one page.
+
+**Where the passages come from.** When the passage index is built (``jason index --build``, ``passage_index``) and holds
+every file a tier would cut, the tier ranks the index's passages instead of cutting the folders on every call:
+
+- G ranks the passages under the ``CORPUS`` folders: the same passages, ranked the same way, without cutting them
+  again. A member's task never sees a file the index holds back as confidential; the board's does.
+- S ranks the law's sections whole, as before, by default. ``law_index`` (``LAW_FROM_INDEX``) ranks the index's
+  passages of the law pages instead (standing ``authority``) and reads each hit as the section it falls in. On the
+  profile's tasks it replaced a quarter of a task's sections at the median and up to two thirds, with no gold
+  questions for the law to say which is better, so it stays off until they exist (docs/rag-roadmap.md). The section is recited whole either way.
+- R stays on the classified library, which the index does not hold yet. F and D read no passages.
+
+A tier is cut from the folders as before when the index is missing, lacks one of the tier's files, or holds one older
+than the file on disk (``index_covers``): a stale index never answers for a file that changed.
 """
 
 from __future__ import annotations
@@ -53,6 +67,7 @@ FACT_CHARS = 6000
 RECORD_FILES = 3              # the latest files of each record kind read
 RECORD_PASSAGES = 2           # passages kept per record kind
 SAME_TEXT = 0.6               # Jaccard overlap above which two passages are copies of one
+LAW_FROM_INDEX = False        # rank the law by the index's passages (unmeasured: no gold questions for the law yet)
 
 
 @dataclass(frozen=True)
@@ -72,6 +87,7 @@ class LawSection:
     chapter: str               # the page's title: "CIV 5800-5810: Chapter 9. Insurance and Liability"
     text: str
     file: str = ""
+    start_word: int = 0        # where the section starts in its page, in words (to read an index passage as its section)
 
 
 @dataclass
@@ -131,7 +147,7 @@ def _doc_name(path: Path) -> str:
     return path.name[:-3] if path.name.endswith(".md") else path.name
 
 
-def _ranker(mode: str, data_dir: Path) -> Callable[[str, Sequence[Passage], int], Sequence[Any]]:
+def _ranker(mode: str, data_dir: Path, embedder: Any = None) -> Callable[[str, Sequence[Passage], int], Sequence[Any]]:
     from jason.community import retrieval
     from jason.community.passages import rank
 
@@ -139,7 +155,7 @@ def _ranker(mode: str, data_dir: Path) -> Callable[[str, Sequence[Passage], int]
         return lambda query, items, k: rank(query, tuple(items), k=k)
     if mode == "exact":
         return lambda query, items, k: retrieval.keyword_exact(query, items, k=k)
-    embedder = retrieval.default_embedder(data_dir)
+    embedder = embedder or retrieval.default_embedder(data_dir)
     return lambda query, items, k: retrieval.hybrid(query, items, k=k, embedder=embedder)
 
 
@@ -172,9 +188,13 @@ def law_corpus(data_dir: Path) -> list[LawSection]:
         if not path.is_file():
             continue
         chapter = f"{page.citation}: {page.title}"
-        for block in path.read_text(encoding="utf-8", errors="ignore").split("\n## ")[1:]:
+        body_text = path.read_text(encoding="utf-8", errors="ignore").replace("\r\n", "\n")
+        blocks = body_text.split("\n## ")
+        offset = len(blocks[0].split())
+        for block in blocks[1:]:
             head, _, body = block.partition("\n")
-            sections.append(LawSection(head.strip(), chapter, body.strip(), page.file))
+            sections.append(LawSection(head.strip(), chapter, body.strip(), page.file, offset))
+            offset += len(("## " + block).split())
     return sections
 
 
@@ -182,16 +202,25 @@ def law_shelf(sections: Sequence[LawSection]) -> list[str]:
     return list(dict.fromkeys(s.chapter for s in sections))
 
 
-def law_sources(questions: Sequence[str], sections: Sequence[LawSection], rank: Callable[..., Sequence[Any]], *,
-                limit: int = LAW_LIMIT, k: int = 4) -> list[tuple[LawSection, float]]:
-    """The sections that best answer the questions, best first, each once. A section is ranked with its chapter's words."""
-    items = [Passage(Path(s.file or s.citation), i, 0, f"{s.citation} {s.chapter} {s.text}") for i, s in enumerate(sections)]
+def law_sources(questions: Sequence[str], sections: Sequence[LawSection], rank: Callable[..., Sequence[Any]] | None = None, *,
+                limit: int = LAW_LIMIT, k: int = 4,
+                rank_sections: Callable[[str, int], Sequence[int]] | None = None) -> list[tuple[LawSection, float]]:
+    """The sections that best answer the questions, best first, each once. A section is ranked with its chapter's words
+    (``rank`` over the sections whole), or ``rank_sections(question, n)`` gives the indexes of the ``n`` best sections
+    (``index_law_ranking``: the index's passages, each read as its section)."""
+    if rank_sections is None:
+        if rank is None:
+            raise ValueError("law_sources needs rank or rank_sections")
+        items = [Passage(Path(s.file or s.citation), i, 0, f"{s.citation} {s.chapter} {s.text}") for i, s in enumerate(sections)]
+
+        def rank_sections(question: str, n: int) -> Sequence[int]:
+            return [hit.passage.index for hit in rank(question, items, n)]
     # Each topic ranks the sections; the rankings are fused (reciprocal rank), so every topic counts the same and a
     # section several topics reach rises above one a single topic put first.
     fused: dict[int, float] = {}
     for question in questions:
-        for place, hit in enumerate(rank(question, items, k * 3), 1):
-            fused[hit.passage.index] = fused.get(hit.passage.index, 0.0) + 1.0 / (RRF_K + place)
+        for place, i in enumerate(rank_sections(question, k * 3), 1):
+            fused[i] = fused.get(i, 0.0) + 1.0 / (RRF_K + place)
     ordered = [i for i, _ in sorted(fused.items(), key=lambda kv: -kv[1])]
     # A manager who finds the right article reads the sections around the one that led there: the leading articles
     # each give up to ARTICLE_SECTIONS of their reached sections, in turn, before the rest fill the limit.
@@ -202,6 +231,118 @@ def law_sources(questions: Sequence[str], sections: Sequence[LawSection], rank: 
         chosen += [by_article[a][depth] for a in articles if depth < len(by_article[a])]
     chosen += [i for i in ordered if i not in chosen]
     return [(sections[i], round(fused[i], 4)) for i in chosen[:limit]]
+
+
+# --- the passage index -----------------------------------------------------------------------------------------------
+
+def _rel(path: Path | str, data_dir: Path) -> str:
+    path = Path(path)
+    if not path.is_absolute():
+        return path.as_posix()
+    try:
+        return path.resolve().relative_to(data_dir.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _indexed(data_dir: Path) -> dict[str, float] | None:
+    """Each file the passage index holds, with when it was cut; None without an index. Read only."""
+    import sqlite3
+
+    from jason.community import passage_index
+
+    path = passage_index.index_path(data_dir)
+    if not path.is_file():
+        return None
+    try:
+        db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            return {rel: float(at) for rel, at in db.execute("SELECT path, indexed_at FROM files")}
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+
+
+def index_covers(data_dir: Path, files: Sequence[Path | str], indexed: dict[str, float] | None = None) -> bool:
+    """The index holds every one of ``files`` (paths under ``data_dir``) as it is on disk now: none is missing, and none
+    changed after it was cut. No files is no cover: an empty tier has nothing to read from the index."""
+    indexed = _indexed(data_dir) if indexed is None else indexed
+    if not indexed or not files:
+        return False
+    for file in files:
+        rel = _rel(file, data_dir)
+        at = indexed.get(rel)
+        if at is None:
+            return False
+        try:
+            if (data_dir / rel).stat().st_mtime > at:
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _folder_files(folder: Path) -> list[Path]:
+    """The files ``passages.corpus`` would cut under a folder."""
+    return [p for p in sorted(folder.rglob("*")) if p.is_file() and p.suffix.lower() in (".md", ".txt")]
+
+
+def index_search(data_dir: Path, *, confidential: bool, embedder: Any = None) -> Callable[..., Sequence[Any]]:
+    """A ``retrieval.search`` over the index: the same call (query, folders, k, data_dir, mode), the passages of those
+    folders ranked as cutting them would rank them, and confidential files only when ``confidential``."""
+    from jason.community import passage_index
+
+    def search(query: str, *folders: Path | str, k: int, data_dir: Path = data_dir, mode: str = "hybrid") -> Sequence[Any]:
+        scope = passage_index.Scope(folders=tuple(_rel(f, Path(data_dir)) for f in folders), confidential=confidential)
+        return [h.hit for h in passage_index.search(query, data_dir=data_dir, scope=scope, k=k, mode=mode, embedder=embedder)]
+
+    return search
+
+
+def index_law_ranking(sections: Sequence[LawSection], data_dir: Path, *, mode: str, embedder: Any = None,
+                      depth: int | None = None) -> Callable[[str, int], list[int]]:
+    """``rank_sections`` for ``law_sources`` from the index: the law pages' passages ranked for the question, each read
+    as the section it falls in (by its heading, else by where it starts), the first ``n`` sections in order. A passage
+    before a page's first section (its title and source lines) answers for no section."""
+    from jason.community import passage_index, retrieval
+
+    by_file: dict[str, list[int]] = {}
+    for i, s in enumerate(sections):
+        by_file.setdefault(_rel(s.file, data_dir), []).append(i)
+    for indexes in by_file.values():
+        indexes.sort(key=lambda i: sections[i].start_word)
+    folders = tuple(sorted({rel.rsplit("/", 1)[0] for rel in by_file if "/" in rel}))
+    scope = passage_index.Scope(standings=(passage_index.Standing.AUTHORITY,), folders=folders)
+
+    def section_of(passage: Passage) -> int | None:
+        indexes = by_file.get(_rel(passage.path, data_dir))
+        if not indexes:
+            return None
+        labels = {label.strip() for label in passage.heading.split(" > ")[1:]}
+        for i in indexes:
+            if sections[i].citation in labels:
+                return i
+        found = None
+        for i in indexes:
+            if sections[i].start_word <= passage.start_word:
+                found = i
+        return found
+
+    def rank_sections(question: str, n: int) -> list[int]:
+        # A section is several passages, so the ranking goes deep enough to reach n sections.
+        hits = passage_index.search(question, data_dir=data_dir, scope=scope, k=depth or max(n * 4, retrieval.DENSE_DEPTH),
+                                    mode=mode, embedder=embedder)
+        out: list[int] = []
+        for h in hits:
+            i = section_of(h.hit.passage)
+            if i is not None and i not in out:
+                out.append(i)
+                if len(out) >= n:
+                    break
+        return out
+
+    return rank_sections
 
 
 def cited_statutes(texts: list[str]) -> tuple[list[str], list[str]]:
@@ -332,18 +473,38 @@ def _trim(text: str, limit: int) -> str:
 def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "", draft: str = "", k: int = 4,
              mode: str = "keyword", follow_citations: bool = True, law: Sequence[LawSection] | None = None,
              search: Callable[..., Any] | None = None, files: Callable[[DocumentKind], list[tuple[str, str, str]]] | None = None,
-             fact_runner: Callable[[str, dict[str, Any]], Any] | None = None) -> ContextPack:
+             fact_runner: Callable[[str, dict[str, Any]], Any] | None = None, use_index: bool = True,
+             law_index: bool | None = None, embedder: Any = None) -> ContextPack:
+    """The pack for one task. With ``use_index`` the governing documents come from the passage index when it covers
+    them (``index_covers``), and so does the law's ranking when ``law_index`` (default ``LAW_FROM_INDEX``); the rest are
+    cut from the folders. ``search``, ``law``, and ``files`` replace a tier's reader (tests). ``embedder`` replaces the
+    local embedder in dense and hybrid modes."""
     pack = ContextPack(task, ask=ask, draft=draft, association=tuple(community.prompt_context()))
-    rank = _ranker(mode, data_dir)
+    rank = _ranker(mode, data_dir, embedder)
     questions = _questions(task, ask, draft)
+    indexed = _indexed(data_dir) if use_index else None
 
     sections = list(law) if law is not None else law_corpus(data_dir)
     pack.shelf = law_shelf(sections)
     by_citation = {s.citation: s for s in sections}
     if not sections:
         pack.gaps.append("no law on hand; run jason export-authorities")
-    chosen = law_sources(questions, sections, rank, k=k)
+    pages = list(dict.fromkeys(s.file for s in sections))
+    if (LAW_FROM_INDEX if law_index is None else law_index) and indexed and all(pages) and index_covers(data_dir, pages, indexed):
+        chosen = law_sources(questions, sections, k=k,
+                             rank_sections=index_law_ranking(sections, data_dir, mode=mode, embedder=embedder))
+    else:
+        chosen = law_sources(questions, sections, rank, k=k)
 
+    if search is None and indexed:
+        governing_files = [f for rel, _ in CORPUS if (data_dir / rel).is_dir() for f in _folder_files(data_dir / rel)]
+        if index_covers(data_dir, governing_files, indexed):
+            search = index_search(data_dir, confidential=task.audience is Audience.BOARD, embedder=embedder)
+    if search is None and embedder is not None:
+        from jason.community import retrieval
+
+        def search(query: str, *folders: Path | str, k: int, data_dir: Path, mode: str) -> Sequence[Any]:
+            return retrieval.search(query, *folders, k=k, data_dir=data_dir, mode=mode, embedder=embedder)
     governing = governing_sources(community, task, data_dir, ask=ask, draft=draft, k=k, mode=mode, search=search)
     cited: set[str] = set()
     if follow_citations:
@@ -383,4 +544,5 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
 
 
 __all__ = ["CORPUS", "GOVERNING_KINDS", "ContextPack", "LawSection", "Source", "assemble", "cited_statutes", "fact_sources",
-           "governing_sources", "law_corpus", "law_shelf", "law_sources", "library_files", "record_sources"]
+           "governing_sources", "index_covers", "index_law_ranking", "index_search", "law_corpus", "law_shelf", "law_sources",
+           "library_files", "record_sources"]

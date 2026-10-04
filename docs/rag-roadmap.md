@@ -8,6 +8,9 @@
 - **Library.** `data/library/library.db` holds 689 rows, and 687 of them were classified by a name rule. `tasks.library.distinct` folds copies by sha256 first. `text_for` puts the vision layer first. There are 87 `.vision.txt` layers. `invoices.readable()` already flags text with control characters. `data/readings` still holds 4 scan readings from qwen3.5:9b. `read_image_only` does not refresh them unless it gets `refresh=True`.
 - **Retrieval.** The pieces are `passages`, `retrieval.keyword_exact`, `hybrid` and `VectorCache` (1,953 vectors cached). `manager_review` defaults to hybrid. `scripts/eval_retrieval.py` scores against `data/retrieval/gold.json`, which has 24 questions. Its `kind` field means exact or paraphrase, not document kind. No dense or hybrid row has been recorded on gold. BM25 is recomputed over the whole corpus on every query, and `dense_rank` loads one `.npy` per passage on every query.
 - **Context pack.** `context_pack.assemble` builds the S, G, R, F and D tiers. R takes the latest `RECORD_FILES=3` files per kind, by period. `prompts.verify` checks quotes.
+  - G reads the passage index when it holds every governing file as it is on disk (`index_covers`), else cuts the folders. Measured October 4, 2026 on the profile's 11 tasks: the same G sources in the same order, keyword and hybrid, about 10 to 16 times faster.
+  - S still ranks the law's sections whole. Ranking the index's law passages (`law_index`, off) replaced a quarter of a task's sections at the median and up to two thirds, with no gold questions for the law to say which is better.
+  - R stays on the library until the index holds it.
 - **AnythingLLM.**
   - Catalogs: authorities, association-records, insurance, mail, jason-pages, and one `case-<key>` per legal case, plus the shared association workspace. The legacy "My Workspace" still holds 115 custom-documents.
   - `anythingllm.Source` keeps only title, text and score. `SHELF_OF_FOLDER` has no `insurance` entry.
