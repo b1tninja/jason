@@ -148,6 +148,34 @@ Neither side records a save. Drive keeps no source for a file saved from Gmail, 
 
 Attachments of the same name with different content are listed: another version, or a file never saved. The result is `data/drive/gmail-links.json`, and the attachment hashes are cached, so a run resumes where the last one stopped.
 
+## Filing vendors' attachments
+
+`jason gmail --file-vendor NAME|all` files the documents a vendor sent in Drive by the profile's filing rules (`Community.email_filing`): the document's kind first, its source second. It runs in two ways.
+
+- **Upload (the default).** jason reads each attachment, classifies it by name and by its words, skips content Drive already holds, and uploads the rest with the message in the file's `appProperties`. `--yes` uploads; `--hold GLOB` keeps back a document a person must verify first, such as emailed wire instructions.
+- **Gmail's own Add to Drive (`--via-gmail`).**
+  - jason reads Gmail's metadata only (names and sizes). It lists in `data/gmail/save-to-drive.md` what a person saves with Gmail's button, each with a link to its message and its folder.
+  - With `--yes`, it finds the saved copies in the root of My Drive, moves each into its folder, and tags it with its message.
+  - Nothing is downloaded or uploaded.
+  - Matching by name and size misses a copy renamed in Drive, which the upload mode's content check catches.
+
+`jason gmail --filters-xml` writes Gmail's own filters, one per vendor with a known address, labeling its mail `Vendors/<vendor>`, for a person to import in Gmail's settings.
+
+### The gap: no API for Gmail's Save to Drive
+
+Gmail links an attachment to its Drive copy (the attachment then offers "Organize in Drive") only when a person saves it with Gmail's button. No API makes that link, so a file jason uploads, or moves into place, is not shown as linked in Gmail. jason records the link on the Drive file instead: `appProperties` and the description name the message.
+
+**Checked on October 4, 2026:**
+- The Gmail API's release notes, through June 24, 2026, have nothing on saving attachments to Drive.
+- Google's Gmail MCP server (developer preview, April 22, 2026) has tools for search, reading, labels, and drafts, and none for attachments.
+- The Workspace MCP server (public developer preview, May 2026) uploads to Drive, which is a copy, not Gmail's link.
+- Workspace Studio (Flows) has a step that saves an arriving email's attachments to a Drive folder. It is a flow a person builds in Google's interface, not an API. Whether its copies show as linked in Gmail, and which editions have it, is not documented; test before relying on it.
+
+**If Google publishes an endpoint, or Studio's copies prove linked:**
+- Replace the person's click in the `--via-gmail` path (`plan_saves` and `adopt_plan` in `jason.tasks.vendor_files`) with the call, or with a Studio flow saving into a folder `adopt_plan` also watches.
+- Keep the filing rules, the duplicate checks, and the `appProperties` tag as they are.
+- Re-check the release notes at each Gmail API or Workspace MCP announcement.
+
 ## Pace
 
 Every Gmail request in the process shares one pace: 40 a second, under the 15,000 quota units a minute a user is allowed. A refusal or a dropped connection is retried for up to about seven minutes. The sync saves its progress every 500 messages and skips what it has already read. An access token lasts an hour; when Google answers 401, the client exchanges the refresh token for a new one and asks again, once, and parallel workers share that renewal.

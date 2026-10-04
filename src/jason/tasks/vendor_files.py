@@ -327,7 +327,9 @@ def plan_vendor(gmail: Any, drive: Any, community: Any, sender: Any, *, known: d
 # link. So the work is split: from Gmail's metadata alone (names and sizes; nothing downloaded) jason lists what a
 # person should save, with a link to each message and the folder it belongs in; the person saves each to My Drive; and
 # jason adopts the saved copies, found in the root of My Drive by name and size: it moves each into its folder (a move
-# keeps the file's id, so Gmail's link holds) and tags it with its message. Nothing is uploaded.
+# keeps the file's id, so Gmail's link holds) and tags it with its message. Nothing is uploaded. The missing API is
+# recorded as a gap, with what was checked and what to change if Google publishes one: docs/gmail.md ("The gap: no API
+# for Gmail's Save to Drive").
 
 SAME_DOCUMENT_DAYS = 30
 APP_MESSAGE = "gmailMessageId"
