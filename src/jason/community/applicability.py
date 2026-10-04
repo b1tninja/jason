@@ -390,18 +390,19 @@ class Facts:
 
 def profile_facts(community: Any) -> tuple[FactValue, ...]:
     """The profile's facts: ``Community.applicability_facts()``, with the state and county read from
-    ``Community.region()`` ("<state>/<county>") where the profile does not give them. Empty for a profile that sets
+    ``Community.region`` ("<state>/<county>") where the profile does not give them. Empty for a profile that sets
     neither, so every condition on them is undetermined, not a crash."""
     given = tuple(community.applicability_facts() or ())
     named = {v.fact for v in given}
-    region = (community.region() or "").strip("/")
+    region = community.region                    # a property on ``Community``; a stand-in may give a method
+    region = ((region() if callable(region) else region) or "").strip("/")
     derived: list[FactValue] = []
     if region:
         state, _, county = region.partition("/")
         if state and Fact.STATE not in named:
-            derived.append(FactValue(Fact.STATE, state, Source.PROFILE, "Community.region()"))
+            derived.append(FactValue(Fact.STATE, state, Source.PROFILE, "Community.region"))
         if county and Fact.COUNTY not in named:
-            derived.append(FactValue(Fact.COUNTY, county, Source.PROFILE, "Community.region()"))
+            derived.append(FactValue(Fact.COUNTY, county, Source.PROFILE, "Community.region"))
     return given + tuple(derived)
 
 
@@ -820,6 +821,20 @@ def evaluate(condition: Condition, facts: Facts) -> Verdict:
     return condition._evaluate(facts)
 
 
+def facts_tested(condition: Condition) -> frozenset[Fact]:
+    """Every fact a condition tests, anywhere in it. Empty for ``ALWAYS``. A caller uses it to tell what a row must be
+    asked about: a row that tests a subject fact is asked of each system, one that tests none of the association."""
+    if isinstance(condition, _Leaf):
+        return frozenset({condition.fact})
+    if isinstance(condition, (AllOf, AnyOf)):
+        return frozenset().union(*(facts_tested(p) for p in condition.parts))
+    if isinstance(condition, Not):
+        return facts_tested(condition.part)
+    if isinstance(condition, Except):
+        return facts_tested(condition.base).union(*(facts_tested(u) for u in condition.unless))
+    return frozenset()
+
+
 @dataclass(frozen=True)
 class Partition:
     """Rows sorted by their verdicts. The undetermined rows are kept, each with the question that settles it."""
@@ -875,5 +890,5 @@ __all__ = [
     "Facet", "SystemKind", "InstallationStandard", "Work", "PartyRole", "CommonInterest", "OccupancyClass",
     "SigningPlace", "WATER_BASED_FIRE_PROTECTION", "FactSpec", "Fact", "Source", "FactValue", "Facts",
     "profile_facts", "Answer", "Verdict", "Is", "In", "AtLeast", "Below", "InForce", "ALWAYS", "AllOf", "AnyOf",
-    "Not", "Except", "Condition", "evaluate", "Partition", "partition", "condition_from_dict",
+    "Not", "Except", "Condition", "evaluate", "facts_tested", "Partition", "partition", "condition_from_dict",
 ]

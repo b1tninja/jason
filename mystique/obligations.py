@@ -9,7 +9,14 @@ from __future__ import annotations
 
 from datetime import date
 
+from jason.community.applicability import Fact, Is, SystemKind
+from jason.community.fire_protection import FIRE_ALARM_SYSTEM, NFPA_25_SPRINKLERS
 from jason.community.obligations import Obligation
+
+# What each fire protection row reaches, asked of each system in life_safety.py (jason applies). NFPA_25_SPRINKLERS is a
+# fire sprinkler system, except one installed under NFPA 13D; that exclusion is NFPA 25's scope as secondary sources
+# give it (docs/fire-protection.md), not read from the standard.
+_BACKFLOW_ASSEMBLY = Is(Fact.SYSTEM, SystemKind.BACKFLOW)
 
 OBLIGATIONS: tuple[Obligation, ...] = (
     Obligation("Property tax, first installment (common-area parcels)", "Rev. & Tax. Code 2617, 2618: due Nov 1, delinquent after Dec 10",
@@ -44,7 +51,7 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     # testers". The City's own code (City Code ch. 13.04) was not reachable; secondary sources say the same.
     Obligation("Backflow assembly test", "State Water Board Cross-Connection Control Policy Handbook 3.3.3(b) (effective July 1, "
                "2024) and the City of Sacramento's annual test notice: each assembly tested at least yearly by a certified tester",
-               every_years=1, categories=("Backflow Prevention",), payee_words=("LEDOUX", "LE DOUX"),
+               every_years=1, categories=("Backflow Prevention",), payee_words=("LEDOUX", "LE DOUX"), applies=_BACKFLOW_ASSEMBLY,
                note="LeDoux tests the six assemblies (June 2024, June 2025, May 2026). NFPA 25's forward-flow test is separate."),
     # Fire protection, researched 2026-09-29: HSC 13195 and 19 CCR 904 adopt NFPA 25 (California edition) for sprinklers;
     # the 2025 California Fire Code (901.6, 907.8) adopts NFPA 72-2025 for the alarm. Checked October 2, 2026: 19 CCR 904
@@ -57,7 +64,7 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     # lease, and The Fire Sprinkler Company's payments since 2024 are repairs (their invoices say so).
     Obligation("Fire alarm inspection and test", "Cal. Fire Code 907.8 (NFPA 72-2025, ch. 14): waterflow and tamper switches and "
                "batteries semiannually; initiating and notification devices, the panel, and the communicator yearly",
-               every_months=6, done_on=date(2025, 9, 19),
+               every_months=6, done_on=date(2025, 9, 19), applies=FIRE_ALARM_SYSTEM,
                note="Signal Service's reports of September 19, 2025 (buildings 3 and 8) are the last in the library; building 3's "
                     "waterflow switch failed, two in-unit detectors were not tested, and the batteries (2021, 2022) are past "
                     "their three-year replacement. Its quarterly invoices (systems P320-4785, building 3, and P320-4786, building 8) "
@@ -71,7 +78,7 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "mystique/notes/fire-protection-records.md."),
     Obligation("Fire sprinkler quarterly inspection", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: control valves, "
                "gauges, waterflow and supervisory devices, the fire department connection, and the backflow preventer",
-               every_months=3,
+               every_months=3, applies=NFPA_25_SPRINKLERS,
                note="No quarterly record is on file. 19 CCR 904.1(a) as the State Fire Marshal adopted it (2014 text): \"A "
                     "license shall not be required to perform inspections. Inspections may be conducted by ... an employee "
                     "designated by the building owner or occupant who has developed competence through training and "
@@ -81,7 +88,7 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "devices, wet-system gauges, and spare sprinklers at quarterly inspection."),
     Obligation("Fire sprinkler annual inspection and test", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: sprinklers, "
                "piping, main drain, waterflow alarm, control valve operation, backflow forward flow",
-               every_years=1, done_on=date(2023, 3, 14),
+               every_years=1, done_on=date(2023, 3, 14), applies=NFPA_25_SPRINKLERS,
                note="The last documented annual inspection is March 14, 2023 (buildings 3 and 8, on the prior manager's April 2023 "
                     "statement). A licensed (State Fire Marshal A or C-16) firm must do it; records are kept five years. PayHOA's "
                     "payments from January 2024 bound it: The Fire Sprinkler Company quoted the annual at $895 a riser (two "
@@ -103,19 +110,19 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     # tested every 5 years; fast-response sprinklers sample-tested at 20 years and every 10 years after. Read October 4,
     # 2026 from the OSFM's published final text; the standard's own text is not on disk.
     Obligation("Fire sprinkler gauges replaced or tested", "NFPA 25 5.3.2 (California edition, Table 5.1.1.2): every 5 years",
-               every_years=5, first_due=date(2023, 3, 14),
+               every_years=5, first_due=date(2023, 3, 14), applies=NFPA_25_SPRINKLERS,
                note="The March 2023 annual report found both risers' gauges \"dated 2006\" and its correction quotation listed "
                     "replacing them; the June 2023 repairs (invoice 1674, $10,974.24) are not itemized, so whether they were "
                     "replaced is unconfirmed. Ask The Fire Sprinkler Company; the next annual report should show the gauge dates."),
     Obligation("Fire sprinkler sample test (fast-response, 20 years)", "NFPA 25 5.3.1.1.1.3 (California edition, Table "
                "5.1.1.2): fast-response sprinklers at 20 years and every 10 years after, by a lab, a sample of each kind",
-               every_years=10, first_due=date(2027, 11, 15),
+               every_years=10, first_due=date(2027, 11, 15), applies=NFPA_25_SPRINKLERS,
                note="Counted from installation, which is not on file: building 8 was conveyed from November 2007 and building 3 "
                     "from February 2008, so about late 2027 and early 2028. That residential sprinklers are fast-response is a "
                     "reading; the system's records or the heads' markings confirm it. The test is the annual inspector's to "
                     "schedule (AES 2.1 item 2.1, \"Field Service Test Required\")."),
     Obligation("Fire sprinkler five-year internal inspection", "19 CCR 904, 906.4 (NFPA 25), form AES 2.2, filed with the fire authority",
-               every_years=5,
+               every_years=5, applies=NFPA_25_SPRINKLERS,
                note="Internal inspection of valves and piping, and gauges replaced or tested; no record is on file. The Fire "
                     "Sprinkler Company's November 7, 2022 \"Five Year Inspection Correction Quotation\" followed a job walk, "
                     "not an AES 2.2 inspection; the 2023 and 2024 proposals priced the five-year and neither was ordered."),

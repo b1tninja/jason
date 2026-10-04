@@ -339,6 +339,18 @@ def test_profile_facts_read_region_unless_given():
     assert verdict.answer is A
 
 
+def test_profile_facts_read_region_as_the_property_it_is_on_a_profile():
+    """``Community.region`` is a property. A stand-in with a method hid a call on a string, so this reads a real one."""
+    from jason.community import community
+
+    class _Stated(_Profile):
+        region = property(lambda self: "ca/example")
+
+    assert [(v.fact, v.value) for v in profile_facts(_Stated())] == [(Fact.STATE, "ca"), (Fact.COUNTY, "example")]
+    assert isinstance(type(community()).region, property)
+    assert all(v.source is Source.PROFILE for v in profile_facts(community()))
+
+
 def test_every_fact_has_a_facet_and_noun():
     for fact in Fact:
         assert fact.facet and fact.noun

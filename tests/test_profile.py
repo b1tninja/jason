@@ -253,6 +253,23 @@ def test_a_profile_without_streets_or_a_name_pattern_reads_none(small_profile):
     assert letter_facts(letter, mine.streets()).addresses == ("3021 ENCHANTED WALK",)
 
 
+def test_a_profile_without_systems_is_asked_which_it_has(small_profile):
+    from jason.community.fire_protection import NFPA_25_SPRINKLERS
+    from jason.community.life_safety import applicable
+    from jason.community.obligations import Obligation
+
+    small = community()
+    assert small.life_safety_systems() == () and small.applicability_facts() == ()
+    nothing = applicable(small)
+    assert not (nothing.applies or nothing.does_not_apply or nothing.undetermined or nothing.questions())
+    row = Obligation("Sprinkler annual inspection", "a made-up row", every_years=1, applies=NFPA_25_SPRINKLERS)
+    result = applicable(small, rows=(row,))
+    assert not result.applies and not result.does_not_apply          # a miss stays a miss: a question, not a "no"
+    assert result.questions()[0].text.startswith("Which life safety systems does the association have?")
+    # The default profile lists its systems.
+    assert profiles.load_profile("mystique").life_safety_systems()
+
+
 def test_the_profile_names_itself_for_templates():
     identity = community().identity()
     values = identity.values()

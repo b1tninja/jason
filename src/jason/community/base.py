@@ -1016,6 +1016,12 @@ class Community(ABC):
         so a condition on them is undetermined, never a crash (docs/applicability.md)."""
         return ()
 
+    def life_safety_systems(self) -> tuple:
+        """The association's life safety systems (``jason.community.life_safety.LifeSafetySystem``): each one's kind,
+        the standard it was installed under where a record says, what it serves, and who services it. Empty until
+        set, so a rule that turns on a system is undetermined, with the question of which systems there are."""
+        return ()
+
     def bank_accounts(self) -> tuple[BankAccount, ...]:
         """The association's bank accounts by statement suffix. Empty until the specification sets them."""
         return ()

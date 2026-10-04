@@ -302,6 +302,12 @@ class Mystique(Community):
 
         return OBLIGATIONS
 
+    def life_safety_systems(self):
+        """The sprinkler, fire alarm, and backflow systems, each with the record that states its standard (life_safety.py)."""
+        from .life_safety import SYSTEMS
+
+        return SYSTEMS
+
     def mail_addresses(self):
         """Where letters to the association are addressed, and which address is current (mail.py)."""
         from .mail import MAIL_ADDRESSES

@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from jason.community.applicability import ALWAYS, Condition
+
 
 class Standing(Enum):
     DONE = "done"
@@ -39,6 +41,11 @@ class Obligation:
     the interval counts from it, and a payment is evidence of a later round only when it comes at least half an
     interval (at most a year) after it (the invoice for that round is paid months later). One with neither lists its payments without judging them (tax payments mix estimates and balances due, and
     a payment's date alone does not say which deadline it met).
+
+    ``applies`` is what the deadline reaches (``jason.community.applicability``): a standard's own scope, such as a
+    kind of system and the installation standards it leaves out. The default is always. A row that names a system is
+    asked of each of the profile's systems (``jason.community.life_safety.applicable``), and an answer the facts on
+    hand cannot give is a question for a person, never "does not apply".
     """
 
     name: str
@@ -54,6 +61,7 @@ class Obligation:
     first_due: date | None = None
     done_on: date | None = None
     note: str = ""
+    applies: Condition = ALWAYS
 
     @property
     def fixed(self) -> bool:

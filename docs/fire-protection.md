@@ -89,7 +89,9 @@ From the adopted text of 19 CCR 904.1 and 904.2:
 
 ## Where jason keeps it
 
+- **Systems.** The profile's `life_safety_systems()` lists each system (`jason.community.life_safety.LifeSafetySystem`): its kind, the standard it was installed under with the record that says so, what it serves, and who services and monitors it. A standard no record states is left empty, never inferred.
 - **Obligations.** The profile's `obligations` carry each cadence (quarterly, annual, five-year, gauges, sample tests), and `jason deadlines` shows what is overdue.
+- **What applies to which system.** Each obligation carries its scope as an `applies` condition (`jason.community.fire_protection`: NFPA 25's sprinkler chapter reaches a sprinkler system except one installed under NFPA 13D; NFPA 72's tests reach a fire alarm). `jason applies` asks each obligation of each system and prints what applies, what does not with the fact that decided it, and what is undetermined with its question ([applicability.md](applicability.md)). The deliverable rules carry theirs too: a water-based system, and the vendor's testing, maintenance, inspection, or repair as each provision says.
 - **Filing.** The filing rules file each vendor's report by system (`Reports/Fire Protection/<system>`), invoices by fiscal year, and contracts by vendor; see [gmail.md](gmail.md#filing-vendors-attachments).
 - **Reading reports.** `jason.community.models.legal_inspections` reads inspection reports (result, deficiencies, devices). A vendor's public report portal is synced by `jason.tasks.report_portals`.
 - **Board items.** A deficiency or an overdue inspection becomes a board item with its authority and evidence.
