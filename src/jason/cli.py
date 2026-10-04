@@ -2785,6 +2785,19 @@ def cmd_models(args: argparse.Namespace) -> int:
         result = basis_report(load(data_dir), kind=args.kind)
         print(json.dumps(result, indent=2, default=str) if args.json else "\n".join(basis_lines(result)))
         return 0 if result["found"] else 1
+    if args.as_of:
+        from datetime import date
+
+        from jason.tasks.document_reviews import review_lines, review_stored
+
+        try:
+            as_of = date.fromisoformat(args.as_of)
+        except ValueError:
+            print("--as-of needs a date as YYYY-MM-DD")
+            return 2
+        result = review_stored(data_dir, active(), as_of, kind=args.kind, include_confidential=args.confidential)
+        print(json.dumps(result, indent=2, default=str) if args.json else "\n".join(review_lines(result)))
+        return 0 if result["found"] else 1
     if args.ask:
         from jason.tasks.model_questions import run as ask_run, summary_lines as ask_lines
 
@@ -4123,9 +4136,13 @@ def build_parser() -> argparse.ArgumentParser:
     models.add_argument("--basis", action="store_true",
                         help="From the stored readings: per reader and finding code, what the check read (text, profile, store, today, "
                              "law), so which findings are ingestion and which are reviews; reads nothing again")
+    models.add_argument("--as-of", default="", metavar="DATE",
+                        help="From the stored readings' fields: make the as-of lens's findings again for DATE (YYYY-MM-DD: terms ended, "
+                             "deadlines passed, what is due next), save them under data/reviews/documents, and print what changed since "
+                             "the rows were stored; reads no document and leaves the stored readings as they are")
     models.add_argument("--ask", action="store_true",
                         help="Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's")
-    models.add_argument("--confidential", action="store_true", help="--show: include confidential files' fields")
+    models.add_argument("--confidential", action="store_true", help="--show, --as-of: include confidential files' fields")
     models.add_argument("--limit", type=int, default=50, help="--show: readings to print")
     models.add_argument("--json", action="store_true", help="Print JSON")
     models.set_defaults(func=cmd_models)
