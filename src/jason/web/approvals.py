@@ -249,6 +249,8 @@ VIEW_TTL = timedelta(minutes=10)
 # (checked against the variants without sandbox, with allow-scripts, and with allow-same-origin: all render, so the
 # strictest stays).
 DOCUMENT_CSP = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+# The kinds a document link serves inline, as its own type; any other file is a download.
+INLINE_KINDS = ("pdf", "image", "text", "audio")
 
 
 @dataclass(frozen=True)
@@ -314,11 +316,11 @@ def evidence_level(address: str) -> Any:
     template or a file under a Drive root's path rule, else P2); a file on disk (``file:<path>``) at its path's level
     (``jason.web.access.level_of_path``); a library document (``library:<id>``) by the library's confidential flag
     (``level_of_library``: P3 confidential, else P0); a PayHOA request's submission and files, and anything else, P2."""
-    from jason.approvals.evidence import EvidenceKind, rule_for
+    from jason.approvals.evidence import EvidenceKind, clean_address, rule_for
     from jason.web.access import Level
 
     try:
-        rule, found = rule_for(" ".join(str(address or "").split()))
+        rule, found = rule_for(clean_address(address))
         if rule.kind is EvidenceKind.DRIVE and found is not None:
             from jason.tasks.drive_copies import data_root, level_of
 
@@ -502,6 +504,7 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             return jsonify(error="writes are off"), 405
         if not header_token_ok():
             return jsonify(error=f"a view carries this server's token in {TOKEN_HEADER}"), 403
+        from jason.approvals.evidence import clean_address
         from jason.web.access import Level, private_open, require, served
 
         body = _body()
@@ -513,7 +516,7 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             out = view_evidence(body, viewer.account, grants, bind=viewer.bind, level=level.value, private=private)
             shown = Level.P3 if out.get("level") == Level.P3.value else level
             try:
-                served(viewer, shown, address=" ".join(_text(body, "address").split()),
+                served(viewer, shown, address=clean_address(_text(body, "address")),
                        document=str(body.get("document") or "").strip())
             except OSError:
                 return jsonify(error="The access log (access/served.jsonl) could not be written, so nothing was "
@@ -523,9 +526,11 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
 
     @bp.get("/api/evidence/document/<token>")
     def evidence_document_route(token: str):
-        """The file a view opened, from disk, while its link lasts; many reads (a PDF viewer's ranges). Never a live
-        read. Only to the sign-in that opened it (403 to another), and only while its level is still theirs. An
-        unknown or expired link is 404; no one signed in, 401."""
+        """The file a view opened, from disk, while its link lasts; many reads (a PDF viewer's ranges, an audio
+        player's seeks: ``Range`` is answered 206 by ``send_file``). Never a live read. Only to the sign-in that opened
+        it (403 to another), and only while its level is still theirs. A pdf, image, text, or audio file is served
+        inline as its type (audio as ``audio/mp4``, ``audio/mpeg``, ``audio/wav``, or ``audio/ogg``); anything else as
+        an attachment. An unknown or expired link is 404; no one signed in, 401."""
         from flask import send_file
 
         from jason.approvals.evidence_documents import content_type, inside
@@ -541,7 +546,7 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
         allow(viewer, Level(grant.level) if grant.level in Level._value2member_map_ else Level.P2)
         if not inside(grant.path, grant.root):
             return jsonify(error=f"{grant.name} is no longer on disk"), 404
-        inline = grant.kind in ("pdf", "image", "text")
+        inline = grant.kind in INLINE_KINDS
         mime = content_type(grant.path.name) if inline else "application/octet-stream"
         resp = send_file(grant.path.resolve(), mimetype=mime, conditional=True, etag=True, max_age=0)
         resp.headers["Content-Disposition"] = disposition("inline" if inline else "attachment", grant.name)

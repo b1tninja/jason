@@ -71,6 +71,8 @@ def test_canvas_attachments_and_clips_carry_references(data):
         {"kind": "calendar", "ref": "abc@group.calendar.google.com"},
     ]
     store.update(data, c.key, attachments=attachments)
+    (data / "meetings").mkdir(exist_ok=True)
+    (data / "meetings" / "board.m4a").write_bytes(b"\x00\x00\x00\x18ftypM4A made-up")
     store.add_clip(data, c.key, source="file:governing/Example Declaration.pdf", text="the recital")
     store.add_clip(data, c.key, source="data/photos/east-bed.jpg", text="the bed")
     store.add_clip(data, c.key, source="reserve_transfers", text="a row")
@@ -79,8 +81,9 @@ def test_canvas_attachments_and_clips_carry_references(data):
     docs = [a.get("doc") for a in out["attachments"]]
     assert [d["address"] if d else None for d in docs] == [
         f"drive:{DRIVE_ID}", "file:photos/east-bed.jpg", "file:governing/Example Declaration.pdf",
-        None, None, None, None, None]                 # audio stays the player until the evidence shows audio
+        "file:meetings/board.m4a", None, None, None, None]          # audio under data/ plays in Doc
     assert docs[0]["original"]["label"] == "Open in Google" and docs[1]["level"] == "P1" and docs[2]["source"] == "Recorded copy"
+    assert (docs[3]["kind"], docs[3]["document"], docs[3]["name"]) == ("audio", "audio", "Board meeting")
     assert docs[1]["name"] == "East bed"
     clips = [k.get("doc", {}).get("address") for k in out["clips"]]
     assert clips == ["file:governing/Example Declaration.pdf", "file:photos/east-bed.jpg", None, None]

@@ -76,9 +76,10 @@ export interface Policy {
   standing: string; termEnd: string | null; terms: { start?: string; end?: string; paidCents?: number }[]; nextTermPayments: { date: string; amountCents: number }[];
   letters: unknown[]; letterCount?: number; notices: InsuranceLetter[]; findings: string[];
 }
-/** A letter the insurance review reads (a notice or a claim), with its scan as a `DocRef` (`mail/<id>/contents.pdf`, P2). */
-export interface InsuranceLetter { kind: string; received: string; subject?: string; mailId?: string; from?: string | null; scan?: import("../lib/docref").DocRef | null }
-export interface InsuranceClaim { received: string; claimNumber?: string; dateOfLoss?: string; kind?: string; mailId?: string; from?: string | null; scan?: import("../lib/docref").DocRef | null }
+/** A letter the insurance review reads (a notice or a claim), with its scan as a `DocRef` (`mail/<id>/contents.pdf`, P2);
+ * `held` stands in place of `scan` for a letter that carries a credential (P4: it opens in no screen). */
+export interface InsuranceLetter { kind: string; received: string; subject?: string; mailId?: string; from?: string | null; scan?: import("../lib/docref").DocRef | null; held?: string }
+export interface InsuranceClaim { received: string; claimNumber?: string; dateOfLoss?: string; kind?: string; mailId?: string; from?: string | null; scan?: import("../lib/docref").DocRef | null; held?: string }
 export interface Insurance { found?: boolean; note?: string; asOf: string; paymentsSynced?: string; policies: Policy[]; unplacedFloodPayments: unknown[]; claims: InsuranceClaim[]; caveats?: string[] }
 
 export interface Side { budget?: number; actual?: number; variance?: number; budgeted?: number }
@@ -144,7 +145,7 @@ export interface OpenItems {
   deadlines: { name: string; next: string | null; daysLeft: number | null; standing: string; note?: string }[];
   insurance: { policy: string; standing: string; finding: string }[];
   mailNotScanned: { mailId?: string; received: string; from?: string; kind?: string }[];
-  lettersToAct: { received: string; from: string; kind: string; deadlines: string[]; mailId?: string; scan?: import("../lib/docref").DocRef | null }[];
+  lettersToAct: { received: string; from: string; kind: string; deadlines: string[]; mailId?: string; scan?: import("../lib/docref").DocRef | null; held?: string }[];
   lienNotices: { received?: string; from?: string; kind?: string; amountCents?: number; subject?: string }[];
   caveats?: string[];
 }

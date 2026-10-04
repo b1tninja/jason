@@ -57,6 +57,7 @@ The renderer is chosen by the document's `kind`, never by the address:
 | `pdf` | the browser's PDF viewer in a sandboxed frame | "Open in a new tab" always beside it |
 | `image` | `<img>` with Fit / Actual size | |
 | `text` | serif text, or `Markdown` when it is markdown | statutes, extracts, transcripts |
+| `audio` | the browser's `<audio controls>` on the view's link, with its name, its length once the player knows it, and a "Transcript" chip when a `transcript.*` sits beside it | `.m4a`, `.mp3`, `.wav`, `.ogg`: a meeting's recording. Served inline as its type with range requests, so the player seeks; the transcript opens as its own view |
 | `html` | a sandboxed `srcdoc` frame (proposed) | email bodies and HTML exports, sanitized on the server |
 | `table` | a read-only grid (proposed) | a Sheet's export or a register snapshot |
 | `message` | headers, then the body as `text` or `html` (proposed) | Gmail |
@@ -287,6 +288,7 @@ The `Embed` component's Google kinds move to this rule (see [Embed](#the-embed-c
 | A draft | `drafts/*.md`, `.pdf` | markdown, pdf | P1 |
 | Minutes, draft and approved | `board/minutes-*.md` | markdown | P1; the draft's privacy flags shown |
 | A meeting transcript or summary | `zoom/meetings/<folder>/…` | text | P1; executive session P3, held back |
+| A meeting's recording | `zoom/meetings/<folder>/audio.m4a` | audio (built: `file:<path>`) | P1; P3 for a call whose record shows an executive session, P2 when that cannot be read ([security-and-privacy.md](security-and-privacy.md#built-levels-a-stores-own-flag-decides)) |
 
 Each becomes reachable through the same document service: named, logged, and level-checked. None should be served raw.
 
@@ -295,7 +297,7 @@ Each becomes reachable through the same document service: named, logged, and lev
 **Built:**
 - `GET /api/evidence/document/<token>` serves one viewed file:
   - only from its own folder;
-  - only whitelisted types inline (pdf, images, text);
+  - only whitelisted types inline (pdf, images, text, audio as `audio/mp4`, `audio/mpeg`, `audio/wav`, or `audio/ogg`);
   - everything else, and always HTML, SVG, and XML, as an attachment;
   - with `Content-Security-Policy: sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`.
 - A grant lasts ten minutes and allows range requests.
@@ -315,7 +317,7 @@ These were found while writing this page. Each is a lead for the build order bel
 
 | Gap | Risk | Fix |
 |---|---|---|
-| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only while the person's private view is open, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Embed's photos and PDFs and KeyDocuments' copies moved to `Doc` ([requests-and-links.md](screens/requests-and-links.md)). Still open: Embed's audio under data/ (the evidence's `file:` row shows no audio yet) |
+| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only while the person's private view is open, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Embed's photos, PDFs, and audio, the meeting view's recording, and KeyDocuments' copies moved to `Doc` ([requests-and-links.md](screens/requests-and-links.md)): no view renders `/api/file` |
 | ~~`/api/library?confidential=1`~~ **Closed** | Lists confidential rows to anyone on the loopback | Done: the confidential rows are held back (`heldBack: n`) unless the person's private view is open (P3); `/api/embeds?confidential=1` too |
 | ~~`Embed` frames any ref~~ **Closed** | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | Done: see [The Embed component](#the-embed-component) |
 | ~~`MeetingStage` packet frames~~ **Closed** | A bare iframe, no fallback, no sandbox | Done: for the board and the host, a packet file on the stage is jason's copy, opened as one logged view (`POST /api/evidence/view`) and shown by `DocumentViewer` inline from its document link; with no copy, its `DocumentPreview` card (Read from Drive, Open in Google). Members (`audience=owner`, not signed in) see only a card: "The host is showing <name>; members receive the packet with the agenda". Nothing marks a packet file for members, so none is shown to them (a decision for the board). The stage never frames Google |
@@ -329,7 +331,7 @@ These were found while writing this page. Each is a lead for the build order bel
 - a published chart;
 - a Zoom recording's share page;
 - a map;
-- audio and images served by jason.
+- remote audio and images, loaded on a click.
 
 It changed in four ways (built; [requests-and-links.md](screens/requests-and-links.md#embed) has the kinds and hosts):
 1. **A host allowlist per kind.** Anything else is a link card.
@@ -337,7 +339,7 @@ It changed in four ways (built; [requests-and-links.md](screens/requests-and-lin
 3. **Private Google files** (`doc`, `sheet`, `slides`, `form`, `drive` refs without a published URL) render as a document card that opens `DocumentViewer` on jason's copy, plus "Open in Google", instead of a frame that may be blank.
 4. **Click to load.** A frame to an outside host loads on a person's click, not on page load (rule 2). A screen whose subject is a public frame passes `load="mount"` (the Calendar screen's and the owner page's calendar), as an `inline` P0 document is viewed on mount.
 
-Photos and PDFs under data/ render as `Doc` on `file:<path>`. Audio under data/ stays the browser's player, signed in, until the evidence's `file:` row shows audio.
+Photos, PDFs, and recordings under data/ render as `Doc` on `file:<path>`: a photo or a recording `inline`, a PDF as a card. A recording plays in the viewer's player from a logged view's short-lived link, never from `/api/file`.
 
 ## Build order
 

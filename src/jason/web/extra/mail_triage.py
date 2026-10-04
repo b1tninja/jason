@@ -35,15 +35,16 @@ def _brief(days: str) -> dict[str, Any]:
 
 def mail_triage(args: Args) -> dict[str, Any]:
     """The brief's lanes with each letter's recorded choice and its document (``scan``, a ``DocRef``: the scanned PDF,
-    else the envelope; docs/console/doc-component.md); ``days`` is forwarded when the tool takes it."""
+    else the envelope; docs/console/doc-component.md), or ``held`` in its place for a letter that carries a credential
+    (it opens in no screen); ``days`` is forwarded when the tool takes it."""
     from jason.mcp.county import _data_dir
     from jason.tasks import mail_triage as store
-    from jason.tasks.mail import scan_ref
+    from jason.tasks.mail import scan_fields
 
     out = _brief(args.get("days", ""))
     root = _data_dir(None)
     choices = store.load(root)
-    lanes = {lane: [{**row, "choice": choices.get(str(row.get("mailId", ""))), "scan": scan_ref(root, row)}
+    lanes = {lane: [{**row, "choice": choices.get(str(row.get("mailId", ""))), **scan_fields(root, row)}
                     for row in (out.get(lane) or [])] for lane in LANES}
     return {**out, **lanes, "choices": list(store.CHOICES), "chosen": sum(1 for lane in lanes.values() for r in lane if r["choice"]),
             "caveats": [*CAVEATS, *(out.get("caveats") or [])]}

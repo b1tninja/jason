@@ -75,17 +75,17 @@ def encode(c: Canvas) -> dict[str, Any]:
 
 # Attachment kinds that name a Drive file by its id or link, and kinds that name a file under data/ by its path.
 DRIVE_KINDS = ("doc", "sheet", "slides", "form", "drive")
-# Audio stays the console's player (Embed) until the evidence's `file:` row shows audio (it shows PDFs, images, text).
-FILE_KINDS = ("image", "pdf")
+# The evidence's `file:` row shows PDFs, images, text, and audio (played in the viewer's player).
+FILE_KINDS = ("image", "pdf", "audio")
 _WEB = re.compile(r"^(?:https?|blob|data):", re.IGNORECASE)
 _GOOGLE_ID = (re.compile(r"/(?:d|folders|file/d)/([A-Za-z0-9_-]{10,})"), re.compile(r"[?&]id=([A-Za-z0-9_-]{10,})"))
 
 
 def attachment_ref(a: dict[str, Any], data_dir: Path) -> dict[str, Any] | None:
     """An attachment's document reference (docs/console/doc-component.md): a Drive kind's ``drive:<id>`` (from the id or
-    a private link; a published ``/d/e/`` link is no file of the association's Drive and stays a frame), a photo or PDF
-    under data/ as ``file:<path>``; None for anything else (a web page, the calendar, a map, a chart, a Zoom share
-    page, a Gmail thread, and audio, which the evidence does not show yet), which stays what it is."""
+    a private link; a published ``/d/e/`` link is no file of the association's Drive and stays a frame), a photo, PDF,
+    or recording under data/ as ``file:<path>``; None for anything else (a web page, the calendar, a map, a chart, a
+    Zoom share page, a Gmail thread, remote audio), which stays what it is."""
     from jason.approvals.docref import drive_ref, file_ref
 
     kind, ref = str(a.get("kind") or ""), str(a.get("ref") or "").strip()

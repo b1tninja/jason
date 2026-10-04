@@ -138,7 +138,7 @@ def review(data_dir: Path, community: Any, *, today: date | None = None) -> dict
     letters = _letters(data_dir)
     payments, synced = _payments(data_dir)
     from jason.tasks.gmail import correspondence
-    from jason.tasks.mail import scan_ref
+    from jason.tasks.mail import scan_fields
 
     email = correspondence(data_dir, community=community)
     policies = [p for p in community.insurance().policies]
@@ -182,7 +182,7 @@ def review(data_dir: Path, community: Any, *, today: date | None = None) -> dict
             row = l["row"]
             letter_rows.append({"mailId": row["mailId"], "received": (row.get("received") or "")[:10], "from": row.get("from"),
                                 "kind": row.get("kind"), "notices": _notices(l["text"]),
-                                "dates": [d["date"] for d in row.get("deadlines") or []], "scan": scan_ref(data_dir, row)})
+                                "dates": [d["date"] for d in row.get("deadlines") or []], **scan_fields(data_dir, row)})
         parties = {n for n in (policy.agent, policy.program, policy.carrier) if n}
         start = _term_start(end) if end else None
         mails = [m for m in email if m["sender"] in parties and start and m["at"][:10] >= (start - timedelta(days=LEAD_DAYS)).isoformat()
@@ -243,7 +243,7 @@ def review(data_dir: Path, community: Any, *, today: date | None = None) -> dict
         number = re.search(r"(?i)claim (?:number|no\.?)\W{0,5}([A-Z0-9-]{5,})", l["text"])
         claims.append({"mailId": l["row"]["mailId"], "received": (l["row"].get("received") or "")[:10], "from": l["row"].get("from"),
                        "dateOfLoss": loss.group(1) if loss else None, "claimNumber": number.group(1) if number else None,
-                       "policies": sorted(l["printed"]), "scan": scan_ref(data_dir, l["row"])})
+                       "policies": sorted(l["printed"]), **scan_fields(data_dir, l["row"])})
     return {
         "found": bool(policies),
         "asOf": day.isoformat(),

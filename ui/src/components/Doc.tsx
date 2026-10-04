@@ -120,7 +120,7 @@ export function firstDocument(docs: readonly { id: string; kind: string }[]): nu
 
 /** A reference's one document as the viewer lists it. */
 export function asEvidenceDocument(r: DocRef): EvidenceDocument {
-  return { id: r.document ?? "", name: r.name, kind: (["submission", "pdf", "image", "text"].includes(r.kind) ? r.kind : "file") as EvidenceDocumentKind,
+  return { id: r.document ?? "", name: r.name, kind: (["submission", "pdf", "image", "text", "audio"].includes(r.kind) ? r.kind : "file") as EvidenceDocumentKind,
     size: r.size ?? 0, readAt: r.readAt ?? "", note: r.source ?? "", ...(r.level ? { level: r.level } : {}) };
 }
 
@@ -693,9 +693,15 @@ function Heading({ level, id, children }: { level: 3 | 4 | 5 | 6; id: string; ch
   return <H id={id} className="evidence-documents-title">{children}</H>;
 }
 
-function DocRows({ docs, title, level, lead, approval, by, onView, noView, extras, today, signedIn }: {
+/** The region name a single `row` Doc takes: its document's name, said as the row in a list, so a screen that shows the
+ * same document `inline` beside its row (mail triage) has two regions with two names. */
+export const rowRegionName = (name: string) => `${name} (in the list)`;
+
+function DocRows({ docs, title, level, lead, approval, by, onView, noView, extras, today, signedIn, regionLabel }: {
   docs: readonly DocRef[]; title: string; level: 3 | 4 | 5 | 6; lead: string; approval?: string; by?: string;
   onView?: (req: DocumentViewRequest) => Promise<DocumentView>; noView: boolean; extras: boolean; today?: Date; signedIn?: boolean;
+  /** The region's name when it is not its heading's (a single row Doc: `rowRegionName`). */
+  regionLabel?: string;
 }) {
   const viewer = noView ? null : onView ?? viewDocument;
   const live = !onView && !!viewer;
@@ -730,7 +736,8 @@ function DocRows({ docs, title, level, lead, approval, by, onView, noView, extra
   };
   const H = `h${Math.min(level + 1, 6)}` as "h5";
   return (
-    <section className={`evidence-documents doc-list doc-list-row${extras ? " doc-list-extras" : ""}`} aria-labelledby={titleId}>
+    <section className={`evidence-documents doc-list doc-list-row${extras ? " doc-list-extras" : ""}`}
+      aria-labelledby={regionLabel ? undefined : titleId} aria-label={regionLabel}>
       <H id={titleId} className="evidence-documents-title">{title}</H>
       {lead && <p className="muted">{lead}</p>}
       {why && <p className="muted evidence-documents-why"><span id={whyId}>{why}</span>{needsSignIn && known && <> <a className="evidence-sign-in" href={account.href}>Sign in with Google</a></>}</p>}
@@ -779,7 +786,8 @@ export function Doc({ doc, variant = "chip", driveKind, label, showName = true, 
   }
   if (variant === "inline") return <DocInline doc={doc} headingLevel={headingLevel} {...rest} />;
   if (variant === "row") {
-    return <DocRows docs={[doc]} title={doc.name} level={4} lead="" by={rest.by} onView={rest.onView} noView={rest.evidence !== undefined && !rest.onView} extras today={rest.today} signedIn={rest.signedIn} />;
+    return <DocRows docs={[doc]} title={doc.name} level={4} lead="" by={rest.by} onView={rest.onView} noView={rest.evidence !== undefined && !rest.onView} extras today={rest.today} signedIn={rest.signedIn}
+      regionLabel={rowRegionName(doc.name)} />;
   }
   return <DocChip doc={doc} {...rest} />;
 }

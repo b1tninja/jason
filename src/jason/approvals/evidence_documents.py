@@ -23,7 +23,8 @@ holdings mark confidential; a restricted book's words) are left out, unless the 
 while the person's private view is open). Then each is listed with ``level: "P3"`` and ``CONFIDENTIAL_NOTE``.
 
 A document's ``kind`` comes from its file's extension and nothing else (``EXTENSIONS``): ``pdf``, ``image``,
-``text``, or ``file``. HTML, SVG, and XML are ``file``: they are never shown inline, only saved.
+``text``, ``audio`` (``.m4a``, ``.mp3``, ``.wav``, ``.ogg``: a meeting's recording, played in the browser's player), or
+``file``. HTML, SVG, and XML are ``file``: they are never shown inline, only saved.
 
 **Viewing one** (``view``) is the ask principle 6 of docs/console/README.md names: contact details are masked by the
 server until someone asks to see them, and that is logged. It needs a named person, appends one line to
@@ -70,13 +71,17 @@ EXTENSIONS: dict[str, tuple[str, str]] = {
     ".txt": ("text", "text/plain; charset=utf-8"),
     ".md": ("text", "text/plain; charset=utf-8"),
     ".csv": ("text", "text/plain; charset=utf-8"),
+    ".m4a": ("audio", "audio/mp4"),
+    ".mp3": ("audio", "audio/mpeg"),
+    ".wav": ("audio", "audio/wav"),
+    ".ogg": ("audio", "audio/ogg"),
 }
 OCTET = "application/octet-stream"
 NOT_FILES = frozenset({"comments.json", "notes.json", "submission.json"})
 
 
 def kind_of(name: str) -> str:
-    """``pdf``, ``image``, ``text``, or ``file``, by the extension alone."""
+    """``pdf``, ``image``, ``text``, ``audio``, or ``file``, by the extension alone."""
     return EXTENSIONS.get(Path(name).suffix.lower(), ("file", OCTET))[0]
 
 
@@ -320,13 +325,14 @@ def drive_documents(root: Path, drive_id: str, *, private: bool = False) -> list
 RECORDED_CAVEAT = ("jason's recorded or adopted copy on disk; a recorded instrument does not change, so it is not read "
                    "again. The recorded original governs.")
 FILE_EXTRACT_NOTE = "the text read from the file (its text layer, or OCR when scanned)"
-FILE_KINDS = frozenset({"pdf", "image", "text"})
+FILE_KINDS = frozenset({"pdf", "image", "text", "audio"})
+TRANSCRIPT_NAME = "Transcript"
 
 
 def file_place(root: Path, rel: str) -> tuple[str, Path] | None:
     """A file named by its path under the data folder, as the ``file:<path>`` address takes it: the path as posix and
     the file, when it is a file inside the folder, in a place ``jason.web.access``'s ``PATH_RULES`` names, of a kind the
-    viewer shows (pdf, image, text); None otherwise (outside, missing, unplaced, or another kind)."""
+    viewer shows (pdf, image, text, audio); None otherwise (outside, missing, unplaced, or another kind)."""
     from jason.web.access import placed
 
     text = str(rel or "").strip().replace("\\", "/").lstrip("/")
@@ -351,8 +357,8 @@ def file_level(root: Path, rel: str) -> str:
 
 
 def file_documents(root: Path, rel: str, *, private: bool = False) -> list[Document]:
-    """A file under the data folder (``file:<path>``): the file itself (``pdf``, ``image``, or ``text`` by its
-    extension), then a PDF's text extract beside it (``<name>.pdf.md``) as ``text``, each only when on disk. A file
+    """A file under the data folder (``file:<path>``): the file itself (``pdf``, ``image``, ``text``, or ``audio`` by
+    its extension), then a PDF's text extract beside it (``<name>.pdf.md``) as ``text``, each only when on disk. A file
     at P3 (confidential by ``jason.web.access``) only with ``private``, marked confidential; P4 never."""
     found = file_place(root, rel)
     if found is None:
@@ -369,6 +375,28 @@ def file_documents(root: Path, rel: str, *, private: bool = False) -> list[Docum
         out.append(Document("text", f"{path.name}, its text", "text", _size(extract), _mtime(extract),
                             FILE_EXTRACT_NOTE, EXTRACT_CAVEAT, extract, folder))
     return confidential(out) if level == "P3" else out
+
+
+def transcript_ref(root: Path, audio: Path) -> dict[str, Any] | None:
+    """The transcript beside a recording (``transcript.txt``, else ``transcript.md``, in the recording's folder), as the
+    ``DocRef`` a view's answer carries for the player's transcript link (``jason.approvals.docref.file_ref``, at the
+    transcript's own level); None when there is none the evidence opens."""
+    from jason.approvals.docref import file_ref
+
+    base = Path(root).resolve()
+    for name in ("transcript.txt", "transcript.md"):
+        candidate = audio.parent / name
+        try:
+            rel = candidate.resolve().relative_to(base).as_posix()
+        except (OSError, ValueError):
+            continue
+        if file_place(base, rel) is None:
+            continue
+        try:
+            return file_ref(rel, name=TRANSCRIPT_NAME, data_dir=base)
+        except ValueError:
+            return None
+    return None
 
 
 def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_at: str = "",
@@ -879,17 +907,18 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
 
     Refuses (``ValueError``) an empty ``by``, no address, and a document id that names a path (``/``, ``\\``,
     ``..``); an id the address does not list, or a file no longer on disk, is ``KeyError``. Reads disk only. The
-    answer is ``{kind, name, readAt, submission?, text?, caveats}``; a pdf, an image, or another file comes with its
-    path and the folder it must stay inside, for jason-web to serve. ``approval_id`` is accepted for the console's
+    answer is ``{kind, name, readAt, submission?, text?, transcript?, caveats}``; a pdf, an image, audio, or another
+    file comes with its path and the folder it must stay inside, for jason-web to serve, and audio with the
+    ``DocRef`` of the transcript beside it (``transcript_ref``) when there is one. ``approval_id`` is accepted for the console's
     context and changes nothing here. ``private`` (the private view) opens a confidential document too; its answer
     carries ``level: "P3"``."""
-    from jason.approvals.evidence import DISK_ONLY, _root
+    from jason.approvals.evidence import DISK_ONLY, _root, clean_address
 
     del approval_id
     by = " ".join(str(by or "").split())
     if not by:
         raise ValueError("a view names the person (by): it shows the document unmasked under their name")
-    address = " ".join(str(address or "").split())
+    address = clean_address(address)
     if not address:
         raise ValueError("name the evidence address whose document to open")
     document = str(document or "").strip()
@@ -932,6 +961,10 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
         answer["text"] = doc.path.read_text(encoding="utf-8", errors="replace")
     else:
         path, root_of = doc.path.resolve(), doc.root.resolve()
+        if doc.kind == "audio":
+            transcript = transcript_ref(root, doc.path)
+            if transcript is not None:
+                answer["transcript"] = transcript
     _log_view(root, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "by": by, "address": address,
                      "document": doc.id, "kind": doc.kind, **({"level": doc.level} if doc.level else {})})
     return Opened(answer, path, root_of)
@@ -940,4 +973,4 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
 __all__ = ["ATTACHMENT_CAVEAT", "CONFIDENTIAL", "CONFIDENTIAL_NOTE", "Document", "EXTENSIONS", "MAX_TEXT", "OCTET", "Opened", "UNMASKED", "VIEW_LOG",
            "citation_documents", "confidential", "content_type", "documents_for", "drive_documents", "file_documents",
            "file_id", "file_level", "file_place", "inside", "kind_of", "library_documents",
-           "request_documents", "submission_view", "view"]
+           "request_documents", "submission_view", "transcript_ref", "view"]

@@ -36,6 +36,8 @@ interface DocRef {
 **Rules for the reference:**
 - **Addresses are what the evidence service resolves** ([approval-workflow.md](approval-workflow.md#evidence-you-can-open)). A new kind of document is a new resolver row, never a field a screen interprets.
 - **`file:` paths are relative to the data folder** and must be placed by `access.PATH_RULES`. An unplaced folder fails closed at P2.
+- **A `file:` path is kept exactly.** Every other address folds runs of whitespace (`evidence.clean_address`); a `file:` address keeps its path as written, so a file named with two spaces in a row is not its one-space twin.
+- **The `audio` kind** is a recording under data/ (`.m4a`, `.mp3`, `.wav`, `.ogg`; `evidence_documents.EXTENSIONS`). Its `file:` address resolves like any other file, at its path's level. Viewed, it plays in the browser's player from the view's short-lived link (served inline as its type, with ranges), with its name, its length once the player knows it, and the transcript beside it (`transcript.txt` or `.md` in its folder) as a chip.
 - **A reference never carries contents, an absolute path, or an unmasked contact.** The view (`POST /api/evidence/view`) is where contents are shown, to a named person, logged.
 - **The server decides the level.** The client never infers it from a path.
 
@@ -93,7 +95,7 @@ Every variant handles each state with words, never a broken image or an empty bo
 - A thumbnail's `alt` is the document's name.
 - Targets are at least 24px.
 - State lines that change are announced politely.
-- An `inline` document is a `region` labelled by its name.
+- An `inline` document is a `region` labelled by its name. A single `row` Doc is a region named "<name> (in the list)" (`rowRegionName`), so a screen that shows the same document as a row and `inline` (mail triage) has two regions with two names.
 
 ## Adopting it on a screen
 
@@ -127,6 +129,7 @@ A screen moves to `Doc` in five steps:
    - A `row`, `card`, or `inline` without its `document` reads the evidence answer (`GET /api/evidence`, disk metadata only) once it is on screen, for the documents a viewer walks and the command that fills a missing copy. Nothing is viewed until a person asks, but an inline P0 or P1 document.
    - A library document's card has no thumbnail yet: `/api/thumb` takes a path under data/, and a `library:` reference carries none.
    - The wrappers' extra props: `showName` (off: their table cell names the document already) and `thumbPath` (a wrapper's thumbnail when its address is not a `file:` one).
+   - **The follow-up pass** (the shared files the screens could not edit): the `audio` kind (`DocumentBody` plays it; the meeting view's recording, `Embed`'s audio under data/, and canvases' audio attachments moved to `<Doc variant="inline">` on `file:<path>`, so no view renders `/api/file`); a `file:` address kept exactly; `payhoa/attachments/*` P2; and the levels a store's own flag decides ([security-and-privacy.md](security-and-privacy.md#built-levels-a-stores-own-flag-decides)): a credential letter P4 (its loaders say "Held" in place of a reference), another association's mail P3, a hearing's Drive Doc P3, and a board call's record P3 when it shows an executive session (P2 when that cannot be read). The owner view of Insurance leaves out the association's mail.
 2. **Screens, in parallel**, each on its own files:
 
    | Group | Screens | New levels |

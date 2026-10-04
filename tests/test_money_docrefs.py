@@ -98,12 +98,16 @@ def test_a_review_records_the_attachments_path_under_the_data_folder(data):
     assert document_refs(data, rows)[0]["documents"][0]["doc"]["address"] == f"file:{INVOICE}"
 
 
-def test_a_file_whose_name_the_address_would_fold_gets_no_ref(data):
+def test_a_file_named_with_two_spaces_in_a_row_is_its_own_ref(data):
+    from jason.approvals.evidence import resolve
     from jason.tasks.invoice_review import attachment_ref
 
     rel = "transactions/2099/01/invoices/503-Two  spaces.pdf"
     (data / rel).write_bytes(b"%PDF-1.4 attachment")
-    assert attachment_ref(data, rel, "Two  spaces.pdf") is None
+    (data / "transactions/2099/01/invoices/503-Two spaces.pdf").write_bytes(b"%PDF-1.4 another file")
+    ref = attachment_ref(data, rel, "Two  spaces.pdf")
+    assert ref["address"] == f"file:{rel}" and ref["size"] == len(b"%PDF-1.4 attachment")   # not the one-space file
+    assert resolve(ref["address"], data_dir=data)["documents"][0]["size"] == len(b"%PDF-1.4 attachment")
 
 
 def test_the_invoices_loader_answers_refs(data):

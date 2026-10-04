@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanvasList, CanvasWorkspace } from "./CanvasesView";
@@ -143,6 +143,27 @@ describe("CanvasWorkspace: attachments and clip sources are Docs", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Open Example Declaration.pdf" }));
     expect((await screen.findAllByText(new RegExp(DOC_WORDS.signedOut))).length).toBeGreaterThan(0);
     expect(posts).toEqual([]);
+  });
+
+  it("a recording under data/ is a Doc inline (a P2 one waits for Show the document), never a /api/file player", async () => {
+    const recording = { address: "file:zoom/meetings/2099-01-01-abc/audio.m4a", document: "audio", name: "Board meeting (audio)", kind: "audio", level: "P2", source: "File on disk" };
+    const audioView = { kind: "audio", name: "audio.m4a", readAt: "", url: "/api/evidence/document/r", expires: "", caveats: [] };
+    const posts: [string, unknown][] = [];
+    const canvas = { ...withDocs, attachments: [{ kind: "audio", ref: "zoom/meetings/2099-01-01-abc/audio.m4a", title: "Board meeting (audio)", doc: recording }] };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (init?.method === "POST") { posts.push([url, JSON.parse(String(init.body))]); return json(audioView); }
+      if (url.startsWith("/api/session")) return json(IN);
+      if (url.includes("key=")) return json({ found: true, canvas });
+      return json({ found: false, note: "none" });
+    }));
+    const { container } = render(<CanvasWorkspace keyName="pool-deck-bids" back={() => {}} />);
+    const region = await screen.findByRole("region", { name: recording.name });
+    expect(container.querySelector("audio")).toBeNull();
+    await userEvent.click(await within(region).findByRole("button", { name: DOC_WORDS.show }));
+    await waitFor(() => expect(region.querySelector("audio")).toHaveAttribute("src", "/api/evidence/document/r"));
+    expect(posts).toEqual([["/api/evidence/view", { address: recording.address, document: "audio", by: "A Manager" }]]);
+    expect(container.querySelector('audio[src*="/api/file"]')).toBeNull();
   });
 
   it("removing an attachment sends the others back without their references", async () => {

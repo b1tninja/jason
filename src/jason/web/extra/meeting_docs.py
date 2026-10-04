@@ -9,7 +9,8 @@ notice, as the ``DocRef``s the console's ``Doc`` shows.
   log) is left out: it stays a badge.
 - ``hearing_refs`` answers a saved hearing's notice: the Doc made from the template (Drive) and jason's draft beside the
   plan (``zoom/hearings/<file>``). A hearing is a member's discipline, so both are P3 (``zoom/hearings/`` is P3 by
-  ``jason.web.access``; the Drive Doc is held at P3 here too).
+  ``jason.web.access``; the Drive Doc by ``jason.tasks.drive_copies.level_of``, which holds every Doc a saved hearing
+  names at P3 on the server; the reference is held at P3 here too).
 
 Reads metadata only: nothing here reaches Google, PayHOA, or Zoom.
 """

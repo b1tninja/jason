@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, resetServerSession } from "../lib/api";
@@ -93,30 +93,52 @@ describe("Embed: a photo or PDF under data/ is a Doc on file:<path>", () => {
   });
 });
 
-describe("Embed: audio under data/ stays the player, signed in", () => {
-  it("shows a card with Sign in with Google, and asks the server for no file, when no one is signed in", async () => {
-    const f = session({ signedIn: null, signIn: { configured: true, start: "/auth/google" } });
-    render(<Embed a={{ kind: "audio", ref: "meetings/a.mp3", title: "Board meeting" }} />);
-    expect(await screen.findByText("Sign in with Google to see this file.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
-    expect(f.mock.calls.every(([url]) => url === "/api/session")).toBe(true);
+describe("Embed: audio under data/ is a Doc on file:<path>, played from a logged view", () => {
+  const audioView: DocumentView = { kind: "audio", name: "audio.m4a", readAt: "", url: "/api/evidence/document/a", expires: "", caveats: [],
+    transcript: { address: "file:zoom/meetings/x/transcript.txt", document: "text", name: "Transcript", kind: "text", level: "P1" } };
+  const answer = { found: true, address: "file:zoom/meetings/x/audio.m4a", label: "Board meeting", kind: "file" as const, sources: [], changed: null,
+    changedNote: "", link: "", refresh: [], caveats: [], note: "", refreshable: null,
+    documents: [{ id: "audio", name: "audio.m4a", kind: "audio" as const, size: 9, readAt: "", note: "" }] };
+
+  it("the reference is file:<path> of kind audio, and the player waits for Show the document", async () => {
+    expect(attachmentDocRef({ kind: "audio", ref: "zoom/meetings/x/audio.m4a", title: "Board meeting" }))
+      .toEqual({ address: "file:zoom/meetings/x/audio.m4a", name: "Board meeting", kind: "audio" });
+    expect(attachmentDocRef({ kind: "audio", ref: "https://h.example/a.mp3" })).toBeNull();          // remote: a click to load
+    session({ signedIn: { name: "A Manager" }, signIn: { configured: true } });                    // the transcript chip's session
+    const onView = vi.fn(async () => audioView);
+    const { container } = render(<Embed a={{ kind: "audio", ref: "zoom/meetings/x/audio.m4a", title: "Board meeting" }}
+      docProps={{ signedIn: true, by: "A Manager", onView, evidence: answer }} />);
+    expect(screen.getByRole("region", { name: "Board meeting" })).toBeInTheDocument();
+    expect(container.querySelector("audio")).toBeNull();
+    expect(onView).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: DOC_WORDS.show }));
+    expect(onView).toHaveBeenCalledWith({ address: "file:zoom/meetings/x/audio.m4a", document: "audio", by: "A Manager" });
+    const audio = await waitFor(() => { const a = container.querySelector("audio"); expect(a).not.toBeNull(); return a!; });
+    expect(audio).toHaveAttribute("controls");
+    expect(audio.getAttribute("src")).toBe("/api/evidence/document/a");
+    expect(screen.getByRole("button", { name: "Open Transcript" })).toBeInTheDocument();          // the transcript beside it
+    expect(container.querySelector("iframe")).toBeNull();
+    noOutside(container);
+    expect(container.querySelector('audio[src*="/api/file"]')).toBeNull();
   });
 
-  it("renders the <audio> player for a signed-in person, not a frame", async () => {
-    session({ signedIn: { name: "A Manager" }, signIn: { configured: true } });
-    render(<Embed a={{ kind: "audio", ref: "meetings/a.mp3", title: "Board meeting" }} />);
-    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
-    expect(document.querySelector("audio")).toHaveAttribute("controls");
-    expect(document.querySelector("iframe")).toBeNull();
+  it("signed out: says to sign in and plays nothing", () => {
+    const { container } = render(<Embed a={{ kind: "audio", ref: "zoom/meetings/x/audio.m4a", title: "Board meeting" }}
+      docProps={{ signedIn: false, evidence: answer }} />);
+    expect(screen.getByText(new RegExp(DOC_WORDS.signedOut))).toBeInTheDocument();
+    expect(container.querySelector("audio")).toBeNull();
   });
 
-  it("shows the server's 401 with its sign-in link (signed out meanwhile)", async () => {
-    session({ signedIn: { name: "A Manager" }, signIn: { configured: true } },
-      { status: 401, body: { error: "Sign in with Google to open this.", signIn: "/auth/google" } });
-    render(<Embed a={{ kind: "audio", ref: "zoom/meetings/x/audio.m4a", title: "Board meeting" }} />);
-    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
-    fireEvent.error(document.querySelector("audio")!);
-    expect(await screen.findByText("Sign in with Google to open this.")).toBeInTheDocument();
+  it("an absolute path is refused in words", () => {
+    render(<Embed a={{ kind: "audio", ref: "C:\\elsewhere\\a.m4a", title: "Elsewhere" }} />);
+    expect(screen.getByText(/Not a path under the data folder/)).toBeInTheDocument();
+  });
+
+  it("the server's refusal is said in its words", async () => {
+    const refuse = vi.fn(async () => { throw new ApiError("Executive-session and other restricted material (P3) opens only in the private view.", 403); });
+    render(<Embed a={{ kind: "audio", ref: "zoom/meetings/x/audio.m4a", title: "Board meeting" }} docProps={{ signedIn: true, by: "A Manager", onView: refuse, evidence: answer }} />);
+    await userEvent.click(screen.getByRole("button", { name: DOC_WORDS.show }));
+    expect(await screen.findByText(/opens only in the private view/)).toBeInTheDocument();
   });
 });
 

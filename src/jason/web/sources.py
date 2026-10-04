@@ -434,9 +434,11 @@ def _time_zone(community: Any) -> str:
 def embeds(args: Args) -> dict[str, Any]:
     """What a canvas can embed beside Drive files and photos: the Google calendar ``jason calendar`` writes to, the
     association's time zone, and the Zoom meetings on disk (`jason zoom --sync`) that have a recording, newest first,
-    each with the files present under its folder as paths relative to data/ for /api/file. An executive session's or
-    a hearing's recording is confidential (Civil Code 4935) and listed only with ``confidential=1``. Reads disk only;
-    calls neither Zoom nor Google."""
+    each with the files present under its folder as paths relative to data/ and each file's ``doc``, its ``DocRef``
+    (``file:<path>``, at the level ``jason.web.access`` gives it: P3 for a call its record shows ran into executive
+    session). An executive session's or a hearing's recording is confidential (Civil Code 4935) and listed only with
+    ``confidential=1``. Reads disk only; calls neither Zoom nor Google."""
+    from jason.approvals.docref import file_ref
     from jason.mcp.county import _data_dir
     from jason.tasks.zoom import FILE_NAMES, MEDIA_NAMES, ZOOM_DIR, load_index
 
@@ -468,6 +470,11 @@ def embeds(args: Args) -> dict[str, Any]:
         if row.get("confidential") and not show_confidential:
             held_back += 1
             continue
+        for f in files:
+            try:
+                f["doc"] = file_ref(f["path"], name=f"{row.get('topic') or 'Meeting'} ({f['type']})", data_dir=root)
+            except ValueError:
+                pass
         recordings.append({
             "date": row.get("date") or (str(row.get("start") or "")[:10] or None), "topic": row.get("topic") or "", "uuid": row.get("uuid") or "",
             "kind": row.get("kind") or "", "confidential": bool(row.get("confidential")),

@@ -110,8 +110,8 @@ export const SCREENS: ScreenDef[] = [
   // Records
   { id: "records", label: "Records (CIV 5200)", group: "Records", owner: true, view: () => <AssociationRecordsView /> },
   { id: "records-requests", label: "Records requests", ownerLabel: "Request a record", group: "Records", owner: true, view: ({ audience }) => <RecordsRequestsView audience={audience} /> },
-  { id: "insurance", label: "Insurance", group: "Records", owner: true, view: () => <InsuranceView /> },
-  { id: "renewals", label: "Insurance renewals", group: "Records", view: () => <InsuranceRenewalsView /> },
+  { id: "insurance", label: "Insurance", group: "Records", owner: true, view: ({ audience }) => <InsuranceView audience={audience} /> },
+  { id: "renewals", label: "Insurance renewals", group: "Records", view: ({ audience }) => <InsuranceRenewalsView audience={audience} /> },
   { id: "legal", label: "Legal", group: "Records", view: () => <LegalView /> },
   { id: "ingestion", label: "Document ingestion", group: "Records", view: () => <IngestionView /> },
   { id: "owner-page", label: "Owner page", group: "Records", owner: true, view: () => <OwnerPageView /> },

@@ -232,9 +232,9 @@ def doc_ref(address: str, *, name: str | None = None, document: str | None = Non
     name jason would give it; ``document`` names one of the address's documents (default: its first). An address no
     reader takes is still a reference (kind ``file``, level P2): the ``Doc`` it feeds asks the evidence and says why.
     ``ValueError`` for no address, and for a ``file:`` address with an absolute path or one outside the folder."""
-    from jason.approvals.evidence import EvidenceKind, rule_for
+    from jason.approvals.evidence import EvidenceKind, clean_address, rule_for
 
-    address = " ".join(str(address or "").split())
+    address = clean_address(address)          # a file: path kept exactly; any other address folds its whitespace
     if not address:
         raise ValueError("a document reference names an evidence address")
     root = _root(data_dir)
@@ -393,9 +393,9 @@ _DOC_ADDRESS = re.compile(r"^(?:drive|file|library|payhoa:submission):\S")
 
 def ref_from_string(text: str, *, data_dir: Path | None = None) -> dict[str, Any]:
     """One free-text evidence string as a reference (``refs_from_strings``)."""
-    from jason.approvals.evidence import mask_text
+    from jason.approvals.evidence import clean_address, mask_text
 
-    said = " ".join(str(text or "").split())
+    said = clean_address(text)
     root = _root(data_dir)
     if not said:
         return {"text": ""}

@@ -44,21 +44,42 @@ COVER = "cover.jpg"
 _MAIL_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
+HELD = "Held: this letter holds a credential; it opens in no screen."
+
+
+def _held(data_dir: Path, mail_id: str) -> bool:
+    """Whether the letter's files are P4 (``jason.web.access``: the sort flags it as carrying a credential)."""
+    from jason.web.access import Level, level_of_path
+
+    return level_of_path(f"{MAIL_DIR}/{mail_id}/{SCAN}", Path(data_dir)) is Level.P4
+
+
 def scan_ref(data_dir: Path, row: dict[str, Any]) -> dict[str, Any] | None:
     """A letter's document as a reference for the console's ``Doc`` (docs/console/doc-component.md): its scan,
     ``mail/<id>/contents.pdf``, when PostScanMail scanned it (or the scan is on disk), else its envelope,
     ``mail/<id>/cover.jpg``. Neither on disk is still a reference, which the ``Doc`` says is not on disk. The level is
-    ``jason.web.access``'s for ``mail/`` (P2). Reads metadata only; None for a row without a usable mail id."""
+    ``jason.web.access``'s for ``mail/``: P2, P3 for another association's mail. Reads metadata only; None for a row
+    without a usable mail id, and for a letter that carries a credential (P4: it opens in no screen; ``scan_fields``
+    says so)."""
     from jason.approvals.docref import file_ref
 
     mail_id = str(row.get("mailId") or "").strip()
-    if not _MAIL_ID.fullmatch(mail_id):
+    if not _MAIL_ID.fullmatch(mail_id) or _held(data_dir, mail_id):
         return None
     scanned = bool(row.get("scanned")) or (mail_dir(data_dir) / mail_id / SCAN).is_file()
     who = " ".join(str(row.get("from") or row.get("sender") or "").split())
     day = str(row.get("received") or "")[:10]
     name = ("Letter" if scanned else "Envelope") + (f" from {who}" if who else "") + (f", {day}" if day else "")
     return file_ref(f"{MAIL_DIR}/{mail_id}/{SCAN if scanned else COVER}", name=name, data_dir=data_dir)
+
+
+def scan_fields(data_dir: Path, row: dict[str, Any]) -> dict[str, Any]:
+    """What a loader puts on a letter's row for its document: ``{scan: DocRef | None}``, and ``held`` (``HELD``) in
+    place of a reference for a letter that carries a credential."""
+    mail_id = str(row.get("mailId") or "").strip()
+    if _MAIL_ID.fullmatch(mail_id) and _held(data_dir, mail_id):
+        return {"scan": None, "held": HELD}
+    return {"scan": scan_ref(data_dir, row)}
 
 
 def _text_of(pdf: Path) -> tuple[str, str]:
@@ -445,4 +466,5 @@ def brief_lines(brief: dict[str, Any]) -> list[str]:
 
 
 __all__ = ["sync", "sort", "resort", "mail_brief", "mail_text", "brief_lines", "load_items", "mail_dir", "write_letters",
-           "write_report", "letter_page", "shareable", "policy_readings", "carries_credential"]
+           "write_report", "letter_page", "shareable", "policy_readings", "carries_credential", "HELD", "scan_ref",
+           "scan_fields"]

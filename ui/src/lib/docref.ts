@@ -78,6 +78,6 @@ export function driveDocRef(driveId: string, name: string, extra: Partial<DocRef
 
 export function fileDocRef(path: string, name: string, extra: Partial<DocRef> = {}): DocRef {
   const kind: DocKind = /\.pdf$/i.test(path) ? "pdf" : /\.(png|jpe?g|gif|webp)$/i.test(path) ? "image"
-    : /\.(md|txt|csv)$/i.test(path) ? "text" : "file";
+    : /\.(md|txt|csv)$/i.test(path) ? "text" : /\.(m4a|mp3|wav|ogg)$/i.test(path) ? "audio" : "file";
   return { address: `file:${path.replace(/\\/g, "/").replace(/^\/+/, "").replace(/^data\//, "")}`, name, kind, ...extra };
 }

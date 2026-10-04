@@ -102,6 +102,30 @@ def test_a_letter_with_nothing_on_disk_is_still_a_reference(data):
     assert ref["address"] == "file:mail/999/contents.pdf" and "document" not in ref and ref["level"] == "P2"
 
 
+def _flag(data, mail_id: str, **flags) -> None:
+    items_file = data / "mail" / "items.json"
+    body = json.loads(items_file.read_text(encoding="utf-8"))
+    for row in body["items"]:
+        if row["mailId"] == mail_id:
+            row.update(flags)
+    items_file.write_text(json.dumps(body), encoding="utf-8")
+
+
+def test_a_letter_holding_a_credential_has_no_reference_and_says_it_is_held(data):
+    from jason.tasks.mail import HELD, scan_fields
+
+    _flag(data, "100", credential=True)
+    assert scan_ref(data, _row("100", scanned=True)) is None
+    assert scan_fields(data, _row("100", scanned=True)) == {"scan": None, "held": HELD}
+    assert HELD == "Held: this letter holds a credential; it opens in no screen."
+    assert scan_fields(data, _row("102", scanned=True))["scan"]["level"] == "P2"
+
+
+def test_another_associations_letter_is_p3(data):
+    _flag(data, "100", source={"misdirected": True})
+    assert scan_ref(data, _row("100", scanned=True))["level"] == "P3"
+
+
 @pytest.mark.parametrize("bad", ["", "../etc", "a/b", None])
 def test_a_row_without_a_usable_mail_id_has_no_reference(data, bad):
     assert scan_ref(data, {"mailId": bad, "scanned": True}) is None
@@ -146,6 +170,15 @@ def test_mail_triage_gives_each_letter_its_scan_or_envelope(county, data):
         for row in out[lane]:
             _resolves(row["scan"], data)
     _no_absolute(out)
+
+
+def test_mail_triage_holds_a_credential_letter(county, data):
+    from jason.tasks.mail import HELD
+    from jason.web.extra.mail_triage import mail_triage
+
+    _flag(data, "100", credential=True)
+    [row] = mail_triage({})["act"]
+    assert row["mailId"] == "100" and row["scan"] is None and row["held"] == HELD
 
 
 def test_the_inbox_letters_carry_their_scans_and_requests_their_submissions(data, monkeypatch):

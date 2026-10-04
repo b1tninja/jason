@@ -909,6 +909,64 @@ LESSONS: tuple[Lesson, ...] = (
                    "tests/test_instrument_graph.py (a second candidate is a lead; a PRTN person stays private)",
                    "tests/test_process_report.py (owners by role, the strand by prior)"),
            docs=("docs/placer.md", "docs/instrument-graph.md")),
+    Lesson("utility-screen-wrong-shape", date(2026, 10, 3), (Area.DOCUMENTS,),
+           "The utility payments screen read fields its loader never had, so its bills showed no document when it moved "
+           "to Doc.",
+           "The screen's test fed it a fixture written from the screen's idea of a row, not from what "
+           "GET /api/utility-payments answers (each payment's rows and its attachments with their doc).",
+           "The screen reads the loader's own shape, and the money tests render it from that shape: a payment's rows, "
+           "and its attachments each with the DocRef the loader builds (utility_payments.attachment_refs).",
+           Status.FIXED, guards=("ui/src/views/money.test.tsx (the loader's real shape: rows, attachments with doc)",
+                                 "tests/test_money_docrefs.py"),
+           docs=("docs/console/doc-component.md (Adopting it on a screen)",)),
+    Lesson("docref-collapsed-spaces", date(2026, 10, 3), (Area.DOCUMENTS,),
+           "A file named with two spaces in a row got no document reference: doc_ref folded the address's whitespace, "
+           "so file:<path> named another file (or none), and the money loader dropped such a file rather than open the "
+           "wrong one.",
+           "Every evidence address went through one whitespace fold, written for free-text addresses (a citation, a "
+           "board item); a path is not free text.",
+           "evidence.clean_address keeps a file: address exactly and folds every other; doc_ref, resolve, view, the "
+           "view route's level, and its log use it. The money loader's round-trip guard is gone.",
+           Status.FIXED, guards=("jason.approvals.evidence.clean_address",
+                                 "tests/test_docref.py (a two-space name keeps its spaces and opens its own file)",
+                                 "tests/test_money_docrefs.py (a two-space attachment is its own reference)"),
+           docs=("docs/console/doc-component.md (The reference)",)),
+    Lesson("hearing-doc-level-by-folder", date(2026, 10, 3), (Area.DOCUMENTS, Area.ENFORCEMENT),
+           "A hearing's notice Doc in Drive was held at P3 by the Hearings screen's loader, but the server judged the "
+           "same Drive id by its folder: P0 under a Drive root's path rule, else P2. A view, the copy, or the thumbnail "
+           "would have opened a member's discipline outside the private view.",
+           "The level was set on the reference, which the client shows, not where the server decides it; "
+           "drive_copies.level_of read only the holdings and the templates.",
+           "drive_copies.level_of holds every Drive id a saved hearing names (zoom/hearings.json, noticeDoc) at P3, "
+           "read once a version of the file; while the hearings cannot be read, no Drive file is P0. The evidence's "
+           "level, the copy's path rule, the thumbnail, and the view all ask it, and the copy's documents are held back "
+           "outside the private view.",
+           Status.FIXED, guards=("jason.tasks.drive_copies.hearing_ids / level_of",
+                                 "tests/test_drive_copies.py (a hearing's Doc refused outside the private view, opened in it)"),
+           docs=("docs/console/security-and-privacy.md (Built: levels a store's own flag decides)",)),
+    Lesson("executive-break-transcript-p1", date(2026, 10, 3), (Area.DOCUMENTS, Area.GOVERNING),
+           "A board call that went on into executive session after a break kept its transcript and audio at P1, and "
+           "Minutes review shows the transcript inline on mount beside the draft.",
+           "access._zoom_meeting judged a meeting folder by the Zoom index's kind and confidential flag only; the "
+           "catalog's own signal (the words that say so, the adjournment its transcript shows) was not asked.",
+           "A listed meeting's transcript, audio, video, chat, and summary are P3 when access.executive_signal finds "
+           "the catalog's signal (confidential_mentions or executive_break), P2 when it cannot be read (never P1), "
+           "else P1; its attendance stays P1. The signal is read once a version of its files.",
+           Status.FIXED, guards=("jason.web.access.executive_signal / _zoom_meeting",
+                                 "tests/test_web_access.py (a flagged call P3, an open one P1, an unreadable signal P2)"),
+           docs=("docs/console/security-and-privacy.md (Built: levels a store's own flag decides)",)),
+    Lesson("credential-mail-served", date(2026, 10, 3), (Area.DOCUMENTS,),
+           "A scanned letter the mail sort flags as carrying a credential (a PIN mailer) was P2 like any other letter: "
+           "its scan, envelope, and text opened for any office that opens P2, and the mail screens linked it.",
+           "mail/* was one path rule; the sort's credential flag kept the letter out of the shared catalogs "
+           "(mail.shareable) but nothing told the console.",
+           "A per-letter hook on mail/* reads mail/items.json (once a version): a letter carrying a credential is P4, "
+           "never served; another association's mail is P3; an unreadable sort is P3. The mail loaders emit no "
+           "reference for a P4 letter and say \"Held: this letter holds a credential; it opens in no screen\".",
+           Status.FIXED, guards=("jason.web.access._mail_letter", "jason.tasks.mail.scan_ref / scan_fields",
+                                 "tests/test_web_access.py (P4 and P3 letters; /api/file refuses P4)",
+                                 "tests/test_mail_docrefs.py (no reference, Held)"),
+           docs=("docs/console/security-and-privacy.md (Built: levels a store's own flag decides)",)),
 )
 
 

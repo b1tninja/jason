@@ -691,9 +691,7 @@ def attachment_ref(data_dir: Path, rel: str, name: str = "") -> dict[str, Any] |
 
     if not rel or file_place(Path(data_dir), rel) is None:
         return None
-    ref = file_ref(rel, name=name or None, data_dir=data_dir)
-    # The address folds runs of spaces; a file whose name holds two in a row is not the file the address names.
-    return ref if ref["address"] == f"file:{rel}" else None
+    return file_ref(rel, name=name or None, data_dir=data_dir)      # a file: address keeps its path exactly
 
 
 def document_refs(data_dir: Path, rows: list[dict[str, Any]], *, store: str = TRANSACTIONS,

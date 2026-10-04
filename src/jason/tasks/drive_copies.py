@@ -27,10 +27,11 @@ export; open it in Google".
 replaced, the record last, so a reader never sees half a copy. A copy's earlier files the new read did not produce are
 removed.
 
-**Levels.** ``level_of``: a file the holdings mark confidential is P3; a letter template's Doc (the profile's
-templates) is P0; a file the holdings place under one of the specification's Drive roots (a path rule), not
-confidential, is P0, as a library file is; any other is P2, closed (``jason.web.access``'s rule for a path no row
-places).
+**Levels.** ``level_of``: a file the holdings mark confidential is P3; a Doc a saved hearing names (its notice Doc,
+``zoom/hearings.json``'s ``noticeDoc``) is P3, a member's discipline, whatever folder it sits in; a letter template's
+Doc (the profile's templates) is P0; a file the holdings place under one of the specification's Drive roots (a path
+rule), not confidential, is P0, as a library file is; any other is P2, closed (``jason.web.access``'s rule for a path
+no row places). While the hearings cannot be read, no file is P0: a P0 file is P2 until they can.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ from typing import Any
 
 COPIES = Path("drive") / "copies"
 HOLDINGS = Path("drive") / "holdings.json"
+HEARINGS = Path("zoom") / "hearings.json"      # jason hearing's plans; a plan's notice Doc is P3
 CATALOG = Path("drive") / "files.json"
 LOCK = "drive-copies"                          # the store lock an export holds while it writes one copy
 EXPORT_LIMIT = 10 * 1024 * 1024                # Google's export limit
@@ -153,8 +155,45 @@ def catalog(root: Path) -> tuple[str, dict[str, dict[str, Any]]]:
     return str(got.get("syncedAt") or ""), files
 
 
+_HEARING_IDS: dict[str, tuple[tuple[int, int], frozenset[str] | None]] = {}
+
+
+def hearing_ids(root: Path) -> frozenset[str] | None:
+    """The Drive ids the saved hearings name (``zoom/hearings.json``: each plan's ``noticeDoc``, and any other
+    ``...Doc`` it keeps with an ``id``), read once a version of the file; none when there are no hearings; None when
+    the file is there but cannot be read."""
+    path = Path(root) / HEARINGS
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return frozenset()
+    except OSError:
+        return None
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _HEARING_IDS.get(str(path))
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    found: frozenset[str] | None
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8")).get("hearings") or []
+        ids: set[str] = set()
+        for row in rows:
+            for key, value in (row.items() if isinstance(row, dict) else ()):
+                if str(key).endswith("Doc") and isinstance(value, dict) and valid_id(str(value.get("id") or "")):
+                    ids.add(str(value["id"]))
+        found = frozenset(ids)
+    except (OSError, ValueError, AttributeError, TypeError):
+        found = None
+    _HEARING_IDS[str(path)] = (stamp, found)
+    return found
+
+
 def confidential(root: Path, file_id: str) -> bool:
-    return bool((holdings_row(root, file_id) or {}).get("confidential"))
+    """Whether the file's copy is held back outside the private view: the holdings mark it confidential, or a saved
+    hearing names it."""
+    if (holdings_row(root, file_id) or {}).get("confidential"):
+        return True
+    return file_id in (hearing_ids(root) or frozenset())
 
 
 def _template_ids(root: Path) -> frozenset[str]:
@@ -170,15 +209,17 @@ def _template_ids(root: Path) -> frozenset[str]:
 
 
 def level_of(root: Path, file_id: str) -> str:
-    """The data level of a Drive file's copy (``"P0"``, ``"P2"``, ``"P3"``): confidential by the holdings is P3; a
-    letter template is P0; a file under a Drive root's path rule is P0, as a library file is; any other is P2."""
+    """The data level of a Drive file's copy (``"P0"``, ``"P2"``, ``"P3"``): confidential by the holdings is P3; a Doc
+    a saved hearing names is P3; a letter template is P0; a file under a Drive root's path rule is P0, as a library
+    file is; any other is P2. While the hearings cannot be read, P0 is P2 (closed)."""
     row = holdings_row(root, file_id)
     if row is not None and row.get("confidential"):
         return "P3"
-    if file_id in _template_ids(root):
-        return "P0"
-    if row is not None and row.get("pathRule"):
-        return "P0"
+    hearings = hearing_ids(root)
+    if hearings is not None and file_id in hearings:
+        return "P3"
+    if file_id in _template_ids(root) or (row is not None and row.get("pathRule")):
+        return "P0" if hearings is not None else "P2"
     return "P2"
 
 

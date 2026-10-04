@@ -1,20 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { getJson, signInRefusal } from "../lib/api";
 import { driveDocRef, fileDocRef } from "../lib/docref";
-import { useAccount } from "../lib/session";
 import { Doc, type DocStatic, type DriveKind } from "./Doc";
 
 /* `Embed` (docs/console/documents.md, "The Embed component"): what is meant to be framed stays a frame, and a document
  * becomes a `Doc`.
  * - A private Google file (`doc`, `sheet`, `slides`, `form`, `drive`, and a chart by its Sheet id) is a `Doc` card on
  *   `drive:<id>`: jason's copy, a logged view, and "Open in Google". Never a Google frame, which many browsers show blank.
- * - A photo or PDF under data/ is a `Doc` on `file:<path>` (a photo inline, a PDF as a card): never a URL into data/.
+ * - A photo, PDF, or recording under data/ is a `Doc` on `file:<path>` (a photo or a recording inline, a PDF as a
+ *   card): never a URL into data/. A recording plays in the viewer's player, from the view's short-lived link.
  * - What stays a frame (the public calendar, a published chart or Google file, a map, a Zoom share page) is framed only
  *   on its kind's hosts (`EMBED_HOSTS`), with `sandbox` at the kind's minimum, `referrerpolicy="no-referrer"`, and a
  *   `title`; anything else is a link card. A frame loads on a person's click (rule 2: nothing outside is read on
- *   load), unless the screen passes `load="mount"` for a public frame that is its subject.
- * - Audio under data/ is still the browser's player on jason-web's file route, signed in: the evidence's `file:` row
- *   shows PDFs, images, and text, not audio, so it moves to `Doc` once that row plays audio. */
+ *   load), unless the screen passes `load="mount"` for a public frame that is its subject. Remote audio waits for a
+ *   click the same way. */
 
 export type EmbedKind =
   | "doc" | "sheet" | "slides" | "form" | "drive" | "image" | "pdf" | "url"
@@ -57,8 +55,8 @@ const isLocalUrl = (ref: string) => /^(blob:|data:)/.test(ref);
 const DRIVE_ID = /^[A-Za-z0-9_-]{10,}$/;
 const ABSOLUTE = /^(?:[A-Za-z]:[\\/]|[\\/]|~)/;
 
-/** A local file goes through the server's read-only /api/file; a URL is used as it is. Kept for the audio player and
- * for links (`packetFrame`); a screen shows a file under data/ with `Doc`. */
+/** A local file goes through the server's read-only /api/file; a URL is used as it is. Kept for `embedUrls`' links
+ * (`packetFrame`); a screen shows a file under data/ with `Doc`, never by this URL. */
 function fileUrl(ref: string): string {
   return isWebRef(ref) ? ref : `/api/file?path=${encodeURIComponent(ref)}`;
 }
@@ -166,10 +164,15 @@ function hostOf(url: string): string {
 }
 
 const DRIVE_KINDS: Partial<Record<EmbedKind, DriveKind>> = { doc: "doc", sheet: "sheet", slides: "slides", form: "drive", drive: "drive" };
+/** The kinds that name a file under data/, shown by `Doc`. */
+const FILE_KINDS: readonly EmbedKind[] = ["image", "pdf", "audio"];
+/** The kinds whose `Doc` is the document itself on the screen (`inline`); a PDF is a card. */
+const INLINE_KINDS: readonly EmbedKind[] = ["image", "audio"];
 
 /** The document an attachment names, as a reference built in the browser (the server decides its level when it is
- * opened): a private Google file (`drive:<id>`), or a photo or PDF under data/ (`file:<path>`); null for anything else,
- * which stays a frame, a player, or a link. A loader that returns `DocRef`s passes them instead. */
+ * opened): a private Google file (`drive:<id>`), or a photo, PDF, or recording under data/ (`file:<path>`); null for
+ * anything else, which stays a frame, a click-to-load player, or a link. A loader that returns `DocRef`s passes them
+ * instead. */
 export function attachmentDocRef(a: Attachment) {
   const ref = (a.ref ?? "").trim();
   const title = a.title || "";
@@ -180,8 +183,9 @@ export function attachmentDocRef(a: Attachment) {
     if (!DRIVE_ID.test(id)) return null;
     return driveDocRef(id, title || `Drive file ${id}`, { original: { url: embedUrls(a).open, label: "Open in Google" } });
   }
-  if ((a.kind === "image" || a.kind === "pdf") && ref && !isWebRef(ref) && !ABSOLUTE.test(ref)) {
-    return fileDocRef(ref, title || ref.split("/").pop() || ref);
+  if (FILE_KINDS.includes(a.kind) && ref && !isWebRef(ref) && !ABSOLUTE.test(ref)) {
+    const doc = fileDocRef(ref, title || ref.split("/").pop() || ref);
+    return a.kind === "audio" ? { ...doc, kind: "audio" as const } : doc;
   }
   return null;
 }
@@ -233,48 +237,22 @@ export function Frame({ src, title, height, timeoutMs = 4000, sandbox = "", onRe
     onLoad={() => { loaded.current = true; }} onError={() => refused.current()} />;
 }
 
-/** A card standing in for a file jason-web did not serve: the reason in the server's words, and "Sign in with Google"
- * when a sign-in is what it needs. */
-function FileCard({ title, text, signIn }: { title: string; text: string; signIn?: string }) {
+/** A card standing in for a file jason-web will not open: the reason in words. */
+function FileCard({ title, text }: { title: string; text: string }) {
   return (
     <div className="embed-link embed-file-card">
       <div className="embed-link-title">{title}</div>
-      <p className="embed-link-note">{text}{signIn && <> <a href={signIn}>Sign in with Google</a></>}</p>
+      <p className="embed-link-note">{text}</p>
     </div>
   );
 }
 
-/** Audio under data/ in the browser's player, for a signed-in person (`jason.web.access`); a refusal is asked once more
- * as JSON for its reason, shown on a card. */
-function ServedAudio({ title, src }: { title: string; src: string }) {
-  const account = useAccount(true);
-  const [notServed, setNotServed] = useState<{ text: string; signIn?: string } | null>(null);
-  useEffect(() => { setNotServed(null); }, [src]);
-  const why = async () => {
-    try {
-      await getJson<unknown>(src);
-      setNotServed({ text: "The browser could not play this file." });
-    } catch (e: unknown) {
-      const asked = signInRefusal(e);
-      setNotServed(asked ? { text: asked.message, signIn: asked.href } : { text: e instanceof Error ? e.message : String(e) });
-    }
-  };
-  if (!account.known) return <FileCard title={title} text="Checking your sign-in…" />;
-  if (!account.account) {
-    return account.configured
-      ? <FileCard title={title} text="Sign in with Google to see this file." signIn={account.href} />
-      : <FileCard title={title} text="Console sign-in isn't set up on this jason-web; files under data/ open only for a signed-in person." />;
-  }
-  if (notServed) return <FileCard title={title} text={notServed.text} signIn={notServed.signIn} />;
-  return <audio controls src={src} title={title} onError={() => void why()} />;
-}
-
 // --- Embed ----------------------------------------------------------------------------------------------------------------
 
-/** One attachment as the rules above say: a `Doc` for a document, a sandboxed frame on its kind's hosts (on a click, or
- * on mount with `load="mount"`), the player for audio under data/, and a link card for anything else (a web page, a
- * Gmail thread, a host off the list, a frame that never loads within `timeoutMs`). `docProps` passes to the `Doc`
- * (previews, tests). */
+/** One attachment as the rules above say: a `Doc` for a document (a recording under data/ included: it plays in the
+ * viewer's player), a sandboxed frame on its kind's hosts (on a click, or on mount with `load="mount"`), and a link
+ * card for anything else (a web page, a Gmail thread, a host off the list, a frame that never loads within
+ * `timeoutMs`). `docProps` passes to the `Doc` (previews, tests). */
 export function Embed({ a, height = 480, timeoutMs = 4000, load = "click", docProps }: {
   a: Attachment; height?: number; timeoutMs?: number; load?: EmbedLoad; docProps?: DocStatic;
 }) {
@@ -288,7 +266,7 @@ export function Embed({ a, height = 480, timeoutMs = 4000, load = "click", docPr
   const doc = attachmentDocRef(a);
 
   if (doc) {
-    const variant = a.kind === "image" ? "inline" : "card";
+    const variant = INLINE_KINDS.includes(a.kind) ? "inline" : "card";
     const driveKind = a.kind === "chart" ? "sheet" : DRIVE_KINDS[a.kind];
     return (
       <figure className="embed">
@@ -299,10 +277,8 @@ export function Embed({ a, height = 480, timeoutMs = 4000, load = "click", docPr
 
   let body;
   const local = !isWebRef(ref);
-  if ((a.kind === "image" || a.kind === "pdf") && local) {
+  if (FILE_KINDS.includes(a.kind) && local && !isLocalUrl(ref)) {
     body = <FileCard title={title} text="Not a path under the data folder: give the file's path inside it (photos/east-bed.jpg)." />;
-  } else if (a.kind === "audio" && local) {
-    body = <ServedAudio title={title} src={frame} />;
   } else if ((a.kind === "image" || a.kind === "audio") && isLocalUrl(ref)) {
     body = a.kind === "image" ? <img src={ref} alt={title} /> : <audio controls src={ref} title={title} />;
   } else if (a.kind === "image" || a.kind === "audio") {

@@ -666,7 +666,7 @@ def read_drive(ask: Ask) -> dict[str, Any]:
         out["note"] = (f"Drive file {file_id} is not in Drive's listing on disk and jason keeps no copy of it: `jason "
                        "drive --sync` lists Drive, and ↻ Read from Drive exports it (a person's click).")
         return out
-    if holding is not None and holding.get("confidential") and not ask.private:
+    if drive_copies.confidential(root, file_id) and not ask.private:      # the holdings' flag, or a hearing's Doc
         out["note"] = "Confidential: its copy and its documents are held back; open the private view to see them."
         return out
     if record is not None:
@@ -902,6 +902,16 @@ RULES: tuple[Resolver, ...] = (
 UNKNOWN = Resolver(EvidenceKind.UNKNOWN, lambda a: None, read_unknown, (), live=False)
 
 
+def clean_address(address: Any) -> str:
+    """An evidence address as the readers take it: runs of whitespace folded to one space, except in a ``file:``
+    address, whose path is kept exactly (only the ends are trimmed): a file named with two spaces in a row is another
+    file than one named with one."""
+    text = str(address or "").strip()
+    if text.startswith("file:"):
+        return text
+    return " ".join(text.split())
+
+
 def rule_for(address: str) -> tuple[Resolver, re.Match[str] | None]:
     """The first rule row that takes ``address``, and its match; ``UNKNOWN`` when none does."""
     for rule in RULES:
@@ -947,7 +957,7 @@ def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None
     ``refreshable`` is null when the kind has no one-record live refresher (``refresh``). ``documents`` are what a
     person may open whole (``jason.approvals.evidence_documents``): names and sizes only, never their contents.
     ``private`` is the private view (the module doc): only jason-web asks it, and only while it is open."""
-    address = " ".join(str(address or "").split())
+    address = clean_address(address)
     notes: list[str] = []
     try:
         root = _root(data_dir)
@@ -1101,7 +1111,7 @@ def refresh(address: str, *, by: str, client_factory: Callable[[], ContextManage
     from jason.locks import Resource, hold
 
     by = _person(by)
-    address = " ".join(str(address or "").split())
+    address = clean_address(address)
     rule, found = rule_for(address)
     if rule.refresher is None or found is None:
         raise ValueError(f"{address or '(no address)'} ({rule.kind.value}) has no live refresher: "
@@ -1263,6 +1273,6 @@ def refresh_many(addresses: Any, *, by: str, client_factory: Callable[[], Contex
 
 __all__ = ["Ask", "CACHE_LOCK", "CAVEAT", "DRIVE_CHANGED", "EvidenceKind", "KEEPER_SIGN_IN", "MAX_BATCH", "MAX_MANY",
            "REFRESH_LOG", "RULES", "Refresh", "RefreshFailed", "Refresher", "Resolver", "SNAPSHOT_CAVEAT",
-           "SourceName", "drive_link", "drive_live", "library_row", "many_addresses", "mask_field", "mask_text", "payhoa_live",
+           "SourceName", "clean_address", "drive_link", "drive_live", "library_row", "many_addresses", "mask_field", "mask_text", "payhoa_live",
            "plan_addresses", "refresh", "refresh_all", "refresh_drive", "refresh_many", "refresh_submission",
            "refresh_system", "resolve", "rule_for"]

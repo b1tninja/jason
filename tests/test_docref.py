@@ -154,6 +154,81 @@ def test_a_name_with_contact_details_is_masked(data):
     assert "a@example.org" not in ref["name"] and "555-0100" not in ref["name"]
 
 
+def test_a_file_named_with_two_spaces_in_a_row_keeps_them(data):
+    (data / "governing" / "Two  spaces.pdf").write_bytes(b"%PDF-1.4 two spaces")
+    (data / "governing" / "Two spaces.pdf").write_bytes(b"%PDF-1.4 one")
+    ref = docref.file_ref("governing/Two  spaces.pdf", data_dir=data)
+    assert ref["address"] == "file:governing/Two  spaces.pdf" and ref["size"] == len(b"%PDF-1.4 two spaces")
+    assert docref.doc_ref(" file:governing/Two  spaces.pdf ", data_dir=data)["address"] == ref["address"]
+    assert resolve(ref["address"], data_dir=data)["documents"][0]["size"] == len(b"%PDF-1.4 two spaces")
+    opened = view(ref["address"], "pdf", by="Jane Example", data_dir=data)
+    assert opened.path.name == "Two  spaces.pdf"                    # the file the address names, not its one-space twin
+    assert docref.doc_ref("CIV   4920(a)", data_dir=data)["address"] == "CIV 4920(a)"     # other addresses still fold
+
+
+# --- audio ----------------------------------------------------------------------------------------------------------------
+
+M4A = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00made-up audio"
+MEETING = "meetings/2099-01-01-abc1234567"
+
+
+def _recording(root: Path) -> str:
+    """A made-up open board meeting's folder with its audio and transcript; the audio's path under the data folder."""
+    folder = root / "zoom" / MEETING
+    folder.mkdir(parents=True)
+    (folder / "audio.m4a").write_bytes(M4A)
+    (folder / "transcript.txt").write_text("[7:02 PM] Chair: I call the meeting to order.\n", encoding="utf-8")
+    (root / "zoom" / "meetings.json").write_text(json.dumps({"meetings": [
+        {"folder": MEETING, "kind": "board meeting", "confidential": False}]}), encoding="utf-8")
+    return f"zoom/{MEETING}/audio.m4a"
+
+
+@pytest.mark.parametrize("ext, mime", [(".m4a", "audio/mp4"), (".mp3", "audio/mpeg"), (".wav", "audio/wav"),
+                                       (".ogg", "audio/ogg")])
+def test_audio_is_a_kind_of_its_own(ext, mime):
+    from jason.approvals.evidence_documents import content_type, kind_of
+
+    assert kind_of(f"recording{ext}") == "audio" and content_type(f"recording{ext}") == mime
+
+
+def test_an_audio_file_resolves_plays_and_names_its_transcript(data):
+    rel = _recording(data)
+    ref = docref.file_ref(rel, data_dir=data)
+    assert (ref["address"], ref["kind"], ref["document"], ref["level"]) == (f"file:{rel}", "audio", "audio", "P1")
+    assert "thumb" not in ref
+    got = resolve(ref["address"], data_dir=data)
+    assert [(d["id"], d["kind"]) for d in got["documents"]] == [("audio", "audio")]
+    opened = view(ref["address"], "audio", by="Jane Example", data_dir=data)
+    assert opened.answer["kind"] == "audio" and opened.path.name == "audio.m4a"
+    transcript = opened.answer["transcript"]
+    assert (transcript["address"], transcript["name"], transcript["kind"]) == (
+        f"file:zoom/{MEETING}/transcript.txt", "Transcript", "text")
+    (data / "zoom" / MEETING / "transcript.txt").unlink()
+    assert "transcript" not in view(ref["address"], "audio", by="Jane Example", data_dir=data).answer
+
+
+def test_the_document_route_plays_audio_inline_with_ranges(data, monkeypatch):
+    import webclient
+    from jason.web.app import create_app
+
+    rel = _recording(data)
+    monkeypatch.setattr("jason.config.data_dir", lambda *a, **k: data)
+    monkeypatch.setattr("jason.mcp.county._data_dir", lambda d: data)
+    dist = data / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><html><head></head><body></body></html>", encoding="utf-8")
+    app = create_app(dist, {}, approvals_live=None, sign_in=webclient.roster_sign_in())
+    c = webclient.sign_in(webclient.client(app), "A Manager")
+    r = c.post("/api/evidence/view", json={"address": f"file:{rel}", "document": "audio"})
+    assert r.status_code == 200 and r.json["kind"] == "audio" and r.json["url"].startswith("/api/evidence/document/")
+    assert r.json["transcript"]["address"] == f"file:zoom/{MEETING}/transcript.txt"
+    whole = c.get(r.json["url"])
+    assert whole.status_code == 200 and whole.data == M4A and whole.mimetype == "audio/mp4"
+    assert whole.headers["Content-Disposition"].startswith("inline") and whole.headers["Accept-Ranges"] == "bytes"
+    part = c.get(r.json["url"], headers={"Range": "bytes=4-7"})
+    assert part.status_code == 206 and part.data == M4A[4:8] and part.headers["Content-Range"] == f"bytes 4-7/{len(M4A)}"
+
+
 # --- the library: evidence row ------------------------------------------------------------------------------------------
 
 def test_the_library_row_resolves_and_lists_its_documents(data):

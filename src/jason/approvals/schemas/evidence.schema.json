@@ -76,7 +76,7 @@
         "properties": {
           "id": {"type": "string", "description": "What POST /api/evidence/view names as document: \"submission\", \"section\", a file name, or an opaque id."},
           "name": {"type": "string"},
-          "kind": {"enum": ["submission", "pdf", "image", "text", "file"], "description": "From the file's extension alone; HTML, SVG, and XML are file, never shown inline."},
+          "kind": {"enum": ["submission", "pdf", "image", "text", "audio", "file"], "description": "From the file's extension alone; audio (.m4a, .mp3, .wav, .ogg) plays in the browser's player; HTML, SVG, and XML are file, never shown inline."},
           "size": {"type": "integer", "minimum": 0, "description": "Bytes; 0 for a submission."},
           "readAt": {"type": "string", "description": "When it was read or saved (ISO 8601); empty when unknown."},
           "note": {"type": "string"},

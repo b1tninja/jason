@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, resetServerSession, type PrivateView } from "../lib/api";
-import { DOC_WORDS, Doc, DocList, type DocRef, type DocumentView, type EvidenceAnswer } from "./index";
+import { DOC_WORDS, Doc, DocList, recordingLength, rowRegionName, type DocRef, type DocumentView, type EvidenceAnswer } from "./index";
 
 // Made-up references; nothing here names a real document.
 const today = new Date("2099-10-03T12:00:00");
@@ -109,6 +109,58 @@ describe("Doc row and DocList", () => {
   it("a single row is a Doc too", () => {
     render(<Doc doc={minutes} variant="row" signedIn by="A Manager" onView={vi.fn()} today={today} />);
     expect(screen.getByRole("button", { name: "View Minutes draft, Oct 1" })).toBeInTheDocument();
+  });
+
+  it("a single row beside the same document inline: two regions, two names", () => {
+    render(<>
+      <Doc doc={letter} variant="row" signedIn by="A Manager" onView={vi.fn()} />
+      <Doc doc={letter} variant="inline" signedIn by="A Manager" onView={vi.fn()} />
+    </>);
+    expect(screen.getByRole("region", { name: rowRegionName(letter.name) })).toHaveClass("doc-list-row");
+    expect(rowRegionName(letter.name)).toBe("Letter from a vendor (in the list)");
+    expect(screen.getByRole("region", { name: letter.name })).toHaveClass("doc-inline");
+    expect(screen.getAllByRole("region", { name: letter.name })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: letter.name, level: 5 })).toBeInTheDocument();   // the row's heading stays the name
+  });
+});
+
+describe("Doc audio", () => {
+  const recording: DocRef = { address: "file:zoom/meetings/2099-10-01-abc/audio.m4a", document: "audio", name: "Board meeting (audio)",
+    kind: "audio", level: "P1", source: "File on disk", size: 9 };
+  const transcript: DocRef = { address: "file:zoom/meetings/2099-10-01-abc/transcript.txt", document: "text", name: "Transcript", kind: "text", level: "P1" };
+  const audioView: DocumentView = { kind: "audio", name: "audio.m4a", readAt: "", url: "/api/evidence/document/a", expires: "", caveats: [], transcript };
+
+  it("inline: the player on the view's link, its length once known, and the transcript beside it", async () => {
+    const onView = vi.fn(async () => audioView);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ token: "t", signedIn: { name: "A Manager" }, signIn: { configured: true } }), { status: 200 })));
+    const { container } = render(<Doc doc={recording} variant="inline" signedIn by="A Manager" onView={onView} />);
+    const region = screen.getByRole("region", { name: recording.name });
+    await waitFor(() => expect(onView).toHaveBeenCalledWith({ address: recording.address, document: "audio", by: "A Manager" }));
+    const audio = await waitFor(() => { const a = region.querySelector("audio"); expect(a).not.toBeNull(); return a!; });
+    expect(audio).toHaveAttribute("controls");
+    expect(audio).toHaveAttribute("src", "/api/evidence/document/a");
+    expect(audio).toHaveAccessibleName("audio.m4a");
+    Object.defineProperty(audio, "duration", { value: 3725, configurable: true });
+    fireEvent.loadedMetadata(audio);
+    expect(within(region).getByLabelText("length 1:02:05")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Open Transcript" })).toHaveAccessibleDescription("Text");
+    expect(container.querySelector('audio[src*="/api/file"]')).toBeNull();
+  });
+
+  it("a recording's length reads as a clock", () => {
+    expect(recordingLength(249)).toBe("4:09");
+    expect(recordingLength(3725)).toBe("1:02:05");
+    expect(recordingLength(Number.NaN)).toBe("");
+  });
+
+  it("the viewer's kind word and its new-tab link", async () => {
+    const onView = vi.fn(async () => ({ ...audioView, transcript: null }));
+    render(<Doc doc={recording} signedIn by="A Manager" onView={onView} />);
+    await userEvent.click(screen.getByRole("button", { name: `Open ${recording.name}` }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Audio")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: /Open in a new tab/ })).toHaveAttribute("href", "/api/evidence/document/a");
+    expect(dialog.querySelector("audio")).toHaveAttribute("src", "/api/evidence/document/a");
   });
 });
 

@@ -200,11 +200,11 @@ def open_items(data_dir: Path, community: Any, *, days: int = 30, today: date | 
         items["mailNotScanned"] = [d for d in check.get("deliveredNotScanned") or [] if d["deliveredAt"][:10] >= (day - timedelta(days=90)).isoformat()]
     except Exception:
         items["mailNotScanned"] = []
-    from jason.tasks.mail import load_items, scan_ref
+    from jason.tasks.mail import load_items, scan_fields
 
     items["lettersToAct"] = sorted(({"received": r["received"][:10], "from": r.get("from"), "kind": r.get("kind"),
                                      "deadlines": [d["date"] for d in r.get("deadlines") or []], "mailId": r["mailId"],
-                                     "scan": scan_ref(data_dir, r)}
+                                     **scan_fields(data_dir, r)}
                                     for r in load_items(data_dir).values() if r.get("urgency") == "act" and (r.get("received") or "") >= since
                                     and not (r.get("source") or {}).get("misdirected")), key=lambda r: r["received"], reverse=True)
     try:

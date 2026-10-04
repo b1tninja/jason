@@ -712,6 +712,11 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
 .doc-image-actual .doc-image-frame { overflow: auto; }
 .doc-image-actual img { display: block; max-width: none; }
 .doc-image img { border: 1px solid var(--rule); background: #fff; }
+/* A recording: the browser's player at the body's width, its name and length above, its transcript below. */
+.doc-audio { display: grid; gap: 8px; max-width: 48rem; }
+.doc-audio audio { width: 100%; display: block; min-height: 40px; }
+.doc-audio-name { margin: 0; overflow-wrap: anywhere; }
+.doc-audio-transcript { margin: 0; }
 .doc-file { max-width: 30rem; margin: 2rem auto; text-align: center; display: grid; gap: 8px; }
 .doc-file p { margin: 0; }
 .doc-download { display: inline-block; padding: .4rem .95rem; border: 1px solid var(--rule); border-radius: var(--r); background: var(--panel); color: var(--ink); text-decoration: none; font-weight: 600; }

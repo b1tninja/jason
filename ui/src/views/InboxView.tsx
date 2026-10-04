@@ -35,7 +35,7 @@ export function InboxView() {
               <DataTable rows={d.insurance} columns={[{ key: "policy", header: "Policy" }, { key: "standing", header: "Standing", render: (x) => <Pill word={x.standing} /> }, { key: "finding", header: "Finding", render: (x) => <Findings items={[x.finding]} /> }]} searchable={false} /> ) },
             { id: "letters", label: `Letters to act on (${d.lettersToAct.length})`, content: (
               <DataTable rows={d.lettersToAct} columns={[{ key: "received", header: "Received" }, { key: "from", header: "From" }, { key: "kind", header: "Kind", render: (x) => <Badge>{x.kind}</Badge> }, { key: "deadlines", header: "Deadlines it states", render: (x) => <Findings items={x.deadlines} empty="none" />, value: (x) => x.deadlines.length },
-                { key: "scan", header: "Letter", value: (x) => x.scan?.name ?? "", render: (x) => x.scan ? <Doc doc={x.scan} variant="chip" /> : <span className="muted">—</span> }]} /> ) },
+                { key: "scan", header: "Letter", value: (x) => x.scan?.name ?? x.held ?? "", render: (x) => x.scan ? <Doc doc={x.scan} variant="chip" /> : x.held ? <span className="muted mail-held">{x.held}</span> : <span className="muted">—</span> }]} /> ) },
             { id: "mail", label: `Mail not scanned (${d.mailNotScanned.length})`, content: (
               <DataTable rows={d.mailNotScanned} columns={[{ key: "received", header: "Received" }, { key: "from", header: "From", value: (x) => x.from ?? "" }, { key: "kind", header: "Kind", value: (x) => x.kind ?? "" }]} /> ) },
             { id: "liens", label: `Lien notices (${d.lienNotices.length})`, content: (

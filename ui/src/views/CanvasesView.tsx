@@ -201,13 +201,13 @@ const plain = ({ doc: _doc, ...a }: CanvasAttachment): Attachment => a;
 
 const DRIVE_KIND: Partial<Record<EmbedKind, "doc" | "sheet" | "slides" | "drive">> = { doc: "doc", sheet: "sheet", slides: "slides", form: "drive", drive: "drive" };
 
-/** One attachment: the document it names as a `Doc` (a photo inline, a Drive file or a PDF as a card), from the loader's
- * reference; anything else (a calendar, a map, a chart, a Zoom recording, audio, a web page, a mail thread) as `Embed`
- * shows it. */
+/** One attachment: the document it names as a `Doc` (a photo or a recording under data/ inline, a Drive file or a PDF
+ * as a card), from the loader's reference; anything else (a calendar, a map, a chart, a Zoom share page, remote audio,
+ * a web page, a mail thread) as `Embed` shows it. */
 function AttachmentView({ a }: { a: CanvasAttachment }) {
   if (!a.doc) return <Embed a={plain(a)} />;
   const driveKind = DRIVE_KIND[a.kind];
-  return <Doc doc={a.doc} variant={a.kind === "image" ? "inline" : "card"} {...(driveKind ? { driveKind } : {})} />;
+  return <Doc doc={a.doc} variant={a.kind === "image" || a.kind === "audio" ? "inline" : "card"} {...(driveKind ? { driveKind } : {})} />;
 }
 
 interface DriveFile { id: string; name: string; path: string; kind: EmbedKind; link: string }
@@ -215,7 +215,7 @@ interface Album { slug: string; label: string; count: number; items: { filename:
 interface Recording { date: string; topic: string; uuid: string; shareUrl: string; playUrl: string; files: { type: string; name: string; path: string }[] }
 interface Embeds { found: boolean; note?: string; calendarId: string; timeZone: string; recordings: Recording[] }
 
-const isAudioFile = (f: { type: string; name: string }) => f.type === "audio" || /\.(m4a|mp3)$/i.test(f.name);
+const isAudioFile = (f: { type: string; name: string }) => f.type === "audio" || /\.(m4a|mp3|wav|ogg)$/i.test(f.name);
 
 /** Search the Drive catalog, the photo albums on disk, and the kept Zoom recordings and calendar; a pick fills the attachment form. */
 function Picker({ onPick }: { onPick: (a: Attachment) => void }) {

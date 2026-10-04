@@ -5,7 +5,7 @@ import { DOC_WORDS, type DocRef } from "../components";
 import { resetServerSession } from "../lib/api";
 import { InboxView } from "./InboxView";
 import { InsuranceRenewalsView } from "./InsuranceRenewalsView";
-import { InsuranceView, scansOf } from "./InsuranceView";
+import { InsuranceView, heldOf, scansOf } from "./InsuranceView";
 
 /* The mail group's screens on `Doc` (docs/console/doc-component.md): the Inbox's letters and pending requests as chips,
  * insurance notices and claim letters as rows. Made-up references; nothing here names a real document. */
@@ -163,6 +163,50 @@ describe("InsuranceView: notices and claim letters (Doc rows)", () => {
 
   it("scansOf keeps each scan once, in order, and skips a letter without one", () => {
     expect(scansOf([{ scan: notice }, { scan: null }, { scan: claim }, { scan: notice }, {}])).toEqual([notice, claim]);
+  });
+
+  it("a letter that holds a credential is said as held, never listed as a document", async () => {
+    const HELD = "Held: this letter holds a credential; it opens in no screen.";
+    const held = { kind: "insurance", received: "2099-08-20", mailId: "9203", scan: null, held: HELD };
+    expect(heldOf([held, { ...held }, { scan: notice, mailId: "9201" }])).toEqual([held]);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.startsWith("/api/session") ? IN : { ...insurance, policies: [{ ...policy, notices: [...policy.notices, held] }] }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    render(<InsuranceView />);
+    const notices = await screen.findByRole("region", { name: "Notices in the mail" });
+    expect(within(notices).getAllByRole("button", { name: /^View / })).toHaveLength(2);
+    expect(screen.getByText(`2099-08-20: ${HELD}`)).toBeInTheDocument();
+  });
+});
+
+describe("Insurance in the owner view: the policy summary, not the association's mail", () => {
+  it("InsuranceView leaves out the letters, the notices, and the claims entirely", async () => {
+    serve(IN);
+    const { container } = render(<InsuranceView audience="owner" />);
+    expect(await screen.findByText("Policies as of 2099-10-03")).toBeInTheDocument();
+    expect(screen.getByText("Example Carrier")).toBeInTheDocument();                      // the policy summary stays
+    expect(screen.queryByRole("region", { name: "Notices in the mail" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Claim letters" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Claims the mail acknowledges/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Letters/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(notice.name)).not.toBeInTheDocument();
+    expect(screen.queryByText("CL-12345")).not.toBeInTheDocument();
+    clean(container);
+  });
+
+  it("the board view keeps them", async () => {
+    serve(IN);
+    render(<InsuranceView audience="board" />);
+    expect(await screen.findByRole("region", { name: "Notices in the mail" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Letters/ })).toBeInTheDocument();
+  });
+
+  it("InsuranceRenewalsView shows an opened policy without its notices", async () => {
+    serve(IN);
+    render(<InsuranceRenewalsView audience="owner" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open" }));
+    expect(screen.getByText("On the record")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Notices in the mail" })).not.toBeInTheDocument();
+    expect(screen.queryByText(notice.name)).not.toBeInTheDocument();
   });
 });
 

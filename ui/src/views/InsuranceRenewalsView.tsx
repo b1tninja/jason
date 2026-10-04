@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Clock, Confirm, DataTable, DocList, DueDate, Findings, Money, Pill, RemoteView, type Column } from "../components";
+import { Badge, Card, Caveats, Clock, Confirm, DataTable, DocList, DueDate, Findings, Money, Pill, RemoteView, type Audience, type Column } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
-import { scansOf } from "./InsuranceView";
+import { HeldLetters, heldOf, scansOf } from "./InsuranceView";
 import type { Policy } from "./types";
 import "./findings.css";
 
@@ -26,7 +26,7 @@ function Recorded({ d }: { d: RenewalDecision }) {
 }
 
 /** One policy opened: the term as the clock, then the board's decision entered once, behind a confirm. */
-function RenewalPanel({ p, decisions, today, onSaved }: { p: Row; decisions: string[]; today: Date; onSaved: (next: Row) => void }) {
+function RenewalPanel({ p, decisions, today, onSaved, owner }: { p: Row; decisions: string[]; today: Date; onSaved: (next: Row) => void; owner: boolean }) {
   const r = p.renewal;
   const [decision, setDecision] = useState(r?.decision ?? "");
   const [decidedOn, setDecidedOn] = useState(r?.decidedOn ?? today.toISOString().slice(0, 10));
@@ -72,7 +72,8 @@ function RenewalPanel({ p, decisions, today, onSaved }: { p: Row; decisions: str
         <Card title="On the record">
           {r ? <Recorded d={r} /> : <p className="muted">No decision recorded for this policy.</p>}
           <Findings items={p.findings} empty="the review flags nothing" />
-          {notices.length > 0 && <DocList docs={notices} variant="row" title="Notices in the mail" />}
+          {!owner && notices.length > 0 && <DocList docs={notices} variant="row" title="Notices in the mail" />}
+          {!owner && <HeldLetters letters={heldOf(p.notices)} />}
         </Card>
       </div>
     </div>
@@ -90,9 +91,12 @@ const cols: Column<Row>[] = [
   { key: "notice", header: "Members", value: (r) => (r.memberNoticeNeeded ? 1 : 0), render: (r) => r.memberNoticeNeeded ? <Badge tone="warn">notice needed (5810)</Badge> : <span className="muted">—</span> },
 ];
 
-/** Each policy as the review reads it, with the board's renewal decision recorded once beside it. */
-export function InsuranceRenewalsView() {
+/** Each policy as the review reads it, with the board's renewal decision recorded once beside it. In the owner view
+ * (`audience="owner"`) an opened policy shows no notices in the mail: a member sees the policy, not the association's
+ * mail. */
+export function InsuranceRenewalsView({ audience = "board" }: { audience?: Audience } = {}) {
   const r = useApi<Renewals>("/api/insurance-renewals");
+  const owner = audience === "owner";
   const [open, setOpen] = useState("");
   const [patched, setPatched] = useState<Record<string, Row>>({});
   const today = new Date();
@@ -107,7 +111,7 @@ export function InsuranceRenewalsView() {
             <Card title={`Policies as of ${d.asOf}`} actions={<span className="muted">{inWindow ? `${inWindow} in the ${d.windowDays}-day window without a decision` : "every term in the window has a decision"}</span>}>
               <DataTable rows={rows} searchable={false} columns={[...cols, { key: "open", header: "", render: (p) => <button className={open === p.key ? "" : "primary"} onClick={() => setOpen(open === p.key ? "" : p.key)}>{open === p.key ? "Close" : "Open"}</button> }]} />
             </Card>
-            {current && <RenewalPanel key={current.key + (current.renewal?.recorded ?? "")} p={current} decisions={d.decisions} today={today} onSaved={(n) => setPatched((x) => ({ ...x, [n.key]: n }))} />}
+            {current && <RenewalPanel key={current.key + (current.renewal?.recorded ?? "")} p={current} decisions={d.decisions} today={today} onSaved={(n) => setPatched((x) => ({ ...x, [n.key]: n }))} owner={owner} />}
             <Caveats items={d.caveats} />
           </div>
         );

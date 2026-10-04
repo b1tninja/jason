@@ -182,6 +182,96 @@ def test_the_screens_folders_are_placed(tmp_path, rel):
     assert placed(rel, tmp_path)
 
 
+def test_payhoa_attachments_are_p2(tmp_path):
+    from jason.web.access import placed
+
+    assert level_of_path("payhoa/attachments/12345/678-bill.pdf", tmp_path) is P2
+    assert placed("payhoa/attachments/12345/678-bill.pdf", tmp_path)               # a place jason knows, not unplaced
+
+
+# --- a board call that ran into executive session ----------------------------------------------------------------------
+
+def _board_call(root: Path, folder: str, **files: str) -> None:
+    """A board meeting the Zoom index lists as an open board meeting, with ``files`` in its folder."""
+    zoom = root / "zoom"
+    (zoom / folder).mkdir(parents=True, exist_ok=True)
+    for name, text in files.items():
+        (zoom / folder / name.replace("_", ".")).write_text(text, encoding="utf-8")
+    index = zoom / "meetings.json"
+    rows = json.loads(index.read_text(encoding="utf-8"))["meetings"] if index.is_file() else []
+    rows.append({"folder": folder, "kind": "board meeting", "confidential": False, "start": "2099-01-01T18:00:00-08:00"})
+    index.write_text(json.dumps({"meetings": rows}), encoding="utf-8")
+
+
+RECORDS = ("transcript.txt", "transcript.vtt", "audio.m4a", "video.mp4", "chat.txt", "summary.md", "summary.json")
+
+
+def test_a_board_call_whose_record_shows_an_executive_session_is_p3_for_its_records(tmp_path):
+    _board_call(tmp_path, "meetings/2099-01-01-flag", transcript_txt="[7:40 PM] Chair: We move to executive session.\n")
+    _board_call(tmp_path, "meetings/2099-01-02-open", transcript_txt="[7:02 PM] Chair: I call the meeting to order.\n")
+    for name in RECORDS:
+        assert level_of_path(f"zoom/meetings/2099-01-01-flag/{name}", tmp_path) is P3, name
+        assert level_of_path(f"zoom/meetings/2099-01-02-open/{name}", tmp_path) is P1, name
+    assert level_of_path("zoom/meetings/2099-01-01-flag/participants.json", tmp_path) is P1   # attendance, not a record
+
+
+def test_an_adjournment_the_transcript_shows_by_the_profiles_patterns_is_p3(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("jason.community.community",
+                        lambda: SimpleNamespace(executive_break_patterns=lambda: (r"recess to closed session",)))
+    _board_call(tmp_path, "meetings/2099-01-03-break", transcript_vtt=(
+        "WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nChair: Call to order.\n\n"
+        "2\n00:40:00.000 --> 00:40:03.000\nChair: We now recess to closed session.\n"))
+    assert level_of_path("zoom/meetings/2099-01-03-break/audio.m4a", tmp_path) is P3
+
+
+def test_a_signal_that_cannot_be_read_fails_closed_to_p2_not_p1(tmp_path, monkeypatch):
+    def broken():
+        raise RuntimeError("the profile cannot be read")
+
+    monkeypatch.setattr("jason.community.community", broken)
+    _board_call(tmp_path, "meetings/2099-01-04-unread", transcript_vtt="WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nChair: Hello.\n")
+    assert level_of_path("zoom/meetings/2099-01-04-unread/transcript.vtt", tmp_path) is P2
+    assert level_of_path("zoom/meetings/2099-01-04-unread/audio.m4a", tmp_path) is P2
+    assert level_of_path("zoom/meetings/2099-01-04-unread/participants.json", tmp_path) is P1
+
+
+# --- mail the sort flags -------------------------------------------------------------------------------------------------
+
+def _mail(root: Path) -> None:
+    """Three made-up letters: one the sort flags as carrying a credential, one another association's, one plain."""
+    mail = root / "mail"
+    for mail_id in ("700", "701", "702"):
+        (mail / mail_id).mkdir(parents=True, exist_ok=True)
+        (mail / mail_id / "contents.pdf").write_bytes(b"%PDF-1.4 letter")
+        (mail / mail_id / "text.txt").write_text("A made-up letter.", encoding="utf-8")
+    (mail / "items.json").write_text(json.dumps({"items": [
+        {"mailId": "700", "credential": True, "source": {}},
+        {"mailId": "701", "credential": False, "source": {"misdirected": True}},
+        {"mailId": "702", "credential": False, "source": {}}]}), encoding="utf-8")
+
+
+def test_a_letter_holding_a_credential_is_p4_and_another_associations_p3(tmp_path):
+    _mail(tmp_path)
+    for name in ("contents.pdf", "text.txt", "cover.jpg", "letter.md"):
+        assert level_of_path(f"mail/700/{name}", tmp_path) is P4
+        assert level_of_path(f"mail/701/{name}", tmp_path) is P3
+        assert level_of_path(f"mail/702/{name}", tmp_path) is P2
+    (tmp_path / "mail" / "items.json").write_text("{not json", encoding="utf-8")
+    assert level_of_path("mail/702/contents.pdf", tmp_path) is P3                      # a sort that cannot be read: closed
+
+
+def test_a_credential_letter_is_never_served(files):
+    _mail(files)
+    c = webclient.sign_in(webclient.client(_app(files)), "A Manager")
+    assert c.post("/api/private", json={"reason": "mail review"}).status_code == 200
+    r = c.get("/api/file?path=mail/700/contents.pdf")
+    assert r.status_code == 403 and r.json["error"] == "Secrets (P4) are never served."
+    assert c.get("/api/file?path=mail/702/contents.pdf").status_code == 200
+    assert [x["path"] for x in _served(files)] == ["mail/702/contents.pdf"]
+
+
 def test_a_library_that_cannot_be_read_is_closed(tmp_path):
     (tmp_path / "library").mkdir()
     (tmp_path / "library" / "library.db").write_bytes(b"not a database")

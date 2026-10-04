@@ -10,6 +10,8 @@ export interface Letter {
   deadlines?: { date: string; label: string }[]; status?: string; folder?: string; scanned?: boolean; summary?: string[]; choice: TriageChoice | null;
   /** The letter's document (docs/console/doc-component.md): the scan, `mail/<id>/contents.pdf`, else the envelope (P2). */
   scan?: DocRef | null;
+  /** In place of `scan` for a letter that carries a credential (P4): "Held: … it opens in no screen". */
+  held?: string;
 }
 export interface MailTriage {
   found?: boolean; note?: string; since?: string; items?: number; byKind?: Record<string, number>;
@@ -44,6 +46,7 @@ function LetterRow({ l, who, onSaved, reading, onRead }: { l: Letter; who: strin
       {!!l.deadlines?.length && <div className="meta">{l.deadlines.map((d, i) => <span key={i}>{d.label} <DueDate iso={d.date} /></span>)}</div>}
       {!!l.evidence?.length && <p className="muted">{l.evidence.join("; ")}</p>}
       {!!l.summary?.length && <ul className="choice-steps">{l.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>}
+      {!l.scan && l.held && <p className="notice notice-warn mail-held">{l.held}</p>}
       {l.scan && (
         <>
           <Doc doc={l.scan} variant="row" />

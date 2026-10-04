@@ -430,6 +430,50 @@ def test_the_view_route_opens_the_copys_pdf(web):
     assert _served(web.root)[-1]["level"] == "P0"
 
 
+def _hearing(root: Path, doc_id: str) -> None:
+    """A made-up saved hearing whose notice Doc is ``doc_id``."""
+    (root / "zoom").mkdir(exist_ok=True)
+    (root / "zoom" / "hearings.json").write_text(json.dumps({"hearings": [{
+        "address": "123 Main St #1", "start": "2099-10-20T18:00", "notice": "hearings/2099-10-20-123-main-st-1.md",
+        "noticeDoc": {"id": doc_id, "url": "", "unfilled": []}}]}), encoding="utf-8")
+
+
+def test_a_hearings_notice_doc_is_p3_wherever_its_folder_places_it(root):
+    from jason.web.access import Level, level_of_path
+    from jason.web.approvals import evidence_level
+
+    assert drive_copies.level_of(root, DOC_ID) == "P0"                               # under a path rule
+    _hearing(root, DOC_ID)
+    assert drive_copies.level_of(root, DOC_ID) == "P3" and drive_copies.confidential(root, DOC_ID)
+    assert level_of_path(f"drive/copies/{DOC_ID}.pdf", root) is Level.P3
+    assert drive_copies.level_of(root, SHEET_ID) == "P2"                             # another file: unchanged
+    (root / "zoom" / "hearings.json").write_text("{not json", encoding="utf-8")
+    assert drive_copies.level_of(root, DOC_ID) == "P2"                               # hearings unreadable: never P0
+    _hearing(root, DOC_ID)
+    from unittest import mock
+
+    with mock.patch("jason.tasks.drive_copies.data_root", lambda: root):
+        assert evidence_level(f"drive:{DOC_ID}") is Level.P3
+
+
+def test_a_hearings_doc_is_refused_outside_the_private_view_and_opens_inside_it(web):
+    drive_copies.export(web.drive, web.root, DOC_ID)
+    _hearing(web.root, DOC_ID)
+    held = evidence.resolve(f"drive:{DOC_ID}", data_dir=web.root)
+    assert held["documents"] == [] and "held back" in held["note"]
+    r = web.c.post("/api/evidence/view", json={"address": f"drive:{DOC_ID}", "document": "pdf"})
+    assert r.status_code == 403 and "only in the private view" in r.json["error"]
+    thumb = web.c.get(f"/api/drive/thumb/{DOC_ID}")
+    assert thumb.status_code == 403 and "only in the private view" in thumb.json["error"]
+    assert _served(web.root) == []
+    assert web.c.post("/api/private", json={"reason": "hearing preparation"}).status_code == 200
+    ok = web.c.post("/api/evidence/view", json={"address": f"drive:{DOC_ID}", "document": "pdf"})
+    assert ok.status_code == 200 and ok.json["level"] == "P3"
+    assert web.c.get(ok.json["url"]).data == PDF_BYTES
+    assert web.c.get(f"/api/drive/thumb/{DOC_ID}").status_code == 200
+    assert {line["level"] for line in _served(web.root)} == {"P3"}
+
+
 def test_the_refresh_many_route(web):
     r = web.c.post("/api/evidence/refresh-many", json={"addresses": [f"drive:{DOC_ID}", f"drive:{SHEET_ID}"]})
     assert r.status_code == 200 and r.json["refreshed"] == [f"drive:{DOC_ID}", f"drive:{SHEET_ID}"]

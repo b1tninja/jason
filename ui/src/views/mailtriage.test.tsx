@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DOC_WORDS, type DocRef } from "../components";
+import { DOC_WORDS, rowRegionName, type DocRef } from "../components";
 import { resetServerSession } from "../lib/api";
 import { MailTriageView } from "./MailTriageView";
 
@@ -27,9 +27,13 @@ const IN = { token: "t", signedIn: { name: "A Manager" }, signIn: { configured: 
 const OUT = { token: "t", signIn: { configured: true, start: "/auth/google" } };
 const pdfView = { kind: "pdf", name: "contents.pdf", readAt: "", url: "/api/evidence/document/tok", expires: "", caveats: ["Unmasked: shown because A Manager asked; this view is logged."] };
 
-/** The inline document of that name in the letter (a region labelled by its name, `.doc-inline`). */
-const inlineOf = (letter: HTMLElement, name: string) =>
-  within(letter).queryAllByRole("region", { name }).find((el) => el.classList.contains("doc-inline"));
+/** The inline document of that name in the letter: the one region labelled by its name (the row beside it is
+ * "<name> (in the list)"). */
+const inlineOf = (letter: HTMLElement, name: string) => {
+  const found = within(letter).queryAllByRole("region", { name });
+  expect(found.length).toBeLessThanOrEqual(1);
+  return found.find((el) => el.classList.contains("doc-inline"));
+};
 
 /** The page's data, the session, and the view: `view` answers `POST /api/evidence/view` (a status and body). */
 function serve(session: object, view: { status: number; body: object } = { status: 200, body: pdfView }) {
@@ -135,8 +139,9 @@ describe("MailTriageView: each letter's document (Doc)", () => {
     const user = userEvent.setup();
     await user.type(screen.getByPlaceholderText("your name"), "Treasurer");
     await user.click(within(letter).getByRole("button", { name: "Read it beside the choices" }));
-    const region = inlineOf(letter, summons.name)!;                       // the row's list is a region of that name too
+    const region = inlineOf(letter, summons.name)!;
     expect(region).toBeTruthy();
+    expect(within(letter).getByRole("region", { name: rowRegionName(summons.name) })).toHaveClass("doc-list-row");   // the row: its own name
     expect(within(letter).getByRole("group", { name: "Choices for letter 9001" })).toBeInTheDocument();
     const show = await within(region).findByRole("button", { name: DOC_WORDS.show });
     expect(posts).toEqual([]);                                             // P2: not viewed on mount
@@ -165,6 +170,25 @@ describe("MailTriageView: each letter's document (Doc)", () => {
     await userEvent.click(within(letter).getByRole("button", { name: "Read it beside the choices" }));
     await userEvent.click(await within(letter).findByRole("button", { name: DOC_WORDS.show }));
     expect(await within(letter).findByText(/The treasurer's office doesn't open this letter\./)).toBeInTheDocument();
+  });
+
+  it("a letter that holds a credential has no document: Held, in words, and nothing to view", async () => {
+    const HELD = "Held: this letter holds a credential; it opens in no screen.";
+    const held = { mailId: "9004", received: "2026-10-02", sender: "Example County", kind: "government", urgency: "review", evidence: [], deadlines: [], scanned: true, summary: [], choice: null, scan: null, held: HELD };
+    const posts: [string, unknown][] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") posts.push([url, JSON.parse(String(init.body))]);
+      const body = url.startsWith("/api/session") ? IN : { ...data, review: [...data.review, held] };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<MailTriageView />);
+    await screen.findByText("Superior Court");
+    await userEvent.click(screen.getByRole("tab", { name: "Review (2)" }));
+    const letter = screen.getByRole("article", { name: "letter 9004" });
+    expect(within(letter).getByText(HELD)).toBeInTheDocument();
+    expect(within(letter).queryByRole("button", { name: /^View / })).not.toBeInTheDocument();
+    expect(within(letter).queryByRole("button", { name: "Read it beside the choices" })).not.toBeInTheDocument();
+    expect(posts).toEqual([]);
   });
 
   it("renders no /api/file link, no outside frame, and no absolute path", async () => {

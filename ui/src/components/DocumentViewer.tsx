@@ -2,11 +2,13 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type SyntheticE
 import { createPortal } from "react-dom";
 import { postJson } from "../lib/api";
 import { when } from "../lib/approvals";
+import type { DocRef } from "../lib/docref";
 import { Caveats } from "./Caveats";
+import { Doc } from "./Doc";
 import { daysUntil } from "./DueDate";
 import { Markdown } from "./Markdown";
 
-export type EvidenceDocumentKind = "submission" | "pdf" | "image" | "text" | "file";
+export type EvidenceDocumentKind = "submission" | "pdf" | "image" | "text" | "audio" | "file";
 
 /** One document an evidence address holds (`GET /api/evidence`'s `documents`): what it is and how big, never its words.
  * Its contents come only from a view, a person's logged act. */
@@ -50,6 +52,8 @@ export interface DocumentView {
   submission?: DocumentSubmission | null; text?: string | null; caveats: string[];
   /** "P3" for a confidential document, opened in the private view. */
   level?: string;
+  /** A recording's transcript beside it (`transcript.*` in its folder), as a reference: opening it is its own view. */
+  transcript?: DocRef | null;
 }
 
 /** The body of a view: the address, the approval whose plan it was read for, the document, and the person viewing. */
@@ -62,7 +66,7 @@ export function viewDocument(req: DocumentViewRequest): Promise<DocumentView> {
 }
 
 const KIND_WORD: Record<EvidenceDocumentKind, string> = {
-  submission: "Form submission", pdf: "PDF", image: "Image", text: "Text", file: "File",
+  submission: "Form submission", pdf: "PDF", image: "Image", text: "Text", audio: "Audio", file: "File",
 };
 
 /** The kind in words: "PDF", "Form submission". An unknown kind is "File". */
@@ -92,7 +96,16 @@ export function looksLikeMarkdown(text: string): boolean {
   return /^\s*#{1,6}\s/.test(text) || /^#{2,6}\s/m.test(text);
 }
 
-const URL_KINDS: readonly string[] = ["pdf", "image", "file"];
+const URL_KINDS: readonly string[] = ["pdf", "image", "audio", "file"];
+
+/** A recording's length as a person reads it: "1:02:05", "4:09". */
+export function recordingLength(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const two = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${two(m)}:${two(r)}` : `${m}:${two(r)}`;
+}
 const UNMASKED = /^unmasked\b/i;
 const answerText = (a: unknown) => (Array.isArray(a) ? a.map(String).join(", ") : a == null ? "" : String(a));
 
@@ -216,6 +229,23 @@ function ImageBody({ url, name }: { url: string; name: string }) {
   );
 }
 
+/** A recording in the browser's player, from the view's short-lived link (ranges for seeking): its name, its length
+ * once the player knows it, and its transcript beside it as a `Doc` chip when there is one. */
+function AudioBody({ v }: { v: DocumentView }) {
+  const [length, setLength] = useState("");
+  return (
+    <div className="doc-audio">
+      <p className="doc-audio-name">
+        <span>{v.name}</span>
+        {length && <span className="muted"> · <span aria-label={`length ${length}`}>{length}</span></span>}
+      </p>
+      <audio controls preload="metadata" src={v.url} aria-label={v.name}
+        onLoadedMetadata={(e) => setLength(recordingLength(e.currentTarget.duration))} />
+      {v.transcript && <p className="doc-audio-transcript">Transcript: <Doc doc={v.transcript} variant="chip" /></p>}
+    </div>
+  );
+}
+
 function Body({ v, opener }: { v: DocumentView; opener?: Opener }) {
   if (v.kind === "submission") {
     return v.submission ? <Submission s={v.submission} opener={opener} /> : <p className="muted">The server sent no submission to show.</p>;
@@ -239,6 +269,7 @@ function Body({ v, opener }: { v: DocumentView; opener?: Opener }) {
     );
   }
   if (v.kind === "image") return <ImageBody url={v.url} name={v.name} />;
+  if (v.kind === "audio") return <AudioBody v={v} />;
   return (
     <div className="doc-file">
       <p className="muted">jason shows no preview of this kind of file.</p>
@@ -247,8 +278,8 @@ function Body({ v, opener }: { v: DocumentView; opener?: Opener }) {
   );
 }
 
-/** A viewed document's body alone, rendered by its kind (a submission as the form, a pdf in a frame, an image, text, a
- * file to download), without the dialog around it: `Doc`'s inline variant shows it on the screen itself. `documents`
+/** A viewed document's body alone, rendered by its kind (a submission as the form, a pdf in a frame, an image, text,
+ * audio in the browser's player with its transcript, a file to download), without the dialog around it: `Doc`'s inline variant shows it on the screen itself. `documents`
  * and `onGo` let a submission's file answer open a saved file (a new logged view). */
 export function DocumentBody({ v, documents, onGo, busy = false }: {
   v: DocumentView; documents?: EvidenceDocument[]; onGo?: (index: number) => void; busy?: boolean;

@@ -423,6 +423,10 @@ def test_embeds_reads_the_zoom_index_and_the_profile(county, tmp_path, monkeypat
         ("audio", "audio.m4a", "zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a"),
         ("transcript", "transcript.txt", "zoom/meetings/2026-09-15-bbbbbbbbbb/transcript.txt"),
         ("transcript", "transcript.vtt", "zoom/meetings/2026-09-15-bbbbbbbbbb/transcript.vtt")]
+    # each file carries its reference, at the server's level: the audio plays in Doc, never through /api/file
+    audio = next(f for f in newest["files"] if f["type"] == "audio")["doc"]
+    assert (audio["address"], audio["kind"], audio["level"]) == (
+        "file:zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a", "audio", "P1")
     assert out["recordings"][1]["files"] == [] and out["recordings"][1]["cloud"] == ["MP4", "M4A"]
     assert any("1 confidential" in n for n in out["notes"])
     assert [r["uuid"] for r in sources.embeds({"limit": "1"})["recordings"]] == ["u-new"]

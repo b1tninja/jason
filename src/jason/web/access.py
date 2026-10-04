@@ -15,8 +15,11 @@ The person's decision: opening documents and files from the console needs a sign
 - **What a path is** is ``PATH_RULES``, matched in order by its place under data/ and by the stores' own flags (the
   library's ``confidential``, the Zoom index's ``confidential`` or kind, the Drive holdings' ``confidential``; a Drive
   file's copy by ``jason.tasks.drive_copies.level_of``; minutes a file's name or head marks as an executive session's,
-  P3; a key-documents upload the library holds as confidential, P3). A library document by its id is
-  ``level_of_library``. Anything no row places is P2: closed, never open.
+  P3; a key-documents upload the library holds as confidential, P3; a board call's transcript, recording, chat, and
+  summary P3 when its own record shows an executive session or a hearing, P2 when that cannot be read; a scanned
+  letter the mail sort flags as carrying a credential P4, another association's P3). A Drive file a saved hearing
+  names is P3 by ``jason.tasks.drive_copies.level_of``. A library document by its id is ``level_of_library``.
+  Anything no row places is P2: closed, never open.
 - **``require``** answers a route: the ``Viewer``, or a 401 (no one signed in, or sign-in not set up on this
   jason-web) or a 403 with the reason. A fetch gets JSON with ``signIn``; a top-level navigation gets a small page.
 - **The private view** is a window a signed-in person opens for themselves (``POST /api/private`` with ``{reason,
@@ -216,9 +219,68 @@ def _payhoa_document(rel: str, root: Path) -> Level | None:
     return Level.P3 if found is Level.P3 else (Level.P2 if found is Level.P2 else None)
 
 
+# A meeting folder's record of what was said: its transcript, audio, video, chat, and Zoom's summary (by the names
+# jason.tasks.zoom saves them under, or a media file's extension). participants.json is attendance, not a record of
+# what was said.
+RECORDING_STEMS = ("transcript", "chat", "summary", "audio", "video")
+RECORDING_SUFFIXES = frozenset({".m4a", ".mp3", ".mp4", ".wav", ".ogg", ".vtt"})
+# The files the executive signal is read from; a change in any reads it again.
+_SIGNAL_FILES = ("transcript.vtt", "transcript.txt", "summary.md", "participants.json")
+_SIGNALS: dict[str, tuple[tuple[Any, ...], bool | None]] = {}
+
+
+def _recording(name: str) -> bool:
+    lower = name.lower()
+    return Path(lower).suffix in RECORDING_SUFFIXES or any(
+        lower == stem or lower.startswith((stem + ".", stem + "_", stem + "-")) for stem in RECORDING_STEMS)
+
+
+def executive_signal(root: Path, row: dict[str, Any]) -> bool | None:
+    """Whether a meeting's own record shows the call ran into an executive session or a hearing, as the meeting
+    catalog reads it: words that say so in its transcript or summary (``jason.tasks.zoom.confidential_mentions``), or
+    an adjournment to executive session its transcript shows (``executive_break``, by the profile's patterns). None
+    when the signal cannot be read (a file or the profile that cannot be read). Read once a version of its files."""
+    from jason.tasks.zoom import zoom_dir
+
+    zoom = zoom_dir(root)
+    folder = zoom / str(row.get("folder") or "")
+    stamp: list[Any] = [str(row.get("folder") or ""), str(row.get("start") or "")]
+    for name in _SIGNAL_FILES:
+        try:
+            st = (folder / name).stat()
+            stamp.append((name, st.st_mtime_ns, st.st_size))
+        except FileNotFoundError:
+            stamp.append((name, None))
+        except OSError:
+            return None
+    key = str(folder)
+    cached = _SIGNALS.get(key)
+    if cached is not None and cached[0] == tuple(stamp):
+        return cached[1]
+    said: bool | None
+    try:
+        from jason.tasks.zoom import confidential_mentions, executive_break
+
+        if confidential_mentions(zoom, row):
+            said = True
+        elif (folder / "transcript.vtt").is_file():
+            from jason.community import community
+
+            said = executive_break(zoom, row, community())[1] is not None
+        else:
+            said = False
+    except Exception:  # noqa: BLE001 - a signal that cannot be read is no signal: the caller fails closed
+        said = None
+    _SIGNALS[key] = (tuple(stamp), said)
+    return said
+
+
 def _zoom_meeting(rel: str, root: Path) -> Level | None:
-    """P3 for a meeting the Zoom index marks confidential or whose kind is an executive session or a hearing; P1 for
-    another meeting it lists; None (P2) for a folder it does not list."""
+    """P3 for a meeting the Zoom index marks confidential or whose kind is an executive session or a hearing. For
+    another meeting it lists: P3 for its transcript, audio, video, chat, and summary when the meeting's own record
+    shows an executive session or a hearing (``executive_signal``: a board call that adjourned to executive session on
+    the same call), P2 for them when that cannot be read (closed, never P1), else P1; its other files (attendance) P1.
+    None (P2) for a folder it does not list."""
     parts = rel.split("/")
     if len(parts) < 3:
         return None
@@ -232,7 +294,12 @@ def _zoom_meeting(rel: str, root: Path) -> Level | None:
     for row in (index.get("meetings") or []) if isinstance(index, dict) else []:
         if isinstance(row, dict) and str(row.get("folder") or "") == folder:
             kind = str(row.get("kind") or "").lower()
-            return Level.P3 if row.get("confidential") or kind in ("executive session", "hearing") else Level.P1
+            if row.get("confidential") or kind in ("executive session", "hearing"):
+                return Level.P3
+            if len(parts) < 4 or not _recording(parts[-1]):
+                return Level.P1
+            flagged = executive_signal(root, row)
+            return Level.P2 if flagged is None else (Level.P3 if flagged else Level.P1)
     return None
 
 
@@ -329,6 +396,53 @@ def _key_document(rel: str, root: Path) -> Level | None:
     return Level.P3 if row and row[0] else None
 
 
+_MAIL_FLAGS: dict[str, tuple[tuple[int, int], dict[str, Level] | None]] = {}
+
+
+def _mail_flags(root: Path) -> dict[str, Level] | None:
+    """The letters the mail sort flags (``mail/items.json``, ``jason.tasks.mail.sort``), by mail id: P4 for one that
+    carries a credential (``credential``: a PIN mailer, an access code, a password), P3 for another association's mail
+    (``source.misdirected``). Read once a version of the file; empty when there is none; None when it cannot be read."""
+    path = Path(root) / "mail" / "items.json"
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        return None
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _MAIL_FLAGS.get(str(path))
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    flags: dict[str, Level] | None = {}
+    try:
+        for row in json.loads(path.read_text(encoding="utf-8")).get("items") or []:
+            if not isinstance(row, dict) or not str(row.get("mailId") or ""):
+                continue
+            source = row.get("source") if isinstance(row.get("source"), dict) else {}
+            if row.get("credential"):
+                flags[str(row["mailId"])] = Level.P4
+            elif source.get("misdirected"):
+                flags[str(row["mailId"])] = Level.P3
+    except (OSError, ValueError, AttributeError, TypeError):
+        flags = None
+    _MAIL_FLAGS[str(path)] = (stamp, flags)
+    return flags
+
+
+def _mail_letter(rel: str, root: Path) -> Level | None:
+    """A letter's files (``mail/<id>/*``) by the mail sort's flag: P4, never served, for a letter that carries a
+    credential; P3 for another association's mail; P3 while the sort cannot be read (closed); None (the row's P2)
+    otherwise."""
+    parts = rel.split("/")
+    if len(parts) < 3:
+        return None
+    flags = _mail_flags(root)
+    if flags is None:
+        return Level.P3
+    return flags.get(parts[1])
+
+
 def level_of_library(doc_id: str, data_dir: Path) -> Level:
     """The level of a library document by its id (``library:<id>``): P3 when library.db holds it, or any copy of it
     (same sha256), as confidential; P0 when it holds it otherwise; P2 when it does not hold it or cannot be read."""
@@ -363,9 +477,11 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("zoom/meetings/*", Level.P2, _zoom_meeting),
     PathRule("payhoa-files/requests/*", Level.P2),
     PathRule("payhoa-requests-images/*", Level.P2),
+    PathRule("payhoa/attachments/*", Level.P2),     # bills and receipts `jason utilities --payments --fetch` downloads
     PathRule("forms/*/responses.json", Level.P2),
     PathRule("gmail/files/*", Level.P2),
-    PathRule("mail/*", Level.P2),              # scanned incoming mail: senders, owners, and their addresses
+    PathRule("mail/*", Level.P2, _mail_letter),     # scanned incoming mail: senders, owners, and their addresses;
+                                                    # a letter carrying a credential P4, another association's P3
     PathRule("mailroom/*", Level.P2),          # letters as mailed, with their recipients
     PathRule("transactions/*", Level.P2),      # invoices and bills, with vendors' and owners' account details
     PathRule("insurance-pdfs/*", Level.P2),    # policies and bills, with account and policy numbers

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Command, DataTable, DecisionCard, DocumentPreview, DueDate, Embed, EvidenceVersion, Markdown, Pill, ReadAllFromDrive, RemoteView, Stat, Tabs, attachedCopies, type Column, type DecisionDraft } from "../components";
+import { Badge, Card, Caveats, Command, DataTable, DecisionCard, Doc, DocumentPreview, DueDate, Embed, EvidenceVersion, Markdown, Pill, ReadAllFromDrive, RemoteView, Stat, Tabs, attachedCopies, type Column, type DecisionDraft, type DocRef } from "../components";
 import type { DriveFile } from "../components/DriveAttach";
 import { postJson } from "../lib/api";
+import { fileDocRef } from "../lib/docref";
 import { useApi } from "../lib/useApi";
 import type { BoardItem } from "./types";
 
@@ -61,10 +62,17 @@ interface Meeting {
   commands: { agendaDoc: string; packetDoc: string; minutesDraft: string; notice: string }; caveats?: string[];
 }
 
-interface Recording { date: string; topic: string; uuid: string; shareUrl: string; playUrl: string; files: { type: string; name: string; path: string }[] }
+/** A recording's file as `/api/embeds` lists it, with its reference (`doc`, the server's level) when the loader gives one. */
+interface RecordingFile { type: string; name: string; path: string; doc?: DocRef }
+interface Recording { date: string; topic: string; uuid: string; shareUrl: string; playUrl: string; files: RecordingFile[] }
 interface Embeds { found: boolean; note?: string; calendarId: string; timeZone: string; recordings: Recording[] }
 
-const isAudioFile = (f: { type: string; name: string }) => f.type === "audio" || /\.(m4a|mp3)$/i.test(f.name);
+const isAudioFile = (f: { type: string; name: string }) => f.type === "audio" || /\.(m4a|mp3|wav|ogg)$/i.test(f.name);
+
+/** A recording file's reference: the loader's, else one built from its path (no level: the server decides it, and the
+ * player waits for "Show the document"). */
+const audioRef = (f: RecordingFile, topic: string): DocRef =>
+  f.doc ?? { ...fileDocRef(f.path, f.name || `${topic} (audio)`), kind: "audio" };
 
 /** The Sunday-to-Saturday week holding an ISO date, as Google's `dates=` range (`YYYYMMDD/YYYYMMDD`). */
 export function weekOf(iso: string): string {
@@ -159,9 +167,9 @@ export function MeetingView() {
                     {(recording.shareUrl || recording.playUrl) && (
                       <p><a href={recording.shareUrl || recording.playUrl} target="_blank" rel="noreferrer">Open in Zoom<span className="visually-hidden"> ({recording.topic}, opens in a new tab)</span></a></p>
                     )}
-                    {/* The kept audio stays an Embed until Doc plays audio inline: Doc's inline body renders pdf, image, text,
-                        and submission only, and the file: resolver serves no .m4a (reported to the foundation). */}
-                    {(recording.files ?? []).filter(isAudioFile).map((f) => <Embed key={f.path} a={{ kind: "audio", ref: f.path, title: f.name || `${recording.topic} (audio)` }} />)}
+                    {/* The kept audio is a Doc on file:<path>: the viewer's player, from a logged view's short-lived link,
+                        at the level the server gives it (P3 for a call that ran into executive session). */}
+                    {(recording.files ?? []).filter(isAudioFile).map((f) => <Doc key={f.path} doc={audioRef(f, recording.topic)} variant="inline" headingLevel={4} />)}
                     <p className="muted">A kept recording may be under a litigation hold; the page shows it and deletes nothing.</p>
                   </div>
                 )}
