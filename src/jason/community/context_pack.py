@@ -25,8 +25,10 @@ every file a tier would cut, the tier ranks the index's passages instead of cutt
   again. A member's task never sees a file the index holds back as confidential; the board's does.
 - S ranks the law's sections whole, as before, by default. ``law_index`` (``LAW_FROM_INDEX``) ranks the index's
   passages of the law pages instead (standing ``authority``) and reads each hit as the section it falls in. On the
-  profile's tasks it replaced a quarter of a task's sections at the median and up to two thirds, with no gold
-  questions for the law to say which is better, so it stays off until they exist (docs/rag-roadmap.md). The section is recited whole either way.
+  profile's tasks it replaced a quarter of a task's sections at the median and up to two thirds. Measured on the
+  law's 50 gold questions (October 4, 2026; docs/document-tools.md): sections whole, hybrid recall@5 0.98 and MRR@10
+  0.84; the index's passages 0.96 and 0.87; the two fused 0.96 and 0.88. Neither is clearly better, so it stays off.
+  The section is recited whole either way.
 - R stays on the classified library, which the index does not hold yet. F and D read no passages.
 
 A tier is cut from the folders as before when the index is missing, lacks one of the tier's files, or holds one older
@@ -67,7 +69,7 @@ FACT_CHARS = 6000
 RECORD_FILES = 3              # the latest files of each record kind read
 RECORD_PASSAGES = 2           # passages kept per record kind
 SAME_TEXT = 0.6               # Jaccard overlap above which two passages are copies of one
-LAW_FROM_INDEX = False        # rank the law by the index's passages (unmeasured: no gold questions for the law yet)
+LAW_FROM_INDEX = False        # rank the law by the index's passages (measured no better than sections whole; see above)
 
 
 @dataclass(frozen=True)
