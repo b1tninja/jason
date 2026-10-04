@@ -19,6 +19,7 @@ from jason.community.models.legal_collections import (
     PreLienElement,
     PreLienNoticeModel,
     ReimbursementNoticeModel,
+    SenderKind,
 )
 from jason.community.models.legal_inspections import InspectionReportModel, Result, SignalServiceReportModel
 from jason.community.models.legal_letters import LegalBriefModel, LegalLetterModel, LetterType, Recipient
@@ -53,7 +54,10 @@ class FakeCommunity:
     def senders(self):
         from jason.community.sources import Sender, SourceKind
 
-        return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),)
+        return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),
+                Sender("Example Collections Law", SourceKind.LAW_FIRM, ("EXAMPLE & SAMPLE",), role="assessment collections"),
+                Sender("Sample & Counsel LLP", SourceKind.LAW_FIRM, ("SAMPLE & COUNSEL",)),
+                Sender("Example Roofing", SourceKind.VENDOR, ("EXAMPLE ROOFING",)))
 
     def obligations(self):
         return (SimpleNamespace(name="Backflow assembly test", every_years=1, authority="annual test notice"),
@@ -126,7 +130,7 @@ Delinquent Assessment", the Association may initiate a judicial or nonjudicial f
 Page 1 of 1
 Transactions From Last Zero Dollar Balance
 Account Transaction Report
-Severaid & Glahn, PC
+Example & Sample, PC
 Zephyr, Quincy
 3101 Enchanted Walk Bldg 2 #99
 Property Address
@@ -206,7 +210,8 @@ def test_pre_lien_notice_with_ledger_and_policy():
     assert r.notice_date == date(2022, 12, 22)
     assert r.property_address == "3101 ENCHANTED WALK" and r.building is Building.BLDG_2 and r.unit == "99"
     assert r.names_owner and r.cure_days == 15 and r.lien_threshold == 180000 and r.board_decides_lien
-    assert r.ledger_by == "Severaid & Glahn, PC"
+    # The board's own letterhead: the association sent it, and the firm the directory lists printed the ledger.
+    assert r.sender_kind is SenderKind.ASSOCIATION and r.ledger_by == "Example Collections Law"
     assert [c.kind for c in r.charges] == [ChargeKind.BALANCE_FORWARD, ChargeKind.ASSESSMENT, ChargeKind.LATE_CHARGE,
                                            ChargeKind.INTEREST, ChargeKind.PAYMENT]
     assert r.total_due == 32845 and r.late_charges == 2950 and r.payments == 10000
@@ -218,6 +223,21 @@ def test_pre_lien_notice_with_ledger_and_policy():
     assert {"certified-mail-not-shown", "cites-former-sections"} <= codes(found, Severity.CHECK)
     assert "pre-lien-element-missing" not in codes(found)
     no_name(r)
+
+
+def test_a_pre_lien_notice_takes_its_attorney_from_the_sender_directory():
+    """The sender is the attorney only when the head names a law firm the directory lists and is not the board's own
+    letterhead. A firm it does not list, or a vendor, is not the sender: the association is."""
+    counsel = LETTER_2022.replace("MYSTIQUE COMMUNITY ASSOCIATION\nBoard of Directors - board@example.org\n",
+                                  "Example & Sample, PC\nAttorneys at Law\n", 1)
+    r = PreLienNoticeModel().parse(counsel, ctx())
+    assert (r.sender, r.sender_kind) == ("Example Collections Law", SenderKind.ATTORNEY)
+    for head in ("Another Firm, PC\nAttorneys at Law\n", "Example Roofing\n"):
+        other = PreLienNoticeModel().parse(counsel.replace("Example & Sample, PC\nAttorneys at Law\n", head, 1), ctx())
+        assert other.sender_kind is SenderKind.ASSOCIATION
+    # A community with no sender directory names no firm at all.
+    bare = PreLienNoticeModel().parse(counsel, ModelContext(community=object(), today=TODAY))
+    assert bare.sender_kind is SenderKind.ASSOCIATION and bare.ledger_by == "" and bare.manager == ""
 
 
 def test_statute_reprint_does_not_count_as_the_notice():
@@ -445,7 +465,7 @@ When Recorded Mail to:
 Doc # 202401020111
 Fees
 $101.00
-SEVERAID & GLAHN, PC
+EXAMPLE & SAMPLE, PC
 1/2/2024
 1:18:08 PM
 1787 Tribute Road, Suite D
@@ -518,6 +538,11 @@ def test_assessment_lien():
     assert "not-foreclosable" in codes(found, Severity.INFO)          # $1,600 of assessments over 5 months
     assert not codes(found, Severity.PROBLEM)
     no_name(r)
+    # The requester is the law firm the sender directory lists, by its name there. One it does not list is not named
+    # as that firm: the reader falls back to the first line of the recorder's block.
+    assert r.requested_by == "Example Collections Law"
+    other = read(DocumentKind.RECORDED_LIEN, LIEN.replace("EXAMPLE & SAMPLE, PC", "ANOTHER FIRM, PC"), ctx()).record
+    assert other.requested_by == "Sacramento County"
 
 
 def test_assessment_lien_items_disagree():
@@ -656,7 +681,7 @@ example
 Password:
 example
 Very truly yours,
-BERDING & WEIL LLP
+SAMPLE & COUNSEL LLP
 """
 
 
@@ -664,7 +689,7 @@ def test_settlement_disclosure():
     reading = read(DocumentKind.LEGAL_CORRESPONDENCE, SETTLEMENT, ctx())
     r = reading.record
     assert r.letter_type is LetterType.SETTLEMENT_DISCLOSURE and r.recipient is Recipient.MEMBERSHIP
-    assert r.sender == "Berding & Weil LLP" and r.letter_date == date(2023, 11, 15) and r.settlement_amount == 5000000
+    assert r.sender == "Sample & Counsel LLP" and r.sender_is_counsel and r.letter_date == date(2023, 11, 15) and r.settlement_amount == 5000000
     assert r.buildings_named == (Building.BLDG_1, Building.BLDG_2, Building.BLDG_4)
     assert r.defects_described and r.other_claims_status and not r.repair_estimate and r.prints_credentials
     assert {"no-repair-estimate", "prints-credentials"} <= codes(reading.findings, Severity.CHECK)
@@ -707,7 +732,7 @@ def test_dispute_resolution_offer():
 
 def test_draft_membership_update_without_date():
     letter = "DRAFT\nVIA U.S. MAIL\nMembership\nMystique Community Association\nRE:\nMYSTIQUE COMMUNITY ASSOCIATION\nReminder re: Window Claims\n" \
-             "Dear Member:\nPlease recall that our office represents the Association.\nVery truly yours,\nBERDING & WEIL LLP\n"
+             "Dear Member:\nPlease recall that our office represents the Association.\nVery truly yours,\nSAMPLE & COUNSEL LLP\n"
     reading = LegalLetterModel().read(letter, ctx())
     assert reading.record.letter_type is LetterType.MEMBERSHIP_UPDATE and reading.record.draft
     assert reading.record.subject == "Reminder re: Window Claims" and reading.missing == ("letter_date",)
@@ -725,7 +750,7 @@ Please allow this to serve as the Association's mediation brief in advance of th
 Mystique is a condominium community featuring eight buildings enclosing eighty-one (81) townhouse-style units.
 The claims are limited to SB800 violations.
 Very truly yours,
-BERDING & WEIL LLP
+SAMPLE & COUNSEL LLP
 PRELIMINARY COST OF REPAIR
 Date: 1/19/2023
 TOTAL COST TO REPAIR
@@ -740,6 +765,10 @@ def test_mediation_brief():
     assert r.caption == "Mystique Community Association v. Watt Communities at Mystique, LLC" and r.addressed_to == "Example ADR"
     assert (r.units_stated, r.buildings_stated, r.claims_basis, r.cost_of_repair) == (81, 8, "SB800", 50000000)
     assert r.privilege_basis == ("1115",) and "mediation-privileged" in codes(reading.findings, Severity.INFO)
+    assert r.author_firm == "Sample & Counsel LLP"
+    # A firm the sender directory does not list is not named: the brief reads incomplete, a miss.
+    unlisted = read(DocumentKind.LEGAL_BRIEF, BRIEF.replace("SAMPLE & COUNSEL LLP", "ANOTHER FIRM LLP"), ctx())
+    assert unlisted.record.author_firm == "" and unlisted.missing == ("author_firm",)
 
 
 # ---------------------------------------------------------------------------------------------------- escrow, forms, list

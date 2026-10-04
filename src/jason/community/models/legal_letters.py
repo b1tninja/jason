@@ -9,9 +9,9 @@ rejected, and, served on a member, includes a copy of the ADR article (CIV 5935(
 member's request to meet and confer (5915(b)(2)); discipline or a charge for common-area damage takes a written
 decision within 14 days of the board's action (5855(f)).
 
-``LegalLetter`` reads Berding & Weil's membership letters (the 2023 settlement notice and the window-warranty reminder)
-and the board's "Offer to Participate in Dispute Resolution (IDR & ADR)". ``LegalBrief`` reads the association's
-mediation brief. Neither keeps an owner's name, and a letter that prints a portal login keeps only the fact that it does.
+``LegalLetter`` reads counsel's membership letters (a settlement notice, a warranty reminder) and the board's "Offer to
+Participate in Dispute Resolution (IDR & ADR)". ``LegalBrief`` reads the association's mediation brief. Neither keeps
+an owner's name, and a letter that prints a portal login keeps only the fact that it does.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ from jason.community.models.legal_shared import (
     site_address,
     unit_count,
 )
+from jason.community.sources import SourceKind, sender_name
 from jason.community.symbols import Building, DocumentKind
 
 ADR_RESPONSE_DAYS = 30        # CIV 5935(a)(3)
@@ -64,12 +65,10 @@ class Recipient(Enum):
     OTHER = "other"
 
 
-_FIRMS = (("Berding & Weil LLP", r"BERDING\s*&\s*WEIL"), ("Severaid & Glahn, PC", r"SEVERAID\s*&\s*GLAHN"),
-          ("Downey Brand LLP", r"DOWNEY BRAND"))
-
-
-def _firm(text: str) -> str:
-    return next((name for name, pattern in _FIRMS if re.search(pattern, text, re.I)), "")
+def _firm(text: str, context: ModelContext) -> str:
+    """The law firm the text names, by its name in the specification's sender directory; a firm it does not list is not
+    named: a miss."""
+    return sender_name(text, context.community, SourceKind.LAW_FIRM)
 
 
 @dataclass
@@ -121,7 +120,7 @@ class LegalLetterModel(DocumentModel):
             return None
         flat = squash(text)
         r = LegalLetter()
-        firm = _firm(text)
+        firm = _firm(text, context)
         if re.search(r"DISPUTE RESOLUTION \(IDR\s*&\s*ADR\)|meet and confer", text, re.I) and re.search(r"offer|invitation", flat, re.I):
             r.letter_type = LetterType.DISPUTE_RESOLUTION_OFFER
         elif re.search(r"section 6100|Notice of Settlement", flat, re.I):
@@ -257,7 +256,7 @@ class LegalBriefModel(DocumentModel):
             if m:
                 r.event_date = (dates_in(f"{m.group(1)}, {m.group(2)}") or [None])[0]
         r.addressed_to = first(r"\n([A-Z][A-Za-z ]+ ADR)\s*\n", text) or first(r"\n([A-Z][A-Za-z &]+ (?:Mediation|Arbitration)[A-Za-z ]*)\n", text)
-        r.author_firm = _firm(text)
+        r.author_firm = _firm(text, context)
         units = re.search(r"\((\d+)\) townhouse|(\d+) (?:condominium |townhouse[- ]style )?units", flat)
         r.units_stated = int(units.group(1) or units.group(2)) if units else None
         buildings = first(r"featuring (\w+) buildings", flat).lower()

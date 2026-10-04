@@ -14,9 +14,9 @@ work, who hired the claimant, the site, the claimant's address, a proof of servi
 8416(a)); the claimant must sue within 90 days of recording or the lien expires (8460(a)). A release bond is 125 percent
 of the claim, by an admitted surety (8424(b)); the claimant then has six months after notice to sue on the bond (8424(d)).
 
-``AssessmentLien`` reads Severaid & Glahn's "Notice of Claim of Lien for Delinquent Assessments". ``MechanicsLien``
-reads Downey Brand's "Notice and Claim of Mechanic's Lien" for Idaho Pacific Lumber (and a release filed in the same
-file). ``LienReleaseBond`` reads a surety's "Bond for Release of Mechanic's Lien". No record keeps an owner's name.
+``AssessmentLien`` reads a collections firm's "Notice of Claim of Lien for Delinquent Assessments". ``MechanicsLien``
+reads a claimant's counsel's "Notice and Claim of Mechanic's Lien" (and a release filed in the same file).
+``LienReleaseBond`` reads a surety's "Bond for Release of Mechanic's Lien". No record keeps an owner's name.
 """
 
 from __future__ import annotations
@@ -57,6 +57,7 @@ from jason.community.models.legal_shared import (
     words_to_cents,
 )
 from jason.community.reviews import AS_OF
+from jason.community.sources import SourceKind, sender_name
 from jason.community.symbols import Building, DocumentKind
 
 MECHANICS_ACTION_DAYS = 90       # CIV 8460(a)
@@ -120,7 +121,7 @@ class AssessmentLien:
     document_number_from_name: bool = False
     recorded: date | None = None
     recording_fee: int | None = None
-    requested_by: str = ""                   # who asked for recording ("Severaid & Glahn, PC")
+    requested_by: str = ""                   # who asked for recording: a listed law firm by its directory name, else as printed
     association: str = ""
     association_address: str = ""
     declaration: str = ""                    # the declaration it relies on, as recorded ("Book 20070920, Page 937")
@@ -186,7 +187,8 @@ class AssessmentLienModel(DocumentModel):
         r.document_number, r.recorded, r.document_number_from_name = _recording(text, context.name)
         fee = first(r"Fees\s*\n?\s*(\$[\d,]+\.\d\d)", text[:800])
         r.recording_fee = cents(fee) if fee else None
-        r.requested_by = "Severaid & Glahn, PC" if re.search(r"SEVERAID\s*&\s*GLAHN", text[:1200], re.I) else \
+        # A law firm the sender directory lists, by its name there; any other requester as the recorder's block prints it.
+        r.requested_by = sender_name(text[:1200], context.community, SourceKind.LAW_FIRM) or \
             first(r"Recording Requested by[^\n]*\n(?:[^\n]*\n){0,3}?\s*([A-Z][A-Z&,. ]{5,})\n", text)
         r.association = first(r"that (MYSTIQUE COMMUNITY ASSOCIATION)", flat) or ("Mystique Community Association" if "MYSTIQUE" in text.upper() else "")
         r.association_address = first(r"whose address for the purpose of all matters addressed herein is ((?:[^,]+,){2,3}[^,]+?\d{5})", flat)

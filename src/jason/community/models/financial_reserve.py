@@ -31,7 +31,7 @@ SITE_VISIT_YEARS = 3   # CIV 5550(a)
 _PAGE_END = re.compile(r"^\s*(?:PAGE \d+-\d+|Page \d+(?: of \d+)?)\s*$")
 _ELEVATED = re.compile(r"\b5551\b|SB\s*-?\s*326|elevated elements?|balcon(?:y|ies)|\bdecks?\b|landings?|walkways?", re.I)
 _ELEVATED_REPORT = re.compile(r"(?:elevated elements?|SB\s*-?\s*326|5551|balcony|deck)[^.]{0,80}(?:inspection )?report\b|"
-                              r"California Deck Inspection|report[^.]{0,60}(?:elevated elements?|SB\s*-?\s*326|5551)", re.I)
+                              r"report[^.]{0,60}(?:elevated elements?|SB\s*-?\s*326|5551)", re.I)
 
 
 @dataclass

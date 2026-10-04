@@ -42,7 +42,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.invoices import parse_date
-from jason.community.sources import manager_name
+from jason.community.sources import SourceKind, manager_name, sender_name
 from jason.community.models.legal_shared import (
     DELINQUENT_AFTER_DAYS,
     FORECLOSURE_FLOOR,
@@ -105,7 +105,7 @@ class PreLienNotice:
     sender: str = ""                        # the association, or its attorney
     sender_kind: SenderKind | None = None
     manager: str = ""                       # the manager the letterhead names, if any
-    ledger_by: str = ""                     # who printed the enclosed ledger ("Severaid & Glahn, PC")
+    ledger_by: str = ""                     # who printed the enclosed ledger: a listed law firm or manager, by its directory name
     property_address: str = ""
     building: Building | None = None
     unit: str = ""
@@ -167,7 +167,7 @@ def _elements(body: str, flat: str, itemized: bool) -> tuple[PreLienElement, ...
     return tuple(found)
 
 
-# Severaid & Glahn's "Account Transaction Report": document number, description (one or two lines), amount, balance, date.
+# A collections firm's "Account Transaction Report": document number, description (one or two lines), amount, balance, date.
 _TX_ROW = re.compile(r"\n([A-Z]{2,5}-[A-Z0-9-]+|\d{8,12})\n((?:[^\n]+\n){1,2}?)([\d,]+\.\d\d)\n([\d,]+\.\d\d)\n(\d\d/\d\d/\d\d)\b")
 
 
@@ -213,12 +213,17 @@ class PreLienNoticeModel(DocumentModel):
         dated = dates_in(head)
         r.notice_date = dated[0] if dated else None
         r.as_of = date_after(r"records as of", flat, window=40) or date_after(r"records as of", body, window=80)
-        if re.search(r"Severaid\s*&\s*Glahn", head, re.I) and not re.search(r"MYSTIQUE COMMUNITY ASSOCIATION\s*\n\s*Board of Directors", head, re.I):
-            r.sender, r.sender_kind = "Severaid & Glahn, PC", SenderKind.ATTORNEY
+        # A law firm the sender directory lists, named in the letter's head, sent it, unless the head is the board's own
+        # letterhead (a short letter's enclosed ledger can name the firm that printed it within the same span).
+        firm = sender_name(head, context.community, SourceKind.LAW_FIRM)
+        if firm and not re.search(r"MYSTIQUE COMMUNITY ASSOCIATION\s*\n\s*Board of Directors", head, re.I):
+            r.sender, r.sender_kind = firm, SenderKind.ATTORNEY
         else:
             r.sender, r.sender_kind = "Mystique Community Association", SenderKind.ASSOCIATION
         r.manager = manager_name(head, context.community)
-        r.ledger_by = "Severaid & Glahn, PC" if re.search(r"Account Transaction Report\s*\n\s*Severaid", text, re.I) else ""
+        # The line under the ledger's title names who printed it: the collections firm or the manager.
+        r.ledger_by = sender_name(first(r"Account Transaction Report\s*\n\s*([^\n]+)", text), context.community,
+                                  SourceKind.LAW_FIRM, SourceKind.MANAGER)
         r.property_address = site_address(first(r"Property Address\s*(?:\n[^\n]*){0,8}", text, 0) or "") or site_address(body[:1500])
         r.building = building_of(context, r.property_address)
         r.unit = first(r"Bldg\s*\d+\s*#\s*(\d+)", text) or first(r"Walk\s*#\s*(\d+)", text)

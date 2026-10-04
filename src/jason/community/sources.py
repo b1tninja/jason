@@ -98,21 +98,34 @@ def fold(text: str) -> str:
     return " " + re.sub(r"[^A-Z0-9]+", " ", text.upper()).strip() + " "
 
 
-def manager_in(text: str, senders: Iterable[Sender]) -> Sender | None:
-    """The management company a text names: the first sender of kind ``MANAGER`` one of whose words the text carries
-    (letters and digits only, so OCR's punctuation does not matter). None when the specification lists no manager or
-    the text names none: a miss."""
+def sender_in(text: str, senders: Iterable[Sender], *kinds: SourceKind) -> Sender | None:
+    """The counterparty a text names: the first sender of one of ``kinds``, in the directory's order, one of whose words
+    the text carries (letters and digits only, so OCR's punctuation does not matter). With no kind given, any sender.
+    None when the specification lists no such sender or the text names none: a miss. A general reader finds a law
+    firm, a manager, a vendor, or an insurer this way, never by a name in its own pattern."""
     folded = fold(text or "")
     for sender in senders:
-        if sender.kind is SourceKind.MANAGER and any(fold(word) in folded for word in sender.words):
+        if (not kinds or sender.kind in kinds) and any(fold(word) in folded for word in sender.words):
             return sender
     return None
 
 
+def sender_name(text: str, community: object, *kinds: SourceKind) -> str:
+    """The name, from the community's sender directory, of the counterparty of one of ``kinds`` a text names; empty on a
+    miss, and for a community with no directory."""
+    found = sender_in(text, getattr(community, "senders", tuple)(), *kinds)
+    return found.name if found else ""
+
+
+def manager_in(text: str, senders: Iterable[Sender]) -> Sender | None:
+    """The management company a text names: ``sender_in`` for the kind ``MANAGER``. None when the specification lists no
+    manager or the text names none: a miss."""
+    return sender_in(text, senders, SourceKind.MANAGER)
+
+
 def manager_name(text: str, community: object) -> str:
     """The name of the management company a text names, from the community's sender directory; empty on a miss."""
-    found = manager_in(text, getattr(community, "senders", tuple)())
-    return found.name if found else ""
+    return sender_name(text, community, SourceKind.MANAGER)
 
 
 def resolve(sender: str, text: str, senders: tuple[Sender, ...], *, own_name: str = "",
@@ -209,4 +222,5 @@ def other_associations(text: str, *, own_name: str = "") -> tuple[str, ...]:
     return tuple(n for n in found if not any(o != n and squeezed[n].endswith(squeezed[o]) for o in found))
 
 
-__all__ = ["SourceKind", "Level", "Sender", "KIND_WORDS", "resolve", "other_associations", "fold"]
+__all__ = ["SourceKind", "Level", "Sender", "KIND_WORDS", "resolve", "other_associations", "fold", "sender_in", "sender_name",
+           "manager_in", "manager_name"]
