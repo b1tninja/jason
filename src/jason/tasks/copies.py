@@ -83,7 +83,7 @@ def _issuers(community: Any) -> dict[str, str]:
 def _issuer_of_text(text: str, community: Any) -> str:
     from jason.community.sources import resolve
 
-    named = resolve("", text, tuple(community.senders()))[0]
+    named = resolve("", text, tuple(community.senders()), own_name=getattr(community, "name_pattern", str)())[0]
     return named.name if named else ""
 
 

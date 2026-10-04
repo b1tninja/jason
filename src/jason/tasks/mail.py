@@ -217,20 +217,21 @@ def sort(row: dict[str, Any], text: str, community: Any = None) -> dict[str, Any
     received = date.fromisoformat(row["received"][:10]) if row.get("received") else None
     body = "\n".join(row.get("aiSummary") or []) + "\n" + text
     found = classify(row.get("sender", ""), body, received=received)
-    facts = letter_facts(text).record()
+    facts = letter_facts(text, getattr(community, "streets", tuple)()).record()
     source: dict[str, Any] = {}
     kind, urgency = found.kind, found.urgency
     if community is not None:
         from jason.community.sources import SourceKind, other_associations, resolve
 
-        named, source_kind, level, word = resolve(row.get("sender", ""), text, community.senders())
+        own = getattr(community, "name_pattern", str)()
+        named, source_kind, level, word = resolve(row.get("sender", ""), text, community.senders(), own_name=own)
         # A preliminary notice is a form: its sender is the claimant the form names, below the statutory text.
         at = text.upper().find("CLAIMANT")
         if named is None and kind is MailKind.LIEN_NOTICE and at >= 0:
-            named, source_kind, level, word = resolve("", text[at:at + 600], community.senders(), wide=600)
+            named, source_kind, level, word = resolve("", text[at:at + 600], community.senders(), own_name=own, wide=600)
         source = {"name": named.name if named else "", "kind": source_kind.value, "level": level.value if level else None,
                   "role": named.role if named else "", "payhoaVendor": named.payhoa_vendor if named else "", "matched": word,
-                  "otherAssociations": list(other_associations(text[:3000]))}
+                  "otherAssociations": list(other_associations(text[:3000], own_name=own))}
         # A letter the words left unsorted takes its kind from a known source.
         by_source = {SourceKind.UTILITY: MailKind.UTILITY, SourceKind.INSURER: MailKind.INSURANCE, SourceKind.BANK: MailKind.BANK,
                      SourceKind.TITLE_ESCROW: MailKind.ESCROW, SourceKind.GOVERNMENT: MailKind.GOVERNMENT}
@@ -240,9 +241,10 @@ def sort(row: dict[str, Any], text: str, community: Any = None) -> dict[str, Any
         # Mail naming another association is for a person to look at: misdirected mail, or a record under the wrong name.
         if source["otherAssociations"] and urgency is Urgency.FILE:
             urgency = Urgency.REVIEW
-        # A letter that never names Mystique (OCR spells it "lystique", "Mystque") but names another association is that
-        # association's mail: an owner's statement or a notice that came to the box. It is not the association's record.
-        addressed_to_us = bool(re.search(r"(?i)m?y?st[il1]?que|mystique", text))
+        # A letter that never names the association (``name_pattern`` allows for OCR's misreadings) but names another
+        # association is that association's mail: an owner's statement or a notice that came to the box. It is not the
+        # association's record.
+        addressed_to_us = bool(own and re.search(rf"(?i){own}", text))
         source["misdirected"] = bool(source["otherAssociations"]) and not addressed_to_us
         if source["misdirected"] and source_kind is SourceKind.UNKNOWN:
             source["kind"] = SourceKind.OTHER_ASSOCIATION.value

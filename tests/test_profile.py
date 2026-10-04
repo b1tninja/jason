@@ -7,7 +7,17 @@ import pytest
 
 from jason.community import Community, community, mystique, profile_name
 from jason.community import profile as profiles
-from jason.community.boundary import Term, baseline_path, compare, instance_terms, repo_root, scan
+from jason.community.boundary import (
+    Term,
+    baseline_path,
+    code_baseline_path,
+    compare,
+    instance_terms,
+    profile_imports,
+    repo_root,
+    scan,
+    scan_code,
+)
 
 
 def test_the_default_profile_is_mystique():
@@ -132,6 +142,95 @@ def test_the_general_docs_name_no_new_instance_facts():
     drift = compare(scan(repo_root(), instance_terms(community())), baseline)
     assert not drift.new, f"instance facts in general docs: {drift.new}"
     assert not drift.cleared, f"cleared from the docs; update the baseline: {drift.cleared}"
+
+
+def test_general_code_names_no_new_instance_facts():
+    """A fact in a pattern, a word list, or a default argument of general code belongs in the profile behind a
+    ``Community`` method with an empty default. A cleared one is removed from the baseline with
+    ``python -m jason.community.boundary --update``."""
+    import json
+
+    baseline = json.loads(code_baseline_path().read_text(encoding="utf-8"))
+    drift = compare(scan_code(repo_root(), instance_terms(community())), baseline)
+    assert not drift.new, f"instance facts in general code; move them into the profile: {drift.new}"
+    assert not drift.cleared, f"cleared from the code; update the baseline: {drift.cleared}"
+
+
+def test_the_cleared_modules_stay_cleared():
+    """The modules whose street and name patterns moved into the profile (2026-10-04) are not in the baseline."""
+    import json
+
+    baseline = json.loads(code_baseline_path().read_text(encoding="utf-8"))
+    cleared = {"src/jason/community/incidents.py", "src/jason/community/models/invoices.py",
+               "src/jason/community/models/insurance_claims.py", "src/jason/community/models/correspondence.py",
+               "src/jason/community/sources.py", "src/jason/postscanmail/models.py", "src/jason/tasks/mail.py",
+               "src/jason/tasks/mail_links.py", "src/jason/tasks/cross_checks.py", "src/jason/tasks/drive_labels.py"}
+    assert not cleared & set(baseline)
+
+
+def test_general_code_never_imports_the_profile():
+    assert profile_imports(repo_root(), community().slug) == []
+
+
+def test_a_fact_in_a_pattern_a_word_list_or_a_default_is_found(tmp_path):
+    code = tmp_path / "src" / "jason"
+    code.mkdir(parents=True)
+    (code / "patterns.py").write_text(textwrap.dedent('''
+        """Reads Main Street addresses."""  # a docstring and a comment name it on purpose
+        import re
+
+        ADDRESS = re.compile(r"\\b(\\d{4})\\s+(Main|Elm)\\s+St")
+        STOP = frozenset("board owner oakridge".split())
+
+
+        def own(text, name="OAKRIDGE"):
+            print("Oakridge")
+            return re.search(rf"(?i){name}", text)
+    '''), encoding="utf-8")
+    (code / "clean.py").write_text('MESSAGE = "Oakridge"\n', encoding="utf-8")
+    terms = (Term("Oakridge", "name"), Term("Main", "street"), Term("Elm", "street"), Term("Birch", "street"))
+    assert scan_code(tmp_path, terms) == {"src/jason/patterns.py": ["Elm", "Main", "Oakridge"]}
+
+
+def test_an_import_of_the_profile_is_found(tmp_path):
+    code = tmp_path / "src" / "jason"
+    code.mkdir(parents=True)
+    (code / "a.py").write_text("import importlib\n\nimportlib.import_module('oakridge.labels')\n", encoding="utf-8")
+    (code / "b.py").write_text("from jason_oakridge import forms\nfrom jason.community import community\n", encoding="utf-8")
+    (code / "c.py").write_text("import importlib\n\nimportlib.import_module(f'oakridge.{1}')\n", encoding="utf-8")
+    assert profile_imports(tmp_path, "oakridge") == ["src/jason/a.py:3", "src/jason/b.py:1", "src/jason/c.py:3"]
+
+
+def test_the_lesson_names_its_guard():
+    from jason.community.lessons import LESSONS, lesson
+
+    row = lesson("facts-in-general-patterns")
+    assert row is not None and any("code_boundary.json" in g for g in row.guards)
+    assert len({r.key for r in LESSONS}) == len(LESSONS)
+
+
+def test_a_profile_without_streets_or_a_name_pattern_reads_none(small_profile):
+    from jason.community.document_models import ModelContext
+    from jason.community.incidents import places_in
+    from jason.community.models.invoices import service_address
+    from jason.community.sources import other_associations
+    from jason.postscanmail.models import AddressKind, MailAddress, address_of, letter_facts
+    from jason.tasks.drive_labels import schema
+
+    small = community()
+    assert small.streets() == () and small.name_pattern() == "" and schema() == ()
+    letter = "Small Community Association\nc/o Oak Ridge Homeowners Association\n3021 Enchanted Walk"
+    assert letter_facts(letter, small.streets()).addresses == ()
+    assert places_in(letter, (), streets=small.streets()) == ()
+    assert service_address(letter, ModelContext(community=small)) == ("", None)
+    box = (MailAddress(AddressKind.CURRENT, "box", ("ENCHANTED",)),)
+    assert address_of(letter, box, name=small.name_pattern())[0] is AddressKind.UNREAD
+    # Without a pattern even its own name is not known as its own: it is listed for a person to look at.
+    assert other_associations(letter, own_name=small.name_pattern()) == ("Small Community Association",
+                                                                         "Oak Ridge Homeowners Association")
+    # The default profile reads the same letter.
+    mine = profiles.load_profile("mystique")
+    assert letter_facts(letter, mine.streets()).addresses == ("3021 ENCHANTED WALK",)
 
 
 def test_the_profile_names_itself_for_templates():

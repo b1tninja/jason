@@ -1,0 +1,50 @@
+{
+ "src/jason/agent.py": [
+  "Mystique"
+ ],
+ "src/jason/community/index_cache.py": [
+  "Mystique"
+ ],
+ "src/jason/community/models/contracts_ins_package.py": [
+  "Mystique"
+ ],
+ "src/jason/community/models/developer_security.py": [
+  "Mystique",
+  "Mystique Community Association"
+ ],
+ "src/jason/community/models/financial_bank.py": [
+  "JPMorgan Chase"
+ ],
+ "src/jason/community/models/governing_rules.py": [
+  "Mystique"
+ ],
+ "src/jason/community/models/legal_collections.py": [
+  "Mystique",
+  "Mystique Community Association"
+ ],
+ "src/jason/community/models/legal_letters.py": [
+  "Mystique",
+  "Watt Communities at Mystique"
+ ],
+ "src/jason/community/models/legal_records.py": [
+  "Mystique",
+  "Mystique Community Association"
+ ],
+ "src/jason/community/models/meetings.py": [
+  "Mystique",
+  "Mystique Community Association"
+ ],
+ "src/jason/community/scans.py": [
+  "Enchanted",
+  "Macon",
+  "Magical",
+  "Mesmerizing",
+  "Whimsical"
+ ],
+ "src/jason/tasks/legal_hold.py": [
+  "Mystique"
+ ],
+ "src/jason/tasks/policies.py": [
+  "Mystique"
+ ]
+}

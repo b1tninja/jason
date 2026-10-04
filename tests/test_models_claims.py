@@ -20,6 +20,14 @@ class FakeCommunity:
         master = SimpleNamespace(kind=SimpleNamespace(name="MASTER"), carrier="Example National", number="EX-1")
         return SimpleNamespace(policies=(master,))
 
+    def streets(self):
+        from jason.community.symbols import Street
+
+        return (Street.ENCHANTED_WALK, Street.WHIMSICAL_LN)
+
+    def name_pattern(self):
+        return "mystique"
+
 
 def ctx(name: str = "") -> ModelContext:
     return ModelContext(community=FakeCommunity(), today=TODAY, name=name)
@@ -224,7 +232,7 @@ def test_case_report_evidence_places_each_case_once():
     from jason.community.symbols import Building, Parity, Street
 
     ctx_ = {"buildings": (BuildingRange(Building.BLDG_8, Street.WHIMSICAL_LN, 5701, 5751, Parity.ANY),), "site_words": (), "known": {},
-            "parcels": None}
+            "parcels": None, "streets": (Street.WHIMSICAL_LN,)}
     rows = case_report_evidence(CASE_REPORT, ref="gmail/x.pdf", channel="email", ctx=ctx_)
     assert [r.sha256 for r in rows] == ["case:00000002", "case:00000003"]
     claim = rows[1]

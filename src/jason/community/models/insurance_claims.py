@@ -32,6 +32,7 @@ from datetime import date, timedelta
 from enum import Enum
 from pathlib import Path
 
+from jason.community.base import alternation, street_words
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, cents, date_after, first, register, squash
 from jason.community.incidents import LOSS_RUN, LossRunClaim, claim_key, read_loss_run
 from jason.community.symbols import DocumentKind
@@ -217,7 +218,8 @@ class ClaimLetterModel(DocumentModel):
         r.claim_number = re.sub(r"\s+", "", number.group(1)).replace("–", "-") if number else ""
         r.policy_number = _after(r"Policy (?:Number|No\.?|#)", head, 30)
         insured = _after(r"Insured", head, 60) or _after(r"Policyholder", head, 60)
-        r.association_is_insured = bool(re.search(r"mystique|association|community", insured or head[:800], re.I)) and \
+        own = getattr(context.community, "name_pattern", str)()
+        r.association_is_insured = bool(re.search("|".join(filter(None, (own, "association", "community"))), insured or head[:800], re.I)) and \
             r.letter_type is not LetterType.PRIMACY
         r.loss_date = _us_day(_after(r"(?:Loss Date|Date of Loss)", head, 30))
         r.loss_location = squash(_after(r"(?:Location of Loss|Loss Location)", head, 80))
@@ -472,7 +474,8 @@ class PoliceReportModel(DocumentModel):
         r = PoliceReport(report_number=number)
         r.agency = first(r"(Sacramento Police Department|Sacramento County Sheriff|California Highway Patrol)", text)
         r.occurred = date_after(r"(?:Date|OCCURRED ON)", text, window=40)
-        street = re.search(r"\b(\d{4}\s+(?:Macon|Enchanted|Magical|Mesmerizing|Whimsical)\s+\w+)", text or "", re.I)
+        streets = alternation(street_words(getattr(context.community, "streets", tuple)()))
+        street = re.search(rf"\b(\d{{4}}\s+(?:{streets})\s+\w+)", text or "", re.I)
         r.location = street.group(1) if street else ""
         return r
 

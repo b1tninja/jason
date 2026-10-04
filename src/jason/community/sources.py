@@ -4,14 +4,14 @@ The kind of source says how to read a document. A government agency's notice can
 deadline; a utility's bill follows a tariff; an insurer or its agent writes about coverage; a bank's
 statement is a record of balances; a vendor bills for work; a title company asks for the resale
 documents; a law firm writes about a claim; a management company writes for its clients. The
-association's own counterparties are named in the specification (``Mystique.senders()``): each is a
+association's own counterparties are named in the specification (``Community.senders()``): each is a
 ``Sender`` with its kind, a government agency's level, and the words its letterhead or name carries.
 A document from a sender the specification does not name still gets a kind from the generic words
 in ``KIND_WORDS`` ("Department of", "Insurance", "Bank", "Title", "LLP"); a miss stays unknown.
 
 A document can also name another community association, as the addressee or in its body. Mail for
 another association arriving at the association's box, or an agency's record naming another
-association for one of Mystique's accounts, is worth a person's look (``other_associations``).
+association for one of the association's accounts, is worth a person's look (``other_associations``).
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
+
+from jason.community.base import NEVER
 
 
 class SourceKind(Enum):
@@ -95,17 +97,19 @@ def fold(text: str) -> str:
     return " " + re.sub(r"[^A-Z0-9]+", " ", text.upper()).strip() + " "
 
 
-def resolve(sender: str, text: str, senders: tuple[Sender, ...], *, own_name: str = "MYSTIQUE",
+def resolve(sender: str, text: str, senders: tuple[Sender, ...], *, own_name: str = "",
             wide: int = 1200) -> tuple[Sender | None, SourceKind, Level | None, str]:
     """(named sender or None, kind, level, the words that decided) for a document's sender field and letterhead.
 
     The sender field is tried first, then the letterhead (the first 400 characters, without the association's own
     name, which is the addressee there). A named sender outranks the generic words there. Last, a named sender's
     words anywhere in the first ``wide`` characters: a form's payer block ("JPMORGAN CHASE BANK" on a 1099) or an
-    invoice's "COMPANY:" line sits below the addressee.
+    invoice's "COMPANY:" line sits below the addressee. ``own_name`` is a pattern for that name
+    (``Community.name_pattern``); without one, no line is taken for the addressee.
     """
-    head = re.sub(rf"(?i){own_name}[^\n]*", " ", text[:400])
-    below = re.sub(rf"(?i){own_name}[^\n]*", " ", text[:wide])
+    own = rf"(?i)(?:{own_name})[^\n]*" if own_name else NEVER
+    head = re.sub(own, " ", text[:400])
+    below = re.sub(own, " ", text[:wide])
 
     def named(places: tuple[str, ...]) -> tuple[Sender, str] | None:
         for place in places:
@@ -158,14 +162,14 @@ def _name_before(tokens: list[str]) -> list[str]:
     return kept
 
 
-def other_associations(text: str, *, own_name: str = "MYSTIQUE") -> tuple[str, ...]:
+def other_associations(text: str, *, own_name: str = "") -> tuple[str, ...]:
     """Names of other community associations a document mentions (its addressee, a c/o line, or its body).
 
-    Only the capitalized name directly before "Association" counts, OCR's spellings of the association's own name
-    ("lystique", "ystique") are dropped, a bare "the Homeowners Association" is not a name, and "Assoc" and
-    "Association" are one name.
+    Only the capitalized name directly before "Association" counts, the association's own name is dropped by
+    ``own_name``, its pattern with OCR's spellings (``Community.name_pattern``), a bare "the Homeowners Association" is
+    not a name, and "Assoc" and "Association" are one name.
     """
-    own_tail = own_name.upper()[2:]
+    own = re.compile(rf"(?i){own_name or NEVER}")
     found: list[str] = []
     keys: set[str] = set()
     for match in _ASSOCIATION.finditer(text):
@@ -176,7 +180,7 @@ def other_associations(text: str, *, own_name: str = "MYSTIQUE") -> tuple[str, .
             continue
         suffix = re.sub(r"(?i)\bassoc(?:iation|\.)?$", "Association", " ".join(words[suffix_at:]))
         name = " ".join(core + [suffix])
-        if own_tail in fold(name).replace(" ", ""):
+        if own.search(fold(name).replace(" ", "")):
             continue
         key = fold(name).replace(" ", "")
         if key not in keys:

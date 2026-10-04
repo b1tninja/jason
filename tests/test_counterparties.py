@@ -30,8 +30,11 @@ def test_an_unnamed_sender_takes_its_kind_from_the_generic_words() -> None:
 
 
 def test_the_association_is_the_addressee_not_the_sender() -> None:
-    # "MYSTIQUE COMMUNITY ASSOCIATION" on the address line is not a letterhead word.
-    assert resolve("", "MYSTIQUE COMMUNITY BANK ASSOCIATION\n901 H ST", SENDERS)[1] is SourceKind.UNKNOWN
+    # "MYSTIQUE COMMUNITY ASSOCIATION" on the address line is not a letterhead word, by the profile's name pattern.
+    own = mystique().name_pattern()
+    assert resolve("", "MYSTIQUE COMMUNITY BANK ASSOCIATION\n901 H ST", SENDERS, own_name=own)[1] is SourceKind.UNKNOWN
+    # A profile that names no pattern takes no line for its own: the bank word there counts.
+    assert resolve("", "MYSTIQUE COMMUNITY BANK ASSOCIATION\n901 H ST", SENDERS)[1] is SourceKind.BANK
 
 
 def test_a_payer_block_below_the_addressee_names_the_sender() -> None:
@@ -43,7 +46,8 @@ def test_a_payer_block_below_the_addressee_names_the_sender() -> None:
 def test_other_associations_keep_the_name_and_drop_our_own() -> None:
     text = ("Bk i University District Detached Homes Association\nc/o Mystique Community Association\n"
             "Longmeadow Village 2 Homeowners Association\nthe Homeowners Association\nlystique Community Association")
-    assert other_associations(text) == ("University District Detached Homes Association", "Longmeadow Village 2 Homeowners Association")
+    assert other_associations(text, own_name=mystique().name_pattern()) == (
+        "University District Detached Homes Association", "Longmeadow Village 2 Homeowners Association")
 
 
 def test_a_preliminary_notice_is_its_own_kind_and_a_claim_is_for_now() -> None:

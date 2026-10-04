@@ -1101,6 +1101,19 @@ LESSONS: tuple[Lesson, ...] = (
            "console's Ask serves the board.",
            Status.OPEN, guards=("scripts/eval_anythingllm.py",),
            docs=("docs/applicability.md", "docs/document-tools.md (model trials)")),
+    Lesson("facts-in-general-patterns", date(2026, 10, 4), (Area.REPOSITORY,),
+           "General readers matched the association's street names and its name word, with OCR's misreadings of it, "
+           "in regular expressions, a stop-word list, and default arguments, and one task imported the profile's "
+           "labels module by name. Another profile's letters, bills, and claims were then read as this one's, or its "
+           "own name was stripped as if it were this association's.",
+           "The rules \"Facts are data\" and \"Dependencies point one way\" were checked in the docs but not in code.",
+           "Community.streets() and Community.name_pattern(), empty by default, hold the facts; readers build their "
+           "patterns from them at call time (base.street_words, base.alternation, base.name_regex) and take the "
+           "active profile through jason.community.community(). With none set, no address or name is read: a miss.",
+           Status.FIXED, guards=("tests/test_profile.py: scan_code against tests/fixtures/code_boundary.json (only "
+                                 "shrinks), the cleared modules kept out of it, and profile_imports empty",),
+           notes=("Still in the baseline: the association's name in several model regexes, street names in "
+                  "community/scans.py, mail_links.CURRENT_ZIP, and the spec_module callers.",)),
 )
 
 
@@ -1108,6 +1121,11 @@ def lessons(community: object | None = None) -> tuple[Lesson, ...]:
     """The general lessons, then the community's own (``Community.lessons()``), if it keeps any."""
     own = getattr(community, "lessons", lambda: ())() if community is not None else ()
     return LESSONS + tuple(own)
+
+
+def lesson(key: str) -> Lesson | None:
+    """The general lesson filed under ``key``, or None."""
+    return next((row for row in LESSONS if row.key == key), None)
 
 
 def for_area(area: Area, community: object | None = None, *, open_only: bool = False) -> list[Lesson]:
@@ -1123,4 +1141,4 @@ def lines(found: list[Lesson]) -> list[str]:
     return out
 
 
-__all__ = ["Area", "LESSONS", "Lesson", "Status", "for_area", "lessons", "lines"]
+__all__ = ["Area", "LESSONS", "Lesson", "Status", "for_area", "lesson", "lessons", "lines"]

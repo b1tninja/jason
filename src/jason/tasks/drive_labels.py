@@ -14,7 +14,6 @@ jason key only when the plan no longer has a value for it. It never writes or re
 
 from __future__ import annotations
 
-import importlib
 import json
 from collections import Counter
 from datetime import date, datetime, timezone
@@ -43,15 +42,14 @@ class Origin:
 
 
 def schema(community: Any = None) -> tuple[LabelProperty, ...]:
-    """The appProperties rows: the community's ``app_properties()`` when it has them, else ``mystique/labels.py``."""
-    hook = getattr(community, "app_properties", None)
-    rows = hook() if callable(hook) else None
-    if rows:
-        return tuple(rows)
-    from jason.community import community as active
+    """The appProperties rows: the community's ``app_properties()``, the active profile's when none is given. A
+    profile that sets none has none."""
+    if community is None:
+        from jason.community import community as active
 
-    active()                                   # registers the mystique package
-    return tuple(importlib.import_module("mystique.labels").APP_PROPERTIES)
+        community = active()
+    hook = getattr(community, "app_properties", None)
+    return tuple((hook() if callable(hook) else None) or ())
 
 
 def owned_keys(rows: Iterable[LabelProperty]) -> frozenset[str]:

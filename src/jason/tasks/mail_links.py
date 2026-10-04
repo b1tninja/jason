@@ -4,7 +4,7 @@ bank balances, and checks.
 Each check reads a kind of letter against a store jason already keeps, so a letter is not only filed
 but tested:
 
-- **Address audit**: the addressee block of every letter against ``Mystique.mail_addresses()``. A sender
+- **Address audit**: the addressee block of every letter against ``Community.mail_addresses()``. A sender
   still writing to the prior manager or to the property has an old address on file; a letter addressed
   "in care of" someone names who that sender thinks receives the association's mail.
 - **Escrow requests**: Civil Code 4530(a)(1) gives the association 10 days from the mailing or delivery
@@ -28,6 +28,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from jason.community.base import NEVER, name_regex
 from jason.community.invoices import money_values
 from jason.postscanmail.models import AddressKind, MailKind, address_of, care_of
 from jason.tasks.mail import load_items, mail_dir
@@ -52,11 +53,14 @@ def address_audit(data_dir: Path, community: Any, *, months: int = 18, today: da
     counts: dict[str, int] = {}
     old: list[dict[str, Any]] = []
     in_care: list[dict[str, Any]] = []
+    own = getattr(community, "name_pattern", str)()
+    # "Care of: PMB 188" is the association's own box, not a third party; nor is its own name.
+    ours = re.compile(rf"(?i)p\W?[mn]\W?b\b|{own or NEVER}")
     for row in load_items(data_dir).values():
         text = _text(data_dir, row["mailId"])
         if not text:
             continue
-        kind, label, block = address_of(text, community.mail_addresses())
+        kind, label, block = address_of(text, community.mail_addresses(), name=own)
         counts[kind.value] = counts.get(kind.value, 0) + 1
         if (row.get("received") or "") < since:
             continue
@@ -66,15 +70,13 @@ def address_audit(data_dir: Path, community: Any, *, months: int = 18, today: da
         if kind in (AddressKind.FORMER_MANAGER, AddressKind.PROPERTY, AddressKind.INCOMPLETE):
             old.append(entry)
         who = care_of(block)
-        # "Care of: PMB 188" is the association's own box, not a third party.
-        if who and not re.match(r"(?i)p\W?[mn]\W?b\b|mystique", who):
+        if who and not ours.match(who):
             in_care.append({**entry, "careOf": who})
     old.sort(key=lambda e: e["received"], reverse=True)
     return {"counts": counts, "since": since, "oldAddress": old, "inCareOf": in_care}
 
 
 CURRENT_ZIP = "95814"
-_OWN_NAME = re.compile(r"(?i)mystique\s+community\s+assoc(?:iation)?")
 _SERVICE = re.compile(r"(?i)location:\s*$|service\s+address:?\s*$|premises:?\s*$")
 
 
@@ -93,6 +95,7 @@ def account_addresses(community: Any, roots: dict | None) -> list[dict[str, Any]
     for utility, account, path in bill_files(roots):
         latest[(utility.name, account)] = path
     rank = {AddressKind.CURRENT: 0, AddressKind.INCOMPLETE: 1, AddressKind.FORMER_MANAGER: 2, AddressKind.PROPERTY: 3}
+    own_name = re.compile(rf"(?i){name_regex(community.name)}")
     found = []
     for (provider, account), path in sorted(latest.items()):
         try:
@@ -100,7 +103,7 @@ def account_addresses(community: Any, roots: dict | None) -> list[dict[str, Any]
         except Exception:
             continue
         blocks = []
-        for m in _OWN_NAME.finditer(text):
+        for m in own_name.finditer(text):
             if _SERVICE.search(text[max(0, m.start() - 30):m.start()]):
                 continue
             block = " ".join(text[m.end():m.end() + 90].split())
@@ -131,7 +134,7 @@ def escrow_clocks(data_dir: Path, *, today: date | None = None) -> list[dict[str
     for row in load_items(data_dir).values():
         if row.get("kind") != MailKind.ESCROW.value or not _received(row):
             continue
-        # Another association's request (it never names Mystique) starts no clock for this association.
+        # Another association's request (it never names the association) starts no clock for this association.
         if (row.get("source") or {}).get("misdirected"):
             continue
         due = _received(row) + timedelta(days=ESCROW_DAYS)
@@ -300,7 +303,7 @@ def lien_notices(data_dir: Path, community: Any = None) -> list[dict[str, Any]]:
         if not vendor and community is not None and at >= 0:
             from jason.community.sources import resolve
 
-            named = resolve("", text[at:at + 600], community.senders(), wide=600)[0]
+            named = resolve("", text[at:at + 600], community.senders(), own_name=getattr(community, "name_pattern", str)(), wide=600)[0]
             if named is not None:
                 claimant, vendor = named.name, named.payhoa_vendor
         paid = []
