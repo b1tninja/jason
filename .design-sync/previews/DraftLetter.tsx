@@ -8,6 +8,10 @@ const people = [
   { name: "P. Varga", role: "manager", approves: ["the manager"], canApproveBoard: false },
 ];
 
+/** The association's designated recipient for official communications (CIV 4035), as the server carries it. */
+const REPLY_TO = "Secretary, Example Association, 123 Main St, Anytown, CA 90000; board@example.org";
+const vote = { id: "3", date: "2026-10-03", title: "The board approved it by vote at its meeting of 2026-10-03 (CIV 4910); recorded by R. Lind, secretary", tone: "good" as const, by: "R. Lind" };
+
 const release: Letter = {
   key: "Drive/Collections/Unit 7/release.docx",
   kind: "Lien release",
@@ -23,6 +27,7 @@ const release: Letter = {
   approver: "the board",
   stage: "requested",
   sentCommand: "jason letter release --unit 7 --yes",
+  replyTo: REPLY_TO,
   log: [
     { id: "1", date: "2026-10-02", title: "Draft saved", by: "P. Varga" },
     { id: "2", date: "2026-10-02", title: "Approval requested from the board", by: "P. Varga" },
@@ -45,10 +50,11 @@ const vendor: Letter = {
   sentCommand: "jason letter vendor-inquiry --yes",
 };
 
-/** A fresh draft: the warn badge, Save draft behind a confirm, Copy text, and the note field. No trail yet. */
-export const Draft = () => <DraftLetter letter={{ ...vendor, stage: "draft", log: [] }} me="P. Varga" people={people} onStage={() => {}} />;
+/** A fresh draft: the warn badge, Save draft behind a confirm, Copy text, and the note field. No trail yet. The approval
+ * line says jason drafts and nothing is saved, and that the reply address is not on file yet. */
+export const Draft = () => <DraftLetter letter={{ ...vendor, stage: "draft", log: [], replyTo: undefined }} me="P. Varga" people={people} onStage={() => {}} />;
 
-/** Saved to Drive: Ask the approver, and the path it was saved to. */
+/** Saved to Drive: Ask the approver, and the path it was saved to. The approval line names who saved it. */
 export const Saved = () => (
   <DraftLetter letter={{ ...vendor, stage: "saved", log: [{ id: "1", date: "2026-10-02", title: "Draft saved", by: "P. Varga" }] }} me="P. Varga" people={people} onStage={() => {}} />
 );
@@ -59,10 +65,11 @@ export const RequestedCannotApprove = () => <DraftLetter letter={release} me="M.
 /** Awaiting the treasurer, who is signed in: Approve as her, Send back, Withdraw, and the trail. */
 export const RequestedCanApprove = () => <DraftLetter letter={vendor} me="M. Chen" people={people} onStage={() => {}} />;
 
-/** Approved: the terminal command a person runs and Record as sent. Nothing here sends. */
+/** Approved: the terminal command a person runs and Record as sent. Nothing here sends. The approval line names the
+ * board's meeting and the secretary who recorded the vote. */
 export const Approved = () => (
   <DraftLetter
-    letter={{ ...release, stage: "approved", log: [...release.log, { id: "3", date: "2026-10-03", title: "Approved by the board, meeting of 2026-10-03", tone: "good", by: "R. Lind" }] }}
+    letter={{ ...release, stage: "approved", meeting: "2026-10-03", log: [...release.log, vote] }}
     me="P. Varga"
     people={people}
     onStage={() => {}}
@@ -75,11 +82,12 @@ export const Sent = () => (
     letter={{
       ...release,
       stage: "sent",
+      meeting: "2026-10-03",
       sentOn: "2026-10-03",
       sentRef: "mailroom 48213",
       log: [
         ...release.log,
-        { id: "3", date: "2026-10-03", title: "Approved by the board, meeting of 2026-10-03", tone: "good", by: "R. Lind" },
+        vote,
         { id: "4", date: "2026-10-03", title: "Recorded as sent", tone: "good", by: "P. Varga" },
       ],
     }}
@@ -88,5 +96,6 @@ export const Sent = () => (
   />
 );
 
-/** The owner's view: the document only, with the badge the owner sees, and no buttons. */
-export const Readonly = () => <DraftLetter letter={{ ...release, ownerBadge: "mailed" }} readonly />;
+/** The owner's view: the document only, with the badge the owner sees, and no buttons; it still ends with the
+ * approval line: who drafted, who approved, that the officers sign, and where replies go. */
+export const Readonly = () => <DraftLetter letter={{ ...release, stage: "sent", meeting: "2026-10-03", log: [...release.log, vote], ownerBadge: "mailed" }} readonly />;

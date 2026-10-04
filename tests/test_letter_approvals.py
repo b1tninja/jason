@@ -166,3 +166,22 @@ def test_the_loader_groups_letters_and_names_the_people(county):
         web.write("Drive/none", {"action": "save", "by": MANAGER})
     with pytest.raises(ValueError):
         web.write("-", {"action": "draft", "by": MANAGER})
+
+
+def test_replies_go_to_the_designated_recipient_or_nowhere_guessed(county, monkeypatch):
+    from jason.community import community
+    from jason.community.identity import Identity
+    from jason.web.extra import approvals as web
+
+    profile = type(community())
+    monkeypatch.setattr(profile, "identity", lambda self: Identity("Example Association", mailing_address=("PO Box 1",)))
+    out = web.write("-", {"action": "draft", "by": MANAGER, "letter": {**TEXT, "key": KEY}})
+    assert "replyTo" not in out                      # no official address on file: the page says so, never guesses
+    official = Identity("Example Association", official_address="123 Main St, Anytown, CA 90000",
+                        official_email="board@example.org", designated_recipient="Secretary, Example Association")
+    monkeypatch.setattr(profile, "identity", lambda self: official)
+    expected = "Secretary, Example Association, 123 Main St, Anytown, CA 90000; board@example.org"
+    assert web.approvals({})["letters"][0]["replyTo"] == expected
+    assert web.approvals({"key": KEY})["letter"]["replyTo"] == expected
+    assert web.write(KEY, {"action": "save", "by": MANAGER})["replyTo"] == expected
+    assert "replyTo" not in store.get(county, KEY)   # carried to the page, never written to the store

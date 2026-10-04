@@ -36,11 +36,20 @@ const minutes: Letter = {
 
 const letters = [release, vendor, notice, reminder, minutes];
 
-/** The treasurer signed in: she may approve the vendor letter but not record a board vote, so the lien release says why. */
+/** The treasurer signed in: the vendor letter is under "Waiting on you" with Approve; the lien release is under
+ * "Waiting on the board's vote", with no action of hers. */
 export const Treasurer = () => <ApprovalsInbox today="2026-10-03" letters={letters} me="M. Chen" people={people} onAction={() => {}} onOpen={() => {}} />;
 
-/** The secretary signed in: Record board approval shows on the board's letter; the treasurer's letter is not hers to approve. */
+/** The secretary signed in: nothing is her own turn; the treasurer's letter waits on others, and the lien release waits on
+ * the board's vote, where Record board approval is hers to use once the board has voted. */
 export const Secretary = () => <ApprovalsInbox today="2026-10-03" letters={letters} me="R. Lind" people={people} onAction={() => {}} onOpen={() => {}} go={() => {}} />;
+
+/** The manager signed in, who approves neither letter: "Nothing is waiting on you.", the vendor letter under "Waiting on
+ * others", and the lien release under "Waiting on the board's vote". */
+export const NothingForYou = () => <ApprovalsInbox today="2026-10-03" letters={letters} me="P. Varga" people={people} onAction={() => {}} onOpen={() => {}} />;
+
+/** No one picked as signed in: the stage grouping, "Awaiting approval" first, with no group of yours. */
+export const NoOneSignedIn = () => <ApprovalsInbox today="2026-10-03" letters={letters} me="" people={people} onAction={() => {}} onOpen={() => {}} />;
 
 /** Nothing waiting at all: each group's empty line under zero counts. */
 export const Empty = () => <ApprovalsInbox today="2026-10-03" letters={[]} me="D. Okafor" people={people} onAction={() => {}} />;

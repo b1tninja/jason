@@ -15,6 +15,47 @@ export interface Letter {
   key: string; kind: string; title: string; date: string; to: string; via: string; body: string[]; signoff: string;
   approver: string; stage: Stage; log: LetterLog[]; created?: string; updated?: string;
   sentCommand?: string; sentRef?: string; sentOn?: string; meeting?: string; ownerBadge?: string;
+  /** Where replies go: the association's designated recipient and address for official communications (CIV 4035),
+   * from the profile through the server. Empty: the approval line says it is not on file yet. */
+  replyTo?: string;
+}
+
+export const REPLIES = "Replies: to the association's designated recipient for official communications (Civil Code 4035)";
+export const REPLIES_MISSING = "— not on file yet (onboarding: official-address)";
+
+const APPROVAL = /^(approved\b|the board approved)/i;
+const MEETING = /meeting of (\d{4}-\d{2}-\d{2})/i;
+
+/** The letter's approval line, one clause each: who drafted it, who approved it, that jason is automated and the
+ * officers sign, and where replies go. Read from the trail and the letter, never inferred. It is the console's record
+ * of the letter, not text in the mailed letter: `letterText` leaves it out. */
+export function approvalLine(l: Letter): string[] {
+  const log = l.log ?? [];
+  const approver = l.approver || BOARD;
+  const saved = log.find((e) => /^draft saved/i.test(e.title));
+  const drafted = saved
+    ? `Drafted by jason${saved.by ? ` for ${saved.by}` : ""}${saved.date ? `, ${saved.date}` : ""}`
+    : "jason drafts; not yet saved";
+  const done = l.stage === "approved" || l.stage === "sent";
+  const entry = done ? [...log].reverse().find((e) => APPROVAL.test(e.title)) : undefined;
+  let approved = `Not yet approved (approver: ${approver})`;
+  if (done && approver === BOARD) {
+    const day = l.meeting || entry?.title.match(MEETING)?.[1] || "";
+    approved = `Approved by the board${day ? ` at its meeting of ${day}` : " at a meeting"}${entry?.by ? `, recorded by ${entry.by}` : ""}`;
+  } else if (done) {
+    approved = `Approved${entry?.by ? ` by ${entry.by} as ${approver}` : ` by ${approver}`}${entry?.date ? `, ${entry.date}` : ""}`;
+  }
+  const reply = l.replyTo?.trim();
+  return [drafted, approved, "jason is automated; the officers sign, jason never does.", reply ? `${REPLIES}: ${reply}` : REPLIES];
+}
+
+function ApprovalLine({ letter }: { letter: Letter }) {
+  return (
+    <p className="draft-letter-approval">
+      {approvalLine(letter).join(" · ")}
+      {!letter.replyTo?.trim() && <> <em className="muted">{REPLIES_MISSING}</em></>}
+    </p>
+  );
 }
 
 export interface StageBody { by: string; note?: string; meeting?: string; sentRef?: string }
@@ -41,7 +82,7 @@ function CopyText({ letter }: { letter: Letter }) {
  * `Confirm`, recorded under the person's name (`me`). Approve shows only for a person who may approve for the letter's
  * `approver`; "the board" approves by a vote at a meeting (CIV 4910) that the president or secretary records with
  * the meeting's date. The approved stage shows the terminal command; nothing here sends. `readonly` is the owner's
- * view: the document only. */
+ * view: the document only. Every stage, readonly too, ends with the approval line (`approvalLine`). */
 export function DraftLetter({ letter, readonly = false, me = "", people = [], onStage, busy }: {
   letter: Letter; readonly?: boolean; me?: string; people?: readonly Person[];
   onStage?: (action: StageAction, body: StageBody) => Promise<void> | void; busy?: boolean;
@@ -137,6 +178,12 @@ export function DraftLetter({ letter, readonly = false, me = "", people = [], on
             <label className="draft-letter-field draft-letter-note">Note for the trail (optional)<input value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note for the trail" /></label>
           )}
           {events.length > 0 && <Timeline events={events} />}
+          <ApprovalLine letter={letter} />
+        </footer>
+      )}
+      {readonly && (
+        <footer className="draft-letter-foot">
+          <ApprovalLine letter={letter} />
         </footer>
       )}
     </article>

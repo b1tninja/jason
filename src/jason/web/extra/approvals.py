@@ -36,6 +36,26 @@ def _people() -> list[dict[str, Any]]:
     return list(people.values())
 
 
+def _reply_to() -> str:
+    """Where replies to the association's letters go: its designated recipient and address for official
+    communications (CIV 4035, disclosed in the annual policy statement, 5310(a)(1)), with its official email, from the
+    profile's ``Identity`` (the onboarding item ``official-address``). "" when the profile has not set them."""
+    from jason.community import community
+
+    identity = community().identity()
+    address = identity.official_address
+    if not address:
+        return ""                                      # no official address on file: the page says so, never guesses
+    who = f"{identity.designated_recipient}, {address}" if identity.designated_recipient else address
+    return f"{who}; {identity.official_email}" if identity.official_email else who
+
+
+def _with_reply(letter: dict[str, Any], reply: str) -> dict[str, Any]:
+    """The letter with ``replyTo`` for its approval line; a letter's own ``replyTo`` wins. Never written to the store."""
+    found = str(letter.get("replyTo") or "") or reply
+    return {**letter, "replyTo": found} if found else letter
+
+
 def approvals(args: Args) -> dict[str, Any]:
     """Every letter with its stage and trail, grouped; the people who may approve; or, with ``key``, one letter in full."""
     from jason.mcp.county import _data_dir
@@ -48,8 +68,10 @@ def approvals(args: Args) -> dict[str, Any]:
             letter = store.get(root, key)
         except KeyError:
             return {"found": False, "note": f"no letter at {key}", "key": key}
-        return {"found": True, "letter": letter, "people": _people(), "stages": list(store.STAGES), "caveats": list(CAVEATS)}
-    letters = store.all(root)
+        return {"found": True, "letter": _with_reply(letter, _reply_to()), "people": _people(), "stages": list(store.STAGES),
+                "caveats": list(CAVEATS)}
+    reply = _reply_to()
+    letters = [_with_reply(letter, reply) for letter in store.all(root)]
     groups: dict[str, list[str]] = {g: [] for g in GROUPS}
     for letter in letters:
         groups["drafts" if letter["stage"] in ("draft", "saved") else letter["stage"]].append(letter["key"])
@@ -75,10 +97,11 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(text, dict):
             raise ValueError("draft carries the text in letter")
         key = key.strip() if key.strip() not in ("", "-", "new") else str(text.get("key", "")).strip()
-        return store.draft(root, key, text, by=by, note=note)
+        return _with_reply(store.draft(root, key, text, by=by, note=note), _reply_to())
     if action not in store.TRANSITIONS:
         raise ValueError(f"action is draft or one of {', '.join(store.TRANSITIONS)}")
-    return store.step(root, key, action, by=by, note=note, meeting=body.get("meeting"), sent_ref=str(body.get("sentRef", "") or ""))
+    letter = store.step(root, key, action, by=by, note=note, meeting=body.get("meeting"), sent_ref=str(body.get("sentRef", "") or ""))
+    return _with_reply(letter, _reply_to())
 
 
 __all__ = ["CAVEATS", "GROUPS", "approvals", "write"]

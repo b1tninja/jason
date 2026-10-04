@@ -6,7 +6,7 @@ The model behind this screen is [approval-workflow.md](../approval-workflow.md):
 
 ## In the console
 
-**Approvals** (`#/approvals`, `ConsoleApprovals`) is built for **letters**: every letter jason drafted, grouped requested, approved, sent, and drafts (`ApprovalsInbox`), the selected one opened below as a `DraftLetter`, and the nav count of letters awaiting an approver. A board approval there is the vote recorded by the president or the secretary with the meeting's date.
+**Approvals** (`#/approvals`, `ConsoleApprovals`) is built for **letters**: every letter jason drafted, grouped by whose turn it is (`ApprovalsInbox`): with someone signed in, "Waiting on you" first (the letters awaiting a personal approver's approval that person may approve, or "Nothing is waiting on you."), then "Waiting on others" (each naming its approver), "Waiting on the board's vote" (every letter whose approver is the board, for everyone: a vote at a meeting (CIV 4910) on an item on the posted agenda (CIV 4930), which the president or the secretary records afterwards with the meeting's date), "Approved, not sent", and "Sent"; with no one signed in, "Awaiting approval", "Approved, not sent", and "Sent". The selected one opens below as a `DraftLetter`, and the nav counts the letters awaiting an approver. A board approval there is the vote recorded by the president or the secretary with the meeting's date.
 
 **What this spec adds:** the engine's **plans of writes** in the same inbox (`PlanApprovals`), and the review of one of them (`PlanReview`). The routes are `jason.web.approvals` ([web-ui.md](../../web-ui.md#approvals)) and the components are being added ([components.md](../components.md#approval)). The letters' part is unchanged.
 

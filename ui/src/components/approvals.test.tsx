@@ -106,20 +106,44 @@ describe("DraftLetter", () => {
 });
 
 describe("ApprovalsInbox", () => {
-  const letters: Letter[] = [base, vendor, { ...vendor, key: "Drive/Finance/approved.docx", title: "Approved one", stage: "approved" }, { ...vendor, key: "Drive/Finance/sent.docx", title: "Sent one", stage: "sent", sentRef: "mailroom 1", sentOn: "2026-10-01" }];
+  const president: Letter = { ...vendor, key: "Drive/Contracts/renewal.docx", kind: "Contract renewal", title: "Renewal of the gate contract", approver: "the president" };
+  const letters: Letter[] = [base, vendor, president, { ...vendor, key: "Drive/Finance/approved.docx", title: "Approved one", stage: "approved" }, { ...vendor, key: "Drive/Finance/sent.docx", title: "Sent one", stage: "sent", sentRef: "mailroom 1", sentOn: "2026-10-01" }];
+  const BOARD_LINE = "A vote at a meeting (CIV 4910); the president or the secretary records it with the meeting's date.";
 
-  it("groups by stage", () => {
+  it("groups by stage when no one is signed in", () => {
     const groups = groupLetters(letters);
-    expect(groups.map((g) => [g.id, g.items.length])).toEqual([["requested", 2], ["approved", 1], ["sent", 1]]);
+    expect(groups.map((g) => [g.id, g.label, g.items.length])).toEqual([["requested", "Awaiting approval", 3], ["approved", "Approved, not sent", 1], ["sent", "Sent", 1]]);
   });
 
-  it("shows each group with the actions the signed-in person may take", async () => {
+  it("groups by whose turn it is, the signed-in person's first, and the board's letters apart for everyone", () => {
+    expect(groupLetters(letters, "Ilse Varnholt", people).map((g) => [g.id, g.label, g.items.map((l) => l.key)])).toEqual([
+      ["mine", "Waiting on you", [vendor.key]], ["others", "Waiting on others", [president.key]], ["board", "Waiting on the board's vote", [base.key]],
+      ["approved", "Approved, not sent", ["Drive/Finance/approved.docx"]], ["sent", "Sent", ["Drive/Finance/sent.docx"]],
+    ]);
+    // The president may record a board vote, but the board's letter is still not the president's turn.
+    expect(groupLetters(letters, "Quill Ashgrove", people).slice(0, 3).map((g) => g.items.map((l) => l.key))).toEqual([[president.key], [vendor.key], [base.key]]);
+  });
+
+  it("puts the letters a signed-in person may approve first, then those waiting on others, then the board's", async () => {
     const onAction = vi.fn();
-    render(<ApprovalsInbox letters={letters} me="Ilse Varnholt" people={people} onAction={onAction} />);
-    const waiting = screen.getByRole("region", { name: "Awaiting approval" });
-    expect(within(waiting).getAllByRole("article")).toHaveLength(2);
-    expect(within(waiting).getByText("Needs a board vote at a meeting (CIV 4910)")).toBeInTheDocument();
+    const { container } = render(<ApprovalsInbox letters={letters} me="Ilse Varnholt" people={people} onAction={onAction} />);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Waiting on you", "Waiting on others", "Waiting on the board's vote", "Approved, not sent", "Sent"]);
+    expect(screen.queryByRole("region", { name: "Awaiting approval" })).not.toBeInTheDocument();
+    expect(container.querySelector(".stat")).toHaveTextContent("1Waiting on you3 awaiting approval in all");
+    const waiting = screen.getByRole("region", { name: "Waiting on you" });
+    expect(within(waiting).getAllByRole("article")).toHaveLength(1);
+    expect(within(waiting).getByText(/approver: the treasurer/)).toBeInTheDocument();
     expect(within(waiting).getAllByRole("button", { name: "Approve" })).toHaveLength(1);
+    const others = screen.getByRole("region", { name: "Waiting on others" });
+    expect(within(others).getAllByRole("article")).toHaveLength(1);
+    expect(within(others).getByText(/approver: the president/)).toBeInTheDocument();
+    expect(within(others).getByText("Only the president can approve")).toBeInTheDocument();
+    expect(within(others).queryByRole("button", { name: /Approve|Send back/ })).not.toBeInTheDocument();
+    const board = screen.getByRole("region", { name: "Waiting on the board's vote" });
+    expect(within(board).getAllByRole("article")).toHaveLength(1);
+    expect(within(board).getByText(/approver: the board/)).toBeInTheDocument();
+    expect(within(board).getByText(BOARD_LINE)).toBeInTheDocument();
+    expect(within(board).queryByRole("button", { name: /Approve|Record board approval|Send back/ })).not.toBeInTheDocument();
     const approved = screen.getByRole("region", { name: "Approved, not sent" });
     expect(within(approved).getByText("jason letter vendor-inquiry --yes")).toBeInTheDocument();
     expect(within(approved).queryByRole("button", { name: /Send/ })).not.toBeInTheDocument();
@@ -132,11 +156,49 @@ describe("ApprovalsInbox", () => {
     expect(onAction).toHaveBeenCalledWith(vendor.key, "send_back", { by: "Ilse Varnholt" });
   });
 
-  it("lets the secretary record a board vote with the meeting date", async () => {
+  it("says in words when nothing is waiting on the signed-in person", () => {
+    const { container } = render(<ApprovalsInbox letters={letters} me="Pell Marchbanks" people={people} onAction={vi.fn()} />);
+    const mine = screen.getByRole("region", { name: "Waiting on you" });
+    expect(within(mine).queryByRole("article")).not.toBeInTheDocument();
+    expect(within(mine).getByText("Nothing is waiting on you.")).toBeInTheDocument();
+    const others = screen.getByRole("region", { name: "Waiting on others" });
+    expect(within(others).getAllByRole("article")).toHaveLength(2);
+    expect(within(others).getByText("Only the treasurer can approve")).toBeInTheDocument();
+    expect(within(others).queryByRole("button", { name: /Approve|Send back/ })).not.toBeInTheDocument();
+    const board = screen.getByRole("region", { name: "Waiting on the board's vote" });
+    expect(within(board).getAllByRole("article")).toHaveLength(1);
+    expect(within(board).queryByRole("button", { name: /Record board approval|Send back/ })).not.toBeInTheDocument();
+    expect(container.querySelector(".stat")).toHaveTextContent("0Waiting on you3 awaiting approval in all");
+  });
+
+  it("says in words when nothing is waiting on a board vote", () => {
+    render(<ApprovalsInbox letters={[vendor]} me="Ilse Varnholt" people={people} onAction={vi.fn()} />);
+    const board = screen.getByRole("region", { name: "Waiting on the board's vote" });
+    expect(within(board).queryByRole("article")).not.toBeInTheDocument();
+    expect(within(board).getByText("Nothing is waiting on a board vote.")).toBeInTheDocument();
+  });
+
+  it("keeps the stage grouping, with no group of yours, when no one is signed in", () => {
+    const { container } = render(<ApprovalsInbox letters={letters} me="" people={people} onAction={vi.fn()} />);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Awaiting approval", "Approved, not sent", "Sent"]);
+    expect(screen.queryByText(/Waiting on/)).not.toBeInTheDocument();
+    const waiting = screen.getByRole("region", { name: "Awaiting approval" });
+    expect(within(waiting).getAllByRole("article")).toHaveLength(3);
+    expect(within(waiting).getByText("Only the treasurer can approve")).toBeInTheDocument();
+    expect(within(waiting).getByText("Needs a board vote at a meeting (CIV 4910)")).toBeInTheDocument();
+    expect(within(waiting).queryByRole("button", { name: /Approve|Send back|Record board approval/ })).not.toBeInTheDocument();
+    expect(container.querySelector(".stat")).toHaveTextContent("3Awaiting approval");
+  });
+
+  it("puts a board letter under the board's vote, not the secretary's turn, and lets the secretary record the vote with the meeting date", async () => {
     const onAction = vi.fn();
     render(<ApprovalsInbox letters={[base]} me="Odo Fennimore" people={people} onAction={onAction} />);
+    expect(within(screen.getByRole("region", { name: "Waiting on you" })).getByText("Nothing is waiting on you.")).toBeInTheDocument();
+    const board = screen.getByRole("region", { name: "Waiting on the board's vote" });
+    expect(within(board).getAllByRole("article")).toHaveLength(1);
+    expect(within(board).getByText(BOARD_LINE)).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Record board approval" }));
+    await user.click(within(board).getByRole("button", { name: "Record board approval" }));
     expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("CIV 4910");
     await user.type(screen.getByLabelText("Meeting date"), "2026-10-20");
     await user.click(screen.getByRole("button", { name: "Yes, do it" }));

@@ -201,6 +201,8 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .draft-letter-body p { margin: 0; line-height: 1.6; text-wrap: pretty; } .draft-letter-signoff { margin-top: 6px !important; }
 .draft-letter-foot { display: grid; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--line); font-size: 14px; }
 .draft-letter-foot .confirm { flex: 1 1 100%; }
+.draft-letter-approval { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.draft-letter-approval:not(:first-child) { padding-top: 10px; border-top: 1px dashed var(--line); }
 .draft-letter-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .draft-letter-field input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; max-width: 28rem; }
 .draft-letter-note { max-width: 40rem; }

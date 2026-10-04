@@ -29,6 +29,7 @@ It plans every write to PayHOA, Google, and the mail as a dry run. The console p
 | [personas-and-jobs.md](personas-and-jobs.md) | Who uses the console, the jobs each does, and what each must never see or do |
 | [journeys.md](journeys.md) | Six walks across the screens, step by step |
 | [content/style.md](content/style.md), [content/patterns.md](content/patterns.md) | The words on screen, and the interaction patterns |
+| [redesign-review.md](redesign-review.md) | The design project's twelve redesign "rethinks", each kept, corrected, or held against the law, the roster, and the approvals engine, and the order to build them |
 | [mvp.md](mvp.md) | What is built, the first build from here with its acceptance criteria, moving `--yes` onto approvals, the prototype library, and the open decisions |
 
 ## Principles
