@@ -107,6 +107,7 @@
     "../docs/response-standards-design.md",
     "../docs/policy-catalog-design.md",
     "../docs/console/doc-component.md",
-    "../docs/console/redesign-review.md"
+    "../docs/console/redesign-review.md",
+    "../docs/console/handoff-reconciliation.md"
   ]
 }
