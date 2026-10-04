@@ -300,8 +300,8 @@ These were found while writing this page. Each is a lead for the build order bel
 
 | Gap | Risk | Fix |
 |---|---|---|
-| `/api/file?path=` serves any whitelisted file under `data/` | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Move every caller (Embed's local refs, KeyDocuments, packets) to the document service; then limit `/api/file` to public assets or remove it |
-| `/api/library?confidential=1` | Lists confidential rows to anyone on the loopback | Honor the flag only in the private view (P3) |
+| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only in the private view with a reason, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Still open: moving the callers (Embed's local refs, KeyDocuments, packets) to the document service |
+| ~~`/api/library?confidential=1`~~ **Closed** | Lists confidential rows to anyone on the loopback | Done: the confidential rows are held back (`heldBack: n`) unless the private view (P3, with a reason) is allowed; `/api/embeds?confidential=1` too |
 | `Embed` frames any ref | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | See [The Embed component](#the-embed-component) |
 | `MeetingStage` packet frames | A bare iframe, no fallback, no sandbox | Packet files open in `DocumentViewer`, or follow Embed's rules |
 | Registers carry no Sheet link | A person can't reach the source | Return the spreadsheet's `webViewLink` with the snapshot |

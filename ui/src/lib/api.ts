@@ -82,6 +82,14 @@ export function signInLinks(setup: SignInSetup | undefined, hash: string): { lab
   }));
 }
 
+/** A refusal that asks for a sign-in (401 from `jason.web.access`): the server's sentence and where "Sign in with Google"
+ * goes, back to `hash` (the console route) after. `null` for any other error. */
+export function signInRefusal(e: unknown, hash = typeof window !== "undefined" ? window.location.hash : ""): { message: string; href: string } | null {
+  if (!(e instanceof ApiError) || e.status !== 401) return null;
+  const start = (e.body as { signIn?: unknown } | null)?.signIn;
+  return { message: e.message, href: signInHref({ start: typeof start === "string" && start.startsWith("/") ? start : undefined }, hash) };
+}
+
 /** Sign out (a guarded POST); the cached session is dropped so the next read says who is signed in. */
 export async function signOut(setup?: SignInSetup): Promise<void> {
   await postJson(setup?.signOut || "/auth/signout", {});

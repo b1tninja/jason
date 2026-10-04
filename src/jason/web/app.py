@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, make_response, request, send_from_directory
 
-from jason.web import guard, signin
+from jason.web import access, guard, signin
 from jason.web.approvals import LiveFactory, blueprint as approvals_routes, default_live
 from jason.web.sources import confirm_owner_info_write, default_loaders, extra_writer, set_board_item, write_canvas, write_decision, write_hearing_decision, write_request
 
@@ -45,6 +45,7 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     app = Flask(__name__, static_folder=None)
     token = guard.install(app, hosts=hosts)
     signin.install(app, sign_in or signin.default_sign_in())
+    access.install(app, sources)            # confidential listings held back unless the private view is allowed
     app.config["JASON_ALLOW_APPLY"] = bool(allow_apply and approvals_live is not None)
     app.register_blueprint(approvals_routes(live=approvals_live, allow_apply=allow_apply, writes=approvals_writes))
 
@@ -151,11 +152,14 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
 
     @app.get("/api/file")
     def local_file():
-        """A photo or document under data/, read-only, for a canvas to show. Only files under data/ and only these types."""
+        """A photo or document under data/, read-only, for a canvas to show. Only files under data/ and only these types,
+        only to a signed-in roster person whose offices open the file's level (``jason.web.access``); P3 only with
+        ``private=1&reason=...``. Each file served is logged in access/served.jsonl."""
         from flask import abort, send_file
 
         from jason.mcp.county import _data_dir
 
+        viewer = access.signed_in()
         root = _data_dir(None).resolve()
         rel = request.args.get("path", "")
         target = (root / rel).resolve()
@@ -167,8 +171,14 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         mime = kinds.get(target.suffix.lower())
         if mime is None:
             abort(404)
+        level = access.level_of_path(rel, root)
+        private, reason = request.args.get("private", "").lower() in ("1", "true", "yes"), request.args.get("reason", "")
+        access.allow(viewer, level, private=private, reason=reason)
+        access.log_or_refuse(viewer, level, path=target.relative_to(root).as_posix(), private=private, reason=reason)
         resp = send_file(target, mimetype=mime, conditional=True)
         resp.headers["Content-Security-Policy"] = "sandbox"  # a served SVG or PDF runs no script against the app
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["X-Content-Type-Options"] = "nosniff"
         return resp
 
     @app.get("/api/health")

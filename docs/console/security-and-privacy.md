@@ -77,11 +77,12 @@ Without `--dev`, being an admin gives no view-as.
 
 **A portfolio in one console: not yet.** One jason-web serves one community (the active profile). A manager with several communities runs a jason-web for each until jason serves more than one profile at once ([mvp.md](mvp.md#open-decisions), decision 14).
 
-Without sign-in set up, or with no one signed in and sign-in not required, the console behaves as before (below).
+Without sign-in set up, or with no one signed in and sign-in not required, the console behaves as before (below), except that no file or document opens (Roles, file and document access).
 
 ### Without sign-in: a named person, not a login
 
 - **"Signed in as" is a sample picker** over the profile's officers (`Community.officers()`, the names from the private facts). The pick is kept in the browser's `localStorage` (`jason-console-user`), a name only. It grants nothing.
+- **A picked name opens nothing.** Files, documents, and the evidence's live reads need a Google sign-in (Roles, below).
 - **The server checks what it can.** A letter's approval is refused unless `by` is an officer whose `approves` names the letter's approver; for the board, the president or the secretary, with the meeting's date (`tasks.approvals`). Every write requires `by`.
 - **An engine approval checks names against each other, not against the officers.** The engine refuses an empty name, and refuses a second person who is the first signer or the requester (casefold, trimmed). It does not yet refuse a name that is not an officer; whether the console's door should is an open decision ([mvp.md](mvp.md#open-decisions)).
 - **The second person's name starts empty** in `SecondConfirm`. Retyping is the point of that step, which falls under WCAG 3.3.7's security exception. The first signer's name is pre-filled from "Signed in as".
@@ -103,6 +104,24 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
 **Built.** The roster is `Community.officers()`: each `Officer` has an `OfficerRole` (president, vice president, secretary, treasurer, director, manager) and `approves` (what that person may approve on their own, such as "the treasurer" or "a fluent reviewer"). "The board" is never a person's approval: it is a vote at a meeting that the president or the secretary records (`Officer.can_approve`).
 
 **The Board / Owner view is a view, not a permission.** The owner view (`?view=owner`) shows the read-only screens an owner would see, with a banner. Anyone at the machine can switch back. It decides what a screen shows, never who may see it.
+
+**Built: file and document access.** Opening a file or a document from the console needs a signed-in roster person, and their offices' data levels (`jason.web.access`, enforced on the server):
+
+| Who | Opens | In the private view, for a stated reason |
+|---|---|---|
+| anyone on the roster (an officer, a manager, an admin) | P0, P1 | — |
+| manager, president, vice president, director, secretary | P2 | P3 |
+| treasurer | P2 | — |
+
+- **The rows.** They are `SEE_RULES`, one an office. A person holding several offices gets the union. An admin with no office or manager role holds only the roster row: no P2, no P3. P4 is never served.
+- **Viewing as.** An admin viewing the console as someone (`--dev`) is judged as that someone; the log names both.
+- **What a file is.** `level_of_path` places a path under `data/` by rule rows, first match, and by the stores' own flags: a library file by library.db's `confidential` (any copy with the same digest counts), a Zoom meeting's files by the index's `confidential` or its kind (executive session, hearing), any path the Drive holdings mark confidential. `spec/`, `cases/`, `legal/`, and `access/` are P3; a request's files, form responses, Gmail files, mail scans, and Mailroom are P2; photos, drafts, and minutes P1; the law, the reader, the site's documents, the governing documents, and PayHOA's documents P0. **A path no row places is P2**: closed, never open.
+- **The routes.**
+  - `GET /api/file` answers 401 with no one signed in, and 401 when sign-in is not set up on this jason-web: fail closed. It answers 403 with the reason when the level is not the person's. P3 needs `private=1&reason=...`, and the reason is logged.
+  - A fetch gets JSON with `signIn`; a page load gets a small page with the sentence and "Sign in with Google".
+  - `GET /api/library?confidential=1` (and `/api/embeds?confidential=1`) holds the confidential rows back unless the private view is allowed, with `heldBack: n`.
+  - The evidence routes (`POST /api/evidence/view`, `/refresh`, `/refresh-all`, and a view's link) take the name from the sign-in, never the body. A view's link is bound to the sign-in that opened it.
+- **Each serve is logged** in `access/served.jsonl` (below), before the bytes go out.
 
 **Proposed.** Screen-level access by role, enforced on the server at each loader and write (hiding a button is not a check):
 
@@ -170,7 +189,8 @@ Everything is under the profile's data folder (`jason.config.data_dir`), private
 | `approvals/apr-*.evidence.json` | The plan's snapshot of each record it read live: a request's status and answers as read ([approval-workflow.md](approval-workflow.md#evidence-you-can-open)) | P2, as the PayHOA catalog is. Contact details and answers flagged P2 are masked by the server before they leave it (`jason.approvals.evidence`) |
 | `approvals/audit.jsonl` | The approvals audit log | P1 at most |
 | `evidence/refreshes.jsonl` | One line for each live re-read of a piece of evidence: when, who, which address, the system, and whether it worked | P1; never the answers |
-| `evidence/views.jsonl` | One line for each document a person opened unmasked from an evidence panel (`POST /api/evidence/view`): `at`, `by`, `address`, `document`, `kind`. The view itself shows the submission or file whole, contact details included, to that named person only; it is never automatic, sits behind the write guard and the token header, and is refused while an admin views as someone else. A file is served by a ten-minute link held in memory (`GET /api/evidence/document/<token>`), path-checked, `nosniff`, `no-store`, sandboxed, and an HTML, SVG, or XML file only as an attachment ([approval-workflow.md](approval-workflow.md#evidence-you-can-open)) | P1; never the contents |
+| `evidence/views.jsonl` | One line for each document a person opened unmasked from an evidence panel (`POST /api/evidence/view`): `at`, `by`, `address`, `document`, `kind`. The view itself shows the submission or file whole, contact details included, to the signed-in person only (the body's name is never used, and the link is bound to that sign-in); it is never automatic, sits behind the write guard and the token header, and is refused while an admin views as someone else. A file is served by a ten-minute link held in memory (`GET /api/evidence/document/<token>`), path-checked, `nosniff`, `no-store`, sandboxed, and an HTML, SVG, or XML file only as an attachment ([approval-workflow.md](approval-workflow.md#evidence-you-can-open)) | P1; never the contents |
+| `access/served.jsonl` | One line for each file `/api/file` served, each document opened unmasked from an evidence panel, and each confidential listing shown (`jason.web.access`): `at`, `by` (who signed in), `as` (whom an admin viewed as), `path` or `address`, `level`, `private`, and the stated `reason`. Written before the bytes go out; a log that cannot be written serves nothing | P1; never the contents |
 | `approvals/letters.json` | The letters jason drafted, their stages and trail | The letter's own level: a notice to members is P1; a letter to one owner names that owner |
 | `board/decisions.json`, `meetings/plan-<date>.json`, `meetings/room-<date>.json` | The board's decisions, a meeting's plan, the room's record | P1; executive-session items by general nature only |
 | `console/reveals.jsonl` | Each time a person showed owners' names on the instrument graph: when, who, the scope, the parcel or unit, how many persons were named; never the names | P1 at most |

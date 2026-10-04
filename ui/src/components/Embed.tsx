@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { getJson, signInRefusal } from "../lib/api";
+import { useAccount } from "../lib/session";
 
 export type EmbedKind =
   | "doc" | "sheet" | "slides" | "form" | "drive" | "image" | "pdf" | "url"
@@ -135,19 +137,56 @@ export function Frame({ src, title, height, timeoutMs = 4000, onRefused }: { src
   return <iframe src={src} title={title} height={height} loading="lazy" allow="fullscreen" onLoad={() => { loaded.current = true; }} onError={() => refused.current()} />;
 }
 
+/** A card standing in for a file jason-web did not serve: the reason in the server's words, and "Sign in with Google"
+ * when a sign-in is what it needs. */
+function FileCard({ title, text, signIn }: { title: string; text: string; signIn?: string }) {
+  return (
+    <div className="embed-link embed-file-card">
+      <div className="embed-link-title">{title}</div>
+      <p className="embed-link-note">{text}{signIn && <> <a href={signIn}>Sign in with Google</a></>}</p>
+    </div>
+  );
+}
+
+/** Whether a ref is a file under data/ that jason-web serves (`/api/file`), which needs a signed-in person. */
+function isServedFile(a: Attachment): boolean {
+  return (a.kind === "image" || a.kind === "pdf" || a.kind === "audio") && !isWebRef(a.ref);
+}
+
 /** A Google Doc, Sheet, Slides deck, Form, Drive file, calendar, Zoom recording, map, or Sheets chart in a frame; a photo as an
  * image; audio in the browser's player; a PDF in the browser's viewer; a Gmail thread as a link card.
  * The viewer must already have access to the Google file: the frame shows Google's own sign-in otherwise.
- * A frame that never loads (within `timeoutMs`) is swapped for a link card. */
+ * A frame that never loads (within `timeoutMs`) is swapped for a link card.
+ * A file under data/ (`/api/file`) opens only for a person signed in with Google whose offices open it
+ * (`jason.web.access`): with no one signed in it is a card with "Sign in with Google", and an image or audio the server
+ * refuses (an `<img>` cannot read the status) is asked once more as JSON for the reason, shown on a card. */
 export function Embed({ a, height = 480, timeoutMs = 4000 }: { a: Attachment; height?: number; timeoutMs?: number }) {
   const { frame, open } = embedUrls(a);
   const title = a.title || `${a.kind}: ${a.ref}`;
   const [refused, setRefused] = useState(false);
-  useEffect(() => { setRefused(false); }, [frame]);
+  const served = isServedFile(a);
+  const account = useAccount(served);
+  const [notServed, setNotServed] = useState<{ text: string; signIn?: string } | null>(null);
+  useEffect(() => { setRefused(false); setNotServed(null); }, [frame]);
+  const why = async () => {
+    try {
+      await getJson<unknown>(frame);
+      setNotServed({ text: "The browser could not show this file." });
+    } catch (e: unknown) {
+      const asked = signInRefusal(e);
+      setNotServed(asked ? { text: asked.message, signIn: asked.href } : { text: e instanceof Error ? e.message : String(e) });
+    }
+  };
 
   let body;
-  if (a.kind === "image") body = <img src={frame} alt={title} loading="lazy" />;
-  else if (a.kind === "audio") body = <audio controls src={frame} title={title} />;
+  if (served && !account.known) body = <FileCard title={title} text="Checking your sign-in…" />;
+  else if (served && !account.account) {
+    body = account.configured
+      ? <FileCard title={title} text="Sign in with Google to see this file." signIn={account.href} />
+      : <FileCard title={title} text="Console sign-in isn't set up on this jason-web; files under data/ open only for a signed-in person." />;
+  } else if (served && notServed) body = <FileCard title={title} text={notServed.text} signIn={notServed.signIn} />;
+  else if (a.kind === "image") body = <img src={frame} alt={title} loading="lazy" onError={served ? () => void why() : undefined} />;
+  else if (a.kind === "audio") body = <audio controls src={frame} title={title} onError={served ? () => void why() : undefined} />;
   else if (LINK_ONLY.has(a.kind)) body = <LinkCard title={title} open={open} openLabel="open in Gmail" />;
   else if (refused) body = <LinkCard title={title} open={open} note="This page does not allow embedding." />;
   else body = <Frame src={frame} title={title} height={height} timeoutMs={timeoutMs} onRefused={() => setRefused(true)} />;

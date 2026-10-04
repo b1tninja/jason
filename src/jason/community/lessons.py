@@ -862,6 +862,18 @@ LESSONS: tuple[Lesson, ...] = (
            "twice in one class or module across src/jason and the profile. Before adding a Community method, grep "
            "for the name.",
            Status.FIXED, guards=("tests/test_no_shadowed_names.py",)),
+    Lesson("file-route-ungated", date(2026, 10, 3), (Area.DOCUMENTS,),
+           "The console's GET /api/file served any whitelisted file under data/ to anyone on the loopback, with no "
+           "level check, no name, and no log; /api/library?confidential=1 listed confidential rows to anyone; and the "
+           "evidence views took the name in the body, a pick from a list, as who opened a document unmasked.",
+           "The routes were built for a canvas's photos before sign-in existed, and the data levels were written down "
+           "(security-and-privacy.md) but not enforced: a level in a doc is not a check.",
+           "Files and documents open only for a signed-in roster person whose offices open the level, by rule rows "
+           "(SEE_RULES, PATH_RULES; a path no row places is P2); P3 only in the private view with a reason; each serve "
+           "is logged in access/served.jsonl; a view's name is the sign-in's and its link is bound to that sign-in.",
+           Status.FIXED, guards=("jason.web.access (require, level_of_path, SEE_RULES, PATH_RULES)",
+                                 "tests/test_web_access.py"),
+           docs=("docs/console/security-and-privacy.md (Roles)", "docs/console/documents.md (Gaps to close)")),
     Lesson("ui-tests-on-the-wrong-shape", OCT_2026, (Area.GOVERNING,),
            "The Approvals screen failed on the first real plan (\"items.filter is not a function\"): its tests fed the "
            "list the full approval, while GET /api/approvals sends a summary row whose items is a count.",

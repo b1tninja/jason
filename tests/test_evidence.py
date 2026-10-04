@@ -22,9 +22,24 @@ from jason.approvals import engine, evidence, model, store
 from jason.approvals.evidence import CAVEAT, DOT, EvidenceKind, mask_field, resolve, rule_for
 from jason.tasks import submission_cache
 from test_approvals import (FIXTURES, FORMS, _approve_partly, _validator, village)  # noqa: F401 - fixtures
-from test_web_approvals import web  # noqa: F401 - fixture
 
 MASK = DOT * 4
+
+
+@pytest.fixture
+def web(village, monkeypatch):
+    """The approvals app over Example Village (test_web_approvals' ``web``), with Google sign-in set up over a made-up
+    roster and A Manager signed in: the evidence's live reads and documents need a signed-in person
+    (``jason.web.access``)."""
+    from jason.web.app import create_app
+    from test_web_approvals import _dist, _factory
+
+    monkeypatch.setattr("jason.mcp.county._data_dir", lambda d: village.data_dir / "letters")
+    factory = _factory(village.live)
+    app = create_app(_dist(village.data_dir), None, approvals_live=factory, sign_in=webclient.roster_sign_in())
+    village.factory, village.app = factory, app
+    village.c = webclient.sign_in(webclient.client(app), "A Manager")
+    return village
 
 
 def _plan(village):
@@ -541,15 +556,18 @@ def test_the_refresh_route_is_a_guarded_write_that_reads_payhoa_once(web, monkey
     assert "Owner-occupied" not in json.dumps(r.json)                                  # masked on the way out
     citation = web.c.post(url, json={"address": "CIV 4041", "by": "A Manager"})
     assert citation.status_code == 400 and "no live refresher" in citation.json["error"]
-    assert web.c.post(url, json={**body, "by": ""}).status_code == 400
+    unnamed = web.c.post(url, json={**body, "by": ""})                                  # the signed-in name, always
+    assert unnamed.status_code == 200 and unnamed.json["refreshed"]["by"] == "A Manager"
+    assert webclient.client(web.app).post(url, json=body).status_code == 401             # a picked name is not enough
 
     @contextmanager
     def no_keeper(kind):
         raise KeeperAuthRequired("device approval needed")
         yield  # pragma: no cover
 
-    locked_out = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=no_keeper))
-    r = locked_out.post(url, json=body)
+    locked_out = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=no_keeper,
+                                             sign_in=webclient.roster_sign_in()))
+    r = webclient.sign_in(locked_out).post(url, json=body)
     assert r.status_code == 409 and "run `jason login` in a terminal" in r.json["error"]
     off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None))
     assert off.post(url, json=body).status_code == 405
@@ -693,7 +711,7 @@ def test_the_refresh_all_route_is_a_guarded_write_on_one_sign_in(web, monkeypatc
     assert r.json["failed"][0]["address"] == "payhoa:submission:503" and "ana@example.com" not in json.dumps(r.json)
     assert web.factory.calls == ["evidence-refresh"] and web.client.writes == [] and len(reads) == len(set(reads))
     assert "Owner-occupied" not in json.dumps(r.json)                                  # no answers come back
-    assert web.c.post(url, json={**body, "by": ""}).status_code == 400
+    assert webclient.client(web.app).post(url, json=body).status_code == 401             # a picked name is not enough
     missing = web.c.post(url, json={**body, "approval": "apr-none"})
     assert missing.status_code == 400 and "no approval apr-none" in missing.json["error"]
 
@@ -702,8 +720,9 @@ def test_the_refresh_all_route_is_a_guarded_write_on_one_sign_in(web, monkeypatc
         raise KeeperAuthRequired("device approval needed")
         yield  # pragma: no cover
 
-    locked_out = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=no_keeper))
-    r = locked_out.post(url, json=body)
+    locked_out = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=no_keeper,
+                                             sign_in=webclient.roster_sign_in()))
+    r = webclient.sign_in(locked_out).post(url, json=body)
     assert r.status_code == 409 and r.json["error"] == evidence.KEEPER_SIGN_IN
     off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None))
     assert off.post(url, json=body).status_code == 405
@@ -902,13 +921,15 @@ def test_viewing_a_submission_shows_it_unmasked_in_the_forms_order_and_logs_who(
     assert "ana@example.com" in json.dumps(r.json) and mask(r.json) != r.json              # the route did not mask it
     opened = web.c.get(f"/api/evidence?address={ADDRESS}")
     assert "ana@example.com" not in json.dumps(opened.json)                              # the evidence stays masked
-    # a person, the guard, and the token header
-    assert web.c.post(url, json={**body, "by": "  "}).status_code == 400
+    # a signed-in person, the guard, and the token header
+    assert webclient.client(web.app).post(url, json=body).status_code == 401              # a picked name is not enough
     assert web.c.post(url, json={**body, "document": ""}).status_code == 400
     assert web.app.test_client().post(url, json=body).status_code == 403                # no Origin, no token
     assert web.c.post(url, json=body, headers={"X-Jason-Token": ""}).status_code == 403  # the header, not the cookie
     assert web.c.get(url).status_code in (404, 405)
     assert len(_views(web.data_dir)) == 1                                                # refusals are not views
+    unnamed = web.c.post(url, json={**body, "by": "  "})                                # the signed-in name, always
+    assert unnamed.status_code == 200 and _views(web.data_dir)[-1]["by"] == "A Manager"
 
 
 def test_viewing_a_text_attachment_answers_its_words(web):
@@ -931,7 +952,8 @@ def test_viewing_a_pdf_makes_a_short_lived_link_that_serves_its_bytes(web):
     assert r.json["url"].startswith("/api/evidence/document/") and len(r.json["url"].rsplit("/", 1)[1]) == 32
     expires = datetime.fromisoformat(r.json["expires"])
     assert timedelta(minutes=9) < expires - datetime.now(timezone.utc) <= timedelta(minutes=10)
-    got = web.app.test_client().get(r.json["url"])                                       # an iframe: no token, no Origin
+    frame = webclient.sign_in(web.app.test_client())         # an iframe: the same sign-in's cookie, no token, no Origin
+    got = frame.get(r.json["url"])
     assert got.status_code == 200 and got.data == PDF
     assert got.headers["Content-Type"] == "application/pdf"
     assert got.headers["Content-Disposition"] == 'inline; filename="1002_plan.pdf"'
@@ -1003,10 +1025,12 @@ def test_a_link_out_of_the_folder_is_neither_listed_nor_served(web, tmp_path_fac
         assert r.status_code == 404
     # a link minted for a file that is (or becomes) outside its folder is not served
     grants: Grants = web.app.extensions["jason_evidence_grants"]
+    bind = "sub-a-manager"                                                               # A Manager's sign-in
     token, _ = grants.mint(address=ADDRESS, path=folder / ".." / ".." / ".." / ".." / outside.name, root=folder,
-                           kind="pdf", name="secret.pdf", by="A Manager")
+                           kind="pdf", name="secret.pdf", by="A Manager", bind=bind)
     assert web.c.get(f"/api/evidence/document/{token}").status_code == 404
-    token, _ = grants.mint(address=ADDRESS, path=outside, root=folder, kind="pdf", name="secret.pdf", by="A Manager")
+    token, _ = grants.mint(address=ADDRESS, path=outside, root=folder, kind="pdf", name="secret.pdf", by="A Manager",
+                           bind=bind)
     assert web.c.get(f"/api/evidence/document/{token}").status_code == 404
 
 

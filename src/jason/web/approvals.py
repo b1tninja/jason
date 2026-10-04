@@ -20,6 +20,10 @@
   is unmasked, logged in ``evidence/views.jsonl``, and behind the write guard and the token header. A submission or a
   text comes back whole; a pdf, an image, or another file as a link, ``GET /api/evidence/document/<token>``, that
   serves it from disk for ten minutes (``Grants``, in memory only), sandboxed, never sniffed, never cached.
+- **Sign-in for the evidence's live reads and documents.** A refresh, a refresh-all, a view, and a view's link need a
+  signed-in roster person whose offices open the level (``jason.web.access``: P2 for a request, P0 for a citation's
+  documents); the record names the signed-in account, never the body's ``by``. A view's link is bound to the sign-in
+  that opened it, and each view is logged in ``access/served.jsonl`` too.
 - **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>}``.
   Off unless jason-web was started with ``--allow-apply``. The engine re-plans and refuses (409) when anything
   changed, superseding the approval with a new one to review.
@@ -215,6 +219,8 @@ class Grant:
     name: str
     by: str
     expires: datetime
+    bind: str = ""              # the sign-in it was opened under (``access.Viewer.bind``); another sign-in gets 403
+    level: str = "P2"           # the document's data level (``access.Level``), judged again on each read
 
 
 class Grants:
@@ -228,9 +234,10 @@ class Grants:
         self._rows: dict[str, Grant] = {}
         self._lock = threading.Lock()
 
-    def mint(self, *, address: str, path: Path, root: Path, kind: str, name: str, by: str) -> tuple[str, Grant]:
+    def mint(self, *, address: str, path: Path, root: Path, kind: str, name: str, by: str, bind: str = "",
+             level: str = "P2") -> tuple[str, Grant]:
         token = secrets.token_urlsafe(24)
-        grant = Grant(address, path, root, kind, name, by, self.now() + self.ttl)
+        grant = Grant(address, path, root, kind, name, by, self.now() + self.ttl, bind, level)
         with self._lock:
             self._purge()
             self._rows[token] = grant
@@ -257,10 +264,24 @@ def disposition(how: str, name: str) -> str:
     return value if plain == name else value + f"; filename*=UTF-8''{quote(name, safe='')}"
 
 
-def view_evidence(body: dict[str, Any], by: str, grants: Grants) -> dict[str, Any]:
+def evidence_level(address: str) -> Any:
+    """The data level of the documents behind an evidence address (``jason.web.access.Level``): a citation's documents
+    are the association's and the law (P0; the library's confidential files are never listed for one); a PayHOA
+    request's submission and files, and anything else, P2."""
+    from jason.approvals.evidence import EvidenceKind, rule_for
+    from jason.web.access import Level
+
+    try:
+        rule, _ = rule_for(" ".join(str(address or "").split()))
+    except Exception:  # noqa: BLE001 - an address no rule reads is judged closed
+        return Level.P2
+    return Level.P0 if rule.kind is EvidenceKind.CITATION else Level.P2
+
+
+def view_evidence(body: dict[str, Any], by: str, grants: Grants, *, bind: str = "", level: str = "P2") -> dict[str, Any]:
     """``POST /api/evidence/view``: one document behind an evidence address opened unmasked for ``by`` and logged
     (``jason.approvals.evidence_documents.view``). Never masked here: the person asked to see it. A pdf, an image, or
-    another file comes back as a link that serves it for ten minutes."""
+    another file comes back as a link that serves it for ten minutes, to the sign-in ``bind`` only."""
     from jason.approvals.evidence_documents import view
 
     if not isinstance(body.get("document"), str) or not body["document"].strip():
@@ -269,7 +290,7 @@ def view_evidence(body: dict[str, Any], by: str, grants: Grants) -> dict[str, An
     out = {"kind": "", "name": "", "readAt": "", "url": "", "expires": "", **opened.answer}
     if opened.path is not None and opened.root is not None:
         token, grant = grants.mint(address=_text(body, "address"), path=opened.path, root=opened.root,
-                                   kind=out["kind"], name=out["name"], by=by)
+                                   kind=out["kind"], name=out["name"], by=by, bind=bind, level=level)
         out["url"] = f"/api/evidence/document/{token}"
         out["expires"] = grant.expires.isoformat(timespec="seconds")
     return out
@@ -366,14 +387,16 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             return jsonify(error="writes are off"), 405
         if not header_token_ok():
             return jsonify(error=f"a refresh carries this server's token in {TOKEN_HEADER}"), 403
+        from jason.web.access import Level, require
+
+        viewer = require(Level.P2)               # a signed-in person whose offices open P2; never the body's name
         body = _body()
 
         def run():
             from jason.approvals.evidence import RefreshFailed
 
-            by, _, _ = _who(body)
             try:
-                return answer(body, by, live)
+                return answer(body, viewer.account, live)
             except RefreshFailed as exc:
                 return jsonify(error=mask(str(exc))), 409
         return _answer(run)
@@ -406,20 +429,41 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             return jsonify(error="writes are off"), 405
         if not header_token_ok():
             return jsonify(error=f"a view carries this server's token in {TOKEN_HEADER}"), 403
+        from jason.web.access import require, served
+
         body = _body()
-        return _answer(lambda: view_evidence(body, _who(body)[0], grants))
+        level = evidence_level(_text(body, "address"))
+        viewer = require(level)                  # signed in, and their offices open the level; the body's `by` is not
+
+        def run():
+            out = view_evidence(body, viewer.account, grants, bind=viewer.bind, level=level.value)
+            try:
+                served(viewer, level, address=" ".join(_text(body, "address").split()),
+                       document=str(body.get("document") or "").strip())
+            except OSError:
+                return jsonify(error="The access log (access/served.jsonl) could not be written, so nothing was "
+                                     "opened."), 503
+            return out
+        return _answer(run)
 
     @bp.get("/api/evidence/document/<token>")
     def evidence_document_route(token: str):
         """The file a view opened, from disk, while its link lasts; many reads (a PDF viewer's ranges). Never a live
-        read. An unknown or expired link is 404."""
+        read. Only to the sign-in that opened it (403 to another), and only while its level is still theirs. An
+        unknown or expired link is 404; no one signed in, 401."""
         from flask import send_file
 
         from jason.approvals.evidence_documents import content_type, inside
+        from jason.web.access import Level, allow, signed_in
 
+        viewer = signed_in()
         grant = grants.get(token)
         if grant is None:
             return jsonify(error="no such document link, or it has expired: open the document again"), 404
+        if not grant.bind or not secrets.compare_digest(grant.bind.encode("utf-8"), viewer.bind.encode("utf-8")):
+            return jsonify(error="This link was opened under another sign-in: open the document again from its "
+                                 "evidence panel."), 403
+        allow(viewer, Level(grant.level) if grant.level in Level._value2member_map_ else Level.P2)
         if not inside(grant.path, grant.root):
             return jsonify(error=f"{grant.name} is no longer on disk"), 404
         inline = grant.kind in ("pdf", "image", "text")

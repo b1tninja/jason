@@ -1,8 +1,66 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Embed, embedUrls } from "./Embed";
 
 const ID = "1AbCdEfGhIjKlMnOpQ";
+
+afterEach(() => vi.unstubAllGlobals());
+
+/** A server whose `/api/session` answers `body`, and whose `/api/file` answers `file` (a refusal, as JSON). */
+function session(body: unknown, file?: { status: number; body: unknown }) {
+  const f = vi.fn(async (url: string) => {
+    if (url === "/api/session") return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    if (url.startsWith("/api/file") && file) return new Response(JSON.stringify(file.body), { status: file.status, headers: { "Content-Type": "application/json" } });
+    return new Response("{}", { status: 404 });
+  });
+  vi.stubGlobal("fetch", f);
+  return f;
+}
+
+describe("Embed: a file under data/ needs a signed-in person", () => {
+  it("shows a card with Sign in with Google, and asks the server for no file, when no one is signed in", async () => {
+    const f = session({ signedIn: null, signIn: { configured: true, start: "/auth/google" } });
+    render(<Embed a={{ kind: "image", ref: "photos/a.jpg", title: "East bed" }} />);
+    expect(await screen.findByText("Sign in with Google to see this file.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(f.mock.calls.every(([url]) => url === "/api/session")).toBe(true);
+  });
+
+  it("says so when sign-in is not set up on this jason-web", async () => {
+    session({ signedIn: null, signIn: { configured: false } });
+    render(<Embed a={{ kind: "pdf", ref: "drafts/notice.pdf", title: "Notice" }} />);
+    expect(await screen.findByText(/Console sign-in isn't set up on this jason-web/)).toBeInTheDocument();
+    expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("shows the server's reason on a card when it refuses an image (an <img> cannot read the status)", async () => {
+    session({ signedIn: { name: "Pat Example" }, signIn: { configured: true } },
+      { status: 403, body: { error: "The treasurer's office doesn't open executive-session and other restricted material (P3)." } });
+    render(<Embed a={{ kind: "image", ref: "library/files/x.png", title: "Scan" }} />);
+    const img = await screen.findByRole("img", { name: "Scan" });
+    fireEvent.error(img);
+    expect(await screen.findByText("The treasurer's office doesn't open executive-session and other restricted material (P3).")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("shows the server's 401 with its sign-in link (signed out meanwhile)", async () => {
+    session({ signedIn: { name: "A Manager" }, signIn: { configured: true } },
+      { status: 401, body: { error: "Sign in with Google to open this.", signIn: "/auth/google" } });
+    render(<Embed a={{ kind: "audio", ref: "zoom/meetings/x/audio.m4a", title: "Board meeting" }} />);
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.error(document.querySelector("audio")!);
+    expect(await screen.findByText("Sign in with Google to open this.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
+  });
+
+  it("leaves a URL alone: no sign-in asked for", () => {
+    const f = session({ signedIn: null });
+    render(<Embed a={{ kind: "image", ref: "https://h.example/a.png", title: "Remote" }} />);
+    expect(screen.getByRole("img", { name: "Remote" })).toHaveAttribute("src", "https://h.example/a.png");
+    expect(f).not.toHaveBeenCalled();
+  });
+});
 
 describe("embedUrls (new kinds)", () => {
   it("calendar: id with the agenda default, and with mode, dates, and tz", () => {
@@ -43,8 +101,10 @@ describe("embedUrls (new kinds)", () => {
 });
 
 describe("Embed (new kinds)", () => {
-  it("renders audio as an <audio> player, not a frame", () => {
+  it("renders audio as an <audio> player, not a frame", async () => {
+    session({ signedIn: { name: "A Manager" }, signIn: { configured: true } });
     render(<Embed a={{ kind: "audio", ref: "meetings/a.mp3", title: "Board meeting" }} />);
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
     const audio = document.querySelector("audio");
     expect(audio).toHaveAttribute("src", "/api/file?path=meetings%2Fa.mp3");
     expect(audio).toHaveAttribute("controls");

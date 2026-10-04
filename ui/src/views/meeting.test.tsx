@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MeetingView, weekOf } from "./MeetingView";
@@ -9,7 +9,9 @@ const item = { id: "reserve-loan", title: "Reserve loan not restored", summary: 
 
 /** Answers /api/meeting with one noticed item and /api/embeds with the calendar and a recording dated the meeting day. */
 function mockFetch() {
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => url.startsWith("/api/embeds") ? new Response(JSON.stringify({
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/session" ? new Response(JSON.stringify({
+      signedIn: { name: "A. Director" }, signIn: { configured: true },          // a recording's file opens signed in
+    }), { status: 200 }) : url.startsWith("/api/embeds") ? new Response(JSON.stringify({
       found: true, calendarId: "abc@group.calendar.google.com", timeZone: "America/Los_Angeles", recordings: [
         { date: "2026-10-20", topic: "Board meeting", uuid: "u1", shareUrl: "https://zoom.us/rec/share/abc", playUrl: "https://zoom.us/rec/play/abc", files: [{ type: "audio", name: "audio_only.m4a", path: "zoom/2026-10-20/audio_only.m4a" }] },
         { date: "2026-09-15", topic: "Earlier meeting", uuid: "u0", shareUrl: "https://zoom.us/rec/share/old", playUrl: "", files: [] },
@@ -49,6 +51,7 @@ describe("MeetingView", () => {
     await userEvent.click(screen.getByRole("tab", { name: /Decisions/ }));
     const zoom = screen.getByTitle("Board meeting") as HTMLIFrameElement;
     expect(zoom.src).toBe("https://zoom.us/rec/share/abc");
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
     const audio = document.querySelector("audio") as HTMLAudioElement;
     expect(audio.getAttribute("src")).toBe("/api/file?path=zoom%2F2026-10-20%2Faudio_only.m4a");
     expect(screen.getByText(/under a litigation hold/)).toBeInTheDocument();

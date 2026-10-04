@@ -138,6 +138,7 @@ jason-web offers one button for each client: first the community's, then the ins
 3. **Check and start it.**
    - `jason sign-in` shows the setup without writing anything: the clients, the fallback, and how many people can sign in.
    - `jason-web` offers sign-in beside the sample picker. `jason-web --require-sign-in` refuses every write until someone signs in.
+   - Files and documents open from the console only for a signed-in roster person whose offices open their level ([security-and-privacy.md](console/security-and-privacy.md#roles)); without sign-in set up, none opens.
    - The **Sign in with Google** button or buttons appear at the top of the console. After sign-in, the header shows the person's name and a **Sign out** button.
 
    **Not production: `jason-web --dev`.** A signed-in admin gets an **Admin view** control in the header. With it, they see the console as any person on the roster or any office, to build and check role-based views. While they view as someone else, every write is refused, so no record ever carries a name its person did not sign in as. Choosing "myself" restores writes, and each switch is logged in `data/web/sign-ins.jsonl`.

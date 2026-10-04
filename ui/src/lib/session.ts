@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { actAs, getJson, serverSession, signInLinks, signOut, type Acting, type ServerSession, type SignedIn, type SignInSetup } from "./api";
+import { actAs, getJson, serverSession, signInHref, signInLinks, signOut, type Acting, type ServerSession, type SignedIn, type SignInSetup } from "./api";
 
 /** The signed-in person. When the server has Google sign-in (`jason.web.signin`) and an officer signed in, `me` is that
  * officer, fixed by the server: every write goes on the record under that name. Under `jason-web --dev`, a signed-in
@@ -80,6 +80,21 @@ export function useMe(enabled = true): string {
     return () => { on = false; };
   }, [enabled]);
   return s?.acting ? s.acting.name : s?.signedIn?.name ?? picked;
+}
+
+/** Whether a person is signed in with Google on this server, for what needs a sign-in rather than a picked name: opening
+ * a file or a document, or reading evidence again (`jason.web.access`). `known` is false until the server answers;
+ * `href` is "Sign in with Google", back to this console route. `enabled` false asks the server nothing. */
+export function useAccount(enabled = true): { account: SignedIn | null; known: boolean; configured: boolean; href: string } {
+  const [s, setS] = useState<ServerSession | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let on = true;
+    serverSession().then((x) => { if (on) setS(x); });
+    return () => { on = false; };
+  }, [enabled]);
+  const hash = typeof window !== "undefined" ? window.location.hash : "";
+  return { account: s?.signedIn ?? null, known: !!s, configured: !!s?.signIn?.configured, href: signInHref(s?.signIn, hash) };
 }
 
 /** `people` comes from `/api/approvals` unless the caller passes the list it already loaded. */

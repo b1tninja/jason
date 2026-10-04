@@ -92,7 +92,10 @@ def test_local_file_route_serves_only_known_types_under_data(tmp_path, monkeypat
     (tmp_path / "zoom" / "meetings" / "2026-09-15-bbbbbbbbbb" / "audio.m4a").write_bytes(b"\x00\x00\x00\x1cftypM4A ")
     fake = type(sys)("jason.mcp.county"); fake._data_dir = lambda _: tmp_path
     monkeypatch.setitem(sys.modules, "jason.mcp.county", fake)
-    c = webclient.client(create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=None, extra_writes=False))
+    c = webclient.client(create_app(tmp_path, {}, board_writer=None, canvas_writer=None, decision_writer=None, request_writer=None, owner_info_writer=None, hearing_writer=None, extra_writes=False,
+                                    sign_in=webclient.roster_sign_in()))
+    assert c.get("/api/file?path=photos/a.png").status_code == 401      # files need a signed-in roster person
+    webclient.sign_in(c, "A Manager")
     ok = c.get("/api/file?path=photos/a.png")
     assert ok.status_code == 200 and ok.headers["Content-Type"].startswith("image/png") and ok.headers["Content-Security-Policy"] == "sandbox"
     audio = c.get("/api/file?path=zoom/meetings/2026-09-15-bbbbbbbbbb/audio.m4a")

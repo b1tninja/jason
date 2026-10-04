@@ -8,6 +8,16 @@ import type { Approval } from "../lib/approvals";
 import { Evidence, EvidencePanel, evidenceUrl, RefreshAllEvidence, type DocumentView, type EvidenceAnswer, type EvidenceDocument, type EvidenceRefreshAll } from "./index";
 import { PlanReview } from "./PlanReview";
 
+/** The server's session with Jane Example signed in with Google: the evidence's live reads and views need it. */
+const SIGNED_IN = { signedIn: { name: "Jane Example" }, signIn: { configured: true, start: "/auth/google" } };
+
+/** The button named `name`, once the session says someone is signed in and it is enabled. */
+async function ready(name: string): Promise<HTMLElement> {
+  const button = await screen.findByRole("button", { name });
+  await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+  return button;
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 function mockFetch(answer: (url: string) => { status?: number; body: unknown }) {
@@ -256,7 +266,7 @@ describe("EvidencePanel's read again", () => {
 
   type Reply = { status?: number; body: unknown };
   /** A server: `/api/session` answers `session`, the refresh answers `post()`, and every other GET the stored answer. */
-  function server(post: () => Reply | Promise<Reply>, session: unknown = {}) {
+  function server(post: () => Reply | Promise<Reply>, session: unknown = SIGNED_IN) {
     const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
     const f = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url === "/api/session") return json({ body: session });
@@ -300,7 +310,7 @@ describe("EvidencePanel's read again", () => {
     withToken("tok-9");
     const { posts } = server(() => ({ body: fresh() }));
     render(<EvidencePanel address="payhoa:submission:1234" approval="owner-info tags/1" by="Jane Example" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Read again from PayHOA" }));
+    await userEvent.click(await ready("Read again from PayHOA"));
     await waitFor(() => expect(posts()).toHaveLength(1));
     const [url, init] = posts()[0];
     expect(url).toBe(REFRESH);
@@ -314,7 +324,7 @@ describe("EvidencePanel's read again", () => {
     let finish: (r: Reply) => void = () => {};
     const { posts } = server(() => new Promise<Reply>((ok) => { finish = ok; }));
     render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
-    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    const button = await ready("Read again from PayHOA");
     await userEvent.click(button);
     expect(button).toHaveAttribute("aria-busy", "true");
     expect(button).toHaveAttribute("aria-disabled", "true");
@@ -335,7 +345,7 @@ describe("EvidencePanel's read again", () => {
     render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" onClose={() => {}} />);
     const panel = await screen.findByRole("group", { name: "PayHOA request 1234" });
     expect(await within(panel).findByText("Jane Doe")).toBeInTheDocument();
-    const button = within(panel).getByRole("button", { name: "Read again from PayHOA" });
+    const button = await ready("Read again from PayHOA");
     await userEvent.click(button);
     expect(await within(panel).findByText("Read from PayHOA just now by Jane Example.")).toBeInTheDocument();
     expect(within(panel).getByText("Owner B")).toBeInTheDocument();
@@ -351,7 +361,7 @@ describe("EvidencePanel's read again", () => {
     let reply: Reply = { status: 409, body: { error: KEEPER } };
     server(() => reply);
     render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
-    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    const button = await ready("Read again from PayHOA");
     expect(await screen.findByText("Jane Doe")).toBeInTheDocument();
     await userEvent.click(button);
     const message = await screen.findByText(KEEPER);
@@ -369,38 +379,49 @@ describe("EvidencePanel's read again", () => {
     expect(button).toHaveFocus();
   });
 
-  it("is disabled with the reason when no one is named, and sends nothing", async () => {
+  it("is disabled with the reason and the sign-in link when no one is signed in, and sends nothing", async () => {
     withToken();
     const { posts } = server(() => ({ body: fresh() }), { signedIn: null });
     render(<EvidencePanel address="payhoa:submission:1234" />);
     const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
     expect(button).toHaveAttribute("aria-disabled", "true");
-    const why = screen.getByText("Sign in or pick your name to read it again.");
-    expect(button).toHaveAccessibleDescription("Sign in or pick your name to read it again.");
+    await waitFor(() => expect(button).toHaveAccessibleDescription("Sign in with Google to read it again."));
+    const why = screen.getByText("Sign in with Google to read it again.").closest("p")!;
     expect(why).toHaveClass("visually-hidden");
     await userEvent.click(button);
     expect(why).not.toHaveClass("visually-hidden");
     expect(why).toHaveClass("muted");
+    expect(within(why).getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
     expect(posts()).toHaveLength(0);
   });
 
-  it("reads under the signed-in name, or the name picked in this browser", async () => {
+  it("reads under the signed-in name; a name picked in this browser is not enough", async () => {
     withToken();
     const { posts } = server(() => ({ body: fresh() }), { signedIn: { name: "Casey Sample" } });
     const { unmount } = render(<EvidencePanel address="payhoa:submission:1234" />);
-    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
-    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
-    await userEvent.click(button);
+    await userEvent.click(await ready("Read again from PayHOA"));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(String(posts()[0][1]?.body)).by).toBe("Casey Sample");
     unmount();
     resetServerSession();
     localStorage.setItem(SESSION_KEY, "Jordan Example");
     const second = server(() => ({ body: fresh() }), {});
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jordan Example" />);
+    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    await waitFor(() => expect(button).toHaveAccessibleDescription("Sign in with Google to read it again."));
+    await userEvent.click(button);
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(second.posts()).toHaveLength(0);
+  });
+
+  it("says the server's 401 with its sign-in link", async () => {
+    withToken();
+    server(() => ({ status: 401, body: { error: "Sign in with Google to open this.", signIn: "/auth/google" } }));
     render(<EvidencePanel address="payhoa:submission:1234" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Read again from PayHOA" }));
-    await waitFor(() => expect(second.posts()).toHaveLength(1));
-    expect(JSON.parse(String(second.posts()[0][1]?.body)).by).toBe("Jordan Example");
+    await userEvent.click(await ready("Read again from PayHOA"));
+    const said = await screen.findByText("Sign in with Google to open this.");
+    expect(said).toHaveClass("notice-error");
+    expect(within(said).getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
   });
 
   it("never reads again on open or on focus", async () => {
@@ -457,7 +478,7 @@ describe("Read every request again", () => {
   type Reply = { status?: number; body: unknown };
   /** A server: `/api/session` answers `session`, the batch answers `post()`, and `/api/evidence` answers `get(n)` on
    * its n-th read (from 1). */
-  function server(post: () => Reply | Promise<Reply>, session: unknown = {}, get: (n: number) => EvidenceAnswer = () => answer()) {
+  function server(post: () => Reply | Promise<Reply>, session: unknown = SIGNED_IN, get: (n: number) => EvidenceAnswer = () => answer()) {
     const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
     let reads = 0;
     const f = vi.fn(async (url: string, _init?: RequestInit) => {
@@ -478,25 +499,26 @@ describe("Read every request again", () => {
     failed: [], skipped: 3, ...over,
   });
 
-  it("is offered only when the plan names a PayHOA request", () => {
+  it("is offered only when the plan names a PayHOA request", async () => {
+    server(() => ({ body: summary() }));
     const { rerender } = render(<RefreshAllEvidence approval="apr-1" refs={[{ label: "Civil Code 4041", address: "CIV 4041" }, "jason calendar", { label: "no address" }]} by="Jane Example" />);
     expect(screen.queryByRole("button", { name: NAME })).not.toBeInTheDocument();
     rerender(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" />);
-    const button = screen.getByRole("button", { name: NAME });
+    const button = await ready(NAME);
     expect(button).toHaveAttribute("title", "Reads each request in this plan from PayHOA now, under your name; writes nothing to PayHOA.");
     expect(button.querySelector("svg.evidence-reread-icon")).toHaveAttribute("aria-hidden", "true");
-    expect(button).not.toHaveAttribute("aria-disabled");
   });
 
   it("sits in the plan's header beside Read from, and nothing is read on load", async () => {
     withToken();
-    const { f } = server(() => ({ body: summary() }));
+    const { f, posts } = server(() => ({ body: summary() }));
     render(<PlanReview approval={planned()} me="Jane Example" now="2026-10-03T19:00:00+00:00" />);
     const header = screen.getByRole("heading", { level: 2 }).closest("header")!;
     expect(within(header).getByText("Read from:")).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: NAME })).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 20));
-    expect(f).not.toHaveBeenCalled();
+    expect(f.mock.calls.every(([url]) => url === "/api/session")).toBe(true);    // who is signed in, nothing else
+    expect(posts()).toHaveLength(0);
   });
 
   it("POSTs the approval and the person with the write token, busy until it answers, and a second click sends nothing", async () => {
@@ -504,7 +526,7 @@ describe("Read every request again", () => {
     let finish: (r: Reply) => void = () => {};
     const { posts } = server(() => new Promise<Reply>((ok) => { finish = ok; }));
     render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" />);
-    const button = screen.getByRole("button", { name: NAME });
+    const button = await ready(NAME);
     await userEvent.click(button);
     expect(button).toHaveAttribute("aria-busy", "true");
     expect(button).toHaveAttribute("aria-disabled", "true");
@@ -530,7 +552,7 @@ describe("Read every request again", () => {
     withToken();
     server(() => ({ body: summary({ refreshed: ["payhoa:submission:501", "payhoa:submission:502"], failed: [{ address: "payhoa:submission:503", error: "PayHOA could not be read: HTTPError: 502" }] }) }));
     render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" />);
-    await userEvent.click(screen.getByRole("button", { name: NAME }));
+    await userEvent.click(await ready(NAME));
     const said = await screen.findByText("Read 2 requests from PayHOA just now by Jane Example. 1 could not be read: payhoa:submission:503: PayHOA could not be read: HTTPError: 502.");
     expect(said.closest("[aria-live='polite']")).not.toBeNull();
   });
@@ -542,7 +564,7 @@ describe("Read every request again", () => {
     const onDone = vi.fn();
     server(() => reply);
     render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" onDone={onDone} />);
-    const button = screen.getByRole("button", { name: NAME });
+    const button = await ready(NAME);
     await userEvent.click(button);
     expect(await screen.findByText(KEEPER)).toHaveClass("notice-error");
     reply = { status: 403, body: { error: "viewing as A Director (admin view): writes are refused." } };
@@ -552,17 +574,30 @@ describe("Read every request again", () => {
     expect(button).toHaveFocus();
   });
 
-  it("is disabled with the reason shown when no one is named, and sends nothing", async () => {
+  it("is disabled with the reason and the sign-in link shown when no one is signed in, a picked name too", async () => {
     withToken();
+    localStorage.setItem(SESSION_KEY, "Jordan Example");
     const { posts } = server(() => ({ body: summary() }), { signedIn: null });
-    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} />);
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jordan Example" />);
     const button = screen.getByRole("button", { name: NAME });
     expect(button).toHaveAttribute("aria-disabled", "true");
-    const why = screen.getByText("Sign in or pick your name to read them again.");
-    expect(why).not.toHaveClass("visually-hidden");
-    expect(button).toHaveAccessibleDescription("Sign in or pick your name to read them again.");
+    const why = await screen.findByText("Sign in with Google to read them again.");
+    expect(why.closest(".evidence-reread-all-why")).not.toHaveClass("visually-hidden");
+    expect(button).toHaveAccessibleDescription("Sign in with Google to read them again.");
+    expect(within(why.closest(".evidence-reread-all-why") as HTMLElement).getByRole("link", { name: "Sign in with Google" }))
+      .toHaveAttribute("href", "/auth/google");
     await userEvent.click(button);
     expect(posts()).toHaveLength(0);
+  });
+
+  it("says the server's 401 with its sign-in link", async () => {
+    withToken();
+    server(() => ({ status: 401, body: { error: "Sign in with Google to open this.", signIn: "/auth/google" } }));
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} />);
+    await userEvent.click(await ready(NAME));
+    const said = await screen.findByText("Sign in with Google to open this.");
+    expect(said).toHaveClass("notice-error");
+    expect(within(said).getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
   });
 
   it("reads under the session's name when none is passed", async () => {
@@ -586,13 +621,13 @@ describe("Read every request again", () => {
         fields: [{ name: "Status", value: n > 1 ? "complete" : "pending", masked: false }],
       }],
     });
-    const { posts, gets } = server(() => ({ body: summary() }), {}, read);
+    const { posts, gets } = server(() => ({ body: summary() }), SIGNED_IN, read);
     render(<PlanReview approval={planned()} me="Jane Example" now="2026-10-03T19:00:00+00:00" />);
     await userEvent.click(screen.getAllByRole("button", { name: "PayHOA request 502" })[0]);
     const panel = await screen.findByRole("group", { name: "PayHOA request 502" });
     expect(await within(panel).findByText("pending")).toBeInTheDocument();
     expect(gets()).toHaveLength(1);
-    const button = screen.getByRole("button", { name: NAME });
+    const button = await ready(NAME);
     await userEvent.click(button);
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({ approval: "apr-20261003T183801-4f5b", by: "Jane Example" });
@@ -640,7 +675,7 @@ describe("EvidencePanel's documents", () => {
 
   type Reply = { status?: number; body: unknown };
   /** A server: `/api/session` answers `session`, a view answers `post(document)`, and the loader the answer with `docs`. */
-  function server(post: (document: string) => Reply | Promise<Reply>, session: unknown = {}) {
+  function server(post: (document: string) => Reply | Promise<Reply>, session: unknown = SIGNED_IN) {
     const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
     const f = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/session") return json({ body: session });
@@ -675,24 +710,38 @@ describe("EvidencePanel's documents", () => {
     expect(screen.queryByText(/Viewing shows the document unmasked/)).not.toBeInTheDocument();
   });
 
-  it("disables View with the reason when no one is named, and sends nothing", async () => {
+  it("disables View with the reason and the sign-in link when no one is signed in, a picked name too", async () => {
     withToken();
+    localStorage.setItem(SESSION_KEY, "Jordan Example");
     const { posts } = server(() => ({ body: submission }), { signedIn: null });
-    render(<EvidencePanel address="payhoa:submission:1234" />);
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jordan Example" />);
     const button = await screen.findByRole("button", { name: "View Owner information, Unit 12" });
     expect(button).toHaveAttribute("aria-disabled", "true");
-    expect(button).toHaveAccessibleDescription("Sign in or pick your name to view it.");
-    expect(screen.getByText("Sign in or pick your name to view it.")).not.toHaveClass("visually-hidden");
+    await waitFor(() => expect(button).toHaveAccessibleDescription("Sign in with Google to view it."));
+    const why = screen.getByText("Sign in with Google to view it.").closest("p")!;
+    expect(why).not.toHaveClass("visually-hidden");
+    expect(within(why).getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
     await userEvent.click(button);
     expect(posts()).toHaveLength(0);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the server's 401 in the dialog with its sign-in link", async () => {
+    withToken();
+    server(() => ({ status: 401, body: { error: "Sign in with Google to open this.", signIn: "/auth/google" } }));
+    render(<EvidencePanel address="payhoa:submission:1234" />);
+    await userEvent.click(await ready("View Lease.pdf"));
+    const dialog = await screen.findByRole("dialog", { name: "Lease.pdf" });
+    const said = await within(dialog).findByText("Sign in with Google to open this.");
+    expect(said).toHaveClass("notice-error");
+    expect(within(said).getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
   });
 
   it("POSTs the address, the approval, the document, and the person with the write token, then opens the viewer", async () => {
     withToken("tok-5");
     const { posts } = server(() => ({ body: submission }));
     render(<EvidencePanel address="payhoa:submission:1234" approval="owner-info tags/1" by="Jane Example" />);
-    await userEvent.click(await screen.findByRole("button", { name: "View Owner information, Unit 12" }));
+    await userEvent.click(await ready("View Owner information, Unit 12"));
     await waitFor(() => expect(posts()).toHaveLength(1));
     const [, init] = posts()[0];
     expect(init?.method).toBe("POST");
@@ -720,7 +769,7 @@ describe("EvidencePanel's documents", () => {
     let finish: (r: Reply) => void = () => {};
     const { posts } = server(() => new Promise<Reply>((ok) => { finish = ok; }));
     render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
-    const button = await screen.findByRole("button", { name: "View Lease.pdf" });
+    const button = await ready("View Lease.pdf");
     await userEvent.click(button);
     const dialog = await screen.findByRole("dialog", { name: "Lease.pdf" });
     expect(within(dialog).getByText("Opening…")).toBeInTheDocument();
@@ -739,7 +788,7 @@ describe("EvidencePanel's documents", () => {
     withToken();
     server(() => ({ status: 404, body: { error: "Lease.pdf is no longer on disk; run jason sync-catalog --requests." } }));
     render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
-    await userEvent.click(await screen.findByRole("button", { name: "View Lease.pdf" }));
+    await userEvent.click(await ready("View Lease.pdf"));
     const dialog = await screen.findByRole("dialog", { name: "Lease.pdf" });
     const said = await within(dialog).findByText("Lease.pdf is no longer on disk; run jason sync-catalog --requests.");
     expect(said).toHaveClass("notice-error");
@@ -753,7 +802,7 @@ describe("EvidencePanel's documents", () => {
     render(<Evidence items={refs} by="Jane Example" />);
     const chip = screen.getByRole("button", { name: "PayHOA request 1234" });
     await userEvent.click(chip);
-    const button = await screen.findByRole("button", { name: "View Owner information, Unit 12" });
+    const button = await ready("View Owner information, Unit 12");
     await userEvent.click(button);
     const dialog = await screen.findByRole("dialog", { name: "Owner information, Unit 12" });
     expect(within(dialog).getByRole("heading", { level: 2 })).toHaveFocus();
@@ -774,7 +823,7 @@ describe("EvidencePanel's documents", () => {
     const image: DocumentView = { ...pdf, kind: "image", name: "Fence photo.jpg", url: "/api/evidence/document/tok-2" };
     const { posts } = server((id) => ({ body: id === "pdf-7" ? pdf : id === "img-2" ? image : submission }));
     render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
-    await userEvent.click(await screen.findByRole("button", { name: "View Owner information, Unit 12" }));
+    await userEvent.click(await ready("View Owner information, Unit 12"));
     const dialog = await screen.findByRole("dialog", { name: "Owner information, Unit 12" });
     await within(dialog).findByText("Jane Doe");
     expect(within(dialog).getByText("1 of 3")).toBeInTheDocument();

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { ApiError, getJson, postJson } from "../lib/api";
+import { ApiError, getJson, postJson, signInRefusal } from "../lib/api";
 import { when, type EvidenceRef } from "../lib/approvals";
-import { useMe } from "../lib/session";
+import { useAccount, useMe } from "../lib/session";
 import { Caveats } from "./Caveats";
 import { DocumentViewer, documentKindWord, humanSize, viewDocument, type DocumentView, type DocumentViewRequest, type EvidenceDocument } from "./DocumentViewer";
 import { daysUntil } from "./DueDate";
@@ -166,13 +166,29 @@ function Source({ s, today }: { s: EvidenceSource; today?: Date }) {
 
 const VIEW_REFUSALS = [400, 403, 404, 409];
 
-/** The documents an address holds, each with a View button. A view is a named person's act, logged by the server: one
- * click, one POST, one at a time, never on open; Previous and Next in the viewer are each a view of their own. */
-function Documents({ docs, level, address, approval, who, viewer, today }: {
+/** What the server's own calls need before a click: a person signed in with Google (`jason.web.access`); a picked name
+ * is not enough. `live` is false for a panel whose calls are passed in (previews, tests). */
+interface Gate { live: boolean; known: boolean; signedIn: boolean; href: string }
+
+/** Why a server call is off until someone signs in ("" when it is on): checking, or "Sign in with Google to …". */
+function signInWhy(gate: Gate, what: string): string {
+  if (!gate.live) return "";
+  if (!gate.known) return "Checking your sign-in…";
+  return gate.signedIn ? "" : `Sign in with Google to ${what}.`;
+}
+
+/** "Sign in with Google", beside a sentence that asks for it. */
+function SignInLink({ href }: { href: string }) {
+  return <> <a className="evidence-sign-in" href={href}>Sign in with Google</a></>;
+}
+
+/** The documents an address holds, each with a View button. A view is a signed-in person's act, logged by the server:
+ * one click, one POST, one at a time, never on open; Previous and Next in the viewer are each a view of their own. */
+function Documents({ docs, level, address, approval, who, viewer, gate, today }: {
   docs: EvidenceDocument[]; level: 3 | 4 | 5 | 6; address: string; approval?: string; who: string;
-  viewer: ((req: DocumentViewRequest) => Promise<DocumentView>) | null; today?: Date;
+  viewer: ((req: DocumentViewRequest) => Promise<DocumentView>) | null; gate: Gate; today?: Date;
 }) {
-  const [viewing, setViewing] = useState<{ index: number; data: DocumentView | null; busy: boolean; error: string } | null>(null);
+  const [viewing, setViewing] = useState<{ index: number; data: DocumentView | null; busy: boolean; error: string; signIn?: string } | null>(null);
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const opener = useRef(0);
   const inFlight = useRef(false);
@@ -181,9 +197,10 @@ function Documents({ docs, level, address, approval, who, viewer, today }: {
   const titleId = useId();
   const whyId = useId();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const needsSignIn = signInWhy(gate, "view it");
   const why = !viewer
     ? "This copy is shown as given; the page does not open its documents."
-    : !who ? "Sign in or pick your name to view it." : "";
+    : needsSignIn || (!who ? "Sign in or pick your name to view it." : "");
 
   const open = async (i: number) => {
     const d = docs[i];
@@ -198,8 +215,9 @@ function Documents({ docs, level, address, approval, who, viewer, today }: {
       if (!alive.current || seq.current !== mine) return;
       const status = e instanceof ApiError ? e.status : undefined;
       const message = e instanceof Error ? e.message : String(e);
-      const text = status && VIEW_REFUSALS.includes(status) ? message : `jason-web did not answer: ${message}`;
-      setViewing({ index: i, data: null, busy: false, error: text });
+      const asked = signInRefusal(e);
+      const text = asked || (status && VIEW_REFUSALS.includes(status)) ? message : `jason-web did not answer: ${message}`;
+      setViewing({ index: i, data: null, busy: false, error: text, signIn: asked?.href });
     } finally {
       inFlight.current = false;
     }
@@ -220,7 +238,7 @@ function Documents({ docs, level, address, approval, who, viewer, today }: {
     <section className="evidence-documents" aria-labelledby={titleId}>
       <H id={titleId} className="evidence-documents-title">Documents</H>
       <p className="muted">Viewing shows the document unmasked, under your name, and is logged.</p>
-      {why && <p id={whyId} className="muted evidence-documents-why">{why}</p>}
+      {why && <p className="muted evidence-documents-why"><span id={whyId}>{why}</span>{needsSignIn && gate.known && <SignInLink href={gate.href} />}</p>}
       <ul>
         {docs.map((d, i) => {
           const size = d.kind === "submission" ? "" : humanSize(d.size);
@@ -239,7 +257,7 @@ function Documents({ docs, level, address, approval, who, viewer, today }: {
         })}
       </ul>
       {viewing && (
-        <DocumentViewer data={viewing.data} document={docs[viewing.index]} documents={docs} busy={viewing.busy} error={viewing.error}
+        <DocumentViewer data={viewing.data} document={docs[viewing.index]} documents={docs} busy={viewing.busy} error={viewing.error} signIn={viewing.signIn}
           position={{ index: viewing.index, count: docs.length }} onGo={(i) => void open(i)} onClose={close} today={today} />
       )}
     </section>
@@ -268,7 +286,7 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!data);
   const [rereading, setRereading] = useState(false);
-  const [reread, setReread] = useState<{ tone: "status" | "error"; text: string } | null>(null);
+  const [reread, setReread] = useState<{ tone: "status" | "error"; text: string; signIn?: string } | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -283,11 +301,17 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
   const viewer = onView ?? (data ? null : viewDocument);
   const sessionMe = useMe(by === undefined && ((!!refreshable && !!refresher) || (documents.length > 0 && !!viewer)));
   const who = (by ?? sessionMe).trim();
+  // The server's own calls need a Google sign-in; passed-in calls (previews, tests) take the name as given.
+  const liveRefresh = !onRefresh && !!refresher;
+  const liveView = !onView && !!viewer;
+  const account = useAccount((liveRefresh && !!refreshable) || (liveView && documents.length > 0));
+  const gateFor = (live: boolean): Gate => ({ live, known: account.known, signedIn: !!account.account, href: account.href });
   const system = refreshable?.system || "the outside system";
   const busy = rereading || refreshing;
+  const needsSignIn = signInWhy(gateFor(liveRefresh), "read it again");
   const why = !refresher
     ? "This copy is shown as given; the page does not read it again."
-    : !who ? "Sign in or pick your name to read it again." : "";
+    : needsSignIn || (!who ? "Sign in or pick your name to read it again." : "");
 
   const readAgain = async () => {
     if (busy || inFlight.current || !refreshable) return;
@@ -306,10 +330,12 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
       if (!alive.current) return;
       const status = e instanceof ApiError ? e.status : undefined;
       const message = e instanceof Error ? e.message : String(e);
-      const text = status === 400 ? "This evidence can't be read again from the page."
+      const asked = signInRefusal(e);
+      const text = asked ? message
+        : status === 400 ? "This evidence can't be read again from the page."
         : status === 409 || status === 403 || status === 405 ? message
         : `jason-web did not answer: ${message}`;
-      setReread({ tone: "error", text });
+      setReread({ tone: "error", text, signIn: asked?.href });
     } finally {
       inFlight.current = false;
       if (alive.current) {
@@ -376,13 +402,17 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
           </span>
         )}
       </div>
-      {refreshable && why && <p id={whyId} className={showWhy ? "muted evidence-reread-why" : "visually-hidden"}>{why}</p>}
+      {refreshable && why && (
+        <p className={showWhy ? "muted evidence-reread-why" : "visually-hidden"}>
+          <span id={whyId}>{why}</span>{needsSignIn && account.known && showWhy && <SignInLink href={account.href} />}
+        </p>
+      )}
       <p className="muted evidence-address">Address <code>{a?.address || address}</code></p>
       <div aria-live="polite" className="evidence-panel-status">
         {loading && <p className="muted">Reading what jason stored for this address.</p>}
         {error && <p className="notice notice-error">jason-web did not answer: {error}</p>}
         {(refreshing && !rereading) ? <p className="muted">{`Reading from ${system}…`}</p>
-          : reread && <p className={reread.tone === "error" ? "notice notice-error" : "muted"}>{reread.text}</p>}
+          : reread && <p className={reread.tone === "error" ? "notice notice-error" : "muted"}>{reread.text}{reread.signIn && <SignInLink href={reread.signIn} />}</p>}
       </div>
       {a && (
         <>
@@ -398,7 +428,7 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
           {!miss && !sources.length && <p className="muted evidence-note">{a.note || "jason holds no stored copy for this address."}</p>}
           {documents.length > 0 && (
             <Documents docs={documents} level={level} address={address} approval={approval} who={who}
-              viewer={viewer} today={today} />
+              viewer={viewer} gate={gateFor(liveView)} today={today} />
           )}
           {a.link && (
             <p>
@@ -435,15 +465,18 @@ export function RefreshAllEvidence({ approval, refs, by, onDone }: {
   const count = new Set(refs.filter(openable).map((e) => e.address).filter((x) => x.startsWith(PAYHOA))).size;
   const sessionMe = useMe(by === undefined && count > 0);
   const who = (by ?? sessionMe).trim();
+  const account = useAccount(count > 0);
   const [busy, setBusy] = useState(false);
-  const [said, setSaid] = useState<{ tone: "status" | "warn" | "error"; text: string } | null>(null);
+  const [said, setSaid] = useState<{ tone: "status" | "warn" | "error"; text: string; signIn?: string } | null>(null);
   const inFlight = useRef(false);
   const alive = useRef(true);
   const button = useRef<HTMLButtonElement | null>(null);
   const whyId = useId();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   if (!count) return null;
-  const why = who ? "" : "Sign in or pick your name to read them again.";
+  const needsSignIn = signInWhy({ live: true, known: account.known, signedIn: !!account.account, href: account.href },
+    "read them again");
+  const why = needsSignIn || (who ? "" : "Sign in or pick your name to read them again.");
 
   const readAll = async () => {
     if (busy || inFlight.current || why) return;
@@ -464,7 +497,8 @@ export function RefreshAllEvidence({ approval, refs, by, onDone }: {
       if (!alive.current) return;
       const status = e instanceof ApiError ? e.status : undefined;
       const message = e instanceof Error ? e.message : String(e);
-      setSaid({ tone: "error", text: status && [400, 403, 405, 409].includes(status) ? message : `jason-web did not answer: ${message}` });
+      const asked = signInRefusal(e);
+      setSaid({ tone: "error", text: asked || (status && [400, 403, 405, 409].includes(status)) ? message : `jason-web did not answer: ${message}`, signIn: asked?.href });
     } finally {
       inFlight.current = false;
       if (alive.current) {
@@ -482,9 +516,9 @@ export function RefreshAllEvidence({ approval, refs, by, onDone }: {
         aria-describedby={why ? whyId : undefined} onClick={readAll}>
         <RereadIcon />Read every request again
       </button>
-      {why && <span id={whyId} className="muted evidence-reread-all-why">{why}</span>}
+      {why && <span className="muted evidence-reread-all-why"><span id={whyId}>{why}</span>{needsSignIn && account.known && <SignInLink href={account.href} />}</span>}
       <span aria-live="polite" className="evidence-reread-all-status">
-        {said && <span className={said.tone === "error" ? "notice notice-error" : said.tone === "warn" ? "notice notice-warn" : "muted"}>{said.text}</span>}
+        {said && <span className={said.tone === "error" ? "notice notice-error" : said.tone === "warn" ? "notice notice-warn" : "muted"}>{said.text}{said.signIn && <SignInLink href={said.signIn} />}</span>}
       </span>
     </div>
   );

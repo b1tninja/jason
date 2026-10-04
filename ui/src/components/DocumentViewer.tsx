@@ -41,8 +41,8 @@ export interface DocumentView {
 /** The body of a view: the address, the approval whose plan it was read for, the document, and the person viewing. */
 export interface DocumentViewRequest { address: string; approval?: string; document: string; by: string }
 
-/** `POST /api/evidence/view`: one document opened unmasked, as a named person's act, through the write guard. A 400, 403,
- * 404, or 409 carries the server's `error`, said as it is. */
+/** `POST /api/evidence/view`: one document opened unmasked, as the signed-in person's act, through the write guard. A
+ * 400, 403, 404, or 409 carries the server's `error`, said as it is; a 401 asks for a Google sign-in (`signIn`). */
 export function viewDocument(req: DocumentViewRequest): Promise<DocumentView> {
   return postJson<DocumentView>("/api/evidence/view", req);
 }
@@ -245,8 +245,10 @@ function Body({ v, opener }: { v: DocumentView; opener?: Opener }) {
  *
  * `documents` is the address's list (the one `position` counts): given with `onGo`, a submission's file answer names
  * each saved file as a button that opens it, by `onGo` with its place in the list, a new logged view. */
-export function DocumentViewer({ data, document: listed, documents, busy = false, error = "", position, onGo, onClose, today, inline = false }: {
+export function DocumentViewer({ data, document: listed, documents, busy = false, error = "", signIn = "", position, onGo, onClose, today, inline = false }: {
   data?: DocumentView | null; document?: EvidenceDocument; documents?: EvidenceDocument[]; busy?: boolean; error?: string;
+  /** Where "Sign in with Google" goes, when the `error` is the server asking for a sign-in (401). */
+  signIn?: string;
   position?: { index: number; count: number }; onGo?: (index: number) => void; onClose?: () => void;
   today?: Date; inline?: boolean;
 }) {
@@ -333,7 +335,9 @@ export function DocumentViewer({ data, document: listed, documents, busy = false
       <div className={`doc-viewer-body doc-viewer-body-${kind}`} aria-busy={busy ? true : undefined}>
         <div aria-live="polite" className="doc-viewer-status">
           {busy && <p className="muted">Opening…</p>}
-          {error && !busy && <p className="notice notice-error">{error}</p>}
+          {error && !busy && (
+            <p className="notice notice-error">{error}{signIn && <> <a className="doc-viewer-sign-in" href={signIn}>Sign in with Google</a></>}</p>
+          )}
         </div>
         {v && !busy && <Body v={v} opener={opener} />}
       </div>
