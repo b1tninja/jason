@@ -22,6 +22,7 @@ from jason.community.models.legal_collections import (
     SenderKind,
 )
 from jason.community.models.legal_inspections import (
+    BackflowFieldTestModel,
     InspectionReportModel,
     Result,
     SignalServiceReportModel,
@@ -1167,6 +1168,69 @@ def test_a_general_report_says_its_interval_in_a_title_or_a_label_or_not_at_all(
     assert record("Fire Sprinkler Inspection Report\nBuilding 1 and 12 detectors").buildings == ()   # 12 is no building
 
 
+# A water purveyor's field test form, one page an assembly, as OCR reads a scan of it. Every name and number is made up.
+FIELD_TEST_PAGE = """EXAMPLE CITY
+Department of Utilities
+Backflow Prevention Assembly
+Field Testing and Maintenance Report
+Customer Name: OAK RIDGE OWNERS ASSOC CustomerID: 0000000001
+Service Address: 100 EXAMPLE DR
+Location: {location} Test Due: {due}
+Service Type: {service} Assembly Type: DC Test Month: May
+Manufacturer: Acme Model: 100SS Backflow ID: {number}
+Size: 8" Meter No: N/A SerialNo: 111111
+Testing Company Name: Example Backflow Testing Testing Company Phone: 5555550100
+Initial Test Closed Tight Closed Tight Didn't Open Didn't Open
+Initial Test : Passed{initial_pass} Failed{initial_fail} Tag #: AA000001 Describe
+Repairs Breached
+Final Test: Passed{final_pass} Failed Final Tag #: Water On
+Tester Notes : {notes}
+The above report is certified to be true:
+Alex Tester 00000 {day} 03:00
+Initial test by Cert#: MO Day Year Time
+"""
+
+
+def _field_test(*pages):
+    blank = {"location": "IN PLANTER", "due": "05/31/2027 00:00", "service": "Fire", "number": "100001", "initial_pass": " X",
+             "initial_fail": "", "final_pass": "", "notes": "", "day": "05/01/2026"}
+    return "\n".join(FIELD_TEST_PAGE.format(**{**blank, **page}) for page in pages)
+
+
+def test_a_backflow_field_test_report_is_read_an_assembly_a_page():
+    text = _field_test(
+        {},
+        {"service": "Domestic", "number": "100002", "initial_pass": "", "initial_fail": " X", "notes": "RELIEF VALVE DID NOT OPEN ;",
+         "day": "05/05/2026", "due": "05/31/202€ 23:59", "location": "E PROPERTY LINE"},
+        {"service": "Irrigation", "number": "100003", "initial_pass": ""})
+    reading = read(DocumentKind.INSPECTION_REPORT, text, ModelContext(today=TODAY))
+    r = reading.record
+    assert reading.model == "backflow-field-test" and reading.complete and r.system.value == "backflow assembly"
+    assert (r.inspector_firm, r.technician, r.inspector_license) == ("Example Backflow Testing", "Alex Tester", "00000")
+    assert r.inspection_date == date(2026, 5, 5)                  # the last day a page is certified on
+    assert r.next_due == date(2027, 5, 31)                        # a date the text garbles is not read
+    assert (r.devices_total, r.devices_tested, r.devices_passed, r.devices_failed) == (3, 3, 1, 1)
+    assert [(t.equipment, t.total, t.passed, t.failed) for t in r.equipment] == [
+        ("Fire service", 1, 1, 0), ("Domestic service", 1, 0, 1), ("Irrigation service", 1, 0, 0)]
+    (d,) = r.deficiencies
+    assert (d.location, d.device, d.comment, d.status) == ("E PROPERTY LINE", "domestic service assembly, backflow ID 100002",
+                                                           "RELIEF VALVE DID NOT OPEN", "Open")
+    assert r.open_deficiencies == 1 and r.result is Result.FAILED and r.interval_months is None and r.building is None
+    assert "open-deficiency" in codes(reading.findings, Severity.PROBLEM)
+    assert "marks-not-read" in codes(reading.findings, Severity.CHECK)    # the irrigation page marks neither box
+
+
+def test_a_backflow_assembly_that_fails_and_then_passes_its_final_test_is_resolved():
+    fixed = _field_test({}, {"number": "100002", "initial_pass": "", "initial_fail": " X", "final_pass": " X", "notes": "REPLACED RELIEF VALVE"})
+    r = read(DocumentKind.INSPECTION_REPORT, fixed, ModelContext(today=TODAY)).record
+    assert r.result is Result.PASSED and r.open_deficiencies == 0 and (r.devices_passed, r.devices_failed) == (2, 0)
+    assert [(d.status, d.comment) for d in r.deficiencies] == [("Resolved", "REPLACED RELIEF VALVE")]
+    # A page with no mark at all: neither passed nor failed, so the result is incomplete, never a guess.
+    unmarked = _field_test({}, {"initial_pass": ""})
+    r = read(DocumentKind.INSPECTION_REPORT, unmarked, ModelContext(today=TODAY)).record
+    assert r.result is Result.INCOMPLETE and (r.devices_passed, r.devices_failed) == (1, 0) and not r.deficiencies
+
+
 def test_the_signal_report_names_no_interval_and_one_building():
     r = read(DocumentKind.INSPECTION_REPORT, SIGNAL, ctx()).record
     assert r.interval_months is None and r.buildings == () and r.forms == ()
@@ -1184,5 +1248,5 @@ def test_models_miss_other_texts():
     other = "Minutes of the board meeting\nCall to order at 6:00 pm\n"
     for model in (PreLienNoticeModel(), OwnerStatementModel(), OwnerHistoryModel(), AssessmentLienModel(), MechanicsLienModel(),
                   LienReleaseBondModel(), LegalBriefModel(), EscrowRequestModel(), MembershipListModel(), SignalServiceReportModel(),
-                  StateFireFormModel(), InspectionReportModel(), FormModel()):
+                  StateFireFormModel(), BackflowFieldTestModel(), InspectionReportModel(), FormModel()):
         assert model.parse(other, ctx()) is None, model.name

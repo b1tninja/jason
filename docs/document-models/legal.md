@@ -239,6 +239,12 @@ No Davis-Stirling section shapes these reports. The vendor's standard does (NFPA
 - `state-fire-forms` reads a report on the State Fire Marshal's AES forms, known by the number each form prints at its foot ("Form AES 2.1").
   - It reads the forms, the system, the interval, the buildings, the contractor where labeled, and a labeled date or the one date the report prints. The form's own edition date is not a date of the report.
   - The forms record each item as P, F, or N/A in a column, and print "Pass", "Fail", and "Deficiencies" on every copy. The reader does not read the marks: `result` and `deficiencies` stay empty, and the finding `form-marks-not-read` says so.
+- `backflow-field-test` reads a water purveyor's "Backflow Prevention Assembly Field Testing and Maintenance Report", one page an assembly.
+  - **The date** is the last day a page is certified on. The tester and the certificate number come from that line, and the next due date from "Test Due".
+  - **Each assembly** passed where its initial or final test's "Passed" box is marked. It failed where a "Failed" box is marked and no later "Passed" one: a deficiency with the tester's notes, open until a final test passes. The assemblies are tallied by service (fire, domestic, irrigation) in `equipment`.
+  - **A page with no mark the text shows** counts neither way. The result is then incomplete, and the finding `marks-not-read` says how many pages.
+  - **The service address** is the one most pages print, since OCR can misread one page's; no building is read from an assembly's location.
+  - The form is usually a scan, so its words come from OCR: a mark is a lead, and the page is the record.
 - `inspection-report` reads another vendor's labeled report (inspection or test date, tested by, license, pass or fail, deficiencies, next due).
 
 **`InspectionReport` fields:**

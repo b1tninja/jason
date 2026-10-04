@@ -9,8 +9,10 @@ for gets no due date. The SB 326 balcony report is ``elevated_elements``; these 
 the tested-by and accepted-by blocks, the company's licenses, the monitoring company, the testing summary by equipment
 type, the outstanding deficiencies, and each device's result. ``StateFireFormModel`` reads a report on the State Fire
 Marshal's AES forms (19 CCR 904; NFPA 25 4.3.1.1 as California amended it): which forms, the system, and what the
-report's own words say; it does not read the form's P, F, and N/A marks. ``InspectionReportModel`` reads the same facts
-where another vendor prints them with the usual labels. A report names the vendor's technician; it names no owner.
+report's own words say; it does not read the form's P, F, and N/A marks. ``BackflowFieldTestModel`` reads a water
+purveyor's field test form for backflow prevention assemblies, one page an assembly. ``InspectionReportModel`` reads
+the same facts where another vendor prints them with the usual labels. A report names the vendor's technician; it names
+no owner.
 
 **Which inspection a report records** (``interval_months``: 3 for a quarterly inspection, 12 for an annual one, 60 for
 a five-year one) is read from the report's own words and nothing else: a form that names one interval, a labeled field
@@ -383,6 +385,94 @@ class StateFireFormModel(DocumentModel):
         return found + _report_findings(r, context)
 
 
+# A water purveyor's field test form for backflow prevention assemblies: one page an assembly, each with its service
+# (fire, domestic, irrigation), a "Passed" and a "Failed" box for the initial and the final test, the tester's notes,
+# and the line the tester certifies it on (name, certificate number, date).
+_FIELD_TEST_TITLE = re.compile(r"Field Testing and Maintenance Report", re.I)
+_MARK = r"[ \t]*([Xx✓✔])?[ \t]*"
+_BOXES = r"[ \t]*:[ \t]*Passed" + _MARK + r"Failed" + _MARK
+_SERVICES = ("Fire", "Domestic", "Irrigation")
+
+
+def _boxes(label: str, text: str) -> str:
+    """Which box a test line marks: "passed", "failed", or "" where neither is marked, both are, or the line is not there."""
+    m = re.search(label + _BOXES, text, re.I)
+    if not m or bool(m.group(1)) == bool(m.group(2)):
+        return ""
+    return "passed" if m.group(1) else "failed"
+
+
+class BackflowFieldTestModel(DocumentModel):
+    """A water purveyor's "Backflow Prevention Assembly Field Testing and Maintenance Report", one page an assembly.
+
+    The report's date is the last day an assembly's page is certified on. An assembly passed where its initial or final
+    test's "Passed" box is marked, and failed where a "Failed" box is and no later "Passed" one: a deficiency, open,
+    with the tester's notes. A page with no mark the text shows is not counted either way, and the result is then
+    incomplete. The form is usually a scan, so its words come from OCR: a mark is a lead, and the page is the record."""
+
+    kind = DocumentKind.INSPECTION_REPORT
+    name = "backflow-field-test"
+    required = ("inspection_date", "inspector_firm", "result")
+    lens_checks = (next_inspection_due,)
+
+    def parse(self, text: str, context: ModelContext) -> InspectionReport | None:
+        text = text or ""
+        titles = [m.start() for m in _FIELD_TEST_TITLE.finditer(text)]
+        if not titles or not re.search(r"Backflow Prevention Assembl", text, re.I) or not re.search(r"certified to be true", text, re.I):
+            return None
+        r = InspectionReport(system=InspectedSystem.BACKFLOW)
+        r.inspector_firm = first(r"Testing Company Name:[ \t]*([^\n]+?)[ \t]*(?:Testing Company Phone|\n|$)", text)
+        signed = re.search(r"certified to be true:?\s*\n?[ \t]*([A-Z][A-Za-z.' -]+?)[ \t]+(\d{3,7})[ \t]+\d{1,2}/\d{1,2}/\d{2,4}", text)
+        r.technician, r.inspector_license = (squash(signed.group(1)), signed.group(2)) if signed else ("", "")
+        days, due, rows, tallies, addresses = [], [], [], {}, []
+        unmarked = 0
+        for start, end in zip(titles, titles[1:] + [len(text)]):
+            page = text[start:end]
+            addresses.append(site_address(page))
+            service = first(r"Service Type:[ \t]*(" + "|".join(_SERVICES) + r")\b", page) or \
+                first(r"^[ \t]*(" + "|".join(_SERVICES) + r")[ \t]*$", page, flags=re.I | re.M) or "Unstated"
+            service = service.title()
+            day = date_after(r"certified to be true:?", page, window=120)
+            if day:
+                days.append(day)
+            next_test = date_after(r"Test Due:", page, window=20)
+            if next_test:
+                due.append(next_test)
+            initial, final = _boxes(r"Initial Test", page), _boxes(r"Final Test", page)
+            passed = "passed" in (initial, final) and final != "failed"
+            failed = not passed and "failed" in (initial, final)
+            unmarked += int(not passed and not failed)
+            total, tested, ok, bad = tallies.get(service, (0, 0, 0, 0))
+            tallies[service] = (total + 1, tested + int(bool(day)), ok + int(passed), bad + int(failed))
+            if "failed" in (initial, final):
+                number = first(r"Backflow ID:[ \t]*(\d+)", page)
+                location = re.sub(r"\s*Test Due:.*$", "", first(r"L[oe]cation:\s*([^\n]*)", page))
+                notes = first(r"Tester Notes[ \t]*:[ \t]*([^\n]*)", page).strip(" ;")
+                rows.append(Deficiency(location, f"{service.lower()} service assembly" + (f", backflow ID {number}" if number else ""),
+                                       notes or "the Failed box is marked", "Resolved" if passed else "Open"))
+        # Every page prints the service address, and OCR can misread one: the address most pages print, or none.
+        counted = sorted(((addresses.count(a), a) for a in set(addresses) if a), reverse=True)
+        r.site_address = counted[0][1] if counted and (len(counted) == 1 or counted[0][0] > counted[1][0]) else ""
+        r.equipment = tuple(EquipmentTally(f"{name} service", *counts) for name, counts in tallies.items())
+        r.devices_total = len(titles)
+        r.devices_tested = sum(t.tested for t in r.equipment)
+        r.devices_passed = sum(t.passed for t in r.equipment)
+        r.devices_failed = sum(t.failed for t in r.equipment)
+        r.deficiencies = tuple(rows)
+        r.open_deficiencies = sum(1 for d in rows if d.status == "Open")
+        r.inspection_date = max(days) if days else None
+        r.next_due = min((d for d in due if r.inspection_date and d > r.inspection_date), default=None)
+        r.result = Result.FAILED if r.devices_failed else Result.INCOMPLETE if unmarked else Result.PASSED
+        r.comments = f"{unmarked} of {len(titles)} pages show no Passed or Failed mark" if unmarked else ""
+        return r
+
+    def check(self, r: InspectionReport, context: ModelContext) -> list[Finding]:
+        found = []
+        if r.comments:
+            found.append(Finding("marks-not-read", f"{r.comments} in the text; read those pages for the assemblies' results", Severity.CHECK))
+        return found + _report_findings(r, context)
+
+
 class InspectionReportModel(DocumentModel):
     """Any other vendor's inspection or test report, read by its labels."""
 
@@ -480,7 +570,8 @@ def _report_findings(r: InspectionReport, context: ModelContext) -> list[Finding
 
 register(SignalServiceReportModel())
 register(StateFireFormModel())
+register(BackflowFieldTestModel())
 register(InspectionReportModel())
 
 __all__ = ["AES_FORMS", "InspectedSystem", "Result", "EquipmentTally", "Deficiency", "InspectionReport", "SignalServiceReportModel",
-           "StateFireFormModel", "InspectionReportModel"]
+           "StateFireFormModel", "BackflowFieldTestModel", "InspectionReportModel"]
