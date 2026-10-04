@@ -63,7 +63,10 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "their three-year replacement. Its quarterly invoices (systems P320-4785, building 3, and P320-4786, building 8) "
                     "bill monitoring and the semi-annual inspection in advance, paid without a gap from February 2024; the visits "
                     "in the email are March 2025, September 19, 2025, January 28, 2026 (building 3), and an OS&Y tamper test in "
-                    "August 2026, with no report since September 2025."),
+                    "August 2026, with no report since September 2025. The Fire Sprinkler Company's $995 flow switch of December "
+                    "2025 may be building 3's repair (unconfirmed). The master policy's P-1 protective safeguard (CP 04 11, "
+                    "buildings 1-8) includes the sprinklers' supervisory services, so these reports are its evidence too: "
+                    "mystique/notes/fire-protection-records.md."),
     Obligation("Fire sprinkler quarterly inspection", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: control valves, "
                "gauges, waterflow and supervisory devices, the fire department connection, and the backflow preventer",
                every_months=3,
@@ -76,7 +79,10 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "payments from January 2024 bound it: The Fire Sprinkler Company quoted the annual at $895 a riser (two "
                     "risers), the quarterly at $350, and the five-year at $1,000 on March 25, 2024, and every payment to it since "
                     "is a repair ($4,245 February 2024; a bell, $1,249.12, September 2024; building 8's OS&Y, $1,245.22, June "
-                    "2025; a sprinkler head, $1,150, September 2025; a flow switch, $995, December 2025)."),
+                    "2025; a sprinkler head, $1,150, September 2025; a flow switch, $995, December 2025). The master policy "
+                    "makes the sprinklers a P-1 protective safeguard for buildings 1-8 (CP 04 11): no fire coverage if a "
+                    "known impairment was not reported or the system was not kept in working order "
+                    "(mystique/notes/fire-protection-records.md)."),
     Obligation("Fire sprinkler five-year internal inspection", "19 CCR 904, 906.4 (NFPA 25), form AES 2.2, filed with the fire authority",
                every_years=5,
                note="Internal inspection of valves and piping, and gauges replaced or tested; no record is on file."),

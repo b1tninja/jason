@@ -47,4 +47,15 @@ LESSONS = (
            "The board adopts the working words through 4360 (jason rule-change --from-manual) or records the adoptions "
            "that cover them; the parking demarcation passages may be covered by the 2022 parking adoption.",
            Status.DECISION, docs=("data/manual/owners-manual/render.json",)),
+    Lesson("fire-reports-filed-loose", date(2026, 10, 3), (Area.DOCUMENTS,),
+           "The fire alarm reports were scattered: the September 2025 reports loose in the root of My Drive (and PayHOA's "
+           "Email Attachments), the 2024 NFPA 72 report in the False Alarm folder, and the 2023 sprinkler report in "
+           "Reports. No report has been filed since September 2025.",
+           "Reports arrive only as email attachments (Signal Service's portal keeps no files), and each was saved where "
+           "the task of the day needed it. Nothing tied them to the master policy's P-1 sprinkler safeguard, which makes "
+           "them insurance evidence.",
+           "The board adopts the keeping rule in mystique/notes/fire-protection-records.md; then a Drive folder "
+           "(Reports/Fire Protection) and a non-public PayHOA folder synced from it, with a kind rule that files each "
+           "vendor report there. Until then the reports stay where they are.",
+           Status.DECISION, docs=("mystique/notes/fire-protection-records.md", "board item fire-alarm-deficiencies")),
 )
