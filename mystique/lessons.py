@@ -54,10 +54,13 @@ LESSONS = (
            "Reports arrive only as email attachments (Signal Service's portal keeps no files), and each was saved where "
            "the task of the day needed it. Nothing tied them to the master policy's P-1 sprinkler safeguard, which makes "
            "them insurance evidence.",
-           "The board adopts the keeping rule in mystique/notes/fire-protection-records.md; then a Drive folder "
-           "(Reports/Fire Protection) and a non-public PayHOA folder synced from it, with a kind rule that files each "
-           "vendor report there. Until then the reports stay where they are.",
-           Status.DECISION, docs=("mystique/notes/fire-protection-records.md", "board item fire-alarm-deficiencies")),
+           "A vendor's emailed report is now filed by rule (jason gmail --file-vendor; EMAIL_FILING in vendors.py): "
+           "Reports/Fire Protection/<system>, with each upload naming its message. Still open: the reports already "
+           "loose in Drive are not moved, and the board adopts the filing and retention policy "
+           "(records-retention-policy) and decides on a non-public PayHOA copy.",
+           Status.DECISION, guards=("jason gmail --file-vendor", "mystique/vendors.py (EMAIL_FILING)"),
+           docs=("mystique/notes/fire-protection-records.md", "board item fire-alarm-deficiencies",
+                 "board item records-retention-policy")),
     Lesson("signed-inspection-never-scheduled", date(2026, 10, 3), (Area.DOCUMENTS,),
            "The board signed The Fire Sprinkler Company's annual and quarterly inspection proposal on April 17, 2024, and no "
            "inspection followed; the company's June 18, 2025 email offering to schedule the annual went unanswered. An "
