@@ -11,7 +11,7 @@ import pytest
 
 from jason import api
 from jason.community import Community, intake
-from jason.community.base import BoardRule
+from jason.community.base import BoardRule, RuleSource, VoteBasis
 from jason.community.books import Book, BookEntry, Books
 from jason.community.intake import Ask, AskKind, AskStatus
 from jason.community.intake_rank import (
@@ -31,7 +31,9 @@ def _stub_class():
     members.update(
         name="Oakview Example Association", slug="oakview", org_id=0, root=None,
         document_sync_rules=lambda self: {"rules": [], "exclude": []},
-        board=lambda self: BoardRule(seats=3, minimum=3, maximum=3),
+        board=lambda self: BoardRule(seats=3, minimum=3, maximum=3, vote_basis=VoteBasis.MAJORITY_PRESENT,
+                                     vote_source=RuleSource("Bylaws 1.2"), interested_in_quorum=True,
+                                     interested_source=RuleSource("Bylaws 1.3")),
         book_entries=lambda self: (BookEntry("example-declaration", Book.DECL),),
         units=lambda self: ("100 MAIN ST", "102 MAIN ST"),
     )

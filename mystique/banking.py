@@ -36,10 +36,11 @@ RESERVE_BUDGET_LINES: dict[ReserveLine, str] = {
 # than two Directors, shall constitute a quorum for the transaction of business." The same section sets the vote: "Every
 # act or decision done or made by a majority of the Directors present at a duly-held meeting at which a quorum is
 # present shall be regarded as the act of the Board." The bylaws do not say whether a director who discloses an interest
-# and does not vote counts toward the quorum, and Corporations Code 7233 is not on the authorities shelf, so that is left
-# unset: the meeting room says "not on file; ask counsel" until counsel's reading is recorded here (RuleSource.counsel).
+# and does not vote counts toward the quorum. Corporations Code 7234 speaks to it and is on the authorities shelf, but
+# how it applies through Civil Code 5350(a) is counsel's reading, so that is left unset: the meeting room says "not on
+# file; ask counsel" until counsel's reading is recorded here (RuleSource.counsel).
 BOARD = BoardRule(seats=5, minimum=3, maximum=5, quorum_floor=2, source="Bylaws 5.1, 7.10",
-                  vote_basis=VoteBasis.MAJORITY_PRESENT, vote_source=RuleSource("Bylaws 7.10"))
+                  vote_basis=VoteBasis.MAJORITY_PRESENT, vote_source=RuleSource("Bylaws 7.10"), quorum_source="Bylaws 7.10")
 
 # Bylaws 7.6: members get notice of each board meeting "at least four days' prior", except emergency meetings (7.4) and
 # executive sessions (7.8). Not longer than CIV 4920(a), so the statute's four days stand; the source is shown with it.
@@ -56,6 +57,8 @@ MEETING_SCHEDULE = MeetingSchedule(weekday=1, nth=3, time="7:00 pm", place="Zoom
 # The board's running action items as a Google Sheet ("Mystique Board Action Items", created by jason 2026-09-29 at the
 # treasurer's request, private to the association's Drive). `jason board --sheet` reads the board's edits and writes the list.
 BOARD_ITEMS_SHEET = "1SPxkJkB6hNtMw1pwfwvhNpp1QKw9gS_OOH9oeMWK1cM"
+# Its title, which the board's Google Tasks list shares (`jason board --tasks` finds the list by it).
+BOARD_ITEMS_TITLE = "Mystique Board Action Items"
 
-__all__ = ["BANK_ACCOUNTS", "BOARD", "BOARD_ITEMS_SHEET", "MEETING_SCHEDULE", "RESERVE_BUDGET_LINES", "AccountPurpose", "BankAccount",
+__all__ = ["BANK_ACCOUNTS", "BOARD", "BOARD_ITEMS_SHEET", "BOARD_ITEMS_TITLE", "MEETING_SCHEDULE", "RESERVE_BUDGET_LINES", "AccountPurpose", "BankAccount",
            "ReserveLine"]

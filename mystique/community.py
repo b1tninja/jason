@@ -576,6 +576,12 @@ class Mystique(Community):
         """The Google Sheet that holds the board's action items (banking.py)."""
         return BOARD_ITEMS_SHEET
 
+    def board_items_title(self):
+        """The title of the board's action items Sheet and Tasks list (banking.py)."""
+        from .banking import BOARD_ITEMS_TITLE
+
+        return BOARD_ITEMS_TITLE
+
     def lessons(self):
         """Mystique's own lessons (lessons.py), beside jason's general ones."""
         from .lessons import LESSONS

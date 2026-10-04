@@ -16,13 +16,33 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 STORE = Path("meetings")
-# In person (4090(a)); hybrid, a teleconference with a physical location (4090(b)); entirely by teleconference, with no
-# physical location (4926(a)). 4926's notice lines apply only to the last.
-FORMATS = ("in person", "hybrid", "teleconference")
+
+
+class MeetingFormat(Enum):
+    """How a board meeting is held. In person (4090(a)); hybrid, a teleconference with a physical location (4090(b));
+    entirely by teleconference, with no physical location (4926(a)). 4926's notice lines apply only to the last."""
+
+    IN_PERSON = "in person"
+    HYBRID = "hybrid"
+    TELECONFERENCE = "teleconference"
+
+
+FORMATS = tuple(f.value for f in MeetingFormat)
+
+
+def meeting_format(value: Any) -> MeetingFormat | None:
+    """The ``MeetingFormat`` a stored word names, or None for an empty or unknown word (a miss stays a miss)."""
+    if isinstance(value, MeetingFormat):
+        return value
+    try:
+        return MeetingFormat(str(value or "").strip().lower())
+    except ValueError:
+        return None
 KINDS = ("consent", "discussion", "action", "executive")
 BASICS = ("start", "format", "location", "join", "dialIn", "help")
 ITEM_FIELDS = ("include", "kind", "motion", "allot", "order", "packet", "brief", "subject")
@@ -254,4 +274,4 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str) -> dict[str,
     return plan
 
 
-__all__ = ["STORE", "FORMATS", "KINDS", "BASICS", "ITEM_FIELDS", "BRIEF_FIELDS", "ZOOM_FIELDS", "path", "empty", "load", "save", "update"]
+__all__ = ["STORE", "MeetingFormat", "meeting_format", "FORMATS", "KINDS", "BASICS", "ITEM_FIELDS", "BRIEF_FIELDS", "ZOOM_FIELDS", "path", "empty", "load", "save", "update"]

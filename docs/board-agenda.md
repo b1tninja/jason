@@ -15,7 +15,7 @@ When a review finds the same matter again, it updates jason's fields and never t
 - `jason board`: lists the open items.
 - `jason board --set <id> --status proposed --owner Treasurer`: changes the board's fields and records the change in the item's history.
 - `jason board --sheet`: syncs the board's action-items Google Sheet (created September 29, 2026; its id is `BOARD_ITEMS_SHEET` in `mystique/banking.py`, and `--sheet <id>` names another). The board edits status, owner, meeting, and notes there; each sync reads those back first, then writes every column. It is a private file in the association's Drive; share it with the directors from Drive. `--create-sheet` creates a new one.
-- `jason board --tasks`: keeps the same items as a Google Tasks list of the same name in the signed-in account, on a token of its own (`secrets/google-tasks-token.json`; the first run needs `--interactive` to consent). Each open item is a task with the ask, status, owner, meeting, and a link to the Sheet in its notes, and the item's due date. Checking a task off closes its item, noted in the item's history; a closed item's task is completed. A Tasks list belongs to one account and is not shared, so the Sheet stays the directors' shared record. jason finds its tasks by a `jason:<id>` line in the notes, deletes none, and reports a task whose item it no longer has. With `--sheet --tasks` the Sheet is read first, then Tasks, then the Sheet is written again.
+- `jason board --tasks`: keeps the same items as a Google Tasks list of the same name in the signed-in account, on a token of its own (`secrets/google-tasks-token.json`; the first run needs `--interactive` to consent). Each open item is a task with the ask, status, owner, meeting, and a link to the Sheet in its notes, and the item's due date. Checking a task off closes its item, noted in the item's history; a closed item's task is completed. A Tasks list belongs to one account and is not shared, so the Sheet stays the directors' shared record. jason finds its tasks by a `jason:<id>` line in the notes, deletes none, and reports a task whose item it no longer has. With `--sheet --tasks` the Sheet is read first, then Tasks, then the Sheet is written again. The Sheet and the list share one title: `Community.board_items_title()`, else "<association name> Board Action Items".
 
 ## Meetings
 
@@ -24,12 +24,14 @@ When a review finds the same matter again, it updates jason's fields and never t
 **Drafting an agenda.** `jason board --agenda <last agenda Doc id>` drafts the next meeting's agenda the way the secretary does: from last month's Google Doc, read-only, including its smart chips (linked files, dates). It writes Markdown to `data/board/agenda-<date>.md`, and the draft:
 - carries the header, the Zoom details, the standing items, and the decorum rules forward, and marks last month's business "carried over; keep or drop";
 - points "approval of minutes" at the previous meeting and the treasurer's report at the previous month;
-- adds what an all-Zoom meeting's notice must carry (CIV 4926(a)(1)): technical instructions, the telephone and email of a person who can help before and during the meeting (`--tech-contact`), and the reminder that members may ask for individual delivery;
-- states that every vote of the directors is by roll call (4926(a)(3));
+- follows the meeting's format (`MeetingFormat`): `--format`, else the agenda plan's for the date (`data/meetings/plan-<date>.json`, which also gives the location and the help contact). With neither, it assumes a meeting held entirely by teleconference and says so in the draft;
+  - held entirely by teleconference: what the notice must carry under CIV 4926(a)(1) (technical instructions, the telephone and email of a person who can help before and during the meeting, `--tech-contact`, and the reminder that members may ask for individual delivery), and that every vote of the directors is by roll call (4926(a)(3));
+  - hybrid: the physical location members may attend, with a director or the board's designee there (4090(b)); none of 4926's lines;
+  - in person: the place of the meeting;
 - gives the notice deadline, four days before the meeting (4920(a)) or the governing documents' longer period with its source (4920(b)(3), `Community.board_notice_period()`), and the rule against acting on items not on the agenda (4930);
 - adds the board's proposed action items before the open forum, labeled action or report, with their authority and any notice of their own (5515(b) for a reserve loan, 4360 for a rule change);
 - sends litigation and collections items to executive session (4935), and adds a report of the last executive session (4935(e));
-- in November, notes that a meeting where ballots are counted cannot be held entirely on Zoom (4926(b)), and flags a meeting outside the resolution's regular months.
+- for the annual meeting held by teleconference, notes that a meeting where ballots are counted cannot be held entirely by teleconference (4926(b)), and flags a meeting outside the resolution's regular months.
 
 **The minutes template.** The minutes are sections (`jason.community.minutes_template.SECTIONS`). Each is a heading and a `{prompt}`: the instructions for what the section must record, the authority, and the minutes questions it answers. The template and the check are one list, and a question no section answers is a gap in the template (`uncovered`). The sections:
 - **meeting:** type, date, and teleconference (4920, 4926);
@@ -42,7 +44,7 @@ When a review finds the same matter again, it updates jason's fields and never t
 - **next meeting**, **adjournment**, and **recorded by** (Bylaws 10.10);
 - **the 30-day availability note** (4950(a)).
 
-`minutes-template-<date>.md`, written beside the agenda, is this template: each prompt in braces, a business block per agenda item, and roll-call tables for attendance and motions.
+`minutes-template-<date>.md`, written beside the agenda, is this template: each prompt in braces, a business block per agenda item, and tables for attendance and motions. The quorum line cites `BoardRule.quorum_source`; the motions table is headed as a roll call (4926(a)(3)) only for a meeting held entirely by teleconference.
 
 Minutes made this way close the gaps the minutes questions find in minutes that are the agenda with Zoom's AI recap appended: no roll call or vote, no directors listed, no call-to-order or adjournment time, no open forum note, and no recorder.
 
@@ -71,11 +73,11 @@ This association's findings are in its private notes (mystique/notes/board-agend
 
 **The agenda as a Google Doc.** `jason board --agenda <last agenda Doc id> --doc --yes` fills the **Board Meeting Agenda** template (My Drive/Templates, on the letterhead) into `My Drive/Meetings/<year>/DRAFT Agenda for M/D/YY`; `--preview` puts it in My Drive/Templates as "Preview - Agenda for M/D/YY" instead. A re-run rewrites the same Doc (its id is kept in `data/board/docs.json`). The Doc:
 - has the meeting's name under the letterhead and a ruled box with the date, time, Zoom link, meeting ID, and telephone number, taken from the schedule and the last agenda's header;
-- carries the 4926(a) statements in small print under the box; `{TECH_CONTACT}` stays visible until the secretary names the person who can help (`--tech-contact`);
+- carries the 4926(a) statements in small print under the box; `{TECH_CONTACT}` stays visible until the secretary names the person who can help (`--tech-contact`). The template is for a meeting held entirely by teleconference, so `--doc` refuses a hybrid or in-person format; use the Markdown draft for those;
 - numbers the business I, II, III with sub-items A, B, C, as the secretary's agendas do, and sets "See:" lines in the item's indent without a number;
 - highlights what the secretary must act on: last month's business "carried over: keep or drop", and each file to link ("[Minutes of 9/15/26]");
 - groups the board's action items under **New Business**, each with its title, "(action)" or "(report)", the action proposed with its authority, and any notice the law requires. The background stays in the board packet;
-- lists the executive session by the general nature of its business only (CIV 4935): the last agenda's headings, plus a general heading for an item they do not cover. An item's own title and ask stay in the packet;
+- lists the executive session by the general nature of its business only (CIV 4935(a)-(e)): each matter by its 4935 subject in the statute's words. The subject is the agenda plan's `subject` for the item; with none, jason's reading of the item's words or of a last agenda's heading (`classify_executive`, which matches words and can misread a name), flagged "confirm"; with neither, a blank for the Secretary. An item's title and ask, and the last agenda's executive headings, are never copied; they stay in the packet;
 - ends with the decorum rules, and repeats the meeting's name and date at the top of each later page.
 
 The Markdown draft (`agenda-<date>.md`) keeps the secretary's notes that do not belong on the agenda: the notice deadline and the special-meeting and annual-meeting cautions.

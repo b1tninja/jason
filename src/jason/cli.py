@@ -2625,16 +2625,34 @@ def cmd_board(args: argparse.Namespace) -> int:
     if args.agenda:
         schedule = active().meeting_schedule()
         meeting = date.fromisoformat(args.date) if args.date else schedule.next_meeting(date.today(), monthly=True)
+        # The meeting's format: a person's --format, else the agenda plan saved for the date (data/meetings/plan-<date>.json);
+        # with neither, the draft assumes a meeting held entirely by teleconference and says so.
+        from jason.tasks import agenda_plan
+        from jason.tasks.agenda_plan import MeetingFormat, meeting_format
+
+        plan = agenda_plan.load(data_dir, meeting.isoformat())
+        basics = plan["basics"]
+        # Each executive matter's Civil Code 4935 subject, as a person set it in the plan: the open agenda names it by that.
+        subjects = {k: v.get("subject") for k, v in plan["items"].items() if isinstance(v, dict) and v.get("subject")}
+        fmt, fmt_source = (meeting_format(args.format), "--format") if args.format else (
+            meeting_format(basics.get("format")), f"the agenda plan for {meeting.isoformat()}")
+        if args.doc and fmt not in (None, MeetingFormat.TELECONFERENCE):
+            print(f"--doc fills the agenda template, which carries 4926's lines for a meeting held entirely by teleconference; this "
+                  f"meeting is {fmt.value}. Use the Markdown draft for its notice.", file=sys.stderr)
+            return 2
         with _agent(args) as agent:
             previous = read_doc(agent.docs(), args.agenda)
         before = date.fromisoformat(args.previous) if args.previous else None
-        lines = draft(previous, load(data_dir), meeting, schedule, tech_contact=args.tech_contact, previous_meeting=before)
+        lines = draft(previous, load(data_dir), meeting, schedule, tech_contact=args.tech_contact or basics.get("help", ""),
+                      previous_meeting=before, meeting_format=fmt, format_source=fmt_source if fmt else "",
+                      location=basics.get("location", ""), subjects=subjects)
         out = data_dir / "board" / f"agenda-{meeting.isoformat()}.md"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines), encoding="utf-8")
         board = active().board()
         directors = [d.strip() for d in args.directors.split(",") if d.strip()] or [f"Director {n}" for n in range(1, board.seats + 1)]
-        minutes = minutes_template(meeting, directors, lines, quorum=board.quorum(len(directors)))
+        minutes = minutes_template(meeting, directors, lines, quorum=board.quorum(len(directors)), quorum_source=board.quorum_source,
+                                   roll_call=fmt in (None, MeetingFormat.TELECONFERENCE))
         (data_dir / "board" / f"minutes-template-{meeting.isoformat()}.md").write_text("\n".join(minutes), encoding="utf-8")
         print(f"wrote {out} and its minutes template")
         if args.doc:
@@ -2655,7 +2673,7 @@ def cmd_board(args: argparse.Namespace) -> int:
             from jason.tasks.template_gen import template_for
 
             template = template_for(active(), TemplateKind.AGENDA, data_dir, profile_name())
-            body = agenda_items(previous, load(data_dir), meeting, schedule, previous_meeting=before)
+            body = agenda_items(previous, load(data_dir), meeting, schedule, previous_meeting=before, subjects=subjects)
             values = agenda_values(previous, meeting, schedule, tech_contact=args.tech_contact)
             short = f"{meeting.month}/{meeting.day}/{meeting.year % 100:02d}"
             docs_file = data_dir / "board" / "docs.json"
@@ -4028,6 +4046,11 @@ def build_parser() -> argparse.ArgumentParser:
     board.add_argument("--previous", default="", help="The previous meeting's date, for the minutes to approve")
     board.add_argument("--directors", default="", help="Comma-separated directors for the minutes template")
     board.add_argument("--tech-contact", default="", help="Name, telephone, and email of the teleconference help (CIV 4926(a)(1)(B))")
+    from jason.tasks.agenda_plan import FORMATS as MEETING_FORMATS
+
+    board.add_argument("--format", default="", choices=MEETING_FORMATS,
+                       help="With --agenda: how the meeting is held (default: the agenda plan's for the date; with none, "
+                            "entirely by teleconference, said as assumed). Only 'teleconference' gets 4926's notice lines")
     board.add_argument("--sheet", nargs="?", const="spec", default="",
                        help="Sync with the board's Google Sheet (the specification's, or this id); reads the board's edits first")
     board.add_argument("--create-sheet", action="store_true", help="Create the board's Sheet (a new private file) and print its id")

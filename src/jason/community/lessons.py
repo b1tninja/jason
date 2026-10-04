@@ -1077,9 +1077,12 @@ LESSONS: tuple[Lesson, ...] = (
            "held entirely by teleconference gets 4926's.",
            Status.FIXED, guards=("tests/test_board_items.py (a longer period in the documents)",
                                  "tests/test_agenda_plan.py (hybrid is 4090(b), not 4926; the notice line's source)",
-                                 "ui agenda.test.tsx (the wizard's fields by format)"),
-           notes=("Still open: meeting_agenda.draft writes the 4926 lines for every format; models/meetings.py's "
-                  "notice-late check uses a fixed NOTICE_DAYS.",)),
+                                 "ui agenda.test.tsx (the wizard's fields by format)",
+                                 "tests/test_board_items.py::test_the_draft_follows_the_meeting_format",
+                                 "tests/test_models_meetings.py::test_agenda_notice_follows_a_longer_period_in_the_documents"),
+           notes=("Followed through 2026-10-04: jason board --agenda writes 4926's lines only for a meeting held "
+                  "entirely by teleconference (--format, else the agenda plan's), and the models' notice checks use "
+                  "notice_period().",)),
     Lesson("open-forum-default-limit", date(2026, 10, 4), (Area.GOVERNING,),
            "The meeting room defaulted open forum to 3 minutes a speaker, in the room record, the agenda row, the "
            "stage, and the script.",
@@ -1160,8 +1163,7 @@ LESSONS: tuple[Lesson, ...] = (
                                  "from meeting_record or draft(); plan, then wording, then blank; recheck counts "
                                  "without quoting)",),
            docs=("docs/board-agenda.md (The executive session note)",),
-           notes=("Still open: meeting_agenda.agenda_items carries the last agenda's executive headings into the new "
-                  "agenda word for word.",)),
+           notes=("The agenda's carry-forward of executive headings: lesson executive-headings-copied.",)),
     Lesson("statute-miss-not-looked-up", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
            "CIV 5350(a) applies Corporations Code 7233 and 7234, and code and caveats cited 7233, but neither was on "
            "the curated shelf, so jason cite answered statute_not_on_disk: an invitation to quote from memory.",
@@ -1176,6 +1178,42 @@ LESSONS: tuple[Lesson, ...] = (
                                  "promotions)", "jason.community.cite.Reason (the distinct miss reasons)"),
            docs=("docs/citations.md (Misses; Caveats)",),
            notes=("Open for counsel: how CORP 7234 applies under CIV 5350(a), for BoardRule.interested_in_quorum.",)),
+    Lesson("executive-headings-copied", date(2026, 10, 4), (Area.GOVERNING,),
+           "meeting_agenda.agenda_items copied the last agenda's executive-session headings word for word into the "
+           "next public agenda, with the notes under \"Adjourn to Executive Session\", so a heading that named a "
+           "member, a party, or a matter was noticed again.",
+           "The headings were treated as standing items, and nothing asked what the open agenda may say of an "
+           "executive matter (CIV 4935(e)).",
+           "executive_lines() names each matter only by its 4935 subject in the statute's words: the agenda plan's "
+           "subject, else classify_executive flagged for the Secretary to confirm, else a blank. Old headings, item "
+           "titles, and the notes under the adjourn heading are never copied.",
+           Status.FIXED, guards=("tests/test_board_items.py::test_the_open_agenda_names_an_executive_matter_by_its_"
+                                 "subject_only",),
+           docs=("docs/board-agenda.md",)),
+    Lesson("board-items-title-in-code", date(2026, 10, 4), (Area.REPOSITORY,),
+           "tasks/board_items.SHEET_TITLE held the association's name, the title of the board's Sheet and Tasks list.",
+           "A title made by hand for one association was written as a constant in general code.",
+           "Community.board_items_title(), empty by default, with a fallback from the association's name; the "
+           "profile keeps its exact old title, so the existing Tasks list is still found.",
+           Status.FIXED, guards=("tests/test_board_items.py::test_the_board_items_title_comes_from_the_profile",)),
+    Lesson("quorum-cite-hardcoded", date(2026, 10, 4), (Area.GOVERNING, Area.REPOSITORY),
+           "The minutes template cited one association's bylaws section for the quorum, for every association.",
+           "The profile's section number was written into a general string.",
+           "BoardRule.quorum_source, passed to meeting_agenda.minutes_template from the profile.",
+           Status.OPEN, guards=("tests/test_board_items.py (quorum_source in the minutes template)",),
+           notes=("Still in general code: bylaws section numbers in community/minutes_template.py (SECTIONS), "
+                  "models/meetings.py's minutes checks, and question_sets.py; the meeting schedule in "
+                  "tasks/board_packet.py and the --date help (\"the next third Tuesday\").",)),
+    Lesson("shared-tree-overwrite", date(2026, 10, 4), (Area.REPOSITORY,),
+           "While an agent worked, another session's commit flow left src/jason/cli.py without the agent's "
+           "uncommitted hunks, which it re-applied; and running scripts/gen_cli_docs.py --help regenerated "
+           "docs/cli.md from the shared tree's parser, taking in every session's uncommitted commands.",
+           "Several sessions share one working tree; a flow that rewrites a file from the index or HEAD drops "
+           "others' uncommitted hunks, and the doc generator ignores its arguments and has no dry run.",
+           "Nothing in code yet. Edits are re-checked before testing, commits stage only their own hunks, and a "
+           "commit is tested in a worktree at HEAD (lesson commit-swept-another-sessions-hunk).",
+           Status.OPEN,
+           notes=("Wanted: gen_cli_docs.py honoring --help and a --check mode; each session in its own worktree.",)),
 )
 
 

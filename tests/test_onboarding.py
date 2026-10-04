@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from jason.community import Community, community
-from jason.community.base import AccountPurpose, BankAccount, BoardRule
+from jason.community.base import AccountPurpose, BankAccount, BoardRule, NoticePeriod, RuleSource, SpeakingLimit, VoteBasis
 from jason.community.books import Book, BookEntry
 from jason.community.boundary import instance_terms
 from jason.community.onboarding import (
@@ -23,11 +23,17 @@ def _stub_class():
         name="Oakview Example Association", slug="oakview", org_id=0, root=None,
         document_sync_rules=lambda self: {"rules": [], "exclude": []},
         bank_accounts=lambda self: (BankAccount("0001", AccountPurpose.OPERATING, "Example Bank"),),
-        board=lambda self: BoardRule(seats=3, minimum=3, maximum=3),
+        board=lambda self: FULL_BOARD,
         book_entries=lambda self: (BookEntry("example-declaration", Book.DECL),),
         units=lambda self: ("100 MAIN ST", "102 MAIN ST"),
     )
     return type("Oakview", (Community,), members)
+
+
+# Made-up bylaws and a made-up reading of counsel.
+FULL_BOARD = BoardRule(seats=3, minimum=3, maximum=3, vote_basis=VoteBasis.MAJORITY_PRESENT, vote_source=RuleSource("Bylaws 1.2"),
+                       interested_in_quorum=False,
+                       interested_source=RuleSource("Bylaws 1.3", counsel="Example Counsel LLP, 2099-01-02", reading="not counted"))
 
 
 @pytest.fixture
@@ -64,6 +70,33 @@ def test_present_partial_and_missing_on_a_made_up_profile(ctx):
     assert found["tax-id"].status is Status.MISSING                # a person supplies it: no answer recorded yet
     assert found["tax-id"].evidence == "no private fact tax-id: not answered"
     assert "no 5200 record tax_return: nothing pinned" in found["tax-returns"].evidence
+
+
+def test_the_board_and_meeting_rules_are_asked_until_each_has_its_source():
+    # Seats and quorum alone: the vote basis and the interested-director rule are still to be asked, with their sources.
+    bare = type("Bare", (_stub_class(),), {"board": lambda self: BoardRule(seats=3, minimum=3, maximum=3)})()
+    rule = check_item(item_named("board-rule"), Context(community=bare))
+    assert rule.status is Status.PARTIAL
+    assert "no Community.board().vote_basis: not set" in rule.evidence
+    assert "no Community.board().interested_source: not set" in rule.evidence
+    assert "interest" in item_named("board-rule").ask.question and "counsel" in item_named("board-rule").ask.question
+    assert check_item(item_named("board-rule"), Context(community=_stub_class()())).status is Status.PRESENT
+    # The notice period and the open-forum limit are asked beside the schedule; none is assumed.
+    schedule = item_named("meeting-schedule")
+    assert "notice" in schedule.ask.question and "speak" in schedule.ask.question
+    held = type("Held", (_stub_class(),), {
+        "meeting_schedule": lambda self: SimpleNamespace(weekday=0),
+        "calendar_policy": lambda self: SimpleNamespace(days=1),
+        "board_notice_period": lambda self: NoticePeriod(days=10, source="Bylaws 1.4"),
+    })()
+    partial = check_item(schedule, Context(community=held))
+    assert partial.status is Status.PARTIAL and "no Community.open_forum_limit(): 0" in partial.evidence
+    adopted = type("Adopted", (type(held),), {"open_forum_limit": lambda self: SpeakingLimit(minutes=2, source="Resolution 99-1")})()
+    assert check_item(schedule, Context(community=adopted)).status is Status.PRESENT
+
+
+def item_named(key):
+    return next(i for i in ITEMS if i.key == key)
 
 
 def test_every_item_runs_against_a_profile_that_knows_nothing():

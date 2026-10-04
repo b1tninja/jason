@@ -6,20 +6,28 @@ the executive session, and the decorum rules. The secretary copies last month's 
 a Doc (read-only, smart chips included: linked files, dates, people) into an ``AgendaDoc``; ``draft`` makes the next
 meeting's agenda from it as Markdown:
 
-- the date is the schedule's next meeting (``Mystique.meeting_schedule()``: third Tuesdays), with the notice deadline
-  (four days before; CIV 4920) and the note that an item not on the agenda cannot be acted on (4930);
-- the header carries what an all-teleconference meeting's notice must: technical instructions, the telephone and email
-  of a person who can help before and during the meeting, and the reminder that members may ask for individual delivery
-  of notices (CIV 4926(a)(1)); and states that every vote of the directors is by roll call (4926(a)(3));
+- the date is the schedule's next meeting (``Community.meeting_schedule()``), with the notice deadline (four days
+  before, or the governing documents' longer period; CIV 4920) and the note that an item not on the agenda cannot be
+  acted on (4930);
+- the header follows the meeting's format (``MeetingFormat``: the agenda plan's for the date, or a person's flag). A
+  meeting held entirely by teleconference carries what 4926(a) asks of its notice: technical instructions, the
+  telephone and email of a person who can help before and during the meeting, the reminder that members may ask for
+  individual delivery of notices, and that every vote of the directors is by roll call (4926(a)(1), (3)). A hybrid
+  meeting's names the physical location, with a director or the board's designee there (4090(b)); an in-person
+  meeting's names its place. With no format given, the draft assumes the first and says so;
 - the standing items carry forward; the business items carry forward marked "carried over" for the board to keep or drop;
 - the board's action items proposed for this meeting (``data/board/items.json``) join the business, labeled action or
   report, with their authority and any notice of their own; the litigation and collections items go to executive session;
 - a report of the last executive session is added (4935(e)); the annual meeting at which ballots are counted cannot be
-  held entirely by teleconference (4926(b)), and the draft says so in November.
+  held entirely by teleconference (4926(b)), and a teleconference draft for the annual meeting says so.
 
-``minutes_template`` drafts the minutes' frame: attendance and quorum (Bylaws 7.10), each motion with mover, second, and
-the roll call by director, the executive session's general note, and the next steps. Drafts only; the board sets the
-agenda and approves the minutes.
+``minutes_template`` drafts the minutes' frame: attendance and quorum (the provision ``BoardRule.quorum_source`` cites),
+each motion with mover, second, and the vote by director (a roll call for a meeting held entirely by teleconference),
+the executive session's general note, and the next steps. Drafts only; the board sets the agenda and approves the
+minutes.
+
+``agenda_items`` names an executive-session matter on the open agenda only by its 4935 subject in the statute's words
+(``executive_lines``), never by an item's title or a last agenda's heading.
 """
 
 from __future__ import annotations
@@ -30,7 +38,9 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-from jason.community.board_items import PRIORITY_ORDER, BoardItem, ItemCategory, ItemStatus, Session, agenda_session
+from jason.community.board_items import PRIORITY_ORDER, BoardItem, ItemStatus, Session, agenda_session
+from jason.tasks.agenda_plan import MeetingFormat
+from jason.tasks.agenda_plan import meeting_format as to_format
 
 STANDING = re.compile(r"call to order|approval of minutes|treasurer|open forum|time and place|adjourn|architectural review|"
                       r"maintenance|election|decorum", re.I)
@@ -120,22 +130,84 @@ def read_doc(docs: Any, document_id: str) -> AgendaDoc:
     return parse_doc(docs.get(document_id))
 
 
-def _meeting_line(header: str, meeting: date, schedule: Any) -> str:
+def _meeting_line(header: str, meeting: date, schedule: Any, fmt: MeetingFormat = MeetingFormat.TELECONFERENCE,
+                  location: str = "") -> str:
     # "To be held on: Sep 15, 2026 7:00 PM PDT via Zoom (669) ..." keeps "via Zoom (669) ..." for the new date.
     zoom = re.sub(r"^To be held on:?.*?(?=\bvia\b)", "", header).strip()
     when = f"{meeting:%A, %B} {meeting.day}, {meeting.year} at {getattr(schedule, 'time', '7:00 pm')}"
+    if fmt is MeetingFormat.IN_PERSON:
+        return f"To be held on {when} at {location or '[the place of the meeting]'}"
+    if fmt is MeetingFormat.HYBRID:
+        return f"To be held on {when} at {location or '[the physical location]'}, and {zoom or 'by teleconference'}"
     return f"To be held on {when}, {zoom or 'on Zoom'}"
+
+
+# How each format reads in the draft's note on it, with the provision that defines it.
+FORMAT_LABEL = {MeetingFormat.TELECONFERENCE: "held entirely by teleconference, with no physical location (CIV 4926(a))",
+                MeetingFormat.HYBRID: "hybrid, a teleconference with a physical location members may attend (CIV 4090(b))",
+                MeetingFormat.IN_PERSON: "in person (CIV 4090(a))"}
+
+
+def format_lines(fmt: MeetingFormat, *, tech_contact: str = "", location: str = "") -> list[str]:
+    """What the notice says about taking part, by the meeting's format. 4926's lines (technical instructions, a person
+    who can help, the individual-delivery reminder, roll-call votes) are for a meeting held entirely by teleconference
+    only (4926(a)); a hybrid meeting's notice names a physical location with a director or the board's designee there
+    (4090(b)); an in-person meeting's names its place (4920(a))."""
+    if fmt is MeetingFormat.IN_PERSON:
+        return [f"Members may attend the meeting at {location or '[the place of the meeting]'} (CIV 4920(a), 4925(a))."]
+    if fmt is MeetingFormat.HYBRID:
+        return [f"Members may attend in person at {location or '[the physical location]'}, where at least one director or a "
+                "person the board designates is present (CIV 4090(b)).",
+                "Members may also join by teleconference from the link, or by telephone at the number above with the meeting ID."]
+    return ["To participate: join the Zoom meeting from the link, or by telephone at the number above with the meeting ID. "
+            f"Technical help before and during the meeting: {tech_contact or '[name, telephone, and email of the person who can help]'} "
+            "(CIV 4926(a)(1)(A), (B)).",
+            "You may ask to receive meeting notices by individual delivery; write to the board at the association's address "
+            "or email (CIV 4926(a)(1)(C), 4040).",
+            "Every vote of the directors at this meeting is taken by roll call (CIV 4926(a)(3))."]
 
 
 ACTION = re.compile(r"\b(adopt|decide|direct|authorize|approve|fill|correct|refer)\b", re.I)
 
-# An executive session is noticed by the general nature of its business (CIV 4935(a)-(d)); an item's own title and ask
-# stay in the directors' packet. Each category's general heading, and the words that show the last agenda already has it.
-GENERAL_NATURE: dict[ItemCategory, tuple[str, str]] = {
-    ItemCategory.LEGAL: ("Legal Matters", r"legal|litigation"),
-    ItemCategory.COLLECTIONS: ("Delinquencies", r"delinquen|collection|payment plan"),
-}
-OTHER_EXECUTIVE = ("Other matters Civil Code Section 4935(a) permits in executive session", r"4935\(a\) permits")
+# An executive session is noticed by the general nature of its business (CIV 4935(a)-(d), (e)): the open agenda names a
+# matter only by its subject in the statute's words (``EXECUTIVE_GENERAL_TERMS``), never by an item's title or ask, or a
+# last agenda's heading, which can name the member, the party, or the matter. Those stay in the directors' packet.
+CONFIRM = "==confirm: the 4935 subject was read from the wording, not recorded=="
+UNKNOWN_SUBJECT = "==___ (an executive-session matter; its 4935 subject is not on record)=="
+
+
+def executive_lines(carried: list[str], items: list[BoardItem], subjects: dict[str, Any]) -> list[str]:
+    """The executive session's lines on the open agenda, in general words only. Each item's subject is the agenda plan's
+    (``subjects`` by item id, an ``ExecutiveSubject``); with none, jason's reading of the item's words
+    (``classify_executive``, which matches words and can misread a name), flagged for the Secretary to confirm; with
+    neither, a blank. A heading carried from the last agenda is read the same way and its words are never copied."""
+    from jason.community.models.meetings import classify_executive, executive_general_note, executive_subject
+
+    recorded: list[Any] = []
+    read: list[Any] = []
+    blanks = 0
+    for i in items:
+        subject = executive_subject(subjects.get(i.id))
+        if subject is not None:
+            recorded.append(subject)
+            continue
+        guess = classify_executive(f"{i.title} {i.ask}")
+        if guess is None:
+            blanks += 1
+        else:
+            read.append(guess)
+    for title in carried:
+        guess = classify_executive(title)
+        if guess is None:
+            blanks += 1
+        else:
+            read.append(guess)
+    read = [s for s in dict.fromkeys(read) if s not in recorded]
+    out = [executive_general_note(recorded)] if recorded else []
+    if read:
+        out.append(f"{executive_general_note(read)} {CONFIRM}")
+    out += [UNKNOWN_SUBJECT] * blanks
+    return out
 
 
 def _kind(title: str) -> str:
@@ -147,11 +219,12 @@ def _kind(title: str) -> str:
 
 
 def agenda_items(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: Any, *, include_open: bool = False,
-                 previous_meeting: date | None = None) -> list[str]:
+                 previous_meeting: date | None = None, subjects: dict[str, Any] | None = None) -> list[str]:
     """The agenda's business as Markdown, for the agenda Doc's ``{AGENDA_ITEMS}`` and the draft file: the last agenda's
     standing items carried forward, what it carried over flagged for the board to keep or drop, the board's action items
     as New Business (each with the action proposed and any notice the law requires; the background is in the packet),
-    the executive session by the general nature of its business, and the decorum rules."""
+    the executive session by the general nature of its business only (``executive_lines``; ``subjects`` is the agenda
+    plan's 4935 subject by board item id), and the decorum rules."""
     wanted = {ItemStatus.PROPOSED, ItemStatus.ON_AGENDA} | ({ItemStatus.OPEN} if include_open else set())
     chosen = sorted((i for i in items if i.status in wanted), key=lambda i: (PRIORITY_ORDER[i.priority], i.id))
     open_items = [i for i in chosen if agenda_session(i) is Session.OPEN]
@@ -200,13 +273,8 @@ def agenda_items(previous: AgendaDoc, items: list[BoardItem], meeting: date, sch
     nxt = schedule.next_meeting(meeting, monthly=True) if schedule else meeting
     item("Time and place of next meeting", "", [f"{nxt:%A, %B} {nxt.day}, {nxt.year} at {getattr(schedule, 'time', '7:00 pm')} "
                                                  f"on {getattr(schedule, 'place', 'Zoom')}"])
-    executive = [h.title for h in after[1:]]
-    for i in executive_items:
-        heading, present = GENERAL_NATURE.get(i.category, OTHER_EXECUTIVE)
-        if not any(re.search(present, e, re.I) for e in executive):
-            executive.append(heading)
-    item("Adjourn to Executive Session", "", [e for e in (after[0].notes[:1] if after else [])])
-    out.extend(f"   - {e}" for e in executive)
+    item("Adjourn to Executive Session")
+    out.extend(f"   - {e}" for e in executive_lines([h.title for h in after[1:]], executive_items, subjects or {}))
     item("Adjournment")
     if previous.closing:
         out.append("")
@@ -216,27 +284,36 @@ def agenda_items(previous: AgendaDoc, items: list[BoardItem], meeting: date, sch
 
 
 def draft(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: Any, *, tech_contact: str = "",
-          include_open: bool = False, previous_meeting: date | None = None) -> list[str]:
-    """The next meeting's draft agenda (Markdown): the header the notice needs, the secretary's notes on the notice, and
-    ``agenda_items``."""
+          include_open: bool = False, previous_meeting: date | None = None, meeting_format: MeetingFormat | str | None = None,
+          format_source: str = "", location: str = "", subjects: dict[str, Any] | None = None) -> list[str]:
+    """The next meeting's draft agenda (Markdown): the header the notice needs for the meeting's format, the
+    secretary's notes on the notice, and ``agenda_items``.
+
+    ``meeting_format`` is the meeting's ``MeetingFormat`` (from the agenda plan for the date or a person's flag;
+    ``format_source`` says which). With none, the draft assumes a meeting held entirely by teleconference, as it always
+    drafted, and says it assumed so. ``subjects`` is the agenda plan's 4935 subject by item id (``executive_lines``)."""
     annual = schedule is not None and schedule.annual_month == meeting.month and schedule.day_in(meeting.year, meeting.month) == meeting
     from jason.tasks.board_items import notice_period
 
+    fmt = to_format(meeting_format)
+    assumed = fmt is None
+    fmt = fmt or MeetingFormat.TELECONFERENCE
     days, basis = notice_period()      # the statute's four days, or the governing documents' longer period (4920(b)(3))
     notice_by = meeting - timedelta(days=days)
     out = [f"# DRAFT Agenda for {meeting.month}/{meeting.day}/{meeting.year % 100:02d}", ""]
-    out.append(_meeting_line(previous.header, meeting, schedule))
+    out.append(_meeting_line(previous.header, meeting, schedule, fmt, location))
     out.append("")
-    out.append("To participate: join the Zoom meeting from the link, or by telephone at the number above with the meeting ID. "
-               f"Technical help before and during the meeting: {tech_contact or '[name, telephone, and email of the person who can help]'} "
-               "(CIV 4926(a)(1)(A), (B)).")
-    out.append("You may ask to receive meeting notices by individual delivery; write to the board at the association's address "
-               "or email (CIV 4926(a)(1)(C), 4040).")
-    out.append("Every vote of the directors at this meeting is taken by roll call (CIV 4926(a)(3)).")
+    out += format_lines(fmt, tech_contact=tech_contact, location=location)
     out.append("")
     out.append(f"_Notice with this agenda must go out by {notice_by:%A, %B} {notice_by.day} ({basis}); the board may act only on "
                "items on this agenda (CIV 4930)._")
-    if annual:
+    out.append("")
+    if assumed:
+        out.append(f"_Format assumed: {FORMAT_LABEL[fmt]}; no format is in the agenda plan for this date or given with --format. "
+                   "4926's lines above are for that format only; for a hybrid or in-person meeting, set the format and draft again._")
+    else:
+        out.append(f"_Format: {FORMAT_LABEL[fmt]}" + (f", from {format_source}" if format_source else "") + "._")
+    if annual and fmt is MeetingFormat.TELECONFERENCE:
         out.append("")
         out.append("_This is the annual meeting. If election ballots are counted and tabulated at it, the meeting cannot be held "
                    "entirely by teleconference: a physical location must be open (CIV 4926(b), 5120)._")
@@ -245,7 +322,8 @@ def draft(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: 
         out.append(f"_{schedule.resolution} fixes regular meetings in months {', '.join(map(str, schedule.regular_months))}; "
                    "unless a later resolution makes every month regular, this meeting is a special meeting._")
     out.append("")
-    out += agenda_items(previous, items, meeting, schedule, include_open=include_open, previous_meeting=previous_meeting)
+    out += agenda_items(previous, items, meeting, schedule, include_open=include_open, previous_meeting=previous_meeting,
+                        subjects=subjects)
     out.append("")
     out.append("_Drafted by jason from the last agenda and the board's action items; the board sets the agenda._")
     return out
@@ -304,23 +382,28 @@ def insertion_requests(doc: dict[str, Any], items: list[BoardItem], *, before: s
     return requests
 
 
-def minutes_template(meeting: date, directors: list[str], agenda_lines: list[str], *, quorum: int | None = None) -> list[str]:
+def minutes_template(meeting: date, directors: list[str], agenda_lines: list[str], *, quorum: int | None = None,
+                     quorum_source: str = "", roll_call: bool = True) -> list[str]:
     """The minutes' frame for a meeting: each section with its instructions in braces (``jason.community.minutes_template``),
-    the business section once per agenda item, and the roll-call tables for attendance and motions."""
+    the business section once per agenda item, and the tables for attendance and motions. ``quorum_source`` is the
+    provision that sets the quorum (``BoardRule.quorum_source``); ``roll_call`` says the meeting is held entirely by
+    teleconference, where every director vote is by roll call (CIV 4926(a)(3))."""
     from jason.community.minutes_template import render
 
     items = tuple(re.sub(r"^\d+\.\s*\*\*|\*\*.*$", "", line).strip() for line in agenda_lines if re.match(r"^\d+\. \*\*", line))
     out = render(meeting, items=items)
     at = out.index("## Attendance and quorum") + 1
+    cite = f" ({quorum_source})" if quorum_source else ""
     table = ["", "| Director | Present | Absent | Joined / left |", "|---|---|---|---|", *[f"| {d} | | | |" for d in directors], "",
-             f"Quorum: {quorum} directors (Bylaws 7.10). Quorum present: yes / no." if quorum else "Quorum present: yes / no."]
+             f"Quorum: {quorum} directors{cite}. Quorum present: yes / no." if quorum else "Quorum present: yes / no."]
     out[at:at] = table
     at = out.index("## Business") + 1
-    out[at:at] = ["", "Every motion's vote is by roll call (CIV 4926(a)(3)):", "",
+    out[at:at] = ["", "Every motion's vote is by roll call (CIV 4926(a)(3)):" if roll_call else "Each motion's vote, by director:", "",
                   "| # | Item | Motion | Moved | Seconded | " + " | ".join(directors) + " | Result |",
                   "|---|---|---|---|---|" + "---|" * len(directors) + "---|",
                   "| 1 | | | | | " + " | ".join("" for _ in directors) + " | carried / failed |"]
     return out
 
 
-__all__ = ["AgendaDoc", "AgendaHeading", "parse_doc", "read_doc", "agenda_items", "agenda_values", "draft", "minutes_template"]
+__all__ = ["AgendaDoc", "AgendaHeading", "parse_doc", "read_doc", "agenda_items", "agenda_values", "draft", "format_lines",
+           "executive_lines", "minutes_template"]

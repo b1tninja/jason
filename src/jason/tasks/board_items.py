@@ -31,7 +31,6 @@ from jason.community.board_items import (
 
 STORE = Path("board") / "items.json"
 BOARD_FIELDS = ("status", "owner", "meeting", "notes")
-SHEET_TITLE = "Mystique Board Action Items"
 TAB = "Items"
 COLUMNS = ("id", "priority", "status", "category", "title", "ask", "summary", "authority", "evidence", "session", "special_notice", "due",
            "opened", "owner", "meeting", "notes")
@@ -73,6 +72,20 @@ def save(data_dir: Path, items: list[BoardItem]) -> Path:
     body = {"savedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"), "items": [_encode(i) for i in items]}
     path.write_text(json.dumps(body, indent=1), encoding="utf-8")
     return path
+
+
+def sheet_title(community: Any = None) -> str:
+    """The title of the board's action items Sheet and Google Tasks list: the profile's ``board_items_title()``, else
+    "<association> Board Action Items" from its name. The active profile is read when ``community`` is not given."""
+    if community is None:
+        from jason.community import community as active
+
+        community = active()
+    title = str(getattr(community, "board_items_title", lambda: "")() or "").strip()
+    if title:
+        return title
+    name = str(getattr(community, "name", "") or "").strip()
+    return f"{name} Board Action Items" if name else "Board Action Items"
 
 
 def _store_lock(fn):
@@ -306,13 +319,13 @@ def task_body(item: BoardItem, sheet_id: str = "") -> dict[str, Any]:
     return body
 
 
-def sync_tasks(tasks: Any, data_dir: Path, *, sheet_id: str = "", today: date | None = None) -> dict[str, Any]:
-    """Keep the board's items as one Google Tasks list: a task checked off there closes its item (recorded in the item's
-    history), then every item is written back (a closed item's task is completed). Tasks jason no longer knows are
-    reported, not deleted."""
+def sync_tasks(tasks: Any, data_dir: Path, *, sheet_id: str = "", today: date | None = None, community: Any = None) -> dict[str, Any]:
+    """Keep the board's items as one Google Tasks list (``sheet_title``): a task checked off there closes its item
+    (recorded in the item's history), then every item is written back (a closed item's task is completed). Tasks jason
+    no longer knows are reported, not deleted."""
     from jason.google.tasks import marker_of
 
-    list_id = tasks.task_list(SHEET_TITLE)
+    list_id = tasks.task_list(sheet_title(community))
     existing = {marker_of(t): t for t in tasks.tasks(list_id) if marker_of(t)}
     items = {i.id: i for i in load(data_dir)}
     closed_there = [k for k, t in existing.items()
@@ -341,11 +354,12 @@ def sync_tasks(tasks: Any, data_dir: Path, *, sheet_id: str = "", today: date | 
     return counts
 
 
-def create_sheet(sheets: Any) -> str:
-    """Create the board's action item Sheet (a new, private file in the signed-in Drive) and return its id."""
-    created = sheets.create(SHEET_TITLE, sheet_titles=(TAB,))
+def create_sheet(sheets: Any, *, community: Any = None) -> str:
+    """Create the board's action item Sheet (a new, private file in the signed-in Drive, titled ``sheet_title``) and
+    return its id."""
+    created = sheets.create(sheet_title(community), sheet_titles=(TAB,))
     return created["spreadsheetId"]
 
 
 __all__ = ["load", "save", "upsert", "set_fields", "agenda", "list_lines", "notice_date", "notice_period", "to_rows", "sync_sheet", "task_body", "sync_tasks",
-           "create_sheet", "SHEET_TITLE"]
+           "create_sheet", "sheet_title"]

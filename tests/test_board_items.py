@@ -72,8 +72,10 @@ def test_the_draft_carries_the_last_agenda_forward_and_adds_the_law():
     assert "See: ==[Minutes of 10/20/26]==" in text and "Paving ==keep or drop==" in text
     assert text.index("New Business") < text.index("Reserve loan") < text.index("Open Forum") < text.index("Executive Session")
     assert "Not yet" not in text and "Notice: CIV 5515(b)" in text and "4935(e)" in text
-    # The executive session is noticed by its general nature: the lawsuit falls under the last agenda's Legal Matters.
-    assert "Lawsuit" not in text and text.count("Legal Matters") == 1
+    # The executive session is noticed by its general nature only: the lawsuit and the last agenda's "Legal Matters"
+    # are both read as litigation, flagged for the Secretary to confirm, and neither's words are copied.
+    assert "Lawsuit" not in text and "Legal Matters" not in text
+    assert "litigation (Civil Code 4935(a)) ==confirm" in text
     from jason.tasks.meeting_agenda import agenda_values
 
     previous.links = ["https://us02web.zoom.us/j/81392024127?pwd=x"]
@@ -81,7 +83,9 @@ def test_the_draft_carries_the_last_agenda_forward_and_adds_the_law():
     assert values["ZOOM_PHONE"] == "(555) 000-0000" and values["ZOOM_MEETING_ID"] == "000 0000 0000"
     assert values["MEETING_DATE"] == "Tuesday, October 20, 2026" and "TECH_CONTACT" not in values and values["ZOOM_LINK"].startswith("https")
     minutes = "\n".join(minutes_template(date(2026, 11, 17), ["A", "B", "C", "D"], lines, quorum=3))
-    assert "Quorum: 3 directors" in minutes and "| A | B | C | D |" in minutes and "4950(a)" in minutes
+    assert "Quorum: 3 directors." in minutes and "| A | B | C | D |" in minutes and "4950(a)" in minutes
+    cited = "\n".join(minutes_template(date(2026, 11, 17), ["A", "B"], lines, quorum=2, quorum_source="Bylaws 1.2", roll_call=False))
+    assert "Quorum: 2 directors (Bylaws 1.2)." in cited and "4926(a)(3)):" not in cited and "Each motion's vote, by director:" in cited
 
 
 def test_packet_citations_and_insertion_requests(tmp_path):
@@ -199,3 +203,66 @@ def test_the_notice_period_honors_a_longer_one_in_the_documents():
     assert notice_period(community=shorter) == (4, "CIV 4920(a)")
     # The fixture profile's documents say four days: the statute's period, with both sources shown.
     assert notice_period() == (4, f"CIV 4920(a); {mystique().board_notice_period().source}")
+
+
+def _previous():
+    return parse_doc(_doc(["Call to Order", "Open Forum", "Time and Place of next Regular Meeting", "Adjourn to Executive Session"]))
+
+
+def test_the_draft_follows_the_meeting_format():
+    from jason.tasks.agenda_plan import MeetingFormat
+
+    meeting, schedule = date(2099, 3, 17), None
+    tele = "4926(a)(1)(A)", "4926(a)(1)(C)", "4926(a)(3)"
+    # No format: today's output, with the 4926 lines, and a note that it assumed the meeting is entirely by teleconference.
+    assumed = "\n".join(draft(_previous(), [], meeting, schedule, tech_contact="A Helper, (555) 010-0000"))
+    assert all(t in assumed for t in tele) and "A Helper" in assumed and "Format assumed: held entirely by teleconference" in assumed
+    given = "\n".join(draft(_previous(), [], meeting, schedule, meeting_format="teleconference", format_source="the agenda plan for 2099-03-17"))
+    assert all(t in given for t in tele) and "Format assumed" not in given and "from the agenda plan for 2099-03-17" in given
+    # Hybrid: 4090(b)'s location with a director or designee there; none of 4926's lines.
+    hybrid = "\n".join(draft(_previous(), [], meeting, schedule, meeting_format=MeetingFormat.HYBRID, location="123 Main St"))
+    assert "at 123 Main St" in hybrid and "4090(b)" in hybrid and "director or a person the board designates" in hybrid
+    assert "4926" not in hybrid and "roll call" not in hybrid
+    # In person: the place; no teleconference line at all, and a missing place stays a visible blank.
+    in_person = "\n".join(draft(_previous(), [], meeting, schedule, meeting_format="in person"))
+    assert "[the place of the meeting]" in in_person and "4926" not in in_person and "via Zoom" not in in_person
+
+
+def test_the_open_agenda_names_an_executive_matter_by_its_subject_only():
+    from jason.tasks.meeting_agenda import UNKNOWN_SUBJECT, agenda_items
+
+    # A last agenda that named a member and a party under executive session (made-up names).
+    previous = parse_doc(_doc(["Call to Order", "Open Forum", "Time and Place of next Regular Meeting", "Adjourn to Executive Session",
+                               ("Jane Example - 123 Main St hearing", "HEADING_5"), ("Acme Roofing lawsuit", "HEADING_5"),
+                               ("Quiet Tuesday", "HEADING_5")]))
+    items = [_item("plan", title="Payment plan for John Sample", status=ItemStatus.PROPOSED, category=ItemCategory.COLLECTIONS),
+             _item("odd", title="Pat Placeholder", ask="Discuss.", status=ItemStatus.PROPOSED, session=Session.EXECUTIVE)]
+    text = "\n".join(agenda_items(previous, items, date(2099, 3, 17), None, subjects={"plan": "assessment_payment"}))
+    executive = text.split("Adjourn to Executive Session")[1]
+    for name in ("Jane Example", "123 Main St", "Acme Roofing", "John Sample", "Pat Placeholder", "Quiet Tuesday"):
+        assert name not in text
+    # The plan's subject, in the statute's words; the old headings read as subjects to confirm; the rest are blanks.
+    assert "a member's payment of assessments (Civil Code 4935(a), (c))" in executive
+    assert "member discipline" in executive and "litigation" in executive and "==confirm" in executive
+    assert executive.count(UNKNOWN_SUBJECT) == 2          # the unclassified item and the unclassified old heading
+
+
+def test_the_board_items_title_comes_from_the_profile(tmp_path):
+    from types import SimpleNamespace
+
+    from jason.tasks.board_items import sheet_title, sync_tasks
+
+    named = SimpleNamespace(board_items_title=lambda: "", name="Oakview Example Association")
+    assert sheet_title(named) == "Oakview Example Association Board Action Items"
+    titled = SimpleNamespace(board_items_title=lambda: "Oakview Board Items", name="Oakview Example Association")
+    assert sheet_title(titled) == "Oakview Board Items"
+    assert sheet_title(SimpleNamespace()) == "Board Action Items"
+    seen = []
+
+    class Tasks(_FakeTasks):
+        def task_list(self, title):
+            seen.append(title)
+            return "L1"
+
+    sync_tasks(Tasks(), tmp_path, community=titled)
+    assert seen == ["Oakview Board Items"]

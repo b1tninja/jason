@@ -531,9 +531,21 @@ ITEMS: tuple[OnboardingItem, ...] = (
         ask=A("Who keeps the 1099 reports and the vendors' W-9s, and where?")),
     # The board, officers, committees, and manager
     OnboardingItem(
-        "board-rule", Group.BOARD, "The number of seats, their terms, and the quorum, from the bylaws",
-        "quorum counts in minutes and the election cycle", (S.BOARD,), "Community.board()", (Method("board"),), (P,),
-        ask=A("How many seats does the board have, how long is a term, and what is the quorum?", PROFILE_CHANGE,
+        "board-rule", Group.BOARD,
+        "The number of seats, their terms, the quorum, what carries a motion, and whether an interested director counts "
+        "toward the quorum, from the bylaws or counsel's reading",
+        "quorum counts in minutes and the election cycle; the meeting room tallies a vote by the vote basis and counts a "
+        "recused director only by a rule on file", (S.BOARD, S.COUNSEL),
+        "Community.board(): BoardRule seats and quorum, vote_basis with vote_source, interested_in_quorum with "
+        "interested_source (RuleSource: a provision or counsel's reading)",
+        (Method("board"), Method("board", field="vote_basis"), Method("board", field="vote_source"),
+         Method("board", field="interested_source")), (P,),
+        note="A source is the provision's citation, recited from disk, or counsel's reading, named and labeled as a "
+             "reading. Where the bylaws are silent on an interested director, the answer is counsel's, never jason's.",
+        ask=A("How many seats does the board have, how long is a term, and what is the quorum? What carries a motion (a "
+              "majority of the directors present at a meeting with a quorum, or of those in office), and which provision "
+              "says so? Does a director who discloses an interest and does not vote still count toward the quorum, and "
+              "which provision, or whose reading of counsel, says so?", PROFILE_CHANGE,
               lead_kinds=(K.BYLAWS,), method="board")),
     OnboardingItem(
         "board-roster", Group.BOARD, "Directors and officers, with their offices, term dates, and contact",
@@ -790,9 +802,21 @@ ITEMS: tuple[OnboardingItem, ...] = (
         "agendas", Group.MEETINGS, "Agendas and meeting notices", "CIV 4920", (S.BOARD, S.PRIOR_MANAGER), "book agenda",
         (Kinds((K.AGENDA,)),), (L, P, H), "jason meetings"),
     OnboardingItem(
-        "meeting-schedule", Group.MEETINGS, "The regular meeting schedule, place or platform, and the annual meeting's month",
-        "notice periods count from it (CIV 4920)", (S.BOARD,), "Community.meeting_schedule(), calendar_policy()",
-        (Method("meeting_schedule"), Method("calendar_policy")), (L, P, H), "jason calendar"),
+        "meeting-schedule", Group.MEETINGS,
+        "The regular meeting schedule, place or platform, the annual meeting's month, the notice period the governing "
+        "documents set, and the open-forum time limit the board adopted",
+        "notice periods count from it, and a longer one in the governing documents governs (CIV 4920(b)(3)); the board "
+        "establishes the time limit for members to speak (4925(b))", (S.BOARD,),
+        "Community.meeting_schedule(), calendar_policy(), board_notice_period() (NoticePeriod), open_forum_limit() "
+        "(SpeakingLimit)",
+        (Method("meeting_schedule"), Method("calendar_policy"), Method("board_notice_period"), Method("open_forum_limit")),
+        (L, P, H), "jason calendar",
+        note="A notice period equal to the statute's is still recorded, with its provision. No open-forum limit is "
+             "assumed: until the board adopts one, the meeting room says none is on record.",
+        ask=A("What notice of a board meeting do the governing documents require, in which provision, and does it say it "
+              "reaches a meeting held solely in executive session? What time limit has the board adopted for members to "
+              "speak, and in which resolution or policy?", PROFILE_CHANGE, lead_kinds=(K.BYLAWS, K.RESOLUTION, K.MINUTES),
+              method="board_notice_period")),
     OnboardingItem(
         "executive-sessions", Group.MEETINGS, "Executive-session minutes", "CIV 4935", (S.BOARD,), "book exec",
         (Kinds((K.EXECUTIVE_SESSION,)),), (L, P)),

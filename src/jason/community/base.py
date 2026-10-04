@@ -241,6 +241,7 @@ class BoardRule:
     vote_source: RuleSource | None = None
     interested_in_quorum: bool | None = None
     interested_source: RuleSource | None = None
+    quorum_source: str = ""        # the provision that sets the quorum ("Bylaws 1.2"), cited where a quorum is counted
 
     def quorum(self, in_office: int | None = None) -> int:
         """Directors needed for a quorum when ``in_office`` directors hold office (default: every seat filled)."""
@@ -1194,6 +1195,11 @@ class Community(ABC):
 
     def board_items_sheet(self) -> str:
         """The Google Sheet id of the board's action items. Empty until the specification sets it."""
+        return ""
+
+    def board_items_title(self) -> str:
+        """The title of the board's action items Sheet and Google Tasks list, as the association named them. Empty until
+        the specification sets it: jason then names them from the association's name (``board_items.sheet_title``)."""
         return ""
 
     def procedures(self) -> tuple:

@@ -22,7 +22,8 @@ item (2024-early 2025) or followed by a Zoom AI "Quick recap / Next steps / Summ
 manager's agenda (The Helsing Group) numbers its items 1-7 with consent, review, action, and discussion sections.
 
 An agenda's text does not say when it went out; PayHOA's communications log (``data/payhoa/communications.json``) gives
-the day its notice email did, which the agenda check sets beside the four days 4920(a) requires. A Zoom AI summary retells
+the day its notice email did, which the agenda check sets beside the four days 4920(a) requires, or the governing
+documents' longer period where the specification records one (4920(b)(3), ``notice_need``). A Zoom AI summary retells
 the call: it is never expected to hold a roll call or an attendance list, so it gets one finding for what it lacks.
 
 A reading is evidence. A finding is a lead for a person: the agenda in the library may not be the version posted, and a
@@ -659,6 +660,18 @@ def _key(title: str) -> str:
 # Agenda
 
 
+def notice_need(executive_only: bool, context: ModelContext) -> tuple[int, str]:
+    """Days of notice a board meeting needs, and their source: the governing documents' longer period where the
+    context's specification records one (CIV 4920(b)(3); ``jason.tasks.board_items.notice_period``), else the statute's
+    four days, two for a meeting held solely in executive session. With no specification in the context, the statute's
+    period: a model reads no profile of its own."""
+    if context.community is None:
+        return (EXECUTIVE_NOTICE_DAYS, "CIV 4920(b)(2)") if executive_only else (NOTICE_DAYS, "CIV 4920(a)")
+    from jason.tasks.board_items import notice_period
+
+    return notice_period(executive_only=executive_only, community=context.community)
+
+
 class AgendaModel(DocumentModel):
     kind = DocumentKind.AGENDA
     name = "meeting-agenda"
@@ -711,20 +724,20 @@ class AgendaModel(DocumentModel):
 
     def check(self, a: Agenda, context: ModelContext) -> list[Finding]:
         found: list[Finding] = []
-        need = EXECUTIVE_NOTICE_DAYS if a.meeting_type is MeetingType.EXECUTIVE else NOTICE_DAYS
+        need, basis = notice_need(a.meeting_type is MeetingType.EXECUTIVE, context)
         board = a.body is not MeetingBody.MEMBERS and a.meeting_type is not MeetingType.EMERGENCY
         if a.posted_on and a.meeting_date:
             lead = (a.meeting_date - a.posted_on).days
             if board and lead < need:
                 found.append(Finding("notice-late", f"posted {a.posted_on}, {lead} days before the meeting; the notice is due {need} days "
-                                     "before", Severity.PROBLEM, "CIV 4920(a), (b)"))
+                                     "before", Severity.PROBLEM, basis))
         if a.notice_sent and a.meeting_date:
             lead = (a.meeting_date - a.notice_sent).days
             if board and lead < need:
                 found.append(Finding("notice-sent-late", f"PayHOA's notice email ('{a.notice_subject}') went out {a.notice_sent}, {lead} "
                                      f"day{'s' if lead != 1 else ''} before the meeting; board meeting notice is due {need} days before "
                                      "(a posting the annual policy statement designates may have come sooner)", Severity.CHECK,
-                                     "CIV 4920(a), (b), 4045"))
+                                     f"{basis}; CIV 4045"))
             elif a.body is MeetingBody.MEMBERS and lead < MEMBERS_NOTICE_DAYS:
                 found.append(Finding("members-notice", f"PayHOA's notice email went out {a.notice_sent}, {lead} days before this members' "
                                      f"meeting; written notice of a members' meeting is due {MEMBERS_NOTICE_DAYS} to 90 days before (the "
@@ -735,8 +748,8 @@ class AgendaModel(DocumentModel):
             logged = bool(start and a.meeting_date and start <= a.meeting_date <= context.today)
             found.append(Finding("posting-date-not-shown", "the agenda does not show when it was posted" +
                                  (", and PayHOA's communications log has no notice email for this meeting" if logged else "") +
-                                 "; notice with the agenda is due at least four days before the meeting",
-                                 Severity.CHECK if logged else Severity.INFO, "CIV 4920(a), (d)"))
+                                 f"; notice with the agenda is due at least {need} days before the meeting",
+                                 Severity.CHECK if logged else Severity.INFO, f"{basis}; CIV 4920(d)"))
         if a.teleconference and not a.physical_location:
             missing = []
             if not a.tech_assistance:
@@ -1367,4 +1380,5 @@ __all__ = ["MeetingType", "MeetingBody", "MinutesLayout", "Outcome", "ExecutiveS
            "executive_subject", "executive_general_note", "AgendaItem", "MeetingHeader", "Action",
            "Agenda", "Minutes", "ExecutiveSession", "CommitteeReport", "Proposal", "AgendaModel", "MinutesModel",
            "MisfiledMinutesModel", "ExecutiveSessionModel", "CommitteeReportModel", "normalize", "parse_items", "meeting_header",
-           "meeting_title", "actions_in", "classify_executive", "library_rows", "library_text", "meeting_files", "notice_mailings"]
+           "meeting_title", "actions_in", "classify_executive", "library_rows", "library_text", "meeting_files", "notice_mailings",
+           "notice_need"]

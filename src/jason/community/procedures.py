@@ -147,7 +147,9 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Build the packet, and its private Doc on the letterhead.", command="jason board --packet --doc --yes",
                  check="executive session items are listed by title only"),
             Step("Draft the agenda from the last agenda Doc.", command="jason board --agenda DOC_ID --doc --yes",
-                 refs=("docs/board-agenda.md",)),
+                 check="the draft's format line names the meeting's format (the agenda plan's, or --format), not "
+                       "\"Format assumed\"; only a meeting held entirely by teleconference carries 4926's lines",
+                 refs=("docs/board-agenda.md",), lessons=("notice-date-ignored-documents",)),
             Step("Share the packet with the directors from Drive.", person=True),
         ),
         refs=("docs/board-agenda.md", "docs/payhoa-reports.md"),

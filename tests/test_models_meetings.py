@@ -125,6 +125,18 @@ def test_agenda_posted_late_is_a_problem():
     assert "posting-date-not-shown" not in found
 
 
+def test_agenda_notice_follows_a_longer_period_in_the_documents():
+    from types import SimpleNamespace
+
+    from jason.community.base import NoticePeriod
+
+    text = BOARD_AGENDA.replace("Join via Zoom\n", "Join via Zoom\nPosted: Mar 11, 2026\n", 1)     # six days before
+    assert "notice-late" not in codes(read(DocumentKind.AGENDA, text, ctx()))                   # the statute's four days
+    longer = SimpleNamespace(board_notice_period=lambda: NoticePeriod(days=10, source="Bylaws 1.2"))
+    late = next(f for f in read(DocumentKind.AGENDA, text, ctx(community=longer)).findings if f.code == "notice-late")
+    assert "due 10 days before" in late.message and late.authority == "Bylaws 1.2; CIV 4920(b)(3)"
+
+
 MANAGER_AGENDA = """\
 Example Management Group, Inc.
 100 Business Parkway, Ste. 1
