@@ -72,7 +72,13 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     Obligation("Fire sprinkler quarterly inspection", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: control valves, "
                "gauges, waterflow and supervisory devices, the fire department connection, and the backflow preventer",
                every_months=3,
-               note="A trained employee of the owner may do the quarterly inspection (19 CCR 904.1); no quarterly record is on file."),
+               note="No quarterly record is on file. 19 CCR 904.1(a) as the State Fire Marshal adopted it (2014 text): \"A "
+                    "license shall not be required to perform inspections. Inspections may be conducted by ... an employee "
+                    "designated by the building owner or occupant who has developed competence through training and "
+                    "experience\"; a business inspecting for a fee needs an SFM A or C-16 license. The association has no "
+                    "employees, so whether a trained director or the manager qualifies is a question for the fire authority "
+                    "or counsel. NFPA 25 Table 5.1.1.2 (California amendment) puts waterflow alarm and valve supervisory "
+                    "devices, wet-system gauges, and spare sprinklers at quarterly inspection."),
     Obligation("Fire sprinkler annual inspection and test", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: sprinklers, "
                "piping, main drain, waterflow alarm, control valve operation, backflow forward flow",
                every_years=1, done_on=date(2023, 3, 14),
@@ -88,7 +94,26 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "inspection) and have no inspection record. The master policy "
                     "makes the sprinklers a P-1 protective safeguard for buildings 1-8 (CP 04 11): no fire coverage if a "
                     "known impairment was not reported or the system was not kept in working order "
-                    "(mystique/notes/fire-protection-records.md)."),
+                    "(mystique/notes/fire-protection-records.md). 19 CCR 904.2(j): \"It is the responsibility of the "
+                    "contractor, company, or licensee to provide a written report of the test and maintenance results to the "
+                    "building owner and the local fire authority having jurisdiction\"; 904.2(c): records are kept \"on the "
+                    "premises ... for a period of five years after the next required test or maintenance\"; 904.2(d): a tag "
+                    "goes on \"only after all deficiencies have been corrected\" (the 2022 job walk found no tags on the risers)."),
+    # NFPA 25 Table 5.1.1.2 as California amended it (the State Fire Marshal's 2014 text): wet-system gauges replaced or
+    # tested every 5 years; fast-response sprinklers sample-tested at 20 years and every 10 years after. Read October 4,
+    # 2026 from the OSFM's published final text; the standard's own text is not on disk.
+    Obligation("Fire sprinkler gauges replaced or tested", "NFPA 25 5.3.2 (California edition, Table 5.1.1.2): every 5 years",
+               every_years=5, first_due=date(2023, 3, 14),
+               note="The March 2023 annual report found both risers' gauges \"dated 2006\" and its correction quotation listed "
+                    "replacing them; the June 2023 repairs (invoice 1674, $10,974.24) are not itemized, so whether they were "
+                    "replaced is unconfirmed. Ask The Fire Sprinkler Company; the next annual report should show the gauge dates."),
+    Obligation("Fire sprinkler sample test (fast-response, 20 years)", "NFPA 25 5.3.1.1.1.3 (California edition, Table "
+               "5.1.1.2): fast-response sprinklers at 20 years and every 10 years after, by a lab, a sample of each kind",
+               every_years=10, first_due=date(2027, 11, 15),
+               note="Counted from installation, which is not on file: building 8 was conveyed from November 2007 and building 3 "
+                    "from February 2008, so about late 2027 and early 2028. That residential sprinklers are fast-response is a "
+                    "reading; the system's records or the heads' markings confirm it. The test is the annual inspector's to "
+                    "schedule (AES 2.1 item 2.1, \"Field Service Test Required\")."),
     Obligation("Fire sprinkler five-year internal inspection", "19 CCR 904, 906.4 (NFPA 25), form AES 2.2, filed with the fire authority",
                every_years=5,
                note="Internal inspection of valves and piping, and gauges replaced or tested; no record is on file. The Fire "
