@@ -147,4 +147,21 @@ CONFLICTS = (
         "the current text governs.",
         Clarity.RENUMBERED, ConflictStatus.BOARD, (Area.GOVERNING, Area.DOCUMENTS),
         board_item="governing-documents-old-statute-numbers"),
+    Conflict(
+        "director-at-noticed-location", "Bylaws 7.9 (telephone participation)", Tier.BYLAWS,
+        "Lets directors take part by telephone or video to the extent the law permits, provided that, when members "
+        "must be noticed under 7.6, at least one director is physically present at the noticed location.",
+        "CIV 4926(a)", Tier.STATUTE, date(2024, 1, 1),
+        "Read together, the two do not clash for a meeting with a noticed location: 7.9 governs it, consistent with "
+        "4090(b). Notwithstanding the governing documents, 4926(a) lets a board meeting be held entirely by "
+        "teleconference with no location open, but only if every condition of (a)(1)-(4) is met (the notice's join "
+        "instructions, help contact, and individual-delivery reminder; equal participation; roll-call votes; a "
+        "telephone option), and never for a meeting at which ballots are counted (4926(b)). The physical-presence "
+        "proviso yields only for such a meeting. A meeting held only on video without those conditions is not a "
+        "4926 meeting, and 7.9's proviso then applies to it; what that means for actions taken at earlier such "
+        "meetings is counsel's question.",
+        "Hold each board meeting either with a noticed location and a director present there, or under 4926 with "
+        "every condition met: the agenda plan checks the 4926 lines for a meeting held entirely by teleconference, "
+        "and each vote is a roll call.",
+        Clarity.PLAIN, ConflictStatus.BOARD, (Area.GOVERNING,), board_item="meeting-notice-and-minutes"),
 )
