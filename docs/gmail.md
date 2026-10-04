@@ -171,6 +171,12 @@ Gmail links an attachment to its Drive copy (the attachment then offers "Organiz
 - The Workspace MCP server (public developer preview, May 2026) uploads to Drive, which is a copy, not Gmail's link.
 - Workspace Studio (Flows) has a step that saves an arriving email's attachments to a Drive folder. It is a flow a person builds in Google's interface, not an API. Whether its copies show as linked in Gmail, and which editions have it, is not documented; test before relying on it.
 
+**Workarounds people use (researched October 4, 2026), none of which makes Gmail's link:**
+- **Apps Script copies.** An Apps Script in the mailbox's own account searches Gmail, saves each attachment with `folder.createFile(attachment)` (a copy, as jason's upload is), and labels the thread so it is processed once. It runs on Google's servers on a time trigger, nothing passes through this machine, and it can label mail, which jason's read-only Gmail scope cannot.
+- **Gmail Processor.** The maintained library (formerly Gmail2GDrive; v2.17.4) does this from a JSON configuration: Gmail queries and filename patterns, a store location with placeholders, a conflict strategy, and a dry-run mode.
+- **What they cannot do here.** Apps Script's limits (100 threads per search, 6 minutes per run) favour new mail over a backlog. Such a script classifies by name and query only; jason's reading of a PDF's words and its near-copy check stay in jason.
+- **How Gmail decides an attachment is in Drive is not documented**, so no copy is known to make Gmail show "Organize in Drive".
+
 **If Google publishes an endpoint, or Studio's copies prove linked:**
 - Replace the person's click in the `--via-gmail` path (`plan_saves` and `adopt_plan` in `jason.tasks.vendor_files`) with the call, or with a Studio flow saving into a folder `adopt_plan` also watches.
 - Keep the filing rules, the duplicate checks, and the `appProperties` tag as they are.
