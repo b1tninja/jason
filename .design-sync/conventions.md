@@ -105,6 +105,24 @@ Each takes the approvals engine's own JSON (an `Approval` with its `items`, `dec
 jason appears only as the planner ("Planned by jason, asked by NAME"); every decision, signature, and apply names a
 person, and each goes through `Confirm`.
 
+## Documents: always `Doc`
+
+A screen that names a document (a letter, a scan, a statute, a Google Doc, a PayHOA request, a recording) shows it with
+`Doc`, fed a document reference, never with a raw link, an `<img>` or `<iframe>` of a file, or a path as text.
+
+- **The reference** (`doc`): `{address, name, kind, level?, source?, readAt?, thumb?, original?, refreshable?, stale?}`.
+  `address` is what jason resolves: `"file:board/minutes-draft-2099-10-21.md"`, `"drive:ID"`, `"library:ID"`,
+  `"payhoa:submission:1234"`, `"CIV 4920(a)"`. `kind` is `submission`, `pdf`, `image`, `text`, `audio`, `table`, or
+  `file`. `level` is `P0` to `P3`; `source` names the copy ("Recorded copy", "Drive copy", "Scan").
+- **Variants**: `<Doc doc={ref} variant="chip" />` inside a sentence or a table cell; `"row"` in a list of documents;
+  `"card"` (a paper thumbnail with Preview, read again, and the original's link) in a grid or a document column;
+  `"inline"` when the document is the screen's subject. `DocList` (`docs`, `variant`, `title`) lists several.
+- **States are words, never a broken image**: signed out, not allowed (the server's reason), needs the private view,
+  no copy yet, changed in the source, not on disk. Opening is a named, logged view; a P2 or P3 inline document waits
+  for "Show the document". Pass `signedIn` and `evidence` to render a state without a server.
+- **Never frame Google, PayHOA, or Gmail.** The original opens in a new tab from the card. `DocumentViewer` is the
+  pop-out a `Doc` opens; `PrivateSwitch` (`view`, `name`, `onOpen`) opens P3 material for a stated reason.
+
 ## One idiomatic screen
 
 ```jsx
