@@ -43,6 +43,32 @@ export interface ServerSession {
   token?: string; header?: string; applyEnabled?: boolean; liveChecks?: boolean; approvalsWrites?: boolean;
   signedIn?: SignedIn | null; signIn?: SignInSetup; signInError?: string;
   canActAs?: boolean; acting?: Acting | null; actAsPeople?: { name: string; role: string }[]; actAsRoles?: string[];
+  private?: PrivateView;
+}
+
+/** The private view (`jason.web.access`): a time-limited, logged window in which restricted (P3) material is shown to
+ * a person whose office opens it. `until` is when it closes (ISO 8601); `mayOpen` and `why` say whether this person
+ * may open it and why not. `minutes` are the lengths offered, `default` the one chosen unless the person picks. */
+export interface PrivateView {
+  open: boolean; until?: string; reason?: string; id?: string; mayOpen: boolean; why?: string;
+  minutes?: number[]; default?: number;
+}
+
+/** What opening the private view sends: a short reason (logged) and how long, in minutes (15, 30, or 60). */
+export interface PrivateOpenBody { reason: string; minutes: number }
+
+/** Open the private view (`POST /api/private`, with the write token); the server's refusal comes back as `ApiError`. */
+export async function openPrivate(body: PrivateOpenBody): Promise<PrivateView> {
+  const out = await postJson<{ private: PrivateView }>("/api/private", body);
+  resetServerSession();
+  return out.private;
+}
+
+/** Close the private view (`DELETE /api/private`, with the write token). */
+export async function closePrivate(): Promise<PrivateView> {
+  const out = await sendJson<{ private: PrivateView }>("DELETE", "/api/private");
+  resetServerSession();
+  return out.private;
 }
 
 let session: Promise<ServerSession> | null = null;
@@ -114,10 +140,17 @@ async function writeToken(): Promise<[string, string]> {
 
 /** A write. Every POST carries the server's write token header when the page has one. */
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
+  return sendJson<T>("POST", path, body);
+}
+
+/** A write by `method` (POST, DELETE), with the server's write token header when the page has one; `body` is sent as
+ * JSON when given. */
+export async function sendJson<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
   const [header, token] = await writeToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers[header] = token;
-  const res = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(path, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
   let data: unknown = null;
   try {
     data = await res.json();

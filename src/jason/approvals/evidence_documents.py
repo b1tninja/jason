@@ -11,6 +11,10 @@
   does not hold it as confidential: the file itself, and the library's extracted text of it.
 - **A board item or a command.** None.
 
+**Confidential documents** (a library file held as confidential, or any copy of one by its digest; a Drive file the
+holdings mark confidential; a restricted book's words) are left out, unless the caller asks with ``private`` (jason-web,
+while the person's private view is open). Then each is listed with ``level: "P3"`` and ``CONFIDENTIAL_NOTE``.
+
 A document's ``kind`` comes from its file's extension and nothing else (``EXTENSIONS``): ``pdf``, ``image``,
 ``text``, or ``file``. HTML, SVG, and XML are ``file``: they are never shown inline, only saved.
 
@@ -29,7 +33,7 @@ import html
 import json
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +41,8 @@ from urllib.parse import unquote, urlsplit
 
 VIEW_LOG = Path("evidence") / "views.jsonl"
 UNMASKED = "Unmasked: shown because {by} asked; this view is logged."
+CONFIDENTIAL_NOTE = "Confidential: shown in the private view"
+CONFIDENTIAL = "P3"                            # a confidential document's data level (jason.web.access.Level)
 SUBMISSION_CAVEAT = ("The latest full read of this request jason keeps, not a live read; refreshing it reads PayHOA "
                      "again.")
 ATTACHMENT_CAVEAT = ("A file jason sync-request-files saved from the request, as PayHOA held it then; not a live read.")
@@ -74,7 +80,8 @@ def content_type(name: str) -> str:
 @dataclass(frozen=True)
 class Document:
     """One document behind an evidence address: what the list shows, and, kept on the server, the file on disk
-    (``path``) and the folder it must stay inside (``root``); both None for a submission or a section."""
+    (``path``) and the folder it must stay inside (``root``); both None for a submission or a section. ``level`` is
+    ``"P3"`` for a confidential one (listed only for the private view), else empty."""
     id: str
     name: str
     kind: str
@@ -84,10 +91,19 @@ class Document:
     caveat: str = ""
     path: Path | None = None
     root: Path | None = None
+    level: str = ""
 
     def as_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "kind": self.kind, "size": self.size, "readAt": self.read_at,
-                "note": self.note}
+        out: dict[str, Any] = {"id": self.id, "name": self.name, "kind": self.kind, "size": self.size,
+                               "readAt": self.read_at, "note": self.note}
+        if self.level:
+            out["level"] = self.level
+        return out
+
+
+def confidential(docs: list[Document]) -> list[Document]:
+    """``docs`` marked confidential: ``level`` P3 and ``CONFIDENTIAL_NOTE``."""
+    return [replace(d, level=CONFIDENTIAL, note=CONFIDENTIAL_NOTE) for d in docs]
 
 
 def _mtime(path: Path) -> str:
@@ -153,19 +169,27 @@ def request_documents(root: Path, sid: int) -> list[Document]:
 
 # --- a citation ----------------------------------------------------------------------------------------------------------
 
-def _library(root: Path, library_path: str, label: str = "") -> list[Document]:
+def _library(root: Path, library_path: str, label: str = "", *, private: bool = False) -> list[Document]:
     """A library file by its library path: the file itself and its extracted text, each when on disk under the data
-    folder; nothing for a file the library holds as confidential."""
+    folder. A file the library holds as confidential (or any copy of one, by its digest, as ``jason.web.access``
+    judges it) only with ``private``, marked confidential."""
     db = root / "library" / "library.db"
     if not library_path or not db.is_file():
         return []
     try:
-        with sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True) as conn:
-            row = conn.execute("SELECT id, confidential FROM documents WHERE path = ? LIMIT 1",
+        conn = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT id, confidential, sha256 FROM documents WHERE path = ? LIMIT 1",
                                (library_path,)).fetchone()
+            secret = bool(row and row[1])
+            if row is not None and not secret and row[2]:
+                secret = bool(conn.execute("SELECT MAX(confidential) FROM documents WHERE sha256 = ?",
+                                           (row[2],)).fetchone()[0])
+        finally:
+            conn.close()
     except sqlite3.Error:
         return []
-    if row is None or row[1]:
+    if row is None or (secret and not private):
         return []
     doc_id = str(row[0])
     name = Path(library_path).name
@@ -191,15 +215,16 @@ def _library(root: Path, library_path: str, label: str = "") -> list[Document]:
     if inside(text, text_root):
         out.append(Document(f"library-text:{doc_id}", f"{name}, its extracted text", "text", _size(text),
                             _mtime(text), "the library's text of the file", EXTRACT_CAVEAT, text, text_root))
-    return out
+    return confidential(out) if secret else out
 
 
 _DRIVE_FILE = re.compile(r"/(?:file|document|spreadsheets|presentation)/d/([\w-]+)")
 
 
-def _drive(root: Path, drive_id: str, label: str = "") -> list[Document]:
+def _drive(root: Path, drive_id: str, label: str = "", *, private: bool = False) -> list[Document]:
     """A Drive file placed on disk by the Drive holdings (``jason drive-catalog``'s ``drive/holdings.json``): its
-    library copy, else its first copy under the data folder; nothing for a confidential one."""
+    library copy, else its first copy under the data folder. One the holdings mark confidential only with
+    ``private``, marked confidential."""
     report = root / "drive" / "holdings.json"
     if not drive_id or not report.is_file():
         return []
@@ -208,27 +233,31 @@ def _drive(root: Path, drive_id: str, label: str = "") -> list[Document]:
     except (OSError, ValueError):
         return []
     row = next((r for r in rows if isinstance(r, dict) and r.get("id") == drive_id), None)
-    if row is None or row.get("confidential"):
+    secret = bool(row and row.get("confidential"))
+    if row is None or (secret and not private):
         return []
+    mark = confidential if secret else list
     for place in row.get("elsewhere") or ():
         if place.get("channel") == "PayHOA library":
-            found = _library(root, str(place.get("where") or ""), label)
+            found = _library(root, str(place.get("where") or ""), label, private=private)
             if found:
-                return found
+                return mark(found)
     for place in row.get("elsewhere") or ():
         if place.get("channel") == "PayHOA library":
             continue
         path = root / str(place.get("where") or "")
         if place.get("where") and inside(path, root):
-            return [Document(f"drive:{drive_id}", str(row.get("name") or path.name), kind_of(path.name), _size(path),
-                             _mtime(path), f"{label}: a copy on disk of the Drive file" if label else
-                             "a copy on disk of the Drive file", LIBRARY_CAVEAT, path, root)]
+            return mark([Document(f"drive:{drive_id}", str(row.get("name") or path.name), kind_of(path.name),
+                                  _size(path), _mtime(path), f"{label}: a copy on disk of the Drive file" if label else
+                                  "a copy on disk of the Drive file", LIBRARY_CAVEAT, path, root)])
     return []
 
 
-def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_at: str = "") -> list[Document]:
+def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_at: str = "",
+                       private: bool = False) -> list[Document]:
     """A resolved citation's documents: the whole section when its words are stored, then the governing document's
-    file and its extracted text, from the links ``jason cite`` gives (a library path, a Drive file)."""
+    file and its extracted text, from the links ``jason cite`` gives (a library path, a Drive file). ``private`` lists
+    the confidential ones too, marked; a restricted book's (``jason cite --private``) are all confidential."""
     from jason.approvals.evidence import STATUTE_CAVEAT
 
     if not got.get("found"):
@@ -245,11 +274,14 @@ def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_a
             continue
         label = str(link.get("what") or "")
         if link.get("library"):
-            out += _library(root, str(link["library"]), label)
+            out += _library(root, str(link["library"]), label, private=private)
         elif link.get("url"):
             found = _DRIVE_FILE.search(urlsplit(str(link["url"])).path)
             if found:
-                out += _drive(root, found.group(1), label)
+                out += _drive(root, found.group(1), label, private=private)
+    version = got.get("version")
+    if isinstance(version, dict) and version.get("restricted"):
+        out = confidential(out)
     seen: set[str] = set()
     return [d for d in out if not (d.id in seen or seen.add(d.id))]
 
@@ -676,8 +708,9 @@ class Opened:
     root: Path | None = None
 
 
-def documents_for(address: str, root: Path) -> tuple[str, list[Document]]:
-    """The evidence kind of ``address`` and the documents behind it, as ``resolve`` lists them, with their files."""
+def documents_for(address: str, root: Path, *, private: bool = False) -> tuple[str, list[Document]]:
+    """The evidence kind of ``address`` and the documents behind it, as ``resolve`` lists them, with their files;
+    ``private`` lists the confidential ones too (the private view)."""
     from jason.approvals.evidence import EvidenceKind, rule_for
 
     rule, found = rule_for(address)
@@ -686,10 +719,10 @@ def documents_for(address: str, root: Path) -> tuple[str, list[Document]]:
     if rule.kind is EvidenceKind.CITATION:
         from jason.tasks import cite
 
-        got = cite.resolve(address, data_dir=root)
+        got = cite.resolve(address, data_dir=root, private=private)
         statute = bool(re.match(r"^[A-Z]{2,5} \d", str(got.get("citation") or address)))
         read_at = _mtime(root / "authorities" / "manifest.json") if statute else ""
-        return rule.kind.value, citation_documents(root, got, statute=statute, read_at=read_at)
+        return rule.kind.value, citation_documents(root, got, statute=statute, read_at=read_at, private=private)
     return rule.kind.value, []
 
 
@@ -716,14 +749,16 @@ def _log_view(root: Path, entry: dict[str, Any]) -> None:
         out.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def view(address: str, document: str, *, by: str, approval_id: str = "", data_dir: Path | None = None) -> Opened:
+def view(address: str, document: str, *, by: str, approval_id: str = "", data_dir: Path | None = None,
+         private: bool = False) -> Opened:
     """Open one document behind ``address`` unmasked for the person ``by``, and log it (``evidence/views.jsonl``).
 
     Refuses (``ValueError``) an empty ``by``, no address, and a document id that names a path (``/``, ``\\``,
     ``..``); an id the address does not list, or a file no longer on disk, is ``KeyError``. Reads disk only. The
     answer is ``{kind, name, readAt, submission?, text?, caveats}``; a pdf, an image, or another file comes with its
     path and the folder it must stay inside, for jason-web to serve. ``approval_id`` is accepted for the console's
-    context and changes nothing here."""
+    context and changes nothing here. ``private`` (the private view) opens a confidential document too; its answer
+    carries ``level: "P3"``."""
     from jason.approvals.evidence import DISK_ONLY, _root
 
     del approval_id
@@ -737,12 +772,14 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
     if _bad_id(document):
         raise ValueError(f"{document or '(none)'} is not a document id: name one the evidence lists")
     root = _root(data_dir)
-    _, docs = documents_for(address, root)
+    _, docs = documents_for(address, root, private=private)
     doc = next((d for d in docs if d.id == document), None)
     if doc is None:
         raise KeyError(f"{address} lists no document {document}")
     answer: dict[str, Any] = {"kind": doc.kind, "name": doc.name, "readAt": doc.read_at,
                               "caveats": [UNMASKED.format(by=by)] + [c for c in (doc.caveat, DISK_ONLY) if c]}
+    if doc.level:
+        answer["level"] = doc.level
     path = root_of = None
     if doc.kind == "submission":
         from jason.approvals.evidence import _files_root
@@ -759,7 +796,7 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
     elif doc.id == "section":
         from jason.tasks import cite
 
-        got = cite.resolve(address, data_dir=root)
+        got = cite.resolve(address, data_dir=root, private=private)
         if not got.get("found") or not got.get("text"):
             raise KeyError(f"{address}: its words are no longer on disk")
         answer["text"] = str(got["text"])
@@ -772,10 +809,10 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
     else:
         path, root_of = doc.path.resolve(), doc.root.resolve()
     _log_view(root, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "by": by, "address": address,
-                     "document": doc.id, "kind": doc.kind})
+                     "document": doc.id, "kind": doc.kind, **({"level": doc.level} if doc.level else {})})
     return Opened(answer, path, root_of)
 
 
-__all__ = ["ATTACHMENT_CAVEAT", "Document", "EXTENSIONS", "MAX_TEXT", "OCTET", "Opened", "UNMASKED", "VIEW_LOG",
-           "citation_documents", "content_type", "documents_for", "file_id", "inside", "kind_of",
+__all__ = ["ATTACHMENT_CAVEAT", "CONFIDENTIAL", "CONFIDENTIAL_NOTE", "Document", "EXTENSIONS", "MAX_TEXT", "OCTET", "Opened", "UNMASKED", "VIEW_LOG",
+           "citation_documents", "confidential", "content_type", "documents_for", "file_id", "inside", "kind_of",
            "request_documents", "submission_view", "view"]

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { actAs, getJson, serverSession, signInHref, signInLinks, signOut, type Acting, type ServerSession, type SignedIn, type SignInSetup } from "./api";
+import { actAs, closePrivate, getJson, openPrivate, serverSession, signInHref, signInLinks, signOut, type Acting, type PrivateOpenBody, type PrivateView, type ServerSession, type SignedIn, type SignInSetup } from "./api";
 
 /** The signed-in person. When the server has Google sign-in (`jason.web.signin`) and an officer signed in, `me` is that
  * officer, fixed by the server: every write goes on the record under that name. Under `jason-web --dev`, a signed-in
@@ -42,17 +42,51 @@ export function writeMe(name: string): void {
 interface SignInState {
   account: SignedIn | null; setup?: SignInSetup; error: string;
   canActAs: boolean; acting: Acting | null; actAsPeople: { name: string; role: string }[]; actAsRoles: string[];
+  privateView: PrivateView | null;
 }
 
-/** What the server says about sign-in: who signed in, whether it is set up, its last refusal (said once), and under
- * `--dev` whom an admin may view the console as. */
+/** The browser-session flag that says the private view was just opened, so the band takes focus once after the reload. */
+export const PRIVATE_OPENED_KEY = "jason-private-opened";
+
+function takeOpened(): boolean {
+  try {
+    const was = sessionStorage.getItem(PRIVATE_OPENED_KEY) === "1";
+    sessionStorage.removeItem(PRIVATE_OPENED_KEY);
+    return was;
+  } catch {
+    return false;
+  }
+}
+
+function markOpened(): void {
+  try { sessionStorage.setItem(PRIVATE_OPENED_KEY, "1"); } catch { /* storage blocked: no focus move */ }
+}
+
+function reload(): void {
+  try { window.location.reload(); } catch { /* not every window reloads (tests) */ }
+}
+
+/** The private view's acts for the console: open (`POST /api/private`) and close (`DELETE`), each followed by a full
+ * reload, as viewing as someone else does, because every screen fetches on load; and the reload when it expires. A
+ * refusal is thrown with the server's sentence for the form to say. */
+export const privateActs = {
+  open: async (body: PrivateOpenBody) => { await openPrivate(body); markOpened(); reload(); },
+  close: async () => { await closePrivate(); reload(); },
+  expired: () => reload(),
+};
+
+/** What the server says about sign-in: who signed in, whether it is set up, its last refusal (said once), under
+ * `--dev` whom an admin may view the console as, and the private view (`privateView`; `privateFocus` once just after
+ * it was opened). */
 export function useSignIn() {
-  const [state, setState] = useState<SignInState>({ account: null, error: "", canActAs: false, acting: null, actAsPeople: [], actAsRoles: [] });
+  const [state, setState] = useState<SignInState>({ account: null, error: "", canActAs: false, acting: null, actAsPeople: [], actAsRoles: [], privateView: null });
+  const [privateFocus] = useState<boolean>(takeOpened);
   useEffect(() => {
     let on = true;
     serverSession().then((s) => on && setState({
       account: s.signedIn ?? null, setup: s.signIn, error: s.signInError ?? "", canActAs: !!s.canActAs,
       acting: s.acting ?? null, actAsPeople: s.actAsPeople ?? [], actAsRoles: s.actAsRoles ?? [],
+      privateView: s.private ?? null,
     }));
     return () => { on = false; };
   }, []);
@@ -65,7 +99,7 @@ export function useSignIn() {
     const acting = await actAs(state.setup, target);
     setState((s) => ({ ...s, acting }));
   }, [state.setup]);
-  return { ...state, signInLinks: links, signOut: out, actAs: viewAs };
+  return { ...state, privateFocus, signInLinks: links, signOut: out, actAs: viewAs };
 }
 
 /** The name a write goes under, as `useSession` computes `me` (the person an admin views the console as, else who signed
@@ -115,6 +149,6 @@ export function useSession(given?: readonly Person[]) {
   return {
     me, setMe, people, canApprove: can, account: signIn.account, signInLinks: signIn.signInLinks, signInError: signIn.error,
     signOut: signIn.signOut, acting: signIn.acting, canActAs: signIn.canActAs, actAsPeople: signIn.actAsPeople,
-    actAsRoles: signIn.actAsRoles, actAs: signIn.actAs,
+    actAsRoles: signIn.actAsRoles, actAs: signIn.actAs, privateView: signIn.privateView, privateFocus: signIn.privateFocus,
   };
 }

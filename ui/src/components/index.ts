@@ -12,7 +12,7 @@ export { DataTable, type Column } from "./DataTable";
 export { DecisionCard, OUTCOMES, type DecisionDraft } from "./DecisionCard";
 export { DueDate, daysUntil } from "./DueDate";
 export { Evidence, EvidencePanel, EvidenceVersion, evidenceUrl, refreshAllEvidence, refreshEvidence, RefreshAllEvidence, RereadIcon, type EvidenceRefreshAll, type EvidenceRefreshable, type EvidenceRefreshed, type EvidenceRefreshRequest, type EvidenceAnswer, type EvidenceSource, type EvidenceField, type EvidenceRefresh, type EvidenceKind } from "./Evidence";
-export { DocumentViewer, viewDocument, humanSize, documentKindWord, looksLikeMarkdown, type DocumentView, type DocumentViewRequest, type DocumentSubmission, type SubmissionQuestion, type SubmissionRowKind, type EvidenceDocument, type EvidenceDocumentKind } from "./DocumentViewer";
+export { DocumentViewer, CONFIDENTIAL_LINE, isConfidential, viewDocument, humanSize, documentKindWord, looksLikeMarkdown, type DocumentView, type DocumentViewRequest, type DocumentSubmission, type SubmissionQuestion, type SubmissionRowKind, type EvidenceDocument, type EvidenceDocumentKind } from "./DocumentViewer";
 export { Findings } from "./Findings";
 export { Kanban } from "./Kanban";
 export { Money } from "./Money";
@@ -41,6 +41,8 @@ export { AskPanel } from "./AskPanel";
 export { BoardFields, type BoardFieldsItem } from "./BoardFields";
 export { RequestForm, DELIVERIES, type RequestKind, type RecordedRequest, type Delivery } from "./RequestForm";
 export { ConsoleShell, ScreenHeader, visibleScreens, OWNER_BANNER, type ConsoleScreen, type ConsoleShellProps, type Audience } from "./ConsoleShell";
+export { PrivateSwitch, PrivateAsk, PrivateBand, PRIVATE_MINUTES, PRIVATE_DEFAULT, PRIVATE_HINT, clockTime, minutesLeft, type PrivateSwitchProps, type PrivateBandProps } from "./PrivateSwitch";
+export type { PrivateView, PrivateOpenBody } from "../lib/api";
 // Approvals engine (jason.approvals): the engine's JSON in, no mapping layer. lib/approvals.ts has the types and rules.
 export { PlanReview, PLAN_CAVEATS } from "./PlanReview";
 export { WriteRow } from "./WriteRow";

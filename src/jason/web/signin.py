@@ -442,6 +442,9 @@ def install(app: Flask, sign_in: SignIn) -> None:
         except Exception as exc:  # noqa: BLE001 - the network or Keeper: said, not a crash
             _log(sign_in, "failed", why=f"{type(exc).__name__}")
             return back(f"sign-in failed: {type(exc).__name__}: {exc}", to)
+        from jason.web.access import close_private
+
+        close_private("signed in again")              # a new sign-in never inherits a private view
         session.clear()
         session.permanent = True
         session["account"] = asdict(account)
@@ -451,7 +454,10 @@ def install(app: Flask, sign_in: SignIn) -> None:
 
     @app.post(SIGN_OUT)
     def sign_out():
+        from jason.web.access import close_private
+
         a = current_account()
+        close_private("signed out")                    # the private view closes with the sign-in, and says so
         session.clear()
         if a:
             _log(sign_in, "signed out", name=a.name, email=a.email)

@@ -6,7 +6,7 @@ import {
 import { DigestView, type Digest } from "./DigestView";
 import { useApi } from "./lib/useApi";
 import { useHash } from "./lib/useHash";
-import { useSession } from "./lib/session";
+import { privateActs, useSession } from "./lib/session";
 import { useTheme } from "./lib/theme";
 import { AssociationRecordsView } from "./views/AssociationRecordsView";
 import { BoardItemsView } from "./views/BoardItemsView";
@@ -192,6 +192,11 @@ export function App() {
                    people: session.actAsPeople, roles: session.actAsRoles, acting: session.acting,
                    // every screen reads who is viewing from the server's session, so a change reloads the page
                    onChange: (t) => { void session.actAs(t).then(() => window.location.reload()); },
+                 } : undefined,
+                 // the screens fetch on load, so opening, closing, and expiry each reload the page (privateActs)
+                 privateView: session.privateView ? {
+                   view: session.privateView, onOpen: privateActs.open, onClose: privateActs.close,
+                   onExpired: privateActs.expired, focus: session.privateFocus,
                  } : undefined }}
       dock={<DockToolbar open={drawer} onToggle={(id) => setDrawer((d) => (d === id ? null : id))} counts={counts} audience={audience} />}
       pinned={pinned && wide ? drawerNode : undefined}

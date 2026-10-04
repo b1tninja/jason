@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { PrivateOpenBody, PrivateView } from "../lib/api";
+import { PrivateBand, PrivateSwitch } from "./PrivateSwitch";
 
 export type Audience = "board" | "owner";
 
@@ -37,6 +39,13 @@ export interface ConsoleShellProps {
     /** Under `jason-web --dev`, a signed-in admin's "View as": the people and offices to view the console as,
      * whom they view it as now (`acting`), and the change. Writes are refused while acting. */
     actAs?: { people: readonly ConsolePerson[]; roles: readonly string[]; acting?: { name: string; role: string } | null; onChange: (target: { name?: string; role?: string }) => void };
+    /** The private view (`GET /api/session`'s `private`) and its acts: the switch beside the account, and while it is
+     * open the band under the header. Shown only with `account`, never in the owner view. `focus` moves focus to the
+     * band's heading (right after it was opened). */
+    privateView?: {
+      view: PrivateView; onOpen: (body: PrivateOpenBody) => Promise<void> | void; onClose: () => Promise<void> | void;
+      onExpired?: () => void; focus?: boolean;
+    };
   };
   /** The dock toolbar, rendered in the header. */
   dock?: ReactNode;
@@ -92,8 +101,8 @@ const actingValue = (a?: { name: string; role: string } | null) => (!a ? "" : a.
 const actingTarget = (v: string): { name?: string; role?: string } =>
   v.startsWith("p:") ? { name: v.slice(2) } : v.startsWith("r:") ? { role: v.slice(2) } : {};
 
-/** The console's frame: a sticky header (wordmark, legal name, records date, the sign-in pick, the dock, the Board /
- * Owner view control), a grouped left nav that becomes a "Go to" select under 720px, the main column, and the slots
+/** The console's frame: a sticky header (wordmark, legal name, records date, the sign-in pick, the private view's switch
+ * and, while it is open, its band, the dock, the Board / Owner view control), a grouped left nav that becomes a "Go to" select under 720px, the main column, and the slots
  * for a pinned or a floating drawer. The shell routes; it decides nothing. */
 export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, current, onGo, audience, onAudience, session, dock, pinned, floating, children }: ConsoleShellProps) {
   const narrow = useNarrow();
@@ -104,6 +113,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
   const account = !owner ? session?.account : null;
   const showPicker = !owner && !account && session && session.people.length > 0;
   const googleLinks = !owner && !account ? session?.signInLinks ?? [] : [];
+  const priv = account ? session?.privateView : undefined;
   return (
     <div className="console">
       <header className="console-bar" ref={bar}>
@@ -119,6 +129,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
               {session?.onSignOut && <button className="link" onClick={session.onSignOut}>Sign out</button>}
             </span>
           )}
+          {account && priv && <PrivateSwitch view={priv.view} name={account.name} onOpen={priv.onOpen} />}
           {account && session?.actAs && (
             <label className="console-signin console-actas">
               Admin view
@@ -159,6 +170,8 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
             <button role="radio" aria-checked={owner} onClick={() => onAudience("owner")}>Owner view</button>
           </div>
         </div>
+        {/* under the header's row and inside the sticky bar, so it stays in sight while the page scrolls */}
+        {priv?.view.open && <PrivateBand view={priv.view} onClose={priv.onClose} onExpired={priv.onExpired} focus={priv.focus} />}
       </header>
       <div className="console-body">
         {narrow ? (

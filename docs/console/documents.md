@@ -28,7 +28,7 @@ What is built and what is proposed are marked in each section. The evidence rout
 
    A missing Keeper or Google sign-in fails fast and names the command that fixes it.
 3. **Masked by default; unmasked by a named person, logged.** Lists and panels show contact details masked. Opening the document itself (`POST /api/evidence/view`) shows it as the source has it, because reading the document is the point. That view is named, logged in `evidence/views.jsonl` (who, when, which document, never its contents), and never automatic.
-4. **Held back by level.** A confidential library file, an executive-session record, or restricted books never appear in a document list unless the person is in the private view ([security-and-privacy.md](security-and-privacy.md), P3). A list that held something back says so, and how many: "2 held back (confidential)".
+4. **Held back by level.** A confidential library file, an executive-session record, or restricted books never appear in a document list unless the person has opened the private view: the **Private view** switch in the console's header (`PrivateSwitch`), for a stated reason and 15, 30, or 60 minutes, logged in `access/private.jsonl` ([security-and-privacy.md](security-and-privacy.md#built-the-private-view), P3). While it is open, a hatched band under the header says so and closes it; a confidential document in an evidence list carries a **Confidential** chip, and its viewer says "Confidential: shown in the private view; this view is logged." A list that held something back says so, and how many: "2 held back (confidential)".
 5. **The original stays one click away.**
    - Each document carries a link to its source, opened in a new tab with the person's own session: PayHOA's request page, the Doc in Google, the message in Gmail.
    - Editing happens there. The console's copy is for reading and citing.
@@ -300,8 +300,8 @@ These were found while writing this page. Each is a lead for the build order bel
 
 | Gap | Risk | Fix |
 |---|---|---|
-| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only in the private view with a reason, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Still open: moving the callers (Embed's local refs, KeyDocuments, packets) to the document service |
-| ~~`/api/library?confidential=1`~~ **Closed** | Lists confidential rows to anyone on the loopback | Done: the confidential rows are held back (`heldBack: n`) unless the private view (P3, with a reason) is allowed; `/api/embeds?confidential=1` too |
+| ~~`/api/file?path=` serves any whitelisted file under `data/`~~ **Closed** | No level check, no name, no log: a confidential library file, an executive-session transcript, or a scanned letter can be fetched by path | Done (`jason.web.access`): a signed-in roster person, the file's level by rule rows (P2 when no row places it), P3 only while the person's private view is open, and each serve logged in `access/served.jsonl` ([security-and-privacy.md](security-and-privacy.md#roles)). Still open: moving the callers (Embed's local refs, KeyDocuments, packets) to the document service |
+| ~~`/api/library?confidential=1`~~ **Closed** | Lists confidential rows to anyone on the loopback | Done: the confidential rows are held back (`heldBack: n`) unless the person's private view is open (P3); `/api/embeds?confidential=1` too |
 | `Embed` frames any ref | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | See [The Embed component](#the-embed-component) |
 | `MeetingStage` packet frames | A bare iframe, no fallback, no sandbox | Packet files open in `DocumentViewer`, or follow Embed's rules |
 | Registers carry no Sheet link | A person can't reach the source | Return the spreadsheet's `webViewLink` with the snapshot |
@@ -325,7 +325,7 @@ It changes in four ways (proposed):
 ## Build order
 
 1. **Submission rendering** (in progress): sections, grouped choices, same-as pairs, file names, help, and required.
-2. **Close the serving gaps:** `/api/file` callers to the document service; the library's confidential flag to the private view.
+2. **Close the serving gaps:** `/api/file` callers to the document service; the library's confidential flag to the private view (built: the switch, the band, and the evidence's confidential documents).
 3. **The viewer's header actions:** Open the original, ↻ inside the viewer, and the held-back count.
 4. **Drive copies:** the `drive:` resolver row with its export refresher, and the Doc, Sheet, and Slides renderers (pdf, markdown, table).
 5. **Embed's allowlist, sandbox, and document cards.**

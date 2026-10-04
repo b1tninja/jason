@@ -3,7 +3,7 @@ import { ApiError, getJson, postJson, signInRefusal } from "../lib/api";
 import { when, type EvidenceRef } from "../lib/approvals";
 import { useAccount, useMe } from "../lib/session";
 import { Caveats } from "./Caveats";
-import { DocumentViewer, documentKindWord, humanSize, viewDocument, type DocumentView, type DocumentViewRequest, type EvidenceDocument } from "./DocumentViewer";
+import { DocumentViewer, documentKindWord, humanSize, isConfidential, viewDocument, type DocumentView, type DocumentViewRequest, type EvidenceDocument } from "./DocumentViewer";
 import { daysUntil } from "./DueDate";
 import { Recitation } from "./Recitation";
 
@@ -245,6 +245,7 @@ function Documents({ docs, level, address, approval, who, viewer, gate, today }:
           return (
             <li key={d.id || i} className="evidence-document">
               <span className="evidence-document-name">{d.name}</span>
+              {isConfidential(d) && <span className="private-chip">Confidential</span>}
               <span className="muted evidence-document-kind">{documentKindWord(d.kind)}{size ? ` · ${size}` : ""}</span>
               <button type="button" ref={(el) => { buttons.current[i] = el; }} aria-label={`View ${d.name}`}
                 aria-disabled={why || (viewing && viewing.busy) ? true : undefined} aria-describedby={why ? whyId : undefined}

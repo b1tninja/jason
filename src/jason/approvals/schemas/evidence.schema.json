@@ -79,7 +79,8 @@
           "kind": {"enum": ["submission", "pdf", "image", "text", "file"], "description": "From the file's extension alone; HTML, SVG, and XML are file, never shown inline."},
           "size": {"type": "integer", "minimum": 0, "description": "Bytes; 0 for a submission."},
           "readAt": {"type": "string", "description": "When it was read or saved (ISO 8601); empty when unknown."},
-          "note": {"type": "string"}
+          "note": {"type": "string"},
+          "level": {"enum": ["P3"], "description": "Only on a confidential document, listed while the person's private view is open (jason.web.access); its note says so."}
         }
       }
     },

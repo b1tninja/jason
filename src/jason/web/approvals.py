@@ -22,7 +22,7 @@
   serves it from disk for ten minutes (``Grants``, in memory only), sandboxed, never sniffed, never cached.
 - **Sign-in for the evidence's live reads and documents.** A refresh, a refresh-all, a view, and a view's link need a
   signed-in roster person whose offices open the level (``jason.web.access``: P2 for a request, P0 for a citation's
-  documents); the record names the signed-in account, never the body's ``by``. A view's link is bound to the sign-in
+  documents, P3 for a confidential one, listed and opened only while the person's private view is open); the record names the signed-in account, never the body's ``by``. A view's link is bound to the sign-in
   that opened it, and each view is logged in ``access/served.jsonl`` too.
 - **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>}``.
   Off unless jason-web was started with ``--allow-apply``. The engine re-plans and refuses (409) when anything
@@ -162,10 +162,14 @@ def audit_log(args: Args) -> dict[str, Any]:
 
 def evidence(args: Args) -> dict[str, Any]:
     """``GET /api/evidence?address=...&approval=...``: what jason holds on disk of an evidence address, with the
-    commands that read it again. Nothing is read live; contact details are masked by the resolver and again here."""
+    commands that read it again. Nothing is read live; contact details are masked by the resolver and again here.
+    While the person's private view is open (``jason.web.access.private_open``), restricted and confidential material
+    comes back too: a restricted book's words, confidential documents (marked P3), an executive item's notes."""
     from jason.approvals.evidence import resolve
+    from jason.web.access import private_open
 
-    return _masked_evidence(resolve(args.get("address", ""), approval_id=args.get("approval", "").strip()))
+    return _masked_evidence(resolve(args.get("address", ""), approval_id=args.get("approval", "").strip(),
+                                    private=private_open()))
 
 
 def _masked_evidence(out: dict[str, Any]) -> dict[str, Any]:
@@ -266,8 +270,8 @@ def disposition(how: str, name: str) -> str:
 
 def evidence_level(address: str) -> Any:
     """The data level of the documents behind an evidence address (``jason.web.access.Level``): a citation's documents
-    are the association's and the law (P0; the library's confidential files are never listed for one); a PayHOA
-    request's submission and files, and anything else, P2."""
+    are the association's and the law (P0; a confidential one is listed only in the private view, and its own answer
+    says P3); a PayHOA request's submission and files, and anything else, P2."""
     from jason.approvals.evidence import EvidenceKind, rule_for
     from jason.web.access import Level
 
@@ -278,16 +282,21 @@ def evidence_level(address: str) -> Any:
     return Level.P0 if rule.kind is EvidenceKind.CITATION else Level.P2
 
 
-def view_evidence(body: dict[str, Any], by: str, grants: Grants, *, bind: str = "", level: str = "P2") -> dict[str, Any]:
+def view_evidence(body: dict[str, Any], by: str, grants: Grants, *, bind: str = "", level: str = "P2",
+                  private: bool = False) -> dict[str, Any]:
     """``POST /api/evidence/view``: one document behind an evidence address opened unmasked for ``by`` and logged
     (``jason.approvals.evidence_documents.view``). Never masked here: the person asked to see it. A pdf, an image, or
-    another file comes back as a link that serves it for ten minutes, to the sign-in ``bind`` only."""
-    from jason.approvals.evidence_documents import view
+    another file comes back as a link that serves it for ten minutes, to the sign-in ``bind`` only. ``private`` (the
+    person's private view, open) opens a confidential document too; its answer and its link are P3."""
+    from jason.approvals.evidence_documents import CONFIDENTIAL, view
 
     if not isinstance(body.get("document"), str) or not body["document"].strip():
         raise ValueError("name the document to open (document): an id the evidence lists")
-    opened = view(_text(body, "address"), body["document"], by=by, approval_id=_text(body, "approval").strip())
+    opened = view(_text(body, "address"), body["document"], by=by, approval_id=_text(body, "approval").strip(),
+                  private=private)
     out = {"kind": "", "name": "", "readAt": "", "url": "", "expires": "", **opened.answer}
+    if out.get("level") == CONFIDENTIAL:
+        level = CONFIDENTIAL
     if opened.path is not None and opened.root is not None:
         token, grant = grants.mint(address=_text(body, "address"), path=opened.path, root=opened.root,
                                    kind=out["kind"], name=out["name"], by=by, bind=bind, level=level)
@@ -429,16 +438,18 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             return jsonify(error="writes are off"), 405
         if not header_token_ok():
             return jsonify(error=f"a view carries this server's token in {TOKEN_HEADER}"), 403
-        from jason.web.access import require, served
+        from jason.web.access import Level, private_open, require, served
 
         body = _body()
         level = evidence_level(_text(body, "address"))
         viewer = require(level)                  # signed in, and their offices open the level; the body's `by` is not
+        private = private_open(viewer)           # a confidential document only while their private view is open
 
         def run():
-            out = view_evidence(body, viewer.account, grants, bind=viewer.bind, level=level.value)
+            out = view_evidence(body, viewer.account, grants, bind=viewer.bind, level=level.value, private=private)
+            shown = Level.P3 if out.get("level") == Level.P3.value else level
             try:
-                served(viewer, level, address=" ".join(_text(body, "address").split()),
+                served(viewer, shown, address=" ".join(_text(body, "address").split()),
                        document=str(body.get("document") or "").strip())
             except OSError:
                 return jsonify(error="The access log (access/served.jsonl) could not be written, so nothing was "

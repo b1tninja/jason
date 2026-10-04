@@ -796,3 +796,37 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
 .locator code.chip { white-space: nowrap; }
 .locator-job.notice-error { display: block; }
 .board-list td:first-child { white-space: nowrap; }
+
+/* private view: the switch in the header, the ask, the band under the header, and the confidential marks. The band is
+   hatched in the warning tone and carries its words, so it is never colour alone. */
+.private-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+:root .private-switch > button { font-size: 13px; padding: 2px 10px; background: var(--panel); border: 1px solid var(--rule); color: var(--muted); }
+:root .private-switch > button:hover:not(:disabled), :root .private-switch > button[aria-expanded="true"] { color: var(--ink); border-color: var(--ink); }
+:root .private-switch > button:disabled { cursor: not-allowed; border-style: dashed; }
+.private-why { color: var(--muted); font-size: 12.5px; line-height: 1.35; max-width: 24rem; }
+.private-switch-on { color: var(--warn); font-weight: 600; border: 1px solid var(--warn); border-radius: var(--r); padding: 2px 10px; white-space: nowrap; }
+.private-ask { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: min(26rem, calc(100vw - 32px)); display: grid; gap: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, .14); }
+.private-ask-lead { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+.private-ask-label { font-weight: 600; font-size: 13px; color: var(--ink); }
+.private-ask input[type="text"] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: var(--r); padding: 4px 8px; }
+.private-ask input[aria-invalid="true"] { border-color: var(--bad); }
+.private-ask-hint { font-size: 12.5px; }
+.private-ask-minutes { border: 0; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.private-ask-minutes legend { float: left; padding: 0; margin-right: 10px; font-weight: 600; color: var(--ink); }
+.private-ask-minutes label { display: inline-flex; gap: 4px; align-items: center; }
+.private-ask-error { margin: 0; color: var(--bad); font-size: 13px; }
+.private-band {
+  border-top: 3px solid var(--warn); border-bottom: 3px solid var(--warn); color: var(--ink);
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--warn) 30%, var(--bg)) 0 10px, color-mix(in srgb, var(--warn) 12%, var(--bg)) 10px 20px);
+}
+.private-band-inner { max-width: 1280px; margin: 0 auto; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.private-band-heading { margin: 0; flex: 1 1 24rem; font: 600 14px/1.45 system-ui, sans-serif; overflow-wrap: anywhere; }
+.private-band-heading:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.private-band-word { text-transform: uppercase; letter-spacing: .08em; padding: 1px 6px; margin-right: 2px; border: 1px solid var(--warn); background: var(--panel); color: var(--warn); }
+.private-band-heading time { font-variant-numeric: tabular-nums; }
+:root .private-band-close { background: var(--panel); border: 1px solid var(--ink); color: var(--ink); font-weight: 600; }
+.private-band-error { margin: 0 auto; max-width: 1280px; padding: 0 24px 8px; color: var(--bad); font-size: 13px; }
+.private-chip { display: inline-block; font-size: 11.5px; line-height: 18px; padding: 0 6px; border: 1px dashed var(--warn); border-radius: var(--r); color: var(--warn); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; white-space: nowrap; }
+.private-confidential-line { margin: 6px 0 0; }
+@media (max-width: 719px) { .private-band-inner { padding: 8px 16px; } .private-ask { position: fixed; top: auto; left: 16px; right: 16px; width: auto; } }
+@media (forced-colors: active) { .private-band { background: Canvas; border-style: double; border-width: 4px; } }

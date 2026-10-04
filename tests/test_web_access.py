@@ -218,14 +218,14 @@ def test_an_office_that_does_not_open_the_level_gets_403_with_the_reason(files):
     assert [x["by"] for x in _served(files)] == ["Ada Admin"]                            # refusals are not served
 
 
-def test_a_confidential_library_file_needs_the_private_view_and_a_reason(files):
+def test_a_confidential_library_file_needs_the_private_view(files):
     c = webclient.sign_in(webclient.client(_app(files)), "Dana Director")
     url = "/api/file?path=library/files/Confidential/conf.pdf"
     plain = c.get(url)
     assert plain.status_code == 403 and "only in the private view" in plain.json["error"]
-    assert c.get(url + "&private=1").status_code == 403                                  # no reason: not the private view
-    assert c.get(url + "&private=1&reason=+").status_code == 403
-    ok = c.get(url + "&private=1&reason=executive+session+item+3")
+    assert c.get(url + "&private=1&reason=executive+session+item+3").status_code == 403   # a query is not the view
+    assert c.post("/api/private", json={"reason": "executive session item 3"}).status_code == 200
+    ok = c.get(url)
     assert ok.status_code == 200 and ok.data.startswith(b"%PDF")
     [line] = _served(files)
     assert line["level"] == "P3" and line["private"] is True and line["reason"] == "executive session item 3"
@@ -272,8 +272,10 @@ def test_the_librarys_confidential_rows_are_held_back_without_the_private_view(d
     treasurer = webclient.sign_in(webclient.client(app), "Pat Example").get("/api/library?confidential=1&reason=x")
     assert treasurer.json["heldBack"] == 2 and "treasurer" in treasurer.json["heldBackWhy"]
     manager = webclient.sign_in(webclient.client(app), "A Manager")
-    assert manager.get("/api/library?confidential=1").json["heldBack"] == 2               # no reason given
-    shown = manager.get("/api/library?confidential=1&reason=records+request")
+    held = manager.get("/api/library?confidential=1&reason=records+request")             # no private view open
+    assert held.json["heldBack"] == 2 and "only in the private view" in held.json["heldBackWhy"]
+    assert manager.post("/api/private", json={"reason": "records request", "minutes": 15}).status_code == 200
+    shown = manager.get("/api/library?confidential=1")
     assert "heldBack" not in shown.json and len(shown.json["rows"]) == 3
     assert _served(data)[-1]["path"] == "api/library?confidential=1" and _served(data)[-1]["reason"] == "records request"
     assert anyone.get("/api/library").json["heldBackConfidential"] == 2                 # the plain listing, unchanged

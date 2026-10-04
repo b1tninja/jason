@@ -45,16 +45,20 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     app = Flask(__name__, static_folder=None)
     token = guard.install(app, hosts=hosts)
     signin.install(app, sign_in or signin.default_sign_in())
-    access.install(app, sources)            # confidential listings held back unless the private view is allowed
+    access.install(app, sources)            # the private view, and confidential listings held back until it is open
     app.config["JASON_ALLOW_APPLY"] = bool(allow_apply and approvals_live is not None)
     app.register_blueprint(approvals_routes(live=approvals_live, allow_apply=allow_apply, writes=approvals_writes))
 
     @app.get("/api/session")
     def session():
         """What the page needs to write: the token to send in ``X-Jason-Token``, which writes are on, and who is
-        signed in (``signedIn``, from Google sign-in; null when no one is)."""
-        return jsonify(token=token, header=guard.TOKEN_HEADER, applyEnabled=app.config["JASON_ALLOW_APPLY"],
-                       liveChecks=approvals_live is not None, approvalsWrites=approvals_writes, **signin.session_info())
+        signed in (``signedIn``, from Google sign-in; null when no one is), and the private view (``private``: whether
+        it is open, until when and why, and whether this person may open it, with why not)."""
+        resp = jsonify(token=token, header=guard.TOKEN_HEADER, applyEnabled=app.config["JASON_ALLOW_APPLY"],
+                       liveChecks=approvals_live is not None, approvalsWrites=approvals_writes, **signin.session_info(),
+                       private=access.private_info())
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     @app.post("/api/board-items/<item_id>")
     def board_item(item_id: str):
@@ -153,8 +157,9 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     @app.get("/api/file")
     def local_file():
         """A photo or document under data/, read-only, for a canvas to show. Only files under data/ and only these types,
-        only to a signed-in roster person whose offices open the file's level (``jason.web.access``); P3 only with
-        ``private=1&reason=...``. Each file served is logged in access/served.jsonl."""
+        only to a signed-in roster person whose offices open the file's level (``jason.web.access``); P3 only while
+        their private view is open. Each file served is logged in access/served.jsonl, under the private view's id
+        and reason while it is open."""
         from flask import abort, send_file
 
         from jason.mcp.county import _data_dir
@@ -172,9 +177,8 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         if mime is None:
             abort(404)
         level = access.level_of_path(rel, root)
-        private, reason = request.args.get("private", "").lower() in ("1", "true", "yes"), request.args.get("reason", "")
-        access.allow(viewer, level, private=private, reason=reason)
-        access.log_or_refuse(viewer, level, path=target.relative_to(root).as_posix(), private=private, reason=reason)
+        access.allow(viewer, level)
+        access.log_or_refuse(viewer, level, path=target.relative_to(root).as_posix())
         resp = send_file(target, mimetype=mime, conditional=True)
         resp.headers["Content-Security-Policy"] = "sandbox"  # a served SVG or PDF runs no script against the app
         resp.headers["Cache-Control"] = "no-store"

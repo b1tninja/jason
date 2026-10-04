@@ -10,7 +10,19 @@ export type EvidenceDocumentKind = "submission" | "pdf" | "image" | "text" | "fi
 
 /** One document an evidence address holds (`GET /api/evidence`'s `documents`): what it is and how big, never its words.
  * Its contents come only from a view, a person's logged act. */
-export interface EvidenceDocument { id: string; name: string; kind: EvidenceDocumentKind; size: number; readAt: string; note: string }
+export interface EvidenceDocument {
+  id: string; name: string; kind: EvidenceDocumentKind; size: number; readAt: string; note: string;
+  /** "P3" for a confidential document, listed only while the person's private view is open. */
+  level?: string;
+}
+
+/** The line a confidential document's viewer shows in its header. */
+export const CONFIDENTIAL_LINE = "Confidential: shown in the private view; this view is logged.";
+
+/** Whether a listed or opened document is confidential (P3, the private view's). */
+export function isConfidential(d: { level?: string } | null | undefined): boolean {
+  return d?.level === "P3";
+}
 
 /** What a row of a submitted form is: a `section` heading (a divider and its title), a `note` (the form's own words),
  * a lone box (`check`), or a question and its answer. */
@@ -36,6 +48,8 @@ export interface DocumentSubmission {
 export interface DocumentView {
   kind: EvidenceDocumentKind; name: string; readAt: string; url: string; expires: string;
   submission?: DocumentSubmission | null; text?: string | null; caveats: string[];
+  /** "P3" for a confidential document, opened in the private view. */
+  level?: string;
 }
 
 /** The body of a view: the address, the approval whose plan it was read for, the document, and the person viewing. */
@@ -329,6 +343,7 @@ export function DocumentViewer({ data, document: listed, documents, busy = false
           )}
           {v && v.url && v.expires && <span>The link works until <time dateTime={v.expires}>{when(v.expires)}</time>.</span>}
         </p>
+        {(isConfidential(v) || isConfidential(listed)) && <p className="notice notice-warn private-confidential-line">{CONFIDENTIAL_LINE}</p>}
         {unmasked.map((c, i) => <p key={i} className="notice notice-warn doc-viewer-unmasked">{c}</p>)}
         <Caveats items={rest} />
       </header>

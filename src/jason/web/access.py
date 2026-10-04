@@ -17,31 +17,47 @@ The person's decision: opening documents and files from the console needs a sign
   Anything no row places is P2: closed, never open.
 - **``require``** answers a route: the ``Viewer``, or a 401 (no one signed in, or sign-in not set up on this
   jason-web) or a 403 with the reason. A fetch gets JSON with ``signIn``; a top-level navigation gets a small page.
+- **The private view** is a window a signed-in person opens for themselves (``POST /api/private`` with ``{reason,
+  minutes}``), for 15, 30, or 60 minutes, when one of their offices opens P3 in the private view. It is kept in the
+  Flask session, bound to the account's Google ``sub``, so another sign-in in the same browser never inherits it. It
+  closes on ``DELETE /api/private``, on sign-out, and when its time is up (the next request finds it expired). While
+  an admin views the console as someone else it is not open. ``private_window`` is the one place a route asks.
+  Each opening, closing, and expiry is a line in ``data/access/private.jsonl``: ``{at, event, id, by, reason,
+  minutes?}``.
 - **The log** is ``data/access/served.jsonl``: one line a file served or a document viewed unmasked, ``{at, by, as?,
-  path | address, level, private, reason?}``. Never the contents. It is written before the bytes go out; a log that
-  cannot be written serves nothing.
+  path | address, level, private, privateId?, reason?}``; a line served while the private view is open carries its id
+  and its reason. Never the contents. It is written before the bytes go out; a log that cannot be written serves
+  nothing.
 """
 
 from __future__ import annotations
 
 import fnmatch
+import hmac
 import html
 import json
 import re
+import secrets
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-from flask import Flask, Response, abort, current_app, jsonify, make_response, request, session
+from flask import Flask, Response, abort, current_app, has_request_context, jsonify, make_response, request, session
 
 SERVED_LOG = Path("access") / "served.jsonl"
+PRIVATE_LOG = Path("access") / "private.jsonl"
+PRIVATE_ROUTE = "/api/private"
+PRIVATE_KEY = "private"                     # the Flask session's key for the open window
+PRIVATE_MINUTES = (15, 30, 60)
+PRIVATE_DEFAULT = 30
 ROSTER = "anyone on the roster"
 SIGN_IN = "Sign in with Google to open this."
 NOT_SET_UP = "Console sign-in isn't set up on this jason-web; see docs/setup.md, Console sign-in."
 REASON_CHARS = 120
+PRIVATE_HINT = "Open the private view (at the top of the console) for a stated reason."
 
 
 class Level(Enum):
@@ -124,7 +140,7 @@ def _office_words(offices: frozenset[str]) -> str:
 
 
 def may_see(viewer: Viewer, level: Level, *, private: bool = False) -> tuple[bool, str]:
-    """Whether ``viewer`` may open ``level``, by ``SEE_RULES``; ``private`` is the private view, asked with a stated
+    """Whether ``viewer`` may open ``level``, by ``SEE_RULES``; ``private`` is the private view, open for a stated
     reason. The reason a refusal gives is a sentence a person can act on."""
     if level is Level.P4:
         return False, "Secrets (P4) are never served."
@@ -135,8 +151,7 @@ def may_see(viewer: Viewer, level: Level, *, private: bool = False) -> tuple[boo
     if any(level in r.private for r in rows):
         if private:
             return True, ""
-        return False, (f"{WORDS[level][0].upper()}{WORDS[level][1:]} opens only in the private view, for a stated "
-                       "reason (private=1&reason=...).")
+        return False, f"{WORDS[level][0].upper()}{WORDS[level][1:]} opens only in the private view. {PRIVATE_HINT}"
     if not viewer.offices:
         who = "An admin with no office or manager role doesn't" if viewer.admin else "Someone with no office doesn't"
         return False, f"{who} open {WORDS[level]}."
@@ -391,21 +406,191 @@ def clean_reason(reason: str) -> str:
     return str(mask(text))
 
 
-def check(level: Level, *, private: bool = False, reason: str = "") -> tuple[Viewer | None, Response | None]:
-    """The viewer when they may open ``level`` (the private view counts only with a stated reason), else the refusal."""
+# --- the private view ---------------------------------------------------------------------------------------------------
+
+def now() -> datetime:
+    """The clock the private view reads (a test fakes it)."""
+    return datetime.now(timezone.utc)
+
+
+def _stamp(at: datetime) -> str:
+    return at.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _when(value: Any) -> datetime | None:
+    try:
+        at = datetime.fromisoformat(str(value or ""))
+    except ValueError:
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def _log_private(event: str, window: dict[str, Any], **extra: Any) -> None:
+    """One line in ``access/private.jsonl``. Raises ``OSError`` when it cannot be written."""
+    row: dict[str, Any] = {"at": _stamp(now()), "event": event, "id": str(window.get("id") or ""),
+                           "by": str(window.get("by") or ""), "reason": str(window.get("reason") or "")}
+    row.update({k: v for k, v in extra.items() if v not in (None, "")})
+    file = _data_root() / PRIVATE_LOG
+    file.parent.mkdir(parents=True, exist_ok=True)
+    with file.open("a", encoding="utf-8") as out:
+        out.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def _quiet_log(event: str, window: dict[str, Any], **extra: Any) -> None:
+    """A closing's line: a closing that cannot be logged still closes (it opens nothing)."""
+    try:
+        _log_private(event, window, **extra)
+    except OSError:
+        pass
+
+
+def _account_bind() -> str:
+    from jason.web.signin import current_account
+
+    account = current_account()
+    if account is None:
+        return ""
+    return account.sub or f"{account.name}|{account.email}"
+
+
+def _acting() -> bool:
+    """Whether an admin is viewing the console as someone else (``jason-web --dev``)."""
+    from jason.web.signin import acting_as, current_account
+
+    sign_in = current_app.extensions.get("jason_sign_in")
+    account = current_account()
+    return bool(getattr(sign_in, "dev", False) and account is not None and account.admin) and acting_as() is not None
+
+
+def private_window() -> dict[str, Any] | None:
+    """The private view open on this request: ``{id, by, sub, reason, opened, until}``, or None.
+
+    None when no window is in the session; when the window belongs to another sign-in (it is dropped and logged
+    ``closed``); when its time is up (dropped and logged ``expired``); and while an admin views the console as someone
+    else (kept, but not open for that view)."""
+    if not has_request_context():
+        return None
+    raw = session.get(PRIVATE_KEY)
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        session.pop(PRIVATE_KEY, None)
+        return None
+    bind = _account_bind()
+    if not bind or not hmac.compare_digest(str(raw.get("sub") or "").encode("utf-8"), bind.encode("utf-8")):
+        session.pop(PRIVATE_KEY, None)
+        _quiet_log("closed", raw, why="another sign-in")
+        return None
+    until = _when(raw.get("until"))
+    if until is None or now() >= until:
+        session.pop(PRIVATE_KEY, None)
+        _quiet_log("expired", raw)
+        return None
+    if _acting():
+        return None
+    return dict(raw)
+
+
+def close_private(why: str = "") -> bool:
+    """Close the window in this session, whoever's it is, and log it ``closed`` (with ``why``: "signed out").
+    True when one was open."""
+    if not has_request_context():
+        return False
+    raw = session.pop(PRIVATE_KEY, None)
+    if not isinstance(raw, dict):
+        return False
+    until = _when(raw.get("until"))
+    _quiet_log("expired" if until is None or now() >= until else "closed", raw, why=why)
+    return True
+
+
+def private_open(viewer: Viewer | None = None) -> bool:
+    """Whether the private view is open on this request and the viewer's offices open P3 in it."""
+    if private_window() is None:
+        return False
+    if viewer is None:
+        viewer, refused = _viewer()
+        if refused is not None or viewer is None:
+            return False
+    return may_see(viewer, Level.P3, private=True)[0]
+
+
+def _may_open() -> tuple[bool, str]:
+    """Whether the person on this request may open the private view, and the sentence that says why not."""
+    viewer, refused = _viewer()
+    if refused is not None or viewer is None:
+        got = refused.get_json(silent=True) if refused is not None else None
+        said = str(got.get("error") or "") if isinstance(got, dict) else ""
+        if said == NOT_SET_UP:
+            return False, NOT_SET_UP
+        return False, "Sign in with Google to open the private view."
+    if viewer.acting:
+        return False, (f"Viewing as {viewer.label} (admin view): the private view opens only as yourself. Go back to "
+                       "yourself to open it.")
+    return may_see(viewer, Level.P3, private=True)
+
+
+def private_info() -> dict[str, Any]:
+    """What ``GET /api/session`` says of the private view: ``{open, until, reason, id, mayOpen, why, minutes,
+    default}``."""
+    window = private_window()
+    ok, why = _may_open()
+    return {"open": window is not None, "until": str((window or {}).get("until") or ""),
+            "reason": str((window or {}).get("reason") or ""), "id": str((window or {}).get("id") or ""),
+            "mayOpen": ok, "why": "" if ok else why, "minutes": list(PRIVATE_MINUTES), "default": PRIVATE_DEFAULT}
+
+
+def _minutes(value: Any) -> int:
+    if value in (None, ""):
+        return PRIVATE_DEFAULT
+    if isinstance(value, bool):
+        raise ValueError("minutes is 15, 30, or 60")
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("minutes is 15, 30, or 60") from exc
+    if minutes not in PRIVATE_MINUTES or str(value).strip() not in (str(minutes), f"{minutes}.0"):
+        raise ValueError("minutes is 15, 30, or 60")
+    return minutes
+
+
+def _stated(reason: Any) -> str:
+    """The reason as it is kept, or ``ValueError`` with the sentence that says what to change."""
+    from jason.community.intake import secret_reason
+
+    text = " ".join(str(reason or "").split())
+    if not text:
+        raise ValueError("Say why you open the private view: a short phrase, e.g. executive session prep. It's logged.")
+    if len(text) > REASON_CHARS:
+        raise ValueError(f"Keep the reason short: {REASON_CHARS} characters at most. It's a phrase, never an owner's "
+                         "personal details.")
+    secret = secret_reason(text)
+    if secret:
+        raise ValueError(f"That reason looks like a secret ({secret}): nothing was opened or kept. Say why in a short "
+                         "phrase.")
+    kept = clean_reason(text)
+    if not kept:
+        raise ValueError("Say why you open the private view in a short phrase.")
+    return kept
+
+
+# --- what a route asks -------------------------------------------------------------------------------------------------
+
+def check(level: Level) -> tuple[Viewer | None, Response | None]:
+    """The viewer when they may open ``level`` (P3 only while the private view is open), else the refusal."""
     viewer, refused = _viewer()
     if refused is not None:
         return None, refused
     assert viewer is not None
-    ok, why = may_see(viewer, level, private=private and bool(clean_reason(reason)))
+    ok, why = may_see(viewer, level, private=private_window() is not None)
     if not ok:
         return viewer, refusal(403, why)
     return viewer, None
 
 
-def require(level: Level, *, private: bool = False, reason: str = "") -> Viewer:
+def require(level: Level) -> Viewer:
     """For a route: the ``Viewer`` who may open ``level``, or abort with the 401 or 403 that says why."""
-    viewer, refused = check(level, private=private, reason=reason)
+    viewer, refused = check(level)
     if refused is not None:
         abort(refused)
     assert viewer is not None
@@ -421,9 +606,10 @@ def signed_in() -> Viewer:
     return viewer
 
 
-def allow(viewer: Viewer, level: Level, *, private: bool = False, reason: str = "") -> None:
-    """For a route that already has its viewer: abort with the 403 unless they may open ``level``."""
-    ok, why = may_see(viewer, level, private=private and bool(clean_reason(reason)))
+def allow(viewer: Viewer, level: Level) -> None:
+    """For a route that already has its viewer: abort with the 403 unless they may open ``level`` (P3 only while the
+    private view is open)."""
+    ok, why = may_see(viewer, level, private=private_window() is not None)
     if not ok:
         abort(refusal(403, why))
 
@@ -434,19 +620,20 @@ def _data_root() -> Path:
     return Path(_data_dir(None))
 
 
-def served(viewer: Viewer, level: Level, *, path: str = "", address: str = "", private: bool = False,
-           reason: str = "", data_dir: Path | None = None, **extra: Any) -> None:
-    """One line in ``access/served.jsonl``: when, who signed in, whom they viewed as, what, its level, and the stated
-    reason. Never the contents. Raises ``OSError`` when it cannot be written, so nothing is served unlogged."""
+def served(viewer: Viewer, level: Level, *, path: str = "", address: str = "", data_dir: Path | None = None,
+           **extra: Any) -> None:
+    """One line in ``access/served.jsonl``: when, who signed in, whom they viewed as, what, its level, and, while the
+    private view is open, its id and stated reason. Never the contents. Raises ``OSError`` when it cannot be written,
+    so nothing is served unlogged."""
     root = Path(data_dir) if data_dir is not None else _data_root()
-    row: dict[str, Any] = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "by": viewer.account}
+    window = private_window()
+    row: dict[str, Any] = {"at": _stamp(now()), "by": viewer.account}
     if viewer.acting:
         row["as"] = viewer.label
     row.update({"path": path} if path else {"address": address})
-    row.update({"level": level.value, "private": bool(private)})
-    why = clean_reason(reason)
-    if why:
-        row["reason"] = why
+    row.update({"level": level.value, "private": window is not None})
+    if window is not None:
+        row.update({"privateId": str(window.get("id") or ""), "reason": str(window.get("reason") or "")})
     row.update({k: v for k, v in extra.items() if v not in (None, "")})
     file = root / SERVED_LOG
     file.parent.mkdir(parents=True, exist_ok=True)
@@ -473,10 +660,62 @@ HELD_BACK = "{n} held back (confidential); open the private view to see them."
 PRIVATE_LISTINGS = ("library", "embeds")
 
 
+def _no_store(resp: Response) -> Response:
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, Any]]]) -> None:
-    """Hold back the confidential rows of ``GET /api/library?confidential=1`` (and ``/api/embeds?confidential=1``)
-    unless the viewer may open P3 in the private view with a stated reason (``reason=``). The listing's own loader
-    runs unchanged: without that, it runs without the flag, and the answer says how many it held back."""
+    """The private view's routes (``POST`` and ``DELETE /api/private``), and the hold-back on the confidential rows of
+    ``GET /api/library?confidential=1`` (and ``/api/embeds?confidential=1``) unless the private view is open for a
+    viewer whose offices open P3 in it. The listing's own loader runs unchanged: without the window, it runs without
+    the flag, and the answer says how many it held back."""
+    from jason.web.guard import TOKEN_HEADER, header_token_ok
+
+    @app.post(PRIVATE_ROUTE)
+    def private_view_open():
+        """Open the private view for the signed-in person: ``{reason, minutes}`` (15, 30, or 60; 30 when not given).
+        401 signed out; 403 without the token in its header, while viewing as someone else, or for an office that
+        does not open P3; 400 for no reason, a long one, one that looks like a secret, or other minutes; 503 when
+        the log cannot be written (nothing opened)."""
+        if not header_token_ok():
+            return _no_store(refusal(403, f"Opening the private view carries this server's token in {TOKEN_HEADER}."))
+        viewer = signed_in()
+        if viewer.acting:
+            return _no_store(refusal(403, f"Viewing as {viewer.label} (admin view): the private view opens only as "
+                                          "yourself."))
+        ok, why = may_see(viewer, Level.P3, private=True)
+        if not ok:
+            return _no_store(refusal(403, why))
+        body = request.get_json(silent=True)
+        body = body if isinstance(body, dict) else {}
+        try:
+            reason = _stated(body.get("reason"))
+            minutes = _minutes(body.get("minutes"))
+        except ValueError as exc:
+            return _no_store(make_response(jsonify(error=str(exc)), 400))
+        old = session.get(PRIVATE_KEY)
+        if isinstance(old, dict):
+            close_private("opened again")
+        opened = now()
+        window = {"id": secrets.token_hex(4), "by": viewer.account, "sub": viewer.bind, "reason": reason,
+                  "opened": _stamp(opened), "until": _stamp(opened + timedelta(minutes=minutes))}
+        try:
+            _log_private("opened", window, minutes=minutes)
+        except OSError:
+            return _no_store(make_response(jsonify(error="The access log (access/private.jsonl) could not be "
+                                                         "written, so the private view was not opened."), 503))
+        session[PRIVATE_KEY] = window
+        return _no_store(jsonify(private=private_info()))
+
+    @app.delete(PRIVATE_ROUTE)
+    def private_view_close():
+        """Close the private view in this session (logged ``closed``). Answers the private view as ``/api/session``
+        says it, open or not."""
+        if not header_token_ok():
+            return _no_store(refusal(403, f"Closing the private view carries this server's token in {TOKEN_HEADER}."))
+        close_private()
+        return _no_store(jsonify(private=private_info()))
 
     @app.before_request
     def _private_listing():
@@ -486,11 +725,10 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
         load = loaders.get(name) if name in PRIVATE_LISTINGS else None
         if load is None:
             return None
-        reason = request.args.get("reason", "")
-        viewer, refused = check(Level.P3, private=True, reason=reason)
+        viewer, refused = check(Level.P3)
         if refused is None and viewer is not None:
             try:
-                served(viewer, Level.P3, path=f"api/{name}?confidential=1", private=True, reason=reason)
+                served(viewer, Level.P3, path=f"api/{name}?confidential=1")
             except OSError:
                 return jsonify(error="The access log (access/served.jsonl) could not be written, so nothing was "
                                      "listed."), 503
@@ -499,7 +737,7 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
         if refused is not None:
             got = refused.get_json(silent=True)
             why = str(got.get("error") or "") if isinstance(got, dict) else ""
-        args = {k: v for k, v in request.args.to_dict().items() if k not in ("confidential", "reason")}
+        args = {k: v for k, v in request.args.to_dict().items() if k != "confidential"}
         try:
             out = load(args)
         except ValueError as exc:
@@ -515,11 +753,10 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
             out = {**out, "heldBack": n, "heldBackWhy": why}
             if name == "library":
                 out["note"] = HELD_BACK.format(n=n) if n else str(out.get("note") or "")
-        resp = jsonify(out)
-        resp.headers["Cache-Control"] = "no-store"
-        return resp
+        return _no_store(jsonify(out))
 
 
-__all__ = ["HELD_BACK", "Level", "NOT_SET_UP", "PATH_RULES", "PathRule", "ROSTER", "SEE_RULES", "SERVED_LOG", "SIGN_IN",
-           "SeeRule", "Viewer", "allow", "check", "clean_reason", "install", "level_of_path", "log_or_refuse",
-           "may_see", "refusal", "require", "served", "signed_in"]
+__all__ = ["HELD_BACK", "Level", "NOT_SET_UP", "PATH_RULES", "PRIVATE_DEFAULT", "PRIVATE_LOG", "PRIVATE_MINUTES",
+           "PRIVATE_ROUTE", "PathRule", "ROSTER", "SEE_RULES", "SERVED_LOG", "SIGN_IN", "SeeRule", "Viewer", "allow",
+           "check", "clean_reason", "close_private", "install", "level_of_path", "log_or_refuse", "may_see", "now",
+           "private_info", "private_open", "private_window", "refusal", "require", "served", "signed_in"]

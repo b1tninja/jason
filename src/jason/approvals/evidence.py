@@ -16,6 +16,11 @@ live system.
 - **A citation.** ``jason.tasks.cite.resolve``: the words recited from disk (``jason export-authorities`` for the
   statutes), never paraphrased.
 - **A board item.** ``data/board/items.json``; an executive-session item's summary and notes are held back.
+
+**The private view.** ``resolve(..., private=True)`` is what jason-web asks while a person's private view is open
+(``jason.web.access``): a restricted book is recited (``jason cite --private``), a citation's confidential documents
+are listed (marked ``level: "P3"``), and an executive-session item's summary and notes are shown. Everything else
+(jason-mcp, the CLI) asks without it.
 - **A command.** Found, with no copy: the command is what produced the evidence, and running it is the refresh.
 
 Which reader answers is the first rule row whose matcher takes the address (``RULES``; the order is part of the rule).
@@ -106,6 +111,7 @@ class Ask:
     evidence: Any = None                       # model.Evidence: the approval's row for this address
     snapshot: dict[str, Any] | None = None     # the plan's read of the record
     notes: list[str] = field(default_factory=list)
+    private: bool = False                      # the private view: restricted and confidential material shown
 
 
 @dataclass(frozen=True)
@@ -517,7 +523,7 @@ def read_citation(ask: Ask) -> dict[str, Any]:
     from jason.tasks import cite
 
     try:
-        got = cite.resolve(ask.address, data_dir=ask.root)
+        got = cite.resolve(ask.address, data_dir=ask.root, private=ask.private)
     except Exception as exc:  # noqa: BLE001 - a shelf that cannot be opened is a miss with its reason
         got = {"found": False, "reason": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
     citation = str(got.get("citation") or ask.address)
@@ -528,7 +534,8 @@ def read_citation(ask: Ask) -> dict[str, Any]:
         from jason.approvals.evidence_documents import citation_documents
 
         read_at = _mtime(ask.root / "authorities" / "manifest.json") if statute else ""
-        out["documents"] = [d.as_dict() for d in citation_documents(ask.root, got, statute=statute, read_at=read_at)]
+        out["documents"] = [d.as_dict() for d in citation_documents(ask.root, got, statute=statute, read_at=read_at,
+                                                                    private=ask.private)]
         text, history = _history_apart(str(got.get("text") or ""))
         got["text"] = text
         fields = [mask_field("Cited at", str(got.get("address") or "")), mask_field("In force", got.get("inForce", "")),
@@ -568,17 +575,19 @@ def read_board_item(ask: Ask) -> dict[str, Any]:
                        "there)") + ": the reviews that find a matter add it (`jason board` lists them).")
         return out
     executive = agenda_session(item) is Session.EXECUTIVE
+    held = executive and not ask.private
     rows = [("Title", item.title), ("Ask", item.ask), ("Status", item.status.value),
             ("Priority", item.priority.value), ("Category", item.category.value), ("Authority", item.authority),
             ("Session", agenda_session(item).value), ("Due", item.due.isoformat() if item.due else ""),
             ("Meeting", item.meeting), ("Owner", item.owner),
-            ("Summary", "" if executive else item.summary), ("Notes", "" if executive else item.notes),
+            ("Summary", "" if held else item.summary), ("Notes", "" if held else item.notes),
             ("Evidence", "; ".join(item.evidence))]
     out["sources"].append(source(SourceName.BOARD_ITEMS, read_at=_mtime(path),
                                  fields=[mask_field(n, v) for n, v in rows if v],
                                  caveat="The board's running list; the board owns its status, owner, meeting, and "
                                         "notes. An item is a matter to decide, never the decision.",
-                                 note="Executive session: its summary and notes are held back." if executive else ""))
+                                 note=("Executive session: its summary and notes are held back." if held else
+                                       "Executive session: shown in the private view." if executive else "")))
     out.update(label=f"Board item {key}: {item.title}", found=True)
     return out
 
@@ -698,7 +707,8 @@ def _from_approval(approval_id: str, address: str, root: Path, notes: list[str])
     return approval, evidence, snapshot
 
 
-def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None,
+            private: bool = False) -> dict[str, Any]:
     """What jason holds on disk of the record ``address`` names, copy by copy, with the commands that read it again.
     ``approval_id`` (an id or a unique prefix) adds the plan's own read of it. Reads disk only, never PayHOA, Google,
     or Keeper. Never raises on what it is asked: a miss is ``found: false`` with its reason (``note``).
@@ -707,7 +717,8 @@ def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None
     citation, caveat, note}], changed, changedNote, link, refresh: [{command, live, what, system}],
     refreshable: {system, what} | null, documents: [{id, name, kind, size, readAt, note}], caveats, note}``;
     ``refreshable`` is null when the kind has no one-record live refresher (``refresh``). ``documents`` are what a
-    person may open whole (``jason.approvals.evidence_documents``): names and sizes only, never their contents."""
+    person may open whole (``jason.approvals.evidence_documents``): names and sizes only, never their contents.
+    ``private`` is the private view (the module doc): only jason-web asks it, and only while it is open."""
     address = " ".join(str(address or "").split())
     notes: list[str] = []
     try:
@@ -723,7 +734,7 @@ def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None
         approval, evidence, snapshot = _from_approval(approval_id.strip(), address, root, notes)
         if approval is not None and evidence is None and address:
             notes.append(f"{approval.id} names no evidence at this address")
-    ask = Ask(address, found, root, approval, evidence, snapshot, notes)
+    ask = Ask(address, found, root, approval, evidence, snapshot, notes, bool(private))
     try:
         got = rule.read(ask)
     except Exception as exc:  # noqa: BLE001 - a reader that fails is a miss with its reason, never a traceback
