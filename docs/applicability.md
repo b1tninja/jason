@@ -159,7 +159,7 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
 | A chat window | the console's Ask, or any MCP client with `jason-mcp` |
 | Hosting `jason-mcp`'s tools for a local model | any MCP client |
 | OCR | already jason's; the `anythingllm-collector` engine goes when the app does |
-| A one-step install | `pip install -e .` and Ollama. This is the real cost of leaving, and why the last step waits for the console. |
+| A one-step install | `pip install -e .` and Ollama. This is the real cost of leaving. |
 
 **Not a swap for another app.** Open WebUI and LibreChat bring their own vector store, model settings, and server, which are the same costs as AnythingLLM.
 
@@ -174,14 +174,15 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
 5. **Context headers.** Kept only if the gold set improves.
 6. **Companion pages,** starting with the fire and life safety subject, whose sources are gathered.
 7. **The contract reader's gate and term scopes.** In the contracts session's code, once it agrees to the interface.
-8. **Retiring AnythingLLM.**
-   - First its sync becomes optional (a flag), and its workspaces are no longer the place people ask.
-   - Once the console's Ask serves the board, `anythingllm_sync`, `anythingllm_admin`, the collector engine, and their checks in `local_ai` are removed.
-   - A snapshot of every workspace's document list is taken first (`jason anythingllm --snapshot`).
+8. **Retiring AnythingLLM.** No person chats in it (October 4, 2026), so it waits only on its callers in jason, not on the console:
+   - `anythingllm_query` (an MCP tool in the board profile) answers from the index instead, under a name that does not name the app.
+   - The library and mail readers already skip the `anythingllm-collector` engine, so no text depends on it.
+   - Then `anythingllm_sync`, `anythingllm_admin`, the collector engine, `anythingllm_status`, and their checks in `local_ai` are removed. So are the `keep_alive` choices made so as not to unload AnythingLLM's model (`content.py`, `reference_model.py`).
+   - A snapshot of every workspace's document list is taken first (`jason anythingllm --snapshot`). The `Catalog` and `Source` rows move to the index's ingestion.
 
 ## Open questions
 
-- **Who asks, and where.** Which people still chat in AnythingLLM today, and whether the console's Ask must be ready before step 8.
+- **Who asks, and where.** Settled: no person uses AnythingLLM. The board's questions reach jason through MCP clients and, later, the console's Ask.
 - **Engine and footprint.** LanceDB or sqlite-vec, settled by the gold set and by the index's size on disk.
 - **The gold set's reach.** Questions for the mail, authorities, and vendor-records catalogs, which it does not cover today.
 - **Undetermined answers.** Where they go: the intake questions, the canvas, or both, by facet.
