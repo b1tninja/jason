@@ -1216,9 +1216,48 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("wrapped-date-not-read", date(2026, 10, 4), (Area.DOCUMENTS,),
            "A reader returned no inspection date where the PDF wrapped the date across a line, so the report could "
            "not be placed in a period and the period showed as not on file.",
-           "dates_in wants one space before the year; a line break there is not one.",
-           "Still to do: read dates across a line break (dates_in or the reader), with a fixture that wraps one.",
-           Status.OPEN, docs=("docs/fire-protection.md",)),
+           "dates_in wanted one space before the year; a PDF's text layer breaks \"Thursday, September 05,\" from "
+           "\"2024\".",
+           "dates_in reads a month and day that end their line with the comma, followed by a line that is only the "
+           "year, as one date. A day with no comma, or a year with more on its line, stays unread, so two unrelated "
+           "lines are never joined. date_after reads its window against the whole text, so a date the window cuts "
+           "short is passed over. On the library that day (615 rows) no stored reading changed.",
+           Status.FIXED, guards=("jason.community.document_models.dates_in", "tests/test_document_models.py (the date tests)",
+                                 "tests/test_models_legal.py: a completed date the text layer wraps before the year"),
+           docs=("docs/fire-protection.md",)),
+    Lesson("filed-reports-never-read", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "Reports filed to Drive from email were logged and never read: the completeness check listed a backflow "
+           "test report as filed, not read, and the period as not on file.",
+           "jason models read only the library; a filed attachment had no reading.",
+           "jason models --filed reads the filing log's inspection reports from their local copies (text layer, then "
+           "local OCR; a vision model only when asked) into readings with id drive-<file id>, by the same code path as "
+           "a library row. A row says how its words were read, and takes nothing from the email's date or the file's "
+           "name.",
+           Status.FIXED, guards=("jason models --filed", "tests/test_filed_readings.py"),
+           docs=("docs/document-models/README.md", "docs/gmail.md")),
+    Lesson("form-legend-read-as-result", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "The general inspection reader counts the words pass and fail, so a form that prints them as a legend or as "
+           "box labels on every copy reads as failed.",
+           "A printed form's own words were taken for the inspector's marks.",
+           "The State Fire Marshal's forms and the backflow field test form have their own readers, which leave the "
+           "result empty and say so where the marks are not read. Still open for any other form the general reader "
+           "takes; its fallback (the first date in the head) can also take a test-due date.",
+           Status.OPEN, docs=("docs/document-models/legal.md",)),
+    Lesson("report-does-not-say-which-inspection", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "Several obligations apply to one sprinkler system, and a report on the State's quarterly-and-annual form "
+           "does not say which it is; the five-year form covers two obligations and includes the quarterly and annual "
+           "items, but the completeness check gives a report to one obligation.",
+           "The check assumed one report is the record of one obligation.",
+           "Reports now carry interval_months and buildings from their own words, and a report that does not say stays "
+           "unassigned. Still to do: a decision on whether one report may be the record of several obligations.",
+           Status.DECISION, docs=("docs/fire-protection.md",)),
+    Lesson("portal-reports-not-readings", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A vendor portal's inspection reports are on disk and no pass reads them into the readings, so the "
+           "completeness check cannot see them and shows their periods as not on file.",
+           "The portal sync saves files; the readers run over the library and the filing log only.",
+           "Still to do: a pass over a portal's saved reports (or filing them to the library), then jason models and "
+           "jason inspections.",
+           Status.OPEN, docs=("docs/vendor-portals.md", "docs/fire-protection.md")),
     Lesson("form-line-is-not-one-fact", date(2026, 10, 4), (Area.DOCUMENTS,),
            "A rule that took the same dated words with different amounts for one fact reported a conflict that was ten "
            "copies of one bill's stub, each for a different parcel.",

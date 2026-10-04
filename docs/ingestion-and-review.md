@@ -93,6 +93,7 @@ What already points the right way:
 - **Lenses exist under other names:** `TaskPrompt` rows, `QuestionSet`, the notice elements, the deontic grammar, the deliverable rules, and the applicability conditions.
 - **Collections exist under other names:** an index catalog and `Scope`, a legal case's file, a meeting packet, an incident's evidence, a vendor's file.
 - **Sources of a fact are already named:** `applicability.Source` separates the document, the profile, the date, and a person's answer. A set a document gives is partial unless its reader says it is whole (`FactValue.complete`).
+- **One way to make a row.** `document_models._entry` makes a reading's row for a library file and for a document filed from email (`jason models --filed`), so both carry the text's digest, the reader's version, the as-of date, the basis, and the lenses. A filed row takes nothing from the email's date, the file's name, or the folder, and it says how its words were read.
 - **Confidentiality is already decided per document:** the index sources fold a library document's copies and hold it when any copy is held, and a build carries that flag to the same bytes in any other catalog (`index_sources.library_holds`).
 
 ## The records
@@ -140,7 +141,7 @@ General lenses worth writing first, each useful for any collection:
 
 A profile adds its own lenses the way it adds task prompts.
 
-The Completeness lens is built for one collection, the life safety records (`jason inspections`). Its expected documents are the periods of each obligation that applies to each system. Its evidence is a reading placed by its own fields, or a person's completion. A reading that lacks a field is unplaced with the field named, a document no reader has read is "not read", and "not on file" never means "not done". Its findings rest on the profile, the readings store, and the as-of date, so it is a review, not ingestion.
+The Completeness lens is built for one collection, the life safety records (`jason inspections`). Its expected documents are the periods of each obligation that applies to each system. Its evidence is a reading placed by its own fields, or a person's completion. A reading that lacks a field is unplaced with the field named, a document no reader has read is "not read", and "not on file" never means "not done". Its findings rest on the profile, the readings store, and the as-of date, so it is a review, not ingestion. A filed report the pass tried and could not read stays listed as not read, with why. Open: one report can be the record of more than one obligation (the State's five-year form includes the quarterly and annual items), and the lens assigns one.
 
 ### A collection
 
