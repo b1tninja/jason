@@ -24,7 +24,7 @@ def test_the_mechanics_filings_are_classified():
 
 
 def test_a_lien_is_released_bonded_sued_or_expired(monkeypatch):
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2021, 6, 1))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2021, 6, 1))
     released = encumbrances((
         _doc("202101150001", "389", ("WATT COMMUNITIES AT MYSTIQUE LLC",), ("ACME ROOFING INC",)),
         _doc("202102200002", "635", ("ACME ROOFING INC",), ("WATT COMMUNITIES AT MYSTIQUE LLC",), cites=("202101150001",)),
@@ -48,13 +48,13 @@ def test_a_lien_is_released_bonded_sued_or_expired(monkeypatch):
     assert withdrawn[0].status == "action withdrawn"
     expired = encumbrances((_doc("202101150001", "389", ("WATT COMMUNITIES AT MYSTIQUE LLC",), ("ACME ROOFING INC",)),))
     assert expired[0].status == "expired" and expired[0].unenforceable_after == date(2021, 4, 15) and expired[0].closed is None
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2021, 3, 1))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2021, 3, 1))
     assert expired[0].status == "open"
     extended = encumbrances((
         _doc("202101150001", "389", ("WATT COMMUNITIES AT MYSTIQUE LLC",), ("ACME ROOFING INC",)),
         _doc("202103010006", "232", ("WATT COMMUNITIES AT MYSTIQUE LLC",), ("ACME ROOFING INC",)),
     ))
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2021, 9, 1))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2021, 9, 1))
     assert extended[0].status == "open" and extended[0].unenforceable_after == date(2022, 1, 15)
     # A notice of action with a loan and a mechanic's lien both open joins the lien.
     both = encumbrances((
@@ -66,7 +66,7 @@ def test_a_lien_is_released_bonded_sued_or_expired(monkeypatch):
 
 
 def test_the_association_record_lists_construction_liens_against_the_developers(monkeypatch):
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2026, 1, 1))
     items = (
         _doc("200802151352", "389", ("WL HOMES LLC",), ("GUDGEL ROOFING INC",)),
         _doc("200805010100", "635", ("GUDGEL ROOFING INC",), ("WL HOMES LLC",), cites=("200802151352",)),
@@ -81,6 +81,9 @@ def test_the_sync_searches_new_names_and_narrows_wide_ones(tmp_path: Path):
     calls = []
 
     class Recorder:
+        def open_session(self, *, fetch=None):
+            return "session"
+
         def search(self, *, name, filing=None, limit=0, after=None, before=None, session=None, fetch=None, rows=10, start=0):
             calls.append((name, filing.value if filing else ""))
             if name == "SAMPLE JOHN" and filing is None:

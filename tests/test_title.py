@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace as NS
 
-from jason.community import filings
 from jason.community.association_record import ParcelLien
 from jason.community.filings import ADVANCES, CLOSES, ESCALATES, OPENS, Encumbrance, NameMatch, Process, Step
 from jason.community.title import LienStanding, lien_standing, standing_counts, title_markdown, title_watch
@@ -24,7 +23,7 @@ def _unit(apn, owners, sales, liens, address="1 TEST WAY"):
 
 
 def test_each_lien_reads_one_standing_against_the_title(monkeypatch):
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2026, 9, 28))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2026, 9, 28))
     current = "DOE JANE"
     prior = "ROE BOB"
     cases = [
@@ -53,7 +52,7 @@ def test_each_lien_reads_one_standing_against_the_title(monkeypatch):
 
 
 def test_the_watch_marks_a_filing_shared_by_units_and_the_page_groups_what_needs_a_person(monkeypatch):
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2026, 9, 28))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2026, 9, 28))
 
     def shared():
         return _lien("JCDT TRUST", Process.UTILITY_LIEN, [_step("202605140001", date(2026, 5, 14), "401", OPENS)], claimant=("CITY OF SACRAMENTO UTILITIES",))
@@ -79,7 +78,7 @@ def test_the_watch_marks_a_filing_shared_by_units_and_the_page_groups_what_needs
 def test_a_utility_lien_is_settled_through_the_parcels_own_paid_tax_bill(monkeypatch):
     from jason.community.tax import RollRule, TaxBill, TaxLevy, roll_charges
 
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2026, 9, 28))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2026, 9, 28))
     rules = (
         RollRule("0202", ("CITY OF SACRAMENTO", "CITY OF SACTO"), "city"),
         RollRule("0411", ("COUNTY OF SACRAMENTO", "COUNTY OF SACTO"), "sewer district"),
@@ -114,7 +113,7 @@ def test_a_utility_lien_is_settled_through_the_parcels_own_paid_tax_bill(monkeyp
 def test_the_ledger_beside_the_associations_liens_names_the_release_owed_and_the_debt(monkeypatch):
     from jason.community.collections import CollectionStanding, LedgerBalance, collections
 
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2026, 9, 28))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2026, 9, 28))
 
     def ours(owner, number, day):
         return _lien(owner, Process.ASSESSMENT_LIEN, [_step(number, day, "386", OPENS)], claimant=("MYSTIQUE COMMUNITY ASSOCIATION",), community=True)

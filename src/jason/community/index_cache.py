@@ -15,11 +15,13 @@ each later deed.
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from asspy.cache import IndexCache as _AsspyIndexCache
+from asspy.cache import lines as _lines
+from asspy.names import name_keeps
 from jason.community.base import Developer
 from jason.community.recorder import (
     Conveyance,
@@ -34,8 +36,6 @@ from jason.community.recorder import (
     OwnershipHistory,
     SacramentoCountyRecorder,
     _follow,
-    _index_get,
-    _open_session,
     advances_chain,
     closing_numbers,
     instrument_kind,
@@ -56,19 +56,6 @@ _FEE = (Filing.GRANT_DEED, Filing.QUITCLAIM)
 _FORECLOSURE = (DocType.TDSL, DocType.DILF)
 _RELEASE = (DocType.RCNV,)
 _PARTY_LIMIT = 40
-
-
-def name_keeps(query: str, indexed: str) -> bool:
-    """True when both names are the same words, in either order.
-
-    ``LLC`` and ``TRUSTEE`` are ignored. ``JR`` is not, so a junior is not
-    the same party as the name without it. An extra given name or a second
-    initial is a different person. ``SMITH JANE`` does not keep
-    ``SMITH JANE Q``. ``VANTERPOOL LINH T`` does not keep ``VANTERPOOL LINH T T``.
-    ``ROE RICHARD P JR`` does not keep ``ROE RICHARD P``.
-    """
-    left, right = _identity(query), _identity(indexed)
-    return bool(left) and left == right
 
 
 def keeps_developer(name: str, developers: tuple[Developer, ...]) -> bool:
@@ -136,284 +123,23 @@ def _window(recorded: date | None, after: date | None, before: date | None) -> b
     return True
 
 
-class IndexCache:
-    """SQLite memory of index documents and the searches that returned them.
+class IndexCache(_AsspyIndexCache):
+    """County index cache (asspy) plus HOA walk annotations.
 
-    A search stores every returned row and its detail. The party filter decides
-    which rows are walked, not which rows are kept. ``note`` and ``set_apn``
-    write inferences back onto a document.
+    Prefer ``County("sacramento").cache()`` for new code. Existing jason tasks
+    still pass an explicit path under ``data/``.
     """
 
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.path)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS documents (
-                number TEXT PRIMARY KEY,
-                recorded TEXT NOT NULL DEFAULT '',
-                kind TEXT NOT NULL DEFAULT '',
-                grantors TEXT NOT NULL DEFAULT '',
-                grantees TEXT NOT NULL DEFAULT '',
-                cross_references TEXT NOT NULL DEFAULT '',
-                notes TEXT NOT NULL DEFAULT '',
-                apn TEXT NOT NULL DEFAULT '',
-                filing_code TEXT NOT NULL DEFAULT '',
-                filing_name TEXT NOT NULL DEFAULT ''
-            )
-            """
-        )
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS searches (
-                key TEXT PRIMARY KEY,
-                wide INTEGER NOT NULL DEFAULT 0,
-                numbers TEXT NOT NULL DEFAULT ''
-            )
-            """
-        )
-        self._migrate()
-
-    def _migrate(self) -> None:
-        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(documents)")}
-        if "notes" not in columns:
-            self._conn.execute("ALTER TABLE documents ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
-        if "apn" not in columns:
-            self._conn.execute("ALTER TABLE documents ADD COLUMN apn TEXT NOT NULL DEFAULT ''")
-        if "filing_code" not in columns:
-            self._conn.execute("ALTER TABLE documents ADD COLUMN filing_code TEXT NOT NULL DEFAULT ''")
-        if "filing_name" not in columns:
-            self._conn.execute("ALTER TABLE documents ADD COLUMN filing_name TEXT NOT NULL DEFAULT ''")
-        if "pages" not in columns:
-            self._conn.execute("ALTER TABLE documents ADD COLUMN pages INTEGER")
-        self._conn.commit()
-
-    def close(self) -> None:
-        self._conn.close()
-
-    def __enter__(self) -> IndexCache:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        self.close()
-
-    def count(self) -> int:
-        row = self._conn.execute("SELECT COUNT(*) AS n FROM documents").fetchone()
-        return int(row["n"])
-
-    def get(self, number: str) -> FiledInstrument | None:
-        row = self._conn.execute("SELECT * FROM documents WHERE number = ?", (number,)).fetchone()
-        if row is None:
-            return None
-        return FiledInstrument(
-            row["number"],
-            date.fromisoformat(row["recorded"]) if row["recorded"] else None,
-            row["kind"],
-            _lines(row["grantors"]),
-            _lines(row["grantees"]),
-            _lines(row["cross_references"]),
-            str(row["filing_code"] or "") if "filing_code" in row.keys() else "",
-            str(row["filing_name"] or "") if "filing_name" in row.keys() else "",
-        )
-
-    def notes(self, number: str) -> tuple[str, ...]:
-        row = self._conn.execute("SELECT notes FROM documents WHERE number = ?", (number,)).fetchone()
-        if row is None:
-            return ()
-        return _lines(row["notes"])
-
-    def apn(self, number: str) -> str:
-        row = self._conn.execute("SELECT apn FROM documents WHERE number = ?", (number,)).fetchone()
-        if row is None:
-            return ""
-        return str(row["apn"] or "")
-
-    def filing(self, number: str) -> tuple[str, str]:
-        row = self._conn.execute(
-            "SELECT filing_code, filing_name FROM documents WHERE number = ?", (number,)
-        ).fetchone()
-        if row is None:
-            return ("", "")
-        return (str(row["filing_code"] or ""), str(row["filing_name"] or ""))
-
-    def put(self, item: FiledInstrument) -> None:
-        """Store or refresh the index fields. Notes and APN already set stay."""
-        self._conn.execute(
-            """
-            INSERT INTO documents (
-                number, recorded, kind, grantors, grantees, cross_references,
-                notes, apn, filing_code, filing_name
-            )
-            VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?)
-            ON CONFLICT(number) DO UPDATE SET
-                recorded = excluded.recorded,
-                kind = excluded.kind,
-                grantors = excluded.grantors,
-                grantees = excluded.grantees,
-                cross_references = excluded.cross_references,
-                filing_code = CASE
-                    WHEN excluded.filing_code != '' THEN excluded.filing_code
-                    ELSE documents.filing_code
-                END,
-                filing_name = CASE
-                    WHEN excluded.filing_name != '' THEN excluded.filing_name
-                    ELSE documents.filing_name
-                END
-            """,
-            (
-                item.number,
-                item.recorded.isoformat() if item.recorded else "",
-                item.kind,
-                "\n".join(item.grantors),
-                "\n".join(item.grantees),
-                "\n".join(item.cross_references),
-                item.filing_code,
-                item.filing_name,
-            ),
-        )
-        self._conn.commit()
-        self._annotate(item)
+    def __init__(self, path: str | Path, *, county: str = "") -> None:
+        super().__init__(path, county=county or Path(path).stem)
 
     def _annotate(self, item: FiledInstrument) -> None:
         """Write walk inferences onto the row after a classify or refresh."""
-        if item.kind == "notice":
-            self.note(item.number, "notice of completion; not a sale")
-        elif item.kind == "substitution":
-            self.note(item.number, "substitution of trustee; lien paperwork")
-        elif item.kind == "death":
-            self.note(item.number, "death affidavit; not a grant")
-        elif item.kind == "assignment":
-            self.note(item.number, "assignment; not a fee sale")
-        elif item.kind == "easement":
-            self.note(item.number, "easement; does not replace the owner")
-        elif item.kind == "fee" and owner_restatement(item.grantors, item.grantees):
+        super()._annotate(item)
+        if item.kind == "fee" and owner_restatement(item.grantors, item.grantees):
             self.note(item.number, "same owner restatement; not a new buyer")
         if any(other_community(name) for name in (*item.grantors, *item.grantees)):
             self.note(item.number, "other community or association; not a unit sale")
-
-    def empty_kind_numbers(self) -> tuple[str, ...]:
-        rows = self._conn.execute(
-            "SELECT number FROM documents WHERE kind = '' OR kind IS NULL ORDER BY number"
-        ).fetchall()
-        return tuple(row["number"] for row in rows)
-
-    def kind_counts(self) -> dict[str, int]:
-        rows = self._conn.execute(
-            "SELECT COALESCE(NULLIF(kind, ''), '(empty)') AS kind, COUNT(*) AS n FROM documents GROUP BY 1"
-        ).fetchall()
-        return {row["kind"]: int(row["n"]) for row in rows}
-
-    def note(self, number: str, text: str) -> None:
-        """Append an inference to this document when it is not already there."""
-        text = " ".join(text.split())
-        if not text or not self.get(number):
-            return
-        existing = self.notes(number)
-        if text in existing:
-            return
-        self._conn.execute(
-            "UPDATE documents SET notes = ? WHERE number = ?",
-            ("\n".join((*existing, text)), number),
-        )
-        self._conn.commit()
-
-    def set_pages(self, number: str, pages: int | None) -> None:
-        """Record the page count the index detail gave for this document."""
-        if pages is None or not self.get(number):
-            return
-        self._conn.execute("UPDATE documents SET pages = ? WHERE number = ?", (int(pages), number))
-        self._conn.commit()
-
-    def pages_of(self, number: str) -> int | None:
-        row = self._conn.execute("SELECT pages FROM documents WHERE number = ?", (number,)).fetchone()
-        return int(row["pages"]) if row is not None and row["pages"] is not None else None
-
-    def set_apn(self, number: str, apn: str) -> None:
-        """Record that this document was placed on a parcel."""
-        digits = "".join(ch for ch in apn if ch.isdigit())
-        if not digits or not self.get(number):
-            return
-        self._conn.execute("UPDATE documents SET apn = ? WHERE number = ?", (digits, number))
-        self._conn.commit()
-        self.note(number, f"on parcel {digits}")
-
-    def naming_party(self, party: str) -> tuple[FiledInstrument, ...]:
-        """Cached instruments whose parties include ``party`` under ``filings.same_party``.
-
-        The surname, the first word, narrows the rows in SQL; the name rule
-        decides. A one-word party is matched on that word alone.
-        """
-        from jason.community.filings import same_party
-
-        words = [word for word in party.upper().split() if word]
-        if not words:
-            return ()
-        like = f"%{words[0]}%"
-        rows = self._conn.execute(
-            "SELECT number FROM documents WHERE upper(grantors) LIKE ? OR upper(grantees) LIKE ? ORDER BY recorded, number",
-            (like, like),
-        ).fetchall()
-        found: list[FiledInstrument] = []
-        for row in rows:
-            item = self.get(row["number"])
-            if item is None:
-                continue
-            if any(same_party(party, name) for name in (*item.grantors, *item.grantees)):
-                found.append(item)
-        return tuple(found)
-
-    def naming_word(self, word: str) -> tuple[FiledInstrument, ...]:
-        """Cached instruments with ``word`` anywhere in a party name."""
-        like = f"%{word.upper()}%"
-        rows = self._conn.execute(
-            "SELECT number FROM documents WHERE upper(grantors) LIKE ? OR upper(grantees) LIKE ? ORDER BY recorded, number",
-            (like, like),
-        ).fetchall()
-        return tuple(item for row in rows if (item := self.get(row["number"])) is not None)
-
-    def by_filing(self, codes: tuple[str, ...]) -> tuple[FiledInstrument, ...]:
-        """Cached instruments with one of these filing codes."""
-        marks = ",".join("?" for _ in codes)
-        rows = self._conn.execute(
-            f"SELECT number FROM documents WHERE filing_code IN ({marks}) ORDER BY recorded, number", tuple(codes)
-        ).fetchall()
-        return tuple(item for row in rows if (item := self.get(row["number"])) is not None)
-
-    def placed_on(self, apn: str) -> tuple[FiledInstrument, ...]:
-        """Every cached instrument a pass placed on this parcel with ``set_apn``, oldest first."""
-        digits = "".join(ch for ch in apn if ch.isdigit())
-        if not digits:
-            return ()
-        rows = self._conn.execute(
-            "SELECT number FROM documents WHERE apn = ? ORDER BY recorded, number", (digits,)
-        ).fetchall()
-        return tuple(item for row in rows if (item := self.get(row["number"])) is not None)
-
-    def cached_search(self, key: str) -> tuple[bool, tuple[str, ...]] | None:
-        """``None`` when this query has not been stored. ``wide`` may still have rows."""
-        row = self._conn.execute("SELECT * FROM searches WHERE key = ?", (key,)).fetchone()
-        if row is None:
-            return None
-        return bool(row["wide"]), _lines(row["numbers"])
-
-    def put_search(self, key: str, numbers: tuple[str, ...], *, wide: bool) -> None:
-        self._conn.execute(
-            """
-            INSERT INTO searches (key, wide, numbers)
-            VALUES (?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-                wide = excluded.wide,
-                numbers = excluded.numbers
-            """,
-            (key, 1 if wide else 0, "\n".join(numbers)),
-        )
-        self._conn.commit()
-
-
-def _lines(value: str) -> tuple[str, ...]:
-    return tuple(part for part in str(value).split("\n") if part)
 
 
 @dataclass(frozen=True)
@@ -481,8 +207,7 @@ def builder_leaf(
     """
     if leaf < 1:
         return LeafResult(0, (), (), (), cache.count())
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return LeafResult(leaf, (), (), (), cache.count())
     walker = _Walker(
@@ -495,7 +220,7 @@ def builder_leaf(
         exclude=exclude,
         limit=limit,
         session=session,
-        fetch=getter,
+        fetch=fetch,
         note=note,
     )
     current_side: dict[str, FiledInstrument] = {}
@@ -565,8 +290,7 @@ def descend(
         return Descent(0, (), (), ())
     steps = developer_depth if developer_depth is not None else depth
     opened = after
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return Descent(0, (), (), ())
     walker = _Walker(
@@ -579,7 +303,7 @@ def descend(
         exclude=exclude,
         limit=limit,
         session=session,
-        fetch=getter,
+        fetch=fetch,
         note=note,
     )
     for number in current:
@@ -602,7 +326,7 @@ def descend(
             exclude=exclude,
             limit=limit,
             session=session,
-            fetch=getter,
+            fetch=fetch,
             note=note,
         )
         for number in found.reached:
@@ -1016,21 +740,20 @@ def backfill_empty_kinds(
     is a notice of completion; an empty kind that cites another number is
     treated as substitution paperwork.
     """
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return cache.kind_counts()
     for number in cache.empty_kind_numbers():
         if note is not None:
             note(number)
-        rows = recorder.search(number=number, limit=1, session=session, fetch=getter)
+        rows = recorder.search(number=number, limit=1, session=session, fetch=fetch)
         if not rows:
             _infer_shape(cache, number, developers)
             continue
         row = rows[0]
         detail = None
         if row.internal_id:
-            detail = recorder.detail(row.internal_id, session=session, fetch=getter)
+            detail = recorder.detail(row.internal_id, session=session, fetch=fetch)
         item = _filed(row, detail)
         if not item.kind:
             item = _shape_kind(item, developers)
@@ -1165,8 +888,7 @@ def cache_party_search(
         return NameCacheResult("", False, 0, (), "empty")
     if skip_lender(query):
         return NameCacheResult(query, False, 0, (), "lender")
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return NameCacheResult(query, False, 0, (), "no session")
     if note is not None:
@@ -1182,7 +904,7 @@ def cache_party_search(
         before=before,
         limit=limit + 1,
         session=session,
-        fetch=getter,
+        fetch=fetch,
     )
     if len(probe) > limit:
         kept: list[str] = []
@@ -1200,7 +922,7 @@ def cache_party_search(
                 before=before,
                 limit=limit + 1,
                 session=session,
-                fetch=getter,
+                fetch=fetch,
             )
             if len(batch) > limit:
                 cache.put_search(filing_key, (), wide=True)
@@ -1209,7 +931,7 @@ def cache_party_search(
                 continue
             before_count = cache.count()
             numbers = _store_rows(
-                recorder, cache, batch, session=session, fetch=getter,
+                recorder, cache, batch, session=session, fetch=fetch,
                 project=project, association=association, developers=developers,
             )
             cache.put_search(filing_key, numbers, wide=False)
@@ -1224,10 +946,10 @@ def cache_party_search(
         after=after,
         before=before,
         session=session,
-        fetch=getter,
+        fetch=fetch,
     )
     numbers = _store_rows(
-        recorder, cache, rows, session=session, fetch=getter,
+        recorder, cache, rows, session=session, fetch=fetch,
         project=project, association=association, developers=developers,
     )
     cache.put_search(key, numbers, wide=False)
@@ -1252,8 +974,7 @@ def cache_community_names(
     name is narrowed under community filings. Association deeds are labeled
     and do not advance a buyer walk.
     """
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return ()
     before = cache.count()
@@ -1269,7 +990,7 @@ def cache_community_names(
             after=None,
             filings=_COMMUNITY_FILINGS,
             session=session,
-            fetch=getter,
+            fetch=fetch,
             note=note,
         )
         found.append(result)
@@ -1295,8 +1016,7 @@ def cache_known_parties(
     The query keeps the full indexed spelling (role words dropped). Developers,
     association leading names, and lenders are skipped.
     """
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return ()
     seen: set[str] = set()
@@ -1326,7 +1046,7 @@ def cache_known_parties(
             after=after,
             filings=NARROW_FILINGS,
             session=session,
-            fetch=getter,
+            fetch=fetch,
             note=note,
         )
         found.append(result)
@@ -1346,8 +1066,7 @@ def cache_cited_numbers(
     limit: int = 500,
 ) -> tuple[str, ...]:
     """Load cited document numbers that are not yet in the cache, one at a time."""
-    getter = _index_get if fetch is None else fetch
-    session = session or _open_session(getter)
+    session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return ()
     wanted: list[str] = []
@@ -1359,12 +1078,12 @@ def cache_cited_numbers(
     for number in wanted[:limit]:
         if note is not None:
             note(number)
-        rows = recorder.search(number=number, limit=1, session=session, fetch=getter)
+        rows = recorder.search(number=number, limit=1, session=session, fetch=fetch)
         if not rows:
             continue
         detail = None
         if rows[0].internal_id:
-            detail = recorder.detail(rows[0].internal_id, session=session, fetch=getter)
+            detail = recorder.detail(rows[0].internal_id, session=session, fetch=fetch)
         item = _filed(rows[0], detail)
         if not item.kind:
             item = _shape_kind(item, developers)

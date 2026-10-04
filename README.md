@@ -27,7 +27,7 @@ Credentials live in Keeper. `.env` holds only record UIDs and paths. The convent
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e D:\code\payhoa -e D:\code\smud -e D:\code\i-doxs -e ".[dev]"
+pip install -e D:\code\asspy -e D:\code\payhoa -e D:\code\smud -e D:\code\i-doxs -e ".[dev]"
 cp .env.example .env          # fill in the Keeper record UIDs
 jason login                   # once, in a real terminal
 pytest

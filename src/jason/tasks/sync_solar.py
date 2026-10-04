@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from jason.community.index_cache import IndexCache
-from jason.community.recorder import FiledInstrument, Filing, SacramentoCountyRecorder, _open_session
+from jason.community.recorder import FiledInstrument, Filing, SacramentoCountyRecorder
 from jason.community.solar import SolarProgram
 
 FILINGS = (Filing.UCC_FINANCING, Filing.UCC_TERMINATION)
@@ -39,7 +39,7 @@ def sync_solar(
 ) -> SolarSyncResult:
     """Search each lessor query under each UCC filing and cache the rows that name a lessor."""
     result = SolarSyncResult()
-    session = _open_session(fetch) if fetch is not None else None
+    session = recorder.open_session(fetch=fetch) if fetch is not None else None
     for query in program.index_queries:
         for filing in FILINGS:
             try:

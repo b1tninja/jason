@@ -219,12 +219,14 @@ def build_parcel_history(
     solar_program: SolarProgram | None = None,
     chain_numbers: frozenset[str] = frozenset(),
     roll_rules: tuple = (),
+    recorder=None,
 ) -> ParcelHistory:
     """Assemble one parcel.
 
     ``load`` reads the index cache, ``placed`` lists the cache rows a pass
     put on this parcel, and ``scans`` is ``scan_index``. Placed rows not on
-    the chain are the parcel's candidates.
+    the chain are the parcel's candidates. ``recorder`` is the county whose
+    numbering the process readings use (Sacramento's when not given).
     """
     scans = scans or {}
     loader = load or (lambda number: None)
@@ -286,7 +288,7 @@ def build_parcel_history(
         if load_naming and not association else ()
     )
     steps = tuple(
-        _step(index + 1, step, history, digits, address, developers, blocks, scans, loader, notes, filed, by_event, audit, association)
+        _step(index + 1, step, history, digits, address, developers, blocks, scans, loader, notes, filed, by_event, audit, association, recorder)
         for index, step in enumerate(ordered)
     )
     if load_naming and not association:
@@ -342,11 +344,12 @@ def _step(
     by_event: dict[str, CalendarEvent],
     audit: ChainAudit,
     association: bool = False,
+    recorder=None,
 ) -> HistoryStep:
     item = step.conveyance
     anchor = _filed(item, loader)
-    around = tuple(gather(loader, anchor)) + tuple(other for other in filed if other.number != anchor.number)
-    reading = _reading(read(anchor, around, developers))
+    around = tuple(gather(loader, anchor, recorder=recorder)) + tuple(other for other in filed if other.number != anchor.number)
+    reading = _reading(read(anchor, around, developers, recorder=recorder))
     developer = developer_for(_first(item.grantors), developers)
     scan = scans.get(item.number)
     placed, scan_path, source = _placement(scan, apn, blocks, address, anchor, step, association)

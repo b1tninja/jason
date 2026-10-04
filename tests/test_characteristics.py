@@ -7,6 +7,7 @@ from jason.community.characteristics import (
     UnitCharacteristics,
     classify_plan,
     parse_characteristics,
+    per_sqft,
 )
 from jason.tasks.sync_characteristics import sync_characteristics
 
@@ -37,7 +38,7 @@ def test_the_viewer_payload_becomes_one_record():
     assert unit is not None
     assert unit.apn == "20111700170001" and unit.living_sqft == 1312 and unit.bedrooms == 3 and unit.baths == 2.5
     assert unit.year_built == 2007 and unit.floor_level == 2 and unit.garage_sqft == 420 and unit.parking_spaces == 2
-    assert unit.per_sqft(39_360_000) == 30_000
+    assert per_sqft(unit, 39_360_000) == 30_000
     assert parse_characteristics({"resChars": None, "commChars": None}) is None
     assert parse_characteristics(None) is None
 

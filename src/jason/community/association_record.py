@@ -186,7 +186,8 @@ def parcel_liens(
     for index, step in enumerate(plain):
         until = plain[index + 1].recorded if index + 1 < len(plain) else None
         for name in step.grantees:
-            if not name.strip() or skip_lender(name) or developer_for(name, developers) or assn in name.upper():
+            # An empty association name is contained in every name; it excludes no one.
+            if not name.strip() or skip_lender(name) or developer_for(name, developers) or (assn and assn in name.upper()):
                 continue
             owners.append((name, step.recorded, until))
     found: list[ParcelLien] = []

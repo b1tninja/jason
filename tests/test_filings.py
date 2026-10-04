@@ -190,10 +190,9 @@ def test_the_association_record_reads_governing_liens_and_notices():
 def test_parcel_liens_mark_tenure_and_community_liens(monkeypatch):
     from datetime import date as _date
 
-    from jason.community import filings
     from jason.community.association_record import parcel_liens
 
-    monkeypatch.setattr(filings, "today_for_status", lambda: _date(2020, 1, 1))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: _date(2020, 1, 1))
     from jason.community.recorder import ChainStep, Conveyance
 
     steps = (
@@ -222,14 +221,26 @@ def test_parcel_liens_mark_tenure_and_community_liens(monkeypatch):
     # Ten years after the 2015 abstract, with no renewal of record, the judgment lien has lapsed.
     judgment = found[1].encumbrance
     assert judgment.unenforceable_after == _date(2025, 1, 1)
-    monkeypatch.setattr(filings, "today_for_status", lambda: _date(2025, 1, 2))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: _date(2025, 1, 2))
     assert judgment.status == "lapsed"
+
+
+def test_no_association_name_skips_no_owner(monkeypatch):
+    from datetime import date as _date
+
+    from jason.community.association_record import parcel_liens
+    from jason.community.recorder import ChainStep, Conveyance
+
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: _date(2020, 1, 1))
+    steps = (ChainStep(Conveyance("200805071322", _date(2008, 5, 7), ("WL HOMES LLC",), ("KESTRELTON BRAM L",))),)
+    cache = {"KESTRELTON BRAM L": [_doc("201501010001", "376", ("KESTRELTON BRAM L",), ("SOMEONE",))]}
+    found = parcel_liens(lambda name: cache.get(name, []), steps, association="", developers=DEVELOPERS)
+    assert [lien.owner for lien in found] == ["KESTRELTON BRAM L"]
 
 
 def test_a_renewed_judgment_and_a_federal_tax_lien_run_from_their_newest_recording(monkeypatch):
     from datetime import date as _date
 
-    from jason.community import filings
     from jason.community.filings import ADVANCES, OPENS, Encumbrance, Step
 
     def step(number, day, effect):
@@ -237,7 +248,7 @@ def test_a_renewed_judgment_and_a_federal_tax_lien_run_from_their_newest_recordi
 
     renewed = Encumbrance(Process.JUDGMENT_LIEN, ("DOE JANE",), ("BANK",), (step("201001010001", _date(2010, 1, 1), OPENS), step("201912010001", _date(2019, 12, 1), ADVANCES)))
     assert renewed.unenforceable_after == _date(2029, 12, 1)
-    monkeypatch.setattr(filings, "today_for_status", lambda: _date(2026, 9, 28))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: _date(2026, 9, 28))
     assert renewed.status == "open"
     federal = Encumbrance(Process.FEDERAL_TAX_LIEN, ("DOE JANE",), ("IRS",), (Step("201601010001", _date(2016, 1, 1), "402 FEDERAL TAX LIEN", OPENS, ("DOE JANE",), ("IRS",)),))
     assert federal.unenforceable_after == _date(2026, 1, 31) and federal.status == "lapsed"

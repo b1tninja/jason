@@ -4,7 +4,7 @@ The assessor's parcel viewer publishes residential characteristics for a
 parcel: living area, bedrooms, baths, year built, floor level, garage area. Those
 are the factors a sale price turns on besides the market month, so they ride
 beside every sale in the value reports. ``UnitCharacteristics`` is one
-parcel's record. ``CharacteristicsStore`` keeps them on disk. A ``FloorPlan``
+parcel's record (asspy's, as each county's assessor reads it). ``CharacteristicsStore`` keeps them on disk. A ``FloorPlan``
 is what the developer said it built; the assessor's living area is what it
 measured. ``classify_plan`` names the plan whose stated area is nearest the
 measured one, for the same developer and bedroom count, and only within
@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from asspy.core import UnitCharacteristics
+from asspy.sacramento.assessor import parse_characteristics  # noqa: F401  (the Sacramento viewer's reader)
 
 # A plan's stated area may differ from the assessor's by this fraction.
 PLAN_TOLERANCE = 0.06
@@ -42,63 +45,11 @@ class FloorPlan:
     source: str = ""
 
 
-@dataclass(frozen=True)
-class UnitCharacteristics:
-    """The assessor's residential characteristics for one parcel."""
-
-    apn: str
-    land_use: str = ""
-    home_type: str = ""
-    living_sqft: int | None = None
-    bedrooms: int | None = None
-    baths: float | None = None
-    year_built: int | None = None
-    effective_year_built: int | None = None
-    floor_level: int | None = None
-    first_floor_sqft: int | None = None
-    second_floor_sqft: int | None = None
-    garage_sqft: int | None = None
-    parking_spaces: int | None = None
-    fetched: date | None = None
-    # ``floor_level`` is the viewer's FLOOR_LEVEL. On the 2007 condominium
-    # buildings it reads 1 for two-story units, so it is not a story count.
-
-    def per_sqft(self, cents: int | None) -> int | None:
-        """Cents per square foot of living area, or None without an area."""
-        if not cents or not self.living_sqft:
-            return None
-        return int(round(cents / self.living_sqft))
-
-
-def parse_characteristics(payload: dict | None, apn: str = "", *, fetched: date | None = None) -> UnitCharacteristics | None:
-    """Read the viewer's ``buildingcharacteristics`` payload. The primary home is the record."""
-    if not isinstance(payload, dict):
+def per_sqft(unit: UnitCharacteristics, cents: int | None) -> int | None:
+    """Cents per square foot of ``unit``'s living area, or None without an area."""
+    if not cents or not unit.living_sqft:
         return None
-    res = payload.get("resChars")
-    if not isinstance(res, dict):
-        return None
-    homes = res.get("BuildingCharacteristics") or []
-    homes = [home for home in homes if isinstance(home, dict)]
-    primary = next((home for home in homes if str(home.get("TYPE_OF_HOME", "")).lower() == "primary"), homes[0] if homes else {})
-    number = _digits(str(res.get("PARCEL_NUMBER") or apn))
-    if not number:
-        return None
-    return UnitCharacteristics(
-        apn=number,
-        land_use=str(res.get("LAND_USE_CODE") or ""),
-        home_type=str(primary.get("TYPE_OF_HOME") or ""),
-        living_sqft=_int(primary.get("TOTAL_LIVING_SQ_FT")) or _int(res.get("AREA_FOR_MOD")),
-        bedrooms=_int(primary.get("BEDROOM_COUNT")),
-        baths=_float(primary.get("TOTAL_BATH_COUNT")),
-        year_built=_int(primary.get("YEAR_BUILT")),
-        effective_year_built=_int(primary.get("EFFECTIVE_YEAR_BUILT")),
-        floor_level=_int(primary.get("FLOOR_LEVEL")),
-        first_floor_sqft=_int(primary.get("FIRST_FLR_AREA")),
-        second_floor_sqft=_int(primary.get("SECOND_FLOOR_AREA")),
-        garage_sqft=_int(res.get("GARAGE_AREA")),
-        parking_spaces=_int(res.get("PARKING_SPACES")),
-        fetched=fetched or date.today(),
-    )
+    return int(round(cents / unit.living_sqft))
 
 
 def classify_plan(unit: UnitCharacteristics, plans: tuple[FloorPlan, ...], developer: str = "") -> FloorPlan | None:
@@ -209,18 +160,3 @@ def _record(row: sqlite3.Row) -> UnitCharacteristics:
 def _digits(value: str) -> str:
     return "".join(ch for ch in str(value) if ch.isdigit())
 
-
-def _int(value: Any) -> int | None:
-    try:
-        number = int(float(str(value).replace(",", "").strip()))
-    except (TypeError, ValueError):
-        return None
-    return number or None
-
-
-def _float(value: Any) -> float | None:
-    try:
-        number = float(str(value).replace(",", "").strip())
-    except (TypeError, ValueError):
-        return None
-    return number or None

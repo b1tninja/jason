@@ -22,7 +22,7 @@ from jason.community.index_cache import (
     cache_party_search,
     skip_lender,
 )
-from jason.community.recorder import Filing, SacramentoCountyRecorder, _index_get, _open_session, developer_for, index_name
+from jason.community.recorder import Filing, SacramentoCountyRecorder, developer_for, index_name
 
 MECHANICS_FILINGS = (
     Filing.MECHANICS_LIEN,
@@ -102,8 +102,7 @@ def sync_liens(
 ) -> LienSyncResult:
     """Fetch the lien filings in ``filings`` for each query that does not have them yet."""
     result = LienSyncResult(names=len(queries))
-    getter = _index_get if fetch is None else fetch
-    session = _open_session(getter)
+    session = recorder.open_session(fetch=fetch)
     if session is None:
         result.errors.append("no index session")
         return result
@@ -115,11 +114,11 @@ def sync_liens(
             if cached is None:
                 cache_party_search(
                     recorder, cache, query, project=project, association=association, developers=developers,
-                    filings=NARROW_FILINGS + filings, session=session, fetch=getter, note=note,
+                    filings=NARROW_FILINGS + filings, session=session, fetch=fetch, note=note,
                 )
                 result.searched += 1
             elif cached[0]:
-                result.narrowed += _narrow(cache, recorder, query, filings, session=session, fetch=getter, project=project, association=association, developers=developers, note=note)
+                result.narrowed += _narrow(cache, recorder, query, filings, session=session, fetch=fetch, project=project, association=association, developers=developers, note=note)
             else:
                 result.skipped += 1
             result.added += max(0, cache.count() - before)

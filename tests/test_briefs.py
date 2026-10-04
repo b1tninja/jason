@@ -86,9 +86,8 @@ def test_a_prior_owners_open_loan_is_presumed_paid_at_the_sale():
 
 
 def test_the_escrow_brief_says_what_the_association_can_tell(monkeypatch):
-    import jason.community.filings as filings
 
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2025, 9, 1))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2025, 9, 1))
     brief = escrow_brief(_unit(), _record())
     assert [l["status"] for l in brief["assessmentLiens"]] == ["in default", "closed"]
     assert brief["defaults"][0]["process"] == "assessment lien"
@@ -123,10 +122,9 @@ def test_lifecycle_lookup_and_assessment_liens_and_explain():
 
 
 def test_the_board_digest_gathers_what_moved_the_liens_to_act_on_and_the_associations_own(monkeypatch):
-    import jason.community.filings as filings
     from jason.community.briefs import board_digest
 
-    monkeypatch.setattr(filings, "today_for_status", lambda: date(2025, 9, 15))
+    monkeypatch.setattr("asspy.filings.today_for_status", lambda: date(2025, 9, 15))
     digest = board_digest((_unit(),), _record(), date(2025, 1, 1))
     assert digest["since"] == "2025-01-01" and digest["recorded"]["count"] == 3
     assert [row["number"] for row in digest["liens"]["inDefault"]] == ["202506010010"]

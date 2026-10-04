@@ -15,6 +15,13 @@ of trust a trustee's deed cites, the builder lien a partial reconveyance
 releases, the prior deed a resale cites). A follow-on search for the buyer's
 later grant or foreclosure starts the day after the closing.
 
+Seats are numbers in the county's own sequence: the recorder passed as
+``recorder`` (Sacramento's by default) says which numbers sit before and after
+an anchor, and the recorded dates say whether a neighbor shares its day. A
+county whose index lists no citations (Placer) fills a cited seat from the
+instruments already in hand by party: the earlier deed into this grantor, or
+the earlier lien the reconveyance's trustor gave.
+
 Each process says whether the assessor reassesses on it. A sale does. A
 restatement, a re-recording of the same conveyance, and an excluded transfer
 between family or affiliates do not, so the tax bills stay on the 2% track.
@@ -30,10 +37,12 @@ from datetime import date, timedelta
 from jason.community.index_cache import _ROLE, keeps_developer, name_keeps, skip_lender
 from jason.community.recorder import (
     FiledInstrument,
-    closing_numbers,
-    nearby_numbers,
+    SacramentoCountyRecorder,
     owner_restatement,
 )
+
+# The recorder whose numbering a reading uses when the caller names none.
+_SACRAMENTO = SacramentoCountyRecorder()
 
 # A grant recorded again within this many days, with the same parties, is the
 # same conveyance re-recorded to correct the first instrument.
@@ -373,6 +382,7 @@ def gather(
     *,
     before: int = _NOTICE_REACH,
     after: int = 4,
+    recorder=None,
 ) -> tuple[FiledInstrument, ...]:
     """Load the numbers a process reading needs around this anchor.
 
@@ -381,7 +391,8 @@ def gather(
     Citations on the anchor and on those neighbors are loaded next. This
     does not search a party name and does not walk a lender.
     """
-    wanted: list[str] = list(nearby_numbers(anchor.number, before=before, after=after))
+    county = recorder or _SACRAMENTO
+    wanted: list[str] = list(county.nearby(anchor.number, before=before, after=after))
     wanted.extend(number for number in anchor.cross_references if number)
     found: list[FiledInstrument] = []
     seen = {anchor.number}
@@ -456,6 +467,8 @@ def read(
     anchor: FiledInstrument,
     around: tuple[FiledInstrument, ...] = (),
     developers: tuple = (),
+    *,
+    recorder=None,
 ) -> tuple[Reading, ...]:
     """The processes this anchor can be, given the instruments already in hand.
 
@@ -469,25 +482,26 @@ def read(
     an excluded transfer.
     """
     if anchor.kind == "fee" and owner_restatement(anchor.grantors, anchor.grantees):
-        return (assess(Restatement(), anchor, around),)
+        return (assess(Restatement(), anchor, around, recorder=recorder),)
     if anchor.kind == "foreclosure":
-        return (assess(ForeclosureSale(), anchor, around),)
+        return (assess(ForeclosureSale(), anchor, around, recorder=recorder),)
     if anchor.kind == "fee" and earlier_twin(anchor, around) is not None:
-        return (assess(Rerecording(), anchor, around),)
+        return (assess(Rerecording(), anchor, around, recorder=recorder),)
     if any(keeps_developer(name, developers) for name in anchor.grantors):
-        return _builder(anchor, around)
+        return _builder(anchor, around, recorder)
     if any(skip_lender(name) for name in anchor.grantors if name.strip()):
-        return (assess(ReoResale(), anchor, around),)
+        return (assess(ReoResale(), anchor, around, recorder=recorder),)
     if anchor.kind == "fee" and family_transfer(anchor.grantors, anchor.grantees):
-        return (assess(ExcludedTransfer(), anchor, around),)
+        return (assess(ExcludedTransfer(), anchor, around, recorder=recorder),)
     if anchor.kind == "fee":
-        return (assess(Resale(), anchor, around),)
+        return (assess(Resale(), anchor, around, recorder=recorder),)
     return ()
 
 
-def assess(process, anchor: FiledInstrument, around: tuple[FiledInstrument, ...]) -> Reading:
-    """Fill each slot of ``process`` from ``anchor`` and ``around``."""
-    found = tuple(_finding(slot, anchor, around) for slot in process.slots())
+def assess(process, anchor: FiledInstrument, around: tuple[FiledInstrument, ...], *, recorder=None) -> Reading:
+    """Fill each slot of ``process`` from ``anchor`` and ``around``, numbered as ``recorder``'s county numbers them."""
+    county = recorder or _SACRAMENTO
+    found = tuple(_finding(slot, anchor, around, county) for slot in process.slots())
     return Reading(process.name, process.continues, found, process.reassesses)
 
 
@@ -617,39 +631,40 @@ def _covers(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
     )
 
 
-def _builder(anchor: FiledInstrument, around: tuple[FiledInstrument, ...]) -> tuple[Reading, ...]:
-    earlier, _later = closing_numbers(anchor.number)
+def _builder(anchor: FiledInstrument, around: tuple[FiledInstrument, ...], recorder=None) -> tuple[Reading, ...]:
+    county = recorder or _SACRAMENTO
+    earlier, _later = county.closing(anchor.number)
     previous = _by_number(around).get(earlier)
     notice = previous is not None and previous.kind == "notice"
     release = any(_related_release(anchor, item) for item in around)
     if notice and not release:
-        return (assess(DeveloperClosing(), anchor, around),)
+        return (assess(DeveloperClosing(), anchor, around, recorder=county),)
     if release and not notice:
-        return (assess(BlanketRelease(), anchor, around),)
+        return (assess(BlanketRelease(), anchor, around, recorder=county),)
     return (
-        assess(DeveloperClosing(), anchor, around),
-        assess(BlanketRelease(), anchor, around),
+        assess(DeveloperClosing(), anchor, around, recorder=county),
+        assess(BlanketRelease(), anchor, around, recorder=county),
     )
 
 
-def _finding(slot: Slot, anchor: FiledInstrument, around: tuple[FiledInstrument, ...]) -> Finding:
+def _finding(slot: Slot, anchor: FiledInstrument, around: tuple[FiledInstrument, ...], county) -> Finding:
     after, before = window(slot, anchor)
     if slot.seat == "anchor":
         if anchor.kind in slot.kinds:
             return Finding(slot.role, slot.required, "present", anchor.number, after, before)
         return Finding(slot.role, slot.required, "missing", anchor.number, after, before)
     if slot.seat == "previous":
-        return _previous(slot, anchor, around, after, before)
+        return _previous(slot, anchor, around, after, before, county)
     if slot.seat == "companion":
-        return _companion_finding(slot, anchor, around, after, before)
+        return _companion_finding(slot, anchor, around, after, before, county)
     if slot.seat == "buyer lien":
-        return _buyer_lien(slot, anchor, around, after, before)
+        return _buyer_lien(slot, anchor, around, after, before, county)
     if slot.seat == "same day":
-        return _same_day_slot(slot, anchor, around, after, before)
+        return _same_day_slot(slot, anchor, around, after, before, county)
     if slot.seat == "cites":
-        return _cited(slot, anchor, around, after, before)
+        return _cited(slot, anchor, around, after, before, county)
     if slot.seat == "release cites":
-        return _released(slot, anchor, around, after, before)
+        return _released(slot, anchor, around, after, before, county)
     if slot.seat == "earlier twin":
         twin = earlier_twin(anchor, around)
         if twin is None:
@@ -664,11 +679,12 @@ def _previous(
     around: tuple[FiledInstrument, ...],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
     """The notice is the previous number, or the first number behind the buyer's companion run."""
     by_number = _by_number(around)
-    earlier, _later = closing_numbers(anchor.number)
-    candidates = nearby_numbers(anchor.number, before=_NOTICE_REACH, after=0)
+    earlier, _later = county.closing(anchor.number)
+    candidates = county.nearby(anchor.number, before=_NOTICE_REACH, after=0)
     for number in candidates:
         item = by_number.get(number)
         if _companion(anchor, item):
@@ -683,8 +699,9 @@ def _companion_finding(
     around: tuple[FiledInstrument, ...],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
-    earlier, later = closing_numbers(anchor.number)
+    earlier, later = county.closing(anchor.number)
     by_number = _by_number(around)
     for number in (earlier, later):
         item = by_number.get(number)
@@ -699,15 +716,16 @@ def _buyer_lien(
     around: tuple[FiledInstrument, ...],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
     for item in around:
         if _same_day(anchor, item) and item.kind == "lien" and _trusts(anchor, item):
             return _dated(slot, item, "present", after, before)
     by_number = _by_number(around)
-    _earlier, later = closing_numbers(anchor.number)
+    _earlier, later = county.closing(anchor.number)
     nxt = by_number.get(later)
     if _companion(anchor, nxt):
-        return _after_companions(slot, anchor, nxt, by_number, after, before)
+        return _after_companions(slot, anchor, nxt, by_number, after, before, county)
     if nxt is not None and nxt.kind == "lien":
         return Finding(slot.role, slot.required, "other parties", nxt.number, after, before)
     if nxt is not None:
@@ -722,13 +740,14 @@ def _after_companions(
     by_number: dict[str, FiledInstrument],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
     """The buyer's lien is the first number after a run of companion vestings."""
     seen = {anchor.number}
     current = companion
     while _companion(anchor, current) and current.number not in seen:
         seen.add(current.number)
-        following = _step(current.number)
+        following = county.closing(current.number)[1]
         held = by_number.get(following)
         if held is None:
             return Finding(slot.role, slot.required, "missing", following, after, before)
@@ -775,24 +794,20 @@ def _shortened(buyer: str, name: str) -> bool:
     return trimmed[0] == kept[0] and trimmed[1] == kept[1] and all(token in full for token in trimmed)
 
 
-def _step(number: str) -> str:
-    later = nearby_numbers(number, before=0, after=1)
-    return later[0] if later else ""
-
-
 def _same_day_slot(
     slot: Slot,
     anchor: FiledInstrument,
     around: tuple[FiledInstrument, ...],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
     matches = [item for item in around if _same_day(anchor, item) and item.kind in slot.kinds]
     if "release" in slot.kinds:
         matches = [item for item in matches if _related_release(anchor, item)]
     if matches:
         return _dated(slot, matches[0], "present", after, before)
-    _earlier, later = closing_numbers(anchor.number)
+    _earlier, later = county.closing(anchor.number)
     other = _by_number(around).get(later)
     if other is not None and other.kind not in slot.kinds:
         return Finding(slot.role, slot.required, "other", other.number, after, before)
@@ -805,8 +820,13 @@ def _cited(
     around: tuple[FiledInstrument, ...],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
     if not anchor.cross_references:
+        if not county.carries_citations:
+            prior = _prior_by_party(anchor, around, slot.kinds)
+            if prior is not None:
+                return _dated(slot, prior, "present", after, before)
         return Finding(slot.role, slot.required, "missing", "", after, before)
     by_number = _by_number(around)
     for number in anchor.cross_references:
@@ -825,11 +845,17 @@ def _released(
     around: tuple[FiledInstrument, ...],
     after: date | None,
     before: date | None,
+    county,
 ) -> Finding:
     releases = [item for item in around if _related_release(anchor, item)]
     if not releases:
         return Finding(slot.role, slot.required, "missing", "", after, before)
     by_number = _by_number(around)
+    if not county.carries_citations:
+        for release in releases:
+            lien = _released_by_party(release, anchor, around, slot.kinds)
+            if lien is not None:
+                return _dated(slot, lien, "present", after, before)
     for release in releases:
         for number in release.cross_references:
             item = by_number.get(number)
@@ -888,7 +914,52 @@ def _related_release(anchor: FiledInstrument, item: FiledInstrument) -> bool:
 
 
 def _same_day(anchor: FiledInstrument, item: FiledInstrument) -> bool:
-    return item.number != anchor.number and item.number[:8] == anchor.number[:8]
+    """Recorded the same day as the anchor: by the recorded dates, or by a Sacramento number's date prefix."""
+    if item.number == anchor.number:
+        return False
+    if anchor.recorded is not None and item.recorded is not None:
+        return anchor.recorded == item.recorded
+    return _SACRAMENTO.parse(anchor.number) is not None and item.number[:8] == anchor.number[:8]
+
+
+def _prior_by_party(anchor: FiledInstrument, around: tuple[FiledInstrument, ...], kinds: tuple[str, ...]) -> FiledInstrument | None:
+    """The newest earlier instrument of ``kinds`` that vested one of the anchor's grantors.
+
+    Only for a county whose index lists no citations: the deed that put the
+    seller on title is the prior a citation would have named. Only the
+    instruments in hand are read; nothing is searched.
+    """
+    found = [
+        item
+        for item in around
+        if item.kind in kinds
+        and item.number != anchor.number
+        and _recorded_before(item, anchor)
+        and any(name_keeps(seller, buyer) for seller in anchor.grantors for buyer in item.grantees)
+    ]
+    return max(found, key=lambda item: item.recorded or date.min) if found else None
+
+
+def _released_by_party(
+    release: FiledInstrument,
+    anchor: FiledInstrument,
+    around: tuple[FiledInstrument, ...],
+    kinds: tuple[str, ...],
+) -> FiledInstrument | None:
+    """The earlier lien a citation-less reconveyance releases: one its parties gave, recorded before the sale."""
+    parties = [name for name in (*release.grantors, *release.grantees) if name.strip()]
+    found = [
+        item
+        for item in around
+        if item.kind in kinds
+        and _recorded_before(item, anchor)
+        and any(name_keeps(party, trustor) for party in parties for trustor in item.grantors)
+    ]
+    return max(found, key=lambda item: item.recorded or date.min) if found else None
+
+
+def _recorded_before(item: FiledInstrument, anchor: FiledInstrument) -> bool:
+    return item.recorded is not None and anchor.recorded is not None and item.recorded < anchor.recorded
 
 
 def _by_number(around: tuple[FiledInstrument, ...]) -> dict[str, FiledInstrument]:

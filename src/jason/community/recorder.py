@@ -1,289 +1,59 @@
 """County recorder indexes. A city mixes in the county that files its instruments.
 
-``history`` links document numbers already known for one parcel. It walks from
-the latest deed back toward the developer. It does not search a grantor by
-name: that search returns the grantor's other parcels. ``trace`` does search
-names, and only the names already known for this community: each buyer and
-owner, then the other party on those instruments. A developer is not searched.
-``descend`` walks one step at a time from the current deed and from the
-developer, and caches each document and its cross-references.
-
-Sacramento County document numbers are twelve digits. The first eight are the
-recording date and the last four are that day's sequence: ``200709120758`` is
-2007-09-12, sequence 0758. The public index is
-``recordersdocumentindex.saccounty.gov``. Search sends a document number, a
-filing code, or a name. It does not send a captured session key.
+County HTTP, document numbers, record shapes, instrument kinds, and the index
+cache are **asspy**'s. This module keeps what an association does with them:
+ownership succession, developer name matching, and the walks over any county's
+recorder (``OwnershipWalks``), which use only the recorder's public methods.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
-from enum import Enum
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from datetime import date
 
+from asspy.core import (
+    CountyRecorder,
+    CountyRecorderBase,
+    FiledInstrument,
+    FilingType,
+    IndexParty,
+    IndexSession,
+    IndexedInstrument,
+    InstrumentDetail,
+    NameSearch,
+    RecorderNumber,
+)
+from asspy.kinds import conveys_row, foreclosure_deed, instrument_kind, party_roles
+from asspy.parties import parties, party_key, same_party
+from asspy.sacramento.recorder import (
+    DocType,
+    FILING_NAMES,
+    Filing,
+    IndexRole,
+    SacramentoCountyRecorder as _AsspySacramentoRecorder,
+    closing_numbers,
+    conveys,
+    conveys_fee,
+    expected_companions,
+    instruments,
+    nearby_numbers,
+    index_parties,
+)
 from jason.community.base import Developer
 
 
-class Filing(Enum):
-    """Instrument types an association looks up. Values are Sacramento filing codes."""
+class OwnershipWalks:
+    """Deed-chain and party walks over any county recorder asspy adapts.
 
-    DECLARATION = "162"
-    AMENDMENT = "225"
-    AMENDED_RESTRICTION = "220"
-    DECLARATION_OF_ANNEXATION = "320"
-    DECLARATION_OF_RESTRICTION = "324"
-    RESTRICTIVE_COVENANT = "478"
-    CONDOMINIUM_PLAN = "301"
-    NOTICE_OF_COMPLETION = "306"
-    BYLAWS = "494"
-    GRANT_DEED = "685"
-    QUITCLAIM = "689"
-    DEED_OF_TRUST = "230"
-    RECONVEYANCE = "238"
-    UCC_FINANCING = "368"
-    UCC_TERMINATION = "372"
-    NOTICE_OF_ASSOCIATION_LIEN = "386"
-    RELEASE_OF_ASSOCIATION_LIEN = "655"
-    RELEASE_OF_LIEN = "624"
-    UTILITY_LIEN = "401"
-    UTILITY_TERMINATION = "644"
-    NOTICE_OF_DEFAULT = "531"
-    NOTICE_OF_SALE = "543"
-    RESCISSION = "720"
-    POWER_TO_SELL = "802"
-    REQUEST_FOR_NOTICE = "546"
-    ABSTRACT_OF_JUDGMENT = "376"
-    STATE_TAX_LIEN = "400"
-    NOTICE_OF_ASSESSMENT = "387"
-    EASEMENT = "190"
-    EASEMENT_DEED = "681"
-    RIGHT_OF_WAY = "485"
-    AFFIDAVIT_OF_DEATH = "153"
-    TERMINATING_JOINT_TENANCY = "156"
-    POWER_OF_ATTORNEY = "466"
-    MECHANICS_LIEN = "389"
-    RELEASE_OF_MECHANICS_LIEN = "635"
-    EXTENSION_OF_MECHANICS_LIEN = "232"
-    NOTICE_OF_ACTION = "385"
-    AMENDED_NOTICE_OF_ACTION = "223"
-    WITHDRAWAL_OF_LIS_PENDENS = "651"
-    PARTIAL_DISCHARGE_OF_ACTION = "291"
-    RELEASE_OF_LIEN_BOND = "269"
-    MECHANICS_LIEN_BOND = "270"
-    NOTICE_OF_CESSATION = "305"
-    NOTICE_OF_NON_RESPONSIBILITY = "539"
-
-
-class DocType(Enum):
-    """Assessor deed-type token. The member name is that token.
-
-    ``value`` is the description the parcel viewer prints. ``code`` is the
-    Sacramento recorder filing code when the token is one filing. ``GD`` is the
-    assessor's bucket for a grant deed, a corporate deed, a gift deed, and a
-    joint-tenancy deed, and its recorder code is the grant-deed filing.
-    ``from_code`` returns the first token that uses a number. A deed of trust
-    is not a member.
+    The walks use only the recorder's public surface: ``open_session``,
+    ``search``, ``name_search``, ``row_detail``, ``parse``, and
+    ``dated_numbers``. A county mixes this in ahead of its asspy recorder.
+    ``deeds_only`` keeps only fee transfers from a name search, for an index
+    that cannot filter a name search by filing.
     """
 
-    def __new__(cls, label: str, code: str = "", interest: str = ""):
-        obj = object.__new__(cls)
-        obj._value_ = label
-        obj.code = code
-        obj.interest = interest
-        return obj
-
-    @property
-    def token(self) -> str:
-        return self.name
-
-    @classmethod
-    def from_code(cls, code: str) -> DocType | None:
-        return _BY_CODE.get(code)
-
-    # Fee. The recorder number is set when the county catalog has one filing.
-    GD = ("GRANT DEED/CORP. DEED/GIFT DEED/JNT TEN DEED", "685", "fee")
-    QC = ("QUITCLAIM DEED", "689", "fee")
-    DE = ("DEED", "680", "fee")
-    TD = ("TRUSTEES DEED", "694", "fee")
-    TDSL = ("TRUSTEES DEED UPON SALE", "695", "fee")
-    TXD = ("TAX DEED", "692", "fee")
-    DILF = ("DEED IN LIEU FORECLOS", "801", "fee")
-    RTDD = ("REVOCABLE TRANSFER ON DEATH DEED", "697", "fee")
-    DD = ("DECREE OF DISTRIBUTION", "339", "fee")
-    DEQT = ("DECREE QUIETING TITLE", "342", "fee")
-    DETJ = ("DECREE TERMINATING JOINT TENANCY", "", "fee")
-    JTDE = ("JOINT TENANCY DEED", "", "fee")
-    TCGD = ("TENANCY IN COMMON DEED", "", "fee")
-    SD = ("SHERIFF DEED", "", "fee")
-    DETH = ("DEATH OF OWNER", "", "fee")
-    # Easement. These do not replace the owner of the fee.
-    EASD = ("EASEMENT DEED", "681", "easement")
-    EASE = ("GRANT OF EASEMENT", "190", "easement")
-    ROW = ("RIGHT OF WAY", "485", "easement")
-    ROWD = ("RIGHT OF WAY DEED", "", "easement")
-    # Recorded, and not a transfer of the fee.
-    DEAN = ("DECLARATION OF ANNEXATION", "320", "")
-    RCNV = ("RECONVEYANCE", "238", "")
-    NOD = ("NOTICE OF DEFAULT", "531", "")
-    NTS = ("NOTICE OF TRUSTEES SALE", "543", "")
-    DISC = ("DISCLAIMER", "488", "")
-    CS = ("CONTRACT OF SALE(ON REAL ESTATES)", "", "")
-    AFDT = ("AFFIDAVIT, GENERAL", "", "")
-    PC = ("PC ALLOCATION", "", "")
-    FD = ("FINAL DIVORCE", "", "")
-
-
-class IndexRole(Enum):
-    """Which community name an index party is.
-
-    The recorder matches a last name from the front of the indexed name.
-    The project, the association, a phase, and a developer are different
-    leading names. A business that only shares the project's first word is
-    ``OTHER``.
-    """
-
-    PROJECT = "project"
-    ASSOCIATION = "association"
-    PHASE = "phase"
-    DEVELOPER = "developer"
-    OTHER = "other"
-
-
-_BY_CODE: dict[str, DocType] = {}
-for _item in DocType:
-    if _item.code and _item.code not in _BY_CODE:
-        _BY_CODE[_item.code] = _item
-
-
-def _doc_type(code: str) -> DocType | None:
-    found = DocType.from_code(code)
-    if found is not None:
-        return found
-    try:
-        return DocType[code]
-    except KeyError:
-        return None
-
-
-def conveys(code: str) -> bool:
-    """True when this recorder code or assessor token can pass the fee or an easement."""
-    found = _doc_type(code)
-    return found is not None and found.interest in ("fee", "easement")
-
-
-def conveys_fee(code: str) -> bool:
-    """True when this recorder code or assessor token can pass ownership of the parcel."""
-    found = _doc_type(code)
-    return found is not None and found.interest == "fee"
-
-
-@dataclass(frozen=True)
-class RecorderNumber:
-    """One stamped document number, parsed by the county that issued it."""
-
-    number: str
-    recorded: date
-    sequence: str
-
-
-class CountyRecorder:
-    """How one county clerk-recorder numbers and classifies instruments."""
-
-    name: str
-
-    def parse(self, number: str) -> RecorderNumber | None:
-        raise NotImplementedError
-
-
-class SacramentoCountyRecorder(CountyRecorder):
-    """Sacramento County Clerk-Recorder. Index: recordersdocumentindex.saccounty.gov."""
-
-    name = "Sacramento"
-
-    def parse(self, number: str) -> RecorderNumber | None:
-        digits = "".join(ch for ch in number if ch.isdigit())
-        if len(digits) != 12:
-            return None
-        try:
-            recorded = date(int(digits[:4]), int(digits[4:6]), int(digits[6:8]))
-        except ValueError:
-            return None
-        return RecorderNumber(digits, recorded, digits[8:])
-
-    def search(
-        self,
-        *,
-        number: str = "",
-        number_to: str = "",
-        filing: Filing | DocType | None = None,
-        name: str = "",
-        text: str = "",
-        start: int = 0,
-        rows: int = 10,
-        after: date | None = None,
-        before: date | None = None,
-        limit: int = 0,
-        session: IndexSession | None = None,
-        fetch=None,
-    ) -> tuple[IndexedInstrument, ...]:
-        """Search the public index. ``fetch`` replaces the HTTP call in tests.
-
-        The capture sends ``EncryptedKey`` and ``Password`` from ``GetSecureKey``
-        on the search request. A last-name search uses ``LastName``. ``text``
-        keeps a row only when that second name is the same party. The county
-        ``SearchText`` field does not combine with ``LastName``, so the second
-        name is applied here. ``number_to`` is the end of a document-number
-        range. When ``after`` and ``before`` are omitted, the recorded dates
-        are the county's minimum and maximum. ``limit`` stops a wide name
-        after that many rows.
-        """
-        getter = _index_get if fetch is None else fetch
-        session = session or _open_session(getter)
-        if session is None:
-            return ()
-        headers = {"EncryptedKey": session.encrypted_key, "Password": session.password}
-        bounds = None
-        found: list[IndexedInstrument] = []
-        offset = start
-        while True:
-            params = _search_params(
-                self,
-                number=number,
-                number_to=number_to,
-                filing=filing,
-                name=name,
-                start=offset,
-                rows=rows,
-                after=after,
-                before=before,
-            )
-            if "MinRecordedDate" not in params or "MaxRecordedDate" not in params:
-                if bounds is None:
-                    bounds = getter(DATES_URL, {}, headers) or {}
-                params.setdefault("MinRecordedDate", str(bounds.get("MinimumDate") or ""))
-                params.setdefault("MaxRecordedDate", str(bounds.get("MaximumDate") or ""))
-            payload = getter(SEARCH_URL, params, headers)
-            batch = instruments(payload, self)
-            found.extend(batch)
-            count = int((payload or {}).get("ResultCount") or 0)
-            offset += len(batch)
-            if not batch or offset >= count or (limit and not text.strip() and len(found) >= limit):
-                break
-        if text.strip():
-            from jason.community.index_cache import name_keeps
-
-            needle = text
-            found = [
-                row for row in found
-                if any(name_keeps(needle, party) for party in (*row.grantors, *row.grantees))
-            ]
-        if limit:
-            return tuple(found[:limit])
-        return tuple(found)
+    deeds_only: bool = False
 
     def for_parties(
         self,
@@ -293,104 +63,59 @@ class SacramentoCountyRecorder(CountyRecorder):
         before: date | None = None,
         limit: int = 30,
         developers: tuple[Developer, ...] = (),
-        filings: tuple[Filing, ...] = (),
-        session: IndexSession | None = None,
+        filings: tuple = (),
+        session=None,
         fetch=None,
     ) -> tuple[NameSearch, ...]:
         """Search each known person once. A developer name is skipped.
 
-        The query is the surname and given name. One request asks for ``limit``
-        rows. A result count above that is kept as a wide search and its rows
-        are not returned: that name is too common to follow. When ``filings``
-        is set, a wide name is searched again under each of those filings, and
-        a filing that is still wide is left out.
+        The query is the surname and given name. A name with more than
+        ``limit`` rows is kept as a wide search and its rows are not returned:
+        that name is too common to follow. When ``filings`` is set, a wide name
+        is searched again under each of those filings, and a filing that is
+        still wide is left out.
         """
-        getter = _index_get if fetch is None else fetch
-        session = session or _open_session(getter)
-        if session is None:
-            return ()
+        session = session or self.open_session(fetch=fetch)
         found: list[NameSearch] = []
         seen: set[str] = set()
-        page = max(limit, 1)
         for name in names:
             query = index_name(name)
             if not query or query in seen or not _follow(name, developers):
                 continue
             seen.add(query)
-            headers = {"EncryptedKey": session.encrypted_key, "Password": session.password}
-            params = _search_params(self, name=query, rows=page, after=after, before=before)
-            if "MinRecordedDate" not in params or "MaxRecordedDate" not in params:
-                bounds = getter(DATES_URL, {}, headers) or {}
-                params.setdefault("MinRecordedDate", str(bounds.get("MinimumDate") or ""))
-                params.setdefault("MaxRecordedDate", str(bounds.get("MaximumDate") or ""))
-            payload = getter(SEARCH_URL, params, headers) or {}
-            total = int(payload.get("ResultCount") or 0)
-            if total > limit:
-                if not filings:
-                    found.append(NameSearch(query, total, ()))
-                    continue
-                narrowed = self._narrow(
-                    query,
-                    filings,
-                    after=after,
-                    before=before,
-                    limit=limit,
-                    session=session,
-                    fetch=getter,
-                )
-                if not narrowed:
-                    found.append(NameSearch(query, total, ()))
-                else:
-                    found.append(NameSearch(query, len(narrowed), tuple(narrowed)))
-                continue
-            batch = list(instruments(payload, self))
-            if len(batch) < total:
-                batch.extend(
-                    self.search(
-                        name=query,
-                        start=len(batch),
-                        rows=page,
-                        after=after,
-                        before=before,
-                        session=session,
-                        fetch=getter,
-                    )
-                )
-            found.append(NameSearch(query, total, tuple(batch)))
+            result = self.name_search(query, limit=limit, after=after, before=before, session=session, fetch=fetch)
+            if result.wide and filings:
+                narrowed = self._narrow(query, filings, after=after, before=before, limit=limit, session=session, fetch=fetch)
+                if narrowed:
+                    result = NameSearch(query, len(narrowed), tuple(narrowed))
+            if self.deeds_only and not result.wide:
+                deeds = tuple(row for row in result.rows if conveys_row(row))
+                result = NameSearch(query, len(deeds), deeds)
+            found.append(result)
         return tuple(found)
 
     def _narrow(
         self,
         query: str,
-        filings: tuple[Filing, ...],
+        filings: tuple,
         *,
         after: date | None,
         before: date | None,
         limit: int,
-        session: IndexSession,
+        session,
         fetch,
     ) -> list[IndexedInstrument]:
         """Rows for a wide name, one filing at a time. A filing still over ``limit`` is skipped."""
         kept: list[IndexedInstrument] = []
         seen: set[str] = set()
         for filing in filings:
-            rows = self.search(
-                name=query,
-                filing=filing,
-                after=after,
-                before=before,
-                rows=max(limit, 1),
-                limit=limit + 1,
-                session=session,
-                fetch=fetch,
-            )
-            if len(rows) > limit:
+            result = self.name_search(query, limit=limit, filing=filing, after=after, before=before, session=session, fetch=fetch)
+            if result.wide:
                 continue
-            for row in rows:
-                if row.number in seen:
-                    continue
-                seen.add(row.number)
-                kept.append(row)
+            for row in result.rows:
+                if row.number not in seen:
+                    seen.add(row.number)
+                    kept.append(row)
         return kept
 
     def trace(
@@ -402,7 +127,7 @@ class SacramentoCountyRecorder(CountyRecorder):
         limit: int = 30,
         hops: int = 2,
         developers: tuple[Developer, ...] = (),
-        session: IndexSession | None = None,
+        session=None,
         fetch=None,
     ) -> tuple[NameSearch, ...]:
         """Search known buyers and owners, then the other party on each hit.
@@ -412,10 +137,7 @@ class SacramentoCountyRecorder(CountyRecorder):
         the same document. A developer is not searched, and a wide name is not
         followed. ``hops`` counts those extra sides after the names given.
         """
-        getter = _index_get if fetch is None else fetch
-        session = session or _open_session(getter)
-        if session is None:
-            return ()
+        session = session or self.open_session(fetch=fetch)
         pending = list(names)
         seen: set[str] = set()
         found: list[NameSearch] = []
@@ -431,7 +153,7 @@ class SacramentoCountyRecorder(CountyRecorder):
                 limit=limit,
                 developers=developers,
                 session=session,
-                fetch=getter,
+                fetch=fetch,
             )
             found.extend(results)
             for result in results:
@@ -445,47 +167,13 @@ class SacramentoCountyRecorder(CountyRecorder):
                             pending.append(name)
         return tuple(found)
 
-    def names(self, internal_id: str, *, page: int = 1, per_page: int = 1000, session: IndexSession | None = None, fetch=None) -> tuple[IndexParty, ...]:
-        """Parties on one instrument, including each cross-referenced document number."""
-        getter = _index_get if fetch is None else fetch
-        session = session or _open_session(getter)
-        if session is None:
-            return ()
-        headers = {"EncryptedKey": session.encrypted_key, "Password": session.password}
-        url = f"{API}search/GetNamesForPagination/{internal_id}/{page}/{per_page}"
-        return index_parties(getter(url, {}, headers))
-
-    def detail(self, internal_id: str, *, session: IndexSession | None = None, fetch=None) -> InstrumentDetail | None:
-        """Filing types, status, page count, and parties for one index row."""
-        getter = _index_get if fetch is None else fetch
-        session = session or _open_session(getter)
-        if session is None:
-            return None
-        headers = {"EncryptedKey": session.encrypted_key, "Password": session.password}
-        payload = getter(f"{API}search/GetDocumentDetails/{internal_id}", {}, headers)
-        summary = (payload or {}).get("DocumentSummary") or {}
-        if not summary:
-            return None
-        return InstrumentDetail(
-            number=str(summary.get("DocumentNumber") or ""),
-            recorded=_index_date(str(summary.get("DocumentDate") or "")),
-            status=str(summary.get("DocumentStatus") or ""),
-            pages=summary.get("Pages") if isinstance(summary.get("Pages"), int) else None,
-            apn=str(summary.get("APN") or ""),
-            filings=tuple(
-                FilingType(str(row.get("FilingCodeName") or ""), str(row.get("Description") or ""))
-                for row in (summary.get("FilingCodes") or [])
-            ),
-            parties=self.names(internal_id, session=session, fetch=getter),
-        )
-
     def history(
         self,
         numbers: tuple[str, ...],
         *,
         apn: str = "",
         developers: tuple[Developer, ...] = (),
-        session: IndexSession | None = None,
+        session=None,
         fetch=None,
     ) -> OwnershipHistory:
         """Link known document numbers for one parcel, newest deed first.
@@ -498,85 +186,52 @@ class SacramentoCountyRecorder(CountyRecorder):
         to the developer stays linked when its number is in the set. A cited number
         that was not in ``numbers`` stays on the step as a document still to fetch.
         """
-        getter = _index_get if fetch is None else fetch
-        session = session or _open_session(getter)
+        session = session or self.open_session(fetch=fetch)
         loaded: list[Conveyance] = []
         seen: set[str] = set()
         for raw in numbers:
             parsed = self.parse(raw)
-            number = parsed.number if parsed is not None else "".join(ch for ch in raw if ch.isdigit())
+            number = parsed.number if parsed is not None else ("".join(ch for ch in raw if ch.isdigit()) or raw.strip())
             if not number or number in seen:
                 continue
             seen.add(number)
-            loaded.append(self._conveyance(number, apn=apn, session=session, fetch=getter))
+            loaded.append(self._conveyance(number, apn=apn, session=session, fetch=fetch))
         return succession(tuple(loaded), apn=apn, developers=developers)
 
-    def _conveyance(
-        self,
-        number: str,
-        *,
-        apn: str,
-        session: IndexSession | None,
-        fetch,
-    ) -> Conveyance:
+    def _conveyance(self, number: str, *, apn: str, session, fetch) -> Conveyance:
+        """One number as the index and its detail page read it; the bare number when the index has no row."""
         parsed = self.parse(number)
-        recorded = parsed.recorded if parsed is not None else None
-        if session is None:
-            return Conveyance(number, recorded, (), (), (), apn)
+        recorded = parsed.recorded if parsed is not None and self.dated_numbers else None
         rows = self.search(number=number, session=session, fetch=fetch)
         if not rows:
             return Conveyance(number, recorded, (), (), (), apn)
-        row = rows[0]
-        if not row.internal_id:
-            return Conveyance(
-                row.number or number,
-                row.recorded or recorded,
-                row.grantors,
-                row.grantees,
-                (),
-                apn,
-            )
-        detail = self.detail(row.internal_id, session=session, fetch=fetch)
+        row = next((item for item in rows if item.number == number), rows[0])
+        detail = self.row_detail(row, session=session, fetch=fetch)
         if detail is None:
-            return Conveyance(
-                row.number or number,
-                row.recorded or recorded,
-                row.grantors,
-                row.grantees,
-                (),
-                apn,
-            )
+            return Conveyance(row.number or number, row.recorded or recorded, row.grantors, row.grantees, (), apn)
         return Conveyance(
             detail.number or row.number or number,
             detail.recorded or row.recorded or recorded,
             detail.grantors or row.grantors,
             detail.grantees or row.grantees,
-            _document_refs(detail.cross_references),
+            self._document_refs(detail.cross_references),
             _parcel_apn(detail.apn) or apn,
         )
 
-    def prior_candidates(
-        self,
-        grantor: str,
-        *,
-        before: date,
-        filing: Filing | DocType | None = Filing.GRANT_DEED,
-        session: IndexSession | None = None,
-        fetch=None,
-    ) -> tuple[IndexedInstrument, ...]:
-        """Grant deeds before ``before`` on which ``grantor`` is the grantee.
+    def _document_refs(self, numbers: tuple[str, ...]) -> tuple[str, ...]:
+        """Cited numbers this county can parse, in its own form, without repeats."""
+        found: list[str] = []
+        for number in numbers:
+            parsed = self.parse(number)
+            if parsed is not None and parsed.number not in found:
+                found.append(parsed.number)
+        return tuple(found)
 
-        These rows are not a chain. A builder name matches other parcels.
-        Keep a row only when its document number is already known for this one.
-        """
-        rows = self.search(name=grantor, filing=filing, session=session, fetch=fetch)
-        return tuple(
-            row
-            for row in rows
-            if row.recorded is not None
-            and row.recorded < before
-            and any(same_party(grantor, name) for name in row.grantees)
-        )
+
+class SacramentoCountyRecorder(OwnershipWalks, _AsspySacramentoRecorder):
+    """Sacramento County Clerk-Recorder. Index: recordersdocumentindex.saccounty.gov."""
+
+    name = "Sacramento"
 
     def forward_hits(
         self,
@@ -597,8 +252,8 @@ class SacramentoCountyRecorder(CountyRecorder):
         developer sold. ``after`` drops sales from before the report was
         issued. ``exclude`` drops document numbers already on a solved chain.
         A row is a hit when ``party`` is the grantee. The other buyers are
-        other parcels. Resolving Penhallow against Watt Communities at Mystique
-        hits the Watt deed to Penhallow. A hit is the possible root to load
+        other parcels. Resolving one buyer against the developer hits the
+        developer's deed to that buyer. A hit is the possible root to load
         with the later deed this party granted. It is not stored until that
         chain reaches one developer and has no gap.
         """
@@ -654,34 +309,6 @@ class SacramentoCountyRecorder(CountyRecorder):
         )
 
 
-def parties(names: list[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Split an index name list into grantors ``(R)`` and grantees ``(E)``."""
-    grantors = tuple(name[4:] for name in names if name.startswith("(R)"))
-    grantees = tuple(name[4:] for name in names if name.startswith("(E)"))
-    return grantors, grantees
-
-
-def party_key(name: str) -> str:
-    """Index spelling with case and extra spaces removed."""
-    return " ".join(name.upper().split())
-
-
-def same_party(left: str, right: str) -> bool:
-    """True when two index names are the same party.
-
-    A shorter name matches a longer one when the longer name continues it
-    with another word. ``WATT COMMUNITIES AT MYSTIQUE`` matches
-    ``WATT COMMUNITIES AT MYSTIQUE LLC``.
-    """
-    a, b = party_key(left), party_key(right)
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-    return longer.startswith(shorter + " ")
-
-
 def is_developer(name: str, developers: tuple[Developer, ...]) -> bool:
     """True when this grantor is one of the pinned subdividers.
 
@@ -717,7 +344,6 @@ _INDEX_SKIP = frozenset({
 })
 
 # Fee transfers. A deed of trust and a UCC are not walked to the next party.
-_CONVEYANCE_CODES = frozenset({"680", "685", "689", "692", "694", "695", "801"})
 
 # A wide personal name is searched again under these filings.
 NARROW_FILINGS = (
@@ -910,59 +536,6 @@ def party_role(
     return IndexRole.OTHER
 
 
-def nearby_numbers(number: str, *, before: int = 3, after: int = 0) -> tuple[str, ...]:
-    """Same-day document numbers around this one, nearest first.
-
-    A notice of completion is usually the number just before the developer's
-    first grant deed. A spouse deed or a second notice can sit in between.
-    """
-    parsed = SacramentoCountyRecorder().parse(number)
-    if parsed is None or before < 0 or after < 0:
-        return ()
-    sequence = int(parsed.sequence)
-    day = parsed.number[:8]
-    found: list[str] = []
-    for delta in range(1, before + 1):
-        nxt = sequence - delta
-        if nxt >= 0:
-            found.append(f"{day}{nxt:04d}")
-    for delta in range(1, after + 1):
-        nxt = sequence + delta
-        if nxt <= 9999:
-            found.append(f"{day}{nxt:04d}")
-    return tuple(found)
-
-
-def closing_numbers(number: str) -> tuple[str, str]:
-    """The same-day numbers immediately before and after a developer grant deed.
-
-    The preceding number is the notice of completion. The following number is
-    the partial reconveyance or the buyer's deed of trust. Either side is
-    empty when that number would leave the day.
-    """
-    earlier = nearby_numbers(number, before=1, after=0)
-    later = nearby_numbers(number, before=0, after=1)
-    return (earlier[0] if earlier else "", later[0] if later else "")
-
-
-def expected_companions(number: str) -> tuple[tuple[str, str], ...]:
-    """Numbers beside a developer grant, and the filing each one usually is.
-
-    The previous number is the notice of completion, filing 306. The next
-    number is the buyer's deed of trust, filing 230, unless a partial
-    reconveyance of an earlier builder lien, filing 613, was recorded there
-    instead. A trustee's deed upon sale, filing 695, is not on that day: it
-    cites the buyer's deed of trust.
-    """
-    earlier, later = closing_numbers(number)
-    found: list[tuple[str, str]] = []
-    if earlier:
-        found.append((earlier, "306"))
-    if later:
-        found.append((later, "230"))
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class IndexQuery:
     """One public-index search: a leading name, and a filing when the name alone is too broad."""
@@ -1018,111 +591,6 @@ def _follow(name: str, developers: tuple[Developer, ...] = ()) -> bool:
         or folded.startswith("BANK ")
         or " BANK " in f" {folded} "
     )
-
-
-_LIEN_CODES = frozenset({"230"})
-_RELEASE_CODES = frozenset({"238", "613"})
-_FORECLOSURE_CODES = frozenset({"694", "695", "801"})
-_NOTICE_CODES = frozenset({"306"})
-_DEFAULT_CODES = frozenset({"531", "543"})
-_SUBSTITUTION_CODES = frozenset({"239"})
-_DEATH_CODES = frozenset({"153", "156", "157", "155"})
-_ASSIGNMENT_CODES = frozenset({"366"})  # UCC assignment; deed-of-trust assignments match by description
-_EASEMENT_CODES = frozenset({"190", "215", "485", "681"})
-
-
-def instrument_kind(codes: tuple[str, ...] = (), descriptions: tuple[str, ...] = ()) -> str:
-    """Classify an instrument for the ownership walk.
-
-    ``fee`` is a grant, quitclaim, or other fee conveyance. ``foreclosure`` is a
-    trustee's deed or deed in lieu. ``lien`` is a deed of trust. ``release`` is a
-    reconveyance (and wins over a paired substitution). ``notice`` is a notice of
-    completion. ``default`` is a notice of default or a notice of trustee's sale:
-    it cites the deed of trust and does not transfer the fee. ``substitution``
-    is a substitution of trustee. ``death`` is an
-    affidavit of death or similar. ``assignment`` is an assignment of a lien or
-    UCC. ``easement`` does not replace the fee owner. Empty means still unknown.
-    """
-    folded = " ".join(descriptions).upper()
-    if any(code in _RELEASE_CODES for code in codes) or "RECONVEYANCE" in folded:
-        return "release"
-    if foreclosure_deed(codes, descriptions):
-        return "foreclosure"
-    if (
-        any(code in _DEFAULT_CODES for code in codes)
-        or "NOTICE OF DEFAULT" in folded
-        or "NOTICE OF TRUSTEES SALE" in folded
-    ):
-        return "default"
-    if any(code in _LIEN_CODES for code in codes) or "DEED OF TRUST" in folded:
-        if "ASSIGNMENT" in folded:
-            return "assignment"
-        return "lien"
-    if any(code in _SUBSTITUTION_CODES for code in codes) or "SUBSTITUTION OF TRUSTEE" in folded:
-        return "substitution"
-    if any(code in _NOTICE_CODES for code in codes) or "NOTICE OF COMPLETION" in folded:
-        return "notice"
-    if (
-        any(code in _DEATH_CODES for code in codes)
-        or "AFFIDAVIT OF DEATH" in folded
-        or folded.startswith("DEATH OF")
-        or "AFFIDAVIT TERMINATING" in folded
-    ):
-        return "death"
-    if any(code in _ASSIGNMENT_CODES for code in codes) or (
-        "ASSIGNMENT" in folded and "DEED OF TRUST" not in folded
-    ):
-        return "assignment"
-    if any(code in _EASEMENT_CODES for code in codes) or "EASEMENT" in folded or "RIGHT OF WAY" in folded:
-        return "easement"
-    if any(code in _CONVEYANCE_CODES for code in codes):
-        return "fee"
-    if folded.startswith("GRANT DEED") or folded.startswith("QUITCLAIM") or folded == "DEED":
-        return "fee"
-    return ""
-
-
-def foreclosure_deed(codes: tuple[str, ...] = (), descriptions: tuple[str, ...] = ()) -> bool:
-    """True for a trustee's deed upon sale or a deed in lieu of foreclosure.
-
-    Both transfer the fee. The trustee's deed is the lien sale: the trustee
-    conveys, and the grantee is the buyer, often the beneficiary when nobody
-    else bids. A later grant from that beneficiary is the resale, not the sale.
-    The cited deed of trust names the owner who lost the property. A
-    reconveyance is the other ending: the loan was paid and the owner stayed.
-    """
-    folded = " ".join(descriptions).upper()
-    if any(code in _FORECLOSURE_CODES for code in codes):
-        return True
-    return "TRUSTEES DEED" in folded or "DEED IN LIEU" in folded
-
-
-def party_roles(kind: str) -> tuple[str, str]:
-    """Index grantor role, then index grantee role.
-
-    On a deed of trust the grantor is the trustor, who owns the fee, and the
-    grantee is the beneficiary, the lender. On a reconveyance the grantee is
-    the owner whose lien is released. On a grant deed both are owners. A
-    notice of completion names the builder and has no buyer. A substitution
-    of trustee is lien paperwork. A death affidavit is not a grant.
-    """
-    if kind == "foreclosure":
-        return ("trustee", "buyer")
-    if kind == "lien":
-        return ("trustor", "beneficiary")
-    if kind == "release":
-        return ("trustee", "owner")
-    if kind == "notice":
-        return ("builder", "")
-    if kind == "substitution":
-        return ("trustee", "trustee")
-    if kind == "death":
-        return ("decedent", "affiant")
-    if kind == "assignment":
-        return ("assignor", "assignee")
-    if kind == "easement":
-        return ("grantor", "grantee")
-    return ("grantor", "grantee")
 
 
 _RESTATEMENT_SKIP = frozenset({
@@ -1201,20 +669,6 @@ def buyer_lien(grantees: tuple[str, ...], trustors: tuple[str, ...]) -> bool:
 
 
 @dataclass(frozen=True)
-class FiledInstrument:
-    """One instrument with its kind, parties, filings, and the numbers it cites."""
-
-    number: str
-    recorded: date | None
-    kind: str
-    grantors: tuple[str, ...]
-    grantees: tuple[str, ...]
-    cross_references: tuple[str, ...] = ()
-    filing_code: str = ""
-    filing_name: str = ""
-
-
-@dataclass(frozen=True)
 class InstrumentLink:
     """How one instrument sits beside the subject."""
 
@@ -1289,16 +743,6 @@ def _instrument_link(item: FiledInstrument, relation: str, issued: date | None) 
         item.cross_references,
         before,
     )
-
-
-def conveys_row(row: IndexedInstrument) -> bool:
-    """True when this index row transfers the fee, not a lien or a deed of trust."""
-    if row.filing_code in _CONVEYANCE_CODES:
-        return True
-    label = row.filing_name.upper()
-    if "DEED OF TRUST" in label or "UCC" in label:
-        return False
-    return label.startswith("GRANT DEED") or label.startswith("QUITCLAIM") or label == "DEED" or "TRUSTEES DEED" in label
 
 
 def fee_deeds(results: tuple[NameSearch, ...]) -> tuple[Conveyance, ...]:
@@ -1436,167 +880,6 @@ class Sacramento(RecordedIn):
 
         return SecuredRoll(path)
 
-
-# Sacramento filing codes. The association subset is ``Filing``.
-FILING_NAMES: dict[str, str] = {
-    "151": "AFFIDAVIT",
-    "153": "AFFIDAVIT OF DEATH",
-    "156": "AFFIDAVIT TERMINATING JOINT TENANCY",
-    "157": "AFFIDAVIT TERMINATING LIFE ESTATE",
-    "190": "EASEMENT",
-    "215": "CONSERVATION EASEMENT",
-    "339": "DECREE OF DISTRIBUTION",
-    "342": "DECREE QUIETING TITLE",
-    "380": "CERTIFICATE OF SALE",
-    "455": "FINAL ORDER OF CONDEMNATION",
-    "465": "PATENT",
-    "485": "RIGHT OF WAY",
-    "642": "SURRENDER OF LIFE ESTATE",
-    "155": "AFFIDAVIT TERMINATING HOMESTEAD INTEREST",
-    "162": "DECLARATION",
-    "188": "COVENANT AND AGREEMENT",
-    "220": "AMENDED RESTRICTION",
-    "225": "AMENDMENT",
-    "240": "AMENDMENT TO CONDO PLAN",
-    "301": "CONDOMINIUM PLAN",
-    "306": "NOTICE OF COMPLETION",
-    "239": "SUBSTITUTION OF TRUSTEE",
-    "613": "PARTIAL RECONVEYANCE",
-    "320": "DECLARATION OF ANNEXATION",
-    "324": "DECLARATION OF RESTRICTION",
-    "386": "NOTICE OF ASSOCIATION LIEN",
-    "433": "PARCEL MAP",
-    "435": "SUBDIVISION MAP",
-    "446": "ARTICLES OF INCORPORATION",
-    "476": "RESOLUTION",
-    "478": "RESTRICTIVE COVENANT",
-    "494": "BY LAWS",
-    "499": "RESTRICTIVE COVENANT MODIFICATION",
-    "604": "CANCELLATION OF RESTRICTIONS",
-    "655": "RELEASE OF ASSESSMENT OF ASSOCIATION LIEN",
-    "680": "DEED",
-    "681": "EASEMENT DEED",
-    "685": "GRANT DEED",
-    "689": "QUITCLAIM DEED",
-    "692": "TAX DEED",
-    "694": "TRUSTEES DEED",
-    "695": "TRUSTEES DEED UPON SALE",
-    "531": "NOTICE OF DEFAULT",
-    "543": "NOTICE OF TRUSTEES SALE",
-    "697": "REVOCABLE TRANSFER ON DEATH DEED",
-    "801": "DEED IN LIEU OF FORECLOSURE",
-    "365": "UCC AMENDMENT",
-    "366": "UCC ASSIGNMENT",
-    "367": "UCC CONTINUATION",
-    "368": "UCC FINANCING STATEMENT",
-    "370": "UCC PARTIAL RELEASE",
-    "371": "UCC RELEASE",
-    "372": "UCC TERMINATION",
-    "389": "NOTICE OF CLAIM OR MECHANICS LIEN",
-    "635": "RELEASE OF MECHANICS LIEN",
-    "232": "EXTENSION MECHANICS LIEN",
-    "385": "NOTICE OF ACTION",
-    "223": "AMENDED NOTICE OF ACTION LIS PENDENS",
-    "651": "WITHDRAWAL OF LIS PENDENS",
-    "291": "CERTIFICATE OF PARTIAL DISCHARGE OF NOTICE OF PENDING ACTION",
-    "269": "RELEASE OF LIEN BOND",
-    "270": "BONDS TO GUARANTEE MECHANIC LIEN",
-    "305": "NOTICE OF CESSATION",
-    "539": "NOTICE OF NON RESPONSIBILITY",
-}
-
-API = "https://recordersdocumentindex.saccounty.gov/SearchService/api/"
-SEARCH_URL = API + "Search/GetSearchResults"
-SECURE_URL = API + "SearchConfiguration/GetSecureKey"
-DATES_URL = API + "SearchConfiguration/GetMinMaxDate/OfficialRecords"
-
-
-@dataclass(frozen=True)
-class IndexSession:
-    """A key the index issued for this process. It is not stored."""
-
-    encrypted_key: str
-    password: str
-
-
-@dataclass(frozen=True)
-class FilingType:
-    """One filing code on an instrument. A row can carry more than one."""
-
-    code: str
-    description: str
-
-
-@dataclass(frozen=True)
-class InstrumentDetail:
-    """The index detail page: type, status, and the parties."""
-
-    number: str
-    recorded: date | None
-    status: str
-    pages: int | None
-    apn: str
-    filings: tuple[FilingType, ...]
-    parties: tuple[IndexParty, ...]
-
-    @property
-    def grantors(self) -> tuple[str, ...]:
-        return tuple(party.name for party in self.parties if party.role == "Grantor")
-
-    @property
-    def grantees(self) -> tuple[str, ...]:
-        return tuple(party.name for party in self.parties if party.role == "Grantee")
-
-    @property
-    def cross_references(self) -> tuple[str, ...]:
-        return tuple(party.cross_reference for party in self.parties if party.cross_reference)
-
-
-@dataclass(frozen=True)
-class IndexParty:
-    """One name on an instrument. ``cross_reference`` is another document number."""
-
-    name: str
-    role: str
-    cross_reference: str
-
-
-@dataclass(frozen=True)
-class IndexedInstrument:
-    """One row from a county index search."""
-
-    number: str
-    recorded: date | None
-    sequence: str
-    filing_code: str
-    filing_name: str
-    names: tuple[str, ...]
-    internal_id: str = ""
-
-    @property
-    def grantors(self) -> tuple[str, ...]:
-        return parties(list(self.names))[0]
-
-    @property
-    def grantees(self) -> tuple[str, ...]:
-        return parties(list(self.names))[1]
-
-
-@dataclass(frozen=True)
-class NameSearch:
-    """One person's index query, how many rows matched, and the rows kept.
-
-    ``wide`` is a query that matched more parcels than ``limit``. Its rows are
-    empty so those other parcels are not followed.
-    """
-
-    query: str
-    total: int
-    rows: tuple[IndexedInstrument, ...]
-
-    @property
-    def wide(self) -> bool:
-        return self.total > len(self.rows)
 
 
 @dataclass(frozen=True)
@@ -1972,17 +1255,6 @@ def _newest_first(item: Conveyance) -> tuple[bool, date, str]:
     return (item.recorded is not None, item.recorded or date.min, item.number)
 
 
-def _document_refs(numbers: tuple[str, ...]) -> tuple[str, ...]:
-    parser = SacramentoCountyRecorder()
-    found: list[str] = []
-    for number in numbers:
-        parsed = parser.parse(number)
-        if parsed is None or parsed.number in found:
-            continue
-        found.append(parsed.number)
-    return tuple(found)
-
-
 def _parcel_apn(value: str) -> str:
     digits = "".join(ch for ch in value if ch.isdigit())
     if len(digits) != 14:
@@ -1990,119 +1262,3 @@ def _parcel_apn(value: str) -> str:
     return f"{digits[0:3]}-{digits[3:7]}-{digits[7:10]}-{digits[10:14]}"
 
 
-def instruments(payload: dict | None, recorder: CountyRecorder | None = None) -> tuple[IndexedInstrument, ...]:
-    """Read ``SearchResults`` rows. A null index body is an empty tuple."""
-    if not payload or not payload.get("SearchResults"):
-        return ()
-    parser = recorder or SacramentoCountyRecorder()
-    found: list[IndexedInstrument] = []
-    for result in payload["SearchResults"]:
-        number = str(result.get("PrimaryDocNumber") or "")
-        parsed = parser.parse(number)
-        raw_names = str(result.get("Names") or "")
-        names = tuple(part for part in raw_names.replace("<br/>", "|").split("|") if part)
-        raw_code = str(result.get("FilingCode") or "")
-        if raw_code.isdigit():
-            code, label = raw_code, FILING_NAMES.get(raw_code, "")
-        else:
-            code, label = "", raw_code.replace("<br/>", "; ")
-        recorded = _index_date(str(result.get("DocumentDate") or ""))
-        if recorded is None and parsed is not None:
-            recorded = parsed.recorded
-        found.append(
-            IndexedInstrument(
-                number=number,
-                recorded=recorded,
-                sequence=parsed.sequence if parsed else "",
-                filing_code=code,
-                filing_name=label,
-                names=names,
-                internal_id=str(result.get("ID") or ""),
-            )
-        )
-    return tuple(found)
-
-
-def index_parties(payload: dict | None) -> tuple[IndexParty, ...]:
-    rows = (payload or {}).get("NamesForPagination") or []
-    return tuple(
-        IndexParty(
-            str(row.get("Fullname") or ""),
-            str(row.get("NameTypeDesc") or ""),
-            str(row.get("CrossRefDocNumber") or ""),
-        )
-        for row in rows
-    )
-
-
-def _index_date(value: str) -> date | None:
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-    return None
-
-
-def _open_session(getter) -> IndexSession | None:
-    payload = getter(SECURE_URL, {}, None)
-    if not payload or not payload.get("EncryptedKey"):
-        return None
-    return IndexSession(str(payload["EncryptedKey"]), str(payload.get("Password") or ""))
-
-
-def _index_get(url: str, params: dict[str, str], headers: dict[str, str] | None) -> dict | None:
-    target = url + ("?" + urlencode(params) if params else "")
-    sent = {
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://recordersdocumentindex.saccounty.gov/",
-    }
-    sent.update(headers or {})
-    request = Request(target, headers=sent)
-    with urlopen(request, timeout=30) as response:
-        body = response.read().decode("utf-8").strip()
-    if not body or body == "null":
-        return None
-    parsed = json.loads(body)
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _search_params(
-    recorder: SacramentoCountyRecorder,
-    *,
-    number: str = "",
-    number_to: str = "",
-    filing: Filing | DocType | None = None,
-    name: str = "",
-    start: int = 0,
-    rows: int = 10,
-    after: date | None = None,
-    before: date | None = None,
-) -> dict[str, str]:
-    params = {
-        "DocumentClass": "OfficialRecords",
-        "IsBasicSearch": "false",
-        "ProfileID": "Public",
-        "NameTypeID": "0",
-        "StartRow": str(start),
-        "Rows": str(rows),
-        "LastName": name,
-        "DocNumberFrom": "",
-        "DocNumberTo": "",
-        "FilingCode": "",
-    }
-    if after is not None:
-        params["MinRecordedDate"] = after.strftime("%m/%d/%Y")
-    if before is not None:
-        params["MaxRecordedDate"] = before.strftime("%m/%d/%Y")
-    if number:
-        params["DocNumberFrom"] = number
-        params["DocNumberTo"] = number_to or number
-        parsed = recorder.parse(number)
-        if parsed is not None and (not number_to or number_to == number):
-            stamp = parsed.recorded.strftime("%m/%d/%Y")
-            params["MinRecordedDate"] = stamp
-            params["MaxRecordedDate"] = stamp
-    if filing is not None:
-        params["FilingCode"] = filing.code if isinstance(filing, DocType) else filing.value
-    return params
