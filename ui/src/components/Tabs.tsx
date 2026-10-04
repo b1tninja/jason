@@ -6,7 +6,8 @@ export interface TabSpec {
   content: ReactNode;
 }
 
-export function Tabs({ tabs, active, onChange }: { tabs: TabSpec[]; active: string; onChange: (id: string) => void }) {
+/** `panelHidden` hides the panel and keeps its content mounted, so what a person typed in it survives (a collapsed sheet). */
+export function Tabs({ tabs, active, onChange, panelHidden }: { tabs: TabSpec[]; active: string; onChange: (id: string) => void; panelHidden?: boolean }) {
   const base = useId();
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
   return (
@@ -25,7 +26,7 @@ export function Tabs({ tabs, active, onChange }: { tabs: TabSpec[]; active: stri
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`${base}-panel`} aria-labelledby={current && `${base}-${current.id}`}>
+      <div role="tabpanel" id={`${base}-panel`} aria-labelledby={current && `${base}-${current.id}`} hidden={panelHidden || undefined}>
         {current?.content}
       </div>
     </div>

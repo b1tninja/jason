@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { getJson } from "../lib/api";
 import { useAccount, useMe } from "../lib/session";
+import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { Badge } from "./Badge";
 import { Command } from "./Command";
 import { Confirm } from "./Confirm";
@@ -342,6 +343,14 @@ export interface HostPanelProps {
   onMinutes?: (letter: MinutesLetter) => Promise<string | void>;
   /** The wordmark's legal name, for the minutes' sign-off. */
   legal?: string;
+  /** A bottom sheet for a phone: a grab handle, the tab row always shown, and the tab's body scrolling. `"auto"` is a
+   * sheet under 720px (`PHONE_QUERY`). Default: the panel beside the stage. */
+  sheet?: boolean | "auto";
+  /** Whether the sheet is open, when the caller holds it; without it the sheet holds its own state and starts collapsed.
+   * Collapsed, it shows the handle and the tabs; tapping a tab opens it. Ignored when the panel is not a sheet. */
+  open?: boolean;
+  /** Called with the sheet's new state (the handle, or a tab tapped while collapsed). */
+  onOpenChange?: (open: boolean) => void;
 }
 
 const hhmm = (iso: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
@@ -409,9 +418,17 @@ function ExecutiveLog({ data }: { data: MeetingRoomData }) {
   );
 }
 
-/** The host's side of the room: six tabs that read the loader's data and send each change through `onAction`, behind `Confirm`. */
-export function HostPanel({ room: data, onAction, busy, me, shown = {}, onShow, forum, onMinutes, legal = "the association" }: HostPanelProps) {
+/** The host's side of the room: six tabs that read the loader's data and send each change through `onAction`, behind `Confirm`.
+ * As a sheet, collapsing it hides the body without unmounting it, so a drafted motion or an unrecorded roll call survives. */
+export function HostPanel({ room: data, onAction, busy, me, shown = {}, onShow, forum, onMinutes, legal = "the association", sheet = false, open, onOpenChange }: HostPanelProps) {
   const [tab, setTab] = useState("agenda");
+  const narrow = useMediaQuery(PHONE_QUERY, sheet === "auto");
+  const asSheet = sheet === true || (sheet === "auto" && narrow);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isOpen = open ?? ownOpen;
+  const setOpen = (next: boolean) => { if (open === undefined) setOwnOpen(next); onOpenChange?.(next); };
+  const bodyShown = !asSheet || isOpen;
+  const pick = (id: string) => { setTab(id); if (asSheet && !isOpen) setOpen(true); };
   const r = data.room;
   const item = data.items[Math.min(r.current, data.items.length - 1)];
   const canWrite = !busy && !!me.trim();
@@ -420,8 +437,9 @@ export function HostPanel({ room: data, onAction, busy, me, shown = {}, onShow, 
   const acting: MeetingRoomData = r.executive.active ? { ...data, room: sessionRoom(data) } : data;
   const held = r.executive.active && !data.executive?.record;
   return (
-    <aside className="hostpanel" aria-label="Host panel">
-      <Tabs active={tab} onChange={setTab} tabs={[
+    <aside className={asSheet ? "hostpanel hostpanel-sheet" : "hostpanel"} aria-label="Host panel" data-open={asSheet ? String(isOpen) : undefined}>
+      {asSheet && <button type="button" className="hostpanel-handle" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>{isOpen ? "Hide the panel" : "Host panel"}</button>}
+      <Tabs active={tab} onChange={pick} panelHidden={!bodyShown} tabs={[
         { id: "agenda", label: "Agenda", content: <AgendaTab data={data} item={item} onAction={onAction} canWrite={canWrite} shown={shown} onShow={onShow} forum={forum} onMotion={() => setTab("motion")} /> },
         { id: "motion", label: "Motion", content: held ? <ExecutiveLog data={data} /> : <MotionTab key={`${item?.id}:${r.executive.active}`} data={acting} item={item} onAction={onAction} canWrite={canWrite} onFloor={() => setTab("roll")} /> },
         { id: "roll", label: "Roll call", content: <RollTab key={`${item?.id}:${motionFor(acting.room, item)?.id ?? ""}`} data={acting} item={item} onAction={onAction} canWrite={canWrite} /> },
@@ -429,7 +447,7 @@ export function HostPanel({ room: data, onAction, busy, me, shown = {}, onShow, 
         { id: "minutes", label: "Minutes", content: <MinutesTab data={data} onAction={onAction} canWrite={canWrite} onMinutes={onMinutes} legal={legal} /> },
         { id: "zoom", label: "Zoom", content: <ZoomTab data={data} item={item} onAction={onAction} canWrite={canWrite} /> },
       ]} />
-      {needName}
+      {bodyShown && needName}
     </aside>
   );
 }

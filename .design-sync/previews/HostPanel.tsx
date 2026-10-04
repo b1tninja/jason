@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HostPanel, type MeetingRoomData } from "jason-ui";
 
 // The panel keeps its tab in state and takes no active-tab prop, so a cell for another tab clicks that tab once after
@@ -88,6 +88,17 @@ export const Minutes = () => <OnTab tab="Minutes" data={room()} />;
 
 /** Packet: the current item's files with their kind badges and a Show on stage link each. */
 export const Packet = () => <OnTab tab="Packet" data={room()} />;
+
+/** On a phone: the bottom sheet, open on Agenda; the handle ("Hide the panel") collapses it to the handle and the tab row,
+ * and a tab opens it. The frame's transform holds the fixed sheet inside a 375px cell. */
+export const Sheet = () => {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ position: "relative", width: 375, height: 560, transform: "translateZ(0)", overflow: "hidden" }}>
+      <HostPanel sheet open={open} onOpenChange={setOpen} room={room()} onAction={async () => true} me="F. Marsh" legal="Juniper Court Homeowners Association" shown={{}} onShow={() => {}} />
+    </div>
+  );
+};
 
 /** No name entered: the warn notice under the tabs; every entry waits for who is recording. */
 export const NoRecorder = () => {

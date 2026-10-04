@@ -3,6 +3,7 @@ import { Badge, Caveats, Confirm, HostPanel, MeetingStage, RemoteView } from "..
 import { forumLine, motionFor, type AgendaItem, type MeetingRoomData, type MinutesLetter, type PacketFile, type StageContent } from "../components/MeetingStage";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
+import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 
 /** The query after the view's hash: `#/meeting-room?audience=owner&date=2026-10-21`. */
 export function hashQuery(): URLSearchParams {
@@ -89,6 +90,8 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
   const [running, setRunning] = useState(false);
   const [speakers, setSpeakers] = useState(0);
   const [full, setFull] = useState(false);
+  // On a phone the host panel is a bottom sheet, and Previous and Next stay in a sticky row under the stage.
+  const phone = useMediaQuery(PHONE_QUERY);
   const stageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!running) return;
@@ -168,7 +171,7 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
           return <Confirm busy={busy || !me.trim()} onConfirm={() => run(steps)} summary={<p>This will {steps.map((s) => s.says).join(", then ")}.</p>}>{label}</Confirm>;
         };
         return (
-          <div className="stack room">
+          <div className={phone && vw === "host" && !owner ? "stack room room-sheeted" : "stack room"}>
             <header className="room-head">
               <div>
                 <h1>Meeting room</h1>
@@ -207,7 +210,7 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
                   progress={d.items.length ? (idx + 1) / d.items.length : 0} live={owner || vw === "shared"} time={item?.allot ? `${item.allot} min` : undefined}
                   audience={owner ? "owner" : "board"} />
                 {!owner && (
-                  <div className="room-nav">
+                  <div className={phone ? "room-nav room-nav-sticky" : "room-nav"} {...(phone ? { role: "group", "aria-label": "Previous and next item" } : {})}>
                     {move(idx - 1, "← Previous")}
                     <span className="muted">{idx + 1} of {d.items.length} · {item?.label}</span>
                     {move(idx + 1, "Next item →")}
@@ -215,7 +218,7 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
                 )}
               </div>
               {vw === "host" && !owner && (
-                <HostPanel room={d} onAction={doAct} busy={busy} me={me} shown={shown} onShow={(s) => setShown({ ...shown, ...s })} legal={legal} onMinutes={minutes}
+                <HostPanel sheet="auto" room={d} onAction={doAct} busy={busy} me={me} shown={shown} onShow={(s) => setShown({ ...shown, ...s })} legal={legal} onMinutes={minutes}
                   forum={{ running, left, speakers, onToggle: () => { if (!running) setForumLeft(left); setRunning(!running); }, onReset: () => { setRunning(false); setForumLeft(null); }, onNextSpeaker: () => { setRunning(false); setForumLeft(null); setSpeakers(speakers + 1); } }} />
               )}
             </div>

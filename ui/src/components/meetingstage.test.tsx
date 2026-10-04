@@ -318,3 +318,98 @@ describe("The executive session in the host panel", () => {
     expect(generalNote(["a title", ""])).toBe("");
   });
 });
+
+// -- the host panel as a bottom sheet (a phone) ----------------------------------------------------------------------------
+
+/** jsdom has no matchMedia: a stand-in answering every query with `matches`. */
+function phoneWidth(matches: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches, media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() })));
+}
+
+describe("HostPanel as a sheet", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("starts collapsed: the handle and the six tabs, the body hidden", () => {
+    render(<HostPanel sheet room={roomData()} onAction={vi.fn(async () => true)} me="" />);
+    const panel = screen.getByLabelText("Host panel", { selector: "aside" });
+    expect(panel).toHaveClass("hostpanel-sheet");
+    expect(panel).toHaveAttribute("data-open", "false");
+    expect(screen.getByRole("button", { name: "Host panel" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Agenda", "Motion", "Roll call", "Packet", "Minutes", "Zoom"]);
+    expect(screen.getByRole("tabpanel", { hidden: true })).not.toBeVisible();
+    expect(screen.queryByText(/Enter who is recording/)).not.toBeInTheDocument();
+  });
+
+  it("opens on a tab tap, to that tab", async () => {
+    const user = userEvent.setup();
+    render(<HostPanel sheet room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    await user.click(screen.getByRole("tab", { name: "Roll call" }));
+    expect(screen.getByRole("button", { name: "Hide the panel" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("tab", { name: "Roll call" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toBeVisible();
+    expect(screen.getByLabelText("D. Okafor attendance")).toBeInTheDocument();
+  });
+
+  it("opens and closes on the handle, keeping a drafted motion while collapsed", async () => {
+    const user = userEvent.setup();
+    render(<HostPanel sheet room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    await user.click(screen.getByRole("button", { name: "Host panel" }));
+    expect(screen.getByRole("tabpanel")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "Motion" }));
+    const text = screen.getByRole("textbox", { name: "Motion" });
+    await user.clear(text);
+    await user.type(text, "Move to continue this item.");
+    await user.click(screen.getByRole("button", { name: "Hide the panel" }));
+    expect(screen.getByRole("tabpanel", { hidden: true })).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Host panel" }));
+    expect(screen.getByRole("textbox", { name: "Motion" })).toHaveValue("Move to continue this item.");
+  });
+
+  it("honours a controlled `open`: reports the change and waits for the caller", async () => {
+    const onOpenChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(<HostPanel sheet open={false} onOpenChange={onOpenChange} room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    await user.click(screen.getByRole("button", { name: "Host panel" }));
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByRole("button", { name: "Host panel" })).toHaveAttribute("aria-expanded", "false");   // the caller has not opened it
+    await user.click(screen.getByRole("tab", { name: "Zoom" }));
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    rerender(<HostPanel sheet open onOpenChange={onOpenChange} room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    expect(screen.getByRole("tab", { name: "Zoom" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Hide the panel" }));
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("is a sheet under 720px with `auto`, and beside the stage otherwise", () => {
+    phoneWidth(true);
+    const { unmount } = render(<HostPanel sheet="auto" room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    expect(screen.getByRole("button", { name: "Host panel" })).toBeInTheDocument();
+    expect(window.matchMedia).toHaveBeenCalledWith("(max-width: 719px)");
+    unmount();
+    phoneWidth(false);
+    render(<HostPanel sheet="auto" room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    expect(screen.queryByRole("button", { name: "Host panel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toBeVisible();
+  });
+
+  it("leaves the desktop panel as it was: no handle, no sheet state, the body shown", () => {
+    phoneWidth(true);   // a narrow window does not make a sheet unless asked
+    render(<HostPanel room={roomData()} onAction={vi.fn(async () => true)} me="" />);
+    const panel = screen.getByLabelText("Host panel", { selector: "aside" });
+    expect(panel).toHaveAttribute("class", "hostpanel");
+    expect(panel).not.toHaveAttribute("data-open");
+    expect(screen.queryByRole("button", { name: /Host panel|Hide the panel/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toBeVisible();
+    expect(screen.getByText(/Enter who is recording/)).toBeInTheDocument();
+  });
+
+  it("keeps the executive session held in the sheet: the held line, never the record", async () => {
+    const user = userEvent.setup();
+    render(<HostPanel sheet room={inSession(false)} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    expect(document.body.textContent).not.toContain(SECRET_TITLE);
+    await user.click(screen.getByRole("tab", { name: "Motion" }));
+    expect(screen.getByText(EXECUTIVE_HELD)).toBeVisible();
+    expect(document.body.textContent).not.toContain(SECRET_TITLE);
+  });
+});

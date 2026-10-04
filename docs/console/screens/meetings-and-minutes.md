@@ -132,6 +132,13 @@ Civil Code 4935(e), as stored on disk: "Any matter discussed in executive sessio
 - **The members' stage** shows the hold card for as long as the room is in executive session, with the general note only.
 - **Room files written before the record was kept apart** are not rewritten: `python -m jason.tasks.meeting_room --check-executive DATE` (or `all`) counts the open entries that fall inside an executive window, never their text, for a person to decide what to do.
 
+## The meeting room on a phone
+
+- **Under 720px** the host panel is a bottom sheet (`HostPanel sheet="auto"`): a grab handle ("Host panel" / "Hide the panel"), the tab row, then the scrolling body. It starts collapsed to the handle and the tabs; a tab tap opens it. Collapsing keeps the tab's draft (a motion's text, an unrecorded roll call).
+- **The stage stays on top.** Previous and Next sit in a sticky row under it with 44px targets, above the collapsed sheet, so a director advances without opening the sheet. Each still goes through its confirm.
+- **Nothing else changes:** the same tabs, confirms, executive-session hold, and private view as at desktop width.
+- **Serving the console to a phone is a deployment decision, not a layout one.** jason-web binds 127.0.0.1 until sign-in and the access policy allow more ([security-and-privacy.md](../security-and-privacy.md)).
+
 ## The meeting room's rules: quorum, vote, recusal, open forum
 
 The room counts by the profile's `BoardRule` and policies, never by jason. The loader's `rules` (`meeting_room.board_rules`) gives each with its source: the bylaws' provision, its words recited from disk (`jason cite`), or counsel's reading, labeled as a reading. A rule not on file says "not on file; ask counsel", with what the room counts meanwhile, labeled.

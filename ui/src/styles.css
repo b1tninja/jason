@@ -346,6 +346,20 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .seg { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; } .seg button { border: 0; border-radius: 999px; padding: 4px 12px; font-size: 13px; white-space: nowrap; background: transparent; color: var(--muted); } .seg button[aria-checked="true"] { background: var(--ink); color: var(--panel); } .seg button[aria-pressed="true"] { outline: none; }
 .room-body { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; } .room-stage { flex: 3 1 560px; min-width: 0; display: grid; gap: 10px; } .room-shared .room-stage { flex: 1 1 100%; }
 .room-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; } .room-nav .confirm { flex: 1 1 auto; }
+/* The meeting room on a phone: the host panel as a bottom sheet (`HostPanel sheet`), a grab handle and the tab row always
+   shown, the tab's body scrolling; collapsed, the body is hidden (kept mounted). Previous and Next stay in a sticky row
+   with 44px targets, above the collapsed sheet, so a director advances without opening it. */
+:root .hostpanel.hostpanel-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-height: 78vh; max-height: 78dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-radius: 12px 12px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 -12px 32px -16px rgba(0,0,0,.4); }
+.hostpanel-sheet > div { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.hostpanel-sheet [role="tabpanel"] { overflow: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+:root .hostpanel-sheet .tabs button { min-height: 44px; }
+:root button.hostpanel-handle { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; min-height: 44px; padding: 8px 14px 6px; border: 0; border-radius: 0; background: none; color: var(--muted); font-size: 12px; }
+.hostpanel-handle::before { content: ""; width: 40px; height: 4px; border-radius: 2px; background: var(--rule, var(--line)); }
+@media (max-width: 719px) {
+  .room-sheeted { padding-bottom: 112px; }
+  .room-nav-sticky { position: sticky; top: 0; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 5; background: var(--bg); padding: 6px 0; }
+  .room-nav-sticky button { min-height: 44px; min-width: 44px; }
+}
 
 /* == section: Dock + drawers (agent D) == */
 .dock { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXEC_ITEM, SECRET_TITLE, roomData } from "./meetingroom.fixture";
@@ -40,6 +40,35 @@ describe("MeetingRoomView", () => {
     expect(posted[1]).toMatchObject({ by: "S. Clerk", item: 1, directors: data.directors });
     expect(await screen.findByRole("heading", { name: "Open forum" })).toBeInTheDocument();
     expect(screen.getByText("The chair runs the meeting.")).toBeInTheDocument();
+  });
+
+  it("on a phone: Previous and Next in a sticky row under the stage, and the host panel as a collapsed sheet", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: query === "(max-width: 719px)", media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() })));
+    mockFetch({ "/api/meeting-room": () => roomData() });
+    const user = userEvent.setup();
+    const { container } = render(<MeetingRoomView />);
+    expect(await screen.findByRole("heading", { name: "Renew the landscape contract" })).toBeInTheDocument();
+    const nav = screen.getByRole("group", { name: "Previous and next item" });
+    expect(nav).toHaveClass("room-nav", "room-nav-sticky");
+    expect(nav.previousElementSibling).toBe(screen.getByRole("region", { name: "Meeting stage" }));
+    expect(within(nav).getByRole("button", { name: "← Previous" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Next item →" })).toBeInTheDocument();
+    expect(container.querySelector(".room")).toHaveClass("room-sheeted");
+    const handle = screen.getByRole("button", { name: "Host panel" });
+    expect(handle).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("tab", { name: "Packet" }));
+    expect(screen.getByRole("button", { name: "Hide the panel" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("at desktop width: the row and the panel as before", async () => {
+    mockFetch({ "/api/meeting-room": () => roomData() });
+    const { container } = render(<MeetingRoomView />);
+    expect(await screen.findByRole("heading", { name: "Renew the landscape contract" })).toBeInTheDocument();
+    expect(container.querySelector(".room-nav")).toHaveAttribute("class", "room-nav");
+    expect(screen.queryByRole("group", { name: "Previous and next item" })).not.toBeInTheDocument();
+    expect(container.querySelector(".room")).toHaveAttribute("class", "stack room");
+    expect(screen.queryByRole("button", { name: "Host panel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toBeVisible();
   });
 
   it("gives members the stage alone with a live badge when the hash says audience=owner", async () => {
