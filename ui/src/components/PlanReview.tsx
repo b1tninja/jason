@@ -15,7 +15,7 @@ import { Recitation, type Citation } from "./Recitation";
 import { SecondConfirm } from "./SecondConfirm";
 import { WriteRow } from "./WriteRow";
 import {
-  cleanName, commands, decidable, evidenceText, groupItems, isApprovable, needsSecond, personName, plural, SECTIONS, short, signerProblem, staleness,
+  cleanName, commands, decidable, groupItems, isApprovable, needsSecond, personName, plural, SECTIONS, short, signerProblem, staleness,
   STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type DecideBody, type PlanItem, type Recheck, type SignBody,
 } from "../lib/approvals";
 
@@ -129,7 +129,7 @@ export function PlanReview({
           {a.second && <> · confirmed by {personName(a.second.name)}</>}
         </p>
         {a.clock?.due && <p>Clock: {a.clock.what} <DueDate iso={a.clock.due} today={today} /></p>}
-        <Evidence items={(a.evidence ?? []).map(evidenceText)} label="Read from" />
+        <Evidence items={a.evidence} label="Read from" approval={a.id} level={3} />
         {a.supersedes && <p className="muted">Supersedes <code className="chip">{a.supersedes}</code>; earlier decisions are hints, not counted.</p>}
       </header>
 
@@ -185,7 +185,7 @@ export function PlanReview({
                     </div>
                     {items.map((i) => (
                       <WriteRow key={i.id} item={i} selectable={live} checked={selected.includes(i.id)} onToggle={toggle}
-                        waits={by(i)} rule={rule(i)} labelledBy={gid} />
+                        waits={by(i)} rule={rule(i)} labelledBy={gid} approval={a.id} />
                     ))}
                   </div>
                 );

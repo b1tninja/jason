@@ -3,7 +3,8 @@
 - **Reads.** ``GET /api/approvals`` is the ``approvals`` loader: the letters inbox it always served
   (``jason.web.extra.approvals``) with the engine's approvals beside it under ``approvals`` (``?status=``, ``?kind=``);
   ``?key=`` is still one letter. ``GET /api/approvals/<id>`` is the Approval JSON as the engine stores it
-  (``approval.schema.json``); ``GET /api/approvals/audit`` the log (``?approval=``, ``?verify=1``).
+  (``approval.schema.json``); ``GET /api/approvals/audit`` the log (``?approval=``, ``?verify=1``);
+  ``GET /api/evidence?address=&approval=`` one evidence address opened from disk (``jason.approvals.evidence``).
 - **Check.** ``POST /api/approvals/<id>/check`` re-plans live and compares, writing nothing (``engine.check``, the
   CLI's ``apply ID`` without ``--yes``). A POST, not a GET: it signs in to PayHOA and reads it, which a link, a
   prefetch, or another site's ``<img>`` must never set off, so it sits behind the write guard and the token header.
@@ -139,6 +140,19 @@ def audit_log(args: Args) -> dict[str, Any]:
     return out
 
 
+def evidence(args: Args) -> dict[str, Any]:
+    """``GET /api/evidence?address=...&approval=...``: what jason holds on disk of an evidence address, with the
+    commands that read it again. Nothing is read live; contact details are masked by the resolver and again here."""
+    from jason.approvals.evidence import resolve
+
+    out = resolve(args.get("address", ""), approval_id=args.get("approval", "").strip())
+    texts = [s.get("text", "") for s in out["sources"]]                # recited words are quoted as stored
+    out = mask(out)
+    for s, text in zip(out["sources"], texts):
+        s["text"] = text
+    return out
+
+
 def _item(i: Any) -> dict[str, Any]:
     return {"id": i.id, "op": i.op, "target": i.target, "label": i.label, "value": i.value,
             "change": i.change.text() if i.change else ""}
@@ -214,6 +228,12 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
     @bp.get("/api/approvals/<ident>")
     def show_route(ident: str):
         return _answer(lambda: show(ident))
+
+    @bp.get("/api/evidence")
+    def evidence_route():
+        """An evidence address opened from disk (``jason.approvals.evidence.resolve``): ``?address=`` and, optionally,
+        ``?approval=`` for the plan's own read. Reads only; a miss is 200 with ``found: false``."""
+        return _answer(lambda: evidence(request.args.to_dict()))
 
     @bp.get("/api/approvals/<ident>/check")
     @bp.get("/api/approvals/<ident>/apply")
@@ -323,4 +343,4 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
     return bp
 
 
-__all__ = ["CAVEAT", "approvals", "audit_log", "blueprint", "default_live", "mask", "plans", "show"]
+__all__ = ["CAVEAT", "approvals", "audit_log", "blueprint", "default_live", "evidence", "mask", "plans", "show"]

@@ -1,4 +1,4 @@
-import { Evidence } from "jason-ui";
+import { Evidence, EvidencePanel } from "jason-ui";
 
 /** What a board item cites: a recorded instrument, a Drive path, and the command that produced the figure. */
 export const BoardItemEvidence = () => (
@@ -36,6 +36,78 @@ export const WrappedInNarrowColumn = () => (
         "Assessor parcel 123-456-789-0000",
         "PayHOA ledger, unit 207",
       ]}
+    />
+  </div>
+);
+
+/** A plan's evidence: a ref with an address is a chip that opens what jason stored; one without stays a plain chip. */
+export const OpenableRefs = () => (
+  <Evidence
+    label="Read from"
+    approval="owner-info-tags-0001"
+    items={[
+      { label: "PayHOA request 1234", address: "payhoa:submission:1234" },
+      { label: "Declaration § 7.3", address: "jason://decl/7.3" },
+      { label: "Unit 12 ledger" },
+    ]}
+  />
+);
+
+/** The panel opened on a PayHOA request: changed since the plan was read, its fields (one masked), the link, the command
+ * that reads it again, and the caveat. Rendered from `data`, so nothing is fetched. */
+export const Opened = () => (
+  <div style={{ maxWidth: 560 }}>
+    <EvidencePanel
+      address="payhoa:submission:1234"
+      level={4}
+      today={new Date("2099-10-03T12:00:00")}
+      data={{
+        found: true, address: "payhoa:submission:1234", label: "PayHOA request 1234", kind: "payhoa_submission",
+        changed: true, changedNote: "The mailing address answer differs from the one the plan read.",
+        sources: [{
+          name: "PayHOA request export", readAt: "2099-09-30T18:38:00+00:00", digest: "3f9a02c1d4e7aa", text: "", citation: "", caveat: "", note: "",
+          fields: [
+            { name: "Owner", value: "Jane Doe", masked: false },
+            { name: "Mailing address", value: "123 Main St", masked: false },
+            { name: "Email", value: "j***@example.com", masked: true },
+          ],
+        }],
+        link: "https://app.payhoa.example/requests/1234",
+        refresh: [{ command: "jason sync-catalog --requests", live: true, what: "Reads the requests again", system: "PayHOA" }],
+        caveats: ["A stored copy is what jason read then, not the record now."], note: "",
+      }}
+    />
+  </div>
+);
+
+/** The panel opened on a citation: the stored words recited, then the citation and its caveat. */
+export const OpenedCitation = () => (
+  <div style={{ maxWidth: 560 }}>
+    <EvidencePanel
+      address="jason://decl/7.3"
+      data={{
+        found: true, address: "jason://decl/7.3", label: "Declaration § 7.3", kind: "citation", changed: false, changedNote: "",
+        sources: [{
+          name: "Declaration", readAt: "", digest: "", fields: [], note: "",
+          text: "No owner shall keep more than two pets in a unit.", citation: "Declaration § 7.3",
+          caveat: "jason's consolidated text, not an official restatement. The recorded instrument governs.",
+        }],
+        link: "", refresh: [{ command: "jason cite jason://decl/7.3", live: false, what: "Recites the stored words" }], caveats: [], note: "",
+      }}
+    />
+  </div>
+);
+
+/** A miss: the note and the command that fills it, never an empty box. */
+export const OpenedMiss = () => (
+  <div style={{ maxWidth: 560 }}>
+    <EvidencePanel
+      address="payhoa:submission:9999"
+      data={{
+        found: false, address: "payhoa:submission:9999", label: "PayHOA request 9999", kind: "payhoa_submission", changed: null, changedNote: "",
+        sources: [], link: "", caveats: [], note: "No PayHOA request 9999 on disk.",
+        refresh: [{ command: "jason sync-catalog --requests", live: true, what: "Reads the requests", system: "PayHOA" }],
+      }}
     />
   </div>
 );

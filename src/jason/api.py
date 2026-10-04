@@ -33,6 +33,7 @@ from jason.mcp.governance import (
     document_conflicts,
     document_duties,
     embedded_copies,
+    evidence,
     governance_digest,
     intake_questions,
     living_document,

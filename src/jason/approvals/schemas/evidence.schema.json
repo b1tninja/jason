@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jason.local/schemas/approvals/evidence.schema.json",
+  "title": "Evidence",
+  "description": "One evidence address opened from disk (jason.approvals.evidence.resolve; GET /api/evidence; the jason-mcp evidence tool). Nothing is read live: each copy says when it was read, and refresh names the commands that read it again. A miss is found false with a note, never an error.",
+  "type": "object",
+  "required": ["found", "address", "label", "kind", "sources", "changed", "changedNote", "link", "refresh", "caveats", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "found": {"type": "boolean"},
+    "address": {"type": "string"},
+    "label": {"type": "string"},
+    "kind": {"enum": ["payhoa_submission", "citation", "board_item", "command", "unknown"]},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "readAt", "digest", "fields", "text", "citation", "caveat", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"enum": ["This plan's read", "PayHOA catalog", "Request files", "Statutes on disk", "Documents on disk", "Board items"]},
+          "readAt": {"type": "string", "description": "When this copy was read or synced (ISO 8601); empty when unknown."},
+          "digest": {"type": "string", "description": "sha256 of what was read; empty when not comparable."},
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "value", "masked"],
+              "additionalProperties": false,
+              "properties": {"name": {"type": "string"}, "value": {"type": "string"}, "masked": {"type": "boolean"}}
+            }
+          },
+          "text": {"type": "string", "description": "A citation's words, quoted from disk, never paraphrased; else empty."},
+          "citation": {"type": "string"},
+          "caveat": {"type": "string"},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "changed": {"type": ["boolean", "null"], "description": "The plan's read against a later local copy, where comparable; null when it cannot tell."},
+    "changedNote": {"type": "string"},
+    "link": {"type": "string", "description": "The original, where jason can build a link to it; else empty."},
+    "refresh": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "live", "what", "system"],
+        "additionalProperties": false,
+        "properties": {
+          "command": {"type": "string"},
+          "live": {"type": "boolean", "description": "Running it reads an outside system."},
+          "what": {"type": "string"},
+          "system": {"type": "string", "description": "The outside system a live command reads (PayHOA, Google); empty when live is false."}
+        }
+      }
+    },
+    "caveats": {"type": "array", "items": {"type": "string"}},
+    "note": {"type": "string", "description": "Why something is a miss, and the command that fills it."}
+  }
+}

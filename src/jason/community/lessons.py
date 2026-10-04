@@ -785,6 +785,17 @@ LESSONS: tuple[Lesson, ...] = (
            "The plan reads once through a wrapper that also refuses any write while planning, and the triage reuses it.",
            Status.FIXED, guards=("owner_info_apply.ReadOnce", "owner_responses.contexts(live=...)",
                                  "tests/test_approvals.py")),
+    Lesson("plan-evidence-kept-no-copy", OCT_2026, (Area.OWNER_INFO, Area.GOVERNING),
+           "An approval's evidence named a PayHOA request by its address only. The plan read the request live and kept "
+           "no copy, so the console could print the address but never show what the plan had read.",
+           "Evidence was designed as a pointer to a source jason holds on disk, and the owner-information plan's "
+           "source (the form's submissions) is read live with no store behind it. A sidecar beside each approval "
+           "would also have been listed as an approval: the store's glob took any apr-*.json.",
+           "The plan keeps what it read beside the approval (<id>.evidence.json, written with the plan under the store "
+           "lock), each request's evidence carries its read time and digest, and the evidence resolver opens every "
+           "address from disk with the commands that read it again. The store lists only ids with no dot.",
+           Status.FIXED, guards=("jason.approvals.evidence", "store.ids", "tests/test_evidence.py"),
+           docs=("docs/console/approval-workflow.md (Evidence you can open)",)),
     Lesson("approvals-store-location", OCT_2026, (Area.GOVERNING,),
            "The console spec puts approvals in a SQLite store under the console's folder; the engine as built keeps one "
            "JSON file per approval and an append-only audit log in the profile's data folder.",

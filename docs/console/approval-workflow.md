@@ -281,9 +281,28 @@ class Approval:
 
 **Held items and items for a person** are items with their class set. They are stored, shown in their own sections, and counted. They are never decided: `decide` refuses them by name ("held for the board (board item …): never approvable"). Keeping them in the record means the approval is the full picture a person reviewed, not just the writes.
 
-**Evidence.** The planner attaches its evidence as `{label, address}`: the PayHOA submission, the rule as a citation, the board item, the ledger row. A label is a name and a tag at most; an email address in any field is masked before the record or the log is written.
+**Evidence.** The planner attaches its evidence as `{label, address}`: the PayHOA submission, the rule as a citation, the board item, the ledger row. A record the plan read live also carries `readAt` and `digest` (what was read, as a sha256), and the plan keeps what it read beside the approval ([Evidence you can open](#evidence-you-can-open)). A label is a name and a tag at most; an email address in any field is masked before the record or the log is written.
 
 **Secrets.** The planner refuses an item whose value `intake.secret_reason` flags, and an approvable item with no basis ("an apply could not tell whether it changed").
+
+### Evidence you can open
+
+An evidence address resolves back to the record from disk (`jason.approvals.evidence.resolve`; `GET /api/evidence?address=...&approval=...` in jason-web, the `evidence` tool in jason-mcp's governance profile). **Nothing is read live when evidence is opened:** each copy jason holds is listed with when it was read, and the commands that read it again are offered beside it, each marked `live` with the system it reads.
+
+| Address | What it reads | Refresh |
+|---|---|---|
+| `payhoa:submission:N` | **This plan's read**: the request's status and answers as the plan read them, from `data/approvals/<id>.evidence.json`. **PayHOA catalog**: the `requests` row as last synced. **Request files**: the counts of the comments, internal notes, and attachments saved in `payhoa-files/requests/N/` | `jason approvals apply ID` (re-reads PayHOA and compares, writing nothing), `jason sync-catalog --only requests`, `jason sync-request-files --requests N`: all live |
+| a citation (`CIV 4041`, `decl#6.2(a)`) | The words recited from disk (`jason cite`), with the version in force and their caveat; never a paraphrase | `jason export-authorities` (the statutes, from lawlibrary) |
+| `board-item:ID` | The item in `data/board/items.json`; an executive-session item's summary and notes are held back | `jason board`; `jason board --sheet` (Google) |
+| `jason ...` | Nothing: the command is what produced the evidence | the command itself |
+
+Which reader answers is the first rule row whose matcher takes the address (`evidence.RULES`); an address none takes is `found: false`, kind `unknown`, with the reason. A copy that is not on disk is left out of `sources`, and `note` names the command that fills it.
+
+**The snapshot.** The owner-information plan reads PayHOA's form submissions live and keeps no other copy, so the planner keeps one: each request its evidence names, with its status, unit, and answers (each answer flagged P2 when it is an owner's contact detail or reported occupancy), stamped with the plan's read time and the same digest the item's evidence carries. The engine writes it beside the approval under the store lock, once, when the plan is stored; a re-plan's snapshot goes with the new approval. An approval made before snapshots, or one whose kind reads nothing live, has none, and its evidence still opens from the other copies.
+
+**Changed.** `changed` compares the plan's read with a later local copy where the two can be compared: the catalog's status, when it was synced after the plan. `true` or `false` with `changedNote`; `null` when it cannot tell (no later copy, or the catalog was synced first). Whether the request changed in PayHOA since is what `jason approvals apply ID` answers.
+
+**Privacy.** The snapshot holds answers as read (P2, as the catalog does). An owner's email, phone, and mailing address, and an answer flagged P2, are masked by the server before they leave it (`masked: true`); a citation's words are quoted as stored. The response's caveats include "Evidence, not a finding."
 
 ### Fingerprints
 
@@ -578,9 +597,10 @@ An approval or an item can be named by a unique prefix (at least 6 characters fo
 
 ### MCP (built)
 
-`jason-mcp` stays a reader of disk that never calls PayHOA, Google, or Keeper (AGENTS.md). The `governance` profile serves two read-only tools:
+`jason-mcp` stays a reader of disk that never calls PayHOA, Google, or Keeper (AGENTS.md). The `governance` profile serves three read-only tools:
 - `approvals_list(status, kind)`: each approval's id, kind, status, counts by class, how many approved, and who asked;
-- `approval_show(id)`: one approval as stored, with its audit entries.
+- `approval_show(id)`: one approval as stored, with its audit entries;
+- `evidence(address, approval_id)`: one evidence address opened from disk ([Evidence you can open](#evidence-you-can-open)).
 
 An assistant can explain a plan to a person, cite its rules, and say what is held for the board.
 
@@ -589,7 +609,7 @@ An assistant can explain a plan to a person, cite its rules, and say what is hel
 ### jason-web (being added)
 
 `jason.web.approvals` calls the same engine functions with `via: "console"`, and the name from "Signed in as" as `by` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web) has the route table):
-- reads: `GET /api/approvals` (the letters inbox as before, with the engine's approvals beside it), `GET /api/approvals/<id>`, and `GET /api/approvals/audit`;
+- reads: `GET /api/approvals` (the letters inbox as before, with the engine's approvals beside it), `GET /api/approvals/<id>`, `GET /api/approvals/audit`, and `GET /api/evidence?address=...&approval=...` (disk only; a miss is 200 with `found: false`);
 - `POST /api/approvals/<id>/check`: `engine.check`, a live read that writes nothing, behind the write guard's token header;
 - a person's acts: `POST /api/approvals/<id>/decide`, `/submit`, `/confirm`, `/decline`, `/withdraw`. A stored approval's items never change (a re-plan is a new approval), so these act on its id, and a superseded or withdrawn approval refuses them by its status;
 - `POST /api/approvals/<id>/apply`, only when the server was started with `--allow-apply`, with the token in its header and the fingerprint the person reviewed echoed back (`confirm`). Without the flag it is refused, and the page shows `jason approvals apply ID --yes --by NAME`.

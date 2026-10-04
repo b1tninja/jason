@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +53,9 @@ def _profile() -> tuple[Any, Any]:
 
 
 def plan(live: Live, scope: dict[str, Any]) -> Planned:
-    """Read PayHOA once and plan, writing nothing."""
+    """Read PayHOA once and plan, writing nothing. What it read of each request its evidence names is kept as the
+    plan's snapshot (``Planned.snapshots``), stamped with when it was read."""
+    from jason.community.tags import TagPurpose
     from jason.tasks import owner_info_apply
 
     community, forms = _profile()
@@ -63,10 +65,77 @@ def plan(live: Live, scope: dict[str, Any]) -> Planned:
         from jason.config import data_dir as profile_data_dir
 
         data_dir = profile_data_dir(live.env)
+    read_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     p = owner_info_apply.plan_apply(live.client, live.org_id, community=community, forms=forms,
                                     cycle=forms.OWNER_INFO_CYCLE, data_dir=Path(data_dir), today=today, payhoa=True,
                                     env=live.env)
-    return build(p, cycle=forms.OWNER_INFO_CYCLE, today=today)
+    # an owner's reported occupancy is P2 (docs/console/security-and-privacy.md), as contact details are
+    private = frozenset(t.answer for t in community.payhoa_tags() if t.purpose is TagPurpose.OCCUPANCY and t.answer)
+    return build(p, cycle=forms.OWNER_INFO_CYCLE, today=today, read_at=read_at,
+                 form=getattr(forms, "OWNER_INFO", None), private=private)
+
+
+# --- the plan's snapshot of what it read --------------------------------------------------------------------------------
+
+_CONTACT_READS = ("email", "phone", "address", "contact")          # ReadAs values that hold contact details
+
+
+def _text(value: Any) -> str:
+    """An answer as one line: a list joined, a mapping as name: value, nothing as ""."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (list, tuple, set)):
+        return "; ".join(t for t in (_text(v) for v in value) if t)
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {_text(v)}" for k, v in value.items() if _text(v))
+    return str(value)
+
+
+def request_digest(status: str, answers: dict[str, Any]) -> str:
+    """What the plan read of a request, as one digest: its status and its answers."""
+    return digest({"status": status or "", "answers": digest(answers or {})})
+
+
+def snapshot(sid: int, p: Any, *, read_at: str = "", form: Any = None, private: frozenset[str] = frozenset()
+             ) -> dict[str, Any]:
+    """One request as the plan read it: its status, its unit, and its answers, each answer flagged ``p2`` when it is
+    an owner's contact detail (the form's question reads as an email, a phone, an address, or a contact) or another
+    P2 answer (``private``). Kept whole on disk; ``jason.approvals.evidence`` masks P2 before it leaves the server."""
+    c = next((x for x in p.contexts if int(x.submission) == int(sid)), None)
+    answers = dict(c.answers) if c is not None else {}
+    status = str(p.statuses.get(sid) or "")
+    questions = {q.field: q for q in getattr(form, "questions", ()) or ()}
+    fields = []
+    for name, value in answers.items():
+        q = questions.get(str(name).split(".", 1)[0])
+        reads = getattr(getattr(q, "reads_as", None), "value", "")
+        fields.append({"name": str(name), "title": getattr(q, "title", "") or "", "value": _text(value),
+                       "p2": reads in _CONTACT_READS or str(name).split(".", 1)[0] in private})
+    return {"label": f"PayHOA request {sid}", "kind": "payhoa_submission", "readAt": read_at,
+            "digest": request_digest(status, answers), "status": status, "unit": getattr(c, "unit", "") or "",
+            "unitId": int(getattr(c, "unit_id", 0) or 0), "fields": fields}
+
+
+def _stamp(items: list[PlanItem], p: Any, *, read_at: str, form: Any, private: frozenset[str]
+           ) -> dict[str, dict[str, Any]]:
+    """Stamp each request's evidence with when it was read and the digest of what was read, and return the plan's
+    snapshot of those requests by address."""
+    snaps: dict[str, dict[str, Any]] = {}
+    for item in items:
+        stamped = []
+        for e in item.evidence:
+            found = re.fullmatch(r"payhoa:submission:(\d+)", e.address or "")
+            if found is None:
+                stamped.append(e)
+                continue
+            snap = snaps.get(e.address) or snapshot(int(found.group(1)), p, read_at=read_at, form=form,
+                                                     private=private)
+            snaps[e.address] = snap
+            stamped.append(Evidence(e.label, e.address, read_at, snap["digest"]))
+        item.evidence = tuple(stamped)
+    return snaps
 
 
 # --- the items ----------------------------------------------------------------------------------------------------------
@@ -122,8 +191,11 @@ def _unit_of(p: Any, t: Any) -> int:
     return int(row.unit_id) if row is not None else 0
 
 
-def build(p: Any, *, cycle: Any = None, today: date | None = None) -> Planned:
-    """The items, from an ``owner_info_apply.ApplyPlan``. Pure: reads nothing."""
+def build(p: Any, *, cycle: Any = None, today: date | None = None, read_at: str = "", form: Any = None,
+          private: frozenset[str] = frozenset()) -> Planned:
+    """The items, from an ``owner_info_apply.ApplyPlan``. Pure: reads nothing. ``read_at`` is when ``p`` was read;
+    each request's evidence carries it with a digest of what was read, and ``Planned.snapshots`` keeps the requests as
+    read (``snapshot``)."""
     from jason.approvals.audit import mask
     from jason.tasks.owner_info_apply import requests_left
 
@@ -206,12 +278,13 @@ def build(p: Any, *, cycle: Any = None, today: date | None = None) -> Planned:
                "forAPerson": counts[ItemClass.FOR_A_PERSON.value],
                "confirmWithOwner": counts[ItemClass.CONFIRM_WITH_OWNER.value], "testAccountsLeftOut": p.left_out,
                "completionComment": p.comment, "cost": "No charge: PayHOA tag changes and request status"}
+    snaps = _stamp(items, p, read_at=read_at, form=form, private=private)
     return Planned(items, scope={"payhoa": True, "cycle": getattr(cycle, "year", None)},
                    title="Owner information: PayHOA tags and request completions", summary=summary,
                    evidence=(Evidence("The same plan as a dry run", "jason owner-info --apply --payhoa"),
                              Evidence("Civil Code 4040, 4041", "CIV 4041"),
                              Evidence("The response policy's findings", "jason owner-info --responses")),
-                   clock=clock, context=ctx)
+                   clock=clock, context=ctx, read_at=read_at, snapshots=snaps)
 
 
 # --- apply --------------------------------------------------------------------------------------------------------------
@@ -278,4 +351,4 @@ def apply(live: Live, planned: Planned, items: list[PlanItem], recorder: Any) ->
         recorder.done(i.id, Result.APPLIED, "marked complete; the owner is thanked")
 
 
-__all__ = ["Context", "KEY", "apply", "build", "plan"]
+__all__ = ["Context", "KEY", "apply", "build", "plan", "request_digest", "snapshot"]

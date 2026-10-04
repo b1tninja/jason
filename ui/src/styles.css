@@ -405,6 +405,10 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .write-row.write-informational { color: var(--muted); }
 .write-rule summary { cursor: pointer; color: var(--muted); }
 @media (max-width: 719px) { .write-row { grid-template-columns: 2rem 1fr; } .write-row > :not(.write-select) { grid-column: 2; } }
+/* the row's five columns need about 680px; under the sidebar the group is often narrower than the window says, so the
+   group's own width decides (it clips overflow, which cut off the why column's text) */
+.plan-group { container-type: inline-size; }
+@container (max-width: 679px) { .write-row { grid-template-columns: 2rem 1fr; } .write-row > :not(.write-select) { grid-column: 2; } }
 /* held notes: jason's policy finding (solid) and a person's decision (dashed), side by side */
 .held-notes { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
 .held-notes:empty { display: none; }
@@ -521,6 +525,28 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 :root .badge-neutral { color: var(--muted); }
 :root .chip { border-color: var(--line); background: var(--paper); font-size: 12.5px; padding: 1px 6px; }
 :root .evidence .chip { font-family: var(--serif); font-style: italic; font-size: 13px; }
+/* evidence panel: a chip with an address is a disclosure button; what jason stored opens below the chips */
+:root .evidence button.chip-open { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; margin: 0 .25rem .25rem 0; padding: 1px 6px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); font: italic 13px/1.3 var(--serif); text-align: left; cursor: pointer; }
+:root .evidence button.chip-open:hover { border-color: var(--ink); }
+:root .evidence button.chip-open[aria-expanded="true"] { border-color: var(--ink); background: var(--panel); }
+:root .evidence button.chip-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.evidence-caret { font-style: normal; font-size: 10px; color: var(--muted); }
+.evidence-panel { display: grid; gap: 8px; margin: 4px 0 6px; padding: 10px 12px; border: 1px solid var(--rule); border-left: 3px solid var(--ink); border-radius: var(--r); background: var(--panel); color: var(--ink); font-size: 13.5px; }
+.evidence-panel p, .evidence-panel ul { margin: 0; }
+.evidence-panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+:root .evidence-panel .evidence-panel-title { margin: 0; font: 500 15px/1.3 var(--serif); letter-spacing: 0; text-transform: none; } /* a record's name, not the brand's heading */
+.evidence-panel-status:empty { display: none; }
+/* in a write row, an open panel takes the row's width: the why cell drops to its own line, the status stays on the first */
+@container (min-width: 680px) {
+  .write-row:has(.evidence-panel) > .write-why { grid-column: 2 / -1; grid-row: 2; }
+  .write-row:has(.evidence-panel) > .write-status { grid-column: 4 / -1; grid-row: 1; }
+}
+.evidence-panel-head .link, .evidence-panel-head button { white-space: nowrap; }
+.evidence-source { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.evidence-fields { grid-template-columns: minmax(7rem, max-content) 1fr; } .evidence-field { display: contents; }
+@media (max-width: 640px) { .evidence-fields { grid-template-columns: 1fr; } }
+.evidence-refreshes ul { list-style: none; padding: 0; display: grid; gap: 6px; }
+.evidence-refresh code { overflow-wrap: anywhere; } .evidence-refresh button { min-height: 24px; padding: 1px 8px; font-size: 13px; }
 
 /* tables and registers: ledger rules, labelled heads */
 :root th { border-bottom: 2px solid var(--rule); padding: .45rem .6rem; white-space: nowrap; }

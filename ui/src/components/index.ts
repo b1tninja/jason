@@ -11,7 +11,7 @@ export { ConfirmList, type ConfirmRow } from "./ConfirmList";
 export { DataTable, type Column } from "./DataTable";
 export { DecisionCard, OUTCOMES, type DecisionDraft } from "./DecisionCard";
 export { DueDate, daysUntil } from "./DueDate";
-export { Evidence } from "./Evidence";
+export { Evidence, EvidencePanel, evidenceUrl, type EvidenceAnswer, type EvidenceSource, type EvidenceField, type EvidenceRefresh, type EvidenceKind } from "./Evidence";
 export { Findings } from "./Findings";
 export { Kanban } from "./Kanban";
 export { Money } from "./Money";
@@ -54,6 +54,8 @@ export { ReadingLabel, type Whose } from "./ReadingLabel";
 export { AuditLog, auditWords } from "./AuditLog";
 export { QuestionCard, unblocksText, type Question, type Unblocks, type Answered } from "./QuestionCard";
 export { StageSteps, type StageGate } from "./StageSteps";
+export { KeyDocuments, Day, type KeyDocumentsData, type KeyGroup, type KeyEntry, type KeyCopy, type KeyLink, type KeyLead, type KeyStatusWord } from "./KeyDocuments";
+export { InstrumentGraph, layout as instrumentGraphLayout, type InstrumentGraphData, type GraphNode, type GraphEdge, type GraphCycle, type Provenance } from "./InstrumentGraph";
 export {
   cleanName, sameName, isJason, signerProblem, personName, tally as approvalTally, needsSecond, staleness, waitsOn, decisionProblem, groupItems, changeText,
   type Approval, type ApprovalStatus, type PlanItem, type ItemClass, type ItemDecision, type ItemResult, type Change, type EvidenceRef,

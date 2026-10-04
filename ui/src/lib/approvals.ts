@@ -10,8 +10,9 @@ export type DecisionWord = Exclude<ItemDecision, "undecided">;
 export type ItemResult = "pending" | "applied" | "not_applied" | "changed" | "blocked" | "failed" | "uncertain";
 export type Via = "cli" | "console";
 
-/** `{label, address}`: a record, a citation `jason cite` resolves, or a command. */
-export interface EvidenceRef { label: string; address?: string }
+/** `{label, address}`: a record, a citation `jason cite` resolves, or a command; `readAt` and `digest` say when jason read
+ * it for the plan and what it read (`GET /api/evidence` compares them with the stored copy now). */
+export interface EvidenceRef { label: string; address?: string; readAt?: string; digest?: string }
 
 /** What an item changes: a value added to or removed from a field, or a field set from one value to another. */
 export interface Change { op: "add" | "remove" | "set"; field: string; value?: string; before?: string; after?: string; text?: string }

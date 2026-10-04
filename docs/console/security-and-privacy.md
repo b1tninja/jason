@@ -167,6 +167,7 @@ Everything is under the profile's data folder (`jason.config.data_dir`), private
 | Path | Holds | Level |
 |---|---|---|
 | `approvals/apr-*.json` | Engine approvals and their items | P1. Evidence points to P2 or P3 sources; it does not copy them |
+| `approvals/apr-*.evidence.json` | The plan's snapshot of each record it read live: a request's status and answers as read ([approval-workflow.md](approval-workflow.md#evidence-you-can-open)) | P2, as the PayHOA catalog is. Contact details and answers flagged P2 are masked by the server before they leave it (`jason.approvals.evidence`) |
 | `approvals/audit.jsonl` | The approvals audit log | P1 at most |
 | `approvals/letters.json` | The letters jason drafted, their stages and trail | The letter's own level: a notice to members is P1; a letter to one owner names that owner |
 | `board/decisions.json`, `meetings/plan-<date>.json`, `meetings/room-<date>.json` | The board's decisions, a meeting's plan, the room's record | P1; executive-session items by general nature only |

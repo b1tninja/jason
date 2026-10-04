@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Evidence } from "./Evidence";
 import { Pill } from "./Pill";
 import { HeldNote } from "./HeldNote";
-import { changeText, evidenceText, isApprovable, personName, RESULT_WORDS, when, type PlanItem } from "../lib/approvals";
+import { changeText, isApprovable, personName, RESULT_WORDS, when, type PlanItem } from "../lib/approvals";
 
 const OP_WORDS = { add: ["+", "Add"], remove: ["−", "Remove"], set: ["~", "Change"] } as const;
 
@@ -46,10 +46,11 @@ function State({ item }: { item: PlanItem }) {
 /** One planned change, as the engine's plan item gives it: the change, before → after, why, the rule, the evidence, and its
  * state. Only an approvable item, while `selectable`, has a checkbox; held, for-a-person, confirm-with-owner, and
  * informational items never do, whatever is passed. `waits` names the changes a completion waits on. `rule` replaces the
- * plain rule line (a `Recitation` in a disclosure, say). */
-export function WriteRow({ item, selectable = false, checked = false, onToggle, waits, rule, labelledBy }: {
+ * plain rule line (a `Recitation` in a disclosure, say). `approval` is the plan's id, so an evidence chip opens what jason
+ * stored for it and whether it changed since the plan was read. */
+export function WriteRow({ item, selectable = false, checked = false, onToggle, waits, rule, labelledBy, approval }: {
   item: PlanItem; selectable?: boolean; checked?: boolean; onToggle?: (id: string, checked: boolean) => void;
-  waits?: readonly PlanItem[]; rule?: ReactNode; labelledBy?: string;
+  waits?: readonly PlanItem[]; rule?: ReactNode; labelledBy?: string; approval?: string;
 }) {
   const canSelect = selectable && isApprovable(item);
   const changeId = `write-${item.id}`;
@@ -76,7 +77,7 @@ export function WriteRow({ item, selectable = false, checked = false, onToggle, 
         )}
         {rule ?? (item.rule ? <p className="muted write-rule">Rule: {item.rule}</p> : null)}
         {item.class === "held_for_board" && <HeldNote items={[item]} inline />}
-        <Evidence items={(item.evidence ?? []).map(evidenceText)} />
+        <Evidence items={item.evidence} approval={approval} level={5} />
       </div>
       <div className="write-status"><State item={item} /></div>
     </div>

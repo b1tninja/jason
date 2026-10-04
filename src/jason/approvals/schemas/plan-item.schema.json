@@ -39,7 +39,12 @@
         "type": "object",
         "required": ["label"],
         "additionalProperties": false,
-        "properties": {"label": {"type": "string"}, "address": {"type": "string"}}
+        "properties": {
+          "label": {"type": "string"},
+          "address": {"type": "string", "description": "What jason.approvals.evidence resolves from disk: payhoa:submission:N, a citation, board-item:ID, or a command."},
+          "readAt": {"type": "string", "description": "When the plan read the record (UTC, ISO 8601). Absent for a citation or a command."},
+          "digest": {"type": "string", "description": "sha256 of what the plan read (a request: its status and answers); the snapshot approvals/<id>.evidence.json holds the same."}
+        }
       }
     },
     "basis": {"type": "string", "description": "sha256 of the live state the item relies on; required of an approvable item."},

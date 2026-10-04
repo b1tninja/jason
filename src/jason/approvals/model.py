@@ -103,8 +103,13 @@ class Change:
 
 @dataclass(frozen=True)
 class Evidence:
+    """What an item rests on, by its address (``jason.approvals.evidence`` resolves one from disk). A record read live
+    when the plan was made also carries when it was read and a digest of what was read; the plan's snapshot of it is
+    ``approvals/<id>.evidence.json``."""
     label: str                                 # "PayHOA request 1234", "Civil Code 4040(a)(2)"
     address: str = ""                          # a citation jason cite resolves, a command, or a record's address
+    read_at: str = ""                          # when the plan read the record (UTC, ISO 8601); "" for none
+    digest: str = ""                           # sha256 of what was read (a request: its status and answers)
 
 
 @dataclass
@@ -255,7 +260,13 @@ def short(fingerprint: str) -> str:
 # --- JSON ---------------------------------------------------------------------------------------------------------------
 
 def _evidence(e: Evidence) -> dict[str, Any]:
-    return {"label": e.label, "address": e.address}
+    """``readAt`` and ``digest`` only when the plan read the record: a command or a citation carries neither."""
+    out = {"label": e.label, "address": e.address}
+    if e.read_at:
+        out["readAt"] = e.read_at
+    if e.digest:
+        out["digest"] = e.digest
+    return out
 
 
 def _signature(s: Signature | None) -> dict[str, Any] | None:
@@ -290,7 +301,8 @@ def to_dict(a: Approval) -> dict[str, Any]:
 
 
 def _evidence_from(rows: Any) -> tuple[Evidence, ...]:
-    return tuple(Evidence(r.get("label", ""), r.get("address", "")) for r in rows or ())
+    return tuple(Evidence(r.get("label", ""), r.get("address", ""), r.get("readAt", ""), r.get("digest", ""))
+                 for r in rows or ())
 
 
 def _signature_from(row: Any) -> Signature | None:

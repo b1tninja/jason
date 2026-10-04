@@ -21,7 +21,8 @@
     "evidence": {
       "type": "array",
       "items": {"type": "object", "required": ["label"], "additionalProperties": false,
-                "properties": {"label": {"type": "string"}, "address": {"type": "string"}}}
+                "properties": {"label": {"type": "string"}, "address": {"type": "string"},
+                               "readAt": {"type": "string"}, "digest": {"type": "string"}}}
     },
     "items": {"type": "array", "items": {"$ref": "plan-item.schema.json"}},
     "decisions": {"type": "array", "items": {"$ref": "decision.schema.json"}},

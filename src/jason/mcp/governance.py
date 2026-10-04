@@ -7,7 +7,8 @@ Each tool is a plain function that returns a JSON-ready dict, so ``jason-mcp`` s
 (``answer_intake_question``, ``onboarding_confirm``, ``record_completion``), and nothing reaches PayHOA, Google, or the
 mail. A write names the person (``by``) and is refused without one. None decides for the board: a conflict is noted, a duty is a reading, a
 request's clock is computed, and approving, denying, or assigning stays a person's. ``approvals_list`` and
-``approval_show`` read the approvals store; no tool decides, submits, confirms, or applies an approval.
+``approval_show`` read the approvals store, and ``evidence`` opens an item's evidence from disk; no tool decides,
+submits, confirms, or applies an approval.
 """
 
 from __future__ import annotations
@@ -592,9 +593,22 @@ def approval_show(approval_id: str, data_dir: Path | None = None) -> dict[str, A
     return {**to_dict(a), "audit": audit.read(root, a.id), "caveat": _APPROVALS_CAVEAT}
 
 
+def evidence(address: str, approval_id: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+    """Open one evidence address an approval item names (``payhoa:submission:N``, a citation such as ``CIV 4041``,
+    ``board-item:ID``, or a ``jason ...`` command) from disk: each copy jason holds (the plan's own read when
+    ``approval_id`` is given, the PayHOA catalog, the request's saved files, the statutes or documents, the board's
+    items), when each was read, whether a later copy shows a change, and the commands that read it again (``live``
+    when one reads PayHOA or Google). Reads disk only, never a live system; contact details are masked. Evidence, not
+    a finding: repeat the caveats, and quote a citation's text as given, never paraphrased."""
+    from jason.approvals.evidence import resolve
+
+    return resolve(address, approval_id=approval_id, data_dir=data_dir)
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
          notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, section_refs,
-         embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list, approval_show)
+         embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list, approval_show,
+         evidence)
 
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

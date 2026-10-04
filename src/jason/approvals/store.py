@@ -1,7 +1,9 @@
 """The approvals store: one JSON file an approval in ``approvals/`` under the active profile's data folder
 (``jason.config.data_dir``), written whole under the store lock (``jason.locks``), never checked in.
 
-The audit log (``audit.jsonl``) sits beside the approvals; ``jason.approvals.audit`` appends to it.
+The audit log (``audit.jsonl``) sits beside the approvals; ``jason.approvals.audit`` appends to it. A plan that read
+records live keeps what it read beside its approval (``<id>.evidence.json``, written once with the plan), so its
+evidence can be opened later without reading the system again (``jason.approvals.evidence``).
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import secrets
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from jason.approvals.model import Approval, from_dict, to_dict
 
@@ -58,8 +60,35 @@ def save(approval: Approval, data_dir: Path | None = None) -> Path:
 
 
 def ids(data_dir: Path | None = None) -> list[str]:
+    """The approvals' ids. A sidecar beside one (``apr-....evidence.json``) is not an approval: an id has no dot."""
     folder = store_dir(data_dir)
-    return sorted(p.stem for p in folder.glob("apr-*.json")) if folder.is_dir() else []
+    return sorted(p.stem for p in folder.glob("apr-*.json") if "." not in p.stem) if folder.is_dir() else []
+
+
+def snapshot_file(ident: str, data_dir: Path | None = None) -> Path:
+    """``approvals/<id>.evidence.json``: what the plan read of each record its evidence names, as it was read."""
+    return store_dir(data_dir) / f"{ident}.evidence.json"
+
+
+def save_snapshots(ident: str, snapshots: dict[str, Any], data_dir: Path | None = None) -> Path | None:
+    """Write the plan's snapshot sidecar whole; nothing when there is nothing to keep. The caller holds ``locked``."""
+    if not snapshots:
+        return None
+    file = snapshot_file(ident, data_dir)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = file.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(snapshots, indent=1, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, file)
+    return file
+
+
+def load_snapshots(ident: str, data_dir: Path | None = None) -> dict[str, Any]:
+    """The plan's snapshot by address, or {} when the plan kept none (an older approval, or a kind that reads none)."""
+    file = snapshot_file(ident, data_dir)
+    if not file.is_file():
+        return {}
+    data = json.loads(file.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
 
 
 def resolve(ident: str, data_dir: Path | None = None) -> str:
@@ -82,4 +111,5 @@ def load_all(data_dir: Path | None = None) -> list[Approval]:
     return [load(i, data_dir) for i in ids(data_dir)]
 
 
-__all__ = ["LOCK_KEY", "ids", "load", "load_all", "locked", "new_id", "resolve", "save", "store_dir"]
+__all__ = ["LOCK_KEY", "ids", "load", "load_all", "load_snapshots", "locked", "new_id", "resolve", "save",
+           "save_snapshots", "snapshot_file", "store_dir"]

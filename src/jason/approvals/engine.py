@@ -49,7 +49,10 @@ class Live:
 @dataclass
 class Planned:
     """A planner's answer: the items (each approvable one with its basis), the scope it planned, and what the reader
-    sees beside them. ``context`` is the kind's own, in memory only, for its applier."""
+    sees beside them. ``context`` is the kind's own, in memory only, for its applier. ``read_at`` is when the planner
+    read the live state ("" for now). ``snapshots`` is what it read of each record its evidence names, by address
+    (``{address: {label, kind, readAt, digest, status, fields: [{name, value, ...}]}}``): the engine writes it beside
+    the approval (``store.save_snapshots``) so the evidence can be opened later from disk."""
     items: list[PlanItem]
     scope: dict[str, Any] = field(default_factory=dict)
     title: str = ""
@@ -59,6 +62,8 @@ class Planned:
     clock: dict[str, Any] | None = None
     notes: list[str] = field(default_factory=list)
     context: Any = None
+    read_at: str = ""
+    snapshots: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -141,7 +146,8 @@ def _approval_from(kind: registry.ActionKind, planned: Planned, *, by: str, via:
                    supersedes: str = "") -> Approval:
     now = _now()
     return Approval(store.new_id(), kind.key, planned.title or kind.title, planned.items,
-                    plan_fingerprint(kind.key, scope, planned.items), read_at=now, requested_by=by, requested_at=now,
+                    plan_fingerprint(kind.key, scope, planned.items), read_at=planned.read_at or now, requested_by=by,
+                    requested_at=now,
                     requested_via=via, scope=scope, profile=_profile(), evidence=tuple(planned.evidence),
                     cost_cents=planned.cost_cents if kind.has_cost else None, clock=planned.clock,
                     summary=dict(planned.summary), notes=list(planned.notes), supersedes=supersedes)
@@ -169,11 +175,14 @@ def plan(kind_key: str, live: Live, *, by: str, via: str = "cli", scope: dict[st
                      detail=f"{type(exc).__name__}: {exc}")
         raise
     approval = _approval_from(kind, planned, by=by, via=via, scope=planned.scope or scope)
-    _store_new(approval, live.data_dir, by=by, via=via)
+    _store_new(approval, live.data_dir, by=by, via=via, snapshots=planned.snapshots)
     return approval
 
 
-def _store_new(approval: Approval, data_dir: Path | None, *, by: str, via: str) -> None:
+def _store_new(approval: Approval, data_dir: Path | None, *, by: str, via: str,
+               snapshots: dict[str, Any] | None = None) -> None:
+    """Store a new approval, superseding an open one of the same kind and scope, with the plan's snapshot of what it
+    read beside it, under one lock."""
     replaced = []
     with store.locked("plan"):
         for old in store.load_all(data_dir):
@@ -183,6 +192,7 @@ def _store_new(approval: Approval, data_dir: Path | None, *, by: str, via: str) 
                 old.notes.append(f"superseded by {approval.id}, a newer plan of the same kind and scope")
                 store.save(old, data_dir)
                 replaced.append(old)
+        store.save_snapshots(approval.id, snapshots or {}, data_dir)
         store.save(approval, data_dir)
     for old in replaced:
         audit.append(data_dir, "approval.superseded", approval=old.id, kind=old.kind, actor=by, via=via,
@@ -484,7 +494,7 @@ def _supersede(a: Approval, kind: registry.ActionKind, planned: Planned, changed
                                       "why": c.why} for c in changed]})
     audit.append(data_dir, "approval.superseded", approval=a.id, kind=a.kind, actor=by, via=via,
                  fingerprint=a.fingerprint, detail=f"changed since review: re-planned as {fresh.id}")
-    _store_new(fresh, data_dir, by=by, via=via)
+    _store_new(fresh, data_dir, by=by, via=via, snapshots=planned.snapshots)
     return Applied(current, fresh, changed, new)
 
 
