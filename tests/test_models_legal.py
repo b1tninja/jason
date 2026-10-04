@@ -1013,6 +1013,14 @@ def test_signal_service_fire_alarm_report():
     assert "no-cadence" in codes(found, Severity.INFO)
 
 
+def test_signal_report_reads_a_completed_date_the_text_layer_wraps_before_the_year():
+    wrapped = SIGNAL.replace("Completed:\nFriday, September 19, 2025\n", "Completed:\nFriday, September 19, \n2025\n.\n01\n")
+    assert wrapped != SIGNAL
+    reading = read(DocumentKind.INSPECTION_REPORT, wrapped, ctx())
+    assert reading.model == "signal-service-fire-alarm" and "inspection_date" not in reading.missing
+    assert reading.record.inspection_date == date(2025, 9, 19)
+
+
 def test_signal_report_without_a_monitoring_block_names_the_supervising_station():
     text = SIGNAL.replace("MONITORING COMPANY\nName:\nExample Monitoring\n", "") + (
         "Supervising Station Monitoring\nSpecification\nType/Make/Model\nExample Watch\n. \n04\n")

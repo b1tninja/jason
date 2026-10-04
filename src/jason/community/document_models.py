@@ -423,25 +423,46 @@ def amount_after(label: str, text: str, *, window: int = 80) -> int | None:
     return cents(money.group(0)) if money else None
 
 
-def dates_in(text: str) -> list[date]:
-    """Every date the text writes as 11/17/2023, 2023-11-17, 11-17-2023, or November 17, 2023, in order."""
+# A date as the text writes it. The last form may wrap: a PDF's text layer breaks "Thursday, September 05, / 2024"
+# after the comma. Only that break is read as one date: the month and day end their line with the comma, and the next
+# line is the year and nothing else. A month and day with no comma, or a year with more on its line, are two lines
+# that may have nothing to do with each other, and stay unread.
+_YEAR_ALONE = r"[ \t]*\r?\n[ \t]*(?:19|20)\d{2}(?=[ \t]*[.,;:)]?[ \t]*(?:\r?\n|\Z))"
+_DATE = re.compile(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
+                   r"[a-z]*\.? \d{1,2}(?:,? \d{4}|," + _YEAR_ALONE + r"))\b", re.I)
+
+
+def _dates(text: str, start: int = 0, end: int | None = None) -> list[date]:
+    """The dates written in ``text[start:end]``, in order. A date is read against the whole text, so one the range cuts
+    short is passed over, not read as the shorter date its first characters spell."""
     from jason.community.invoices import parse_date
 
+    text = text or ""
+    end = len(text) if end is None else min(end, len(text))
     found = []
-    pattern = re.compile(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
-                         r"[a-z]*\.? \d{1,2},? \d{4})\b", re.I)
-    for m in pattern.finditer(text or ""):
-        d = parse_date(m.group(1))
+    for m in _DATE.finditer(text, start):
+        if m.end(1) > end:
+            if m.start(1) >= end:
+                break
+            continue
+        d = parse_date(squash(m.group(1)))
         if d:
             found.append(d)
     return found
 
 
+def dates_in(text: str) -> list[date]:
+    """Every date the text writes as 11/17/2023, 2023-11-17, 11-17-2023, or November 17, 2023, in order. A month and
+    day that end a line with their comma, followed by a line that is only the year, are one date."""
+    return _dates(text)
+
+
 def date_after(label: str, text: str, *, window: int = 60) -> date | None:
+    """The first date written within ``window`` characters after ``label`` (a regex)."""
     m = re.search(label, text or "", re.I)
     if not m:
         return None
-    found = dates_in((text or "")[m.end(): m.end() + window])
+    found = _dates(text, m.end(), m.end() + window)
     return found[0] if found else None
 
 
