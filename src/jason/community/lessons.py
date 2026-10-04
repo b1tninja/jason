@@ -1301,6 +1301,23 @@ LESSONS: tuple[Lesson, ...] = (
            "person and seat with their source (directors' terms from the members' election, officers' from the "
            "board's), read through a Community method with an empty default.",
            Status.OPEN, docs=("docs/console/screens/people.md",)),
+    Lesson("setup-questions-buried", date(2026, 10, 4), (Area.ONBOARDING,),
+           "The ranked onboarding questions put hundreds of OCR and drift questions above every fact question, so the "
+           "first page of the console's setup had no question a person could answer about the association.",
+           "rank scores legal clocks first, and the OCR readings of cited sections carry clocks.",
+           "The setup read (GET /api/onboarding-session) defaults to fact and map questions and counts the rest, "
+           "with jason intake to see them.",
+           Status.FIXED, guards=("tests/test_web_intake.py::test_the_session_gives_five_gates_and_computed_statuses_"
+                                 "and_no_answer",)),
+    Lesson("keeper-answer-outside-access", date(2026, 10, 4), (Area.ONBOARDING,),
+           "An item whose answer is a Keeper record's name (keys and codes) sits outside the access group, so treating "
+           "only access items as connections would have offered a text field beside codes. The write route still "
+           "accepts a Keeper record's title from any client, as the CLI and MCP do; only the view withholds the field.",
+           "Connections were defined by group, not by what the answer is.",
+           "A connect item is any item checked by a credential setting or answered by a Keeper record's name, "
+           "whatever its group; it shows the terminal command only. intake.secret_reason still guards every value.",
+           Status.DECISION, guards=("tests/test_web_intake.py (keys and codes is command-only)",),
+           notes=("A person decides whether POST /api/write/intake refuses Keeper-record questions outright.",)),
 )
 
 

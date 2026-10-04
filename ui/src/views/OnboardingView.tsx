@@ -3,6 +3,7 @@ import { Badge, Card, Caveats, Command, DataTable, Findings, InstrumentGraph, Ke
 import { AssociationPicker } from "../components/AssociationPicker";
 import { DocumentLocator } from "../components/DocumentLocator";
 import { OwnerNames } from "../components/InstrumentGraph";
+import { SetupTab } from "./OnboardingSetup";
 import { postJson } from "../lib/api";
 import type { AssociationChoice } from "../lib/discovery";
 import { readMe } from "../lib/session";
@@ -197,10 +198,11 @@ export function InstrumentGraphTab({ me = readMe() }: { me?: string }) {
   );
 }
 
-/** Onboarding the active community: accounts, facts, the request list and its letter, what arrived, and the gaps. */
+/** Onboarding the active community: the setup (the gates, each item's computed status, and the questions a person
+ * answers), accounts, facts, the request list and its letter, what arrived, and the gaps. */
 export function OnboardingView() {
   const r = useApi<Onboarding>("/api/onboarding");
-  const [tab, setTab] = useState("requests");
+  const [tab, setTab] = useState("setup");
   const [patched, setPatched] = useState<Record<string, Item>>({});
   return (
     <RemoteView r={r}>
@@ -210,6 +212,7 @@ export function OnboardingView() {
           <div className="stack">
             <SummaryStats s={d.summary} />
             <Tabs active={tab} onChange={setTab} tabs={[
+              { id: "setup", label: "Setup", content: <SetupTab /> },
               { id: "find", label: "Find the association", content: <FindAssociation /> },
               { id: "key-documents", label: "Key documents", content: <KeyDocumentsTab /> },
               { id: "instruments", label: "Recorded instruments", content: <InstrumentGraphTab /> },

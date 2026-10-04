@@ -35,8 +35,10 @@ const OTHER = "\u0000other";
  * question, the choices with jason's suggestion labeled and never pre-selected, the evidence, and the answer, saved
  * behind `Confirm` as a named person (pre-filled with `me`; never jason). An answer never carries a secret; the server
  * refuses one. A high-stakes answer is confirmed by a second person before it is applied. */
-export function QuestionCard({ question, rank, me = "", onAnswer, answered, compact = false, busy, error }: {
+export function QuestionCard({ question, rank, me = "", byFixed = false, onAnswer, answered, compact = false, busy, error }: {
   question: Question; rank?: number; me?: string; onAnswer?: (body: { id: string; answer: string; by: string }) => void;
+  /** The name is the signed-in person's, fixed by the server: shown, not editable. */
+  byFixed?: boolean;
   answered?: Answered | null; compact?: boolean; busy?: boolean; error?: string;
 }) {
   const uid = useId();
@@ -62,7 +64,7 @@ export function QuestionCard({ question, rank, me = "", onAnswer, answered, comp
         {!compact && <Evidence items={q.evidence} />}
         {answered ? (
           <p className="notice">
-            Answered by {answered.answeredBy}{answered.answeredAt ? `, ${answered.answeredAt.slice(0, 10)}` : ""}: <q>{answered.answer}</q>
+            Answered by {answered.answeredBy}{answered.answeredAt ? `, ${answered.answeredAt.slice(0, 10)}` : ""}{answered.answer ? <>: <q>{answered.answer}</q></> : null}
             {q.highStakes && (answered.confirmedBy ? ` · confirmed by ${answered.confirmedBy}` : " · waits on a second person's confirmation")}
           </p>
         ) : !compact && (
@@ -81,7 +83,7 @@ export function QuestionCard({ question, rank, me = "", onAnswer, answered, comp
             {q.suggestion && !(q.choices ?? []).includes(q.suggestion) && <p className="muted">jason's suggestion, a lead: {q.suggestion}</p>}
             <p id={`${uid}-secret`} className="muted"><strong>Never a secret:</strong> no password, account number, or key.{q.highStakes ? " A second person confirms this answer before it is applied." : ""}</p>
             <div className="row wrap">
-              <label className="approve-field">Answered by<input value={by} onChange={(e) => setBy(e.target.value)} autoComplete="name" required /></label>
+              <label className="approve-field">Answered by<input value={by} onChange={(e) => setBy(e.target.value)} autoComplete="name" required readOnly={byFixed} /></label>
               {problem ? (
                 <button type="button" className="primary" aria-disabled="true" aria-describedby={`${uid}-why`}>Save the answer</button>
               ) : (

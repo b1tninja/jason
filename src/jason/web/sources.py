@@ -833,6 +833,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "instrument-graph": "jason.web.extra.key_documents:instrument_graph",
     "governing-documents": "jason.web.extra.governing_documents:governing_documents",  # with recorded and Drive copies
     "owner-digest": "jason.web.extra.owner_view:owner_digest",  # the owner's Overview, in place of the board's digest
+    "onboarding-session": "jason.web.extra.onboarding_setup:onboarding_session",  # gates, computed statuses, questions
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
@@ -849,6 +850,7 @@ EXTRA_WRITERS: dict[str, str] = {
     "documents-located": "jason.web.extra.discovery:write",  # queues a locate job; the county is never read here
     "key-documents": "jason.web.extra.key_documents:write",  # link, upload, unlink, status: jason's own store
     "instrument-graph": "jason.web.extra.key_documents:reveal",  # owners' names for a named person, logged
+    "intake": "jason.web.extra.onboarding_setup:write",  # a signed-in person's answer, queued; applied in a terminal
 }
 
 

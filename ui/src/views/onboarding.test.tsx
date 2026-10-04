@@ -22,8 +22,9 @@ describe("OnboardingView", () => {
     }));
     render(<OnboardingView />);
     expect(await screen.findByText("3 of 7")).toBeInTheDocument();
-    expect(screen.getByText("the inventory shows a gap for this record")).toBeInTheDocument();
     const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Request list" }));
+    expect(screen.getByText("the inventory shows a gap for this record")).toBeInTheDocument();
     const row = screen.getByText("The current and prior year's budgets").closest("tr")!;
     await user.click(within(row).getByRole("button", { name: "mark" }));
     await user.selectOptions(within(row).getByLabelText("Status"), "asked");

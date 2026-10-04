@@ -68,6 +68,20 @@ Each stage is a screen; the checklist spans them.
    deliveries (`association_records`), and the checklist items still open, in one list with the last date each
    was chased. This is the standing agenda item for the board until it is empty.
 
+## Setting up in the console (the Setup tab)
+
+The first tab of `#/onboarding` is a view over the session (`GET /api/onboarding-session`), not a store of its own:
+- **The five gates** (`StageSteps`) and each checklist item's status, *computed* from its checks. Nothing marks an item
+  done; it is present when its checks pass. The `read` seal says this is jason's reading, as of when.
+- **The questions.** An item with a `FactAsk` is a `QuestionCard`. A signed-in person answers through `Confirm`
+  (`POST /api/write/intake/<id>`, [web-ui.md](web-ui.md)); the name is the signed-in one. The answer goes to the
+  intake queue and nothing more: it shows as "answered, waiting to be applied" with `jason onboard --apply`, which a
+  person runs. A secret is refused with the reason, and the field is cleared. A high-stakes answer waits on a second
+  person, who confirms it on the same tab.
+- **Connections** (a credential setting, a Keeper-held sign-in) show the terminal command (`jason login`, or the
+  answer naming the Keeper record), never a field.
+- With no one signed in, or while an admin views as someone else, the questions are shown without a form.
+
 ## Who has what
 
 | Group | Usually held by | Examples |
