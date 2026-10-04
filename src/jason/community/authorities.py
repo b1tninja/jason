@@ -179,6 +179,12 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
               "that gives effect is preferred to one that makes void (3541)", Basis.INTERPRETATION),
     Authority("GOV", "27293", "27293", "an instrument in a language other than English is not accepted for record without "
               "a certified English translation: a recorded instrument's words are English", Basis.INTERPRETATION),
+    # Civil Code 5350(a) applies 7233 and 7234 to any contract or other transaction the board or a committee authorizes,
+    # approves, or ratifies, incorporated or not; the meeting room's recusal rule (BoardRule.interested_in_quorum) cites them.
+    Authority("CORP", "7230", "7238", "the directors' standards of conduct: the standard of care (7231), a transaction with an "
+              "interested director (7233(a)) or a common director (7233(b)) and counting either toward a quorum (7234), which "
+              "Civil Code 5350(a) applies to the association, loans to a director or officer (7235), directors' liability for "
+              "approving an unlawful distribution (7236), and indemnifying an agent (7237)", Basis.GOVERNANCE),
 )
 
 # Named acts lawlibrary outlines; each is exported one page per article so a passage stays with its heading.

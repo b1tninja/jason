@@ -134,6 +134,14 @@ class State:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+# A statute the shelf misses and its read-through (jason.tasks.statute_fetch) could not bring down, by why.
+_LIBRARY_MISS = {
+    "not_in_library": Reason.STATUTE_NOT_IN_LIBRARY,
+    "library_unavailable": Reason.LIBRARY_UNAVAILABLE,
+    "worker_failed": Reason.LIBRARY_FAILED,
+}
+
+
 def _miss(reason: Reason, detail: str = "", citation: str = "", **extra: Any) -> State:
     return State(Kind.MISS, False, reason, detail, citation, extra=extra)
 
@@ -632,7 +640,8 @@ class Shelf:
         return state
 
     def _statute(self, t: Target) -> State:
-        from jason.tasks.export_authorities import authority_pages, authority_text
+        from jason.tasks.export_authorities import authority_pages, authority_text, on_demand_pages
+        from jason.tasks.statute_fetch import caller
 
         cite = t.id
         pointer = {"lawlibrary": {"call": "cite", "expression": t.base if not t.end else t.id}}
@@ -643,11 +652,22 @@ class Shelf:
                          f"is read with jason law-history, or lawlibrary succession.successors('CIV', '{base_number}')",
                          cite, pointer=pointer)
         if t.end:
-            nodes = [{"first": p.start, "last": p.end, "title": p.title, "file": p.file, "session": p.session}
-                     for p in authority_pages(self.data_dir) if p.code == t.key
-                     and _key(p.start) <= _key(t.end) and _key(p.end) >= _key(t.number)]
+            def span_nodes() -> list[dict[str, Any]]:
+                return [{"first": p.start, "last": p.end, "title": p.title, "file": p.file, "session": p.session}
+                        for p in (*authority_pages(self.data_dir), *on_demand_pages(self.data_dir)) if p.code == t.key
+                        and _key(p.start) <= _key(t.end) and _key(p.end) >= _key(t.number)]
+
+            nodes = span_nodes()
             if not nodes:
-                return _miss(Reason.STATUTE_NOT_ON_DISK, "no exported pages in that span", cite, pointer=pointer)
+                from jason.tasks.statute_fetch import ensure
+
+                got = ensure(self.data_dir, t.key, t.number, t.end, asked_by=caller())
+                nodes = span_nodes() if got.found else []
+                if not nodes:
+                    why = got.miss.value if got.miss else ""
+                    reason = _LIBRARY_MISS.get(why, Reason.STATUTE_NOT_ON_DISK)
+                    detail = got.reason_text() if why in _LIBRARY_MISS else "no exported pages in that span"
+                    return _miss(reason, detail + (f" ({got.detail})" if got.detail else ""), cite, pointer=pointer)
             return State(Kind.OUTLINE, True, citation=cite, nodes=nodes, extra={"pointer": pointer})
         if t.siblings:
             nodes = []
@@ -659,9 +679,10 @@ class Shelf:
         if t.as_of is not None:
             return _miss(Reason.EDITION_NOT_HELD, "jason holds one edition of the law (data/authorities); lawlibrary's "
                          "Citation(...).session(year) reads another", cite, pointer=pointer)
-        got = authority_text(self.data_dir, t.base)
+        got = authority_text(self.data_dir, t.base, asked_by=caller())
         if not got.get("found"):
-            return _miss(Reason.STATUTE_NOT_ON_DISK, got.get("reason", ""), cite, pointer=pointer)
+            detail = got.get("reason", "") + (f" ({got['detail']})" if got.get("detail") else "")
+            return _miss(_LIBRARY_MISS.get(str(got.get("miss") or ""), Reason.STATUTE_NOT_ON_DISK), detail, cite, pointer=pointer)
         words = got.get("text", "")
         version = {"source": got.get("page", ""), "session": got.get("session", ""), "heading": got.get("title", ""),
                    "official": True}

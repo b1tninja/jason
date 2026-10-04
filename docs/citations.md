@@ -74,6 +74,7 @@ exception.
 | `removed` | an amendment removed it: cite it as of an earlier day |
 | `not_kept_as_amended` | a date asked of a document with no history |
 | `statute_not_on_disk`, `label_not_found`, `edition_not_held`, `prior_numbering` | not exported (lawlibrary's `cite` reads it); the subdivision is not in the stored words; jason holds one edition (lawlibrary's `.session(year)` reads another); a Davis-Stirling number from before 2014 (`jason law-history`) |
+| `statute_not_in_library`, `library_unavailable`, `library_failed` | the read-through asked lawlibrary and it does not hold the section; no checkout at `lawlibrary_home`; its worker failed |
 | `no_resolution_prints_it`, `printed_by_several` | no resolution Doc prints the number; several do |
 | `unknown_instrument`, `no_minutes`, `unknown_record` | not a governing instrument, library file, or indexed instrument; no minutes for the day; not a 5200 kind |
 | `unreadable` | a source could not be read |
@@ -148,7 +149,13 @@ exported section and says so; the whole section is the official text.
   `jason outlines --model` adds the model's verified ones.
 - A treatment compares what a record stores. Most records store a section number and no words, so an amended section
   is `amended`, not `words changed`: the record's author decides whether it still holds.
-- Statutes come from `data/authorities` (one edition); lawlibrary reads the rest.
+- Statutes come from `data/authorities` (one edition); lawlibrary reads the rest. A section of a California code no
+  page holds is read through (`jason.tasks.statute_fetch.ensure`, under every reader of the shelf: `cite`, the
+  evidence resolver, the packets and rule-change notices, the MCP tools): asked of the local lawlibrary checkout, written in the
+  export's format with a `Fetched:` line (the day, on demand, what asked), listed under `on_demand` in the manifest,
+  and logged in `data/authorities/on-demand.jsonl`. `jason export-authorities` (and `--list`) prints those no curated
+  row holds, for a person to promote with a Basis and a reason; the curated list stays the person's. A miss is never
+  filled from memory. `JASON_AUTHORITIES_FETCH=0` reads the disk only (the tests set it).
 - Reading only: nothing reaches Drive, PayHOA, or the mail.
 
 ## Open, against lawlibrary's model

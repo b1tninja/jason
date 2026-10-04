@@ -1064,7 +1064,8 @@ LESSONS: tuple[Lesson, ...] = (
                                  "ui/src/components/meetingstage.test.tsx, decision.test.tsx"),
            docs=("docs/console/screens/meetings-and-minutes.md (The meeting room's rules)",),
            notes=("The recusal rule itself is the board's, on counsel's reading.",
-                  "Corporations Code 7233 and 7234 are not on the authorities shelf yet.")),
+                  "Corporations Code 7230-7238 is on the shelf since 2026-10-04 (lesson statute-miss-not-looked-up); "
+                  "how 7234 applies through CIV 5350(a) is counsel's reading.")),
     Lesson("notice-date-ignored-documents", date(2026, 10, 4), (Area.GOVERNING,),
            "notice_date and several other modules always used four days, and a hybrid meeting's notice checklist "
            "and fields were cited to 4926.",
@@ -1161,6 +1162,20 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/board-agenda.md (The executive session note)",),
            notes=("Still open: meeting_agenda.agenda_items carries the last agenda's executive headings into the new "
                   "agenda word for word.",)),
+    Lesson("statute-miss-not-looked-up", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "CIV 5350(a) applies Corporations Code 7233 and 7234, and code and caveats cited 7233, but neither was on "
+           "the curated shelf, so jason cite answered statute_not_on_disk: an invitation to quote from memory.",
+           "The shelf held only what the curated list named; a reader's miss stopped there, and lawlibrary, which "
+           "holds the words locally, was never asked.",
+           "CORP 7230-7238 is on the list. A reader's miss reads through statute_fetch.ensure: the local lawlibrary "
+           "checkout is asked, the page written in the export's format with a Fetched line, listed under on_demand in "
+           "the manifest, and logged in data/authorities/on-demand.jsonl. jason export-authorities lists on-demand "
+           "sections no curated row holds, for a person to promote with a Basis. A miss names its reason (not in the "
+           "library, library unavailable, worker failed); none is filled from memory.",
+           Status.FIXED, guards=("tests/test_statute_fetch.py (fake worker: hit, miss, unavailable, failed, off, "
+                                 "promotions)", "jason.community.cite.Reason (the distinct miss reasons)"),
+           docs=("docs/citations.md (Misses; Caveats)",),
+           notes=("Open for counsel: how CORP 7234 applies under CIV 5350(a), for BoardRule.interested_in_quorum.",)),
 )
 
 

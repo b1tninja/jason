@@ -75,6 +75,9 @@ class Reason(Enum):
     NOT_KEPT_AS_AMENDED = "not_kept_as_amended"      # a date asked of a document with no history
     UNREADABLE = "unreadable"                        # a source could not be read
     STATUTE_NOT_ON_DISK = "statute_not_on_disk"      # not in data/authorities: lawlibrary's cite reads it
+    STATUTE_NOT_IN_LIBRARY = "statute_not_in_library"  # not on disk, and lawlibrary does not hold it either
+    LIBRARY_UNAVAILABLE = "library_unavailable"      # not on disk, and no lawlibrary checkout to look it up
+    LIBRARY_FAILED = "library_failed"                # not on disk, and lawlibrary's worker failed looking it up
     PRIOR_NUMBERING = "prior_numbering"              # a Davis-Stirling number from before 2014
     LABEL_NOT_FOUND = "label_not_found"              # the statute is there, not the subdivision
     EDITION_NOT_HELD = "edition_not_held"            # a statute as of a day: jason holds one edition

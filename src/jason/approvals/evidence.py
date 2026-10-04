@@ -571,8 +571,14 @@ def read_citation(ask: Ask) -> dict[str, Any]:
     else:
         reason = str(got.get("reason") or "not found")
         detail = f" ({got['detail']})" if got.get("detail") else ""
-        fill = ("`jason export-authorities` exports the statutes' words into data/authorities"
-                if statute or reason == "statute_not_on_disk" else f"`jason cite \"{ask.address}\"` says what it names")
+        # A statute miss after the read-through (jason.tasks.statute_fetch) says what would bring the words down.
+        fills = {
+            "statute_not_in_library": "lawlibrary does not hold it either; read it at the official source",
+            "library_unavailable": "set lawlibrary_home in .env so a miss can be looked up, or run `jason export-authorities`",
+            "library_failed": "lawlibrary's worker failed; `jason cite` again, or `jason export-authorities`",
+        }
+        fill = fills.get(reason) or ("`jason export-authorities` exports the statutes' words into data/authorities"
+                                     if statute or reason == "statute_not_on_disk" else f"`jason cite \"{ask.address}\"` says what it names")
         out["note"] = f"Not recited: {reason.replace('_', ' ')}{detail}. {fill}."
     return out
 

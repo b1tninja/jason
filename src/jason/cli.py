@@ -1039,6 +1039,7 @@ def cmd_export_authorities(args: argparse.Namespace) -> int:
             print("pointers (not exported; read at the source):")
             for item in pointers():
                 print(f"  {item.citation}: {item.shelf.value}; {item.official}")
+            _print_promotions(root)
             return 0
         # The publications come first: the Commissioner's regulations PDF is where the Title 10 sections are read.
         if args.fetch_publications:
@@ -1052,7 +1053,21 @@ def cmd_export_authorities(args: argparse.Namespace) -> int:
         print(report.summary())
         for miss in report.misses:
             print(f"  miss: {miss}")
+        _print_promotions(root)
     return 0
+
+
+def _print_promotions(root) -> None:
+    """The sections readers fetched on demand that no curated span holds: a person promotes each with a Basis and a reason."""
+    from jason.tasks.statute_fetch import promotions
+
+    leads = promotions(root)
+    if not leads:
+        return
+    print("fetched on demand, not on the curated list (add a row to jason.community.authorities with a Basis and why):")
+    for lead in leads:
+        asked = f"; asked by {', '.join(lead['asked_by'])}" if lead["asked_by"] else ""
+        print(f"  {lead['citation']}: {lead['title']} ({lead['session']} session, fetched {lead['fetched']}{asked})")
 
 
 def cmd_utilities(args: argparse.Namespace) -> int:

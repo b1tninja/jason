@@ -18,6 +18,13 @@ def _no_ollama_ocr(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_statute_fetch(monkeypatch):
+    """A statute missing from a test's shelf stays a miss: no test spawns the lawlibrary worker (tests/test_statute_fetch.py
+    turns the read-through on with a fake worker)."""
+    monkeypatch.setenv("JASON_AUTHORITIES_FETCH", "0")
+
+
+@pytest.fixture(autouse=True)
 def _own_lock_dir(monkeypatch, tmp_path_factory):
     """Each test takes jason's locks in its own folder, never the machine's (a real run may hold the GPU lock)."""
     monkeypatch.setenv("JASON_LOCK_DIR", str(tmp_path_factory.mktemp("locks")))

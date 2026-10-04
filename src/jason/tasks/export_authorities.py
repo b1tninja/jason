@@ -37,6 +37,8 @@ from jason.sources.lawlibrary import LawLibrary, Section, article_groups
 AUTHORITIES_DIR = "authorities"
 PUBLICATIONS_DIR = "authorities/publications"
 MANIFEST = "manifest.json"
+# The store lock (jason.locks) the export and a reader's read-through hold while they write the shelf.
+STORE_KEY = "authorities"
 _BRACKET = re.compile(r"\s*\[[^\]]*\]\s*$")
 
 
@@ -52,6 +54,9 @@ class Page:
     basis: str
     why: list[str]
     session: str
+    # A page a reader's miss brought down (jason.tasks.statute_fetch): the day, and what asked. Empty for the curated list.
+    fetched: str = ""
+    asked_by: str = ""
 
 
 @dataclass
@@ -60,10 +65,13 @@ class ExportReport:
     pages: list[Page] = field(default_factory=list)
     misses: list[str] = field(default_factory=list)
     pointers: list[dict[str, str]] = field(default_factory=list)
+    # Sections fetched on demand that no curated span covers: leads for a person to promote with a Basis and a reason.
+    on_demand: list[Page] = field(default_factory=list)
 
     def summary(self) -> str:
         sections = sum(len(p.sections) for p in self.pages)
-        return f"authorities session={self.session or '?'} pages={len(self.pages)} sections={sections} misses={len(self.misses)} pointers={len(self.pointers)}"
+        return (f"authorities session={self.session or '?'} pages={len(self.pages)} sections={sections} misses={len(self.misses)} "
+                f"pointers={len(self.pointers)} on_demand={len(self.on_demand)}")
 
 
 @dataclass(frozen=True)
@@ -71,7 +79,7 @@ class _Want:
     code: str
     start: str
     end: str
-    basis: Basis
+    basis: Basis | None
     why: tuple[str, ...]
     heading: str = ""
 
@@ -118,7 +126,17 @@ def export_authorities(library: LawLibrary, root: Path, *, spans: tuple[Authorit
         report.pointers.append({"citation": pub.title, "shelf": Shelf.PUBLICATION.value, "source": pub.url, "why": pub.why})
 
     texts = library.spans([(j.code, j.start, j.end) for j in jobs])
+    from jason.locks import Resource, hold
+
+    # The same lock a reader's read-through takes, so a page fetched on demand is not lost between read and write.
+    with hold(Resource.STORE, STORE_KEY, purpose="jason export-authorities"):
+        _write_export(root, report, jobs, texts)
+    return report
+
+
+def _write_export(root: Path, report: ExportReport, jobs: list[_Want], texts) -> None:
     out = root / AUTHORITIES_DIR
+    earlier = [Page(**p) for p in read_manifest(root).get("on_demand") or []]
     for job, span in zip(jobs, texts):
         citation = f"{job.code} {job.start}" if job.start == job.end else f"{job.code} {job.start}-{job.end}"
         if not span.found:
@@ -132,14 +150,23 @@ def export_authorities(library: LawLibrary, root: Path, *, spans: tuple[Authorit
         path.write_text(page_markdown(citation, title, job, span.sections, root), encoding="utf-8")
         report.pages.append(Page(
             path.relative_to(root).as_posix(), citation, title, job.code, job.start, job.end,
-            [s.number for s in span.sections], job.basis.value, list(job.why), session,
+            [s.number for s in span.sections], job.basis.value if job.basis else "", list(job.why), session,
         ))
+    # A page fetched on demand stays until a curated page holds its sections; then the curated page is the copy.
+    curated = {(p.code, n) for p in report.pages for n in p.sections}
+    files = {p.file for p in report.pages}
+    for page in earlier:
+        if page.sections and all((page.code, n) in curated for n in page.sections):
+            if page.file not in files:
+                (root / page.file).unlink(missing_ok=True)
+            continue
+        if (root / page.file).is_file():
+            report.on_demand.append(page)
     out.mkdir(parents=True, exist_ok=True)
     (out / MANIFEST).write_text(json.dumps({
         "exported": date.today().isoformat(), "session": report.session, "pages": [asdict(p) for p in report.pages],
-        "misses": report.misses, "pointers": report.pointers,
+        "misses": report.misses, "pointers": report.pointers, "on_demand": [asdict(p) for p in report.on_demand],
     }, indent=2), encoding="utf-8")
-    return report
 
 
 REGULATIONS_FILE = "regs.pdf"
@@ -194,7 +221,10 @@ def _regulation_page(root: Path, authority: Authority, section: tuple[str, str])
                 [authority.start], authority.basis.value, [authority.why], "DRE publication")
 
 
-def page_markdown(citation: str, title: str, job: _Want, sections: tuple[Section, ...], root: Path | None = None) -> str:
+def page_markdown(citation: str, title: str, job: _Want, sections: tuple[Section, ...], root: Path | None = None,
+                  *, fetched: str = "") -> str:
+    """One page of the shelf. ``fetched`` (the day and what asked) marks a page a reader's miss brought down, in
+    place of the curated row's basis and reason."""
     first = sections[0]
     official = f"https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode={job.code}&sectionNum={first.number}."
     lines = [
@@ -203,8 +233,11 @@ def page_markdown(citation: str, title: str, job: _Want, sections: tuple[Section
         f"- Source: California Legislature, {first.session} session publication, read with lawlibrary",
         f"- Official page: {official}",
         f"- Path: {' > '.join(heading_title(h) for h in first.path)}",
-        f"- Basis: {job.basis.value}",
     ]
+    if fetched:
+        lines.append(f"- Fetched: {fetched}; not on the curated list (jason.community.authorities)")
+    if job.basis is not None:
+        lines.append(f"- Basis: {job.basis.value}")
     for why in job.why:
         lines.append(f"- Why Jason holds it: {why}")
     lines.append("")
@@ -234,29 +267,63 @@ def authority_pages(root: Path) -> tuple[Page, ...]:
     return tuple(Page(**p) for p in read_manifest(root).get("pages") or [])
 
 
+def on_demand_pages(root: Path) -> tuple[Page, ...]:
+    """Pages a reader's miss brought down (jason.tasks.statute_fetch), not on the curated list."""
+    return tuple(Page(**p) for p in read_manifest(root).get("on_demand") or [])
+
+
 _CITE = re.compile(r"^\s*(?:(\d+)\s+)?([A-Z]{2,5})\s*(?:section|§)?\s*(\d+(?:\.\d+)*)\s*$", re.IGNORECASE)
 
 
-def authority_text(root: Path, citation: str) -> dict[str, Any]:
-    """The words of one section from the exported pages, or a miss that names the pointer or the gap."""
+def _on_shelf(root: Path, code: str, number: str) -> dict[str, Any] | None:
+    """The section's words from the curated pages, then the pages fetched on demand; None when no page holds them."""
+    for pages in (authority_pages(root), on_demand_pages(root)):
+        for page in pages:
+            if page.code != code or not section_in(Authority(code, page.start, page.end, "", Basis.DUTY), number):
+                continue
+            path = root / page.file
+            text = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else ""
+            for block in text.split("\n## ")[1:]:
+                head, _, body = block.partition("\n")
+                if head.strip() == f"{code} {number}":
+                    hit = {"found": True, "citation": f"{code} {number}", "page": page.file, "title": page.title,
+                           "session": page.session, "why": page.why, "text": body.strip()}
+                    if page.fetched:
+                        hit["fetched"] = page.fetched
+                    return hit
+            break
+    return None
+
+
+def authority_text(root: Path, citation: str, *, fetch: bool = True, asked_by: str = "") -> dict[str, Any]:
+    """The words of one section from the shelf, or a miss that names the pointer or the gap.
+
+    A section of a code lawlibrary holds that no page has is asked of lawlibrary once (``statute_fetch.ensure``),
+    written to the shelf in the export's format, and read from there; ``fetch=False`` or JASON_AUTHORITIES_FETCH=0
+    reads the disk only. A miss names why: not in the library, the library unavailable, or its worker failed.
+    """
     match = _CITE.match(citation)
     if not match:
         return {"found": False, "citation": citation, "reason": "say a code and a section, such as CIV 5200"}
     code = (match.group(1) + " " if match.group(1) else "") + match.group(2).upper()
     number = match.group(3)
-    for page in authority_pages(root):
-        if page.code != code or not section_in(Authority(code, page.start, page.end, "", Basis.DUTY), number):
-            continue
-        text = (root / page.file).read_text(encoding="utf-8", errors="ignore")
-        for block in text.split("\n## ")[1:]:
-            head, _, body = block.partition("\n")
-            if head.strip() == f"{code} {number}":
-                return {"found": True, "citation": f"{code} {number}", "page": page.file, "title": page.title, "session": page.session,
-                        "why": page.why, "text": body.strip()}
-        break
+    hit = _on_shelf(root, code, number)
+    if hit:
+        return hit
     for pointer in read_manifest(root).get("pointers") or []:
         if pointer.get("citation", "").upper().startswith(code + " "):
             return {**pointer, "found": False, "citation": f"{code} {number}", "reason": "not exported; read the source"}
+    if fetch:
+        from jason.tasks.statute_fetch import Miss, caller, ensure
+
+        got = ensure(root, code, number, asked_by=asked_by or caller())
+        if got.found:
+            hit = _on_shelf(root, code, number)
+            if hit:
+                return hit
+        elif got.miss is not Miss.FETCH_OFF:
+            return {"found": False, "citation": f"{code} {number}", "miss": got.miss.value if got.miss else "",
+                    "reason": got.reason_text(), "detail": got.detail}
     return {"found": False, "citation": f"{code} {number}", "reason": "not in the exported authorities; run jason export-authorities or read it from lawlibrary"}
 
 
