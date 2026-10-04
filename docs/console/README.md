@@ -28,6 +28,8 @@ It plans every write to PayHOA, Google, and the mail as a dry run. The console p
 | [security-and-privacy.md](security-and-privacy.md) | Loopback, the write guard, apply behind `--allow-apply`, identity, roles, data levels, and no secrets |
 | [personas-and-jobs.md](personas-and-jobs.md) | Who uses the console, the jobs each does, and what each must never see or do |
 | [journeys.md](journeys.md) | Six walks across the screens, step by step |
+| [handoff-conversations-and-policies.md](handoff-conversations-and-policies.md) | The design pass on conversations, forwards as handoffs, response standards, and the policy catalog |
+| [handoff-reconciliation.md](handoff-reconciliation.md), [handoff-reconciliation-3.md](handoff-reconciliation-3.md) | The design agent's console package and its third cut, checked against the repo and the law: the corrections, the fixes in the built console, and the build order |
 | [content/style.md](content/style.md), [content/patterns.md](content/patterns.md) | The words on screen, and the interaction patterns |
 | [doc-component.md](doc-component.md) | `Doc`, the one component for every document reference: the `DocRef` a loader returns, the four variants (chip, row, card, inline), their states, and the checklist a screen follows to adopt it |
 | [documents.md](documents.md) | One viewer for every kind of document: the copy jason keeps, how each kind renders and refreshes, who may see it, serving untrusted bytes safely, the gaps to close, and the build order |

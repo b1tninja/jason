@@ -115,6 +115,7 @@
     "../docs/policy-catalog-design.md",
     "../docs/console/doc-component.md",
     "../docs/console/redesign-review.md",
-    "../docs/console/handoff-reconciliation.md"
+    "../docs/console/handoff-reconciliation.md",
+    "../docs/console/handoff-reconciliation-3.md"
   ]
 }
