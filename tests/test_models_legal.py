@@ -21,7 +21,12 @@ from jason.community.models.legal_collections import (
     ReimbursementNoticeModel,
     SenderKind,
 )
-from jason.community.models.legal_inspections import InspectionReportModel, Result, SignalServiceReportModel
+from jason.community.models.legal_inspections import (
+    InspectionReportModel,
+    Result,
+    SignalServiceReportModel,
+    StateFireFormModel,
+)
 from jason.community.models.legal_letters import LegalBriefModel, LegalLetterModel, LetterType, Recipient
 from jason.community.models.legal_liens import AssessmentLienModel, LienReleaseBondModel, MechanicsLienModel
 from jason.community.models.legal_records import EscrowRequestModel, FormModel, FormType, MembershipListModel
@@ -1038,6 +1043,135 @@ def test_general_backflow_report_uses_the_spec_cadence():
     assert due and due[0].severity is Severity.PROBLEM and "2026-06-20" in due[0].message
 
 
+# A report on the State Fire Marshal's forms, as a text layer prints it. The form's words are the State's (the forms
+# incorporated by reference in 19 CCR 904); the contractor, the property, and the entries are made up.
+AES_21 = """Wet Pipe
+Fire Sprinkler System
+California Code of Regulations - Title 19
+Inspection, Testing, and Maintenance
+Quarterly and
+Annual Report
+1 of 3
+Property Information
+Contractor or Licensed Owner Information
+Building Name
+Oak Ridge, Buildings 1 and 2
+Name
+Acme Fire Protection Inc.
+License #
+C16-000000
+Riser Information
+Main Drain Test (Annual)
+Quarterly Inspections
+I   = Inspection
+ T = Test
+ M = Maintenance
+P = Pass    F = Fail    N/A = Not Applicable
+Item
+Description
+NFPA 25 CA ed.
+Reference
+ Date
+1.1
+I
+Control Valves – Identification Sign
+13.3.1
+P
+06/12/2026
+Form AES 2.1
+Sept. 3, 2013
+Wet Pipe
+Fire Sprinkler System
+Quarterly and
+Annual Report
+2 of 3
+ANNUAL INSPECTION, TESTING, AND MAINTENANCE
+Include ALL Quarterly Inspections
+1.19
+I
+Sprinklers
+5.2.1
+Deficiencies and Comments
+Indicate all equipment, devices and parts that were repaired or replaced
+Check box if Annual Inspection, Testing & Maintenance Items are Completed in the Indicated Quarter
+Quarter
+1st  -
+Annual
+Form AES 2.1
+Sept. 3, 2013
+"""
+AES_22 = AES_21.replace("Quarterly and\nAnnual Report", "5-Year\nReport").replace("Form AES 2.1", "Form AES 2.2").replace(
+    "Quarterly Inspections", "5-Year INSPECTION, TESTING, AND MAINTENANCE\nIncludes ALL Quarterly and Annual Inspections, Tests, "
+    "and Maintenance Items").replace("Include ALL Quarterly Inspections", "Include ALL Quarterly Inspections (See AES 2.1)")
+
+
+def test_a_report_on_the_state_forms_is_read_by_its_words_and_its_marks_are_left_unread():
+    reading = read(DocumentKind.INSPECTION_REPORT, AES_21, ModelContext(today=TODAY))
+    r = reading.record
+    assert reading.model == "state-fire-forms" and r.forms == ("AES 2.1",) and r.system.value == "fire sprinkler"
+    assert r.inspection_date == date(2026, 6, 12)                 # the one date entered; the form's edition date is not one
+    assert r.buildings == (Building.BLDG_1, Building.BLDG_2) and r.inspector_license == "C16-000000"
+    assert r.inspector_firm == "Acme Fire Protection Inc." and r.standard == "NFPA 25"
+    # "Pass", "Fail", and "Deficiencies" are printed on every copy: they are not this report's result.
+    assert r.result is None and r.deficiencies == () and r.open_deficiencies == 0 and r.devices_failed is None
+    assert {"form-marks-not-read", "interval-not-stated"} <= codes(reading.findings, Severity.CHECK)
+    assert not codes(reading.findings, Severity.PROBLEM)
+
+
+def test_which_inspection_a_state_form_report_records_comes_from_its_own_words():
+    def months(text):
+        return read(DocumentKind.INSPECTION_REPORT, text, ModelContext(today=TODAY)).record.interval_months
+
+    # The form is titled "Quarterly and Annual Report" and prints both sections on every copy: it does not say which.
+    assert months(AES_21) is None
+    assert months("Acme Fire Protection Inc.\nAnnual Fire Sprinkler Inspection\n" + AES_21) == 12
+    assert months("Inspection Type: Quarterly\n" + AES_21) == 3
+    assert months(AES_21.replace("Building Name", "Type of Inspection\nAnnual\nBuilding Name")) == 12
+    # The five-year form names one interval, so the form says it; its "ANNUAL ..." page heading is the form's.
+    five = read(DocumentKind.INSPECTION_REPORT, AES_22, ModelContext(today=TODAY))
+    assert five.record.forms == ("AES 2.2",) and five.record.interval_months == 60
+    assert "interval-not-stated" not in codes(five.findings)
+    # A label that names an interval the form does not, or two different labels, is no answer.
+    assert months("Inspection Type: 5 Year\n" + AES_21) is None
+    assert months("Inspection Type: Quarterly\nReport Type: Annual\n" + AES_21) is None
+    # A line about another visit is not this report's title.
+    assert months("Next annual inspection due 06/2027\n" + AES_21) is None
+
+
+def test_a_form_number_the_title_words_do_not_bear_out_is_not_read_as_that_form():
+    # "Form AES 21" (a misread "2.1") is the semi-annual dry chemical form; nothing here says semi-annual.
+    misread = AES_21.replace("Form AES 2.1", "Form AES 21")
+    reading = read(DocumentKind.INSPECTION_REPORT, misread, ModelContext(today=TODAY))
+    assert reading is None or (reading.model != "state-fire-forms" and reading.record.interval_months != 6)
+
+
+def test_a_general_report_says_its_interval_in_a_title_or_a_label_or_not_at_all():
+    def record(head):
+        text = f"{head}\nExample Fire Services\nInspection Date: 03/02/2026\nAll devices passed.\n"
+        reading = read(DocumentKind.INSPECTION_REPORT, text, ModelContext(today=TODAY))
+        assert reading.model == "inspection-report"
+        return reading.record
+
+    assert record("Semi-Annual Fire Alarm Inspection Report").interval_months == 6
+    assert record("Fire Sprinkler Annual Inspection Report").interval_months == 12
+    assert record("Quarterly Sprinkler Inspection Report").interval_months == 3
+    assert record("5 Year Internal Pipe Inspection Report").interval_months == 60
+    assert record("Fire Sprinkler Inspection Report\nService Type: Quarterly").interval_months == 3
+    assert record("Fire Sprinkler Inspection Report").interval_months is None                 # it does not say
+    assert record("Quarterly and Annual Fire Sprinkler Inspection Report").interval_months is None     # it says two
+    assert record("Fire Sprinkler Inspection Report\nThe next annual inspection is due in June.").interval_months is None
+    assert record("Fire Sprinkler Inspection Report\nBiannual visit").interval_months is None  # twice a year, or every two
+    both = record("Fire Sprinkler Inspection Report\nBuildings 1 and 2")
+    assert both.buildings == (Building.BLDG_1, Building.BLDG_2)
+    assert record("Fire Sprinkler Inspection Report\nBldg. 1").buildings == ()                # one building: `building`
+    assert record("Fire Sprinkler Inspection Report\nBuilding 1 and 12 detectors").buildings == ()   # 12 is no building
+
+
+def test_the_signal_report_names_no_interval_and_one_building():
+    r = read(DocumentKind.INSPECTION_REPORT, SIGNAL, ctx()).record
+    assert r.interval_months is None and r.buildings == () and r.forms == ()
+
+
 def test_balcony_report_is_left_to_the_sb326_model():
     report = "EXTERIOR ELEVATED ELEMENTS INSPECTION REPORT\nSB 326 balcony and deck inspection\nInspection Date: 11/08/2023\n"
     assert SignalServiceReportModel().parse(report, ctx()) is None
@@ -1050,5 +1184,5 @@ def test_models_miss_other_texts():
     other = "Minutes of the board meeting\nCall to order at 6:00 pm\n"
     for model in (PreLienNoticeModel(), OwnerStatementModel(), OwnerHistoryModel(), AssessmentLienModel(), MechanicsLienModel(),
                   LienReleaseBondModel(), LegalBriefModel(), EscrowRequestModel(), MembershipListModel(), SignalServiceReportModel(),
-                  InspectionReportModel(), FormModel()):
+                  StateFireFormModel(), InspectionReportModel(), FormModel()):
         assert model.parse(other, ctx()) is None, model.name

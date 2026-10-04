@@ -223,6 +223,38 @@ def test_where_several_obligations_apply_the_reading_must_say_which():
     assert "on file, not assigned to an obligation (2)" in text
 
 
+# A made-up report on the State Fire Marshal's quarterly-and-annual form, as a reader is given it.
+STATE_FORM = ("Acme Fire\n{title}\nBuildings 1 and 2\nWet Pipe\nFire Sprinkler System\nInspection, Testing, and Maintenance\n"
+              "Quarterly and\nAnnual Report\nP = Pass    F = Fail    N/A = Not Applicable\n05/02/2025\nForm AES 2.1\n"
+              "Sept. 3, 2013\n")
+
+
+def _read_row(ident, text):
+    from jason.community.document_models import ModelContext, read
+    from jason.community.symbols import DocumentKind
+
+    reading = read(DocumentKind.INSPECTION_REPORT, text, ModelContext(today=AS_OF))
+    return {"id": ident, "name": f"Report {ident}.pdf", "kind": "inspection_report", "hasText": True, **reading.as_dict()}
+
+
+def test_a_report_read_from_its_own_words_is_assigned_by_the_interval_and_buildings_it_states():
+    risers = LifeSafetySystem("risers-1-2", "Sprinklers, buildings 1 and 2", SystemKind.FIRE_SPRINKLER,
+                              InstallationStandard.NFPA_13R, "the installer's letter of May 1, 2010", serves=("1", "2"))
+    annual = _read_row("1", STATE_FORM.format(title="Annual Fire Sprinkler Inspection"))
+    unsaid = _read_row("2", STATE_FORM.format(title="Fire Sprinkler Inspection"))
+    assert (annual["fields"]["interval_months"], annual["fields"]["buildings"]) == (12, [1, 2])
+    assert unsaid["fields"]["interval_months"] is None and unsaid["fields"]["result"] is None
+    found = task.completeness(_Profile((risers,), (QUARTERLY, ANNUAL)), [annual, unsaid], as_of=AS_OF)
+    covered = _one(found, risers, ANNUAL).periods[0]
+    assert covered.status is Coverage.COVERED and not covered.missing
+    assert [(p.report.id, p.slots) for p in covered.reports] == [("1", ("1", "2"))]
+    assert not _one(found, risers, QUARTERLY).periods                  # the annual report is not a quarterly one
+    # The form reports both intervals and this copy does not say which: a miss, listed with the field it lacks.
+    (lost,) = found.systems[0].unassigned
+    assert lost[0].report.id == "2" and "the field interval_months" in lost[1] and "state-fire-forms" in lost[1]
+    assert not found.unplaced
+
+
 # --- What does not apply, and what is undetermined ---------------------------------------------------------------
 
 

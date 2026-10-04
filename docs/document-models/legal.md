@@ -234,12 +234,22 @@ This association's findings are in its private notes (mystique/notes/document-mo
 
 No Davis-Stirling section shapes these reports. The vendor's standard does (NFPA 72, NFPA 25), and jason holds no copy of it. The cadence comes from the specification's `obligations`: the fire sprinkler inspection and the backflow test are yearly. A system with no obligation gets no due date. Both models return nothing for an SB 326 balcony report, which `elevated_elements` reads.
 
-**Layouts.** `signal-service-fire-alarm` reads the NFPA 72 report of `Signal Service` (a declared adapter, [adapters.md](../adapters.md)). `inspection-report` reads another vendor's labeled report (inspection or test date, tested by, license, pass or fail, deficiencies, next due).
+**Layouts.**
+- `signal-service-fire-alarm` reads the NFPA 72 report of `Signal Service` (a declared adapter, [adapters.md](../adapters.md)).
+- `state-fire-forms` reads a report on the State Fire Marshal's AES forms, known by the number each form prints at its foot ("Form AES 2.1").
+  - It reads the forms, the system, the interval, the buildings, the contractor where labeled, and a labeled date or the one date the report prints. The form's own edition date is not a date of the report.
+  - The forms record each item as P, F, or N/A in a column, and print "Pass", "Fail", and "Deficiencies" on every copy. The reader does not read the marks: `result` and `deficiencies` stay empty, and the finding `form-marks-not-read` says so.
+- `inspection-report` reads another vendor's labeled report (inspection or test date, tested by, license, pass or fail, deficiencies, next due).
 
 **`InspectionReport` fields:**
 
-- **Report:** `system` (`InspectedSystem`), `standard`, `inspector_firm`, `inspector_license`, `technician`, `inspection_date`.
-- **Site:** `building`, `site_address`, `customer_city`, `monitoring_company` (the company block, else the supervising station the equipment table names), `accepted_by`.
+- **Report:** `system` (`InspectedSystem`), `standard`, `inspector_firm`, `inspector_license`, `technician`, `inspection_date`, `forms` (the State forms the report is on).
+- **Which inspection:** `interval_months` (3 for a quarterly inspection, 12 for an annual one, 60 for a five-year one), read only from the report's own words, in this order:
+  - a labeled field ("Inspection Type: Annual", "Type of Service: Quarterly"), which must agree with the forms;
+  - a State form whose title names one interval (the five-year forms, the semi-annual forms; `AES_FORMS` lists each, read from the forms incorporated by reference on the authorities shelf);
+  - a title line in the head of the text ("Quarterly Fire Sprinkler Inspection"). A line about another visit ("Next annual inspection due") is not a title, and on a State form the lines every copy prints are not the report's own.
+  - A report that does not say, or says more than one, has none. The quarterly-and-annual forms name two intervals, so a report on one has none unless it says which, and the finding `interval-not-stated` says so. "Biannual" is not read: it is used for twice a year and for every two years.
+- **Site:** `building`, `buildings` (where the report lists more than one in its head, "Buildings 1 and 2"), `site_address`, `customer_city`, `monitoring_company` (the company block, else the supervising station the equipment table names), `accepted_by`.
 - **Equipment:** `equipment` (`EquipmentTally` per type), and the device totals, tested, passed, failed, and not tested.
 - **Deficiencies:** `deficiencies` (`Deficiency`: location, device, comment, status), `open_deficiencies`.
 - **Outcome:** `result` (`Result`), `comments`, `next_due`.
@@ -252,8 +262,11 @@ No Davis-Stirling section shapes these reports. The vendor's standard does (NFPA
 - The vendor's customer record outside Sacramento (CHECK).
 - The building against the specification (CHECK).
 - The next due date from the report or the specification's cadence. It is a PROBLEM when past, and a CHECK within 60 days.
+- On a State form: the marks are not read (CHECK), and the forms name more than one interval and the report does not say which (CHECK).
 
 NFPA 72 sets most fire alarm tests yearly; a fire alarm row in the specification's `obligations` gives the due date.
+
+**Dates across a line break.** A PDF's text layer can break a date after its comma ("Thursday, September 05," then "2024"). The shared `dates_in` reads that as one date only where the month and day end their line with the comma and the next line is the year and nothing else. A day with no comma, or a year with more on its line, is not joined.
 
 This association's findings are in its private notes (mystique/notes/document-models/legal.md).
 

@@ -106,6 +106,8 @@ From the adopted text of 19 CCR 904.1 and 904.2:
   - **The page.** `--write` saves `data/reports/life-safety-records.md`, a generated summary and not the record.
 - **Filing.** The filing rules file each vendor's report by system (`Reports/Fire Protection/<system>`), invoices by fiscal year, and contracts by vendor; see [gmail.md](gmail.md#filing-vendors-attachments).
 - **Reading reports.** `jason.community.models.legal_inspections` reads inspection reports (result, deficiencies, devices). A vendor's public report portal is synced by `jason.tasks.report_portals`.
+  - **Which inspection a report is.** The reader takes `interval_months` from the report's own words: a labeled field, a State form that names one interval (AES 2.2, the five-year report), or a title line. AES 2.1 is titled "Quarterly and Annual Report" and prints both sections on every copy, so a report on it has no interval unless it says which. That is a miss, and `jason inspections` lists the report as not assigned.
+  - **The State forms' marks.** The AES forms record each item as P, F, or N/A. The reader does not read the marks, so a report on them has no result until a person reads it ([document-models/legal.md](document-models/legal.md#inspection-reports)).
 - **Board items.** A deficiency or an overdue inspection becomes a board item with its authority and evidence.
 
 ## Sources

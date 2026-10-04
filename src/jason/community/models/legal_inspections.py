@@ -7,8 +7,16 @@ for gets no due date. The SB 326 balcony report is ``elevated_elements``; these 
 
 ``SignalServiceReport`` reads Signal Service's NFPA 72 fire alarm report (one per building, the September 2025 pair):
 the tested-by and accepted-by blocks, the company's licenses, the monitoring company, the testing summary by equipment
-type, the outstanding deficiencies, and each device's result. ``InspectionReportModel`` reads the same facts where
-another vendor prints them with the usual labels. A report names the vendor's technician; it names no owner.
+type, the outstanding deficiencies, and each device's result. ``StateFireFormModel`` reads a report on the State Fire
+Marshal's AES forms (19 CCR 904; NFPA 25 4.3.1.1 as California amended it): which forms, the system, and what the
+report's own words say; it does not read the form's P, F, and N/A marks. ``InspectionReportModel`` reads the same facts
+where another vendor prints them with the usual labels. A report names the vendor's technician; it names no owner.
+
+**Which inspection a report records** (``interval_months``: 3 for a quarterly inspection, 12 for an annual one, 60 for
+a five-year one) is read from the report's own words and nothing else: a form that names one interval, a labeled field
+("Inspection Type: Annual"), or a title line ("Quarterly Fire Sprinkler Inspection"). A report that does not say, or
+says more than one, has none: a form titled "Quarterly and Annual Report" names two, so the field stays empty unless
+the report says which. ``buildings`` is filled where the report lists more than one ("Buildings 1 and 2").
 """
 
 from __future__ import annotations
@@ -108,9 +116,122 @@ class InspectionReport:
     result: Result | None = None
     comments: str = ""
     next_due: date | None = None         # from the report when it prints one
+    interval_months: int | None = None   # which inspection the report says it is: 3 quarterly, 12 annual, 60 five-year
+    buildings: tuple[Building, ...] = () # the buildings the report lists, where it lists more than one
+    forms: tuple[str, ...] = ()          # the State Fire Marshal's forms the report is on ("AES 2.1")
 
 
-_TALLY = re.compile(r"\n([A-Z][A-Za-z ]+?)\n(\d+)\n(\d+) \(\d+%\)\n(\d+) \(\d+%\)\n(\d+) \(\d+%\)")
+# The State Fire Marshal's Automatic Extinguishing Systems forms, and the interval each one's title names, in months.
+# A form prints its number at the foot of every page ("Form AES 2.1") and its title at the head. Read October 4, 2026
+# from the forms incorporated by reference (the authorities shelf, publications/formsincorpbyreferencefinal.txt):
+# "Quarterly and Annual Report" (two intervals: the form alone does not say which), "5-Year Report", "Semi-Annual
+# Report", "Monthly Report", "Annual Report". AES 5.1 is weekly, which months cannot say, and AES 1, 2.9, 7, 8, 9, and
+# 10 (cover sheet, continuations, corrections, and two forms titled only "Inspection Report") name no interval.
+AES_FORMS: dict[str, tuple[int, ...]] = {
+    "2.1": (3, 12), "2.3": (3, 12), "2.5": (3, 12), "2.7": (3, 12), "3": (3, 12), "4": (3, 12),
+    "2.2": (60,), "2.4": (60,), "2.6": (60,), "2.8": (60,), "3.1": (60,), "4.1": (60,),
+    "20": (6,), "21": (6,), "22": (6,),
+    "5.3": (1,),
+    "5.2": (12,), "5.4": (12,), "6": (12,),
+}
+# The foot of a page: the number on a line of its own (the edition date may share the line). A form's sentences name
+# other forms ("listed on Form AES 9."), and those are not the form the page is.
+_AES_FORM = re.compile(r"^[ \t]*Form[ \t]+AES[ \t]*(\d{1,2}(?:\.\d)?)[ \t]*(?:[A-Z][a-z]{2,8}\.?[ \t]+\d{1,2},[ \t]+\d{4})?[ \t]*$", re.I | re.M)
+# The form's own date, printed after its number ("Form AES 2.1 / Sept. 3, 2013"): the edition, not an inspection.
+_AES_EDITION = re.compile(r"\b(?:Form\s+)?AES\s*\d{0,2}(?:\.\d)?\s*\n?\s*[A-Z][a-z]{2,8}\.?\s+\d{1,2},\s+\d{4}")
+# Lines the forms print on every copy, whichever inspection was made: they name an interval and say nothing of this one.
+_AES_PRINTED = re.compile(
+    r"quarterly and|annual report|quarterly inspections|inspection, testing,? and maintenance|includes? all quarterly|"
+    r"main drain test|check box if annual|^(?:\d(?:st|nd|rd|th)\s*-\s*)?annual$|^5[- ]year(?: report)?$|^semi-annual(?: report)?$|"
+    r"^(?:monthly|weekly)(?: report)?$", re.I)
+
+# An interval as a report words it, in months. "Biannual" is left out: it is used for twice a year and for every two.
+_INTERVALS = (("m6", r"semi[- ]?annual(?:ly)?|(?:six|6)[- ]month"), ("m3", r"quarterly|(?:three|3)[- ]month"), ("m1", r"monthly"),
+              ("years", r"(?:\d{1,2}|three|five|ten)[- ]?year"), ("m12", r"(?<![a-z-])(?:annual(?:ly)?|yearly)"))
+_INTERVAL = re.compile("|".join(rf"(?P<{name}>\b(?:{pattern}))" for name, pattern in _INTERVALS), re.I)
+_YEAR_WORDS = {"three": 3, "five": 5, "ten": 10}
+# A field that says which inspection: "Inspection Type: Annual", "Type of Service: Quarterly", "Report Frequency: 5 Year".
+_INTERVAL_LABEL = re.compile(r"\b(?:(?:inspection|report|service|visit)\s+(?:type|frequency)|type\s+of\s+(?:inspection|report|service))"
+                             r"[ \t]*[:\-–]?[ \t]*\n?[ \t]*", re.I)
+# A title line: short, an interval and then what was done, and not a line about another visit ("Next annual test due").
+_TITLE_NOUN = r"(?:inspection|test(?:ing)?|report|service|certification)"
+_NOT_A_TITLE = re.compile(r"\b(?:next|due|last|previous|prior|recommend\w*|schedul\w*|since|until|before|after|every|per|contract|"
+                          r"agreement|proposal|invoice|quote|estimate)\b", re.I)
+_TITLE_AREA = 2000
+
+
+def _months(match: re.Match) -> int | None:
+    name = match.lastgroup
+    if name != "years":
+        return int(name[1:])
+    count = re.match(r"\d+|[a-z]+", match.group(0), re.I).group(0).lower()
+    years = int(count) if count.isdigit() else _YEAR_WORDS.get(count)
+    return years * 12 if years else None
+
+
+def _forms(text: str) -> tuple[str, ...]:
+    """The State forms the text is on, by the number each prints at its foot, in order. A number whose title words the
+    text does not also print is passed over: a misread digit must not name another form."""
+    said = {m for m in (_months(w) for w in _INTERVAL.finditer(text or "")) if m}
+    found: list[str] = []
+    for m in _AES_FORM.finditer(text or ""):
+        number = m.group(1)
+        named = AES_FORMS.get(number)
+        if named is not None and not set(named) <= said:
+            continue
+        if number not in found:
+            found.append(number)
+    return tuple(f"AES {n}" for n in found)
+
+
+def _interval(text: str, forms: tuple[str, ...] = ()) -> int | None:
+    """Which inspection the report says it is, in months, or None when it does not say or says more than one.
+
+    In order: a labeled field, checked against the forms; a form that names one interval; a title line in the head of
+    the text. On a State form the lines every copy prints are not the report's own words."""
+    text = text or ""
+    named = {months for form in forms for months in AES_FORMS.get(form[4:], ())}
+    labeled = set()
+    for label in _INTERVAL_LABEL.finditer(text):
+        word = _INTERVAL.match(text, label.end())
+        if word and _months(word):
+            labeled.add(_months(word))
+    if len(labeled) == 1:
+        (months,) = labeled
+        return months if not named or months in named else None
+    if labeled:
+        return None
+    if len(named) == 1:
+        return next(iter(named))
+    titled = set()
+    for line in text[:_TITLE_AREA].splitlines():
+        line = squash(line)
+        if not line or len(line) > 80 or _NOT_A_TITLE.search(line) or (forms and _AES_PRINTED.search(line)):
+            continue
+        words = [w for w in _INTERVAL.finditer(line)]
+        if any(re.match(rf"(?:\W+\w+){{0,4}}?\W+{_TITLE_NOUN}\b", line[w.end():], re.I) for w in words):
+            titled.update(m for m in (_months(w) for w in words) if m)
+    if len(titled) == 1:
+        (months,) = titled
+        return months if not named or months in named else None
+    return None
+
+
+_BUILDING_LIST = re.compile(r"\b(?:Bldgs?|Buildings?)\.?\s*#?\s*(\d{1,2}(?:\s*(?:,|&|/|and)\s*(?:,\s*)?(?:and\s+)?(?:(?:Bldgs?|Buildings?)\.?\s*#?\s*)?"
+                            r"\d{1,2})+)(?!\d)", re.I)
+
+
+def _buildings(text: str) -> tuple[Building, ...]:
+    """The buildings a report lists in its head, where it lists more than one ("Buildings 1 and 2", "Bldg. 1 & Bldg. 2").
+    A list with a number that is no building of the development is not read."""
+    for m in _BUILDING_LIST.finditer((text or "")[:_TITLE_AREA]):
+        numbers = list(dict.fromkeys(building_number(n) for n in re.findall(r"\d{1,2}", m.group(1))))
+        if len(numbers) > 1 and None not in numbers:
+            return tuple(numbers)
+    return ()
+
+
+_TALLY =re.compile(r"\n([A-Z][A-Za-z ]+?)\n(\d+)\n(\d+) \(\d+%\)\n(\d+) \(\d+%\)\n(\d+) \(\d+%\)")
 _DEFICIENCY = re.compile(r"Status\s*\n(.*?)\s*Resolved Deficiencies", re.S)
 
 
@@ -200,10 +321,66 @@ class SignalServiceReportModel(DocumentModel):
         elif tallies:
             r.result = Result.PASSED
         r.next_due = date_after(r"Next (?:Inspection|Test)(?: Due)?:?", text, window=40)
+        r.interval_months = _interval(text)
+        r.buildings = _buildings(text)
         return r
 
     def check(self, r: InspectionReport, context: ModelContext) -> list[Finding]:
         return _report_findings(r, context)
+
+
+def _labeled_date(text: str) -> date | None:
+    """The inspection date where the report labels it."""
+    return date_after(r"(?:Inspection|Test|Service) Date:?", text, window=40) or \
+        date_after(r"Date (?:of (?:Inspection|Test)|Tested|Inspected):?", text, window=40)
+
+
+class StateFireFormModel(DocumentModel):
+    """A report on the State Fire Marshal's AES forms, known by the number each form prints at its foot.
+
+    It reads what the report's words say: the forms, the system, the interval where the forms or the report name one,
+    the buildings, a labeled date or the one date the report prints, and the contractor where labeled. The forms record
+    each item as P, F, or N/A in a column, and print "Pass", "Fail", and "Deficiencies" on every copy, so the result
+    and the deficiencies are not read from them: they stay empty, and a finding says so."""
+
+    kind = DocumentKind.INSPECTION_REPORT
+    name = "state-fire-forms"
+    required = ("inspection_date", "system")
+    lens_checks = (next_inspection_due,)
+
+    def parse(self, text: str, context: ModelContext) -> InspectionReport | None:
+        forms = _forms(text)
+        if not forms or _is_balcony_report(text):
+            return None
+        flat = squash(text)
+        numbers = [form[4:] for form in forms]
+        # The cover sheet lists every kind of system, so the system comes from the forms: the 2-series is sprinklers.
+        system = InspectedSystem.FIRE_SPRINKLER if any(n.startswith("2.") for n in numbers) else \
+            _system(text) if all(n in ("1", "9", "10") for n in numbers) else InspectedSystem.OTHER
+        r = InspectionReport(system=system, forms=forms)
+        r.standard = first(r"\b(NFPA ?\d+)", flat).replace("NFPA", "NFPA ").replace("  ", " ")
+        r.inspector_firm = first(r"^\s*([A-Z][A-Za-z&.,' ]+(?:Inc\.?|LLC|Company|Services?|Co\.))\s*$", text[:800], flags=re.M)
+        r.inspector_license = first(r"\bLicense ?#:?\s*((?=[A-Z0-9/-]*\d)[A-Z0-9/-]{4,})", flat)
+        r.technician = first(r"(?:Performed by|Technician|Inspector):\s*([A-Z][a-z]+ [A-Z][a-z]+)", flat, flags=0)
+        days = set(dates_in(_AES_EDITION.sub(" ", text)))
+        r.inspection_date = _labeled_date(text) or (next(iter(days)) if len(days) == 1 else None)
+        r.site_address = site_address(text)
+        r.building = building_number(first(r"Bldg\.?\s*#?\s*(\d)", text)) or building_of(context, r.site_address)
+        r.buildings = _buildings(text)
+        r.interval_months = _interval(text, forms)
+        r.next_due = date_after(r"Next (?:Inspection|Test|Service)(?: Due)?(?: Date)?:?", text, window=40)
+        return r
+
+    def check(self, r: InspectionReport, context: ModelContext) -> list[Finding]:
+        found = [Finding("form-marks-not-read", f"the report is on the State Fire Marshal's forms ({', '.join(r.forms)}), which mark "
+                         "each item P, F, or N/A; the reader does not read the marks, so read the report for its result and its "
+                         "deficiencies", Severity.CHECK)]
+        named = sorted({months for form in r.forms for months in AES_FORMS.get(form[4:], ())})
+        if r.interval_months is None and len(named) > 1:
+            found.append(Finding("interval-not-stated", "the forms report inspections at more than one interval (every "
+                                 f"{' and '.join(str(n) for n in named)} months) and the text does not say which this report is",
+                                 Severity.CHECK))
+        return found + _report_findings(r, context)
 
 
 class InspectionReportModel(DocumentModel):
@@ -229,8 +406,7 @@ class InspectionReportModel(DocumentModel):
             first(r"^\s*([A-Z][A-Za-z&.,' ]+(?:Inc\.?|LLC|Company|Services?|Co\.))\s*$", text[:800], flags=re.M)
         r.inspector_license = first(r"(?:Contractor'?s )?Lic(?:ense)?\.?\s*(?:No\.?|#)?\s*:?\s*([A-Z0-9-]{4,}(?:\s*(?:and|/)\s*[A-Z0-9/ -]{4,})?)", flat)
         r.technician = first(r"(?:Technician|Inspector|Tester)(?: Name)?:\s*([A-Z][a-z]+ [A-Z][a-z]+)", flat)
-        r.inspection_date = date_after(r"(?:Inspection|Test|Service) Date:?", text, window=40) or \
-            date_after(r"Date (?:of (?:Inspection|Test)|Tested|Inspected):?", text, window=40) or (dates_in(text[:1500]) or [None])[0]
+        r.inspection_date = _labeled_date(text) or (dates_in(text[:1500]) or [None])[0]
         r.site_address = site_address(text)
         r.building = building_number(first(r"Bldg\.?\s*#?\s*(\d)", text)) or building_of(context, r.site_address)
         passes = len(re.findall(r"\bpass(?:ed)?\b", flat, re.I))
@@ -242,6 +418,8 @@ class InspectionReportModel(DocumentModel):
         r.open_deficiencies = len(r.deficiencies)
         r.result = Result.FAILED if fails or r.open_deficiencies else Result.PASSED if passes else None
         r.next_due = date_after(r"Next (?:Inspection|Test|Service)(?: Due)?(?: Date)?:?", text, window=40)
+        r.interval_months = _interval(text)
+        r.buildings = _buildings(text)
         return r
 
     def check(self, r: InspectionReport, context: ModelContext) -> list[Finding]:
@@ -301,6 +479,8 @@ def _report_findings(r: InspectionReport, context: ModelContext) -> list[Finding
 
 
 register(SignalServiceReportModel())
+register(StateFireFormModel())
 register(InspectionReportModel())
 
-__all__ = ["InspectedSystem", "Result", "EquipmentTally", "Deficiency", "InspectionReport", "SignalServiceReportModel", "InspectionReportModel"]
+__all__ = ["AES_FORMS", "InspectedSystem", "Result", "EquipmentTally", "Deficiency", "InspectionReport", "SignalServiceReportModel",
+           "StateFireFormModel", "InspectionReportModel"]
