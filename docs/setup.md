@@ -166,6 +166,35 @@ Sign-in grants what the roster grants and nothing more.
 
 **What is still to come.** A manager's portfolio decides where they may sign in and what they approve. But one jason-web serves one community, the active profile (`JASON_PROFILE`), so moving between a portfolio's communities is a separate jason-web for each. The provider kind is a closed set (`IdentityProvider`); only Google is built. The console still listens on loopback only. Serving it beyond this machine needs HTTPS and the board's written policy on who may see what ([console/security-and-privacy.md](console/security-and-privacy.md)).
 
+### 6. jason's mailbox
+
+jason reads mail through the Gmail API, which reads a **mailbox**. A Google Group's own archive (its "Conversation
+history") has no read API: the Groups Migration API only inserts, and the Admin SDK and Cloud Identity cover members and
+settings, not messages. So jason sees a group's mail only through a mailbox that is a member of the group. Set that up
+once, for each new community:
+
+1. **Give jason its own Workspace account** (recommended), e.g. `jason@<the association's domain>`. It is a paid
+   license seat. A separate account keeps jason's reading and drafting apart from any person's mailbox, survives a
+   change of officers or manager, and can be a member of every group without anyone's personal mail in it. If a seat is
+   not affordable yet, use one shared association mailbox (the onboarding item says which), and accept that mail
+   reaching only someone else's mailbox is unseen.
+2. **Add that mailbox to every Google Group** the association uses (board, manager, records, architectural...), with
+   **delivery set to "Each email"** (not digest, not "No email"). In the Admin console: Directory > Groups > the group >
+   Members > Add members; or a group owner in groups.google.com. Do the same for each **alias** jason should see: an
+   alias on a user forwards to that user's mailbox, so either put the alias on jason's account or make the alias a group
+   with jason as a member.
+3. **Turn on the group's archive** (Conversation history) if the board wants a record kept in Google too. It does not
+   help jason read the history; only membership does, from the day it is added.
+4. **Sign jason's account in** (step 4 above) so its token reads that mailbox, and record the account in the onboarding
+   item `jason-mailbox` (`jason onboard`), with the groups and aliases it belongs to.
+5. **The history before membership**, if the board wants it: a Google Vault export of each group (Vault's `GROUPS`
+   corpus, `.mbox` with the original headers) can be imported once, matched by `Message-ID`. Vault comes only with
+   editions that include it (Business Plus, Enterprise, some Education editions), needs an admin with Vault privileges,
+   and its files land in Cloud Storage for download. Without Vault, there is no way to read a group's past mail.
+
+What jason does with the mail it can read, and how it will rejoin conversations across mailboxes, is
+[gmail-conversations.md](gmail-conversations.md).
+
 ## Local AI
 
 jason's local models run on Ollama (`qwen3.6:27b` for OCR, classification, and extraction; `qwen3-embedding:8b` as the embedder), shared with AnythingLLM Desktop. `jason local-ai` reports the stack. A model job holds jason's GPU lock and runs a preflight that fails fast on the CPU or when Windows is short of commit charge. A system-managed page file is often too small; a fixed 32 to 64 GB page file is the fix ([document-tools.md](document-tools.md)).

@@ -137,6 +137,6 @@ sync_state     mailbox, history_id, last_full_sync
 
 ## Open questions
 
-- **Which mailboxes jason reads,** and whether an association mailbox is subscribed to each group. This is profile data, but someone has to decide it.
+- **Which mailboxes jason reads,** and whether an association mailbox is subscribed to each group. The setup steps for a new community are [setup.md, jason's mailbox](setup.md#6-jasons-mailbox): a Workspace account of jason's own, a member of every group and alias. Onboarding asks it as `jason-mailbox`.
 - **Whether a forward to counsel, a vendor, or the manager counts as acting on a member's message.** It is a written policy for the board (AGENTS.md), not a default in code.
 - **Reading bodies for forwards** is P2 and stays on this machine; only the parsed block and a hash are kept. If that is acceptable, it should be stated in [security-and-privacy.md](console/security-and-privacy.md) when it is built.

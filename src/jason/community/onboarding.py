@@ -903,6 +903,15 @@ ITEMS: tuple[OnboardingItem, ...] = (
         "jason reads which group a message came through", (S.BOARD,), "Community.google_groups(), email_domains()",
         (Method("google_groups"), Method("email_domains")), (P, H), "jason gmail"),
     OnboardingItem(
+        "jason-mailbox", Group.ACCESS, "The mailbox jason reads, and its membership in each group and alias",
+        "a Google Group's archive has no read API, so jason sees group mail only through a member mailbox "
+        "(docs/setup.md, jason's mailbox)", (S.BOARD,), FACTS_FILE, (Fact("jason-mailbox"),), (P,),
+        note="Best: a separate Workspace account for jason, a member of every group with delivery set to each email. "
+             "A group's history before that comes only from a Vault export, where the edition includes Vault.",
+        ask=A("Which mailbox does jason read? Is it jason's own Workspace account or a shared association mailbox, "
+              "and is it a member of each Google Group (delivery: each email) and each alias jason should see?",
+              choices=("none yet: jason reads one association mailbox and misses group mail sent elsewhere",))),
+    OnboardingItem(
         "drive", Group.ACCESS, "The shared Drive and its folder map", "jason's sync rules and library read it",
         (S.BOARD,), "Community.drive_home(), drive_roots()",
         (Method("drive_home"), Method("drive_roots")), (P, H), "jason drive"),
