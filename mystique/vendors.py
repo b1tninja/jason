@@ -62,7 +62,6 @@ VENDOR_PORTALS: tuple[VendorPortal, ...] = (
         budget_line="Fire Alarm Monitoring",
         payhoa_words=("SIGNAL SERVICE",),
         service="Fire alarm monitoring, inspection, and equipment lease",
-        reports=PortalPlatform.FIRENSPEC,
     ),
 )
 
