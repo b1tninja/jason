@@ -108,25 +108,41 @@ def _interval(ob: Obligation, found: list[dict[str, Any]], today: date) -> dict[
             "lastDone": last.isoformat() if last else None, "history": [_shown(p) for p in found[-4:]]}
 
 
+def obligation_row(ob: Obligation, payments: list[dict[str, Any]], first: date | None, day: date) -> dict[str, Any]:
+    """One obligation's row of the calendar: its rule, when it was last done, when it is next due, and its standing."""
+    base = {"name": ob.name, "authority": ob.authority, "note": ob.note,
+            "rule": f"yearly by {ob.deadline(day.year):%B} {ob.day}" if ob.fixed else
+            ob.cadence() if ob.months else "listed"}
+    if not ob.tracked:
+        nxt = ob.deadline(day.year) if ob.fixed and ob.deadline(day.year) >= day else ob.deadline(day.year + 1) if ob.fixed else None
+        return {**base, "standing": Standing.UNTRACKED.value, "next": nxt.isoformat() if nxt else None,
+                "daysLeft": (nxt - day).days if nxt else None, "lastDone": None, "history": []}
+    found = evidence(ob, payments)
+    if not ob.fixed and not ob.months:
+        return {**base, "rule": "listed", "standing": Standing.LISTED.value, "next": None, "daysLeft": None,
+                "lastDone": found[-1]["date"].isoformat() if found else None, "history": [_shown(p) for p in found[-6:]]}
+    return {**base, **(_fixed(ob, found, first, day) if ob.fixed else _interval(ob, found, day))}
+
+
+def obligation_rows(data_dir: Path, community: Any, *, today: date | None = None) -> list[dict[str, Any]]:
+    """The calendar's rows for the profile's obligations alone, in the profile's order (no insurance terms, no reserve
+    study): what another reader of the same deadlines shows beside its own findings, so there is one scheduler. Each
+    row also gives ``firstDone``, the earliest day the calendar's evidence shows it done (a payment, or the date the
+    row gives for its record), where a count of its periods can start."""
+    day = today or date.today()
+    payments, first, _ = _payments(data_dir)
+    rows = []
+    for ob in community.obligations():
+        days = [p["date"] for p in evidence(ob, payments)] if ob.tracked else []
+        days += [ob.done_on] if ob.done_on else []
+        rows.append({**obligation_row(ob, payments, first, day), "firstDone": min(days).isoformat() if days else None})
+    return rows
+
+
 def calendar(data_dir: Path, community: Any, *, today: date | None = None) -> dict[str, Any]:
     day = today or date.today()
     payments, first, synced = _payments(data_dir)
-    rows = []
-    for ob in community.obligations():
-        base = {"name": ob.name, "authority": ob.authority, "note": ob.note,
-                "rule": f"yearly by {ob.deadline(day.year):%B} {ob.day}" if ob.fixed else
-                ob.cadence() if ob.months else "listed"}
-        if not ob.tracked:
-            nxt = ob.deadline(day.year) if ob.fixed and ob.deadline(day.year) >= day else ob.deadline(day.year + 1) if ob.fixed else None
-            rows.append({**base, "standing": Standing.UNTRACKED.value, "next": nxt.isoformat() if nxt else None,
-                         "daysLeft": (nxt - day).days if nxt else None, "lastDone": None, "history": []})
-            continue
-        found = evidence(ob, payments)
-        if not ob.fixed and not ob.months:
-            rows.append({**base, "rule": "listed", "standing": Standing.LISTED.value, "next": None, "daysLeft": None,
-                         "lastDone": found[-1]["date"].isoformat() if found else None, "history": [_shown(p) for p in found[-6:]]})
-            continue
-        rows.append({**base, **(_fixed(ob, found, first, day) if ob.fixed else _interval(ob, found, day))})
+    rows = [obligation_row(ob, payments, first, day) for ob in community.obligations()]
     # Insurance: each policy's term end, with its standing from the insurance review.
     try:
         from jason.tasks.insurance import review
@@ -205,4 +221,4 @@ def calendar_lines(result: dict[str, Any]) -> list[str]:
     return out
 
 
-__all__ = ["calendar", "calendar_lines", "evidence"]
+__all__ = ["add_months", "calendar", "calendar_lines", "evidence", "obligation_row", "obligation_rows"]

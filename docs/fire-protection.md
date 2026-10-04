@@ -62,7 +62,11 @@ The fire alarm is kept to NFPA 72's chapter 14. **A reading, from secondary sour
 
 From the adopted text of 19 CCR 904.1 and 904.2:
 
-- **Records, five years past the next.** 904.1(b): "Records of all inspections shall be retained on the premises by the building or system owner for a period of five years after the next required inspection." 904.2(c) says the same of testing and maintenance.
+- **Records, five years past the next.**
+  - 904.2(c), from the shelf: "Records of all testing and maintenance shall be retained on the premises by the building or system owner for a period of five years after the next required test or maintenance."
+  - NFPA 25 4.3.5 as California amended it, from the shelf: "Subsequent records shall be retained for a period of 5 years after the next inspection, test, or maintenance of that type required by the standard."
+  - 904.1(b) is not on the shelf: the 2014 final text prints 904.1 with subsection (a) only. As Cornell's Legal Information Institute prints it (see Sources): "Records of all inspections shall be retained on the premises by the building or system owner for a period of five years after the next required inspection."
+  - `jason inspections` recites the first two from the shelf and says the third is not there.
 - **The forms.** NFPA 25 4.3.1.1 as amended: "California State Fire Marshal Automatic Extinguishing Systems (AES) forms shall be used to record all inspection tests and maintenance activities". For a wet system these are AES 2.1 (quarterly and annual), AES 2.2 (five-year), and AES 10 (corrected deficiencies).
 - **A report to the owner and the fire authority.** 904.2(j): "It is the responsibility of the contractor, company, or licensee to provide a written report of the test and maintenance results to the building owner and the local fire authority having jurisdiction".
 - **An itemized invoice.** 904.2(e): "an itemized invoice showing work performed and parts replaced shall be provided by the licensee to the system owner".
@@ -92,6 +96,14 @@ From the adopted text of 19 CCR 904.1 and 904.2:
 - **Systems.** The profile's `life_safety_systems()` lists each system (`jason.community.life_safety.LifeSafetySystem`): its kind, the standard it was installed under with the record that says so, what it serves, and who services and monitors it. A standard no record states is left empty, never inferred.
 - **Obligations.** The profile's `obligations` carry each cadence (quarterly, annual, five-year, gauges, sample tests), and `jason deadlines` shows what is overdue.
 - **What applies to which system.** Each obligation carries its scope as an `applies` condition (`jason.community.fire_protection`: NFPA 25's sprinkler chapter reaches a sprinkler system except one installed under NFPA 13D; NFPA 72's tests reach a fire alarm). `jason applies` asks each obligation of each system and prints what applies, what does not with the fact that decided it, and what is undetermined with its question ([applicability.md](applicability.md)). The deliverable rules carry theirs too: a water-based system, and the vendor's testing, maintenance, inspection, or repair as each provision says.
+- **Which periods have a report on file.** `jason inspections` is the completeness check ([ingestion-and-review.md](ingestion-and-review.md), the Completeness lens). For each system and each obligation that applies to it, it lists the periods by the row's frequency and what is on file in each (`jason.tasks.inspections`):
+  - **What counts.** An inspection-report reading placed by its own fields (system, building, inspection date), or a completion a person recorded. A payment opens a count and never covers a period.
+  - **The four standings.** Covered, partly on file (one building of several), not on file, or not yet due. "Not on file" never means "not done".
+  - **What is not placed.** A reading that lacks a field is listed as unplaced with the field it lacks. A report filed from a system's vendor that no reader has read is listed as not read. Where several obligations apply to one system, a reading must say which inspection it records (`interval_months`), or it is listed as not assigned.
+  - **What is not expected.** An obligation that does not apply is listed with the fact that decided it, and an undetermined one as a question, as `jason applies` gives them.
+  - **Deficiencies.** A report that reports deficiencies shows its count, and names a later report of the same system and building that reads passed with none open; otherwise "no correction on file".
+  - **The record-keeping rule.** Each `RecordRule` row (`jason.community.fire_protection.RECORD_RULES`) is recited from the shelf's copy with its citation, or said to be missing from it.
+  - **The page.** `--write` saves `data/reports/life-safety-records.md`, a generated summary and not the record.
 - **Filing.** The filing rules file each vendor's report by system (`Reports/Fire Protection/<system>`), invoices by fiscal year, and contracts by vendor; see [gmail.md](gmail.md#filing-vendors-attachments).
 - **Reading reports.** `jason.community.models.legal_inspections` reads inspection reports (result, deficiencies, devices). A vendor's public report portal is synced by `jason.tasks.report_portals`.
 - **Board items.** A deficiency or an overdue inspection becomes a board item with its authority and evidence.

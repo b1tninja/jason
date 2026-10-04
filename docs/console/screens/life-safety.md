@@ -1,6 +1,6 @@
 # Life safety
 
-A new screen, `#/life-safety`, under Records beside Insurance · phase 3 · CLI: `jason deadlines`, `jason gmail --file-vendor`, `jason sync-report-portals` · MCP: `life_safety` (to add), with `vendor_portal`, `document_models`, `insurance_review`, `email_threads`, `board_items` behind it
+A new screen, `#/life-safety`, under Records beside Insurance · phase 3 · CLI: `jason deadlines`, `jason applies`, `jason inspections`, `jason gmail --file-vendor`, `jason sync-report-portals` · MCP: `life_safety` (to add), with `vendor_portal`, `document_models`, `insurance_review`, `email_threads`, `board_items` behind it
 
 ## In the console
 
@@ -30,6 +30,7 @@ The question it answers is "are our fire protection systems inspected, tested, a
 | The systems: name, standard (13R, 13D, NFPA 72, backflow), buildings, the vendor for each kind of work, the obligations that keep it, the insurer's safeguard symbol | `Community.life_safety_systems()`: a `LifeSafetySystem` record per system (`jason.community.life_safety`), empty by default. Every fact is the profile's, and a standard is entered only with the record that states it. The obligations that keep a system are those whose `applies` condition holds for it (`life_safety.applicable`, `jason applies`); an undetermined one is shown with its question. The insurer's safeguard symbol is still **to add** | P0 |
 | The schedule: each obligation's last record, next due, status (overdue, due, current, none on record) | `jason.tasks.deadlines.calendar` (behind `/api/calendar` and the dock's Deadlines), filtered to the systems' obligations | P0 |
 | The rule each obligation rests on | the obligation's `authority`, recited from the authorities shelf (HSC 13195-13199; the State Fire Marshal's Title 19 text) by `cite_document` | P0 |
+| Which periods have a report on file | `jason.tasks.inspections.review` (`jason inspections --json`): for each system and each obligation that applies, each period's standing (covered, partly on file, not on file, not yet due) with the document's name, date, and id; the reports it could not place and the field each lacks; the reports filed but not read; and the record-keeping provisions recited from the shelf, or said to be missing from it | P1 (reports name units) |
 | Reports: each inspection or test report, its date, system, buildings, vendor, result (passed, failed, incomplete), and where it is filed | the library's inspection reports (`library_search(kind="inspection_report")`); `document_models` (`jason.community.models.legal_inspections`: result, deficiencies, devices); the vendor's report portal (`jason.tasks.report_portals`, `data/vendors/<key>/reports.json`); the filing log (`data/drive/vendor-files.jsonl`) | P1 (reports name units) |
 | Deficiencies: each one found, the report it came from, its system and building, whether it impairs a scheduled safeguard, the record that cleared it, and whether the insurer was told | a deficiency register, **to add**: `data/life-safety/deficiencies.json`. Rows are proposed from the report models and confirmed by a person (`by`). The clearing record (an invoice's line items, an AES 10, a later passing report) is a `DocRef` | P1 |
 | Vendors: who does what, their licenses (number, class, as read and when), what they owe (the AES report, the report to the fire authority, the itemized invoice), and what is on file | the sender directory and `VendorPortal` rows (`license`); `vendor_portal` for a vendor with a portal; payments by vendor from the books; `email_threads(sender=...)` for what is awaiting whom | P0, P1 for amounts |
@@ -113,6 +114,7 @@ No control books a vendor, accepts a proposal, pays an invoice, tells the insure
 - **None on record:** "No quarterly inspection on record. A record kept outside jason's stores is not seen." It never reads as "not done".
 - **Needs input:** a fact the profile lacks, such as a system's install date for the 20-year test or a gauge's date. The command or question that supplies it follows.
 - **A report jason could not read:** listed by name with "not read", never with a guessed result.
+- **A report jason could not place:** listed as unplaced with the field its reading lacks (the system, the building, or the inspection date), never put in a period by its file name.
 
 ## Privacy
 

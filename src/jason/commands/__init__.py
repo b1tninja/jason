@@ -49,6 +49,7 @@ MODULES: tuple[str, ...] = (
     "schedule",
     "schedule_evidence",
     "applies",
+    "inspections",
     "record_stages",
     "manual",
     "respond",

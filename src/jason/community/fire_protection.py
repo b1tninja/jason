@@ -22,6 +22,9 @@ step 7), and ``deliverable_rule`` matches words only, as before.
 
 **The standards' scopes**, for the rows that keep a system (a profile's obligations): ``NFPA_25_SCOPE``,
 ``NFPA_25_SPRINKLERS``, and ``FIRE_ALARM_SYSTEM``.
+
+**How long the records are kept**: ``RECORD_RULES``, each a citation and a locator for its words on the authorities
+shelf. ``jason inspections`` recites them (``jason.tasks.inspections.recite``).
 """
 
 from __future__ import annotations
@@ -140,5 +143,44 @@ def deliverables(facts: Facts) -> Partition:
     return partition(DELIVERABLE_RULES, facts)
 
 
+# --- How long the records are kept ------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RecordRule:
+    """One provision on how long a system's records are kept, and where its words are on the authorities shelf.
+
+    The row holds the citation and a locator, never the words: ``jason.tasks.inspections.recite`` reads them from the
+    publication's text on disk, and a provision the shelf's copy does not print is a miss that says so. ``publication``
+    is the title of the ``Publication`` that holds it. ``section`` is a pattern for the line its section starts on,
+    ``start`` for the line the provision starts on inside that section, and ``end`` for the first line after it; each
+    is matched at the start of a line. ``applies`` is the system the provision reaches.
+    """
+
+    key: str
+    citation: str
+    about: str
+    publication: str
+    section: str
+    start: str
+    end: str
+    applies: Condition = ALWAYS
+
+
+_TITLE_19 = "Title 19, Chapter 5 and NFPA 25 California amendments, final text (2014)"
+
+# The chapter's own record rules, and NFPA 25's as California amended it. The chapter's rows reach a water-based
+# system, the words of 19 CCR 904(a)(1), with no exclusion the regulation's words do not give; the standard's row
+# reaches what the standard does (``NFPA_25_SCOPE``, a reading from secondary sources).
+RECORD_RULES: tuple[RecordRule, ...] = (
+    RecordRule("inspection-records", "19 CCR 904.1(b)", "records of inspections", _TITLE_19,
+               r"§?\s*904\.1\.\s", r"\(b\)\s", r"\(c\)\s|NOTE:", applies=WATER_BASED),
+    RecordRule("testing-and-maintenance-records", "19 CCR 904.2(c)", "records of testing and maintenance", _TITLE_19,
+               r"§?\s*904\.2\.\s", r"\(c\)\s", r"\(d\)\s", applies=WATER_BASED),
+    RecordRule("nfpa-25-records", "NFPA 25 4.3.5 (California amendment)", "records under NFPA 25", _TITLE_19,
+               r"Replace Section 4\.3\.5\b", r"4\.3\.5\s", r"(?:Delete|Replace|Add|Revise)\s", applies=NFPA_25_SCOPE),
+)
+
+
 __all__ = ["DeliverableRule", "DELIVERABLE_RULES", "deliverable_rule", "deliverables", "WATER_BASED", "NFPA_25_SCOPE",
-           "NFPA_25_SPRINKLERS", "FIRE_ALARM_SYSTEM"]
+           "NFPA_25_SPRINKLERS", "FIRE_ALARM_SYSTEM", "RecordRule", "RECORD_RULES"]
