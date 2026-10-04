@@ -7,7 +7,7 @@ How jason should know which messages belong together, who answered whom, and wha
 - a table of the signals that detect a reply or a forward, with how far each can be trusted;
 - the order to build it.
 
-The sync as built is [gmail.md](gmail.md). This page is a proposal, researched 2026-10-04. Sources are cited inline; a claim marked *unconfirmed* is observed behavior with no official source.
+The sync as built is [gmail.md](gmail.md). The build spec is [conversations-design.md](conversations-design.md). This page is a proposal, researched 2026-10-04. Sources are cited inline; a claim marked *unconfirmed* is observed behavior with no official source.
 
 ## What jason does today
 
