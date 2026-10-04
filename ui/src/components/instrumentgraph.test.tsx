@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { InstrumentGraph, layout, type InstrumentGraphData } from "./InstrumentGraph";
+import { InstrumentGraph, OwnerNames, layout, type InstrumentGraphData } from "./InstrumentGraph";
 
 const data: InstrumentGraphData = {
   found: true,
@@ -60,6 +60,55 @@ describe("InstrumentGraph", () => {
     await user.click(screen.getByLabelText("governing"));
     expect(screen.getByRole("img")).toHaveAccessibleName("5 nodes and 0 edges");
     expect(screen.getByText("A dotted edge is a lead.")).toBeInTheDocument();
+  });
+
+  it("shows a private person by role when masked, and by name only when the names were asked for", () => {
+    const owner = { id: "person:abc", type: "party" as const, label: "owner, unit 12", partyKind: "private" };
+    const { unmount } = render(<InstrumentGraph data={{ ...data, view: "private", nodes: [...data.nodes, owner] }} />);
+    expect(screen.getByText("Private view: owners labeled by role and parcel")).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Nodes" })).getByRole("button", { name: "owner, unit 12" })).toBeInTheDocument();
+    unmount();
+    render(<InstrumentGraph data={{ ...data, view: "private", names: true, nodes: [...data.nodes, { ...owner, names: ["EXAMPLE OWNER A"] }] }} />);
+    expect(screen.getByText("Private view: owners' names shown")).toBeInTheDocument();
+    const list = screen.getByRole("navigation", { name: "Nodes" });
+    expect(within(list).getByRole("button", { name: "EXAMPLE OWNER A" })).toBeInTheDocument();
+    expect(within(list).getByText("owner, unit 12 · private")).toBeInTheDocument();
+  });
+
+  it("asks for a person's name before showing owners' names, and says the reveal was logged", async () => {
+    const user = userEvent.setup();
+    const shows: string[] = [];
+    let hidden = 0;
+    const { rerender } = render(<OwnerNames shown={false} me="" onShow={(by) => shows.push(by)} onHide={() => { hidden += 1; }} />);
+    await user.click(screen.getByRole("button", { name: "Show owners' names" }));
+    const form = screen.getByRole("form", { name: "Show owners' names" });
+    await user.click(within(form).getByRole("button", { name: "Show names" }));
+    expect(shows).toEqual([]);
+    expect(within(form).getByText("Enter your name: each reveal is logged with it.")).toBeInTheDocument();
+    await user.type(within(form).getByLabelText("Your name"), "jason");
+    await user.click(within(form).getByRole("button", { name: "Show names" }));
+    expect(shows).toEqual([]);
+    await user.clear(within(form).getByLabelText("Your name"));
+    await user.type(within(form).getByLabelText("Your name"), "  Jane   Example ");
+    await user.click(within(form).getByRole("button", { name: "Show names" }));
+    expect(shows).toEqual(["Jane Example"]);
+    rerender(<OwnerNames shown me="" reveal={{ at: "2026-10-03T12:00:00+00:00", by: "Jane Example", named: 2, log: "console/reveals.jsonl" }}
+      onShow={(by) => shows.push(by)} onHide={() => { hidden += 1; }} />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Owners' names are shown, asked by Jane Example");
+    expect(status).toHaveTextContent("The reveal was logged in data/console/reveals.jsonl. 2 persons named.");
+    await user.click(screen.getByRole("button", { name: "Hide names" }));
+    expect(hidden).toBe(1);
+  });
+
+  it("fills the name with the console's person", async () => {
+    const user = userEvent.setup();
+    const shows: string[] = [];
+    render(<OwnerNames shown={false} me="Casey Sample" onShow={(by) => shows.push(by)} onHide={() => undefined} />);
+    await user.click(screen.getByRole("button", { name: "Show owners' names" }));
+    expect(screen.getByLabelText("Your name")).toHaveValue("Casey Sample");
+    await user.click(screen.getByRole("button", { name: "Show names" }));
+    expect(shows).toEqual(["Casey Sample"]);
   });
 
   it("says so when there is nothing to draw", () => {

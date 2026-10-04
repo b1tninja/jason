@@ -27,6 +27,7 @@ ROWS = (
     _row("2003-0000050", "2003-06-01", "DECLARATION ANNEX SUBDV", f"(R) {BUILDER}"),
     _row("2010-0000100", "2010-02-01", "MODIFICATION OF RESTRICTIONS", f"(R) {ASSOCIATION}"),
     _row("2012-0000200", "2012-05-01", "NOTICE OF DELINQUENT ASSESSMENT - HOMEOWNERS ASSOCIATION", f"(R) {OWNER}", f"(E) {ASSOCIATION}"),
+    _row("2015-0000300", "2015-07-01", "DEED", f"(R) {OWNER}", f"(E) {ASSOCIATION}"),        # an owner deeds land to it
 )
 TYPES = {name: f"T{i}" for i, name in enumerate(sorted({row.filing_name for row in ROWS}))}
 
@@ -77,14 +78,18 @@ def test_the_locator_ties_the_declaration_by_its_neighbor_and_asks_about_the_bui
     assert by["2003-0000050"].item == "annexations" and by["2003-0000050"].tie is Tie.DECLARANT
     assert "2001-0000014" not in by and "2001-0000013" not in by                  # the builder's sale to an owner, a loan
     assert found.liens == 1
-    assert all(OWNER not in " ".join(x.parties) for x in found.found)             # an owner is never kept
+    # Every party is kept: businesses in parties, an owner in people with its index side (private data, never committed)
+    assert all(OWNER not in " ".join(x.parties) for x in found.found)
+    assert by["2015-0000300"].item == "common-area-deeds" and by["2015-0000300"].tie is Tie.NAMED
+    assert by["2015-0000300"].people == ((OWNER, "R"),) and by["2015-0000300"].parties == (ASSOCIATION,)
+    assert by["2001-0000011"].people == ()
 
     leads = {lead["item"]: lead for lead in found.leads(source="the index", found="2099-01-01")}
     assert leads["declaration"]["stakes"] and leads["declaration"]["suggestion"].startswith("2001-0000010")
     assert leads["annexations"]["suggestion"] == ""                               # a builder's filing is asked, not suggested
     assert any("2003-0000050" in choice for choice in leads["annexations"]["choices"])
     report = found.markdown()
-    assert "**Ask:**" in report and "2001-0000010" in report and OWNER not in report
+    assert "**Ask:**" in report and "2001-0000010" in report and f"{OWNER} (R)" in report
     assert "## Not located" not in report or "Annexations" not in report.split("## Not located")[-1]
 
 
@@ -113,10 +118,12 @@ def test_the_command_keeps_the_leads_and_writes_the_boards_list(tmp_path, monkey
         stored = json.loads((tmp_path / "spec" / f"{key}.json").read_text(encoding="utf-8"))
         assert {lead["key"] for lead in stored[LEADS]} >= {"located-declaration", "located-annexations"}
         report = tmp_path / "data" / "onboarding" / f"{key}-documents-located.md"
-        assert "2001-0000010" in report.read_text(encoding="utf-8") and OWNER not in report.read_text(encoding="utf-8")
-        # the result as data beside it, for the console and jason-mcp
+        assert "2001-0000010" in report.read_text(encoding="utf-8") and OWNER in report.read_text(encoding="utf-8")
+        # the result as data beside it, for the console and jason-mcp; the owner is kept (private data under data/)
         saved = json.loads(report.with_suffix(".json").read_text(encoding="utf-8"))
-        assert saved["located_at"] and saved["association"] == ASSOCIATION and OWNER not in json.dumps(saved)
+        assert saved["located_at"] and saved["association"] == ASSOCIATION
+        deeds = next(i for i in saved["items"] if i["item"] == "common-area-deeds")["located"]
+        assert {"name": OWNER, "side": "R"} in next(x for x in deeds if x["number"] == "2015-0000300")["people"]
         assert {i["item"] for i in saved["items"]} >= {"declaration", "annexations", "maps", "common-area-deeds"}
         assert not list((tmp_path / "data" / "onboarding").glob(".*.tmp"))          # replaced whole
 

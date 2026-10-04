@@ -45,6 +45,9 @@ export interface LocatedDoc {
   number: string; recorded: string | null; filing: string;
   /** The `Tie` name and its words: "names the association", "recorded with the association's documents", "the builder's filing". */
   tie: string; tie_label: string; strong: boolean; via: string; parties: string[];
+  /** Private persons on the instrument (owners' names are P1: shown to the people who work with them), with their
+   * index side: R grantor, E grantee. Kept in jason's private data, never committed. */
+  people?: { name: string; side: string }[];
 }
 /** One onboarding checklist item and what was located for it. `stakes`: a second person confirms the answer. */
 export interface LocatedItem { item: string; title: string; question: string; stakes: boolean; located: LocatedDoc[] }

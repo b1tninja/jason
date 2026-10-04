@@ -17,8 +17,9 @@ Each located instrument serves an onboarding checklist item by its filing name (
 carries how it was tied (``Tie``). The result becomes leads, one per item (``leads``), which the onboarding
 session asks as FACT questions; and a board's list (``markdown``): each document number, its date and type, why
 it is thought the association's, and the question. A located instrument is a lead, not a pin: the recorded copy
-is read before it is pinned. Only business and association parties are kept: an owner on a deed or a lien is
-never written.
+is read before it is pinned. Every party is kept: the business and association parties in ``parties``, and the
+private persons (an owner on a deed or a lien) in ``people`` with their index side (R grantor, E grantee). Owners'
+names stay in jason's private data (``data/onboarding/``) and are never committed.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from typing import Any
 from jason.community.locator import HIGH_STAKES, QUESTIONS, Tie, rule_for
 from jason.community.onboarding import item as checklist_item
 
-# A business party: a builder, a lender, an agency, an association. Anything else is a person and is not kept.
+# A business party: a builder, a lender, an agency, an association. Anything else is a private person (``people``).
 _BUSINESS = re.compile(
     r"\b(?:LLC|L L C|INC|CORP|CORPORATION|COMPANY|CO|LP|L P|LTD|PTP|PRTN|PARTNERSHIP|HOMES|COMMUNITIES|BUILDERS|"
     r"DEVELOPMENT|DEVEL|DEVELOPERS|PROPERTIES|ASSOCIATION|ASSN|HOA|POA|COUNTY|CITY|DISTRICT|AGENCY|AUTHORITY|STATE|"
@@ -60,7 +61,8 @@ NOT_LOCATED_ASK = ("none in the index under the association's names or beside it
 CAVEATS = (
     "A located instrument is a lead, not a pin: the recorded copy is read before it is pinned.",
     "The builder's filings may be another community's; they are asked about, never suggested.",
-    "Only business and association parties are kept: an owner on a deed or a lien is never written.",
+    "Every party is kept: an owner on a deed or a lien is listed by name with its index side (R grantor, E grantee). "
+    "Owners' names stay in jason's private data and are never committed.",
     "Read from the county recorder's public index when the locate ran (located_at); the index may hold more since.",
 )
 
@@ -74,8 +76,9 @@ class Located:
     filing: str
     item: str
     tie: Tie
-    parties: tuple[str, ...] = ()        # business and association parties only
+    parties: tuple[str, ...] = ()        # business and association parties
     via: str = ""                        # the instrument it was found beside, or the builder whose filing it is
+    people: tuple[tuple[str, str], ...] = ()   # private persons as indexed: (name, side), side R (grantor) or E (grantee)
 
     @property
     def label(self) -> str:
@@ -155,10 +158,11 @@ class Location:
             lines += [f"## {entry.title if entry else item_key}", ""]
             if item_key in QUESTIONS:
                 lines += [f"**Ask:** {QUESTIONS[item_key]} Do you hold a copy of each?", ""]
-            lines += ["| Document | Recorded | Filing | Why | Parties |", "| --- | --- | --- | --- | --- |"]
+            lines += ["| Document | Recorded | Filing | Why | Parties | People |", "| --- | --- | --- | --- | --- | --- |"]
             for x in located:
                 why = x.tie.value + (f" ({x.via})" if x.via else "")
-                lines.append(f"| {x.number} | {x.recorded or ''} | {x.filing} | {why} | {'; '.join(x.parties)} |")
+                people = "; ".join(f"{name} ({side})" for name, side in x.people)
+                lines.append(f"| {x.number} | {x.recorded or ''} | {x.filing} | {why} | {'; '.join(x.parties)} | {people} |")
             lines.append("")
         missing = [k for k in CORE_ITEMS if k not in self.by_item()]
         if missing:
@@ -175,7 +179,8 @@ class Location:
     def to_dict(self, *, located_at: str = "") -> dict[str, Any]:
         """The result as data (``data/onboarding/<profile>-documents-located.json``, the console's
         ``/api/documents-located``): each checklist item located with its instruments, the core items not located
-        with their ask, the notes, and the caveats. Business and association parties only, as ``found`` holds them."""
+        with their ask, the notes, and the caveats. Every party: the business and association ``parties``, and the
+        private ``people`` with their index side. The file is jason's private data, never committed."""
         items = []
         for item_key, located in self.by_item().items():
             entry = checklist_item(item_key)
@@ -193,6 +198,7 @@ class Location:
                     "strong": x.tie.strong,
                     "via": x.via,
                     "parties": list(x.parties),
+                    "people": [{"name": name, "side": side} for name, side in x.people],
                 } for x in located],
             })
         held = self.by_item()
@@ -231,6 +237,7 @@ class Location:
                     Tie[str(x.get("tie", "declarant")).upper()],
                     tuple(x.get("parties") or ()),
                     str(x.get("via", "")),
+                    _people_from(x.get("people")),
                 ))
         return cls(str(data.get("association", "")), str(data.get("county", "")), tuple(data.get("spellings") or ()),
                    found, int(data.get("liens") or 0), list(data.get("notes") or ()), int(data.get("searches") or 0))
@@ -312,8 +319,34 @@ def _instruments(rows) -> list[_Instrument]:
     return out
 
 
+def _is_business(name: str) -> bool:
+    return bool(_BUSINESS.search(" ".join(name.upper().split())))
+
+
 def _business(names) -> tuple[str, ...]:
-    return tuple(n for n in names if _BUSINESS.search(" ".join(n.upper().split())))
+    return tuple(n for n in names if _is_business(n))
+
+
+def _people(instrument: _Instrument) -> tuple[tuple[str, str], ...]:
+    """The private persons on an instrument as indexed: (name, side), R for a grantor and E for a grantee."""
+    rows = [(n, "R") for n in instrument.grantors if n.strip() and not _is_business(n)]
+    rows += [(n, "E") for n in instrument.grantees if n.strip() and not _is_business(n)]
+    return tuple(dict.fromkeys(rows))
+
+
+def _people_from(rows: Any) -> tuple[tuple[str, str], ...]:
+    """``people`` read back from ``to_dict``: dicts with name and side, or ``[name, side]`` pairs."""
+    out: list[tuple[str, str]] = []
+    for row in rows or ():
+        if isinstance(row, dict):
+            name, side = str(row.get("name", "")), str(row.get("side", ""))
+        elif isinstance(row, (list, tuple)) and row:
+            name, side = str(row[0]), str(row[1]) if len(row) > 1 else ""
+        else:
+            name, side = str(row), ""
+        if name.strip():
+            out.append((name, side))
+    return tuple(out)
 
 
 def _rule(filing: str):
@@ -366,7 +399,8 @@ def locate(name: str, county: str, *, recorder: Any = None, known: dict[str, Any
                 continue
             if rule.side == "E" and not any(is_ours(p) for p in each.grantees):
                 continue
-            keep(Located(each.number, each.recorded, each.filing, rule.item, Tie.NAMED, _business(each.parties)))
+            keep(Located(each.number, each.recorded, each.filing, rule.item, Tie.NAMED, _business(each.parties),
+                         people=_people(each)))
     # The liens are left out of the search by type; the directory counted them when it surveyed the county.
     out.liens = len(liens) or int((known or {}).get("evidence", {}).get("assessment lien", 0))
 
@@ -401,7 +435,8 @@ def locate(name: str, county: str, *, recorder: Any = None, known: dict[str, Any
             rule = _rule(here.filing)
             if rule is not None and rule.item != "recorded-liens":
                 tie = Tie.NAMED if any(is_ours(p) for p in here.parties) else anchor.tie
-                keep(Located(here.number, here.recorded, here.filing, rule.item, tie, _business(here.parties), via=anchor.via))
+                keep(Located(here.number, here.recorded, here.filing, rule.item, tie, _business(here.parties), via=anchor.via,
+                             people=_people(here)))
         for each in rows:
             if each.number == anchor.number or each.recorded != here.recorded:
                 continue
@@ -415,7 +450,8 @@ def locate(name: str, county: str, *, recorder: Any = None, known: dict[str, Any
             if rule.side == "E" and not any(is_ours(p) for p in each.grantees):
                 continue
             keep(Located(each.number, each.recorded, each.filing, rule.item,
-                         Tie.NAMED if names_us else Tie.BESIDE, _business(each.parties), via=anchor.number))
+                         Tie.NAMED if names_us else Tie.BESIDE, _business(each.parties), via=anchor.number,
+                         people=_people(each)))
 
     # 3. The builders' own governing filings: other phases, or other communities.
     governing_types = index.types(lambda n: (r := rule_for(n)) is not None and r.governing)
@@ -426,7 +462,7 @@ def locate(name: str, county: str, *, recorder: Any = None, known: dict[str, Any
             if rule is None or not rule.governing or each.number in seen:
                 continue
             keep(Located(each.number, each.recorded, each.filing, rule.item, Tie.DECLARANT,
-                         _business(each.parties), via=builder))
+                         _business(each.parties), via=builder, people=_people(each)))
     out.found = sorted(seen.values(), key=lambda x: (x.item, x.recorded or date.max, x.number))
     if builders_found:
         out.notes.append("builders on its governing instruments: " + ", ".join(sorted(builders_found))

@@ -36,13 +36,17 @@ Each edge runs from the later or dependent node to the one it acts on. Each kind
 | `carries` | a deed → the parcel it conveys | parcel | the chain |
 | `conveys` | grantor → grantee, `via` the deed | party | the chain, the index row |
 | `vests` | a deed → its grantee | party | the chain, the index row |
-| `names` | an instrument → a business or the association it names | party | the index, the governing record, the lifecycle's claimant, the locator |
+| `names` | an instrument → a party it names (a private person only in the private view) | party | the index, the governing record, the lifecycle's claimant, the locator (`locator.party`; `locator.person` for a private person, with its index side) |
 
 **Provenance.** Each edge carries `provenance: {rule, store, lead, note}`, and `also` for each further rule that made the same edge. An edge is a lead only when every rule behind it is: the role's guess that an amendment amends the declaration in force becomes firm once the specification pins it.
 
 ## Privacy
 
-The **shared view** (the default) holds no private person: their nodes, every edge touching one, and every cycle through one are left out, and a note counts them. Instrument nodes never carry a person's name in any view. The **private view** adds private persons labeled by their role and parcel ("owner, unit 12", "grantor, parcel ..."); their names ride in `names` only when the caller asks (`--names`, for the board's own use), and the console never asks.
+Owners' names are P1 ([console/security-and-privacy.md](console/security-and-privacy.md)): shown to the people who work with them, kept in jason's private stores and caches (`data/`, `$ASSPY_HOME`), and never written to anything committed (source, docs, tests, and fixtures use made-up names). Masking is the default, and every mask can be lifted by a person:
+
+- The **shared view** (the default) holds no private person: their nodes, every edge touching one, and every cycle through one are left out, and a note counts them. Instrument nodes never carry a person's name in any view.
+- The **private view** adds private persons labeled by their role and parcel ("owner, unit 12", "grantor, parcel ...", "named party"); their names are masked.
+- **Names** ride in `names` in the private view only when a person asks: `--private --names` on the command line, or **Show owners' names** in the console (`names=1&by=NAME`). The console's reveal needs a person's name (never "jason"; while someone is signed in, theirs) and appends a record to `data/console/reveals.jsonl`: when, who, the scope, the parcel, unit, or instrument it was around, and how many persons were named (never the names). **Hide names** returns to the masked view. The Mermaid diagram stays labeled by role.
 
 ## Feeding it from another county
 
@@ -79,13 +83,13 @@ jason instrument-graph --around 200709200938 --depth 1   # what touches the decl
 jason instrument-graph --all --markdown --out data/reports/instrument-graph.md
 ```
 
-`GET /api/instrument-graph?scope=association|parcel|unit|all&parcel=APN&unit=N&around=NUMBER&depth=2&view=shared|private` returns the JSON with its `mermaid`. `all` builds every parcel and takes a while.
+`GET /api/instrument-graph?scope=association|parcel|unit|all&parcel=APN&unit=N&around=NUMBER&depth=2&view=shared|private` returns the JSON with its `mermaid`. `all` builds every parcel and takes a while. `&names=1&by=NAME` returns the private view with the names, `names: true`, and `reveal: {at, by, scope, named, log, parcel?, unit?, around?}`; a missing `by`, "jason", or a name other than the signed-in person's is refused (400), and so is a reveal while an admin views the console as someone else.
 
-`InstrumentGraph` (`ui/src/components/InstrumentGraph.tsx`) takes `data` (the payload) and `initial` (a node to select). It draws a layered timeline in SVG: parcels in the first column, instruments one column per recording year, parties last; a dashed line is a lead. Beside it a list of every node is the keyboard path: choosing a node lists its edges, and focusing an edge shows its rules, stores, and notes in a status region. Families can be hidden; the cycles left out are listed; the Mermaid source renders on request through `Markdown`.
+`InstrumentGraph` (`ui/src/components/InstrumentGraph.tsx`) takes `data` (the payload) and `initial` (a node to select). It draws a layered timeline in SVG: parcels in the first column, instruments one column per recording year, parties last; a dashed line is a lead. Beside it a list of every node is the keyboard path: choosing a node lists its edges, and focusing an edge shows its rules, stores, and notes in a status region. Families can be hidden; the cycles left out are listed; the Mermaid source renders on request through `Markdown`. A private person shows by name when the payload carries `names`, with its role beside it. `OwnerNames` (same file) is the **Show owners' names** action: it asks for the person's name (filled from the console's person), and once the names are shown it says who asked, when, that the reveal was logged, and offers **Hide names**. The onboarding view's "Recorded instruments" tab (`InstrumentGraphTab`) opens masked and refetches with `names=1&by=` on a reveal; a refused reveal stays masked and says why.
 
 ## Caveats
 
 - A graph of what the records on disk say. A dotted edge is a lead: something to read, not a finding.
 - A lien indexes a person, not a parcel: a lien edge joins a parcel through its owner's name and tenure.
 - An instrument seen only cited is a node marked not loaded; its filing and parties are unknown.
-- The shared view leaves out every private person.
+- The shared view leaves out every private person; the private view masks their names until a person asks, and each console reveal is logged.

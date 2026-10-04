@@ -1,16 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { cleanName, isJason } from "../lib/approvals";
 import { Badge } from "./Badge";
 import { Caveats } from "./Caveats";
 import { Markdown } from "./Markdown";
 
 /** One node of the instrument graph (`jason.community.instrument_graph`): an instrument, a party, or a parcel. A private
- * person reaches the console only in the private view, labeled by role and parcel, never by name. */
+ * person reaches the console only in the private view, labeled by role and parcel; its `names` arrive only when a
+ * person asked to see them (a logged reveal). */
 export interface GraphNode {
   id: string; type: "instrument" | "party" | "parcel"; label: string;
   number?: string; recorded?: string; county?: string; filing?: string; kind?: string; role?: string; phase?: number | null;
   status?: string; supersededBy?: string; loaded?: boolean; item?: string; tie?: string; partyKind?: string; apn?: string; unit?: string;
+  names?: string[];
   [key: string]: unknown;
 }
+/** The record of one reveal of owners' names, as the server logged it (`data/console/reveals.jsonl`). */
+export interface Reveal { at: string; by: string; scope?: string; named: number; log: string; parcel?: string; unit?: string; around?: string }
 export interface Provenance { rule: string; store: string; lead: boolean; note?: string }
 export interface GraphEdge {
   id: string; kind: string; family: string; source: string; target: string; via?: string; lead: boolean; meaning?: string;
@@ -22,14 +27,18 @@ export interface InstrumentGraphData {
   found?: boolean; note?: string; title?: string; view?: "shared" | "private"; scope?: string;
   nodes: GraphNode[]; edges: GraphEdge[]; cycles?: GraphCycle[]; counts?: Record<string, number>;
   kinds?: { kind: string; family: string; meaning: string }[]; notes?: string[]; caveats?: string[]; mermaid?: string;
+  names?: boolean; reveal?: Reveal;
 }
 
 const COL = 170, ROW = 46, W = 150, H = 34, PAD = 16;
 const TYPE_WORD: Record<GraphNode["type"], string> = { instrument: "Instruments", parcel: "Parcels", party: "Parties" };
 
+const isPrivate = (n: GraphNode) => n.type === "party" && n.partyKind === "private";
+
 function nodeText(n: GraphNode): string {
   if (n.type === "instrument") return n.number || n.label;
   if (n.type === "parcel") return n.unit ? `unit ${n.unit}` : `parcel ${n.apn ?? n.label}`;
+  if (isPrivate(n) && n.names?.length) return n.names.join("; ");
   return n.label;
 }
 
@@ -39,7 +48,54 @@ function nodeDetail(n: GraphNode): string {
     return [n.recorded, what, n.phase ? `phase ${n.phase}` : "", n.supersededBy ? `superseded by ${n.supersededBy}` : ""].filter(Boolean).join(" · ");
   }
   if (n.type === "parcel") return [n.apn, n.phase ? `phase ${n.phase}` : ""].filter(Boolean).join(" · ");
+  if (isPrivate(n) && n.names?.length) return `${n.label} · private`;
   return n.partyKind ?? "";
+}
+
+function whenText(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+/** "Show owners' names" on the instrument graph. Masked by default, so a screenshot or an export holds no name unless
+ * a person asked. Showing them takes the person's name (the signed-in or chosen console person, `me`, filled in), which
+ * the server logs with the reveal; "Hide names" returns to the masked view. Owners' names are P1: shown to the people
+ * who work with them, never committed. */
+export function OwnerNames({ shown, me = "", reveal, busy = false, onShow, onHide }: {
+  shown: boolean; me?: string; reveal?: Reveal; busy?: boolean; onShow: (by: string) => void; onHide: () => void;
+}) {
+  const uid = useId();
+  const [asking, setAsking] = useState(false);
+  const [by, setBy] = useState(me);
+  useEffect(() => setBy(me), [me]);
+  const who = cleanName(by);
+  const problem = !who ? "Enter your name: each reveal is logged with it." : isJason(who) ? "jason never asks to see owners' names: give a person's name." : "";
+  if (shown)
+    return (
+      <div className="row wrap owner-names">
+        <p className="notice" role="status">
+          Owners' names are shown{reveal ? <>, asked by <strong>{reveal.by}</strong> at <time dateTime={reveal.at}>{whenText(reveal.at)}</time></> : null}.
+          {" "}The reveal was logged{reveal?.log ? <> in <code className="chip">data/{reveal.log}</code></> : null}.
+          {reveal ? ` ${reveal.named} ${reveal.named === 1 ? "person" : "persons"} named.` : ""} Hide them before a screenshot or a share.
+        </p>
+        <button type="button" onClick={() => { setAsking(false); onHide(); }}>Hide names</button>
+      </div>
+    );
+  if (!asking)
+    return (
+      <div className="row wrap owner-names">
+        <button type="button" onClick={() => setAsking(true)}>Show owners' names</button>
+        <span className="muted">Owners are masked: left out, or labeled by role and parcel.</span>
+      </div>
+    );
+  return (
+    <form className="row wrap owner-names" aria-label="Show owners' names" onSubmit={(e) => { e.preventDefault(); if (!problem) onShow(who); }}>
+      <label className="approve-field">Your name<input value={by} onChange={(e) => setBy(e.target.value)} autoComplete="name" required aria-invalid={!!problem && !!by} aria-describedby={`${uid}-why`} /></label>
+      <button type="submit" className="primary" disabled={busy} aria-disabled={!!problem}>Show names</button>
+      <button type="button" onClick={() => setAsking(false)}>Cancel</button>
+      <span id={`${uid}-why`} className="muted" role="status">{problem || "The reveal is logged with your name, the scope, and how many persons were named."}</span>
+    </form>
+  );
 }
 
 /** A layered timeline: parcels in the first column, instruments in one column per recording year (undated last),
@@ -117,7 +173,7 @@ export function InstrumentGraph({ data, initial = "" }: { data: InstrumentGraphD
         {families.map((f) => (
           <label key={f} className="row"><input type="checkbox" checked={!off[f]} onChange={() => setOff({ ...off, [f]: !off[f] })} />{f}</label>
         ))}
-        <span className="muted">{data.view === "private" ? "Private view: owners labeled by role and parcel" : "Shared view: no private person"}</span>
+        <span className="muted">{data.names ? "Private view: owners' names shown" : data.view === "private" ? "Private view: owners labeled by role and parcel" : "Shared view: no private person"}</span>
       </div>
       <div className="grid-2">
         <div role="region" aria-label="Graph drawing; the list beside it holds the same nodes" tabIndex={0} style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid var(--line)" }}>

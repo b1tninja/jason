@@ -211,6 +211,87 @@ def test_located_rows_are_leads_beside_their_anchor():
     assert "ALPHA" not in repr(graph.to_dict(View.SHARED))
 
 
+def test_the_locators_people_are_private_parties_masked_until_asked():
+    graph = InstrumentGraph(county="Example")
+    add_located(graph, (
+        {"number": "2015-0000300", "recorded": "2015-07-01", "filing": "DEED", "item": "common-area-deeds", "tie": "names the association",
+         "parties": [ASSOCIATION], "people": [{"name": OWNER_A, "side": "R"}]},
+    ), CTX)
+    person = next(e for e in graph.edges if e.provenance.rule == "locator.person")
+    assert person.lead and person.provenance.note == "index side R"
+    shared = graph.to_dict(View.SHARED)
+    assert "ALPHA" not in repr(shared) and not [n for n in shared["nodes"] if n.get("partyKind") == "private"]
+    masked = graph.to_dict(View.PRIVATE)
+    node = next(n for n in masked["nodes"] if n.get("partyKind") == "private")
+    assert node["label"] == "named party" and "ALPHA" not in repr(masked)
+    named = graph.to_dict(View.PRIVATE, names=True)
+    assert next(n for n in named["nodes"] if n.get("partyKind") == "private")["names"] == [OWNER_A]
+
+
+def _web_graph(tmp_path, monkeypatch):
+    """The console's loader over a made-up graph with one owner, and jason's data under tmp_path."""
+    import jason.community as community_pkg
+    from jason.tasks import instrument_graph as ig
+    from jason.tasks import key_documents as kd
+
+    graph = InstrumentGraph(county="Example")
+    add_filed(graph, (_filed("2001-0000014", "2001-03-01", "fee", [BUILDER], [OWNER_A], code="685", name="GRANT DEED"),), CTX, apn=APN)
+    graph.parcel(APN, unit="12")
+    root = tmp_path / "data"
+    monkeypatch.setattr(kd, "_root", lambda given=None: root)
+    monkeypatch.setattr(community_pkg, "community", lambda: object())
+    monkeypatch.setattr(ig, "association_graph", lambda *a, **k: graph)
+    return root
+
+
+def test_the_console_unmasks_owners_names_only_for_a_named_person_and_logs_it(tmp_path, monkeypatch):
+    import json
+
+    import pytest
+
+    from jason.web.extra.key_documents import instrument_graph, reveal
+
+    root = _web_graph(tmp_path, monkeypatch)
+    log = root / "console" / "reveals.jsonl"
+    shared = instrument_graph({})
+    assert shared["view"] == "shared" and shared["names"] is False and "ALPHA" not in json.dumps(shared)
+    masked = instrument_graph({"view": "private"})
+    assert masked["view"] == "private" and "ALPHA" not in json.dumps(masked) and "reveal" not in masked
+    assert not log.exists()                                                      # masking logs nothing
+    with pytest.raises(ValueError):                                             # a name never travels in a URL
+        instrument_graph({"names": "1", "by": "Jane Example"})
+    for by in ("", "  ", "jason", "Jason"):
+        with pytest.raises(ValueError):
+            reveal("reveal", {"by": by})
+    assert not log.exists()
+    named = reveal("reveal", {"by": "Jane  Example"})
+    assert named["view"] == "private" and named["names"] is True
+    assert next(n for n in named["nodes"] if n.get("partyKind") == "private")["names"] == [OWNER_A]
+    assert named["reveal"]["by"] == "Jane Example" and named["reveal"]["named"] == 1 and named["reveal"]["log"] == "console/reveals.jsonl"
+    assert "ALPHA" not in named["mermaid"]                                       # the diagram stays labeled by role
+    reveal("reveal", {"by": "Casey Sample", "scope": "association", "around": "2001-0000014"})
+    rows = [json.loads(line) for line in log.read_text("utf-8").splitlines()]
+    assert [r["by"] for r in rows] == ["Jane Example", "Casey Sample"]
+    assert rows[0]["scope"] == "association" and rows[0]["named"] == 1 and rows[0]["at"] and rows[1]["around"] == "2001-0000014"
+    assert "ALPHA" not in log.read_text("utf-8")                                 # the log says who looked, not whom
+
+
+def test_the_route_refuses_a_reveal_without_a_person(tmp_path, monkeypatch):
+    import webclient
+    from jason.web.app import create_app
+    from jason.web.extra.key_documents import instrument_graph
+
+    c = webclient.client(create_app(tmp_path, {"instrument-graph": instrument_graph}))
+    root = _web_graph(tmp_path, monkeypatch)
+    assert c.get("/api/instrument-graph?names=1&by=Jane%20Example").status_code == 400   # never by a URL
+    assert c.post("/api/write/instrument-graph/reveal", json={}).status_code == 400
+    assert c.post("/api/write/instrument-graph/reveal", json={"by": "jason"}).status_code == 400
+    assert c.post("/api/write/instrument-graph/other", json={"by": "Jane Example"}).status_code == 404
+    got = c.post("/api/write/instrument-graph/reveal", json={"by": "Jane Example"})
+    assert got.status_code == 200 and got.json["names"] is True and got.json["reveal"]["by"] == "Jane Example"
+    assert (root / "console" / "reveals.jsonl").is_file()
+
+
 def test_a_process_reading_seats_the_closing():
     anchor = "2001-0000014"
     reading = Reading("developer closing", True, (

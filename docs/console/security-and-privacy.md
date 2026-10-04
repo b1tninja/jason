@@ -171,6 +171,8 @@ Everything is under the profile's data folder (`jason.config.data_dir`), private
 | `approvals/audit.jsonl` | The approvals audit log | P1 at most |
 | `approvals/letters.json` | The letters jason drafted, their stages and trail | The letter's own level: a notice to members is P1; a letter to one owner names that owner |
 | `board/decisions.json`, `meetings/plan-<date>.json`, `meetings/room-<date>.json` | The board's decisions, a meeting's plan, the room's record | P1; executive-session items by general nature only |
+| `console/reveals.jsonl` | Each time a person showed owners' names on the instrument graph: when, who, the scope, the parcel or unit, how many persons were named; never the names | P1 at most |
+| `onboarding/<profile>-documents-located.json` (and `.md`), `key-documents/<profile>.json` and `key-documents/<profile>/files/` | The documents located for the association with each instrument's private persons and index side, the key documents and their copies | P1: owners' names, shown to the people who work with them and masked on the graph until a person asks |
 | `canvases/`, `dock/dock.json`, `registers/`, and the other console stores ([web-ui.md](../web-ui.md#api)) | A person's work and the board's columns | P1, and P3 where the subject is (a canvas on a legal matter) |
 
 The guard's token lives in memory only; a restart makes a new one. The browser keeps the "Signed in as" name and nothing else.

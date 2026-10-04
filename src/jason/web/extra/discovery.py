@@ -4,7 +4,10 @@
 region; ``?q=`` words, ``?limit=``), the directory's summary beside it; a county not yet surveyed gives the asspy
 command that surveys it. ``documents_located(args)`` reads the locator's saved result
 (``data/onboarding/<profile>-documents-located.json``) for the active profile, or ``?county=&name=`` for another
-association; when none was saved it gives the command, and a queued or running locate job is shown with it.
+association; when none was saved it gives the command, and a queued or running locate job is shown with it. Each
+located instrument carries every party: the businesses and the association in ``parties``, and the private persons in
+``people`` (name and index side, R or E). Owners' names are P1 (``docs/console/security-and-privacy.md``): shown to
+the people who work with them, kept in jason's private data, never committed.
 
 Nothing here reads the county: a fresh locate is a person's action, ``write("locate", {county, name, by})``, which
 queues ``jason onboard --locate`` for ``jason worker`` (the county lane) and returns the job. A row, a located

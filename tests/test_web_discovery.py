@@ -79,6 +79,8 @@ def _location() -> Location:
                 ("EXAMPLE BUILDERS LLC",), via="2001-0000011"),
         Located("2001-0000011", date(2001, 3, 1), "DEED", "common-area-deeds", Tie.NAMED,
                 ("EXAMPLE BUILDERS LLC", ASSOCIATION)),
+        Located("2015-0000300", date(2015, 7, 1), "DEED", "common-area-deeds", Tie.NAMED, (ASSOCIATION,),
+                people=((OWNER, "R"),)),
         Located("2003-0000050", date(2003, 6, 1), "DECLARATION ANNEX SUBDV", "annexations", Tie.DECLARANT,
                 ("EXAMPLE BUILDERS LLC",), via="EXAMPLE BUILDERS LLC"),
     ], liens=12, notes=["builders on its governing instruments: EXAMPLE BUILDERS LLC"], searches=9)
@@ -100,14 +102,17 @@ def test_documents_located_is_missing_until_a_locate_ran_then_the_saved_result(d
     assert decl["stakes"] is True and decl["question"] and decl["title"]
     assert decl["located"] == [{"number": "2001-0000010", "recorded": "2001-03-01", "filing": "DECLARATION OF RESTRICTIONS",
                                 "tie": "beside", "tie_label": Tie.BESIDE.value, "strong": True, "via": "2001-0000011",
-                                "parties": ["EXAMPLE BUILDERS LLC"]}]
+                                "parties": ["EXAMPLE BUILDERS LLC"], "people": []}]
     assert items["annexations"]["located"][0]["strong"] is False
     assert {n["item"] for n in out["not_located"]} == {"amendments", "maps"}
     assert out["report"] == "onboarding/example_creek-documents-located.md" and out["caveats"]
-    assert OWNER not in json.dumps(out)
-    # read back as a Location: the same instruments and ties
+    # An owner's name is P1: kept in jason's private data and shown in the console, with its index side.
+    deed = next(x for x in items["common-area-deeds"]["located"] if x["number"] == "2015-0000300")
+    assert deed["people"] == [{"name": OWNER, "side": "R"}] and deed["parties"] == [ASSOCIATION]
+    assert OWNER in (data / "onboarding" / "example_creek-documents-located.md").read_text("utf-8")
+    # read back as a Location: the same instruments, ties, and people
     again = Location.from_dict(json.loads((data / "onboarding" / "example_creek-documents-located.json").read_text("utf-8")))
-    assert [(x.number, x.item, x.tie, x.via) for x in again.found] == [(x.number, x.item, x.tie, x.via) for x in found.found]
+    assert [(x.number, x.item, x.tie, x.via, x.people) for x in again.found] == [(x.number, x.item, x.tie, x.via, x.people) for x in found.found]
     assert again.markdown() == found.markdown()
 
     other = discovery.documents_located({"county": "Placer", "name": "Example Oaks Owners Assn"})

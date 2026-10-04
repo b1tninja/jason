@@ -34,7 +34,9 @@ const docColumns: Column<LocatedDoc>[] = [
   { key: "filing", header: "Filing" },
   { key: "tie", header: "Why it is thought the association's", value: (x) => `${x.strong ? 0 : 1} ${x.tie_label}`, render: (x) => <TieBadge doc={x} /> },
   { key: "via", header: "Found by", render: (x) => x.via ? <span>{x.via}</span> : <span className="muted">its name</span> },
-  { key: "parties", header: "Parties", value: (x) => x.parties.join("; "), render: (x) => x.parties.length ? x.parties.join("; ") : <span className="muted">none kept</span> },
+  { key: "parties", header: "Parties", value: (x) => x.parties.join("; "), render: (x) => x.parties.length ? x.parties.join("; ") : <span className="muted">none</span> },
+  { key: "people", header: "Owners", value: (x) => (x.people ?? []).map((p) => `${p.name} (${p.side})`).join("; "),
+    render: (x) => (x.people ?? []).length ? (x.people ?? []).map((p) => `${p.name} (${p.side})`).join("; ") : <span className="muted">none</span> },
 ];
 
 function tieCounts(docs: readonly LocatedDoc[]): string {
@@ -89,7 +91,8 @@ export function LocatedDocuments({ location, questionHref, actions }: {
         )}
         <p className="muted">
           <strong>Ties.</strong> "Names the association" and "recorded with the association's documents" are strong ties.
-          "The builder's filing" may be another community's: it is asked about, never suggested. Owners' names are never kept.
+          "The builder's filing" may be another community's: it is asked about, never suggested. Owners on an instrument
+          are listed with their index side (R grantor, E grantee) for the people who work with them.
         </p>
         {actions}
       </header>

@@ -99,6 +99,57 @@ describe("OnboardingView: key documents and recorded instruments", () => {
   });
 });
 
+describe("OnboardingView: owners' names on the instrument graph", () => {
+  it("is masked by default, unmasks with the person's name, says the reveal was logged, and hides again", async () => {
+    localStorage.setItem("jason-console-user", "Jane Example");
+    const urls: string[] = [];
+    const posts: unknown[] = [];
+    const owner = { id: "person:abc", type: "party", label: "owner, unit 12", partyKind: "private" };
+    const inst = { id: "inst:example:2001-0000014", type: "instrument", label: "2001-0000014", number: "2001-0000014", recorded: "2001-03-01", kind: "fee" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url);
+      if (url === "/api/write/instrument-graph/reveal") {
+        const body = JSON.parse(String(init?.body)) as { by: string };
+        posts.push(body);
+        if (body.by === "Pat Other") return new Response(JSON.stringify({ error: "signed in as Jane Example: the reveal goes on the record under the signed-in name, not Pat Other" }), { status: 400 });
+        return new Response(JSON.stringify({ found: true, view: "private", names: true, nodes: [inst, { ...owner, names: ["EXAMPLE OWNER A"] }], edges: [],
+          reveal: { at: "2026-10-03T12:00:00+00:00", by: "Jane Example", scope: "association", named: 1, log: "console/reveals.jsonl" } }), { status: 200 });
+      }
+      if (url.startsWith("/api/instrument-graph")) return new Response(JSON.stringify({ found: true, view: "shared", nodes: [inst], edges: [],
+        notes: ["1 private person(s) left out of the shared view, with their edges"] }), { status: 200 });
+      return new Response(JSON.stringify({ found: true, summary, accounts: [], facts: [], items: [], gaps: [], statuses: [], holders: [], groups: [], caveats: [] }), { status: 200 });
+    }));
+    try {
+      render(<OnboardingView />);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("tab", { name: "Recorded instruments" }));
+      expect(await screen.findByText("Shared view: no private person")).toBeInTheDocument();
+      expect(screen.queryByText("EXAMPLE OWNER A")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Show owners' names" }));
+      expect(screen.getByLabelText("Your name")).toHaveValue("Jane Example");
+      await user.click(screen.getByRole("button", { name: "Show names" }));
+      expect(await screen.findByText("Private view: owners' names shown")).toBeInTheDocument();
+      expect(posts).toContainEqual({ by: "Jane Example", scope: "association" });
+      expect(urls.some((u) => u.includes("by="))).toBe(false);                  // a name never travels in a URL
+      expect(within(screen.getByRole("navigation", { name: "Nodes" })).getByRole("button", { name: "EXAMPLE OWNER A" })).toBeInTheDocument();
+      expect(screen.getByText(/Owners' names are shown, asked by/)).toHaveTextContent("The reveal was logged in data/console/reveals.jsonl.");
+      await user.click(screen.getByRole("button", { name: "Hide names" }));
+      expect(await screen.findByText("Shared view: no private person")).toBeInTheDocument();
+      expect(screen.queryByText("EXAMPLE OWNER A")).not.toBeInTheDocument();
+      // A reveal the server refuses (not the signed-in person) stays masked and says why.
+      await user.click(screen.getByRole("button", { name: "Show owners' names" }));
+      await user.clear(screen.getByLabelText("Your name"));
+      await user.type(screen.getByLabelText("Your name"), "Pat Other");
+      await user.click(screen.getByRole("button", { name: "Show names" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("jason did not show the names: signed in as Jane Example");
+      expect(await screen.findByText("Shared view: no private person")).toBeInTheDocument();
+      expect(screen.queryByText("EXAMPLE OWNER A")).not.toBeInTheDocument();
+    } finally {
+      localStorage.removeItem("jason-console-user");
+    }
+  });
+});
+
 describe("CommunitiesView", () => {
   it("lists profiles with the active one's progress", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ found: true, count: 2, communities: [{ name: "mystique", where: "/x/mystique", active: true, progress: summary }, { name: "sample", where: "/x/profiles/sample", active: false }] }), { status: 200 })));

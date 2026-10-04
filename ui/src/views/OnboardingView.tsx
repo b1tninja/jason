@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, Card, Caveats, Command, DataTable, Findings, InstrumentGraph, KeyDocuments, Markdown, Pill, RemoteView, Stat, Tabs, type Column, type InstrumentGraphData, type KeyDocumentsData } from "../components";
 import { AssociationPicker } from "../components/AssociationPicker";
 import { DocumentLocator } from "../components/DocumentLocator";
+import { OwnerNames } from "../components/InstrumentGraph";
 import { postJson } from "../lib/api";
 import type { AssociationChoice } from "../lib/discovery";
 import { readMe } from "../lib/session";
@@ -166,10 +167,35 @@ export function KeyDocumentsTab({ me = readMe() }: { me?: string }) {
 }
 
 /** The recorded instruments as a graph: the association's chain, closings, governing documents, and loans, each edge
- * with the rule that made it. Read from jason's stores; nothing is fetched from the county. */
-export function InstrumentGraphTab() {
-  const r = useApi<InstrumentGraphData>("/api/instrument-graph?scope=association");
-  return <RemoteView r={r}>{(d) => <InstrumentGraph data={d} />}</RemoteView>;
+ * with the rule that made it. Read from jason's stores; nothing is fetched from the county. Owners are masked by
+ * default; "Show owners' names" reads the graph again with the names (`names=1&by=`), which the server logs as a
+ * reveal, and "Hide names" returns to the masked view. */
+export function InstrumentGraphTab({ me = readMe() }: { me?: string }) {
+  const masked = useApi<InstrumentGraphData>("/api/instrument-graph?scope=association");
+  const [named, setNamed] = useState<InstrumentGraphData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState("");
+  // The person's name goes in a POST body, never a URL; the server logs the reveal. A refused reveal stays masked.
+  const show = async (who: string) => {
+    setRefused("");
+    setBusy(true);
+    try {
+      setNamed(await postJson<InstrumentGraphData>("/api/write/instrument-graph/reveal", { by: who, scope: "association" }));
+    } catch (e) {
+      setRefused(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const shown = !!named?.names;
+  return (
+    <div className="stack">
+      <OwnerNames shown={shown} me={me} reveal={shown ? named?.reveal : undefined} busy={busy}
+        onShow={show} onHide={() => setNamed(null)} />
+      {refused && <p className="notice notice-error" role="alert">jason did not show the names: {refused}. The graph stays masked.</p>}
+      {named ? <InstrumentGraph data={named} /> : <RemoteView r={masked}>{(d) => <InstrumentGraph data={d} />}</RemoteView>}
+    </div>
+  );
 }
 
 /** Onboarding the active community: accounts, facts, the request list and its letter, what arrived, and the gaps. */

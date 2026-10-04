@@ -740,6 +740,7 @@ EXTRA_WRITERS: dict[str, str] = {
     "dock": "jason.web.extra.dock:write",
     "documents-located": "jason.web.extra.discovery:write",  # queues a locate job; the county is never read here
     "key-documents": "jason.web.extra.key_documents:write",  # link, upload, unlink, status: jason's own store
+    "instrument-graph": "jason.web.extra.key_documents:reveal",  # owners' names for a named person, logged
 }
 
 

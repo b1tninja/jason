@@ -17,7 +17,7 @@ The first tab of `#/onboarding`, **Find the association**, comes before the docu
 | Part | Source |
 |---|---|
 | The county's directory | `GET /api/associations?county=placer&q=oaks&limit=25`: `{county, surveyed, summary: {byStanding, byKind, ...}, results: [{key, name, kind, standing, first, last, spellings, evidence, governing, links, score}], caveats, command}`. Built from the county recorder's public index by asspy's survey. A row is an association-named party, never an owner |
-| The documents located | `GET /api/documents-located` (the active profile) or `?county=&name=` (the association chosen): `{association, county, located_at, searches, liens, spellings, items: [{item, title, question, stakes, located: [{number, recorded, filing, tie, tie_label, strong, via, parties}]}], not_located: [{item, title, ask}], notes, caveats, job?}`, or `{missing: true, command, note, job?}` (`jason.tasks.document_locator`) |
+| The documents located | `GET /api/documents-located` (the active profile) or `?county=&name=` (the association chosen): `{association, county, located_at, searches, liens, spellings, items: [{item, title, question, stakes, located: [{number, recorded, filing, tie, tie_label, strong, via, parties, people: [{name, side}]}]}], not_located: [{item, title, ask}], notes, caveats, job?}`, or `{missing: true, command, note, job?}` (`jason.tasks.document_locator`) |
 | Locating | `POST /api/write/documents-located/locate` with `{county, name, by}` → `{job: {id, status}, command}`. It queues a read job; the console never calls the county. Empty `county` and `name` mean the active profile |
 
 ### Layout
@@ -75,7 +75,8 @@ The first tab of `#/onboarding`, **Find the association**, comes before the docu
 - Years: "recorded from 2004 through 2025", never a dash range.
 - Ties are the locator's words. "Names the association" and "recorded with the association's documents" are strong. "The builder's filing" is shown with "may be another community's", and is asked about, never suggested.
 - An item whose answer decides which words are in force (the declaration, the amendments) carries "a second person confirms".
-- The association's own liens are "counted, not listed". Parties are business and association parties only; an owner's name never appears.
+- The association's own liens are "counted, not listed". `parties` are the business and association parties; `people` are the private persons on the instrument as indexed, by name with their side (R grantor, E grantee). Owners' names are P1 ([security-and-privacy.md](../security-and-privacy.md)): shown here to the people who work with them, kept in jason's private data, never committed.
+- The recorded instruments' graph opens masked (the shared view). **Show owners' names** asks for the person's name, reads the graph again with the names, and says the reveal was logged; **Hide names** masks them again ([instrument-graph.md](../../instrument-graph.md#privacy)).
 
 ### The answers
 

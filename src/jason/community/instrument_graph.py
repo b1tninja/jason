@@ -43,9 +43,12 @@ and the document locator's ``Location`` (or its rows as dicts). Sacramento's sto
 ``jason.tasks.instrument_graph``; another county's walk calls the same builders.
 
 Privacy. A party that is not plainly a business or the association is a private person. It becomes a node only in
-the private view, labeled by its role and parcel ("owner, parcel 000-0000-000-0000"), never by name; its names ride
-in ``names`` in the private view alone. The shared view drops private nodes, every edge touching one, and any cycle
-that passes through one. Instrument nodes never carry a person's name.
+the private view, labeled by its role and parcel ("owner, parcel 000-0000-000-0000"); its names ride in ``names``
+in the private view alone, and only when they are asked for (``to_dict(View.PRIVATE, names=True)``). The mask is
+the default, never a wall: the CLI's ``--private --names`` and the console's logged reveal
+(``jason.web.extra.key_documents.instrument_graph`` with ``names=1&by=NAME``) unmask it for the people who work with
+the owners. Owners' names live in jason's private stores and are never committed. The shared view drops private
+nodes, every edge touching one, and any cycle that passes through one. Instrument nodes never carry a person's name.
 """
 
 from __future__ import annotations
@@ -149,7 +152,8 @@ CAVEATS = (
     "locator's tie): something to read, not a finding.",
     "A lien indexes a person, not a parcel: a lien edge joins a parcel through its owner's name and tenure.",
     "An instrument jason has only seen cited is a node marked not loaded; its filing and parties are unknown.",
-    "The shared view leaves out every private person; the private view labels them by role and parcel, never by name.",
+    "The shared view leaves out every private person; the private view labels them by role and parcel, and carries "
+    "their names only when a person asks (a logged reveal in the console, --private --names on the command line).",
 )
 
 # Words that make a party plainly a business or a public body, whatever else it says.
@@ -996,8 +1000,9 @@ def add_readings(graph: InstrumentGraph, readings: Iterable[Any], ctx: Context) 
 
 def add_located(graph: InstrumentGraph, rows: Iterable[Any], ctx: Context, *, store: str = "locator") -> list[str]:
     """The document locator's finds (``jason.tasks.document_locator.Located``, or dicts with the same fields: number,
-    recorded, filing, item, tie, parties, via). Each is a lead: an instrument tagged with the checklist item it may
-    serve; one found beside another is ``beside`` it; a builder's filing names the builder."""
+    recorded, filing, item, tie, parties, via, people). Each is a lead: an instrument tagged with the checklist item it
+    may serve; one found beside another is ``beside`` it; a builder's filing names the builder; each private person
+    (``people``: name and index side) is a private party it names, in the private view only."""
     added: list[str] = []
     for row in rows:
         get = row.get if isinstance(row, Mapping) else (lambda key, default=None, _r=row: getattr(_r, key, default))
@@ -1014,6 +1019,17 @@ def add_located(graph: InstrumentGraph, rows: Iterable[Any], ctx: Context, *, st
         for name in get("parties", ()) or ():
             if ctx.kind_of(name) is not PartyKind.PRIVATE:
                 graph.link(EdgeKind.NAMES, node, ctx.party(graph, name), rule="locator.party", store=store, lead=True)
+        for person in get("people", ()) or ():
+            if isinstance(person, Mapping):
+                name, side = str(person.get("name", "") or ""), str(person.get("side", "") or "")
+            elif isinstance(person, (list, tuple)) and person:
+                name, side = str(person[0]), str(person[1]) if len(person) > 1 else ""
+            else:
+                name, side = str(person or ""), ""
+            if not _fold(name):
+                continue
+            graph.link(EdgeKind.NAMES, node, graph.party(name, kind=PartyKind.PRIVATE), rule="locator.person",
+                       store=store, lead=True, note=f"index side {side}" if side else "")
         via = str(get("via", "") or "").strip()
         if not via:
             continue

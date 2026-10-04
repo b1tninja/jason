@@ -12,7 +12,7 @@ const LOCATED = {
   items: [
     { item: "declaration", title: "The declaration (CC&Rs), the recorded copy", question: "Which is the association's declaration (the CC&Rs later amendments amend)?", stakes: true,
       located: [
-        { number: "2004-0012345", recorded: "2004-03-01", filing: "DECLARATION", tie: "NAMED", tie_label: "names the association", strong: true, via: "", parties: ["EXAMPLE HOMES INC", "EXAMPLE VILLAGE HOA"] },
+        { number: "2004-0012345", recorded: "2004-03-01", filing: "DECLARATION", tie: "NAMED", tie_label: "names the association", strong: true, via: "", parties: ["EXAMPLE HOMES INC", "EXAMPLE VILLAGE HOA"], people: [{ name: "SAMPLE PAT Q", side: "E" }] },
       ] },
     { item: "annexations", title: "Annexations", question: "Which of these annex a phase into the association (or take one out)?", stakes: false,
       located: [
@@ -38,6 +38,7 @@ describe("DocumentLocator", () => {
 
     const decl = screen.getByRole("region", { name: "The declaration (CC&Rs), the recorded copy" });
     expect(within(decl).getByText("a second person confirms")).toBeInTheDocument();
+    expect(within(decl).getByText("SAMPLE PAT Q (E)")).toBeInTheDocument();          // owners are P1: shown
     expect(within(decl).getByText(/Which is the association's declaration.*Do you hold a copy of each\?/)).toBeInTheDocument();
     expect(within(decl).getByText("names the association")).toBeInTheDocument();
     expect(within(decl).getByRole("link", { name: "Answer it" })).toHaveAttribute("href", "#/onboarding?question=declaration");
