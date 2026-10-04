@@ -512,7 +512,8 @@ def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: s
     }
 
 
-def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str = "", data_dir: Path | None = None,
+                    collection: str = "") -> dict[str, Any]:
     """A professional community manager's context pack for a task: the base prompt (the order of authority under Civil
     Code 4205, working out what governs, the text over memory, the method, the privacy rules), the task's prompt (purpose,
     the topics it turns on, the kinds of documents to read, a manager's considerations; no section numbers or figures), and
@@ -521,7 +522,14 @@ def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str
     annual-disclosures, treasurer-report, balance-forward, fire-system-testing, rule-reminder, hearing-notice,
     decision-notice, question); ``subject`` picks it from a template's subject instead. ``draft`` is text to review,
     ``ask`` a question. Work from the sources, cite them by id, and quote them; the pack decides nothing. Without a
-    task, lists the tasks."""
+    task, lists the tasks.
+
+    ``collection`` adds a collection's material as its own tier, the C sources: a legal case's file, named by the
+    case's key or its catalog (case-<key>). They are evidence gathered for the matter, neither the association's record
+    nor the law: cite one for what its document says, never as a rule or a finding. The case's record in the
+    specification (its events and duties) comes with them as a fact source. CONFIDENTIAL: a case's collection goes only
+    into a board task's pack and is for directors and counsel; for any other audience the pack refuses it and says so
+    in its gaps. Nothing is written to disk here."""
     from jason.community import community as active
     from jason.community.prompts import TaskKind
     from jason.tasks.manager_review import build
@@ -533,8 +541,25 @@ def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str
     chosen = community.task_for_subject(subject) if subject else community.task_prompt(TaskKind.from_slug(task))
     if chosen is None:
         return {"found": False, "subject": subject, "note": "no task's subjects match; name the task"}
-    pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft)
-    return {"task": chosen.kind.slug, "sources": len(pack.sources), "gaps": pack.gaps, "pack": pack.markdown()}
+    if not collection.strip():
+        pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft)
+        return {"task": chosen.kind.slug, "sources": len(pack.sources), "gaps": pack.gaps, "pack": pack.markdown()}
+    from jason.community.document_collections import collection as find_collection
+
+    found = find_collection(community, collection)
+    if found is None:
+        return {"found": False, "collection": collection,
+                "note": "no collection by that key: a legal case's key or its catalog (case-<key>) names one"}
+    pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft, collection=found)
+    result: dict[str, Any] = {"task": chosen.kind.slug, "sources": len(pack.sources), "gaps": pack.gaps, "pack": pack.markdown(),
+                              "collection": found.key, "collectionIncluded": pack.collection_included,
+                              "confidential": bool(found.confidential and pack.collection_included)}
+    if result["confidential"]:
+        result["caveats"] = ["Confidential: the pack holds a confidential collection's material. It is for directors and "
+                             "counsel: never an owner, the newsletter, or an open meeting.",
+                             "A C source is what a document in the collection says: its author's statement, not a "
+                             "finding, not the association's record, and never a rule."]
+    return result
 
 
 def extraction_scorecard(extractor: str = "regex", model: str = "", data_dir: Path | None = None) -> dict[str, Any]:
@@ -590,11 +615,13 @@ DOCUMENT_SEARCH_CAVEATS = (
 
 
 def _index_search(root: Path, query: str, *, catalog: str = "", standing: str = "", k: int = 8, mode: str = "hybrid",
-                  confidential: bool = False) -> tuple:
+                  confidential: bool = False, kind: str = "", folder: str = "") -> tuple:
     """``passage_index.search`` with the tools' string arguments: comma-separated catalogs ("" or "all" for every
-    catalog) and standings. A case catalog named (case-<key>) is a confidential catalog asked for by name, so its own
+    catalog), standings, document kinds, and folders under the data directory. A case catalog named (case-<key>) is a
+    confidential catalog asked for by name, so its own
     files are included; another catalog's confidential files only with ``confidential``, which never opens a case
-    catalog that is not named. Raises ``ValueError`` for an unknown standing or mode."""
+    catalog that is not named. A kind or a folder narrows what is searched and opens nothing. Raises ``ValueError`` for
+    an unknown standing or mode."""
     from jason.community import passage_index as pi
     from jason.tasks.case_files import is_case_catalog
 
@@ -607,7 +634,9 @@ def _index_search(root: Path, query: str, *, catalog: str = "", standing: str = 
     # Held files open by catalog: a case's only when it is named; any other catalog's only when asked.
     held = tuple(c for c in (catalogs or (pi.catalogs(root) if confidential else ()))
                  if (c in catalogs if is_case_catalog(c) else confidential))
-    scope = pi.Scope(catalogs=catalogs, standings=standings, confidential_in=held)
+    kinds = tuple(part.strip() for part in kind.split(",") if part.strip())
+    folders = tuple(part.strip().replace("\\", "/").strip("/") for part in folder.split(",") if part.strip().strip("/\\"))
+    scope = pi.Scope(catalogs=catalogs, standings=standings, kinds=kinds, folders=folders, confidential_in=held)
     return pi.search(query, data_dir=root, scope=scope, k=max(1, min(int(k), 30)), mode=mode)
 
 
@@ -620,7 +649,8 @@ def _index_hit(h: Any) -> dict[str, Any]:
 
 
 def document_search(question: str, catalog: str = "", standing: str = "", k: int = 8, mode: str = "hybrid",
-                    include_confidential: bool = False, data_dir: Path | None = None) -> dict[str, Any]:
+                    include_confidential: bool = False, data_dir: Path | None = None, kind: str = "",
+                    folder: str = "") -> dict[str, Any]:
     """Search jason's passage index (``jason index --build``) for a question: the law, the association's records, the
     insurance documents, the reference shelf, the classified library, the mail, and jason's own pages and
     documentation. Returns passages, not an answer: each hit names its file, section, catalog, standing (authority,
@@ -631,7 +661,10 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
     files (a library file the library flags or holds, an attorney's letter, a bank statement, a check, an escrow
     request, an unsorted letter, a report that names owners) are left out unless ``include_confidential``; they are
     for directors and counsel. A case catalog is confidential and is searched only when named. A letter that carries
-    a PIN or an access code is never in the index. ``standing`` scopes by how far the words can be relied on. ``mode``
+    a PIN or an access code is never in the index. ``standing`` scopes by how far the words can be relied on. ``kind``
+    keeps only files of those document kinds (each hit's ``kind``: minutes, policy, correspondence; comma-separated),
+    and ``folder`` only files under those folders of the data directory (comma-separated); both narrow the search and
+    open no confidential file. ``mode``
     is hybrid (keyword and embedding, exact numbers first), keyword, exact, or dense; when the embedder is not running
     a hybrid search falls back to the exact keyword ranking and says so. A hit is evidence, not a pin; a page hit is a
     summary, never the rule: quote the record or the law."""
@@ -646,13 +679,14 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
     held = bool(include_confidential)
     try:
         found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode or "hybrid",
-                              confidential=held)
+                              confidential=held, kind=kind, folder=folder)
     except ValueError as exc:
         return {"question": question, "available": False, "note": str(exc)}
     except retrieval.EmbeddingUnavailable as exc:
         note = f"the embedder is not available ({exc}); ranked by keyword with exact numbers first"
         mode = "exact"
-        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode, confidential=held)
+        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode, confidential=held,
+                              kind=kind, folder=folder)
     result: dict[str, Any] = {"question": question, "available": True, "mode": mode or "hybrid", "count": len(found),
                               "hits": [_index_hit(h) for h in found], "caveats": list(DOCUMENT_SEARCH_CAVEATS)}
     if note:

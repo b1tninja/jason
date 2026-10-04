@@ -1321,6 +1321,13 @@ A community manager's review of a task: the law, the documents, the facts (never
 | `--name` | NAME | the pack's file name under data/briefs (default: the task) |
 | `--run` |  | ask the local model and check every quote against its source |
 | `--model` | MODEL | the local chat model (default qwen3.6:27b) |
+| `--collection` | KEY | add a collection's material as its own tier: a legal case's key or its catalog (case-KEY); a confidential one only for a board task |
+| `--collections` |  | list the collections with their files and passages in the passage index (reads only) |
+| `--catalog` | CATALOG | an ad hoc collection: this index catalog (repeat) |
+| `--kind` | KIND | an ad hoc collection: this document kind (repeat) |
+| `--folder` | FOLDER | an ad hoc collection: under this data folder (repeat) |
+| `--confidential` |  | with --catalog: include that catalog's files held back unless asked (board tasks only) |
+| `--history` |  | list the reviews kept for the task under data/reviews: date, collection, digest, and whether the answer's quotes were found (reads only) |
 
 ### `jason statute-align`
 

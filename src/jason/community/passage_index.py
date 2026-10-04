@@ -519,6 +519,24 @@ def catalogs(data_dir: Path | str) -> tuple[str, ...]:
         db.close()
 
 
+def count(data_dir: Path | str, scope: Scope = Scope()) -> tuple[int, int] | None:
+    """How many files and passages a scope allows; None without an index. Opens the index read-only."""
+    path = index_path(data_dir)
+    if not path.is_file():
+        return None
+    where, args = scope.where()
+    try:
+        db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            files, passages = db.execute("SELECT COUNT(DISTINCT f.path), COUNT(p.id) FROM files f "
+                                         f"LEFT JOIN passages p ON p.path = f.path{where}", args).fetchone()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+    return int(files), int(passages)
+
+
 def status(data_dir: Path | str, *, model: str = retrieval.EMBED_MODEL) -> dict[str, Any]:
     """What the index holds: files and passages by catalog and standing, and the passages with no vector."""
     path = index_path(data_dir)
@@ -539,4 +557,4 @@ def status(data_dir: Path | str, *, model: str = retrieval.EMBED_MODEL) -> dict[
 
 
 __all__ = ["BuildReport", "IndexFile", "IndexHit", "IndexSource", "Loaded", "Row", "SOURCES", "Scope", "Standing", "StoredEmbedder",
-           "build", "catalogs", "connect", "index_path", "load", "search", "status"]
+           "build", "catalogs", "connect", "count", "index_path", "load", "search", "status"]

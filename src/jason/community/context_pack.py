@@ -12,8 +12,15 @@ A task prompt names topics and kinds of documents, never a section or a figure. 
 3. **R, the records**: for each other kind the task names (insurance policies, agendas, minutes, budgets), the best
    passages of the association's latest files of that kind in the classified library. A confidential file is read only
    for the board.
-4. **F, jason's records**: the MCP tools the task names, as JSON, trimmed.
-5. **D1**: the text under review.
+4. **C, a collection's material**, only when the caller names a ``Collection`` (``document_collections``): the passages
+   of the collection's index scope that best answer the task's questions, near copies folded, capped per file and
+   overall. Each carries the collection's label in place of a tier ("evidence gathered for this matter: neither the
+   record nor the law" for a legal case), because a case file is not the association's record. A confidential
+   collection goes only into a board task's pack; for any other audience it is refused with a gap line, never
+   silently left out. Without an index, or with nothing indexed under the scope, a gap line says so.
+5. **F, jason's records**: the MCP tools the task names, as JSON, trimmed. A collection's context lines (for a legal
+   case, its record in the specification) follow them as one more F source.
+6. **D1**: the text under review.
 
 The law on hand is also listed by chapter (``shelf``), so a reader can see what the pack could have drawn on and say
 when the law it expected is not there. ``markdown`` writes the base prompt, the task prompt, and the sources as one page.
@@ -30,6 +37,7 @@ every file a tier would cut, the tier ranks the index's passages instead of cutt
   0.84; the index's passages 0.96 and 0.87; the two fused 0.96 and 0.88. Neither is clearly better, so it stays off.
   The section is recited whole either way.
 - R stays on the classified library, which the index does not hold yet. F and D read no passages.
+- C reads only the index: a collection is an index scope, so there are no folders to cut in its place.
 
 A tier is cut from the folders as before when the index is missing, lacks one of the tier's files, or holds one older
 than the file on disk (``index_covers``): a stale index never answers for a file that changed.
@@ -70,6 +78,10 @@ RECORD_FILES = 3              # the latest files of each record kind read
 RECORD_PASSAGES = 2           # passages kept per record kind
 SAME_TEXT = 0.6               # Jaccard overlap above which two passages are copies of one
 LAW_FROM_INDEX = False        # rank the law by the index's passages (measured no better than sections whole; see above)
+COLLECTION_PASSAGES = 8       # a collection's passages in one pack
+COLLECTION_PER_FILE = 2       # of those, from any one file
+# Where each kind of source sits among sources of one tier: a collection's material after the records, before the facts.
+_LETTER_ORDER = {"S": 0, "G": 1, "R": 2, "C": 3, "F": 4, "D": 5}
 
 
 @dataclass(frozen=True)
@@ -81,6 +93,12 @@ class Source:
     place: str = ""            # a file and passage, a citation, or a tool
     score: float = 0.0
     note: str = ""
+    # What the source is when it has no place in the order of authority (a collection's material): shown in place of
+    # the tier, which then only sets where the source sits on the page.
+    label: str = ""
+    standing: Any = None       # its ``passage_index.Standing``, where the source has one
+    file: str = ""             # the file it was read from, under the data directory
+    section: str = ""          # the section or passage within the file
 
 
 @dataclass(frozen=True)
@@ -101,31 +119,52 @@ class ContextPack:
     sources: list[Source] = field(default_factory=list)
     shelf: list[str] = field(default_factory=list)
     gaps: list[str] = field(default_factory=list)
+    # The collection the caller named (``document_collections.Collection``), and whether its material is in the pack:
+    # a confidential collection is refused to any audience but the board, with a gap line.
+    collection: Any = None
+    collection_included: bool = False
 
     def texts(self) -> dict[str, str]:
         return {s.id: s.text for s in self.sources}
 
     def _ordered(self) -> list[Source]:
-        order = {"S": 0, "G": 1, "R": 2, "F": 3, "D": 4}
         return sorted((s for s in self.sources if not s.id.startswith("D")),
-                      key=lambda s: (s.tier, order.get(s.id[0], 9), int(s.id[1:])))
+                      key=lambda s: (s.tier, _LETTER_ORDER.get(s.id[0], 9), int(s.id[1:])))
+
+    def collection_lines(self) -> tuple[str, ...]:
+        """What the task is told about the collection's sources: what they are and how to cite them. None without them."""
+        ids = [s.id for s in self.sources if s.id.startswith("C")]
+        if self.collection is None or not ids:
+            return ()
+        span = ids[0] if len(ids) == 1 else f"{ids[0]} to {ids[-1]}"
+        return (f"COLLECTION: {self.collection.title} ({self.collection.kind.value}). Sources {span} are "
+                f"{self.collection.label}.",
+                "Cite a C source by its id for what its document says, and name the document. What a document in the "
+                "collection states is its author's statement: it is not a finding, not the association's record unless "
+                "its note says so, and never a rule.")
+
+    def task_prompt(self) -> str:
+        """The task's prompt for this pack: the task's own text, and the collection's lines when it has sources."""
+        return task_text(self.task, ask=self.ask, draft=self.draft, extra=self.collection_lines())
 
     def sources_text(self) -> str:
         blocks = []
         for s in self._ordered():
             note = f" — {s.note}" if s.note else ""
-            blocks.append(f"[{s.id}] tier {int(s.tier)} ({s.tier.label}): {s.title}{note}\n{s.text.strip()}")
+            what = f"collection ({s.label})" if s.label else f"tier {int(s.tier)} ({s.tier.label})"
+            blocks.append(f"[{s.id}] {what}: {s.title}{note}\n{s.text.strip()}")
         if self.shelf:
             blocks.append("THE LAW ON HAND, by chapter (not sources; what retrieval could draw on):\n" + "\n".join(f"  {line}" for line in self.shelf))
         return "\n\n".join(blocks)
 
     def markdown(self) -> str:
         parts = [f"# {self.task.kind.value.capitalize()}", "", "## Base prompt", "", system_prompt(self.association), "", "## Task", "",
-                 task_text(self.task, ask=self.ask, draft=self.draft), "", "## Sources, in order of authority", ""]
+                 self.task_prompt(), "", "## Sources, in order of authority", ""]
         for s in self._ordered():
             note = f" — {s.note}" if s.note else ""
             where = f" ({s.place})" if s.place else ""
-            parts += [f"### [{s.id}] {s.title}{where}", f"*Tier {int(s.tier)}: {s.tier.label}{note}*", "", s.text.strip(), ""]
+            what = f"Collection: {s.label}" if s.label else f"Tier {int(s.tier)}: {s.tier.label}"
+            parts += [f"### [{s.id}] {s.title}{where}", f"*{what}{note}*", "", s.text.strip(), ""]
         if self.shelf:
             parts += ["## The law on hand, by chapter", ""] + [f"- {line}" for line in self.shelf] + [""]
         if self.gaps:
@@ -435,6 +474,84 @@ def record_sources(task: TaskPrompt, questions: Sequence[str], rank: Callable[..
     return out
 
 
+# --- a collection ----------------------------------------------------------------------------------------------------
+
+def _collection_scope(collection: Any, confidential: bool) -> Any:
+    """The collection's index scope for an audience: as it is for one that may see held files, else without whatever
+    opened them."""
+    from dataclasses import replace
+
+    return collection.scope if confidential else replace(collection.scope, confidential=False, confidential_in=())
+
+
+def collection_sources(collection: Any, questions: Sequence[str], data_dir: Path, *, confidential: bool, k: int = 4,
+                       mode: str = "keyword", embedder: Any = None, limit: int = COLLECTION_PASSAGES,
+                       per_file: int = COLLECTION_PER_FILE) -> list[tuple[Any, float]]:
+    """The passages of a collection's index scope that best answer the questions: (index hit, fused score), best first.
+    Each question ranks the scope and the rankings are fused by reciprocal rank, as the law's are. A near copy of a
+    passage already kept is folded, one file gives at most ``per_file``, and the pack takes at most ``limit``. Without
+    ``confidential`` the scope loses whatever opened held files: an audience that may not see them never does."""
+    from jason.community import passage_index
+
+    scope = _collection_scope(collection, confidential)
+    fused: dict[tuple[str, int], float] = {}
+    found: dict[tuple[str, int], Any] = {}
+    for question in questions:
+        hits = passage_index.search(question, data_dir=data_dir, scope=scope, k=k * 3, mode=mode, embedder=embedder)
+        for place, hit in enumerate(hits, 1):
+            key = (str(hit.hit.passage.path), hit.hit.passage.index)
+            fused[key] = fused.get(key, 0.0) + 1.0 / (RRF_K + place)
+            found.setdefault(key, hit)
+    kept: list[tuple[Any, float]] = []
+    taken: dict[str, int] = {}
+    for key, score in sorted(fused.items(), key=lambda kv: -kv[1]):
+        passage = found[key].hit.passage
+        if taken.get(key[0], 0) >= per_file or any(_same(passage.text, other.hit.passage.text) for other, _ in kept):
+            continue
+        kept.append((found[key], round(score, 4)))
+        taken[key[0]] = taken.get(key[0], 0) + 1
+        if len(kept) >= limit:
+            break
+    return kept
+
+
+def _collection_tier(pack: ContextPack, collection: Any, questions: Sequence[str], data_dir: Path, *, k: int, mode: str,
+                     embedder: Any, indexed: dict[str, float] | None) -> bool:
+    """Put a collection's passages in the pack as C sources, or say in the gaps why they are not there. True when the
+    task's audience may see the collection (so its context lines may follow)."""
+    from jason.community import passage_index
+
+    board = pack.task.audience is Audience.BOARD
+    if collection.confidential and not board:
+        pack.gaps.append(f"the collection is confidential; this task's audience is {pack.task.audience.value}: "
+                         "nothing from it is in this pack")
+        return False
+    what = f"the collection ({collection.title})"
+    counted = passage_index.count(data_dir, _collection_scope(collection, board)) if indexed is not None else None
+    if counted is None:
+        pack.gaps.append(f"{what} was not searched: there is no passage index to read; run jason index --build")
+        return True
+    if not counted[1]:
+        pack.gaps.append(f"{what} holds no indexed passages: fetch its files, then run jason index --build")
+        return True
+    kept = collection_sources(collection, questions, data_dir, confidential=board, k=k, mode=mode, embedder=embedder)
+    if not kept:
+        pack.gaps.append(f"no passage of {what} matched the task's questions ({counted[0]} files, {counted[1]} passages searched)")
+    files: dict[str, None] = {}
+    for n, (hit, score) in enumerate(kept, 1):
+        passage, row = hit.hit.passage, hit.row
+        rel = _rel(passage.path, data_dir)
+        files.setdefault(rel)
+        note = f"standing: {row.standing.value}; catalog: {row.catalog}" + ("; confidential" if row.confidential else "")
+        pack.sources.append(Source(f"C{n}", Tier.RECORD, passage.title, passage.text, f"{rel}, passage {passage.index}", score,
+                                   note, label=collection.label, standing=row.standing, file=rel,
+                                   section=passage.heading or f"passage {passage.index}"))
+    # The index answers with the words it cut. A file that changed since is still answered, and the pack says so.
+    pack.gaps += [f"{rel} changed after the index cut it, or is gone: the pack shows the indexed words; run jason index --build"
+                  for rel in files if not index_covers(data_dir, [rel], indexed)]
+    return True
+
+
 # --- jason's records -------------------------------------------------------------------------------------------------
 
 def fact_sources(task: TaskPrompt, data_dir: Path, *, runner: Callable[[str, dict[str, Any]], Any] | None = None) -> tuple[list[tuple[str, str]], list[str]]:
@@ -476,12 +593,15 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
              mode: str = "keyword", follow_citations: bool = True, law: Sequence[LawSection] | None = None,
              search: Callable[..., Any] | None = None, files: Callable[[DocumentKind], list[tuple[str, str, str]]] | None = None,
              fact_runner: Callable[[str, dict[str, Any]], Any] | None = None, use_index: bool = True,
-             law_index: bool | None = None, embedder: Any = None) -> ContextPack:
+             law_index: bool | None = None, embedder: Any = None, collection: Any = None) -> ContextPack:
     """The pack for one task. With ``use_index`` the governing documents come from the passage index when it covers
     them (``index_covers``), and so does the law's ranking when ``law_index`` (default ``LAW_FROM_INDEX``); the rest are
     cut from the folders. ``search``, ``law``, and ``files`` replace a tier's reader (tests). ``embedder`` replaces the
-    local embedder in dense and hybrid modes."""
-    pack = ContextPack(task, ask=ask, draft=draft, association=tuple(community.prompt_context()))
+    local embedder in dense and hybrid modes. ``collection`` (``document_collections.Collection``) adds the C sources
+    and the collection's context lines; without it the pack is what it was before collections."""
+    from jason.community.passage_index import Standing
+
+    pack = ContextPack(task, ask=ask, draft=draft, association=tuple(community.prompt_context()), collection=collection)
     rank = _ranker(mode, data_dir, embedder)
     questions = _questions(task, ask, draft)
     indexed = _indexed(data_dir) if use_index else None
@@ -527,24 +647,35 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
         if section.citation in cited:
             note = (note + "; " if note else "") + "cited by a governing document"
         pack.sources.append(Source(f"S{n}", tier_of_citation(section.citation), section.citation,
-                                   _trim(section.text, STATUTE_CHARS), section.chapter, score, note))
+                                   _trim(section.text, STATUTE_CHARS), section.chapter, score, note,
+                                   standing=Standing.AUTHORITY, file=section.file, section=section.citation))
 
     for n, (tier, title, text, place, score) in enumerate(sorted(governing, key=lambda g: (g[0], -g[4])), 1):
-        pack.sources.append(Source(f"G{n}", tier, title, text, place, score))
+        pack.sources.append(Source(f"G{n}", tier, title, text, place, score, standing=Standing.RECORD))
 
     reader = files or (lambda kind: library_files(data_dir, kind, confidential=task.audience is Audience.BOARD))
     for n, (tier, title, text, place, score) in enumerate(record_sources(task, questions, rank, files=reader), 1):
-        pack.sources.append(Source(f"R{n}", tier, title, text, place, score))
+        pack.sources.append(Source(f"R{n}", tier, title, text, place, score, standing=Standing.RECORD))
+
+    if collection is not None:
+        pack.collection_included = _collection_tier(pack, collection, questions, data_dir, k=k, mode=mode,
+                                                    embedder=embedder, indexed=indexed)
 
     if draft:
         pack.sources.append(Source("D1", Tier.RECORD, "the current text under review", draft, "draft"))
     facts, gaps = fact_sources(task, data_dir, runner=fact_runner)
     pack.gaps += gaps
     for n, (title, text) in enumerate(facts, 1):
-        pack.sources.append(Source(f"F{n}", Tier.RECORD, title, text, "jason records"))
+        pack.sources.append(Source(f"F{n}", Tier.RECORD, title, text, "jason records", standing=Standing.PAGE))
+    if pack.collection_included and collection.context:
+        # What holds for the whole collection, as the specification records it: facts, not the documents' own words.
+        pack.sources.append(Source(f"F{len(facts) + 1}", Tier.RECORD, f"{collection.context_title}: {collection.title}",
+                                   _trim("\n".join(collection.context), STATUTE_CHARS), "the specification",
+                                   note="what holds for the whole collection; not the documents' own words",
+                                   standing=Standing.PAGE))
     return pack
 
 
-__all__ = ["CORPUS", "GOVERNING_KINDS", "ContextPack", "LawSection", "Source", "assemble", "cited_statutes", "fact_sources",
-           "governing_sources", "index_covers", "index_law_ranking", "index_search", "law_corpus", "law_shelf", "law_sources",
-           "library_files", "record_sources"]
+__all__ = ["COLLECTION_PASSAGES", "COLLECTION_PER_FILE", "CORPUS", "GOVERNING_KINDS", "ContextPack", "LawSection", "Source",
+           "assemble", "cited_statutes", "collection_sources", "fact_sources", "governing_sources", "index_covers",
+           "index_law_ranking", "index_search", "law_corpus", "law_shelf", "law_sources", "library_files", "record_sources"]

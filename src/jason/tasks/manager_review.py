@@ -8,6 +8,9 @@ its own: a person, Claude, or any model can work from it.
 the answer constrained to ``ANSWER_SCHEMA``) under the GPU lock after the preflight, then ``verify`` checks each quote
 against the source it cites. The text never leaves the machine. The result is ``data/briefs/<task>.review.json`` and a
 Markdown report beside it. A review is a draft for the board, never a decision.
+
+Those two files are the latest pack and review, written over each time. ``review_store`` keeps each pack that differed
+(and each run) under ``data/reviews``, so reviews of one draft under two collections sit side by side.
 """
 
 from __future__ import annotations
@@ -18,19 +21,20 @@ from pathlib import Path
 from typing import Any, Callable
 
 from jason.community.context_pack import ContextPack, assemble
-from jason.community.prompts import ANSWER_SCHEMA, Checked, TaskPrompt, parse_answer, system_prompt, task_text, verify
+from jason.community.prompts import ANSWER_SCHEMA, Checked, TaskPrompt, parse_answer, system_prompt, verify
 
 BRIEFS = "briefs"
 
 
 def build(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "", draft: str = "", mode: str = "hybrid",
-          k: int = 4) -> ContextPack:
+          k: int = 4, collection: Any = None) -> ContextPack:
     """The pack. A task's topics are paraphrases of what the documents say, so the default is hybrid retrieval (the
-    keyword ranking fused with the local embedder); without the embedder it falls back to keyword and says so."""
+    keyword ranking fused with the local embedder); without the embedder it falls back to keyword and says so.
+    ``collection`` (``document_collections.Collection``) adds its material as its own tier."""
     from jason.community.retrieval import EmbeddingUnavailable
 
     try:
-        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k)
+        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k, collection=collection)
     except EmbeddingUnavailable as exc:
         if mode == "keyword":
             raise
@@ -41,10 +45,10 @@ def build(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "", dr
         from jason.local_ai import unload
 
         unload(DEFAULT_MODEL)
-        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k)
+        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k, collection=collection)
     except (EmbeddingUnavailable, OSError) as exc:
         first = exc
-    pack = assemble(community, task, data_dir, ask=ask, draft=draft, mode="keyword", k=k)
+    pack = assemble(community, task, data_dir, ask=ask, draft=draft, mode="keyword", k=k, collection=collection)
     pack.gaps.append(f"retrieval fell back to keyword: {first}")
     return pack
 
@@ -60,7 +64,7 @@ def save_pack(pack: ContextPack, path: Path) -> Path:
 
 
 def messages(pack: ContextPack) -> list[dict[str, str]]:
-    user = (task_text(pack.task, ask=pack.ask, draft=pack.draft) + "\n\nSOURCES, in order of authority:\n\n"
+    user = (pack.task_prompt() + "\n\nSOURCES, in order of authority:\n\n"
             + pack.sources_text() + ("\n\nGAPS (not among the sources):\n" + "\n".join(f"- {g}" for g in pack.gaps) if pack.gaps else ""))
     return [{"role": "system", "content": system_prompt(pack.association)}, {"role": "user", "content": user}]
 
@@ -122,10 +126,20 @@ def report(pack: ContextPack, checked: Checked) -> str:
     return "\n".join(lines) + "\n"
 
 
+# A source as the review's JSON has always held it. What a source gained for collections and the review store (label,
+# standing, file, section) is kept there (``review_store``), so nothing that reads this file sees a change.
+_SOURCE_KEYS = ("id", "tier", "title", "text", "place", "score", "note")
+
+
+def _source_row(source: Any) -> dict[str, Any]:
+    row = asdict(source)
+    return {key: int(source.tier) if key == "tier" else row[key] for key in _SOURCE_KEYS}
+
+
 def save_review(pack: ContextPack, checked: Checked, path: Path) -> tuple[Path, Path]:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {"task": pack.task.kind.slug, "ask": pack.ask, "answer": checked.answer, "grounded": checked.grounded,
-            "ungrounded": checked.ungrounded, "sources": [{**asdict(s), "tier": int(s.tier)} for s in pack.sources], "gaps": pack.gaps}
+            "ungrounded": checked.ungrounded, "sources": [_source_row(s) for s in pack.sources], "gaps": pack.gaps}
     json_path = path.with_suffix(".review.json")
     json_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     md_path = path.with_suffix(".review.md")

@@ -228,8 +228,9 @@ def _kind_words(kind: DocumentKind) -> str:
     return kind.value.replace("_", " ")
 
 
-def task_text(task: TaskPrompt, *, ask: str = "", draft: str = "") -> str:
-    """The task's own prompt, written out for the model or a person."""
+def task_text(task: TaskPrompt, *, ask: str = "", draft: str = "", extra: tuple[str, ...] = ()) -> str:
+    """The task's own prompt, written out for the model or a person. ``extra`` lines say what this instance of the
+    task adds (a collection's sources and how to cite them); they follow the task's own cautions."""
     lines = [f"TASK: {task.kind.value}.", f"PURPOSE: {task.purpose}", f"AUDIENCE: {task.audience.value}."]
     if draft:
         lines.append("The text under review is source D1; quote it as D1.")
@@ -244,6 +245,7 @@ def task_text(task: TaskPrompt, *, ask: str = "", draft: str = "") -> str:
     if task.guidance:
         lines.append("FOR THIS TASK:")
         lines.extend(f"  - {g}" for g in task.guidance)
+    lines.extend(extra)
     if ask:
         lines.append(f"QUESTION: {ask}")
     if draft:
