@@ -116,6 +116,14 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 ## Re-sync risks
 
 - `ui/dist-lib/` is gitignored: a fresh clone must run `npm install && npm run build:lib` in `ui/` first.
+- **Read the verdict before uploading.** On 2026-10-04 one driver run parsed `0 .d.ts files` (the library's type
+  files were being rewritten as it read them), found 4 components, and proposed deleting every other component's
+  files. Any `removed` or `deletePaths` you did not expect means the build read a half-written `ui/dist-lib/`:
+  rebuild the library, re-run the driver, and upload only a verdict whose `[DTS] parsed` count and `components:`
+  match the last sync. Another run the same day lost one card mid-capture the same way; a re-run was clean.
+- The seal's word scales with the disc (no pixel floor) and sits at its centre: the 2026-10-04 capture showed long
+  words clipped at the old 5em size. Check a Seal sheet's longest words (approval, confirmed) after any change to
+  its CSS.
 - The previews use dates around 2026-10; `DueDate` cells pass `today` explicitly so they do not drift.
 - Re-sync, from the repo root, after `cd ui && npm run build:lib`: re-copy the staged scripts into `.ds-sync/`,
   `npm i esbuild ts-morph @types/react playwright@1.56.1` there, fetch the project's `_ds_sync.json` to
