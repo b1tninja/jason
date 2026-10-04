@@ -7,7 +7,7 @@ import sys
 import json
 from types import SimpleNamespace
 
-from jason.community.base import EmailFiling
+from jason.community.base import EmailFiling, FilingRule
 from jason.community.sources import Sender, SourceKind
 from jason.community.symbols import DocumentKind
 from jason.tasks.vendor_files import Known, file_plan, known_addresses, plan_lines, plan_vendor, query_for, sent_by, vendors
@@ -16,7 +16,12 @@ ALARM = Sender("Example Alarm Co", SourceKind.VENDOR, ("EXAMPLE ALARM",), payhoa
                domains=("examplealarm.test",))
 HANDY = Sender("Example Handyman", SourceKind.VENDOR, ("EXAMPLE HANDYMAN",), payhoa_vendor="Example Handyman")
 LAWYER = Sender("Example Law", SourceKind.LAW_FIRM, ("EXAMPLE LAW",), domains=("examplelaw.test",))
-FILING = EmailFiling(vendors_folder="VENDORS", by_kind=((DocumentKind.INSPECTION_REPORT, "REPORTS"),))
+FILING = EmailFiling(root="ROOT", rules=(
+    FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "Fire Protection", "Fire Alarm"), senders=("Example Alarm Co",)),
+    FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "{vendor}")),
+    FilingRule(DocumentKind.INVOICE, ("Financials", "{year}", "Invoices", "{vendor}")),
+    FilingRule(None, ("Legal", "{vendor}"), source_kinds=(SourceKind.LAW_FIRM,)),
+))
 REPORT = b"%PDF report bytes"
 INVOICE = b"%PDF invoice bytes"
 OLD = b"%PDF already in drive"
@@ -29,8 +34,13 @@ class Profile:
     def email_filing(self):
         return FILING
 
+    def fiscal_year_end(self):
+        return (12, 31)
+
     def classify_document(self, name, folder=None, path=""):
-        return DocumentKind.INSPECTION_REPORT if "inspection report" in name.lower() else None
+        if "inspection report" in name.lower():
+            return DocumentKind.INSPECTION_REPORT
+        return DocumentKind.INVOICE if name.lower().startswith("invoice") else None
 
 
 MESSAGES = {
@@ -106,21 +116,25 @@ def test_sent_by_known_domain_or_email_only() -> None:
 def test_plan_shelves_skips_and_files_with_link(tmp_path) -> None:
     known = {hashlib.md5(OLD).hexdigest(): "My Drive/Old.pdf"}
     drive = Drive()
-    plan, blobs = plan_vendor(Gmail(), drive, Profile(), ALARM, known=known, seen=set(), folders={"REPORTS": "My Drive/Reports"})
+    plan, blobs = plan_vendor(Gmail(), drive, Profile(), ALARM, known=known, seen=set())
     by_name = {a.name: a for a in plan.attachments}
     # The board's forward and the shared-service invoice are not from a known address; the image is not a document;
     # a repeat is filed once.
     assert set(by_name) == {"Bldg 1 inspection report.pdf", "Invoice_12.pdf", "Old.pdf", "copy.pdf"}
-    assert (by_name["Bldg 1 inspection report.pdf"].action, by_name["Bldg 1 inspection report.pdf"].where) == ("file", "My Drive/Reports")
+    report_plan = by_name["Bldg 1 inspection report.pdf"]
+    assert (report_plan.action, report_plan.path) == ("file", ("Reports", "Fire Protection", "Fire Alarm"))
+    assert report_plan.rule == "inspection_report from Example Alarm Co"
     assert by_name["Old.pdf"].action == "in drive" and by_name["copy.pdf"].action == "repeat"
-    assert by_name["Invoice_12.pdf"].where == "My Drive/Vendors/Example Alarm Co/2025"
+    assert by_name["Invoice_12.pdf"].path == ("Financials", "2025", "Invoices", "Example Alarm Co")
+    assert by_name["Old.pdf"].action == "in drive" and plan.counts()["file"] == 2
+    assert by_name["Old.pdf"].action == "in drive"
     assert plan.counts() == {"file": 2, "in drive": 1, "repeat": 1}
     assert any("Invoice_12.pdf" in line for line in plan_lines(plan))
 
     assert file_plan(drive, Profile(), plan, blobs, tmp_path) == 2
     report, invoice = drive.uploads
-    assert report[1]["parent_id"] == "REPORTS"
-    assert invoice[1]["parent_id"] == "VENDORS/Example Alarm Co/2025"
+    assert report[1]["parent_id"] == "ROOT/Reports/Fire Protection/Fire Alarm"
+    assert invoice[1]["parent_id"] == "ROOT/Financials/2025/Invoices/Example Alarm Co"
     assert invoice[1]["app_properties"]["gmailMessageId"] == "m2"
     assert invoice[1]["app_properties"]["gmailSha256"] == hashlib.sha256(INVOICE).hexdigest()
     logged = [json.loads(line) for line in (tmp_path / "drive" / "vendor-files.jsonl").read_text().splitlines()]
@@ -157,3 +171,21 @@ def test_a_document_sent_twice_is_filed_once_from_the_latest(monkeypatch) -> Non
     assert invoices[1].message_id == "m6" and len([a for a in plan.attachments if a.action == "file"]) == 3
     assert vf.same_document("A.pdf", "Total 1,234.00 due", "a.PDF", "Total 1,234.50 paid") is False
     assert vf.same_document("A.pdf", "Invoice 7 total 100.00 for the work", "A.pdf", "Invoice 7 total 100.00 for the work ")
+
+
+def test_rules_by_kind_then_source_then_fallback() -> None:
+    other = Sender("Other Vendor", SourceKind.VENDOR, ("OTHER",), domains=("other.test",))
+    assert FILING.path_for(ALARM, DocumentKind.INSPECTION_REPORT, 2026)[0] == ("Reports", "Fire Protection", "Fire Alarm")
+    assert FILING.path_for(other, DocumentKind.INSPECTION_REPORT, 2026)[0] == ("Reports", "Other Vendor")
+    assert FILING.path_for(LAWYER, None, 2026)[0] == ("Legal", "Example Law")
+    path, rule = FILING.path_for(other, DocumentKind.PROPOSAL, 2026)
+    assert path == ("Vendors", "Other Vendor", "2026") and rule is None
+
+
+def test_fiscal_year_is_named_by_its_end() -> None:
+    from jason.tasks.vendor_files import fiscal_year
+
+    assert fiscal_year("2026-07-15T00:00:00+00:00", (12, 31)) == 2026
+    assert fiscal_year("2026-07-15T00:00:00+00:00", (6, 30)) == 2027
+    assert fiscal_year("2026-06-30T00:00:00+00:00", (6, 30)) == 2026
+    assert fiscal_year("2026-07-15T00:00:00+00:00", None) == 2026

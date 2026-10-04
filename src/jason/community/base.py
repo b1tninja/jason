@@ -287,19 +287,42 @@ class VendorPortal:
 
 
 @dataclass(frozen=True)
+class FilingRule:
+    """One row of the filing table: which documents it takes, and the folder they go to.
+
+    ``kind`` is a ``DocumentKind``, or None for any kind (an unclassified document too). ``senders`` names sender
+    directory rows and ``source_kinds`` kinds of source (``SourceKind``); empty means any. ``path`` is the folder's
+    names from the filing root, one name a level (a name may hold "/"), with ``{vendor}`` (the sender row's name) and
+    ``{year}`` (the fiscal year the message came in) filled in."""
+
+    kind: Any
+    path: tuple[str, ...]
+    senders: tuple[str, ...] = ()
+    source_kinds: tuple[Any, ...] = ()
+
+    def takes(self, sender: Any, kind: Any) -> bool:
+        if self.kind is not None and self.kind is not kind:
+            return False
+        if self.senders and sender.name not in self.senders:
+            return False
+        return not self.source_kinds or sender.kind in self.source_kinds
+
+
+@dataclass(frozen=True)
 class EmailFiling:
-    """Where a vendor's email attachments are filed in Drive (``jason.tasks.vendor_files``).
+    """Where a counterparty's email attachments are filed in Drive (``jason.tasks.vendor_files``): the rules in match
+    order, from the folder ``root`` (a Drive folder id; "root" is My Drive). The first rule that takes the document
+    wins; a document no rule takes goes to ``fallback``. A miss stays in the vendor's own folder, never a guess."""
 
-    ``by_kind`` gives a Drive folder id for each ``DocumentKind`` that has its own shelf (inspection reports,
-    contracts, proposals, certificates of insurance); the order is the match order. Every other attachment goes to
-    the vendor's own folder, ``<vendors_folder>/<vendor>/<year>``, named by the sender directory."""
+    root: str
+    rules: tuple[FilingRule, ...]
+    fallback: tuple[str, ...] = ("Vendors", "{vendor}", "{year}")
 
-    vendors_folder: str
-    by_kind: tuple[tuple[Any, str], ...] = ()
-
-    def folder_for(self, kind: Any) -> str:
-        """The shelf's folder id for a kind, or an empty string for the vendor's own folder."""
-        return next((folder for k, folder in self.by_kind if k is kind), "")
+    def path_for(self, sender: Any, kind: Any, year: int | str) -> tuple[tuple[str, ...], FilingRule | None]:
+        """The folder path for a document, and the rule that placed it (None for the fallback)."""
+        rule = next((r for r in self.rules if r.takes(sender, kind)), None)
+        path = rule.path if rule else self.fallback
+        return tuple(part.format(vendor=sender.name, year=year) for part in path), rule
 
 
 @dataclass(frozen=True)

@@ -2202,15 +2202,14 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
     if not rows:
         print(f"no vendor {args.file_vendor!r} in the sender directory")
         return 1
-    known, folders = drive_index(data_dir)
+    known, _ = drive_index(data_dir)
     seen: set[str] = set()
     out = []
     with _agent(args) as agent:
         drive = agent.drive(interactive=args.interactive)
         gmail = drive.gmail()
         for sender in rows:
-            plan, blobs = plan_vendor(gmail, drive, profile, sender, known=known, seen=seen, folders=folders,
-                                      data_dir=data_dir)
+            plan, blobs = plan_vendor(gmail, drive, profile, sender, known=known, seen=seen, data_dir=data_dir)
             if args.json:
                 out.append({"vendor": plan.vendor, "query": plan.query, "messages": plan.messages,
                             "attachments": [a.__dict__ for a in plan.attachments]})
@@ -3983,7 +3982,7 @@ def build_parser() -> argparse.ArgumentParser:
     gm.add_argument("--files", action="store_true", help="Save the PDF attachments of business email that look like documents")
     gm.add_argument("--file-vendor", metavar="NAME", default="",
                     help="File the attachments a vendor sent from its known domains or emails in Drive (a sender directory name, "
-                         "or all): by kind, else Vendors/<vendor>/<year>; skips what Drive holds. Prints the plan; --yes uploads")
+                         "or all) by the profile's filing rules (kind, then source); skips what Drive holds. Prints the plan; --yes uploads")
     gm.add_argument("--yes", action="store_true", help="With --file-vendor: upload the attachments the plan marks file")
     gm.add_argument("--json", action="store_true", help="Print JSON")
     gm.set_defaults(func=cmd_gmail)

@@ -13,7 +13,7 @@ listed may be on the part not read. Check again at each contract renewal.
 
 from datetime import date
 
-from jason.community.base import EmailFiling, LicensedPerson, VendorLicense, VendorPortal
+from jason.community.base import EmailFiling, FilingRule, LicensedPerson, VendorLicense, VendorPortal
 from jason.community.symbols import DocumentKind, PortalPlatform
 
 PROACTIVE_LICENSE = VendorLicense(
@@ -66,15 +66,26 @@ VENDOR_PORTALS: tuple[VendorPortal, ...] = (
     ),
 )
 
-# Where vendors' email attachments are filed (jason gmail --file-vendor): a kind with its own shelf in My Drive goes
-# there; everything else to My Drive/Vendors/<vendor>/<year>. Folder ids read from the Drive sync of September 30, 2026.
+# Where counterparties' email attachments are filed (jason gmail --file-vendor), by the record's kind first and its
+# source second, so each record sits where its retention clock runs (mystique/notes/fire-protection-records.md):
+# invoices by fiscal year (Civil Code 5210(a)(1)), contracts by vendor (kept past their term), inspection reports by
+# system (kept the life of the system), and a vendor's own paperwork (W-9, certificate) in its vendor folder.
+_FIRE = ("Reports", "Fire Protection")
 EMAIL_FILING = EmailFiling(
-    vendors_folder="1fQRi2-6n2GoeSKs-KV-BcT6t9pou-8XV",                       # My Drive/Vendors
-    by_kind=(
-        (DocumentKind.INSPECTION_REPORT, "1n3nEuzT3AvbORRR0yMxyKVZcB464rasN"),   # My Drive/Reports
-        (DocumentKind.ELEVATED_ELEMENT_INSPECTION, "1n3nEuzT3AvbORRR0yMxyKVZcB464rasN"),
-        (DocumentKind.CONTRACT, "1iLK8x2AIJb4ROO6scFuuK-N-AkPpdTsc"),            # My Drive/Contracts
-        (DocumentKind.PROPOSAL, "1NG5sYiX1s-rE2OhWKy5eglUGO7irAJb2"),            # My Drive/Proposals / Estimates
-        (DocumentKind.EVIDENCE_OF_INSURANCE, "1-YNfQtR9pgPNAreFZ4lIlb3mSzekW9r7"),  # My Drive/Vendors/W9 and Insurance
+    root="root",                                                                  # My Drive
+    rules=(
+        FilingRule(DocumentKind.INSPECTION_REPORT, (*_FIRE, "Fire Alarm"), senders=("Signal Service",)),
+        FilingRule(DocumentKind.INSPECTION_REPORT, (*_FIRE, "Fire Sprinklers"), senders=("The Fire Sprinkler Company",)),
+        FilingRule(DocumentKind.INSPECTION_REPORT, (*_FIRE, "Backflow"), senders=("LeDoux Backflow Testing Services",)),
+        FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "Roofs"),
+                   senders=("North American Home Services", "GoodLife Construction", "Summit Roofing Company")),
+        FilingRule(DocumentKind.ELEVATED_ELEMENT_INSPECTION, ("Reports", "Balconies (SB 326)")),
+        FilingRule(DocumentKind.INSPECTION_REPORT, ("Reports", "{vendor}")),
+        FilingRule(DocumentKind.CONTRACT, ("Contracts", "{vendor}")),
+        FilingRule(DocumentKind.PROPOSAL, ("Proposals / Estimates", "{year}")),
+        FilingRule(DocumentKind.INVOICE, ("Financials", "{year}", "Invoices", "{vendor}")),
+        FilingRule(DocumentKind.EVIDENCE_OF_INSURANCE, ("Vendors", "{vendor}")),
+        FilingRule(DocumentKind.FORM, ("Vendors", "{vendor}")),
     ),
+    fallback=("Vendors", "{vendor}", "{year}"),
 )

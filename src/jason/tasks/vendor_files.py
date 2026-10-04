@@ -1,4 +1,4 @@
-"""File a vendor's email attachments in Drive: by document kind where the kind has a shelf, else in the vendor's folder.
+"""File a vendor's email attachments in Drive, by the profile's filing rules: the document's kind first, its source second.
 
 For each vendor in the sender directory (kind ``VENDOR`` only), Gmail is searched over all time (read-only) for its
 known addresses: the sender row's domains, and the email and website on its PayHOA vendor record (a PayHOA email at a
@@ -8,8 +8,10 @@ with no known address is skipped. Images and signature parts are left out; a doc
 file, or a CSV.
 
 Each attachment is classified (``Community.classify_document`` by name, then ``jason.community.content`` by the PDF's
-own words). A kind ``EmailFiling.by_kind`` names goes to that folder; any other goes to
-``<vendors_folder>/<vendor>/<year>``, the year the message came, with the folders made as needed.
+own words, kept only when the words give a kind a vendor sends). The profile's ``EmailFiling`` rules then place it:
+the first rule whose kind and source (named senders, or kinds of source) take it gives the folder path from the
+filing root, with ``{vendor}`` and ``{year}`` (the fiscal year the message came in) filled in; a document no rule takes
+goes to the fallback, the vendor's own folder. The folders are made as needed.
 
 **No duplicates.** An attachment is not uploaded when Drive already holds the same content: a file in the Drive sync
 (``drive/files.json``) or a file of the same name found now, with the same MD5; or a file jason filed before, found by
@@ -55,7 +57,8 @@ class Attachment:
     kind_by: str = ""
     action: str = ""                 # "file", "in drive", "filed before", "repeat"
     where: str = ""                  # the Drive path it is in, or the folder it will go to
-    parent: str = ""                 # the shelf's folder id; empty for the vendor's own folder
+    path: tuple[str, ...] = ()       # the folder names from the filing root, for a document to file
+    rule: str = ""                   # the rule that placed it: its kind and source, or "fallback"
     file_id: str = ""
 
 
@@ -201,8 +204,23 @@ def in_drive(drive: Any, att: Attachment, known: dict[str, str]) -> tuple[str, s
     return "", ""
 
 
+def fiscal_year(at: str, year_end: tuple[int, int] | None) -> int:
+    """The fiscal year a date falls in, named by the year it ends: the calendar year when the year ends December 31."""
+    year, month, day = int(at[:4]), int(at[5:7]), int(at[8:10])
+    if year_end and (month, day) > tuple(year_end):
+        return year + 1
+    return year
+
+
+def rule_label(rule: Any) -> str:
+    if rule is None:
+        return "fallback"
+    who = ", ".join(rule.senders) or ", ".join(getattr(k, "value", str(k)) for k in rule.source_kinds) or "any source"
+    return f"{getattr(rule.kind, 'value', 'any kind')} from {who}"
+
+
 def plan_vendor(gmail: Any, drive: Any, community: Any, sender: Any, *, known: dict[str, str], seen: set[str],
-                folders: dict[str, str] | None = None, data_dir: Path | None = None,
+                data_dir: Path | None = None,
                 limit: int = 2000) -> tuple[VendorPlan, dict[str, bytes]]:
     """Every document the vendor sent from a known address, classified and checked against Drive. Returns the plan and
     the bytes to file; a vendor with no known address has an empty plan."""
@@ -258,10 +276,9 @@ def plan_vendor(gmail: Any, drive: Any, community: Any, sender: Any, *, known: d
             from jason.community.symbols import DocumentKind
 
             kind = DocumentKind(att.kind) if att.kind else None
-            att.action = "file"
-            att.parent = filing.folder_for(kind) if kind is not None else ""
-            att.where = ((folders or {}).get(att.parent, att.parent) if att.parent
-                         else f"My Drive/Vendors/{sender.name}/{att.at[:4]}")
+            path, rule = filing.path_for(sender, kind, fiscal_year(att.at, community.fiscal_year_end()))
+            att.action, att.path, att.rule = "file", path, rule_label(rule)
+            att.where = "My Drive/" + "/".join(path) if filing.root == "root" else "/".join(path)
             blobs[att.sha256] = data
         result.attachments.extend(a for a, _, _ in group)
     result.attachments.sort(key=lambda a: a.at)
@@ -286,7 +303,9 @@ def file_plan(drive: Any, community: Any, plan: VendorPlan, blobs: dict[str, byt
     for att in plan.attachments:
         if att.action != "file":
             continue
-        parent = att.parent or _folder(drive, _folder(drive, filing.vendors_folder, att.vendor, made), att.at[:4], made)
+        parent = filing.root
+        for name in att.path:
+            parent = _folder(drive, parent, name, made)
         ext = att.name.rsplit(".", 1)[-1].lower()
         description = f"From Gmail, {att.at[:10]}: {att.sender} — {att.subject}"[:900]
         att.file_id = drive.upload_bytes(att.name, blobs[att.sha256], mime_type=MIME.get(ext, "application/octet-stream"),
@@ -312,9 +331,10 @@ def plan_lines(plan: VendorPlan) -> list[str]:
         if a.action == "repeat":
             continue
         kind = a.kind or "unclassified"
-        out.append(f"  {a.at[:10]} {a.action:<12} {kind:<22} {a.name}  ->  {a.where}")
+        why = f"  [{a.rule}]" if a.action == "file" else ""
+        out.append(f"  {a.at[:10]} {a.action:<13} {kind:<18} {a.name}  ->  {a.where}{why}")
     return out
 
 
 __all__ = ["Attachment", "Known", "VendorPlan", "vendors", "known_addresses", "query_for", "sent_by", "classify", "in_drive", "plan_vendor",
-           "file_plan", "plan_lines", "drive_index", "LOG", "APP_SHA"]
+           "file_plan", "plan_lines", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
