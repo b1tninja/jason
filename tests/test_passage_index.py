@@ -179,3 +179,67 @@ def test_document_search_falls_back_to_keywords_without_the_embedder(data, monke
     monkeypatch.setattr(retrieval, "default_embedder", lambda data_dir, **kw: Down())
     found = document_search("garage door", data_dir=data)
     assert found["available"] and found["mode"] == "exact" and "embedder" in found["note"] and found["hits"]
+
+
+def test_a_page_s_description_is_left_out_and_its_context_is_read_by_the_rankers(data):
+    (data / "authorities" / "civ-5855.md").write_text(
+        "# Civil Code 5850-5875\n\n- Source: a legislature\n- Path: Part 5 > Chapter 10. Dispute Resolution > Article 1. Discipline\n\n"
+        "## CIV 5855\n\nThe board shall notify the member in writing of its decision within 15 days.\n", encoding="utf-8")
+    sources = (pi.IndexSource("authorities", "authorities", pi.Standing.AUTHORITY, exclude=("*.pdf.md",), front_matter=True,
+                              context_of=lambda path: "; ".join(pi.front_matter_labels(path).get("Path", []))),)
+    emb = FakeEmbedder()
+    pi.build(data, sources=sources, embedder=emb, kind_of=lambda name: "")
+    loaded = pi.load(data)
+    assert all(not pi.is_front_matter(p.text) for p in loaded.passages) and loaded.passages
+    passage = loaded.passages[0]
+    assert passage.context.startswith("Part 5 > Chapter 10") and "Dispute Resolution" in passage.ranked
+    assert "Dispute Resolution" not in passage.text                       # the words shown stay the document's own
+    hits = pi.search("dispute resolution discipline", data_dir=data, k=3, mode="keyword")
+    assert hits and hits[0].hit.passage.path.name == "civ-5855.md"       # found by its context alone
+    assert pi.search("notify the member", data_dir=data, k=3, embedder=emb) and emb.sent == len(loaded.passages)
+
+
+def test_a_flag_that_moves_is_updated_without_cutting_the_file_again(data):
+    emb = FakeEmbedder()
+    build(data, emb)
+    opened = tuple(pi.IndexSource(s.catalog, s.folder, s.standing, exclude=s.exclude) for s in SOURCES)   # none confidential
+    report = pi.build(data, sources=opened, embedder=emb, kind_of=lambda name: "")
+    assert report.cut == 0 and "minutes.md" in {p.path.name for p in pi.load(data).passages}
+
+
+def test_a_source_gives_each_file_its_own_flags(data):
+    class Mixed:
+        catalogs = ("library",)
+
+        def entries(self, data_dir):
+            yield pi.IndexFile(data_dir / "governing" / "ccrs.md", "library", pi.Standing.RECORD, kind="ccrs")
+            yield pi.IndexFile(data_dir / "private" / "minutes.md", "library", pi.Standing.RECORD, kind="minutes", confidential=True)
+
+    pi.build(data, sources=(Mixed(),), embedder=FakeEmbedder())
+    assert {p.path.name for p in pi.load(data).passages} == {"ccrs.md"}
+    asked = pi.load(data, pi.Scope(confidential=True, kinds=("minutes",)))
+    assert {p.path.name for p in asked.passages} == {"minutes.md"}
+
+
+def test_a_subfolder_another_source_gives_is_left_out(data):
+    (data / "authorities" / "publications").mkdir()
+    (data / "authorities" / "publications" / "guide.txt").write_text("An agency's guidance on reserve studies.\n", encoding="utf-8")
+    source = pi.IndexSource("authorities", "authorities", pi.Standing.AUTHORITY, exclude=("publications/*", "*.pdf.md"))
+    assert [p.name for p in source.files(data)] == ["civ-5855.md"]
+
+
+def test_publications_are_searched_by_what_each_is(tmp_path):
+    from jason.community.authorities import Publication, PublicationText
+    from jason.tasks.export_authorities import PUBLICATIONS_DIR, PublicationSource
+
+    pubs = (Publication("Adopted regulation text", "https://example.test/reg.pdf", "who may inspect", text=PublicationText.REGULATION),
+            Publication("A guide", "https://example.test/guide.pdf", "how a budget is built", number="G 1", text=PublicationText.GUIDANCE),
+            Publication("A compilation", "https://example.test/all.pdf", "every section"))
+    folder = tmp_path / PUBLICATIONS_DIR
+    folder.mkdir(parents=True)
+    for pub in pubs:
+        (folder / pub.text_filename).write_text("<<PAGE 1>>\nThe owner shall keep records of inspections.\n", encoding="utf-8")
+    entries = {e.path.name: e for e in PublicationSource(pubs).entries(tmp_path)}
+    assert set(entries) == {"reg.txt", "guide.txt"}                       # the compilation is not searched whole
+    assert entries["reg.txt"].standing is pi.Standing.AUTHORITY and entries["guide.txt"].standing is pi.Standing.REFERENCE
+    assert "A guide (G 1)" in entries["guide.txt"].context and "how a budget is built" in entries["guide.txt"].context

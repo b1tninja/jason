@@ -84,6 +84,14 @@ class Authority:
         return ""
 
 
+class PublicationText(Enum):
+    """What an agency publication's own text is, which decides how its text is searched."""
+
+    REGULATION = "the adopted text of a regulation, or the forms it incorporates: searched as the law"
+    GUIDANCE = "an agency's guidance: searched as reference, never quoted as the law"
+    COMPILATION = "a compilation whose sections are exported as their own pages: not searched whole"
+
+
 @dataclass(frozen=True)
 class Publication:
     """An agency document Jason treats as authority but must fetch as a file."""
@@ -93,6 +101,12 @@ class Publication:
     why: str
     agency: str = "California Department of Real Estate"
     number: str = ""
+    text: PublicationText = PublicationText.COMPILATION
+
+    @property
+    def text_filename(self) -> str:
+        """The file its text is kept in, beside the PDF."""
+        return self.filename[:-4] + ".txt"
 
     @property
     def filename(self) -> str:
@@ -203,9 +217,11 @@ ACTS: tuple[Act, ...] = (
 # Agency publications Jason treats as authority. They are fetched as files, never rewritten.
 DRE_PUBLICATIONS: tuple[Publication, ...] = (
     Publication("Reserve Study Guidelines for Homeowner Association Budgets", "https://www.dre.ca.gov/files/pdf/re25.pdf",
-                "how the Commissioner expects a reserve study and budget to be built", number="RE 25"),
+                "how the Commissioner expects a reserve study and budget to be built", number="RE 25",
+                text=PublicationText.GUIDANCE),
     Publication("Common Interest Development brochure", "https://www.dre.ca.gov/files/pdf/re39.pdf",
-                "the Department's description of a CID, its association, and a buyer's obligations", number="RE 39"),
+                "the Department's description of a CID, its association, and a buyer's obligations", number="RE 39",
+                text=PublicationText.GUIDANCE),
     Publication("Regulations of the Real Estate Commissioner", CCR_SOURCE,
                 "Title 10 of the California Code of Regulations, including the 2792 sections on subdivision governing documents and deliveries"),
     Publication("Real Estate Law and Subdivided Lands Law", "https://www.dre.ca.gov/files/pdf/relaw/relaw.pdf",
@@ -223,13 +239,13 @@ SFM_PUBLICATIONS: tuple[Publication, ...] = (
                 "code-development-and-analysis/title-19-development/finaltextofregs-nfpa25-2011_8-27-2014corrected_resubfinal.pdf",
                 "who may inspect, test, and maintain water-based fire protection systems (19 CCR 904.1, 904.2), the frequencies "
                 "as California amended NFPA 25's tables, records, tags, and reports to the fire authority",
-                agency=SFM),
+                agency=SFM, text=PublicationText.REGULATION),
     Publication("Title 19 forms incorporated by reference (AES forms)",
                 "https://34c031f8-c9fd-4018-8c5a-4159cdff6b0d-cdn-endpoint.azureedge.net/-/media/osfm-website/what-we-do/"
                 "code-development-and-analysis/title-19-development/formsincorpbyreferencefinal.pdf",
                 "the forms a sprinkler inspection is reported on: AES 2.1 (quarterly and annual), AES 2.2 (five-year), AES 10 "
                 "(corrections), and the others 19 CCR 906.4 lists",
-                agency=SFM),
+                agency=SFM, text=PublicationText.REGULATION),
 )
 
 # Every agency publication the shelf fetches.

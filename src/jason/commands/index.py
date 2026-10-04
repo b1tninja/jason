@@ -18,13 +18,16 @@ from typing import Any, Callable
 
 
 def sources() -> tuple:
-    """What a build takes: ``passage_index.SOURCES``, and each legal case's fetched file as its own confidential catalog
+    """What a build takes: ``passage_index.SOURCES``, the agency publications' text by what each is
+    (``export_authorities.PublicationSource``), and each legal case's fetched file as its own confidential catalog
     (``case_files.index_sources``, read from the active profile when the build runs)."""
     from jason.community import community
     from jason.community import passage_index as pi
     from jason.tasks.case_files import index_sources
 
-    return (*pi.SOURCES, *index_sources(community().legal_cases()))
+    from jason.tasks.export_authorities import PublicationSource
+
+    return (*pi.SOURCES, PublicationSource(), *index_sources(community().legal_cases()))
 
 
 def cmd_index(args: argparse.Namespace) -> int:

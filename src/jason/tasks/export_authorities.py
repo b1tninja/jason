@@ -327,8 +327,68 @@ def authority_text(root: Path, citation: str, *, fetch: bool = True, asked_by: s
     return {"found": False, "citation": f"{code} {number}", "reason": "not in the exported authorities; run jason export-authorities or read it from lawlibrary"}
 
 
+def publication_text(pdf: Path) -> str:
+    """A publication's text from its PDF, one ``<<PAGE n>>`` line before each page (as the reference shelf keeps its
+    guides). Empty when the PDF has no text layer or PyMuPDF is not installed."""
+    try:
+        import pymupdf
+    except ImportError:
+        return ""
+    try:
+        with pymupdf.open(str(pdf)) as doc:
+            pages = [page.get_text() for page in doc]
+    except Exception:  # noqa: BLE001 - a damaged download reads as no text; the PDF stays for a person to open
+        return ""
+    if not any(page.strip() for page in pages):
+        return ""
+    return "\n".join(f"\n<<PAGE {n}>>\n{page}" for n, page in enumerate(pages, start=1))
+
+
+def write_publication_texts(root: Path, publications: tuple[Publication, ...] = PUBLICATIONS) -> list[str]:
+    """Write each fetched publication's text beside its PDF (``name.txt``) when it is not there; the names written."""
+    out = root / PUBLICATIONS_DIR
+    written: list[str] = []
+    for pub in publications:
+        pdf, text = out / pub.filename, out / pub.text_filename
+        if pdf.is_file() and not text.is_file():
+            body = publication_text(pdf)
+            if body:
+                text.write_text(body, encoding="utf-8")
+                written.append(text.name)
+    return written
+
+
+def publication_context(pub: Publication) -> str:
+    """A publication's context line for the index: what it is, who published it, and why it is held."""
+    number = f" ({pub.number})" if pub.number else ""
+    return f"{pub.title}{number}; {pub.agency}; {pub.why}"
+
+
+@dataclass(frozen=True)
+class PublicationSource:
+    """The publications' text for the passage index (``passage_index.build``): a regulation's adopted text is searched
+    as the law, an agency's guidance as reference, and a compilation not at all (its sections are their own pages)."""
+
+    publications: tuple[Publication, ...] = PUBLICATIONS
+
+    @property
+    def catalogs(self) -> tuple[str, ...]:
+        return ("publications",)
+
+    def entries(self, data_dir: Path):
+        from jason.community.authorities import PublicationText
+        from jason.community.passage_index import IndexFile, Standing
+
+        standing = {PublicationText.REGULATION: Standing.AUTHORITY, PublicationText.GUIDANCE: Standing.REFERENCE}
+        for pub in self.publications:
+            path = Path(data_dir) / PUBLICATIONS_DIR / pub.text_filename
+            if pub.text in standing and path.is_file():
+                yield IndexFile(path, "publications", standing[pub.text], kind="", context=publication_context(pub))
+
+
 def fetch_publications(root: Path, *, fetch=None, publications: tuple[Publication, ...] = PUBLICATIONS) -> list[str]:
-    """Bring the agency PDFs down into data/authorities/publications. A file already there is kept."""
+    """Bring the agency PDFs down into data/authorities/publications, each with a title note and its text
+    (``name.txt``). A file already there is kept; a text file missing beside a PDF on disk is written without a fetch."""
     from urllib.request import Request, urlopen
 
     out = root / PUBLICATIONS_DIR
@@ -346,4 +406,5 @@ def fetch_publications(root: Path, *, fetch=None, publications: tuple[Publicatio
         target.write_bytes(data)
         (out / (pub.filename + ".md")).write_text(f"# {pub.title}\n\n- Agency: {pub.agency}\n- Number: {pub.number or 'none'}\n- Source: {pub.url}\n- Why Jason holds it: {pub.why}\n", encoding="utf-8")
         fetched.append(pub.filename)
+    write_publication_texts(root, publications)
     return fetched

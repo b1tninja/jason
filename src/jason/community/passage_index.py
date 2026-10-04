@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -35,7 +36,8 @@ from jason.community import retrieval
 from jason.community.passages import Hit, Passage
 
 INDEX_FILE = "index.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2            # 2: files.context (a file's context line, read by the rankers)
+_BULLET = re.compile(r"^- ([A-Z][^:]{1,40}): (.*)$")
 
 
 class Standing(Enum):
@@ -50,6 +52,43 @@ class Standing(Enum):
 
 
 @dataclass(frozen=True)
+class IndexFile:
+    """One text file for the index, with what it is. A source gives these (``entries``); a source whose files differ
+    one from another (a library where some files are confidential) gives each file its own flags."""
+
+    path: Path                        # absolute
+    catalog: str
+    standing: Standing
+    kind: str | None = None           # None: the active profile's kind rules, by the file's name
+    confidential: bool = False
+    generated: bool = False
+    context: str = ""                 # where the file sits, in a line; the rankers read it before each passage
+    front_matter: bool = False        # leave out a passage that is only a title and "- Label: value" lines
+
+
+def front_matter_labels(path: Path) -> dict[str, list[str]]:
+    """The "- Label: value" lines under a page's title, before its first section: the page's own description of itself."""
+    out: dict[str, list[str]] = {}
+    try:
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()[:60]
+    except OSError:
+        return out
+    for line in lines:
+        if line.startswith("## "):
+            break
+        m = _BULLET.match(line.strip())
+        if m:
+            out.setdefault(m.group(1), []).append(m.group(2))
+    return out
+
+
+def is_front_matter(text: str) -> bool:
+    """A passage that is only headings and "- Label: value" lines: a page's description, with none of its words."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return bool(lines) and all(line.startswith("#") or _BULLET.match(line) for line in lines)
+
+
+@dataclass(frozen=True)
 class IndexSource:
     """A folder under the data directory whose text files go into the index, with what they are."""
 
@@ -57,16 +96,30 @@ class IndexSource:
     folder: str
     standing: Standing
     suffixes: tuple[str, ...] = (".md", ".txt")
-    exclude: tuple[str, ...] = ()     # file-name patterns left out ("*.pdf.md", a publication's title note)
+    # Patterns left out, matched on the file's name or its path under the folder ("*.pdf.md", a publication's title
+    # note; "publications/*", a subfolder another source gives).
+    exclude: tuple[str, ...] = ()
     confidential: bool = False
     generated: bool = False
+    front_matter: bool = False        # the pages open with a title and "- Label: value" lines: leave that passage out
+    context_of: Callable[[Path], str] | None = None      # a file's context line (``IndexFile.context``)
+
+    @property
+    def catalogs(self) -> tuple[str, ...]:
+        return (self.catalog,)
 
     def files(self, data_dir: Path) -> list[Path]:
         root = data_dir / self.folder
         if not root.is_dir():
             return []
         return [p for p in sorted(root.rglob("*")) if p.is_file() and p.suffix.lower() in self.suffixes
-                and not any(fnmatch.fnmatch(p.name, pattern) for pattern in self.exclude)]
+                and not any(fnmatch.fnmatch(p.name, pattern) or fnmatch.fnmatch(p.relative_to(root).as_posix(), pattern)
+                            for pattern in self.exclude)]
+
+    def entries(self, data_dir: Path) -> Iterable[IndexFile]:
+        for path in self.files(data_dir):
+            yield IndexFile(path, self.catalog, self.standing, confidential=self.confidential, generated=self.generated,
+                            context=self.context_of(path) if self.context_of else "", front_matter=self.front_matter)
 
 
 # The text jason holds for the governing documents, the policies' pages, the reserve studies, and the law. Mail, the
@@ -81,7 +134,7 @@ SOURCES: tuple[IndexSource, ...] = (
     IndexSource("records", "reserve-studies", Standing.RECORD),
     IndexSource("insurance", "artifacts/site-docs/insurance", Standing.RECORD),
     IndexSource("insurance", "insurance/pages", Standing.PAGE, generated=True),
-    IndexSource("authorities", "authorities", Standing.AUTHORITY, exclude=("*.pdf.md",)),
+    IndexSource("authorities", "authorities", Standing.AUTHORITY, exclude=("publications/*",)),
     IndexSource("reference", "reference", Standing.REFERENCE, exclude=("*.pdf.md",)),
 )
 
@@ -90,7 +143,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS files (
     path TEXT PRIMARY KEY, catalog TEXT NOT NULL, standing TEXT NOT NULL, kind TEXT NOT NULL DEFAULT '',
     confidential INTEGER NOT NULL DEFAULT 0, generated INTEGER NOT NULL DEFAULT 0,
-    sha256 TEXT NOT NULL, chunking TEXT NOT NULL, indexed_at REAL NOT NULL);
+    sha256 TEXT NOT NULL, chunking TEXT NOT NULL, indexed_at REAL NOT NULL, context TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS passages (
     id INTEGER PRIMARY KEY, path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE, idx INTEGER NOT NULL,
     start_word INTEGER NOT NULL, heading TEXT NOT NULL, text TEXT NOT NULL, key TEXT NOT NULL);
@@ -111,7 +164,9 @@ def connect(data_dir: Path | str) -> sqlite3.Connection:
     db = sqlite3.connect(path)
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(_DDL)
-    db.execute("INSERT OR IGNORE INTO meta VALUES ('schema', ?)", (str(SCHEMA_VERSION),))
+    if "context" not in {row[1] for row in db.execute("PRAGMA table_info(files)")}:      # an index built at schema 1
+        db.execute("ALTER TABLE files ADD COLUMN context TEXT NOT NULL DEFAULT ''")
+    db.execute("INSERT OR REPLACE INTO meta VALUES ('schema', ?)", (str(SCHEMA_VERSION),))
     return db
 
 
@@ -152,11 +207,12 @@ class BuildReport:
                 *self.notes]
 
 
-def build(data_dir: Path | str, *, sources: Sequence[IndexSource] = SOURCES, embedder: retrieval.Embedder | None = None,
+def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: retrieval.Embedder | None = None,
           model: str = retrieval.EMBED_MODEL, chunking: str = retrieval.CHUNKING,
           kind_of: Callable[[str], str] = _default_kind, batch: int = 64, say: Callable[[str], None] | None = None,
           ) -> BuildReport:
-    """Bring the index up to date with ``sources``. Without ``embedder`` the passages are cut and the old cache's
+    """Bring the index up to date with ``sources``: each gives its files (``entries(data_dir)``, as ``IndexFile``) and
+    names the catalogs it fills (``catalogs``), so a file it no longer gives leaves the index. Without ``embedder`` the passages are cut and the old cache's
     vectors copied, and the rest are counted as missing. The caller holds the store lock (``Resource.STORE``,
     ``retrieval-index``); the embedder holds the GPU lock per request."""
     from jason.community.passage_sections import OutlineIndex, section_passages
@@ -169,28 +225,43 @@ def build(data_dir: Path | str, *, sources: Sequence[IndexSource] = SOURCES, emb
     db = connect(data_dir)
     try:
         seen: set[str] = set()
+        claimed: set[str] = set()
         for source in sources:
-            for path in source.files(data_dir):
+            claimed.update(source.catalogs)
+            for entry in source.entries(data_dir):
+                path = entry.path
                 rel = _rel(path, data_dir)
                 if rel in seen:
                     continue
                 seen.add(rel)
                 report.files += 1
                 sha = _sha(path)
-                row = db.execute("SELECT sha256, chunking, catalog, standing FROM files WHERE path = ?", (rel,)).fetchone()
-                if row and row[0] == sha and row[1] == chunking and row[2] == source.catalog and row[3] == source.standing.value:
+                cutting = f"{chunking}+front" if entry.front_matter else chunking
+                kind = kind_of(path.name) if entry.kind is None else entry.kind
+                row = db.execute("SELECT sha256, chunking, catalog, standing, context, kind, confidential, generated "
+                                 "FROM files WHERE path = ?", (rel,)).fetchone()
+                if row and row[:5] == (sha, cutting, entry.catalog, entry.standing.value, entry.context):
+                    if row[5:] != (kind, int(entry.confidential), int(entry.generated)):       # a flag moved: no re-cut
+                        db.execute("UPDATE files SET kind = ?, confidential = ?, generated = ? WHERE path = ?",
+                                   (kind, int(entry.confidential), int(entry.generated), rel))
                     continue
                 cut = section_passages(path, outlines=outlines) if outlines is not None else passages_of(path)
+                if entry.front_matter:
+                    cut = tuple(p for p in cut if not is_front_matter(p.text))
                 db.execute("DELETE FROM files WHERE path = ?", (rel,))
-                db.execute("INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                           (rel, source.catalog, source.standing.value, kind_of(path.name), int(source.confidential),
-                            int(source.generated), sha, chunking, time.time()))
-                db.executemany("INSERT INTO passages (path, idx, start_word, heading, text, key) VALUES (?, ?, ?, ?, ?, ?)",
-                               [(rel, p.index, p.start_word, p.heading, p.text, retrieval.text_key(p.ranked)) for p in cut])
+                db.execute("INSERT INTO files (path, catalog, standing, kind, confidential, generated, sha256, chunking, "
+                           "indexed_at, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           (rel, entry.catalog, entry.standing.value, kind, int(entry.confidential), int(entry.generated),
+                            sha, cutting, time.time(), entry.context))
+                db.executemany(
+                    "INSERT INTO passages (path, idx, start_word, heading, text, key) VALUES (?, ?, ?, ?, ?, ?)",
+                    [(rel, p.index, p.start_word, p.heading, p.text,
+                      retrieval.text_key(Passage(p.path, p.index, p.start_word, p.text, p.heading, entry.context).ranked))
+                     for p in cut])
                 report.cut += 1
-        folders = {s.folder.rstrip("/") + "/" for s in sources}
-        for (rel,) in db.execute("SELECT path FROM files").fetchall():
-            if rel not in seen and any(rel.startswith(f) for f in folders):
+        # A file the index holds that no source gave this time is gone, when a source in this build claims its catalog.
+        for rel, catalog in db.execute("SELECT path, catalog FROM files").fetchall():
+            if rel not in seen and catalog in claimed:
                 db.execute("DELETE FROM files WHERE path = ?", (rel,))
                 report.removed += 1
         db.commit()
@@ -207,17 +278,17 @@ def _fill_vectors(db: sqlite3.Connection, data_dir: Path, model: str, embedder: 
     import numpy as np
 
     wanted = db.execute(
-        "SELECT p.key, MIN(p.heading), MIN(p.text) FROM passages p LEFT JOIN vectors v ON v.key = p.key AND v.model = ? "
-        "WHERE v.key IS NULL GROUP BY p.key", (model,)).fetchall()
+        "SELECT p.key, MIN(f.context), MIN(p.heading), MIN(p.text) FROM passages p JOIN files f ON f.path = p.path "
+        "LEFT JOIN vectors v ON v.key = p.key AND v.model = ? WHERE v.key IS NULL GROUP BY p.key", (model,)).fetchall()
     old = retrieval.VectorCache(data_dir / "retrieval" / "vectors", model=model)
     pending: list[tuple[str, str]] = []
-    for key, heading, text in wanted:
+    for key, context, heading, text in wanted:
         vector = old.get(key)
         if vector is not None:
             _put(db, key, model, np.asarray(vector, dtype="float16"))
             report.copied += 1
         else:
-            pending.append((key, f"{heading}\n{text}" if heading else text))
+            pending.append((key, "\n".join(part for part in (context, heading, text) if part)))
     db.commit()
     if pending and embedder is None:
         report.missing = len(pending)
@@ -330,12 +401,12 @@ def load(data_dir: Path | str, scope: Scope = Scope(), *, model: str = retrieval
         where, args = scope.where()
         rows = db.execute(
             "SELECT p.path, p.idx, p.start_word, p.heading, p.text, p.key, f.catalog, f.standing, f.kind, "
-            f"f.confidential, f.generated FROM passages p JOIN files f ON f.path = p.path{where} ORDER BY p.path, p.idx",
+            f"f.confidential, f.generated, f.context FROM passages p JOIN files f ON f.path = p.path{where} ORDER BY p.path, p.idx",
             args).fetchall()
         passages: list[Passage] = []
         meta: dict[tuple[str, int], Row] = {}
-        for rel, idx, start, heading, text, key, catalog, standing, kind, conf, gen in rows:
-            passage = Passage(data_dir / rel, idx, start, text, heading)
+        for rel, idx, start, heading, text, key, catalog, standing, kind, conf, gen, context in rows:
+            passage = Passage(data_dir / rel, idx, start, text, heading, context)
             passages.append(passage)
             meta[(str(passage.path), idx)] = Row(catalog, Standing(standing), kind, bool(conf), bool(gen), key)
         found: dict[str, Any] = {}
@@ -432,5 +503,5 @@ def status(data_dir: Path | str, *, model: str = retrieval.EMBED_MODEL) -> dict[
             "catalogs": [{"catalog": c, "standing": s, "files": f, "passages": n} for c, s, f, n in by]}
 
 
-__all__ = ["BuildReport", "IndexHit", "IndexSource", "Loaded", "Row", "SOURCES", "Scope", "Standing", "StoredEmbedder",
+__all__ = ["BuildReport", "IndexFile", "IndexHit", "IndexSource", "Loaded", "Row", "SOURCES", "Scope", "Standing", "StoredEmbedder",
            "build", "connect", "index_path", "load", "search", "status"]

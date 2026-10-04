@@ -30,6 +30,7 @@ class Passage:
     start_word: int
     text: str                      # the document's own words, for display and recitation
     heading: str = ""              # the section's path ("Bylaws > 7 MEETINGS > 7.2 Notice"), read by the rankers only
+    context: str = ""              # where the file sits (its chapter, what it is), read by the rankers only
 
     @property
     def title(self) -> str:
@@ -37,8 +38,8 @@ class Passage:
 
     @property
     def ranked(self) -> str:
-        """What the rankers read: the section's path, then the words."""
-        return f"{self.heading}\n{self.text}" if self.heading else self.text
+        """What the rankers read: where the file sits, the section's path, then the words."""
+        return "\n".join(part for part in (self.context, self.heading, self.text) if part)
 
 
 @dataclass(frozen=True)

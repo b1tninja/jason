@@ -91,6 +91,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [document-models/roof-inspections.md](document-models/roof-inspections.md): what governs the roofs, the roof inspection reader, and the leak calls by building.
 - [rag-roadmap.md](rag-roadmap.md): document models, kinds, and retrieval contexts; what exists and what is next.
 - [applicability.md](applicability.md): proposed: what a provision applies to (facets, three answers), the facts in ingestion, one search index with columns in place of AnythingLLM's workspaces (measured against it), companion pages, and the stack.
+- [ingestion-and-review.md](ingestion-and-review.md): proposed: read a document once and review it under different lenses and collections; what jason mixes today, the records (document, lens, collection, review), and the order of work.
 
 ## Meetings, board, and minutes
 
