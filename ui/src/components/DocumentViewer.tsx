@@ -12,11 +12,24 @@ export type EvidenceDocumentKind = "submission" | "pdf" | "image" | "text" | "fi
  * Its contents come only from a view, a person's logged act. */
 export interface EvidenceDocument { id: string; name: string; kind: EvidenceDocumentKind; size: number; readAt: string; note: string }
 
-/** One question of a submitted form, as the owner answered it. */
-export interface SubmissionQuestion { question: string; answer: string; kind: "text" | "choice" | "date" | "file" | "other" }
+/** What a row of a submitted form is: a `section` heading (a divider and its title), a `note` (the form's own words),
+ * a lone box (`check`), or a question and its answer. */
+export type SubmissionRowKind = "section" | "note" | "text" | "choice" | "date" | "file" | "check" | "other";
 
-/** A form as the owner filled it in, unmasked. */
-export interface DocumentSubmission { form: string; unit: string; submitted: string; status: string; questions: SubmissionQuestion[] }
+/** One row of a submitted form, as the owner answered it: the question (a section's heading, a note's words), the
+ * answer, the question's help, whether it was required, a `flag` the server raises ("both given"), and for a file
+ * question the ids of the documents saved for its files (the address's own documents, opened with a new view). */
+export interface SubmissionQuestion {
+  question: string; answer: string; kind: SubmissionRowKind;
+  help?: string; required?: boolean; flag?: string; files?: string[];
+}
+
+/** A form as the owner filled it in, unmasked: the form's own introduction (`intro`), when it was submitted, and when
+ * it was completed (`completed`, YYYY-MM-DD) once it was. */
+export interface DocumentSubmission {
+  form: string; unit: string; submitted: string; completed?: string; status: string; intro?: string;
+  questions: SubmissionQuestion[];
+}
 
 /** `POST /api/evidence/view`'s answer: one document, unmasked, for the person who asked. `url` is a short-lived
  * `/api/evidence/document/<token>` for a pdf, image, or file (`expires` says until when). */
@@ -69,7 +82,78 @@ const URL_KINDS: readonly string[] = ["pdf", "image", "file"];
 const UNMASKED = /^unmasked\b/i;
 const answerText = (a: unknown) => (Array.isArray(a) ? a.map(String).join(", ") : a == null ? "" : String(a));
 
-function Submission({ s }: { s: DocumentSubmission }) {
+/** How the sheet opens another document of the address: by its place in `documents`, through the same logged view
+ * Previous and Next take. */
+interface Opener { documents: EvidenceDocument[]; open: (index: number) => void; busy: boolean }
+
+/** A file question's answer: each file's name, a button that opens it in the viewer when jason saved it (a new
+ * logged view), plain text when it did not. A saved file whose name the answer does not carry follows by its own. */
+function FileAnswer({ q, opener }: { q: SubmissionQuestion; opener: Opener }) {
+  const docs = opener.documents;
+  const names = answerText(q.answer).split("; ").map((n) => n.trim()).filter(Boolean);
+  const linked = (q.files ?? []).map((id) => docs.findIndex((d) => d.id === id)).filter((i) => i >= 0);
+  const used = new Set<number>();
+  const items = names.map((name) => {
+    const index = linked.find((i) => !used.has(i) && (docs[i].name === name || docs[i].name.endsWith(`_${name}`)));
+    if (index !== undefined) used.add(index);
+    return { name, index };
+  });
+  for (const i of linked) if (!used.has(i)) items.push({ name: docs[i].name, index: i });
+  if (!items.length) return <span className="muted">(no answer)</span>;
+  return (
+    <>
+      {items.map((it, k) => (
+        <span key={k} className="doc-answer-file">
+          {k > 0 && "; "}
+          {it.index !== undefined ? (
+            <button type="button" className="doc-answer-open" aria-disabled={opener.busy ? true : undefined}
+              title={`Open ${it.name} in the viewer`} onClick={() => { if (!opener.busy) opener.open(it.index!); }}>
+              {it.name}
+            </button>
+          ) : it.name}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function AnswerRow({ q, opener }: { q: SubmissionQuestion; opener?: Opener }) {
+  const a = answerText(q.answer).trim();
+  return (
+    <div className="doc-answer">
+      <dt>
+        <span className="doc-answer-question">{q.question}</span>
+        {q.required && <> <span className="doc-answer-required">required</span></>}
+        {q.help && <small className="doc-answer-help">{q.help}</small>}
+      </dt>
+      <dd className={`doc-answer-${q.kind || "other"}`}>
+        {q.kind === "file" && q.files?.length && opener ? <FileAnswer q={q} opener={opener} />
+          : a || <span className="muted">(no answer)</span>}
+        {q.flag && <> <span className="chip doc-answer-flag">{q.flag}</span></>}
+      </dd>
+    </div>
+  );
+}
+
+type Block = { kind: "section"; q: SubmissionQuestion } | { kind: "note"; q: SubmissionQuestion }
+  | { kind: "answers"; rows: SubmissionQuestion[] };
+
+/** The rows as the form lays them out: a heading per section, the form's notes, and the answers between them. */
+function blocks(rows: SubmissionQuestion[]): Block[] {
+  const out: Block[] = [];
+  for (const q of rows) {
+    if (q.kind === "section") out.push({ kind: "section", q });
+    else if (q.kind === "note") out.push({ kind: "note", q });
+    else {
+      const last = out[out.length - 1];
+      if (last && last.kind === "answers") last.rows.push(q);
+      else out.push({ kind: "answers", rows: [q] });
+    }
+  }
+  return out;
+}
+
+function Submission({ s, opener }: { s: DocumentSubmission; opener?: Opener }) {
   const questions = s.questions ?? [];
   return (
     <article className="doc-sheet doc-submission doc-print">
@@ -79,23 +163,23 @@ function Submission({ s }: { s: DocumentSubmission }) {
           <p className="doc-submission-meta">
             {s.unit && <span>Unit {s.unit}</span>}
             {s.submitted && <span>Submitted <time dateTime={s.submitted.slice(0, 10)}>{s.submitted.slice(0, 10)}</time></span>}
+            {s.completed && <span>Completed <time dateTime={s.completed.slice(0, 10)}>{s.completed.slice(0, 10)}</time></span>}
             {s.status && <span className="badge badge-neutral">{s.status}</span>}
           </p>
         </div>
         <button type="button" className="doc-print-hide" onClick={() => window.print()}>Print</button>
       </header>
+      {s.intro && <p className="muted doc-submission-intro">{s.intro}</p>}
       {questions.length ? (
-        <dl className="doc-answers">
-          {questions.map((q, i) => {
-            const a = answerText(q.answer).trim();
-            return (
-              <div key={i} className="doc-answer">
-                <dt>{q.question}</dt>
-                <dd className={`doc-answer-${q.kind || "other"}`}>{a || <span className="muted">(no answer)</span>}</dd>
-              </div>
-            );
-          })}
-        </dl>
+        blocks(questions).map((b, i) => {
+          if (b.kind === "section") return <h4 key={i} className="doc-submission-section">{b.q.question}</h4>;
+          if (b.kind === "note") return <p key={i} className="muted doc-submission-note">{b.q.question}</p>;
+          return (
+            <dl key={i} className="doc-answers">
+              {b.rows.map((q, k) => <AnswerRow key={k} q={q} opener={opener} />)}
+            </dl>
+          );
+        })
       ) : (
         <p className="muted">The submission holds no questions.</p>
       )}
@@ -118,9 +202,9 @@ function ImageBody({ url, name }: { url: string; name: string }) {
   );
 }
 
-function Body({ v }: { v: DocumentView }) {
+function Body({ v, opener }: { v: DocumentView; opener?: Opener }) {
   if (v.kind === "submission") {
-    return v.submission ? <Submission s={v.submission} /> : <p className="muted">The server sent no submission to show.</p>;
+    return v.submission ? <Submission s={v.submission} opener={opener} /> : <p className="muted">The server sent no submission to show.</p>;
   }
   if (v.kind === "text") {
     const text = v.text ?? "";
@@ -157,9 +241,12 @@ function Body({ v }: { v: DocumentView }) {
  * It fetches nothing: the panel POSTs the view on a person's click and passes the answer as `data` (`null` while it
  * opens, with `busy`), so each view is one logged act. `document` is the listed row, for the name while it opens. An
  * `error` stays in the dialog. Escape and Close call `onClose`, after the dialog has closed so focus can go back.
- * `inline` renders it open in place, not modal (previews). */
-export function DocumentViewer({ data, document: listed, busy = false, error = "", position, onGo, onClose, today, inline = false }: {
-  data?: DocumentView | null; document?: EvidenceDocument; busy?: boolean; error?: string;
+ * `inline` renders it open in place, not modal (previews).
+ *
+ * `documents` is the address's list (the one `position` counts): given with `onGo`, a submission's file answer names
+ * each saved file as a button that opens it, by `onGo` with its place in the list, a new logged view. */
+export function DocumentViewer({ data, document: listed, documents, busy = false, error = "", position, onGo, onClose, today, inline = false }: {
+  data?: DocumentView | null; document?: EvidenceDocument; documents?: EvidenceDocument[]; busy?: boolean; error?: string;
   position?: { index: number; count: number }; onGo?: (index: number) => void; onClose?: () => void;
   today?: Date; inline?: boolean;
 }) {
@@ -210,6 +297,9 @@ export function DocumentViewer({ data, document: listed, busy = false, error = "
   const hasPrev = several && at > 0;
   const hasNext = several && at < (position?.count ?? 0) - 1;
   const go = (i: number, ok: boolean) => { if (ok && !busy) onGo?.(i); };
+  const opener: Opener | undefined = documents?.length && onGo
+    ? { documents, open: (i) => go(i, i >= 0 && i < documents.length), busy }
+    : undefined;
 
   const dialog = (
     <dialog ref={ref} className={`doc-viewer doc-viewer-${kind}${inline ? " doc-viewer-inline" : ""}`}
@@ -245,7 +335,7 @@ export function DocumentViewer({ data, document: listed, busy = false, error = "
           {busy && <p className="muted">Opening…</p>}
           {error && !busy && <p className="notice notice-error">{error}</p>}
         </div>
-        {v && !busy && <Body v={v} />}
+        {v && !busy && <Body v={v} opener={opener} />}
       </div>
     </dialog>
   );

@@ -46,10 +46,78 @@ describe("DocumentViewer", () => {
     expect(within(dialog).getByText("Pending")).toBeInTheDocument();
     const terms = within(dialog).getAllByRole("term").map((t) => t.textContent);
     expect(terms).toEqual(["Owner's full name", "Mailing address", "Do you rent the unit?", "Second phone"]);
+    expect(within(dialog).queryByRole("heading", { level: 4 })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Completed/)).not.toBeInTheDocument();
     const answers = within(dialog).getAllByRole("definition").map((d) => d.textContent);
     expect(answers).toEqual(["Jane Doe", "123 Main St", "No", "(no answer)"]);
     expect(within(dialog).getByText("(no answer)")).toHaveClass("muted");
     expect(within(dialog).queryByRole("link", { name: /Open in a new tab/ })).not.toBeInTheDocument();
+  });
+
+  const owner = (): DocumentView => view({
+    submission: {
+      form: "Owner information", unit: "102 EXAMPLE WAY", submitted: "2026-10-05T17:00:00.000Z", completed: "2026-10-07", status: "pending",
+      intro: "Please answer by October 23.\n\nThank you.",
+      questions: [
+        { question: "Owner", answer: "", kind: "section" },
+        { question: "1. Your name", answer: "Ana Example", kind: "text", help: "As on the deed.", required: true },
+        { question: "Answer for the unit named above.", answer: "", kind: "note" },
+        { question: "Notice delivery", answer: "", kind: "section" },
+        { question: "2. How should the Association deliver notices", answer: "By mail; By email", kind: "choice", help: "Choose any." },
+        { question: "3. Mailing address for notices", answer: "Same as my unit address; PO Box 12, Example City, CA 90000", kind: "choice", flag: "both given" },
+        { question: "5. Pets in the unit", answer: "None chosen", kind: "choice" },
+        { question: "6. Lease (optional)", answer: "lease.pdf; addendum.pdf", kind: "file", files: ["77_lease.pdf"] },
+        { question: "7. Second phone", answer: "", kind: "text" },
+      ],
+    },
+  });
+  const ownerDocs: EvidenceDocument[] = [
+    { id: "submission", name: "Owner information as submitted", kind: "submission", size: 0, readAt: "", note: "" },
+    { id: "77_lease.pdf", name: "77_lease.pdf", kind: "pdf", size: 812, readAt: "", note: "" },
+  ];
+
+  it("lays a submission out as the form: its introduction, its sections as headings, its notes, and Completed", () => {
+    render(<DocumentViewer data={owner()} onClose={() => {}} />);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Please answer by October 23/)).toHaveClass("doc-submission-intro", "muted");
+    expect(within(dialog).getByText(/Please answer by October 23/).textContent).toBe("Please answer by October 23.\n\nThank you.");
+    expect(within(dialog).getByText(/Completed/)).toHaveTextContent("Completed 2026-10-07");
+    const sections = within(dialog).getAllByRole("heading", { level: 4 });
+    expect(sections.map((h) => h.textContent)).toEqual(["Owner", "Notice delivery"]);
+    expect(sections[0]).toHaveClass("doc-submission-section");
+    expect(within(dialog).getByText("Answer for the unit named above.")).toHaveClass("doc-submission-note", "muted");
+    expect(within(dialog).queryByText("Answer for the unit named above.")?.closest("dl")).toBeNull();
+    const terms = within(dialog).getAllByRole("term").map((t) => t.querySelector(".doc-answer-question")?.textContent);
+    expect(terms).toEqual(["1. Your name", "2. How should the Association deliver notices", "3. Mailing address for notices",
+      "5. Pets in the unit", "6. Lease (optional)", "7. Second phone"]);
+  });
+
+  it("shows a question's help under it, required in words, a flag as a warn chip, and None chosen as given", () => {
+    render(<DocumentViewer data={owner()} onClose={() => {}} />);
+    const dialog = screen.getByRole("dialog");
+    const name = within(dialog).getAllByRole("term")[0];
+    expect(within(name).getByText("required")).toHaveClass("doc-answer-required");
+    expect(within(name).getByText("As on the deed.")).toHaveClass("doc-answer-help");
+    expect(within(dialog).getAllByText("required")).toHaveLength(1);
+    expect(within(dialog).getByText("By mail; By email")).toBeInTheDocument();
+    const flag = within(dialog).getByText("both given");
+    expect(flag).toHaveClass("chip", "doc-answer-flag");
+    expect(flag.closest("dd")).toHaveTextContent("Same as my unit address; PO Box 12, Example City, CA 90000 both given");
+    expect(within(dialog).getByText("None chosen")).not.toHaveClass("muted");
+    expect(within(dialog).getByText("(no answer)")).toHaveClass("muted");
+  });
+
+  it("opens a file answer's saved file through onGo, a new view; an unsaved file stays text", async () => {
+    const onGo = vi.fn();
+    const { rerender } = render(<DocumentViewer data={owner()} documents={ownerDocs} position={{ index: 0, count: 2 }} onGo={onGo} onClose={() => {}} />);
+    const lease = screen.getByRole("button", { name: "lease.pdf" });
+    expect(screen.queryByRole("button", { name: "addendum.pdf" })).not.toBeInTheDocument();
+    expect(lease.closest("dd")).toHaveTextContent("lease.pdf; addendum.pdf");
+    await userEvent.click(lease);
+    expect(onGo).toHaveBeenCalledWith(1);
+    rerender(<DocumentViewer data={owner()} position={{ index: 0, count: 2 }} onGo={onGo} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: "lease.pdf" })).not.toBeInTheDocument();       // no list: names only
+    expect(screen.getByText("lease.pdf; addendum.pdf")).toBeInTheDocument();
   });
 
   it("prints from the Print button", async () => {

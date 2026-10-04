@@ -16,22 +16,36 @@ const photo = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
 const submission: DocumentView = {
   kind: "submission", name: "Owner information, Unit 12", readAt: "2099-09-30T18:38:00+00:00", url: "", expires: "",
   submission: {
-    form: "Owner information 2099", unit: "12", submitted: "2099-09-28", status: "Pending",
+    form: "Owner information 2099", unit: "12", submitted: "2099-09-28", completed: "2099-10-02", status: "Pending",
+    intro: "Please tell the board how to reach you by October 23.\n\nThank you,\nThe board of Example Village",
     questions: [
-      { question: "Owner's full name", answer: "Jane Doe", kind: "text" },
-      { question: "Mailing address", answer: "123 Main St\nExample City, CA 90000", kind: "text" },
-      { question: "Do you rent the unit to a tenant?", answer: "No", kind: "choice" },
-      { question: "Date you bought the unit", answer: "2091-04-15", kind: "date" },
-      { question: "Second phone", answer: "", kind: "text" },
-      { question: "Anything else the board should know?", answer: "", kind: "other" },
+      { question: "Owner", answer: "", kind: "section" },
+      { question: "1. Owner's full name", answer: "Jane Doe", kind: "text", help: "As on the deed.", required: true },
+      { question: "Answer for the unit named above.", answer: "", kind: "note" },
+      { question: "Notice delivery", answer: "", kind: "section" },
+      { question: "2. How should the Association deliver notices?", answer: "By mail; By email", kind: "choice", help: "Choose any." },
+      { question: "3. Mailing address for notices", answer: "Same as my unit address; PO Box 12\nExample City, CA 90000", kind: "choice", help: "Tick it, or write another address.", flag: "both given" },
+      { question: "4. Pets in the unit", answer: "None chosen", kind: "choice" },
+      { question: "5. Lease (optional)", answer: "lease.pdf; addendum.pdf", kind: "file", files: ["77_lease.pdf"] },
+      { question: "6. Second phone", answer: "", kind: "text" },
+      { question: "Certification", answer: "", kind: "section" },
+      { question: "I certify that I am an owner of record of this unit.", answer: "Certified", kind: "check", help: "Required to submit.", required: true },
     ],
   },
   caveats: [UNMASKED, STORED],
 };
 
-/** A PayHOA form submission as the owner filled it in: each question in order, a blank shown as "(no answer)", Print. */
+const listed = [
+  { id: "submission", name: "Owner information, Unit 12", kind: "submission" as const, size: 0, readAt: "2099-09-30T18:38:00+00:00", note: "" },
+  { id: "77_lease.pdf", name: "77_lease.pdf", kind: "pdf" as const, size: 48_000, readAt: "2099-09-30T18:38:00+00:00", note: "" },
+  { id: "notes.txt", name: "notes.txt", kind: "text" as const, size: 812, readAt: "2099-09-30T18:38:00+00:00", note: "" },
+];
+
+/** A PayHOA form submission as the owner filled it in: the form's introduction, its sections as headings, a "choose
+ * any" question as one answer, a "Same as" box and its line as one (flagged when both were given), each question's
+ * help and "required", a saved file to open, a blank shown as "(no answer)", Print. */
 export const Submission = () => (
-  <div style={frame}><DocumentViewer inline today={today} data={submission} position={{ index: 0, count: 3 }} onGo={() => {}} /></div>
+  <div style={frame}><DocumentViewer inline today={today} data={submission} documents={listed} position={{ index: 0, count: 3 }} onGo={() => {}} /></div>
 );
 
 /** A PDF in a frame (a placeholder here), with the new-tab link and the link's expiry in the header. */

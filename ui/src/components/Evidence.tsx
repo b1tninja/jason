@@ -239,7 +239,7 @@ function Documents({ docs, level, address, approval, who, viewer, today }: {
         })}
       </ul>
       {viewing && (
-        <DocumentViewer data={viewing.data} document={docs[viewing.index]} busy={viewing.busy} error={viewing.error}
+        <DocumentViewer data={viewing.data} document={docs[viewing.index]} documents={docs} busy={viewing.busy} error={viewing.error}
           position={{ index: viewing.index, count: docs.length }} onGo={(i) => void open(i)} onClose={close} today={today} />
       )}
     </section>

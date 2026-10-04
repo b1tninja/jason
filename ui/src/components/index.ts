@@ -12,7 +12,7 @@ export { DataTable, type Column } from "./DataTable";
 export { DecisionCard, OUTCOMES, type DecisionDraft } from "./DecisionCard";
 export { DueDate, daysUntil } from "./DueDate";
 export { Evidence, EvidencePanel, EvidenceVersion, evidenceUrl, refreshAllEvidence, refreshEvidence, RefreshAllEvidence, RereadIcon, type EvidenceRefreshAll, type EvidenceRefreshable, type EvidenceRefreshed, type EvidenceRefreshRequest, type EvidenceAnswer, type EvidenceSource, type EvidenceField, type EvidenceRefresh, type EvidenceKind } from "./Evidence";
-export { DocumentViewer, viewDocument, humanSize, documentKindWord, looksLikeMarkdown, type DocumentView, type DocumentViewRequest, type DocumentSubmission, type SubmissionQuestion, type EvidenceDocument, type EvidenceDocumentKind } from "./DocumentViewer";
+export { DocumentViewer, viewDocument, humanSize, documentKindWord, looksLikeMarkdown, type DocumentView, type DocumentViewRequest, type DocumentSubmission, type SubmissionQuestion, type SubmissionRowKind, type EvidenceDocument, type EvidenceDocumentKind } from "./DocumentViewer";
 export { Findings } from "./Findings";
 export { Kanban } from "./Kanban";
 export { Money } from "./Money";

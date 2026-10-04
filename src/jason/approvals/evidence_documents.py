@@ -256,13 +256,20 @@ def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_a
 
 # --- one submission, unmasked ---------------------------------------------------------------------------------------------
 
-SKIP_TYPES = frozenset({"hr", "plaintext"})    # a divider and a form's own words: no answer
+# PayHOA's builder has only input, textarea, file, checkbox, select, hr, and plaintext; the other names are read too,
+# for a submission shaped otherwise.
+SECTION_TYPE = "hr"                            # a divider; its label is the section's heading
+NOTE_TYPE = "plaintext"                        # the form's own words
+SKIP_TYPES = frozenset({SECTION_TYPE, NOTE_TYPE})    # no answer
+CHECKBOX_TYPE = "checkbox"
 CHOICE_TYPES = frozenset({"select", "checkbox", "radio", "multiselect"})
 DATE_TYPES = frozenset({"date", "datetime"})
 FILE_TYPES = frozenset({"file", "upload", "image", "attachment"})
 TEXT_TYPES = frozenset({"input", "textarea", "text", "email", "phone", "number"})
 _TAG = re.compile(r"<[^>]+>")
 _BREAK = re.compile(r"<\s*br\s*/?\s*>|</\s*(?:p|div|li)\s*>", re.IGNORECASE)
+_INLINE = re.compile(r"<\s*/?\s*(?:a|b|strong|em|i|u|span|small|sub|sup)\b[^>]*>", re.IGNORECASE)   # no space
+_PARAGRAPH_END = re.compile(r"</\s*p\s*>", re.IGNORECASE)
 _DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 _US_DAY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 
@@ -275,7 +282,7 @@ def _words(value: Any) -> str:
         return "yes"
     if "fa-times" in folded:
         return "no"
-    text = html.unescape(_TAG.sub(" ", _BREAK.sub("\n", text)))
+    text = html.unescape(_TAG.sub(" ", _INLINE.sub("", _BREAK.sub("\n", text))))
     return "\n".join(" ".join(line.split()) for line in text.splitlines()).strip()
 
 
@@ -334,6 +341,54 @@ def _labels(question: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def _chosen(question: dict[str, Any], value: Any) -> str:
+    """A select's answer as its options' labels; a multiselect's in the options' order, then any value no option
+    names."""
+    labels = _labels(question)
+    picked = [v for v in _items(value) if _words(v)]
+    if not question.get("isMultiselect"):
+        return "; ".join(labels.get(str(v), _words(v)) for v in picked)
+    wanted = {str(v) for v in picked}
+    out: list[str] = []
+    matched: set[str] = set()
+    for o in question.get("options") or ():
+        if not isinstance(o, dict):
+            continue
+        keys = {str(k) for k in (o.get("value"), o.get("id"), o.get("label")) if k not in (None, "")}
+        if keys & wanted:
+            out.append(str(o.get("label") or o.get("value") or ""))
+            matched |= keys
+    return "; ".join(out + [_words(v) for v in picked if str(v) not in matched])
+
+
+_FILE_IDS = re.compile(r"^\s*\d+(?:\s*,\s*\d+)*\s*$")
+
+
+def _files_of(value: Any, uploads: list[Any], documents: list[Document]) -> tuple[str, list[str]]:
+    """A file answer as its files' names, and the ids of the documents saved for them. PayHOA answers a file question
+    with its files' ids, comma-separated ("9" or "9,12"); each upload's name is on the answer's ``files``, and
+    ``jason sync-request-files`` saves it in the request's folder as ``{id}_{name}``."""
+    text = "" if value is None else str(value)
+    if not _FILE_IDS.match(text):
+        return _file_name(value), []
+    names: dict[str, str] = {}
+    for f in uploads:
+        if isinstance(f, dict) and f.get("id") not in (None, ""):
+            names.setdefault(str(f["id"]), str(f.get("fileName") or f.get("name") or ""))
+    saved = [d for d in documents if d.kind != "submission" and d.path is not None]
+    shown: list[str] = []
+    linked: list[str] = []
+    for fid in dict.fromkeys(p.strip() for p in text.split(",")):
+        name = names.get(fid, "")
+        doc = next((d for d in saved if name and d.path.name == f"{fid}_{name}"), None) or next(
+            (d for d in saved if d.path.name.startswith(f"{fid}_")), None)
+        if doc is not None:
+            linked.append(doc.id)
+            name = name or doc.path.name[len(fid) + 1:]
+        shown.append(name or f"file {fid}")
+    return "; ".join(shown), linked
+
+
 def _answer_of(question: dict[str, Any], value: Any) -> tuple[str, str]:
     """(the answer as a person reads it, its kind: text, choice, date, file, or other)."""
     qtype = str(question.get("type") or "").casefold()
@@ -342,11 +397,20 @@ def _answer_of(question: dict[str, Any], value: Any) -> tuple[str, str]:
     if qtype in DATE_TYPES:
         return _day(value), "date"
     if qtype in CHOICE_TYPES or question.get("isMultiselect"):
-        labels = _labels(question)
-        return "; ".join(labels.get(str(v), _words(v)) for v in _items(value) if _words(v)), "choice"
+        return _chosen(question, value), "choice"
     if qtype in TEXT_TYPES:
         return _words(value), "text"
     return _words(value), "other"
+
+
+def _checked(value: Any) -> bool:
+    """A checked box. PayHOA answers a checkbox with an icon: ``fa-check-square-o`` checked, ``fa-times`` not."""
+    text = "" if value is None else str(value).strip().casefold()
+    if "fa-check" in text:
+        return True
+    if "fa-times" in text:
+        return False
+    return text in ("1", "true", "yes", "on", "checked")
 
 
 def _qid(answer: dict[str, Any]) -> str:
@@ -363,16 +427,200 @@ def _order(question: dict[str, Any]) -> tuple[float, float]:
     return number(question.get("sortOrder")), number(question.get("id"))
 
 
-def submission_view(cached: dict[str, Any]) -> dict[str, Any]:
-    """A kept submission as a person reads it, unmasked: ``{form, unit, submitted, status, questions: [{question,
-    answer, kind}]}``. The questions are the form's (``form.questions`` when the submission carries them, else each
-    answer's own question), in its order (``sortOrder``); answers are matched by question id. A divider or the form's
-    own words (``hr``, ``plaintext``) is no question."""
+_PREFIXED = re.compile(r"^(\d+)\.\s+(.+?):\s+(.+)$", re.DOTALL)    # "N. Title: Option", one box of a question
+_SAME = re.compile(r"^same as\b", re.IGNORECASE)                     # the usual answer, as a box
+_OTHER = re.compile(r"^other\b", re.IGNORECASE)                      # "Other", with a line to say what
+_CERTIFY = re.compile(r"^i certify\b", re.IGNORECASE)                # the attestation
+NONE_CHOSEN = "None chosen"
+BOTH_GIVEN = "both given"
+
+
+@dataclass(frozen=True)
+class _Entry:
+    """One question of the submission, its answer row's value (``answered``: whether it has one), its uploads, and
+    the field jason's lock records it answers (``""`` when no lock knows it)."""
+    qid: str
+    question: dict[str, Any]
+    value: Any = None
+    answered: bool = False
+    files: tuple[Any, ...] = ()
+    field: str = ""
+
+    @property
+    def type(self) -> str:
+        return str(self.question.get("type") or "").casefold()
+
+    @property
+    def label(self) -> str:
+        return _words(self.question.get("label") or self.question.get("title") or "")
+
+    @property
+    def help(self) -> str:
+        return _words(self.question.get("description"))
+
+    @property
+    def required(self) -> bool:
+        return bool(self.question.get("isRequired") or self.question.get("required"))
+
+
+def _prefixed(label: str) -> tuple[str, str] | None:
+    """("N. Title", "Option") for a box labelled the way jason's builder labels one option of a question."""
+    m = _PREFIXED.match(label)
+    return (f"{m.group(1)}. {m.group(2)}", m.group(3)) if m else None
+
+
+def _parts(label: str) -> tuple[str, str]:
+    """A grouped box's question and option: the numbered prefix, else the part before the first ": "."""
+    found = _prefixed(label)
+    if found:
+        return found
+    head, sep, tail = label.partition(": ")
+    return (head, tail) if sep else (label, label)
+
+
+def _lock_fields(records: list[Any] | None, form_id: Any) -> dict[str, str]:
+    """Question id to field, from jason's record of the form (``data/payhoa/forms.json``), a deleted one too."""
+    if form_id in (None, ""):
+        return {}
+    rows = [r for r in records or () if isinstance(r, dict) and str(r.get("formId")) == str(form_id)]
+    questions = rows[-1].get("questions") if rows else None
+    return {str(k): str(v or "") for k, v in questions.items()} if isinstance(questions, dict) else {}
+
+
+def _row(question: str, answer: str, kind: str, *, help_text: str = "", required: bool = False,
+         flag: str = "") -> dict[str, Any]:
+    row: dict[str, Any] = {"question": question, "answer": answer, "kind": kind}
+    if help_text:
+        row["help"] = help_text
+    if required:
+        row["required"] = True
+    if flag:
+        row["flag"] = flag
+    return row
+
+
+def _groups(entries: list[_Entry]) -> tuple[dict[tuple[Any, ...], list[_Entry]], dict[tuple[Any, ...], _Entry]]:
+    """The checkboxes that are one question, and the line each "Same as" or "Other" box goes with.
+
+    A box the lock knows groups by its field (``base.option``: the boxes sharing ``base``); a box the lock does not
+    know groups with the boxes next to it labelled with the same "N. Title". A box with neither is alone. A group
+    with a "Same as ..." or an "Other" option takes the text question that shares its field (``base``) or its prefix."""
+    groups: dict[tuple[Any, ...], list[_Entry]] = {}
+    run, last = 0, ""
+    for e in entries:
+        key: tuple[Any, ...] | None = None
+        if e.type == CHECKBOX_TYPE:
+            if e.field:
+                if "." in e.field:
+                    key = ("lock", e.field.rsplit(".", 1)[0])
+                last = ""
+            else:
+                found = _prefixed(e.label)
+                if found:
+                    run += 0 if found[0] == last else 1
+                    last = found[0]
+                    key = ("label", run, found[0])
+                else:
+                    last = ""
+        else:
+            last = ""
+        if key is not None:
+            groups.setdefault(key, []).append(e)
+    grouped = {e.qid for boxes in groups.values() for e in boxes}
+    partners: dict[tuple[Any, ...], _Entry] = {}
+    for key, boxes in groups.items():
+        if not any(_SAME.match(_parts(b.label)[1]) or _OTHER.match(_parts(b.label)[1]) for b in boxes):
+            continue
+        prefix = _parts(boxes[0].label)[0]
+        base = key[1] if key[0] == "lock" else ""
+        taken = grouped | {p.qid for p in partners.values()}
+        partner = next((e for e in entries if e.type in TEXT_TYPES and e.qid not in taken and (
+            (base and e.field in (base, f"{base}.other"))
+            or (not e.field and (_prefixed(e.label) or ("",))[0] == prefix))), None)
+        if partner is not None:
+            partners[key] = partner
+    return groups, partners
+
+
+def _group_row(boxes: list[_Entry], partner: _Entry | None) -> dict[str, Any]:
+    """One question asked as several boxes: the checked options in order ("None chosen" when none), a "Same as" box
+    with its line, or "Other" with what was written."""
+    text = _words(partner.value) if partner else ""
+    answered = any(b.answered for b in boxes) or bool(partner and partner.answered)
+    chosen: list[str] = []
+    same: bool | None = None
+    for b in boxes:
+        option, ticked = _parts(b.label)[1], _checked(b.value)
+        if partner and _SAME.match(option):
+            same = bool(same) or ticked
+            if ticked:
+                chosen.append(option)
+        elif partner and _OTHER.match(option):
+            if ticked or text:
+                chosen.append(f"Other: {text}" if text else "Other (not specified)")
+        elif ticked:
+            chosen.append(option)
+    if same is not None and text:
+        chosen.append(text)
+    if same is not None or not answered:
+        answer = "; ".join(chosen)
+    else:
+        answer = "; ".join(chosen) or NONE_CHOSEN
+    helps = list(dict.fromkeys(h for h in [b.help for b in boxes] + [partner.help if partner else ""] if h))
+    return _row(_parts(boxes[0].label)[0], answer, "choice", help_text=" ".join(helps),
+                required=any(e.required for e in [*boxes, *([partner] if partner else [])]),
+                flag=BOTH_GIVEN if same and text else "")
+
+
+def _entry_row(e: _Entry, documents: list[Document]) -> dict[str, Any] | None:
+    """One question on its own: a section heading, the form's words, a lone box, or a question and its answer."""
+    if e.type == SECTION_TYPE:
+        heading = e.label or e.help
+        return _row(heading, "", "section") if heading else None
+    if e.type == NOTE_TYPE:
+        words = e.label or e.help
+        return _row(words, "", "note", help_text=e.help if e.label else "") if words else None
+    question = e.label or f"Question {e.qid}"
+    if e.type == CHECKBOX_TYPE and not e.question.get("options"):
+        attest = e.required and bool(_CERTIFY.match(question))
+        ticked = _checked(e.value)
+        answer = "" if not e.answered else (("Certified" if ticked else "Not certified") if attest
+                                            else ("Checked" if ticked else "Not checked"))
+        return _row(question, answer, "check", help_text=e.help, required=e.required)
+    if e.type in FILE_TYPES:
+        answer, linked = _files_of(e.value, list(e.files), documents)
+        row = _row(question, answer, "file", help_text=e.help, required=e.required)
+        if linked:
+            row["files"] = linked
+        return row
+    answer, kind = _answer_of(e.question, e.value)
+    return _row(question, answer, kind, help_text=e.help, required=e.required)
+
+
+def _intro(description: Any) -> str:
+    """The form's description as text: its line breaks kept, a blank line between paragraphs."""
+    text = _words(_PARAGRAPH_END.sub("</p>\n", str(description or "")))
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def submission_view(cached: dict[str, Any], *, records: list[Any] | None = None,
+                    documents: list[Document] | tuple[Document, ...] = ()) -> dict[str, Any]:
+    """A kept submission as a person reads it, unmasked: ``{form, unit, submitted, completed?, status, intro,
+    questions: [{question, answer, kind, help?, required?, flag?, files?}]}``.
+
+    The questions are the form's (``form.questions`` when the submission carries them, else each answer's own
+    question), in its order (``sortOrder``); answers are matched by question id. A divider (``hr``) is a ``section``
+    row with its heading, and the form's own words (``plaintext``) a ``note``. The boxes jason's builder makes of one
+    "choose any" question are one ``choice`` row: grouped by the fields jason's record of the form gives them
+    (``records``, ``data/payhoa/forms.json``), else by their shared "N. Title" label; a "Same as" box and its line,
+    and an "Other" box and its line, are one row too. A lone box is a ``check``. A file answer names its files, with
+    the ids of the ``documents`` saved for them (``files``), for the viewer to open."""
     from jason.tasks.submission_cache import body
 
     sub = body(cached.get("submission"))
     form = sub.get("form") if isinstance(sub.get("form"), dict) else {}
     answers: dict[str, Any] = {}
+    uploads: dict[str, tuple[Any, ...]] = {}
     questions: dict[str, dict[str, Any]] = {}
     for q in form.get("questions") or ():
         if isinstance(q, dict) and q.get("id") not in (None, ""):
@@ -384,22 +632,38 @@ def submission_view(cached: dict[str, Any]) -> dict[str, Any]:
         if not qid:
             continue
         answers[qid] = a.get("answer") if "answer" in a else a.get("value")
+        uploads[qid] = tuple(a.get("files") or ()) if isinstance(a.get("files"), list) else ()
         own = a.get("question") if isinstance(a.get("question"), dict) else {}
         if qid not in questions:
             questions[qid] = {"id": qid, "label": own.get("label") or a.get("label") or f"Question {qid}", **own}
-    rows = []
-    for qid, q in sorted(questions.items(), key=lambda kv: _order(kv[1])):
-        if str(q.get("type") or "").casefold() in SKIP_TYPES:
-            continue
-        answer, kind = _answer_of(q, answers.get(qid))
-        rows.append({"question": _words(q.get("label") or q.get("title") or f"Question {qid}"), "answer": answer,
-                     "kind": kind})
+    fields = _lock_fields(records, sub.get("formId") or form.get("id") or cached.get("formId"))
+    entries = [_Entry(qid, q, answers.get(qid), qid in answers, uploads.get(qid, ()), fields.get(qid, ""))
+               for qid, q in sorted(questions.items(), key=lambda kv: _order(kv[1]))]
+    groups, partners = _groups(entries)
+    member = {e.qid: key for key, boxes in groups.items() for e in boxes}
+    member.update({p.qid: key for key, p in partners.items()})
+    rows: list[dict[str, Any]] = []
+    done: set[tuple[Any, ...]] = set()
+    docs = list(documents)
+    for e in entries:
+        key = member.get(e.qid)
+        if key is None:
+            row = _entry_row(e, docs)
+            if row is not None:
+                rows.append(row)
+        elif key not in done:
+            done.add(key)
+            rows.append(_group_row(groups[key], partners.get(key)))
     unit = sub.get("unit") if isinstance(sub.get("unit"), dict) else {}
-    return {"form": str(cached.get("formName") or form.get("name") or ""),
-            "unit": str(unit.get("title") or unit.get("streetAddress") or "").strip(),
-            "submitted": str(sub.get("createdAt") or ""),
-            "status": str(cached.get("status") or sub.get("status") or ""),
-            "questions": rows}
+    out: dict[str, Any] = {"form": str(cached.get("formName") or form.get("name") or ""),
+                           "unit": str(unit.get("title") or unit.get("streetAddress") or "").strip(),
+                           "submitted": str(sub.get("createdAt") or ""),
+                           "status": str(cached.get("status") or sub.get("status") or ""),
+                           "intro": _intro(form.get("description")),
+                           "questions": rows}
+    if sub.get("completionDate"):
+        out["completed"] = _day(sub["completionDate"])
+    return out
 
 
 # --- view one -------------------------------------------------------------------------------------------------------------
@@ -427,6 +691,17 @@ def documents_for(address: str, root: Path) -> tuple[str, list[Document]]:
         read_at = _mtime(root / "authorities" / "manifest.json") if statute else ""
         return rule.kind.value, citation_documents(root, got, statute=statute, read_at=read_at)
     return rule.kind.value, []
+
+
+def _form_records(root: Path) -> list[Any]:
+    """jason's records of its PayHOA forms (``data/payhoa/forms.json``), deleted ones too; none when unreadable."""
+    from jason.tasks.payhoa_forms import load_records
+
+    try:
+        rows = load_records(root)
+    except (OSError, ValueError, AttributeError):
+        return []
+    return rows if isinstance(rows, list) else []
 
 
 def _bad_id(document: str) -> bool:
@@ -480,7 +755,7 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
             raise KeyError(f"request {sid}'s last read could not be opened ({exc})") from exc
         if cached is None:
             raise KeyError(f"request {sid} has no full read on disk")
-        answer["submission"] = submission_view(cached)
+        answer["submission"] = submission_view(cached, records=_form_records(root), documents=docs)
     elif doc.id == "section":
         from jason.tasks import cite
 

@@ -570,7 +570,7 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .evidence-reread-all[aria-busy="true"] .evidence-reread-icon { animation: none; } }
 .evidence-reread-all-why { font-size: 12.5px; }
 .evidence-reread-all-status:empty { display: none; }
-.evidence-reread-all-status .notice { margin: 0; padding: 2px 8px; }
+.evidence-reread-all-status .notice { display: inline-block; margin: 0; padding: 2px 8px; }
 
 /* document viewer: the panel's Documents list, and the modal "pop out" that shows one document unmasked */
 .evidence-documents { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
@@ -615,6 +615,18 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
 .doc-answer dt { font-size: var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 .doc-answer dd { margin: 3px 0 0; font: 16px/1.5 var(--serif); white-space: pre-wrap; overflow-wrap: anywhere; }
 .doc-answer dd .muted { font-family: system-ui, sans-serif; font-size: 13.5px; font-style: italic; }
+.doc-submission-intro { margin: 0 0 14px; font-size: 14px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+:root .doc-viewer .doc-submission-section { margin: 18px 0 2px; padding-top: 12px; border-top: 1px solid var(--rule); font: 500 17px/1.3 var(--serif); letter-spacing: 0; text-transform: none; color: var(--ink); } /* the form's own section, not the brand's heading */
+:root .doc-viewer .doc-submission-head + .doc-submission-section, :root .doc-viewer .doc-submission-intro + .doc-submission-section { margin-top: 4px; }
+.doc-submission-note { margin: 6px 0; font-size: 14px; line-height: 1.5; white-space: pre-line; }
+.doc-answer dt .doc-answer-question { overflow-wrap: anywhere; }
+.doc-answer-required { display: inline-block; padding: 0 5px; border: 1px solid var(--rule); border-radius: var(--r); font-size: 10.5px; line-height: 1.5; letter-spacing: .04em; color: var(--muted); vertical-align: 1px; }
+.doc-answer-help { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); line-height: 1.4; }
+:root .doc-answer .doc-answer-flag { margin: 0 0 0 6px; font: 600 12px/1.6 system-ui, sans-serif; color: var(--warn); border-color: var(--warn); background: none; white-space: nowrap; vertical-align: 1px; }
+:root .doc-answer button.doc-answer-open { min-height: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
+:root .doc-answer button.doc-answer-open:hover { text-decoration-color: var(--ink); }
+:root .doc-answer button.doc-answer-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root .doc-answer button.doc-answer-open[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); }
 .doc-text { font: 16px/1.6 var(--serif); }
 .doc-text-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .doc-viewer-body-pdf { padding: 0; display: flex; flex-direction: column; }
@@ -649,6 +661,8 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
   .doc-viewer-body { overflow: visible; padding: 0; background: #fff; }
   .doc-sheet { max-width: none; border: 0; padding: 0; }
   .doc-answer { break-inside: avoid; }
+  .doc-submission-section { break-after: avoid; }
+  :root .doc-answer button.doc-answer-open { text-decoration: none; color: inherit; }
 }
 
 /* tables and registers: ledger rules, labelled heads */

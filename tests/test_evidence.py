@@ -715,10 +715,11 @@ SID = 620
 PDF = b"%PDF-1.4\n% a made-up PDF for a test\n%%EOF\n"
 
 
-def _question(qid: int, label: str, qtype: str, *, multi: bool = False, options=()) -> dict:
+def _question(qid: int, label: str, qtype: str, *, multi: bool = False, options=(), description: str = "",
+              required: bool = False, form_id: int = 950) -> dict:
     """One PayHOA form question as a submission's answer carries it."""
-    return {"id": qid, "formId": 950, "sortOrder": qid, "key": str(qid), "label": label, "type": qtype,
-            "description": "", "isRequired": 0, "isEnabled": 1, "isMultiselect": multi,
+    return {"id": qid, "formId": form_id, "sortOrder": qid, "key": str(qid), "label": label, "type": qtype,
+            "description": description, "isRequired": int(required), "isEnabled": 1, "isMultiselect": multi,
             "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z", "deletedAt": None,
             "options": [{"id": qid * 10 + i, "formQuestionId": qid, "value": v, "label": lab, "isEnabled": 1}
                         for i, (v, lab) in enumerate(options)]}
@@ -888,8 +889,9 @@ def test_viewing_a_submission_shows_it_unmasked_in_the_forms_order_and_logs_who(
         {"question": "Days to call", "answer": "Monday; Tuesday", "kind": "choice"},
         {"question": "Move-in date", "answer": "2026-09-30", "kind": "date"},
         {"question": "Lease", "answer": "lease signed.pdf", "kind": "file"},
-        {"question": "I agree", "answer": "yes", "kind": "choice"},
-        {"question": "Notes", "answer": "Line one\nLine two", "kind": "text"}]
+        {"question": "I agree", "answer": "Checked", "kind": "check"},                   # a lone box
+        {"question": "Notes", "answer": "Line one\nLine two", "kind": "text"}]               # the unlabelled hr: none
+    assert sub["intro"] == "" and "completed" not in sub
     assert r.json["caveats"][0] == "Unmasked: shown because A Manager asked; this view is logged."
     assert evidence.DISK_ONLY in r.json["caveats"] and len(r.json["caveats"]) == 3
     log = _views(web.data_dir)
@@ -1025,3 +1027,193 @@ def test_viewing_is_off_when_writes_are(web):
     off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None, approvals_writes=False))
     r = off.post("/api/evidence/view", json={"address": ADDRESS, "document": "submission", "by": "A Manager"})
     assert r.status_code == 405 and _views(web.data_dir) == []
+
+
+# --- a submission as the form was filled in: sections, grouped boxes, and files ---------------------------------------
+
+OWNER_SID, OWNER_FORM = 640, 960
+CHECK, CROSS = '<i class="fa fa-check-square-o"></i>', '<i class="fa fa-times"></i>'
+
+
+def _owner_questions(labels: dict[int, str] | None = None) -> list[dict]:
+    """A form as jason's builder makes it in PayHOA (``form_render.payhoa_questions``), with made-up words: sections
+    as ``hr``, each "choose any" question as one box an option, a "Same as" box with its line, an "Other" box with
+    its line, a file question, a lone box, and the attestation."""
+    rows = [(1, "Owner", "hr", {}),
+            (2, "1. Your name", "input", {"required": True, "description": "As on the deed."}),
+            (3, "Answer for the unit named above.", "plaintext", {}),
+            (4, "Notice delivery", "hr", {}),
+            (5, "2. How should the Association deliver notices: By mail", "checkbox", {"description": "Choose any."}),
+            (6, "2. How should the Association deliver notices: By email", "checkbox", {}),
+            (7, "3. Mailing address for notices: Same as my unit address", "checkbox",
+             {"description": "Tick it, or write another."}),
+            (8, "3. Mailing address for notices: or another address", "input",
+             {"description": "Street, city, state, and ZIP."}),
+            (9, "4. How did you hear of the form: Newsletter", "checkbox", {}),
+            (10, "4. How did you hear of the form: Other", "checkbox", {}),
+            (11, "4. How did you hear of the form: say where", "input", {}),
+            (12, "5. Pets in the unit: Dog", "checkbox", {}),
+            (13, "5. Pets in the unit: Cat", "checkbox", {}),
+            (14, "6. Lease (optional)", "file", {}),
+            (15, "Send me a reminder", "checkbox", {}),
+            (16, "Certification", "hr", {}),
+            (17, "I certify that I am an owner of record of this unit.", "checkbox",
+             {"required": True, "description": "Required to submit."})]
+    return [_question(qid, (labels or {}).get(qid, label), qtype, form_id=OWNER_FORM, **kw)
+            for qid, label, qtype, kw in rows]
+
+
+OWNER_ANSWERS = {1: "", 2: "Ana Example", 3: "", 4: "", 5: CHECK, 6: CHECK, 7: CHECK, 8: "", 9: CROSS, 10: CROSS,
+                 11: "", 12: CROSS, 13: CROSS, 14: "", 15: CROSS, 16: "", 17: CHECK}
+
+
+def _owner_raw(answers: dict[int, str] | None = None, *, labels: dict[int, str] | None = None, drop=(),
+               form_questions: bool = False, files: dict[int, list] | None = None, completed: str = "") -> dict:
+    """A raw ``get_form_submission`` of that form, in PayHOA's shape: every question, ``hr`` too, rides on an answer
+    row (in PayHOA's order, not the form's), and the form carries no questions unless ``form_questions``."""
+    questions = {q["id"]: q for q in _owner_questions(labels)}
+    values = {**OWNER_ANSWERS, **(answers or {})}
+    rows = [{"id": 9000 + qid, "formSubmissionId": OWNER_SID, "formQuestionId": qid, "answer": values[qid],
+             "createdAt": "2026-10-05T17:00:00.000Z", "updatedAt": "2026-10-05T17:00:00.000Z", "deletedAt": None,
+             "question": questions[qid], **({"files": files[qid]} if files and qid in files else {})}
+            for qid in sorted(values, reverse=True) if qid not in drop]
+    form = {"id": OWNER_FORM, "name": "Owner information", "approvers": [],
+            "description": "<p>Please answer by <strong>October 23</strong>.</p>"
+                           "<p>Thank you.<br>The board of Example Village</p>"}
+    if form_questions:
+        form["questions"] = list(questions.values())
+    return {"submission": {"id": OWNER_SID, "organizationId": 1, "formId": OWNER_FORM, "membershipId": 11,
+                           "unitId": 2, "status": "pending", "createdAt": "2026-10-05T17:00:00.000Z",
+                           "completionDate": completed or None, "answers": rows, "approvals": [], "comments": [],
+                           "tags": [], "form": form, "membership": {"id": 11},
+                           "unit": {"id": 2, "title": "102 EXAMPLE WAY"}}}
+
+
+def _owner_view(raw: dict, **kw) -> dict:
+    from jason.approvals.evidence_documents import submission_view
+
+    return submission_view({"formName": "Owner information", "status": "pending", "submission": raw}, **kw)
+
+
+def _row_of(view: dict, prefix: str) -> dict:
+    return next(r for r in view["questions"] if r["question"].startswith(prefix))
+
+
+def test_a_submission_reads_as_the_form_sections_notes_and_one_row_a_question_in_order():
+    v = _owner_view(_owner_raw(completed="2026-10-07T15:00:00.000Z"))
+    assert v["questions"] == [
+        {"question": "Owner", "answer": "", "kind": "section"},
+        {"question": "1. Your name", "answer": "Ana Example", "kind": "text", "help": "As on the deed.",
+         "required": True},
+        {"question": "Answer for the unit named above.", "answer": "", "kind": "note"},
+        {"question": "Notice delivery", "answer": "", "kind": "section"},
+        {"question": "2. How should the Association deliver notices", "answer": "By mail; By email",
+         "kind": "choice", "help": "Choose any."},
+        {"question": "3. Mailing address for notices", "answer": "Same as my unit address", "kind": "choice",
+         "help": "Tick it, or write another. Street, city, state, and ZIP."},
+        {"question": "4. How did you hear of the form", "answer": "None chosen", "kind": "choice"},
+        {"question": "5. Pets in the unit", "answer": "None chosen", "kind": "choice"},
+        {"question": "6. Lease (optional)", "answer": "", "kind": "file"},
+        {"question": "Send me a reminder", "answer": "Not checked", "kind": "check"},
+        {"question": "Certification", "answer": "", "kind": "section"},
+        {"question": "I certify that I am an owner of record of this unit.", "answer": "Certified", "kind": "check",
+         "help": "Required to submit.", "required": True}]
+    assert v["intro"] == "Please answer by October 23.\n\nThank you.\nThe board of Example Village"
+    assert v["completed"] == "2026-10-07"
+    assert {k: v[k] for k in ("form", "unit", "submitted", "status")} == {
+        "form": "Owner information", "unit": "102 EXAMPLE WAY", "submitted": "2026-10-05T17:00:00.000Z",
+        "status": "pending"}
+    assert "completed" not in _owner_view(_owner_raw())
+
+
+def test_boxes_group_by_the_forms_lock_even_a_deleted_records_where_the_labels_cannot(tmp_path):
+    """Labels the fallback cannot read (no "N."), grouped by the fields jason's record gives the question ids."""
+    from jason.approvals.evidence_documents import view
+
+    labels = {5: "Delivery: By mail", 6: "Delivery: By email", 7: "Mailing address: Same as my unit address",
+              8: "Mailing address, if another"}
+    raw = _owner_raw({6: CROSS, 7: CROSS, 8: "PO Box 12, Example City, CA 90000"}, labels=labels)
+    lock = {"key": "owner-info", "formId": OWNER_FORM, "deleted": "2026-09-30T00:00:00+00:00",
+            "questions": {"1": "", "2": "name", "5": "delivery.by-mail", "6": "delivery.by-email",
+                          "7": "mailing-address.same-as-my-unit-address", "8": "mailing-address",
+                          "17": "attestation"}}
+    other = {"key": "owner-info", "formId": 999, "questions": {"5": "a.x", "6": "b.y"}}
+    (tmp_path / "payhoa").mkdir()
+    (tmp_path / "payhoa" / "forms.json").write_text(json.dumps({"forms": [lock, other]}), encoding="utf-8")
+    _keep(tmp_path, OWNER_SID, raw, read_at="2026-10-06T00:00:00+00:00")
+    v = view(f"payhoa:submission:{OWNER_SID}", "submission", by="A Manager", data_dir=tmp_path).answer["submission"]
+    assert _row_of(v, "Delivery") == {"question": "Delivery", "answer": "By mail", "kind": "choice",
+                                      "help": "Choose any."}
+    assert _row_of(v, "Mailing address") == {
+        "question": "Mailing address", "answer": "PO Box 12, Example City, CA 90000", "kind": "choice",
+        "help": "Tick it, or write another. Street, city, state, and ZIP."}
+    assert not any(r["question"].startswith(("Delivery:", "Mailing address,")) for r in v["questions"])
+    # without the lock, the same labels are lone boxes and a line of their own
+    bare = _owner_view(raw)
+    assert [(r["question"], r["answer"], r["kind"]) for r in bare["questions"][4:8]] == [
+        ("Delivery: By mail", "Checked", "check"), ("Delivery: By email", "Not checked", "check"),
+        ("Mailing address: Same as my unit address", "Not checked", "check"),
+        ("Mailing address, if another", "PO Box 12, Example City, CA 90000", "text")]
+
+
+def test_boxes_group_by_their_label_only_when_next_to_each_other():
+    v = _owner_view(_owner_raw({5: CROSS, 6: CHECK}))
+    assert _row_of(v, "2. ")["answer"] == "By email"
+    # the same "N. Title" split by another question is two questions
+    split = _owner_view(_owner_raw(labels={13: "2. How should the Association deliver notices: By fax"}))
+    assert [r["question"] for r in split["questions"]].count("2. How should the Association deliver notices") == 2
+
+
+def test_no_box_checked_is_none_chosen_and_no_answer_rows_is_blank():
+    assert _row_of(_owner_view(_owner_raw()), "5. ")["answer"] == "None chosen"
+    blank = _owner_view(_owner_raw(drop=(12, 13), form_questions=True))
+    assert _row_of(blank, "5. ") == {"question": "5. Pets in the unit", "answer": "", "kind": "choice"}
+
+
+@pytest.mark.parametrize("box, line, answer, flag", [
+    (CHECK, "", "Same as my unit address", None),
+    (CROSS, "PO Box 12, Example City, CA 90000", "PO Box 12, Example City, CA 90000", None),
+    (CHECK, "PO Box 12, Example City, CA 90000", "Same as my unit address; PO Box 12, Example City, CA 90000",
+     "both given"),
+    (CROSS, "", "", None)])
+def test_a_same_as_box_and_its_line_are_one_row(box, line, answer, flag):
+    v = _owner_view(_owner_raw({7: box, 8: line}))
+    row = _row_of(v, "3. ")
+    assert row["question"] == "3. Mailing address for notices" and row["answer"] == answer
+    assert row.get("flag") == flag
+    assert not any(r["question"].endswith("or another address") for r in v["questions"])
+
+
+@pytest.mark.parametrize("answers, shown", [
+    ({9: CHECK, 10: CHECK, 11: "A neighbor"}, "Newsletter; Other: A neighbor"),
+    ({10: CHECK}, "Other (not specified)"),
+    ({9: CHECK}, "Newsletter")])
+def test_other_with_its_line_reads_other_and_what_was_written(answers, shown):
+    v = _owner_view(_owner_raw(answers))
+    assert _row_of(v, "4. ") == {"question": "4. How did you hear of the form", "answer": shown, "kind": "choice"}
+    assert not any(r["question"].endswith("say where") for r in v["questions"])
+
+
+def test_a_lone_box_is_checked_or_not_and_the_attestation_certified_or_not():
+    v = _owner_view(_owner_raw({15: CHECK, 17: CROSS}))
+    assert _row_of(v, "Send me")["answer"] == "Checked"
+    assert _row_of(v, "I certify")["answer"] == "Not certified"
+    assert _row_of(v, "I certify")["kind"] == "check"
+
+
+def test_a_file_answer_names_its_files_and_the_documents_saved_for_them(tmp_path):
+    from jason.approvals.evidence_documents import request_documents
+
+    raw = _owner_raw({14: "77,78,79,77"}, files={14: [
+        {"id": 77, "fileName": "lease.pdf", "downloadUrl": "https://files.example.com/77"},
+        {"id": 78, "fileName": "addendum.pdf", "downloadUrl": "https://files.example.com/78"}]})
+    _keep(tmp_path, OWNER_SID, raw, read_at="2026-10-06T00:00:00+00:00")
+    folder = submission_cache.files_dir(tmp_path) / "requests" / str(OWNER_SID)
+    (folder / "77_lease.pdf").write_bytes(PDF)
+    (folder / "79_photo.jpg").write_bytes(b"\xff\xd8 a made-up jpeg")
+    docs = request_documents(tmp_path, OWNER_SID)
+    row = _row_of(_owner_view(raw, documents=docs), "6. ")
+    assert row == {"question": "6. Lease (optional)", "answer": "lease.pdf; addendum.pdf; photo.jpg", "kind": "file",
+                   "files": ["77_lease.pdf", "79_photo.jpg"]}
+    assert set(row["files"]) <= {d.id for d in docs}
+    assert _row_of(_owner_view(raw), "6. ")["answer"] == "lease.pdf; addendum.pdf; file 79"    # nothing saved
