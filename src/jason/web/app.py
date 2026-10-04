@@ -203,8 +203,12 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         load = sources.get(name)
         if load is None:
             return jsonify(error=f"no such source: {name}"), 404
+        from werkzeug.exceptions import HTTPException
+
         try:
             return jsonify(load(request.args.to_dict()))
+        except HTTPException:
+            raise                 # a loader's own refusal (jason.web.access: 401 signed out, 403 for the office)
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         except Exception as exc:  # a missing store is a miss to show, not a crash

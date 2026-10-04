@@ -87,11 +87,13 @@ def managers(root: Path | None = None) -> tuple[Manager, ...]:
     return tuple(out)
 
 
-def officers_with_managers(officers: Any, community: str, root: Path | None = None) -> tuple[Officer, ...]:
+def officers_with_managers(officers: Any, community: str, root: Path | None = None,
+                           given: tuple[Manager, ...] | None = None) -> tuple[Officer, ...]:
     """The community's officers, and each manager whose portfolio holds ``community`` as its manager (approving "the
-    manager"), unless that person already holds the manager's seat there."""
+    manager"), unless that person already holds the manager's seat there. ``given`` are the managers already read
+    (default: ``managers(root)``)."""
     rows = list(officers)
-    for m in managers(root):
+    for m in managers(root) if given is None else given:
         if not m.manages(community):
             continue
         if any(o.role is OfficerRole.MANAGER and (o.name == m.name or (o.email and o.email.lower() == m.email))

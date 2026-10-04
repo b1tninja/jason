@@ -19,6 +19,7 @@ One page per screen of the earlier spec, now read against the console that exist
 | [mail.md](mail.md) | `#/mail-triage`, `#/inbox`'s letters and requests, `#/insurance`, `#/renewals` | Their documents on `Doc` (built) | 2 |
 | [board-items.md](board-items.md) | `#/actions` (`ConsoleActions`) | Its evidence on `Doc` (built) | 2 |
 | [requests-and-links.md](requests-and-links.md) | `#/drafts`, the key documents tab, `#/canvases`, `#/templates`, and `Embed` | Their documents on `Doc` (built) | 2 |
+| [people.md](people.md) | `#/people` (`PeopleView`) | Built, read-only: offices, holders, vacancies, sign-in | 2 |
 
 Screens built with no spec here: the meeting room, decisions, and agenda (from the design handoff), insurance and renewals (`ConsoleInsurance`; their documents are in [mail.md](mail.md)), canvases and templates (their documents are in [requests-and-links.md](requests-and-links.md)), registers, legal, and the community profile page ([web-ui.md](../../web-ui.md#views-uisrcviews-hash-routes)).
 

@@ -647,6 +647,16 @@ def offices_of(officers: Iterable[Officer], name: str) -> tuple[Officer, ...]:
     return tuple(o for o in officers if o.name == name)
 
 
+@dataclass(frozen=True)
+class VacancyProvision:
+    """How the governing documents fill a vacant office: the provision (``source``, "Bylaws 1.2") and its words as
+    stored (``words``, recited whole; empty: cited, not quoted). jason never fills a vacancy or routes an office's work
+    to another: who acts meanwhile is only what these words say."""
+
+    source: str
+    words: str = ""
+
+
 class IdentityProvider(Enum):
     """Who vouches for a person signing in to the console. Google (a Workspace account) is the one built; another
     is a new member here and a new flow in ``jason.web.signin``."""
@@ -839,6 +849,11 @@ class Community(ABC):
         """The board's officers and the manager by role (``Officer``), names from the private facts; empty until set.
         A person who holds two offices is two rows (``offices_of``)."""
         return ()
+
+    def vacancy_provision(self, office: OfficerRole) -> VacancyProvision | None:
+        """The provision that governs a vacancy in ``office`` (``VacancyProvision``), recited where no one holds it.
+        None until the specification sets it: the console then says no one holds the office, and nothing more."""
+        return None
 
     def sign_in(self) -> tuple[SignInProvider, ...]:
         """How people sign in to the console for this community (``SignInProvider``): its own Google Workspace

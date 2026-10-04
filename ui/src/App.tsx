@@ -44,6 +44,7 @@ import { PlanMeetingView } from "./views/PlanMeetingView";
 import { MeetingRoomView } from "./views/MeetingRoomView";
 import { OwnerPageView } from "./views/OwnerPageView";
 import { OwnerDigestView } from "./views/OwnerDigestView";
+import { PeopleView } from "./views/PeopleView";
 
 function BoardDigest() {
   const r = useApi<Digest>("/api/board-digest");
@@ -124,6 +125,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "legal", label: "Legal", group: "Records", view: () => <LegalView /> },
   { id: "ingestion", label: "Document ingestion", group: "Records", view: () => <IngestionView /> },
   { id: "owner-page", label: "Owner page", group: "Records", owner: true, view: () => <OwnerPageView /> },
+  // Who holds each office, read-only; board only (no owner loader: the server refuses /api/people in the owner view).
+  { id: "people", label: "People and offices", group: "Records", view: () => <PeopleView /> },
 ];
 
 /** The screen a hash id names, through its aliases; in the owner view, an owner alias first. */

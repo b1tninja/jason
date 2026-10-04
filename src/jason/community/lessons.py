@@ -1286,6 +1286,21 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_board_items.py::test_the_packet_names_an_executive_matter_by_its_subject_"
                                  "only",),
            docs=("docs/board-agenda.md", "docs/console/handoff-reconciliation-3.md (The board packet)")),
+    Lesson("loader-refusal-became-500", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A loader that refused a request (no sign-in, the owner view) through access.require or signed_in came "
+           "back from the /api/<name> route as a 500, not its 401 or 403.",
+           "The route caught every exception from a loader to report it, its own refusals included.",
+           "The route lets a werkzeug HTTPException through; other errors are still reported.",
+           Status.FIXED, guards=("tests/test_web_people.py::test_the_route_needs_a_sign_in",)),
+    Lesson("board-roster-change-unrecorded", date(2026, 10, 4), (Area.ONBOARDING, Area.GOVERNING),
+           "The People and offices screen says a change of office is the board's act, recorded in the minutes and "
+           "then by the board-roster question with a second person's confirmation, but the board-roster onboarding "
+           "item has no question to answer, and no term (director or officer) is kept.",
+           "The roster was written as private facts by hand; the onboarding item only checks PayHOA's board tag.",
+           "Still to build: a FactAsk on board-roster with stakes (a second person confirms), and term facts per "
+           "person and seat with their source (directors' terms from the members' election, officers' from the "
+           "board's), read through a Community method with an empty default.",
+           Status.OPEN, docs=("docs/console/screens/people.md",)),
 )
 
 

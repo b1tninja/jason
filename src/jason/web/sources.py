@@ -824,6 +824,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "agenda-plan": "jason.web.extra.agenda_plan:agenda_plan",
     "meeting-room": "jason.web.extra.meeting_room:meeting_room",
     "dock": "jason.web.extra.dock:dock",
+    "people": "jason.web.extra.people:people",  # who holds each office: a signed-in roster person only, read-only
     "theme": "jason.web.extra.theme:theme",
     "community-profile": "jason.web.extra.community_profile:community_profile",
     "associations": "jason.web.extra.discovery:associations",
