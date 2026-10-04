@@ -285,8 +285,10 @@ def test_an_unresolvable_address_is_a_miss_not_an_exception(tmp_path, address):
 def test_the_rule_rows_take_addresses_in_order():
     kinds = [r.kind for r in evidence.RULES]
     assert kinds == [EvidenceKind.PAYHOA_SUBMISSION, EvidenceKind.BOARD_ITEM, EvidenceKind.DRIVE,
-                     EvidenceKind.FILE, EvidenceKind.COMMAND, EvidenceKind.CITATION]
+                     EvidenceKind.FILE, EvidenceKind.LIBRARY, EvidenceKind.COMMAND, EvidenceKind.CITATION]
     assert rule_for("payhoa:submission:1")[0].kind is EvidenceKind.PAYHOA_SUBMISSION
+    assert rule_for("library:abc1234")[0].kind is EvidenceKind.LIBRARY
+    assert rule_for("library: Minutes/x.pdf")[0].kind is not EvidenceKind.LIBRARY     # free text, not an address
     assert rule_for("drive:1FakeDocId0001")[0].kind is EvidenceKind.DRIVE
     assert rule_for("file:governing/Declaration.pdf")[0].kind is EvidenceKind.FILE
     assert rule_for("drive:../x")[0].kind is not EvidenceKind.DRIVE                      # an id never names a path

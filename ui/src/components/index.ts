@@ -15,6 +15,8 @@ export { Evidence, EvidencePanel, EvidenceVersion, evidenceUrl, refreshAllEviden
 export { DocumentViewer, CONFIDENTIAL_LINE, isConfidential, viewDocument, humanSize, documentKindWord, looksLikeMarkdown, type DocumentView, type DocumentViewRequest, type DocumentSubmission, type SubmissionQuestion, type SubmissionRowKind, type EvidenceDocument, type EvidenceDocumentKind } from "./DocumentViewer";
 export { DrivePreview, ReadAllFromDrive, CHANGED_IN_DRIVE, DRIVE_COPY, copyDay, driveAddress, driveIdOf, googleLink, refreshManyEvidence, type DriveKind, type EvidenceRefreshMany } from "./DrivePreview";
 export { DocumentPreview, LocalPreview, DRIVE_COPY_LABEL, RECORDED_COPY, attachedCopies, fileAddress, thumbUrl } from "./DocumentPreview";
+export { Doc, DocList, DOC_WORDS, asEvidenceDocument, documentRef, driveThumbUrl, firstDocument, type DocProps, type DocStatic, type DocVariant } from "./Doc";
+export { DOC_KIND_WORD, addressScheme, docKindWord, driveDocRef, driveIdOfAddress, fileDocRef, isDocRef, isRestricted, pathOfAddress, type DocKind, type DocLevel, type DocRef, type EvidenceEntry } from "../lib/docref";
 export { Findings } from "./Findings";
 export { Kanban } from "./Kanban";
 export { Money } from "./Money";

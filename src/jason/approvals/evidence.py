@@ -24,6 +24,10 @@ live system.
 - **A file on disk** (``file:<path>``, a path under the data folder): a recorded or adopted copy, "Recorded copy",
   only in a place ``jason.web.access``'s ``PATH_RULES`` names and of a kind the viewer shows. Its level is the path's;
   a confidential one is held back outside the private view. No refresher: a recorded instrument does not change.
+- **A library document** (``library:<id>``, an id in ``data/library/library.db``): the library's copy of a PayHOA
+  document, "Library copy", with its file and its extracted text as documents. Its level is the library's
+  confidential flag (``jason.web.access.level_of_library``); a confidential one is held back outside the private
+  view. ``jason library`` classifies the library again.
 
 **The private view.** ``resolve(..., private=True)`` is what jason-web asks while a person's private view is open
 (``jason.web.access``): a restricted book is recited (``jason cite --private``), a citation's confidential documents
@@ -80,6 +84,7 @@ class EvidenceKind(Enum):
     BOARD_ITEM = "board_item"
     DRIVE = "drive"
     FILE = "file"
+    LIBRARY = "library"
     COMMAND = "command"
     UNKNOWN = "unknown"
 
@@ -96,6 +101,7 @@ class SourceName(Enum):
     DRIVE_COPY = "Copy from Drive"
     DRIVE_CATALOG = "Drive catalog"
     RECORDED = "Recorded copy"
+    LIBRARY = "Library copy"
 
 
 @dataclass(frozen=True)
@@ -723,6 +729,63 @@ def read_file(ask: Ask) -> dict[str, Any]:
     return out
 
 
+LIBRARY_ID = r"([A-Za-z0-9_-]{1,64})"
+
+
+def library_row(root: Path, doc_id: str) -> dict[str, Any] | None:
+    """The library's row for a document id (``data/library/library.db``), read only: ``{id, path, name, kind,
+    category, period, confidential}``; None when the library does not hold it or cannot be read."""
+    db = Path(root) / "library" / "library.db"
+    if not doc_id or not db.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT id, path, name, kind, category, period, confidential FROM documents "
+                               "WHERE id = ? LIMIT 1", (doc_id,)).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    return dict(row) if row is not None else None
+
+
+def read_library(ask: Ask) -> dict[str, Any]:
+    """A library document (``library:<id>``): the library's copy, from disk. Its level is the library's confidential
+    flag (``jason.web.access.level_of_library``); a confidential one is held back outside the private view."""
+    from jason.approvals.evidence_documents import LIBRARY_CAVEAT, library_documents
+    from jason.web.access import WORDS, Level, level_of_library
+
+    doc_id = ask.match.group(1) if ask.match else ""
+    row = library_row(ask.root, doc_id)
+    out: dict[str, Any] = {"label": f"Library document {doc_id}", "sources": [], "changed": None, "changedNote": "",
+                           "link": "", "caveats": [], "note": "", "found": row is not None}
+    if row is None:
+        out["note"] = (f"The library holds no document {doc_id or '(no id)'}: `jason library` classifies the PayHOA "
+                       "library into data/library.")
+        return out
+    path = str(row.get("path") or "")
+    name = str(row.get("name") or Path(path).name or doc_id)
+    out["label"] = name
+    level = level_of_library(doc_id, ask.root)
+    if level in (Level.P3, Level.P4) and not ask.private:
+        out["note"] = "Confidential: the document and its text are held back; open the private view to see them."
+        return out
+    file = ask.root / "library" / "files" / path if path else None
+    fields = [mask_field("Name", name), mask_field("Kind", str(row.get("kind") or "")),
+              mask_field("Category", str(row.get("category") or "")), mask_field("Period", str(row.get("period") or "")),
+              mask_field("Level", WORDS[level])]
+    out["sources"].append(source(SourceName.LIBRARY, read_at=_mtime(file) if file is not None else "",
+                                 fields=[f for f in fields if f["value"]], caveat=LIBRARY_CAVEAT,
+                                 note="The library's copy of a PayHOA document; `jason library` reads it again."))
+    out["caveats"].append(LIBRARY_CAVEAT)
+    out["documents"] = [d.as_dict() for d in library_documents(ask.root, doc_id, private=ask.private)]
+    if not out["documents"]:
+        out["note"] = "Not on disk: the library lists it, but neither its file nor its text is kept under data/library."
+    return out
+
+
 # What a command's words say it reads live, in order: the first that matches names the system.
 COMMAND_SYSTEMS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"--payhoa\b|\bsync-(catalog|request-files|bills|liens)\b|\bapprovals apply\b|\bmailroom\b"), "PayHOA"),
@@ -745,8 +808,8 @@ def _command_refresh(ask: Ask) -> list[dict[str, Any]]:
 def read_unknown(ask: Ask) -> dict[str, Any]:
     why = ("no address" if not ask.address else
            "jason cannot open this address: it is not a PayHOA request (payhoa:submission:N), a board item "
-           "(board-item:ID), a Drive file (drive:ID), a file on disk (file:PATH), a command (jason ...), or a citation "
-           "jason cite reads")
+           "(board-item:ID), a Drive file (drive:ID), a file on disk (file:PATH), a library document "
+           "(library:ID), a command (jason ...), or a citation jason cite reads")
     return {"label": ask.address, "sources": [], "changed": None, "changedNote": "", "link": "", "caveats": [],
             "note": why + ".", "found": False}
 
@@ -827,6 +890,8 @@ RULES: tuple[Resolver, ...] = (
              live=True,
              refresher=Refresher("Google Drive", "Export this file again from Drive", refresh_drive, drive_live)),
     Resolver(EvidenceKind.FILE, re.compile(r"^file:(.+)$").match, read_file, (), live=False),
+    Resolver(EvidenceKind.LIBRARY, re.compile(rf"^library:{LIBRARY_ID}$").match, read_library,
+             (Refresh("jason library", False, "classify the PayHOA library again into data/library"),), live=False),
     Resolver(EvidenceKind.COMMAND, re.compile(r"^jason\s+\S").match, read_command, (), live=False),
     Resolver(EvidenceKind.CITATION, _citation, read_citation,
              (Refresh("jason export-authorities", False,
@@ -1198,6 +1263,6 @@ def refresh_many(addresses: Any, *, by: str, client_factory: Callable[[], Contex
 
 __all__ = ["Ask", "CACHE_LOCK", "CAVEAT", "DRIVE_CHANGED", "EvidenceKind", "KEEPER_SIGN_IN", "MAX_BATCH", "MAX_MANY",
            "REFRESH_LOG", "RULES", "Refresh", "RefreshFailed", "Refresher", "Resolver", "SNAPSHOT_CAVEAT",
-           "SourceName", "drive_link", "drive_live", "many_addresses", "mask_field", "mask_text", "payhoa_live",
+           "SourceName", "drive_link", "drive_live", "library_row", "many_addresses", "mask_field", "mask_text", "payhoa_live",
            "plan_addresses", "refresh", "refresh_all", "refresh_drive", "refresh_many", "refresh_submission",
            "refresh_system", "resolve", "rule_for"]

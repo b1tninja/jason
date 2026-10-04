@@ -247,6 +247,18 @@ function Body({ v, opener }: { v: DocumentView; opener?: Opener }) {
   );
 }
 
+/** A viewed document's body alone, rendered by its kind (a submission as the form, a pdf in a frame, an image, text, a
+ * file to download), without the dialog around it: `Doc`'s inline variant shows it on the screen itself. `documents`
+ * and `onGo` let a submission's file answer open a saved file (a new logged view). */
+export function DocumentBody({ v, documents, onGo, busy = false }: {
+  v: DocumentView; documents?: EvidenceDocument[]; onGo?: (index: number) => void; busy?: boolean;
+}) {
+  const opener: Opener | undefined = documents?.length && onGo
+    ? { documents, open: (i) => { if (!busy && i >= 0 && i < documents.length) onGo(i); }, busy }
+    : undefined;
+  return <Body v={v} opener={opener} />;
+}
+
 /** One document of an evidence address, shown unmasked in a modal `<dialog>` (the "pop out"): its name, when jason read
  * it, the server's caveats (the unmasked line in a notice), a new-tab link for a pdf, image, or file, Previous and Next
  * when the address holds several, and Close. The body is the document as its kind shows best: a submission as the form

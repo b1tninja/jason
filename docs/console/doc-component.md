@@ -111,12 +111,22 @@ A screen moves to `Doc` in five steps:
 
 ## Building it
 
-1. **Foundation**, one change, before any screen:
-   - `Doc` and `DocList` with the four variants, absorbing `DrivePreview` and `DocumentPreview` (whose APIs stay as thin wrappers until their callers move);
+1. **Foundation** (built), one change, before any screen:
+   - `Doc` and `DocList` with the four variants (`ui/src/components/Doc.tsx`; the `DocRef` type in `ui/src/lib/docref.ts`), absorbing `DrivePreview` and `DocumentPreview`'s card and the evidence panel's Documents list (whose APIs stay as thin wrappers until their callers move);
    - `jason.approvals.docref`;
    - the `library:` and `file:` resolver rows;
-   - `PATH_RULES` rows for every folder the screens below need: `mail/`, `mailroom/`, `transactions/`, `key-documents/`, `zoom/hearings/` (P3), `board/agenda*`, `board/packet*`, `notices/`, `insurance-pdfs/`, `reserve-studies/`, `cases/` (P3);
+   - `PATH_RULES` rows for every folder the screens below need: `mail/`, `mailroom/`, `transactions/`, `key-documents/`, `zoom/hearings/` (P3), `board/agenda*`, `board/packet*`, `notices/`, `insurance-pdfs/`, `reserve-studies/`, `cases/` (P3); minutes that their name or head marks as an executive session's are P3;
    - `Markdown` rewrites `/api/file?path=` images to `Doc` cards.
+
+   **The guards.** `ui/src/components/docrefs.guard.test.tsx` scans the views for `/api/file?path=`, `docs.google.com`, `drive.google.com`, and `<iframe` and fails on any occurrence beyond `docrefs.allowlist.json`, or on an entry whose count fell (each entry names the group below that removes it; test files are not scanned). `tests/test_loader_paths.py` calls every `/api/*` loader on a made-up data folder and fails on an absolute path in its JSON, beyond its own short allowlist.
+
+   **How it was built, where it differs from the text above:**
+   - `refs_from_strings` answers a list of entries: a `DocRef`, `{command}` for a `jason …` command, or `{text}` (masked); the TypeScript type is `EvidenceEntry`.
+   - A Drive file with no copy yet takes its `kind` from its type (a Doc, Sheet, Slides file, or PDF is `pdf`; an image is `image`).
+   - **Not allowed** is said when a view answers 403, in the server's words: the reference cannot know the person's offices.
+   - A `row`, `card`, or `inline` without its `document` reads the evidence answer (`GET /api/evidence`, disk metadata only) once it is on screen, for the documents a viewer walks and the command that fills a missing copy. Nothing is viewed until a person asks, but an inline P0 or P1 document.
+   - A library document's card has no thumbnail yet: `/api/thumb` takes a path under data/, and a `library:` reference carries none.
+   - The wrappers' extra props: `showName` (off: their table cell names the document already) and `thumbPath` (a wrapper's thumbnail when its address is not a `file:` one).
 2. **Screens, in parallel**, each on its own files:
 
    | Group | Screens | New levels |

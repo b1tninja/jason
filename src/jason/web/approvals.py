@@ -312,7 +312,8 @@ def evidence_level(address: str) -> Any:
     are the association's and the law (P0; a confidential one is listed only in the private view, and its own answer
     says P3); a Drive file's copy at its file's level (``jason.tasks.drive_copies.level_of``: P3 confidential, P0 a
     template or a file under a Drive root's path rule, else P2); a file on disk (``file:<path>``) at its path's level
-    (``jason.web.access.level_of_path``); a PayHOA request's submission and files, and anything else, P2."""
+    (``jason.web.access.level_of_path``); a library document (``library:<id>``) by the library's confidential flag
+    (``level_of_library``: P3 confidential, else P0); a PayHOA request's submission and files, and anything else, P2."""
     from jason.approvals.evidence import EvidenceKind, rule_for
     from jason.web.access import Level
 
@@ -327,6 +328,11 @@ def evidence_level(address: str) -> Any:
             from jason.web.access import level_of_path
 
             return level_of_path(found.group(1).strip().replace("\\", "/").lstrip("/"), data_root())
+        if rule.kind is EvidenceKind.LIBRARY and found is not None:
+            from jason.tasks.drive_copies import data_root
+            from jason.web.access import level_of_library
+
+            return level_of_library(found.group(1), data_root())
     except Exception:  # noqa: BLE001 - an address no rule reads is judged closed
         return Level.P2
     return Level.P0 if rule.kind is EvidenceKind.CITATION else Level.P2

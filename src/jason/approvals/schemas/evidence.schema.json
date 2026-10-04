@@ -10,7 +10,7 @@
     "found": {"type": "boolean"},
     "address": {"type": "string"},
     "label": {"type": "string"},
-    "kind": {"enum": ["payhoa_submission", "citation", "board_item", "command", "unknown"]},
+    "kind": {"enum": ["payhoa_submission", "citation", "board_item", "drive", "file", "library", "command", "unknown"]},
     "sources": {
       "type": "array",
       "items": {
@@ -18,7 +18,7 @@
         "required": ["name", "readAt", "digest", "fields", "text", "citation", "caveat", "note"],
         "additionalProperties": false,
         "properties": {
-          "name": {"enum": ["This plan's read", "Last read from PayHOA", "PayHOA catalog", "Request files", "Statutes on disk", "Documents on disk", "Board items"]},
+          "name": {"enum": ["This plan's read", "Last read from PayHOA", "PayHOA catalog", "Request files", "Statutes on disk", "Documents on disk", "Board items", "Copy from Drive", "Drive catalog", "Recorded copy", "Library copy"]},
           "readAt": {"type": "string", "description": "When this copy was read or synced (ISO 8601); empty when unknown."},
           "digest": {"type": "string", "description": "sha256 of what was read; empty when not comparable."},
           "fields": {

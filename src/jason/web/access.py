@@ -14,8 +14,9 @@ The person's decision: opening documents and files from the console needs a sign
   console as someone (``jason-web --dev``) is judged as that someone, and the log names both.
 - **What a path is** is ``PATH_RULES``, matched in order by its place under data/ and by the stores' own flags (the
   library's ``confidential``, the Zoom index's ``confidential`` or kind, the Drive holdings' ``confidential``; a Drive
-  file's copy by ``jason.tasks.drive_copies.level_of``).
-  Anything no row places is P2: closed, never open.
+  file's copy by ``jason.tasks.drive_copies.level_of``; minutes a file's name or head marks as an executive session's,
+  P3; a key-documents upload the library holds as confidential, P3). A library document by its id is
+  ``level_of_library``. Anything no row places is P2: closed, never open.
 - **``require``** answers a route: the ``Viewer``, or a 401 (no one signed in, or sign-in not set up on this
   jason-web) or a 403 with the reason. A fetch gets JSON with ``signIn``; a top-level navigation gets a small page.
 - **The private view** is a window a signed-in person opens for themselves (``POST /api/private`` with ``{reason,
@@ -278,6 +279,62 @@ def _holdings(rel: str, root: Path) -> Level | None:
     return Level.P3 if rel in _confidential_places(report) else None
 
 
+EXECUTIVE_NAME = re.compile(r"(?:^|[-_ ])exec(?:utive)?(?:[-_ ]|session|$)", re.IGNORECASE)
+EXECUTIVE_FLAG = re.compile(r"^(?:session|kind|meeting)\s*:\s*['\"]?executive(?:[ -]session)?['\"]?\s*$|^executive\s*:\s*"
+                            r"(?:true|yes)\s*$", re.IGNORECASE | re.MULTILINE)
+EXECUTIVE_TITLE = re.compile(r"^#\s.*\bexecutive[ -]session\b.*\bminutes\b|^#\s.*\bminutes\b.*\bexecutive[ -]session\b",
+                             re.IGNORECASE | re.MULTILINE)
+_HEAD_BYTES = 4096
+
+
+def _executive_minutes(rel: str, root: Path) -> Level | None:
+    """P3 for minutes of an executive session (CIV 4935(e); a restricted book, CIV 5215(a)(5)(D)): a file whose name
+    says so (``minutes-exec-…``, ``minutes-executive-session-…``), or whose head marks it: a front matter line
+    ``session: executive`` (or ``executive: true``), or a title that names executive-session minutes. Open minutes
+    that only note an executive session, as CIV 4935(e) asks them to, are not marked. None (the row's P1) otherwise."""
+    name = Path(rel).name
+    if EXECUTIVE_NAME.search(name.split(".", 1)[0].removeprefix("minutes")):
+        return Level.P3
+    path = Path(root) / rel
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(_HEAD_BYTES).decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    front = head.split("\n---", 1)[0] if head.startswith("---") else ""
+    if front and EXECUTIVE_FLAG.search(front):
+        return Level.P3
+    first = "\n".join(line for line in head.splitlines()[:3] if line.startswith("#"))
+    return Level.P3 if first and EXECUTIVE_TITLE.search(first) else None
+
+
+def _key_document(rel: str, root: Path) -> Level | None:
+    """An upload kept for the key documents (``key-documents/<profile>/files/<first 16 of its sha256>/<name>``): P3 when
+    the library holds a copy of the same file (by that sha256 prefix) as confidential; None (the row's P0) otherwise."""
+    parts = rel.split("/")
+    if len(parts) < 5 or parts[2] != "files" or not re.fullmatch(r"[0-9a-f]{16}", parts[3]):
+        return None
+    db = root / "library" / "library.db"
+    if not db.is_file():
+        return None
+    try:
+        conn = _read_only(db)
+        try:
+            row = conn.execute("SELECT MAX(confidential) FROM documents WHERE sha256 LIKE ?",
+                               (parts[3] + "%",)).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return Level.P2
+    return Level.P3 if row and row[0] else None
+
+
+def level_of_library(doc_id: str, data_dir: Path) -> Level:
+    """The level of a library document by its id (``library:<id>``): P3 when library.db holds it, or any copy of it
+    (same sha256), as confidential; P0 when it holds it otherwise; P2 when it does not hold it or cannot be read."""
+    return _library_flag(Path(data_dir), "id", str(doc_id or "")) or Level.P2
+
+
 def _drive_copy(rel: str, root: Path) -> Level | None:
     """A Drive file's copy (``drive/copies/<id>.*``, ``jason.tasks.drive_copies``) at its file's level: P3 when the
     holdings mark it confidential, P0 for a letter template or a file under a Drive root's path rule, else P2."""
@@ -302,16 +359,25 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("thumbs/*", Level.P3),     # page 1 of any PDF; served only by /api/thumb, at the PDF's own level
     PathRule("library/files/*", Level.P2, _library_file),
     PathRule("library/text/*", Level.P2, _library_text),
+    PathRule("zoom/hearings/*", Level.P3),     # a hearing's notice and record: a member's discipline, as the Zoom index's hearings
     PathRule("zoom/meetings/*", Level.P2, _zoom_meeting),
     PathRule("payhoa-files/requests/*", Level.P2),
     PathRule("payhoa-requests-images/*", Level.P2),
     PathRule("forms/*/responses.json", Level.P2),
     PathRule("gmail/files/*", Level.P2),
-    PathRule("mail/*", Level.P2),
-    PathRule("mailroom/*", Level.P2),
+    PathRule("mail/*", Level.P2),              # scanned incoming mail: senders, owners, and their addresses
+    PathRule("mailroom/*", Level.P2),          # letters as mailed, with their recipients
+    PathRule("transactions/*", Level.P2),      # invoices and bills, with vendors' and owners' account details
+    PathRule("insurance-pdfs/*", Level.P2),    # policies and bills, with account and policy numbers
     PathRule("photos/*", Level.P1),
     PathRule("drafts/*", Level.P1),
-    PathRule("board/minutes*", Level.P1),
+    PathRule("board/minutes*", Level.P1, _executive_minutes),
+    PathRule("board/agenda*", Level.P1),
+    PathRule("board/packet*", Level.P1),
+    PathRule("notices/*", Level.P1),           # notices given to members, and their delivery ledger
+    PathRule("reserve-studies/*", Level.P1),
+    PathRule("key-documents/*.json", Level.P1),     # the key documents' store: who linked what, and their notes
+    PathRule("key-documents/*", Level.P0, _key_document),
     PathRule("authorities/*", Level.P0),
     PathRule("reader/*", Level.P0),
     PathRule("artifacts/site-docs/*", Level.P0),
@@ -787,5 +853,5 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
 
 __all__ = ["HELD_BACK", "Level", "NOT_SET_UP", "PATH_RULES", "PRIVATE_DEFAULT", "PRIVATE_LOG", "PRIVATE_MINUTES",
            "PRIVATE_ROUTE", "PathRule", "ROSTER", "SEE_RULES", "SERVED_LOG", "SIGN_IN", "SeeRule", "Viewer", "allow",
-           "check", "clean_reason", "close_private", "install", "level_of_path", "log_or_refuse", "may_see", "now",
+           "check", "clean_reason", "close_private", "install", "level_of_library", "level_of_path", "log_or_refuse", "may_see", "now",
            "placed", "private_info", "private_open", "private_window", "refusal", "require", "served", "signed_in"]

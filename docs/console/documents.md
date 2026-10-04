@@ -39,7 +39,7 @@ What is built and what is proposed are marked in each section. The evidence rout
 
 | Record | What it is | Where |
 |---|---|---|
-| Address | What a piece of evidence names: `payhoa:submission:N`, `CIV 4041`, `jason://decl/6.2(a)`, `board-item:ID`, `drive:ID`, `file:PATH` (a file under data/), `gmail:MESSAGE` (proposed), `mail:ID` (proposed) | an `Evidence` row on a plan item, a canvas clip, a board item, a letter |
+| Address | What a piece of evidence names: `payhoa:submission:N`, `CIV 4041`, `jason://decl/6.2(a)`, `board-item:ID`, `drive:ID`, `file:PATH` (a file under data/), `library:ID` (a document in `library/library.db`: its file and its extracted text, at the library's confidential flag), `gmail:MESSAGE` (proposed), `mail:ID` (proposed) | an `Evidence` row on a plan item, a canvas clip, a board item, a letter, a `DocRef` ([doc-component.md](doc-component.md)) |
 | Document | One readable thing an address has: `{id, name, kind, size, readAt, note}` | `resolve(address).documents` |
 | Copy | The bytes or record jason keeps, with `readAt`, `via` (what read it), and a digest | `payhoa-files/requests/N/submission.json`, `library/files/...`, `drive/copies/ID.*`, `gmail/messages/ID.json` (proposed) |
 | Refresher | How one address is read again from its source, if it can be | a resolver row's `refresher` (`jason.approvals.evidence`) |

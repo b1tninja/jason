@@ -3,11 +3,12 @@ import { ApiError, getJson, postJson, signInRefusal } from "../lib/api";
 import { when, type EvidenceRef } from "../lib/approvals";
 import { useAccount, useMe } from "../lib/session";
 import { Caveats } from "./Caveats";
-import { DocumentViewer, documentKindWord, humanSize, isConfidential, viewDocument, type DocumentView, type DocumentViewRequest, type EvidenceDocument } from "./DocumentViewer";
+import { DocList, documentRef } from "./Doc";
+import { viewDocument, type DocumentView, type DocumentViewRequest, type EvidenceDocument } from "./DocumentViewer";
 import { daysUntil } from "./DueDate";
 import { Recitation } from "./Recitation";
 
-export type EvidenceKind = "payhoa_submission" | "citation" | "board_item" | "drive" | "file" | "command" | "unknown";
+export type EvidenceKind = "payhoa_submission" | "citation" | "board_item" | "drive" | "file" | "library" | "command" | "unknown";
 
 /** One field a source holds; a masked value is the server's mask, never the value itself. */
 export interface EvidenceField { name: string; value: string; masked: boolean }
@@ -164,7 +165,6 @@ function Source({ s, today }: { s: EvidenceSource; today?: Date }) {
   );
 }
 
-const VIEW_REFUSALS = [400, 403, 404, 409];
 
 /** What the server's own calls need before a click: a person signed in with Google (`jason.web.access`); a picked name
  * is not enough. `live` is false for a panel whose calls are passed in (previews, tests). */
@@ -182,86 +182,16 @@ function SignInLink({ href }: { href: string }) {
   return <> <a className="evidence-sign-in" href={href}>Sign in with Google</a></>;
 }
 
-/** The documents an address holds, each with a View button. A view is a signed-in person's act, logged by the server:
- * one click, one POST, one at a time, never on open; Previous and Next in the viewer are each a view of their own. */
+/** The documents an address holds, each with a View button: a thin wrapper over `DocList` (row, without extras), each
+ * document a reference of the address. A view is a signed-in person's act, logged by the server: one click, one POST,
+ * one at a time, never on open; Previous and Next in the viewer are each a view of their own. */
 function Documents({ docs, level, address, approval, who, viewer, gate, today }: {
   docs: EvidenceDocument[]; level: 3 | 4 | 5 | 6; address: string; approval?: string; who: string;
   viewer: ((req: DocumentViewRequest) => Promise<DocumentView>) | null; gate: Gate; today?: Date;
 }) {
-  const [viewing, setViewing] = useState<{ index: number; data: DocumentView | null; busy: boolean; error: string; signIn?: string } | null>(null);
-  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-  const opener = useRef(0);
-  const inFlight = useRef(false);
-  const seq = useRef(0);
-  const alive = useRef(true);
-  const titleId = useId();
-  const whyId = useId();
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  const needsSignIn = signInWhy(gate, "view it");
-  const why = !viewer
-    ? "This copy is shown as given; the page does not open its documents."
-    : needsSignIn || (!who ? "Sign in or pick your name to view it." : "");
-
-  const open = async (i: number) => {
-    const d = docs[i];
-    if (!d || why || !viewer || inFlight.current) return;
-    inFlight.current = true;
-    const mine = ++seq.current;
-    setViewing({ index: i, data: null, busy: true, error: "" });
-    try {
-      const v = await viewer({ address, ...(approval ? { approval } : {}), document: d.id, by: who });
-      if (alive.current && seq.current === mine) setViewing({ index: i, data: v, busy: false, error: "" });
-    } catch (e: unknown) {
-      if (!alive.current || seq.current !== mine) return;
-      const status = e instanceof ApiError ? e.status : undefined;
-      const message = e instanceof Error ? e.message : String(e);
-      const asked = signInRefusal(e);
-      const text = asked || (status && VIEW_REFUSALS.includes(status)) ? message : `jason-web did not answer: ${message}`;
-      setViewing({ index: i, data: null, busy: false, error: text, signIn: asked?.href });
-    } finally {
-      inFlight.current = false;
-    }
-  };
-  const view = (i: number) => {
-    if (why || viewing) return;
-    opener.current = i;
-    void open(i);
-  };
-  const close = () => {
-    seq.current += 1;
-    setViewing(null);
-    buttons.current[opener.current]?.focus();
-  };
-
-  const H = `h${Math.min(level + 1, 6)}` as "h5";
   return (
-    <section className="evidence-documents" aria-labelledby={titleId}>
-      <H id={titleId} className="evidence-documents-title">Documents</H>
-      <p className="muted">Viewing shows the document unmasked, under your name, and is logged.</p>
-      {why && <p className="muted evidence-documents-why"><span id={whyId}>{why}</span>{needsSignIn && gate.known && <SignInLink href={gate.href} />}</p>}
-      <ul>
-        {docs.map((d, i) => {
-          const size = d.kind === "submission" ? "" : humanSize(d.size);
-          return (
-            <li key={d.id || i} className="evidence-document">
-              <span className="evidence-document-name">{d.name}</span>
-              {isConfidential(d) && <span className="private-chip">Confidential</span>}
-              <span className="muted evidence-document-kind">{documentKindWord(d.kind)}{size ? ` · ${size}` : ""}</span>
-              <button type="button" ref={(el) => { buttons.current[i] = el; }} aria-label={`View ${d.name}`}
-                aria-disabled={why || (viewing && viewing.busy) ? true : undefined} aria-describedby={why ? whyId : undefined}
-                onClick={() => view(i)}>
-                View
-              </button>
-              {d.note && <span className="muted evidence-document-note">{d.note}</span>}
-            </li>
-          );
-        })}
-      </ul>
-      {viewing && (
-        <DocumentViewer data={viewing.data} document={docs[viewing.index]} documents={docs} busy={viewing.busy} error={viewing.error} signIn={viewing.signIn}
-          position={{ index: viewing.index, count: docs.length }} onGo={(i) => void open(i)} onClose={close} today={today} />
-      )}
-    </section>
+    <DocList docs={docs.map((d) => documentRef(address, d))} variant="row" level={level} approval={approval} by={who}
+      onView={gate.live || !viewer ? undefined : viewer} noView={!viewer} extras={false} today={today} />
   );
 }
 

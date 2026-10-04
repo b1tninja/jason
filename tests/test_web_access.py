@@ -123,11 +123,59 @@ def data(tmp_path):
     ("authorities/CIV/4041.md", P0), ("reader/decl/index.html", P0), ("artifacts/site-docs/page.pdf", P0),
     ("governing/ccrs.md", P0), ("governing/secret.md", P3),        # the holdings flag it
     ("payhoa-files/documents/Minutes/open.pdf", P0), ("payhoa-files/documents/Board/flagged.pdf", P3),
-    ("board/agenda-2026-10-20.md", P2), ("somewhere-new/file.pdf", P2), ("loose.txt", P2),   # unplaced: closed
+    ("board/agenda-2026-10-20.md", P1), ("board/packet-2026-10-20.md", P1),
+    ("board/items.json", P2), ("somewhere-new/file.pdf", P2), ("loose.txt", P2),   # unplaced: closed
     ("../outside.txt", P4), ("photos/../spec/x.json", P3),
+    # the folders the screens' documents live in (docs/console/doc-component.md, Building it, step 1)
+    ("transactions/2026/invoice-123.pdf", P2), ("insurance-pdfs/policy.pdf", P2),
+    ("notices/deliveries.db", P1), ("notices/board-meeting/notice.pdf", P1), ("reserve-studies/study.pdf", P1),
+    ("zoom/hearings/Notice of Hearing 2099-01-01.pdf", P3), ("cases/any/notes.md", P3),
+    ("key-documents/mystique/files/0123456789abcdef/plan.pdf", P0),
+    ("key-documents/mystique.json", P1),
+    ("board/minutes-exec-2026-09-15.md", P3), ("board/minutes-executive-session-2026-09-15.md", P3),
+    ("board/minutes-2026-09-15.md", P1),
 ])
 def test_level_of_path(data, rel, level):
     assert level_of_path(rel, data) is level
+
+
+def test_executive_session_minutes_are_p3_where_the_file_marks_them(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    (board / "minutes-2099-01-01.md").write_text("---\nsession: executive\n---\n# Minutes\n", encoding="utf-8")
+    (board / "minutes-2099-01-02.md").write_text("# Executive Session Minutes of January 2, 2099\n", encoding="utf-8")
+    # open minutes that note an executive session, as CIV 4935(e) asks, stay open minutes
+    (board / "minutes-draft-2099-01-03.md").write_text("# DRAFT Minutes of 1/3/99\n\nThe board adjourned to executive "
+                                                       "session to discuss litigation.\n", encoding="utf-8")
+    assert level_of_path("board/minutes-2099-01-01.md", tmp_path) is P3
+    assert level_of_path("board/minutes-2099-01-02.md", tmp_path) is P3
+    assert level_of_path("board/minutes-draft-2099-01-03.md", tmp_path) is P1
+
+
+def test_a_key_document_upload_the_library_holds_as_confidential_is_p3(tmp_path):
+    _library(tmp_path, [("lib-k", "Legal/k.pdf", True, "fedcba9876543210ffff")])
+    assert level_of_path("key-documents/p/files/fedcba9876543210/k.pdf", tmp_path) is P3
+    assert level_of_path("key-documents/p/files/0000000000000000/k.pdf", tmp_path) is P0
+
+
+def test_level_of_library(data):
+    from jason.web.access import level_of_library
+
+    assert level_of_library("lib-open", data) is P0
+    assert level_of_library("lib-conf", data) is P3
+    assert level_of_library("lib-copy", data) is P3          # an open copy of a confidential file
+    assert level_of_library("no-such", data) is P2
+
+
+@pytest.mark.parametrize("rel", ["mail/1/scan.pdf", "mailroom/previews/a.pdf", "transactions/a.pdf",
+                                 "key-documents/p/files/0123456789abcdef/a.pdf", "zoom/hearings/a.pdf",
+                                 "board/agenda-2099-01-01.md", "board/packet-2099-01-01.md", "notices/a.pdf",
+                                 "insurance-pdfs/a.pdf", "reserve-studies/a.pdf", "cases/x/a.pdf",
+                                 "board/minutes-2099-01-01.md"])
+def test_the_screens_folders_are_placed(tmp_path, rel):
+    from jason.web.access import placed
+
+    assert placed(rel, tmp_path)
 
 
 def test_a_library_that_cannot_be_read_is_closed(tmp_path):

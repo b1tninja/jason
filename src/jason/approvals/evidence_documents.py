@@ -14,6 +14,8 @@
 - **A file on disk** (``file:<path>``, a path under the data folder in a place ``jason.web.access``'s ``PATH_RULES``
   names, of a kind the viewer shows): the file itself, and a PDF's text extract beside it (``<name>.pdf.md``), at the
   file's level (``level_of_path``). A recorded copy: nothing reads it again.
+- **A library document** (``library:<id>``): the library's file and its extracted text, each when on disk; a
+  confidential one only for the private view, marked.
 - **A board item or a command.** None.
 
 **Confidential documents** (a library file held as confidential, or any copy of one by its digest; a Drive file the
@@ -174,18 +176,24 @@ def request_documents(root: Path, sid: int) -> list[Document]:
 
 # --- a citation ----------------------------------------------------------------------------------------------------------
 
-def _library(root: Path, library_path: str, label: str = "", *, private: bool = False) -> list[Document]:
-    """A library file by its library path: the file itself and its extracted text, each when on disk under the data
-    folder. A file the library holds as confidential (or any copy of one, by its digest, as ``jason.web.access``
-    judges it) only with ``private``, marked confidential."""
+def _library(root: Path, library_path: str, label: str = "", *, private: bool = False,
+             doc_id: str = "") -> list[Document]:
+    """A library file by its library path (or by its id, ``doc_id``: the ``library:<id>`` address): the file itself
+    and its extracted text, each when on disk under the data folder. A file the library holds as confidential (or any
+    copy of one, by its digest, as ``jason.web.access`` judges it) only with ``private``, marked confidential."""
     db = root / "library" / "library.db"
-    if not library_path or not db.is_file():
+    if not (library_path or doc_id) or not db.is_file():
         return []
     try:
         conn = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
         try:
-            row = conn.execute("SELECT id, confidential, sha256 FROM documents WHERE path = ? LIMIT 1",
-                               (library_path,)).fetchone()
+            if doc_id:
+                row = conn.execute("SELECT id, confidential, sha256, path FROM documents WHERE id = ? LIMIT 1",
+                                   (doc_id,)).fetchone()
+                library_path = str(row[3] or "") if row is not None else ""
+            else:
+                row = conn.execute("SELECT id, confidential, sha256 FROM documents WHERE path = ? LIMIT 1",
+                                   (library_path,)).fetchone()
             secret = bool(row and row[1])
             if row is not None and not secret and row[2]:
                 secret = bool(conn.execute("SELECT MAX(confidential) FROM documents WHERE sha256 = ?",
@@ -221,6 +229,12 @@ def _library(root: Path, library_path: str, label: str = "", *, private: bool = 
         out.append(Document(f"library-text:{doc_id}", f"{name}, its extracted text", "text", _size(text),
                             _mtime(text), "the library's text of the file", EXTRACT_CAVEAT, text, text_root))
     return confidential(out) if secret else out
+
+
+def library_documents(root: Path, doc_id: str, *, private: bool = False) -> list[Document]:
+    """A library document by its id (``library:<id>``): the file and its extracted text, as ``_library`` lists them;
+    a confidential one only with ``private``, marked confidential."""
+    return _library(Path(root), "", private=private, doc_id=str(doc_id or "").strip())
 
 
 _DRIVE_FILE = re.compile(r"/(?:file|document|spreadsheets|presentation)/d/([\w-]+)")
@@ -824,6 +838,8 @@ def documents_for(address: str, root: Path, *, private: bool = False) -> tuple[s
         return rule.kind.value, drive_documents(root, found.group(1), private=private)
     if rule.kind is EvidenceKind.FILE and found is not None:
         return rule.kind.value, file_documents(root, found.group(1), private=private)
+    if rule.kind is EvidenceKind.LIBRARY and found is not None:
+        return rule.kind.value, library_documents(root, found.group(1), private=private)
     if rule.kind is EvidenceKind.CITATION:
         from jason.tasks import cite
 
@@ -923,5 +939,5 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
 
 __all__ = ["ATTACHMENT_CAVEAT", "CONFIDENTIAL", "CONFIDENTIAL_NOTE", "Document", "EXTENSIONS", "MAX_TEXT", "OCTET", "Opened", "UNMASKED", "VIEW_LOG",
            "citation_documents", "confidential", "content_type", "documents_for", "drive_documents", "file_documents",
-           "file_id", "file_level", "file_place", "inside", "kind_of",
+           "file_id", "file_level", "file_place", "inside", "kind_of", "library_documents",
            "request_documents", "submission_view", "view"]
