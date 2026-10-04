@@ -93,6 +93,19 @@ Built from the design handoff; listed here so the screen specs can name them.
 | `BoardFields` | The board's columns on a board item, old → new behind a confirm |
 | `RequestForm` | An owner's records request, with the 5210 clock it starts |
 
+## Marks: glyphs, stamps, seals, routing tags
+
+Ported from the design handoff's glyph sheet ([handoff-reconciliation.md](handoff-reconciliation.md#the-visual-system), items 26–27). glyph-layer.js is not shipped: a screen puts a mark where it means one. The vocabularies are `ui/src/lib/marks.ts`; the glyph data is generated into `ui/src/lib/glyphData.ts` (Lucide 1.51.0 subset, ISC, and jason's own).
+
+| Component | Props | Job |
+|---|---|---|
+| `Glyph` | `name` (a `GlyphName`), `size` (CSS length or px; 16 inline, 20 nav, 24 headers, 32 empty states), `label`, `stroke` | One meaning per glyph (`GLYPH_META`), beside its word. Decorative (`aria-hidden`) unless `label` names a glyph that stands alone. An unknown name renders nothing and logs once |
+| `Stamp` | `word`, `by`, `date`, `sentRef`, `size`, `tilt` (0 in a table) | What a **person** decided, in its own word: carried, failed, approved, denied, adopted, tabled, continued, referred, withdrawn, sent (`STAMP_WORDS`). `sent` renders only with `sentRef`, the record of the sending, never from a click. A word outside the set keeps its word in the neutral tone; a seal's word, `draft`, `confidential`, and `recorded` render nothing |
+| `Seal` | `word`, `detail`, `instrument`, `date`, `size`, `tone="ink"`, `inline` | What **jason** did, and whether a person still has to act (open, done, unresolved, not jason's): proposes, suggests, needs approval, waiting on, read, drafted, reminded, filed, not confirmed, not sure, ask a person, will not send (`SEAL_WORDS`). A county filing is `read` with its `instrument` number, never "recorded". `filed` is a seal |
+| `RoutingTag`, `RoutingTags` | `owner` / `owners`: `{role, name?, adoption?}` as the server resolved it (a dock deadline's `owners` row, an `Officer`) | Whose desk a thing is on, by the office's role value; "unassigned" when nothing resolved. Never read out of a thing's words. An assignment not adopted reads "(proposed)" |
+
+Stamps and seals never share a word, a key or a word of a label (`marks.test.tsx`). Draft is the *drafted* seal; confidential is the P3 chip, a level and not a decision.
+
 ## Still proposed
 
 Not in jason-ui and not being added now. Each waits on a decision in [mvp.md](mvp.md#open-decisions) or on its screen.

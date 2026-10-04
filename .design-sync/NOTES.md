@@ -98,6 +98,15 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - Tall cards: `KeyDocuments` (1000x2000), `DocumentLocator` and `LocatedDocuments` (1000x1400), `BoardList` (1000x1100),
   `InstrumentGraph` (1200x1000); the graph's timeline scrolls sideways inside its box by design.
 
+## Marks (built 2026-10-04, not yet synced)
+
+- `Glyph`, `Stamp`, `Seal`, `RoutingTag`, `RoutingTags` have authored previews; `Glyph` (the whole set, 312) and `Seal`
+  (7em seals in a row) are column cards in `cfg.overrides`. The glyph bodies are static SVG from
+  `ui/src/lib/glyphData.ts`, injected per glyph; nothing is fetched.
+- Stamps and seals size from `--stamp-size` / `--seal-size` set on the mark, while the mark keeps its parent's font
+  size, so `size="2.2em"` means the surrounding text's em (stamps.js scaled the font first, which shrank em sizes).
+- The design project's `<j-stamp>`, `<j-seal>`, and glyph-layer.js are superseded by these: glyph-layer is not shipped.
+
 ## Known render warns
 
 - `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's

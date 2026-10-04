@@ -98,6 +98,13 @@
     "PrivateSwitch": {
       "cardMode": "column",
       "viewport": "1200x800"
+    },
+    "Glyph": {
+      "cardMode": "column",
+      "viewport": "1000x1000"
+    },
+    "Seal": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md",

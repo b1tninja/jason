@@ -1214,6 +1214,18 @@ LESSONS: tuple[Lesson, ...] = (
            "commit is tested in a worktree at HEAD (lesson commit-swept-another-sessions-hunk).",
            Status.OPEN,
            notes=("Wanted: gen_cli_docs.py honoring --help and a --check mode; each session in its own worktree.",)),
+    Lesson("marks-mixed-who-acted", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "The Decisions screen showed every recorded outcome as a green badge, denied included, and the design's "
+           "glyph sheet mapped filed, a word for what jason did, to the stamp that marks a person's decision, with "
+           "recorded, draft, and confidential among the stamps.",
+           "There was no vocabulary for who acted: a person's decision and jason's act were drawn with the same marks.",
+           "Stamp (a person's decision, in the motion's own word) and Seal (what jason did) have disjoint vocabularies; "
+           "a county filing is the read seal with its instrument number; draft is the drafted seal; confidential is "
+           "the P3 chip, a level. Routing tags take the owner the server resolved, never keywords. The Decisions "
+           "screen stamps the outcome in its own word and tone.",
+           Status.FIXED, guards=("ui/src/components/marks.test.tsx (disjoint words; filed is a seal; recorded, draft, "
+                                 "confidential in neither; sent needs sentRef; unassigned routing)",),
+           docs=("docs/console/components.md (Marks)",)),
 )
 
 

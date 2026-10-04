@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Caveats, Confirm, DecisionBrief, DecisionCard, RemoteView, type AgendaCandidate, type AgendaPlan, type Brief, type DecisionDraft, type EvidenceEntry } from "../components";
+import { Badge, Caveats, Confirm, DecisionBrief, DecisionCard, RemoteView, Stamp, type AgendaCandidate, type AgendaPlan, type Brief, type DecisionDraft, type EvidenceEntry } from "../components";
 import { EvidenceEntries } from "../components/EvidenceEntries";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
@@ -86,7 +86,7 @@ export function DecisionsView() {
                     <h2>{c.title}</h2>
                     <Badge>{`Board meeting ${d.date}`}</Badge>
                     {c.session === "executive session" && <Badge tone="warn">executive session</Badge>}
-                    {existing?.outcome && <Badge tone="good">{existing.outcome}</Badge>}
+                    {existing?.outcome && <Stamp word={existing.outcome} by={existing.by || undefined} date={existing.recorded?.slice(0, 10) || undefined} tilt={0} size="1.9em" />}
                   </div>
                   {c.brief ? <DecisionBrief decision={c.brief} sources={c.evidenceRefs} /> :<BriefForm item={c} by={by} busy={busy} onSave={(b) => saveBrief(d.date, c, b)} />}
                   <DecisionCard key={c.id + (existing?.updated ?? "")} title={c.title} directors={d.directors} initial={existing ? { ...existing } : { session: c.session, motion: c.motion }} busy={busy} onSave={(dd) => saveDecision(d.date, c, dd)} />

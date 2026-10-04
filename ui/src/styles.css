@@ -4,7 +4,9 @@
 :root {
   --bg: #eef1f5; --panel: #fff; --paper: #e8ecf2; --ink: #1a2028; --muted: #5a6473; --line: #d9dee6; --rule: #c3cad4;
   --accent: #2457c5; --good: #1b7a43; --warn: #946200; --bad: #b3261e;
-  --r: 2px; --serif: 'Newsreader', Georgia, 'Times New Roman', serif; --label: 11.5px;
+  --r: 2px; /* the one radius: every corner */
+  --serif: 'Newsreader', Georgia, 'Times New Roman', serif; /* @kind font */
+  --label: 11.5px;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -176,14 +178,14 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* Owner page (data-reach="full": the theme's surface layer applies here) */
 .owner-page { display: grid; gap: 40px; max-width: 1120px; margin: 0 auto; padding-bottom: 32px; background: var(--bg); color: var(--ink); }
 .op-nav { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; } .op-nav a { color: var(--muted); text-decoration: none; padding: 6px 0; } .op-nav a:hover { color: var(--ink); }
-.op-hero { background: var(--hero, var(--panel)); color: var(--hero-ink, var(--ink)); border-radius: var(--radius-lg, 8px); padding: clamp(28px, 5vw, 56px); display: grid; gap: 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: end; }
+.op-hero { background: var(--hero, var(--panel)); color: var(--hero-ink, var(--ink)); border-radius: var(--r); padding: clamp(28px, 5vw, 56px); display: grid; gap: 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: end; }
 .op-hero .stack { margin-top: 0; gap: 18px; } .op-hero h1 { margin: 0; font-size: clamp(36px, 6vw, 64px); line-height: 1; color: inherit; }
 .op-kicker { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--hero-muted, var(--muted)); }
 .op-lead { margin: 0; max-width: 34em; font-size: 17px; color: var(--hero-muted, var(--muted)); }
 .op-button { display: inline-block; background: var(--accent-2, var(--accent)); color: var(--on-accent-2, var(--on-accent, #fff)); text-decoration: none; padding: 11px 20px; border-radius: 999px; font-weight: 600; }
-.op-box { border: 1px solid var(--hero-line, var(--line)); border-radius: var(--radius, 8px); padding: 22px 24px; display: grid; gap: 8px; } .op-box p { margin: 0; }
+.op-box { border: 1px solid var(--hero-line, var(--line)); border-radius: var(--r); padding: 22px 24px; display: grid; gap: 8px; } .op-box p { margin: 0; }
 .op-box-label { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-2, var(--muted)); font-weight: 600; }
-.owner-page h2.brand { margin: 0; font-size: 30px; } .owner-page .card { border-radius: var(--radius, 8px); }
+.owner-page h2.brand { margin: 0; font-size: 30px; } .owner-page .card { border-radius: var(--r); }
 .op-records { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; } .op-records li { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .op-foot { display: grid; gap: 20px; padding-top: 32px; border-top: 1px solid var(--line); } .op-foot blockquote { margin: 0; max-width: 52em; font-size: 20px; line-height: 1.45; text-transform: none; letter-spacing: 0; }
 .op-foot blockquote span { display: block; margin-top: 10px; font-family: system-ui, sans-serif; font-size: 14px; }
@@ -911,3 +913,55 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
 .private-confidential-line { margin: 6px 0 0; }
 @media (max-width: 719px) { .private-band-inner { padding: 8px 16px; } .private-ask { position: fixed; top: auto; left: 16px; right: 16px; width: auto; } }
 @media (forced-colors: active) { .private-band { background: Canvas; border-style: double; border-width: 4px; } }
+
+/* ==== marks: Glyph, Stamp (what a person decided), Seal (what jason did), RoutingTag (whose desk) ====
+   Sizes come from --stamp-size and --seal-size, set on the mark; the mark itself keeps its parent's font size, so an
+   em size means the surrounding text's em. Colour follows the state or the decision, never the office. */
+.glyph { display: inline-block; flex: none; vertical-align: -0.14em; }
+
+.stamp {
+  --stamp-size: 2.2em; --stamp-tilt: -6deg;
+  display: inline-grid; justify-items: center; align-content: center; gap: calc(var(--stamp-size) * .03);
+  height: var(--stamp-size); padding: 0 calc(var(--stamp-size) * .21); box-sizing: border-box;
+  border: max(1.5px, calc(var(--stamp-size) * .042)) solid currentColor; border-radius: var(--r);
+  box-shadow: inset 0 0 0 calc(var(--stamp-size) * .023) var(--panel), inset 0 0 0 calc(var(--stamp-size) * .053) currentColor;
+  font-family: system-ui, sans-serif; line-height: 1; white-space: nowrap; vertical-align: middle;
+  transform: rotate(var(--stamp-tilt)); opacity: .94;
+}
+.stamp-word { font-size: calc(var(--stamp-size) * .38); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.stamp-has-sub .stamp-word { font-size: calc(var(--stamp-size) * .3); }
+.stamp-sub { font-size: max(9px, calc(var(--stamp-size) * .19)); font-weight: 600; letter-spacing: .06em; opacity: .9; }
+.stamp-good { color: var(--good); } .stamp-bad { color: var(--bad); } .stamp-warn { color: var(--warn); } .stamp-neutral { color: var(--muted); }
+
+.seal {
+  --seal-size: 5em;
+  display: inline-grid; grid-template-columns: var(--seal-size); justify-items: center; gap: .3em; vertical-align: middle;
+  font-family: system-ui, sans-serif; text-align: center; line-height: 1.05; opacity: .95;
+}
+.seal-disc {
+  display: grid; grid-template-rows: auto 1fr auto; place-items: center; row-gap: calc(var(--seal-size) * .008);
+  width: var(--seal-size); height: var(--seal-size); box-sizing: border-box; overflow: hidden; border-radius: 50%;
+  padding: calc(var(--seal-size) * .062) calc(var(--seal-size) * .047) calc(var(--seal-size) * .055);
+  border: max(1px, calc(var(--seal-size) * .0055)) solid currentColor;
+  box-shadow: inset 0 0 0 calc(var(--seal-size) * .004) var(--panel), inset 0 0 0 max(1.5px, calc(var(--seal-size) * .007)) currentColor;
+}
+.seal-eave { font-size: calc(var(--seal-size) * .086); opacity: .8; }
+.seal-disc .seal-box { font-size: calc(var(--seal-size) * .17); }
+.seal-label { font-size: max(9px, calc(var(--seal-size) * .058)); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; text-wrap: balance; }
+.seal-disc .seal-label { max-width: calc(var(--seal-size) * .8); padding-bottom: calc(var(--seal-size) * .01); }
+.seal-sub { font-size: max(9px, calc(var(--seal-size) * .078)); font-weight: 500; letter-spacing: .01em; opacity: .9; overflow-wrap: anywhere; }
+.seal-inline { display: inline-flex; grid-template-columns: none; align-items: center; gap: .35em; text-align: left; vertical-align: baseline; }
+.seal-inline .seal-box { font-size: 1.15em; flex: none; align-self: center; }
+.seal-inline .seal-label { font-size: var(--label); letter-spacing: .07em; font-weight: 600; }
+.seal-inline .seal-sub { font-size: 12.5px; color: var(--muted); }
+.seal-open { color: var(--accent); } .seal-done { color: var(--muted); } .seal-question { color: var(--warn); } .seal-not { color: var(--bad); }
+:root .seal-ink { color: var(--ink); }
+
+.routing-tag {
+  display: inline-flex; align-items: center; gap: .35em; padding: 1px 7px 1px 6px; border: 1px solid var(--rule);
+  border-radius: var(--r); background: var(--panel); color: var(--ink); font-size: 13px; line-height: 1.4; white-space: nowrap;
+}
+.routing-unassigned { border-style: dashed; color: var(--muted); }
+.routing-name, .routing-adoption { color: var(--muted); }
+.routing-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+@media print { .stamp, .seal { opacity: 1; } }

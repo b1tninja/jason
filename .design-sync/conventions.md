@@ -105,6 +105,20 @@ Each takes the approvals engine's own JSON (an `Approval` with its `items`, `dec
 jason appears only as the planner ("Planned by jason, asked by NAME"); every decision, signature, and apply names a
 person, and each goes through `Confirm`.
 
+## Marks: `Glyph`, `Stamp`, `Seal`, `RoutingTag`
+
+- **`Glyph`** (`name`, `size`, `label`): one meaning per glyph (`GLYPH_META`), always beside its word, in the text's
+  colour; decorative unless `label` names one that stands alone. 16px inline, 20 in nav and buttons, 24 in headers.
+- **`Stamp`** (`word`, `by`, `date`, `sentRef`, `size`, `tilt`): what a **person** decided, in the motion's own word
+  (`STAMP_WORDS`: carried, failed, approved, denied, adopted, tabled, continued, referred, withdrawn, sent). `sent`
+  needs `sentRef`, the record of the sending. `tilt={0}` in a table.
+- **`Seal`** (`word`, `detail`, `instrument`, `date`, `inline`): what **jason** did (`SEAL_WORDS`: proposes, suggests,
+  needs-approval, waiting-on, read, drafted, reminded, filed, could-not-confirm, not-sure, not-jason, wont-send). A
+  county filing is `read` with its `instrument`. A gap is *not confirmed*, never a red "missing".
+- **`RoutingTag`** (`owner: {role, name?, adoption?}`) and `RoutingTags` (`owners`): whose desk, from the roster the
+  server resolved; "unassigned" when nothing did. Never pass words to be matched.
+- Stamps and seals never share a word. There is no `draft`, `confidential`, or `recorded` mark.
+
 ## Documents: always `Doc`
 
 A screen that names a document (a letter, a scan, a statute, a Google Doc, a PayHOA request, a recording) shows it with

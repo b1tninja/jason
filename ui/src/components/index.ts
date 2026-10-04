@@ -73,3 +73,9 @@ export {
   type DecisionRecord, type Signature, type AuditEntry, type AuditEvent, type ChainCheck, type ChangedItem, type Recheck,
   type DecideBody, type SignBody, type DecisionWord, type Staleness,
 } from "../lib/approvals";
+// The marks (handoff-reconciliation.md, the visual system): glyphs, a person's stamps, jason's seals, routing tags.
+export { Glyph, GLYPHS, GLYPH_META, JASON_GLYPH_NAMES, LUCIDE_VERSION, hasGlyph, strokeFor, type GlyphMeta, type GlyphName, type GlyphProps } from "./Glyph";
+export { Stamp, type StampProps } from "./Stamp";
+export { Seal, type SealProps } from "./Seal";
+export { RoutingTag, RoutingTags, type RoutingTagProps } from "./RoutingTag";
+export { STAMP_WORDS, SEAL_WORDS, SEAL_STATE_WORDS, NOT_A_MARK, ROLE_GLYPH, UNASSIGNED, isStampWord, isSealWord, roleWords, type StampWord, type StampTone, type SealWord, type SealState, type RoutingOwner } from "../lib/marks";
