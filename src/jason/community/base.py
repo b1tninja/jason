@@ -1009,6 +1009,12 @@ class Community(ABC):
         """The association's recurring deadlines (``jason.community.obligations.Obligation``). Empty until set."""
         return ()
 
+    def applicability_facts(self) -> tuple:
+        """The association's own facts that decide what applies to it (``jason.community.applicability.FactValue``,
+        source PROFILE): its kind of development, occupancy class, unit count, city, water purveyor. Empty until set,
+        so a condition on them is undetermined, never a crash (docs/applicability.md)."""
+        return ()
+
     def bank_accounts(self) -> tuple[BankAccount, ...]:
         """The association's bank accounts by statement suffix. Empty until the specification sets them."""
         return ()
