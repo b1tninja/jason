@@ -95,8 +95,13 @@ sync_state     mailbox, history_id, last_full_sync
 
 **Who answered whom:**
 - **The side of a message is its author's,** not the mailbox's label. Any association address, a group post whose author is an officer, or an officer's known personal address (`Officer.email` and the private roster) counts for the association.
-- **A conversation awaits the association** when its last non-automatic message is from outside, with no later association reply or forward.
-- **A forward to counsel or a vendor** counts as acting on it, not as answering the member. The conversation shows "forwarded to counsel, Oct 3", and the member's question stays open until someone writes back to the member. Whether a forward counts as an answer is a policy question for the board (AGENTS.md, "Where the law is silent").
+- **A conversation awaits the association** when its last non-automatic message is from outside, with no later association message to the asker.
+- **A forward is never an answer** (decided 2026-10-04). It is one of three things:
+  - an **assignment**, followed to its outcome or its inaction as a handoff;
+  - **routing** of mail that belonged elsewhere;
+  - a **copy** shared for information.
+
+  The member's question stays open until someone writes back to the member. The build spec has the details ([conversations-design.md, Handoffs](conversations-design.md#handoffs-a-forward-is-an-assignment)).
 
 ## Detection rules
 
@@ -138,5 +143,5 @@ sync_state     mailbox, history_id, last_full_sync
 ## Open questions
 
 - **Which mailboxes jason reads,** and whether an association mailbox is subscribed to each group. The setup steps for a new community are [setup.md, jason's mailbox](setup.md#6-jasons-mailbox): a Workspace account of jason's own, a member of every group and alias. Onboarding asks it as `jason-mailbox`.
-- **Whether a forward to counsel, a vendor, or the manager counts as acting on a member's message.** It is a written policy for the board (AGENTS.md), not a default in code.
+- **How long to wait on each kind of assignee before an assignment counts as stalled:** a retainer's or a contract's response time where one is stated, else the manager's or the board's choice.
 - **Reading bodies for forwards** is P2 and stays on this machine; only the parsed block and a hash are kept. If that is acceptable, it should be stated in [security-and-privacy.md](console/security-and-privacy.md) when it is built.
