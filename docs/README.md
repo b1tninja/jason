@@ -8,6 +8,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 
 - [setup.md](setup.md): installation, `.env`, Keeper, Google OAuth.
 - [profiles.md](profiles.md): one association as a profile; choosing it, what goes in it, and the plan to make jason reusable.
+- [adapters.md](adapters.md): the vendor-format adapters: each reader of one vendor's layout, how one is declared, and how the boundary check tells it from a general reader that names a counterparty.
 - [onboarding.md](onboarding.md): onboarding a new association: the checklist of records and information a profile needs, `jason onboard --checklist`, and the steps to the first profile.
 - [sample-profile-plan.md](sample-profile-plan.md): plan (not started) for a fictional second profile to test reusability.
 - [base-templates.md](base-templates.md): plan for general base templates (letters, notices, forms, packets) rendered per profile, with the statutory catalog.

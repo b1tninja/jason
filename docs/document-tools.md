@@ -108,7 +108,7 @@ The model closed the two misses the OCR-dropped digits caused and got every stam
 - **How it reads.**
   - It sends one page image per request, with thinking off and temperature 0.
   - The prompt asks for a verbatim transcription, tables as `|` rows, and `[illegible]` rather than a guess.
-- **Against Tesseract.** On the first amendment's cover page it read the recorder's stamp correctly (1/17/2020 and "PLACER TITLE COMPANY"), where Tesseract read "4117/2020" and "PLACER TITLE GON".
+- **Against Tesseract.** On the first amendment's cover page it read the recorder's stamp correctly (the date and the title company's name in capitals), where Tesseract misread the date's first digits and the name's last word.
 - **Shared load.** It asks for the shared 64k window (`DEFAULT_CONTEXT`), because Ollama reloads a model whose context differs, so one load serves the readers and OCR.
 - **Settings.** `JASON_OCR_MODEL` names another vision model, and `JASON_OCR_OLLAMA=0` turns the engine off; the tests set it off.
 - **What it doesn't touch.**

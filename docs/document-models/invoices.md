@@ -4,7 +4,7 @@ Models in `jason.community.models.invoices` and `jason.community.models.invoices
 
 | Model | Kind | Registered | Reads |
 |---|---|---|---|
-| `flood-premium-notice` | invoice | first | Philadelphia Indemnity's NFIP flood renewal notice and new-application invoice |
+| `flood-premium-notice` | invoice | first | the NFIP flood renewal notice and new-application invoice of `Philadelphia Indemnity Insurance Company` (a declared adapter, [adapters.md](../adapters.md)) |
 | `invoice` | invoice | after it | any invoice, receipt, or statement for services: the vendor rows, then the general labels |
 | `utility-bill` | utility_bill | | SMUD's and the City of Sacramento's bills, through the existing readers |
 | `tax-return` | tax_return | | the preparer's filing letter and the returns behind it |
@@ -32,7 +32,7 @@ Each reading carries one INFO finding that cites these sections. Every other che
 - **Lines:** `line_items` (description, quantity, rate, amount), and `line_items_partial` when a row read as quantity, rate, amount does not multiply out (usually an OCR misread).
 - **How it was read:** `method`, which is `format:<vendor>` when a vendor row read it.
 
-`required` is vendor, number, invoice date, and total. A document that has no number of its own therefore reads incomplete with `missing-number`. Examples are Farmers' monthly statement and Twilio's receipt.
+`required` is vendor, number, invoice date, and total. A document that has no number of its own therefore reads incomplete with `missing-number`. Examples are an insurer's monthly billing statement and a card receipt.
 
 ### How it reads
 
@@ -46,30 +46,30 @@ A text is not an invoice when it is unreadable (glyph codes), has no vendor row 
 
 ### Vendor layouts
 
-These are the `InvoiceFormat` rows in `jason.community.invoice_formats`. `jason invoices` uses the same rows.
+These are the `InvoiceFormat` rows in `jason.community.invoice_formats`. `jason invoices` uses the same rows. Each row is a declared adapter for the layout that vendor prints ([adapters.md](../adapters.md)), named here as the row names it.
 
-| Vendor | Layout |
+| Vendor (the row's name) | Layout |
 |---|---|
-| a pest control vendor on FieldRoutes | FieldRoutes' printed invoice (existing row) |
-| E&R Landscaping | number and total each on a line of their own; items print inline amounts |
-| Philadelphia Indemnity (flood) | renewal notice: Bill ID, notice date, coverage row; new-application invoice; the portal's payment receipt |
-| Farmers Insurance | monthly billing statement (no invoice number) |
-| LaBarre/Oksnee | Applied Epic invoice: "Total Invoice Balance", "Balance Due On" |
-| Arden Insurance Services | installment invoice: number under "INVOICE", total above "TOTAL AMOUNT DUE" |
-| CAIS | crime policy invoice row |
-| Signal Service | the mailed (envelope-scan) invoice; the emailed one's "Invoice Date:(" OCR |
-| Amazon | order details page: order number and "Order placed" |
-| Zoom | all labels, then all values |
-| Adobe | values above labels; DD-MON-YYYY date |
-| PayHOA | Stripe invoice: "Date of issue", "Date due" |
-| Twilio | receipt: day-first date, "Total Paid" |
-| Berding & Weil | statement: unlabeled date under the client name, "TOTAL THIS INVOICE" |
-| Newman CPA | QuickBooks Online header row |
-| LeDoux Backflow, California Builder Services, GoodLife | QuickBooks Desktop: the total is the first of the closing run of amounts |
-| GoodLife | Joist-style deposit or progress invoice ("4514-2"); Buildertrend invoice ("Invoice ID:") |
-| Sacramento County Tax Collector | Payment Express card receipt |
-| Post Scan Mail | monthly invoice (never prints its name) and PayPal receipt |
-| Aero-Lite Plastics | Shopify order |
+| `ProActive Pest Control` | FieldRoutes' printed invoice |
+| `E&R Landscaping` | number and total each on a line of their own; items print inline amounts |
+| `Philadelphia Indemnity Insurance Company` | flood renewal notice: Bill ID, notice date, coverage row; new-application invoice; the portal's payment receipt |
+| `Farmers Insurance` | monthly billing statement (no invoice number) |
+| `LaBarre/Oksnee Insurance Agency, LLC` | Applied Epic invoice: "Total Invoice Balance", "Balance Due On" |
+| `Arden Insurance Services` | installment invoice: number under "INVOICE", total above "TOTAL AMOUNT DUE" |
+| `CAIS` | crime policy invoice row |
+| `Signal Service Inc` | the mailed (envelope-scan) invoice; the emailed one's "Invoice Date:(" OCR |
+| `Amazon` | order details page: order number and "Order placed" |
+| `Zoom` | all labels, then all values |
+| `Adobe` | values above labels; DD-MON-YYYY date |
+| `PayHOA` | Stripe invoice: "Date of issue", "Date due" |
+| `Twilio` | receipt: day-first date, "Total Paid" |
+| `Berding & Weil LLP` | statement: unlabeled date under the client name, "TOTAL THIS INVOICE" |
+| `Newman Certified Public Accountant, PC` | QuickBooks Online header row |
+| `LeDoux Backflow Testing Services`, `California Builder Services`, `GoodLife Construction Inc.` | QuickBooks Desktop: the total is the first of the closing run of amounts |
+| `GoodLife Construction Inc.` | Joist-style deposit or progress invoice ("4514-2"); Buildertrend invoice ("Invoice ID:") |
+| `Sacramento County Tax Collector` | Payment Express card receipt |
+| `Post Scan Mail` | monthly invoice (never prints its name) and PayPal receipt |
+| `Aero-Lite Plastics` | Shopify order |
 
 A statement or receipt with no invoice number gets no number pattern. The account or policy number repeats every month, and the review would read it as the same invoice paid twice.
 

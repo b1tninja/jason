@@ -3,8 +3,9 @@
 The general docs (``docs/``, ``AGENTS.md``, ``README.md``, ``SKILLS.md``) describe jason for any
 association. The instance's own facts belong in its profile (``mystique/docs/``) or its private
 notes (``mystique/notes/``). The terms checked come from the profile itself: its names, streets,
-vendors, developers, banks, case numbers, group addresses, Drive ids, and PayHOA org id. Adding
-a fact to the profile extends the check.
+vendors, developers, banks, case numbers, group addresses, Drive ids, PayHOA org id, and the
+counterparties in its sender directory (law firms, managers, vendors, insurers, banks, title
+companies, accountants). Adding a fact to the profile extends the check.
 
 The baseline of what each document names today is ``tests/fixtures/docs_boundary.json``. It
 only shrinks: a new term fails the test, and so does a cleared one the baseline still lists
@@ -15,6 +16,14 @@ expression it matches text with, a word list it filters by, and a default argume
 belongs in the profile behind a ``Community`` method with an empty default. Its baseline is
 ``tests/fixtures/code_boundary.json`` and only shrinks the same way. General code never imports
 the profile package by name at all (`profile_imports`).
+
+A counterparty's name is treated two ways. A general reader that recognizes one by name is the
+bug: it finds the counterparty through the sender directory instead (``sources.sender_in``). A
+vendor-format adapter, the reader of the layout one vendor prints, carries the vendor's name as
+the layout's signature. The two look the same in code, so an adapter is declared as data
+(``jason.community.adapters``, listed in ``docs/adapters.md``): the vendor's name is then allowed
+in that module and in a code span of a document, and nowhere else. A declaration the code no
+longer bears out, or one the document does not list, fails the check (`adapter_problems`).
 """
 
 from __future__ import annotations
@@ -72,14 +81,8 @@ def instance_terms(community: Community) -> tuple[Term, ...]:
         add(_STREET_SUFFIX.sub("", street.value).title(), "street")
     for portal in _rows(community, "vendor_portals"):
         add(getattr(portal, "vendor", ""), "vendor")
-    # A management company the association has had: its name and the words that recognize it. A reader finds it
-    # through the sender directory (``sources.manager_in``), never by a name in a pattern.
-    for sender in _rows(community, "senders"):
-        if getattr(getattr(sender, "kind", None), "name", "") == "MANAGER":
-            add(getattr(sender, "name", ""), "manager")
-            for word in getattr(sender, "words", ()):
-                if not any(ch.isdigit() for ch in word):
-                    add(str(word).title(), "manager", minimum=5)
+    for text, kind, minimum in sender_terms(_rows(community, "senders")):
+        add(text, kind, minimum=minimum)
     for developer in _rows(community, "developers"):
         add(getattr(developer, "name", ""), "developer")
     for account in _rows(community, "bank_accounts"):
@@ -109,8 +112,58 @@ def _rows(community: Community, name: str) -> tuple:
     return tuple(rows or ())
 
 
-# Kinds of term a document may carry inside a code pointer (a reader named after the vendor whose layout it reads).
-PROSE_KINDS = ("name", "manager")
+# The sender directory's counterparties: the kinds of sender that are one association's own (its law firms, managers,
+# vendors, insurers, banks, title companies, accountants, its owners' property managers, a private utility), and the
+# kind each gives its terms. A reader finds one through the directory (``sources.sender_in``), never by a name in a
+# pattern. A government agency, a platform jason runs on, and an owner are not here: the State, a county, a federal
+# program, and the association's own statement are no association's fact.
+COUNTERPARTY_KINDS = {"MANAGER": "manager", "LAW_FIRM": "law firm", "VENDOR": "vendor", "INSURER": "insurer", "BANK": "bank",
+                      "TITLE_ESCROW": "title or escrow company", "ACCOUNTANT": "accountant",
+                      "PROPERTY_MANAGER": "property manager", "UTILITY": "utility"}
+
+
+def sender_terms(senders: tuple) -> list[tuple[str, str, int]]:
+    """(term, kind, shortest length) for each counterparty in a sender directory: its name and the words that recognize
+    it.
+
+    - A sender with a government level (a city's utility department, a public utility district) is a public source,
+      like a government agency, and gives no term.
+    - A word with a digit in it is an address or a box number, not a name.
+    - A word shorter than five characters is too short to tell from an ordinary word.
+    - A word the general vocabulary already uses for a sender nobody named (``sources.KIND_WORDS``) is generic.
+    - A one-word name is a term only when the directory lists it among the sender's words. The words are chosen to
+      recognize the sender in a document's text, so a name that is also an ordinary word ("Belong") is not among them.
+    """
+    from jason.community.sources import KIND_WORDS, fold
+
+    generic = {fold(word) for _, _, words in KIND_WORDS for word in words}
+    found: list[tuple[str, str, int]] = []
+    for sender in senders:
+        kind = COUNTERPARTY_KINDS.get(getattr(getattr(sender, "kind", None), "name", ""))
+        if kind is None or getattr(sender, "level", None) is not None:
+            continue
+        words = [str(word) for word in getattr(sender, "words", ())
+                 if not any(ch.isdigit() for ch in str(word)) and fold(str(word)) not in generic]
+        name = str(getattr(sender, "name", "") or "")
+        if len(name.split()) > 1 or fold(name) in {fold(word) for word in words}:
+            found.append((name, kind, 4))
+        found += [(word.title(), kind, 5) for word in words]
+    return found
+
+
+# Kinds of term a document may carry inside a code pointer: the profile's own name (a pointer into its package).
+PROSE_KINDS = ("name",)
+# Kinds of term a document may carry inside a code pointer only where it points at a declared adapter: a reader of the
+# layout that vendor prints (``jason.community.adapters``).
+ADAPTER_KINDS = frozenset(COUNTERPARTY_KINDS.values())
+
+
+def _adapters(adapters: tuple | None) -> tuple:
+    if adapters is not None:
+        return tuple(adapters)
+    from jason.community.adapters import adapters as declared_adapters
+
+    return declared_adapters()
 
 
 def general_documents(root: Path) -> tuple[Path, ...]:
@@ -125,15 +178,21 @@ def general_documents(root: Path) -> tuple[Path, ...]:
     return tuple(files)
 
 
-def scan(root: Path, terms: tuple[Term, ...]) -> dict[str, list[str]]:
-    """For each general document, the instance terms it names (sorted); documents naming none are left out."""
+def scan(root: Path, terms: tuple[Term, ...], adapters: tuple | None = None) -> dict[str, list[str]]:
+    """For each general document, the instance terms it names (sorted); documents naming none are left out.
+
+    The profile's name may stand in a code pointer. A counterparty's name may stand in one only where an adapter is
+    declared for that vendor's layout (``adapters``, by default every declared one): the document then points at the
+    reader, as it would at a module. In prose it is a fact about the association, and found."""
     patterns = [(term, term.pattern()) for term in terms]
+    rows = _adapters(adapters)
+    pointed = {term.text: any(row.names(term.text) for row in rows) for term in terms if term.kind in ADAPTER_KINDS}
     found: dict[str, list[str]] = {}
     for path in general_documents(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         prose = _POINTER.sub("", text)
         hits = sorted({term.text for term, pattern in patterns
-                       if pattern.search(prose if term.kind in PROSE_KINDS else text)}, key=str.casefold)
+                       if pattern.search(prose if term.kind in PROSE_KINDS or pointed.get(term.text) else text)}, key=str.casefold)
         if hits:
             found[path.relative_to(root).as_posix()] = hits
     return found
@@ -199,15 +258,23 @@ def _code_files(root: Path) -> list[Path]:
     return sorted((root / GENERAL_CODE).rglob("*.py"))
 
 
-def scan_code(root: Path, terms: tuple[Term, ...]) -> dict[str, list[str]]:
-    """For each general module, the instance terms its patterns, word lists, and defaults name (sorted)."""
+def scan_code(root: Path, terms: tuple[Term, ...], adapters: tuple | None = None) -> dict[str, list[str]]:
+    """For each general module, the instance terms its patterns, word lists, and defaults name (sorted).
+
+    A counterparty's name is not counted in a module declared as an adapter for that vendor's layout (``adapters``, by
+    default every declared one): there the name is the layout's signature. It is counted in every other module, and
+    every other kind of term is counted everywhere."""
     patterns = [(term, term.pattern()) for term in terms]
+    rows = _adapters(adapters)
     found: dict[str, list[str]] = {}
     for path in _code_files(root):
+        module = path.relative_to(root).as_posix()
         strings = code_sites(ast.parse(path.read_text(encoding="utf-8")))
-        hits = sorted({term.text for term, pattern in patterns if any(pattern.search(s) for s in strings)}, key=str.casefold)
+        hits = sorted({term.text for term, pattern in patterns if any(pattern.search(s) for s in strings)
+                       and not (term.kind in ADAPTER_KINDS and any(row.module == module and row.names(term.text) for row in rows))},
+                      key=str.casefold)
         if hits:
-            found[path.relative_to(root).as_posix()] = hits
+            found[module] = hits
     return found
 
 
@@ -239,6 +306,21 @@ def profile_imports(root: Path, slug: str) -> list[str]:
             if any(module.split(".")[0] in names for module in _imported(node)):
                 found.append(f"{path.relative_to(root).as_posix()}:{node.lineno}")
     return found
+
+
+ADAPTERS_DOC = "docs/adapters.md"
+
+
+def adapter_problems(root: Path, adapters: tuple | None = None) -> list[str]:
+    """What is wrong with the adapter declarations: one the code no longer bears out (its module is gone or no longer
+    names the vendor), and one the adapters document does not list. A declaration is data a reader of the repository can
+    see, so it is never only in the code."""
+    from jason.community.adapters import stale, unlisted
+
+    rows = _adapters(adapters)
+    doc = root / ADAPTERS_DOC
+    listed = doc.read_text(encoding="utf-8") if doc.is_file() else ""
+    return stale(root, rows) + [f"{ADAPTERS_DOC}: does not list {row}" for row in unlisted(listed, rows)]
 
 
 def repo_root() -> Path:
@@ -276,6 +358,9 @@ def main(argv: list[str] | None = None) -> int:
         ok = ok and drift.ok
     for site in profile_imports(root, community().slug):
         print(f"import {site}: general code imports the profile package")
+        ok = False
+    for line in adapter_problems(root):
+        print(f"adapter {line}")
         ok = False
     return 0 if ok else 1
 

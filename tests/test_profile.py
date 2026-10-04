@@ -221,6 +221,145 @@ def test_a_manager_named_in_a_general_pattern_is_found(tmp_path):
     assert scan_code(tmp_path, (Term("Oak Ridge Management", "manager"),)) == {"src/jason/reader.py": ["Oak Ridge Management"]}
 
 
+def test_a_counterparty_is_an_instance_term_and_a_reader_finds_it_through_the_sender_directory():
+    from jason.community.boundary import COUNTERPARTY_KINDS
+    from jason.community.sources import Sender, SourceKind, sender_in, sender_name
+
+    senders = mystique().senders()
+    terms = {t.text.casefold(): t.kind for t in instance_terms(mystique())}
+    # Every counterparty of every kind is a term, under its kind: its name where it has more than one word, and the
+    # words that recognize it.
+    for kind in (SourceKind.LAW_FIRM, SourceKind.VENDOR, SourceKind.INSURER, SourceKind.BANK, SourceKind.TITLE_ESCROW,
+                 SourceKind.ACCOUNTANT, SourceKind.MANAGER, SourceKind.PROPERTY_MANAGER):
+        listed_kind = [s for s in senders if s.kind is kind and s.level is None]
+        assert listed_kind, kind
+        for s in listed_kind:
+            if len(s.name.split()) > 1:
+                assert terms.get(s.name.casefold()) in set(COUNTERPARTY_KINDS.values()), s.name
+    firms = [s for s in senders if s.kind is SourceKind.LAW_FIRM]
+    assert all(terms.get(s.name.casefold()) == "law firm" for s in firms)
+    # A government agency, a public utility, and a platform are no association's fact.
+    public = [s for s in senders if s.kind in (SourceKind.GOVERNMENT, SourceKind.PLATFORM) or s.level is not None]
+    assert public and not any(s.name.casefold() in terms for s in public)
+
+    listed = (Sender("Oak Ridge Management", SourceKind.MANAGER, ("OAK RIDGE MANAGEMENT",)),
+              Sender("Elm & Birch LLP", SourceKind.LAW_FIRM, ("ELM & BIRCH",)),
+              Sender("Oak Ridge Roofing", SourceKind.VENDOR, ("OAK RIDGE ROOFING",)))
+    assert sender_in("ELM &\nBIRCH, LLP\nAttorneys at Law", listed, SourceKind.LAW_FIRM) is listed[1]   # OCR's breaks do not matter
+    assert sender_in("Invoice from Oak Ridge Roofing", listed, SourceKind.LAW_FIRM) is None             # a vendor is not a law firm
+    assert sender_in("Invoice from Oak Ridge Roofing", listed, SourceKind.LAW_FIRM, SourceKind.VENDOR) is listed[2]
+    assert sender_in("Invoice from Oak Ridge Roofing", listed) is listed[2]                             # no kind: any sender
+    assert sender_in("A letter from another firm", listed, SourceKind.LAW_FIRM) is None                 # not listed: a miss
+
+    class Listed:
+        def senders(self):
+            return listed
+
+    assert sender_name("Elm & Birch LLP", Listed(), SourceKind.LAW_FIRM) == "Elm & Birch LLP"
+    assert sender_name("Elm & Birch LLP", object(), SourceKind.LAW_FIRM) == ""                          # no directory: a miss
+
+
+def test_sender_terms_leave_out_public_sources_generic_words_and_ordinary_names():
+    from jason.community.boundary import sender_terms
+    from jason.community.sources import Level, Sender, SourceKind
+
+    senders = (
+        Sender("Elm & Birch LLP", SourceKind.LAW_FIRM, ("BIRCH", "ELM BIRCH", "12 MAIN STREET")),
+        Sender("Gather", SourceKind.PROPERTY_MANAGER, ("GATHER HOMES INC",)),            # its name is an ordinary word
+        Sender("OakPay", SourceKind.VENDOR, ("OAKPAY",)),                                # a one-word name the words list
+        Sender("Oak County Water District", SourceKind.UTILITY, ("OAK COUNTY WATER",), Level.DISTRICT),
+        Sender("Oak Valley Water Company", SourceKind.UTILITY, ("OAK VALLEY WATER", "WATER COMPANY")),
+        Sender("Franchise Tax Board", SourceKind.GOVERNMENT, ("FRANCHISE TAX BOARD",), Level.STATE),
+        Sender("PayHOA", SourceKind.PLATFORM, ("PAYHOA",)),
+        Sender("An owner", SourceKind.OWNER, ("REGULAR ASSESSMENT",)),
+    )
+    found = {(text, kind) for text, kind, _ in sender_terms(senders)}
+    assert found == {("Elm & Birch LLP", "law firm"), ("Birch", "law firm"), ("Elm Birch", "law firm"),   # no address
+                     ("Gather Homes Inc", "property manager"),                                            # not "Gather"
+                     ("OakPay", "vendor"), ("Oakpay", "vendor"),
+                     ("Oak Valley Water Company", "utility"), ("Oak Valley Water", "utility")}            # not "Water Company"
+    # A word shorter than five characters is left out when the terms are taken.
+    assert {text: least for text, _, least in sender_terms(senders)}["Birch"] == 5
+
+
+def test_a_counterparty_in_a_general_pattern_is_found_unless_the_module_is_its_declared_adapter(tmp_path):
+    from jason.community.adapters import Adapter
+
+    code = tmp_path / "src" / "jason"
+    code.mkdir(parents=True)
+    source = "import re\n\ndef f(t):\n    return re.search(r'Oak Ridge Bank|Elm & Birch|Oakridge', t)\n"
+    (code / "bank_statement.py").write_text(source, encoding="utf-8")
+    (code / "letters.py").write_text(source, encoding="utf-8")
+    terms = (Term("Oak Ridge Bank", "bank"), Term("Elm & Birch", "law firm"), Term("Oakridge", "name"))
+    both = ["Elm & Birch", "Oak Ridge Bank", "Oakridge"]
+    # Undeclared, the bank's name is a fact in both modules.
+    assert scan_code(tmp_path, terms, adapters=()) == {"src/jason/bank_statement.py": both, "src/jason/letters.py": both}
+    # Declared, it is the layout's signature in that module only. The declaration allows no other vendor, no other
+    # kind of term, and the vendor nowhere else.
+    declared = (Adapter("src/jason/bank_statement.py", "Oak Ridge Bank", "checking statements"),)
+    assert scan_code(tmp_path, terms, adapters=declared) == {"src/jason/bank_statement.py": ["Elm & Birch", "Oakridge"],
+                                                             "src/jason/letters.py": both}
+    # A declaration cannot excuse the association's own name, whatever it calls its vendor.
+    named = (Adapter("src/jason/bank_statement.py", "Oakridge", "anything"),)
+    assert "Oakridge" in scan_code(tmp_path, terms, adapters=named)["src/jason/bank_statement.py"]
+
+
+def test_a_document_names_a_vendor_only_in_a_code_span_that_points_at_its_adapter(tmp_path):
+    from jason.community.adapters import Adapter
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "prose.md").write_text("The association banks at Oak Ridge Bank.\n", encoding="utf-8")
+    (docs / "pointer.md").write_text("The `oak-statement` model reads the layout of `Oak Ridge Bank`.\n", encoding="utf-8")
+    (docs / "firm.md").write_text("The reader looks for `Elm & Birch` in the head.\n", encoding="utf-8")
+    terms = (Term("Oak Ridge Bank", "bank"), Term("Elm & Birch", "law firm"))
+    declared = (Adapter("src/jason/bank_statement.py", "Oak Ridge Bank", "checking statements"),)
+    # In prose the vendor is the association's fact. In a code span it points at the declared adapter. A counterparty
+    # with no adapter is found in a code span too.
+    assert scan(tmp_path, terms, adapters=declared) == {"docs/prose.md": ["Oak Ridge Bank"], "docs/firm.md": ["Elm & Birch"]}
+    assert set(scan(tmp_path, terms, adapters=())) == {"docs/prose.md", "docs/pointer.md", "docs/firm.md"}
+
+
+def test_every_adapter_is_listed_and_borne_out(tmp_path):
+    from jason.community.adapters import ADAPTERS, Adapter, adapters, stale, unlisted
+    from jason.community.boundary import adapter_problems
+
+    # The declarations in the repository: each module exists and names its vendor, and docs/adapters.md lists each.
+    assert adapter_problems(repo_root()) == []
+    assert len(adapters()) > len(ADAPTERS)                      # the invoice layouts are declared by their own rows
+    # A vendor's name is matched by whole words: part of a name is that vendor, part of a word is not.
+    row = Adapter("src/jason/bank_statement.py", "Oak Ridge Bank", "checking statements", signature=("Oak Ridge Bank, N.A.",))
+    assert row.names("Oak Ridge") and row.names("oak ridge bank") and not row.names("Ridgeline") and not row.names("Oak Ridge Roofing")
+    # A declaration whose module is gone, or no longer names the vendor, is stale; one the document leaves out is unlisted.
+    code = tmp_path / "src" / "jason"
+    code.mkdir(parents=True)
+    (code / "bank_statement.py").write_text("import re\n\nBANK = re.compile(r'Elm Bank')\n", encoding="utf-8")
+    gone = Adapter("src/jason/missing.py", "Oak Ridge Bank", "checking statements")
+    assert stale(tmp_path, (row, gone)) == ["src/jason/bank_statement.py: does not name Oak Ridge Bank",
+                                             "src/jason/missing.py: no such module (adapter for Oak Ridge Bank)"]
+    (code / "bank_statement.py").write_text("import re\n\nBANK = re.compile(r'Oak Ridge Bank')\n", encoding="utf-8")
+    assert stale(tmp_path, (row,)) == []
+    assert unlisted("| `Oak Ridge Bank` | `src/jason/bank_statement.py` | checking statements |", (row,)) == []
+    assert unlisted("Oak Ridge Bank is read by src/jason/bank_statement.py.", (row,)) == ["Oak Ridge Bank (src/jason/bank_statement.py)"]
+    assert adapter_problems(tmp_path, (row,)) == ["docs/adapters.md: does not list Oak Ridge Bank (src/jason/bank_statement.py)"]
+
+
+def test_no_general_reader_names_a_law_firm():
+    """The readers that named the association's law firms (2026-10-04) take them from the sender directory, and
+    neither baseline holds a counterparty of any kind: a new one cannot hide among old entries."""
+    import json
+
+    from jason.community.boundary import ADAPTER_KINDS
+
+    firms = tuple(t for t in instance_terms(community()) if t.kind == "law firm")
+    assert firms
+    assert scan_code(repo_root(), firms) == {} and scan(repo_root(), firms) == {}
+    counterparties = {t.text.casefold() for t in instance_terms(community()) if t.kind in ADAPTER_KINDS}
+    for path in (baseline_path(), code_baseline_path()):
+        held = {term.casefold() for found in json.loads(path.read_text(encoding="utf-8")).values() for term in found}
+        assert not held & counterparties, path.name
+
+
 def test_the_lesson_names_its_guard():
     from jason.community.lessons import LESSONS, lesson
 

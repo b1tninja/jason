@@ -6,7 +6,7 @@ Before jason fetched the utility bills itself, invoices were attached to PayHOA 
 
 `jason.community.invoices.read_invoice` reads an invoice's vendor, number, date, due date, and payable total. It also keeps every amount the document prints. The general reader knows the common labels ("Invoice #", "Invoice Date", "Amount Due", "Invoice Total", "Total for this invoice"). It skips a zero amount due, which marks a paid invoice, and reads "USD 1.49" and "2,750." as amounts.
 
-A vendor whose layout the general reader gets wrong gets an `InvoiceFormat` row in `jason.community.invoice_formats`. The row lists the phrases that identify the vendor's invoices and patterns for its fields. The first row that matches wins. The general reader fills whatever the row leaves out. E&R Landscaping is the first row.
+A vendor whose layout the general reader gets wrong gets an `InvoiceFormat` row in `jason.community.invoice_formats`. The row lists the phrases that identify the vendor's invoices and patterns for its fields. The first row that matches wins. The general reader fills whatever the row leaves out. Each row is a declared adapter for the layout its vendor prints ([adapters.md](adapters.md)).
 
 The review prints a scorecard per payee. It shows how often the reader found a number, a date, a total, and the payment's amount. A payee with low scores is the next format row to write.
 

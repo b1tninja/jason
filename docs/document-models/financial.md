@@ -21,7 +21,7 @@ This association's findings are in its private notes (mystique/notes/document-mo
 
 ## Bank statements (`chase-statement`)
 
-The layout is JPMorgan Chase business checking: "Beginning Balance / $x / Ending Balance / n / $y", then the product ("Chase Business Complete Checking", "Chase Performance Business Checking") and the checking summary as label, count, and amount.
+The layout is `JPMorgan Chase` business checking (a declared adapter, [adapters.md](../adapters.md)): "Beginning Balance / $x / Ending Balance / n / $y", then the product ("Chase Business Complete Checking", "Chase Performance Business Checking") and the checking summary as label, count, and amount.
 
 **Record `BankStatement`.** It holds the bank, the product, and the account's last four digits, taken from the statement's account line and separately from the file name ("20250829-statements-1234-.pdf"). It also holds the period start and end, the beginning and ending balances, and the transaction count. The summary lines (`SummaryLine`: label, count, and signed cents) give the deposits, withdrawals, checks paid, fees, and interest. The record also notes whether the service fee was waived, the "Total Service Charge", the date the fee page says it will be assessed and the services charged ("Stop Payment - Online"), and the account's purpose (operating or reserve) from `community.bank_accounts()`.
 

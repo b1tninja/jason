@@ -13,7 +13,7 @@ Every kind is confidential in the library (`CONFIDENTIAL_KINDS`). A claim paper 
 | `claim_estimate` | `claim-estimate` | a carrier's or its vendor's estimate (Xactimate layout): claim, type of loss, date of loss, RCV, depreciation, ACV, deductible, net claim; whether it is a water-mitigation (dry-out) estimate | an estimate within the deductible |
 | `police_report` | `police-report` | the report number, the agency, the date, and the development address only | none |
 
-Carrier names come from the letterhead (`carrier_of`): Farmers (including Truck Insurance Exchange and Fire Insurance Exchange), USAA (Garrison Property and Casualty), Accelerant, AAA, Athens, MG Skinner, McGowan, and Philadelphia. The name rules in `mystique/documents.py` come before the proposal and invoice rules. "ESTIMATE FOR REPAIRS 5021000019-1" is the carrier's estimate, not a vendor's.
+Carrier names come from the letterhead (`carrier_of`): its list of carriers, their underwriting companies, program administrators, and claims administrators, each with the words its letterhead prints. The name rules in `mystique/documents.py` come before the proposal and invoice rules. "ESTIMATE FOR REPAIRS 5021000019-1" is the carrier's estimate, not a vendor's.
 
 This association's findings are in its private notes (mystique/notes/document-models/insurance-claims.md).
 

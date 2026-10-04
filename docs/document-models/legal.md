@@ -37,7 +37,7 @@ An assessment is delinquent 15 days after it is due. The late charge is at most 
 
 **`PreLienNotice` fields:**
 
-- **Letter:** `notice_date`, `as_of`, `title`, `sender`, `sender_kind`, `manager`, `ledger_by`.
+- **Letter:** `notice_date`, `as_of`, `title`, `sender`, `sender_kind`, `manager`, `ledger_by`. The sender is a law firm the specification's sender directory lists when the letter's head names one and is not the board's own letterhead; `manager` and `ledger_by` (who printed the enclosed ledger) come from the same directory (`sources.sender_name`). A firm or manager it does not list is not named.
 - **Unit:** `property_address`, `building`, `unit`, `names_owner`.
 - **Stated terms:** `days_delinquent_stated`, `cure_days`, `foreclosure_days_after_lien`, `lien_threshold`, `collections_threshold`, `payment_plan_offered`, `board_decides_lien`, `foreclosure_by_agent` (the letter has the collection agency begin foreclosure), `certified_mail`.
 - **5660 items:** `elements`, a tuple of `PreLienElement`.
@@ -106,8 +106,8 @@ This association's findings are in its private notes (mystique/notes/document-mo
 
 **Layouts.**
 
-- Severaid & Glahn's "Notice of Claim of Lien for Delinquent Assessments", with Exhibit A (the legal description) and Exhibit B (the itemized statement).
-- Downey Brand's "Notice and Claim of Mechanic's Lien" for a lumber supplier. One file also carries the release of the earlier lien.
+- A collections law firm's "Notice of Claim of Lien for Delinquent Assessments", with Exhibit A (the legal description) and Exhibit B (the itemized statement). `requested_by` is the law firm the sender directory lists (`sources.sender_name`), else the requester as the recorder's block prints it.
+- A claimant's counsel's "Notice and Claim of Mechanic's Lien" for a lumber supplier. One file also carries the release of the earlier lien.
 - The surety's "Bond for Release of Mechanic's Lien". The sum is written out in words, and `words_to_cents` reads it.
 
 **`AssessmentLien` fields:**
@@ -234,7 +234,7 @@ This association's findings are in its private notes (mystique/notes/document-mo
 
 No Davis-Stirling section shapes these reports. The vendor's standard does (NFPA 72, NFPA 25), and jason holds no copy of it. The cadence comes from the specification's `obligations`: the fire sprinkler inspection and the backflow test are yearly. A system with no obligation gets no due date. Both models return nothing for an SB 326 balcony report, which `elevated_elements` reads.
 
-**Layouts.** `signal-service-fire-alarm` reads Signal Service's NFPA 72 report. `inspection-report` reads another vendor's labeled report (inspection or test date, tested by, license, pass or fail, deficiencies, next due).
+**Layouts.** `signal-service-fire-alarm` reads the NFPA 72 report of `Signal Service` (a declared adapter, [adapters.md](../adapters.md)). `inspection-report` reads another vendor's labeled report (inspection or test date, tested by, license, pass or fail, deficiencies, next due).
 
 **`InspectionReport` fields:**
 

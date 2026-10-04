@@ -43,7 +43,7 @@ Record `InsurancePolicy` has these fields:
 
 Layouts:
 
-- `nfip-flood-declarations`: Philadelphia Indemnity's NFIP Residential Condominium Building Association Policy declarations (manageflood), in their new, renewal, and revised forms. The text layer prints the labels apart from their values. The reader keys each value to the label it always sits beside: the building coverage is the first whole-dollar amount after "COVERAGE", and the total is the amount printed under "FEDERAL POLICY FEE:", or "ANNUAL SUBTOTAL:" on a revised page. The premium parts check that reading.
+- `nfip-flood-declarations`: a Write Your Own carrier's NFIP Residential Condominium Building Association Policy declarations (the manageflood layout), in their new, renewal, and revised forms. The text layer prints the labels apart from their values. The reader keys each value to the label it always sits beside: the building coverage is the first whole-dollar amount after "COVERAGE", and the total is the amount printed under "FEDERAL POLICY FEE:", or "ANNUAL SUBTOTAL:" on a revised page. The premium parts check that reading.
 - `policy-declarations`: any other declarations page with "Policy Number", "Policy Period", and "Named Insured" labels. The master, umbrella, crime, and D&O declarations are not in the library, so no real file uses this reader yet.
 
 Checks:
@@ -115,25 +115,25 @@ Record `Contract` has these fields:
 
 The vendor is the specification's counterparty (`Mystique.senders()`) whose words appear first. A name in an address block or an email address does not count ("TO:" a manager, "Association c/o ..."). A vendor the directory lacks is read from the letterhead: the "Company" label, a company suffix, the parties clause, or the website.
 
-The title is an upper-case heading on one line (a logo's stray letter on the line above does not join it). The first 8,000 characters are searched first, then the whole text, since Jensen's specifications addendum comes before its agreement. A heading about the agreement ("PARTIES TO THE AGREEMENT", "SERVICES INCLUDED IN YOUR AGREEMENT") is not a title; a heading the parties clause follows is preferred; a one-word heading takes the upper-case line above it (Signal Service's "COMMERCIAL LEASE ... INSPECTION AGREEMENT"). Else a mixed-case title line ("Proposal", "Bid"). Newman's engagement letter has no title.
+The title is an upper-case heading on one line (a logo's stray letter on the line above does not join it). The first 8,000 characters are searched first, then the whole text, since a landscaper's specifications addendum can come before its agreement. A heading about the agreement ("PARTIES TO THE AGREEMENT", "SERVICES INCLUDED IN YOUR AGREEMENT") is not a title; a heading the parties clause follows is preferred; a one-word heading takes the upper-case line above it (an alarm company's "COMMERCIAL LEASE ... INSPECTION AGREEMENT"). Else a mixed-case title line ("Proposal", "Bid"). An accountant's engagement letter may have no title.
 
-The license is a CSLB number, or another board's number with its letters (Pro Active's structural pest control "PR" license).
+The license is a CSLB number, or another board's number with its letters (a structural pest control company's "PR" license).
 
 Layouts:
 
-- `nahs-roof-estimate`: North American Home Services' per-building roof estimates, DocuSigned, with the payment authorization page. It is also registered for `proposal`. The building subtotals must add to the authorized amount.
+- `nahs-roof-estimate`: the per-building roof estimates of `North American Home Services` (a declared adapter, [adapters.md](../adapters.md)), DocuSigned, with the payment authorization page. It is also registered for `proposal`. The building subtotals must add to the authorized amount.
 - `contract`: every other contract, read with rule rows (`PRICE_RULES`, `PERCENT_RULES`, `TERM_RULES`, `NOTICE_RULES`, `SCOPE_RULES`). A new layout is a new row. The rows cover:
-  - Bravo Security's service agreement (Adobe Sign);
-  - Signal Service's alarm monitoring lease: two DocuSign envelopes with certificates of completion, a 36-month term renewing for two years, and 30 days' notice;
-  - Flock's order form: DocuSign anchor tags, 24 months renewing for 24;
+  - a security patrol's service agreement (Adobe Sign);
+  - an alarm monitoring lease: two DocuSign envelopes with certificates of completion, a 36-month term renewing for two years, and 30 days' notice;
+  - a camera vendor's order form: DocuSign anchor tags, 24 months renewing for 24;
   - a prior manager's management agreement;
-  - Jensen's master landscape agreement;
-  - Berding & Weil's contingency fee agreement;
-  - Pro Active Pest Control's portal-signed service agreement;
-  - North American Home Services' click-accepted inspection agreement;
-  - Newman CPA's engagement letter;
-  - CalPro's proposal, and All Year Pressure Washing's quote, both accepted with Adobe Sign;
-  - Top Garden's bid.
+  - a master landscape agreement;
+  - counsel's contingency fee agreement;
+  - a pest control company's portal-signed service agreement;
+  - a roof inspector's click-accepted inspection agreement;
+  - an accountant's engagement letter;
+  - a contractor's proposal and a pressure washer's quote, both accepted with Adobe Sign;
+  - a landscaper's bid.
 
 Checks:
 
@@ -173,11 +173,11 @@ Layouts:
 
 - `nahs-roof-estimate`;
 - `proposal`, which reads:
-  - All Year Pressure Washing's quote table;
-  - J.B. Bostick's proposal with its PandaDoc signature certificate. Each item's title is the short line before its long description;
-  - Good Life Construction's JobTread proposal: issue and expiry dates, and a payment schedule;
-  - Pro Elections' letter with two prices ("TOTAL COST if ...");
-  - California Builder Services' option pricing ("OPTION 1: ... FEE:"), in a PayHOA attachment.
+  - a quote table;
+  - a paving contractor's proposal with its PandaDoc signature certificate. Each item's title is the short line before its long description;
+  - a JobTread proposal: issue and expiry dates, and a payment schedule;
+  - an inspector of elections' letter with two prices ("TOTAL COST if ...");
+  - a reserve study preparer's option pricing ("OPTION 1: ... FEE:"), in a PayHOA attachment.
 
 Checks:
 

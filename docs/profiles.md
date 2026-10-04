@@ -55,12 +55,13 @@ A general page that has instance detail ends with one pointer line, for example 
 - its names;
 - its streets;
 - its vendors, developers, and banks;
+- the counterparties in its sender directory (`Community.senders()`): each law firm, manager, vendor, insurer, bank, title company, accountant, and owner's property manager gives its name and the words that recognize it. A government agency, a public utility, and a platform give none;
 - its case numbers;
 - its group addresses and domain;
 - its Drive ids;
 - its PayHOA org id.
 
-It then lists the general documents that name any of them. Adding a fact to the profile extends the check. A code span that points into the profile (`mystique/meetings.py`) is allowed. The association's name in prose is not.
+It then lists the general documents that name any of them. Adding a fact to the profile extends the check. A code span that points into the profile (`mystique/meetings.py`) is allowed. The association's name in prose is not. A counterparty's name is allowed in a code span only where it points at a declared adapter, the reader of the layout that vendor prints ([adapters.md](adapters.md)); general code is held to the same terms in its patterns, word lists, and default arguments (`tests/fixtures/code_boundary.json`).
 
 **Themes are profile data.** The association's brand for the console and its public owner page is one `Theme` row (`jason.community.base.Theme`) returned by `Community.theme()`: the accent and the text that sits on it, a second accent, the brand font with its weight, case, and tracking, the hero surface, dark-scheme overrides by the same keys, the surface layer the public page opts into with `data-reach="full"`, and a font stylesheet URL. The console reads it from `GET /api/theme` (`jason.web.extra.theme`) and scopes it to `[data-community="<slug>"]` (`ui/src/lib/theme.ts`); jason's data views take the brand layer only. No color, font, or wordmark appears in `src/jason/`, `ui/src/`, or these docs; a profile without a theme answers `found: false` and the console keeps its neutral look. The public page's facts come the same way, from `GET /api/community-profile` (`jason.web.extra.community_profile`), which reads `Community` methods alone and shows nothing for a method left at its empty default. This association: `mystique/docs/theme.md`.
 

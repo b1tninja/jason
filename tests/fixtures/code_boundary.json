@@ -12,9 +12,6 @@
   "Mystique",
   "Mystique Community Association"
  ],
- "src/jason/community/models/financial_bank.py": [
-  "JPMorgan Chase"
- ],
  "src/jason/community/models/governing_rules.py": [
   "Mystique"
  ],

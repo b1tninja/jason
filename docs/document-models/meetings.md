@@ -10,7 +10,7 @@ Models for the `meetings` group, in four modules under `jason.community.models`:
 | `meetings` | `committee-report` | `committee_report` |
 | `meetings_elections` | `election-results` | `election_results` |
 | `meetings_elections` | `secret-ballot` | `ballot` |
-| `meetings_elections` | `pre-ballot-notice` | `notice` (Pro Elections' pre-ballot notice) |
+| `meetings_elections` | `pre-ballot-notice` | `notice` (the inspector of elections' pre-ballot notice) |
 | `meetings_notices` | `notice` | `notice` (everything else) |
 | `meetings_resolutions` | `board-resolution` | `resolution` |
 
@@ -135,7 +135,9 @@ The form's filled values print in one of two ways. They may appear in place ("X 
 | `restore-reserves` | info | CIV 5515(d) | The date one year after adoption. |
 | `on-agenda` / `not-on-agenda` / `no-agenda-on-file` | info / check / check | CIV 4930(a), 5200(a)(8) | Whether the adoption meeting's agenda in the library carries the item. |
 
-## Elections (Pro Elections LLC)
+## Elections
+
+The readers follow the layouts of one inspector of elections, `Pro Elections` (a declared adapter, [adapters.md](../adapters.md)).
 
 **Records:**
 

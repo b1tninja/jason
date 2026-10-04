@@ -22,7 +22,7 @@ The readers are in `jason.community.models.contracts_ins_package` and `contracts
 | `package-declarations` | Accelerant's "POLICY DECLARATIONS - Condominium Assoc." through Arden (the master policy): number and renewed number, period, premium by coverage part, the named insured's mailing address, premises, building limit, valuation, deductible, business income, equipment breakdown, protective safeguards, liability limits, units, and the schedule of forms (the terrorism exclusion, the unit-interior form) |
 | `crime-declarations` | PMA's Commercial Crime Policy Declarations: period, premium, and each insuring agreement's limit and deductible. The limits print in a run after the agreements and are read in the form's order |
 | `dno-declarations` | MG Skinner's D&O/Crime binder with Accredited Surety and Casualty's declarations: number, period, aggregate limit, retention, premium, prior litigation date, claims-made, mailing address |
-| `umbrella-evidence` | McGowan's umbrella Evidence of Insurance (Federal Insurance): evidence number, period, limits, retained limit, premium |
+| `umbrella-evidence` | the umbrella Evidence of Insurance of `McGowan Program Administrators` (Federal Insurance): evidence number, period, limits, retained limit, premium |
 | `nfip-flood-declarations`, `acord-certificate` | the NFIP flood declarations and the ACORD certificates (already in `contracts_insurance`) |
 
 **Checks:**
