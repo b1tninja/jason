@@ -233,6 +233,11 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Refresh the law and the change history from lawlibrary.",
                  command="jason export-authorities; jason law-history --export",
                  check="the export's date; the year's chaptered bills are in the change list"),
+            Step("Set aside each reading of the law whose words changed.",
+                 command="jason readings --stale",
+                 check="each stale reading is redone or confirmed by the board or counsel against the words now on "
+                       "disk before it is used again",
+                 refs=("docs/law-readings.md",), lessons=("reading-untied-from-the-words",)),
             Step("Refresh the documents' outlines.", command="jason outlines --fetch",
                  check="a document added or adopted since is a citable document in the specification, with its "
                        "written date"),
@@ -560,6 +565,57 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason letter --markdown FILE.md --pdf OUT.pdf --yes", refs=("docs/letters.md",)),
             Step("Preview it as one recipient receives it before sending.", refs=("docs/batches.md",)),
         ),
+    ),
+    Procedure(
+        "careful-reading", "Reading a set of documents carefully, and answering from them",
+        "When a question turns on what a set of documents says: a legal case's file, a vendor's file, a meeting's "
+        "packet, a system's inspection records.",
+        (Area.DOCUMENTS, Area.GOVERNING),
+        "Keep three things apart: what the documents say, what the provisions mean, and whether the facts meet them. "
+        "Recite the words, label each reading, and check every quotation before the answer is given.",
+        (
+            Step("See what the index holds and what it holds back or cannot read.",
+                 command="jason index --plan; jason cases --extract-text --case KEY; jason index --build",
+                 check="the collection's files are in the index; a file listed as unreadable or partly read is opened "
+                       "by a person; a held-back record is never extracted",
+                 lessons=("case-file-searchable-only-by-transcripts", "index-flag-per-file-not-per-catalog")),
+            Step("Search the slice that matters, not everything at once.",
+                 command="jason index --search QUESTION --catalog NAME [--kind K] [--standing S]",
+                 check="each hit's standing: the law, the record, evidence, a reference, or jason's own page (a "
+                       "summary, never the rule)",
+                 refs=("docs/mcp.md",)),
+            Step("Lay out what the documents say happened, and where they disagree.",
+                 command="jason chronology --catalog NAME; jason fact-conflicts --catalog NAME",
+                 check="an event states what a document says, never that it happened; where two documents differ both "
+                       "are kept and jason picks neither",
+                 refs=("docs/collections.md",), lessons=("form-line-is-not-one-fact", "spoken-dates-carry-no-year")),
+            Step("See what should be on file and is not.",
+                 command="jason inspections; jason applies",
+                 check="'not on file' never means 'not done'; an undetermined answer is a question for a person",
+                 refs=("docs/fire-protection.md", "docs/applicability.md")),
+            Step("Recite each provision's words before any reading of them.",
+                 command="jason readings --recite CITATION; jason cite KEY",
+                 check="a reading is labeled with whose it is; a stale one is not used; where two readings remain the "
+                       "board asks counsel",
+                 refs=("docs/law-readings.md", "docs/interpretation.md"), lessons=("reading-untied-from-the-words",)),
+            Step("Review under the task's pack, with the collection as its own tier.",
+                 command="jason review TASK --collection KEY --ask QUESTION [--run]",
+                 check="the collection's sources are labeled evidence; a confidential collection is refused for a "
+                       "members' task; the review is kept, not overwritten",
+                 refs=("docs/manager-review.md", "docs/ingestion-and-review.md")),
+            Step("Judge the date-dependent findings as of the date that matters.",
+                 command="jason models --as-of DATE",
+                 check="only the lens's findings move with the date; a reading's fields do not",
+                 lessons=("reading-mixes-ingestion-and-review",)),
+            Step("Check the answer's quotations against the stored words.",
+                 command="jason verify-quotes FILE",
+                 check="every quotation is found, in the provision the answer names; none is found only in a page or "
+                       "a reference",
+                 lessons=("answer-quotes-unchecked",)),
+            Step("Give the answer as a proposal: the facts with their sources, the provisions recited, the reading "
+                 "labeled, and the application. The board or counsel decides.", person=True),
+        ),
+        refs=("docs/ingestion-and-review.md",),
     ),
     Procedure(
         "check-in", "Checking work into the public repositories",

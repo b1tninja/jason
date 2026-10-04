@@ -28,6 +28,7 @@ Add a module, `jason.community.applicability`. A rule-like row (an obligation, a
 | Place | state, county, city, water purveyor | the profile's region |
 | Transaction | the amount; where it was signed; who the buyer is | the contract's own figures and dates |
 | Time | in force between two dates; the edition adopted; within N years of an event | the existing `in_force` and `Prior`, folded in |
+| Event | how a meeting is held; whether a rule change is an emergency one; whether an election rule allows electronic secret ballots | the caller that knows the event (`jason notice-check --event`); the profile for a standing fact |
 
 - **Combining conditions.** A condition is all-of, any-of, or not, over facet tests, with exclusions spelled out. Example: a standard applies to water-based systems, except those installed under the one- and two-family standard.
 - **Facets are enums.** A JSON row stores the word, and the loader turns it into a symbol (AGENTS.md). A profile's own members (its systems and buildings) stay in the profile.
@@ -41,6 +42,9 @@ Add a module, `jason.community.applicability`. A rule-like row (an obligation, a
 - **Undetermined**, with the missing fact named.
 
 Undetermined is never read as "does not apply". It becomes a question for a person: an intake question, or a canvas item when the answer is a reading for counsel. This is the "a miss stays a miss" rule. Example: whether common-area work for an association is "home improvement" for a home improvement contract's notices is a reading for counsel, so it stays undetermined until then.
+
+- **A set read from a document is partial.** A many-valued fact a document gives names what it says, not everything there is. A value it leaves out is undetermined. A set the profile or a person states is complete.
+- **A person's answer is a fact with source `answer`.** Where it disagrees with a document or the profile, the row stays undetermined and lists both. jason picks neither.
 
 Every output records:
 - the rule row that applied;
@@ -122,6 +126,7 @@ jason's vectors move from one `.npy` file per passage (`data/retrieval/vectors`)
 - **Applicability.** A passage whose applicability is "does not apply" for the facts in hand is dropped. An "undetermined" one is kept and flagged with the missing fact.
 - **Confidentiality.** A confidential row is filtered by the caller's role, the way the MCP tools hold confidential files back now.
 - **Collections.** A named scope with a context (`document_collections`): the pack ranks it as its own tier, and a confidential one only for a board audience.
+- **Checking the answer.** The search returns passages, and the client writes the answer. Before the answer is given, `verify_quotes` (`jason verify-quotes`) checks each quotation against the index and the shelf: found, altered, misattributed, or not found, with the standing of where it was found. A quotation found only in a `page` or a `reference` is flagged, since neither is the record or the law ([law-readings.md](law-readings.md)).
 
 **Context headers.** Before a passage is embedded and indexed, jason prepends a short header of where it sits: the document, section, standing, date, and what it applies to. This follows Anthropic's [contextual retrieval](https://anthropic.com/news/contextual-retrieval): contextual embeddings cut retrieval failures by 35%, 49% with keyword search, and 67% with reranking. The header is built from jason's own records, not written by a model. That makes it cheap, repeatable, and the same on every run. It is measured on the gold set before it is kept.
 
@@ -177,21 +182,25 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
    - `Obligation.applies` (default: always). `life_safety.applicable(community)` asks each obligation of each system and returns the three groups. An undetermined answer is a question, and `jason applies` prints them.
    - The fire-protection deliverable rules each carry `applies`: a water-based system, and the vendor's kinds of work as each provision says. The contract reader still decides in its own code (step 7).
    - `jason inspections` (`jason.tasks.inspections`) uses the three groups for completeness. For each system, the obligations that apply get periods and the records on file in each. Those that do not apply are listed with the deciding fact, so nothing is expected. The record-keeping provisions are `RecordRule` rows, recited from the shelf, and a provision the shelf does not print is said to be missing.
-   - Still to do: file the questions as intake questions; convert the other rows (elevated elements, the notice catalog, filing rules).
+   - The questions are intake questions (`jason.community.applicability_asks`; `jason applies --questions`, `--file-questions`), one a subject and fact. A person's answer is a fact with source `answer`.
+   - The notice catalog's conditional elements carry conditions over the event facet (`notice_elements.Sign.applies`), and filing rules are conditions (`FilingRule.condition`; `jason gmail --file-vendor --why`).
+   - Still to do: the elevated-elements rows; the conditions kept as prose in `NoticeRequirement.note`; association-level notice facts as questions.
 4. **The index.** First part built October 4, 2026: `jason.community.passage_index`, `jason index`. Its engine is SQLite with the vectors as blobs (no new dependency), ranked by `retrieval`'s own functions.
    - Built:
      - the records, insurance, authorities, and reference sources, 6,770 passages;
      - the catalog, standing, kind, confidential, and generated columns;
      - `passage_search` reads from it.
    - The gold set holds: 0.89 recall@5 scoped to the gold folders, the same as cutting them, and 0.88 over the whole index.
-   - `context_pack`: the governing-documents tier reads the index (same sources as before, about 10 times faster). The law tier waits for a comparison on the law's gold set; the records tier waits for the library source.
+   - `context_pack`: the governing-documents tier reads the index (same sources as before, about 10 times faster). The law tier and the records tier can read it and do not by default: each chose different sources from its old reader, and nothing measured says the index's are better.
    - Sources added October 4, 2026:
      - the agency publications by what each is (`PublicationText`): a regulation's adopted text as authority, guidance as reference, a compilation not at all. The Title 19 fire regulations and forms are now searchable.
      - the `library`, `mail`, `reports`, and `docs` catalogs (`jason.tasks.index_sources`), each file with its own confidential flag from rule rows. `jason index --plan` lists the counts before a build.
    - The law pages' description passage is left out (the law questions' MRR@10 0.71 to 0.75).
    - The law tier of `context_pack` was compared on the law's gold set: sections whole 0.98 recall@5, the index's passages 0.96. It stays on sections whole.
+   - The records tier was compared on the six tasks that name record kinds. Read from the index with the same latest files, it gave the library reader's sources on none: the index cuts on sections, the library reader on 220-word windows. It stays on the library reader (`RECORDS_FROM_INDEX` off).
+   - With no catalog named, a search ranks the core catalogs (`CORE_CATALOGS`). Ranking the library, mail, reports, and docs at once took hybrid recall@5 from 0.86 to 0.83.
    - Still to do:
-     - the records tier of `context_pack` reading the `library` catalog;
+     - a gold set for the pack's records tier (`gold-records.json`: task, question, kind, the file that should be found), then the choice between the library reader and the index;
      - the applicability columns;
    - Gold questions for the law: done (`data/retrieval/gold-law.json`, 50 questions, every phrase checked against the file).
      - Scoped to the authorities, hybrid 0.96 recall@5.
@@ -211,4 +220,4 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
 - **Who asks, and where.** Settled: no person uses AnythingLLM. The board's questions reach jason through MCP clients and, later, the console's Ask.
 - **Engine and footprint.** LanceDB or sqlite-vec, settled by the gold set and by the index's size on disk.
 - **The gold set's reach.** Questions for the mail and vendor-records catalogs, which it does not cover today. The law has its set (step 4).
-- **Undetermined answers.** Where they go: the intake questions, the canvas, or both, by facet.
+- **Undetermined answers.** Settled for facts: the intake queue. A reading for counsel (whether common-area work is a home improvement) still needs the canvas.

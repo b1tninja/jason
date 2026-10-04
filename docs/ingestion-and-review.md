@@ -1,6 +1,6 @@
 # Ingestion and review
 
-**Status:** October 4, 2026. Built: step 1 (the inventory: `jason models --basis`, [document-models/README.md](document-models/README.md)), step 3 for legal cases (`jason review --collection`, [manager-review.md](manager-review.md)), and step 4 (readings of the law as records: `jason readings`, [law-readings.md](law-readings.md)). Step 2 is in progress; the rest is proposed. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
+**Status:** October 4, 2026. Built: step 1 (the inventory: `jason models --basis`, [document-models/README.md](document-models/README.md)), step 2's store and first lens (`jason models --as-of DATE`), step 3 for legal cases (`jason review --collection`, [manager-review.md](manager-review.md)), and step 4 (readings of the law as records: `jason readings`, [law-readings.md](law-readings.md)). The first general lenses (chronology, conflicts of fact, completeness) are built. The rest is proposed. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
 
 ## The idea
 
@@ -92,7 +92,7 @@ Almost every reader mixes the two (surveyed October 4, 2026).
 What already points the right way:
 - **Lenses exist under other names:** `TaskPrompt` rows, `QuestionSet`, the notice elements, the deontic grammar, the deliverable rules, and the applicability conditions.
 - **Collections exist under other names:** an index catalog and `Scope`, a legal case's file, a meeting packet, an incident's evidence, a vendor's file.
-- **Sources of a fact are already named:** `applicability.Source` separates the document, the profile, the date, and a person's answer.
+- **Sources of a fact are already named:** `applicability.Source` separates the document, the profile, the date, and a person's answer. A set a document gives is partial unless its reader says it is whole (`FactValue.complete`).
 - **Confidentiality is already decided per document:** the index sources fold a library document's copies and hold it when any copy is held, and a build carries that flag to the same bytes in any other catalog (`index_sources.library_holds`).
 
 ## The records
@@ -130,12 +130,12 @@ General lenses worth writing first, each useful for any collection:
 |---|---|
 | Duties and deadlines | Who must do what, for whom, by when? Which terms are promises, permissions, conditions, or exemptions? |
 | Parties and roles | Who is named, in what role, with what authority or license? |
-| Chronology | What happened, in what order, according to which document? |
+| Chronology | What happened, in what order, according to which document? Built as `jason chronology` ([collections.md](collections.md)). |
 | Money | What amounts are stated, and do they agree with the ledger or with each other? |
 | As of a date | Which deadlines have passed, which terms have ended, what is due next? |
 | Against the law | Which provisions does the law require, forbid, or override, as of the document's date? |
 | Against the governing documents | Does it follow the declaration, bylaws, rules, and policies, in their order of authority? |
-| Consistency | Across the collection, what contradicts, repeats, or supersedes what? |
+| Consistency | Across the collection, what contradicts, repeats, or supersedes what? The rule-based part is built as `jason fact-conflicts`: different values for the same field or identifier, both kept. |
 | Completeness | Which documents should the collection hold that it does not? |
 
 A profile adds its own lenses the way it adds task prompts.
@@ -201,6 +201,8 @@ A context pack is what a lens gives a model or a person to review with. `context
 | F: facts | the profile's facts and the collection's context |
 | D: the draft | the document under review, by its digest |
 
+R can already be read from the index's `library` catalog (`context_pack.index_record_sources`, off by default). It becomes the default only when a gold set for the pack shows the index's section-cut passages serve a task at least as well as the library reader's windows.
+
 The same document can then be reviewed under two packs, and the two results are stored side by side.
 
 ## Order of work
@@ -219,6 +221,12 @@ The same document can then be reviewed under two packs, and the two results are 
    - An "as of a date" lens takes over the checks that need only the stored fields and a date or the profile: an invoice's due date, a policy's term, a contract's current term end, a lien's deadline, minutes due.
    - Readers stop reading other stores during `parse`.
    - Commands and tools that read `readings.json` get a joined view in today's shape, so nothing downstream changes at once.
+   - Built. The store is `data/reviews/documents/<lens>/<as-of>.json`, one lens's reviews as of one date.
+     - The as-of lens has 18 checks over 27 readers. On the library as of October 4, 2026: 980 findings, 55 from the lens, 27 from the text alone, 63 from the text and the law, 898 still in the readers' own checks.
+     - For the same date every stored row is the same as before. A year later every changed finding but one is the lens's; the one is an agenda's `no-minutes-on-file`, which needs the library and the date together.
+     - A check is a function of the fields it names, the date, and facts it names from the specification, each with a digest. It reads no store.
+     - `jason models --as-of` does not rewrite `readings.json`; consumers still read the view joined at reading time.
+   - Open: the checks that read another document or store (four of which also read the date), as a collection's lens; and the fields a parse fills from the profile.
 3. **Collections.**
    - `Collection` as a record. A legal case is the first: its index catalog and its record in the specification.
    - `assemble` takes a lens, a document digest, and a collection.
@@ -236,6 +244,10 @@ The same document can then be reviewed under two packs, and the two results are 
    - On the shelf that day: 1,042 sections on 101 pages. Six sections are printed in two versions under one number.
    - Open: a review does not yet call `recite`.
 5. **The general lenses,** one at a time, each measured on a small set of documents with known answers before it is relied on.
+   - Built first: the chronology and the conflicts of fact, over any `Scope` and a title ([collections.md](collections.md)). They store nothing; a page is generated again each time.
+   - Measured October 4, 2026: about 1,230 dated statements from 169 of 205 open library files. One stored-field conflict among 203 open readings, real when read. The text rules report none on real documents; the one they reported before they took only sentences was false (a bill's stub, printed for ten parcels).
+   - A case file of caption transcripts has no written date in its words; with the PDFs' text extracts the same case gives 137 dated statements from 18 of 20 files.
+6. **Check the answer's words.** Built: `quote_check.check` (`verify_quotes`, `jason verify-quotes`) reads the answer, not the sources. Every quotation must be the stored words, in the provision the answer names. It decides nothing about meaning.
 
 ## Limits and risks
 
