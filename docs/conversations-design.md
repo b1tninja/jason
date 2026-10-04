@@ -281,7 +281,7 @@ The intent comes from three sources, in order:
 - A note is checked by `intake.secret_reason`, with contact details masked.
 - Recording an outcome never closes the asker's wait unless the outcome says the asker was answered (`handled_offline`, `answered_elsewhere`, `withdrawn`). Then the conversation's `awaiting` becomes `none` with that event as its reason.
 
-**When to follow up.** A rule row per kind, from the profile (`Community.handoff_rules()`, default `()`). With no row, jason's general default applies, and the caveat says it is jason's default, not the association's:
+**When to follow up.** The member-facing side, how fast the association acknowledges and answers each kind of request and how that is measured, is the board's response standard ([response-standards-design.md](response-standards-design.md)). The assignee's side is a rule row per kind, from the profile (`Community.handoff_rules()`, default `()`). With no row, jason's general default applies, and the caveat says it is jason's default, not the association's:
 
 ```python
 @dataclass(frozen=True)
