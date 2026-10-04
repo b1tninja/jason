@@ -674,7 +674,11 @@ The board's action items; draft the next agenda and minutes from the last agenda
 | `--previous` | PREVIOUS | The previous meeting's date, for the minutes to approve |
 | `--directors` | DIRECTORS | Comma-separated directors for the minutes template |
 | `--tech-contact` | TECH_CONTACT | Name, telephone, and email of the teleconference help (CIV 4926(a)(1)(B)) |
-| `--format` | {in person,hybrid,teleconference} | With --agenda: how the meeting is held (default: the agenda plan's for the date; with none, entirely by teleconference, said as assumed). Only 'teleconference' gets 4926's notice lines |
+| `--format` | {in person,hybrid,teleconference} | With --agenda: how the meeting is held (default: the agenda plan's for the date; with none, entirely by teleconference, said as assumed). Only 'teleconference' gets 4926's notice lines. With --notice: required unless the agenda plan sets it |
+| `--notice` |  | Draw the notice of the meeting (--date) from the base template: data/board/notices/notice-<date>.md, its email body (.html), and the statutes recited (.refs.json); disk only, nothing sent |
+| `--location` | LOCATION | With --notice: the place (in person) or the physical location members may attend (hybrid, CIV 4090(b)); default: the agenda plan's |
+| `--ballots-counted` |  | With --notice: ballots are counted and tabulated at this meeting (CIV 5120), so it cannot be held entirely by teleconference (4926(b)) |
+| `--notice-date` | YYYY-MM-DD | With --notice: the day the notice is posted (default: the last day the notice period allows) |
 | `--sheet` | SHEET | Sync with the board's Google Sheet (the specification's, or this id); reads the board's edits first |
 | `--create-sheet` |  | Create the board's Sheet (a new private file) and print its id |
 | `--tasks` |  | Keep the items as a Google Tasks list; a task checked off closes its item (first run needs --interactive) |

@@ -2549,6 +2549,42 @@ def cmd_google_features(args: argparse.Namespace) -> int:
     return 0
 
 
+def _board_notice(args: argparse.Namespace, data_dir) -> int:
+    """``jason board --notice``: the notice of a board meeting from the base template, for a person to review and send.
+    Writes data/board/notices/notice-<date>.md (the source), .html (the email body on the letterhead), and .refs.json; reads
+    disk only and sends nothing (jason.tasks.meeting_notice)."""
+    from datetime import date
+
+    from jason.community import community as active
+    from jason.tasks import agenda_plan, meeting_notice
+    from jason.tasks.board_items import load
+
+    community = active()
+    schedule = community.meeting_schedule()
+    day = date.fromisoformat(args.date) if args.date else schedule.next_meeting(date.today(), monthly=True)
+    plan = agenda_plan.load(data_dir, day.isoformat())
+    try:
+        meeting = meeting_notice.from_plan(day, plan, schedule, fmt=args.format or None, location=args.location,
+                                           tech_contact=args.tech_contact, ballots_counted=args.ballots_counted,
+                                           notice_date=date.fromisoformat(args.notice_date) if args.notice_date else None)
+        notice = meeting_notice.render(community, meeting, load(data_dir), data_dir, plan_items=plan["items"])
+    except meeting_notice.NoticeRefused as exc:
+        print(f"no notice drawn: {exc}", file=sys.stderr)
+        return 2
+    paths = meeting_notice.write(data_dir, notice, community.email_letterhead())
+    print(f"wrote {paths['markdown']} ({meeting.format.value}), its email body {paths['html'].name}, and "
+          f"{paths['refs'].name}; nothing sent")
+    for line in notice.review:
+        print(f"  check: {line}")
+    short = f"{day.month}/{day.day}/{day.year % 100:02d}"
+    print("next, each a person's step:")
+    print(f"  the Doc on the letterhead and its PDF: jason letter --markdown {paths['markdown']} "
+          f"--name \"Notice of Board Meeting {short}\" --pdf {paths['markdown'].with_suffix('.pdf')} --yes")
+    print(f"  the email, sent in PayHOA: jason broadcast {paths['markdown']} --letterhead --notice {notice.key}; it reaches "
+          "the members whose delivery choice is email (CIV 4041), and general delivery is the posting (4045(a))")
+    return 1 if notice.misses else 0
+
+
 def cmd_board(args: argparse.Namespace) -> int:
     """The board's action items: list or change them, draft the next agenda and minutes, sync the board's Sheet."""
     import json
@@ -2655,6 +2691,8 @@ def cmd_board(args: argparse.Namespace) -> int:
         if result["unsupported"]:
             print(f"  sections whose quotes are not in the transcript (check them): {', '.join(result['unsupported'])}")
         return 0
+    if args.notice:
+        return _board_notice(args, data_dir)
     if args.agenda:
         schedule = active().meeting_schedule()
         meeting = date.fromisoformat(args.date) if args.date else schedule.next_meeting(date.today(), monthly=True)
@@ -4125,7 +4163,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     board.add_argument("--format", default="", choices=MEETING_FORMATS,
                        help="With --agenda: how the meeting is held (default: the agenda plan's for the date; with none, "
-                            "entirely by teleconference, said as assumed). Only 'teleconference' gets 4926's notice lines")
+                            "entirely by teleconference, said as assumed). Only 'teleconference' gets 4926's notice lines. "
+                            "With --notice: required unless the agenda plan sets it")
+    board.add_argument("--notice", action="store_true",
+                       help="Draw the notice of the meeting (--date) from the base template: data/board/notices/notice-<date>.md, "
+                            "its email body (.html), and the statutes recited (.refs.json); disk only, nothing sent")
+    board.add_argument("--location", default="",
+                       help="With --notice: the place (in person) or the physical location members may attend (hybrid, "
+                            "CIV 4090(b)); default: the agenda plan's")
+    board.add_argument("--ballots-counted", action="store_true",
+                       help="With --notice: ballots are counted and tabulated at this meeting (CIV 5120), so it cannot be "
+                            "held entirely by teleconference (4926(b))")
+    board.add_argument("--notice-date", default="", metavar="YYYY-MM-DD",
+                       help="With --notice: the day the notice is posted (default: the last day the notice period allows)")
     board.add_argument("--sheet", nargs="?", const="spec", default="",
                        help="Sync with the board's Google Sheet (the specification's, or this id); reads the board's edits first")
     board.add_argument("--create-sheet", action="store_true", help="Create the board's Sheet (a new private file) and print its id")

@@ -1515,6 +1515,16 @@ LESSONS: tuple[Lesson, ...] = (
            "whatever its group; it shows the terminal command only. intake.secret_reason still guards every value.",
            Status.DECISION, guards=("tests/test_web_intake.py (keys and codes is command-only)",),
            notes=("A person decides whether POST /api/write/intake refuses Keeper-record questions outright.",)),
+    Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
+           "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
+           "ask.", "It predates meeting_agenda.executive_lines.",
+           "Still to do: route its executive lines through executive_lines, with a test that a title never appears.",
+           Status.OPEN),
+    Lesson("teleconference-reminder-paraphrased", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "meeting_agenda.format_lines and the agenda template word the 4926(a)(1)(C) individual-delivery reminder in "
+           "jason's own phrasing.", "They were written before the rule to recite, not paraphrase.",
+           "Still to do: use the board meeting notice base's recital of 4045(b) and 4041 (jason board --notice).",
+           Status.OPEN),
 )
 
 

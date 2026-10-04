@@ -84,6 +84,29 @@ The Markdown draft (`agenda-<date>.md`) keeps the secretary's notes that do not 
 
 **Nothing is posted automatically.** jason writes drafts in the association's private Drive folders; the secretary edits, renames, and posts the agenda.
 
+## The notice of the meeting
+
+The notice is one base template, `src/jason/templates/notices/board-meeting-notice.md`, written once for any association and rendered for the active profile (`jason.tasks.meeting_notice`). `jason board --notice --date YYYY-MM-DD` draws it into `data/board/notices/notice-<date>.md`, with its email body on the letterhead (`.html`) and a record of the statutes it recited (`.refs.json`: each section's page, session, and the digest of the words read). It reads disk only and sends nothing.
+
+**What it says, and where each part comes from:**
+- **The time and place** (CIV 4920(a)), by the meeting's format (`--format`, else the agenda plan's; with neither, no notice is drawn):
+  - in person: the place (`--location`, else the plan's);
+  - hybrid: the physical location members may attend, with a director or the board's designee there (4090(b)), and none of 4926's lines;
+  - held entirely by teleconference: how to join, the telephone option, the person who can help before and during the meeting (`--tech-contact`, else the plan's), the reminder that a member may request individual delivery, and roll-call votes (4926(a)(1), (3), (4)). A meeting at which ballots are counted and tabulated is refused this format (`--ballots-counted`, 4926(b)).
+- **The date of the notice:** `--notice-date`, else the last day the notice period allows, as a date line with the period's source (`board_items.notice_period`: the statute's, or the governing documents' longer period under 4920(b)(3)). A notice date after that day is refused.
+- **The agenda** (4920(d)): the items the agenda plan includes, else those proposed or on the agenda, each with its kind and the action proposed. An executive matter appears only by its 4935 subject (`meeting_agenda.executive_lines`); its title and ask stay in the packet. The open forum's time limit appears only when the board adopted one (`Community.open_forum_limit()`); with none, there is no line.
+- **The law it mentions**, recited from the statutes on disk (`jason export-authorities`), never paraphrased: 4930 whole, under "Items not on this agenda"; 4045(b) and 4041(a)(1), on a member's right to individual delivery and choice of delivery method, with where to write. A subdivision is recited with the lead-in above it and an ellipsis for words left out. A section not on disk is a highlighted miss that says so, and the command exits 1.
+- **General delivery:** the posting location from `Community.identity()` (4920(c), 4045(a)).
+- **The signer** and the association's name, from `Community.identity()`.
+
+A fact the records do not hold is left highlighted (`==[the place of the meeting]==`), and the command lists each one under "check" with anything else to confirm (an executive subject read from an item's words, the annual meeting's 4926(b) caution).
+
+**The rest is a person's:**
+- the Doc on the letterhead and its PDF: `jason letter --markdown data/board/notices/notice-<date>.md --name "..." --pdf ... --yes`;
+- the email: `jason broadcast data/board/notices/notice-<date>.md --letterhead --notice board-meeting-<date>`, saved and sent in PayHOA. It reaches the members whose 4041 choice is email; general delivery is the posting.
+
+`jason notice-check` checks the base against the catalog's `board-meeting` requirement.
+
 ## Suggested edits in the agenda Doc
 
 The Docs API can write suggestions. A `documents.batchUpdate` with `writeControl.writeMode = SUGGEST` applies every request in it as a suggestion the Doc's editors accept or reject. jason's Docs client takes `write_mode="SUGGEST"`.

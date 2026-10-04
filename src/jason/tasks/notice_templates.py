@@ -80,6 +80,12 @@ def _body(kind_name: str) -> Callable[[], str]:
     return load
 
 
+def _notice_base() -> str:
+    from jason.tasks.meeting_notice import base_text
+
+    return base_text()
+
+
 def _packet(name: str) -> Callable[[], str]:
     return lambda: (PACKETS / name).read_text(encoding="utf-8")
 
@@ -93,6 +99,8 @@ BASES: tuple[BaseTemplate, ...] = (
                  _body("HEARING_NOTICE")),
     BaseTemplate("board-meeting", "Board meeting agenda (the notice's agenda and teleconference statements)",
                  "jason.community.templates.BODIES[AGENDA]", _body("AGENDA")),
+    BaseTemplate("board-meeting", "Notice of board meeting (every format's block)",
+                 "src/jason/templates/notices/board-meeting-notice.md", _notice_base),
     BaseTemplate("annual-policy-statement", "Annual policy statement", "src/jason/templates/packets/"
                  "annual-policy-statement.md", _packet("annual-policy-statement.md")),
     BaseTemplate("annual-budget-report", "Annual budget report", "src/jason/templates/packets/annual-budget-report.md",
