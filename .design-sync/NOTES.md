@@ -132,3 +132,15 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - The conventions header (`.design-sync/conventions.md`) names every component group, the approvals-engine pieces
   included; `RegisterGrid` is described only by its `.prompt.md`. Every prop name it uses was checked against the
   2026-10-03 `.d.ts` files.
+- **The Doc family (2026-10-04).** `Doc`, `DocumentPreview`, and `PrivateSwitch` render wider than a grid cell
+  (`[GRID_OVERFLOW]`); they are column mode in `cfg.overrides` (`Doc` at `1000x1600`). `DocList`, `EvidenceEntries`,
+  `LocalPreview`, `PrivateAsk`, `PrivateBand`, and `ReadAllFromDrive` ship as floor cards: `Doc`'s and
+  `PrivateSwitch`'s previews already show them. The review sheet captures every cell at a fixed width, so a
+  `viewport` override does not enlarge a cell on the sheet; crop the PNG (PyMuPDF: scale the clip by
+  `page.rect.height / pixmap.height`) to read a small cell.
+- **A packet page on `MeetingStage`** (`PacketCopyForBoard`) was a sliver: the stage gives jason's copy `30cqw`, and
+  the viewer's unscaled header and Fit toggle took it. `styles.css` now scales the viewer's header with the stage and
+  hides the toggle there (`.stage-doc-copy`). A preview's sample image named `.pdf` but of kind image reads wrong;
+  name a page render as a page.
+- The render check marks `RemoteView` bad on every run (its throwing cell is the point); `report_validate` carries
+  `bad: 1` for it.

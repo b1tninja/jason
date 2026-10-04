@@ -77,7 +77,7 @@ export const PacketSample = () => (
 export const PacketCopyForBoard = () => (
   <Frame item={{ label: "Item 3 · Action", title: "Renew the landscape contract" }} progress={0.42} caption="The Greenway bid, from jason's copy."
     content={{ kind: "packet", file: bidFile }}
-    packetCopy={{ signedIn: true, evidence: bidAnswer, view: { kind: "image", name: `${bidFile.name}.pdf`, readAt: "2099-10-03T15:00:00+00:00", url: bidPage, expires: "", caveats: [] } }} />
+    packetCopy={{ signedIn: true, evidence: bidAnswer, view: { kind: "image", name: `${bidFile.name}, page 2`, readAt: "2099-10-03T15:00:00+00:00", url: bidPage, expires: "", caveats: [] } }} />
 );
 
 /** No copy yet: the file's preview card on the stage, with Read from Drive and Open in Google for the host. */

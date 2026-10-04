@@ -298,6 +298,13 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .stage-doc-copy { overflow: hidden; color: var(--ink); }
 .stage-doc-copy dialog.doc-viewer.doc-viewer-inline { min-height: 0; height: 100%; border: 0; border-radius: 1cqw; }
 .stage-doc-copy .doc-viewer-pdf-frame, .stage-doc-copy .doc-pdf-frame { min-height: 0; }
+/* on the stage the page is the point: the viewer's header scales with the stage, and the Fit / Actual size toggle is the
+   host's, not the room's (the host opens the copy in the viewer to zoom) */
+.stage-doc-copy { height: 30cqw; }
+.stage-doc-copy .doc-viewer-head { padding: .5cqw 1cqw; font-size: 1.1cqw; }
+.stage-doc-copy .doc-viewer-title { font-size: 1.5cqw; }
+.stage-doc-copy .doc-image-toggle { display: none; }
+.stage-doc-copy .doc-image { gap: 0; }
 .stage-doc-card { height: auto; min-height: 12cqw; padding: 1.6cqw 2cqw; display: grid; gap: 1cqw; background: rgba(255,255,255,.06); border: .15cqw solid var(--hero-line, rgba(255,255,255,.25)); color: inherit; font-size: 1.7cqw; line-height: 1.35; }
 .stage-doc-card p { margin: 0; }
 .stage-doc-card .drive-preview, .stage-doc-card .doc-preview { color: var(--ink); background: var(--panel); border-radius: var(--r); padding: 8px; max-width: max-content; font-size: 12.5px; }

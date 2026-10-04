@@ -52,7 +52,8 @@
       "cardMode": "column"
     },
     "MeetingStage": {
-      "cardMode": "column"
+      "cardMode": "column",
+      "viewport": "1400x1000"
     },
     "SecondConfirm": {
       "cardMode": "column"
@@ -86,6 +87,17 @@
     },
     "EvidencePanel": {
       "cardMode": "column"
+    },
+    "Doc": {
+      "cardMode": "column",
+      "viewport": "1000x1600"
+    },
+    "DocumentPreview": {
+      "cardMode": "column"
+    },
+    "PrivateSwitch": {
+      "cardMode": "column",
+      "viewport": "1200x800"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"
