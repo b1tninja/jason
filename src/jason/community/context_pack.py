@@ -17,7 +17,8 @@ A task prompt names topics and kinds of documents, never a section or a figure. 
    overall. Each carries the collection's label in place of a tier ("evidence gathered for this matter: neither the
    record nor the law" for a legal case), because a case file is not the association's record. A confidential
    collection goes only into a board task's pack; for any other audience it is refused with a gap line, never
-   silently left out. Without an index, or with nothing indexed under the scope, a gap line says so.
+   silently left out. Without an index, or with nothing indexed under the scope, a gap line says so, and so does one
+   for the files in the collection's folder that the index does not hold (a PDF with no text extract).
 5. **F, jason's records**: the MCP tools the task names, as JSON, trimmed. A collection's context lines (for a legal
    case, its record in the specification) follow them as one more F source.
 6. **D1**: the text under review.
@@ -515,6 +516,19 @@ def collection_sources(collection: Any, questions: Sequence[str], data_dir: Path
     return kept
 
 
+def _unindexed(collection: Any, data_dir: Path, indexed: dict[str, float]) -> tuple[int, int]:
+    """How many of the files in the collection's folder the index does not hold, and how many files there are. A file
+    is held when it is indexed itself or a text extract named after it is ("Complaint.pdf.md" for "Complaint.pdf")."""
+    folder = getattr(collection, "folder", "")
+    root = data_dir / folder if folder else None
+    if root is None or not root.is_dir():
+        return 0, 0
+    names = [_rel(p, data_dir) for p in sorted(root.rglob("*")) if p.is_file()]
+    held = [rel for rel in names if rel in indexed]
+    unread = [rel for rel in names if rel not in indexed and not any(other.startswith(rel + ".") for other in held)]
+    return len(unread), len(names)
+
+
 def _collection_tier(pack: ContextPack, collection: Any, questions: Sequence[str], data_dir: Path, *, k: int, mode: str,
                      embedder: Any, indexed: dict[str, float] | None) -> bool:
     """Put a collection's passages in the pack as C sources, or say in the gaps why they are not there. True when the
@@ -531,6 +545,10 @@ def _collection_tier(pack: ContextPack, collection: Any, questions: Sequence[str
     if counted is None:
         pack.gaps.append(f"{what} was not searched: there is no passage index to read; run jason index --build")
         return True
+    unread, on_disk = _unindexed(collection, data_dir, indexed or {})
+    if unread:
+        pack.gaps.append(f"the passage index lacks {unread} of the {on_disk} files of {what} on disk (no text to "
+                         "search): the pack cannot show them")
     if not counted[1]:
         pack.gaps.append(f"{what} holds no indexed passages: fetch its files, then run jason index --build")
         return True

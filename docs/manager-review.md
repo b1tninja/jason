@@ -80,7 +80,8 @@ It is never left out silently.
 
 **Gaps.** A gap line also says when there is no passage index, when the index holds nothing under the scope, when no
 passage matched, and when a file changed after the index cut it. C reads only the index. A PDF with no text extract
-is not in the index, so it is not in the tier.
+is not in the index, so it is not in the tier: for a legal case the pack counts the files in the case's folder that the
+index does not hold ("the passage index lacks 3 of the 9 files ...").
 
 **Without a collection the pack is what it was.** A test holds it to a page written before collections existed
 (`tests/fixtures/context_pack/no_collection.md`).

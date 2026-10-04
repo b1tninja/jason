@@ -58,6 +58,9 @@ class Collection:
     scope: Scope
     context: tuple[str, ...] = ()
     confidential: bool = False
+    # Where the collection's files are kept under the data directory, when it has one folder. A pack counts the files
+    # there that the index does not hold (a PDF with no text extract), so what could not be searched is said.
+    folder: str = ""
 
     @property
     def label(self) -> str:
@@ -94,13 +97,13 @@ def case_context(case: Any) -> tuple[str, ...]:
 
 def of_case(case: Any) -> Collection:
     """A legal case's collection: its confidential catalog in the index, and its record in the specification."""
-    from jason.tasks.case_files import catalog_name
+    from jason.tasks.case_files import CASES_DIR, catalog_name
 
     name = catalog_name(case)
     # Every file of a case's catalog is confidential in the index (``case_files.index_sources``), so the collection is,
     # whatever the case's own flag says: the strictest of its members' and the matter's.
     return Collection(case.key, case.title, CollectionKind.LEGAL_CASE, Scope(catalogs=(name,), confidential_in=(name,)),
-                      case_context(case), confidential=True)
+                      case_context(case), confidential=True, folder=f"{CASES_DIR}/{case.key}/files")
 
 
 def collections(community: Any) -> tuple[Collection, ...]:

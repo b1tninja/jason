@@ -268,6 +268,19 @@ def test_without_an_index_or_with_an_empty_collection_the_pack_says_so(data):
     assert any("matched the task's questions (4 files, " in g for g in quiet.gaps)
 
 
+def test_files_with_no_text_in_the_index_are_counted_not_passed_over(data):
+    files = data / "cases" / KEY / "files"
+    (files / "Complaint.pdf").write_bytes(b"%PDF-1.4 no text layer")
+    (files / "Answer.pdf").write_bytes(b"%PDF-1.4 with an extract beside it")
+    (files / "Answer.pdf.md").write_text("The association answers the complaint and denies each allegation.", encoding="utf-8")
+    _build(data)
+    assert _case().folder == f"cases/{KEY}/files"
+    pack = _pack(data, ask=ASK, collection=_case())
+    assert pack.gaps == ["the passage index lacks 1 of the 7 files of the collection (Example v. Example Commons) on disk "
+                         "(no text to search): the pack cannot show them"]
+    assert any(s.id.startswith("C") for s in pack.sources)
+
+
 def test_a_case_file_changed_since_the_cut_is_said(data):
     _build(data)
     order = data / "cases" / KEY / "files" / "Minute order.md"
