@@ -335,11 +335,19 @@ class GoogleDrive:
             raise GoogleError(f"HTTP {response.status_code} replacing the content of {file_id}")
         return body
 
-    def update_metadata(self, file_id: str, *, name: str | None = None, description: str | None = None) -> dict[str, Any]:
-        """Rename a file or set its description. Fields not given are left as they are."""
-        payload = {k: v for k, v in (("name", name), ("description", description)) if v is not None}
+    def root_id(self) -> str:
+        """The id of the root of My Drive (the folder the "root" alias names)."""
+        return str(self._get("/files/root", {"fields": "id"}).get("id") or "")
+
+    def update_metadata(self, file_id: str, *, name: str | None = None, description: str | None = None,
+                        app_properties: dict[str, str] | None = None) -> dict[str, Any]:
+        """Rename a file, set its description, or set jason's private ``appProperties`` (merged into those it has).
+        Fields not given are left as they are."""
+        payload: dict[str, Any] = {k: v for k, v in (("name", name), ("description", description)) if v is not None}
+        if app_properties:
+            payload["appProperties"] = app_properties
         if not payload:
-            raise GoogleError("update_metadata needs a name or a description")
+            raise GoogleError("update_metadata needs a name, a description, or app properties")
         response = self._http.patch(
             f"{_API}/files/{file_id}",
             params={"supportsAllDrives": True, "fields": "id,name,description"},

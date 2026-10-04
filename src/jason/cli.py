@@ -2215,6 +2215,8 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
     if not rows:
         print(f"no vendor {args.file_vendor!r} in the sender directory")
         return 1
+    if args.via_gmail:
+        return _file_vendor_via_gmail(args, data_dir, profile, rows)
     known, _ = drive_index(data_dir)
     seen: set[str] = set()
     out = []
@@ -2236,6 +2238,32 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
         print(json.dumps(out, indent=1, default=str))
     if not args.yes:
         print("(plan only: --yes uploads the ones marked file)")
+    return 0
+
+
+def _file_vendor_via_gmail(args: argparse.Namespace, data_dir: Path, profile, rows) -> int:
+    """Gmail's own Save to Drive: list what a person saves (data/gmail/save-to-drive.md), and with --yes move the copies
+    they saved into their folders. Reads Gmail's metadata only; downloads and uploads nothing."""
+    from jason.tasks.vendor_files import adopt_plan, plan_lines, plan_saves, save_list
+
+    plans = []
+    with _agent(args) as agent:
+        drive = agent.drive(interactive=args.interactive)
+        gmail = drive.gmail()
+        for sender in rows:
+            plan = plan_saves(gmail, drive, profile, sender, data_dir=data_dir)
+            plans.append(plan)
+            for line in plan_lines(plan):
+                print(line)
+            if args.yes and any(a.action == "adopt" for a in plan.attachments):
+                print(f"{plan.vendor}: moved {adopt_plan(drive, profile, plan, data_dir, log=print)}")
+    path = data_dir / "gmail" / "save-to-drive.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(save_list(plans), encoding="utf-8")
+    waiting = sum(1 for p in plans for a in p.attachments if a.action == "save")
+    print(f"{waiting} to save with Gmail's Add to Drive: {path}")
+    if not args.yes:
+        print("(plan only: --yes moves the saved copies marked adopt into their folders)")
     return 0
 
 
@@ -4000,6 +4028,10 @@ def build_parser() -> argparse.ArgumentParser:
     gm.add_argument("--yes", action="store_true", help="With --file-vendor: upload the attachments the plan marks file")
     gm.add_argument("--hold", action="append", metavar="GLOB",
                     help="With --file-vendor: hold back attachments whose names match (repeatable), for a person to verify")
+    gm.add_argument("--via-gmail", action="store_true",
+                    help="With --file-vendor: use Gmail's own Add to Drive, which links the file to its email. Lists "
+                         "what to save (data/gmail/save-to-drive.md) from Gmail's metadata only; --yes moves the copies "
+                         "saved to My Drive into their folders. Nothing is downloaded or uploaded")
     gm.add_argument("--filters-xml", metavar="PATH", nargs="?", const="data/gmail/vendor-filters.xml", default="",
                     help="Write Gmail filters (the file Gmail imports) that label each vendor's mail Vendors/<vendor> by "
                          "its known domains and emails (default data/gmail/vendor-filters.xml)")

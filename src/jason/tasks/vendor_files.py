@@ -60,6 +60,7 @@ class Attachment:
     path: tuple[str, ...] = ()       # the folder names from the filing root, for a document to file
     rule: str = ""                   # the rule that placed it: its kind and source, or "fallback"
     file_id: str = ""
+    thread: str = ""                 # the message's thread, for a link to it in Gmail
 
 
 @dataclass
@@ -320,6 +321,149 @@ def plan_vendor(gmail: Any, drive: Any, community: Any, sender: Any, *, known: d
     return result, blobs
 
 
+# --- Gmail's own "Save to Drive" ------------------------------------------------------------------------------------
+#
+# Gmail links an attachment to Drive only when a person saves it with Gmail's button ("Add to Drive"); no API makes that
+# link. So the work is split: from Gmail's metadata alone (names and sizes; nothing downloaded) jason lists what a
+# person should save, with a link to each message and the folder it belongs in; the person saves each to My Drive; and
+# jason adopts the saved copies, found in the root of My Drive by name and size: it moves each into its folder (a move
+# keeps the file's id, so Gmail's link holds) and tags it with its message. Nothing is uploaded.
+
+SAME_DOCUMENT_DAYS = 30
+APP_MESSAGE = "gmailMessageId"
+
+
+def gmail_link(att: Attachment) -> str:
+    return f"https://mail.google.com/mail/u/0/#all/{att.thread or att.message_id}"
+
+
+def _days_apart(a: str, b: str) -> int:
+    return abs((datetime.fromisoformat(a) - datetime.fromisoformat(b)).days)
+
+
+def plan_saves(gmail: Any, drive: Any, community: Any, sender: Any, *, data_dir: Path | None = None,
+               limit: int = 2000) -> VendorPlan:
+    """What the vendor sent from a known address, from Gmail's metadata only (no attachment is downloaded): each
+    document filed before, in Drive already, saved to the root of My Drive and waiting to be moved ("adopt"), or still
+    to be saved with Gmail's button ("save"). A document sent twice (the same name, and the same size or within 30
+    days) is one document; its latest copy is the one to save."""
+    from jason.community.symbols import DocumentKind
+
+    filing = community.email_filing()
+    addresses = known_addresses(sender, data_dir)
+    result = VendorPlan(sender.name, query_for(addresses))
+    if not addresses:
+        return result
+    rows = list(gmail.iter_messages(result.query, limit=limit))
+    result.messages = len(rows)
+    found: list[Attachment] = []
+    for row in rows:
+        meta = gmail.get_metadata(row["id"], headers=("From", "Subject"))
+        head = meta["headers"]
+        if not sent_by(addresses, head.get("From", "")):
+            continue
+        at = datetime.fromtimestamp(int(meta["internalDate"]) / 1000, tz=timezone.utc).isoformat(timespec="seconds")
+        for part in meta["attachments"]:
+            if not part.get("attachmentId") or not DOCUMENT.search(part["name"] or ""):
+                continue
+            att = Attachment(sender.name, meta["id"], at, head.get("From", ""), head.get("Subject", ""), part["name"],
+                             "", "", int(part.get("size") or 0), thread=str(meta.get("threadId") or ""))
+            kind = community.classify_document(att.name)
+            att.kind, att.kind_by = (kind.value if kind is not None else ""), ("name" if kind is not None else "")
+            found.append(att)
+    groups: list[list[Attachment]] = []
+    for att in sorted(found, key=lambda a: a.at):
+        group = next((g for g in groups if any(o.name.casefold() == att.name.casefold()
+                                               and (o.size == att.size or _days_apart(o.at, att.at) <= SAME_DOCUMENT_DAYS)
+                                               for o in g)), None)
+        if group is None:
+            groups.append([att])
+        else:
+            group.append(att)
+    for group in groups:
+        latest = group[-1]
+        for att in group[:-1]:
+            att.action, att.where = "earlier copy", "a later copy is the one to save"
+        ids = {a.message_id for a in group}
+        sizes = {a.size for a in group}
+        same = drive.list_files(f"name = '{_quote(latest.name)}' and trashed = false",
+                                fields="id,name,size,parents,appProperties")
+        filed = next((f for f in same if (f.get("appProperties") or {}).get(APP_MESSAGE) in ids), None)
+        held = next((f for f in same if int(f.get("size") or -1) in sizes), None)
+        if filed:
+            latest.action, latest.where, latest.file_id = "filed before", filed["id"], filed["id"]
+        elif held and _in_root(drive, held):
+            latest.action, latest.file_id = "adopt", held["id"]
+        elif held:
+            latest.action, latest.where, latest.file_id = "in drive", held["id"], held["id"]
+        else:
+            latest.action = "save"
+        if latest.action in ("adopt", "save"):
+            kind = DocumentKind(latest.kind) if latest.kind else None
+            path, rule = filing.path_for(sender, kind, fiscal_year(latest.at, community.fiscal_year_end()))
+            latest.path, latest.rule = path, rule_label(rule)
+            latest.where = "My Drive/" + "/".join(path) if filing.root == "root" else "/".join(path)
+        result.attachments.extend(group)
+    result.attachments.sort(key=lambda a: a.at)
+    return result
+
+
+_ROOT: dict[int, str] = {}
+
+
+def _in_root(drive: Any, file: dict[str, Any]) -> bool:
+    """Whether a file sits in the root of My Drive, where Gmail's "Add to Drive" puts it."""
+    key = id(drive)
+    if key not in _ROOT:
+        _ROOT[key] = drive.root_id()
+    return bool(_ROOT[key]) and _ROOT[key] in (file.get("parents") or [])
+
+
+def adopt_plan(drive: Any, community: Any, plan: VendorPlan, data_dir: Path,
+               log: Callable[[str], None] | None = None) -> int:
+    """Move each saved copy the plan marks "adopt" into its folder and tag it with its message. Returns how many."""
+    filing = community.email_filing()
+    made: dict[tuple[str, str], str] = {}
+    log_path = Path(data_dir) / "drive" / LOG
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    done = 0
+    for att in plan.attachments:
+        if att.action != "adopt":
+            continue
+        parent = filing.root
+        for name in att.path:
+            parent = _folder(drive, parent, name, made)
+        drive.move(att.file_id, parent)
+        drive.update_metadata(att.file_id, description=f"From Gmail, {att.at[:10]}: {att.sender} — {att.subject}"[:900],
+                              app_properties={APP_MESSAGE: att.message_id, "vendor": att.vendor[:100],
+                                              "kind": att.kind or "unclassified", "via": "gmail save to drive"})
+        att.action = "adopted"
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({**asdict(att), "filedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                 "parent": parent}) + "\n")
+        done += 1
+        if log:
+            log(f"moved {att.name} -> {att.where}")
+    return done
+
+
+def save_list(plans: list[VendorPlan]) -> str:
+    """The documents a person saves with Gmail's "Add to Drive" button, as Markdown: each message's link, and the
+    folder jason will move the saved copy to."""
+    out = ["# Save to Drive from Gmail", "",
+           "Open each message, and on the attachment named, choose **Add to Drive** (save it to My Drive, the default).",
+           "Then run `jason gmail --file-vendor all --via-gmail --yes`: jason moves each saved copy into the folder shown.",
+           ""]
+    for plan in plans:
+        todo = [a for a in plan.attachments if a.action == "save"]
+        if not todo:
+            continue
+        out += [f"## {plan.vendor} ({len(todo)})", ""]
+        out += [f"- [ ] {a.at[:10]} [{a.name}]({gmail_link(a)}) → {a.where}" for a in todo]
+        out.append("")
+    return "\n".join(out)
+
+
 def hold(plan: VendorPlan, blobs: dict[str, bytes], patterns: tuple[str, ...]) -> list[Attachment]:
     """Hold back the attachments to file whose names match a pattern (case ignored): a document a person must verify
     first, such as emailed wire instructions. A held document is not uploaded; the plan says so."""
@@ -380,10 +524,10 @@ def plan_lines(plan: VendorPlan) -> list[str]:
         if a.action == "repeat":
             continue
         kind = a.kind or "unclassified"
-        why = f"  [{a.rule}]" if a.action == "file" else ""
+        why = f"  [{a.rule}]" if a.action in ("file", "save", "adopt", "adopted") else ""
         out.append(f"  {a.at[:10]} {a.action:<13} {kind:<18} {a.name}  ->  {a.where}{why}")
     return out
 
 
 __all__ = ["Attachment", "Known", "VendorPlan", "vendors", "known_addresses", "query_for", "sent_by", "classify", "in_drive", "plan_vendor",
-           "file_plan", "filters_xml", "hold", "plan_lines", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
+           "file_plan", "filters_xml", "hold", "plan_lines", "plan_saves", "adopt_plan", "save_list", "gmail_link", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
