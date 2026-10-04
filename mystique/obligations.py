@@ -63,8 +63,10 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "their three-year replacement. Its quarterly invoices (systems P320-4785, building 3, and P320-4786, building 8) "
                     "bill monitoring and the semi-annual inspection in advance, paid without a gap from February 2024; the visits "
                     "in the email are March 2025, September 19, 2025, January 28, 2026 (building 3), and an OS&Y tamper test in "
-                    "August 2026, with no report since September 2025. The Fire Sprinkler Company's $995 flow switch of December "
-                    "2025 may be building 3's repair (unconfirmed). The master policy's P-1 protective safeguard (CP 04 11, "
+                    "August 2026, with no report since September 2025. The Fire Sprinkler Company's $995 invoice of December "
+                    "15, 2025 is to \"investigate water flow switch issue\", and the association's email of December 10 says \"the "
+                    "issue isn't solved quite yet\": no record shows building 3's waterflow alarm restored. Signal emailed reports "
+                    "only for its September 2024 and September 2025 visits. The master policy's P-1 protective safeguard (CP 04 11, "
                     "buildings 1-8) includes the sprinklers' supervisory services, so these reports are its evidence too: "
                     "mystique/notes/fire-protection-records.md."),
     Obligation("Fire sprinkler quarterly inspection", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: control valves, "
@@ -79,13 +81,19 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                     "payments from January 2024 bound it: The Fire Sprinkler Company quoted the annual at $895 a riser (two "
                     "risers), the quarterly at $350, and the five-year at $1,000 on March 25, 2024, and every payment to it since "
                     "is a repair ($4,245 February 2024; a bell, $1,249.12, September 2024; building 8's OS&Y, $1,245.22, June "
-                    "2025; a sprinkler head, $1,150, September 2025; a flow switch, $995, December 2025). The master policy "
+                    "2025; a sprinkler head, $1,150, September 2025; investigating the waterflow switch, $995, December 2025). "
+                    "The board signed The Fire Sprinkler Company's 2024 proposal on April 17, 2024 with annual and quarterly "
+                    "inspections marked; no inspection followed, and the company's June 18, 2025 email offering to schedule the July "
+                    "annual has no reply. Buildings 1, 2, and 4-7 are NFPA 13D systems (the board's July 2022 reading: no NFPA 25 "
+                    "inspection) and have no inspection record. The master policy "
                     "makes the sprinklers a P-1 protective safeguard for buildings 1-8 (CP 04 11): no fire coverage if a "
                     "known impairment was not reported or the system was not kept in working order "
                     "(mystique/notes/fire-protection-records.md)."),
     Obligation("Fire sprinkler five-year internal inspection", "19 CCR 904, 906.4 (NFPA 25), form AES 2.2, filed with the fire authority",
                every_years=5,
-               note="Internal inspection of valves and piping, and gauges replaced or tested; no record is on file."),
+               note="Internal inspection of valves and piping, and gauges replaced or tested; no record is on file. The Fire "
+                    "Sprinkler Company's November 7, 2022 \"Five Year Inspection Correction Quotation\" followed a job walk, "
+                    "not an AES 2.2 inspection; the 2023 and 2024 proposals priced the five-year and neither was ordered."),
     # California Deck Inspection's SB 326 report (Drive "My Drive/Reports/Mystique Community SB 326 Report.pdf", id
     # 1Qodo170LjfNzaxeSxb2b2Iv85z8k_1ES): all 24 elevated elements examined November 8, 2023, signed and stamped by the
     # architect November 17, 2023; the next inspection is due "Nine years from the date of this report". The $4,800
