@@ -1,6 +1,6 @@
 # Applicability, ingestion, and the search index
 
-**Status:** proposed design, October 4, 2026. Built so far: the measurement in "Why jason's own index", the index (step 4), the applicability module (step 2), and AnythingLLM's retirement (step 8). The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
+**Status:** proposed design, October 4, 2026. Built so far: the measurement in "Why jason's own index", the index and its sources (step 4), the applicability module (step 2), the systems fact and the first converted rows (step 3), the context-header measurement (step 5), and AnythingLLM's retirement (step 8). The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
 
 ## The problem
 
@@ -109,11 +109,11 @@ jason's vectors move from one `.npy` file per passage (`data/retrieval/vectors`)
 |---|---|
 | text, vector, section heading, position | `passages`, `retrieval` |
 | source file, sha256, library id | the library and the catalogs' `Source` rows |
-| standing: authority, record, reference, jason's page, mail | `authority_order.Tier` and the catalog |
+| standing: authority, record, reference, jason's page, evidence | `authority_order.Tier` and the catalog. Mail is indexed as `record` with a caveat; it has no standing of its own yet. |
 | kind and shelf | `DocumentKind`, `DocumentCategory` |
 | period, in force from and to | the reading's dates; the statute's history |
 | subject, party, place | the applicability facts (sections 1 and 3) |
-| confidential, and who may see it | the library's flag, OR-ed across copies |
+| confidential, and who may see it | each source's rule rows, by file. The library's flag is OR-ed across copies, and `index_sources.library_holds` carries it to the same bytes in any other catalog. |
 | generated | a jason page, never quoted as authority |
 
 **At question time:**
@@ -171,7 +171,11 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
    - The condition language (`Is`, `In`, `AtLeast`, `Below`, `InForce`, `AllOf`, `AnyOf`, `Not`, `Except`), with `describe()` and a JSON form.
    - `evaluate` in three answers by Kleene logic. Each verdict names its deciding facts and their sources, the facts missing, and the sources that disagree; a disagreement is undetermined, never a pick.
    - `Community.applicability_facts()` is empty by default. No row is converted yet.
-3. **The first profile fact: systems** (`LifeSafetySystem`). The obligation rows that leave systems out become conditions.
+3. **The first profile fact: systems.** Done October 4, 2026: `jason.community.life_safety`.
+   - `LifeSafetySystem` and `Community.life_safety_systems()`, empty by default. A standard is entered only with the record that states it. Two records that differ are both tested, and jason picks neither.
+   - `Obligation.applies` (default: always). `life_safety.applicable(community)` asks each obligation of each system and returns the three groups. An undetermined answer is a question, and `jason applies` prints them.
+   - The fire-protection deliverable rules each carry `applies`: a water-based system, and the vendor's kinds of work as each provision says. The contract reader still decides in its own code (step 7).
+   - Still to do: file the questions as intake questions; convert the other rows (elevated elements, the notice catalog, filing rules).
 4. **The index.** First part built October 4, 2026: `jason.community.passage_index`, `jason index`. Its engine is SQLite with the vectors as blobs (no new dependency), ranked by `retrieval`'s own functions.
    - Built:
      - the records, insurance, authorities, and reference sources, 6,770 passages;
@@ -179,14 +183,19 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
      - `passage_search` reads from it.
    - The gold set holds: 0.89 recall@5 scoped to the gold folders, the same as cutting them, and 0.88 over the whole index.
    - `context_pack`: the governing-documents tier reads the index (same sources as before, about 10 times faster). The law tier waits for a comparison on the law's gold set; the records tier waits for the library source.
+   - Sources added October 4, 2026:
+     - the agency publications by what each is (`PublicationText`): a regulation's adopted text as authority, guidance as reference, a compilation not at all. The Title 19 fire regulations and forms are now searchable.
+     - the `library`, `mail`, `reports`, and `docs` catalogs (`jason.tasks.index_sources`), each file with its own confidential flag from rule rows. `jason index --plan` lists the counts before a build.
+   - The law pages' description passage is left out (the law questions' MRR@10 0.71 to 0.75).
+   - The law tier of `context_pack` was compared on the law's gold set: sections whole 0.98 recall@5, the index's passages 0.96. It stays on sections whole.
    - Still to do:
-     - the mail, reports, and library sources, once their confidentiality rows are set (docs/rag-roadmap.md, items 1 and 2);
+     - the records tier of `context_pack` reading the `library` catalog;
      - the applicability columns;
    - Gold questions for the law: done (`data/retrieval/gold-law.json`, 50 questions, every phrase checked against the file).
      - Scoped to the authorities, hybrid 0.96 recall@5.
      - Over the whole index, 0.86. The paraphrase questions lose most, probably to governing-document passages on the same subjects; that is unchecked.
      - Each statute file's first passage is metadata only (title, source, why jason holds it) and competes with the operative text. It is the next thing to fix and measure.
-5. **Context headers.** Kept only if the gold set improves.
+5. **Context headers.** Measured October 4, 2026, and not kept for the law's pages. A line of the chapter path, why the page is held, and the standing and kind moved one question either way on each gold set (`data/retrieval/runs/2026-10-04-context-headers.json`). The index can carry a context line per file, and the publications use one for their title, since their text has no headings.
 6. **Companion pages,** starting with the fire and life safety subject, whose sources are gathered.
 7. **The contract reader's gate and term scopes.** In the contracts session's code, once it agrees to the interface.
 8. **Retiring AnythingLLM.** Done October 4, 2026.
@@ -194,9 +203,7 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
    - **`document_search`** replaces `passage_search` in the board profile, which still has thirty-eight tools. It searches the passage index and returns passages with their standing and caveats, with no chat model.
    - **Case files:** each legal case's fetched file is a confidential `case-<key>` catalog (standing `evidence`) in `jason index --build`.
    - **Removed:** `jason anythingllm`, `anythingllm_query`, `anythingllm_status`, the catalog sync, the collector OCR engine, the app checks in `jason local-ai`, and the `anythingllm_*` settings.
-   - **Not yet in the index:**
-     - the mail, jason's other pages and docs, and the classified library (items 1 and 2 of rag-roadmap.md);
-     - the case PDFs, which have no text extracts.
+   - **Not yet in the index:** the case PDFs, which have no text extracts.
 
 ## Open questions
 

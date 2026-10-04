@@ -1,6 +1,6 @@
 # Ingestion and review
 
-**Status:** proposed design, October 4, 2026. Nothing here is built except the inventory in step 1, which is in progress. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
+**Status:** step 1 (the inventory) is built: `jason models --basis`, [document-models/README.md](document-models/README.md). The rest is proposed, October 4, 2026. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
 
 ## The idea
 
@@ -93,6 +93,7 @@ What already points the right way:
 - **Lenses exist under other names:** `TaskPrompt` rows, `QuestionSet`, the notice elements, the deontic grammar, the deliverable rules, and the applicability conditions.
 - **Collections exist under other names:** an index catalog and `Scope`, a legal case's file, a meeting packet, an incident's evidence, a vendor's file.
 - **Sources of a fact are already named:** `applicability.Source` separates the document, the profile, the date, and a person's answer.
+- **Confidentiality is already decided per document:** the index sources fold a library document's copies and hold it when any copy is held, and a build carries that flag to the same bytes in any other catalog (`index_sources.library_holds`).
 
 ## The records
 
@@ -205,6 +206,11 @@ The same document can then be reviewed under two packs, and the two results are 
    - Each reading records its text digest, its reader's version, and its as-of date.
    - `Finding` gets an optional `basis`. `ModelContext` records which of its parts a check touched (the profile, the data folder, today), so the basis is observed, not declared by hand.
    - The result is a table of which findings are reviews today.
+   - Built. The basis is observed per call, not per finding, so "review" is an upper bound and "text only" is exact.
+     - On the library as of October 4, 2026: 980 findings, 37 from the text alone, 63 from the text and the law alone.
+     - Changing one part at a time showed what really depends on it: the agenda reader's notice fields on a store; the contract reader's current term end on today; and the term, deadline, and expiry findings of the policy, certificate, lien, public report, lease, proposal, and minutes readers on today.
+     - Fields filled from the profile are the widest dependency: 160 readings across 22 readers change without it.
+   - Open for step 2: a field read from the file's name or library period is not a function of the file's bytes, and the context does not count those reads.
 2. **The review store and the first lens.**
    - `data/reviews/<document>/<lens>@<version>.json`, written under the store lock.
    - An "as of a date" lens takes over the checks that need only the stored fields and a date or the profile: an invoice's due date, a policy's term, a contract's current term end, a lien's deadline, minutes due.

@@ -1117,6 +1117,40 @@ LESSONS: tuple[Lesson, ...] = (
            "are compared on data/retrieval/gold-law.json.",
            Status.FIXED, guards=("context_pack.LAW_FROM_INDEX = False", "tests/test_context_pack_index.py"),
            docs=("docs/applicability.md", "docs/rag-roadmap.md")),
+    Lesson("stand-in-shape-hid-a-crash", date(2026, 10, 4), (Area.REPOSITORY,),
+           "applicability.profile_facts called Community.region(), but region is a property on Community, so the "
+           "function raised TypeError for every real profile. Its tests passed.",
+           "The tests gave it a stand-in class whose region was a method. No test passed it a real Community.",
+           "profile_facts reads the property. A function that takes a community is tested with a loaded profile as "
+           "well as a stand-in, and a stand-in copies the member's shape (property or method) from Community.",
+           Status.FIXED,
+           guards=("tests/test_applicability.py: test_profile_facts_read_region_as_the_property_it_is_on_a_profile",
+                   "tests/test_life_safety.py: test_the_active_profiles_systems_and_rows_hold_together"),
+           docs=("docs/applicability.md",)),
+    Lesson("reading-mixes-ingestion-and-review", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A stored reading changed with the date, the profile, or another store, and nothing on the row said so: 943 "
+           "of 980 findings came from a check that read more than the record, and three readers' fields were filled "
+           "from a store or today during parse.",
+           "One call parsed and checked, and a row recorded no digest of its text, no reader version, and no as-of date.",
+           "Each row now records textSha, version, asOf, fieldsBasis, and each finding's basis, observed from what the "
+           "call read (jason models --basis). Still to do: move the as-of and cross-document checks to a review store, "
+           "and stop readers reading stores during parse (docs/ingestion-and-review.md).",
+           Status.OPEN,
+           docs=("docs/ingestion-and-review.md", "docs/document-models/README.md (What a reading records about its own making)")),
+    Lesson("index-flag-per-file-not-per-catalog", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "The retired catalog sync decided confidentiality a catalog or a row at a time: a library file with one copy "
+           "under a confidential folder was shared through its other copy, the property-history pages went to the "
+           "shared workspace with owners' names, and a named case catalog would have opened every other catalog's held "
+           "files.",
+           "The flag was read from the copy in hand, not from the document, and a folder of pages was one source with "
+           "one flag. Nothing asked what a file was when no rule placed it.",
+           "The index sources (jason.tasks.index_sources) decide each file by rule rows and hold what no row answers "
+           "for: the library by document with every copy's flag, the mail by MAIL_RULES (a credential is read from the "
+           "text and never indexed), the reports by REPORT_RULES. Every build asks whether the library holds a file's "
+           "bytes as confidential (library_holds). jason index --plan lists the counts before a build.",
+           Status.FIXED, guards=("tests/test_index_sources.py", "jason index --plan", "passage_index.Scope.confidential_in"),
+           docs=("docs/mcp.md (Confidential files in the index)", "docs/rag-roadmap.md (items 1 and 2)"),
+           notes=("Open for a person: the held library kinds, the mail's never tier, and which report pages are open.",)),
     Lesson("manager-named-in-general-readers", date(2026, 10, 4), (Area.REPOSITORY,),
            "Six general readers recognized one association's former management companies by name in their patterns "
            "(an agenda's layout and preparer, an owner ledger's manager, a case report's, a statement's and a budget "
@@ -1144,9 +1178,8 @@ LESSONS: tuple[Lesson, ...] = (
            "(data/anythingllm/snapshots). The board's document_search searches the passage index (jason index "
            "--build), scoped by catalog and standing, and returns passages with their caveats for the client to "
            "answer from; a legal case's file is a confidential case-<key> catalog. scripts/eval_anythingllm.py still "
-           "scores a workspace on the gold set. Still to do: the mail, jason's pages, and the classified library join "
-           "the index once their confidentiality rows exist (rag-roadmap items 1 and 2), and the case files' PDFs "
-           "need text extracts before they can be searched.",
+           "scores a workspace on the gold set. The mail, the reports, the docs, and the classified library joined the "
+           "index on October 4, 2026 (jason.tasks.index_sources); the case files' PDFs still need text extracts.",
            Status.FIXED, guards=("scripts/eval_retrieval.py --index", "tests/test_passage_index.py (document_search)",
                                  "tests/test_local_tools.py (board profile)"),
            docs=("docs/applicability.md", "docs/document-tools.md (model trials)", "docs/mcp.md")),
