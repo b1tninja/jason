@@ -67,6 +67,10 @@ jason review-requests --apply-tag "Association Responsibility"
 
 `sync-request-files` writes `data/payhoa-files/requests/{id}/` with the files, `comments.json`, and `notes.json`. Local search uses `search_requests` and `get_request_local_export`.
 
+## Sample a county index (asspy)
+
+When bringing up or hardening a county adapter in **asspy**, do not use the association's streets or owners as the only probe. Follow the **county-sample** skill in the asspy checkout (`.cursor/skills/county-sample/SKILL.md`): common surname and street-token searches, classify filings, exercise companions, scrub all real personal names before any fixture or commit. County HTTP and the per-county index cache live in asspy (`County("placer")`, `ASSPY_HOME`); HOA walks and `ownership.db` stay here.
+
 ## Publish an ownership sheet
 
 For each known parcel in the association, read the assessor's current document date. When that date and document number match the local ownership database, do not call the recorder. When they differ, fetch the grantors and grantees and remember the new date.

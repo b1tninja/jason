@@ -8,6 +8,8 @@ Workflows and skill-level “do not”s: **[SKILLS.md](SKILLS.md)**. Human setup
 
 jason is a reusable agent for California common interest developments. One association is a **profile**: the data that makes jason serve that association. Code, general docs, and base templates are written once for any association. Nothing about one association goes into them. ([docs/profiles.md](docs/profiles.md) has the full design and the phases still open.)
 
+County assessor and clerk-recorder HTTP, and the **per-county index cache**, live in **asspy** (`County("sacramento")`, `ASSPY_HOME`). jason decides when to call them, walks ownership (`descend`, `ownership.db`), and applies HOA process readings. The walks are written once for every county: `OwnershipWalks` (deed chains, party traces) and `ParcelOwnership` (the owner's instrument) use only a recorder's public methods (`open_session`, `search`, `name_search`, `row_detail`, `parse`, `dated_numbers`). A new county is an asspy adapter with those methods and a two-line class here, never a copied walk, and jason imports no `_`-prefixed name from asspy.
+
 ### Layout
 
 | Where | What | Checked in |
@@ -39,8 +41,9 @@ jason is a reusable agent for California common interest developments. One assoc
   - A code pointer (`mystique/meetings.py`) is allowed.
   - A cleared term is removed from the ratchet with `python -m jason.community.boundary --update`.
 - **Regional sources and vendor formats are adapters.**
-  - The Sacramento County recorder, assessor, and tax sources, the City's permits, SMUD, and one vendor's invoice or portal layout are reusable readers.
+  - County assessor and clerk-recorder clients, and the county index cache, are **asspy** (install beside payhoa; data under `ASSPY_HOME`, not cwd). Tax sources, the City's permits, SMUD, and one vendor's invoice or portal layout are reusable readers in jason or sibling packages.
   - Which of them an association uses is profile data.
+  - Association deed-chain stores (`data/ownership.db`) stay in jason.
 - **Templates are written once.** A notice, letter, form, or packet is a general base template. A profile renders it with its own name, letterhead, contacts, and rules. A community-specific copy is generated from the base, not edited by hand.
 
 ### Inside a profile
@@ -60,6 +63,7 @@ Prefer classes, structured records, and enums over string tokens. JSON may store
 python -m venv .venv
 .venv\Scripts\activate
 pip install -U pip
+pip install -e D:\code\asspy
 pip install -e D:\code\payhoa
 pip install -e D:\code\smud
 pip install -e D:\code\i-doxs
