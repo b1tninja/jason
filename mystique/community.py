@@ -291,6 +291,18 @@ class Mystique(Community):
 
         return MAIL_ADDRESSES
 
+    def streets(self):
+        """The streets the units and the site are on (buildings.py)."""
+        from .buildings import STREETS
+
+        return STREETS
+
+    def name_pattern(self) -> str:
+        """The name word as letters print it, OCR misreadings included (mail.py)."""
+        from .mail import NAME_PATTERN
+
+        return NAME_PATTERN
+
     def senders(self):
         """The association's counterparties: who writes to it and who it pays, by kind of source (senders.py)."""
         from .senders import SENDERS

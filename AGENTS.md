@@ -37,6 +37,7 @@ jason is a reusable agent for California common interest developments. One assoc
   - Examples in help text, tool descriptions, and docs are plainly fake ("123 Main St", "24CV000123").
 - **The boundary is tested.** `tests/test_profile.py` loads a second, throwaway profile beside `mystique`. It also checks that no general doc names the profile's facts: its names, streets, vendors, banks, case numbers, group addresses, Drive ids, and org id.
   - A code pointer (`mystique/meetings.py`) is allowed.
+  - It holds general code to the same terms: none in a regular expression, a word list, or a default argument beyond `tests/fixtures/code_boundary.json`, and no import of the profile package by name. A reader that needs a fact takes it from a `Community` method (`streets()`, `name_pattern()`).
   - A cleared term is removed from the ratchet with `python -m jason.community.boundary --update`.
 - **Regional sources and vendor formats are adapters.**
   - The Sacramento County recorder, assessor, and tax sources, the City's permits, SMUD, and one vendor's invoice or portal layout are reusable readers.

@@ -261,7 +261,8 @@ def _context(community: Any, data_dir: Path) -> dict[str, Any]:
             kinds[s.payhoa_vendor.upper()] = s.kind.value
             names[s.payhoa_vendor.upper()] = s.name
     return {"community": community, "buildings": tuple(community.buildings()), "site_words": site, "senders": senders, "kinds": kinds, "names": names,
-            "plan": plan, "known": parcel_buildings(data_dir, community), "parcels": parcel_addresses(data_dir)}
+            "plan": plan, "known": parcel_buildings(data_dir, community), "parcels": parcel_addresses(data_dir),
+            "streets": tuple(getattr(community, "streets", tuple)())}
 
 
 def _trade(vendor: str, ctx: dict[str, Any]) -> bool | None:
@@ -280,7 +281,7 @@ def _vendor(text: str, ctx: dict[str, Any], domains: list[str] | None = None) ->
         named = sender_of(domains, ctx["senders"])
         if named:
             return named.name
-    named = resolve("", text[:3000], ctx["senders"])[0]
+    named = resolve("", text[:3000], ctx["senders"], own_name=getattr(ctx.get("community"), "name_pattern", str)())[0]
     return named.name if named else ""
 
 
@@ -339,7 +340,7 @@ def payhoa_evidence(data_dir: Path, community: Any, roots: dict, ctx: dict[str, 
             inv = doc.invoice
             ev = read_evidence(text, title=doc.filename, ref=str(Path(doc.path).relative_to(data_dir)) if doc.path else "",
                                channel="payhoa", day=(inv.invoice_date if inv and inv.invoice_date else pay.day),
-                               buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"],
+                               buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], streets=ctx["streets"],
                                vendor=pay.payee or (inv.vendor if inv else ""), amount_cents=(inv.total_cents if inv else None) or pay.amount_cents,
                                extra=extra, sha256=doc.sha256, payment=payment)
             if ev.stage is Stage.OTHER:
@@ -348,7 +349,7 @@ def payhoa_evidence(data_dir: Path, community: Any, roots: dict, ctx: dict[str, 
             read_any = True
         if not read_any and not pay.inflow and any(REPAIR_CATEGORY.search(c) for c in categories):
             ev = read_evidence("", title=pay.payee or pay.description, ref=f"payhoa payment {pay.key}", channel="payhoa",
-                               day=pay.day, buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], vendor=pay.payee,
+                               day=pay.day, buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], streets=ctx["streets"], vendor=pay.payee,
                                amount_cents=pay.amount_cents, extra=extra, payment=payment)
             ev.stage = Stage.INVOICE
             out.append(ev)
@@ -373,7 +374,7 @@ def email_evidence(data_dir: Path, ctx: dict[str, Any], *, ocr: bool = True) -> 
             continue
         subject = str(f.get("subject") or "")
         out.append(enrich_claim(read_evidence(text, title=name, ref=f["path"], channel="email", day=_day(f.get("at")),
-                                 buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"],
+                                 buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], streets=ctx["streets"],
                                  vendor=_vendor(text, ctx, f.get("domains")), amount_cents=_amount(text),
                                  extra=f"subject: {subject}", sha256=f["sha256"]), text, ctx))
     return out
@@ -391,7 +392,7 @@ def library_evidence(data_dir: Path, ctx: dict[str, Any]) -> list[Evidence]:
         text_path = Path(data_dir) / "library" / "text" / f"{ident}.txt"
         text = text_path.read_text(encoding="utf-8", errors="replace") if text_path.is_file() else ""
         out.append(read_evidence(text, title=name, ref=f"library/{rel}", channel="library", day=_first_date(text) or _day(period),
-                                 buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], vendor=_vendor(text, ctx),
+                                 buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], streets=ctx["streets"], vendor=_vendor(text, ctx),
                                  amount_cents=_amount(text), sha256=sha or "", confidential=bool(confidential)))
     return out
 
@@ -406,7 +407,7 @@ def loss_run_evidence(text: str, *, ref: str, channel: str, sha256: str, ctx: di
     for claim in read_loss_run(text):
         ev = read_evidence(loss_run_text(claim), title=f"Loss run: claim {claim.number} ({claim.carrier})", ref=ref, channel=channel,
                            day=claim.date_of_loss, buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"],
-                           parcels=ctx["parcels"], vendor=claim.carrier, amount_cents=claim.paid_cents,
+                           parcels=ctx["parcels"], streets=ctx["streets"], vendor=claim.carrier, amount_cents=claim.paid_cents,
                            sha256=f"{sha256}:{claim.number}", confidential=True)
         ev.stage, ev.claimed, ev.claim = Stage.CLAIM, True, claim.number
         ev.claim_status, ev.claim_paid_cents = claim.status, claim.paid_cents
@@ -431,7 +432,7 @@ def case_report_evidence(text: str, *, ref: str, channel: str, ctx: dict[str, An
         if not is_work_case(case):
             continue
         ev = read_evidence(case.subject, title=f"Case {case.number}: {case.subject}", ref=ref, channel=channel, day=day,
-                           buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"],
+                           buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], streets=ctx["streets"],
                            vendor=manager, sha256=f"case:{case.number}", confidential=True)
         if ev.stage is Stage.OTHER:
             ev.stage = Stage.REPORT
@@ -490,7 +491,7 @@ def drive_evidence(data_dir: Path, ctx: dict[str, Any], *, ocr: bool = True) -> 
             continue
         day = _name_date(row["name"]) or _first_date(text) or _day(row.get("modified"))
         out.append(enrich_claim(read_evidence(text, title=row["name"], ref=f"drive:{row['path']}", channel="drive", day=day,
-                                 buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], vendor=_vendor(text, ctx),
+                                 buildings=ctx["buildings"], site_words=ctx["site_words"], known=ctx["known"], parcels=ctx["parcels"], streets=ctx["streets"], vendor=_vendor(text, ctx),
                                  amount_cents=_amount(text) or _amount(row["name"]), extra=f"folder: {row['folder']}",
                                  sha256=row["sha256"], confidential=bool(row.get("confidential"))), text, ctx))
     return out

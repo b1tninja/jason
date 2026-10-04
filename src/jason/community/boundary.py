@@ -9,10 +9,17 @@ a fact to the profile extends the check.
 The baseline of what each document names today is ``tests/fixtures/docs_boundary.json``. It
 only shrinks: a new term fails the test, and so does a cleared one the baseline still lists
 (``python -m jason.community.boundary --update`` rewrites it).
+
+General code (``src/jason``) is held to the same terms where a fact hides in code: a regular
+expression it matches text with, a word list it filters by, and a default argument. Such a fact
+belongs in the profile behind a ``Community`` method with an empty default. Its baseline is
+``tests/fixtures/code_boundary.json`` and only shrinks the same way. General code never imports
+the profile package by name at all (`profile_imports`).
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import sys
@@ -147,6 +154,81 @@ def compare(current: dict[str, list[str]], baseline: dict[str, list[str]]) -> Dr
     return Drift(new, cleared)
 
 
+# --- general code -----------------------------------------------------------------------------------------------------
+
+GENERAL_CODE = "src/jason"
+# The ``re`` functions whose first argument is the pattern.
+_RE_CALLS = frozenset({"compile", "search", "match", "fullmatch", "findall", "finditer", "sub", "subn", "split"})
+# A pattern's escapes (\b, \s): "\bMain" names Main as plainly as "Main" does.
+_ESCAPE = re.compile(r"\\[A-Za-z]")
+
+
+def _strings(node: ast.AST) -> list[str]:
+    return [n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+
+
+def code_sites(tree: ast.AST) -> list[str]:
+    """The strings in ``tree`` where a fact hides in code: the pattern given to ``re``, a word list
+    (``"a b c".split()``), and a parameter's default. A docstring, a comment, or a message is not one."""
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            func = node.func
+            if func.attr in _RE_CALLS and isinstance(func.value, ast.Name) and func.value.id == "re" and node.args:
+                found += _strings(node.args[0])
+            elif func.attr == "split" and isinstance(func.value, ast.Constant) and isinstance(func.value.value, str):
+                found.append(func.value.value)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            found += [s for d in (*node.args.defaults, *node.args.kw_defaults) if d is not None for s in _strings(d)]
+    return [_ESCAPE.sub(" ", s) for s in found]
+
+
+def _code_files(root: Path) -> list[Path]:
+    return sorted((root / GENERAL_CODE).rglob("*.py"))
+
+
+def scan_code(root: Path, terms: tuple[Term, ...]) -> dict[str, list[str]]:
+    """For each general module, the instance terms its patterns, word lists, and defaults name (sorted)."""
+    patterns = [(term, term.pattern()) for term in terms]
+    found: dict[str, list[str]] = {}
+    for path in _code_files(root):
+        strings = code_sites(ast.parse(path.read_text(encoding="utf-8")))
+        hits = sorted({term.text for term, pattern in patterns if any(pattern.search(s) for s in strings)}, key=str.casefold)
+        if hits:
+            found[path.relative_to(root).as_posix()] = hits
+    return found
+
+
+def _imported(node: ast.AST) -> list[str]:
+    """The module names an import statement or an ``import_module("…")`` call names."""
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    if isinstance(node, ast.ImportFrom):
+        return [node.module] if node.module and not node.level else []
+    if isinstance(node, ast.Call) and node.args:
+        func = node.func
+        called = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else ""
+        if called in ("import_module", "__import__"):
+            first = node.args[0]
+            if isinstance(first, ast.JoinedStr) and first.values:
+                first = first.values[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                return [first.value]
+    return []
+
+
+def profile_imports(root: Path, slug: str) -> list[str]:
+    """``path:line`` wherever general code imports the profile package by name (``slug`` or ``jason_<slug>``). It
+    reaches the profile through ``jason.community.community()`` instead."""
+    names = {slug, f"jason_{slug}"}
+    found: list[str] = []
+    for path in _code_files(root):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if any(module.split(".")[0] in names for module in _imported(node)):
+                found.append(f"{path.relative_to(root).as_posix()}:{node.lineno}")
+    return found
+
+
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -155,26 +237,35 @@ def baseline_path(root: Path | None = None) -> Path:
     return (root or repo_root()) / "tests" / "fixtures" / "docs_boundary.json"
 
 
+def code_baseline_path(root: Path | None = None) -> Path:
+    return (root or repo_root()) / "tests" / "fixtures" / "code_boundary.json"
+
+
 def main(argv: list[str] | None = None) -> int:
     from jason.community import community
 
     args = list(sys.argv[1:] if argv is None else argv)
     root = repo_root()
-    current = scan(root, instance_terms(community()))
-    path = baseline_path(root)
-    if "--update" in args:
-        path.write_text(json.dumps(current, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"{sum(len(v) for v in current.values())} terms in {len(current)} documents -> {path}")
-        return 0
-    baseline = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-    drift = compare(current, baseline)
-    for doc, terms in drift.new.items():
-        print(f"new   {doc}: {', '.join(terms)}")
-    for doc, terms in drift.cleared.items():
-        print(f"clear {doc}: {', '.join(terms)}")
-    total = sum(len(v) for v in current.values())
-    print(f"{total} instance terms in {len(current)} general documents")
-    return 0 if drift.ok else 1
+    terms = instance_terms(community())
+    ok = True
+    for what, current, path in (("general documents", scan(root, terms), baseline_path(root)),
+                                ("general modules", scan_code(root, terms), code_baseline_path(root))):
+        if "--update" in args:
+            path.write_text(json.dumps(current, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+            print(f"{sum(len(v) for v in current.values())} terms in {len(current)} {what} -> {path}")
+            continue
+        baseline = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        drift = compare(current, baseline)
+        for doc, found in drift.new.items():
+            print(f"new   {doc}: {', '.join(found)}")
+        for doc, found in drift.cleared.items():
+            print(f"clear {doc}: {', '.join(found)}")
+        print(f"{sum(len(v) for v in current.values())} instance terms in {len(current)} {what}")
+        ok = ok and drift.ok
+    for site in profile_imports(root, community().slug):
+        print(f"import {site}: general code imports the profile package")
+        ok = False
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -30,5 +30,8 @@ MAIL_ADDRESSES: tuple[MailAddress, ...] = (
     MailAddress(AddressKind.PROPERTY, "the site, 3000 Macon Dr (no mail is received there)", ("3000 MACON",)),
 )
 
+# The association's name word as letters print it: OCR reads "Mystique" as "lystique" or "Mystque".
+NAME_PATTERN = r"m?y?st[il1]?que|mystique"
+
 # The association's own email domain (Google Workspace): its board members' and groups' addresses, never a counterparty.
 EMAIL_DOMAINS: tuple[str, ...] = ("mystiquecommunity.com",)

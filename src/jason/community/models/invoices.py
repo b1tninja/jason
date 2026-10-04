@@ -27,8 +27,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+from functools import lru_cache
 from typing import Any
 
+from jason.community.base import alternation, street_words
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -42,7 +44,7 @@ from jason.community.document_models import (
 )
 from jason.community.invoice_formats import INVOICE_FORMATS
 from jason.community.invoices import InvoiceFormat, parse_date, read_invoice, readable
-from jason.community.symbols import Building, DocumentKind
+from jason.community.symbols import Building, DocumentKind, Street
 
 RECORD_AUTHORITY = "CIV 5200(b), 5210(a)(1)"
 TAX_RECORD_AUTHORITY = "CIV 5200(a)(6), 5210(a)(1)"
@@ -205,7 +207,7 @@ def bill_to(text: str) -> str:
 
 
 def association_word(context: ModelContext) -> str:
-    """The association's distinctive name word ("MYSTIQUE"), from the specification."""
+    """The association's distinctive name word ("OAKRIDGE"), from the specification."""
     community = context.community
     for attr in ("index_association", "name"):
         value = getattr(community, attr, None)
@@ -261,7 +263,7 @@ def _sender_name(text: str, context: ModelContext) -> str:
     try:
         from jason.community.sources import resolve
 
-        known, _kind, _level, _word = resolve("", text, tuple(community.senders()), own_name=association_word(context) or "MYSTIQUE")
+        known, _kind, _level, _word = resolve("", text, tuple(community.senders()), own_name=association_word(context))
     except (AttributeError, TypeError):
         return ""
     return re.sub(r"\s*\(.*\)$", "", known.name) if known else ""
@@ -312,16 +314,19 @@ def read_record(text: str, context: ModelContext, formats: tuple[InvoiceFormat, 
 # The number must hold a digit, so "Estimate Date" is not a reference.
 _REFERENCE = re.compile(r"\b(Proposal|Estimate|Quote|Purchase Order|P\.?O\.?|Work Order|W\.?O\.?|Contract|Job)\s*(?:#|No\.?|Number)?\s*:?\s*"
                         r"((?=[A-Z0-9-]*\d)[A-Z]{0,4}-?\d[\w-]{1,})\b", re.I)
-_STREET_ADDRESS = re.compile(r"\b(\d{4})\s+(Macon|Enchanted|Magical|Mesmerizing|Whimsical)\s*(Dr(?:ive)?|Walk|L(?:a)?n(?:e)?)\b\.?", re.I)
-_STREETS = {"macon": "MACON DR", "enchanted": "ENCHANTED WALK", "magical": "MAGICAL WALK", "mesmerizing": "MESMERIZING WALK",
-            "whimsical": "WHIMSICAL LN"}
+@lru_cache(maxsize=16)
+def _street_address(streets: tuple[Street, ...]) -> re.Pattern[str]:
+    return re.compile(r"\b(\d{4})\s+(" + alternation(street_words(streets)) + r")\s*(Dr(?:ive)?|Walk|L(?:a)?n(?:e)?)\b\.?", re.I)
 
 
 def service_address(text: str, context: ModelContext) -> tuple[str, int | None]:
-    """The first community address the invoice names, and the building it falls in by the specification's ranges."""
+    """The first community address the invoice names, on one of the profile's streets, and the building it falls in by
+    the specification's ranges."""
     community = context.community
-    for m in _STREET_ADDRESS.finditer(text or ""):
-        address = f"{m.group(1)} {_STREETS[m.group(2).lower()]}"
+    streets = tuple(getattr(community, "streets", tuple)())
+    by_word = street_words(streets)
+    for m in _street_address(streets).finditer(text or ""):
+        address = f"{m.group(1)} {by_word[m.group(2).upper()].value}"
         building = None
         if community is not None and hasattr(community, "building_for_address"):
             row = community.building_for_address(address)

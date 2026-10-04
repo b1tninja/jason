@@ -14,7 +14,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Iterable
+
+from jason.community.symbols import Street
 
 
 class MailKind(Enum):
@@ -213,26 +215,28 @@ class MailAddress:
     zip: str = ""                   # the ZIP code a complete address carries; a different one misroutes the mail
 
 
-_ADDRESSEE_NAME = re.compile(r"(?i)mystique\s+(?:community|homeowners|hoa|condo)")
-
-
-def addressee_block(text: str, *, lines: int = 5) -> str:
+def addressee_block(text: str, *, name: str = "", lines: int = 5) -> str:
     """The addressee: the association's name and the lines under it, from its first mention on the page.
 
     A letterhead names its sender first; the addressee block is the first place the association's own name
-    appears with lines after it. An envelope window or a statement header reads the same way.
+    appears with lines after it. An envelope window or a statement header reads the same way. ``name`` is the
+    pattern for the association's name word (``Community.name_pattern``); without one there is no block.
     """
+    if not name:
+        return ""
+    addressee = re.compile(rf"(?i)(?:{name})\s+(?:community|homeowners|hoa|condo)")
     rows = [line.strip() for line in text.splitlines()]
     for index, line in enumerate(rows):
-        if _ADDRESSEE_NAME.search(line):
+        if addressee.search(line):
             block = [r for r in rows[index: index + 1 + lines] if r]
             return " | ".join(block)
     return ""
 
 
-def address_of(text: str, addresses: tuple[MailAddress, ...]) -> tuple[AddressKind, str, str]:
-    """(kind, label, block): which of ``addresses`` the letter's addressee block carries."""
-    block = addressee_block(text)
+def address_of(text: str, addresses: tuple[MailAddress, ...], *, name: str = "") -> tuple[AddressKind, str, str]:
+    """(kind, label, block): which of ``addresses`` the letter's addressee block carries (``name`` as for
+    `addressee_block`)."""
+    block = addressee_block(text, name=name)
     if not block:
         return AddressKind.UNREAD, "", ""
     kind, label = classify_address(block, addresses)
@@ -271,14 +275,26 @@ _POLICY = re.compile(r"(?i)\bpolicy\s*(?:(?:no\.?|number|#)\s*[:#.]?\s*)?([A-Z]{
 _ESCROW = re.compile(r"(?i)\b(?:escrow|order|file)\s*(?:no\.?|number|#)\s*[:#.]?\s*([A-Z0-9][A-Z0-9-]{3,})")
 _ACCOUNT = re.compile(r"(?i)\b(?:account|acct)\s*(?:no\.?|number|nbr|#)?\s*[:#.]?\s*[*xX]{2,}\s*-?(\d{4})\b")
 _PERIOD = re.compile(r"(?i)(?:policy period|term)\D{0,20}(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:to|-|through|thru)\s*(\d{1,2}/\d{1,2}/\d{2,4})")
-_ADDRESS = re.compile(r"\b(\d{4})\s+(MACON\s+DR(?:IVE)?|ENCHANTED\s+WALK|MAGICAL\s+WALK|MESMERIZING\s+WALK|WHIMSICAL\s+L(?:N|ANE))\b", re.I)
+# A street's suffix as a letter spells it out: "DR" or "DRIVE", "LN" or "LANE".
+_SUFFIX_SPELLED = {"DR": r"DR(?:IVE)?", "LN": r"L(?:N|ANE)", "ST": r"ST(?:REET)?", "AVE": r"AVE(?:NUE)?", "CT": r"C(?:T|OURT)",
+                   "RD": r"R(?:D|OAD)", "PL": r"PL(?:ACE)?", "CIR": r"CIR(?:CLE)?", "BLVD": r"B(?:LVD|OULEVARD)"}
+
+
+def _street_addresses(text: str, streets: Iterable[Street]) -> list[str]:
+    """Each "1234 Main St" on one of ``streets``, in the order the text prints them, as the street is named."""
+    found: list[tuple[int, str]] = []
+    for street in streets:
+        *words, suffix = street.value.split()
+        pattern = r"\s+".join([re.escape(w) for w in words] + [_SUFFIX_SPELLED.get(suffix, re.escape(suffix))])
+        found += [(m.start(), f"{m.group(1)} {street.value}") for m in re.finditer(rf"\b(\d{{4}})\s+{pattern}\b", text, re.I)]
+    return [address for _start, address in sorted(found)]
 
 
 @dataclass(frozen=True)
 class LetterFacts:
     """What a letter's own text names, read by pattern: the handles that join it to the association's other records.
 
-    ``parcels`` are 14-digit assessor numbers; ``addresses`` are street addresses on Mystique's streets; the rest are
+    ``parcels`` are 14-digit assessor numbers; ``addresses`` are street addresses on the association's streets; the rest are
     the numbers a renewal, an escrow demand, or a statement is filed under. A pattern reading is evidence, not a pin.
     """
 
@@ -302,14 +318,10 @@ def _unique(values) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def letter_facts(text: str) -> LetterFacts:
-    """The parcel numbers, addresses, policy numbers and periods, escrow numbers, and account endings a letter prints."""
-    street = {"DRIVE": "DR", "LANE": "LN"}
-    addresses = []
-    for number, name in _ADDRESS.findall(text):
-        words = name.upper().split()
-        words[-1] = street.get(words[-1], words[-1])
-        addresses.append(f"{number} {' '.join(words)}")
+def letter_facts(text: str, streets: Iterable[Street] = ()) -> LetterFacts:
+    """The parcel numbers, addresses, policy numbers and periods, escrow numbers, and account endings a letter prints.
+    An address is read only on ``streets``, the profile's (``Community.streets``)."""
+    addresses = _street_addresses(text, streets)
     periods = []
     for start, end in _PERIOD.findall(text):
         a, b = _date(start), _date(end)
