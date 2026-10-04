@@ -14,6 +14,7 @@ import pytest
 
 from jason.community.applicability import (
     ALWAYS,
+    HOME_IMPROVEMENT_CONTRACT,
     WATER_BASED_FIRE_PROTECTION,
     AllOf,
     Answer,
@@ -21,16 +22,21 @@ from jason.community.applicability import (
     AtLeast,
     Below,
     CommonInterest,
+    ElectronicVoting,
     Except,
+    Facet,
     Fact,
     Facts,
     FactValue,
+    HomeImprovement,
     In,
     InForce,
     InstallationStandard,
     Is,
+    MeetingFormat,
     Not,
     PartyRole,
+    RuleChangeKind,
     Source,
     SystemKind,
     Work,
@@ -40,6 +46,7 @@ from jason.community.applicability import (
     profile_facts,
 )
 from jason.community.base import Community
+from jason.community.sources import SourceKind
 from jason.community.statutory_terms import Prior
 from jason.community.symbols import DocumentKind
 
@@ -191,8 +198,60 @@ def test_many_valued_facts_and_license_classes():
     cond = AllOf(In(Fact.VENDOR_WORK, {Work.INSPECT, Work.TEST, Work.MAINTAIN}), Is(Fact.LICENSE_CLASS, "C-16"))
     facts = Facts.build(document={Fact.VENDOR_WORK: [Work.TEST, Work.REPAIR], Fact.LICENSE_CLASS: ("c-16", "C-36")})
     assert evaluate(cond, facts).answer is A  # a license code compares without case
-    facts = Facts.build(document={Fact.VENDOR_WORK: [Work.INSTALL], Fact.LICENSE_CLASS: ["C-16"]})
-    assert evaluate(cond, facts).answer is N
+    stated = Facts.build(profile={Fact.VENDOR_WORK: [Work.INSTALL], Fact.LICENSE_CLASS: ["C-16"]})
+    assert evaluate(cond, stated).answer is N  # a set the profile states is complete: what it leaves out is a "no"
+
+
+# --- A set read from a document is partial ------------------------------------------------------------------------
+
+
+def test_a_set_read_from_a_document_is_partial():
+    tests_it = In(Fact.VENDOR_WORK, {Work.TEST, Work.MAINTAIN})
+    read = FactValue(Fact.VENDOR_WORK, [Work.INSPECT], Source.DOCUMENT, "Oak Ridge proposal")
+    assert read.partial and read.as_dict()["partial"] is True
+    assert read.describe() == "the vendor's kinds of work: at least inspection (document, Oak Ridge proposal)"
+    # The proposal names inspection. Whether the vendor also tests is not known: undetermined, never "no".
+    verdict = evaluate(tests_it, Facts((read,)))
+    assert verdict.answer is U and verdict.missing == (Fact.VENDOR_WORK,) and verdict.deciding == (read,)
+    assert evaluate(Not(tests_it), Facts((read,))).answer is U
+    # What the document does name is known.
+    assert evaluate(Is(Fact.VENDOR_WORK, Work.INSPECT), Facts((read,))).answer is A
+    # A known false part still decides an AllOf beside it; the open set alone never does.
+    both = AllOf(tests_it, Is(Fact.CITY, "Oak Ridge"))
+    elsewhere = FactValue(Fact.CITY, "Elm Falls", Source.PROFILE)
+    assert evaluate(both, Facts((read, elsewhere))).answer is N
+    assert evaluate(both, Facts((read, FactValue(Fact.CITY, "Oak Ridge", Source.PROFILE)))).answer is U
+
+
+@pytest.mark.parametrize("source", [Source.PROFILE, Source.ANSWER])
+def test_a_set_the_profile_or_a_person_states_is_complete(source):
+    stated = FactValue(Fact.VENDOR_WORK, [Work.INSPECT], source)
+    assert not stated.partial and "partial" not in stated.as_dict()
+    verdict = evaluate(In(Fact.VENDOR_WORK, {Work.TEST, Work.MAINTAIN}), Facts((stated,)))
+    assert verdict.answer is N and verdict.deciding == (stated,)
+    assert stated.describe().startswith("the vendor's kinds of work: inspection (")
+
+
+def test_a_complete_set_settles_what_a_partial_one_leaves_open():
+    tests_it = In(Fact.VENDOR_WORK, {Work.TEST, Work.MAINTAIN})
+    read = FactValue(Fact.VENDOR_WORK, [Work.INSPECT], Source.DOCUMENT, "Oak Ridge proposal")
+    answered = FactValue(Fact.VENDOR_WORK, [Work.INSPECT], Source.ANSWER, "intake question 7")
+    verdict = evaluate(tests_it, Facts((read, answered)))
+    assert verdict.answer is N and verdict.deciding == (answered,)      # the answer decides; the open set adds nothing
+    # A document that names the value settles it against a complete set that leaves it out: the sources disagree.
+    names_it = FactValue(Fact.VENDOR_WORK, [Work.TEST], Source.DOCUMENT, "Oak Ridge agreement")
+    verdict = evaluate(tests_it, Facts((names_it, answered)))
+    assert verdict.answer is U and set(verdict.conflicting) == {names_it, answered}
+
+
+def test_a_reader_can_say_its_set_is_whole_and_one_value_is_never_partial():
+    whole = FactValue(Fact.LICENSE_CLASS, ["C-16"], Source.DOCUMENT, "the license record", complete=True)
+    assert not whole.partial and evaluate(Is(Fact.LICENSE_CLASS, "C-10"), Facts((whole,))).answer is N
+    open_ = FactValue(Fact.LICENSE_CLASS, ["C-16"], Source.PROFILE, complete=False)
+    assert open_.partial and evaluate(Is(Fact.LICENSE_CLASS, "C-10"), Facts((open_,))).answer is U
+    one = FactValue(Fact.INSTALLATION_STANDARD, InstallationStandard.NFPA_13R, Source.DOCUMENT)
+    assert not one.partial
+    assert evaluate(Is(Fact.INSTALLATION_STANDARD, InstallationStandard.NFPA_13D), Facts((one,))).answer is N
 
 
 def test_amount_and_unit_count():
@@ -242,6 +301,67 @@ def test_wrong_type_is_an_error_not_a_miss():
         FactValue(Fact.AMOUNT, True, Source.DOCUMENT)
 
 
+# --- The event facet ----------------------------------------------------------------------------------------------
+
+
+def test_the_event_facet_holds_what_one_meeting_rule_change_or_election_is():
+    assert {f for f in Fact if f.facet is Facet.EVENT} == {Fact.MEETING_FORMAT, Fact.RULE_CHANGE, Fact.ELECTRONIC_VOTING}
+    assert len(Facet) == 8
+    by_teleconference = Is(Fact.MEETING_FORMAT, MeetingFormat.ENTIRELY_BY_TELECONFERENCE)
+    assert by_teleconference.describe() == "the meeting is held entirely by teleconference (4926)"
+    # A caller with no event facts: undetermined, and the question names the fact in plain words.
+    verdict = evaluate(by_teleconference, Facts())
+    assert verdict.answer is U and verdict.question() == "unknown: how the meeting is held"
+    assert "missing: how the meeting is held" in verdict.explain()
+    said = lambda value: Facts((FactValue(Fact.MEETING_FORMAT, value, Source.ANSWER, "the agenda"),))  # noqa: E731
+    assert evaluate(by_teleconference, said(MeetingFormat.ENTIRELY_BY_TELECONFERENCE)).answer is A
+    assert evaluate(by_teleconference, said(MeetingFormat.TELECONFERENCE_WITH_LOCATION)).answer is N
+    assert evaluate(by_teleconference, said(MeetingFormat.IN_PERSON)).answer is N
+    emergency = Is(Fact.RULE_CHANGE, RuleChangeKind.EMERGENCY)
+    assert emergency.describe() == "the rule change is an emergency rule change (4360(d))"
+    assert evaluate(emergency, Facts()).question() == "unknown: whether the rule change is an emergency one"
+    used = In(Fact.ELECTRONIC_VOTING, {ElectronicVoting.OPT_IN, ElectronicVoting.OPT_OUT}, "used")
+    assert used.describe() == "electronic voting is used"
+    stated = Facts.build(profile={Fact.ELECTRONIC_VOTING: ElectronicVoting.NONE})
+    assert evaluate(used, stated).answer is N and evaluate(used, Facts()).answer is U
+
+
+# --- A home improvement contract is a condition, not a kind -------------------------------------------------------
+
+
+def test_a_home_improvement_contract_is_undetermined_until_a_person_answers():
+    assert "home_improvement" not in {k.value for k in DocumentKind}        # a condition, never a document kind
+    assert HOME_IMPROVEMENT_CONTRACT.describe() == (
+        "the document is a contract and the work is a home improvement (BPC 7151)")
+    # Common-area work the association contracts for: the kind and the buyer are known, the reading is counsel's.
+    contract = Facts.build(document={Fact.DOCUMENT_KIND: DocumentKind.CONTRACT, Fact.BUYER: PartyRole.ASSOCIATION},
+                           document_where="Oak Ridge roofing agreement")
+    verdict = evaluate(HOME_IMPROVEMENT_CONTRACT, contract)
+    assert verdict.answer is U and verdict.missing == (Fact.HOME_IMPROVEMENT,)
+    assert verdict.question() == "unknown: whether the work is a home improvement (BPC 7151, 7151.2)"
+    for reading, answer in ((HomeImprovement.YES, A), (HomeImprovement.NO, N)):
+        answered = contract.merge([FactValue(Fact.HOME_IMPROVEMENT, reading, Source.ANSWER, "counsel's letter")])
+        verdict = evaluate(HOME_IMPROVEMENT_CONTRACT, answered)
+        assert verdict.answer is answer and Source.ANSWER in {v.source for v in verdict.deciding}
+    proposal = Facts.build(document={Fact.DOCUMENT_KIND: DocumentKind.PROPOSAL})
+    assert evaluate(HOME_IMPROVEMENT_CONTRACT, proposal).answer is N         # not a contract: no reading is needed
+
+
+# --- A filing rule's facts: the sender by name, and its kind of source --------------------------------------------
+
+
+def test_a_senders_name_is_compared_as_written_and_a_code_without_case():
+    assert evaluate(Is(Fact.SENDER, "Acme Fire"), Facts.build(profile={Fact.SENDER: "Acme Fire"})).answer is A
+    assert evaluate(Is(Fact.SENDER, "Acme Fire"), Facts.build(profile={Fact.SENDER: "ACME FIRE"})).answer is N
+    assert evaluate(Is(Fact.COUNTY, "Example"), Facts.build(profile={Fact.COUNTY: "EXAMPLE"})).answer is A
+    law = In(Fact.SOURCE_KIND, {SourceKind.LAW_FIRM, SourceKind.ACCOUNTANT})
+    assert law.describe() == "the sender's kind of source is one of: accountant, law firm"
+    assert evaluate(law, Facts.build(profile={Fact.SOURCE_KIND: SourceKind.LAW_FIRM})).answer is A
+    assert evaluate(law, Facts.build(profile={Fact.SOURCE_KIND: SourceKind.VENDOR})).answer is N
+    with pytest.raises(TypeError):
+        Is(Fact.SOURCE_KIND, "law firm")
+
+
 # --- describe(), hashing, and the JSON form -----------------------------------------------------------------------
 
 
@@ -272,6 +392,11 @@ def test_conditions_are_hashable_and_equal_by_value():
     ALWAYS,
     AllOf(AtLeast(Fact.AMOUNT, 50_000), Not(Is(Fact.BUYER, PartyRole.ASSOCIATION)), InForce(date(2020, 1, 1), None, "x")),
     AnyOf(Is(Fact.DOCUMENT_KIND, DocumentKind.PROPOSAL), Below(Fact.UNIT_COUNT, 10), Is(Fact.LICENSE_CLASS, "C-16")),
+    AllOf(Is(Fact.MEETING_FORMAT, MeetingFormat.ENTIRELY_BY_TELECONFERENCE), Is(Fact.RULE_CHANGE, RuleChangeKind.EMERGENCY),
+          In(Fact.ELECTRONIC_VOTING, {ElectronicVoting.OPT_IN, ElectronicVoting.OPT_OUT}, "used")),
+    AllOf(Is(Fact.DOCUMENT_KIND, DocumentKind.INVOICE), Is(Fact.SENDER, "Acme Fire"),
+          In(Fact.SOURCE_KIND, {SourceKind.VENDOR, SourceKind.LAW_FIRM})),
+    HOME_IMPROVEMENT_CONTRACT,
 ])
 def test_json_round_trip(condition):
     data = json.loads(json.dumps(condition.as_dict()))

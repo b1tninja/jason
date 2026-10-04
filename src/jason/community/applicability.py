@@ -16,6 +16,14 @@ Undetermined is never read as "does not apply": a miss stays a miss, and it beco
 (a license class, a county). A ``FactValue`` tags the value with its ``Source``: the document, the profile, the date,
 or a person's answer. ``Facts`` merges them. Two sources that give one fact are each tested; when they give the same
 answer the answer stands, and when they do not the test is undetermined with both values named. jason never picks one.
+That holds for a person's answer too: an answer that disagrees with a document or the profile leaves the test
+undetermined with both named.
+
+**A set read from a document is partial.** A many-valued fact (the vendor's kinds of work, its license classes, the
+parties) that a document gives names what the document says, not everything there is: a value the set holds is
+known, and a value it leaves out is undetermined, never "no". A set the profile or a person's answer states is
+complete, so a value it leaves out is "no". A reader that did read the whole list says so (``FactValue.complete``).
+This is a default a person can overturn: ``FactValue.partial`` is the one place it is decided.
 
 **Conditions.** Frozen, hashable records: ``Is``, ``In``, ``AtLeast``, ``Below``, ``InForce``, ``AllOf``, ``AnyOf``,
 ``Not``, ``Except`` (a condition with its exclusions spelled out), and ``ALWAYS``. Each has ``describe()`` in plain
@@ -36,6 +44,7 @@ from datetime import date
 from enum import Enum
 from typing import Any, Callable, Iterable, Mapping, Union
 
+from jason.community.sources import SourceKind
 from jason.community.symbols import DocumentKind
 
 
@@ -43,7 +52,9 @@ from jason.community.symbols import DocumentKind
 
 
 class Facet(Enum):
-    """The seven facets a condition can test (docs/applicability.md, section 1)."""
+    """The eight facets a condition can test (docs/applicability.md, section 1). ``EVENT`` is the eighth: facts about
+    one meeting, rule change, or election, which fit none of the other seven. A caller that knows the event states
+    them; a caller that does not gets "undetermined" with the fact named."""
 
     DOCUMENT = "document"
     SUBJECT = "subject"
@@ -52,6 +63,7 @@ class Facet(Enum):
     PLACE = "place"
     TRANSACTION = "transaction"
     TIME = "time"
+    EVENT = "event"
 
 
 class _Word(Enum):
@@ -139,6 +151,41 @@ class SigningPlace(_Word):
     ELSEWHERE = "elsewhere"
 
 
+class HomeImprovement(_Word):
+    """Whether a contract's work is a home improvement (Business and Professions Code 7151, 7151.2). No reader states
+    it; see ``HOME_IMPROVEMENT_CONTRACT``."""
+
+    YES = "yes"
+    NO = "no"
+
+
+# The event facet's closed sets. Each member is a distinction the statute itself draws, named with its section; none
+# is added for symmetry. A notice row that turns on one says so in its ``applies`` (``jason.community.notice_elements``).
+
+
+class MeetingFormat(_Word):
+    """How a board or member meeting is held, as Civil Code 4090 and 4926 divide it."""
+
+    IN_PERSON = "in_person"                                    # 4090(a): a congregation at the same time and place
+    TELECONFERENCE_WITH_LOCATION = "teleconference_with_location"  # 4090(b): the notice identifies a physical location
+    ENTIRELY_BY_TELECONFERENCE = "entirely_by_teleconference"  # 4926(a), 5450(b): no physical location is held open
+
+
+class RuleChangeKind(_Word):
+    """How an operating rule change is made, as Civil Code 4360 divides it."""
+
+    NOTICED = "noticed"          # 4360(a): after general notice of the proposed change
+    EMERGENCY = "emergency"      # 4360(d): an emergency rule change, with no notice before it
+
+
+class ElectronicVoting(_Word):
+    """Whether an election operating rule allows electronic secret ballots, as Civil Code 5105(i) divides it."""
+
+    NONE = "none"                # no election operating rule allows electronic secret ballots
+    OPT_OUT = "opt_out"          # 5105(i)(1)(C)(i): a member opts out to vote by written ballot
+    OPT_IN = "opt_in"            # 5105(i)(1)(C)(ii): a member opts in to vote by electronic secret ballot
+
+
 _LABELS: dict[Enum, str] = {
     SystemKind.FIRE_SPRINKLER: "fire sprinkler system",
     SystemKind.STANDPIPE: "standpipe system",
@@ -174,6 +221,16 @@ _LABELS: dict[Enum, str] = {
     SigningPlace.SELLER_PREMISES: "the seller's place of business",
     SigningPlace.REMOTE: "remote (by mail or electronic signature)",
     SigningPlace.ELSEWHERE: "elsewhere",
+    HomeImprovement.YES: "a home improvement (BPC 7151)",
+    HomeImprovement.NO: "not a home improvement (BPC 7151)",
+    MeetingFormat.IN_PERSON: "held in person (4090(a))",
+    MeetingFormat.TELECONFERENCE_WITH_LOCATION: "held by teleconference with a physical location (4090(b))",
+    MeetingFormat.ENTIRELY_BY_TELECONFERENCE: "held entirely by teleconference (4926)",
+    RuleChangeKind.NOTICED: "made after notice (4360(a))",
+    RuleChangeKind.EMERGENCY: "an emergency rule change (4360(d))",
+    ElectronicVoting.NONE: "not used",
+    ElectronicVoting.OPT_OUT: "used, with members opting out (5105(i)(1)(C)(i))",
+    ElectronicVoting.OPT_IN: "used, with members opting in (5105(i)(1)(C)(ii))",
 }
 
 # The water-based fire protection systems (the scope of NFPA 25 and of Title 19's chapter on them). A general group.
@@ -188,6 +245,8 @@ class FactSpec:
     noun: str                    # "the system": how ``describe()`` names the fact
     many: bool = False           # a set of values (the vendor's work, its license classes)
     article: bool = False        # the label takes "a"/"an" after "is"
+    exact: bool = False          # a name compared as written (a sender row's), not a code compared without case
+    topic: str = ""              # how a missing fact is named, where the noun alone would not say
 
 
 class Fact(Enum):
@@ -199,6 +258,8 @@ class Fact(Enum):
     VENDOR_WORK = "vendor_work"
     LICENSE_CLASS = "license_class"
     PARTY = "party"
+    SENDER = "sender"            # the sender directory row's name, as written
+    SOURCE_KIND = "source_kind"  # the sender's kind of source (``jason.community.sources.SourceKind``)
     COMMON_INTEREST = "common_interest"
     OCCUPANCY_CLASS = "occupancy_class"
     UNIT_COUNT = "unit_count"
@@ -209,7 +270,11 @@ class Fact(Enum):
     AMOUNT = "amount"            # integer cents
     SIGNED_AT = "signed_at"
     BUYER = "buyer"
+    HOME_IMPROVEMENT = "home_improvement"
     AS_OF = "as_of"              # the date the question is asked for: a document's date, or today
+    MEETING_FORMAT = "meeting_format"
+    RULE_CHANGE = "rule_change"
+    ELECTRONIC_VOTING = "electronic_voting"
 
     @property
     def spec(self) -> FactSpec:
@@ -222,6 +287,18 @@ class Fact(Enum):
     @property
     def noun(self) -> str:
         return self.spec.noun
+
+    @property
+    def topic(self) -> str:
+        """The fact as a missing thing is named: "how the meeting is held", else its noun."""
+        return self.spec.topic or self.spec.noun
+
+    def same(self, a: Any, b: Any) -> bool:
+        """Equality, ignoring case for plain-data codes (a county, a license class) but not for a name kept as
+        written (``FactSpec.exact``)."""
+        if isinstance(a, str) and isinstance(b, str) and not self.spec.exact:
+            return a.casefold() == b.casefold()
+        return a == b
 
     def check(self, value: Any) -> Any:
         """The value in its stored form (a many-valued fact as a frozenset), or TypeError when it is not this fact's
@@ -280,6 +357,8 @@ _SPECS: dict[Fact, FactSpec] = {
     Fact.VENDOR_WORK: FactSpec(Facet.PARTY, Work, "the vendor's kinds of work", many=True),
     Fact.LICENSE_CLASS: FactSpec(Facet.PARTY, str, "the vendor's license classes", many=True),
     Fact.PARTY: FactSpec(Facet.PARTY, PartyRole, "the parties", many=True),
+    Fact.SENDER: FactSpec(Facet.PARTY, str, "the sender", exact=True),
+    Fact.SOURCE_KIND: FactSpec(Facet.PARTY, SourceKind, "the sender's kind of source"),
     Fact.COMMON_INTEREST: FactSpec(Facet.PROPERTY, CommonInterest, "the development", article=True),
     Fact.OCCUPANCY_CLASS: FactSpec(Facet.PROPERTY, OccupancyClass, "the occupancy classification"),
     Fact.UNIT_COUNT: FactSpec(Facet.PROPERTY, int, "the number of units"),
@@ -290,7 +369,14 @@ _SPECS: dict[Fact, FactSpec] = {
     Fact.AMOUNT: FactSpec(Facet.TRANSACTION, int, "the amount"),
     Fact.SIGNED_AT: FactSpec(Facet.TRANSACTION, SigningPlace, "the place of signing"),
     Fact.BUYER: FactSpec(Facet.TRANSACTION, PartyRole, "the buyer"),
+    Fact.HOME_IMPROVEMENT: FactSpec(Facet.TRANSACTION, HomeImprovement, "the work",
+                                    topic="whether the work is a home improvement (BPC 7151, 7151.2)"),
     Fact.AS_OF: FactSpec(Facet.TIME, date, "the date"),
+    Fact.MEETING_FORMAT: FactSpec(Facet.EVENT, MeetingFormat, "the meeting", topic="how the meeting is held"),
+    Fact.RULE_CHANGE: FactSpec(Facet.EVENT, RuleChangeKind, "the rule change",
+                               topic="whether the rule change is an emergency one"),
+    Fact.ELECTRONIC_VOTING: FactSpec(Facet.EVENT, ElectronicVoting, "electronic voting",
+                                     topic="whether an election rule allows electronic secret ballots"),
 }
 assert set(_SPECS) == set(Fact)
 
@@ -302,13 +388,6 @@ def _article(label: str) -> str:
 def _value_words(fact: Fact, value: Any) -> str:
     words = fact.format(value)
     return _article(words) if fact.spec.article else words
-
-
-def _same(a: Any, b: Any) -> bool:
-    """Equality, ignoring case for plain-data codes (a county, a license class)."""
-    if isinstance(a, str) and isinstance(b, str):
-        return a.casefold() == b.casefold()
-    return a == b
 
 
 # --- Sources and facts ------------------------------------------------------------------------------------------
@@ -325,19 +404,34 @@ class Source(Enum):
 
 @dataclass(frozen=True)
 class FactValue:
-    """One fact, its value, and where it came from (``where``: the page, the method, the question's id)."""
+    """One fact, its value, and where it came from (``where``: the page, the method, the question's id).
+
+    ``complete`` says whether a many-valued fact's set is the whole of it. None takes the source's default: a set a
+    document gives is partial, and one the profile or a person's answer states is complete. A reader that read the
+    whole list (a license record's classes) passes True."""
 
     fact: Fact
     value: Any
     source: Source
     where: str = ""
+    complete: bool | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "value", self.fact.check(self.value))
 
+    @property
+    def partial(self) -> bool:
+        """Whether the set may leave values out: a value it does not hold is then undetermined, not "no". Only a
+        many-valued fact can be partial. The default by source is the rule decided for now (see the module's note)."""
+        if not self.fact.spec.many:
+            return False
+        return self.source is Source.DOCUMENT if self.complete is None else not self.complete
+
     def describe(self) -> str:
         if self.fact.spec.many:
             shown = ", ".join(sorted(self.fact.format(v) for v in self.value)) or "none"
+            if self.partial:
+                shown = f"at least {shown}"
         else:
             shown = self.fact.format(self.value)
         at = f", {self.where}" if self.where else ""
@@ -345,7 +439,10 @@ class FactValue:
 
     def as_dict(self) -> dict[str, Any]:
         value = sorted(self.fact.word(v) for v in self.value) if self.fact.spec.many else self.fact.word(self.value)
-        return {"fact": self.fact.value, "value": value, "source": self.source.value, "where": self.where}
+        out = {"fact": self.fact.value, "value": value, "source": self.source.value, "where": self.where}
+        if self.partial:
+            out["partial"] = True
+        return out
 
 
 @dataclass(frozen=True)
@@ -448,7 +545,7 @@ class Verdict:
             return ""
         parts = []
         if self.missing:
-            parts.append("unknown: " + "; ".join(f.noun for f in self.missing))
+            parts.append("unknown: " + "; ".join(f.topic for f in self.missing))
         if self.conflicting:
             parts.append("sources disagree: " + "; ".join(v.describe() for v in self.conflicting))
         return " | ".join(parts)
@@ -457,7 +554,7 @@ class Verdict:
         lines = [f"{self.answer.value}: {self.condition.describe()}"]
         lines += [f"  decided by {v.describe()}" for v in self.deciding] if not self.undetermined else \
                  [f"  known: {v.describe()}" for v in self.deciding]
-        lines += [f"  missing: {f.noun}" for f in self.missing]
+        lines += [f"  missing: {f.topic}" for f in self.missing]
         lines += [f"  disagree: {v.describe()}" for v in self.conflicting]
         return "\n".join(lines)
 
@@ -482,10 +579,17 @@ class _Leaf:
         values = facts.of(self.fact)
         if not values:
             return Verdict(Answer.UNDETERMINED, self, missing=(self.fact,))
-        results = {self.test(v.value) for v in values}
+        tested = tuple((v, self.test(v.value)) for v in values)
+        # A partial set (one a document names) settles what it holds and leaves the rest open: a miss in it is not
+        # a "no". Only the settled tests are compared, and when none is settled the fact is still missing.
+        settled = tuple((v, hit) for v, hit in tested if hit or not v.partial)
+        results = {hit for _, hit in settled}
         if len(results) > 1:
-            return Verdict(Answer.UNDETERMINED, self, conflicting=values)
-        return Verdict(Answer.APPLIES if results.pop() else Answer.DOES_NOT_APPLY, self, deciding=values)
+            return Verdict(Answer.UNDETERMINED, self, conflicting=tuple(v for v, _ in settled))
+        if not results:
+            return Verdict(Answer.UNDETERMINED, self, deciding=values, missing=(self.fact,))
+        return Verdict(Answer.APPLIES if results.pop() else Answer.DOES_NOT_APPLY, self,
+                       deciding=tuple(v for v, _ in settled))
 
 
 @dataclass(frozen=True)
@@ -500,8 +604,8 @@ class Is(_Leaf):
 
     def test(self, value: Any) -> bool:
         if self.fact.spec.many:
-            return any(_same(self.value, v) for v in value)
-        return _same(self.value, value)
+            return any(self.fact.same(self.value, v) for v in value)
+        return self.fact.same(self.value, value)
 
     def describe(self) -> str:
         verb = "include" if self.fact.spec.many else "is"
@@ -533,8 +637,8 @@ class In(_Leaf):
 
     def test(self, value: Any) -> bool:
         if self.fact.spec.many:
-            return any(_same(a, b) for a in self.values for b in value)
-        return any(_same(a, value) for a in self.values)
+            return any(self.fact.same(a, b) for a in self.values for b in value)
+        return any(self.fact.same(a, value) for a in self.values)
 
     def _group(self) -> str:
         if self.label:
@@ -855,6 +959,28 @@ def partition(rows: Iterable[Any], facts: Facts,
                      tuple(groups[Answer.UNDETERMINED]))
 
 
+# --- Conditions general code names ------------------------------------------------------------------------------
+
+# A decision, kept as a default a person can overturn: "home improvement contract" is a condition, not a document
+# kind. The classifier says a document is a contract. Whether it is a home improvement contract turns on the work and
+# on who the parties are (Business and Professions Code 7151 and 7151.2, on the authorities shelf), which a kind cannot
+# carry, so a row for that contract's notices tests this condition. No reader states ``Fact.HOME_IMPROVEMENT``. For
+# work on the common area that the association contracts for, whether it is a home improvement is a reading for
+# counsel: the condition stays undetermined, with that fact named, until a person records counsel's answer (source
+# ``ANSWER``). jason never infers it from the contract's words or from who signed.
+HOME_IMPROVEMENT_CONTRACT: Condition = AllOf(Is(Fact.DOCUMENT_KIND, DocumentKind.CONTRACT),
+                                            Is(Fact.HOME_IMPROVEMENT, HomeImprovement.YES))
+
+
+def filing_facts(sender: Any, kind: Any) -> Facts:
+    """The facts a filing rule is asked about: the document's kind as the classifier gave it (none for an unclassified
+    document, so a rule that names a kind does not take it), and the sender directory row's name and kind of source."""
+    values = [FactValue(Fact.DOCUMENT_KIND, kind, Source.DOCUMENT, "the classifier")] if kind is not None else []
+    values += [FactValue(Fact.SENDER, sender.name, Source.PROFILE, "Community.senders()"),
+               FactValue(Fact.SOURCE_KIND, sender.kind, Source.PROFILE, "Community.senders()")]
+    return Facts(tuple(values))
+
+
 # --- The JSON form ----------------------------------------------------------------------------------------------
 
 
@@ -888,7 +1014,8 @@ def condition_from_dict(data: Mapping[str, Any]) -> Condition:
 
 __all__ = [
     "Facet", "SystemKind", "InstallationStandard", "Work", "PartyRole", "CommonInterest", "OccupancyClass",
-    "SigningPlace", "WATER_BASED_FIRE_PROTECTION", "FactSpec", "Fact", "Source", "FactValue", "Facts",
+    "SigningPlace", "HomeImprovement", "MeetingFormat", "RuleChangeKind", "ElectronicVoting",
+    "WATER_BASED_FIRE_PROTECTION", "HOME_IMPROVEMENT_CONTRACT", "filing_facts", "FactSpec", "Fact", "Source", "FactValue", "Facts",
     "profile_facts", "Answer", "Verdict", "Is", "In", "AtLeast", "Below", "InForce", "ALWAYS", "AllOf", "AnyOf",
     "Not", "Except", "Condition", "evaluate", "facts_tested", "Partition", "partition", "condition_from_dict",
 ]

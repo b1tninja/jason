@@ -281,9 +281,16 @@ def test_deliverables_by_the_subject_and_the_vendors_work():
     tested = deliverables(_subject(SystemKind.FIRE_SPRINKLER, R13, {Work.TEST, Work.MAINTAIN}))
     assert keys(tested.applies) == [r.key for r in DELIVERABLE_RULES] and not tested.undetermined
     # An inspection alone is 904.1's: the forms and the inspection report, not 904.2's testing and maintenance duties.
+    # A document that names inspection does not say the vendor does nothing else, so 904.2's rows stay a question.
     inspected = deliverables(_subject(SystemKind.FIRE_SPRINKLER, R13, {Work.INSPECT}))
     assert keys(inspected.applies) == ["aes-forms", "inspection-report"]
-    assert "itemized-invoice" in keys(inspected.does_not_apply)
+    assert "itemized-invoice" in keys(inspected.undetermined) and not inspected.does_not_apply
+    # A person's answer that inspection is all the vendor does is complete: 904.2's rows do not apply.
+    only = _subject(SystemKind.FIRE_SPRINKLER, R13).merge(
+        [FactValue(Fact.VENDOR_WORK, {Work.INSPECT}, Source.ANSWER, "intake question 7")])
+    inspected = deliverables(only)
+    assert keys(inspected.applies) == ["aes-forms", "inspection-report"]
+    assert "itemized-invoice" in keys(inspected.does_not_apply) and not inspected.undetermined
     repaired = deliverables(_subject(SystemKind.FIRE_SPRINKLER, R13, {Work.REPAIR}))
     assert keys(repaired.applies) == ["itemized-invoice", "repair-estimate"]
     # A fire alarm is not a water-based system: no row applies, and the system's kind is the deciding fact.
