@@ -8,6 +8,7 @@ from datetime import date
 import httpx
 import pytest
 
+from jason.community import community
 from jason.postscanmail.client import PostScanMail, PostScanMailError
 from jason.postscanmail.models import MailItem, MailKind, Urgency, classify, deadlines
 
@@ -142,8 +143,9 @@ def test_letter_facts_read_parcels_addresses_policies_and_escrows() -> None:
 
     text = ("APN 201-1170-022-0016\nProperty: 3021 Enchanted Walk\nPolicy Number: 5010000092\n"
             "Escrow No.: FSSE-0100000033\nAccount Number ****4455")
-    facts = letter_facts(text)
+    facts = letter_facts(text, community().streets())
     assert facts.parcels == ("20111700220016",) and facts.addresses == ("3021 ENCHANTED WALK",)
+    assert letter_facts(text).addresses == (), "an address on no street of the profile's is not read"
     assert facts.policies == ("5010000092",) and facts.escrows == ("FSSE-0100000033",) and facts.accounts == ("4455",)
     # A policy named in running text, with no "No." or "Number", is read whole (not a fragment after a misread "No").
     assert letter_facts("issued for the AssocNational policy N030PK2940-01. The agent is").policies == ("N030PK2940-01",)
@@ -180,12 +182,15 @@ def test_the_addressee_block_names_an_old_address_and_a_care_of_party() -> None:
 
     addresses = (MailAddress(AddressKind.CURRENT, "box", ("901 H ST", "PMB 188")),
                  MailAddress(AddressKind.FORMER_MANAGER, "prior manager", ("BOLLINGER CANYON",)))
+    own = community().name_pattern()
     bank = "FIRST CITIZENS BANK\nStatement\nMYSTIQUE COMMUNITY ASSOCIATION\n6101 BOLLINGER CANYON RD STE 200\nSAN RAMON CA 94583"
-    assert address_of(bank, addresses)[0] is AddressKind.FORMER_MANAGER
+    assert address_of(bank, addresses, name=own)[0] is AddressKind.FORMER_MANAGER
     irs = "IRS\nMYSTIQUE COMMUNITY ASSOCIATION\n% VIERRAMOORE\n901 H'ST STE 120"
-    kind, _label, block = address_of(irs, addresses)
+    kind, _label, block = address_of(irs, addresses, name=own)
     assert kind is AddressKind.CURRENT and care_of(block) == "VIERRAMOORE"
-    assert address_of("no addressee here", addresses)[0] is AddressKind.UNREAD
+    assert address_of("no addressee here", addresses, name=own)[0] is AddressKind.UNREAD
+    # A profile that names no pattern finds no addressee: a miss, not another association's name.
+    assert address_of(bank, addresses)[0] is AddressKind.UNREAD
 
 
 def test_delinquency_notices_outrank_the_tax_bill_they_quote() -> None:

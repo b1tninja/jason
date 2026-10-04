@@ -40,6 +40,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
@@ -240,16 +241,29 @@ def _word(w: str) -> str:
     return s if len(s) >= 3 else w
 
 
-# Words that name no matter: the documents' own vocabulary, the minutes' verbs, and the association's street names (a
-# unit's address is on many documents).
+# Words that name no matter: the documents' own vocabulary and the minutes' verbs. The association's name and street
+# names are on many documents too; they come from the profile (`_own_words`).
 COMMON = frozenset(_word(w) for w in (
-    "proposal proposed propose estimate quote mystique community association invoice contract service report review "
+    "proposal proposed propose estimate quote community association invoice contract service report review "
     "update signed pdf inc llc company square drawing google docs see mail only panel white long non photo photos "
     "attach letter repair repairs maintenance board work cost approve approved build building unit owner request "
     "annual discuss agreed decided need issue also with their they that this from will would have been were about "
     "into while which other include including application hearing plan new year month item open all team group "
-    "present member total amount fee charge price bid walk lane macon enchanted magical mesmerizing whimsical "
+    "present member total amount fee charge price bid walk lane "
     "street prevent necessary further proceed executive session affect affected various").split())
+
+
+@lru_cache(maxsize=4)
+def _words_of(community: Any) -> frozenset[str]:
+    names = [*community.name.split(), *(w for street in community.streets() for w in street.value.split())]
+    return frozenset(_word(w.lower()) for w in names)
+
+
+def _own_words() -> frozenset[str]:
+    """The active profile's name and street words (``Community.streets``): a unit's address is on many documents."""
+    from jason.community import community
+
+    return _words_of(community())
 
 
 def _stem(name: str) -> str:
@@ -258,7 +272,7 @@ def _stem(name: str) -> str:
 
 def _words(text: str) -> set[str]:
     """The text's words, lightly stemmed ("landscaping" and "landscape" are one), without the common ones."""
-    return {_word(w) for w in re.findall(r"[a-z][a-z&]{3,}", (text or "").lower())} - COMMON
+    return {_word(w) for w in re.findall(r"[a-z][a-z&]{3,}", (text or "").lower())} - COMMON - _own_words()
 
 
 def word_frequency(decisions: list[Decision]) -> Counter:

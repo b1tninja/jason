@@ -33,11 +33,12 @@ SITE = ("3000 MACON",)
 KNOWN = {"5679 WHIMSICAL LN": Building.BLDG_3}
 PARCELS = frozenset({"5615 WHIMSICAL LN", "5619 WHIMSICAL LN", "5623 WHIMSICAL LN", "5679 WHIMSICAL LN", "3022 ENCHANTED WALK",
                      "5627 WHIMSICAL LN", "3011 ENCHANTED WALK", "5631 WHIMSICAL LN", "5635 WHIMSICAL LN", "5639 WHIMSICAL LN"})
+STREETS = (Street.MACON_DR, Street.ENCHANTED_WALK, Street.WHIMSICAL_LN)
 
 
 def ev(text: str, title: str = "Invoice 100.pdf", day: date = date(2025, 1, 10), **kw):
     return read_evidence(text, title=title, ref=title, channel="payhoa", day=day, buildings=RANGES, site_words=SITE,
-                         known=KNOWN, parcels=PARCELS, **kw)
+                         known=KNOWN, parcels=PARCELS, streets=STREETS, **kw)
 
 
 ROOF_LEAK = """Acme Roofing
@@ -58,12 +59,12 @@ Any vandalism is excluded.
 
 
 def test_places_by_role():
-    places = {p.address: p for p in places_in(ROOF_LEAK, RANGES, SITE, KNOWN, PARCELS)}
+    places = {p.address: p for p in places_in(ROOF_LEAK, RANGES, SITE, KNOWN, PARCELS, STREETS)}
     assert places["5615 WHIMSICAL LN"].role is PlaceRole.JOB and places["5615 WHIMSICAL LN"].building is Building.BLDG_8
     assert places["3011 ENCHANTED WALK"].role is PlaceRole.BILLING
     text = ("Project 4119 - 3022 Enchanted Walk\nunits 5619-5623 Whimsical Lane\nWhimsical Lane, 5627 ATR\n"
             "Service at 3000 Macon Drive\nBldg 5 roof\nfound at 5679 Whimsical\n4643 Whimsical Lane")
-    found = {p.key: p for p in places_in(text, RANGES, SITE, KNOWN, PARCELS)}
+    found = {p.key: p for p in places_in(text, RANGES, SITE, KNOWN, PARCELS, STREETS)}
     assert "4119 ENCHANTED WALK" not in found and found["3022 ENCHANTED WALK"].role is PlaceRole.JOB
     assert {"5619 WHIMSICAL LN", "5623 WHIMSICAL LN", "5627 WHIMSICAL LN"} <= set(found)
     assert found["3000 MACON DR"].role is PlaceRole.SITE
@@ -143,7 +144,7 @@ def test_community_events_do_not_chain_past_a_window():
 
 def test_dedupe_keeps_the_payhoa_copy_and_the_earliest_date():
     a = ev(ROOF_LEAK, sha256="abc", payment={"key": 9, "day": "2025-01-12", "amountCents": 40000, "payee": "Acme", "memo": ""})
-    b = read_evidence(ROOF_LEAK, title="Invoice 100.pdf", ref="gmail/x.pdf", channel="email", day=date(2025, 1, 9), buildings=RANGES, sha256="abc")
+    b = read_evidence(ROOF_LEAK, title="Invoice 100.pdf", ref="gmail/x.pdf", channel="email", day=date(2025, 1, 9), buildings=RANGES, streets=STREETS, sha256="abc")
     rows = dedupe([b, a])
     assert len(rows) == 1 and rows[0].channel == "payhoa" and rows[0].also == ("gmail/x.pdf",)
 
@@ -266,7 +267,7 @@ def test_a_loss_run_is_one_claim_row_per_claim():
 def test_loss_run_claims_join_the_units_paperwork_and_a_street_span_names_both_ends():
     from jason.tasks.incidents import loss_run_evidence
 
-    ctx = {"buildings": RANGES, "site_words": SITE, "known": KNOWN, "parcels": PARCELS}
+    ctx = {"buildings": RANGES, "site_words": SITE, "known": KNOWN, "parcels": PARCELS, "streets": STREETS}
     rows = loss_run_evidence(LOSS_RUN, ref="drive:Loss Runs.pdf", channel="drive", sha256="abc", ctx=ctx)
     assert [r.claim for r in rows] == ["ZZ000001", "ZZ000002"] and all(r.claimed and r.stage is Stage.CLAIM for r in rows)
     assert [p.address for p in rows[1].where] == ["5615 WHIMSICAL LN", "5639 WHIMSICAL LN"]

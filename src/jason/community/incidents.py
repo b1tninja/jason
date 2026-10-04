@@ -34,9 +34,10 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from enum import Enum
+from functools import lru_cache
 from typing import Any, Iterable, Mapping
 
-from jason.community.base import BuildingRange, assign_building
+from jason.community.base import BuildingRange, alternation, assign_building, street_words
 from jason.community.symbols import Building, Street
 
 EVENT_WINDOW_DAYS = 150
@@ -388,12 +389,17 @@ def apply_vendor_work(evidence: Iterable["Evidence"], rules: Iterable[VendorWork
 
 # -- places ----------------------------------------------------------------------------------------------------------
 
-_STREET_WORDS = {"MACON": Street.MACON_DR, "ENCHANTED": Street.ENCHANTED_WALK, "MAGICAL": Street.MAGICAL_WALK,
-                 "MESMERIZING": Street.MESMERIZING_WALK, "WHIMSICAL": Street.WHIMSICAL_LN}
-_ADDRESS = re.compile(r"(?<![\d$.,])(\d{4})(?:\s*(?:-|&|and|/|to)\s*(\d{4}))?\s*,?\s+(Macon|Enchanted|Magical|Mesmerizing|Whimsical)\b"
-                      r"(?:\s+(?:Dr(?:ive)?|Walk|La?ne?|Wy|Way)\b\.?)?(?:\s*(?:#|Unit|Apt\.?)\s*(\d{1,3})\b)?", re.I)
-# "Whimsical Lane, 5627": the street before the number, as an adjuster's file names it.
-_ADDRESS_BACKWARDS = re.compile(r"\b(Macon|Enchanted|Magical|Mesmerizing|Whimsical)\s+(?:Dr(?:ive)?|Walk|La?ne?)\s*,\s*(\d{4})\b", re.I)
+@lru_cache(maxsize=16)
+def _address_patterns(streets: tuple[Street, ...]) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """The profile's streets as two readings: "123 Main St #4" (a range "123-125" too) and, as an adjuster's file
+    names it, "Main Street, 123". No streets, no reading."""
+    names = alternation(street_words(streets))
+    forward = re.compile(r"(?<![\d$.,])(\d{4})(?:\s*(?:-|&|and|/|to)\s*(\d{4}))?\s*,?\s+(" + names + r")\b"
+                         r"(?:\s+(?:Dr(?:ive)?|Walk|La?ne?|Wy|Way)\b\.?)?(?:\s*(?:#|Unit|Apt\.?)\s*(\d{1,3})\b)?", re.I)
+    backwards = re.compile(r"\b(" + names + r")\s+(?:Dr(?:ive)?|Walk|La?ne?)\s*,\s*(\d{4})\b", re.I)
+    return forward, backwards
+
+
 _BUILDING = re.compile(r"\b(?:Building|Bldg\.?)\s*#?\s*([1-8])\b(?!\s*(?:units?|condo|buildings))", re.I)
 _JOB_LABEL = re.compile(r"\b(?:job ?site|job (?:address|location|name)|project|location|service (?:address|location)|property(?: address)?|"
                         r"site address|loss location|work (?:site|address)|risk address|address of loss|above units?|units?|over units?)\b", re.I)
@@ -433,11 +439,16 @@ class Place:
 
 
 def places_in(text: str, buildings: Iterable[BuildingRange], site_words: Iterable[str] = (),
-              known: Mapping[str, Building] | None = None, parcels: frozenset[str] | set[str] | None = None) -> tuple[Place, ...]:
+              known: Mapping[str, Building] | None = None, parcels: frozenset[str] | set[str] | None = None,
+              streets: Iterable[Street] = ()) -> tuple[Place, ...]:
     """The development's addresses and buildings the text names, each with its role. ``known`` places the addresses
     the building table does not cover (an end unit addressed on the cross street), by its parcel. ``parcels`` is every
-    real street address; a number that is neither in it nor in a building's range is kept but marked as no parcel."""
+    real street address; a number that is neither in it nor in a building's range is kept but marked as no parcel.
+    ``streets`` are the profile's (``Community.streets``); an address on another street is not read."""
     ranges = tuple(buildings)
+    streets = tuple(streets)
+    by_word = street_words(streets)
+    forward, backwards = _address_patterns(streets)
     site = tuple(w.upper() for w in site_words)
     known = known or {}
     found: dict[str, Place] = {}
@@ -456,8 +467,8 @@ def places_in(text: str, buildings: Iterable[BuildingRange], site_words: Iterabl
         if old is None or _rank(place.role) < _rank(old.role):
             found[address] = place
 
-    for m in _ADDRESS.finditer(text or ""):
-        street = _STREET_WORDS[m.group(3).upper()]
+    for m in forward.finditer(text or ""):
+        street = by_word[m.group(3).upper()]
         low = int(m.group(1))
         high = int(m.group(2)) if m.group(2) else None
         if high is not None and not 0 < high - low <= 60:
@@ -471,8 +482,8 @@ def places_in(text: str, buildings: Iterable[BuildingRange], site_words: Iterabl
         add(low, street, m.start(), m.group(4) or "")
         if high is not None:
             add(high, street, m.start())
-    for m in _ADDRESS_BACKWARDS.finditer(text or ""):
-        add(int(m.group(2)), _STREET_WORDS[m.group(1).upper()], m.start())
+    for m in backwards.finditer(text or ""):
+        add(int(m.group(2)), by_word[m.group(1).upper()], m.start())
     named = {p.building for p in found.values() if p.building}
     for m in _BUILDING.finditer(text or ""):
         b = Building(int(m.group(1)))
@@ -570,14 +581,15 @@ def snippet_of(text: str, patterns: Iterable[str], *, width: int = 180) -> str:
 def read_evidence(text: str, *, title: str, ref: str, channel: str, day: date | None, buildings: Iterable[BuildingRange],
                   site_words: Iterable[str] = (), vendor: str = "", amount_cents: int | None = None, extra: str = "",
                   sha256: str = "", payment: dict | None = None, confidential: bool = False,
-                  known: Mapping[str, Building] | None = None, parcels: frozenset[str] | set[str] | None = None) -> Evidence:
+                  known: Mapping[str, Building] | None = None, parcels: frozenset[str] | set[str] | None = None,
+                  streets: Iterable[Street] = ()) -> Evidence:
     """One document's evidence. ``extra`` is text beside the document that describes it (an email subject, a payment memo)."""
     scope = scope_text(text)
     words = "\n".join(w for w in (title, extra, scope) if w)
     causes = causes_in(words)
     elements = elements_in(words)
     stage = stage_of(title, scope)
-    places = places_in("\n".join(w for w in (extra, text or "") if w), buildings, site_words, known, parcels)
+    places = places_in("\n".join(w for w in (extra, text or "") if w), buildings, site_words, known, parcels, streets)
     patterns = [r.pattern for r in CAUSE_RULES if r.value in causes] + [r.pattern for r in ELEMENT_RULES if r.value in elements]
     # A claim file's name often carries the number alone ("ESTIMATE FOR REPAIRS 5021000019-1.pdf").
     named = re.search(r"\b(\d{9,10}(?:-\d{1,3})+)\b", title or "")

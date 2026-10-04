@@ -9,7 +9,7 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from jason.community.documents import DocumentPin, GoverningDocument
 from jason.community.symbols import (
@@ -673,6 +673,16 @@ class Community(ABC):
         """Addresses a letter to the association can be sent to, each with what it is (``MailAddress``). Empty until set."""
         return ()
 
+    def streets(self) -> tuple[Street, ...]:
+        """The streets the association's units and site are on: a reader finds "123 Main St" in a bill or letter only
+        on one of them. Empty until set, and then no street address is read as the association's."""
+        return ()
+
+    def name_pattern(self) -> str:
+        """A regular expression for the association's distinctive name word as letters print it, OCR misreadings
+        included (``oak\\s*r[il1]dge``). Empty until set, and then no text is taken to name the association."""
+        return ""
+
     def evidence_plan(self):
         """Where the repair paperwork is in Drive (``jason.community.incidents.EvidencePlan``), or None until the
         specification sets it."""
@@ -1087,6 +1097,27 @@ def split_address(address: str) -> tuple[int | None, Street | None]:
     if street is None:
         return None, None
     return int(parts[0]), street
+
+
+# A pattern that matches nothing: what a reader searches for when the profile names no street or name.
+NEVER = r"(?!)"
+
+
+def street_words(streets: Iterable[Street]) -> dict[str, Street]:
+    """Each street by the first word of its name, as a letter abbreviates it: ``MAIN`` for MAIN ST."""
+    return {street.value.split()[0]: street for street in streets}
+
+
+def alternation(words: Iterable[str]) -> str:
+    """``words`` as one regular-expression alternation, longest first; `NEVER` when there are none."""
+    ordered = sorted({w for w in words if w}, key=len, reverse=True)
+    return "|".join(re.escape(w) for w in ordered) or NEVER
+
+
+def name_regex(name: str) -> str:
+    """The association's full name as a pattern: its words apart by any spacing, "Association" abbreviated or not."""
+    words = [r"assoc(?:iation)?" if w.casefold() == "association" else re.escape(w) for w in (name or "").split()]
+    return r"\s+".join(words) or NEVER
 
 
 def read_unit_address(text: str) -> tuple[int | None, Street | None]:

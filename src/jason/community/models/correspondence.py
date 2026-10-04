@@ -248,7 +248,7 @@ def _senders(context: ModelContext) -> tuple:
 
 def _own_word(context: ModelContext) -> str:
     name = str(getattr(context.community, "corporate_name", "") or "")
-    return re.escape(name.split()[0]) if name else "MYSTIQUE"
+    return re.escape(name.split()[0]) if name else ""
 
 
 def _org_line(text: str, word: str) -> str:
