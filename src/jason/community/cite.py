@@ -387,32 +387,47 @@ _LETTERED_AFTER = r"\s*,?\s*(?:(?:Rule|Section|§)\s*)?(?P<num>[A-Z]{1,2}-\d+(?:
 _CANON_IN_TEXT = re.compile(r"(?<![\w#])(?P<key>[a-z0-9][a-z0-9-]*)#(?P<num>[A-Za-z0-9.()\-]+[A-Za-z0-9)])")
 
 
-def targets_in(text: str, names: dict[str, str]) -> list[Target]:
-    """Every document section, statute, resolution, and instrument a free text names (a Conflict row's provision, a
-    rule's authority, a step of a procedure), read by the references grammar, plus the forms it leaves to us: a
-    canonical ``key#n`` and a rules book's lettered number after its name ("Rules R-3(e)"). An unqualified
-    "Section 6.2" names no document here and is left out."""
+@dataclass(frozen=True)
+class Located:
+    """A target a free text names, with where the words that name it start."""
+
+    target: Target
+    offset: int
+    prior: bool = False               # a statute number from before the 2014 renumbering
+
+
+def located_targets(text: str, names: dict[str, str]) -> list[Located]:
+    """``targets_in`` with where each target is named: one row a mention, in the order the readers find them (the
+    references grammar, then a canonical ``key#n``, then a rules book's lettered number)."""
     text = text or ""
     if not text.strip():
         return []
     lower = {k.lower(): v for k, v in names.items()}
     keys = set(lower.values())
-    out: list[Target] = []
+    out: list[Located] = []
     for ref in extract(DocumentOutline(key="", title="", text=text), lower):
         t = of_reference(ref.target, ref.kind.value)
         if t is not None and t.key:
-            out.append(t)
+            out.append(Located(t, ref.offset, ref.prior))
     for m in _CANON_IN_TEXT.finditer(text):
         if m.group("key") in keys:
-            out.append(Target(Unit.SECTION, m.group("key"), normalize_number(m.group("num"))))
+            out.append(Located(Target(Unit.SECTION, m.group("key"), normalize_number(m.group("num"))), m.start()))
     pattern = alias_pattern(lower)
     if pattern is not None:
         for m in pattern.finditer(text):
             after = re.match(_LETTERED_AFTER, text[m.end():m.end() + 40])
             key = lower.get(" ".join(m.group("doc").lower().split()), "")
             if after and key:
-                out.append(Target(Unit.SECTION, key, normalize_number(after.group("num"))))
-    return list(dict.fromkeys(out))
+                out.append(Located(Target(Unit.SECTION, key, normalize_number(after.group("num"))), m.start()))
+    return out
+
+
+def targets_in(text: str, names: dict[str, str]) -> list[Target]:
+    """Every document section, statute, resolution, and instrument a free text names (a Conflict row's provision, a
+    rule's authority, a step of a procedure), read by the references grammar, plus the forms it leaves to us: a
+    canonical ``key#n`` and a rules book's lettered number after its name ("Rules R-3(e)"). An unqualified
+    "Section 6.2" names no document here and is left out."""
+    return list(dict.fromkeys(found.target for found in located_targets(text, names)))
 
 
 # --- Where a cited target sits against the one asked for ----------------------------------------------------------------
@@ -701,6 +716,6 @@ def sentences(text: str) -> list[str]:
     return [text[s:e] for s, e in spans(text or "")]
 
 
-__all__ = ["ABBREVIATIONS", "CAVEAT", "Citing", "Holder", "Kind", "Miss", "Node", "Reason", "STALE", "Scope", "Target",
-           "Treatment", "Unit", "label_text", "mermaid", "of_address", "of_reference", "paragraphs", "parse", "scope_of",
-           "sentences", "targets_in", "tree_lines"]
+__all__ = ["ABBREVIATIONS", "CAVEAT", "Citing", "Holder", "Kind", "Located", "Miss", "Node", "Reason", "STALE", "Scope",
+           "Target", "Treatment", "Unit", "label_text", "located_targets", "mermaid", "of_address", "of_reference",
+           "paragraphs", "parse", "scope_of", "sentences", "targets_in", "tree_lines"]

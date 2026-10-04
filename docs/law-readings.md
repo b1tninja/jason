@@ -103,6 +103,38 @@ With no reading stored, the words stand alone. With `as_of`, a reading dated lat
 
 `recite` returns a `Recital`. `Recital.lines()` is the text, and `as_dict()` the same as data.
 
+## Checking an answer's quotations
+
+A search returns passages, and the client writes the answer. `jason.community.quote_check.check(answer, data_dir, sources="", include_confidential=False)` reads the answer and says whether each quotation is the stored words. The MCP tool is `verify_quotes`; the command is `jason verify-quotes FILE`.
+
+**What it reads as a quotation.** Text in double quotation marks, straight or curly, and a block quote (lines that open with `>`). One shorter than four words is listed and not checked. Single quotation marks are not read.
+
+**The verdict for each quotation:**
+
+| Verdict | When |
+|---|---|
+| `FOUND` | the words are in a stored text: `exact` (character for character) or `normalized` (the same after folding) |
+| `ALTERED` | no stored text has the words, and one has nearly those words; the stored words are shown beside the quoted ones, each difference marked `[[so]]` |
+| `MISATTRIBUTED` | the answer attributes the quotation to one section, and the words are stored only somewhere else |
+| `NOT FOUND` | no stored text has the words or nearly the words |
+
+- **Folding** is the normalization `prompts.verify` uses (`questions._norm`: whitespace, quote marks, capitalization), with two additions: a hyphen between letters (a word broken at a line's end) and Markdown's emphasis marks are dropped.
+- **An ellipsis is allowed** when each part is found, in order, in one passage or section. Parts stored in separate places are `ALTERED`: the quotation joins them.
+- **A near match** shares at least three quarters of the quotation's words in order (`NEAR`).
+
+**Where it was found matters.** Each place names its file, section, passage, catalog, and standing.
+
+- **A page or a reference is not the record or the law.** Words found only in a page jason generated, or only on the reference shelf, carry a warning.
+- **A confidential file is held back.** It is reported as confidential, without its name or its words, unless `include_confidential`. A case catalog's files are named only when the sources name the catalog or a file in it. This is `document_search`'s rule.
+- **Sources narrow nothing and flag one thing.** With `sources` (the hits the answer was written from), a quotation found only outside them is flagged.
+
+**Citations.** The citations are read by the grammar the outlines use (`jason.community.cite.located_targets`).
+
+- **A statute's section:** whether it is on the shelf, its digest, and each version when the shelf holds two under one number.
+- **A governing document's section:** its words and digest, from the reader `jason cite` uses.
+- **Each quotation attributed to a citation:** whether it is in that provision's words. A quotation is attributed to the citation that introduces it in its sentence, or follows it directly.
+- **A whole document named beside a quotation** can confirm it and never makes it `MISATTRIBUTED`: jason's copy of the document is one copy among several.
+
 ## Commands
 
 ```bash
@@ -112,9 +144,11 @@ jason readings --stale                 # only those not current
 jason readings --citation CIV-5855     # the readings of one provision
 jason readings --recite CIV-5855       # the words, then the readings
 jason readings --recite "rules#1.1" --as-of 2099-01-01
+jason verify-quotes answer.txt         # each quotation: found, altered, misattributed, or not found
+jason verify-quotes - --sources hits.json --json    # the answer from standard input, against the hits it was written from
 ```
 
-`jason readings` only reads. `--json` prints the same as data.
+`jason readings` and `jason verify-quotes` only read. `--json` prints the same as data. `jason verify-quotes` exits 0 when every quotation checked is found, and 1 when one is not.
 
 ## Limits
 
@@ -122,3 +156,8 @@ jason readings --recite "rules#1.1" --as-of 2099-01-01
 - **The digest is of the whole section.** A reading of one subdivision goes stale when another subdivision changes. That errs toward checking.
 - **A governing document's digest follows jason's copy,** which is not an official restatement. A corrected OCR slip changes the digest as an amendment does.
 - **Reciting decides nothing.** A reading is one party's view, labeled as one.
+- **The quotation check reads words, not meaning.** `FOUND` does not say the answer reads the words rightly, that they answer the question, or that they were in force on a given day.
+- **It checks only what is quoted.** A paraphrase, a figure, or a date outside quotation marks is not checked.
+- **It checks against jason's copies.** A scan's OCR can misread, so a true quotation of the paper can be `ALTERED` against the scan. The stored words shown beside it say which.
+- **An attribution is read from position.** A sentence that names one section and quotes another can be `MISATTRIBUTED` wrongly. Read the sentence.
+- **A quotation that runs across the place a file with no headings was cut** can be missed when it is longer than the overlap between the two passages.

@@ -65,6 +65,7 @@ MODULES: tuple[str, ...] = (
     "instrument_graph",
     "placer",
     "index",
+    "verify_quotes",
 )
 
 

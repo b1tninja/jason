@@ -611,6 +611,9 @@ DOCUMENT_SEARCH_CAVEATS = (
     "misread, and not the association's own statement. A letter that carries a PIN or an access code is never in the "
     "index.",
     "No model wrote an answer here: read the passages and answer from them, or say they do not answer the question.",
+    "Before giving an answer written from these passages, check it with verify_quotes (the answer's text, and these "
+    "hits as its sources; from a terminal, jason verify-quotes FILE): it says whether each quotation is the stored "
+    "words. Where that tool is not served, say the quotations were not checked.",
 )
 
 
@@ -708,6 +711,47 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
         result["note"] = (note + "; " if note else "") + "no passage matched: the index may not hold the document " \
             "(jason index --status lists its catalogs)"
     return result
+
+
+def verify_quotes(answer: str, sources: str = "", include_confidential: bool = False,
+                  data_dir: Path | None = None) -> dict[str, Any]:
+    """Check an answer's quotations and citations against jason's stored words, before the answer is given.
+
+    ``answer`` is the answer's text. Each quotation in it (double quotation marks, straight or curly, and block
+    quotes; one shorter than ``minimumWords`` is listed in ``skipped``, not checked) gets a verdict:
+
+    - ``found``: the words are in a stored text. ``match`` is "exact" (character for character) or "normalized" (the
+      same after folding whitespace, quote marks, a hyphen between letters at a line's end, Markdown's emphasis
+      marks, and capitalization). An ellipsis is allowed when each part is found, in order, in one passage or
+      section. Each place names its file, section, passage, catalog, and standing (authority, record, evidence,
+      reference, page).
+    - ``altered``: no stored text has the words and one has nearly those words. ``stored`` and ``quoted`` show both,
+      each difference marked [[so]]. Quote the stored words instead.
+    - ``misattributed``: the answer attributes the quotation to one provision ("Civil Code 5855 says ...") and the
+      words are stored only somewhere else, which ``places`` names.
+    - ``not found``: no stored text has the words or nearly the words. Do not give the quotation.
+
+    ``citations`` lists each statute section and governing-document section the answer cites: whether jason holds it
+    (``onShelf`` for a statute), the digest of its words, each version when the shelf holds two under one number, and
+    whether each quotation attributed to it is in its words.
+
+    ``sources`` are the hits the answer was written from, when you have them: file paths with passage numbers
+    ("governing/rules.md#3", one a line or separated by ";"), citations ("CIV 5855"), or document_search's hits as
+    JSON. A quotation found outside them is flagged. Words found only in a page (jason's own summary) or a reference
+    carry a warning: neither is the record or the law. A confidential file is not named and its words are not shown
+    unless ``include_confidential`` (for directors and counsel; a case catalog only when ``sources`` name it).
+
+    It checks words, not meaning: ``found`` does not say the answer reads the words rightly, that they answer the
+    question, or that they were in force on a given day. A paraphrase, a figure, or a date outside quotation marks is
+    not checked. Repeat the caveats. Reads disk only."""
+    from jason.community import quote_check
+
+    root = _data_dir(data_dir)
+    try:
+        report = quote_check.check(answer, root, sources=sources, include_confidential=bool(include_confidential))
+    except FileNotFoundError as exc:
+        return {"available": False, "note": str(exc)}
+    return {"available": True, **report.as_dict()}
 
 
 def read_scan(path: str, model: str = "") -> dict[str, Any]:
