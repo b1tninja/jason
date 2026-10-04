@@ -1224,9 +1224,11 @@ The association's legal matters and each statutory duty's standing (confidential
 | Option | Value | Help |
 |---|---|---|
 | `--json` |  | Print JSON |
-| `--fetch-files` |  | Download each case's Drive folder (read-only) into data/cases/<key>; jason index --build makes its text searchable as its own confidential catalog |
-| `--case` | CASE | With --fetch-files: only this case (its key or case number) |
-| `--include-held` |  | With --fetch-files: also take the medical and veterinary records the case holds back |
+| `--fetch-files` |  | Download each case's Drive folder (read-only) into data/cases/<key> and write a text extract beside each PDF (text layer, then local OCR); jason index --build makes the text searchable as the case's own confidential catalog |
+| `--extract-text` |  | Write a text extract (<name>.pdf.txt) beside each fetched case file that has none or whose file changed: the text layer, else local OCR for scanned pages; prints the counts and lists what no reader could read. Held-back files are never read |
+| `--vision` |  | With --extract-text: read the scanned pages with the local vision model (preflight and the GPU lock first) |
+| `--case` | CASE | With --fetch-files or --extract-text: only this case (its key or case number) |
+| `--include-held` |  | With --fetch-files: also put on disk the medical and veterinary records the case holds back, for a person to read; they are never extracted or indexed |
 
 ### `jason policies`
 

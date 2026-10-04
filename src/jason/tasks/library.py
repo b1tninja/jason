@@ -33,7 +33,7 @@ import zipfile
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from jason.community.content import ModelClassifier, ModelUnavailable, classify_text, period_from_text, private_content, records_from_text
 from jason.community.library import Classified, LibraryDocument, Method, classify_library, payhoa_documents
@@ -122,8 +122,14 @@ def _pdf_layer(path: Path) -> str:
         return ""
 
 
-def text_of(path: Path) -> tuple[str, str]:
-    """The words of a file and where they came from; ("", reason) when none could be read."""
+def text_of(path: Path, *, ocr_engines: Sequence[Any] | None = None) -> tuple[str, str]:
+    """The words of a file and where they came from; ("", reason) when none could be read.
+
+    ``ocr_engines`` are the engines a scan may go to, best first; None is every engine this machine can run
+    (``jason.community.ocr.engines``), and an empty tuple reads the text layer only."""
+    from jason.community import ocr
+
+    engines = ocr.engines if ocr_engines is None else (lambda: tuple(ocr_engines))
     suffix = path.suffix.lower()
     sibling = path.with_name(path.name + ".md")
     if sibling.is_file():
@@ -149,8 +155,6 @@ def text_of(path: Path) -> tuple[str, str]:
             return "", "unreadable docx"
     if suffix in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
         # An image is a one-page scan: OCR is the only reader.
-        from jason.community.ocr import engines
-
         for engine in engines():
             try:
                 read = engine.text_of(path)
@@ -172,8 +176,6 @@ def text_of(path: Path) -> tuple[str, str]:
         return "", f"unreadable PDF: {exc}"
     if len(text.strip()) >= 200:
         return text, "text layer"
-    from jason.community.ocr import engines
-
     for engine in engines():
         try:
             ocr = engine.text_of(path)

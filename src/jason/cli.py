@@ -2473,21 +2473,43 @@ def cmd_cases(args: argparse.Namespace) -> int:
     from jason.community.legal_cases import settled_lines
 
     cases = active().legal_cases()
-    if args.fetch_files:
-        from jason.tasks.case_files import catalog_name, fetch
+    if args.fetch_files or args.extract_text:
+        from jason.tasks.case_files import catalog_name, extract_text, fetch, vision_reader
 
         chosen = [c for c in cases if c.drive_folder and (not args.case or args.case.lower() in (c.key, (c.case_number or "").lower()))]
         if not chosen:
             print("no case with a Drive folder matches", file=sys.stderr)
             return 1
+        vision = None
+        if args.extract_text and args.vision:           # a person asked: the preflight first, and fail fast
+            from jason.local_ai import LocalAIUnavailable
+
+            try:
+                vision = vision_reader()
+            except LocalAIUnavailable as exc:
+                print(f"--vision: {exc}", file=sys.stderr)
+                return 1
+
+        def text_and_catalog(data_dir, c) -> None:
+            for line in extract_text(data_dir, c, vision=vision, log=print).lines():
+                print(f"  {line}")
+            print(f"  catalog {catalog_name(c)} (confidential): jason index --build, then "
+                  f"jason index --search QUESTION --catalog {catalog_name(c)} --confidential")
+
+        if not args.fetch_files:
+            from jason.config import data_dir as active_data_dir
+
+            for c in chosen:
+                print(f"{c.case_number or c.key}: {catalog_name(c)}")
+                text_and_catalog(active_data_dir(getattr(args, "env", None)), c)
+            return 0
         with _agent(args) as agent:
             data_dir = agent.settings.ownership_db.parent
             for c in chosen:
                 print(f"{c.case_number or c.key}: My Drive/{c.drive_folder}")
                 counts = fetch(agent.drive(), data_dir, c, include_held=args.include_held, log=print)
                 print(f"  {counts}")
-                print(f"  catalog {catalog_name(c)} (confidential): jason index --build, then "
-                      f"jason index --search QUESTION --catalog {catalog_name(c)} --confidential")
+                text_and_catalog(data_dir, c)
         return 0
     if args.json:
         print(json.dumps([to_plain(c) for c in cases], indent=2))
@@ -4030,10 +4052,14 @@ def build_parser() -> argparse.ArgumentParser:
     cases = sub.add_parser("cases", help="The association's legal matters and each statutory duty's standing (confidential)")
     cases.add_argument("--json", action="store_true", help="Print JSON")
     cases.add_argument("--fetch-files", action="store_true",
-                       help="Download each case's Drive folder (read-only) into data/cases/<key>; jason index --build makes its text searchable as its own confidential catalog")
-    cases.add_argument("--case", default="", help="With --fetch-files: only this case (its key or case number)")
+                       help="Download each case's Drive folder (read-only) into data/cases/<key> and write a text extract beside each PDF (text layer, then local OCR); jason index --build makes the text searchable as the case's own confidential catalog")
+    cases.add_argument("--extract-text", action="store_true",
+                       help="Write a text extract (<name>.pdf.txt) beside each fetched case file that has none or whose file changed: the text layer, else local OCR for scanned pages; prints the counts and lists what no reader could read. Held-back files are never read")
+    cases.add_argument("--vision", action="store_true",
+                       help="With --extract-text: read the scanned pages with the local vision model (preflight and the GPU lock first)")
+    cases.add_argument("--case", default="", help="With --fetch-files or --extract-text: only this case (its key or case number)")
     cases.add_argument("--include-held", action="store_true",
-                       help="With --fetch-files: also take the medical and veterinary records the case holds back")
+                       help="With --fetch-files: also put on disk the medical and veterinary records the case holds back, for a person to read; they are never extracted or indexed")
     cases.set_defaults(func=cmd_cases)
 
     features = sub.add_parser("google-features", help="Check whether the Docs API's suggested edits and anchored comments are generally available")

@@ -334,10 +334,14 @@ def _vision_ready(base_url: str, model: str) -> bool:
 
 def engines() -> tuple[OcrEngine, ...]:
     """The engines that can run on this machine, best first."""
-    found: list[OcrEngine] = []
     vision = OllamaVisionOcr()
-    if vision.available():
-        found.append(vision)
+    return ((vision,) if vision.available() else ()) + local_engines()
+
+
+def local_engines() -> tuple[OcrEngine, ...]:
+    """The engines that run without the model server, best first: for a reader that sends a page to the vision model
+    only when a person asks (a legal case's file, ``jason cases --extract-text``)."""
+    found: list[OcrEngine] = []
     if DoclingRapidOcr.available():
         found.append(DoclingRapidOcr())
     if TesseractCli.available():
@@ -345,6 +349,49 @@ def engines() -> tuple[OcrEngine, ...]:
     if PyMuPdfTesseract.available():
         found.append(PyMuPdfTesseract())
     return tuple(found)
+
+
+def reads_as_words(text: str, *, least: int = 8, share: float = 0.4) -> bool:
+    """Whether an engine's reading of a page is words, not the noise it makes of a photograph: at least ``least``
+    runs of three letters or more, and no fewer than ``share`` of the count of tokens read.
+
+    Measured October 4, 2026 on the scanned pages of one filing with photograph exhibits: a typed page gave 54% to 77%
+    (150 to 310 such words); a photograph gave 5% to 21% (Tesseract's tool, and PyMuPDF's OCR, which made thousands of
+    tokens of one); a stamped footer read again gave four or five words. A page that fails is left unread and listed,
+    never indexed as noise; a scanned table of figures fails too, and is listed the same way."""
+    import re
+
+    tokens = len(text.split())
+    words = len(re.findall(r"[A-Za-z]{3,}", text))
+    return words >= least and words >= share * tokens
+
+
+def pages_text(path: Path, numbers: Any, readers: Any) -> dict[int, tuple[str, str]]:
+    """Some pages of a PDF, each read on its own: page number (from 0) to its words and the engine that read them.
+
+    For a filing whose typed pages have a text layer and whose exhibits are scans: only the scans go to OCR. Each page
+    is copied into a one-page PDF in a temporary folder, so any engine reads it, and the first engine whose reading is
+    words (``reads_as_words``) wins. A page no engine read is absent."""
+    import tempfile
+
+    import pymupdf
+
+    out: dict[int, tuple[str, str]] = {}
+    with pymupdf.open(path) as document, tempfile.TemporaryDirectory() as tmp:
+        for number in numbers:
+            single = Path(tmp) / f"page-{number}.pdf"
+            with pymupdf.open() as page:
+                page.insert_pdf(document, from_page=number, to_page=number)
+                page.save(single)
+            for reader in readers:
+                try:
+                    text = reader.text_of(single)
+                except Exception:
+                    continue
+                if reads_as_words(text):
+                    out[number] = (text, getattr(reader, "name", type(reader).__name__))
+                    break
+    return out
 
 
 @dataclass
