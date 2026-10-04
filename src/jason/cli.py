@@ -2102,7 +2102,7 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
                 out.append({"vendor": plan.vendor, "query": plan.query, "messages": plan.messages,
                             "attachments": [a.__dict__ for a in plan.attachments]})
             else:
-                for line in plan_lines(plan):
+                for line in plan_lines(plan, why=getattr(args, "why", False)):
                     print(line)
             if args.yes and blobs:
                 print(f"{plan.vendor}: filed {file_plan(drive, profile, plan, blobs, data_dir, log=print)}")
@@ -2125,7 +2125,7 @@ def _file_vendor_via_gmail(args: argparse.Namespace, data_dir: Path, profile, ro
         for sender in rows:
             plan = plan_saves(gmail, drive, profile, sender, data_dir=data_dir)
             plans.append(plan)
-            for line in plan_lines(plan):
+            for line in plan_lines(plan, why=getattr(args, "why", False)):
                 print(line)
             if args.yes and any(a.action == "adopt" for a in plan.attachments):
                 print(f"{plan.vendor}: moved {adopt_plan(drive, profile, plan, data_dir, log=print)}")
@@ -3929,6 +3929,8 @@ def build_parser() -> argparse.ArgumentParser:
     gm.add_argument("--yes", action="store_true", help="With --file-vendor: upload the attachments the plan marks file")
     gm.add_argument("--hold", action="append", metavar="GLOB",
                     help="With --file-vendor: hold back attachments whose names match (repeatable), for a person to verify")
+    gm.add_argument("--why", action="store_true",
+                    help="With --file-vendor: under each document, the filing rule's condition and the facts that decided it")
     gm.add_argument("--via-gmail", action="store_true",
                     help="With --file-vendor: use Gmail's own Add to Drive, which links the file to its email. Lists "
                          "what to save (data/gmail/save-to-drive.md) from Gmail's metadata only; --yes moves the copies "

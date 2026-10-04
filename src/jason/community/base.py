@@ -347,19 +347,38 @@ class FilingRule:
     ``kind`` is a ``DocumentKind``, or None for any kind (an unclassified document too). ``senders`` names sender
     directory rows and ``source_kinds`` kinds of source (``SourceKind``); empty means any. ``path`` is the folder's
     names from the filing root, one name a level (a name may hold "/"), with ``{vendor}`` (the sender row's name) and
-    ``{year}`` (the fiscal year the message came in) filled in."""
+    ``{year}`` (the fiscal year the message came in) filled in.
+
+    The row's test is an applicability condition (``condition``): the document's kind, the sender by name, and the
+    sender's kind of source. ``verdict`` asks it of one document, so a filing explains itself as every other rule row
+    does (``Verdict.explain()``), and ``takes`` is whether it applies. An unclassified document has no kind fact, so
+    a rule that names a kind is undetermined for it and does not take it: a miss stays a miss."""
 
     kind: Any
     path: tuple[str, ...]
     senders: tuple[str, ...] = ()
     source_kinds: tuple[Any, ...] = ()
 
+    def condition(self) -> Any:
+        """What the rule takes, as a ``jason.community.applicability`` condition; ``ALWAYS`` for a rule with no test."""
+        from jason.community.applicability import ALWAYS, AllOf, Fact, In, Is
+
+        parts: list[Any] = []
+        if self.kind is not None:
+            parts.append(Is(Fact.DOCUMENT_KIND, self.kind))
+        for fact, values in ((Fact.SENDER, self.senders), (Fact.SOURCE_KIND, self.source_kinds)):
+            if values:
+                parts.append(Is(fact, values[0]) if len(values) == 1 else In(fact, frozenset(values)))
+        return ALWAYS if not parts else parts[0] if len(parts) == 1 else AllOf(*parts)
+
+    def verdict(self, sender: Any, kind: Any) -> Any:
+        """The rule asked of one document: its ``Verdict``, with the facts that decided it and where each is from."""
+        from jason.community.applicability import evaluate, filing_facts
+
+        return evaluate(self.condition(), filing_facts(sender, kind))
+
     def takes(self, sender: Any, kind: Any) -> bool:
-        if self.kind is not None and self.kind is not kind:
-            return False
-        if self.senders and sender.name not in self.senders:
-            return False
-        return not self.source_kinds or sender.kind in self.source_kinds
+        return self.verdict(sender, kind).applies
 
 
 @dataclass(frozen=True)
@@ -377,6 +396,18 @@ class EmailFiling:
         rule = next((r for r in self.rules if r.takes(sender, kind)), None)
         path = rule.path if rule else self.fallback
         return tuple(part.format(vendor=sender.name, year=year) for part in path), rule
+
+    def explain(self, sender: Any, kind: Any) -> str:
+        """Why a document goes where it does: the verdict of the rule that takes it, or, for the fallback, that no
+        rule applies. The same words ``Verdict.explain()`` gives for any other rule row."""
+        rule = next((r for r in self.rules if r.takes(sender, kind)), None)
+        if rule is not None:
+            return rule.verdict(sender, kind).explain()
+        from jason.community.applicability import filing_facts
+
+        known = "; ".join(v.describe() for v in filing_facts(sender, kind).values)
+        return (f"no rule applies ({len(self.rules)} asked, in order): the fallback folder\n  known: {known}"
+                + ("" if kind is not None else "\n  missing: the document's kind (the classifier gave none)"))
 
 
 @dataclass(frozen=True)

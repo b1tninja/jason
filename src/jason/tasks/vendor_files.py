@@ -11,7 +11,9 @@ Each attachment is classified (``Community.classify_document`` by name, then ``j
 own words, kept only when the words give a kind a vendor sends). The profile's ``EmailFiling`` rules then place it:
 the first rule whose kind and source (named senders, or kinds of source) take it gives the folder path from the
 filing root, with ``{vendor}`` and ``{year}`` (the fiscal year the message came in) filled in; a document no rule takes
-goes to the fallback, the vendor's own folder. The folders are made as needed.
+goes to the fallback, the vendor's own folder. The folders are made as needed. Each rule's test is an applicability
+condition (``FilingRule.condition``), so each placed document carries why it went there (``Attachment.why``: the rule's
+condition and the facts that decided it, as ``Verdict.explain()`` gives them); ``plan_lines(plan, why=True)`` prints it.
 
 **No duplicates.** An attachment is not uploaded when Drive already holds the same content: a file in the Drive sync
 (``drive/files.json``) or a file of the same name found now, with the same MD5; or a file jason filed before, found by
@@ -59,6 +61,7 @@ class Attachment:
     where: str = ""                  # the Drive path it is in, or the folder it will go to
     path: tuple[str, ...] = ()       # the folder names from the filing root, for a document to file
     rule: str = ""                   # the rule that placed it: its kind and source, or "fallback"
+    why: str = ""                    # the rule's condition and the facts that decided it (``EmailFiling.explain``)
     file_id: str = ""
     thread: str = ""                 # the message's thread, for a link to it in Gmail
 
@@ -314,6 +317,7 @@ def plan_vendor(gmail: Any, drive: Any, community: Any, sender: Any, *, known: d
             kind = DocumentKind(att.kind) if att.kind else None
             path, rule = filing.path_for(sender, kind, fiscal_year(att.at, community.fiscal_year_end()))
             att.action, att.path, att.rule = "file", path, rule_label(rule)
+            att.why = filing.explain(sender, kind)
             att.where = "My Drive/" + "/".join(path) if filing.root == "root" else "/".join(path)
             blobs[att.sha256] = data
         result.attachments.extend(a for a, _, _ in group)
@@ -404,6 +408,7 @@ def plan_saves(gmail: Any, drive: Any, community: Any, sender: Any, *, data_dir:
             kind = DocumentKind(latest.kind) if latest.kind else None
             path, rule = filing.path_for(sender, kind, fiscal_year(latest.at, community.fiscal_year_end()))
             latest.path, latest.rule = path, rule_label(rule)
+            latest.why = filing.explain(sender, kind)
             latest.where = "My Drive/" + "/".join(path) if filing.root == "root" else "/".join(path)
         result.attachments.extend(group)
     result.attachments.sort(key=lambda a: a.at)
@@ -516,7 +521,9 @@ def file_plan(drive: Any, community: Any, plan: VendorPlan, blobs: dict[str, byt
     return done
 
 
-def plan_lines(plan: VendorPlan) -> list[str]:
+def plan_lines(plan: VendorPlan, *, why: bool = False) -> list[str]:
+    """The plan as lines. ``why`` adds, under each document a rule placed, the rule's condition and the facts that
+    decided it."""
     counts = plan.counts()
     if not plan.query:
         return [f"{plan.vendor}: no known domain or email (mystique/senders.py, PayHOA's vendor record); skipped"]
@@ -526,8 +533,10 @@ def plan_lines(plan: VendorPlan) -> list[str]:
         if a.action == "repeat":
             continue
         kind = a.kind or "unclassified"
-        why = f"  [{a.rule}]" if a.action in ("file", "save", "adopt", "adopted") else ""
-        out.append(f"  {a.at[:10]} {a.action:<13} {kind:<18} {a.name}  ->  {a.where}{why}")
+        placed = a.action in ("file", "save", "adopt", "adopted")
+        out.append(f"  {a.at[:10]} {a.action:<13} {kind:<18} {a.name}  ->  {a.where}" + (f"  [{a.rule}]" if placed else ""))
+        if why and placed and a.why:
+            out += [f"      {line}" for line in a.why.splitlines()]
     return out
 
 

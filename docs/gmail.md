@@ -153,6 +153,7 @@ Attachments of the same name with different content are listed: another version,
 `jason gmail --file-vendor NAME|all` files the documents a vendor sent in Drive by the profile's filing rules (`Community.email_filing`): the document's kind first, its source second. It runs in two ways.
 
 - **Upload (the default).** jason reads each attachment, classifies it by name and by its words, skips content Drive already holds, and uploads the rest with the message in the file's `appProperties`. `--yes` uploads; `--hold GLOB` keeps back a document a person must verify first, such as emailed wire instructions.
+- **Why a document went where it did (`--why`).** Each filing rule's test is an [applicability](applicability.md) condition over the document's kind, the sender's name, and the sender's kind of source. `--why` prints, under each document, the condition of the rule that placed it and the facts that decided it. A document no rule takes says so and goes to the fallback folder.
 - **Gmail's own Add to Drive (`--via-gmail`).**
   - jason reads Gmail's metadata only (names and sizes). It lists in `data/gmail/save-to-drive.md` what a person saves with Gmail's button, each with a link to its message and its folder.
   - With `--yes`, it finds the saved copies in the root of My Drive, moves each into its folder, and tags it with its message.
