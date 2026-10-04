@@ -45,6 +45,7 @@ class Basis(Enum):
     GOVERNANCE = "the corporation"
     CONTRACTS = "vendor contracts"
     INTERPRETATION = "reading the law and the documents"
+    LIFE_SAFETY = "fire and life safety systems"
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,9 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
     Authority("CORP", "7210", "7215", "the board of a nonprofit mutual benefit corporation", Basis.GOVERNANCE),
     Authority("BPC", "7026", "7031", "contractor licensing: who needs a license, the license number a contract prints (7030.5), and an unlicensed contractor's pay", Basis.CONTRACTS),
     Authority("BPC", "7151", "7159.14", "home improvement contracts: the required terms, the down payment limit, and payment ahead of the work (7159.5)", Basis.CONTRACTS),
+    Authority("HSC", "13195", "13199", "automatic fire extinguishing systems: the State Fire Marshal's inspection, testing, and maintenance "
+              "regulations (13195) and who must be licensed to test and maintain them (13196.5), behind Title 19, Chapter 5",
+              Basis.LIFE_SAFETY),
     Authority("CORP", "8310", "8340", "corporate records and their inspection", Basis.RECORD),
     Authority("CCP", "1858", "1866", "construing a statute or instrument: give effect to all its provisions (1858), the "
               "intention pursued and the particular over the general (1859)", Basis.INTERPRETATION),
@@ -201,6 +205,29 @@ DRE_PUBLICATIONS: tuple[Publication, ...] = (
     Publication("Real Estate Law and Subdivided Lands Law", "https://www.dre.ca.gov/files/pdf/relaw/relaw.pdf",
                 "Business and Professions Code 10000 to 11288 as the Department publishes them, including the public report sections"),
 )
+
+# The State Fire Marshal's adopted text of Title 19, Chapter 5 (operative August 28, 2014; Cornell LII prints the same
+# 904, 904.1, and 904.2 in force on October 4, 2026), which adopts NFPA 25 (2011 edition) as the 2013 California
+# Edition with its amendments, and the forms that regulation incorporates. The NFPA standards themselves are not
+# freely published and are not on the shelf.
+SFM = "California State Fire Marshal"
+SFM_PUBLICATIONS: tuple[Publication, ...] = (
+    Publication("Title 19, Chapter 5 and NFPA 25 California amendments, final text (2014)",
+                "https://34c031f8-c9fd-4018-8c5a-4159cdff6b0d-cdn-endpoint.azureedge.net/-/media/osfm-website/what-we-do/"
+                "code-development-and-analysis/title-19-development/finaltextofregs-nfpa25-2011_8-27-2014corrected_resubfinal.pdf",
+                "who may inspect, test, and maintain water-based fire protection systems (19 CCR 904.1, 904.2), the frequencies "
+                "as California amended NFPA 25's tables, records, tags, and reports to the fire authority",
+                agency=SFM),
+    Publication("Title 19 forms incorporated by reference (AES forms)",
+                "https://34c031f8-c9fd-4018-8c5a-4159cdff6b0d-cdn-endpoint.azureedge.net/-/media/osfm-website/what-we-do/"
+                "code-development-and-analysis/title-19-development/formsincorpbyreferencefinal.pdf",
+                "the forms a sprinkler inspection is reported on: AES 2.1 (quarterly and annual), AES 2.2 (five-year), AES 10 "
+                "(corrections), and the others 19 CCR 906.4 lists",
+                agency=SFM),
+)
+
+# Every agency publication the shelf fetches.
+PUBLICATIONS: tuple[Publication, ...] = DRE_PUBLICATIONS + SFM_PUBLICATIONS
 
 
 def authorities() -> tuple[Authority, ...]:

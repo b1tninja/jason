@@ -119,6 +119,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [statute-alignment.md](statute-alignment.md): which provision continues which between two versions of the Act.
 - [legal-hold.md](legal-hold.md): legal holds: the register, Vault, `jason_hold` labels, and custody checks.
 - [insurance-policies.md](insurance-policies.md): each insurance policy term by term from its declarations, beside the policy sheet.
+- [fire-protection.md](fire-protection.md): fire protection systems as reference: the law and standards (HSC 13195, Title 19's NFPA 25, NFPA 72), who may inspect, test, and repair, how often, what the association receives and keeps, deficiencies and impairments, and the common gaps.
 - [insurance-and-deadlines.md](insurance-and-deadlines.md): each policy's term against its letters and premiums, and recurring deadlines with their evidence.
 - [incidents.md](incidents.md): the maintenance history and insurance claims by unit and building.
 - [laws/README.md](laws/README.md): the laws that govern a California common interest development; the obligation index.

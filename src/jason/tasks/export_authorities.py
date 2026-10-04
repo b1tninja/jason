@@ -23,7 +23,7 @@ from typing import Any
 
 from jason.community.authorities import (
     ACTS,
-    DRE_PUBLICATIONS,
+    PUBLICATIONS,
     Authority,
     Basis,
     Publication,
@@ -114,7 +114,7 @@ def export_authorities(library: LawLibrary, root: Path, *, spans: tuple[Authorit
         if (a.code, a.start, a.end) in covered:
             continue
         jobs.append(_Want(a.code, a.start, a.end, a.basis, (a.why,)))
-    for pub in DRE_PUBLICATIONS:
+    for pub in PUBLICATIONS:
         report.pointers.append({"citation": pub.title, "shelf": Shelf.PUBLICATION.value, "source": pub.url, "why": pub.why})
 
     texts = library.spans([(j.code, j.start, j.end) for j in jobs])
@@ -260,7 +260,7 @@ def authority_text(root: Path, citation: str) -> dict[str, Any]:
     return {"found": False, "citation": f"{code} {number}", "reason": "not in the exported authorities; run jason export-authorities or read it from lawlibrary"}
 
 
-def fetch_publications(root: Path, *, fetch=None, publications: tuple[Publication, ...] = DRE_PUBLICATIONS) -> list[str]:
+def fetch_publications(root: Path, *, fetch=None, publications: tuple[Publication, ...] = PUBLICATIONS) -> list[str]:
     """Bring the agency PDFs down into data/authorities/publications. A file already there is kept."""
     from urllib.request import Request, urlopen
 
