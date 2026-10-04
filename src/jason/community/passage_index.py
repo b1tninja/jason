@@ -125,6 +125,13 @@ class IndexSource:
 # The text jason holds for the governing documents, the policies' pages, the reserve studies, and the law. The mail,
 # the reports, the library, and jason's documentation are ``jason.tasks.index_sources``: each of their files gets its
 # own flags, so they are not folders here.
+# The catalogs a search with no catalog named ranks: the governing documents and records jason holds as text, the
+# insurance documents, the law, the agencies' publications, and the reference shelf. The library, the mail, the
+# reports, and jason's documentation are searched when named (or with every catalog asked for): measured October 4,
+# 2026 on the three gold sets, ranking them all at once took hybrid recall@5 from 0.86 to 0.83 and MRR@10 from 0.74
+# to 0.70 (docs/document-tools.md, model trials), because their many passages crowd the answers out.
+CORE_CATALOGS: tuple[str, ...] = ("records", "insurance", "authorities", "publications", "reference")
+
 SOURCES: tuple[IndexSource, ...] = (
     IndexSource("records", "artifacts/site-docs/governing_documents", Standing.RECORD),
     IndexSource("records", "artifacts/site-docs/governing_documents_Annexations", Standing.RECORD),

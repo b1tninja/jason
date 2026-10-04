@@ -243,3 +243,19 @@ def test_publications_are_searched_by_what_each_is(tmp_path):
     assert set(entries) == {"reg.txt", "guide.txt"}                       # the compilation is not searched whole
     assert entries["reg.txt"].standing is pi.Standing.AUTHORITY and entries["guide.txt"].standing is pi.Standing.REFERENCE
     assert "A guide (G 1)" in entries["guide.txt"].context and "how a budget is built" in entries["guide.txt"].context
+
+
+def test_a_search_with_no_catalog_ranks_the_core_catalogs_and_says_what_it_left_out(data):
+    from jason.mcp.county import document_search
+
+    (data / "library").mkdir()
+    (data / "library" / "note.md").write_text("A vendor's note about the garage door opener.\n", encoding="utf-8")
+    sources = (*SOURCES[:2], pi.IndexSource("library", "library", pi.Standing.RECORD))
+    pi.build(data, sources=sources, embedder=FakeEmbedder(), kind_of=lambda name: "")
+    core = document_search("garage door", data_dir=data, mode="exact")
+    assert core["searched"] == ["records", "authorities"] and core["notSearched"] == ["library"]
+    assert {h["catalog"] for h in core["hits"]} == {"records"} and "library" in core["caveats"][-1]
+    everything = document_search("garage door", data_dir=data, mode="exact", catalog="all")
+    assert "library" in {h["catalog"] for h in everything["hits"]} and "searched" not in everything
+    named = document_search("garage door", data_dir=data, mode="exact", catalog="library")
+    assert {h["catalog"] for h in named["hits"]} == {"library"}

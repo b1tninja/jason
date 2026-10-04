@@ -657,7 +657,9 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
     record, reference, page), kind, whether jason generated it, and its context line (what the file is).
 
     ``catalog`` scopes it (records, insurance, authorities, publications, reference, library, mail, reports, docs, or a
-    legal case's own catalog, case-<key>; comma-separated; empty for every catalog a person may see). Confidential
+    legal case's own catalog, case-<key>; comma-separated). With no catalog, kind, or folder named it searches the
+    core catalogs (records, insurance, authorities, publications, reference) and says which it left out; "all" searches
+    every catalog a person may see. Confidential
     files (a library file the library flags or holds, an attorney's letter, a bank statement, a check, an escrow
     request, an unsorted letter, a report that names owners) are left out unless ``include_confidential``; they are
     for directors and counsel. A case catalog is confidential and is searched only when named. A letter that carries
@@ -677,6 +679,10 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
                 "note": f"no passage index at {pi.index_path(root)}: build it with jason index --build"}
     note = ""
     held = bool(include_confidential)
+    # No catalog, kind, or folder named: the core catalogs. A kind or a folder names what to search, so every catalog.
+    searched = "all" if (catalog.strip() or kind.strip() or folder.strip()) and not catalog.strip() else catalog.strip()
+    if not searched:
+        catalog = ",".join(c for c in pi.CORE_CATALOGS if c in pi.catalogs(root))
     try:
         found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode or "hybrid",
                               confidential=held, kind=kind, folder=folder)
@@ -689,6 +695,13 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
                               kind=kind, folder=folder)
     result: dict[str, Any] = {"question": question, "available": True, "mode": mode or "hybrid", "count": len(found),
                               "hits": [_index_hit(h) for h in found], "caveats": list(DOCUMENT_SEARCH_CAVEATS)}
+    if not searched:
+        result["searched"] = catalog.split(",") if catalog else []
+        others = [c for c in pi.catalogs(root) if c not in pi.CORE_CATALOGS and not c.startswith("case-")]
+        if others:
+            result["notSearched"] = others
+            result["caveats"].append("only the core catalogs were searched; name a catalog (" + ", ".join(others)
+                                     + ") or pass catalog=\"all\" to search the rest")
     if note:
         result["note"] = note
     if not found:
