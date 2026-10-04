@@ -10,7 +10,8 @@
     "RemoteView": "src/components/Remote.tsx",
     "Loading": "src/components/States.tsx",
     "ErrorNotice": "src/components/States.tsx",
-    "EmptyState": "src/components/States.tsx"
+    "EmptyState": "src/components/States.tsx",
+    "EvidenceVersion": null
   },
   "overrides": {
     "Kanban": {
@@ -62,6 +63,29 @@
     "PlanReview": {
       "cardMode": "column",
       "viewport": "1000x1400"
+    },
+    "InstrumentGraph": {
+      "cardMode": "column",
+      "viewport": "1200x1000"
+    },
+    "KeyDocuments": {
+      "cardMode": "column",
+      "viewport": "1000x2000"
+    },
+    "LocatedDocuments": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "DocumentLocator": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "BoardList": {
+      "cardMode": "column",
+      "viewport": "1000x1100"
+    },
+    "EvidencePanel": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

@@ -78,6 +78,26 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - **Fixed during this sync.** The stage's options view kept the page's `--panel` behind the brief's cards (invisible
   values on the dark stage) and `.screen-head` was defined twice; both are `styles.css` fixes, not preview ones.
 
+## Onboarding and evidence components (re-sync 2026-10-03, evening)
+
+- **Fetch stubs answer by URL or request body, never a module variant.** Every cell in a card mounts at once, so a
+  `WithFixture` variable holds only the last cell's value. `AssociationPicker` cells each open a different county
+  (`?county=`), `DocumentLocator` cells a different association (`?name=`); `EvidencePanel` routes
+  `GET /api/evidence?address=` by address and `RefreshAllEvidence` routes `POST /api/evidence/refresh-all` by the body's
+  `approval`. A never-settling promise holds a loading or busy state. Stubs that POST also answer `/api/session` with
+  `{}` (`postJson` reads the write token from the session when the page has no `jason-token` meta).
+- **Post-click states** (the read-again result, the batch statuses, `OwnerNames` asking for a name) click once after
+  mount, as HostPanel does; the clicked button keeps its focus ring in the capture, which is the real behavior.
+- **The finder's styles live in `styles.css`.** `views/discovery.css` was folded in (its own section) because a view's
+  CSS never ships: without it the picker's options ran together ("15 declaration filings2 spellings").
+- **`.notice-error` is a flex row** (for ErrorNotice's message and button). A paragraph that is a notice-error spaces
+  its inline words apart; `DocumentLocator`'s job line adds `.locator-job` to make it a block.
+- **`.evidence-reread-all-status .notice` is inline-block**: an inline notice that wraps split into overlapping boxes.
+- `EvidenceVersion` is a React context, not a component: `componentSrcMap` excludes it. `OwnerNames` is exported for
+  the design library (the reveal control above the graph).
+- Tall cards: `KeyDocuments` (1000x2000), `DocumentLocator` and `LocatedDocuments` (1000x1400), `BoardList` (1000x1100),
+  `InstrumentGraph` (1200x1000); the graph's timeline scrolls sideways inside its box by design.
+
 ## Known render warns
 
 - `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's

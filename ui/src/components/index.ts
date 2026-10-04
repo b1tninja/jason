@@ -56,7 +56,7 @@ export { AuditLog, auditWords } from "./AuditLog";
 export { QuestionCard, unblocksText, type Question, type Unblocks, type Answered } from "./QuestionCard";
 export { StageSteps, type StageGate } from "./StageSteps";
 export { KeyDocuments, Day, type KeyDocumentsData, type KeyGroup, type KeyEntry, type KeyCopy, type KeyLink, type KeyLead, type KeyStatusWord } from "./KeyDocuments";
-export { InstrumentGraph, layout as instrumentGraphLayout, type InstrumentGraphData, type GraphNode, type GraphEdge, type GraphCycle, type Provenance } from "./InstrumentGraph";
+export { InstrumentGraph, OwnerNames, layout as instrumentGraphLayout, type InstrumentGraphData, type GraphNode, type GraphEdge, type GraphCycle, type Provenance } from "./InstrumentGraph";
 export { AssociationPicker } from "./AssociationPicker";
 export { DocumentLocator, LocatedDocuments, BoardList, TieBadge } from "./DocumentLocator";
 export type { AssociationChoice, DirectoryRow, Directory as AssociationDirectory, LocatedDoc, LocatedItem, Location as DocumentLocation, LocationResult, NotLocated } from "../lib/discovery";

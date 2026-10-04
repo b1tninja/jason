@@ -24,7 +24,7 @@ Sample data, with made-up names only, is each component's test fixture: `ui/src/
 
 ## Decisions for the design
 
-1. **Styles.** The finder's styles are in `ui/src/views/discovery.css` (a view, since components carry no CSS); in the design library `AssociationPicker` and `DocumentLocator` render unstyled. Fold them into the shared tokens and stylesheet. `KeyDocuments` and `InstrumentGraph` use the global classes already.
+1. **Styles.** The finder's rules are a section of `ui/src/styles.css` (they were `views/discovery.css`, which the design library never shipped), so all four components render styled in the design project. They use the shared tokens; how far to restyle them is the design's.
 2. **The first tab.** "Find the association" is listed first, but Onboarding opens on "Request list". A community with no profile facts yet may want to open on Find.
 3. **Answering a question.** Each located item names its onboarding question (`fact:lookup:located-<item>`); "Answer it" shows only when a `questionHref` is passed, and the console has no route for the onboarding questions yet. Design the route, or the link to it.
 4. **Slow loads.** Key documents and Recorded instruments each take about ten seconds to load on real data. Design a loading state worth that wait, or ask for a server cache first.
@@ -33,4 +33,4 @@ Sample data, with made-up names only, is each component's test fixture: `ui/src/
 
 ## Not part of this pass
 
-The design-sync previews and the library exports for the design project are the design session's; `ui/src/components/index.ts` already exports all four components and their types.
+The four components, their parts (`LocatedDocuments`, `BoardList`, `TieBadge`, `OwnerNames`, `Day`), and their previews are in the Jason UI design project as of the October 3, 2026 sync; `ui/src/components/index.ts` exports them all with their types.

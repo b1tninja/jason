@@ -180,7 +180,7 @@ function JobLine({ job, pollMs }: { job: JobRef; pollMs: number }) {
     );
   if (job.status === "failed" || job.status === "cancelled")
     return (
-      <p className="notice notice-error" role="alert">
+      <p className="notice notice-error locator-job" role="alert">
         Job <code className="chip">{String(job.id)}</code> {job.status === "failed" ? "failed" : "was cancelled"}. Nothing was
         located. <a href="#/jobs">Read its log in the job queue</a>, or run the command below in a terminal.
       </p>

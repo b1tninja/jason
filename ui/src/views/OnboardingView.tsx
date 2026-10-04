@@ -7,7 +7,6 @@ import { postJson } from "../lib/api";
 import type { AssociationChoice } from "../lib/discovery";
 import { readMe } from "../lib/session";
 import { useApi } from "../lib/useApi";
-import "./discovery.css";
 
 interface Account { service: string; set: boolean | null; how: string; note?: string }
 interface Fact { name: string; supplied: boolean | null }
