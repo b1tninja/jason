@@ -277,6 +277,34 @@ The `Embed` component's Google kinds move to this rule (see [Embed](#the-embed-c
 
 **Level:** P1 to P2 by sender and content. Masking of an owner's address in a message body is the same server-side masking as a submission's.
 
+**TODO, for further research: a printed copy (PDF) of a message and of a whole conversation.** Wanted for these uses:
+- the evidence panel's and `Doc`'s preview of a conversation (a thumbnail and the message as it would print);
+- legal holds (a fixed copy of what was said, kept under the hold);
+- document search (a text layer to search);
+- export (a records request, a board packet, counsel's file).
+
+What the 2026-10-04 research found:
+- **There is no official PDF from Google.**
+  - The Gmail API's `messages.get` formats are only `minimal`, `full`, `raw`, and `metadata` ([reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/Format)).
+  - Google Vault exports only MBOX or PST ([Vault export contents](https://support.google.com/vault/answer/6099459?hl=en)).
+  - Apps Script converts the message's HTML through Drive or a temporary Doc ([pixelcog/gmail-to-pdf](https://github.com/pixelcog/gmail-to-pdf)), which renders email HTML poorly, runs in Google, and leaves files in Drive.
+  - Gmail's Print view is the person's own browser, not an API.
+- **The likely route is a local render:**
+  1. `format=raw` on a person's click;
+  2. parse the MIME on the server;
+  3. sanitize the HTML: no scripts, handlers, forms, `<base>`, or meta refresh; `cid:` images to the message's attachments; remote images left out unless a person asks; contacts masked outside the unmasked view;
+  4. wrap it in a print template: a header with Subject, From, To, Cc, Date, and the group; the body; the attachments listed; a footer with the Message-ID and when jason read it;
+  5. print it with headless Chromium (Playwright and its Chromium are installed), with JavaScript off and every network request blocked, so no tracking pixel ever loads;
+  6. keep it as `gmail/pdf/<msg_key>.pdf` (P2), a `pdf` document in the viewer, refreshable.
+
+  A conversation prints as one PDF, its messages in order with each one's side and edge in words ([conversations-design.md](../conversations-design.md)).
+- **Questions still open:**
+  - an HTML sanitizer (e.g. `nh3`, a new dependency);
+  - fidelity across the clients' HTML;
+  - whether a hold's copy should be the original `.eml` (exact, with its headers) beside the PDF, for evidence. Likely both: the `.eml` is the record, the PDF is its reading copy;
+  - the retention of these copies under the `records-retention` policy;
+  - a text layer for search (from the sanitized text, not OCR).
+
 ### Scanned mail, Mailroom letters, drafts, minutes, transcripts
 
 **Status:** proposed for each.
