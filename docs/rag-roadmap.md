@@ -30,6 +30,12 @@
 
 ### 1. Stop the confidential library leak into the shared workspace (P8, the small fix only)
 
+- **Status (October 4, 2026).** AnythingLLM is retired, so there is no shared workspace to leak into or to prune. The library joins the passage index through `jason.tasks.index_sources.LibrarySource` (catalog `library`), which closes the leak in the index:
+  - One entry per distinct document. It is confidential when any copy is: a confidential kind, a copy in a confidential folder, or the library's stored flag.
+  - An unclassified document is left out, by an explicit row. So are templates, images, and a document with no text on disk.
+  - The kinds a person has yet to decide (treasurer reports, counsel's letters, settlements) are held as confidential until the decision is made (`HELD_KINDS`), with leases, grant deeds, and recorded liens, which name owners.
+  - `jason index --plan` lists the counts without building.
+  - Still open: the person's decision on each held kind, and moving `CONFIDENTIAL_FOLDERS` into the profile. The mechanism and conditions below are the history of the AnythingLLM fix, which is no longer needed.
 - **Problem.**
   - `anythingllm_sync.library_items` checks each row's `confidential` flag on its own, but `distinct()` treats a file as confidential when any copy of it is.
   - As a result, 8 treasurer reports are in today's association-records upload list, which is shared into the association workspace. Each has one copy under `Confidential/` and a byte-identical copy under Email Attachments.
@@ -59,6 +65,10 @@
 
 ### 2. Owner data and claim papers in shared catalogs (no P number; needs a person's decision)
 
+- **Status (October 4, 2026).** With AnythingLLM retired, the exposure below is closed; the decisions stay a person's.
+  - **Reports.** `ReportsSource` (catalog `reports`) reads `REPORT_RULES`: the property-history pages are confidential, a page no row places is confidential, and an open page that names a member PayHOA lists is confidential. Four pages are open, each written from the law and the governing documents. A person opens another page by adding a row.
+  - **Mail.** `MailSource` (catalog `mail`) reads `MAIL_RULES`: a letter that carries a credential is never indexed, nor another association's mail or an owner's own account; an unsorted letter, an attorney's letter, a bank statement, a check, an escrow request, and a letter that names a member are confidential.
+  - **Insurance.** The index takes the Drive mirror's insurance extracts and jason's policy pages, not `data/insurance/documents/*.pdf`. Each build asks, of every file every source gives, whether the library holds the same bytes as confidential (`index_sources.library_holds`; the file itself, or the PDF an extract sits beside), and flags it if so. Checked October 4, 2026: no file the folder sources index openly has such a copy, by bytes or by name. A claim paper that was never in the library is not caught by this; nobody has read the insurance files' contents against the confidential kinds.
 - **Problem.**
   - jason-pages includes `Source(Root.DATA, "reports/property-history", "*.md")` (`anythingllm_sync.py:130`). Its 104 pages carry who held each unit, PayHOA members, liens and notices, and taxes. They go into the shared association workspace with no filter. The library treats owner_history and membership_list as confidential kinds, so this exposure is larger than item 1's.
   - The insurance catalog uploads `data/insurance/documents/*.pdf` with no confidentiality filter. No file name among the 50 looks like a claim paper, but nobody has checked the contents against `CONFIDENTIAL_KINDS`.

@@ -296,7 +296,7 @@ jason mail --offline --days 90
 jason mail --item 6182234    # one letter's text
 ```
 
-Name the sender, the arrival date, and the kind. Quote a letter only from its scanned text (`mail_item`). The sort reads words: a legal notice or cancellation is for a person to read now, and a listed date is where the letter puts one, not a ruling on the deadline. A policy number the letters print is a reading until a person pins it on the building. A letter page is never written for a letter carrying a credential, and the mail stays out of the passage index until its confidentiality rows are written. Do not ask PostScanMail to scan, forward, shred, or discard. See [docs/mail.md](docs/mail.md).
+Name the sender, the arrival date, and the kind. Quote a letter only from its scanned text (`mail_item`). The sort reads words: a legal notice or cancellation is for a person to read now, and a listed date is where the letter puts one, not a ruling on the deadline. A policy number the letters print is a reading until a person pins it on the building. A letter page is never written for a letter carrying a credential, and such a letter is never in the passage index; in its `mail` catalog an attorney's letter, a bank statement, a check, an escrow request, an unsorted letter, and a letter that names a member are confidential, searched only when asked. Do not ask PostScanMail to scan, forward, shred, or discard. See [docs/mail.md](docs/mail.md).
 
 ## Look up a past meeting
 

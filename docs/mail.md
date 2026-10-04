@@ -92,7 +92,11 @@ Who a letter comes from, and what kind of source that is, decides how to read it
 The sync writes `data/mail/<mail id>/letter.md` for each shareable letter: a heading with the date, sender, kind, and mail id; the sort, stated dates, and facts; PostScanMail's summary; and the scanned text. A letter page is correspondence: the sender's words as scanned, not the association's record and not an authority.
 
 - A letter carrying a PIN or access code never gets a page, nor does another association's mail or an owner's own account. Attorney letters, bank statements, checks, and escrow requests are confidential kinds.
-- The pages are not in the passage index yet: the mail joins it once its confidentiality rows are written ([rag-roadmap.md](rag-roadmap.md), items 1 and 2). Until then `mail_brief` and `mail_item` read it, and `data/reports/mail.md` is the year's brief as a page. Retrieval over OCR'd letters favors boilerplate, so a question about renewals is better answered from the brief than from the letters.
+- The letters are the passage index's `mail` catalog (`jason index --build`; `jason.tasks.index_sources.MailSource`). The index reads a letter's page, or its scanned text (`text.txt`) when it has no page, and decides each letter by `MAIL_RULES`:
+  - never indexed: a letter carrying a PIN or access code (read from its text, whatever the stored sort says), another association's mail, and an owner's own account;
+  - confidential (searched only when asked): a letter the sort left unknown, the confidential kinds, and a letter that names a member.
+
+  `jason index --plan` lists the counts. `mail_brief` and `mail_item` still read the sort, and `data/reports/mail.md` is the year's brief as a page. Retrieval over OCR'd letters favors boilerplate, so a question about renewals is better answered from the brief than from the letters.
 - Until October 4, 2026 the pages were AnythingLLM's `mail` catalog (`jason anythingllm --sync --catalog mail`); that command was removed with the app.
 
 ## Reading it

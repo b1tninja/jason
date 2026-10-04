@@ -347,13 +347,18 @@ def _sha(root: Path, doc_id: str) -> str:
         return ""
 
 
+def distinct_key(row: dict[str, Any]) -> str:
+    """What makes two rows the same file: the bytes' SHA-256; for a file never read, its name, period, and kind."""
+    return row.get("sha256") or f"{row['name'].casefold()}|{row.get('period') or ''}|{row['kind']}"
+
+
 def distinct(rows) -> list[dict[str, Any]]:
     """One row per distinct file: the same PDF filed in two folders (a meeting's minutes, and the copy in Email
     Attachments) is kept once, under the first path. A file never read is told apart by its name and period."""
     by_key: dict[str, dict[str, Any]] = {}
     kept: list[dict[str, Any]] = []
     for row in rows:
-        key = row.get("sha256") or f"{row['name'].casefold()}|{row.get('period') or ''}|{row['kind']}"
+        key = distinct_key(row)
         first = by_key.get(key)
         if first is None:
             merged = dict(row, copies=[row["path"]], records=list(row["records"]))
@@ -410,6 +415,37 @@ def text_for(root: Path, doc_id: str) -> str:
     if note.get("pagesRead") and note.get("pagesRead") == note.get("pages"):
         return read
     return f"{VISION_MARK}\n{read}\n{VISION_END}\n\n{text}" if text else read
+
+
+def text_path(root: Path, doc_id: str) -> Path | None:
+    """The one file on disk that holds the document's words, for a reader that takes a file (the passage index): the
+    vision reading when it read every page, else the cached text, else a vision reading of some pages. None when no
+    file holds any words. Reads only.
+
+    ``text_for`` joins a reading of some pages with the older text in memory, and no file holds that join; the older
+    text covers every page, so it is the file."""
+    if str(doc_id).startswith("drive-"):
+        kept = root / "meetings" / "minutes-files" / f"{str(doc_id)[6:]}.txt"
+        return kept if _has_words(kept) else None
+    folder = root / TEXT_DIR
+    cache, vision = folder / f"{doc_id}.txt", folder / f"{doc_id}.vision.txt"
+    if _has_words(vision):
+        try:
+            note = json.loads((folder / f"{doc_id}.vision.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            note = {}
+        if note.get("pagesRead") and note.get("pagesRead") == note.get("pages"):
+            return vision
+    if _has_words(cache):
+        return cache
+    return vision if _has_words(vision) else None
+
+
+def _has_words(path: Path) -> bool:
+    try:
+        return path.is_file() and bool(path.read_text(encoding="utf-8", errors="ignore").strip())
+    except OSError:
+        return False
 
 
 def vision_read(root: Path, doc_id: str, *, pages: int | None = None, engine: Any = None, refresh: bool = False) -> str:
@@ -533,4 +569,5 @@ def score(root: Path, rows: tuple[Classified, ...], *, model: ModelClassifier | 
     return card
 
 
-__all__ = ["ingest", "load", "save", "text_of", "text_for", "fetch", "score", "Scorecard", "IngestReport", "AssociationRecord", "io"]
+__all__ = ["ingest", "load", "save", "text_of", "text_for", "text_path", "distinct", "distinct_key", "fetch", "score", "Scorecard",
+           "IngestReport", "AssociationRecord", "io"]

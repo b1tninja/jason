@@ -475,8 +475,10 @@ def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: s
     carrying the question's exact numbers first; "exact" is BM25 with that boost and no model.
 
     Once the passage index is built (``jason index --build``) the search runs over it, and each hit names its
-    ``catalog`` and ``standing``. ``catalog`` (records, insurance, authorities, reference; comma-separated, or "all")
-    and ``standing`` (authority, record, reference, page) scope it; the default is the association's records. A
+    ``catalog`` and ``standing``. ``catalog`` (records, insurance, authorities, reference, library, mail, reports,
+    docs; comma-separated, or "all") and ``standing`` (authority, record, reference, page) scope it; the default is
+    the association's records. A confidential file outside a named case catalog is not returned here
+    (``document_search`` can ask for it). A
     "page" hit is jason's own summary, never the rule: quote the record or the law it points to."""
     from jason.community import retrieval
 
@@ -578,7 +580,11 @@ DOCUMENT_SEARCH_CAVEATS = (
     "points to.",
     "A reference hit is learned from, never quoted as binding; an authority hit is the law, a record hit the "
     "association's own document.",
-    "A confidential hit (a case file) is for directors and counsel: never an owner, the newsletter, or an open meeting.",
+    "A confidential hit (a case file; a held library file, letter, or report) is for directors and counsel: never an "
+    "owner, the newsletter, or an open meeting.",
+    "A mail hit (catalog mail) is a letter the association received: the sender's words as scanned, which OCR can "
+    "misread, and not the association's own statement. A letter that carries a PIN or an access code is never in the "
+    "index.",
     "No model wrote an answer here: read the passages and answer from them, or say they do not answer the question.",
 )
 
@@ -586,8 +592,9 @@ DOCUMENT_SEARCH_CAVEATS = (
 def _index_search(root: Path, query: str, *, catalog: str = "", standing: str = "", k: int = 8, mode: str = "hybrid",
                   confidential: bool = False) -> tuple:
     """``passage_index.search`` with the tools' string arguments: comma-separated catalogs ("" or "all" for every
-    catalog) and standings. A case catalog named (case-<key>) is a confidential catalog asked for by name, so its files
-    are included. Raises ``ValueError`` for an unknown standing or mode."""
+    catalog) and standings. A case catalog named (case-<key>) is a confidential catalog asked for by name, so its own
+    files are included; another catalog's confidential files only with ``confidential``, which never opens a case
+    catalog that is not named. Raises ``ValueError`` for an unknown standing or mode."""
     from jason.community import passage_index as pi
     from jason.tasks.case_files import is_case_catalog
 
@@ -597,9 +604,11 @@ def _index_search(root: Path, query: str, *, catalog: str = "", standing: str = 
         standings = tuple(pi.Standing(s.strip()) for s in standing.split(",") if s.strip())
     except ValueError as exc:
         raise ValueError(f"{exc}; standings: {', '.join(s.value for s in pi.Standing)}") from exc
-    asked = confidential or any(is_case_catalog(c) for c in catalogs)
-    return pi.search(query, data_dir=root, scope=pi.Scope(catalogs=catalogs, standings=standings, confidential=asked),
-                     k=max(1, min(int(k), 30)), mode=mode)
+    # Held files open by catalog: a case's only when it is named; any other catalog's only when asked.
+    held = tuple(c for c in (catalogs or (pi.catalogs(root) if confidential else ()))
+                 if (c in catalogs if is_case_catalog(c) else confidential))
+    scope = pi.Scope(catalogs=catalogs, standings=standings, confidential_in=held)
+    return pi.search(query, data_dir=root, scope=scope, k=max(1, min(int(k), 30)), mode=mode)
 
 
 def _index_hit(h: Any) -> dict[str, Any]:
@@ -607,20 +616,24 @@ def _index_hit(h: Any) -> dict[str, Any]:
     return {"file": p.title, "path": str(p.path), "passage": p.index, "startWord": p.start_word, "score": h.hit.score,
             "text": p.text, "section": p.heading or "", "catalog": h.row.catalog, "standing": h.row.standing.value,
             "kind": h.row.kind, "generated": h.row.generated, "confidential": h.row.confidential,
-            "alsoIn": [str(q.path) for q in h.hit.also]}
+            "context": p.context, "alsoIn": [str(q.path) for q in h.hit.also]}
 
 
 def document_search(question: str, catalog: str = "", standing: str = "", k: int = 8, mode: str = "hybrid",
-                    data_dir: Path | None = None) -> dict[str, Any]:
+                    include_confidential: bool = False, data_dir: Path | None = None) -> dict[str, Any]:
     """Search jason's passage index (``jason index --build``) for a question: the law, the association's records, the
-    insurance documents, the reference shelf, and jason's own pages. Returns passages, not an answer: each hit names its
-    file, section, catalog, standing (authority, record, reference, page), kind, and whether jason generated it.
+    insurance documents, the reference shelf, the classified library, the mail, and jason's own pages and
+    documentation. Returns passages, not an answer: each hit names its file, section, catalog, standing (authority,
+    record, reference, page), kind, whether jason generated it, and its context line (what the file is).
 
-    ``catalog`` scopes it (records, insurance, authorities, reference, or a legal case's own catalog, case-<key>;
-    comma-separated; empty for every catalog a person may see). A case catalog is confidential, for directors and
-    counsel, and is searched only when named. ``standing`` scopes by how far the words can be relied on. ``mode`` is
-    hybrid (keyword and embedding, exact numbers first), keyword, exact, or dense; when the embedder is not running a
-    hybrid search falls back to the exact keyword ranking and says so. A hit is evidence, not a pin; a page hit is a
+    ``catalog`` scopes it (records, insurance, authorities, publications, reference, library, mail, reports, docs, or a
+    legal case's own catalog, case-<key>; comma-separated; empty for every catalog a person may see). Confidential
+    files (a library file the library flags or holds, an attorney's letter, a bank statement, a check, an escrow
+    request, an unsorted letter, a report that names owners) are left out unless ``include_confidential``; they are
+    for directors and counsel. A case catalog is confidential and is searched only when named. A letter that carries
+    a PIN or an access code is never in the index. ``standing`` scopes by how far the words can be relied on. ``mode``
+    is hybrid (keyword and embedding, exact numbers first), keyword, exact, or dense; when the embedder is not running
+    a hybrid search falls back to the exact keyword ranking and says so. A hit is evidence, not a pin; a page hit is a
     summary, never the rule: quote the record or the law."""
     from jason.community import passage_index as pi
     from jason.community import retrieval
@@ -630,14 +643,16 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
         return {"question": question, "available": False,
                 "note": f"no passage index at {pi.index_path(root)}: build it with jason index --build"}
     note = ""
+    held = bool(include_confidential)
     try:
-        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode or "hybrid")
+        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode or "hybrid",
+                              confidential=held)
     except ValueError as exc:
         return {"question": question, "available": False, "note": str(exc)}
     except retrieval.EmbeddingUnavailable as exc:
         note = f"the embedder is not available ({exc}); ranked by keyword with exact numbers first"
         mode = "exact"
-        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode)
+        found = _index_search(root, question, catalog=catalog, standing=standing, k=k, mode=mode, confidential=held)
     result: dict[str, Any] = {"question": question, "available": True, "mode": mode or "hybrid", "count": len(found),
                               "hits": [_index_hit(h) for h in found], "caveats": list(DOCUMENT_SEARCH_CAVEATS)}
     if note:

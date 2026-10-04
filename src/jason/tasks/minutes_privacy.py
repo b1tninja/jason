@@ -36,8 +36,11 @@ def member_names(data_dir: Path) -> list[str]:
     db = Path(data_dir) / "payhoa.db"
     if not db.is_file():
         return []
-    with sqlite3.connect(db) as con:
+    con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)       # read only: the store is PayHOA's sync's
+    try:
         names = {n.strip() for (n,) in con.execute("select name from people") if n and len(n.split()) >= 2}
+    finally:
+        con.close()
     # PayHOA keeps some names with a middle initial or last name first ("Jane Q. Public"); the minutes write them
     # "Public Jane". Each name is matched without its initials and in both orders.
     variants = set()

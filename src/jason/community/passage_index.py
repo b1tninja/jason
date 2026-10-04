@@ -122,8 +122,9 @@ class IndexSource:
                             context=self.context_of(path) if self.context_of else "", front_matter=self.front_matter)
 
 
-# The text jason holds for the governing documents, the policies' pages, the reserve studies, and the law. Mail, the
-# reports, and the library wait for their confidentiality rows (docs/rag-roadmap.md, items 1 and 2) before they join.
+# The text jason holds for the governing documents, the policies' pages, the reserve studies, and the law. The mail,
+# the reports, the library, and jason's documentation are ``jason.tasks.index_sources``: each of their files gets its
+# own flags, so they are not folders here.
 SOURCES: tuple[IndexSource, ...] = (
     IndexSource("records", "artifacts/site-docs/governing_documents", Standing.RECORD),
     IndexSource("records", "artifacts/site-docs/governing_documents_Annexations", Standing.RECORD),
@@ -180,7 +181,15 @@ def _sha(path: Path) -> str:
 
 
 def _rel(path: Path, data_dir: Path) -> str:
-    return path.resolve().relative_to(data_dir.resolve()).as_posix()
+    """How the index names a file: its path under the data directory. A file outside it (jason's own documentation, in
+    the project checkout) is named by its absolute path, which ``data_dir / name`` gives back unchanged, so ``load``
+    reads both the same way. A folder scope (``Scope.folders``) is a place under the data directory and never matches
+    one."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(data_dir.resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
 
 
 def _default_kind(name: str) -> str:
@@ -215,11 +224,13 @@ class BuildReport:
 def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: retrieval.Embedder | None = None,
           model: str = retrieval.EMBED_MODEL, chunking: str = retrieval.CHUNKING,
           kind_of: Callable[[str], str] = _default_kind, batch: int = 64, say: Callable[[str], None] | None = None,
-          ) -> BuildReport:
+          held: Callable[[Path], bool] | None = None) -> BuildReport:
     """Bring the index up to date with ``sources``: each gives its files (``entries(data_dir)``, as ``IndexFile``) and
     names the catalogs it fills (``catalogs``), so a file it no longer gives leaves the index. Without ``embedder`` the passages are cut and the old cache's
-    vectors copied, and the rest are counted as missing. The caller holds the store lock (``Resource.STORE``,
-    ``retrieval-index``); the embedder holds the GPU lock per request."""
+    vectors copied, and the rest are counted as missing. ``held`` is asked of every file and can only add the
+    confidential flag: a file one source gives openly is still held back when another store holds the same file as
+    confidential. The caller holds the store lock (``Resource.STORE``, ``retrieval-index``); the embedder holds the GPU
+    lock per request."""
     from jason.community.passage_sections import OutlineIndex, section_passages
     from jason.community.passages import passages_of
 
@@ -243,12 +254,13 @@ def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: r
                 sha = _sha(path)
                 cutting = f"{chunking}+front" if entry.front_matter else chunking
                 kind = kind_of(path.name) if entry.kind is None else entry.kind
+                confidential = int(bool(entry.confidential or (held is not None and held(path))))
                 row = db.execute("SELECT sha256, chunking, catalog, standing, context, kind, confidential, generated "
                                  "FROM files WHERE path = ?", (rel,)).fetchone()
                 if row and row[:5] == (sha, cutting, entry.catalog, entry.standing.value, entry.context):
-                    if row[5:] != (kind, int(entry.confidential), int(entry.generated)):       # a flag moved: no re-cut
+                    if row[5:] != (kind, confidential, int(entry.generated)):       # a flag moved: no re-cut
                         db.execute("UPDATE files SET kind = ?, confidential = ?, generated = ? WHERE path = ?",
-                                   (kind, int(entry.confidential), int(entry.generated), rel))
+                                   (kind, confidential, int(entry.generated), rel))
                     continue
                 cut = section_passages(path, outlines=outlines) if outlines is not None else passages_of(path)
                 if entry.front_matter:
@@ -256,7 +268,7 @@ def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: r
                 db.execute("DELETE FROM files WHERE path = ?", (rel,))
                 db.execute("INSERT INTO files (path, catalog, standing, kind, confidential, generated, sha256, chunking, "
                            "indexed_at, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                           (rel, entry.catalog, entry.standing.value, kind, int(entry.confidential), int(entry.generated),
+                           (rel, entry.catalog, entry.standing.value, kind, confidential, int(entry.generated),
                             sha, cutting, time.time(), entry.context))
                 db.executemany(
                     "INSERT INTO passages (path, idx, start_word, heading, text, key) VALUES (?, ?, ?, ?, ?, ?)",
@@ -328,7 +340,8 @@ def _put(db: sqlite3.Connection, key: str, model: str, vector: Any) -> None:
 @dataclass(frozen=True)
 class Scope:
     """Which rows a search may rank. Every field empty means every row a person may see; ``confidential`` adds the
-    files held back unless asked."""
+    files held back unless asked. ``confidential_in`` adds them for the catalogs it names and no other: a confidential
+    catalog asked for by name (a legal case's) opens its own files, not another catalog's."""
 
     catalogs: tuple[str, ...] = ()
     standings: tuple[Standing, ...] = ()
@@ -336,6 +349,7 @@ class Scope:
     folders: tuple[str, ...] = ()          # path prefixes under the data directory
     confidential: bool = False
     generated: bool | None = None          # None: both; False: only what jason did not write
+    confidential_in: tuple[str, ...] = ()
 
     def where(self) -> tuple[str, list[Any]]:
         clauses: list[str] = []
@@ -353,7 +367,10 @@ class Scope:
         if self.folders:
             clauses.append("(" + " OR ".join("f.path LIKE ? ESCAPE '\\'" for _ in self.folders) + ")")
             args.extend(_like_prefix(f) for f in self.folders)
-        if not self.confidential:
+        if not self.confidential and self.confidential_in:
+            clauses.append(f"(f.confidential = 0 OR f.catalog IN ({', '.join('?' * len(self.confidential_in))}))")
+            args.extend(self.confidential_in)
+        elif not self.confidential:
             clauses.append("f.confidential = 0")
         if self.generated is not None:
             clauses.append("f.generated = ?")
@@ -411,6 +428,7 @@ def load(data_dir: Path | str, scope: Scope = Scope(), *, model: str = retrieval
         passages: list[Passage] = []
         meta: dict[tuple[str, int], Row] = {}
         for rel, idx, start, heading, text, key, catalog, standing, kind, conf, gen, context in rows:
+            # ``rel`` is under the data directory, or absolute for a file outside it (``_rel``); the join keeps either.
             passage = Passage(data_dir / rel, idx, start, text, heading, context)
             passages.append(passage)
             meta[(str(passage.path), idx)] = Row(catalog, Standing(standing), kind, bool(conf), bool(gen), key)
@@ -489,6 +507,17 @@ def search(query: str, *, data_dir: Path | str | None = None, scope: Scope = Sco
     return tuple(IndexHit(h, loaded.rows[(str(h.passage.path), h.passage.index)]) for h in hits)
 
 
+def catalogs(data_dir: Path | str) -> tuple[str, ...]:
+    """The catalogs the index holds, in order; none without an index."""
+    if not index_path(data_dir).is_file():
+        return ()
+    db = connect(data_dir)
+    try:
+        return tuple(name for (name,) in db.execute("SELECT DISTINCT catalog FROM files ORDER BY 1"))
+    finally:
+        db.close()
+
+
 def status(data_dir: Path | str, *, model: str = retrieval.EMBED_MODEL) -> dict[str, Any]:
     """What the index holds: files and passages by catalog and standing, and the passages with no vector."""
     path = index_path(data_dir)
@@ -509,4 +538,4 @@ def status(data_dir: Path | str, *, model: str = retrieval.EMBED_MODEL) -> dict[
 
 
 __all__ = ["BuildReport", "IndexFile", "IndexHit", "IndexSource", "Loaded", "Row", "SOURCES", "Scope", "Standing", "StoredEmbedder",
-           "build", "connect", "index_path", "load", "search", "status"]
+           "build", "catalogs", "connect", "index_path", "load", "search", "status"]
