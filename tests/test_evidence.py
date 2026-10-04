@@ -707,3 +707,321 @@ def test_the_refresh_all_route_is_a_guarded_write_on_one_sign_in(web, monkeypatc
     assert r.status_code == 409 and r.json["error"] == evidence.KEEPER_SIGN_IN
     off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None))
     assert off.post(url, json=body).status_code == 405
+
+
+# --- the documents behind the evidence, and viewing one unmasked ----------------------------------------------------------
+
+SID = 620
+PDF = b"%PDF-1.4\n% a made-up PDF for a test\n%%EOF\n"
+
+
+def _question(qid: int, label: str, qtype: str, *, multi: bool = False, options=()) -> dict:
+    """One PayHOA form question as a submission's answer carries it."""
+    return {"id": qid, "formId": 950, "sortOrder": qid, "key": str(qid), "label": label, "type": qtype,
+            "description": "", "isRequired": 0, "isEnabled": 1, "isMultiselect": multi,
+            "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z", "deletedAt": None,
+            "options": [{"id": qid * 10 + i, "formQuestionId": qid, "value": v, "label": lab, "isEnabled": 1}
+                        for i, (v, lab) in enumerate(options)]}
+
+
+QUESTIONS_620 = {q["id"]: q for q in (
+    _question(1, "Owner name(s)", "input"),
+    _question(2, "Email", "input"),
+    _question(3, "", "hr"),
+    _question(4, "Delivery", "select", options=[("email", "By email"), ("mail", "By mail")]),
+    _question(5, "Days to call", "select", multi=True, options=[("mon", "Monday"), ("tue", "Tuesday")]),
+    _question(6, "Move-in date", "date"),
+    _question(7, "Lease", "file"),
+    _question(8, "I agree", "checkbox"),
+    _question(9, "Notes", "textarea"),
+)}
+ANSWERS_620 = [(9, "Line one<br>Line two"), (2, "ana@example.com"), (1, "Ana Example"), (4, "email"),
+               (5, '["mon","tue"]'), (6, "2026-09-30T00:00:00.000Z"),
+               (7, "https://files.example.com/a/lease%20signed.pdf?x=1"), (8, '<i class="fa fa-check-square-o"></i>'),
+               (3, "")]                                                         # PayHOA's order, not the form's
+
+
+def _raw_620() -> dict:
+    """A raw ``get_form_submission`` in PayHOA's shape (made-up values): the questions ride on the answers."""
+    answers = [{"id": 9000 + qid, "formSubmissionId": SID, "formQuestionId": qid, "answer": value,
+                "createdAt": "2026-10-05T17:00:00.000Z", "updatedAt": "2026-10-05T17:00:00.000Z", "deletedAt": None,
+                "question": QUESTIONS_620[qid]} for qid, value in ANSWERS_620]
+    return {"submission": {"id": SID, "organizationId": 1, "formId": 950, "membershipId": 11, "unitId": 2,
+                           "status": "pending", "createdAt": "2026-10-05T17:00:00.000Z", "answers": answers,
+                           "approvals": [], "comments": [], "tags": [],
+                           "form": {"id": 950, "name": "Architectural request", "description": "", "approvers": []},
+                           "membership": {"id": 11}, "unit": {"id": 2, "title": "102 EXAMPLE WAY"}}}
+
+
+def _request_folder(data_dir: Path) -> Path:
+    """Request 620 kept on disk: its full read, comments and notes, attachments, and a half-written file."""
+    _keep(data_dir, SID, _raw_620(), read_at="2026-10-06T00:00:00+00:00", via="jason sync-request-files")
+    folder = submission_cache.files_dir(data_dir) / "requests" / str(SID)
+    (folder / "comments.json").write_text("[]", encoding="utf-8")
+    (folder / "notes.json").write_text("[]", encoding="utf-8")
+    (folder / "1002_plan.pdf").write_bytes(PDF)
+    (folder / "1001_photo.jpeg").write_bytes(b"\xff\xd8\xff\xe0 a made-up jpeg")
+    (folder / "1003_page.html").write_text("<script>alert(1)</script>", encoding="utf-8")
+    (folder / "notes.txt").write_bytes(b"Gate code is on the sign.\n")
+    (folder / "scan ana@example.com.pdf").write_bytes(PDF)
+    (folder / "1004_half.pdf.tmp").write_bytes(b"half")
+    return folder
+
+
+def _views(data_dir: Path) -> list[dict]:
+    file = data_dir / "evidence" / "views.jsonl"
+    return [json.loads(line) for line in file.read_text(encoding="utf-8").splitlines()] if file.is_file() else []
+
+
+ADDRESS = f"payhoa:submission:{SID}"
+
+
+def test_a_request_lists_its_submission_and_attachments_never_their_contents(village):
+    from jason.approvals.evidence_documents import file_id
+
+    _request_folder(village.data_dir)
+    out = resolve(ADDRESS, data_dir=village.data_dir)
+    _validator("evidence.schema.json").validate(out)
+    hidden = file_id("scan ana@example.com.pdf")
+    assert hidden.startswith("file-") and len(hidden) == 21                              # the id carries no email
+    assert out["documents"] == [
+        {"id": "submission", "name": "Architectural request as submitted", "kind": "submission", "size": 0,
+         "readAt": "2026-10-06T00:00:00+00:00", "note": "Read by jason sync-request-files."},
+        {"id": "1001_photo.jpeg", "name": "1001_photo.jpeg", "kind": "image", "size": 19,
+         "readAt": out["documents"][1]["readAt"], "note": ""},
+        {"id": "1002_plan.pdf", "name": "1002_plan.pdf", "kind": "pdf", "size": len(PDF),
+         "readAt": out["documents"][2]["readAt"], "note": ""},
+        {"id": "1003_page.html", "name": "1003_page.html", "kind": "file", "size": 25,
+         "readAt": out["documents"][3]["readAt"], "note": ""},
+        {"id": "notes.txt", "name": "notes.txt", "kind": "text", "size": 26,
+         "readAt": out["documents"][4]["readAt"], "note": ""},
+        {"id": hidden, "name": f"scan a{MASK}@example.com.pdf", "kind": "pdf", "size": len(PDF),
+         "readAt": out["documents"][5]["readAt"], "note": ""}]
+    assert all(d["readAt"] for d in out["documents"])
+    assert "ana@example.com" not in json.dumps(out)                                     # the evidence stays masked
+    assert resolve("board-item:nothing", data_dir=village.data_dir)["documents"] == []
+    assert resolve("jason owner-info --responses", data_dir=village.data_dir)["documents"] == []
+
+
+def test_a_citation_lists_its_whole_section(shelf):
+    out = resolve("CIV 4920(a)", data_dir=shelf)
+    _validator("evidence.schema.json").validate(out)
+    assert [d["id"] for d in out["documents"]] == ["section"]
+    section = out["documents"][0]
+    assert section["name"] == "CIV 4920(a), the whole section" and section["kind"] == "text" and section["size"] > 0
+    assert resolve("CIV 5300", data_dir=shelf)["documents"] == []                      # not on disk: nothing to open
+
+
+def test_a_governing_documents_file_is_listed_from_the_library_and_drive(tmp_path, monkeypatch):
+    from jason.approvals import evidence_documents as docs
+    from jason.tasks.library import SCHEMA
+
+    (tmp_path / "library" / "files" / "Governing").mkdir(parents=True)
+    (tmp_path / "library" / "text").mkdir()
+    (tmp_path / "library" / "files" / "Governing" / "Declaration.pdf").write_bytes(PDF)
+    (tmp_path / "library" / "files" / "Governing" / "Private.pdf").write_bytes(PDF)
+    (tmp_path / "library" / "text" / "d1.txt").write_text("6.2 Example words.", encoding="utf-8")
+    with sqlite3.connect(tmp_path / "library" / "library.db") as conn:
+        conn.execute(SCHEMA)
+        conn.executemany("INSERT INTO documents (id, path, name, confidential) VALUES (?, ?, ?, ?)",
+                         [("d1", "Governing/Declaration.pdf", "Declaration.pdf", 0),
+                          ("d2", "Governing/Private.pdf", "Private.pdf", 1)])
+    (tmp_path / "gmail" / "files" / "m1").mkdir(parents=True)
+    (tmp_path / "gmail" / "files" / "m1" / "Bylaws.pdf").write_bytes(PDF)
+    (tmp_path / "drive").mkdir()
+    (tmp_path / "drive" / "holdings.json").write_text(json.dumps({"rows": [
+        {"id": "DRIVE1", "name": "Bylaws.pdf", "confidential": False,
+         "elsewhere": [{"channel": "email attachment", "where": "gmail/files/m1/Bylaws.pdf"}]},
+        {"id": "DRIVE2", "name": "Escape.pdf", "confidential": False,
+         "elsewhere": [{"channel": "email attachment", "where": "../outside.pdf"}]}]}), encoding="utf-8")
+    got = {"found": True, "citation": "Declaration § 6.2", "text": "6.2 Example words.", "inForce": "the base",
+           "links": [{"what": "the library file", "library": "Governing/Declaration.pdf"},
+                     {"what": "a restricted file", "library": "Governing/Private.pdf"},
+                     {"what": "the base", "url": "https://drive.google.com/file/d/DRIVE1/view"},
+                     {"what": "a stray", "url": "https://drive.google.com/file/d/DRIVE2/view"}]}
+    monkeypatch.setattr("jason.tasks.cite.resolve", lambda expression, **kw: dict(got))
+    out = resolve("decl#6.2", data_dir=tmp_path)
+    _validator("evidence.schema.json").validate(out)
+    assert [(d["id"], d["kind"]) for d in out["documents"]] == [
+        ("section", "text"), ("library:d1", "pdf"), ("library-text:d1", "text"), ("drive:DRIVE1", "pdf")]
+    assert out["documents"][0]["name"] == "Declaration § 6.2, the whole section"
+    assert out["documents"][1]["name"] == "Declaration.pdf" and out["documents"][1]["size"] == len(PDF)
+    assert out["documents"][2]["name"] == "Declaration.pdf, its extracted text"
+    opened = docs.view("decl#6.2", "library:d1", by="A Manager", data_dir=tmp_path)
+    assert opened.path == (tmp_path / "library" / "files" / "Governing" / "Declaration.pdf").resolve()
+    assert opened.root == (tmp_path / "library" / "files").resolve()
+    text = docs.view("decl#6.2", "library-text:d1", by="A Manager", data_dir=tmp_path)
+    assert text.answer["text"] == "6.2 Example words." and text.path is None
+    with pytest.raises(KeyError):
+        docs.view("decl#6.2", "library:d2", by="A Manager", data_dir=tmp_path)            # confidential: not listed
+
+
+def test_a_sections_words_open_whole_and_the_view_is_logged(shelf):
+    from jason.approvals.evidence_documents import view
+
+    opened = view("CIV 4920", "section", by="A Manager", data_dir=shelf)
+    assert opened.path is None and opened.answer["kind"] == "text"
+    assert "four days before it" in opened.answer["text"] and "An emergency meeting" in opened.answer["text"]
+    assert opened.answer["caveats"][0] == "Unmasked: shown because A Manager asked; this view is logged."
+    assert [(v["by"], v["address"], v["document"], v["kind"]) for v in _views(shelf)] == [
+        ("A Manager", "CIV 4920", "section", "text")]
+
+
+def test_viewing_a_submission_shows_it_unmasked_in_the_forms_order_and_logs_who(web):
+    from jason.web.approvals import mask
+
+    _request_folder(web.data_dir)
+    url, body = "/api/evidence/view", {"address": ADDRESS, "document": "submission", "by": "A Manager"}
+    r = web.c.post(url, json=body)
+    assert r.status_code == 200, r.json
+    assert set(r.json) == {"kind", "name", "readAt", "url", "expires", "submission", "caveats"}
+    assert (r.json["kind"], r.json["url"], r.json["expires"]) == ("submission", "", "")
+    assert r.json["name"] == "Architectural request as submitted" and r.json["readAt"] == "2026-10-06T00:00:00+00:00"
+    sub = r.json["submission"]
+    assert {k: sub[k] for k in ("form", "unit", "submitted", "status")} == {
+        "form": "Architectural request", "unit": "102 EXAMPLE WAY", "submitted": "2026-10-05T17:00:00.000Z",
+        "status": "pending"}
+    assert sub["questions"] == [
+        {"question": "Owner name(s)", "answer": "Ana Example", "kind": "text"},
+        {"question": "Email", "answer": "ana@example.com", "kind": "text"},               # unmasked: asked for
+        {"question": "Delivery", "answer": "By email", "kind": "choice"},
+        {"question": "Days to call", "answer": "Monday; Tuesday", "kind": "choice"},
+        {"question": "Move-in date", "answer": "2026-09-30", "kind": "date"},
+        {"question": "Lease", "answer": "lease signed.pdf", "kind": "file"},
+        {"question": "I agree", "answer": "yes", "kind": "choice"},
+        {"question": "Notes", "answer": "Line one\nLine two", "kind": "text"}]
+    assert r.json["caveats"][0] == "Unmasked: shown because A Manager asked; this view is logged."
+    assert evidence.DISK_ONLY in r.json["caveats"] and len(r.json["caveats"]) == 3
+    log = _views(web.data_dir)
+    assert len(log) == 1 and set(log[0]) == {"at", "by", "address", "document", "kind"}
+    assert log[0] == {**log[0], "by": "A Manager", "address": ADDRESS, "document": "submission", "kind": "submission"}
+    raw = (web.data_dir / "evidence" / "views.jsonl").read_text(encoding="utf-8")
+    assert "ana@example.com" not in raw and "Ana Example" not in raw                    # who and what, never contents
+    assert "ana@example.com" in json.dumps(r.json) and mask(r.json) != r.json              # the route did not mask it
+    opened = web.c.get(f"/api/evidence?address={ADDRESS}")
+    assert "ana@example.com" not in json.dumps(opened.json)                              # the evidence stays masked
+    # a person, the guard, and the token header
+    assert web.c.post(url, json={**body, "by": "  "}).status_code == 400
+    assert web.c.post(url, json={**body, "document": ""}).status_code == 400
+    assert web.app.test_client().post(url, json=body).status_code == 403                # no Origin, no token
+    assert web.c.post(url, json=body, headers={"X-Jason-Token": ""}).status_code == 403  # the header, not the cookie
+    assert web.c.get(url).status_code in (404, 405)
+    assert len(_views(web.data_dir)) == 1                                                # refusals are not views
+
+
+def test_viewing_a_text_attachment_answers_its_words(web):
+    _request_folder(web.data_dir)
+    r = web.c.post("/api/evidence/view", json={"address": ADDRESS, "document": "notes.txt", "by": "A Manager"})
+    assert r.status_code == 200 and r.json["kind"] == "text" and r.json["url"] == ""
+    assert r.json["text"] == "Gate code is on the sign.\n"
+
+
+def test_viewing_a_pdf_makes_a_short_lived_link_that_serves_its_bytes(web):
+    from datetime import datetime, timedelta, timezone
+
+    from jason.web.approvals import DOCUMENT_CSP
+
+    _request_folder(web.data_dir)
+    r = web.c.post("/api/evidence/view", json={"address": ADDRESS, "approval": "", "document": "1002_plan.pdf",
+                                               "by": "A Manager"})
+    assert r.status_code == 200, r.json
+    assert r.json["kind"] == "pdf" and r.json["name"] == "1002_plan.pdf" and "submission" not in r.json
+    assert r.json["url"].startswith("/api/evidence/document/") and len(r.json["url"].rsplit("/", 1)[1]) == 32
+    expires = datetime.fromisoformat(r.json["expires"])
+    assert timedelta(minutes=9) < expires - datetime.now(timezone.utc) <= timedelta(minutes=10)
+    got = web.app.test_client().get(r.json["url"])                                       # an iframe: no token, no Origin
+    assert got.status_code == 200 and got.data == PDF
+    assert got.headers["Content-Type"] == "application/pdf"
+    assert got.headers["Content-Disposition"] == 'inline; filename="1002_plan.pdf"'
+    assert got.headers["X-Content-Type-Options"] == "nosniff" and got.headers["Cache-Control"] == "no-store"
+    assert got.headers["Content-Security-Policy"] == DOCUMENT_CSP
+    assert DOCUMENT_CSP.startswith("sandbox; default-src 'none'")
+    part = web.c.get(r.json["url"], headers={"Range": "bytes=0-3"})                      # a viewer's range, again
+    assert part.status_code == 206 and part.data == b"%PDF"
+    assert [v["document"] for v in _views(web.data_dir)] == ["1002_plan.pdf"]           # one view, many reads
+    grants = web.app.extensions["jason_evidence_grants"]
+    grants.now = lambda: datetime.now(timezone.utc) + timedelta(minutes=11)
+    late = web.c.get(r.json["url"])
+    assert late.status_code == 404 and "expired" in late.json["error"]
+    unknown = web.c.get("/api/evidence/document/not-a-token")
+    assert unknown.status_code == 404 and unknown.is_json
+
+
+def test_an_html_attachment_is_only_ever_saved_never_shown_inline(web):
+    _request_folder(web.data_dir)
+    r = web.c.post("/api/evidence/view", json={"address": ADDRESS, "document": "1003_page.html", "by": "A Manager"})
+    assert r.status_code == 200 and r.json["kind"] == "file" and r.json["url"]
+    got = web.c.get(r.json["url"])
+    assert got.status_code == 200 and got.headers["Content-Type"] == "application/octet-stream"
+    assert got.headers["Content-Disposition"] == 'attachment; filename="1003_page.html"'
+    assert "inline" not in got.headers["Content-Disposition"] and got.headers["X-Content-Type-Options"] == "nosniff"
+    image = web.c.post("/api/evidence/view", json={"address": ADDRESS, "document": "1001_photo.jpeg", "by": "A Manager"})
+    shown = web.c.get(image.json["url"])
+    assert shown.headers["Content-Type"] == "image/jpeg" and shown.headers["Content-Disposition"].startswith("inline;")
+
+
+@pytest.mark.parametrize("document", ["../502/1002_plan.pdf", "..", "..\\1002_plan.pdf", "/etc/passwd",
+                                      "C:/Windows/win.ini", "sub/1002_plan.pdf"])
+def test_a_document_id_that_names_a_path_is_refused(web, document):
+    _request_folder(web.data_dir)
+    r = web.c.post("/api/evidence/view", json={"address": ADDRESS, "document": document, "by": "A Manager"})
+    assert r.status_code == 400 and "not a document id" in r.json["error"]
+    assert _views(web.data_dir) == []
+
+
+@pytest.mark.parametrize("address, document", [(ADDRESS, "nothing.pdf"), (ADDRESS, "comments.json"),
+                                               (ADDRESS, "notes.json"), (ADDRESS, "submission.json"),
+                                               (ADDRESS, "1004_half.pdf.tmp"), ("payhoa:submission:999", "submission"),
+                                               ("board-item:nothing", "x"), ("nothing:here", "submission")])
+def test_a_document_the_address_does_not_list_is_404(web, address, document):
+    _request_folder(web.data_dir)
+    r = web.c.post("/api/evidence/view", json={"address": address, "document": document, "by": "A Manager"})
+    assert r.status_code == 404 and r.json["error"]
+    assert _views(web.data_dir) == []
+
+
+def test_a_link_out_of_the_folder_is_neither_listed_nor_served(web, tmp_path_factory):
+    import os
+
+    from jason.web.approvals import Grants
+
+    folder = _request_folder(web.data_dir)
+    outside = tmp_path_factory.mktemp("elsewhere") / "secret.pdf"
+    outside.write_bytes(PDF)
+    try:
+        os.symlink(outside, folder / "link.pdf")
+    except (OSError, NotImplementedError):
+        linked = False                                                                    # no symlinks for this user
+    else:
+        linked = True
+    ids = [d["id"] for d in resolve(ADDRESS, data_dir=web.data_dir)["documents"]]
+    assert "link.pdf" not in ids
+    if linked:
+        r = web.c.post("/api/evidence/view", json={"address": ADDRESS, "document": "link.pdf", "by": "A Manager"})
+        assert r.status_code == 404
+    # a link minted for a file that is (or becomes) outside its folder is not served
+    grants: Grants = web.app.extensions["jason_evidence_grants"]
+    token, _ = grants.mint(address=ADDRESS, path=folder / ".." / ".." / ".." / ".." / outside.name, root=folder,
+                           kind="pdf", name="secret.pdf", by="A Manager")
+    assert web.c.get(f"/api/evidence/document/{token}").status_code == 404
+    token, _ = grants.mint(address=ADDRESS, path=outside, root=folder, kind="pdf", name="secret.pdf", by="A Manager")
+    assert web.c.get(f"/api/evidence/document/{token}").status_code == 404
+
+
+def test_viewing_is_refused_while_an_admin_views_as_someone_else(web):
+    _request_folder(web.data_dir)
+    with web.c.session_transaction() as s:
+        s["acting"] = {"name": "Pat Example", "role": "president"}
+    r = web.c.post("/api/evidence/view", json={"address": ADDRESS, "document": "submission", "by": "A Manager"})
+    assert r.status_code == 403 and "admin view" in r.json["error"]
+    assert _views(web.data_dir) == []
+
+
+def test_viewing_is_off_when_writes_are(web):
+    from jason.web.app import create_app
+    from test_web_approvals import _dist
+
+    _request_folder(web.data_dir)
+    off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None, approvals_writes=False))
+    r = off.post("/api/evidence/view", json={"address": ADDRESS, "document": "submission", "by": "A Manager"})
+    assert r.status_code == 405 and _views(web.data_dir) == []

@@ -15,6 +15,11 @@
   it never writes to PayHOA. Behind the write guard and the token header, like a check.
   ``POST /api/evidence/refresh-all`` with ``{approval, by}`` reads every refreshable record of one plan on one sign-in
   (``jason.approvals.evidence.refresh_all``) and answers what it read and what failed, never the answers.
+- **View one document unmasked.** ``POST /api/evidence/view`` with ``{address, approval?, document, by}`` opens one of
+  the documents an evidence answer lists (``jason.approvals.evidence_documents.view``): a person's ask to see it, so it
+  is unmasked, logged in ``evidence/views.jsonl``, and behind the write guard and the token header. A submission or a
+  text comes back whole; a pdf, an image, or another file as a link, ``GET /api/evidence/document/<token>``, that
+  serves it from disk for ten minutes (``Grants``, in memory only), sandboxed, never sniffed, never cached.
 - **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>}``.
   Off unless jason-web was started with ``--allow-apply``. The engine re-plans and refuses (409) when anything
   changed, superseding the approval with a new one to review.
@@ -26,7 +31,12 @@ person typed, a result's detail) is masked before it leaves the server.
 from __future__ import annotations
 
 import re
+import secrets
+import threading
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, ContextManager, Iterator
 
@@ -186,6 +196,85 @@ def refresh_all_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> di
     return mask(refresh_all(_text(body, "approval").strip(), by=by, client_factory=lambda: live(EVIDENCE_REFRESH)))
 
 
+VIEW_TTL = timedelta(minutes=10)
+# A served document runs nothing and loads nothing but itself: no script, no frame, no form, no request elsewhere.
+# One policy for every kind, PDFs included: Chromium's PDF viewer renders a PDF served with it inside an iframe
+# (checked against the variants without sandbox, with allow-scripts, and with allow-same-origin: all render, so the
+# strictest stays).
+DOCUMENT_CSP = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+
+
+@dataclass(frozen=True)
+class Grant:
+    """One opened document a link serves: the file, the folder it must stay inside, its kind and name, who opened
+    it, for which address, and until when."""
+    address: str
+    path: Path
+    root: Path
+    kind: str
+    name: str
+    by: str
+    expires: datetime
+
+
+class Grants:
+    """The short-lived links ``POST /api/evidence/view`` makes, in memory only (a restart forgets them): a random token
+    (``secrets.token_urlsafe(24)``) to one opened document, good for ``ttl``. Many reads are allowed meanwhile, since
+    a PDF viewer asks for ranges."""
+
+    def __init__(self, ttl: timedelta = VIEW_TTL) -> None:
+        self.ttl = ttl
+        self.now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+        self._rows: dict[str, Grant] = {}
+        self._lock = threading.Lock()
+
+    def mint(self, *, address: str, path: Path, root: Path, kind: str, name: str, by: str) -> tuple[str, Grant]:
+        token = secrets.token_urlsafe(24)
+        grant = Grant(address, path, root, kind, name, by, self.now() + self.ttl)
+        with self._lock:
+            self._purge()
+            self._rows[token] = grant
+        return token, grant
+
+    def get(self, token: str) -> Grant | None:
+        with self._lock:
+            self._purge()
+            return self._rows.get(str(token or ""))
+
+    def _purge(self) -> None:
+        now = self.now()
+        for token in [t for t, g in self._rows.items() if g.expires <= now]:
+            del self._rows[token]
+
+
+def disposition(how: str, name: str) -> str:
+    """``inline`` or ``attachment`` with the file's name: an ASCII ``filename`` (quotes, backslashes, and control
+    characters replaced) and, for any other name, ``filename*`` in UTF-8 (RFC 6266)."""
+    from urllib.parse import quote
+
+    plain = "".join(c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in name).strip() or "document"
+    value = f'{how}; filename="{plain}"'
+    return value if plain == name else value + f"; filename*=UTF-8''{quote(name, safe='')}"
+
+
+def view_evidence(body: dict[str, Any], by: str, grants: Grants) -> dict[str, Any]:
+    """``POST /api/evidence/view``: one document behind an evidence address opened unmasked for ``by`` and logged
+    (``jason.approvals.evidence_documents.view``). Never masked here: the person asked to see it. A pdf, an image, or
+    another file comes back as a link that serves it for ten minutes."""
+    from jason.approvals.evidence_documents import view
+
+    if not isinstance(body.get("document"), str) or not body["document"].strip():
+        raise ValueError("name the document to open (document): an id the evidence lists")
+    opened = view(_text(body, "address"), body["document"], by=by, approval_id=_text(body, "approval").strip())
+    out = {"kind": "", "name": "", "readAt": "", "url": "", "expires": "", **opened.answer}
+    if opened.path is not None and opened.root is not None:
+        token, grant = grants.mint(address=_text(body, "address"), path=opened.path, root=opened.root,
+                                   kind=out["kind"], name=out["name"], by=by)
+        out["url"] = f"/api/evidence/document/{token}"
+        out["expires"] = grant.expires.isoformat(timespec="seconds")
+    return out
+
+
 def _item(i: Any) -> dict[str, Any]:
     return {"id": i.id, "op": i.op, "target": i.target, "label": i.label, "value": i.value,
             "change": i.change.text() if i.change else ""}
@@ -304,6 +393,45 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
         answer or the cache is busy."""
         return _refresh_route(refresh_all_evidence)
 
+    grants = Grants()
+    bp.record_once(lambda state: state.app.extensions.setdefault("jason_evidence_grants", grants))
+
+    @bp.post("/api/evidence/view")
+    def evidence_view_route():
+        """One document behind an evidence address opened unmasked for the person (``{address, approval?, document,
+        by}``) and logged in ``evidence/views.jsonl``; reads disk only. Off (405) without writes; 403 without the token
+        in its header (and while an admin views as someone else); 400 for no person or a bad request; 404 for a
+        document the address does not list or a file no longer on disk."""
+        if not writes:
+            return jsonify(error="writes are off"), 405
+        if not header_token_ok():
+            return jsonify(error=f"a view carries this server's token in {TOKEN_HEADER}"), 403
+        body = _body()
+        return _answer(lambda: view_evidence(body, _who(body)[0], grants))
+
+    @bp.get("/api/evidence/document/<token>")
+    def evidence_document_route(token: str):
+        """The file a view opened, from disk, while its link lasts; many reads (a PDF viewer's ranges). Never a live
+        read. An unknown or expired link is 404."""
+        from flask import send_file
+
+        from jason.approvals.evidence_documents import content_type, inside
+
+        grant = grants.get(token)
+        if grant is None:
+            return jsonify(error="no such document link, or it has expired: open the document again"), 404
+        if not inside(grant.path, grant.root):
+            return jsonify(error=f"{grant.name} is no longer on disk"), 404
+        inline = grant.kind in ("pdf", "image", "text")
+        mime = content_type(grant.path.name) if inline else "application/octet-stream"
+        resp = send_file(grant.path.resolve(), mimetype=mime, conditional=True, etag=True, max_age=0)
+        resp.headers["Content-Disposition"] = disposition("inline" if inline else "attachment", grant.name)
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Content-Security-Policy"] = DOCUMENT_CSP
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
+
     @bp.get("/api/approvals/<ident>/check")
     @bp.get("/api/approvals/<ident>/apply")
     def not_a_get(ident: str):
@@ -412,5 +540,6 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
     return bp
 
 
-__all__ = ["CAVEAT", "EVIDENCE_REFRESH", "approvals", "audit_log", "blueprint", "default_live", "evidence", "mask",
-           "plans", "refresh_all_evidence", "refresh_evidence", "show"]
+__all__ = ["CAVEAT", "DOCUMENT_CSP", "EVIDENCE_REFRESH", "Grant", "Grants", "VIEW_TTL", "approvals",
+           "audit_log", "blueprint", "default_live", "disposition", "evidence", "mask", "plans", "refresh_all_evidence",
+           "refresh_evidence", "show", "view_evidence"]

@@ -3,6 +3,7 @@ import { ApiError, getJson, postJson } from "../lib/api";
 import { when, type EvidenceRef } from "../lib/approvals";
 import { useMe } from "../lib/session";
 import { Caveats } from "./Caveats";
+import { DocumentViewer, documentKindWord, humanSize, viewDocument, type DocumentView, type DocumentViewRequest, type EvidenceDocument } from "./DocumentViewer";
 import { daysUntil } from "./DueDate";
 import { Recitation } from "./Recitation";
 
@@ -28,12 +29,14 @@ export interface EvidenceRefreshable { system: string; what: string }
 export interface EvidenceRefreshed { at: string; by: string; system: string }
 
 /** `GET /api/evidence?address=…&approval=…`: what jason stored for one evidence address, and whether it changed since the
- * plan was read (`null` when jason cannot tell). `refreshable` is set when a person may read it again from the page. */
+ * plan was read (`null` when jason cannot tell). `refreshable` is set when a person may read it again from the page.
+ * `documents` are the documents it holds, each opened unmasked only by a view (an older server leaves it out). */
 export interface EvidenceAnswer {
   found: boolean; address: string; label: string; kind: EvidenceKind;
   sources: EvidenceSource[]; changed: boolean | null; changedNote: string; link: string;
   refresh: EvidenceRefresh[]; caveats: string[]; note: string;
   refreshable?: EvidenceRefreshable | null; refreshed?: EvidenceRefreshed | null;
+  documents?: EvidenceDocument[];
 }
 
 /** The body of a read again: the address, the approval whose plan it was read for, and the person reading. */
@@ -161,6 +164,88 @@ function Source({ s, today }: { s: EvidenceSource; today?: Date }) {
   );
 }
 
+const VIEW_REFUSALS = [400, 403, 404, 409];
+
+/** The documents an address holds, each with a View button. A view is a named person's act, logged by the server: one
+ * click, one POST, one at a time, never on open; Previous and Next in the viewer are each a view of their own. */
+function Documents({ docs, level, address, approval, who, viewer, today }: {
+  docs: EvidenceDocument[]; level: 3 | 4 | 5 | 6; address: string; approval?: string; who: string;
+  viewer: ((req: DocumentViewRequest) => Promise<DocumentView>) | null; today?: Date;
+}) {
+  const [viewing, setViewing] = useState<{ index: number; data: DocumentView | null; busy: boolean; error: string } | null>(null);
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const opener = useRef(0);
+  const inFlight = useRef(false);
+  const seq = useRef(0);
+  const alive = useRef(true);
+  const titleId = useId();
+  const whyId = useId();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const why = !viewer
+    ? "This copy is shown as given; the page does not open its documents."
+    : !who ? "Sign in or pick your name to view it." : "";
+
+  const open = async (i: number) => {
+    const d = docs[i];
+    if (!d || why || !viewer || inFlight.current) return;
+    inFlight.current = true;
+    const mine = ++seq.current;
+    setViewing({ index: i, data: null, busy: true, error: "" });
+    try {
+      const v = await viewer({ address, ...(approval ? { approval } : {}), document: d.id, by: who });
+      if (alive.current && seq.current === mine) setViewing({ index: i, data: v, busy: false, error: "" });
+    } catch (e: unknown) {
+      if (!alive.current || seq.current !== mine) return;
+      const status = e instanceof ApiError ? e.status : undefined;
+      const message = e instanceof Error ? e.message : String(e);
+      const text = status && VIEW_REFUSALS.includes(status) ? message : `jason-web did not answer: ${message}`;
+      setViewing({ index: i, data: null, busy: false, error: text });
+    } finally {
+      inFlight.current = false;
+    }
+  };
+  const view = (i: number) => {
+    if (why || viewing) return;
+    opener.current = i;
+    void open(i);
+  };
+  const close = () => {
+    seq.current += 1;
+    setViewing(null);
+    buttons.current[opener.current]?.focus();
+  };
+
+  const H = `h${Math.min(level + 1, 6)}` as "h5";
+  return (
+    <section className="evidence-documents" aria-labelledby={titleId}>
+      <H id={titleId} className="evidence-documents-title">Documents</H>
+      <p className="muted">Viewing shows the document unmasked, under your name, and is logged.</p>
+      {why && <p id={whyId} className="muted evidence-documents-why">{why}</p>}
+      <ul>
+        {docs.map((d, i) => {
+          const size = d.kind === "submission" ? "" : humanSize(d.size);
+          return (
+            <li key={d.id || i} className="evidence-document">
+              <span className="evidence-document-name">{d.name}</span>
+              <span className="muted evidence-document-kind">{documentKindWord(d.kind)}{size ? ` · ${size}` : ""}</span>
+              <button type="button" ref={(el) => { buttons.current[i] = el; }} aria-label={`View ${d.name}`}
+                aria-disabled={why || (viewing && viewing.busy) ? true : undefined} aria-describedby={why ? whyId : undefined}
+                onClick={() => view(i)}>
+                View
+              </button>
+              {d.note && <span className="muted evidence-document-note">{d.note}</span>}
+            </li>
+          );
+        })}
+      </ul>
+      {viewing && (
+        <DocumentViewer data={viewing.data} document={docs[viewing.index]} busy={viewing.busy} error={viewing.error}
+          position={{ index: viewing.index, count: docs.length }} onGo={(i) => void open(i)} onClose={close} today={today} />
+      )}
+    </section>
+  );
+}
+
 /** What jason stored for one evidence address, fetched when it opens (`GET /api/evidence`), or `data` rendered as given
  * (previews, tests). The stored words are recited, then cited; nothing is paraphrased. A miss shows the note and the
  * command that fills it, never an empty box. Commands are shown to copy; the page never runs one.
@@ -168,11 +253,16 @@ function Source({ s, today }: { s: EvidenceSource; today?: Date }) {
  * When the answer is `refreshable`, a button beside Close reads it again from the outside system now
  * (`POST /api/evidence/refresh`), as a named person's act: one click, one read, never on open, a timer, or focus. It
  * writes nothing outside jason, so there is no Confirm. `by` is that person (omitted: the session's signed-in, acting, or
- * picked name). A `data` panel reads again only through `onRefresh`; `refreshing` forces the reading state (previews). */
-export function EvidencePanel({ address, label, approval, data, today, level = 4, id, onClose, by, onRefresh, refreshing = false }: {
+ * picked name). A `data` panel reads again only through `onRefresh`; `refreshing` forces the reading state (previews).
+ *
+ * The answer's `documents` are listed with a View button each. A view opens the document unmasked in `DocumentViewer`
+ * (`POST /api/evidence/view`), under the same person, and the server logs it; nothing is viewed on open. A `data` panel
+ * views only through `onView`. */
+export function EvidencePanel({ address, label, approval, data, today, level = 4, id, onClose, by, onRefresh, refreshing = false, onView }: {
   address: string; label?: string; approval?: string; data?: EvidenceAnswer | null; today?: Date;
   level?: 3 | 4 | 5 | 6; id?: string; onClose?: () => void;
   by?: string; onRefresh?: (req: EvidenceRefreshRequest) => Promise<EvidenceAnswer>; refreshing?: boolean;
+  onView?: (req: DocumentViewRequest) => Promise<DocumentView>;
 }) {
   const [answer, setAnswer] = useState<EvidenceAnswer | null>(data ?? null);
   const [error, setError] = useState("");
@@ -189,7 +279,9 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
 
   const refreshable = answer?.refreshable ?? null;
   const refresher = onRefresh ?? (data ? null : refreshEvidence);
-  const sessionMe = useMe(by === undefined && !!refreshable && !!refresher);
+  const documents = answer?.documents ?? [];
+  const viewer = onView ?? (data ? null : viewDocument);
+  const sessionMe = useMe(by === undefined && ((!!refreshable && !!refresher) || (documents.length > 0 && !!viewer)));
   const who = (by ?? sessionMe).trim();
   const system = refreshable?.system || "the outside system";
   const busy = rereading || refreshing;
@@ -304,6 +396,10 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
           {miss && <p className="evidence-miss">{a.note || "None on record for this address. None on record is not none given."}</p>}
           {sources.map((s, i) => <Source key={i} s={s} today={today} />)}
           {!miss && !sources.length && <p className="muted evidence-note">{a.note || "jason holds no stored copy for this address."}</p>}
+          {documents.length > 0 && (
+            <Documents docs={documents} level={level} address={address} approval={approval} who={who}
+              viewer={viewer} today={today} />
+          )}
           {a.link && (
             <p>
               <a href={a.link} target="_blank" rel="noreferrer">

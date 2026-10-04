@@ -30,6 +30,11 @@ cache (a PayHOA request: one ``get_form_submission``, kept as its last read). ``
 approval the same way, on one client (one sign-in) under one hold of the lock, a line each
 (``POST /api/evidence/refresh-all``).
 
+**The documents behind it.** Each answer lists, by name and size only, the documents a person may open whole
+(``documents``): a request's submission as last read and its saved attachments, a citation's whole section and the
+governing document's file. Opening one is ``jason.approvals.evidence_documents.view``: unmasked, for a named person,
+and logged (``POST /api/evidence/view``).
+
 Privacy: the snapshot on disk holds a request's answers as read (P2, like the catalog). An owner's contact details
 (email, phone, mailing address) and other P2 answers are masked here, before anything leaves the server
 (docs/console/security-and-privacy.md).
@@ -414,6 +419,7 @@ def _against_catalog(snap: dict[str, Any], row: dict[str, Any]) -> tuple[bool | 
 
 
 def read_submission(ask: Ask) -> dict[str, Any]:
+    from jason.approvals.evidence_documents import request_documents
     from jason.tasks.payhoa_forms import requests_link
     from jason.tasks.submission_cache import FILE
 
@@ -488,6 +494,7 @@ def read_submission(ask: Ask) -> dict[str, Any]:
     out["changedNote"] = " ".join(n for _, n in compared if n)
     if unit_id:
         out["link"] = requests_link(unit_id)
+    out["documents"] = [d.as_dict() for d in request_documents(ask.root, sid)]
     out["found"] = bool(out["sources"])
     if misses:
         out["note"] = ("No copy on disk: " if not out["sources"] else "Not on disk: ") + "; ".join(misses) + "."
@@ -518,12 +525,15 @@ def read_citation(ask: Ask) -> dict[str, Any]:
     out: dict[str, Any] = {"label": citation, "sources": [], "changed": None, "changedNote": "", "link": "",
                            "caveats": [], "note": "", "found": bool(got.get("found"))}
     if got.get("found"):
+        from jason.approvals.evidence_documents import citation_documents
+
+        read_at = _mtime(ask.root / "authorities" / "manifest.json") if statute else ""
+        out["documents"] = [d.as_dict() for d in citation_documents(ask.root, got, statute=statute, read_at=read_at)]
         text, history = _history_apart(str(got.get("text") or ""))
         got["text"] = text
         fields = [mask_field("Cited at", str(got.get("address") or "")), mask_field("In force", got.get("inForce", "")),
                   mask_field("History", history)]
         name = SourceName.STATUTES if statute else SourceName.DOCUMENTS
-        read_at = _mtime(ask.root / "authorities" / "manifest.json") if statute else ""
         caveat = str(got.get("caveat") or (STATUTE_CAVEAT if statute else ""))
         out["sources"].append(source(name, read_at=read_at, fields=[f for f in fields if f["value"]],
                                      text=str(got.get("text") or ""), citation=citation, caveat=caveat,
@@ -695,8 +705,9 @@ def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None
 
     ``{found, address, label, kind, sources: [{name, readAt, digest, fields: [{name, value, masked}], text,
     citation, caveat, note}], changed, changedNote, link, refresh: [{command, live, what, system}],
-    refreshable: {system, what} | null, caveats, note}``; ``refreshable`` is null when the kind has no one-record live
-    refresher (``refresh``)."""
+    refreshable: {system, what} | null, documents: [{id, name, kind, size, readAt, note}], caveats, note}``;
+    ``refreshable`` is null when the kind has no one-record live refresher (``refresh``). ``documents`` are what a
+    person may open whole (``jason.approvals.evidence_documents``): names and sizes only, never their contents."""
     address = " ".join(str(address or "").split())
     notes: list[str] = []
     try:
@@ -734,6 +745,7 @@ def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None
            "sources": got.get("sources") or [], "changed": got.get("changed"),
            "changedNote": got.get("changedNote", ""), "link": got.get("link", ""), "refresh": refresh,
            "refreshable": rule.refresher.as_dict() if rule.refresher is not None else None,
+           "documents": list(got.get("documents") or ()),
            "caveats": list(dict.fromkeys(caveats)), "note": note}
     return _scrub(out)
 

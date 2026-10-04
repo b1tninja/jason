@@ -599,7 +599,8 @@ def evidence(address: str, approval_id: str = "", data_dir: Path | None = None) 
     ``approval_id`` is given, the last full read of the request from PayHOA, the PayHOA catalog, the request's saved
     files, the statutes or documents, the board's items), when each was read, whether a later copy shows a change, and
     the commands that read it again (``live`` when one reads PayHOA or Google). Reads disk only, never a live system;
-    there is no refresh here (``refreshable`` is the console's). Contact details are masked. Evidence, not a finding:
+    there is no refresh here (``refreshable`` is the console's), and ``documents`` only lists what a person may open
+    unmasked in the console, by name and size; nothing here opens one. Contact details are masked. Evidence, not a finding:
     repeat the caveats, and quote a citation's text as given, never paraphrased."""
     from jason.approvals.evidence import resolve
 

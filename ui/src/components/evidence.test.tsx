@@ -5,7 +5,7 @@ import { resetServerSession } from "../lib/api";
 import { SESSION_KEY } from "../lib/session";
 import plannedJson from "../../../tests/fixtures/approvals/example-village-planned.json";
 import type { Approval } from "../lib/approvals";
-import { Evidence, EvidencePanel, evidenceUrl, RefreshAllEvidence, type EvidenceAnswer, type EvidenceRefreshAll } from "./index";
+import { Evidence, EvidencePanel, evidenceUrl, RefreshAllEvidence, type DocumentView, type EvidenceAnswer, type EvidenceDocument, type EvidenceRefreshAll } from "./index";
 import { PlanReview } from "./PlanReview";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -602,5 +602,219 @@ describe("Read every request again", () => {
     expect(within(panel).getByText(/Changed since this plan was read\./)).toHaveTextContent("status complete");
     expect(screen.getByRole("group", { name: "PayHOA request 502" })).toBe(panel);
     expect(button).toHaveFocus();
+  });
+});
+
+describe("EvidencePanel's documents", () => {
+  const VIEW = "/api/evidence/view";
+  const UNMASKED = "Unmasked: shown because Jane Example asked; this view is logged.";
+  const docs: EvidenceDocument[] = [
+    { id: "sub-1234", name: "Owner information, Unit 12", kind: "submission", size: 0, readAt: "2026-09-30T18:38:00+00:00", note: "" },
+    { id: "pdf-7", name: "Lease.pdf", kind: "pdf", size: 2_200_000, readAt: "2026-09-30T18:38:00+00:00", note: "Attached to the request." },
+    { id: "img-2", name: "Fence photo.jpg", kind: "image", size: 48 * 1024, readAt: "2026-09-30T18:38:00+00:00", note: "" },
+  ];
+  const submission: DocumentView = {
+    kind: "submission", name: "Owner information, Unit 12", readAt: "2026-09-30T18:38:00+00:00", url: "", expires: "",
+    submission: {
+      form: "Owner information", unit: "12", submitted: "2026-09-28", status: "Pending",
+      questions: [{ question: "Owner's full name", answer: "Jane Doe", kind: "text" }, { question: "Second phone", answer: "", kind: "text" }],
+    },
+    caveats: [UNMASKED],
+  };
+  const pdf: DocumentView = {
+    kind: "pdf", name: "Lease.pdf", readAt: "2026-09-30T18:38:00+00:00", url: "/api/evidence/document/tok-1", expires: "2026-10-03T19:12:00+00:00", caveats: [UNMASKED],
+  };
+
+  afterEach(() => {
+    resetServerSession();
+    document.head.querySelector('meta[name="jason-token"]')?.remove();
+    localStorage.clear();
+  });
+
+  function withToken(token = "tok-5") {
+    const meta = document.createElement("meta");
+    meta.name = "jason-token";
+    meta.content = token;
+    document.head.append(meta);
+  }
+
+  type Reply = { status?: number; body: unknown };
+  /** A server: `/api/session` answers `session`, a view answers `post(document)`, and the loader the answer with `docs`. */
+  function server(post: (document: string) => Reply | Promise<Reply>, session: unknown = {}) {
+    const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/session") return json({ body: session });
+      if (url === VIEW) return json(await post(JSON.parse(String(init?.body)).document));
+      return json({ body: answer({ documents: docs }) });
+    });
+    vi.stubGlobal("fetch", f);
+    const posts = () => f.mock.calls.filter(([url]) => url === VIEW);
+    return { f, posts };
+  }
+
+  it("lists each document with its kind and a size people read, none for a submission", () => {
+    render(<EvidencePanel address="a" data={answer({ documents: docs })} by="Jane Example" onView={vi.fn()} />);
+    const section = screen.getByRole("region", { name: "Documents" });
+    expect(within(section).getByText("Viewing shows the document unmasked, under your name, and is logged.")).toHaveClass("muted");
+    const items = within(section).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent("Owner information, Unit 12");
+    expect(within(items[0]).getByText("Form submission")).toBeInTheDocument();
+    expect(within(items[1]).getByText("PDF · 2.1 MB")).toBeInTheDocument();
+    expect(within(items[1]).getByText("Attached to the request.")).toBeInTheDocument();
+    expect(within(items[2]).getByText("Image · 48 KB")).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: "View Lease.pdf" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("shows nothing for an empty list or an older server's answer with no documents", () => {
+    const { rerender } = render(<EvidencePanel address="a" data={answer({ documents: [] })} by="Jane Example" />);
+    expect(screen.queryByText("Documents")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^View/ })).not.toBeInTheDocument();
+    rerender(<EvidencePanel address="a" data={answer()} by="Jane Example" />);
+    expect(screen.queryByText("Documents")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Viewing shows the document unmasked/)).not.toBeInTheDocument();
+  });
+
+  it("disables View with the reason when no one is named, and sends nothing", async () => {
+    withToken();
+    const { posts } = server(() => ({ body: submission }), { signedIn: null });
+    render(<EvidencePanel address="payhoa:submission:1234" />);
+    const button = await screen.findByRole("button", { name: "View Owner information, Unit 12" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription("Sign in or pick your name to view it.");
+    expect(screen.getByText("Sign in or pick your name to view it.")).not.toHaveClass("visually-hidden");
+    await userEvent.click(button);
+    expect(posts()).toHaveLength(0);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("POSTs the address, the approval, the document, and the person with the write token, then opens the viewer", async () => {
+    withToken("tok-5");
+    const { posts } = server(() => ({ body: submission }));
+    render(<EvidencePanel address="payhoa:submission:1234" approval="owner-info tags/1" by="Jane Example" />);
+    await userEvent.click(await screen.findByRole("button", { name: "View Owner information, Unit 12" }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const [, init] = posts()[0];
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>)["X-Jason-Token"]).toBe("tok-5");
+    expect(JSON.parse(String(init?.body))).toEqual({ address: "payhoa:submission:1234", approval: "owner-info tags/1", document: "sub-1234", by: "Jane Example" });
+    const dialog = await screen.findByRole("dialog", { name: "Owner information, Unit 12" });
+    expect(await within(dialog).findByText(UNMASKED)).toHaveClass("notice");
+    expect(within(dialog).getByText("Jane Doe")).toBeInTheDocument();
+    expect(within(dialog).getByText("(no answer)")).toBeInTheDocument();
+  });
+
+  it("views under the session's name when none is passed", async () => {
+    withToken();
+    const { posts } = server(() => ({ body: submission }), { signedIn: { name: "Casey Sample" } });
+    render(<EvidencePanel address="payhoa:submission:1234" />);
+    const button = await screen.findByRole("button", { name: "View Owner information, Unit 12" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await userEvent.click(button);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(JSON.parse(String(posts()[0][1]?.body)).by).toBe("Casey Sample");
+  });
+
+  it("says Opening while the view runs, and a second request waits", async () => {
+    withToken();
+    let finish: (r: Reply) => void = () => {};
+    const { posts } = server(() => new Promise<Reply>((ok) => { finish = ok; }));
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
+    const button = await screen.findByRole("button", { name: "View Lease.pdf" });
+    await userEvent.click(button);
+    const dialog = await screen.findByRole("dialog", { name: "Lease.pdf" });
+    expect(within(dialog).getByText("Opening…")).toBeInTheDocument();
+    const next = within(dialog).getByRole("button", { name: "Next" });
+    expect(next).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(next);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    finish({ body: pdf });
+    const frame = await within(dialog).findByTitle("Lease.pdf");
+    expect(frame).toHaveAttribute("src", "/api/evidence/document/tok-1");
+    expect(within(dialog).getByRole("link", { name: /Open in a new tab/ })).toHaveAttribute("href", "/api/evidence/document/tok-1");
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("keeps the server's refusal in the open dialog", async () => {
+    withToken();
+    server(() => ({ status: 404, body: { error: "Lease.pdf is no longer on disk; run jason sync-catalog --requests." } }));
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
+    await userEvent.click(await screen.findByRole("button", { name: "View Lease.pdf" }));
+    const dialog = await screen.findByRole("dialog", { name: "Lease.pdf" });
+    const said = await within(dialog).findByText("Lease.pdf is no longer on disk; run jason sync-catalog --requests.");
+    expect(said).toHaveClass("notice-error");
+    expect(said.closest("[aria-live='polite']")).not.toBeNull();
+    expect(dialog).toHaveAttribute("open");
+  });
+
+  it("returns focus to the View button that opened it, on Escape and on Close, and keeps the panel open", async () => {
+    withToken();
+    server(() => ({ body: submission }));
+    render(<Evidence items={refs} by="Jane Example" />);
+    const chip = screen.getByRole("button", { name: "PayHOA request 1234" });
+    await userEvent.click(chip);
+    const button = await screen.findByRole("button", { name: "View Owner information, Unit 12" });
+    await userEvent.click(button);
+    const dialog = await screen.findByRole("dialog", { name: "Owner information, Unit 12" });
+    expect(within(dialog).getByRole("heading", { level: 2 })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+    expect(screen.getByRole("group", { name: "PayHOA request 1234" })).toBeInTheDocument();
+    expect(chip).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(button);
+    const again = await screen.findByRole("dialog", { name: "Owner information, Unit 12" });
+    await userEvent.click(within(again).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it("views each document again on Previous and Next, as a new view", async () => {
+    withToken();
+    const image: DocumentView = { ...pdf, kind: "image", name: "Fence photo.jpg", url: "/api/evidence/document/tok-2" };
+    const { posts } = server((id) => ({ body: id === "pdf-7" ? pdf : id === "img-2" ? image : submission }));
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
+    await userEvent.click(await screen.findByRole("button", { name: "View Owner information, Unit 12" }));
+    const dialog = await screen.findByRole("dialog", { name: "Owner information, Unit 12" });
+    await within(dialog).findByText("Jane Doe");
+    expect(within(dialog).getByText("1 of 3")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Next" }));
+    expect(await within(dialog).findByTitle("Lease.pdf")).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleName("Lease.pdf");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Next" }));
+    expect(await within(dialog).findByRole("img", { name: "Fence photo.jpg" })).toHaveAttribute("src", "/api/evidence/document/tok-2");
+    expect(within(dialog).getByRole("button", { name: "Next" })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Previous" }));
+    await within(dialog).findByTitle("Lease.pdf");
+    expect(posts().map(([, init]) => JSON.parse(String(init?.body)).document)).toEqual(["sub-1234", "pdf-7", "img-2", "pdf-7"]);
+  });
+
+  it("views nothing when the panel opens, and never opens the viewer on its own", async () => {
+    withToken();
+    const { f, posts } = server(() => ({ body: submission }));
+    render(<Evidence items={refs} by="Jane Example" />);
+    await userEvent.click(screen.getByRole("button", { name: "PayHOA request 1234" }));
+    const button = await screen.findByRole("button", { name: "View Owner information, Unit 12" });
+    button.focus();
+    await userEvent.tab();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(f).toHaveBeenCalled();
+    expect(posts()).toHaveLength(0);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("views a data panel only through onView", async () => {
+    const onView = vi.fn(async () => submission);
+    const f = mockFetch(() => ({ body: {} }));
+    const { rerender } = render(<EvidencePanel address="a" approval="p/1" data={answer({ documents: docs })} by="Jane Example" onView={onView} />);
+    await userEvent.click(screen.getByRole("button", { name: "View Owner information, Unit 12" }));
+    expect(onView).toHaveBeenCalledWith({ address: "a", approval: "p/1", document: "sub-1234", by: "Jane Example" });
+    expect(await screen.findByRole("dialog", { name: "Owner information, Unit 12" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    rerender(<EvidencePanel address="a" data={answer({ documents: docs })} by="Jane Example" />);
+    const button = screen.getByRole("button", { name: "View Owner information, Unit 12" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription("This copy is shown as given; the page does not open its documents.");
+    expect(f).not.toHaveBeenCalled();
   });
 });

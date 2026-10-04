@@ -4,7 +4,7 @@
   "title": "Evidence",
   "description": "One evidence address opened from disk (jason.approvals.evidence.resolve; GET /api/evidence; the jason-mcp evidence tool). Nothing is read live: each copy says when it was read, and refresh names the commands that read it again. A miss is found false with a note, never an error. POST /api/evidence/refresh (jason.approvals.evidence.refresh) answers the same shape with refreshed added.",
   "type": "object",
-  "required": ["found", "address", "label", "kind", "sources", "changed", "changedNote", "link", "refresh", "refreshable", "caveats", "note"],
+  "required": ["found", "address", "label", "kind", "sources", "changed", "changedNote", "link", "refresh", "refreshable", "documents", "caveats", "note"],
   "additionalProperties": false,
   "properties": {
     "found": {"type": "boolean"},
@@ -65,6 +65,23 @@
           "properties": {"system": {"type": "string"}, "what": {"type": "string"}}
         }
       ]
+    },
+    "documents": {
+      "type": "array",
+      "description": "The documents behind the evidence a person may open whole (POST /api/evidence/view: unmasked, for a named person, logged): a request's submission and its saved attachments, a citation's whole section and the governing document's file. Names and sizes only, never the contents; empty for a board item or a command.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "kind", "size", "readAt", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "description": "What POST /api/evidence/view names as document: \"submission\", \"section\", a file name, or an opaque id."},
+          "name": {"type": "string"},
+          "kind": {"enum": ["submission", "pdf", "image", "text", "file"], "description": "From the file's extension alone; HTML, SVG, and XML are file, never shown inline."},
+          "size": {"type": "integer", "minimum": 0, "description": "Bytes; 0 for a submission."},
+          "readAt": {"type": "string", "description": "When it was read or saved (ISO 8601); empty when unknown."},
+          "note": {"type": "string"}
+        }
+      }
     },
     "refreshed": {
       "type": "object",
