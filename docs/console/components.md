@@ -15,7 +15,7 @@ This page maps what the console needs onto them. Where the earlier spec named a 
 
 | The console needs | jason-ui | Notes |
 |---|---|---|
-| The frame: wordmark, legal name, sign-in pick, dock, Board / Owner view, grouped nav, a "Go to" select under 720 px | `ConsoleShell` | Replaces the prototype's `app-shell` and `nav`. Nav counts come from the screen list (`count`); the approvals count is the inbox's pending count |
+| The frame: wordmark, legal name, sign-in pick, dock, Board / Owner view, grouped nav, a "Go to" select under 720 px | `ConsoleShell` | Replaces the prototype's `app-shell` and `nav`. Nav counts come from the screen list (`count`); the approvals count is the letters waiting on the signed-in person's approval (the dock's counts), or the inbox's pending count with nobody signed in |
 | The page header | `ScreenHeader` (`title`, `summary`, `actions`) | Replaces `page-header`. One `h1` per screen |
 | A titled section | `Card` (`title`, `actions`) | Replaces `section-card`. Its freshness line and command go inside it (below) |
 | Bands of one screen | `Tabs` (controlled) | |

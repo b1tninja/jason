@@ -16,10 +16,13 @@ The owner view's **Overview** on the same route is not the board's digest, which
 It carries no owner's name, unit, balance, lien, delinquency, hearing, discipline, or executive item.
 
 Beside the board's digest:
-- the dock's **Deadlines** drawer gives what falls due, grouped, with a screen hint (`/api/dock?part=deadlines`);
+- the dock's **Deadlines** drawer gives what falls due, grouped, with a screen hint and the office that owns each duty, or "unassigned" (`/api/dock?part=deadlines`);
+- the dock's red counts are the signed-in person's (`/api/dock?part=counts`, `scope: mine`): overdue deadlines whose duty an office of theirs owns, their overdue open tasks; an admin viewing as an office gets that office's. With nobody signed in they are everyone's, and the dock says "everyone's";
 - **Inbox** (`#/inbox`, `open_items`) gives what is waiting on the association across the stores;
 - **Jobs** (`#/jobs`) gives the queue and who confirmed each write;
-- the nav's **Approvals** count gives the letters waiting on an approver.
+- the nav's **Approvals** count gives the letters waiting on this person's approval (`Officer.approves`), or on any approver when nobody is signed in.
+
+A free question in **Ask** with no sourced answer becomes a task for the office that owns the duty the asker picks under "About" (the profile's assignments); with none picked, or none that resolves to one office, it is unassigned and waiting for a person to take it. It has no due date until the board sets a lead time.
 
 **What this spec adds** to `#/digest`, as bands above the board digest, board view only:
 

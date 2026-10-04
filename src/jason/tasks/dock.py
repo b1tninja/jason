@@ -3,7 +3,8 @@
 Everything here is a person's working material or jason's record of what a person did, kept in
 ``data/dock/dock.json``. A task is something a person said needs doing; completing it stamps who and when. A note is a
 working note, never an association record (``NOTE_CAVEAT``). An ask is a question with the answer jason found in the
-stores and where it came from, or no answer and the fact that it went to the manager. A translation is an English
+stores and where it came from, or no answer and the task it became: owned by the office the caller found owns the
+duty, else unassigned and waiting for a person to take it (``UNASSIGNED``). A translation is an English
 record beside a draft a person entered, which a fluent reviewer checks; the English notice controls. The store reads
 no profile fact, calls no service, and decides nothing.
 """
@@ -21,7 +22,9 @@ FILE = Path(STORE) / "dock.json"
 
 NOTE_CAVEAT = "Working notes, not association records."
 TRANSLATION_CAVEAT = "A translation is a draft for a fluent reviewer. The English notice controls."
-ROUTED_ANSWER = "jason has no sourced answer; routed to the manager"
+ROUTED_ANSWER = "jason has no sourced answer; on the action register"
+UNASSIGNED = "unassigned: waiting for a person to take it"
+NO_DUE = "no due date: the board has set no lead time for answering a question"
 
 NOTE_STATUSES = ("researching", "question", "draft", "parked", "done")
 TRANSLATION_STATES = ("needs review", "sent for review", "approved")
@@ -222,23 +225,29 @@ def update_note(data_dir: Path, note_id: str, *, by: str, **changes: Any) -> dic
 
 
 @_store_lock
-def record_ask(data_dir: Path, question: str, *, by: str, answer: str = "", sources: list[str] | None = None, screen: str = "") -> dict[str, Any]:
-    """Record a question and what jason found. With no sources there is no answer: the question is routed to the
-    manager and becomes a task (source ``ask``). jason never guesses."""
+def record_ask(data_dir: Path, question: str, *, by: str, answer: str = "", sources: list[str] | None = None, screen: str = "",
+               owner: str = "", routing: str = "") -> dict[str, Any]:
+    """Record a question and what jason found. With no sources there is no answer: the question becomes a task
+    (source ``ask``) owned by ``owner``, the office the caller found owns the duty (``routing`` says how), or, with no
+    owner, plainly unassigned and waiting for a person to take it. The task has no due date until the board sets a
+    lead time (``NO_DUE``). jason never guesses and picks no one."""
     by = _who(by)
     question = str(question or "").strip()
     if not question:
         raise ValueError("a question has words")
     cites = _strings(sources, "sources")
+    owner = str(owner or "").strip()
+    routing = str(routing or "").strip() or (UNASSIGNED if not owner else f"routed to {owner}")
     data = load(data_dir)
     now = _now()
     routed = not cites
     row = {"id": _next_id(data["asks"], "q"), "question": question, "answer": answer if not routed else ROUTED_ANSWER, "sources": cites,
            "screen": str(screen or "").strip(), "routed": routed, "at": now, "by": by, "task": ""}
     if routed:
-        task = {"id": _next_id(data["tasks"], "t"), "text": f"Answer a question: {question}", "source": "ask", "screen": "", "owner": "",
+        row.update({"routedTo": owner, "routing": routing})
+        task = {"id": _next_id(data["tasks"], "t"), "text": f"Answer a question: {question}", "source": "ask", "screen": "", "owner": owner,
                 "due": "", "done": False, "doneBy": "", "doneAt": "", "created": now, "by": by,
-                "history": [f"{now[:10]}: routed from Ask by {by}; no sourced answer"]}
+                "history": [f"{now[:10]}: routed from Ask by {by}; no sourced answer; {routing}", f"{now[:10]}: {NO_DUE}"]}
         data["tasks"].append(task)
         row["task"] = task["id"]
     data["asks"].append(row)
@@ -288,5 +297,5 @@ def translation_state(data_dir: Path, translation_id: str, state: str, *, by: st
     return row
 
 
-__all__ = ["FILE", "NOTE_CAVEAT", "NOTE_EDITABLE", "NOTE_STATUSES", "ROUTED_ANSWER", "STORE", "TASK_EDITABLE", "TRANSLATION_CAVEAT", "TRANSLATION_STATES",
+__all__ = ["FILE", "NOTE_CAVEAT", "NOTE_EDITABLE", "NOTE_STATUSES", "NO_DUE", "ROUTED_ANSWER", "STORE", "TASK_EDITABLE", "TRANSLATION_CAVEAT", "TRANSLATION_STATES", "UNASSIGNED",
            "add_note", "add_task", "add_translation", "complete_task", "load", "record_ask", "save", "translation_state", "update_note", "update_task"]

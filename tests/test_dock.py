@@ -129,6 +129,9 @@ def loader(county, monkeypatch):
 
     monkeypatch.setattr(mod, "_today", lambda: TODAY)
     monkeypatch.setattr(mod, "_q_next_meeting", lambda: {"answer": "The next board meeting is 2026-10-21.", "sources": ["meeting()", "CIV 4920"]})
+    monkeypatch.setattr(mod, "_assignments", lambda: ())     # no profile's duties unless a test names some
+    monkeypatch.setattr(mod, "_officers", lambda: ())
+    monkeypatch.setattr(mod, "_viewer", lambda: None)
     return mod
 
 
@@ -155,9 +158,12 @@ def test_counts_are_overdue_deadlines_and_overdue_open_tasks(loader, tmp_path):
     store.complete_task(tmp_path, "t2", by="D")
     store.add_task(tmp_path, "ahead", by="D", due="2026-10-20")
     store.add_task(tmp_path, "undated", by="D")
-    assert loader.dock({"part": "counts"}) == {"found": True, "deadlines": 1, "tasks": 1}
+    got = loader.dock({"part": "counts"})
+    assert (got["scope"], got["deadlines"], got["tasks"], got["approvals"]) == ("everyone", 1, 1, 0)   # nobody signed in: said so
+    assert got["note"].startswith("Everyone's")
     everything = loader.dock({})
-    assert everything["counts"] == {"deadlines": 1, "tasks": 1} and everything["tasks"]["count"] == 4 and everything["notes"]["caveat"] == store.NOTE_CAVEAT
+    assert everything["counts"]["scope"] == "everyone" and (everything["counts"]["deadlines"], everything["counts"]["tasks"]) == (1, 1)
+    assert everything["tasks"]["count"] == 4 and everything["notes"]["caveat"] == store.NOTE_CAVEAT
     assert loader.dock({"part": "nope"})["found"] is False
 
 
@@ -183,6 +189,8 @@ def test_free_question_hits_the_library_or_routes_to_the_manager(loader, tmp_pat
     assert miss["routed"] is True and miss["answer"] == store.ROUTED_ANSWER and miss["sources"] == []
     tasks = store.load(tmp_path)["tasks"]
     assert len(tasks) == 1 and tasks[0]["source"] == "ask" and tasks[0]["id"] == miss["task"]
+    # no duty named: plainly unassigned, never "the manager" by default
+    assert tasks[0]["owner"] == "" and miss["routedTo"] == "" and store.UNASSIGNED in tasks[0]["history"][0]
     common = loader.write("", {"action": "ask", "by": "D. Okafor", "question": "when is the next board meeting"})
     assert common["routed"] is False and common["sources"] == ["meeting()", "CIV 4920"] and common["screen"] == "meetings"
 
@@ -214,4 +222,114 @@ def test_calendar_failure_is_a_note_not_a_crash(loader, county):
     county.association_calendar = boom
     d = loader.dock({"part": "deadlines"})
     assert d["found"] is False and "no payments on disk" in d["note"] and d["counts"]["overdue"] == 0
-    assert loader.dock({"part": "counts"}) == {"found": True, "deadlines": 0, "tasks": 0}
+    got = loader.dock({"part": "counts"})
+    assert got["found"] is True and (got["deadlines"], got["tasks"]) == (0, 0)
+
+
+# -- whose counts, and where a routed question goes: made-up duties and a made-up roster --------------------------------
+
+
+def _duties():
+    from jason.community.schedule import Adoption, Assignment, Role, Trigger
+
+    return (
+        Assignment("insurance-renewals", "Insurance renewals", Role.TREASURER, ("obligation:Insurance renewal: directors and officers (D-1)",), Trigger.ANCHORED),
+        Assignment("budget-report", "Annual budget report", Role.BOARD, ("obligation:Budget report to members", "CIV 5300"), Trigger.CADENCE, adoption=Adoption.ADOPTED),
+        Assignment("minutes", "Draft minutes", Role.SECRETARY, ("CIV 4950",), Trigger.EVENT),
+        Assignment("minutes-check", "Minutes checked", Role.JASON, ("CIV 4950",), Trigger.EVENT),
+        Assignment("tax-return", "Tax return", Role.TREASURER, ("CIV 5999",), Trigger.CADENCE, adoption=Adoption.DECLINED),
+    )
+
+
+def _letters(tmp_path, approvers):
+    from jason.tasks import approvals as letters
+
+    path = tmp_path / letters.FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = {f"l{i}": {"key": f"l{i}", "stage": "requested", "approver": a} for i, a in enumerate(approvers)}
+    rows["done"] = {"key": "done", "stage": "approved", "approver": "the treasurer"}
+    path.write_text(json.dumps({"letters": rows}), encoding="utf-8")
+
+
+@pytest.fixture
+def roster(loader, monkeypatch, tmp_path):
+    """A made-up roster: a treasurer, a secretary who is also a director, a manager."""
+    from jason.community.base import Officer, OfficerRole
+
+    officers = (Officer(OfficerRole.TREASURER, "T. Ferro", ("the treasurer",)), Officer(OfficerRole.SECRETARY, "S. Lund"),
+                Officer(OfficerRole.MANAGER, "M. Vale", ("the manager",)))
+    monkeypatch.setattr(loader, "_assignments", _duties)
+    monkeypatch.setattr(loader, "_officers", lambda: officers)
+    _letters(tmp_path, ["the treasurer", "the board", "the manager", "a fluent reviewer"])
+    for text, owner in (("treasurer's", "the treasurer"), ("named", "T. Ferro"), ("manager's", "the manager"), ("nobody's", ""), ("board's", "the board")):
+        store.add_task(tmp_path, f"late, {text}", by="D", owner=owner, due="2026-09-01")
+    store.add_task(tmp_path, "ahead, treasurer's", by="D", owner="Treasurer", due="2026-12-01")
+    return loader
+
+
+def _as(loader, monkeypatch, name, *offices, admin=False, acting=False):
+    from jason.web.access import Viewer
+
+    monkeypatch.setattr(loader, "_viewer", lambda: Viewer(name, frozenset(offices), admin, "acct", "bind", acting))
+
+
+def test_no_request_or_no_sign_in_is_nobody_signed_in():
+    from flask import Flask
+
+    from jason.web.access import current_viewer
+
+    assert current_viewer() is None
+    with Flask(__name__).test_request_context("/api/dock?part=counts"):
+        assert current_viewer() is None                # sign-in not set up: the counts are everyone's, never a refusal
+
+
+def test_deadlines_carry_the_duties_owner_or_none(roster):
+    rows = {r["title"]: r for g in roster.dock({"part": "deadlines"})["groups"] for r in g["rows"]}
+    assert rows["Insurance renewal: directors and officers (D-1)"]["owner"] == "the treasurer"
+    assert rows["Insurance renewal: directors and officers (D-1)"]["owners"][0]["adoption"] == "proposed"
+    assert rows["Budget report to members"]["owner"] == "the board"
+    assert rows["Secretary of State statement"]["owner"] == "" and rows["Secretary of State statement"]["owners"] == []   # a miss stays a miss
+
+
+def test_counts_are_what_the_signed_in_person_may_act_on(roster, monkeypatch):
+    nobody = roster.dock({"part": "counts"})
+    assert (nobody["scope"], nobody["deadlines"], nobody["tasks"], nobody["approvals"]) == ("everyone", 1, 5, 4)
+    _as(roster, monkeypatch, "T. Ferro", "treasurer")
+    me = roster.dock({"part": "counts"})
+    # the overdue insurance renewal is the treasurer's duty; tasks owned by the office or the name, and the board's; the
+    # treasurer's letter (a board letter is the president's or the secretary's to record)
+    assert (me["scope"], me["who"], me["deadlines"], me["tasks"], me["approvals"]) == ("mine", "T. Ferro", 1, 3, 1)
+    _as(roster, monkeypatch, "S. Lund", "secretary", "director")
+    sec = roster.dock({"part": "counts"})
+    assert (sec["deadlines"], sec["tasks"], sec["approvals"]) == (0, 1, 1)          # the board's task; the board's letter
+    _as(roster, monkeypatch, "M. Vale", "manager")
+    mgr = roster.dock({"part": "counts"})
+    assert (mgr["deadlines"], mgr["tasks"], mgr["approvals"]) == (0, 1, 1)          # the manager is not the board
+
+
+def test_an_admin_with_no_office_sees_everyones_and_acting_as_an_office_sees_its(roster, monkeypatch):
+    _as(roster, monkeypatch, "A. Admin", admin=True)
+    got = roster.dock({"part": "counts"})
+    assert got["scope"] == "everyone" and "admin" in got["note"] and got["tasks"] == 5
+    _as(roster, monkeypatch, "", "treasurer", acting=True)        # viewing as the treasurer's office: its approves
+    got = roster.dock({"part": "counts"})
+    assert (got["scope"], got["who"], got["deadlines"], got["tasks"], got["approvals"]) == ("mine", "the treasurer", 1, 2, 1)
+    assert "admin view" in got["note"]
+
+
+def test_a_routed_question_goes_to_the_duty_owner_or_waits_unassigned(roster, tmp_path):
+    ask = roster.dock({"part": "ask"})
+    assert [d["key"] for d in ask["duties"]] == ["budget-report", "minutes", "insurance-renewals", "minutes-check"]   # declined left out
+    to = roster.route("insurance-renewals")
+    assert to["owner"] == "the treasurer" and "proposed, not yet adopted" in to["routing"]
+    assert roster.route("CIV 5300(b)")["owner"] == "the board" and roster.route("CIV 5300")["routing"].endswith(", adopted)")
+    for duty, why in (("", "no duty named"), ("CIV 1234", "no assignment covers"), ("CIV 4950", "a person decides"), ("tax-return", "no assignment covers")):
+        got = roster.route(duty)
+        assert got["owner"] == "" and store.UNASSIGNED in got["routing"] and why in got["routing"], duty
+    a = roster.write("", {"action": "ask", "by": "D. Okafor", "question": "Is the umbrella policy enough?", "duty": "insurance-renewals"})
+    assert a["routed"] is True and a["routedTo"] == "the treasurer"
+    task = next(t for t in store.load(tmp_path)["tasks"] if t["id"] == a["task"])
+    assert task["owner"] == "the treasurer" and task["due"] == "" and store.NO_DUE in task["history"][-1]   # no hardcoded lead time
+    b = roster.write("", {"action": "ask", "by": "D. Okafor", "question": "Who keeps the keys to the pool?"})
+    task = next(t for t in store.load(tmp_path)["tasks"] if t["id"] == b["task"])
+    assert task["owner"] == "" and b["routing"].startswith(store.UNASSIGNED)

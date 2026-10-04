@@ -8,7 +8,7 @@ A band added to `#/duties` · phase 2 · CLI: `jason schedule`, `jason schedule 
 |---|---|
 | **Duties by cadence** (`#/duties`, `ConsoleDuties`) | The manager's duty anchors (BPC 11500(d)'s services, broken into `jason.community.duties.DUTIES`) by cadence, each opening to its brief and the documents' passages |
 | **Annual disclosures** (`#/disclosures`, `ConsoleDisclosures`; owner view too) | The association calendar's recurring deadlines, overdue first, each with its authority, rule, next date, and the last payment that showed it done; and the calendar jason writes to. The owner view (`OwnerDisclosures`, `calendar?view=owner`) is not the association's deadlines: it is the annual disclosures every member receives (the notice catalog's annual rows: 5300, 5305, 5310, 4041, CORP 8321, and those the policy statement carries), each with its window from the fiscal year and the day the delivery ledger shows it went out, "delivered" or "sent" only |
-| **The dock** | **Deadlines** (the calendar grouped, with a screen hint) and **Tasks** (the action register: a person adds, owns, dates, and completes a task; completion stamps who and when) |
+| **The dock** | **Deadlines** (the calendar grouped, with a screen hint and the office an assignment names as the duty's owner, or "unassigned") and **Tasks** (the action register: a person adds, owns, dates, and completes a task; completion stamps who and when). The red counts are the signed-in person's: what they or their offices may act on (`/api/dock?part=counts`) |
 
 **What this spec adds**, as a band on `#/duties`: the **schedule** itself. The duty anchors say what the manager keeps straight; the schedule says who does each occurrence, when it falls due, and whether it was done:
 

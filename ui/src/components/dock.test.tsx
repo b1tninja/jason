@@ -38,6 +38,18 @@ describe("DockToolbar", () => {
     expect(screen.queryByLabelText(/overdue/)).not.toBeInTheDocument();
     expect(DOCK_DRAWERS.filter((d) => d.owner).map((d) => d.id)).toEqual([]);
   });
+
+  it("labels whose the counts are: the signed-in person's, or everyone's when nobody is signed in", () => {
+    const { unmount } = render(<DockToolbar open={null} onToggle={() => {}} audience="board"
+      counts={{ deadlines: 1, tasks: 2, scope: "mine", who: "T. Ferro", note: "T. Ferro's: deadlines whose duty an office of theirs owns." }} />);
+    expect(screen.getByLabelText("1 overdue, T. Ferro's")).toBeInTheDocument();
+    expect(screen.getByLabelText("2 overdue, T. Ferro's")).toBeInTheDocument();
+    expect(screen.queryByText("everyone's")).not.toBeInTheDocument();
+    unmount();
+    render(<DockToolbar open={null} onToggle={() => {}} audience="board" counts={{ deadlines: 3, tasks: 0, scope: "everyone", note: "Everyone's: nobody is signed in." }} />);
+    expect(screen.getByLabelText("3 overdue, everyone's")).toBeInTheDocument();
+    expect(screen.getByText("everyone's")).toHaveAttribute("title", "Everyone's: nobody is signed in.");
+  });
 });
 
 describe("Drawer", () => {
@@ -91,6 +103,22 @@ describe("DeadlineList", () => {
     expect(went).toEqual(["reserves"]);
     expect(screen.getByText("A payment is evidence, not proof.")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "timeline" })).toBeInTheDocument();
+  });
+
+  it("names the office that owns each deadline's duty, or unassigned", async () => {
+    const row = { date: "2026-10-10", days: 7, authority: "CIV 5300", standing: "due soon", note: "", screen: "reserves" };
+    mockFetch({
+      "/api/dock?part=deadlines": () => ({
+        found: true, asOf: "2026-10-03", today: "2026-10-03", counts: { overdue: 0, soon: 2, later: 0 }, clock: [],
+        groups: [{ key: "soon", label: "Next 14 days", rows: [
+          { ...row, id: "d1", title: "Budget report to members", owner: "the treasurer", owners: [{ role: "treasurer", owner: "the treasurer", assignment: "budget", adoption: "proposed" }] },
+          { ...row, id: "d2", title: "Statement of information", authority: "Corp. Code 8210", screen: "calendar", owner: "", owners: [] },
+        ] }],
+      }),
+    });
+    render(<DeadlineList go={() => {}} />);
+    expect(await screen.findByText("CIV 5300 · the treasurer (proposed) · Reserves")).toBeInTheDocument();
+    expect(screen.getByText("Corp. Code 8210 · unassigned · Calendar")).toBeInTheDocument();
   });
 });
 
@@ -161,8 +189,10 @@ describe("Scratchpad", () => {
 
 describe("AskPanel", () => {
   const ask = {
-    found: true, routedAnswer: "jason has no sourced answer; routed to the manager", translateCommand: "", translationStates: ["needs review", "sent for review", "approved"],
-    caveats: ["A question with no sourced answer goes to the action register for the manager. jason never guesses."],
+    found: true, routedAnswer: "jason has no sourced answer; on the action register", translateCommand: "", translationStates: ["needs review", "sent for review", "approved"],
+    caveats: ["A question with no sourced answer goes to the action register. jason never guesses and picks no one."],
+    unassigned: "unassigned: waiting for a person to take it",
+    duties: [{ key: "insurance-renewals", title: "Insurance renewals", owner: "the treasurer", adoption: "proposed" }],
     common: [
       { question: "When is the next board meeting?", screen: "meetings", answer: "The next board meeting is 2026-10-21.", sources: ["meeting()", "CIV 4920"], routed: false },
       { question: "What did the board decide last meeting?", screen: "decisions", answer: "", sources: [], routed: true },
@@ -183,14 +213,17 @@ describe("AskPanel", () => {
     await user.click(within(answer).getByRole("button", { name: "Open Meetings" }));
     expect(went).toEqual(["meetings"]);
     await user.click(screen.getByRole("button", { name: /What did the board decide/ }));
-    expect(screen.getByRole("article", { name: "No sourced answer" })).toHaveTextContent("went to the action register for the manager");
+    // a common question with no answer now was recorded nowhere: it never claims to have gone to anyone
+    const none = screen.getByRole("article", { name: "No sourced answer" });
+    expect(none).toHaveTextContent("Ask it above to put it on the action register");
+    expect(none).not.toHaveTextContent("manager");
     expect(screen.queryByText("Sources:")).not.toBeInTheDocument();
   });
 
-  it("a free question is a write behind Confirm, and a routed answer reads as routed", async () => {
+  it("a free question is a write behind Confirm; with no duty named the routed task reads as unassigned, never the manager's", async () => {
     const posted: unknown[] = [];
     mockFetch({
-      "/api/write/dock/new": (init) => { posted.push(JSON.parse(String(init?.body))); return { id: "q1", question: "Can we fine without a hearing?", answer: "jason has no sourced answer; routed to the manager", sources: [], screen: "", routed: true, at: "", by: "D" }; },
+      "/api/write/dock/new": (init) => { posted.push(JSON.parse(String(init?.body))); return { id: "q1", question: "Can we fine without a hearing?", answer: "jason has no sourced answer; on the action register", sources: [], screen: "", routed: true, at: "", by: "D", task: "t4", routedTo: "", routing: "unassigned: waiting for a person to take it (no duty named)" }; },
       "/api/dock?part=ask": () => ask,
     });
     const user = userEvent.setup();
@@ -198,9 +231,33 @@ describe("AskPanel", () => {
     await user.type(await screen.findByLabelText("Question"), "Can we fine without a hearing?");
     await user.click(screen.getByRole("button", { name: "Ask" }));
     expect(posted).toEqual([]);
+    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("unassigned, waiting for a person to take it");
     await user.click(screen.getByRole("button", { name: "Yes, do it" }));
     await waitFor(() => expect(posted).toEqual([{ action: "ask", by: "D. Okafor", question: "Can we fine without a hearing?" }]));
-    expect(await screen.findByRole("article", { name: "No sourced answer" })).toHaveTextContent("Can we fine without a hearing?");
+    const routed = await screen.findByRole("article", { name: "No sourced answer" });
+    expect(routed).toHaveTextContent("Can we fine without a hearing?");
+    expect(routed).toHaveTextContent("on the action register (t4) unassigned, waiting for a person to take it");
+    expect(routed).not.toHaveTextContent("manager");
+  });
+
+  it("a question about a named duty goes to the office that owns it", async () => {
+    const posted: unknown[] = [];
+    mockFetch({
+      "/api/write/dock/new": (init) => { posted.push(JSON.parse(String(init?.body))); return { id: "q2", question: "Is the umbrella enough?", answer: "", sources: [], screen: "", routed: true, at: "", by: "D", task: "t5", routedTo: "the treasurer", routing: "routed to the treasurer, who owns Insurance renewals (assignment insurance-renewals, proposed, not yet adopted)" }; },
+      "/api/dock?part=ask": () => ask,
+    });
+    const user = userEvent.setup();
+    render(<AskPanel go={() => {}} me="D. Okafor" />);
+    await user.type(await screen.findByLabelText("Question"), "Is the umbrella enough?");
+    await user.selectOptions(screen.getByLabelText("About"), "insurance-renewals");
+    expect(screen.getByRole("option", { name: "Insurance renewals · the treasurer (proposed)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("for the treasurer, who owns Insurance renewals");
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(posted).toEqual([{ action: "ask", by: "D. Okafor", question: "Is the umbrella enough?", duty: "insurance-renewals" }]));
+    const routed = await screen.findByRole("article", { name: "No sourced answer" });
+    expect(routed).toHaveTextContent("on the action register (t5) for the treasurer");
+    expect(routed).toHaveTextContent("proposed, not yet adopted");
   });
 
   it("the Translate tab shows the English record beside a draft marked needs review and sends for review behind Confirm", async () => {

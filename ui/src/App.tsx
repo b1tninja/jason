@@ -182,7 +182,9 @@ export function App() {
     if (a === "owner" && drawer && !DOCK_DRAWERS.find((d) => d.id === drawer)?.owner) setDrawer(null);
   };
 
-  const screens: ConsoleScreen[] = SCREENS.map(({ view: _view, aliases: _aliases, ...s }) => (s.id === "approvals" ? { ...s, count: pending } : s));
+  // Signed in, the Approvals badge is the letters waiting on this person's approval (the dock's counts); else everyone's.
+  const waiting = counts.scope === "mine" && typeof counts.approvals === "number" ? counts.approvals : pending;
+  const screens: ConsoleScreen[] = SCREENS.map(({ view: _view, aliases: _aliases, ...s }) => (s.id === "approvals" ? { ...s, count: waiting } : s));
   const View = current.view;
   const drawerDef = drawer ? DOCK_DRAWERS.find((d) => d.id === drawer) : undefined;
   const drawerNode = drawerDef && (

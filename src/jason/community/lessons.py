@@ -1006,6 +1006,25 @@ LESSONS: tuple[Lesson, ...] = (
                                  "view=owner and renders no board-only section)"),
            docs=("docs/console/security-and-privacy.md (Built: the server answers the owner view)",),
            notes=("Still open: the standalone #/meeting-room?audience=owner link does not carry view=owner.",)),
+    Lesson("dock-counts-everyones", date(2026, 10, 4), (Area.DOCUMENTS, Area.GOVERNING),
+           "The dock's red counts totaled every overdue deadline and task whoever was signed in, and the Approvals "
+           "badge counted every requested letter. A free Ask question with no library hit became a task with no "
+           "owner, while the screen said it went \"to the manager\".",
+           "The dock predates the roster and sign-in, so its counts read the stores without a viewer. \"The "
+           "manager\" was prose, never a routing rule, and calendar rows carried no owner though the profile's "
+           "assignments cover them as obligation:<name>.",
+           "Counts narrow to the viewer (the acting identity when an admin views as an office): deadlines by the "
+           "duty owner's office, tasks by owner, letters by Officer.can_approve; with nobody signed in, or an admin "
+           "with no office, they are labeled everyone's. Deadline rows carry their owners. Ask takes an optional "
+           "duty and route() finds its owner from the profile's assignments; otherwise the task is unassigned, "
+           "waiting for a person to take it, and it has no due date until the board sets a lead time.",
+           Status.FIXED, guards=("tests/test_dock.py (counts by viewer; admin with no office; routing to the duty "
+                                 "owner or unassigned; deadline owners)",
+                                 "ui/src/components/dock.test.tsx (whose counts; routed question never the "
+                                 "manager's)"),
+           docs=("docs/web-ui.md (dock)", "docs/console/screens/today.md"),
+           notes=("Still open: engine approvals are not counted; the Tasks \"Mine\" filter matches the name only; "
+                  "generated calendar rows (insurance renewal, reserve-study visit) have no covering assignment.",)),
 )
 
 

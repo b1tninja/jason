@@ -4,8 +4,11 @@
 questions, the meeting page, the decisions store, the records inventory, and the library. Each common answer names
 the tool it read (``sources``); an answer with no source is no answer. ``write`` records a person's acts in the dock
 store: a task added, changed, or done; a note; a question asked; a translation draft and its review state. Nothing
-here sends, posts, or decides. A free question with no library hit is routed to the manager as a task; jason never
-guesses. There is no translator in this build: a translation draft is a person's text marked ``needs review``.
+here sends, posts, or decides. A free question with no library hit becomes a task owned by the office that owns the
+duty the person said it is about (``route``, from ``Community.assignments``), else unassigned and waiting for a person
+to take it; jason never guesses and picks no one. The counts are the signed-in person's (``counts``): what they or
+their offices may act on, or everyone's, said so, when nobody is signed in. There is no translator in this build: a
+translation draft is a person's text marked ``needs review``.
 """
 
 from __future__ import annotations
@@ -32,7 +35,8 @@ SCREEN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 ASK_CAVEATS = (
     "Answers come from the association's records and jason's stores, and cite where each was read. They are not legal advice.",
-    "A question with no sourced answer goes to the action register for the manager. jason never guesses.",
+    "A question with no sourced answer goes to the action register: to the office that owns the duty it is about, when "
+    "the asker names one, else unassigned until a person takes it. jason never guesses and picks no one.",
 )
 
 
@@ -68,6 +72,88 @@ def _calendar() -> dict[str, Any]:
     return association_calendar()
 
 
+# -- whose: the duties' owners (the profile's assignments) and the signed-in person (the roster) ----------------------
+
+
+def _viewer() -> Any:
+    """The request's viewer (``jason.web.access.current_viewer``), or None: nobody signed in, or no request."""
+    try:
+        from jason.web.access import current_viewer
+
+        return current_viewer()
+    except Exception:  # noqa: BLE001 - a sign-in that cannot be read is nobody signed in; the counts say everyone's
+        return None
+
+
+def _assignments() -> tuple[Any, ...]:
+    """Who owns each duty (``Community.assignments``); empty when the profile keeps none or cannot be read."""
+    try:
+        from jason.community import community
+
+        return tuple(community().assignments())
+    except Exception:  # noqa: BLE001 - a profile that cannot be read owns nothing: every duty is a miss, unassigned
+        return ()
+
+
+def _duty_owners() -> tuple[Any, ...]:
+    """The assignments that own a duty: less the ones the board declined or found not applicable."""
+    from jason.community.schedule import Adoption
+
+    return tuple(a for a in _assignments() if a.adoption not in (Adoption.DECLINED, Adoption.NOT_APPLICABLE))
+
+
+def _officers() -> tuple[Any, ...]:
+    """The roster's officers and portfolio managers (``jason.access.community_officers``); empty when unread."""
+    try:
+        from jason.access import community_officers
+
+        return tuple(community_officers())
+    except Exception:  # noqa: BLE001
+        return ()
+
+
+_NOT_OFFICES = ("jason", "owners")
+
+
+def role_words(role: str) -> str:
+    """An assignment's role as an owner reads: "the treasurer", "the board"; jason and owners as themselves."""
+    return role if role in _NOT_OFFICES else f"the {role}"
+
+
+def _word(text: Any) -> str:
+    said = " ".join(str(text or "").lower().split())
+    return said[4:] if said.startswith("the ") else said
+
+
+def _board_offices() -> frozenset[str]:
+    from jason.community.base import OfficerRole
+
+    return frozenset(r.value for r in OfficerRole if r is not OfficerRole.MANAGER)
+
+
+def holds(owner: Any, name: str, offices: frozenset[str]) -> bool:
+    """Whether an owner ("the treasurer", "the board", a person's name) is this person or one of their offices. The
+    board is every director's; a name is the person's own."""
+    word = _word(owner)
+    if not word:
+        return False
+    if name and word == _word(name):
+        return True
+    if word in offices:
+        return True
+    return word == "board" and bool(offices & _board_offices())
+
+
+def _owners(title: str, rows: tuple[Any, ...]) -> list[dict[str, str]]:
+    """The offices the assignments name as the owner of a calendar obligation (``obligation:<name>``), one a role."""
+    from jason.community.schedule import covering
+
+    out: dict[str, dict[str, str]] = {}
+    for a in covering(f"obligation:{title}", rows):
+        out.setdefault(a.role.value, {"role": a.role.value, "owner": role_words(a.role.value), "assignment": a.key, "adoption": a.adoption.value})
+    return list(out.values())
+
+
 def deadlines(today: date | None = None) -> dict[str, Any]:
     """The calendar's dated obligations as rows grouped Overdue / Next 14 days / Later, each with a screen hint, and the
     rows within 45 days either way for the clock."""
@@ -78,6 +164,7 @@ def deadlines(today: date | None = None) -> dict[str, Any]:
         return {"found": False, "note": f"calendar not read: {type(exc).__name__}: {exc}", "asOf": day.isoformat(),
                 "groups": [{"key": k, "label": l, "rows": []} for k, l in _GROUPS], "clock": [], "counts": {"overdue": 0, "soon": 0, "later": 0}}
     rows: list[dict[str, Any]] = []
+    duties = _duty_owners()
     for i, ob in enumerate(cal.get("obligations", [])):
         nxt = ob.get("next")
         if not nxt or ob.get("standing") == "done":
@@ -85,8 +172,10 @@ def deadlines(today: date | None = None) -> dict[str, Any]:
         n = _days(nxt, day)
         if n is None:
             continue
+        owners = _owners(ob.get("name", ""), duties)    # no assignment covers it: unassigned, a miss, never a guess
         rows.append({"id": f"d{i + 1}", "title": ob.get("name", ""), "date": str(nxt)[:10], "days": n, "authority": ob.get("authority", ""),
-                     "standing": ob.get("standing", ""), "note": ob.get("note", ""), "screen": screen_for(f"{ob.get('name', '')} {ob.get('authority', '')}")})
+                     "standing": ob.get("standing", ""), "note": ob.get("note", ""), "screen": screen_for(f"{ob.get('name', '')} {ob.get('authority', '')}"),
+                     "owners": owners, "owner": ", ".join(o["owner"] for o in owners)})
     rows.sort(key=lambda r: (r["date"], r["title"]))
     over = [r for r in rows if r["days"] < 0]
     soon = [r for r in rows if 0 <= r["days"] <= SOON_DAYS]
@@ -109,6 +198,51 @@ def _tasks(today: date) -> dict[str, Any]:
     return {"found": True, "today": today.isoformat(), "count": len(rows), "overdue": overdue, "open": sum(1 for t in rows if not t.get("done")),
             "tasks": sorted(rows, key=lambda t: (t.get("done", False), t.get("due") or "9999", t.get("created", ""))),
             "editable": list(store.TASK_EDITABLE), "caveats": ["The register is what people said needs doing; jason assigns nothing and marks nothing done."]}
+
+
+def _letters_waiting(name: str, offices: frozenset[str]) -> int | None:
+    """Letters requested of an approver this person's offices may act for (``Officer.can_approve``); with no ``name``
+    and no ``offices``, every requested letter. None when the letters store cannot be read."""
+    from jason.tasks import approvals as letters
+
+    try:
+        rows = [l for l in letters.load(_root()).values() if l.get("stage") == "requested"]
+    except Exception:  # noqa: BLE001 - the dock stands without the approvals store
+        return None
+    if not name and not offices:
+        return len(rows)
+    from jason.community.base import Officer, OfficerRole
+
+    mine = [o for o in _officers() if (o.name == name if name else o.role.value in offices)]
+    if not mine and not name:                         # viewing as an office nobody holds: the office's own rule
+        mine = [Officer(OfficerRole(o), "") for o in sorted(offices)]
+    return sum(1 for l in rows if any(o.can_approve(str(l.get("approver") or "")) for o in mine))
+
+
+def counts(today: date) -> dict[str, Any]:
+    """The dock's red counts: the overdue deadlines and overdue open tasks, and the letters waiting on an approval.
+    Signed in, they are what this person may act on: tasks owned by them or their offices, deadlines whose duty's
+    owner is one of their offices (``Community.assignments``), letters whose approver their office may act for. An
+    admin viewing as an office or a person gets that one's. With nobody signed in, or an admin who holds no office,
+    they are everyone's, and ``scope`` says so."""
+    d = deadlines(today)
+    t = _tasks(today)
+    over = d["groups"][0]["rows"]
+    late = [x for x in t["tasks"] if not x.get("done") and x.get("due") and (_days(x["due"], today) or 0) < 0]
+    viewer = _viewer()
+    everyone = viewer is None or (not viewer.offices and (viewer.admin or not viewer.name))
+    if everyone:
+        why = ("nobody is signed in" if viewer is None else "an admin who holds no office sees what waits on anyone")
+        return {"found": True, "scope": "everyone", "who": "", "deadlines": len(over), "tasks": len(late),
+                "approvals": _letters_waiting("", frozenset()), "note": f"Everyone's: {why}."}
+    name, offices = viewer.name, frozenset(viewer.offices)
+    mine_over = [r for r in over if any(holds(o["owner"], name, offices) for o in r.get("owners", []))]
+    mine_late = [x for x in late if holds(x.get("owner"), name, offices)]
+    who = viewer.label
+    return {"found": True, "scope": "mine", "who": who, "deadlines": len(mine_over), "tasks": len(mine_late),
+            "approvals": _letters_waiting(name, offices),
+            "note": f"{who}'s: deadlines whose duty an office of theirs owns, tasks owned by them or their offices, and letters waiting on their approval."
+                    + (" Viewing as them (admin view)." if viewer.acting else "")}
 
 
 _TOOL_CALL = re.compile(r"^[a-z_]+\(.*\)$", re.S)
@@ -275,19 +409,61 @@ def _ask(today: date) -> dict[str, Any]:
     asks = sorted(data["asks"], key=lambda a: a.get("at", ""), reverse=True)[:20]
     return {"found": True, "common": common_questions(today), "asks": [{**a, "sourceRefs": source_refs(a.get("sources"), root)} for a in asks],
             "translations": sorted(data["translations"], key=lambda t: t.get("at", ""), reverse=True), "translationStates": list(store.TRANSLATION_STATES),
-            "translateCommand": "", "routedAnswer": store.ROUTED_ANSWER, "caveats": list(ASK_CAVEATS) + [store.TRANSLATION_CAVEAT]}
+            "translateCommand": "", "routedAnswer": store.ROUTED_ANSWER, "unassigned": store.UNASSIGNED, "duties": ask_duties(),
+            "caveats": list(ASK_CAVEATS) + [store.TRANSLATION_CAVEAT]}
+
+
+# Owners a routed question may go to: the roster's offices and the board. jason, owners, counsel, a committee, or the
+# inspector of elections own duties, but a question on the register waits for an office.
+def _routable() -> frozenset[str]:
+    from jason.community.base import OfficerRole
+
+    return frozenset({r.value for r in OfficerRole} | {"board"})
+
+
+def ask_duties() -> list[dict[str, str]]:
+    """The duties a person may say a question is about (``Community.assignments``), each with the office that owns it
+    and whether the board adopted the assignment. Empty until the profile keeps assignments."""
+    return sorted(({"key": a.key, "title": a.title, "owner": role_words(a.role.value), "adoption": a.adoption.value} for a in _duty_owners()),
+                  key=lambda r: (r["title"].lower(), r["key"]))
+
+
+def route(duty: str) -> dict[str, str]:
+    """Where a question with no sourced answer goes: the office an assignment names as the owner of the duty the asker
+    said it is about (``duty``: an assignment's key, or a reference one covers, "obligation:<name>", "CIV 5500"). No
+    duty named, no assignment covering it, more than one office, or an owner who is not an office: unassigned, waiting
+    for a person to take it. The owner comes from the profile, never from the question's words; jason picks no one."""
+    from jason.community.schedule import Adoption, covering
+    from jason.tasks import dock as store
+
+    duty = " ".join(str(duty or "").split())
+    if not duty:
+        return {"owner": "", "duty": "", "routing": f"{store.UNASSIGNED} (no duty named)"}
+    rows = _duty_owners()
+    hit = [a for a in rows if a.key == duty] or covering(duty, rows)
+    roles = sorted({a.role.value for a in hit})
+    if not roles:
+        return {"owner": "", "duty": duty, "routing": f"{store.UNASSIGNED} (no assignment covers {duty})"}
+    if len(roles) > 1:
+        return {"owner": "", "duty": duty, "routing": f"{store.UNASSIGNED} ({duty} is owned by {', '.join(role_words(r) for r in roles)}; a person decides)"}
+    a = hit[0]
+    owner = role_words(a.role.value)
+    if a.role.value not in _routable():
+        return {"owner": "", "duty": a.key, "routing": f"{store.UNASSIGNED} ({a.title} is {owner}'s, not an office's)"}
+    adopted = "adopted" if a.adoption is Adoption.ADOPTED else "proposed, not yet adopted"
+    return {"owner": owner, "duty": a.key, "routing": f"routed to {owner}, who owns {a.title} (assignment {a.key}, {adopted})"}
 
 
 def dock(args: Args) -> dict[str, Any]:
     """``part`` is one of ``counts, deadlines, tasks, notes, ask, all`` (default all). ``counts`` is the overdue
-    deadlines and the overdue open tasks, for the dock's red badges."""
+    deadlines, the overdue open tasks, and the letters waiting on an approval, the signed-in person's (``counts``),
+    for the dock's red badges."""
     part = args.get("part", "all").strip() or "all"
     if part not in PARTS:
         return {"found": False, "note": f"part is one of {', '.join(PARTS)}"}
     today = _today()
     if part == "counts":
-        d = deadlines(today)
-        return {"found": True, "deadlines": d["counts"]["overdue"], "tasks": _tasks(today)["overdue"]}
+        return counts(today)
     if part == "deadlines":
         return deadlines(today)
     if part == "tasks":
@@ -296,9 +472,9 @@ def dock(args: Args) -> dict[str, Any]:
         return _notes()
     if part == "ask":
         return _ask(today)
-    d = deadlines(today)
-    t = _tasks(today)
-    return {"found": True, "counts": {"deadlines": d["counts"]["overdue"], "tasks": t["overdue"]}, "deadlines": d, "tasks": t, "notes": _notes(), "ask": _ask(today)}
+    c = counts(today)
+    return {"found": True, "counts": {k: c[k] for k in ("scope", "who", "deadlines", "tasks", "approvals", "note")}, "deadlines": deadlines(today),
+            "tasks": _tasks(today), "notes": _notes(), "ask": _ask(today)}
 
 
 # -- writes ----------------------------------------------------------------------------------------------------------
@@ -312,8 +488,8 @@ def _norm_words(text: str) -> set[str]:
     return {w for w in re.sub(r"[^a-z0-9 ]", " ", text.lower()).split() if len(w) > 3}
 
 
-def _answer_free(question: str, by: str, screen: str) -> dict[str, Any]:
-    """A free question: a common question when it is one, else the library; no hit means routed."""
+def _answer_free(question: str, by: str, screen: str, duty: str = "") -> dict[str, Any]:
+    """A free question: a common question when it is one, else the library; no hit means routed (``route``)."""
     from jason.mcp.county import library_search
     from jason.tasks import dock as store
 
@@ -334,7 +510,8 @@ def _answer_free(question: str, by: str, screen: str) -> dict[str, Any]:
         sources = [f"library_search(words={question!r})"] + [r["path"] for r in rows]
         row = store.record_ask(root, question, by=by, answer=answer, sources=sources, screen="records")
         return {**row, "sourceRefs": source_refs(row.get("sources"), root, _library_refs(rows, root))}
-    return {**store.record_ask(root, question, by=by, answer="", sources=[], screen=screen), "sourceRefs": []}
+    to = route(duty)
+    return {**store.record_ask(root, question, by=by, answer="", sources=[], screen=screen, owner=to["owner"], routing=to["routing"]), "sourceRefs": []}
 
 
 def _send_for_review(row: dict[str, Any], by: str) -> str:
@@ -386,7 +563,7 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
         note = store.update_note(root, key, by=by, **changes)
         return {**note, "sourceRefs": source_refs(note.get("sources"), root)}
     if action == "ask":
-        return _answer_free(str(body.get("question", "")), by, str(body.get("screen", "") or ""))
+        return _answer_free(str(body.get("question", "")), by, str(body.get("screen", "") or ""), str(body.get("duty", "") or ""))
     if action == "translate":
         return store.add_translation(root, english_key=str(body.get("englishKey", "") or ""), english=str(body.get("english", "") or ""),
                                      language=str(body.get("language", "") or ""), draft=str(body.get("draft", "") or ""), by=by)
@@ -400,5 +577,5 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     return store.translation_state(root, key, state, by=by, note=note)
 
 
-__all__ = ["ACTIONS", "ASK_CAVEATS", "PARTS", "SCREEN_RULES", "common_questions", "deadlines", "dock", "screen_for",
-           "source_ref", "source_refs", "write"]
+__all__ = ["ACTIONS", "ASK_CAVEATS", "PARTS", "SCREEN_RULES", "ask_duties", "common_questions", "counts", "deadlines", "dock",
+           "holds", "role_words", "route", "screen_for", "source_ref", "source_refs", "write"]

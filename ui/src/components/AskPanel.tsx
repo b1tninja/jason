@@ -14,24 +14,38 @@ import { dockWrite, screenLabel } from "./Dock";
 /** `sourceRefs` are the sources as the loader mapped them, one for one: a citation or a library document is a reference
  * (a `Doc` chip), a tool call jason read is a command, anything else text. An older server leaves them out. */
 export interface CommonQuestion { question: string; screen: string; answer: string; sources: string[]; sourceRefs?: EvidenceEntry[]; routed: boolean; note?: string }
-export interface Ask { id: string; question: string; answer: string; sources: string[]; sourceRefs?: EvidenceEntry[]; screen: string; routed: boolean; at: string; by: string; task?: string }
-type Shown = { q: string; answer: string; sources: string[]; refs?: EvidenceEntry[]; screen: string };
+/** A routed ask carries `task` (its id on the action register), `routedTo` (the office that owns the duty the asker
+ * named, or "" for unassigned), and `routing` (the server's sentence saying how). */
+export interface Ask {
+  id: string; question: string; answer: string; sources: string[]; sourceRefs?: EvidenceEntry[]; screen: string; routed: boolean; at: string; by: string;
+  task?: string; routedTo?: string; routing?: string;
+}
+type Shown = { q: string; answer: string; sources: string[]; refs?: EvidenceEntry[]; screen: string; task?: string; routedTo?: string; routing?: string };
 export interface Translation { id: string; englishKey: string; english: string; language: string; draft: string; state: string; by: string; at: string; history?: string[] }
+/** A duty a question may be about: the profile's assignment, the office that owns it, and whether the board adopted it. */
+export interface AskDuty { key: string; title: string; owner: string; adoption: string }
 export interface AskData {
   found?: boolean; note?: string; common: CommonQuestion[]; asks: Ask[]; translations: Translation[]; translationStates: string[];
-  translateCommand: string; routedAnswer: string; caveats?: string[];
+  translateCommand: string; routedAnswer: string; caveats?: string[]; duties?: AskDuty[]; unassigned?: string;
 }
 
-const ROUTED = "jason has no sourced answer for this. It went to the action register for the manager to answer.";
+const UNASSIGNED = "unassigned, waiting for a person to take it";
 const CONTROLS = "The English notice controls.";
 
-/** An answer jason found, with where it was read; or the routed state when it found none. An answer with no source is no answer. */
-function Answer({ q, answer, sources, refs, screen, go }: Shown & { go: (s: string) => void }) {
+/** An answer jason found, with where it was read; or, when it found none, where the question went: the office that
+ * owns the duty, or unassigned. A common question with no answer now was recorded nowhere, and says so. */
+function Answer({ q, answer, sources, refs, screen, task, routedTo, routing, go }: Shown & { go: (s: string) => void }) {
   if (!sources.length)
     return (
       <article className="dock-answer dock-routed" aria-label="No sourced answer">
         <strong>{q}</strong>
-        <p>{ROUTED} jason never guesses.</p>
+        <p>
+          {task
+            ? `jason has no sourced answer for this. It is on the action register (${task}) ${routedTo ? `for ${routedTo}` : UNASSIGNED}.`
+            : "jason has no sourced answer for this now. Ask it above to put it on the action register."}
+          {" "}jason never guesses.
+        </p>
+        {task && routing && <p className="dock-sub muted">{routing}</p>}
       </article>
     );
   return (
@@ -45,13 +59,15 @@ function Answer({ q, answer, sources, refs, screen, go }: Shown & { go: (s: stri
 }
 
 /** Ask jason: common questions answered from the stores with citations, a free question that reads the library or
- * is routed to the manager, and a Translate tab where a person's draft sits beside the English record marked
+ * goes to the action register for the office that owns the duty the asker picks (unassigned when none), and a
+ * Translate tab where a person's draft sits beside the English record marked
  * "needs review" until a fluent reviewer approves it in Approvals. The English notice controls. */
 export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string }) {
   const r = useApi<AskData>("/api/dock?part=ask");
   const [tab, setTab] = useState("ask");
   const [name, setName] = useState("");
   const [q, setQ] = useState("");
+  const [duty, setDuty] = useState("");
   const [shown, setShown] = useState<Shown | null>(null);
   const [pick, setPick] = useState<string>("");
   const [tr, setTr] = useState({ englishKey: "", english: "", language: "", draft: "" });
@@ -67,16 +83,32 @@ export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string
     <RemoteView r={r}>
       {(d) => {
         const current = d.translations.find((t) => t.id === pick) ?? d.translations[0];
+        const about = (d.duties ?? []).find((x) => x.key === duty);
+        const goesTo = about ? `for ${about.owner}, who owns ${about.title}` : UNASSIGNED;
+        const shownOf = (a: Ask): Shown => ({ q: a.question, answer: a.answer, sources: a.sources, refs: a.sourceRefs, screen: a.screen, task: a.task, routedTo: a.routedTo, routing: a.routing });
         const askTab = (
           <div className="stack dock-panel">
             <div className="dock-add-row">
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask about the rules or the records" aria-label="Question" />
               <Confirm busy={!q.trim() || !by}
-                summary={<span>Ask jason "{q.trim()}" as {by}. It answers only from the library and its stores; with no sourced answer the question goes to the action register for the manager.</span>}
-                onConfirm={async () => { const a = await write<Ask>("new", { action: "ask", by, question: q.trim() }); if (a) { setShown({ q: a.question, answer: a.answer, sources: a.sources, refs: a.sourceRefs, screen: a.screen }); setQ(""); } }}>
+                summary={<span>Ask jason "{q.trim()}" as {by}. It answers only from the library and its stores; with no sourced answer the question goes to the action register {goesTo}.</span>}
+                onConfirm={async () => {
+                  const a = await write<Ask>("new", { action: "ask", by, question: q.trim(), ...(about ? { duty: about.key } : {}) });
+                  if (a) { setShown(shownOf(a)); setQ(""); }
+                }}>
                 Ask
               </Confirm>
             </div>
+            {(d.duties ?? []).length > 0 && (
+              <label className="dock-sub row">About
+                <select value={duty} onChange={(e) => setDuty(e.target.value)} aria-label="About">
+                  <option value="">No duty named: unassigned if jason has no answer</option>
+                  {(d.duties ?? []).map((x) => (
+                    <option key={x.key} value={x.key}>{x.title} · {x.owner}{x.adoption === "adopted" ? "" : ` (${x.adoption})`}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {!by && <span className="dock-sub">A name is needed to record who asked.</span>}
             <div className="stack-tight">
               <span className="dock-sub">Common questions</span>
@@ -97,7 +129,7 @@ export function AskPanel({ go, me }: { go: (screen: string) => void; me?: string
                 <ul className="dock-list">
                   {d.asks.map((a) => (
                     <li key={a.id} className="dock-sub">
-                      <button type="button" className="link" onClick={() => setShown({ q: a.question, answer: a.answer, sources: a.sources, refs: a.sourceRefs, screen: a.screen })}>{a.question}</button>
+                      <button type="button" className="link" onClick={() => setShown(shownOf(a))}>{a.question}</button>
                       {" "}· {a.at.slice(0, 10)} {a.routed && <Badge tone="warn">routed</Badge>}
                     </li>
                   ))}

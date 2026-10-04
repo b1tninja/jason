@@ -151,7 +151,7 @@ Found during this reconciliation. Each gets a lesson and a guard (AGENTS.md):
 | **The open-forum limit is 3 minutes in code** | `meeting_room.py` and `AgendaWizard` |
 | **General code imports the profile** | `board_digest` (`mcp/county.py`) imports `mystique` directly instead of `community()` |
 | **The audit log masks emails only** | Phones and mailing addresses are masked only on the way out, not when written |
-| **Dock counts and Ask routing** | Counts are everyone's, not the person's. A routed question becomes a task with no owner |
+| **Dock counts and Ask routing** (fixed: lesson `dock-counts-everyones`) | Counts are everyone's, not the person's. A routed question becomes a task with no owner. Now the counts are the signed-in person's (deadlines by the duty's owner in `Community.assignments`, tasks by owner, letters by `Officer.approves`), labeled everyone's with nobody signed in; a routed question goes to the office that owns the duty the asker names, else stays unassigned, with no due date until the board sets a lead time |
 
 ## The build, in order
 

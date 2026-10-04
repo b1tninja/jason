@@ -6,15 +6,23 @@ import { Caveats } from "./Caveats";
 import { useApi } from "../lib/useApi";
 import { screenLabel } from "./Dock";
 
-export interface DeadlineRow { id: string; title: string; date: string; days: number; authority: string; standing: string; note: string; screen: string }
+/** `owners` are the offices the profile's assignments name for the duty (empty: unassigned); an older server leaves them out. */
+export interface DeadlineOwner { role: string; owner: string; assignment: string; adoption: string }
+export interface DeadlineRow { id: string; title: string; date: string; days: number; authority: string; standing: string; note: string; screen: string; owner?: string; owners?: DeadlineOwner[] }
+
+function ownerWords(row: DeadlineRow): string {
+  if (!row.owners) return "";
+  if (!row.owners.length) return "unassigned";
+  return row.owners.map((o) => o.owner + (o.adoption === "adopted" ? "" : ` (${o.adoption})`)).join(", ");
+}
 export interface Deadlines {
   found?: boolean; note?: string; asOf: string; today?: string;
   groups: { key: string; label: string; rows: DeadlineRow[] }[];
   clock: ClockStage[]; counts: { overdue: number; soon: number; later: number }; caveats?: string[];
 }
 
-/** The calendar's deadlines as Overdue, Next 14 days, Later, each row a DueDate and a link to the screen that works
- * it, with the 45 days around today as a Clock under a disclosure. The dates are what jason computed; a payment is
+/** The calendar's deadlines as Overdue, Next 14 days, Later, each row a DueDate, the office that owns its duty (or
+ * "unassigned"), and a link to the screen that works it, with the 45 days around today as a Clock under a disclosure. The dates are what jason computed; a payment is
  * evidence a thing was done, not proof. */
 export function DeadlineList({ go }: { go: (screen: string) => void }) {
   const r = useApi<Deadlines>("/api/dock?part=deadlines");
@@ -37,7 +45,7 @@ export function DeadlineList({ go }: { go: (screen: string) => void }) {
                   <div key={row.id} className="dock-row">
                     <span className="dock-row-main">
                       <button type="button" className="link dock-link" onClick={() => go(row.screen)}>{row.title}</button>
-                      <span className="dock-sub">{[row.authority, screenLabel(row.screen)].filter(Boolean).join(" · ")}</span>
+                      <span className="dock-sub">{[row.authority, ownerWords(row), screenLabel(row.screen)].filter(Boolean).join(" · ")}</span>
                     </span>
                     <span className="dock-when"><DueDate iso={row.date} today={today} /></span>
                   </div>

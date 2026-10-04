@@ -38,10 +38,15 @@ export async function dockWrite<T>(key: string, body: { action: DockAction; by: 
   return out;
 }
 
-interface Counts { found?: boolean; deadlines?: number; tasks?: number }
+/** Whose the counts are: `mine` (the signed-in person, or whom an admin views as) or `everyone` (nobody signed in, or
+ * an admin who holds no office), with the server's sentence saying which. */
+export type CountScope = "mine" | "everyone";
+export interface DockCounts { deadlines: number; tasks: number; approvals?: number | null; scope?: CountScope; who?: string; note?: string }
+interface Counts { found?: boolean; deadlines?: number; tasks?: number; approvals?: number | null; scope?: CountScope; who?: string; note?: string }
 
-/** The red counts on the dock pills: overdue deadlines and overdue open tasks, from `/api/dock?part=counts`. */
-export function useDockCounts(): { deadlines: number; tasks: number } {
+/** The red counts on the dock pills from `/api/dock?part=counts`: the overdue deadlines whose duty this person's office
+ * owns, their overdue open tasks, and the letters waiting on their approval; everyone's, said so, with nobody signed in. */
+export function useDockCounts(): DockCounts {
   const r = useApi<Counts>("/api/dock?part=counts");
   useEffect(() => {
     const on = () => r.reload();
@@ -49,15 +54,17 @@ export function useDockCounts(): { deadlines: number; tasks: number } {
     return () => window.removeEventListener(DOCK_EVENT, on);
   }, [r.reload]);
   const d = r.status === "ready" ? r.data : undefined;
-  return { deadlines: d?.deadlines ?? 0, tasks: d?.tasks ?? 0 };
+  return { deadlines: d?.deadlines ?? 0, tasks: d?.tasks ?? 0, approvals: d?.approvals, scope: d?.scope, who: d?.who, note: d?.note };
 }
 
-/** The pill group in the console header: one pill per drawer, the open one filled, with red overdue counts. */
+/** The pill group in the console header: one pill per drawer, the open one filled, with red overdue counts, each
+ * labeled whose it is; "everyone's" shows beside the pills when nobody is signed in. */
 export function DockToolbar({ open, onToggle, counts, audience }: {
-  open: string | null; onToggle: (id: string) => void; counts: { deadlines: number; tasks: number }; audience: "board" | "owner";
+  open: string | null; onToggle: (id: string) => void; counts: DockCounts; audience: "board" | "owner";
 }) {
   const shown = DOCK_DRAWERS.filter((d) => audience !== "owner" || d.owner);
   if (!shown.length) return null;
+  const whose = counts.scope === "mine" ? (counts.who ? `, ${counts.who}'s` : ", yours") : counts.scope === "everyone" ? ", everyone's" : "";
   return (
     <div role="toolbar" aria-label="Dock" className="dock">
       {shown.map((d) => {
@@ -65,10 +72,11 @@ export function DockToolbar({ open, onToggle, counts, audience }: {
         return (
           <button key={d.id} type="button" aria-expanded={open === d.id} className={`dock-pill${open === d.id ? " on" : ""}`} onClick={() => onToggle(d.id)}>
             {d.label}
-            {n > 0 && <span className="dock-count" aria-label={`${n} overdue`}>{n}</span>}
+            {n > 0 && <span className="dock-count" aria-label={`${n} overdue${whose}`} title={counts.note || undefined}>{n}</span>}
           </button>
         );
       })}
+      {counts.scope === "everyone" && <span className="dock-scope" title={counts.note || undefined}>everyone's</span>}
     </div>
   );
 }

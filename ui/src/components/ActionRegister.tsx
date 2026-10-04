@@ -75,7 +75,7 @@ export function ActionRegister({ go, me }: { go: (screen: string) => void; me?: 
                       {!t.done && t.due && <span className="dock-when"><DueDate iso={t.due} today={today} /></span>}
                     </div>
                     <span className="dock-sub">
-                      {t.owner || "unassigned"} · {t.screen ? <button type="button" className="link" onClick={() => go(t.screen)}>{sourceLabel(t)}</button> : sourceLabel(t)}
+                      {t.owner || "unassigned, waiting for a person to take it"} ·{t.screen ? <button type="button" className="link" onClick={() => go(t.screen)}>{sourceLabel(t)}</button> : sourceLabel(t)}
                     </span>
                     {t.done && <span className="dock-sub dock-good">done by {t.doneBy} on {t.doneAt.slice(0, 10)}</span>}
                     {pending?.id === t.id && (

@@ -826,6 +826,16 @@ def signed_in() -> Viewer:
     return viewer
 
 
+def current_viewer() -> Viewer | None:
+    """For a read that narrows to the person when there is one: the request's ``Viewer`` (the office or person an admin
+    views as, when acting), or None outside a request, when sign-in is not set up, or when nobody is signed in. Never
+    a refusal: the caller says its answer is everyone's."""
+    if not has_request_context():
+        return None
+    viewer, refused = _viewer()
+    return None if refused is not None else viewer
+
+
 def allow(viewer: Viewer, level: Level) -> None:
     """For a route that already has its viewer: abort with the 403 unless they may open ``level`` (P3 only while the
     private view is open)."""
@@ -978,5 +988,5 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
 
 __all__ = ["HELD_BACK", "Level", "NOT_SET_UP", "PATH_RULES", "PRIVATE_DEFAULT", "PRIVATE_LOG", "PRIVATE_MINUTES",
            "PRIVATE_ROUTE", "PathRule", "ROSTER", "SEE_RULES", "SERVED_LOG", "SIGN_IN", "SeeRule", "Viewer", "allow",
-           "check", "clean_reason", "close_private", "install", "level_of_library", "level_of_path", "log_or_refuse", "may_see", "now",
+           "check", "clean_reason", "close_private", "current_viewer", "install", "level_of_library", "level_of_path", "log_or_refuse", "may_see", "now",
            "placed", "private_info", "private_open", "private_window", "refusal", "require", "served", "signed_in"]
