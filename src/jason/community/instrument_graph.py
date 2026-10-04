@@ -158,7 +158,7 @@ CAVEATS = (
 
 # Words that make a party plainly a business or a public body, whatever else it says.
 _STRONG = re.compile(
-    r"\b(?:LLC|L L C|INC|CORP|CORPORATION|COMPANY|CO|LP|L P|LLP|LTD|PTP|PRTN|PARTNERSHIP|ASSOCIATION|ASSN|ASSOC|HOA|POA|"
+    r"\b(?:LLC|L L C|INC|CORP|CORPORATION|COMPANY|CO|LP|L P|LLP|LTD|PTP|PARTNERSHIP|ASSOCIATION|ASSN|ASSOC|HOA|POA|"
     r"COUNTY|CITY|DISTRICT|AGENCY|AUTHORITY|STATE OF|UNITED STATES|DEPARTMENT|BANK|BK|NA|N A|FSB|TRUST COMPANY|"
     r"NATIONAL ASSOCIATION|CREDIT UNION)\b"
 )
@@ -170,6 +170,9 @@ _WEAK = re.compile(
     r"PARTNERS|PHASE|PHAS|MORTGAGE|SAVINGS|TITLE|ESCROW|FINANCIAL|LENDING|FUNDING|FUND|SOLAR|SERVICES|CAPITAL)\b"
 )
 _NUMBER = re.compile(r"^[0-9A-Za-z][0-9A-Za-z-]{3,}$")
+# A role an older index appends to a party: "PRTN" (a partner of the deed's partnership). A person carries it as
+# readily as a company, so it says nothing about which the party is.
+_ROLE_SUFFIX = re.compile(r"(?:\s+(?:PRTN|PTNR|PARTNER))+$")
 
 
 def _fold(name: str) -> str:
@@ -179,7 +182,7 @@ def _fold(name: str) -> str:
 def party_kind(name: str, *, association: Iterable[str] = (), developers: Iterable[Any] = ()) -> PartyKind:
     """The association (a name that starts with one of its spellings), a business or public body, or a private
     person. A family trust is a private person. When a name is unclear it is private: the safe side."""
-    folded = _fold(name)
+    folded = _ROLE_SUFFIX.sub("", _fold(name))
     if not folded:
         return PartyKind.PRIVATE
     for spelling in association:
@@ -738,11 +741,18 @@ def add_ownership_history(graph: InstrumentGraph, history: Any, ctx: Context, *,
         item = step.conveyance
         node = instrument_id(item.number, ctx.county)
         refs = set(getattr(item, "cross_references", ()) or ())
-        for prior in step.priors:
+        for rank, prior in enumerate(step.priors):
             target = graph.instrument(prior, county=ctx.county)
             cited = prior in refs
+            if cited:
+                lead, note = False, ""
+            elif rank:
+                # Not the step's own predecessor: another deed whose grantee shares a name with a grantor.
+                lead, note = True, "another deed whose grantee shares a name with a grantor, not this deed's prior"
+            else:
+                lead, note = bool(refs), ("placed by a name handoff, not a citation" if refs else "")
             graph.link(EdgeKind.PRIOR_OF, node, target, rule="chain.cites" if cited else "chain.prior", store=store,
-                       lead=False if cited else bool(refs), note="" if cited or not refs else "placed by a name handoff, not a citation")
+                       lead=lead, note=note)
         for number in step.cited:
             target = graph.instrument(number, county=ctx.county, loaded=False)
             graph.link(EdgeKind.CITES, node, target, rule="chain.cited", store=store, note="cited, not loaded")

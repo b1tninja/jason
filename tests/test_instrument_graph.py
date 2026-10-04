@@ -60,6 +60,9 @@ def test_party_kind_keeps_unclear_names_private():
     assert party_kind(BUILDER) is PartyKind.BUSINESS
     assert party_kind(BANK) is PartyKind.BUSINESS
     assert party_kind("EXAMPLE HOMES") is PartyKind.BUSINESS
+    # An older index's partner suffix is a role, not a business word: the name under it decides.
+    assert party_kind("SAMPLE PAT Q PRTN") is PartyKind.PRIVATE
+    assert party_kind("EXAMPLE DEVEL INC PRTN") is PartyKind.BUSINESS
     assert party_kind("EXAMPLE TRUST COMPANY") is PartyKind.BUSINESS
     assert party_kind(OWNER_A) is PartyKind.PRIVATE
     assert party_kind("ALPHA FAMILY TRUST") is PartyKind.PRIVATE
@@ -138,6 +141,23 @@ def test_a_chain_from_succession_draws_priors_firm_when_cited_and_leads_by_hando
     assert not priors[(_id("2010-0000500"), _id("2001-0000014"))].lead
     assert priors[(_id("2015-0000700"), _id("2010-0000500"))].provenance.rule == "chain.prior"
     assert len(_edges(graph, EdgeKind.CARRIES)) == 3
+
+
+def test_a_second_handoff_candidate_is_a_lead_and_the_strongest_is_the_prior():
+    # No citations (a Placer chain): the deed that vested both sellers is the prior; a later deed to one of them
+    # only shares a name, so it is a lead with its reason.
+    chain = succession((
+        Conveyance("2010-0000100", date(2010, 1, 1), (BUILDER,), (OWNER_A, OWNER_B), apn=APN),
+        Conveyance("2012-0000200", date(2012, 2, 1), ("NEIGHBOR SELLER",), (OWNER_A,), apn=APN),
+        Conveyance("2020-0000300", date(2020, 3, 1), (OWNER_A, OWNER_B), ("OWNER CHARLIE C",), apn=APN),
+    ), apn=APN, developers=CTX.developers)
+    graph = InstrumentGraph(county="Example")
+    add_ownership_history(graph, chain, CTX)
+    priors = {(e.source, e.target): e for e in graph.edges if e.kind is EdgeKind.PRIOR_OF}
+    best = priors[(_id("2020-0000300"), _id("2010-0000100"))]
+    side = priors[(_id("2020-0000300"), _id("2012-0000200"))]
+    assert not best.lead
+    assert side.lead and "shares a name" in side.provenance.note
 
 
 def _record(number, day, role, delivery=DeveloperDelivery.DECLARATION, phase=None, cites=(), superseded_by="", parties=(BUILDER,)):

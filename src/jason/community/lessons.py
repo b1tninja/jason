@@ -890,6 +890,25 @@ LESSONS: tuple[Lesson, ...] = (
            "suffix after a valid number still passes, so that case is open.",
            Status.OPEN, guards=("tests/test_notice_catalog.py (labels are outline numbers or titles)",),
            docs=("docs/notices.md",)),
+    Lesson("a-name-joined-chain-is-a-braid", date(2026, 10, 3), (Area.ONBOARDING,),
+           "A Placer half-plex's chain of title came back with 22 deeds, one estate deed with three candidate priors and "
+           "a 2009 deed with seven; drawn as a DAG it was a braid, and the 'line' through every prior took in the twin "
+           "unit and the neighbors. Partner suffixes (PRTN) in the 1980s index also made private persons read as "
+           "businesses, so a report would have printed them by name.",
+           "Placer's index cites no prior deed, so each step is joined by party name, and a seller who sold several "
+           "units, or a co-owner with other title, matches many earlier deeds. Every candidate stayed on the step "
+           "unranked, and the graph drew each name hand-off as firm. PRTN was read as a business word, though it is "
+           "a role a person carries as readily as a company.",
+           "succession ranks priors by hand-off strength (each earlier grantee counted once, then exact spellings, then "
+           "the newest): ChainStep.prior is the step's own predecessor and OwnershipHistory.line() the parcel's strand; "
+           "the instrument graph draws the other candidates as leads ('shares a name'). party_kind strips a partner "
+           "suffix before reading the name. `jason placer-history --processes` draws the strand thick and the side "
+           "strands dotted, owners by role unless --names.",
+           Status.FIXED,
+           guards=("tests/test_history.py (the strongest hand-off is the prior; two spellings of one seller count once)",
+                   "tests/test_instrument_graph.py (a second candidate is a lead; a PRTN person stays private)",
+                   "tests/test_process_report.py (owners by role, the strand by prior)"),
+           docs=("docs/placer.md", "docs/instrument-graph.md")),
 )
 
 

@@ -900,11 +900,20 @@ class Conveyance:
 
 @dataclass(frozen=True)
 class ChainStep:
-    """One instrument, the earlier deeds it connects to, and cited numbers not yet loaded."""
+    """One instrument, the earlier deeds it connects to, and cited numbers not yet loaded.
+
+    ``priors`` runs strongest first: a cited prior, else the earlier deed whose grantees hand off the most of this
+    deed's grantors, the newest of equals. ``prior`` is that first one, the step's own predecessor; the rest are
+    deeds that share a name with a grantor (a co-owner's other title, a neighbor the same seller sold to).
+    """
 
     conveyance: Conveyance
     priors: tuple[str, ...] = ()
     cited: tuple[str, ...] = ()
+
+    @property
+    def prior(self) -> str:
+        return self.priors[0] if self.priors else ""
 
 
 @dataclass(frozen=True)
@@ -947,6 +956,22 @@ class OwnershipHistory:
 
     def granted_to(self, name: str) -> tuple[Conveyance, ...]:
         return find_deeds(tuple(item.conveyance for item in self.steps), grantee=name)
+
+    def line(self, number: str = "") -> tuple[str, ...]:
+        """The parcel's own strand: from ``number`` (default the newest deed) back through each step's ``prior``.
+
+        A chain joined by party names is a braid when a seller sold several units; this is the one strand that
+        ends at the given deed. It stops at a deed with no earlier document here (a gap or the developer grant).
+        """
+        current = number or (self.steps[0].conveyance.number if self.steps else "")
+        found: list[str] = []
+        while current and current not in found:
+            item = self.step(current)
+            if item is None:
+                break
+            found.append(current)
+            current = item.prior
+        return tuple(found)
 
     def paths(self, number: str) -> tuple[tuple[str, ...], ...]:
         """Walk backward from ``number``. Two priors produce two paths.
@@ -1160,13 +1185,16 @@ def succession(
         if known:
             priors = known
         else:
-            priors = tuple(
-                other.number
+            # Strongest hand-off first (the most of this deed's grantors were that deed's grantees), newest of equals.
+            matched = [
+                other
                 for other in sorted(by_number.values(), key=_newest_first, reverse=True)
                 if other.number != item.number
                 and _recorded_before(other, item)
                 and _handed_off(other, item, developers)
-            )
+            ]
+            matched.sort(key=lambda other: _handoff_strength(other, item, developers), reverse=True)
+            priors = tuple(other.number for other in matched)
         steps.append(ChainStep(item, priors, missing))
     return OwnershipHistory(apn, tuple(steps), developers)
 
@@ -1199,6 +1227,18 @@ def _handed_off(
             if _same_owner(grantor, grantee, developers):
                 return True
     return False
+
+
+def _handoff_strength(earlier: Conveyance, later: Conveyance, developers: tuple[Developer, ...] = ()) -> tuple[int, int]:
+    """How much of ``later``'s grantor side ``earlier``'s grantees account for: the earlier grantees who reappear as
+    grantors (each counted once, so two spellings of one person on the later deed do not count twice), then how many
+    reappear in the same spelling.
+
+    ``sort`` is stable, so equal strengths keep their newest-first order.
+    """
+    grantees = sum(1 for grantee in earlier.grantees if any(_same_owner(grantor, grantee, developers) for grantor in later.grantors))
+    exact = len(set(earlier.grantees) & set(later.grantors))
+    return grantees, exact
 
 
 def _same_owner(left: str, right: str, developers: tuple[Developer, ...] = ()) -> bool:

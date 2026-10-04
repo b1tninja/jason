@@ -59,6 +59,7 @@ MODULES: tuple[str, ...] = (
     "sign_in",
     "key_documents",
     "instrument_graph",
+    "placer",
 )
 
 

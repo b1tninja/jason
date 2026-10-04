@@ -207,6 +207,32 @@ whole = subdivision_bundle(found, index)
 `placer_subdivision_report(developers, out_dir, after=…)` write the pages
 and the bundle JSON. Their rows name owners, so write them under `data/`.
 
+From the command line, `jason placer-history "123 Example Ln"` (an address,
+a twelve-digit APN, or a document number) writes `<apn>.md` and `<apn>.json`
+under `data/reports/placer/<apn>/`. `--processes` adds `processes.md`
+(`jason.tasks.process_report`): Mermaid DAGs of the chain of title, the
+tenures, the first deed and what was recorded beside it, the busiest loan
+lifecycles, REO resales with the trustee's deed they expect, probate, every
+loan's transitions as a state machine, and the other liens against the
+owners. `--render <apn>.json` redraws it from a saved bundle without calling
+the county. Owners are shown by role (Owner A, a prime for the same people
+re-titling) unless `--names`, which writes `processes-names.md`.
+
+### A chain joined by names is a braid
+
+Placer's index cites no prior deed, so a step is joined to every earlier
+deed whose grantee shares a name with its grantor. A seller who sold
+several units (a half-plex and its twin, a builder's lots) or a co-owner
+with other title matches many. `succession` ranks the candidates: the
+earlier deed whose grantees reappear as the most grantors (each counted
+once), then the most exact spellings, then the newest. `ChainStep.prior`
+is the first, the step's own predecessor; `OwnershipHistory.line()` follows
+it from the newest deed back, the parcel's own strand. The instrument graph
+draws the other candidates as leads ("shares a name"), and the process
+report draws the strand thick. In the older index a partner's role suffix
+(`PRTN`) follows the name; `party_kind` reads the name without it, so a
+person stays private.
+
 `descend(neighbors=True)` runs one range search for each run of nearby
 grant numbers. That is complete, but a builder's grants are rarely
 consecutive, so it costs about one search per lot. `neighbors=False` relies

@@ -64,7 +64,7 @@ The builders take plain inputs; a county's walk calls them with its own `Context
 | `add_readings` | `DocumentReading` rows from `read_folder` |
 | `add_located`, `add_location` | the document locator's `Located` rows, its saved JSON rows, or a `Location` |
 
-For Placer, a parcel's graph is `add_ownership_history(graph, walk.history, ctx)` then `add_process_steps(graph, walk.processes, ctx, apn=...)`, and the association's is `add_location` with the locator's result and `add_governing` once Placer's governing filings are classified. A county whose index lists no citations (Placer) gets its `prior_of` edges from the chain's party handoffs (`chain.prior`), not from cross-references. Two counties' graphs merge (`merge`), each edge checked again.
+For Placer, a parcel's graph is `add_ownership_history(graph, walk.history, ctx)` then `add_process_steps(graph, walk.processes, ctx, apn=...)`, and the association's is `add_location` with the locator's result and `add_governing` once Placer's governing filings are classified. A county whose index lists no citations (Placer) gets its `prior_of` edges from the chain's party handoffs (`chain.prior`), not from cross-references. A step joined by names can match several earlier deeds; the strongest hand-off (`ChainStep.prior`) is its edge, and each other candidate is a lead noted "shares a name" (a co-owner's other title, a twin unit the same seller sold). Two counties' graphs merge (`merge`), each edge checked again.
 
 ## Exports
 

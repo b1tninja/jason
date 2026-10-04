@@ -150,6 +150,37 @@ def test_several_earlier_deeds_stay_on_the_step():
     assert history.reached_developer
 
 
+def test_the_strongest_handoff_is_the_prior_and_the_line_follows_it():
+    # Two co-owners sell; one of them also bought a neighbor's unit alone, later. The deed that vested both of them
+    # is the prior; the neighbor's deed only shares a name, and the line skips the side strand.
+    history = succession(
+        (
+            Conveyance("2020-0000300", date(2020, 3, 1), ("SAMPLE PAT Q", "EXAMPLE JO"), ("CASEY SAMPLE",)),
+            Conveyance("2012-0000200", date(2012, 2, 1), ("NEIGHBOR SELLER",), ("SAMPLE PAT Q",)),
+            Conveyance("2010-0000100", date(2010, 1, 1), ("FIRST OWNER",), ("SAMPLE PAT Q", "EXAMPLE JO")),
+            Conveyance("2005-0000050", date(2005, 1, 1), ("EXAMPLE HOMES INC",), ("FIRST OWNER",)),
+        )
+    )
+    newest = history.steps[0]
+    assert newest.priors == ("2010-0000100", "2012-0000200")
+    assert newest.prior == "2010-0000100"
+    assert history.line() == ("2020-0000300", "2010-0000100", "2005-0000050")
+    assert history.line("2012-0000200") == ("2012-0000200",)
+
+
+def test_two_spellings_of_one_seller_do_not_outweigh_an_exact_handoff():
+    # The estate deed names the decedent twice (with and without a middle initial). A deed whose one grantee matches
+    # both spellings loosely counts once, so the deed that vested the decedent's exact name is the prior, though older.
+    history = succession(
+        (
+            Conveyance("2014-0000400", date(2014, 6, 1), ("SAMPLE PAT", "SAMPLE PAT Q"), ("EXAMPLE HEIR",)),
+            Conveyance("2009-0000300", date(2009, 7, 1), ("OTHER SELLER",), ("SAMPLE PAT QUINN",)),
+            Conveyance("1988-0000200", date(1988, 6, 1), ("PRIOR OWNER",), ("SAMPLE PAT",)),
+        )
+    )
+    assert history.steps[0].prior == "1988-0000200"
+
+
 def test_a_cited_number_that_was_not_loaded_stays_open():
     history = succession(
         (
