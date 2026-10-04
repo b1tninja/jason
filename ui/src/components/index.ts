@@ -11,7 +11,7 @@ export { ConfirmList, type ConfirmRow } from "./ConfirmList";
 export { DataTable, type Column } from "./DataTable";
 export { DecisionCard, OUTCOMES, type DecisionDraft } from "./DecisionCard";
 export { DueDate, daysUntil } from "./DueDate";
-export { Evidence, EvidencePanel, evidenceUrl, type EvidenceAnswer, type EvidenceSource, type EvidenceField, type EvidenceRefresh, type EvidenceKind } from "./Evidence";
+export { Evidence, EvidencePanel, evidenceUrl, refreshEvidence, type EvidenceRefreshable, type EvidenceRefreshed, type EvidenceRefreshRequest, type EvidenceAnswer, type EvidenceSource, type EvidenceField, type EvidenceRefresh, type EvidenceKind } from "./Evidence";
 export { Findings } from "./Findings";
 export { Kanban } from "./Kanban";
 export { Money } from "./Money";

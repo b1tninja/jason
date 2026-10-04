@@ -7,8 +7,10 @@ Google, or Keeper, and nothing reads data/: every store is in ``tmp_path``.
 
 from __future__ import annotations
 
+import copy
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,7 +20,9 @@ import webclient
 
 from jason.approvals import engine, evidence, model, store
 from jason.approvals.evidence import CAVEAT, DOT, EvidenceKind, mask_field, resolve, rule_for
-from test_approvals import (FIXTURES, _approve_partly, _validator, village)  # noqa: F401 - fixtures
+from jason.tasks import submission_cache
+from test_approvals import (FIXTURES, FORMS, _approve_partly, _validator, village)  # noqa: F401 - fixtures
+from test_web_approvals import web  # noqa: F401 - fixture
 
 MASK = DOT * 4
 
@@ -302,3 +306,250 @@ def test_the_mcp_tool_is_read_only_in_the_governance_set(village):
     assert len(tools_for("board")) == 38
     out = governance.evidence("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
     assert out["found"] and out == resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+
+
+# --- the last full read of a request (payhoa-files/requests/N/submission.json) --------------------------------------------
+
+QUESTIONS = {"7001": "delivery", "7002": "occupancy", "7003": "second-mailing-address"}
+
+
+def _record(data_dir: Path) -> None:
+    """The recorded PayHOA form with its question ids, as ``jason forms --payhoa`` writes it."""
+    (data_dir / "payhoa").mkdir(exist_ok=True)
+    (data_dir / "payhoa" / "forms.json").write_text(json.dumps({"forms": [{
+        "key": "owner-info", "formId": 900, "title": "Owner information", "questions": QUESTIONS, "options": {}}]}),
+        encoding="utf-8")
+
+
+def _raw(sid: int, unit_id: int, unit: str, status: str = "pending", **answers: str) -> dict:
+    """A raw ``get_form_submission`` answer: answers by question id, each with PayHOA's label."""
+    ids = {v: k for k, v in QUESTIONS.items()}
+    labels = {"delivery": "Delivery", "occupancy": "Occupancy", "second-mailing-address": "Second mailing address"}
+    return {"submission": {"id": sid, "formId": 900, "status": status, "unitId": unit_id, "membershipId": 11,
+                           "createdAt": "2026-10-05T00:00:00Z", "unit": {"id": unit_id, "title": unit},
+                           "answers": [{"questionId": int(ids[k]), "answer": v, "question": {"label": labels[k]}}
+                                       for k, v in answers.items()]}}
+
+
+BEN = dict(delivery="By email", occupancy="Owner-occupied")                       # 502's answers, as the plan read them
+CY = dict(BEN, **{"second-mailing-address": "PO Box 12, Example City"})              # 503's
+
+
+def _keep(data_dir: Path, sid: int, raw: dict, *, read_at: str = "", via: str = "jason sync-request-files",
+          status: str = "") -> Path:
+    return submission_cache.write(submission_cache.files_dir(data_dir), sid, raw, via=via, read_at=read_at,
+                                  status=status)
+
+
+LATER = "2999-01-01T00:00:00+00:00"
+
+
+class _FormsClient:
+    """A fake PayHOA that reads one form's submissions: it lists them and answers each in full, and has no writes."""
+
+    def __init__(self, raws: dict[int, dict]) -> None:
+        self.raws, self.reads = raws, []
+
+    def list_form_submissions(self, form_id):
+        self.reads.append(("list", form_id))
+        return [{"id": sid, "status": raw["submission"]["status"], "formId": form_id} for sid, raw in self.raws.items()]
+
+    def get_form_submission(self, org, sid):
+        self.reads.append(("get", sid))
+        return copy.deepcopy(self.raws[sid])
+
+
+def test_a_plans_live_read_keeps_each_submission_in_full(tmp_path, monkeypatch):
+    from jason.tasks.owner_info_apply import gather_answers
+    from jason.tasks.payhoa_forms import fetch_submissions, record_for
+
+    _record(tmp_path)
+    monkeypatch.setattr("jason.config.test_memberships", lambda *a, **k: set())
+    raws = {502: _raw(502, 2, "102 EXAMPLE WAY", **BEN), 503: _raw(503, 3, "103 EXAMPLE WAY", status="complete", **CY)}
+    client = _FormsClient(raws)
+    answers, _ = gather_answers(tmp_path, FORMS, client, 1, via="jason owner-info --apply")
+    assert {a.source: a.answers for a in answers}["payhoa:502"] == {"delivery": ["By email"],
+                                                                    "occupancy": ["Owner-occupied"]}
+    assert client.reads == [("list", 900), ("get", 502), ("get", 503)]              # one read each, nothing written
+    kept = json.loads((tmp_path / "payhoa-files" / "requests" / "503" / "submission.json").read_text(encoding="utf-8"))
+    assert kept == {**kept, "via": "jason owner-info --apply", "formId": 900, "formName": "Owner information",
+                    "status": "complete", "submission": raws[503]}
+    assert kept["readAt"].endswith("+00:00")
+    assert not list((tmp_path / "payhoa-files" / "requests" / "503").glob("*.tmp"))     # written whole, then replaced
+    # without keep, fetch_submissions answers as it always did
+    same = fetch_submissions(_FormsClient(raws), 1, record_for(tmp_path, "owner-info"), FORMS.OWNER_INFO)
+    assert [a.answers for a in same] == [a.answers for a in answers]
+
+
+def test_the_last_read_opens_by_question_title_masked(village):
+    _record(village.data_dir)
+    _keep(village.data_dir, 503, _raw(503, 3, "103 EXAMPLE WAY", **CY), read_at="2026-10-06T00:00:00+00:00")
+    out = resolve("payhoa:submission:503", data_dir=village.data_dir)
+    _validator("evidence.schema.json").validate(out)
+    last = _source(out, "Last read from PayHOA")
+    assert out["found"] and last["readAt"] == "2026-10-06T00:00:00+00:00" and len(last["digest"]) == 64
+    assert _field(last, "Status")["value"] == "pending" and _field(last, "Form")["value"] == "Owner information"
+    assert _field(last, "Unit")["value"] == "103 EXAMPLE WAY" and _field(last, "Delivery")["value"] == "By email"
+    assert _field(last, "Second mailing address") == {"name": "Second mailing address", "value": MASK, "masked": True}
+    assert _field(last, "Occupancy") == {"name": "Occupancy", "value": MASK, "masked": True}    # the occupancy rule
+    assert "PO Box" not in json.dumps(out) and "Owner-occupied" not in json.dumps(out)
+    assert last["note"] == "Read by jason sync-request-files."
+    assert out["refreshable"] == {"system": "PayHOA", "what": "Read this request again from PayHOA"}
+    assert [r["command"] for r in out["refresh"]] == ["jason sync-request-files --requests 503",
+                                                      "jason sync-catalog --only requests"]
+    assert out["refresh"][0]["what"] == "re-read this request in full: its answers, comments, notes, and attachments"
+    assert "jason sync-request-files --requests 503" in out["note"]                 # the request files, still missing
+
+
+def test_a_form_the_profile_does_not_define_shows_payhoas_labels_masked_by_name(village):
+    raw = {"submission": {"id": 610, "formId": 950, "status": "pending", "answers": [
+        {"questionId": 1, "answer": "<p>The gutter at 102 EXAMPLE WAY leaks</p>", "question": {"label": "Message"}},
+        {"questionId": 2, "answer": "ben@example.com", "question": {"label": "Email"}},
+        {"questionId": 3, "answer": '<i class="fa fa-check-square-o"></i>', "label": "Photos attached"}]}}
+    _keep(village.data_dir, 610, raw)
+    last = _source(resolve("payhoa:submission:610", data_dir=village.data_dir), "Last read from PayHOA")
+    assert _field(last, "Message")["value"] == "The gutter at 102 EXAMPLE WAY leaks"
+    assert _field(last, "Email") == {"name": "Email", "value": f"b{MASK}@example.com", "masked": True}
+    assert _field(last, "Photos attached")["value"] == "yes" and last["digest"] == ""
+    assert "not compared" in last["note"]
+
+
+def test_changed_between_the_plans_read_and_a_later_last_read(village):
+    _record(village.data_dir)
+    a = _plan(village)
+    _keep(village.data_dir, 502, _raw(502, 2, "102 EXAMPLE WAY", **BEN), read_at=LATER)
+    same = resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+    _validator("evidence.schema.json").validate(same)
+    assert same["changed"] is False and "same status and the answers" in same["changedNote"]
+    snap = _source(same, "This plan's read")
+    assert _source(same, "Last read from PayHOA")["digest"] == snap["digest"]       # the same read, the same digest
+    _keep(village.data_dir, 502, _raw(502, 2, "102 EXAMPLE WAY", status="complete", **BEN), read_at=LATER)
+    moved = resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+    assert moved["changed"] is True and "status complete (the plan read pending)" in moved["changedNote"]
+    assert "the answers" not in moved["changedNote"]
+    _keep(village.data_dir, 502, _raw(502, 2, "102 EXAMPLE WAY", delivery="By mail", occupancy="Owner-occupied"),
+          read_at=LATER)
+    answered = resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+    assert answered["changed"] is True and answered["changedNote"].endswith("differs from the plan's read: the answers.")
+    _keep(village.data_dir, 502, _raw(502, 2, "102 EXAMPLE WAY", status="complete", **BEN),
+          read_at="2000-01-01T00:00:00+00:00")
+    before = resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+    assert before["changed"] is None and "before the plan read" in before["changedNote"]
+    # a catalog synced later still speaks: a later status there is a change even when the last read is older
+    _catalog(village.data_dir, [(502, "complete")], synced_at=LATER)
+    both = resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+    assert both["changed"] is True and "The catalog, synced later" in both["changedNote"]
+
+
+def test_a_last_read_that_cannot_be_opened_is_a_miss_naming_its_command(village):
+    file = submission_cache.path_for(submission_cache.files_dir(village.data_dir), 502)
+    file.parent.mkdir(parents=True)
+    file.write_text("{not json", encoding="utf-8")
+    out = resolve("payhoa:submission:502", data_dir=village.data_dir)
+    _validator("evidence.schema.json").validate(out)
+    assert not out["found"] and _source(out, "Last read from PayHOA") is None
+    assert "could not be opened" in out["note"] and "jason sync-request-files --requests 502" in out["note"]
+    assert _source(out, "Request files") is None                                     # a folder with no comments saved
+
+
+# --- refresh one record ----------------------------------------------------------------------------------------------------
+
+def _factory(client, org=1, fail: BaseException | None = None):
+    from contextlib import contextmanager
+
+    calls = []
+
+    @contextmanager
+    def factory():
+        calls.append("live")
+        if fail is not None:
+            raise fail
+        yield SimpleNamespace(client=client, org_id=org)
+    factory.calls = calls
+    return factory
+
+
+def _log(data_dir: Path) -> list[dict]:
+    file = data_dir / "evidence" / "refreshes.jsonl"
+    return [json.loads(line) for line in file.read_text(encoding="utf-8").splitlines()] if file.is_file() else []
+
+
+def test_a_refresh_reads_one_request_keeps_it_and_logs_who(village):
+    _record(village.data_dir)
+    a = _plan(village)
+    client = _FormsClient({502: _raw(502, 2, "102 EXAMPLE WAY", status="complete", **BEN)})
+    out = evidence.refresh("payhoa:submission:502", by="A Manager", approval_id=a.id, data_dir=village.data_dir,
+                           client_factory=_factory(client))
+    _validator("evidence.schema.json").validate(out)
+    assert client.reads == [("get", 502)]                                            # one read, nothing written
+    kept = submission_cache.read(submission_cache.files_dir(village.data_dir), 502)
+    assert kept["via"] == "console refresh by A Manager" and kept["status"] == "complete" and kept["formId"] == 900
+    assert kept["formName"] == "Owner information"                                   # the recorded form's title
+    last = _source(out, "Last read from PayHOA")
+    assert last["readAt"] == kept["readAt"] == out["refreshed"]["at"]
+    assert out["refreshed"] == {"at": kept["readAt"], "by": "A Manager", "system": "PayHOA"}
+    assert out["changed"] is True and "status complete" in out["changedNote"]
+    assert _log(village.data_dir) == [{"at": kept["readAt"], "by": "A Manager", "address": "payhoa:submission:502",
+                                       "system": "PayHOA", "ok": True, "error": ""}]
+    assert "Owner-occupied" not in (village.data_dir / "evidence" / "refreshes.jsonl").read_text(encoding="utf-8")
+
+
+def test_a_refresh_without_keeper_says_to_sign_in_and_is_logged(village):
+    from jason.secrets import KeeperAuthRequired
+
+    with pytest.raises(evidence.RefreshFailed) as failed:
+        evidence.refresh("payhoa:submission:502", by="A Manager", data_dir=village.data_dir,
+                         client_factory=_factory(None, fail=KeeperAuthRequired("device approval needed")))
+    assert str(failed.value) == evidence.KEEPER_SIGN_IN and "jason login" in str(failed.value)
+    assert [(e["ok"], e["error"]) for e in _log(village.data_dir)] == [(False, evidence.KEEPER_SIGN_IN)]
+    assert submission_cache.read(submission_cache.files_dir(village.data_dir), 502) is None
+
+
+@pytest.mark.parametrize("address, by, why", [
+    ("CIV 4041", "A Manager", "no live refresher"),
+    ("board-item:example", "A Manager", "no live refresher"),
+    ("nothing:here", "A Manager", "no live refresher"),
+    ("payhoa:submission:502", "  ", "names the person"),
+])
+def test_a_refresh_is_refused_for_a_kind_without_one_or_without_a_person(village, address, by, why):
+    factory = _factory(_FormsClient({}))
+    with pytest.raises(ValueError, match=why):
+        evidence.refresh(address, by=by, data_dir=village.data_dir, client_factory=factory)
+    assert factory.calls == [] and _log(village.data_dir) == []                      # refused before any sign-in
+    if not address.startswith("payhoa:"):
+        assert resolve(address, data_dir=village.data_dir)["refreshable"] is None
+
+
+def test_the_refresh_route_is_a_guarded_write_that_reads_payhoa_once(web, monkeypatch):
+    from jason.secrets import KeeperAuthRequired
+    from jason.web.app import create_app
+    from test_web_approvals import _dist
+
+    _record(web.data_dir)
+    a = _plan(web)
+    monkeypatch.setattr(web.client, "get_form_submission",
+                        lambda org, sid: _raw(sid, 2, "102 EXAMPLE WAY", status="complete", **BEN))
+    url, body = "/api/evidence/refresh", {"address": "payhoa:submission:502", "approval": a.id, "by": "A Manager"}
+    assert web.app.test_client().post(url, json=body).status_code == 403              # no Origin, no token
+    assert web.c.post(url, json=body, headers={"X-Jason-Token": ""}).status_code == 403   # the header, not the cookie
+    assert web.c.get(url).status_code in (404, 405) and web.factory.calls == []
+    r = web.c.post(url, json=body)
+    assert r.status_code == 200, r.json
+    _validator("evidence.schema.json").validate(r.json)
+    assert r.json["refreshed"]["by"] == "A Manager" and _source(r.json, "Last read from PayHOA")
+    assert r.json["changed"] is True and web.factory.calls == ["evidence-refresh"] and web.client.writes == []
+    assert "Owner-occupied" not in json.dumps(r.json)                                  # masked on the way out
+    citation = web.c.post(url, json={"address": "CIV 4041", "by": "A Manager"})
+    assert citation.status_code == 400 and "no live refresher" in citation.json["error"]
+    assert web.c.post(url, json={**body, "by": ""}).status_code == 400
+
+    @contextmanager
+    def no_keeper(kind):
+        raise KeeperAuthRequired("device approval needed")
+        yield  # pragma: no cover
+
+    locked_out = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=no_keeper))
+    r = locked_out.post(url, json=body)
+    assert r.status_code == 409 and "run `jason login` in a terminal" in r.json["error"]
+    off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None))
+    assert off.post(url, json=body).status_code == 405

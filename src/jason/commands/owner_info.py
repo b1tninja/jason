@@ -36,7 +36,7 @@ def _answers(data_dir: Path, forms: Any, client: Any = None, org_id: int | None 
     """Every answer jason holds, from each channel, and each source's title (``owner_info_apply.gather_answers``)."""
     from jason.tasks.owner_info_apply import gather_answers
 
-    return gather_answers(data_dir, forms, client, org_id)
+    return gather_answers(data_dir, forms, client, org_id, via="jason owner-info")
 
 
 def _rows(units: list[dict[str, Any]], people: list[dict[str, Any]], answers: list[Any], data_dir: Path,
@@ -116,7 +116,8 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
     with agent_factory(args) as agent:
         client, org = agent.payhoa(), agent.org_id
         planned = plan_apply(client, org, community=community, forms=forms, cycle=cycle, data_dir=data_dir,
-                             today=today, payhoa=args.payhoa, env=getattr(args, "env", None))
+                             today=today, payhoa=args.payhoa, env=getattr(args, "env", None),
+                             via="jason owner-info --apply")
         writes, rows = planned.writes, planned.rows
         for h in planned.held:
             print(f"  held for the board ({h.rule}): {h.write.kind} {h.write.label} {h.write.value}")

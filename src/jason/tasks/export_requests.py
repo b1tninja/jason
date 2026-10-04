@@ -23,7 +23,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 from jason.catalog import PayhoaCatalog, unit_label
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
-_SKIP_NAMES = frozenset({"comments.json", "notes.json"})
+_SKIP_NAMES = frozenset({"comments.json", "notes.json", "submission.json"})   # saved beside the attachments
 _IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp"})
 _DATA_URI = re.compile(
     r"data:image/(?:png|jpe?g|gif|webp);base64,([A-Za-z0-9+/=\r\n]+)",

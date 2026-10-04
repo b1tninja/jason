@@ -54,8 +54,8 @@ def _profile() -> tuple[Any, Any]:
 
 def plan(live: Live, scope: dict[str, Any]) -> Planned:
     """Read PayHOA once and plan, writing nothing. What it read of each request its evidence names is kept as the
-    plan's snapshot (``Planned.snapshots``), stamped with when it was read."""
-    from jason.community.tags import TagPurpose
+    plan's snapshot (``Planned.snapshots``), stamped with when it was read; each submission read is also kept as its
+    request's latest full read (``submission_cache``, ``via`` VIA)."""
     from jason.tasks import owner_info_apply
 
     community, forms = _profile()
@@ -68,16 +68,43 @@ def plan(live: Live, scope: dict[str, Any]) -> Planned:
     read_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     p = owner_info_apply.plan_apply(live.client, live.org_id, community=community, forms=forms,
                                     cycle=forms.OWNER_INFO_CYCLE, data_dir=Path(data_dir), today=today, payhoa=True,
-                                    env=live.env)
-    # an owner's reported occupancy is P2 (docs/console/security-and-privacy.md), as contact details are
-    private = frozenset(t.answer for t in community.payhoa_tags() if t.purpose is TagPurpose.OCCUPANCY and t.answer)
+                                    env=live.env, via=VIA)
     return build(p, cycle=forms.OWNER_INFO_CYCLE, today=today, read_at=read_at,
-                 form=getattr(forms, "OWNER_INFO", None), private=private)
+                 form=getattr(forms, "OWNER_INFO", None), private=private_answers(community))
+
+
+VIA = f"jason approvals ({KEY} plan)"           # what a plan's read is kept as having been read by (submission_cache)
 
 
 # --- the plan's snapshot of what it read --------------------------------------------------------------------------------
 
 _CONTACT_READS = ("email", "phone", "address", "contact")          # ReadAs values that hold contact details
+
+
+def private_answers(community: Any) -> frozenset[str]:
+    """The answers other than contact details that are P2: an owner's reported occupancy
+    (docs/console/security-and-privacy.md), the fields the profile's occupancy tags answer."""
+    from jason.community.tags import TagPurpose
+
+    return frozenset(t.answer for t in community.payhoa_tags() if t.purpose is TagPurpose.OCCUPANCY and t.answer)
+
+
+def is_p2(name: str, form: Any = None, private: frozenset[str] = frozenset()) -> bool:
+    """The P2 rule for one answer by its field (``delivery``, ``second-mailing-address.same``): an owner's contact
+    detail (the form's question reads as an email, a phone, an address, or a contact) or another P2 answer
+    (``private``). The plan's snapshot and the evidence resolver's last read both apply it."""
+    base = str(name).split(".", 1)[0]
+    q = next((q for q in getattr(form, "questions", ()) or () if q.field == base), None)
+    reads = getattr(getattr(q, "reads_as", None), "value", "")
+    return reads in _CONTACT_READS or base in private
+
+
+def answer_fields(answers: dict[str, Any], form: Any = None, private: frozenset[str] = frozenset()
+                  ) -> list[dict[str, Any]]:
+    """Answers by field as the snapshot keeps them: ``{name, title, value, p2}``, the title the form's question's."""
+    questions = {q.field: q for q in getattr(form, "questions", ()) or ()}
+    return [{"name": str(name), "title": getattr(questions.get(str(name).split(".", 1)[0]), "title", "") or "",
+             "value": _text(value), "p2": is_p2(name, form, private)} for name, value in answers.items()]
 
 
 def _text(value: Any) -> str:
@@ -106,13 +133,7 @@ def snapshot(sid: int, p: Any, *, read_at: str = "", form: Any = None, private: 
     c = next((x for x in p.contexts if int(x.submission) == int(sid)), None)
     answers = dict(c.answers) if c is not None else {}
     status = str(p.statuses.get(sid) or "")
-    questions = {q.field: q for q in getattr(form, "questions", ()) or ()}
-    fields = []
-    for name, value in answers.items():
-        q = questions.get(str(name).split(".", 1)[0])
-        reads = getattr(getattr(q, "reads_as", None), "value", "")
-        fields.append({"name": str(name), "title": getattr(q, "title", "") or "", "value": _text(value),
-                       "p2": reads in _CONTACT_READS or str(name).split(".", 1)[0] in private})
+    fields = answer_fields(answers, form, private)
     return {"label": f"PayHOA request {sid}", "kind": "payhoa_submission", "readAt": read_at,
             "digest": request_digest(status, answers), "status": status, "unit": getattr(c, "unit", "") or "",
             "unitId": int(getattr(c, "unit_id", 0) or 0), "fields": fields}
@@ -351,4 +372,5 @@ def apply(live: Live, planned: Planned, items: list[PlanItem], recorder: Any) ->
         recorder.done(i.id, Result.APPLIED, "marked complete; the owner is thanked")
 
 
-__all__ = ["Context", "KEY", "apply", "build", "plan", "request_digest", "snapshot"]
+__all__ = ["Context", "KEY", "VIA", "answer_fields", "apply", "build", "is_p2", "plan", "private_answers",
+           "request_digest", "snapshot"]

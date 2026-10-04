@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { ApiError, getJson } from "../lib/api";
+import { ApiError, getJson, postJson } from "../lib/api";
 import { when, type EvidenceRef } from "../lib/approvals";
+import { useMe } from "../lib/session";
 import { Caveats } from "./Caveats";
 import { daysUntil } from "./DueDate";
 import { Recitation } from "./Recitation";
@@ -20,13 +21,44 @@ export interface EvidenceSource {
  * runs it. */
 export interface EvidenceRefresh { command: string; live: boolean; what: string; system?: string }
 
+/** Whether the page may read this address again from an outside system (`system`, "PayHOA"), and what that read does. */
+export interface EvidenceRefreshable { system: string; what: string }
+
+/** Who read it again from the page, from which system, and when (`POST /api/evidence/refresh`'s answer). */
+export interface EvidenceRefreshed { at: string; by: string; system: string }
+
 /** `GET /api/evidence?address=…&approval=…`: what jason stored for one evidence address, and whether it changed since the
- * plan was read (`null` when jason cannot tell). */
+ * plan was read (`null` when jason cannot tell). `refreshable` is set when a person may read it again from the page. */
 export interface EvidenceAnswer {
   found: boolean; address: string; label: string; kind: EvidenceKind;
   sources: EvidenceSource[]; changed: boolean | null; changedNote: string; link: string;
   refresh: EvidenceRefresh[]; caveats: string[]; note: string;
+  refreshable?: EvidenceRefreshable | null; refreshed?: EvidenceRefreshed | null;
 }
+
+/** The body of a read again: the address, the approval whose plan it was read for, and the person reading. */
+export interface EvidenceRefreshRequest { address: string; approval?: string; by: string }
+
+/** `POST /api/evidence/refresh`: one live read, as a person's act, through the write guard. The answer is the fresh
+ * `EvidenceAnswer` with `refreshed`; a 409 or 403 carries the server's `error`, said as it is. */
+export function refreshEvidence(req: EvidenceRefreshRequest): Promise<EvidenceAnswer> {
+  return postJson<EvidenceAnswer>("/api/evidence/refresh", req);
+}
+
+/** Two arrows in a circle, at the text's color. */
+function RereadIcon() {
+  return (
+    <svg className="evidence-reread-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"
+      fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13.5 6.5A5.5 5.5 0 0 0 3.2 4.6" />
+      <path d="M3 2v3h3" />
+      <path d="M2.5 9.5a5.5 5.5 0 0 0 10.3 1.9" />
+      <path d="M13 14v-3h-3" />
+    </svg>
+  );
+}
+
+const sentence = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 
 /** The loader's URL: the address, and the approval whose plan it was read for (when there is one). */
 export function evidenceUrl(address: string, approval?: string): string {
@@ -116,15 +148,70 @@ function Source({ s, today }: { s: EvidenceSource; today?: Date }) {
 
 /** What jason stored for one evidence address, fetched when it opens (`GET /api/evidence`), or `data` rendered as given
  * (previews, tests). The stored words are recited, then cited; nothing is paraphrased. A miss shows the note and the
- * command that fills it, never an empty box. Commands are shown to copy; the page never runs one. */
-export function EvidencePanel({ address, label, approval, data, today, level = 4, id, onClose }: {
+ * command that fills it, never an empty box. Commands are shown to copy; the page never runs one.
+ *
+ * When the answer is `refreshable`, a button beside Close reads it again from the outside system now
+ * (`POST /api/evidence/refresh`), as a named person's act: one click, one read, never on open, a timer, or focus. It
+ * writes nothing outside jason, so there is no Confirm. `by` is that person (omitted: the session's signed-in, acting, or
+ * picked name). A `data` panel reads again only through `onRefresh`; `refreshing` forces the reading state (previews). */
+export function EvidencePanel({ address, label, approval, data, today, level = 4, id, onClose, by, onRefresh, refreshing = false }: {
   address: string; label?: string; approval?: string; data?: EvidenceAnswer | null; today?: Date;
   level?: 3 | 4 | 5 | 6; id?: string; onClose?: () => void;
+  by?: string; onRefresh?: (req: EvidenceRefreshRequest) => Promise<EvidenceAnswer>; refreshing?: boolean;
 }) {
   const [answer, setAnswer] = useState<EvidenceAnswer | null>(data ?? null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!data);
+  const [rereading, setRereading] = useState(false);
+  const [reread, setReread] = useState<{ tone: "status" | "error"; text: string } | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
+  const inFlight = useRef(false);
+  const alive = useRef(true);
+  const rereadRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
+  const whyId = useId();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  const refreshable = answer?.refreshable ?? null;
+  const refresher = onRefresh ?? (data ? null : refreshEvidence);
+  const sessionMe = useMe(by === undefined && !!refreshable && !!refresher);
+  const who = (by ?? sessionMe).trim();
+  const system = refreshable?.system || "the outside system";
+  const busy = rereading || refreshing;
+  const why = !refresher
+    ? "This copy is shown as given; the page does not read it again."
+    : !who ? "Sign in or pick your name to read it again." : "";
+
+  const readAgain = async () => {
+    if (busy || inFlight.current || !refreshable) return;
+    if (why || !refresher) { setShowWhy(true); return; }
+    inFlight.current = true;
+    setRereading(true);
+    setReread({ tone: "status", text: `Reading from ${system}…` });
+    try {
+      const fresh = await refresher({ address, ...(approval ? { approval } : {}), by: who });
+      if (!alive.current) return;
+      setAnswer(fresh);
+      setError("");
+      const r = fresh.refreshed;
+      setReread({ tone: "status", text: `Read from ${r?.system || system} just now by ${r?.by || who}.` });
+    } catch (e: unknown) {
+      if (!alive.current) return;
+      const status = e instanceof ApiError ? e.status : undefined;
+      const message = e instanceof Error ? e.message : String(e);
+      const text = status === 400 ? "This evidence can't be read again from the page."
+        : status === 409 || status === 403 || status === 405 ? message
+        : `jason-web did not answer: ${message}`;
+      setReread({ tone: "error", text });
+    } finally {
+      inFlight.current = false;
+      if (alive.current) {
+        setRereading(false);
+        // Focus stays on the button; if a re-render lost it to the page, put it back.
+        if (typeof document !== "undefined" && (!document.activeElement || document.activeElement === document.body)) rereadRef.current?.focus();
+      }
+    }
+  };
 
   useEffect(() => {
     if (data) {
@@ -159,12 +246,29 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
     <div className="evidence-panel" id={id} role="group" aria-labelledby={titleId}>
       <div className="evidence-panel-head">
         <Heading level={level} id={titleId}>{title}</Heading>
-        {onClose && <button type="button" className="link" onClick={onClose}>Close</button>}
+        {(refreshable || onClose) && (
+          <span className="evidence-panel-actions">
+            {refreshable && (
+              <button type="button" ref={rereadRef} className="evidence-reread"
+                aria-label={`Read again from ${system}`}
+                title={`${sentence(refreshable.what)}${refreshable.what ? " " : ""}Reads ${system} now, under your name; writes nothing to ${system}.`}
+                aria-disabled={busy || !!why ? true : undefined} aria-busy={busy ? true : undefined}
+                aria-describedby={why ? whyId : undefined}
+                onClick={readAgain} onFocus={() => why && setShowWhy(true)} onBlur={() => setShowWhy(false)}>
+                <RereadIcon />
+              </button>
+            )}
+            {onClose && <button type="button" className="link" onClick={onClose}>Close</button>}
+          </span>
+        )}
       </div>
+      {refreshable && why && <p id={whyId} className={showWhy ? "muted evidence-reread-why" : "visually-hidden"}>{why}</p>}
       <p className="muted evidence-address">Address <code>{a?.address || address}</code></p>
       <div aria-live="polite" className="evidence-panel-status">
         {loading && <p className="muted">Reading what jason stored for this address.</p>}
         {error && <p className="notice notice-error">jason-web did not answer: {error}</p>}
+        {(refreshing && !rereading) ? <p className="muted">{`Reading from ${system}…`}</p>
+          : reread && <p className={reread.tone === "error" ? "notice notice-error" : "muted"}>{reread.text}</p>}
       </div>
       {a && (
         <>
@@ -204,9 +308,10 @@ const openable = (e: string | EvidenceRef): e is EvidenceRef & { address: string
 
 /** Records, commands, paths, and links a row cites. A string, or a ref with no address, is a plain chip. A ref with an
  * address is a chip that opens what jason stored for it below the chips (one at a time; Escape closes it and returns to
- * the chip). A command is shown as code so it can be copied, never run from here. */
-export function Evidence({ items, label = "Evidence", approval, level }: {
-  items?: readonly (string | EvidenceRef)[] | null; label?: string; approval?: string; level?: 3 | 4 | 5 | 6;
+ * the chip). A command is shown as code so it can be copied, never run from here. `by` is who reads a panel again
+ * (omitted: the session's name). */
+export function Evidence({ items, label = "Evidence", approval, level, by }: {
+  items?: readonly (string | EvidenceRef)[] | null; label?: string; approval?: string; level?: 3 | 4 | 5 | 6; by?: string;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   const chips = useRef<(HTMLButtonElement | null)[]>([]);
@@ -238,7 +343,7 @@ export function Evidence({ items, label = "Evidence", approval, level }: {
       )}
       {shown && openable(shown) && (
         <EvidencePanel key={`${open}:${shown.address}`} id={panelId} address={shown.address} label={shown.label}
-          approval={approval} level={level} onClose={close} />
+          approval={approval} level={level} by={by} onClose={close} />
       )}
     </div>
   );

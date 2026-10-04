@@ -547,6 +547,18 @@ td.date, th.date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { .evidence-fields { grid-template-columns: 1fr; } }
 .evidence-refreshes ul { list-style: none; padding: 0; display: grid; gap: 6px; }
 .evidence-refresh code { overflow-wrap: anywhere; } .evidence-refresh button { min-height: 24px; padding: 1px 8px; font-size: 13px; }
+/* read again: an icon button beside Close, 28px (WCAG 2.5.8 asks 24); it spins while the live read runs */
+.evidence-panel-actions { display: inline-flex; align-items: center; gap: 10px; align-self: center; }
+:root .evidence-panel-head button.evidence-reread { display: inline-grid; place-items: center; width: 28px; height: 28px; min-width: 24px; min-height: 24px; padding: 0; border: 1px solid var(--line); border-radius: var(--r); background: transparent; color: var(--muted); cursor: pointer; }
+:root .evidence-panel-head button.evidence-reread:hover:not([aria-disabled="true"]) { color: var(--ink); border-color: var(--rule); background: var(--paper); }
+:root .evidence-panel-head button.evidence-reread:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root .evidence-panel-head button.evidence-reread[aria-disabled="true"] { cursor: not-allowed; border-style: dashed; }
+:root .evidence-panel-head button.evidence-reread[aria-busy="true"] { cursor: progress; border-style: solid; color: var(--ink); }
+.evidence-reread-icon { display: block; }
+.evidence-reread[aria-busy="true"] .evidence-reread-icon { animation: evidence-reread-spin 1s linear infinite; }
+@keyframes evidence-reread-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .evidence-reread[aria-busy="true"] .evidence-reread-icon { animation: none; } }
+.evidence-reread-why { font-size: 12.5px; text-align: right; }
 
 /* tables and registers: ledger rules, labelled heads */
 :root th { border-bottom: 2px solid var(--rule); padding: .45rem .6rem; white-space: nowrap; }

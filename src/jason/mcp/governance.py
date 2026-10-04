@@ -596,10 +596,11 @@ def approval_show(approval_id: str, data_dir: Path | None = None) -> dict[str, A
 def evidence(address: str, approval_id: str = "", data_dir: Path | None = None) -> dict[str, Any]:
     """Open one evidence address an approval item names (``payhoa:submission:N``, a citation such as ``CIV 4041``,
     ``board-item:ID``, or a ``jason ...`` command) from disk: each copy jason holds (the plan's own read when
-    ``approval_id`` is given, the PayHOA catalog, the request's saved files, the statutes or documents, the board's
-    items), when each was read, whether a later copy shows a change, and the commands that read it again (``live``
-    when one reads PayHOA or Google). Reads disk only, never a live system; contact details are masked. Evidence, not
-    a finding: repeat the caveats, and quote a citation's text as given, never paraphrased."""
+    ``approval_id`` is given, the last full read of the request from PayHOA, the PayHOA catalog, the request's saved
+    files, the statutes or documents, the board's items), when each was read, whether a later copy shows a change, and
+    the commands that read it again (``live`` when one reads PayHOA or Google). Reads disk only, never a live system;
+    there is no refresh here (``refreshable`` is the console's). Contact details are masked. Evidence, not a finding:
+    repeat the caveats, and quote a citation's text as given, never paraphrased."""
     from jason.approvals.evidence import resolve
 
     return resolve(address, approval_id=approval_id, data_dir=data_dir)

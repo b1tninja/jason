@@ -143,7 +143,8 @@ class FakePayhoa:
         self.writes.append(("comment", sid, tuple(recipient_member_ids)))
 
 
-def _fetch(client, org, record, form):
+def _fetch(client, org, record, form, keep=None):
+    """The fake's answers as read; its raw submissions are stubs, so nothing is kept (``keep`` is left unheard)."""
     rows = client.list_form_submissions(int(record["formId"]))
     return [(client.get_form_submission(org, r["id"]), client.requests[r["id"]])[1] for r in rows]
 

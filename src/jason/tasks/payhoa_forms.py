@@ -365,10 +365,18 @@ def round_trip(admin: Any, owner: Any, org_id: int, form: FormTemplate, record: 
     return ids[0], wrong
 
 
-def fetch_submissions(client: Any, org_id: int, record: dict[str, Any], form: FormTemplate) -> list[FormAnswers]:
-    """Every submission to the recorded form, read by field."""
+def fetch_submissions(client: Any, org_id: int, record: dict[str, Any], form: FormTemplate, *,
+                      keep: Any = None) -> list[FormAnswers]:
+    """Every submission to the recorded form, read by field. ``keep(row, detail)``, when given, hears each list row
+    and its raw submission as it is read (``submission_cache.keeper`` keeps it on disk); it never changes the answer."""
     rows = client.list_form_submissions(int(record["formId"]))
-    return [submission_answers(client.get_form_submission(org_id, int(r["id"])), record, form) for r in rows]
+    out = []
+    for r in rows:
+        detail = client.get_form_submission(org_id, int(r["id"]))
+        if keep is not None:
+            keep(r, detail)
+        out.append(submission_answers(detail, record, form))
+    return out
 
 
 __all__ = ["create", "fetch_submissions", "live_problem", "load_records", "lock", "merge_questions", "questions_for", "record_for", "request_body",

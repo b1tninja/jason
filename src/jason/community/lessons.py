@@ -795,6 +795,25 @@ LESSONS: tuple[Lesson, ...] = (
            "lock), each request's evidence carries its read time and digest, and the evidence resolver opens every "
            "address from disk with the commands that read it again. The store lists only ids with no dot.",
            Status.FIXED, guards=("jason.approvals.evidence", "store.ids", "tests/test_evidence.py"),
+           docs=("docs/console/approval-workflow.md (Evidence you can open)",),
+           notes=("A plan made before snapshots still had no copy of its requests: see "
+                  "request-read-thrown-away for the last full read that now fills the gap.",)),
+    Lesson("request-read-thrown-away", OCT_2026, (Area.OWNER_INFO, Area.FORMS, Area.GOVERNING),
+           "The evidence panel showed \"No copy on disk\" for every owner-information request. Only plans made after "
+           "snapshots keep one; the PayHOA catalog lists requests (status only, never answers) and was last synced "
+           "before the answers came in; the request files held comments, notes, and attachments but never the "
+           "submission. Meanwhile every owner-information plan read each submission in full and threw it away.",
+           "Each reader of a submission kept only what its own task needed (answers by field, a status, a file "
+           "list), so no store held the request as PayHOA answered it.",
+           "Whatever reads a submission in full keeps it as the request's last read "
+           "(payhoa-files/requests/N/submission.json, written whole): fetch_submissions hands each raw read to a keep "
+           "callback that gather_answers sets, sync-request-files saves it with one read a request, and a person can "
+           "refresh one request from the console (POST /api/evidence/refresh, logged in evidence/refreshes.jsonl, "
+           "never a write to PayHOA). The evidence resolver shows it as \"Last read from PayHOA\", masked by the "
+           "snapshot's P2 rule, and compares it with the plan's read.",
+           Status.FIXED, guards=("jason.tasks.submission_cache", "payhoa_forms.fetch_submissions(keep=...)",
+                                 "jason.approvals.evidence.refresh", "tests/test_evidence.py",
+                                 "tests/test_sync_request_files.py"),
            docs=("docs/console/approval-workflow.md (Evidence you can open)",)),
     Lesson("approvals-store-location", OCT_2026, (Area.GOVERNING,),
            "The console spec puts approvals in a SQLite store under the console's folder; the engine as built keeps one "

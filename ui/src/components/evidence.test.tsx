@@ -1,6 +1,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetServerSession } from "../lib/api";
+import { SESSION_KEY } from "../lib/session";
 import { Evidence, EvidencePanel, evidenceUrl, type EvidenceAnswer } from "./index";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -228,5 +230,199 @@ describe("EvidencePanel", () => {
     const f = mockFetch(() => ({ body: answer() }));
     render(<EvidencePanel address="payhoa:submission:1234" />);
     await waitFor(() => expect(f).toHaveBeenCalledWith("/api/evidence?address=payhoa%3Asubmission%3A1234", expect.anything()));
+  });
+});
+
+describe("EvidencePanel's read again", () => {
+  const refreshable = { system: "PayHOA", what: "Reads this request from PayHOA again" };
+  const REFRESH = "/api/evidence/refresh";
+  const KEEPER = "Keeper is not signed in; run `jason login` in a terminal, then refresh again.";
+
+  afterEach(() => {
+    resetServerSession();
+    document.head.querySelector('meta[name="jason-token"]')?.remove();
+    localStorage.clear();
+  });
+
+  function withToken(token = "tok-9") {
+    const meta = document.createElement("meta");
+    meta.name = "jason-token";
+    meta.content = token;
+    document.head.append(meta);
+  }
+
+  type Reply = { status?: number; body: unknown };
+  /** A server: `/api/session` answers `session`, the refresh answers `post()`, and every other GET the stored answer. */
+  function server(post: () => Reply | Promise<Reply>, session: unknown = {}) {
+    const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    const f = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url === "/api/session") return json({ body: session });
+      if (url === REFRESH) return json(await post());
+      return json({ body: answer({ refreshable }) });
+    });
+    vi.stubGlobal("fetch", f);
+    const posts = () => f.mock.calls.filter(([url]) => url === REFRESH);
+    return { f, posts };
+  }
+
+  const fresh = (over: Partial<EvidenceAnswer> = {}): EvidenceAnswer => answer({
+    refreshable, changed: true, changedNote: "The mailing address answer differs.",
+    sources: [{
+      name: "PayHOA request (live)", readAt: "2026-10-03T19:02:00+00:00", digest: "9a0c11e2bb", text: "", citation: "", caveat: "", note: "",
+      fields: [{ name: "Owner", value: "Owner B", masked: false }],
+    }],
+    refreshed: { at: "2026-10-03T19:02:00+00:00", by: "Jane Example", system: "PayHOA" },
+    ...over,
+  });
+
+  it("shows the button only when the answer is refreshable", () => {
+    const { rerender } = render(<EvidencePanel address="a" data={answer()} by="Jane Example" onRefresh={vi.fn()} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /Read again/ })).not.toBeInTheDocument();
+    rerender(<EvidencePanel address="a" data={answer({ refreshable: null })} by="Jane Example" onRefresh={vi.fn()} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /Read again/ })).not.toBeInTheDocument();
+    rerender(<EvidencePanel address="a" data={answer({ refreshable })} by="Jane Example" onRefresh={vi.fn()} onClose={() => {}} />);
+    expect(screen.getByRole("button", { name: "Read again from PayHOA" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("takes its name from the system and says in its title what the read does", () => {
+    render(<EvidencePanel address="a" data={answer({ refreshable: { system: "Example Portal", what: "Reads the request again" } })} by="Jane Example" onRefresh={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "Read again from Example Portal" });
+    expect(button).toHaveAttribute("title", "Reads the request again. Reads Example Portal now, under your name; writes nothing to Example Portal.");
+    expect(button.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(button).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("POSTs the address, the approval, and the person, with the write token", async () => {
+    withToken("tok-9");
+    const { posts } = server(() => ({ body: fresh() }));
+    render(<EvidencePanel address="payhoa:submission:1234" approval="owner-info tags/1" by="Jane Example" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Read again from PayHOA" }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const [url, init] = posts()[0];
+    expect(url).toBe(REFRESH);
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>)["X-Jason-Token"]).toBe("tok-9");
+    expect(JSON.parse(String(init?.body))).toEqual({ address: "payhoa:submission:1234", approval: "owner-info tags/1", by: "Jane Example" });
+  });
+
+  it("spins with aria-busy while the read runs, and a second click sends nothing", async () => {
+    withToken();
+    let finish: (r: Reply) => void = () => {};
+    const { posts } = server(() => new Promise<Reply>((ok) => { finish = ok; }));
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
+    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    await userEvent.click(button);
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    const status = screen.getByText("Reading from PayHOA…");
+    expect(status.closest("[aria-live='polite']")).not.toBeNull();
+    await userEvent.click(button);
+    await userEvent.click(button);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    finish({ body: fresh() });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("replaces the answer in place, keeps the panel open, and keeps focus on the button", async () => {
+    withToken();
+    server(() => ({ body: fresh() }));
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" onClose={() => {}} />);
+    const panel = await screen.findByRole("group", { name: "PayHOA request 1234" });
+    expect(await within(panel).findByText("Jane Doe")).toBeInTheDocument();
+    const button = within(panel).getByRole("button", { name: "Read again from PayHOA" });
+    await userEvent.click(button);
+    expect(await within(panel).findByText("Read from PayHOA just now by Jane Example.")).toBeInTheDocument();
+    expect(within(panel).getByText("Owner B")).toBeInTheDocument();
+    expect(within(panel).queryByText("Jane Doe")).not.toBeInTheDocument();
+    expect(within(panel).getByText(/Changed since this plan was read\./)).toHaveTextContent("The mailing address answer differs.");
+    expect(within(panel).getByText("2026-10-03 19:02 UTC").tagName).toBe("TIME");
+    expect(screen.getByRole("group", { name: "PayHOA request 1234" })).toBe(panel);
+    expect(button).toHaveFocus();
+  });
+
+  it("says the server's 409 or 403 as it is and keeps the old answer; a 400 says it cannot be read again", async () => {
+    withToken();
+    let reply: Reply = { status: 409, body: { error: KEEPER } };
+    server(() => reply);
+    render(<EvidencePanel address="payhoa:submission:1234" by="Jane Example" />);
+    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    expect(await screen.findByText("Jane Doe")).toBeInTheDocument();
+    await userEvent.click(button);
+    const message = await screen.findByText(KEEPER);
+    expect(message).toHaveClass("notice-error");
+    expect(message.closest("[aria-live='polite']")).not.toBeNull();
+    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(screen.queryByText(/just now/)).not.toBeInTheDocument();
+    reply = { status: 403, body: { error: "Writes are refused while an admin views the console as someone else." } };
+    await userEvent.click(button);
+    expect(await screen.findByText("Writes are refused while an admin views the console as someone else.")).toHaveClass("notice-error");
+    reply = { status: 400, body: { error: "not a refreshable kind" } };
+    await userEvent.click(button);
+    expect(await screen.findByText("This evidence can't be read again from the page.")).toHaveClass("notice-error");
+    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it("is disabled with the reason when no one is named, and sends nothing", async () => {
+    withToken();
+    const { posts } = server(() => ({ body: fresh() }), { signedIn: null });
+    render(<EvidencePanel address="payhoa:submission:1234" />);
+    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    const why = screen.getByText("Sign in or pick your name to read it again.");
+    expect(button).toHaveAccessibleDescription("Sign in or pick your name to read it again.");
+    expect(why).toHaveClass("visually-hidden");
+    await userEvent.click(button);
+    expect(why).not.toHaveClass("visually-hidden");
+    expect(why).toHaveClass("muted");
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("reads under the signed-in name, or the name picked in this browser", async () => {
+    withToken();
+    const { posts } = server(() => ({ body: fresh() }), { signedIn: { name: "Casey Sample" } });
+    const { unmount } = render(<EvidencePanel address="payhoa:submission:1234" />);
+    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await userEvent.click(button);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(JSON.parse(String(posts()[0][1]?.body)).by).toBe("Casey Sample");
+    unmount();
+    resetServerSession();
+    localStorage.setItem(SESSION_KEY, "Jordan Example");
+    const second = server(() => ({ body: fresh() }), {});
+    render(<EvidencePanel address="payhoa:submission:1234" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Read again from PayHOA" }));
+    await waitFor(() => expect(second.posts()).toHaveLength(1));
+    expect(JSON.parse(String(second.posts()[0][1]?.body)).by).toBe("Jordan Example");
+  });
+
+  it("never reads again on open or on focus", async () => {
+    withToken();
+    const { f, posts } = server(() => ({ body: fresh() }));
+    render(<Evidence items={refs} by="Jane Example" />);
+    await userEvent.click(screen.getByRole("button", { name: "PayHOA request 1234" }));
+    const button = await screen.findByRole("button", { name: "Read again from PayHOA" });
+    button.focus();
+    await userEvent.tab();
+    await userEvent.tab({ shift: true });
+    expect(button).toHaveFocus();
+    expect(f).toHaveBeenCalled();
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("reads a data panel again only through onRefresh, and shows a forced reading state", async () => {
+    const onRefresh = vi.fn(async () => fresh());
+    const f = mockFetch(() => ({ body: {} }));
+    const { rerender } = render(<EvidencePanel address="a" approval="p/1" data={answer({ refreshable })} by="Jane Example" onRefresh={onRefresh} />);
+    await userEvent.click(screen.getByRole("button", { name: "Read again from PayHOA" }));
+    expect(onRefresh).toHaveBeenCalledWith({ address: "a", approval: "p/1", by: "Jane Example" });
+    expect(await screen.findByText("Owner B")).toBeInTheDocument();
+    rerender(<EvidencePanel address="a" data={answer({ refreshable })} by="Jane Example" refreshing />);
+    expect(screen.getByRole("button", { name: "Read again from PayHOA" })).toHaveAttribute("aria-busy", "true");
+    expect(f).not.toHaveBeenCalled();
   });
 });

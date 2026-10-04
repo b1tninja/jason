@@ -77,9 +77,14 @@ def owner_information(community: Any) -> Any:
     return method() if method is not None else None
 
 
+GATHER_VIA = "owner_info_apply.gather_answers"
+
+
 def gather_answers(data_dir: Path, forms: Any, client: Any = None,
-                   org_id: int | None = None) -> tuple[list[Any], dict[str, str]]:
-    """Every answer jason holds, from each channel, and each source's title."""
+                   org_id: int | None = None, *, via: str = GATHER_VIA) -> tuple[list[Any], dict[str, str]]:
+    """Every answer jason holds, from each channel, and each source's title. Each PayHOA submission read live is kept
+    as that request's latest full read (``submission_cache``: ``payhoa-files/requests/<id>/submission.json``), with
+    ``via`` naming what read it."""
     from jason.tasks.forms import forms_dir, import_responses
 
     answers, titles = [], {"payhoa": "PayHOA owner information form"}
@@ -89,6 +94,7 @@ def gather_answers(data_dir: Path, forms: Any, client: Any = None,
             answers += import_responses(json.loads(saved.read_text(encoding="utf-8")), rules)
             titles["google"] = rules.title
     if client is not None:
+        from jason.tasks import submission_cache
         from jason.tasks.payhoa_forms import fetch_submissions, record_for
 
         record = record_for(data_dir, forms.OWNER_INFO.key.value)
@@ -96,7 +102,10 @@ def gather_answers(data_dir: Path, forms: Any, client: Any = None,
             from jason.config import test_memberships
 
             tests = test_memberships()      # a test account's answers are never an owner's
-            answers += [a for a in fetch_submissions(client, org_id, record, forms.OWNER_INFO)
+            keep = submission_cache.keeper(submission_cache.files_dir(data_dir), via=via,
+                                           form_id=int(record["formId"]),
+                                           form_name=str(record.get("title") or forms.OWNER_INFO.title))
+            answers += [a for a in fetch_submissions(client, org_id, record, forms.OWNER_INFO, keep=keep)
                         if a.membership_id is None or int(a.membership_id) not in tests]
     return answers, titles
 
@@ -153,16 +162,17 @@ class ApplyPlan:
 
 
 def plan_apply(client: Any, org: int, *, community: Any, forms: Any, cycle: Any, data_dir: Path, today: date,
-               payhoa: bool = True, env: Any = None) -> ApplyPlan:
+               payhoa: bool = True, env: Any = None, via: str = GATHER_VIA) -> ApplyPlan:
     """Read PayHOA once and plan every write that would bring it up to date, as ``jason owner-info --apply`` lists them.
     With ``payhoa`` the PayHOA form's submissions are read too: the response policy then holds a unit's occupancy tag
-    for the board where an owner's answer and the tag differ, and each owner's request is read with its findings."""
+    for the board where an owner's answer and the tag differ, and each owner's request is read with its findings; each
+    submission read is kept as its request's latest full read, ``via`` naming the command (``gather_answers``)."""
     from jason.config import test_memberships
     from jason.tasks.owner_info import plan_writes
 
     reader = client if isinstance(client, ReadOnce) else ReadOnce(client)
     units, people = live_read(reader, org)
-    answers, _ = gather_answers(data_dir, forms, reader if payhoa else None, org)
+    answers, _ = gather_answers(data_dir, forms, reader if payhoa else None, org, via=via)
     found, rows = ledger_rows(units, people, answers, data_dir, community, cycle, today, earlier=forms.EARLIER_ELECTIONS)
     writes = plan_writes(rows, found, community.payhoa_tags(), earlier=forms.EARLIER_ELECTIONS, today=today)
     # a test account is never an owner of record: no delivery or other tag goes on it

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { actAs, getJson, serverSession, signInLinks, signOut, type Acting, type SignedIn, type SignInSetup } from "./api";
+import { actAs, getJson, serverSession, signInLinks, signOut, type Acting, type ServerSession, type SignedIn, type SignInSetup } from "./api";
 
 /** The signed-in person. When the server has Google sign-in (`jason.web.signin`) and an officer signed in, `me` is that
  * officer, fixed by the server: every write goes on the record under that name. Under `jason-web --dev`, a signed-in
@@ -66,6 +66,20 @@ export function useSignIn() {
     setState((s) => ({ ...s, acting }));
   }, [state.setup]);
   return { ...state, signInLinks: links, signOut: out, actAs: viewAs };
+}
+
+/** The name a write goes under, as `useSession` computes `me` (the person an admin views the console as, else who signed
+ * in, else the name picked in this browser), without loading the officers. `enabled` false asks the server nothing. */
+export function useMe(enabled = true): string {
+  const [picked] = useState<string>(readMe);
+  const [s, setS] = useState<ServerSession | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let on = true;
+    serverSession().then((x) => { if (on) setS(x); });
+    return () => { on = false; };
+  }, [enabled]);
+  return s?.acting ? s.acting.name : s?.signedIn?.name ?? picked;
 }
 
 /** `people` comes from `/api/approvals` unless the caller passes the list it already loaded. */

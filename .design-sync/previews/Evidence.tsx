@@ -1,4 +1,4 @@
-import { Evidence, EvidencePanel } from "jason-ui";
+import { Evidence, EvidencePanel, type EvidenceAnswer } from "jason-ui";
 
 /** What a board item cites: a recorded instrument, a Drive path, and the command that produced the figure. */
 export const BoardItemEvidence = () => (
@@ -94,6 +94,60 @@ export const OpenedCitation = () => (
         }],
         link: "", refresh: [{ command: "jason cite jason://decl/7.3", live: false, what: "Recites the stored words" }], caveats: [], note: "",
       }}
+    />
+  </div>
+);
+
+const refreshableAnswer: EvidenceAnswer = {
+  found: true, address: "payhoa:submission:1234", label: "PayHOA request 1234", kind: "payhoa_submission",
+  changed: false, changedNote: "",
+  sources: [{
+    name: "PayHOA request export", readAt: "2099-09-30T18:38:00+00:00", digest: "3f9a02c1d4e7aa", text: "", citation: "", caveat: "", note: "",
+    fields: [
+      { name: "Owner", value: "Jane Doe", masked: false },
+      { name: "Mailing address", value: "123 Main St", masked: false },
+      { name: "Email", value: "j***@example.com", masked: true },
+    ],
+  }],
+  link: "https://app.payhoa.example/requests/1234",
+  refresh: [{ command: "jason sync-catalog --requests", live: true, what: "Reads the requests again", system: "PayHOA" }],
+  refreshable: { system: "PayHOA", what: "Reads this request from PayHOA again" },
+  caveats: ["A stored copy is what jason read then, not the record now."], note: "",
+};
+
+/** A refreshable answer: the read-again icon beside Close. Clicking it reads again through `onRefresh` (no server
+ * here): after a second, the answer is replaced in place with the fresh read, changed since the plan was read. */
+export const Refreshable = () => (
+  <div style={{ maxWidth: 560 }}>
+    <EvidencePanel
+      address="payhoa:submission:1234"
+      approval="owner-info-tags-0001"
+      today={new Date("2099-10-03T12:00:00")}
+      by="Jane Example"
+      onClose={() => {}}
+      data={refreshableAnswer}
+      onRefresh={() => new Promise<EvidenceAnswer>((done) => setTimeout(() => done({
+        ...refreshableAnswer, changed: true, changedNote: "The mailing address answer differs from the one the plan read.",
+        sources: [{ ...refreshableAnswer.sources[0], readAt: "2099-10-03T19:02:00+00:00", digest: "9a0c11e2bb4f",
+          fields: [{ name: "Owner", value: "Jane Doe", masked: false }, { name: "Mailing address", value: "456 Oak Ave", masked: false }, { name: "Email", value: "j***@example.com", masked: true }] }],
+        refreshed: { at: "2099-10-03T19:02:00+00:00", by: "Jane Example", system: "PayHOA" },
+      }), 1000))}
+    />
+  </div>
+);
+
+/** The live read in flight, forced by `refreshing`: the icon spins (not under reduced motion), the button is busy, and
+ * the status says so. */
+export const Refreshing = () => (
+  <div style={{ maxWidth: 560 }}>
+    <EvidencePanel
+      address="payhoa:submission:1234"
+      today={new Date("2099-10-03T12:00:00")}
+      by="Jane Example"
+      onClose={() => {}}
+      data={refreshableAnswer}
+      onRefresh={() => new Promise<EvidenceAnswer>(() => {})}
+      refreshing
     />
   </div>
 );

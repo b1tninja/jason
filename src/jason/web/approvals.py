@@ -10,6 +10,9 @@
   prefetch, or another site's ``<img>`` must never set off, so it sits behind the write guard and the token header.
 - **Writes to jason's own store.** ``decide``, ``submit``, ``confirm``, ``decline``, ``withdraw``: each names its
   person (``by``) and returns the Approval; the engine's refusal comes back as 400 in its own words.
+- **Refresh one piece of evidence.** ``POST /api/evidence/refresh`` with ``{address, approval?, by}`` reads that one
+  record again live under the person's name and keeps it in jason's cache (``jason.approvals.evidence.refresh``);
+  it never writes to PayHOA. Behind the write guard and the token header, like a check.
 - **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>}``.
   Off unless jason-web was started with ``--allow-apply``. The engine re-plans and refuses (409) when anything
   changed, superseding the approval with a new one to review.
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import re
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any, Callable, ContextManager, Iterator
 
 from flask import Blueprint, jsonify, request
@@ -145,12 +149,30 @@ def evidence(args: Args) -> dict[str, Any]:
     commands that read it again. Nothing is read live; contact details are masked by the resolver and again here."""
     from jason.approvals.evidence import resolve
 
-    out = resolve(args.get("address", ""), approval_id=args.get("approval", "").strip())
-    texts = [s.get("text", "") for s in out["sources"]]                # recited words are quoted as stored
+    return _masked_evidence(resolve(args.get("address", ""), approval_id=args.get("approval", "").strip()))
+
+
+def _masked_evidence(out: dict[str, Any]) -> dict[str, Any]:
+    """An evidence answer masked on its way out, but a citation's recited words, quoted as stored."""
+    texts = [s.get("text", "") for s in out["sources"]]
     out = mask(out)
     for s, text in zip(out["sources"], texts):
         s["text"] = text
     return out
+
+
+# What a refresh's live context is built for: ``default_live`` (and a test's factory) read ``system`` and ``key``.
+EVIDENCE_REFRESH = SimpleNamespace(key="evidence-refresh", system="payhoa")
+
+
+def refresh_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> dict[str, Any]:
+    """``POST /api/evidence/refresh``: one record read again live for ``by`` and kept in jason's cache
+    (``jason.approvals.evidence.refresh``), then opened as ``GET /api/evidence`` opens it, masked."""
+    from jason.approvals.evidence import refresh
+
+    out = refresh(_text(body, "address"), by=by, approval_id=_text(body, "approval").strip(),
+                  client_factory=lambda: live(EVIDENCE_REFRESH))
+    return _masked_evidence(out)
 
 
 def _item(i: Any) -> dict[str, Any]:
@@ -234,6 +256,29 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
         """An evidence address opened from disk (``jason.approvals.evidence.resolve``): ``?address=`` and, optionally,
         ``?approval=`` for the plan's own read. Reads only; a miss is 200 with ``found: false``."""
         return _answer(lambda: evidence(request.args.to_dict()))
+
+    @bp.post("/api/evidence/refresh")
+    def evidence_refresh_route():
+        """One record read again live for the person (``{address, approval?, by}``), kept in jason's own cache and
+        logged; never a write to PayHOA. 200 with the fresh answer; 400 for a kind with no refresher or no person;
+        409 when Keeper or PayHOA did not answer (or the cache is busy)."""
+        if live is None:
+            return jsonify(error="live reads are off in this jason-web"), 405
+        if not writes:
+            return jsonify(error="writes are off"), 405
+        if not header_token_ok():
+            return jsonify(error=f"a refresh carries this server's token in {TOKEN_HEADER}"), 403
+        body = _body()
+
+        def run():
+            from jason.approvals.evidence import RefreshFailed
+
+            by, _, _ = _who(body)
+            try:
+                return refresh_evidence(body, by, live)
+            except RefreshFailed as exc:
+                return jsonify(error=mask(str(exc))), 409
+        return _answer(run)
 
     @bp.get("/api/approvals/<ident>/check")
     @bp.get("/api/approvals/<ident>/apply")
@@ -343,4 +388,5 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
     return bp
 
 
-__all__ = ["CAVEAT", "approvals", "audit_log", "blueprint", "default_live", "evidence", "mask", "plans", "show"]
+__all__ = ["CAVEAT", "EVIDENCE_REFRESH", "approvals", "audit_log", "blueprint", "default_live", "evidence", "mask",
+           "plans", "refresh_evidence", "show"]

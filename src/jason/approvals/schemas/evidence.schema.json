@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jason.local/schemas/approvals/evidence.schema.json",
   "title": "Evidence",
-  "description": "One evidence address opened from disk (jason.approvals.evidence.resolve; GET /api/evidence; the jason-mcp evidence tool). Nothing is read live: each copy says when it was read, and refresh names the commands that read it again. A miss is found false with a note, never an error.",
+  "description": "One evidence address opened from disk (jason.approvals.evidence.resolve; GET /api/evidence; the jason-mcp evidence tool). Nothing is read live: each copy says when it was read, and refresh names the commands that read it again. A miss is found false with a note, never an error. POST /api/evidence/refresh (jason.approvals.evidence.refresh) answers the same shape with refreshed added.",
   "type": "object",
-  "required": ["found", "address", "label", "kind", "sources", "changed", "changedNote", "link", "refresh", "caveats", "note"],
+  "required": ["found", "address", "label", "kind", "sources", "changed", "changedNote", "link", "refresh", "refreshable", "caveats", "note"],
   "additionalProperties": false,
   "properties": {
     "found": {"type": "boolean"},
@@ -18,7 +18,7 @@
         "required": ["name", "readAt", "digest", "fields", "text", "citation", "caveat", "note"],
         "additionalProperties": false,
         "properties": {
-          "name": {"enum": ["This plan's read", "PayHOA catalog", "Request files", "Statutes on disk", "Documents on disk", "Board items"]},
+          "name": {"enum": ["This plan's read", "Last read from PayHOA", "PayHOA catalog", "Request files", "Statutes on disk", "Documents on disk", "Board items"]},
           "readAt": {"type": "string", "description": "When this copy was read or synced (ISO 8601); empty when unknown."},
           "digest": {"type": "string", "description": "sha256 of what was read; empty when not comparable."},
           "fields": {
@@ -53,6 +53,25 @@
           "system": {"type": "string", "description": "The outside system a live command reads (PayHOA, Google); empty when live is false."}
         }
       }
+    },
+    "refreshable": {
+      "description": "The one-record live refresh a person may run from the console (POST /api/evidence/refresh): the system it reads and what the button offers; null when the kind has none.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["system", "what"],
+          "additionalProperties": false,
+          "properties": {"system": {"type": "string"}, "what": {"type": "string"}}
+        }
+      ]
+    },
+    "refreshed": {
+      "type": "object",
+      "description": "Only on a refresh's answer: when the record was read again, for whom, and from which system.",
+      "required": ["at", "by", "system"],
+      "additionalProperties": false,
+      "properties": {"at": {"type": "string"}, "by": {"type": "string"}, "system": {"type": "string"}}
     },
     "caveats": {"type": "array", "items": {"type": "string"}},
     "note": {"type": "string", "description": "Why something is a miss, and the command that fills it."}
