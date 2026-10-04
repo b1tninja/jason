@@ -35,6 +35,7 @@ from jason.community.document_models import (
 )
 from jason.community.models.contracts_insurance import building_at
 from jason.community.models.contracts_signing import Execution, Signature, read_signing
+from jason.community.reviews import AS_OF
 from jason.community.symbols import Building, DocumentKind
 
 SOON_DAYS = 60
@@ -64,10 +65,25 @@ def _count_names(names: str) -> int:
     return len([n for n in re.split(r",\s*|\s+and\s+", names) if n.strip()])
 
 
+@AS_OF.check("lease-term", Lease, fields=("term_end",))
+def lease_term(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: whether the lease's term has ended or ends soon."""
+    if not r.term_end:
+        return []
+    left = (r.term_end - as_of).days
+    if left < 0:
+        return [Finding("lease-ended", f"the lease term ended {r.term_end}; unless renewed it runs month to month or the "
+                        "unit changed hands", Severity.INFO)]
+    if left <= SOON_DAYS:
+        return [Finding("lease-ending", f"the lease term ends {r.term_end} ({left} days)", Severity.INFO)]
+    return []
+
+
 class LeaseModel(DocumentModel):
     kind = DocumentKind.LEASE
     name = "lease"
     required = ("premises", "term_start", "term_end", "rent")
+    lens_checks = (lease_term,)
 
     def parse(self, text: str, context: ModelContext) -> Lease | None:
         if not re.search(r"\bLEASE\b|RENTAL AGREEMENT", text or "", re.I) or not re.search(r"\brent\b", text, re.I):
@@ -101,13 +117,7 @@ class LeaseModel(DocumentModel):
         if r.term_start and r.term_end and (r.term_end - r.term_start).days <= SHORT_TERM_DAYS:
             found.append(Finding("short-term-rental", f"a term of {(r.term_end - r.term_start).days} days: the governing documents may bar "
                                  "rentals of 30 days or less", Severity.CHECK, "CIV 4741(c)"))
-        if r.term_end:
-            left = (r.term_end - context.today).days
-            if left < 0:
-                found.append(Finding("lease-ended", f"the lease term ended {r.term_end}; unless renewed it runs month to month or the "
-                                     "unit changed hands", Severity.INFO))
-            elif left <= SOON_DAYS:
-                found.append(Finding("lease-ending", f"the lease term ends {r.term_end} ({left} days)", Severity.INFO))
+        found.append(lease_term)   # the as-of lens's place: the term ended or ends soon
         if r.premises and r.building is None and context.community is not None:
             found.append(Finding("premises-not-placed", f"the leased address {r.premises!r} does not fall in a building of the "
                                  "specification", Severity.CHECK))

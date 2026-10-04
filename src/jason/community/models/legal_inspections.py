@@ -30,6 +30,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.models.legal_shared import building_number, building_of, site_address
+from jason.community.reviews import AS_OF
 from jason.community.symbols import Building, DocumentKind
 
 
@@ -113,6 +114,31 @@ _TALLY = re.compile(r"\n([A-Z][A-Za-z ]+?)\n(\d+)\n(\d+) \(\d+%\)\n(\d+) \(\d+%\
 _DEFICIENCY = re.compile(r"Status\s*\n(.*?)\s*Resolved Deficiencies", re.S)
 
 
+def _due(r, cadence: tuple[int, str] | None) -> tuple[date | None, str]:
+    """When the next inspection is due and on what authority: the date the report prints, else the specification's
+    cadence counted from the inspection."""
+    if r.next_due is None and cadence and r.inspection_date:
+        months, authority = cadence
+        return _add_months(r.inspection_date, months), authority
+    return r.next_due, ""
+
+
+def _system_cadence(r, community) -> tuple[int, str] | None:
+    """What the next-due check reads from the specification: the cadence for the report's system."""
+    return _cadence(community, r.system)
+
+
+@AS_OF.check("next-inspection-due", InspectionReport, fields=("system", "inspection_date", "next_due"), facts=_system_cadence)
+def next_inspection_due(r, as_of: date, cadence: tuple[int, str] | None = None) -> list[Finding]:
+    """As of a date: how long until the system's next inspection is due."""
+    due, authority = _due(r, cadence)
+    if not due:
+        return []
+    left = (due - as_of).days
+    severity = Severity.PROBLEM if left < 0 else Severity.CHECK if left < 60 else Severity.INFO
+    return [Finding("next-due", f"the next {r.system.value} inspection is due by {due} ({left} days)", severity, authority)]
+
+
 def _is_balcony_report(text: str) -> bool:
     return bool(re.search(r"exterior elevated elements?|SB\s*-?\s*326|\b5551\b", text or "", re.I))
 
@@ -121,6 +147,7 @@ class SignalServiceReportModel(DocumentModel):
     kind = DocumentKind.INSPECTION_REPORT
     name = "signal-service-fire-alarm"
     required = ("inspection_date", "inspector_firm", "inspector_license", "building", "result")
+    lens_checks = (next_inspection_due,)
 
     def parse(self, text: str, context: ModelContext) -> InspectionReport | None:
         if _is_balcony_report(text) or not re.search(r"Signal Service", text or "") or not re.search(r"TESTING SUMMARY", text or ""):
@@ -185,6 +212,7 @@ class InspectionReportModel(DocumentModel):
     kind = DocumentKind.INSPECTION_REPORT
     name = "inspection-report"
     required = ("inspection_date", "inspector_firm", "system")
+    lens_checks = (next_inspection_due,)
 
     def parse(self, text: str, context: ModelContext) -> InspectionReport | None:
         if _is_balcony_report(text):
@@ -220,13 +248,13 @@ class InspectionReportModel(DocumentModel):
         return _report_findings(r, context)
 
 
-def _cadence(context: ModelContext, system: InspectedSystem) -> tuple[int, str] | None:
+def _cadence(community, system: InspectedSystem) -> tuple[int, str] | None:
     """The specification's shortest interval (months) and its authority for a system, when it has one.
 
     The fire alarm's is semiannual (``every_months``); the sprinklers' rows run quarterly, yearly, and five-yearly, and
     the next inspection of any kind is the quarterly one.
     """
-    obligations = getattr(context.community, "obligations", None)
+    obligations = getattr(community, "obligations", None)
     if obligations is None:
         return None
     word = next((w for s, _, w in _SYSTEMS if s is system), "")
@@ -264,17 +292,9 @@ def _report_findings(r: InspectionReport, context: ModelContext) -> list[Finding
         if spec and spec != r.building:
             found.append(Finding("building-disagrees", f"the report calls {r.site_address} building {r.building.value}; the specification "
                                  f"places it in building {spec.value}", Severity.CHECK))
-    due = r.next_due
-    authority = ""
-    cadence = _cadence(context, r.system)
-    if due is None and cadence and r.inspection_date:
-        months, authority = cadence
-        due = _add_months(r.inspection_date, months)
-    if due:
-        left = (due - context.today).days
-        severity = Severity.PROBLEM if left < 0 else Severity.CHECK if left < 60 else Severity.INFO
-        found.append(Finding("next-due", f"the next {r.system.value} inspection is due by {due} ({left} days)", severity, authority))
-    elif r.inspection_date:
+    found.append(next_inspection_due)   # the as-of lens's place: how long until the next inspection is due
+    due, _authority = _due(r, _cadence(context.community, r.system))
+    if not due and r.inspection_date:
         found.append(Finding("no-cadence", f"the specification gives no inspection cadence for a {r.system.value} system and the report "
                              "prints no next date", Severity.INFO))
     return found

@@ -35,6 +35,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.models.meetings import library_rows, library_text, normalize
+from jason.community.reviews import AS_OF
 from jason.community.symbols import DocumentKind
 
 RESULTS_NOTICE_DAYS = 15      # CIV 5120(b)
@@ -143,10 +144,23 @@ def _inspector(text: str) -> str:
     return first(r"([A-Z][\w&.,' ]+(?:LLC|Inc\.?))[^\n]*\n[^\n]*Inspector of Elections", text, flags=0)
 
 
+@AS_OF.check("election-materials", ElectionResults, fields=("election_date",))
+def election_materials(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: whether the year for keeping the election's materials is still running."""
+    if not r.election_date:
+        return []
+    keep = r.election_date.replace(year=r.election_date.year + 1)
+    if as_of <= keep:
+        return [Finding("keep-election-materials", f"keep the ballots, envelopes, voter list, and tally until {keep}",
+                        Severity.INFO, "CIV 5200(c), 5125")]
+    return []
+
+
 class ElectionResultsModel(DocumentModel):
     kind = DocumentKind.ELECTION_RESULTS
     name = "election-results"
     required = ("inspector", "election_date", "candidates", "certified")
+    lens_checks = (election_materials,)
 
     def parse(self, text: str, context: ModelContext) -> ElectionResults | None:
         t = normalize(text)
@@ -219,10 +233,7 @@ class ElectionResultsModel(DocumentModel):
         if r.election_date:
             notice_by = r.election_date + timedelta(days=RESULTS_NOTICE_DAYS)
             found.append(Finding("results-notice", f"general notice of the tabulated results was due by {notice_by}", Severity.INFO, "CIV 5120(b)"))
-            keep = r.election_date.replace(year=r.election_date.year + 1)
-            if context.today <= keep:
-                found.append(Finding("keep-election-materials", f"keep the ballots, envelopes, voter list, and tally until {keep}",
-                                     Severity.INFO, "CIV 5200(c), 5125"))
+            found.append(election_materials)   # the as-of lens's place: the year for keeping the materials
             found += _results_in_minutes(r, context)
         return found
 

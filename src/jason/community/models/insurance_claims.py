@@ -35,6 +35,7 @@ from pathlib import Path
 from jason.community.base import alternation, street_words
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, cents, date_after, first, register, squash
 from jason.community.incidents import LOSS_RUN, LossRunClaim, claim_key, read_loss_run
+from jason.community.reviews import AS_OF
 from jason.community.symbols import DocumentKind
 
 _CARRIERS = (("Farmers", r"farmersinsurance|Farmers Insurance|Truck Insurance Exchange|Fire Insurance Exchange"),
@@ -118,10 +119,20 @@ class LossRun:
     paid_cents: int = 0
 
 
+@AS_OF.check("loss-run-age", LossRun, fields=("valued",))
+def loss_run_age(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: whether the loss run was valued more than a year before."""
+    if r.valued and (as_of - r.valued).days > 365:
+        return [Finding("stale-loss-run", f"the loss run is valued {r.valued}; lenders and renewals ask for one valued "
+                        "within the year: ask the carrier or agent for a current one", Severity.CHECK)]
+    return []
+
+
 class LossRunModel(DocumentModel):
     kind = DocumentKind.LOSS_RUN
     name = "loss-run"
     required = ("carrier", "policy", "valued")
+    lens_checks = (loss_run_age,)
 
     def parse(self, text: str, context: ModelContext) -> LossRun | None:
         if not LOSS_RUN.search((text or "")[:600]):
@@ -146,9 +157,7 @@ class LossRunModel(DocumentModel):
             paid = f", paid ${(c.paid_cents or 0) / 100:,.2f}" if c.paid_cents else ""
             found.append(Finding("claim", f"claim {c.number}: loss {c.date_of_loss} at {c.location}, {c.cause}, {c.status}{paid}",
                                  Severity.INFO))
-        if r.valued and (context.today - r.valued).days > 365:
-            found.append(Finding("stale-loss-run", f"the loss run is valued {r.valued}; lenders and renewals ask for one valued "
-                                 "within the year: ask the carrier or agent for a current one", Severity.CHECK))
+        found.append(loss_run_age)   # the as-of lens's place: valued more than a year ago
         return found
 
 

@@ -30,6 +30,7 @@ from jason.community.document_models import (
     register,
     squash,
 )
+from jason.community.reviews import AS_OF
 from jason.community.symbols import DocumentKind
 
 AUTHORITY = "CIV 5551"
@@ -104,10 +105,21 @@ def _plus_years(day: date, years: int) -> date:
         return day.replace(year=day.year + years, day=28)
 
 
+@AS_OF.check("next-elevated-inspection", ElevatedElementReport, fields=("next_inspection",))
+def next_inspection(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: how long until the next inspection is due."""
+    if not r.next_inspection:
+        return []
+    left = (r.next_inspection - as_of).days
+    severity = Severity.PROBLEM if left < 0 else Severity.CHECK if left < 365 else Severity.INFO
+    return [Finding("next-inspection", f"the next inspection is due by {r.next_inspection} ({left} days)", severity, "CIV 5551(b), (i)")]
+
+
 class ElevatedElementReportModel(DocumentModel):
     kinds = (DocumentKind.ELEVATED_ELEMENT_INSPECTION, DocumentKind.INSPECTION_REPORT)
     name = "sb326-report"
     required = ("inspection_date", "report_date", "signer", "units", "elements_total", "elements_inspected", "immediate_threats")
+    lens_checks = (next_inspection,)
 
     def parse(self, text: str, context: ModelContext) -> ElevatedElementReport | None:
         if not _TITLE.search(text or "") or not re.search(r"elevated|balcon|deck", text or "", re.I):
@@ -172,10 +184,7 @@ class ElevatedElementReportModel(DocumentModel):
         if r.inspection_date and r.inspection_date > FIRST_DUE:
             found.append(Finding("first-inspection-late", f"the inspection on {r.inspection_date} came after the first deadline, "
                                  f"{FIRST_DUE}", Severity.PROBLEM, "CIV 5551(i)"))
-        if r.next_inspection:
-            left = (r.next_inspection - context.today).days
-            severity = Severity.PROBLEM if left < 0 else Severity.CHECK if left < 365 else Severity.INFO
-            found.append(Finding("next-inspection", f"the next inspection is due by {r.next_inspection} ({left} days)", severity, "CIV 5551(b), (i)"))
+        found.append(next_inspection)   # the as-of lens's place: how long until the next inspection is due
         if r.signer and r.signer_title not in ("Architect", "Structural Engineer", "Civil Engineer"):
             found.append(Finding("signer-not-licensed-type", f"the signer {r.signer} is not shown as an architect or a structural or civil "
                                  "engineer", Severity.PROBLEM, "CIV 5551(b)(1)"))

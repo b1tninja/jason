@@ -47,6 +47,7 @@ from enum import Enum
 from typing import Any, ClassVar
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, cents, dates_in, register, squash
+from jason.community.reviews import AS_OF
 from jason.community.sources import SourceKind, fold, resolve
 from jason.community.symbols import Building, DocumentKind
 
@@ -522,14 +523,20 @@ def _reserve_accounts(context: ModelContext) -> dict[str, Any]:
     return {str(getattr(a, "suffix", "")): a for a in rows}
 
 
+@AS_OF.check("response-deadline", CorrespondenceRecord, fields=("direction", "respond_by"))
+def response_deadline(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: the day the letter gives to act by, and whether it has passed."""
+    if not r.respond_by:
+        return []
+    passed = " (past)" if r.respond_by < as_of else ""
+    who = "the association" if r.direction is Direction.INBOUND else "the recipient"
+    return [Finding("response-deadline", f"the letter gives {who} until {_day(r.respond_by)}{passed} to act", Severity.INFO)]
+
+
 def correspondence_findings(r: CorrespondenceRecord, context: ModelContext) -> list[Finding]:
-    found: list[Finding] = []
+    found: list[Finding] = [response_deadline]   # the as-of lens's place: the day to act by, past or not
     inbound = r.direction is Direction.INBOUND
     outbound = r.direction is Direction.OUTBOUND
-    if r.respond_by:
-        passed = " (past)" if r.respond_by < context.today else ""
-        who = "the association" if inbound else "the recipient"
-        found.append(Finding("response-deadline", f"the letter gives {who} until {_day(r.respond_by)}{passed} to act", Severity.INFO))
     if Request.RECORDS in r.requests and not outbound:
         clocks = ""
         if r.dated:
@@ -595,6 +602,7 @@ def correspondence_findings(r: CorrespondenceRecord, context: ModelContext) -> l
 class _Correspondence(ExplainsMissing, DocumentModel):
     kind = DocumentKind.CORRESPONDENCE
     form: ClassVar[Form] = Form.LETTER
+    lens_checks = (response_deadline,)
 
     def recognize(self, text: str, context: ModelContext) -> bool:
         raise NotImplementedError

@@ -46,6 +46,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.invoices import parse_date
+from jason.community.reviews import AS_OF
 from jason.community.symbols import Building, DocumentKind, PolicyKind
 
 SOON_DAYS = 60
@@ -406,7 +407,8 @@ def library_records(context: ModelContext, kind: DocumentKind, parse) -> list[tu
             if row.get("kind") != kind.value:
                 continue
             text = text_for(Path(context.data_dir), row["id"])
-            record = parse(text, ModelContext(context.community, context.data_dir, context.today, row.get("name") or "")) if text.strip() else None
+            # No date goes to the parse: a record is what the file says, on any day.
+            record = parse(text, ModelContext(context.community, context.data_dir, name=row.get("name") or "")) if text.strip() else None
             if record is not None:
                 out.append((row, record))
         _LIBRARY_CACHE[key] = out
@@ -417,16 +419,26 @@ def _money(value: int | None) -> str:
     return "?" if value is None else f"${value / 100:,.0f}" if value % 100 == 0 else f"${value / 100:,.2f}"
 
 
-def term_findings(number: str, end: date | None, context: ModelContext, what: str, building: Building | None = None) -> list[Finding]:
-    """A term that ended or ends soon, read against the policy sheet's term in force (for a flood number the sheet does
-    not carry, the sheet's flood policy on the same building)."""
+def sheet_renewal(r, community: Any) -> date | None:
+    """What the policy-term check reads from the specification: the renewal date of the policy sheet's term in force for
+    this policy (for a flood number the sheet does not carry, the sheet's flood policy on the same building)."""
+    context = ModelContext(community)
+    policy = sheet_policy(r.policy_number, context)
+    if policy is None and r.building is not None:
+        policy = next((p for p in sheet_policies(context) if p.kind is PolicyKind.FLOOD and p.building == r.building), None)
+    return getattr(policy, "renewal", None)
+
+
+@AS_OF.check("policy-term", InsurancePolicy, fields=("coverage", "policy_number", "building", "term_end"), facts=sheet_renewal)
+def policy_term(r, as_of: date, renewal: date | None = None) -> list[Finding]:
+    """As of a date: a term that ended or ends soon, read against the policy sheet's term in force (``sheet_renewal``)."""
+    end = r.term_end
     if end is None:
         return []
-    policy = sheet_policy(number, context)
-    if policy is None and building is not None:
-        policy = next((p for p in sheet_policies(context) if p.kind is PolicyKind.FLOOD and p.building == building), None)
-    renewal = getattr(policy, "renewal", None)
-    left = (end - context.today).days
+    what = f"{r.coverage.value.replace('_', ' ') if r.coverage else 'policy'} {r.policy_number or ''}".strip()
+    if r.building is not None:
+        what += f" (building {int(r.building)})"
+    left = (end - as_of).days
     if left < 0:
         if renewal and renewal > end:
             return [Finding("term-superseded", f"{what} ended {end}; the policy sheet carries a later term, to {renewal}", Severity.INFO)]
@@ -465,6 +477,7 @@ class NfipFloodDeclarationsModel(DocumentModel):
     kind = DocumentKind.INSURANCE_POLICY
     name = "nfip-flood-declarations"
     required = ("carrier", "policy_number", "named_insured", "term_start", "term_end", "limit", "deductible", "premium", "building")
+    lens_checks = (policy_term,)
 
     def parse(self, text: str, context: ModelContext) -> InsurancePolicy | None:
         return _nfip(text, context)
@@ -529,11 +542,7 @@ def coinsurance_findings(r: InsurancePolicy) -> list[Finding]:
 
 
 def policy_findings(r: InsurancePolicy, context: ModelContext) -> list[Finding]:
-    found: list[Finding] = []
-    what = f"{r.coverage.value.replace('_', ' ') if r.coverage else 'policy'} {r.policy_number or ''}".strip()
-    if r.building is not None:
-        what += f" (building {int(r.building)})"
-    found += term_findings(r.policy_number, r.term_end, context, what, r.building)
+    found: list[Finding] = [policy_term]   # the as-of lens's place: the term ended, ends soon, or the next one is issued
     if r.named_insured and context.community is not None and not is_association(r.named_insured, context):
         found.append(Finding("insured-not-association", f"the named insured is {r.named_insured!r}, not the association", Severity.PROBLEM))
     if r.policy_number and sheet_policies(context) and sheet_policy(r.policy_number, context) is None and r.coverage is not Coverage.FLOOD:
@@ -567,6 +576,7 @@ class PolicyDeclarationsModel(DocumentModel):
     kind = DocumentKind.INSURANCE_POLICY
     name = "policy-declarations"
     required = ("carrier", "policy_number", "named_insured", "term_start", "term_end", "limit")
+    lens_checks = (policy_term,)
 
     def parse(self, text: str, context: ModelContext) -> InsurancePolicy | None:
         return _declarations(text, context)
@@ -843,31 +853,38 @@ def _limit(lines: list[CoverageLine], coverage: Coverage) -> int | None:
     return max(values) if values else None
 
 
+@AS_OF.check("certificate-lines", EvidenceOfInsurance, fields=("lines",))
+def certificate_lines(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: which of a certificate's policies have expired, and which expire soon."""
+    found: list[Finding] = []
+    ends = [l.expiration for l in r.lines if l.expiration]
+    if ends:
+        latest = max(ends)
+        expired = [l for l in r.lines if l.expiration and l.expiration < as_of]
+        soon = [l for l in r.lines if l.expiration and 0 <= (l.expiration - as_of).days <= SOON_DAYS]
+        if latest < as_of:
+            found.append(Finding("certificate-expired", f"every policy on the certificate has expired (the last on {latest}); anyone "
+                                 "relying on it needs the renewal certificate", Severity.CHECK))
+        elif expired:
+            found.append(Finding("lines-expired", f"{len(expired)} of {len(r.lines)} policies on the certificate have expired: "
+                                 + ", ".join(f"{l.policy_number} ({l.expiration})" for l in expired), Severity.CHECK))
+        if soon:
+            found.append(Finding("lines-expiring", f"{len(soon)} policies expire within {SOON_DAYS} days: "
+                                 + ", ".join(f"{l.policy_number} ({l.expiration})" for l in soon), Severity.INFO, "CIV 5810"))
+    return found
+
+
 class AcordCertificateModel(DocumentModel):
     kind = DocumentKind.EVIDENCE_OF_INSURANCE
     name = "acord-certificate"
     required = ("issued", "producer", "insurers", "insured", "lines", "holder")
+    lens_checks = (certificate_lines,)
 
     def parse(self, text: str, context: ModelContext) -> EvidenceOfInsurance | None:
         return _acord(text, context)
 
     def check(self, r: EvidenceOfInsurance, context: ModelContext) -> list[Finding]:
-        found: list[Finding] = []
-        today = context.today
-        ends = [l.expiration for l in r.lines if l.expiration]
-        if ends:
-            latest = max(ends)
-            expired = [l for l in r.lines if l.expiration and l.expiration < today]
-            soon = [l for l in r.lines if l.expiration and 0 <= (l.expiration - today).days <= SOON_DAYS]
-            if latest < today:
-                found.append(Finding("certificate-expired", f"every policy on the certificate has expired (the last on {latest}); anyone "
-                                     "relying on it needs the renewal certificate", Severity.CHECK))
-            elif expired:
-                found.append(Finding("lines-expired", f"{len(expired)} of {len(r.lines)} policies on the certificate have expired: "
-                                     + ", ".join(f"{l.policy_number} ({l.expiration})" for l in expired), Severity.CHECK))
-            if soon:
-                found.append(Finding("lines-expiring", f"{len(soon)} policies expire within {SOON_DAYS} days: "
-                                     + ", ".join(f"{l.policy_number} ({l.expiration})" for l in soon), Severity.INFO, "CIV 5810"))
+        found: list[Finding] = [certificate_lines]   # the as-of lens's place: the policies expired or expiring
         if r.holder and (is_association(r.holder, context) or re.search(r"board of directors", r.holder, re.I)):
             found.append(Finding("holder-is-association", f"the certificate holder is the association itself ({r.holder}); a certificate for "
                                  "a lender, vendor, or owner names that party", Severity.INFO))

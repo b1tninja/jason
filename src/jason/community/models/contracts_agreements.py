@@ -49,6 +49,7 @@ from jason.community.document_models import (
 )
 from jason.community.models.contracts_insurance import is_association, unit_count
 from jason.community.models.contracts_signing import Execution, Signature, blank_date_after, read_signing
+from jason.community.reviews import AS_OF, Reviewed
 from jason.community.symbols import DocumentKind
 
 SOON_DAYS = 60
@@ -115,7 +116,7 @@ class Contract:
     renewal_months: int | None = None
     notice_days: int | None = None
     term_end: date | None = None           # the initial term's end
-    current_term_end: date | None = None   # with the automatic renewals up to today
+    current_term_end: date | None = None   # with the automatic renewals up to the as-of date; the as-of lens fills it, not the parse
     prices: tuple[Price, ...] = ()
     items: tuple[LineItem, ...] = ()
     total: int | None = None
@@ -580,12 +581,7 @@ def _read_contract(text: str, context: ModelContext) -> Contract | None:
     r.term_months, r.auto_renews, r.renewal_months, r.notice_days = _terms(text)
     start = r.signed_on or r.dated
     if start and r.term_months:
-        r.term_end = _add_months(start, r.term_months)
-        end = r.term_end
-        step = r.renewal_months or r.term_months
-        while r.auto_renews and step and end < context.today:
-            end = _add_months(end, step)
-        r.current_term_end = end
+        r.term_end = _add_months(start, r.term_months)   # the term running on a given day is the as-of lens's (``contract_term``)
     r.prices = tuple(_prices(text))
     items = _numbered_options(text) or _service_lines(text)
     r.items = tuple(items)
@@ -606,9 +602,47 @@ def _read_contract(text: str, context: ModelContext) -> Contract | None:
     return r
 
 
+def _counterparty_ended(r) -> bool:
+    return bool(re.search(r"\bprior\b|\bformer\b", r.vendor_role, re.I))
+
+
+def current_term_end(r, as_of: date) -> date | None:
+    """The end of the term running on ``as_of``: the initial term's end, rolled forward by the renewal period while the
+    agreement renews itself."""
+    if not r.term_end:
+        return None
+    end = r.term_end
+    step = r.renewal_months or r.term_months
+    while r.auto_renews and step and end < as_of:
+        end = _add_months(end, step)
+    return end
+
+
+@AS_OF.check("contract-term", Contract, fields=("vendor_role", "dated", "commencement_blank", "term_months", "auto_renews",
+                                                "renewal_months", "notice_days", "term_end"))
+def contract_term(r, as_of: date, _facts=None) -> Reviewed:
+    """As of a date: the term running then (the record's ``current_term_end``), and whether the term has ended or when
+    notice of non-renewal is due."""
+    found: list[Finding] = []
+    current = current_term_end(r, as_of)
+    if r.term_end and not _counterparty_ended(r):
+        counted = " (counted from the signing date)" if r.commencement_blank or not r.dated else ""
+        if not r.auto_renews and r.term_end < as_of:
+            found.append(Finding("term-ended", f"the {r.term_months}-month term ended {r.term_end}{counted}", Severity.INFO))
+        elif r.auto_renews and current and r.commencement_blank and (r.renewal_months or 0) > 1:
+            found.append(Finding("auto-renewal", f"renews itself for {r.renewal_months} months; the current term would end "
+                                 f"{current}{counted}, with {r.notice_days or '?'} days' notice to end it", Severity.INFO))
+        elif r.auto_renews and current and (r.renewal_months or 0) > 1:
+            deadline = current - timedelta(days=r.notice_days or 0)
+            left = (deadline - as_of).days
+            found.append(Finding("auto-renewal", f"renews itself for {r.renewal_months} months at {current}{counted}; "
+                                 f"notice of non-renewal is due by {deadline} ({left} days)",
+                                 Severity.CHECK if 0 <= left <= SOON_DAYS else Severity.INFO))
+    return Reviewed(tuple(found), {"current_term_end": current})
+
+
 def contract_findings(r: Contract, context: ModelContext) -> list[Finding]:
     found: list[Finding] = []
-    today = context.today
     who = r.vendor or "the vendor"
     if r.execution is Execution.NOT_IN_TEXT:
         blanks = f" ({r.blank_signature_lines} blank signature or date lines)" if r.blank_signature_lines else ""
@@ -629,28 +663,13 @@ def contract_findings(r: Contract, context: ModelContext) -> list[Finding]:
                              "document", Severity.CHECK))
     if r.client and context.community is not None and not is_association(r.client, context):
         found.append(Finding("client-not-association", f"the contract names {r.client!r} as the client, not the association", Severity.CHECK))
-    ended = re.search(r"\bprior\b|\bformer\b", r.vendor_role, re.I)
-    if ended:
+    if _counterparty_ended(r):
         found.append(Finding("counterparty-ended", f"the specification lists {who} as {r.vendor_role.split(';')[0]}; the agreement's "
                              "renewal terms no longer run", Severity.INFO))
-    elif r.term_end:
-        counted = " (counted from the signing date)" if r.commencement_blank or not r.dated else ""
-        if not r.auto_renews and r.term_end < today:
-            found.append(Finding("term-ended", f"the {r.term_months}-month term ended {r.term_end}{counted}", Severity.INFO))
-        elif r.auto_renews and r.current_term_end and r.commencement_blank and (r.renewal_months or 0) > 1:
-            found.append(Finding("auto-renewal", f"renews itself for {r.renewal_months} months; the current term would end "
-                                 f"{r.current_term_end}{counted}, with {r.notice_days or '?'} days' notice to end it", Severity.INFO))
-        elif r.auto_renews and r.current_term_end:
-            notice = r.notice_days or 0
-            deadline = r.current_term_end - timedelta(days=notice)
-            left = (deadline - today).days
-            if (r.renewal_months or 0) <= 1:
-                found.append(Finding("month-to-month", f"runs month to month; either side may end it with {notice or '?'} days' notice",
-                                     Severity.INFO))
-            else:
-                found.append(Finding("auto-renewal", f"renews itself for {r.renewal_months} months at {r.current_term_end}{counted}; "
-                                     f"notice of non-renewal is due by {deadline} ({left} days)",
-                                     Severity.CHECK if 0 <= left <= SOON_DAYS else Severity.INFO))
+    elif r.term_end and r.auto_renews and (r.renewal_months or 0) <= 1:
+        found.append(Finding("month-to-month", f"runs month to month; either side may end it with {r.notice_days or '?'} days' notice",
+                             Severity.INFO))
+    found.append(contract_term)   # the as-of lens's place: the term ended, or it renews itself and notice is due
     monthly = [p.amount for p in r.prices if p.label == "total monthly charge" and p.amount]
     if monthly and r.items and sum(i.amount for i in r.items) != sum(monthly):
         found.append(Finding("service-lines-differ", f"the service lines add to {_money(sum(i.amount for i in r.items))} a month; the "
@@ -703,6 +722,7 @@ class NahsRoofEstimateContractModel(DocumentModel):
     kind = DocumentKind.CONTRACT
     name = "nahs-roof-estimate"
     required = ("vendor", "client", "dated", "items", "authorized", "signed_on")
+    lens_checks = (contract_term,)
 
     def parse(self, text: str, context: ModelContext) -> Contract | None:
         if not _NAHS.search(text or ""):
@@ -728,6 +748,7 @@ class ContractModel(DocumentModel):
     kind = DocumentKind.CONTRACT
     name = "contract"
     required = ("vendor", "client", "prices")
+    lens_checks = (contract_term,)
 
     def parse(self, text: str, context: ModelContext) -> Contract | None:
         return _read_contract(text, context)
@@ -800,23 +821,28 @@ def _read_proposal(text: str, context: ModelContext) -> Proposal | None:
     return r
 
 
+@AS_OF.check("proposal-offer", Proposal, fields=("accepted_on", "valid_until"))
+def proposal_offer(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: whether an offer no one accepted is still open."""
+    if r.accepted_on or not r.valid_until:
+        return []
+    if r.valid_until < as_of:
+        return [Finding("offer-lapsed", f"no acceptance shows and the offer ran to {r.valid_until}", Severity.INFO)]
+    return [Finding("offer-open", f"no acceptance shows; the offer is open to {r.valid_until} "
+                    f"({(r.valid_until - as_of).days} days)", Severity.INFO)]
+
+
 def proposal_findings(r: Proposal, context: ModelContext) -> list[Finding]:
     found: list[Finding] = []
-    today = context.today
     if r.accepted_on:
         found.append(Finding("accepted", f"accepted {r.accepted_on}; keep the board's written approval (minutes or a signed resolution) "
                              "with it", Severity.CHECK, "CIV 5200(a)(5)"))
         if r.valid_until and r.accepted_on > r.valid_until:
             found.append(Finding("accepted-after-validity", f"accepted {r.accepted_on}, after the offer's {r.valid_until} limit",
                                  Severity.INFO))
-    elif r.valid_until:
-        if r.valid_until < today:
-            found.append(Finding("offer-lapsed", f"no acceptance shows and the offer ran to {r.valid_until}", Severity.INFO))
-        else:
-            found.append(Finding("offer-open", f"no acceptance shows; the offer is open to {r.valid_until} "
-                                 f"({(r.valid_until - today).days} days)", Severity.INFO))
-    else:
+    elif not r.valid_until:
         found.append(Finding("no-acceptance", "no acceptance shows in the text and the proposal states no expiry", Severity.INFO))
+    found.append(proposal_offer)   # the as-of lens's place: an offer no one accepted is open or has lapsed
     if r.items and r.total and len(r.items) > 1:
         added = sum(i.amount for i in r.items)
         if added != r.total:
@@ -867,6 +893,7 @@ class NahsRoofEstimateProposalModel(DocumentModel):
     kind = DocumentKind.PROPOSAL
     name = "nahs-roof-estimate"
     required = ("vendor", "proposal_date", "items", "total")
+    lens_checks = (proposal_offer,)
 
     def parse(self, text: str, context: ModelContext) -> Proposal | None:
         if not _NAHS.search(text or ""):
@@ -899,6 +926,7 @@ class ProposalModel(DocumentModel):
     kind = DocumentKind.PROPOSAL
     name = "proposal"
     required = ("vendor", "proposal_date", "price", "scope")
+    lens_checks = (proposal_offer,)
 
     def parse(self, text: str, context: ModelContext) -> Proposal | None:
         if _is_bill(text):

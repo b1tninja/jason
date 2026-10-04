@@ -19,6 +19,7 @@ from datetime import date
 from enum import Enum
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, date_after, dates_in, register, squash
+from jason.community.reviews import AS_OF
 from jason.community.symbols import DocumentKind
 
 from .governing_deeds import copy_findings, copy_recording
@@ -115,10 +116,20 @@ def _money(pattern: str, flat: str) -> int | None:
     return int(hit.group(1).replace(",", "").replace(".", "")) if hit else None
 
 
+@AS_OF.check("report-expiry", PublicReportRecord, fields=("expires",))
+def report_expiry(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: whether the public report has expired."""
+    if r.expires and r.expires < as_of:
+        return [Finding("report-expired", f"the report expired on {r.expires}; it is a historical record of what buyers were "
+                        "told", Severity.INFO)]
+    return []
+
+
 class PublicReportModel(DocumentModel):
     kind = DocumentKind.DRE_REPORT
     name = "dre-public-report"
     required = ("file_number", "report_type", "issued", "expires")
+    lens_checks = (report_expiry,)
 
     def parse(self, text: str, context: ModelContext) -> PublicReportRecord | None:
         flat = re.sub(r"\b(" + _MONTH + r"\s+\d{1,2})\.\s+(\d{4})\b", r"\1, \2", squash(text), flags=re.I)  # "MAY 5. 2025"
@@ -187,10 +198,7 @@ class PublicReportModel(DocumentModel):
         return r
 
     def check(self, r: PublicReportRecord, context: ModelContext) -> list[Finding]:
-        found: list[Finding] = []
-        if r.expires and r.expires < context.today:
-            found.append(Finding("report-expired", f"the report expired on {r.expires}; it is a historical record of what buyers were "
-                                 "told", Severity.INFO))
+        found: list[Finding] = [report_expiry]   # the as-of lens's place: the report has expired
         reports = spec_reports(context.community)
         if not reports or not r.base_file_number:
             return found

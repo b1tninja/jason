@@ -56,6 +56,7 @@ from jason.community.models.legal_shared import (
     site_addresses,
     words_to_cents,
 )
+from jason.community.reviews import AS_OF
 from jason.community.symbols import Building, DocumentKind
 
 MECHANICS_ACTION_DAYS = 90       # CIV 8460(a)
@@ -329,10 +330,24 @@ class MechanicsLien:
 _ENTITY = re.compile(r"\b(?:Inc\.?|LLC|L\.L\.C\.|Corporation|Company|Co\.|LP|LLP|Association|Trust)\b", re.I)
 
 
+@AS_OF.check("lien-action-deadline", MechanicsLien, fields=("recorded",))
+def lien_action_deadline(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: whether the claimant's time to sue on the lien has run."""
+    if not r.recorded:
+        return []
+    deadline = r.recorded + timedelta(days=MECHANICS_ACTION_DAYS)
+    if as_of > deadline:
+        return [Finding("action-deadline-passed", f"the claimant had to sue by {deadline}; without a recorded lis pendens or "
+                        "credit extension the lien has expired and is unenforceable (it stays of record)", Severity.INFO,
+                        "CIV 8460(a), 8461")]
+    return [Finding("action-deadline", f"the claimant must sue to enforce by {deadline}", Severity.CHECK, "CIV 8460(a)")]
+
+
 class MechanicsLienModel(DocumentModel):
     kind = DocumentKind.RECORDED_LIEN
     name = "mechanics-lien"
     required = ("document_number", "recorded", "claimant", "amount", "reputed_owner", "properties")
+    lens_checks = (lien_action_deadline,)
 
     def parse(self, text: str, context: ModelContext) -> MechanicsLien | None:
         if not re.search(r"CLAIM OF MECHANIC'?S LIEN", text or "", re.I) or re.search(r"as Surety", text or "", re.I):
@@ -382,14 +397,7 @@ class MechanicsLienModel(DocumentModel):
                 found.append(Finding("lien-part-not-in-text", f"the text does not show {label}", Severity.CHECK, "CIV 8416(a)"))
         if not r.verified:
             found.append(Finding("not-verified", "the text carries no verification of the claim", Severity.CHECK, "CIV 8416(a)"))
-        if r.recorded:
-            deadline = r.recorded + timedelta(days=MECHANICS_ACTION_DAYS)
-            if context.today > deadline:
-                found.append(Finding("action-deadline-passed", f"the claimant had to sue by {deadline}; without a recorded lis pendens or "
-                                     "credit extension the lien has expired and is unenforceable (it stays of record)", Severity.INFO,
-                                     "CIV 8460(a), 8461"))
-            else:
-                found.append(Finding("action-deadline", f"the claimant must sue to enforce by {deadline}", Severity.CHECK, "CIV 8460(a)"))
+        found.append(lien_action_deadline)   # the as-of lens's place: the claimant's time to sue, running or run
         for release in r.releases:
             found.append(Finding("release-in-file", f"the file also releases lien {release.released_number or '(number not read)'}"
                                  + (f" recorded {release.released_recorded}" if release.released_recorded else ""), Severity.INFO))

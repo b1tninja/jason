@@ -44,6 +44,7 @@ from jason.community.document_models import (
 )
 from jason.community.invoice_formats import INVOICE_FORMATS
 from jason.community.invoices import InvoiceFormat, parse_date, read_invoice, readable
+from jason.community.reviews import AS_OF
 from jason.community.symbols import Building, DocumentKind, Street
 
 RECORD_AUTHORITY = "CIV 5200(b), 5210(a)(1)"
@@ -335,6 +336,24 @@ def service_address(text: str, context: ModelContext) -> tuple[str, int | None]:
     return "", None
 
 
+@AS_OF.check("invoice-dated", InvoiceRecord, fields=("invoice_date",))
+def invoice_dated(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: an invoice dated after it."""
+    if r.invoice_date and r.invoice_date > as_of:
+        return [Finding("dated-in-future", f"the invoice is dated {r.invoice_date}, after today", Severity.CHECK)]
+    return []
+
+
+@AS_OF.check("invoice-due", InvoiceRecord, fields=("due_date", "paid"))
+def invoice_due(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: a due date that has passed on an invoice the text does not show paid."""
+    if r.due_date and r.due_date < as_of and not r.paid:
+        days = (as_of - r.due_date).days
+        return [Finding("due-date-passed", f"it was due {r.due_date} ({days} days ago) and the text does not show it paid; "
+                        "confirm the payment", Severity.INFO)]
+    return []
+
+
 def invoice_findings(r: InvoiceRecord, context: ModelContext) -> list[Finding]:
     found: list[Finding] = []
     if r.line_items and not r.line_items_partial and r.total_cents is not None:
@@ -347,14 +366,10 @@ def invoice_findings(r: InvoiceRecord, context: ModelContext) -> list[Finding]:
             if r.subtotal_cents is not None or items > r.total_cents:
                 found.append(Finding("line-items-differ", f"the {len(r.line_items)} line items add to ${items / 100:,.2f}; the {what} is "
                                      f"${against / 100:,.2f}", Severity.CHECK))
-    if r.invoice_date and r.invoice_date > context.today:
-        found.append(Finding("dated-in-future", f"the invoice is dated {r.invoice_date}, after today", Severity.CHECK))
+    found.append(invoice_dated)   # the as-of lens's place: dated in the future
     if r.invoice_date and r.due_date and r.due_date < r.invoice_date:
         found.append(Finding("due-before-issued", f"due {r.due_date}, before its own date {r.invoice_date}", Severity.CHECK))
-    if r.due_date and r.due_date < context.today and not r.paid:
-        days = (context.today - r.due_date).days
-        found.append(Finding("due-date-passed", f"it was due {r.due_date} ({days} days ago) and the text does not show it paid; "
-                             "confirm the payment", Severity.INFO))
+    found.append(invoice_due)     # the as-of lens's place: the due date passed, unpaid in the text
     word = association_word(context)
     if word and r.bill_to and word.casefold() not in _fold(r.bill_to):
         found.append(Finding("billed-to-other", "the bill-to line does not name the association: a board member's or an owner's "
@@ -373,6 +388,7 @@ class InvoiceModel(DocumentModel):
     kind = DocumentKind.INVOICE
     name = "invoice"
     required = ("vendor", "number", "invoice_date", "total_cents")
+    lens_checks = (invoice_dated, invoice_due)
 
     def parse(self, text: str, context: ModelContext) -> InvoiceRecord | None:
         return read_record(text, context)
@@ -401,10 +417,23 @@ _FLOOD_TITLE = re.compile(r"RENEWAL NOTICE|New Application Invoice", re.I)
 _LOCATION = re.compile(r"\n\s*(\d{4}(?:-\d{4})?\s+[A-Z][A-Z .]+(?:WALK|LANE|LN|DR|DRIVE|CR|CIRCLE|WAY|CT|ST)\b)[^\n]*", re.I)
 
 
+@AS_OF.check("flood-renewal-due", FloodPremiumNotice, fields=("expiration_date",))
+def flood_renewal_due(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: how long until the flood policy the notice renews expires."""
+    if not r.expiration_date:
+        return []
+    left = (r.expiration_date - as_of).days
+    if left < 0:
+        return []
+    return [Finding("flood-renewal-due", f"the policy expires {r.expiration_date} ({left} days); the notice renews it "
+                    "without a lapse only if the premium arrives within 30 days after", Severity.CHECK if left < 45 else Severity.INFO)]
+
+
 class FloodPremiumNoticeModel(DocumentModel):
     kind = DocumentKind.INVOICE
     name = "flood-premium-notice"
     required = ("policy_number", "invoice_date", "premium_cents", "property_location")
+    lens_checks = (invoice_dated, flood_renewal_due)
 
     def parse(self, text: str, context: ModelContext) -> FloodPremiumNotice | None:
         if not text or not _FLOOD_TITLE.search(text) or not re.search(r"PHILADELPHIA", text, re.I) or not re.search(r"flood", text, re.I):
@@ -437,8 +466,7 @@ class FloodPremiumNoticeModel(DocumentModel):
         return r
 
     def check(self, r: FloodPremiumNotice, context: ModelContext) -> list[Finding]:
-        found = invoice_findings(r, context)
-        found = [f for f in found if f.code != "due-date-passed"]
+        found = [f for f in invoice_findings(r, context) if f is not invoice_due]   # a premium notice's due date is its expiry, below
         policy = _flood_policy(r.policy_number, context)
         policies = _flood_policies(context)
         if r.policy_number and policies and policy is None and r.notice == "renewal notice":
@@ -447,11 +475,7 @@ class FloodPremiumNoticeModel(DocumentModel):
         if policy is not None and r.building is not None and policy.building is not None and policy.building != r.building:
             found.append(Finding("flood-building-mismatch", f"the notice's location is building {r.building.value}; the specification "
                                  f"has policy {r.policy_number} on building {policy.building.value}", Severity.CHECK))
-        if r.expiration_date:
-            left = (r.expiration_date - context.today).days
-            if left >= 0:
-                found.append(Finding("flood-renewal-due", f"the policy expires {r.expiration_date} ({left} days); the notice renews it "
-                                     "without a lapse only if the premium arrives within 30 days after", Severity.CHECK if left < 45 else Severity.INFO))
+        found.append(flood_renewal_due)   # the as-of lens's place: how long until the policy expires
         return found
 
 
@@ -508,10 +532,18 @@ class TaxReturn:
 _FORMS = re.compile(r"\bForm\s+(1120-?H|100(?!\d)|199(?!\d)|7004|3539|8453-(?:C|EO))\b", re.I)
 
 
+@AS_OF.check("tax-deadline", TaxReturn, fields=("deadlines",))
+def tax_deadline(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: the next deadline the preparer's letter gives."""
+    upcoming = [d for d in r.deadlines if d >= as_of]
+    return [Finding("tax-deadline", f"the next deadline the letter gives is {upcoming[0]}", Severity.CHECK)] if upcoming else []
+
+
 class TaxReturnModel(DocumentModel):
     kind = DocumentKind.TAX_RETURN
     name = "tax-return"
     required = ("tax_year", "forms", "preparer")
+    lens_checks = (tax_deadline,)
 
     def parse(self, text: str, context: ModelContext) -> TaxReturn | None:
         if not text or not _FORMS.search(text) or not re.search(r"return|extension", text, re.I):
@@ -547,9 +579,7 @@ class TaxReturnModel(DocumentModel):
         for result in r.results:
             if result.result in ("balance due", "amount due") and result.amount_cents:
                 found.append(Finding("tax-due", f"Form {result.form} shows ${result.amount_cents / 100:,.2f} due", Severity.CHECK))
-        upcoming = [d for d in r.deadlines if d >= context.today]
-        if upcoming:
-            found.append(Finding("tax-deadline", f"the next deadline the letter gives is {upcoming[0]}", Severity.CHECK))
+        found.append(tax_deadline)   # the as-of lens's place: the next deadline the letter gives
         return found
 
 

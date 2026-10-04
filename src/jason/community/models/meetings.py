@@ -55,6 +55,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.base import name_regex
+from jason.community.reviews import AS_OF
 from jason.community.sources import fold, manager_in
 from jason.community.symbols import DocumentKind
 
@@ -689,6 +690,7 @@ class AgendaModel(DocumentModel):
     kind = DocumentKind.AGENDA
     name = "meeting-agenda"
     required = ("meeting_type", "meeting_date", "meeting_time", "items")
+    enriched = ("notice_sent", "notice_subject")
 
     def parse(self, text: str, context: ModelContext) -> Agenda | None:
         t = normalize(text)
@@ -712,9 +714,6 @@ class AgendaModel(DocumentModel):
         a.tech_assistance = bool(re.search(r"technical (?:assistance|support|help)|trouble (?:joining|connecting)|help with (?:the )?(?:zoom|teleconference)", flat, re.I))
         a.individual_delivery_reminder = bool(re.search(r"individual (?:delivery|notice)", flat, re.I))
         a.posted_on = next(iter(dates_in(first(r"^\s*(?:Date Posted|Posted(?: on)?|Notice Date|Notice given(?: on)?|Mailed(?: on)?)\s*:\s*([^\n]{6,30})", t, flags=re.M))), None)
-        sent, _start = notice_mailings(context, a.meeting_date)
-        if sent:
-            a.notice_sent, a.notice_subject = sent[0]
         exec_item = _find_item(items, r"Executive Session")
         if exec_item:
             a.executive_topics = tuple(s.title for s in exec_item.subitems if s.title)
@@ -736,6 +735,13 @@ class AgendaModel(DocumentModel):
         if acc:
             a.acclamation_item = squash(" ".join([acc.title, acc.notes]))
         return a
+
+    def enrich(self, a: Agenda, context: ModelContext) -> None:
+        """From the communications log, not the agenda's text: when the earliest notice email for this meeting went out,
+        and its subject."""
+        sent, _start = notice_mailings(context, a.meeting_date)
+        if sent:
+            a.notice_sent, a.notice_subject = sent[0]
 
     def check(self, a: Agenda, context: ModelContext) -> list[Finding]:
         found: list[Finding] = []
@@ -1014,10 +1020,30 @@ def _consents(text: str) -> tuple[tuple[str, date | None], ...]:
     return tuple(seen.items())
 
 
+@AS_OF.check("minutes-as-of", Minutes, fields=("draft", "next_meeting", "meeting_date"))
+def minutes_as_of(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: a draft the next meeting should have replaced, and minutes still within their thirty days."""
+    found: list[Finding] = []
+    if r.draft:
+        if r.next_meeting and r.next_meeting < as_of:
+            found.append(Finding("draft-after-next-meeting", f"this copy is still marked DRAFT; the next meeting ({r.next_meeting}) has "
+                                 "passed, so the approved minutes should replace it", Severity.CHECK, "CIV 4950(a)"))
+        else:
+            found.append(Finding("minutes-draft", "marked DRAFT: proposed minutes, to be replaced once the board approves them",
+                                 Severity.INFO, "CIV 4950(a)"))
+    if r.meeting_date:
+        due = r.meeting_date + timedelta(days=MINUTES_DAYS)
+        if as_of <= due:
+            found.append(Finding("minutes-due", f"minutes, draft minutes, or a summary must be available to members by {due}",
+                                 Severity.INFO, "CIV 4950(a)"))
+    return found
+
+
 class MinutesModel(DocumentModel):
     kind = DocumentKind.MINUTES
     name = "meeting-minutes"
     required = ("meeting_type", "meeting_date", "items")
+    lens_checks = (minutes_as_of,)
 
     def recognizes(self, t: str) -> bool:
         return bool(meeting_title(t)[2]) and bool(re.search(r"\bHeld\b|Minutes|called to order|Quick recap|Summary|quorum|adjourn", t, re.I)
@@ -1145,19 +1171,7 @@ class MinutesModel(DocumentModel):
         return r
 
     def check(self, r: Minutes, context: ModelContext) -> list[Finding]:
-        found: list[Finding] = []
-        if r.draft:
-            if r.next_meeting and r.next_meeting < context.today:
-                found.append(Finding("draft-after-next-meeting", f"this copy is still marked DRAFT; the next meeting ({r.next_meeting}) has "
-                                     "passed, so the approved minutes should replace it", Severity.CHECK, "CIV 4950(a)"))
-            else:
-                found.append(Finding("minutes-draft", "marked DRAFT: proposed minutes, to be replaced once the board approves them",
-                                     Severity.INFO, "CIV 4950(a)"))
-        if r.meeting_date:
-            due = r.meeting_date + timedelta(days=MINUTES_DAYS)
-            if context.today <= due:
-                found.append(Finding("minutes-due", f"minutes, draft minutes, or a summary must be available to members by {due}",
-                                     Severity.INFO, "CIV 4950(a)"))
+        found: list[Finding] = [minutes_as_of]   # the as-of lens's place: a stale draft, and minutes still due
         if r.layout is MinutesLayout.WRITTEN_CONSENT:
             return found + self._consent_findings(r, context)
         summary = r.layout is MinutesLayout.AI_SUMMARY
@@ -1193,10 +1207,11 @@ class MinutesModel(DocumentModel):
         remote = r.teleconference and not r.physical_location
         roll_call = any(a.roll_call for a in r.actions)
         # A Zoom AI summary retells the call; it never records a roll call, and the members vote by ballot, not by roll call.
-        if acted and remote and not roll_call and not summary and not members:
+        no_roll_call = bool(acted and remote and not roll_call and not summary and not members)
+        if no_roll_call:
             found.append(Finding("no-roll-call", f"{len(acted)} board actions at a teleconference meeting with no physical location, and the "
                                  "minutes record no roll-call vote", Severity.CHECK, "CIV 4926(a)(3)"))
-        if acted and not any(a.yes is not None or a.unanimous for a in acted) and not any(f.code == "no-roll-call" for f in found) \
+        if acted and not any(a.yes is not None or a.unanimous for a in acted) and not no_roll_call \
                 and not summary and not members:
             found.append(Finding("votes-not-recorded", f"{len(acted)} actions recorded without a vote count or the directors' votes",
                                  Severity.CHECK))

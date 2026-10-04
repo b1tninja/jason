@@ -46,6 +46,7 @@ from jason.community.models.legal_shared import (
     site_address,
     unit_count,
 )
+from jason.community.reviews import AS_OF
 from jason.community.symbols import Building, DocumentKind
 
 DOCUMENT_DAYS = 10      # CIV 4530(a)(1)
@@ -87,10 +88,20 @@ def _yes(value: str) -> bool | None:
     return True if v.startswith("y") else False if v.startswith("n") else None
 
 
+@AS_OF.check("resale-documents-overdue", EscrowRequest, fields=("ordered", "completed"))
+def documents_overdue(r, as_of: date, _facts=None) -> list[Finding]:
+    """As of a date: an order that shows no completion, once the days to deliver the documents have run."""
+    if days_between(r.ordered, r.completed) is None and r.ordered and as_of > r.ordered + timedelta(days=DOCUMENT_DAYS):
+        return [Finding("documents-overdue", f"no completion is shown and {DOCUMENT_DAYS} days from the order passed on "
+                        f"{r.ordered + timedelta(days=DOCUMENT_DAYS)}", Severity.CHECK, "CIV 4530(a)(1)")]
+    return []
+
+
 class EscrowRequestModel(DocumentModel):
     kind = DocumentKind.ESCROW_REQUEST
     name = "resale-document-order"
     required = ("property_address", "requester", "ordered")
+    lens_checks = (documents_overdue,)
 
     def parse(self, text: str, context: ModelContext) -> EscrowRequest | None:
         if not re.search(r"Requestor Information|Escrow/File Number|CHARGES FOR DOCUMENTS PROVIDED AS REQUIRED BY SECTION 4525|"
@@ -128,9 +139,7 @@ class EscrowRequestModel(DocumentModel):
         if took is not None:
             severity = Severity.PROBLEM if took > DOCUMENT_DAYS else Severity.INFO
             found.append(Finding("documents-days", f"the order was completed {took} days after it was placed", severity, "CIV 4530(a)(1)"))
-        elif r.ordered and context.today > r.ordered + timedelta(days=DOCUMENT_DAYS):
-            found.append(Finding("documents-overdue", f"no completion is shown and {DOCUMENT_DAYS} days from the order passed on "
-                                 f"{r.ordered + timedelta(days=DOCUMENT_DAYS)}", Severity.CHECK, "CIV 4530(a)(1)"))
+        found.append(documents_overdue)   # the as-of lens's place: no completion shown and the days to deliver have run
         if r.fee is None:
             found.append(Finding("fee-not-in-text", "the order shows no fee; the fee estimate goes on the CIV 4528 form before the "
                                  "request is processed", Severity.CHECK, "CIV 4530(b)(2)"))
