@@ -8,7 +8,7 @@ import { ChangedBanner } from "./ChangedBanner";
 import { Command } from "./Command";
 import { CostLine } from "./CostLine";
 import { DueDate } from "./DueDate";
-import { Evidence } from "./Evidence";
+import { Evidence, EvidenceVersion, RefreshAllEvidence } from "./Evidence";
 import { HeldNote } from "./HeldNote";
 import { Pill } from "./Pill";
 import { Recitation, type Citation } from "./Recitation";
@@ -78,6 +78,7 @@ export function PlanReview({
   const a = approval;
   const [selected, setSelected] = useState<string[]>([]);
   const [status, setStatus] = useState("");
+  const [evidenceVersion, setEvidenceVersion] = useState(0);
   useEffect(() => { setSelected([]); setStatus(""); }, [a.id, a.fingerprint]);
 
   const stale = staleness(a, { recheck, now, maxAgeHours });
@@ -116,7 +117,10 @@ export function PlanReview({
     ) : undefined;
   };
 
+  const refs = [...(a.evidence ?? []), ...a.items.flatMap((i) => i.evidence ?? [])];
+
   return (
+    <EvidenceVersion.Provider value={evidenceVersion}>
     <article className="plan-review" aria-labelledby={`${uid}-title`}>
       <header className="plan-head">
         <div className="row wrap">
@@ -130,6 +134,7 @@ export function PlanReview({
         </p>
         {a.clock?.due && <p>Clock: {a.clock.what} <DueDate iso={a.clock.due} today={today} /></p>}
         <Evidence items={a.evidence} label="Read from" approval={a.id} level={3} />
+        <RefreshAllEvidence approval={a.id} refs={refs} by={me.trim() ? me : undefined} onDone={() => setEvidenceVersion((v) => v + 1)} />
         {a.supersedes && <p className="muted">Supersedes <code className="chip">{a.supersedes}</code>; earlier decisions are hints, not counted.</p>}
       </header>
 
@@ -244,5 +249,6 @@ export function PlanReview({
       <Command cmd={commands.show(a.id)} note="The same plan in a terminal." />
       <Caveats items={caveats} />
     </article>
+    </EvidenceVersion.Provider>
   );
 }

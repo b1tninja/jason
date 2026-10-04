@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ApiError, getJson, postJson } from "../lib/api";
 import { when, type EvidenceRef } from "../lib/approvals";
 import { useMe } from "../lib/session";
@@ -45,8 +45,23 @@ export function refreshEvidence(req: EvidenceRefreshRequest): Promise<EvidenceAn
   return postJson<EvidenceAnswer>("/api/evidence/refresh", req);
 }
 
-/** Two arrows in a circle, at the text's color. */
-function RereadIcon() {
+/** `POST /api/evidence/refresh-all`'s answer: which addresses of the plan were read again, which could not be (and why),
+ * and how many the server does not read again. The answers themselves are not returned: open panels refetch. */
+export interface EvidenceRefreshAll {
+  approval: string; by: string; at: string; refreshed: string[]; failed: { address: string; error: string }[]; skipped: number;
+}
+
+/** Every request of one plan read again from PayHOA on one sign-in, as a named person's act, through the write guard. */
+export function refreshAllEvidence(req: { approval: string; by: string }): Promise<EvidenceRefreshAll> {
+  return postJson<EvidenceRefreshAll>("/api/evidence/refresh-all", req);
+}
+
+/** A counter a plan bumps after a batch read: every open `EvidencePanel` under it fetches its answer again, in place.
+ * A closed panel fetches when it opens anyway. */
+export const EvidenceVersion = createContext(0);
+
+/** Two arrows in a circle, at the text's color: the read-again icon, here and in the plan's "Read every request again". */
+export function RereadIcon() {
   return (
     <svg className="evidence-reread-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"
       fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -213,6 +228,8 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
     }
   };
 
+  const version = useContext(EvidenceVersion);
+  const fetched = useRef("");
   useEffect(() => {
     if (data) {
       setAnswer(data);
@@ -220,9 +237,14 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
       return;
     }
     const ctl = new AbortController();
-    setAnswer(null);
+    const key = `${address}\n${approval ?? ""}`;
+    // The same record fetched again (a batch read it): the answer stays shown until the new one replaces it.
+    if (fetched.current !== key) {
+      setAnswer(null);
+      setLoading(true);
+    }
+    fetched.current = key;
     setError("");
-    setLoading(true);
     getJson<EvidenceAnswer>(evidenceUrl(address, approval), ctl.signal).then(
       (a) => { setAnswer(a); setLoading(false); },
       (e: unknown) => {
@@ -235,7 +257,7 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
       },
     );
     return () => ctl.abort();
-  }, [address, approval, data]);
+  }, [address, approval, data, version]);
 
   const a = answer;
   const title = a?.label || label || address;
@@ -304,7 +326,77 @@ export function EvidencePanel({ address, label, approval, data, today, level = 4
   );
 }
 
-const openable = (e: string | EvidenceRef): e is EvidenceRef & { address: string } => typeof e !== "string" && !!e.address;
+const PAYHOA = "payhoa:";
+const requests = (n: number) => `${n} ${n === 1 ? "request" : "requests"}`;
+
+/** "Read every request again": the plan's PayHOA requests read again now (`POST /api/evidence/refresh-all`), as a named
+ * person's act. Offered only when `refs` name a `payhoa:` address (the server decides what it reads); one click, one
+ * batch, never on load. `by` is that person (omitted: the session's signed-in, acting, or picked name). `onDone` runs
+ * after a batch the server answered, so the plan's open panels fetch again. */
+export function RefreshAllEvidence({ approval, refs, by, onDone }: {
+  approval: string; refs: readonly (string | EvidenceRef)[]; by?: string; onDone?: (r: EvidenceRefreshAll) => void;
+}) {
+  const count = new Set(refs.filter(openable).map((e) => e.address).filter((x) => x.startsWith(PAYHOA))).size;
+  const sessionMe = useMe(by === undefined && count > 0);
+  const who = (by ?? sessionMe).trim();
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState<{ tone: "status" | "warn" | "error"; text: string } | null>(null);
+  const inFlight = useRef(false);
+  const alive = useRef(true);
+  const button = useRef<HTMLButtonElement | null>(null);
+  const whyId = useId();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  if (!count) return null;
+  const why = who ? "" : "Sign in or pick your name to read them again.";
+
+  const readAll = async () => {
+    if (busy || inFlight.current || why) return;
+    inFlight.current = true;
+    setBusy(true);
+    setSaid({ tone: "status", text: `Reading ${requests(count)} from PayHOA…` });
+    try {
+      const r = await refreshAllEvidence({ approval, by: who });
+      if (!alive.current) return;
+      const failed = r.failed ?? [];
+      const done = `Read ${requests((r.refreshed ?? []).length)} from PayHOA just now by ${r.by || who}.`;
+      const missed = failed.length
+        ? ` ${failed.length} could not be read: ${failed.map((f) => `${f.address}: ${f.error}`).join("; ")}`
+        : "";
+      setSaid({ tone: failed.length ? "warn" : "status", text: sentence(done + missed) });
+      onDone?.(r);
+    } catch (e: unknown) {
+      if (!alive.current) return;
+      const status = e instanceof ApiError ? e.status : undefined;
+      const message = e instanceof Error ? e.message : String(e);
+      setSaid({ tone: "error", text: status && [400, 403, 405, 409].includes(status) ? message : `jason-web did not answer: ${message}` });
+    } finally {
+      inFlight.current = false;
+      if (alive.current) {
+        setBusy(false);
+        if (typeof document !== "undefined" && (!document.activeElement || document.activeElement === document.body)) button.current?.focus();
+      }
+    }
+  };
+
+  return (
+    <div className="evidence-reread-all-row">
+      <button type="button" ref={button} className="evidence-reread-all"
+        title="Reads each request in this plan from PayHOA now, under your name; writes nothing to PayHOA."
+        aria-disabled={busy || !!why ? true : undefined} aria-busy={busy ? true : undefined}
+        aria-describedby={why ? whyId : undefined} onClick={readAll}>
+        <RereadIcon />Read every request again
+      </button>
+      {why && <span id={whyId} className="muted evidence-reread-all-why">{why}</span>}
+      <span aria-live="polite" className="evidence-reread-all-status">
+        {said && <span className={said.tone === "error" ? "notice notice-error" : said.tone === "warn" ? "notice notice-warn" : "muted"}>{said.text}</span>}
+      </span>
+    </div>
+  );
+}
+
+function openable(e: string | EvidenceRef): e is EvidenceRef & { address: string } {
+  return typeof e !== "string" && !!e.address;
+}
 
 /** Records, commands, paths, and links a row cites. A string, or a ref with no address, is a plain chip. A ref with an
  * address is a chip that opens what jason stored for it below the chips (one at a time; Escape closes it and returns to

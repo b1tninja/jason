@@ -553,3 +553,157 @@ def test_the_refresh_route_is_a_guarded_write_that_reads_payhoa_once(web, monkey
     assert r.status_code == 409 and "run `jason login` in a terminal" in r.json["error"]
     off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None))
     assert off.post(url, json=body).status_code == 405
+
+
+# --- refresh every record of one plan --------------------------------------------------------------------------------------
+
+REQUESTS = (501, 502, 503, 504)
+
+
+def _raws() -> dict[int, dict]:
+    return {sid: _raw(sid, sid - 500, f"10{sid - 500} EXAMPLE WAY", status="complete", **BEN) for sid in REQUESTS}
+
+
+def _addresses(a) -> list[str]:
+    return [e.address for e in list(a.evidence) + [e for i in a.items for e in i.evidence]]
+
+
+def test_refresh_all_reads_each_request_once_on_one_sign_in(village, monkeypatch):
+    import jason.locks
+
+    _record(village.data_dir)
+    a = _plan(village)
+    rows = [x for x in _addresses(a) if x.startswith("payhoa:submission:")]
+    assert len(rows) > len(set(rows))                                                # the plan names some twice
+    holds, real = [], jason.locks.hold
+    monkeypatch.setattr("jason.locks.hold", lambda *args, **kw: (holds.append(args), real(*args, **kw))[1])
+    client = _FormsClient(_raws())
+    factory = _factory(client)
+    out = evidence.refresh_all(a.id[:12], by="A Manager", data_dir=village.data_dir, client_factory=factory)
+    want = list(dict.fromkeys(rows))                                                 # distinct, in plan order
+    assert factory.calls == ["live"] and len(holds) == 1                             # one sign-in, one hold
+    assert client.reads == [("get", int(x.rsplit(":", 1)[1])) for x in want]         # each once, nothing written
+    assert out["approval"] == a.id and out["by"] == "A Manager" and out["at"].endswith("+00:00")
+    assert out["refreshed"] == want and out["failed"] == []
+    others = {x for x in _addresses(a) if x and not x.startswith("payhoa:submission:")}
+    assert out["skipped"] == len(others) > 0                                         # citations, commands: counted
+    for sid in REQUESTS:
+        kept = submission_cache.read(submission_cache.files_dir(village.data_dir), sid)
+        assert kept["via"] == "console refresh by A Manager" and kept["status"] == "complete"
+    log = _log(village.data_dir)
+    assert [e["address"] for e in log] == want                                       # one line each
+    assert all(e["ok"] and e["by"] == "A Manager" and e["batch"] == a.id and e["system"] == "PayHOA" for e in log)
+    assert "Owner-occupied" not in json.dumps(out) + json.dumps(log)
+    opened = resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
+    assert opened["changed"] is True and "status complete" in opened["changedNote"]
+
+
+def test_refresh_all_puts_a_failed_read_in_failed_and_goes_on(village):
+    _record(village.data_dir)
+    a = _plan(village)
+    raws = _raws()
+    del raws[502]                                                                    # PayHOA has no 502 to answer
+    client = _FormsClient(raws)
+    out = evidence.refresh_all(a.id, by="A Manager", data_dir=village.data_dir, client_factory=_factory(client))
+    assert "payhoa:submission:502" not in out["refreshed"] and len(out["refreshed"]) == 3
+    assert [f["address"] for f in out["failed"]] == ["payhoa:submission:502"]
+    assert out["failed"][0]["error"].startswith("PayHOA could not be read: KeyError")
+    assert submission_cache.read(submission_cache.files_dir(village.data_dir), 502) is None
+    assert submission_cache.read(submission_cache.files_dir(village.data_dir), 504) is not None   # read after it
+    assert [(e["address"], e["ok"]) for e in _log(village.data_dir) if not e["ok"]] == [("payhoa:submission:502",
+                                                                                          False)]
+
+
+def test_refresh_all_without_keeper_raises_before_any_read(village):
+    from jason.secrets import KeeperAuthRequired
+
+    a = _plan(village)
+    factory = _factory(None, fail=KeeperAuthRequired("device approval needed"))
+    with pytest.raises(evidence.RefreshFailed) as failed:
+        evidence.refresh_all(a.id, by="A Manager", data_dir=village.data_dir, client_factory=factory)
+    assert str(failed.value) == evidence.KEEPER_SIGN_IN and factory.calls == ["live"]
+    assert all(submission_cache.read(submission_cache.files_dir(village.data_dir), sid) is None for sid in REQUESTS)
+    log = _log(village.data_dir)
+    assert len(log) == len(REQUESTS) and all(not e["ok"] and e["error"] == evidence.KEEPER_SIGN_IN for e in log)
+
+
+@pytest.mark.parametrize("ident, by, why", [
+    ("apr-none", "A Manager", "no approval apr-none"),
+    ("", "A Manager", "name the approval"),
+    (None, "  ", "names the person"),
+])
+def test_refresh_all_refuses_no_person_or_no_approval(village, ident, by, why):
+    a = _plan(village)
+    factory = _factory(_FormsClient(_raws()))
+    with pytest.raises(ValueError, match=why):
+        evidence.refresh_all(a.id if ident is None else ident, by=by, data_dir=village.data_dir,
+                             client_factory=factory)
+    assert factory.calls == [] and _log(village.data_dir) == []
+
+
+def test_refresh_all_refuses_a_batch_over_the_cap_and_signs_in_for_none(village, monkeypatch):
+    a = _plan(village)
+    assert evidence.MAX_BATCH == 200
+    monkeypatch.setattr(evidence, "MAX_BATCH", 3)
+    factory = _factory(_FormsClient(_raws()))
+    with pytest.raises(ValueError, match="names 4 records to read again; one batch reads at most 3"):
+        evidence.refresh_all(a.id, by="A Manager", data_dir=village.data_dir, client_factory=factory)
+    assert factory.calls == [] and _log(village.data_dir) == []
+
+
+def test_refresh_all_with_nothing_refreshable_skips_without_a_sign_in(village):
+    a = _plan(village)
+    file = store._file(village.data_dir, a.id)
+    raw = json.loads(file.read_text(encoding="utf-8"))
+    raw["evidence"] = [{"label": "Civil Code 4041", "address": "CIV 4041"},
+                       {"label": "Civil Code 4041 again", "address": "CIV 4041"}]
+    for item in raw["items"]:
+        item["evidence"] = [e for e in item.get("evidence") or () if not e["address"].startswith("payhoa:")]
+    file.write_text(json.dumps(raw), encoding="utf-8")
+    factory = _factory(_FormsClient(_raws()))
+    out = evidence.refresh_all(a.id, by="A Manager", data_dir=village.data_dir, client_factory=factory)
+    assert out["refreshed"] == [] and out["failed"] == [] and out["skipped"] >= 1
+    assert factory.calls == [] and _log(village.data_dir) == []
+
+
+def test_the_refresh_all_route_is_a_guarded_write_on_one_sign_in(web, monkeypatch):
+    from jason.secrets import KeeperAuthRequired
+    from jason.web.app import create_app
+    from test_web_approvals import _dist
+
+    _record(web.data_dir)
+    a = _plan(web)
+    reads = []
+
+    def answer(org, sid):
+        reads.append(sid)
+        if sid == 503:
+            raise RuntimeError("PayHOA answered 500 for owner ana@example.com")
+        return _raw(sid, sid - 500, "102 EXAMPLE WAY", status="complete", **BEN)
+    monkeypatch.setattr(web.client, "get_form_submission", answer)
+    url, body = "/api/evidence/refresh-all", {"approval": a.id, "by": "A Manager"}
+    assert web.app.test_client().post(url, json=body).status_code == 403              # no Origin, no token
+    assert web.c.post(url, json=body, headers={"X-Jason-Token": ""}).status_code == 403   # the header, not the cookie
+    assert web.c.get(url).status_code in (404, 405) and web.factory.calls == [] and reads == []
+    r = web.c.post(url, json=body)
+    assert r.status_code == 200, r.json
+    assert set(r.json) == {"approval", "by", "at", "refreshed", "failed", "skipped"}
+    assert r.json["approval"] == a.id and r.json["by"] == "A Manager" and r.json["skipped"] > 0
+    assert sorted(r.json["refreshed"]) == [f"payhoa:submission:{s}" for s in sorted(set(reads)) if s != 503]
+    assert r.json["failed"][0]["address"] == "payhoa:submission:503" and "ana@example.com" not in json.dumps(r.json)
+    assert web.factory.calls == ["evidence-refresh"] and web.client.writes == [] and len(reads) == len(set(reads))
+    assert "Owner-occupied" not in json.dumps(r.json)                                  # no answers come back
+    assert web.c.post(url, json={**body, "by": ""}).status_code == 400
+    missing = web.c.post(url, json={**body, "approval": "apr-none"})
+    assert missing.status_code == 400 and "no approval apr-none" in missing.json["error"]
+
+    @contextmanager
+    def no_keeper(kind):
+        raise KeeperAuthRequired("device approval needed")
+        yield  # pragma: no cover
+
+    locked_out = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=no_keeper))
+    r = locked_out.post(url, json=body)
+    assert r.status_code == 409 and r.json["error"] == evidence.KEEPER_SIGN_IN
+    off = webclient.client(create_app(_dist(web.data_dir), None, approvals_live=None))
+    assert off.post(url, json=body).status_code == 405

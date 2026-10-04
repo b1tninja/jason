@@ -13,6 +13,8 @@
 - **Refresh one piece of evidence.** ``POST /api/evidence/refresh`` with ``{address, approval?, by}`` reads that one
   record again live under the person's name and keeps it in jason's cache (``jason.approvals.evidence.refresh``);
   it never writes to PayHOA. Behind the write guard and the token header, like a check.
+  ``POST /api/evidence/refresh-all`` with ``{approval, by}`` reads every refreshable record of one plan on one sign-in
+  (``jason.approvals.evidence.refresh_all``) and answers what it read and what failed, never the answers.
 - **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>}``.
   Off unless jason-web was started with ``--allow-apply``. The engine re-plans and refuses (409) when anything
   changed, superseding the approval with a new one to review.
@@ -175,6 +177,15 @@ def refresh_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> dict[s
     return _masked_evidence(out)
 
 
+def refresh_all_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> dict[str, Any]:
+    """``POST /api/evidence/refresh-all``: every refreshable evidence address of one approval read again live for
+    ``by`` on one sign-in (``jason.approvals.evidence.refresh_all``). The summary only, masked; the page refetches
+    what it has open."""
+    from jason.approvals.evidence import refresh_all
+
+    return mask(refresh_all(_text(body, "approval").strip(), by=by, client_factory=lambda: live(EVIDENCE_REFRESH)))
+
+
 def _item(i: Any) -> dict[str, Any]:
     return {"id": i.id, "op": i.op, "target": i.target, "label": i.label, "value": i.value,
             "change": i.change.text() if i.change else ""}
@@ -257,11 +268,9 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
         ``?approval=`` for the plan's own read. Reads only; a miss is 200 with ``found: false``."""
         return _answer(lambda: evidence(request.args.to_dict()))
 
-    @bp.post("/api/evidence/refresh")
-    def evidence_refresh_route():
-        """One record read again live for the person (``{address, approval?, by}``), kept in jason's own cache and
-        logged; never a write to PayHOA. 200 with the fresh answer; 400 for a kind with no refresher or no person;
-        409 when Keeper or PayHOA did not answer (or the cache is busy)."""
+    def _refresh_route(answer: Callable[[dict[str, Any], str, LiveFactory], dict[str, Any]]):
+        """A refresh's guard, then ``answer(body, by, live)``: off (405) without a live context or writes; 403 without
+        the token in its header; ``RefreshFailed`` 409 in its own words."""
         if live is None:
             return jsonify(error="live reads are off in this jason-web"), 405
         if not writes:
@@ -275,10 +284,25 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
 
             by, _, _ = _who(body)
             try:
-                return refresh_evidence(body, by, live)
+                return answer(body, by, live)
             except RefreshFailed as exc:
                 return jsonify(error=mask(str(exc))), 409
         return _answer(run)
+
+    @bp.post("/api/evidence/refresh")
+    def evidence_refresh_route():
+        """One record read again live for the person (``{address, approval?, by}``), kept in jason's own cache and
+        logged; never a write to PayHOA. 200 with the fresh answer; 400 for a kind with no refresher or no person;
+        409 when Keeper or PayHOA did not answer (or the cache is busy)."""
+        return _refresh_route(refresh_evidence)
+
+    @bp.post("/api/evidence/refresh-all")
+    def evidence_refresh_all_route():
+        """Every refreshable evidence address of one approval read again live for the person (``{approval, by}``) on
+        one sign-in, each kept and logged; never a write to PayHOA. 200 with ``{approval, by, at, refreshed, failed,
+        skipped}`` (no answers); 400 for no person, no such approval, or too many addresses; 409 when Keeper did not
+        answer or the cache is busy."""
+        return _refresh_route(refresh_all_evidence)
 
     @bp.get("/api/approvals/<ident>/check")
     @bp.get("/api/approvals/<ident>/apply")
@@ -389,4 +413,4 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
 
 
 __all__ = ["CAVEAT", "EVIDENCE_REFRESH", "approvals", "audit_log", "blueprint", "default_live", "evidence", "mask",
-           "plans", "refresh_evidence", "show"]
+           "plans", "refresh_all_evidence", "refresh_evidence", "show"]

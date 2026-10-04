@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetServerSession } from "../lib/api";
 import { SESSION_KEY } from "../lib/session";
-import { Evidence, EvidencePanel, evidenceUrl, type EvidenceAnswer } from "./index";
+import plannedJson from "../../../tests/fixtures/approvals/example-village-planned.json";
+import type { Approval } from "../lib/approvals";
+import { Evidence, EvidencePanel, evidenceUrl, RefreshAllEvidence, type EvidenceAnswer, type EvidenceRefreshAll } from "./index";
+import { PlanReview } from "./PlanReview";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -424,5 +427,180 @@ describe("EvidencePanel's read again", () => {
     rerender(<EvidencePanel address="a" data={answer({ refreshable })} by="Jane Example" refreshing />);
     expect(screen.getByRole("button", { name: "Read again from PayHOA" })).toHaveAttribute("aria-busy", "true");
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe("Read every request again", () => {
+  const ALL = "/api/evidence/refresh-all";
+  const NAME = "Read every request again";
+  const planned = () => structuredClone(plannedJson) as unknown as Approval;
+  const payhoaRefs = [
+    { label: "Civil Code 4041", address: "CIV 4041" },
+    { label: "PayHOA request 501", address: "payhoa:submission:501" },
+    { label: "PayHOA request 501", address: "payhoa:submission:501" },
+    { label: "PayHOA request 502", address: "payhoa:submission:502" },
+  ];
+
+  afterEach(() => {
+    resetServerSession();
+    document.head.querySelector('meta[name="jason-token"]')?.remove();
+    localStorage.clear();
+  });
+
+  function withToken(token = "tok-7") {
+    const meta = document.createElement("meta");
+    meta.name = "jason-token";
+    meta.content = token;
+    document.head.append(meta);
+  }
+
+  type Reply = { status?: number; body: unknown };
+  /** A server: `/api/session` answers `session`, the batch answers `post()`, and `/api/evidence` answers `get(n)` on
+   * its n-th read (from 1). */
+  function server(post: () => Reply | Promise<Reply>, session: unknown = {}, get: (n: number) => EvidenceAnswer = () => answer()) {
+    const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    let reads = 0;
+    const f = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url === "/api/session") return json({ body: session });
+      if (url === ALL) return json(await post());
+      if (url.startsWith("/api/evidence?")) return json({ body: get(++reads) });
+      return json({ status: 404, body: { error: `no route ${url}` } });
+    });
+    vi.stubGlobal("fetch", f);
+    const posts = () => f.mock.calls.filter(([url]) => url === ALL);
+    const gets = () => f.mock.calls.filter(([url]) => String(url).startsWith("/api/evidence?"));
+    return { f, posts, gets };
+  }
+
+  const summary = (over: Partial<EvidenceRefreshAll> = {}): EvidenceRefreshAll => ({
+    approval: "apr-1", by: "Jane Example", at: "2026-10-03T19:02:00+00:00",
+    refreshed: ["payhoa:submission:501", "payhoa:submission:502", "payhoa:submission:503", "payhoa:submission:504"],
+    failed: [], skipped: 3, ...over,
+  });
+
+  it("is offered only when the plan names a PayHOA request", () => {
+    const { rerender } = render(<RefreshAllEvidence approval="apr-1" refs={[{ label: "Civil Code 4041", address: "CIV 4041" }, "jason calendar", { label: "no address" }]} by="Jane Example" />);
+    expect(screen.queryByRole("button", { name: NAME })).not.toBeInTheDocument();
+    rerender(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" />);
+    const button = screen.getByRole("button", { name: NAME });
+    expect(button).toHaveAttribute("title", "Reads each request in this plan from PayHOA now, under your name; writes nothing to PayHOA.");
+    expect(button.querySelector("svg.evidence-reread-icon")).toHaveAttribute("aria-hidden", "true");
+    expect(button).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("sits in the plan's header beside Read from, and nothing is read on load", async () => {
+    withToken();
+    const { f } = server(() => ({ body: summary() }));
+    render(<PlanReview approval={planned()} me="Jane Example" now="2026-10-03T19:00:00+00:00" />);
+    const header = screen.getByRole("heading", { level: 2 }).closest("header")!;
+    expect(within(header).getByText("Read from:")).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: NAME })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("POSTs the approval and the person with the write token, busy until it answers, and a second click sends nothing", async () => {
+    withToken("tok-7");
+    let finish: (r: Reply) => void = () => {};
+    const { posts } = server(() => new Promise<Reply>((ok) => { finish = ok; }));
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" />);
+    const button = screen.getByRole("button", { name: NAME });
+    await userEvent.click(button);
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    const status = screen.getByText("Reading 2 requests from PayHOA…");
+    expect(status.closest("[aria-live='polite']")).not.toBeNull();
+    await userEvent.click(button);
+    await userEvent.click(button);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const [url, init] = posts()[0];
+    expect(url).toBe(ALL);
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>)["X-Jason-Token"]).toBe("tok-7");
+    expect(JSON.parse(String(init?.body))).toEqual({ approval: "apr-1", by: "Jane Example" });
+    finish({ body: summary() });
+    expect(await screen.findByText("Read 4 requests from PayHOA just now by Jane Example.")).toBeInTheDocument();
+    expect(button).not.toHaveAttribute("aria-busy");
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(button).toHaveFocus();
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("says what could not be read beside what was", async () => {
+    withToken();
+    server(() => ({ body: summary({ refreshed: ["payhoa:submission:501", "payhoa:submission:502"], failed: [{ address: "payhoa:submission:503", error: "PayHOA could not be read: HTTPError: 502" }] }) }));
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" />);
+    await userEvent.click(screen.getByRole("button", { name: NAME }));
+    const said = await screen.findByText("Read 2 requests from PayHOA just now by Jane Example. 1 could not be read: payhoa:submission:503: PayHOA could not be read: HTTPError: 502.");
+    expect(said.closest("[aria-live='polite']")).not.toBeNull();
+  });
+
+  it("says the server's 409 or 403 as it is, in the error tone", async () => {
+    withToken();
+    const KEEPER = "Keeper is not signed in; run `jason login` in a terminal, then refresh again.";
+    let reply: Reply = { status: 409, body: { error: KEEPER } };
+    const onDone = vi.fn();
+    server(() => reply);
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} by="Jane Example" onDone={onDone} />);
+    const button = screen.getByRole("button", { name: NAME });
+    await userEvent.click(button);
+    expect(await screen.findByText(KEEPER)).toHaveClass("notice-error");
+    reply = { status: 403, body: { error: "viewing as A Director (admin view): writes are refused." } };
+    await userEvent.click(button);
+    expect(await screen.findByText("viewing as A Director (admin view): writes are refused.")).toHaveClass("notice-error");
+    expect(onDone).not.toHaveBeenCalled();
+    expect(button).toHaveFocus();
+  });
+
+  it("is disabled with the reason shown when no one is named, and sends nothing", async () => {
+    withToken();
+    const { posts } = server(() => ({ body: summary() }), { signedIn: null });
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} />);
+    const button = screen.getByRole("button", { name: NAME });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    const why = screen.getByText("Sign in or pick your name to read them again.");
+    expect(why).not.toHaveClass("visually-hidden");
+    expect(button).toHaveAccessibleDescription("Sign in or pick your name to read them again.");
+    await userEvent.click(button);
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("reads under the session's name when none is passed", async () => {
+    withToken();
+    const { posts } = server(() => ({ body: summary({ by: "Casey Sample" }) }), { signedIn: { name: "Casey Sample" } });
+    render(<RefreshAllEvidence approval="apr-1" refs={payhoaRefs} />);
+    const button = screen.getByRole("button", { name: NAME });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await userEvent.click(button);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(JSON.parse(String(posts()[0][1]?.body)).by).toBe("Casey Sample");
+  });
+
+  it("has every open panel in the plan fetch its answer again after the batch, in place", async () => {
+    withToken();
+    const read = (n: number) => answer({
+      address: "payhoa:submission:502", label: "PayHOA request 502",
+      changed: n > 1 ? true : null, changedNote: n > 1 ? "The last read from PayHOA differs from the plan's read: status complete." : "",
+      sources: [{
+        name: "Last read from PayHOA", readAt: n > 1 ? "2026-10-03T19:02:00+00:00" : "2026-09-30T18:38:00+00:00", digest: "", text: "", citation: "", caveat: "", note: "",
+        fields: [{ name: "Status", value: n > 1 ? "complete" : "pending", masked: false }],
+      }],
+    });
+    const { posts, gets } = server(() => ({ body: summary() }), {}, read);
+    render(<PlanReview approval={planned()} me="Jane Example" now="2026-10-03T19:00:00+00:00" />);
+    await userEvent.click(screen.getAllByRole("button", { name: "PayHOA request 502" })[0]);
+    const panel = await screen.findByRole("group", { name: "PayHOA request 502" });
+    expect(await within(panel).findByText("pending")).toBeInTheDocument();
+    expect(gets()).toHaveLength(1);
+    const button = screen.getByRole("button", { name: NAME });
+    await userEvent.click(button);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({ approval: "apr-20261003T183801-4f5b", by: "Jane Example" });
+    expect(await within(panel).findByText("complete")).toBeInTheDocument();
+    expect(gets()).toHaveLength(2);
+    expect(within(panel).getByText("2026-10-03 19:02 UTC").tagName).toBe("TIME");
+    expect(within(panel).getByText(/Changed since this plan was read\./)).toHaveTextContent("status complete");
+    expect(screen.getByRole("group", { name: "PayHOA request 502" })).toBe(panel);
+    expect(button).toHaveFocus();
   });
 });

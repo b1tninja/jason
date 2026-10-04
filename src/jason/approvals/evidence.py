@@ -26,7 +26,9 @@ cache (a PayHOA request: one ``get_form_submission``, kept as its last read). ``
 ``refresh`` runs it for a named person under the cache's store lock, appends one line to
 ``evidence/refreshes.jsonl`` (who, when, what, and whether it worked; never the answers), and returns the fresh
 ``resolve``. It never writes to PayHOA; jason-mcp has no refresh (it stays read-only); jason-web's
-``POST /api/evidence/refresh`` calls it behind the write guard.
+``POST /api/evidence/refresh`` calls it behind the write guard. ``refresh_all`` reads every refreshable address of one
+approval the same way, on one client (one sign-in) under one hold of the lock, a line each
+(``POST /api/evidence/refresh-all``).
 
 Privacy: the snapshot on disk holds a request's answers as read (P2, like the catalog). An owner's contact details
 (email, phone, mailing address) and other P2 answers are masked here, before anything leaves the server
@@ -775,6 +777,53 @@ def _log_refresh(root: Path, entry: dict[str, Any]) -> None:
         out.write(json.dumps(_scrub(entry), ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _person(by: str) -> str:
+    by = " ".join(str(by or "").split())
+    if not by:
+        raise ValueError("a refresh names the person (by): it reads PayHOA under their name")
+    return by
+
+
+@contextmanager
+def _signed_in(factory: Callable[[], ContextManager[Any]] | None, root: Path, by: str, system: str,
+               addresses: list[str], batch: str = "") -> Iterator[Any]:
+    """One live client for the reads in the block (one sign-in). A sign-in that fails, before any read, is logged
+    once for each address it was opened for and raised as ``RefreshFailed`` with the person's message."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    try:
+        live = stack.enter_context((factory or payhoa_live)())
+    except Exception as exc:  # noqa: BLE001 - said to the person and logged, never a traceback
+        error = _failure(exc, system)
+        at = _now()
+        for address in addresses:
+            _log_refresh(root, {"at": at, "by": by, "address": address, "system": system, "ok": False,
+                                "error": error, **({"batch": batch} if batch else {})})
+        raise RefreshFailed(error) from exc
+    with stack:
+        yield live
+
+
+def _keep_one(rule: Resolver, found: re.Match[str], address: str, live: Any, root: Path, by: str,
+              batch: str = "") -> dict[str, Any]:
+    """Read one record on an open client and keep it, then append its audit line; a read that fails is the line's
+    ``error`` (never raised). Returns the line."""
+    system = rule.refresher.system if rule.refresher is not None else ""
+    entry = {"at": _now(), "by": by, "address": address, "system": system, "ok": True, "error": "",
+             **({"batch": batch} if batch else {})}
+    try:
+        rule.refresher.run(live.client, int(live.org_id), found, root, f"console refresh by {by}")
+    except Exception as exc:  # noqa: BLE001 - said to the person and logged, never a traceback
+        entry.update(ok=False, error=_failure(exc, system))
+    _log_refresh(root, entry)
+    return entry
+
+
 def refresh(address: str, *, by: str, client_factory: Callable[[], ContextManager[Any]] | None = None,
             data_dir: Path | None = None, approval_id: str = "") -> dict[str, Any]:
     """Read one record again live, for the person ``by``, and keep it in jason's own cache (a PayHOA request: one
@@ -789,9 +838,7 @@ def refresh(address: str, *, by: str, client_factory: Callable[[], ContextManage
     (a Keeper session that needs a person says to run ``jason login`` in a terminal)."""
     from jason.locks import Resource, hold
 
-    by = " ".join(str(by or "").split())
-    if not by:
-        raise ValueError("a refresh names the person (by): it reads PayHOA under their name")
+    by = _person(by)
     address = " ".join(str(address or "").split())
     rule, found = rule_for(address)
     if rule.refresher is None or found is None:
@@ -800,21 +847,90 @@ def refresh(address: str, *, by: str, client_factory: Callable[[], ContextManage
     root = _root(data_dir)
     system = rule.refresher.system
     with hold(Resource.STORE, CACHE_LOCK, timeout=120, purpose=f"evidence refresh {address}"):
-        at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        entry = {"at": at, "by": by, "address": address, "system": system, "ok": True, "error": ""}
-        try:
-            with (client_factory or payhoa_live)() as live:
-                rule.refresher.run(live.client, int(live.org_id), found, root, f"console refresh by {by}")
-        except Exception as exc:  # noqa: BLE001 - said to the person and logged, never a traceback
-            entry.update(ok=False, error=_failure(exc, system))
-            _log_refresh(root, entry)
-            raise RefreshFailed(entry["error"]) from exc
-        _log_refresh(root, entry)
+        with _signed_in(client_factory, root, by, system, [address]) as live:
+            entry = _keep_one(rule, found, address, live, root, by)
+    if not entry["ok"]:
+        raise RefreshFailed(entry["error"])
     out = resolve(address, approval_id=approval_id, data_dir=root)
-    out["refreshed"] = {"at": at, "by": by, "system": system}
+    out["refreshed"] = {"at": entry["at"], "by": by, "system": system}
     return out
 
 
-__all__ = ["Ask", "CACHE_LOCK", "CAVEAT", "EvidenceKind", "KEEPER_SIGN_IN", "REFRESH_LOG", "RULES", "Refresh",
-           "RefreshFailed", "Refresher", "Resolver", "SNAPSHOT_CAVEAT", "SourceName", "mask_field", "mask_text",
-           "payhoa_live", "refresh", "refresh_submission", "resolve", "rule_for"]
+MAX_BATCH = 200                                # the most addresses one "refresh all" reads
+
+
+def plan_addresses(approval: Any) -> tuple[list[tuple[str, Resolver, re.Match[str]]], int]:
+    """An approval's distinct evidence addresses in plan order (its own evidence, then each item's): those a live
+    refresher reads, with their rule row and match, and how many others there are (no refresher)."""
+    rows = list(approval.evidence) + [e for i in approval.items for e in i.evidence]
+    seen: set[str] = set()
+    live: list[tuple[str, Resolver, re.Match[str]]] = []
+    skipped = 0
+    for row in rows:
+        address = " ".join(str(row.address or "").split())
+        if not address or address in seen:
+            continue
+        seen.add(address)
+        rule, found = rule_for(address)
+        if rule.refresher is None or found is None:
+            skipped += 1
+        else:
+            live.append((address, rule, found))
+    return live, skipped
+
+
+def refresh_all(approval_id: str, *, by: str, client_factory: Callable[[], ContextManager[Any]] | None = None,
+                data_dir: Path | None = None) -> dict[str, Any]:
+    """Read every refreshable evidence address of one approval again live, for the person ``by``, on one client
+    (one sign-in), each kept as ``refresh`` keeps one and logged with its own line (with ``batch``: the approval).
+
+    The addresses are the approval's distinct evidence addresses in plan order whose rule row has a refresher; the
+    rest are counted in ``skipped``. Holds the cache's store lock once for the whole batch, so a single refresh never
+    runs between two of its reads. A sign-in that fails is ``RefreshFailed`` before any read; a read that fails is
+    in ``failed`` and the rest go on. Refuses (``ValueError``) an empty ``by``, an approval that is not there, more
+    than ``MAX_BATCH`` addresses, and refreshers of more than one system (one client reads one system).
+
+    ``{approval, by, at, refreshed: [address], failed: [{address, error}], skipped}``; never what was read."""
+    from jason.approvals import store
+    from jason.locks import Resource, hold
+
+    by = _person(by)
+    root = _root(data_dir)
+    ident = str(approval_id or "").strip()
+    if not ident:
+        raise ValueError("name the approval whose evidence to read again")
+    try:
+        approval = store.load(store.resolve(ident, root), root)
+    except KeyError as exc:
+        raise ValueError(str(exc.args[0]) if exc.args else f"no approval {ident}") from exc
+    except OSError as exc:
+        raise ValueError(f"approval {ident} could not be read ({type(exc).__name__})") from exc
+    addresses, skipped = plan_addresses(approval)
+    if len(addresses) > MAX_BATCH:
+        raise ValueError(f"{approval.id} names {len(addresses)} records to read again; one batch reads at most "
+                         f"{MAX_BATCH}. Open each to read it again, or run `jason sync-request-files`")
+    systems = {rule.refresher.system for _, rule, _ in addresses if rule.refresher is not None}
+    if len(systems) > 1:
+        raise ValueError(f"{approval.id}'s evidence is read from {', '.join(sorted(systems))}: one batch reads one "
+                         "system")
+    at = _now()
+    out: dict[str, Any] = {"approval": approval.id, "by": by, "at": at, "refreshed": [], "failed": [],
+                           "skipped": skipped}
+    if not addresses:
+        return out                             # nothing to read: no sign-in
+    system = systems.pop()
+    with hold(Resource.STORE, CACHE_LOCK, timeout=120, purpose=f"evidence refresh-all {approval.id}"):
+        with _signed_in(client_factory, root, by, system, [a for a, _, _ in addresses], approval.id) as live:
+            for address, rule, found in addresses:
+                entry = _keep_one(rule, found, address, live, root, by, approval.id)
+                if entry["ok"]:
+                    out["refreshed"].append(address)
+                else:
+                    out["failed"].append({"address": address, "error": entry["error"]})
+    return _scrub(out)
+
+
+__all__ = ["Ask", "CACHE_LOCK", "CAVEAT", "EvidenceKind", "KEEPER_SIGN_IN", "MAX_BATCH", "REFRESH_LOG", "RULES",
+           "Refresh", "RefreshFailed", "Refresher", "Resolver", "SNAPSHOT_CAVEAT", "SourceName", "mask_field",
+           "mask_text", "payhoa_live", "plan_addresses", "refresh", "refresh_all", "refresh_submission", "resolve",
+           "rule_for"]
