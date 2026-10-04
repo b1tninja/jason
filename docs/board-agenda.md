@@ -115,7 +115,7 @@ Nothing is written to Drive without the board's approval.
 - **options** and a **draft motion** (`OPTIONS`, or a generic frame);
 - any notice the item needs of its own, and its deadline.
 
-Executive session items are listed by title only. The packet is research, not advice: the board weighs the options, and counsel's reading of the law governs.
+Executive session items are listed by their Civil Code 4935 subject in general words only, never by title (`meeting_agenda.executive_lines`). The packet is research, not advice: the board weighs the options, and counsel's reading of the law governs.
 
 **Reports: documents of their own.** A report a note names is run on its own and kept, so refreshing its facts never means rebuilding the packet:
 

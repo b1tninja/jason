@@ -11,7 +11,8 @@ For every action item on the agenda (proposed or on agenda, ``data/board/items.j
 - **Options** and a **draft motion** for the secretary to adapt, with any notice the item needs of its own;
 - **Deadlines**.
 
-Executive session items are listed by title only; their research goes to the directors separately (CIV 4935). The
+Executive session items are listed by their Civil Code 4935 subject in general words only, never by title
+(``meeting_agenda.executive_lines``); their research goes to the directors separately (CIV 4935(e)). The
 packet reads disk only and decides nothing: the options are the board's to weigh, and a draft motion is a starting point.
 """
 
@@ -322,6 +323,17 @@ def item_section(item: BoardItem, data_dir: Path, community: Any, *, n: int, mee
     return out
 
 
+def _planned_subjects(data_dir: Path, meeting: date) -> dict[str, Any]:
+    """The 4935 subject the meeting's agenda plan gives each board item, by item id; none when there is no plan."""
+    from jason.tasks import agenda_plan
+
+    try:
+        plan = agenda_plan.load(Path(data_dir), meeting.isoformat())
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    return {k: v.get("subject") for k, v in (plan.get("items") or {}).items() if isinstance(v, dict) and v.get("subject")}
+
+
 def packet(data_dir: Path, community: Any, meeting: date) -> list[str]:
     from jason.tasks.board_items import load
 
@@ -336,7 +348,11 @@ def packet(data_dir: Path, community: Any, meeting: date) -> list[str]:
            "weigh, statute text is quoted from the stored pages, and counsel's reading governs._", "", "## Contents", ""]
     out += [f"{k}. {i.title} ({i.priority.value})" for k, i in enumerate(open_items, start=1)]
     if executive:
-        out += ["", "Executive session (research provided to the directors separately): " + "; ".join(i.title for i in executive)]
+        # By each matter's 4935 subject in the statute's words, never its title: a packet can be forwarded or served
+        # beyond the directors, and a title can name the member, the party, or the matter (CIV 4935(e)).
+        from jason.tasks.meeting_agenda import executive_lines
+        out += ["", "Executive session (research provided to the directors separately):"]
+        out += [f"- {line}" for line in executive_lines([], executive, _planned_subjects(data_dir, meeting))]
     out.append("")
     standing = getattr(community, "packet_reports", lambda: ())()
     if standing:

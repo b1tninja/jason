@@ -247,6 +247,25 @@ def test_the_open_agenda_names_an_executive_matter_by_its_subject_only():
     assert executive.count(UNKNOWN_SUBJECT) == 2          # the unclassified item and the unclassified old heading
 
 
+def test_the_packet_names_an_executive_matter_by_its_subject_only(tmp_path):
+    from jason.tasks import agenda_plan
+    from jason.tasks.board_packet import packet
+    from jason.tasks.meeting_agenda import UNKNOWN_SUBJECT
+
+    day = date(2099, 3, 17)
+    upsert(tmp_path, [_item("plan", title="Payment plan for John Sample", category=ItemCategory.COLLECTIONS),
+                      _item("odd", title="Pat Placeholder", ask="Discuss.", session=Session.EXECUTIVE),
+                      _item("open", title="Repaint the carports")], today=date(2099, 3, 1))
+    for item_id in ("plan", "odd", "open"):
+        set_fields(tmp_path, item_id, status="proposed", today=date(2099, 3, 1))
+    agenda_plan.update(tmp_path, day.isoformat(), {"items": {"plan": {"subject": "assessment_payment"}}}, by="Sam Example")
+    text = "\n".join(packet(tmp_path, None, day))
+    # Made-up names in an executive item's title never reach the packet; the open item is listed by its title.
+    assert "John Sample" not in text and "Pat Placeholder" not in text and "Repaint the carports" in text
+    executive = text.split("Executive session (research provided to the directors separately):")[1]
+    assert "a member's payment of assessments (Civil Code 4935(a), (c))" in executive and UNKNOWN_SUBJECT in executive
+
+
 def test_the_board_items_title_comes_from_the_profile(tmp_path):
     from types import SimpleNamespace
 

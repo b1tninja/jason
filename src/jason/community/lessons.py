@@ -1275,6 +1275,17 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("ui/src/components/marks.test.tsx (disjoint words; filed is a seal; recorded, draft, "
                                  "confidential in neither; sent needs sentRef; unassigned routing)",),
            docs=("docs/console/components.md (Marks)",)),
+    Lesson("packet-executive-titles", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "jason board --packet, and the console's meeting page that renders it, listed each executive-session item "
+           "by its title in the packet's contents, where a title can name a member, a party, or the matter.",
+           "The packet predates the 4935 subjects; its executive line was written before the agenda and the minutes "
+           "draft were fixed the same way (executive-headings-copied, agenda-executive-words-to-minutes-model).",
+           "The packet names each executive matter by its 4935 subject through meeting_agenda.executive_lines: the "
+           "agenda plan's subject, else jason's reading flagged to confirm, else a blank. Its research still goes to "
+           "the directors separately.",
+           Status.FIXED, guards=("tests/test_board_items.py::test_the_packet_names_an_executive_matter_by_its_subject_"
+                                 "only",),
+           docs=("docs/board-agenda.md", "docs/console/handoff-reconciliation-3.md (The board packet)")),
 )
 
 
