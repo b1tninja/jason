@@ -1109,12 +1109,16 @@ LESSONS: tuple[Lesson, ...] = (
            "Each retriever was judged on its own terms: the hybrid had a gold set, and the catalogs had none. 25 of "
            "AnythingLLM's misses are text it never held (thin parses, documents never uploaded); the rest are "
            "exact numbers and citations it ranks by embedding alone, and it cannot be filtered by kind or scope.",
-           "scripts/eval_anythingllm.py scores any workspace on the gold set beside eval_retrieval.py. Still to do "
-           "(docs/applicability.md): one index in jason with columns for standing, kind, and applicability; the "
-           "catalogs' sources indexed there; anythingllm_query answering from it; AnythingLLM retired once the "
-           "console's Ask serves the board.",
-           Status.OPEN, guards=("scripts/eval_anythingllm.py",),
-           docs=("docs/applicability.md", "docs/document-tools.md (model trials)")),
+           "AnythingLLM was retired on October 4, 2026, after a snapshot of every workspace's document list "
+           "(data/anythingllm/snapshots). The board's document_search searches the passage index (jason index "
+           "--build), scoped by catalog and standing, and returns passages with their caveats for the client to "
+           "answer from; a legal case's file is a confidential case-<key> catalog. scripts/eval_anythingllm.py still "
+           "scores a workspace on the gold set. Still to do: the mail, jason's pages, and the classified library join "
+           "the index once their confidentiality rows exist (rag-roadmap items 1 and 2), and the case files' PDFs "
+           "need text extracts before they can be searched.",
+           Status.FIXED, guards=("scripts/eval_retrieval.py --index", "tests/test_passage_index.py (document_search)",
+                                 "tests/test_local_tools.py (board profile)"),
+           docs=("docs/applicability.md", "docs/document-tools.md (model trials)", "docs/mcp.md")),
     Lesson("facts-in-general-patterns", date(2026, 10, 4), (Area.REPOSITORY,),
            "General readers matched the association's street names and its name word, with OCR's misreadings of it, "
            "in regular expressions, a stop-word list, and default arguments, and one task imported the profile's "

@@ -1,6 +1,6 @@
 # Applicability, ingestion, and the search index
 
-**Status:** proposed design, October 4, 2026. Built so far: the measurement in "Why jason's own index" and the first part of the index (step 4). The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
+**Status:** proposed design, October 4, 2026. Built so far: the measurement in "Why jason's own index", the index (step 4), the applicability module (step 2), and AnythingLLM's retirement (step 8). The contract-terms reader is another session's code, so the parts that touch it (the gate, the scope of a term) are proposals to that session until it agrees.
 
 ## The problem
 
@@ -166,7 +166,11 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
 ## 9. Order of work
 
 1. **Done:** the measurement (section 5) and `scripts/eval_anythingllm.py`.
-2. **The applicability module.** Conditions, the three-valued `evaluate`, and tests on made-up rows. General code only.
+2. **The applicability module.** Done October 4, 2026: `jason.community.applicability`.
+   - Facets as closed sets, reusing `DocumentKind`.
+   - The condition language (`Is`, `In`, `AtLeast`, `Below`, `InForce`, `AllOf`, `AnyOf`, `Not`, `Except`), with `describe()` and a JSON form.
+   - `evaluate` in three answers by Kleene logic. Each verdict names its deciding facts and their sources, the facts missing, and the sources that disagree; a disagreement is undetermined, never a pick.
+   - `Community.applicability_facts()` is empty by default. No row is converted yet.
 3. **The first profile fact: systems** (`LifeSafetySystem`). The obligation rows that leave systems out become conditions.
 4. **The index.** First part built October 4, 2026: `jason.community.passage_index`, `jason index`. Its engine is SQLite with the vectors as blobs (no new dependency), ranked by `retrieval`'s own functions.
    - Built:
@@ -178,19 +182,25 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
      - `context_pack`;
      - the mail, reports, and library sources, once their confidentiality rows are set (docs/rag-roadmap.md, items 1 and 2);
      - the applicability columns;
-     - gold questions for the law.
+   - Gold questions for the law: done (`data/retrieval/gold-law.json`, 50 questions, every phrase checked against the file).
+     - Scoped to the authorities, hybrid 0.96 recall@5.
+     - Over the whole index, 0.86. The paraphrase questions lose most, probably to governing-document passages on the same subjects; that is unchecked.
+     - Each statute file's first passage is metadata only (title, source, why jason holds it) and competes with the operative text. It is the next thing to fix and measure.
 5. **Context headers.** Kept only if the gold set improves.
 6. **Companion pages,** starting with the fire and life safety subject, whose sources are gathered.
 7. **The contract reader's gate and term scopes.** In the contracts session's code, once it agrees to the interface.
-8. **Retiring AnythingLLM.** No person chats in it (October 4, 2026), so it waits only on its callers in jason, not on the console:
-   - `anythingllm_query` (an MCP tool in the board profile) answers from the index instead, under a name that does not name the app.
-   - The library and mail readers already skip the `anythingllm-collector` engine, so no text depends on it.
-   - Then `anythingllm_sync`, `anythingllm_admin`, the collector engine, `anythingllm_status`, and their checks in `local_ai` are removed. So are the `keep_alive` choices made so as not to unload AnythingLLM's model (`content.py`, `reference_model.py`).
-   - A snapshot of every workspace's document list is taken first (`jason anythingllm --snapshot`). The `Catalog` and `Source` rows move to the index's ingestion.
+8. **Retiring AnythingLLM.** Done October 4, 2026.
+   - **Snapshot first:** every workspace's document list was saved (`data/anythingllm/snapshots/20261004-125545.json`).
+   - **`document_search`** replaces `passage_search` in the board profile, which still has thirty-eight tools. It searches the passage index and returns passages with their standing and caveats, with no chat model.
+   - **Case files:** each legal case's fetched file is a confidential `case-<key>` catalog (standing `evidence`) in `jason index --build`.
+   - **Removed:** `jason anythingllm`, `anythingllm_query`, `anythingllm_status`, the catalog sync, the collector OCR engine, the app checks in `jason local-ai`, and the `anythingllm_*` settings.
+   - **Not yet in the index:**
+     - the mail, jason's other pages and docs, and the classified library (items 1 and 2 of rag-roadmap.md);
+     - the case PDFs, which have no text extracts.
 
 ## Open questions
 
 - **Who asks, and where.** Settled: no person uses AnythingLLM. The board's questions reach jason through MCP clients and, later, the console's Ask.
 - **Engine and footprint.** LanceDB or sqlite-vec, settled by the gold set and by the index's size on disk.
-- **The gold set's reach.** Questions for the mail, authorities, and vendor-records catalogs, which it does not cover today.
+- **The gold set's reach.** Questions for the mail and vendor-records catalogs, which it does not cover today. The law has its set (step 4).
 - **Undetermined answers.** Where they go: the intake questions, the canvas, or both, by facet.
