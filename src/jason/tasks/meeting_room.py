@@ -15,13 +15,22 @@ roll call, decision, and admission is written to the executive record, and the o
 start and end times, and "The board returned to open session". A matter whose 4935 subject is not named is not taken
 into executive session.
 
-jason records; it decides nothing. A motion needs two different directors and a quorum of those present. A recused
-director counts toward the quorum and not toward the vote (Corp. Code 7233; CIV 5350). A majority of the directors
-present carries a motion (Corp. Code 7211), so it must carry without the recused director's vote; an off-agenda
-emergency item needs two-thirds of the directors present, or every one of them when fewer than two-thirds of the board
-is present (CIV 4930(d)(2)). A topic not on the agenda may take only the CIV 4930 paths. A
-decided motion is also written to ``jason.tasks.decisions`` so the minutes draft quotes it; one decided in executive
-session is marked so there, and the open views leave it out.
+jason records; it decides nothing. A motion needs two different directors and a quorum of those present. The quorum,
+what carries a motion, and whether a recused director counts toward the quorum come from the profile's ``BoardRule``
+(the bylaws' provision, recited from disk, or counsel's reading, labeled; ``board_rules``), never from jason. Where one
+is not on file the room says "not on file; ask counsel" and labels what it counts: a majority of the directors listed
+for the quorum and a majority of those present for the vote, each a reading, not the rule. A recusal is a director's
+disclosure the secretary records on the motion; jason never applies one. CIV 5350(b) lists matters on which an
+interested director "shall not vote", and 5350(a) applies Corporations Code 7233 and 7234 to a contract or other
+transaction the board approves; whether the recused director still counts toward the quorum is the bylaws' or
+counsel's to say. Until it is on file, the tally is worked both ways (counted among the directors present, and not),
+and a vote the two readings decide differently is held, not recorded. An off-agenda emergency item needs two-thirds of
+the directors present, or every one of them when fewer than two-thirds of the board is present (CIV 4930(d)(2)). A
+topic not on the agenda may take only the CIV 4930 paths. The members' speaking limit is the board's to establish (CIV
+4925(b)): the profile's ``open_forum_limit()``, or one a person enters in the room; with neither, the room says no
+limit is on record and never assumes one. A decided motion is also written to ``jason.tasks.decisions`` (with its
+recusals) so the minutes draft quotes it; one decided in executive session is marked so there, and the open views
+leave it out.
 """
 
 from __future__ import annotations
@@ -48,6 +57,11 @@ RESULTS = ("carried", "failed", "")
 SUGGESTION_STATES = ("suggested", "added", "dismissed")
 OPEN_SESSION = "open session"
 EXECUTIVE_SESSION = "executive session"
+
+# What the room says where the bylaws' rule and counsel's reading are both missing, and where the board has adopted no
+# speaking limit. Neither is ever filled in with a default.
+NOT_ON_FILE = "not on file; ask counsel"
+NO_FORUM_LIMIT = "No limit on record; the board sets it (CIV 4925(b))."
 
 # The refusal for a matter without its 4935 subject: the open minutes note a matter by its subject's general words
 # (4935(e)), so a matter that has none named cannot be taken into executive session.
@@ -93,7 +107,7 @@ def executive_path(data_dir: Path, day: str) -> Path:
 
 def empty(day: str) -> dict[str, Any]:
     return {"date": _day(day), "directors": [], "current": 0, "presenter": "jason", "view": "host", "mode": "co-host",
-            "attendance": {}, "calledToOrder": "", "openForum": {"count": 0, "limitMinutes": 3}, "motions": [], "log": [],
+            "attendance": {}, "calledToOrder": "", "openForum": {"count": 0, "limitMinutes": 0, "limitBy": ""}, "motions": [], "log": [],
             "executive": {"active": False, "startedAt": "", "endedAt": "", "note": "", "subjects": [], "sessions": []}, "polls": [],
             "admitted": [], "transcriptSuggestions": [], "adjournedAt": "", "created": "", "updated": "", "history": []}
 
@@ -110,6 +124,10 @@ def load(data_dir: Path, day: str) -> dict[str, Any]:
         return empty(day)
     room = {**empty(day), **json.loads(path.read_text(encoding="utf-8"))}
     room["executive"] = {**empty(day)["executive"], **(room.get("executive") or {})}
+    forum = {**empty(day)["openForum"], **(room.get("openForum") or {})}
+    if not forum.get("limitBy"):   # a limit no person entered (an earlier default) is not a limit on record
+        forum["limitMinutes"] = 0
+    room["openForum"] = forum
     return room
 
 
@@ -144,49 +162,185 @@ def present(room: dict[str, Any]) -> list[str]:
     return [n for n in names if att.get(n) in ("present", "remote")]
 
 
-def quorum(directors: list[str]) -> int:
-    """Directors needed for a quorum: the profile's board rule when it has one, else a majority of the directors."""
-    count = len(directors)
+_UNSET: Any = object()
+
+
+def _board() -> Any:
+    """The active profile's ``BoardRule``, or None (no profile, or none on file)."""
     try:
         from jason.community import community
 
-        rule = community().board()
-    except Exception:
-        rule = None
+        return community().board()
+    except Exception:  # noqa: BLE001 - no rule on file is a miss the room shows
+        return None
+
+
+def quorum(directors: list[str], board: Any = _UNSET) -> int:
+    """Directors needed for a quorum: the profile's board rule when it has one, else a majority of the directors listed
+    (a reading the room labels, ``board_rules``: the bylaws' rule is not on file)."""
+    rule = _board() if board is _UNSET else board
+    count = len(directors)
     if rule is not None and count:
         try:
             return int(rule.quorum(count))
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
     return count // 2 + 1 if count else 0
 
 
-def needed(present_count: int, threshold: str, seats: int) -> int:
-    """Ayes a motion needs, counted against the directors present (Corp. Code 7211): a majority of them; or for two-thirds
-    (CIV 4930(d)(2)) two-thirds of them, or every one of them when fewer than two-thirds of the board is present. A recused
-    director is present for this count and simply casts no vote (Corp. Code 7233), so the motion must carry without them."""
+def needed(present_count: int, threshold: str, seats: int, basis: Any = None) -> int:
+    """Ayes a motion needs. For two-thirds (CIV 4930(d)(2)): two-thirds of the directors present, or every one of them
+    when fewer than two-thirds of the board is present. Otherwise the vote rule on file (``VoteBasis``): a majority of the
+    directors in office, or of those present; with none on file, a majority of those present (a reading the room labels).
+    ``present_count`` is whom the reading counts as present: a recused director is in it under one reading and not the
+    other (``tally``)."""
     if present_count <= 0:
         return 0
     if threshold == "two-thirds":
         enough_of_board = seats <= 0 or present_count >= math.ceil(2 * seats / 3)
         return math.ceil(2 * present_count / 3) if enough_of_board else present_count
+    if getattr(basis, "name", "") == "MAJORITY_IN_OFFICE" and seats > 0:
+        return seats // 2 + 1
     return present_count // 2 + 1
 
 
-def tally(motion: dict[str, Any], room: dict[str, Any]) -> dict[str, Any]:
-    """The roll call as it stands: counts, who may vote, what it needs, and whether it carries once every voter has answered."""
+def _recite(cite: str, data_dir: Path | None) -> str:
+    """The words of ``cite`` ("Bylaws 1.2", "CORP 7211(a)(8)") from jason's copy on disk, or "" when they are not there.
+    A cite naming several sections ("Bylaws 1.1, 1.2") is recited one section at a time."""
+    if not cite or data_dir is None:
+        return ""
+    try:
+        from jason.community import community
+        from jason.tasks.cite import Shelf
+
+        shelf = Shelf(community(), Path(data_dir))
+        text = (shelf(cite).state.text or "").strip()
+        if text or "," not in cite:
+            return text
+        head, *rest = [p.strip() for p in cite.split(",")]
+        book = head.rsplit(" ", 1)[0]
+        parts = [head] + [p if " " in p else f"{book} {p}" for p in rest]
+        return "\n\n".join(t for t in ((shelf(p).state.text or "").strip() for p in parts) if t)
+    except Exception:  # noqa: BLE001 - the words not on disk are a miss, said so
+        return ""
+
+
+def _source_line(source: Any, data_dir: Path | None) -> dict[str, Any]:
+    """A ``RuleSource`` as the page shows it: the provision's words recited from disk, or counsel's reading labeled."""
+    cite, counsel, reading = getattr(source, "cite", "") or "", getattr(source, "counsel", "") or "", getattr(source, "reading", "") or ""
+    words = _recite(cite, data_dir)
+    if counsel:
+        label = f"{source.label}, a reading, not the provision's words"
+    else:
+        label = cite + ("" if words or data_dir is None else f" (its words are not on disk: jason cite \"{cite}\")")
+    return {"onFile": True, "source": cite, "label": label, "words": words, "counsel": counsel, "reading": reading}
+
+
+def board_rules(data_dir: Path | None = None, board: Any = _UNSET) -> dict[str, Any]:
+    """The rules the room counts by, each with where it comes from: ``quorum``, ``voteBasis``, ``interested`` (whether a
+    recused director counts toward the quorum and among those present), and ``openForum``. A rule on file carries its
+    source and, with ``data_dir``, the provision's words recited from disk; counsel's reading is labeled as one. A rule
+    not on file says so ("not on file; ask counsel") with what the room counts meanwhile, labeled as a reading."""
+    rule = _board() if board is _UNSET else board
+    if rule is not None and getattr(rule, "source", ""):
+        q = {"onFile": True, "source": rule.source, "words": _recite(rule.source, data_dir), "label": rule.source}
+    else:
+        q = {"onFile": False, "source": "", "words": "",
+             "label": f"The bylaws' quorum rule is {NOT_ON_FILE}. The room counts a majority of the directors listed, a reading, not the rule."}
+    basis = getattr(rule, "vote_basis", None)
+    if basis is not None:
+        v = {**_source_line(getattr(rule, "vote_source", None), data_dir), "basis": basis.value,
+             "key": basis.name.lower().replace("_", "-")}
+        if not v["source"] and not v["counsel"]:
+            v["label"] = "no source recorded for the vote rule; ask counsel"
+    else:
+        v = {"onFile": False, "basis": "", "source": "", "words": "", "counsel": "", "reading": "",
+             "label": f"The vote rule is {NOT_ON_FILE}. The room counts a majority of the directors present, a reading, not the rule."}
+    counts = getattr(rule, "interested_in_quorum", None)
+    if counts is not None:
+        i = {**_source_line(getattr(rule, "interested_source", None), data_dir), "counts": counts}
+    else:
+        i = {"onFile": False, "counts": None, "source": "", "words": "", "counsel": "", "reading": "",
+             "label": (f"Whether a recused director counts toward the quorum and among the directors present is {NOT_ON_FILE}. "
+                       "The room works the vote both ways and holds one the two readings decide differently.")}
+    return {"quorum": q, "voteBasis": v, "interested": i, "openForum": forum_rule()}
+
+
+def forum_rule() -> dict[str, Any]:
+    """The members' speaking limit the board established (CIV 4925(b)), from the profile's ``open_forum_limit()``:
+    ``{onFile, minutes, source, label}``. With none on file, ``minutes`` is 0 and the label says no limit is on record."""
+    try:
+        from jason.community import community
+
+        limit = community().open_forum_limit()
+    except Exception:  # noqa: BLE001 - no profile: none on record
+        limit = None
+    if limit is None:
+        return {"onFile": False, "minutes": 0, "source": "", "label": NO_FORUM_LIMIT}
+    return {"onFile": True, "minutes": int(limit.minutes), "source": limit.source,
+            "label": f"{int(limit.minutes)} minutes each ({limit.source}; CIV 4925(b))."}
+
+
+def forum_limit(room: dict[str, Any]) -> dict[str, Any]:
+    """The limit the room runs open forum by: one a person entered in the room (``limitBy``), else the board's policy,
+    else none (``minutes`` 0, with ``NO_FORUM_LIMIT``)."""
+    forum = room.get("openForum") or {}
+    entered = int(forum.get("limitMinutes") or 0)
+    if entered and forum.get("limitBy"):   # who entered it is in the record and the log, not in what the stage shows
+        return {"minutes": entered, "source": "entered in the room",
+                "label": f"{entered} minutes each (entered in the room; the board sets the limit, CIV 4925(b))."}
+    rule = forum_rule()
+    return {"minutes": rule["minutes"], "source": rule["source"], "label": rule["label"]}
+
+
+def tally(motion: dict[str, Any], room: dict[str, Any], board: Any = _UNSET) -> dict[str, Any]:
+    """The roll call as it stands: counts, who may vote, what it needs, and whether it carries once every voter has answered.
+
+    A recused director does not vote. Whether they still count toward the quorum and among the directors present is the
+    profile's ``BoardRule.interested_in_quorum``. With it not on file the vote is worked both ways: ``readings`` gives
+    each, and when they differ the state is "held" (``NOT_ON_FILE``), never one of them chosen silently."""
+    rule = _board() if board is _UNSET else board
     here = present(room)
     recused = [n for n in motion.get("recused", []) if n in here]
     voters = [n for n in here if n not in recused]
     votes = motion.get("votes", {})
     counts = {v: sum(1 for n in voters if votes.get(n) == v) for v in VOTES}
-    need = needed(len(here), motion.get("threshold", "majority"), len(room.get("directors", [])))
+    seats = len(room.get("directors", []))
+    threshold = motion.get("threshold", "majority")
+    basis = getattr(rule, "vote_basis", None)
+    q = quorum(list(room.get("directors", [])), rule)
     answered = all(votes.get(n) in VOTES for n in voters) and bool(voters)
-    state = "open" if not answered else ("carries" if counts["aye"] >= need else "fails")
-    line = f"Yes {counts['aye']} · No {counts['no']} · Abstain {counts['abstain']} · Recused {len(recused)}. Needs {need} yes. " + \
-           {"open": "Vote open.", "carries": "Carries.", "fails": "Fails."}[state]
+
+    def reading(base: int) -> dict[str, Any]:
+        need = needed(base, threshold, seats, basis)
+        quorate = q > 0 and base >= q
+        state = "open" if not answered else ("carries" if quorate and counts["aye"] >= need else "fails")
+        return {"needs": need, "quorum": quorate, "state": state}
+
+    counted, apart = reading(len(here)), reading(len(voters))
+    rule_counts = getattr(rule, "interested_in_quorum", None)
+    if not recused or rule_counts is True:
+        chosen, held, way = counted, False, "counted"
+    elif rule_counts is False:
+        chosen, held, way = apart, False, "not counted"
+    else:
+        held = answered and counted["state"] != apart["state"]
+        chosen, way = counted, "not on file"
+    state = "held" if held else chosen["state"]
+    line = f"Yes {counts['aye']} · No {counts['no']} · Abstain {counts['abstain']} · Recused {len(recused)}. "
+    if recused and way == "not on file":
+        line += (f"Needs {counted['needs']} yes counting the recused director{'s' if len(recused) > 1 else ''} as present"
+                 + ("" if counted["quorum"] else " (no quorum)")
+                 + f", {apart['needs']} yes if not" + ("" if apart["quorum"] else " (no quorum)") + ". ")
+        line += {"open": "Vote open.",
+                 "carries": "Carries under either reading.", "fails": "Fails under either reading.",
+                 "held": f"Held: the readings differ, and whether a recused director counts is {NOT_ON_FILE}."}[state]
+    else:
+        line += f"Needs {chosen['needs']} yes" + ("" if chosen["quorum"] or not answered else " (no quorum for this vote)") + ". "
+        line += {"open": "Vote open.", "carries": "Carries.", "fails": "Fails."}[state]
     return {"aye": counts["aye"], "no": counts["no"], "abstain": counts["abstain"], "recused": len(recused), "recusedNames": recused,
-            "voters": voters, "needs": need, "answered": answered, "state": state, "line": line}
+            "voters": voters, "needs": chosen["needs"], "answered": answered, "state": state, "line": line,
+            "readings": {"counted": counted, "notCounted": apart} if recused else {}, "recusal": way if recused else ""}
 
 
 def _clock(iso: str) -> str:
@@ -341,13 +495,16 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
         if room["calledToOrder"]:
             raise ValueError(f"already called to order at {room['calledToOrder']}")
         here = present(room)
-        q = quorum(room["directors"])
+        rule = _board()
+        q = quorum(room["directors"], rule)
         room["calledToOrder"] = now
         absent = [n for n in room["directors"] if n not in here]
         roster = f"Present: {', '.join(here) or 'none recorded'}." + (f" Absent: {', '.join(absent)}." if absent else "")
         has_quorum = len(here) >= q and q > 0
+        basis = f" ({rule.source})" if rule is not None and getattr(rule, "source", "") else \
+            f" (a majority of the directors listed; the bylaws' quorum rule is {NOT_ON_FILE})"
         log(f"Called to order by {str(body.get('chair', '') or 'the chair').strip()}. {roster} "
-            f"{len(here)} of {len(room['directors']) or '?'} directors present; a quorum is {q}. "
+            f"{len(here)} of {len(room['directors']) or '?'} directors present; a quorum is {q}{basis}. "
             + ("A quorum was present." if has_quorum else "No quorum was present; the board cannot act."), "good" if has_quorum else "warn")
     elif action == "go_to":
         idx = _int(body.get("item"), "item")
@@ -372,10 +529,14 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
         if "count" in body:
             forum["count"] = _int(body["count"], "count")
         if "limitMinutes" in body:
+            # A limit a person enters (the board's, read out by the chair); jason never supplies one (CIV 4925(b)).
             forum["limitMinutes"] = _int(body["limitMinutes"], "limitMinutes", 1)
+            forum["limitBy"] = by
         if body.get("close"):
             n = forum["count"]
-            log(f"Open forum: {n} member{'s' if n != 1 else ''} spoke, {forum['limitMinutes']} minutes each (CIV 4925).")
+            limit = forum_limit(room)
+            each = f", {limit['minutes']} minutes each ({limit['source']})" if limit["minutes"] else "; no time limit on record"
+            log(f"Open forum: {n} member{'s' if n != 1 else ''} spoke{each} (CIV 4925(b)).")
     elif action == "motion_draft":
         text = str(body.get("text", "") or "").strip()
         if not text:
@@ -391,9 +552,20 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
         if mover not in here or second not in here:
             raise ValueError("the mover and the second must be present")
         threshold = _one_of(body.get("threshold") or "majority", THRESHOLDS, "threshold")
+        # Each recusal is the director's own disclosure, entered by the secretary; jason infers none.
         recused = [_director(room, n, "recused") for n in (body.get("recused") or [])]
         if mover in recused or second in recused:
             raise ValueError("a recused director neither moves nor seconds")
+        rest = [n for n in here if n not in recused]
+        short = ""
+        if recused and len(rest) < q:
+            counts = getattr(_board(), "interested_in_quorum", None)
+            if counts is False:
+                raise ValueError(f"no quorum for this motion: {len(rest)} directors present and not recused, {q} needed "
+                                 "(a recused director does not count toward the quorum, as the rule on file reads)")
+            if counts is None:
+                short = (f"With {', '.join(recused)} recused, {len(rest)} directors present are not recused; a quorum is {q}. "
+                         f"Whether a recused director counts toward the quorum is {NOT_ON_FILE}.")
         where = closed()["motions"] if ex["active"] else room["motions"]
         motion = {"id": f"{'x' if ex['active'] else 'm'}{len(where) + 1}", "itemId": str(body.get("itemId", "") or ""),
                   "title": str(body.get("title", "") or "").strip(), "text": text, "mover": mover, "second": second, "recused": recused,
@@ -401,6 +573,8 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
                   "session": EXECUTIVE_SESSION if ex["active"] else OPEN_SESSION}
         where.append(motion)
         log(f"Motion by {mover}, seconded by {second}: {text}" + (f" {', '.join(recused)} recused." if recused else ""))
+        if short:
+            log(short, "warn")
     elif action == "vote":
         motion, _ = find(body.get("motion"))
         if motion["result"]:
@@ -415,15 +589,25 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
         motion, executive = find(body.get("motion"))
         if motion["result"]:
             raise ValueError("already decided")
-        t = tally(motion, room)
+        rule = _board()
+        t = tally(motion, room, rule)
         if not t["answered"]:
             raise ValueError("roll call by name: every director present and not recused answers aye, no, or abstain first")
+        if t["state"] == "held":
+            raise ValueError(f"the two readings decide this vote differently ({t['line']}). Whether a recused director "
+                             f"counts toward the quorum and among those present is {NOT_ON_FILE}; the vote is not recorded "
+                             "as carried or failed. The board may continue the item until counsel's reading is on file.")
         motion["result"] = "carried" if t["state"] == "carries" else "failed"
         motion["decidedAt"] = now
         motion["tally"] = {k: t[k] for k in ("aye", "no", "abstain", "recused", "needs")}
         roll = ", ".join(f"{n} {motion['votes'][n]}" for n in t["voters"])
+        unruled = [] if getattr(rule, "vote_basis", None) is not None or motion["threshold"] == "two-thirds" else \
+            [f"the vote rule is {NOT_ON_FILE}; counted as a majority of the directors present, a reading"]
+        if t["recusal"] == "not on file":
+            unruled.append(f"whether a recused director counts is {NOT_ON_FILE}; the result is the same under either reading")
         log(f"Roll call: {roll}. {motion['result'].capitalize()}, {t['aye']}–{t['no']}–{t['abstain']}"
-            + (f", {', '.join(t['recusedNames'])} recused" if t["recusedNames"] else "") + f" ({motion['threshold']}, {t['needs']} needed).",
+            + (f", {', '.join(t['recusedNames'])} recused" if t["recusedNames"] else "") + f" ({motion['threshold']}, {t['needs']} needed"
+            + "".join(f"; {u}" for u in unruled) + ").",
             "good" if motion["result"] == "carried" else "warn")
         from jason.tasks import decisions
 
@@ -440,9 +624,10 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
                 subject = matters[0]["subject"]
         decisions.record(data_dir, room["date"], motion["title"] or motion["text"][:60], motion["text"], item=motion["itemId"],
                          session=EXECUTIVE_SESSION if executive else OPEN_SESSION, subject=subject,
-                         mover=motion["mover"], second=motion["second"], votes=votes,
+                         mover=motion["mover"], second=motion["second"], votes=votes, recused=list(motion["recused"]),
                          outcome="approved" if motion["result"] == "carried" else "denied", by=by,
-                         notes=(f"Recused: {', '.join(motion['recused'])}. " if motion["recused"] else "") + f"Threshold {motion['threshold']}; {t['line']}")
+                         notes=(f"Recused: {', '.join(motion['recused'])}. " if motion["recused"] else "") + f"Threshold {motion['threshold']}; {t['line']}"
+                         + "".join(f" Note: {u}." for u in unruled))
     elif action == "off_agenda":
         path = str(body.get("path", "") or "").strip()
         if path not in OFF_AGENDA_PATHS:
@@ -547,9 +732,14 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
 
 def with_tallies(room: dict[str, Any]) -> dict[str, Any]:
     """The open room with each motion's live tally, the present list, and the quorum, as the page reads it. It carries
-    nothing from the executive record."""
-    return {**room, "motions": [{**m, "tally": tally(m, room)} for m in room.get("motions", [])], "present": present(room),
-            "quorum": quorum(list(room.get("directors", [])))}
+    nothing from the executive record. ``openForum`` carries the limit the room runs by and where it comes from
+    (``forum_limit``): ``limitMinutes`` 0 with ``limitNote`` when none is on record."""
+    rule = _board()
+    limit = forum_limit(room)
+    forum = {**{k: v for k, v in (room.get("openForum") or {}).items() if k != "limitBy"},
+             "limitMinutes": limit["minutes"], "limitSource": limit["source"], "limitNote": limit["label"]}
+    return {**room, "motions": [{**m, "tally": tally(m, room, rule)} for m in room.get("motions", [])], "present": present(room),
+            "quorum": quorum(list(room.get("directors", [])), rule), "openForum": forum}
 
 
 def executive_view(room: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
@@ -642,9 +832,10 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["ACTIONS", "ATTENDANCE", "EXECUTIVE_SESSION", "IDENTIFY_FIRST", "MODES", "NAME_SUBJECT", "OFF_AGENDA_PATHS", "OPEN_SESSION",
-           "PRESENTERS", "RETURNED", "THRESHOLDS", "VIEWS", "VOTES", "check_all", "check_executive", "empty", "empty_executive",
-           "executive_path", "executive_view", "load", "load_executive", "matters_of", "needed", "present", "quorum", "save",
+__all__ = ["ACTIONS", "ATTENDANCE", "EXECUTIVE_SESSION", "IDENTIFY_FIRST", "MODES", "NAME_SUBJECT", "NOT_ON_FILE", "NO_FORUM_LIMIT",
+           "OFF_AGENDA_PATHS", "OPEN_SESSION", "PRESENTERS", "RETURNED", "THRESHOLDS", "VIEWS", "VOTES", "board_rules", "check_all",
+           "check_executive", "empty", "empty_executive", "executive_path", "executive_view", "forum_limit", "forum_rule", "load",
+           "load_executive", "matters_of", "needed", "present", "quorum", "save",
            "save_executive", "tally", "update", "with_tallies"]
 
 

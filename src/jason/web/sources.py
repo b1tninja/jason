@@ -386,7 +386,7 @@ def meeting(args: Args) -> dict[str, Any]:
 
     from jason.community.board_items import ItemStatus, agenda_session
     from jason.mcp.county import _data_dir
-    from jason.tasks.board_items import _encode, agenda, load, notice_date
+    from jason.tasks.board_items import _encode, agenda, load, notice_date, notice_period
     from jason.tasks.meeting_agenda import minutes_template
 
     community = _community()
@@ -425,7 +425,12 @@ def meeting(args: Args) -> dict[str, Any]:
         "found": True, "date": iso, "today": today.isoformat(), "directors": directors,
         # An executive-session decision is noted only generally here (CIV 4935(e)); its record is the private view's.
         "decisions": [decided.as_dict(d) for d in decided.open_only(recorded)], "executiveDecisions": decided.general_notes(recorded),
-        "noticeBy": notice_date(day).isoformat(), "executiveNoticeBy": notice_date(day, executive_only=True).isoformat(),
+        "noticeBy": notice_date(day, community=community).isoformat(),
+        "executiveNoticeBy": notice_date(day, executive_only=True, community=community).isoformat(),
+        # How many days, and from where: the statute's floor, or the governing documents' longer period (CIV 4920(b)(3)).
+        "noticeDays": notice_period(community=community)[0], "noticeAuthority": notice_period(community=community)[1],
+        "executiveNoticeDays": notice_period(executive_only=True, community=community)[0],
+        "executiveNoticeAuthority": notice_period(executive_only=True, community=community)[1],
         "items": rows, "openCount": sum(1 for r in rows if r["agendaSession"] == "open session"),
         "executiveCount": sum(1 for r in rows if r["agendaSession"] != "open session"),
         "agendaMarkdown": "\n".join(agenda_lines), "packetMarkdown": packet_md, "minutesTemplate": minutes_md, "notes": notes,

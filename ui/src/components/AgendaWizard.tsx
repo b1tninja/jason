@@ -22,6 +22,10 @@ export interface AgendaCandidate {
 export interface NoticeLine { label: string; ready: boolean; detail?: string }
 export interface AgendaPlan {
   found?: boolean; note?: string; date: string; today: string; noticeBy: string; executiveNoticeBy: string;
+  /** Days of notice and where they come from: the statute's floor, or the governing documents' longer period (CIV 4920(b)(3)). */
+  noticeDays?: number | null; noticeAuthority?: string; executiveNoticeDays?: number | null; executiveNoticeAuthority?: string;
+  /** The members' speaking limit: the board's policy, or none on record (CIV 4925(b)). Never a default. */
+  forum?: { onFile: boolean; minutes: number; source: string; label: string };
   directors: string[]; decisions: unknown[]; basics: PlanBasics; zoom: PlanZoom; candidates: AgendaCandidate[];
   kinds: AgendaKind[]; formats: MeetingFormat[]; rules: string[]; notice: { by: string; executiveBy: string; required: NoticeLine[] };
   steps: string[]; commands: { agendaDoc: string; packetDoc: string; minutesDraft: string; notice: string; onAgenda: string[] };
@@ -34,12 +38,22 @@ export interface PlanBody { by: string; basics?: Partial<Omit<PlanBasics, "date"
 const EXEC = "executive session";
 const FORMATS: { id: MeetingFormat; label: string; hint: string }[] = [
   { id: "in person", label: "In person", hint: "A physical location only." },
-  { id: "hybrid", label: "Hybrid", hint: "A physical location plus teleconference (CIV 4090(b))." },
-  { id: "teleconference", label: "Entirely by teleconference", hint: "No physical location (CIV 4926). Every director vote is a roll call." },
+  { id: "hybrid", label: "Hybrid", hint: "A physical location plus teleconference (CIV 4090(b)). 4926's notice lines do not apply." },
+  { id: "teleconference", label: "Entirely by teleconference", hint: "No physical location (CIV 4926(a)). Every director vote is a roll call (4926(a)(3))." },
 ];
 const BASIC_LABELS: Record<keyof Omit<PlanBasics, "date">, string> = { start: "Start", format: "Format", location: "Location", join: "Join instructions", dialIn: "Telephone option", help: "Help contact" };
 const ZOOM_LABELS: Record<"topic" | "joinUrl" | "dialIn", string> = { topic: "Zoom topic", joinUrl: "Zoom join link", dialIn: "Zoom dial-in" };
 const ITEM_LABELS: Record<keyof ItemDraft, string> = { include: "on the agenda", kind: "kind", motion: "motion", allot: "minutes", order: "order", packet: "packet" };
+
+/** "4 days ahead (CIV 4920(a))", from the loader's days and authority; without days, the authority alone. */
+export function noticeAhead(days: number | null | undefined, authority: string): string {
+  return days ? `${days} days ahead (${authority})` : `ahead (${authority})`;
+}
+
+/** Open forum's note on the run of the meeting: the board's limit with its source, or that none is on record. */
+export function forumNote(forum: AgendaPlan["forum"]): string {
+  return forum?.onFile ? forum.label : "no limit on record; the board sets it (CIV 4925(b))";
+}
 
 const TIME = /^(\d{1,2}):(\d{2})$/;
 export function addMinutes(hhmm: string, m: number): string {
@@ -140,7 +154,7 @@ export function AgendaWizard({ plan, onSave, busy }: { plan: AgendaPlan; onSave:
   const push = (r: Omit<Row, "start">) => { rows.push({ ...r, start: t ? clock(t) : "—" }); t = t ? addMinutes(t, r.allot) : t; };
   push({ id: "call", title: "Call to order; roll call and quorum", allot: 3, fixed: true });
   openOrdered.forEach((c) => push({ id: c.id, title: c.title, allot: items[c.id].allot, fixed: false, cand: c, draft: items[c.id] }));
-  push({ id: "forum", title: "Member comment (CIV 4925)", allot: 15, fixed: true, note: "a time limit the board sets" });
+  push({ id: "forum", title: "Member comment (CIV 4925(b))", allot: 15, fixed: true, note: forumNote(plan.forum) });
   if (execIncluded.length) push({ id: "exec", title: "Adjourn to executive session (CIV 4935)", allot: execIncluded.reduce((s, c) => s + (items[c.id].allot || 0), 0), fixed: true, note: execIncluded.map((c) => c.title).join("; ") + " (by title only; noted generally in the next open minutes, 4935(e))" });
   push({ id: "adjourn", title: "Adjournment", allot: 1, fixed: true });
   const total = rows.reduce((s, r) => s + r.allot, 0);
@@ -189,14 +203,15 @@ export function AgendaWizard({ plan, onSave, busy }: { plan: AgendaPlan; onSave:
                 ))}
               </fieldset>
               {fmt !== "teleconference" && field("Physical location", basics.location, (v) => setBasics({ ...basics, location: v }))}
-              {remote && field("Join instructions or link (CIV 4926(a)(1))", basics.join, (v) => setBasics({ ...basics, join: v }))}
-              {remote && field("Telephone option (CIV 4926(a)(4))", basics.dialIn, (v) => setBasics({ ...basics, dialIn: v }))}
-              {remote && field("Who can help before and during, phone and email (CIV 4926(a)(1))", basics.help, (v) => setBasics({ ...basics, help: v }))}
+              {/* 4926's lines are for a meeting held entirely by teleconference; a hybrid meeting's join details are a convenience, cited to nothing. */}
+              {remote && field(fmt === "teleconference" ? "Join instructions or link (CIV 4926(a)(1)(A))" : "Join link for members attending remotely", basics.join, (v) => setBasics({ ...basics, join: v }))}
+              {remote && field(fmt === "teleconference" ? "Telephone option (CIV 4926(a)(4))" : "Dial-in for members attending remotely", basics.dialIn, (v) => setBasics({ ...basics, dialIn: v }))}
+              {fmt === "teleconference" && field("Who can help before and during, phone and email (CIV 4926(a)(1)(B))", basics.help, (v) => setBasics({ ...basics, help: v }))}
             </div>
           </Card>
           <Card title="What this format requires">
             <ul className="wizard-rules">{plan.rules.map((r) => <li key={r}>{r}</li>)}</ul>
-            <p>Notice and the agenda to members by <strong className="num">{plan.noticeBy}</strong>, four days ahead (CIV 4920); by <strong className="num">{plan.executiveNoticeBy}</strong> for a meeting held solely in executive session.</p>
+            <p>Notice and the agenda to members by <strong className="num">{plan.noticeBy}</strong>, {noticeAhead(plan.noticeDays, plan.noticeAuthority ?? "CIV 4920(a)")}; by <strong className="num">{plan.executiveNoticeBy}</strong> for a meeting held solely in executive session ({noticeAhead(plan.executiveNoticeDays, plan.executiveNoticeAuthority ?? "CIV 4920(b)(2)")}).</p>
             {fmt !== plan.basics.format && <p className="muted">The list follows the saved format; save the plan to see what {fmt || "the new format"} requires.</p>}
           </Card>
         </div>
@@ -258,7 +273,7 @@ export function AgendaWizard({ plan, onSave, busy }: { plan: AgendaPlan; onSave:
             </Card>
           )}
           <Card title="Notice checks">
-            <Checklist title="What the notice must carry (CIV 4920, 4926)" items={plan.notice.required} />
+            <Checklist title={`What the notice must carry (CIV 4920${plan.basics.format === "teleconference" ? ", 4926" : plan.basics.format === "hybrid" ? ", 4090(b)" : ""})`} items={plan.notice.required} />
             <p className="muted">The notice is a letter a person drafts, approves, and sends. <a href="#/approvals">Draft it in Approvals</a>; nothing on this page sends it.</p>
           </Card>
           <Card title="Put the items on the noticed agenda">

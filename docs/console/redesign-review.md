@@ -14,7 +14,7 @@ clerk's desk section).
 | 3 | DraftLetter ends with the approval line | **Keep, corrected** | The console's record, not printed text; replies go to the 4035 recipient |
 | 4 | ApprovalsInbox groups by whose turn | **Keep, extended** | A board approval waits on a meeting, not a person |
 | 5 | DecisionBrief never recommends | **Keep, corrected** | Never recommends, but always states the law's limits on each option |
-| 6 | DecisionCard: outcome in the board's word; recused directors count toward quorum, not the vote | **Keep, corrected** | The quorum treatment is the bylaws' rule or counsel's reading, labeled |
+| 6 | DecisionCard: outcome in the board's word; recused directors count toward quorum, not the vote | **Keep, corrected** | The quorum treatment is the bylaws' rule or counsel's reading, labeled (built: `BoardRule.interested_in_quorum`, `board_rules`) |
 | 7 | DataTable `kind: "money"` | **Keep** | Right-aligned, tabular, from cents |
 | 8 | RegisterGrid shows who last changed a cell on hover | **Correct** | Not on hover only |
 | 9 | AgendaWizard: readiness as a checklist, a session badge only for executive matters | **Keep, corrected** | The badge names the 4935 subject |

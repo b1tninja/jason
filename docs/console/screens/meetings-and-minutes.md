@@ -9,8 +9,8 @@ The Governance group already runs the board loop:
 | Console screen | What it does |
 |---|---|
 | **Meetings and minutes** (`#/meetings`, `ConsoleMeetings`; owner view too) | Each meeting's records on hand (agenda, notice, minutes, transcript, recording) and its checks (no minutes 30 days on, a recording held after the minutes, a transcript into executive session), with scheduled days that have no record |
-| **Next meeting** (`#/meeting`) | One meeting: the last days to give notice (CIV 4920), items by session (executive by title only), the agenda draft, the packet with each item's packet files as jason's copies (`DocumentPreview`) and "Read every packet file from Drive", the minutes frame, and the commands that write each Doc |
-| **Plan a meeting** (`#/agenda`, `ConsoleAgenda`) | The four-step `AgendaWizard`: meeting, ready to act, order and motions (each packet file attached with its `DocumentPreview`: thumbnail, Preview, Read from Drive, Open in Google), notice |
+| **Next meeting** (`#/meeting`) | One meeting: the last days to give notice (CIV 4920: four days, two for a meeting held solely in executive session, or the governing documents' longer period, `Community.board_notice_period()`, with its source), items by session (executive by title only), the agenda draft, the packet with each item's packet files as jason's copies (`DocumentPreview`) and "Read every packet file from Drive", the minutes frame, and the commands that write each Doc |
+| **Plan a meeting** (`#/agenda`, `ConsoleAgenda`) | The four-step `AgendaWizard`: meeting, ready to act, order and motions (each packet file attached with its `DocumentPreview`: thumbnail, Preview, Read from Drive, Open in Google), notice. The notice lines: 4920 always; a hybrid meeting's location and director or designee (4090(b)); 4926's join instructions, help contact, individual-delivery reminder, and telephone option only for a meeting held entirely by teleconference. A line that is jason's check says so |
 | **Meeting room** (`#/room`, `ConsoleMeetingRoom`) | `MeetingStage` and `HostPanel`: attendance, motions, roll calls by name, the CIV 4930 guard, executive session as the host's act; draft minutes go to Approvals for the secretary. A packet file "shown on stage" is jason's copy, opened as one logged view and shown inline for the board; with no copy, its preview card. Members (`audience=owner`) see only a card naming it ("members receive the packet with the agenda"). Never a frame of Google. The executive session is kept apart: see [The meeting room's executive session](#the-meeting-rooms-executive-session) |
 | **Decisions** (`#/decisions`, `ConsoleDecisions`) | A `DecisionBrief` per matter above its `DecisionCard` |
 | **Minutes review** (`#/minutes-review`) | The minutes draft's blanks as a form, the privacy flags beside their lines; a filled copy saved, the draft never edited |
@@ -131,6 +131,22 @@ Civil Code 4935(e), as stored on disk: "Any matter discussed in executive sessio
 - **The host panel:** "Prepare draft minutes" builds the letter from the open log only (`minutesLetter`). While the room is in executive session, the Minutes tab shows the executive log in the private view and the held line otherwise; the Motion and Roll call tabs work on the executive record's motions, so the host opens the private view to run them.
 - **The members' stage** shows the hold card for as long as the room is in executive session, with the general note only.
 - **Room files written before the record was kept apart** are not rewritten: `python -m jason.tasks.meeting_room --check-executive DATE` (or `all`) counts the open entries that fall inside an executive window, never their text, for a person to decide what to do.
+
+## The meeting room's rules: quorum, vote, recusal, open forum
+
+The room counts by the profile's `BoardRule` and policies, never by jason. The loader's `rules` (`meeting_room.board_rules`) gives each with its source: the bylaws' provision, its words recited from disk (`jason cite`), or counsel's reading, labeled as a reading. A rule not on file says "not on file; ask counsel", with what the room counts meanwhile, labeled.
+
+| Rule | From | Not on file |
+|---|---|---|
+| Quorum | `BoardRule.quorum()`, `source` | a majority of the directors listed, labeled a reading |
+| What carries a motion | `BoardRule.vote_basis` (`VoteBasis`), `vote_source` | a majority of the directors present, labeled a reading; the decision's notes say so |
+| Whether a recused director counts toward the quorum and among those present | `BoardRule.interested_in_quorum`, `interested_source` | the tally is worked both ways (`readings`); a vote the two decide differently is `held`, and the store refuses to record it |
+| Two-thirds for an off-agenda emergency item | CIV 4930(d)(2) | (the statute) |
+| Open forum, minutes each | `Community.open_forum_limit()` (`SpeakingLimit`), or a limit a person enters in the room (`limitBy`) | "No limit on record; the board sets it (CIV 4925(b))." No clock, no allotment, never a default |
+
+- **A recusal is the director's disclosure,** entered by the secretary on the motion (`recused`). jason infers none. CIV 5350(b) lists the matters an interested director "shall not vote" on; a contract is 5350(a), which applies Corporations Code 7233 and 7234. 7233 is not on the authorities shelf: how it counts the director is counsel's to read.
+- **The decision records it:** `decisions.Decision.recused`, never "absent" and never a no. `DecisionCard` takes it, and the minutes draft is given it.
+- **A limit stored with no person behind it** (the room's earlier 3-minute default) reads as no limit on record.
 
 ## Privacy
 

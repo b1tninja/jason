@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge, Caveats, Confirm, HostPanel, MeetingStage, RemoteView } from "../components";
-import { motionFor, type AgendaItem, type MeetingRoomData, type MinutesLetter, type PacketFile, type StageContent } from "../components/MeetingStage";
+import { forumLine, motionFor, type AgendaItem, type MeetingRoomData, type MinutesLetter, type PacketFile, type StageContent } from "../components/MeetingStage";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 
@@ -33,7 +33,12 @@ export function stageContent(d: MeetingRoomData, item: AgendaItem | undefined, s
     return { kind: "attendance", rows: r.directors.map((n) => ({ name: n, present: here.includes(n) })),
       quorum: ok ? `${here.length} of ${r.directors.length} directors present. A quorum is ${d.quorum}.` : `Only ${here.length} of ${r.directors.length} directors present. The board cannot act without ${d.quorum}.` };
   }
-  if (item.kind === "forum") return { kind: "countdown", seconds: forumLeft, speaker: `Member comments, ${r.openForum.limitMinutes} minutes each (CIV 4925). ${speakers} ${speakers === 1 ? "speaker" : "speakers"} so far.` };
+  if (item.kind === "forum") {
+    const so = `${speakers} ${speakers === 1 ? "speaker" : "speakers"} so far.`;
+    // No clock without a limit on record: the board sets it (CIV 4925(b)); jason never assumes one.
+    if (!(r.openForum.limitMinutes > 0)) return { kind: "facts", facts: ["Member comments.", forumLine(r.openForum), so] };
+    return { kind: "countdown", seconds: forumLeft, speaker: `Member comments, ${forumLine(r.openForum)} (CIV 4925(b)). ${so}` };
+  }
   if (item.kind === "exec") return { kind: "executive", note: `The board is adjourning to executive session to discuss ${(item.matters ?? []).join(" and ") || "the matters noticed"}.` };
   if (item.kind === "adjourn") return { kind: "adjourned", at: r.adjournedAt ? new Date(r.adjournedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "" };
   const m = motionFor(r, item);
@@ -54,7 +59,7 @@ export function script(d: MeetingRoomData, item: AgendaItem | undefined): string
   if (!item) return "";
   const here = r.present.length, all = r.directors.length;
   if (item.kind === "call") return `Good evening. The president calls the meeting to order. ${here} of ${all} directors are present, ${here >= d.quorum && d.quorum > 0 ? "so the board has a quorum." : "so the board does not have a quorum and cannot act."}`;
-  if (item.kind === "forum") return `Open forum. Members may speak for up to ${r.openForum.limitMinutes} minutes each. The board may respond briefly, but it acts only on items on the posted agenda.`;
+  if (item.kind === "forum") return `Open forum. ${r.openForum.limitMinutes > 0 ? `Members may speak for up to ${r.openForum.limitMinutes} minutes each.` : "Members may speak; the board sets the time limit."} The board may respond briefly, but it acts only on items on the posted agenda.`;
   if (item.kind === "exec") return `The open session pauses while the board meets in executive session to discuss ${(item.matters ?? []).join(" and ") || "the matters noticed"}.`;
   if (item.kind === "adjourn") return "The open meeting is adjourned. Draft minutes will be available to members within 30 days.";
   const idx = d.items.indexOf(item) - 1;

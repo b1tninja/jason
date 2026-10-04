@@ -11,7 +11,7 @@ import { driveAddress, googleLink, type DriveKind } from "./DrivePreview";
 import { embedUrls, type EmbedKind } from "./Embed";
 import { evidenceUrl, type EvidenceAnswer } from "./Evidence";
 import { Tabs } from "./Tabs";
-import { RollCall, outcome, type Threshold } from "./RollCall";
+import { NOT_ON_FILE, NO_FORUM_LIMIT, RollCall, outcome, type Threshold, type VoteBasis } from "./RollCall";
 
 // -- shapes shared with the loader (GET /api/meeting-room) -------------------------------------------------------------
 
@@ -26,7 +26,18 @@ export interface AgendaItem {
   /** The executive item's matters, in the 4935 subjects' general words only (never a title; CIV 4935(e)). */
   matters?: string[]; executiveMatters?: ExecutiveMatter[]; unnamed?: number; subjectNote?: string; suggestion?: string;
 }
-export interface MotionTally { aye: number; no: number; abstain: number; recused: number; recusedNames: string[]; voters: string[]; needs: number; answered: boolean; state: "open" | "carries" | "fails"; line: string }
+/** `held`: the two readings of whether a recused director counts decide the vote differently, and neither is on file. */
+export interface MotionTally { aye: number; no: number; abstain: number; recused: number; recusedNames: string[]; voters: string[]; needs: number; answered: boolean; state: "open" | "carries" | "fails" | "held"; line: string; recusal?: string }
+/** One rule the room counts by, as the loader gives it: `onFile` with its source (the bylaws' words recited from disk in
+ * `words`, or counsel's reading, labeled), or not on file with `label` saying so ("not on file; ask counsel"). */
+export interface RuleLine { onFile: boolean; label: string; source?: string; words?: string; counsel?: string; reading?: string }
+export interface BoardRules {
+  quorum: RuleLine;
+  voteBasis: RuleLine & { basis?: string; key?: VoteBasis };
+  /** Whether a recused director counts toward the quorum and among those present; `counts` null when not on file. */
+  interested: RuleLine & { counts: boolean | null };
+  openForum?: { onFile: boolean; minutes: number; source: string; label: string };
+}
 export interface Motion {
   id: string; itemId: string; title: string; text: string; mover: string; second: string; recused: string[]; threshold: Threshold | string;
   votes: Record<string, string>; result: "carried" | "failed" | ""; decidedAt: string; movedAt: string; tally: MotionTally;
@@ -34,7 +45,8 @@ export interface Motion {
 export interface LogEntry { at: string; title: string; tone?: "neutral" | "good" | "warn" | "bad"; by?: string }
 export interface RoomRecord {
   date: string; directors: string[]; current: number; presenter: "jason" | "chair"; view: "host" | "shared"; mode: "co-host" | "host" | "portal";
-  attendance: Record<string, "present" | "absent" | "remote">; calledToOrder: string; openForum: { count: number; limitMinutes: number };
+  /** `limitMinutes` 0 means no limit on record (`limitNote` says so); the board sets it (CIV 4925(b)), never a default. */
+  attendance: Record<string, "present" | "absent" | "remote">; calledToOrder: string; openForum: { count: number; limitMinutes: number; limitSource?: string; limitNote?: string };
   motions: Motion[]; log: LogEntry[];
   /** The open record's executive state: the general note and times only (the record itself is `MeetingRoomData.executive`). */
   executive: { active: boolean; startedAt: string; endedAt: string; note: string; subjects?: string[]; sessions?: { startedAt: string; endedAt: string; subjects: string[] }[] };
@@ -44,6 +56,8 @@ export interface RoomRecord {
 }
 export interface MeetingRoomData {
   found?: boolean; note?: string; date: string; today: string; directors: string[]; quorum: number; items: AgendaItem[]; room: RoomRecord;
+  /** What the room counts by, each with its source or "not on file; ask counsel". Absent in the owner view. */
+  rules?: BoardRules;
   decisions: unknown[]; plan: { found: boolean; count: number }; roster: { synced: string; count: number; rows: { name: string; unit: string }[]; note: string };
   offAgendaPaths: { path: string; text: string }[]; zoom: { commands: Record<string, string>; admitCommand: string; note: string };
   commands: Record<string, string>; minutesKey: string; notes: string[]; caveats: string[];
@@ -292,7 +306,7 @@ function StageBlock({ content, audience = "board", packetCopy }: { content: Stag
 /** Common motions, as templates a person edits. The brackets are blanks; the text is the board's once moved. */
 export const COMMON_MOTIONS: { id: string; label: string; threshold: Threshold; cite?: string; note?: string; text: string }[] = [
   { id: "approve-minutes", label: "Approve the minutes", threshold: "majority", text: "Move to approve the minutes of the [date] open meeting as presented." },
-  { id: "approve-contract", label: "Approve a contract", threshold: "majority", cite: "Corp. Code 7233; CIV 5350", note: "An interested director may not vote; the vote must carry without them.", text: "Move to approve the contract with [vendor] for [scope] at [amount], and authorize [officer] to sign." },
+  { id: "approve-contract", label: "Approve a contract", threshold: "majority", cite: "CIV 5350(a)", note: "5350(a) applies Corporations Code 7233 and 7234 to a contract the board approves. A director who discloses an interest is recorded as recused; how 7233 counts them is counsel's to read.", text: "Move to approve the contract with [vendor] for [scope] at [amount], and authorize [officer] to sign." },
   { id: "adopt-resolution", label: "Adopt a resolution", threshold: "majority", text: "Move to adopt the resolution as presented." },
   { id: "continue", label: "Continue to a later meeting", threshold: "majority", cite: "CIV 4930(d)(3)", note: "Within 30 days, the next meeting may act without re-noticing the item.", text: "Move to continue this item to the [date] meeting." },
   { id: "refer", label: "Direct the manager to report back", threshold: "majority", cite: "CIV 4930(c)", text: "Move to direct the manager to report back on [matter] at the [date] meeting." },
@@ -337,6 +351,29 @@ export function motionFor(room: RoomRecord, item: AgendaItem | undefined): Motio
   // The executive item's motions are the executive record's (ids x1, x2, …), each on one of its matters.
   const mine = room.motions.filter((m) => m.itemId === item.id || (item.kind === "exec" && m.id.startsWith("x")));
   return mine.find((m) => !m.result) ?? mine[mine.length - 1];
+}
+
+/** A rule's words as the loader recited them from disk (quoted, with the provision), or counsel's reading (labeled). */
+export function RuleWords({ line }: { line: RuleLine }) {
+  return (
+    <details className="muted">
+      <summary>{line.counsel ? line.label : `${line.source}, as written`}</summary>
+      {line.words && <blockquote>{line.words}</blockquote>}
+      {line.reading && <p>{line.label}: {line.reading}</p>}
+      {line.words && <p className="muted">Quoted from jason's copy of the association's documents; the recorded and adopted documents control.</p>}
+    </details>
+  );
+}
+
+/** Open forum's limit as the room states it: "N minutes each" with where it comes from, or that none is on record. */
+export function forumLine(forum: RoomRecord["openForum"]): string {
+  if (forum.limitMinutes > 0) return `${forum.limitMinutes} minutes each${forum.limitSource ? ` (${forum.limitSource})` : ""}`;
+  return forum.limitNote || NO_FORUM_LIMIT;
+}
+
+/** The roll call's rule options from the loader's rules: the recusal question (null when not on file), the quorum, the basis. */
+export function ruleOptions(data: MeetingRoomData): { interested: boolean | null; quorum: number; basis?: VoteBasis } {
+  return { interested: data.rules?.interested.counts ?? null, quorum: data.quorum, basis: data.rules?.voteBasis.key };
 }
 
 /** The open minutes as the room recorded them: the roster and the quorum, then each line of the OPEN log with its time.
@@ -403,6 +440,7 @@ function AgendaTab({ data, item, onAction, canWrite, shown, onShow, forum, onMot
   const [guard, setGuard] = useState(false);
   const [topic, setTopic] = useState("");
   const [pick, setPick] = useState<number | null>(null);
+  const [limit, setLimit] = useState("");
   const r = data.room;
   const resultOf = (it: AgendaItem) => motionFor(r, it)?.result;
   const picked = pick !== null && pick !== r.current ? data.items[pick] : undefined;
@@ -410,10 +448,21 @@ function AgendaTab({ data, item, onAction, canWrite, shown, onShow, forum, onMot
     <div className="hp-stack">
       {item?.kind === "forum" && forum && (
         <div className="row wrap">
-          <button className="primary" onClick={forum.onToggle}>{forum.running ? "Pause" : "Start"}</button>
-          <button onClick={forum.onReset}>Reset</button>
+          {r.openForum.limitMinutes > 0 && <button className="primary" onClick={forum.onToggle}>{forum.running ? "Pause" : "Start"}</button>}
+          {r.openForum.limitMinutes > 0 && <button onClick={forum.onReset}>Reset</button>}
           <button onClick={forum.onNextSpeaker}>Next speaker</button>
-          <span className="muted">{forum.speakers} {forum.speakers === 1 ? "speaker" : "speakers"} · {r.openForum.limitMinutes} min each</span>
+          <span className="muted">{forum.speakers} {forum.speakers === 1 ? "speaker" : "speakers"} · {forumLine(r.openForum)}</span>
+        </div>
+      )}
+      {item?.kind === "forum" && (
+        <div className="row wrap">
+          <label className="hp-field">Minutes each, as the board set it <input type="number" min={1} max={30} value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="none on record" /></label>
+          {Number(limit) > 0 && (
+            <Confirm busy={!canWrite} onConfirm={async () => { if (await onAction("open_forum", { limitMinutes: Number(limit) })) setLimit(""); }}
+              summary={<p>Record that the chair announced {Number(limit)} minutes for each member, as the board set it (CIV 4925(b)). Logged as yours; jason supplies no limit.</p>}>
+              Record the limit
+            </Confirm>
+          )}
         </div>
       )}
       <ol className="hp-agenda">
@@ -492,7 +541,7 @@ function MotionTab({ data, item, onAction, canWrite, onFloor }: TabProps & { onF
         <label className="hp-field">Moved by <select value={mover} onChange={(e) => setMover(e.target.value)}><option value="">choose</option>{movers.map((n) => <option key={n}>{n}</option>)}</select></label>
         <label className="hp-field">Seconded by <select value={second} onChange={(e) => setSecond(e.target.value)}><option value="">choose</option>{movers.map((n) => <option key={n}>{n}</option>)}</select></label>
       </div>
-      <fieldset className="hp-recuse"><legend className="muted">Recused (disclosed an interest; counts toward the quorum, not the vote)</legend>
+      <fieldset className="hp-recuse"><legend className="muted">Recused: a director who disclosed an interest, as the secretary records it (does not vote; whether they count toward the quorum is {data.rules?.interested.onFile ? data.rules.interested.label : NOT_ON_FILE})</legend>
         {here.map((n) => <label key={n}><input type="checkbox" checked={recused.includes(n)} onChange={(e) => setRecused(e.target.checked ? [...recused, n] : recused.filter((x) => x !== n))} /> {n}</label>)}
       </fieldset>
       <div className="row wrap">
@@ -517,7 +566,8 @@ function RollTab({ data, item, onAction, canWrite }: TabProps) {
   const open = current && !current.result ? current : null;
   const here = r.present;
   const quorumOk = here.length >= data.quorum && data.quorum > 0;
-  const result = open ? outcome(votes, { present: here, recused: open.recused, threshold: open.threshold as Threshold, seats: r.directors.length }) : null;
+  const rules = ruleOptions(data);
+  const result = open ? outcome(votes, { present: here, recused: open.recused, threshold: open.threshold as Threshold, seats: r.directors.length, ...rules }) : null;
   return (
     <div className="hp-stack">
       {r.directors.length === 0 && <p className="notice notice-warn">No directors on file (jason board --members).</p>}
@@ -532,7 +582,8 @@ function RollTab({ data, item, onAction, canWrite }: TabProps) {
       </div>
       <div className="row wrap">
         <Badge tone={quorumOk ? "good" : "bad"}>{quorumOk ? `quorum, ${here.length} of ${r.directors.length}` : `no quorum, ${here.length} of ${r.directors.length}`}</Badge>
-        <span className="muted">A quorum is {data.quorum}.</span>
+        <span className="muted">A quorum is {data.quorum}{data.rules?.quorum.onFile ? ` (${data.rules.quorum.label})` : ""}.</span>
+        {data.rules && !data.rules.quorum.onFile && <span className="limit">{data.rules.quorum.label}</span>}
         {changes.length > 0 && (
           <Confirm busy={!canWrite} onConfirm={async () => { await onAction("attendance", { attendance: Object.fromEntries(changes.map((n) => [n, att[n]])) }); setAtt({}); }}
             summary={<ul>{changes.map((n) => <li key={n}>{n}: {r.attendance[n] ?? "absent"} → {att[n]}</li>)}</ul>}>
@@ -540,15 +591,21 @@ function RollTab({ data, item, onAction, canWrite }: TabProps) {
           </Confirm>
         )}
       </div>
+      {data.rules && [data.rules.quorum, data.rules.voteBasis, data.rules.interested]
+        .filter((l, i, all) => l.onFile && (l.words || l.reading) && all.findIndex((o) => o.source === l.source && o.counsel === l.counsel) === i)
+        .map((l) => <RuleWords key={`${l.source}|${l.counsel ?? ""}`} line={l} />)}
       {!open && <p className="muted">No motion on the floor.</p>}
       {open && result && (
         <div className="hp-vote">
           <p className="muted">{open.threshold === "two-thirds"
             ? `Roll call. Needs two-thirds of the directors present (${result.needs} yes), or every one of them if fewer than two-thirds of the board is here (CIV 4930(d)(2)).`
-            : `Roll call. Needs a majority of the directors present: ${result.needs} yes.`}</p>
-          <RollCall directors={here} votes={votes} onChange={setVotes} present={here} recused={open.recused} threshold={open.threshold as Threshold} seats={r.directors.length} />
-          {open.recused.length > 0 && <p className="limit">{open.recused.join(", ")} disclosed an interest and does not vote (Corp. Code 7233; CIV 5350). Still counts toward the quorum.</p>}
-          {result.answered ? (
+            : `Roll call. ${data.rules?.voteBasis.onFile ? `Needs ${data.rules.voteBasis.basis} (${data.rules.voteBasis.label})` : "Needs a majority of the directors present"}: ${result.needs} yes.`}</p>
+          {open.threshold !== "two-thirds" && data.rules && !data.rules.voteBasis.onFile && <p className="limit">{data.rules.voteBasis.label}</p>}
+          <RollCall directors={here} votes={votes} onChange={setVotes} present={here} recused={open.recused} threshold={open.threshold as Threshold} seats={r.directors.length} {...rules} />
+          {open.recused.length > 0 && <p className="limit">{open.recused.join(", ")} disclosed an interest and does not vote. CIV 5350(b) lists matters an interested director shall not vote on; a contract is 5350(a), through Corporations Code 7233 and 7234.{data.rules?.interested.onFile ? ` Whether a recused director counts toward the quorum: ${data.rules.interested.label}.` : ""}</p>}
+          {result.state === "held" ? (
+            <p className="notice notice-warn">The two readings decide this vote differently. Whether a recused director counts is {NOT_ON_FILE}; the vote is not recorded as carried or failed. The board may continue the item until counsel's reading is on file.</p>
+          ) : result.answered ? (
             <Confirm busy={!canWrite} onConfirm={async () => { for (const n of result.voters) if (!(await onAction("vote", { motion: open.id, name: n, vote: votes[n] }))) return; if (await onAction("decide", { motion: open.id })) setVotes({}); }}
               summary={<p>Record the roll call in the minutes and the decisions: {result.voters.map((n) => `${n} ${votes[n]}`).join(", ")}. {result.line} Threshold: {open.threshold}.</p>}>
               Record the vote
@@ -737,9 +794,9 @@ function ZoomTab({ data, item, onAction, canWrite }: TabProps) {
             Record poll results
           </Confirm>
         )}
-        <p className="muted">Polls are for members' input, never for board votes. Director votes are a roll call by name (CIV 4926(a)(3)).</p>
+        <p className="muted">Polls are for members' input, never for board votes. Director votes are a roll call by name (required for a meeting held entirely by teleconference, CIV 4926(a)(3)).</p>
       </div>
-      {item?.kind === "forum" && <p className="muted">When a member has the floor, the host unmutes them for {r.openForum.limitMinutes} minutes.</p>}
+      {item?.kind === "forum" && <p className="muted">{r.openForum.limitMinutes > 0 ? `When a member has the floor, the host unmutes them for ${r.openForum.limitMinutes} minutes.` : `When a member has the floor, the host unmutes them. ${forumLine(r.openForum)}`}</p>}
       <div className="hp-section">
         <p>Executive session: members leave the room, and the recording and transcript stop. Executive session minutes are not open to inspection (CIV 4935, 5215).</p>
         {!r.executive.active ? <ExecutiveStart data={data} onAction={onAction} canWrite={canWrite} /> : (

@@ -92,7 +92,12 @@ describe("MeetingRoomView", () => {
   it("picks the stage content and the script for each kind of item", () => {
     const d = roomData();
     expect(stageContent(d, d.items[0], {}, 0, 0)).toMatchObject({ kind: "attendance", quorum: "4 of 5 directors present. A quorum is 3." });
-    expect(stageContent(d, d.items[1], {}, 61, 2)).toMatchObject({ kind: "countdown", seconds: 61 });
+    // No limit on record: no clock and no assumed minutes; the board sets the limit (CIV 4925(b)).
+    expect(stageContent(d, d.items[1], {}, 61, 2)).toMatchObject({ kind: "facts", facts: ["Member comments.", "No limit on record; the board sets it (CIV 4925(b)).", "2 speakers so far."] });
+    expect(script(d, d.items[1])).toContain("the board sets the time limit");
+    expect(JSON.stringify(stageContent(d, d.items[1], {}, 61, 2))).not.toMatch(/3 minutes/);
+    const set = roomData({}, { openForum: { count: 0, limitMinutes: 2, limitSource: "entered in the room" } });
+    expect(stageContent(set, set.items[1], {}, 61, 2)).toMatchObject({ kind: "countdown", seconds: 61, speaker: "Member comments, 2 minutes each (entered in the room) (CIV 4925(b)). 2 speakers so far." });
     expect(stageContent(d, d.items[2], {}, 0, 0)).toMatchObject({ kind: "motion", text: "Move to approve the contract with Vendor A.", mover: "" });
     expect(stageContent(d, d.items[2], { options: true }, 0, 0)).toMatchObject({ kind: "options" });
     expect(stageContent(d, d.items[2], { packet: d.items[2].packet[0] }, 0, 0)).toMatchObject({ kind: "packet" });

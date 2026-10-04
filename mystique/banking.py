@@ -11,7 +11,8 @@ including two reserve certificates of deposit.
 
 from __future__ import annotations
 
-from jason.community.base import AccountPurpose, BankAccount, BoardRule, MeetingSchedule, ReserveLine
+from jason.community.base import (AccountPurpose, BankAccount, BoardRule, MeetingSchedule, NoticePeriod, ReserveLine, RuleSource,
+                                  VoteBasis)
 
 def _accounts() -> tuple[BankAccount, ...]:
     from jason.community.private import facts
@@ -32,8 +33,17 @@ RESERVE_BUDGET_LINES: dict[ReserveLine, str] = {
 
 # The board: Bylaws 5.1 allows three to five directors, the number fixed by the board; it is five (confirmed by the board
 # 2026-09-29, with four seats filled). Bylaws 7.10: "A majority of the number of Directors then in office, but not less
-# than two Directors, shall constitute a quorum for the transaction of business."
-BOARD = BoardRule(seats=5, minimum=3, maximum=5, quorum_floor=2, source="Bylaws 5.1, 7.10")
+# than two Directors, shall constitute a quorum for the transaction of business." The same section sets the vote: "Every
+# act or decision done or made by a majority of the Directors present at a duly-held meeting at which a quorum is
+# present shall be regarded as the act of the Board." The bylaws do not say whether a director who discloses an interest
+# and does not vote counts toward the quorum, and Corporations Code 7233 is not on the authorities shelf, so that is left
+# unset: the meeting room says "not on file; ask counsel" until counsel's reading is recorded here (RuleSource.counsel).
+BOARD = BoardRule(seats=5, minimum=3, maximum=5, quorum_floor=2, source="Bylaws 5.1, 7.10",
+                  vote_basis=VoteBasis.MAJORITY_PRESENT, vote_source=RuleSource("Bylaws 7.10"))
+
+# Bylaws 7.6: members get notice of each board meeting "at least four days' prior", except emergency meetings (7.4) and
+# executive sessions (7.8). Not longer than CIV 4920(a), so the statute's four days stand; the source is shown with it.
+BOARD_NOTICE = NoticePeriod(days=4, source="Bylaws 7.6")
 
 # Administrative Resolution 20230130-1 (adopted January 30, 2023; Bylaws 4.1, 7.2): all meetings at 7:00 pm on Zoom;
 # regular board meetings the third Tuesday of January, April, July, and October; the annual meeting of members the third

@@ -7,7 +7,7 @@
 | Event | From | When |
 |---|---|---|
 | Board meeting | the schedule (`meeting_schedule`), monthly in practice | the schedule's hour, 90 minutes, in the association's time zone |
-| Notice and agenda due | each meeting | all day, four days before (CIV 4920(a); two for a meeting held solely in executive session, 4920(b)(2)) |
+| Notice and agenda due | each meeting | all day, four days before (CIV 4920(a); two for a meeting held solely in executive session, 4920(b)(2)), or the governing documents' longer period with its source (`Community.board_notice_period()`, 4920(b)(3)) |
 | Board hearing | `data/zoom/hearings.json` (`jason hearing`) | the hearing's start, the hearing policy's length |
 | Hearing notice due | the saved hearing | all day, on its `noticeBy` (CIV 5855(a); Corp 7341(c) to suspend) |
 | Hearing decision due | the saved hearing | all day, on its `decisionByIfHeld` (CIV 5855(f)) |

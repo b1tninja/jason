@@ -9,28 +9,47 @@ import { RollCall, outcome } from "./RollCall";
 
 describe("RollCall, extended", () => {
   it("computes the tally line from present, recused, and threshold", () => {
-    const o = outcome({ A: "aye", B: "aye", C: "aye" }, { present: ["A", "B", "C", "D"], recused: ["D"] });
-    expect(o.line).toBe("Yes 3 · No 0 · Abstain 0 · Recused 1. Needs 3 yes. Carries.");
     expect(outcome({ A: "aye" }, { present: ["A", "B", "C"] }).line).toBe("Yes 1 · No 0 · Abstain 0 · Recused 0. Needs 2 yes. Vote open.");
     expect(outcome({ A: "aye", B: "no", C: "no" }, { present: ["A", "B", "C"] }).state).toBe("fails");
     // Two-thirds of four voters is three; with only three of five present, every director present must agree.
     expect(outcome({ A: "aye", B: "aye", C: "no", D: "aye" }, { present: ["A", "B", "C", "D"], threshold: "two-thirds", seats: 5 }).needs).toBe(3);
     expect(outcome({ A: "aye", B: "aye", C: "no" }, { present: ["A", "B", "C"], threshold: "two-thirds", seats: 5 })).toMatchObject({ needs: 3, state: "fails" });
-    // The threshold counts the directors present, a recused one among them: the motion must carry without their vote.
-    expect(outcome({ A: "aye", B: "aye" }, { present: ["A", "B", "C", "D"], recused: ["D"] })).toMatchObject({ needs: 3, state: "open" });
-    expect(outcome({ A: "aye", B: "aye", C: "no" }, { present: ["A", "B", "C", "D"], recused: ["D"] })).toMatchObject({ needs: 3, state: "fails" });
+    // A majority of the directors in office, where the bylaws say so.
+    expect(outcome({ A: "aye", B: "aye", C: "no" }, { present: ["A", "B", "C"], basis: "majority-in-office", seats: 5 })).toMatchObject({ needs: 3, state: "fails" });
     // Without present, everyone who voted is present; it reads the same as the plain tally.
     expect(outcome({ A: "aye", B: "abstain" })).toMatchObject({ yes: 1, abstain: 1, needs: 2, state: "fails" });
   });
 
-  it("shows a recused row as recused with its radios off, and the tally line", () => {
+  it("works a recusal both ways when the rule is not on file, and holds a vote the readings decide differently", () => {
+    const either = outcome({ A: "aye", B: "aye", C: "aye" }, { present: ["A", "B", "C", "D"], recused: ["D"] });
+    expect(either.line).toBe("Yes 3 · No 0 · Abstain 0 · Recused 1. Needs 3 yes counting the recused director as present, 2 yes if not. Carries under either reading.");
+    // Counted as present, a majority of four is three; not counted, a majority of three is two. Two ayes: held.
+    const held = outcome({ A: "aye", B: "aye", C: "no" }, { present: ["A", "B", "C", "D"], recused: ["D"], quorum: 3 });
+    expect(held).toMatchObject({ state: "held", readings: { counted: { needs: 3, state: "fails" }, notCounted: { needs: 2, state: "carries" } } });
+    expect(held.line).toContain("not on file; ask counsel");
+    // Not counted, three present with one recused leaves two: no quorum of three under that reading.
+    expect(outcome({ A: "aye", B: "aye" }, { present: ["A", "B", "C"], recused: ["C"], quorum: 3 })).toMatchObject({ state: "held" });
+    // With the rule on file, one reading, no hedge.
+    expect(outcome({ A: "aye", B: "aye", C: "no" }, { present: ["A", "B", "C", "D"], recused: ["D"], interested: true })).toMatchObject({ needs: 3, state: "fails" });
+    expect(outcome({ A: "aye", B: "aye", C: "no" }, { present: ["A", "B", "C", "D"], recused: ["D"], interested: false, quorum: 3 })).toMatchObject({ needs: 2, state: "carries" });
+  });
+
+  it("shows a recused row as recused with its radios off, the tally line, and that the rule is not on file", () => {
     render(<RollCall directors={["A", "B", "C"]} votes={{ A: "aye", B: "aye" }} onChange={() => {}} present={["A", "B", "C"]} recused={["C"]} />);
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[2]).getByText("recused")).toBeInTheDocument();
     expect(screen.getByLabelText("C: aye")).toBeDisabled();
     expect(screen.getByLabelText("A: aye")).toBeEnabled();
     expect(screen.queryByLabelText("A: absent")).not.toBeInTheDocument();
-    expect(screen.getByText("Yes 2 · No 0 · Abstain 0 · Recused 1. Needs 2 yes. Carries.")).toBeInTheDocument();
+    expect(screen.getByText("Yes 2 · No 0 · Abstain 0 · Recused 1. Needs 2 yes counting the recused director as present, 2 yes if not. Carries under either reading.")).toBeInTheDocument();
+    expect(screen.getByText(/counts toward the quorum and among the directors present is not on file; ask counsel/)).toBeInTheDocument();
+    expect(screen.queryByText(/counted toward the quorum, never toward the vote|Still counts toward the quorum/)).not.toBeInTheDocument();
+  });
+
+  it("marks a recused director recused in a plain roll call too, never absent", () => {
+    render(<RollCall directors={["A", "B"]} votes={{ A: "aye" }} recused={["B"]} onChange={() => {}} />);
+    expect(screen.getByText("recused")).toBeInTheDocument();
+    expect(screen.getByLabelText("B: absent")).toBeDisabled();
   });
 
   it("renders as before without the new props", () => {
@@ -173,16 +192,32 @@ describe("HostPanel", () => {
     await user.click(screen.getByLabelText("D. Okafor: aye"));
     await user.click(screen.getByLabelText("E. Lind: aye"));
     await user.click(screen.getByLabelText("F. Marsh: no"));
-    expect(screen.getByText("Yes 2 · No 1 · Abstain 0 · Recused 1. Needs 3 yes. Fails.")).toBeInTheDocument();
+    // Counted as present, three of four are needed; not counted, two of three. The recusal rule is not on file: held.
+    expect(screen.getByText(/Recused 1\. Needs 3 yes counting the recused director as present, 2 yes if not\. Held/)).toBeInTheDocument();
+    expect(screen.getByText(/The two readings decide this vote differently/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record the vote" })).not.toBeInTheDocument();
     await user.click(screen.getByLabelText("F. Marsh: aye"));
-    expect(screen.getByText("Yes 3 · No 0 · Abstain 0 · Recused 1. Needs 3 yes. Carries.")).toBeInTheDocument();
+    expect(screen.getByText("Yes 3 · No 0 · Abstain 0 · Recused 1. Needs 3 yes counting the recused director as present, 2 yes if not. Carries under either reading.")).toBeInTheDocument();
+    expect(screen.getByText(/H\. Quinn disclosed an interest and does not vote\. CIV 5350\(b\)/)).toBeInTheDocument();
+    expect(screen.getByText(/The vote rule is not on file; ask counsel/)).toBeInTheDocument();
     onAction.mockClear();
     await user.click(screen.getByRole("button", { name: "Record the vote" }));
-    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("D. Okafor aye, E. Lind aye, F. Marsh aye. Yes 3 · No 0 · Abstain 0 · Recused 1. Needs 3 yes. Carries. Threshold: majority.");
+    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("D. Okafor aye, E. Lind aye, F. Marsh aye. Yes 3 · No 0 · Abstain 0 · Recused 1. Needs 3 yes counting the recused director as present, 2 yes if not. Carries under either reading. Threshold: majority.");
     expect(onAction).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Yes, do it" }));
     expect(onAction.mock.calls.map((c) => c[0])).toEqual(["vote", "vote", "vote", "decide"]);
     expect(onAction).toHaveBeenLastCalledWith("decide", { motion: "m1" });
+  });
+
+  it("recites the quorum rule's words with its provision, and says what is not on file", async () => {
+    const user = userEvent.setup();
+    render(<HostPanel room={roomData()} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    await user.click(screen.getByRole("tab", { name: "Roll call" }));
+    expect(screen.getByText("A quorum is 3 (Bylaws 1.1).")).toBeInTheDocument();
+    expect(screen.getByText("Bylaws 1.1, as written")).toBeInTheDocument();
+    expect(screen.getByText("A majority of the Directors then in office shall constitute a quorum.")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Agenda" }));
+    expect(screen.queryByText(/3 min each|3 minutes/)).not.toBeInTheDocument();
   });
 
   it("drafts the minutes from the log for the secretary, and shows roster not synced in the Zoom tab", async () => {
@@ -202,7 +237,7 @@ describe("HostPanel", () => {
     expect(await screen.findByText(/queued in Approvals for the secretary/)).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Zoom" }));
     expect(screen.getByText(/roster not synced/)).toBeInTheDocument();
-    expect(screen.getByText("Polls are for members' input, never for board votes. Director votes are a roll call by name (CIV 4926(a)(3)).")).toBeInTheDocument();
+    expect(screen.getByText("Polls are for members' input, never for board votes. Director votes are a roll call by name (required for a meeting held entirely by teleconference, CIV 4926(a)(3)).")).toBeInTheDocument();
     expect(screen.getByText(/No executive matter is on the agenda/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start executive session" })).not.toBeInTheDocument();
   });

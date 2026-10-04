@@ -1030,9 +1030,9 @@ LESSONS: tuple[Lesson, ...] = (
            "profile through mystique(), the name from before profiles.",
            "The alias returns the same object, so nothing failed, and new code copied the old pattern.",
            "Callers use `from jason.community import community as active` and `active()`; the alias stays for "
-           "callers outside src/jason. tasks/board_items.py is the one file left, held in the ratchet.",
-           Status.OPEN, guards=("tests/test_profile_access.py (an AST scan of src/jason; a ratchet that only goes "
-                                "down)",)),
+           "callers outside src/jason. The last file, tasks/board_items.py, was converted the same day and the "
+           "ratchet is empty.",
+           Status.FIXED, guards=("tests/test_profile_access.py (an AST scan of src/jason; any new use fails)",)),
     Lesson("audit-log-masks-email-only", date(2026, 10, 4), (Area.DOCUMENTS, Area.REPOSITORY),
            "approvals.audit.mask replaced email addresses only, so a phone number or mailing address in a detail "
            "was written to the hash-chained audit.jsonl, masked only on the way out; a chained line cannot be "
@@ -1047,6 +1047,47 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_audit_mask.py (contacts masked; ids, dates, cents, and paths survive; "
                                  "the chain verifies)",),
            docs=("docs/console/security-and-privacy.md (audit.jsonl)",)),
+    Lesson("recusal-quorum-hardcoded", date(2026, 10, 4), (Area.GOVERNING,),
+           "The meeting room and RollCall said a recused director \"counts toward the quorum and not toward the "
+           "vote (Corp. Code 7233; CIV 5350)\" as if it were statute, fixed the vote at a majority of those present, "
+           "and counted a recused director silently with no rule on file. The Decisions caveat said \"marked "
+           "absent\", and DecisionCard dropped the recusal.",
+           "A reading was written into general code under a statute that is not on disk (7233), and the bylaws are "
+           "silent on the question.",
+           "BoardRule carries vote_basis and interested_in_quorum, each with a RuleSource (a cited provision, "
+           "recited from disk, or counsel's reading, labeled). board_rules() says \"not on file; ask counsel\" for "
+           "what is missing. With no recusal rule, tally() works the vote both ways and holds a vote the two "
+           "readings decide differently. A recusal is recorded as one (Decision.recused), never as absent.",
+           Status.FIXED, guards=("tests/test_meeting_room.py (two readings held; rules not on file; rule on file "
+                                 "decides)", "tests/test_decisions.py (a recusal is never absent)",
+                                 "ui/src/components/meetingstage.test.tsx, decision.test.tsx"),
+           docs=("docs/console/screens/meetings-and-minutes.md (The meeting room's rules)",),
+           notes=("The recusal rule itself is the board's, on counsel's reading.",
+                  "Corporations Code 7233 and 7234 are not on the authorities shelf yet.")),
+    Lesson("notice-date-ignored-documents", date(2026, 10, 4), (Area.GOVERNING,),
+           "notice_date and several other modules always used four days, and a hybrid meeting's notice checklist "
+           "and fields were cited to 4926.",
+           "The statute's floor was taken for the whole rule (4920(b)(3): a longer period in the governing "
+           "documents governs), and 4926's lines, for a meeting held entirely by teleconference, were applied to "
+           "any remote format.",
+           "board_items.notice_period() and Community.board_notice_period() (NoticePeriod, with executive_days only "
+           "where the provision says so) feed every caller. A hybrid meeting gets 4090(b)'s lines; only a meeting "
+           "held entirely by teleconference gets 4926's.",
+           Status.FIXED, guards=("tests/test_board_items.py (a longer period in the documents)",
+                                 "tests/test_agenda_plan.py (hybrid is 4090(b), not 4926; the notice line's source)",
+                                 "ui agenda.test.tsx (the wizard's fields by format)"),
+           notes=("Still open: meeting_agenda.draft writes the 4926 lines for every format; models/meetings.py's "
+                  "notice-late check uses a fixed NOTICE_DAYS.",)),
+    Lesson("open-forum-default-limit", date(2026, 10, 4), (Area.GOVERNING,),
+           "The meeting room defaulted open forum to 3 minutes a speaker, in the room record, the agenda row, the "
+           "stage, and the script.",
+           "A placeholder number stood in for a limit only the board establishes (CIV 4925(b)).",
+           "The limit comes from Community.open_forum_limit() (SpeakingLimit) or one a person enters, recorded with "
+           "who entered it. Otherwise the room says \"No limit on record; the board sets it (CIV 4925(b))\", with "
+           "no clock, and a stored limit with no person behind it reads as none.",
+           Status.FIXED, guards=("tests/test_meeting_room.py (no limit until the board sets one; the policy on "
+                                 "file)", "ui/src/views/meetingroom.test.tsx (no \"3 minutes\")"),
+           notes=("Adopting a limit is the board's decision.",)),
 )
 
 

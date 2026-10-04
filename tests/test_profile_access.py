@@ -10,7 +10,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "jason"
 DEFINED_IN = "community/__init__.py"           # where the alias itself is defined and exported
-RATCHET = {"tasks/board_items.py": 2}           # one import and one call; owned by another change for now
+RATCHET: dict[str, int] = {}                    # every file converted (2026-10-04)
 
 
 def _uses(tree: ast.AST) -> int:

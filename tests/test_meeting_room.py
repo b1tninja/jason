@@ -80,10 +80,12 @@ def test_a_motion_needs_two_different_present_directors_and_a_quorum(tmp_path):
         _motion(tmp_path)
 
 
-def test_a_recused_director_counts_for_quorum_and_cannot_vote(tmp_path):
-    # Three present, quorum is three; one of them recused: the quorum still holds and two directors vote.
+def test_a_recused_director_cannot_vote_and_the_quorum_question_is_not_on_file(tmp_path):
+    # Three present, quorum is three; one of them recused. The profile's bylaws do not say whether a recused director
+    # counts toward the quorum, and counsel's reading is not on file: the room works the vote both ways.
     _room(tmp_path, present=3)
     mid = _motion(tmp_path, recused=[FIVE[2]])
+    assert store.load(tmp_path, DAY)["log"][-1]["title"].endswith(f"is {store.NOT_ON_FILE}.")
     with pytest.raises(ValueError, match="recused"):
         store.update(tmp_path, DAY, {"action": "vote", "motion": mid, "name": FIVE[2], "vote": "aye"}, "S. Clerk")
     with pytest.raises(ValueError, match="not present"):
@@ -93,11 +95,95 @@ def test_a_recused_director_counts_for_quorum_and_cannot_vote(tmp_path):
     _vote(tmp_path, mid, d0="aye", d1="no")
     room = store.with_tallies(store.load(tmp_path, DAY))
     t = room["motions"][0]["tally"]
-    assert t["line"] == "Yes 1 · No 1 · Abstain 0 · Recused 1. Needs 2 yes. Fails."
+    assert t["line"] == ("Yes 1 · No 1 · Abstain 0 · Recused 1. Needs 2 yes counting the recused director as present, "
+                         "2 yes if not (no quorum). Fails under either reading.")
+    assert t["recusal"] == "not on file" and t["readings"]["notCounted"]["quorum"] is False
     room = store.update(tmp_path, DAY, {"action": "decide", "motion": mid}, "S. Clerk")
-    assert room["motions"][0]["result"] == "failed"
+    assert room["motions"][0]["result"] == "failed" and store.NOT_ON_FILE in room["log"][-1]["title"]
+    recorded = decisions.for_meeting(tmp_path, DAY)[0]
+    # The recusal is recorded as such: never marked absent, never a no.
+    assert recorded.recused == [FIVE[2]] and FIVE[2] not in recorded.votes
     with pytest.raises(ValueError, match="recusing|recused|already"):
         _motion(tmp_path, recused=[FIVE[0]])        # the mover may not be recused
+
+
+def test_a_vote_the_two_readings_decide_differently_is_held(tmp_path):
+    # Four present, one recused, quorum three. Counted as present, a majority of four is three; not counted, a majority
+    # of three is two. Two ayes carry under one reading and fail under the other: held, never chosen silently.
+    _room(tmp_path, present=4)
+    mid = _motion(tmp_path, recused=[FIVE[3]])
+    _vote(tmp_path, mid, d0="aye", d1="aye", d2="no")
+    t = store.tally(store.load(tmp_path, DAY)["motions"][0], store.load(tmp_path, DAY))
+    assert t["state"] == "held" and store.NOT_ON_FILE in t["line"]
+    assert (t["readings"]["counted"]["state"], t["readings"]["notCounted"]["state"]) == ("fails", "carries")
+    with pytest.raises(ValueError, match="two readings"):
+        store.update(tmp_path, DAY, {"action": "decide", "motion": mid}, "S. Clerk")
+    assert store.load(tmp_path, DAY)["motions"][0]["result"] == "" and decisions.for_meeting(tmp_path, DAY) == []
+
+
+def test_the_recusal_rule_on_file_decides_the_count(tmp_path, monkeypatch):
+    from jason.community.base import BoardRule, RuleSource, VoteBasis
+
+    _room(tmp_path, present=4)
+    mid = _motion(tmp_path, recused=[FIVE[3]])
+    _vote(tmp_path, mid, d0="aye", d1="aye", d2="no")
+    reading = RuleSource(cite="Bylaws 1.2", counsel="Counsel, letter of 2099-01-01")
+    counts = BoardRule(seats=5, minimum=3, maximum=5, vote_basis=VoteBasis.MAJORITY_PRESENT, vote_source=RuleSource("Bylaws 1.2"),
+                       interested_in_quorum=True, interested_source=reading)
+    room = store.load(tmp_path, DAY)
+    t = store.tally(room["motions"][0], room, counts)
+    assert (t["state"], t["needs"], t["recusal"]) == ("fails", 3, "counted")
+    apart = BoardRule(seats=5, minimum=3, maximum=5, interested_in_quorum=False, interested_source=reading)
+    t = store.tally(room["motions"][0], room, apart)
+    assert (t["state"], t["needs"], t["recusal"]) == ("carries", 2, "not counted")
+    rules = store.board_rules(None, counts)
+    assert rules["interested"]["onFile"] and rules["interested"]["label"] == (
+        "Counsel, letter of 2099-01-01's reading of Bylaws 1.2, a reading, not the provision's words")
+    assert rules["voteBasis"]["basis"] == VoteBasis.MAJORITY_PRESENT.value
+    monkeypatch.setattr(store, "_board", lambda: apart)
+    room = store.update(tmp_path, DAY, {"action": "decide", "motion": mid}, "S. Clerk")
+    assert room["motions"][0]["result"] == "carried"
+
+
+def test_board_rules_not_on_file_say_so_and_never_fill_in():
+    rules = store.board_rules(None, None)
+    assert not rules["quorum"]["onFile"] and store.NOT_ON_FILE in rules["quorum"]["label"]
+    assert not rules["voteBasis"]["onFile"] and store.NOT_ON_FILE in rules["voteBasis"]["label"]
+    assert rules["interested"]["counts"] is None and store.NOT_ON_FILE in rules["interested"]["label"]
+    # The fixture profile's bylaws set the quorum and the vote (quoted from the provision named), and leave the
+    # recusal question open.
+    rules = store.board_rules()
+    assert rules["quorum"]["onFile"] and rules["voteBasis"]["onFile"] and rules["voteBasis"]["source"]
+    assert not rules["interested"]["onFile"] and store.NOT_ON_FILE in rules["interested"]["label"]
+
+
+def test_open_forum_has_no_limit_until_the_board_sets_one(tmp_path):
+    room = store.with_tallies(store.load(tmp_path, DAY))
+    assert room["openForum"]["limitMinutes"] == 0 and room["openForum"]["limitNote"] == store.NO_FORUM_LIMIT
+    assert store.empty(DAY)["openForum"]["limitMinutes"] == 0
+    _room(tmp_path)
+    room = store.update(tmp_path, DAY, {"action": "open_forum", "count": 2, "close": True}, "S. Clerk")
+    assert room["log"][-1]["title"] == "Open forum: 2 members spoke; no time limit on record (CIV 4925(b))."
+    # A limit a person enters is the room's, credited to them.
+    room = store.with_tallies(store.update(tmp_path, DAY, {"action": "open_forum", "limitMinutes": 2}, "S. Clerk"))
+    assert room["openForum"]["limitMinutes"] == 2 and room["openForum"]["limitSource"] == "entered in the room"
+    assert "limitBy" not in room["openForum"] and store.load(tmp_path, DAY)["openForum"]["limitBy"] == "S. Clerk"
+    # A limit stored with no person behind it (an earlier default) is not a limit on record.
+    path = tmp_path / "meetings" / f"room-{DAY}.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["openForum"] = {"count": 0, "limitMinutes": 3}
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    assert store.with_tallies(store.load(tmp_path, DAY))["openForum"]["limitMinutes"] == 0
+
+
+def test_open_forum_follows_the_boards_policy_when_on_file(monkeypatch):
+    from jason.community import community
+    from jason.community.base import SpeakingLimit
+
+    monkeypatch.setattr(type(community()), "open_forum_limit", lambda self: SpeakingLimit(4, "Resolution 2099-1"))
+    rule = store.forum_rule()
+    assert rule == {"onFile": True, "minutes": 4, "source": "Resolution 2099-1", "label": "4 minutes each (Resolution 2099-1; CIV 4925(b))."}
+    assert store.forum_limit(store.empty(DAY))["minutes"] == 4
 
 
 def test_two_thirds_threshold_and_the_decision_record(tmp_path):
@@ -163,7 +249,7 @@ def test_executive_session_polls_admission_suggestions_and_adjournment(tmp_path)
     with pytest.raises(KeyError):
         store.update(tmp_path, DAY, {"action": "suggestion_state", "index": 5, "state": "added"}, "S. Clerk")
     room = store.update(tmp_path, DAY, {"action": "open_forum", "count": 3, "limitMinutes": 2, "close": True}, "S. Clerk")
-    assert room["log"][-1]["title"] == "Open forum: 3 members spoke, 2 minutes each (CIV 4925)."
+    assert room["log"][-1]["title"] == "Open forum: 3 members spoke, 2 minutes each (entered in the room) (CIV 4925(b))."
     room = store.update(tmp_path, DAY, {"action": "go_to", "item": 2, "title": "Approve the minutes"}, "S. Clerk")
     assert room["current"] == 2 and room["log"][-1]["title"] == "Item opened: Approve the minutes"
     room = store.update(tmp_path, DAY, {"action": "adjourn"}, "S. Clerk")
@@ -229,6 +315,10 @@ def test_loader_merges_the_meeting_the_room_and_falls_back_without_a_plan(fakes)
     out = meeting_room({"date": DAY})
     assert out["found"] and out["quorum"] == 3 and out["directors"] == FIVE
     assert [i["id"] for i in out["items"]] == ["call", "forum", "landscape", "exec", "adjourn"]
+    # No speaking limit on record: open forum gets no allotment, and the room says so rather than assume one.
+    assert out["items"][1]["allot"] == 0 and out["room"]["openForum"]["limitNote"] == store.NO_FORUM_LIMIT
+    assert out["rules"]["interested"]["onFile"] is False and store.NOT_ON_FILE in out["rules"]["interested"]["label"]
+    assert not any("counts toward the quorum and not toward the vote" in c for c in out["caveats"])
     # The executive matter has no 4935 subject named: it is counted, never named by its title, and cannot go executive yet.
     assert out["items"][2]["label"] == "Item 1 · Action" and out["items"][3]["matters"] == [] and out["items"][3]["unnamed"] == 1
     assert out["items"][3]["subjectNote"].startswith("name the 4935 subject first") and "Hearing, unit 7" not in json.dumps(out)

@@ -4,7 +4,9 @@ One decision is one motion on one agenda item at one meeting: its text, who move
 vote, and the outcome. It is jason's own store (``data/board/decisions.json``), written by a person at or after the
 meeting through the UI or a command. jason never decides: it records the board's decision in the board's words,
 and the minutes draft quotes it. A roll-call vote is required for some matters (recording a lien, Civil Code 5673);
-the record keeps every vote so the minutes can show it.
+the record keeps every vote so the minutes can show it. A director who disclosed an interest and did not vote is in
+``recused``, the secretary's record of that disclosure: never marked absent, never counted as a no, and never inferred
+by jason.
 
 A decision made in executive session is marked ``session="executive session"`` with its Civil Code 4935
 ``subject``. The minutes of a board meeting "other than an executive session" go to members (4950(a)), and "Any
@@ -48,6 +50,7 @@ class Decision:
     mover: str = ""
     second: str = ""
     votes: dict[str, str] = field(default_factory=dict)   # director -> Vote value
+    recused: list[str] = field(default_factory=list)      # directors who disclosed an interest and did not vote
     outcome: str = ""                         # Outcome value, or "" while the vote is open
     by: str = ""                              # who recorded it
     notes: str = ""
@@ -56,7 +59,7 @@ class Decision:
     history: list[str] = field(default_factory=list)
 
 
-EDITABLE = ("title", "motion", "item", "session", "subject", "mover", "second", "votes", "outcome", "by", "notes")
+EDITABLE = ("title", "motion", "item", "session", "subject", "mover", "second", "votes", "recused", "outcome", "by", "notes")
 OPEN = "open session"
 EXECUTIVE = "executive session"
 OUTCOMES = tuple(o.value for o in Outcome)
@@ -92,6 +95,14 @@ def _validate(changes: dict[str, Any]) -> None:
         votes = changes["votes"]
         if not isinstance(votes, dict) or any(v not in VOTES for v in votes.values()):
             raise ValueError(f"votes is {{director: one of {', '.join(VOTES)}}}")
+    if "recused" in changes:
+        recused = changes["recused"]
+        if not isinstance(recused, list) or not all(isinstance(n, str) and n.strip() for n in recused):
+            raise ValueError("recused is a list of the directors who disclosed an interest and did not vote")
+        voted = changes.get("votes") or {}
+        both = [n for n in recused if n in voted]
+        if both:
+            raise ValueError(f"{', '.join(both)}: recused, so no vote (and no absence) is recorded for them")
     if "outcome" in changes and changes["outcome"] not in ("", *OUTCOMES):
         raise ValueError(f"outcome is one of {', '.join(OUTCOMES)}, or empty while the vote is open")
     if "session" in changes and changes["session"] not in (OPEN, EXECUTIVE):

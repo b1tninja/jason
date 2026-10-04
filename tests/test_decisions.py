@@ -25,6 +25,16 @@ def test_record_update_tally_roundtrip(tmp_path):
     assert store.as_dict(store.load(tmp_path)[0])["suggested"] == "approved"
 
 
+def test_a_recusal_is_recorded_as_one_never_as_absent(tmp_path):
+    d = store.record(tmp_path, "2026-10-20", "Painting contract", "Move to approve the painting contract", item="paint",
+                     votes={"A. Director": "aye", "B. Director": "aye"}, recused=["C. Director"])
+    assert d.recused == ["C. Director"] and "C. Director" not in d.votes and store.as_dict(d)["recused"] == ["C. Director"]
+    with pytest.raises(ValueError, match="recused, so no vote"):
+        store.update(tmp_path, d.id, votes={"C. Director": "absent"}, recused=["C. Director"])
+    with pytest.raises(ValueError, match="recused is a list"):
+        store.update(tmp_path, d.id, recused="C. Director")
+
+
 def test_refusals(tmp_path):
     with pytest.raises(ValueError):
         store.record(tmp_path, "2026-10-20", "", "motion")

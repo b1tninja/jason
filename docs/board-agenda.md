@@ -26,7 +26,7 @@ When a review finds the same matter again, it updates jason's fields and never t
 - points "approval of minutes" at the previous meeting and the treasurer's report at the previous month;
 - adds what an all-Zoom meeting's notice must carry (CIV 4926(a)(1)): technical instructions, the telephone and email of a person who can help before and during the meeting (`--tech-contact`), and the reminder that members may ask for individual delivery;
 - states that every vote of the directors is by roll call (4926(a)(3));
-- gives the notice deadline, four days before the meeting (4920), and the rule against acting on items not on the agenda (4930);
+- gives the notice deadline, four days before the meeting (4920(a)) or the governing documents' longer period with its source (4920(b)(3), `Community.board_notice_period()`), and the rule against acting on items not on the agenda (4930);
 - adds the board's proposed action items before the open forum, labeled action or report, with their authority and any notice of their own (5515(b) for a reserve loan, 4360 for a rule change);
 - sends litigation and collections items to executive session (4935), and adds a report of the last executive session (4935(e));
 - in November, notes that a meeting where ballots are counted cannot be held entirely on Zoom (4926(b)), and flags a meeting outside the resolution's regular months.

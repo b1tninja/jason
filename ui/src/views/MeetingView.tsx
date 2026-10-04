@@ -106,7 +106,7 @@ export function MeetingView() {
   const save = async (meeting: string, item: Row | null, d: DecisionDraft) => {
     setBusy(true);
     try {
-      const out = await postJson<Decision>("/api/decisions", { meeting, title: d.title, motion: d.motion, item: item?.id ?? "", session: item?.agendaSession ?? "open session", mover: d.mover, second: d.second, votes: d.votes, outcome: d.outcome, by: d.by, notes: d.notes });
+      const out = await postJson<Decision>("/api/decisions", { meeting, title: d.title, motion: d.motion, item: item?.id ?? "", session: item?.agendaSession ?? "open session", mover: d.mover, second: d.second, votes: d.votes, recused: d.recused, outcome: d.outcome, by: d.by, notes: d.notes });
       setSaved((s) => ({ ...s, [out.id]: out }));
     } finally {
       setBusy(false);

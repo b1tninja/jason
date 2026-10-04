@@ -6,8 +6,10 @@ items proposed or on the agenda, the packet draft, the commands) with the plan a
 (``jason.tasks.agenda_plan``). Each candidate carries its readiness checks, which are computed facts, never a
 judgment: a motion is drafted, documents support it, an executive matter is marked executive (CIV 4935), notice can
 still be given (CIV 4920), and, when the item names an interested director, a disclosure is recorded. ``suggestion`` is
-one line of plain words from the failing checks. ``notice.required`` lists what the notice must carry under CIV 4920 and
-4926, each line ready or not from the basics the person entered. ``write(date, body)`` saves a person's changes to the
+one line of plain words from the failing checks. ``notice.required`` lists what the notice must carry under CIV 4920,
+4090(b) for a hybrid meeting, and 4926 for a meeting held entirely by teleconference (only that one: 4926(a) is a
+meeting "conducted entirely by teleconference, without any physical location"), each line ready or not from the basics
+the person entered. A line that is jason's own check, not a statute's, says so. ``write(date, body)`` saves a person's changes to the
 plan and returns the merged view. Reads disk only; calls neither Google nor Zoom, and jason has no command that
 creates a board meeting on Zoom (``jason hearing --create --yes`` schedules a hearing only), so the Zoom fields are
 typed in by a person.
@@ -24,25 +26,30 @@ STEPS = ("Meeting", "Ready to act", "Order and motions", "Notice")
 EXECUTIVE_WORD = "executive session"
 CAVEATS = (
     "jason checks what is on file and says which items look ready. The board decides what goes on the agenda, and the board sets the agenda.",
-    "Notice timing follows Civil Code 4920 (four days; two for a meeting held solely in executive session) unless the bylaws ask for more.",
+    "Notice timing follows Civil Code 4920 (four days; two for a meeting held solely in executive session), or the governing documents' longer period where the profile records one (4920(b)(3)).",
     "The notice itself is a letter a person drafts, approves, and sends; nothing here sends it.",
 )
 FORMAT_RULES: dict[str, tuple[str, ...]] = {
     "": (),
     "in person": ("The notice names the place of the meeting (CIV 4920).",),
+    # A hybrid meeting is a teleconference with a physical location: 4090(b). 4926 is not for it.
     "hybrid": ("The notice names a physical location where members may attend (CIV 4090(b)).",
                "A director or a board designee is present at that location (CIV 4090(b)).",
                "Directors can hear one another and the members who speak (CIV 4090(b))."),
-    "teleconference": ("Clear instructions for joining the meeting (CIV 4926(a)(1)).",
-                       "The telephone number and email of a person who can help before and during the meeting (CIV 4926(a)(1)).",
-                       "A reminder that members may ask for individual delivery of notices (CIV 4926(a)(1)).",
-                       "A telephone option for everyone entitled to take part (CIV 4926(a)(4)).",
+    # Only a meeting "conducted entirely by teleconference, without any physical location" (4926(a)).
+    "teleconference": ("Clear technical instructions on how to take part by teleconference (CIV 4926(a)(1)(A)).",
+                       "The telephone number and email of a person who can help before and during the meeting (CIV 4926(a)(1)(B)).",
+                       "A reminder that members may ask for individual delivery of notices, with how (CIV 4926(a)(1)(C)).",
+                       "Every director and member can take part as they could in person (CIV 4926(a)(2)).",
                        "Every director vote by roll call (CIV 4926(a)(3)).",
-                       "Not for a meeting where election ballots are counted (CIV 4926(b))."),
+                       "A telephone option for everyone entitled to take part (CIV 4926(a)(4)).",
+                       "Not for a meeting where ballots are counted and tabulated (CIV 4926(b))."),
 }
-BASE_RULES = ("Notice and the agenda to members four days ahead (CIV 4920).",
-              "Open forum for members, with a time limit the board sets (CIV 4925).",
+BASE_RULES = ("Notice and the agenda to members ahead of the meeting (CIV 4920(a), (d)).",
+              "Members may speak; the board establishes a reasonable time limit (CIV 4925(b)).",
               "Only items on the posted agenda, except as CIV 4930 allows.")
+# jason's own check, not a statute's: shown apart from the statutory lines.
+CHECK = "jason's check, not a statutory line"
 
 
 def _data_dir():
@@ -86,7 +93,7 @@ def _checks(item: dict[str, Any], saved: dict[str, Any], kind: str, packet_md: s
     interested = item.get("interested") or item.get("interestedDirectors")
     if interested:
         disclosed = bool(item.get("disclosed") or item.get("disclosure"))
-        checks.append({"label": "Conflict disclosure recorded (Corp. Code 7233; CIV 5350)", "ok": disclosed,
+        checks.append({"label": "Conflict disclosure recorded (CIV 5350; Corp. Code 7233 through 5350(a))", "ok": disclosed,
                        **({} if disclosed else {"why": "an interested director is named and no disclosure is recorded"})})
     return checks
 
@@ -96,31 +103,39 @@ def _suggestion(checks: list[dict[str, Any]]) -> str:
     return "; ".join(whys[:1] + [w.split(";")[0] for w in whys[1:]]) if whys else ""
 
 
-def _required(basics: dict[str, Any], zoom: dict[str, Any], included: list[dict[str, Any]], today: str, notice_by: str) -> list[dict[str, Any]]:
+def _required(basics: dict[str, Any], zoom: dict[str, Any], included: list[dict[str, Any]], today: str, notice_by: str,
+              notice_days: int | None = None, notice_authority: str = "CIV 4920") -> list[dict[str, Any]]:
+    """The notice's lines. 4926's apply only to a meeting held entirely by teleconference; a hybrid meeting's are
+    4090(b)'s. ``notice_days`` and ``notice_authority`` are the meeting loader's (the statute's floor, or the governing
+    documents' longer period, CIV 4920(b)(3))."""
     fmt = basics.get("format", "")
-    virtual, remote = fmt == "teleconference", fmt in ("hybrid", "teleconference")
+    virtual = fmt == "teleconference"
     place_ok = bool(basics.get("start")) and (virtual or bool(basics.get("location")))
-    rows = [{"label": "Time and place of the meeting (CIV 4920)", "ready": place_ok,
+    rows = [{"label": "Time and place of the meeting (CIV 4920(a))", "ready": place_ok,
              "detail": "" if place_ok else ("a start time" if not basics.get("start") else "the location") + " is missing from the basics"},
-            {"label": "The agenda: every item the board will discuss or act on (CIV 4930)", "ready": bool(included),
+            {"label": "The agenda: every item the board will discuss or act on (CIV 4920(d), 4930(a))", "ready": bool(included),
              "detail": f"{len(included)} item(s) on the agenda" if included else "no item is marked to include yet"}]
+    join = basics.get("join") or zoom.get("joinUrl")
+    dial = basics.get("dialIn") or zoom.get("dialIn")
     if fmt == "hybrid":
         rows.append({"label": "A physical location where members may attend, with a director or designee present (CIV 4090(b))",
                      "ready": bool(basics.get("location")), "detail": basics.get("location", "") or "no location entered"})
-    if remote:
-        join = basics.get("join") or zoom.get("joinUrl")
-        dial = basics.get("dialIn") or zoom.get("dialIn")
-        rows.append({"label": "Clear instructions for joining (CIV 4926(a)(1))", "ready": bool(join), "detail": "" if join else "no join instructions or link entered"})
-        rows.append({"label": "A telephone option for everyone entitled to take part (CIV 4926(a)(4))", "ready": bool(dial), "detail": "" if dial else "no dial-in entered"})
+        rows.append({"label": f"How members join remotely ({CHECK})", "ready": bool(join), "check": True,
+                     "detail": "" if join else "no join link entered; 4926's notice lines apply only to a meeting held entirely by teleconference"})
     if virtual:
-        rows.append({"label": "Phone and email of a person who can help before and during the meeting (CIV 4926(a)(1))",
+        rows.append({"label": "Clear technical instructions on how to take part by teleconference (CIV 4926(a)(1)(A))", "ready": bool(join),
+                     "detail": "" if join else "no join instructions or link entered"})
+        rows.append({"label": "Phone and email of a person who can help before and during the meeting (CIV 4926(a)(1)(B))",
                      "ready": bool(basics.get("help")), "detail": "" if basics.get("help") else "no help contact entered"})
-        rows.append({"label": "A reminder that members may ask for individual delivery of notices (CIV 4926(a)(1))", "ready": True,
+        rows.append({"label": "A reminder that members may ask for individual delivery of notices, with how (CIV 4926(a)(1)(C))", "ready": True,
                      "detail": "a fixed line; the notice a person drafts carries it"})
+        rows.append({"label": "A telephone option for everyone entitled to take part (CIV 4926(a)(4))", "ready": bool(dial),
+                     "detail": "" if dial else "no dial-in entered"})
     if any(c.get("session") == EXECUTIVE_WORD for c in included):
         rows.append({"label": "Executive session matters described generally (CIV 4935)", "ready": True,
                      "detail": "listed by title only; noted generally in the next open minutes (4935(e))"})
-    rows.append({"label": f"Delivered by {notice_by}, four days ahead (CIV 4920)", "ready": today <= notice_by,
+    ahead = f"{notice_days} days ahead" if notice_days else "ahead"
+    rows.append({"label": f"Delivered by {notice_by}, {ahead} ({notice_authority})", "ready": today <= notice_by,
                  "detail": "" if today <= notice_by else f"the notice date has passed (today {today})"})
     return rows
 
@@ -176,13 +191,21 @@ def agenda_plan(args: Args) -> dict[str, Any]:
     included = [c for c in candidates if c["include"]]
     commands = dict(m.get("commands") or {})
     commands["onAgenda"] = [commands.get("notice", "").replace("<item id>", c["id"]) for c in included if commands.get("notice")]
+    from jason.tasks.meeting_room import forum_rule
+
+    days, authority = m.get("noticeDays"), str(m.get("noticeAuthority") or "CIV 4920")
     return {
         "found": True, "date": day, "today": today, "noticeBy": notice_by, "executiveNoticeBy": executive_by,
+        "noticeDays": days, "noticeAuthority": authority, "executiveNoticeDays": m.get("executiveNoticeDays"),
+        "executiveNoticeAuthority": str(m.get("executiveNoticeAuthority") or "CIV 4920(b)(2)"),
         "directors": list(m.get("directors") or []), "decisions": list(m.get("decisions") or []),
         "basics": plan["basics"], "zoom": _zoom(root, day, plan["zoom"]),
         "candidates": candidates, "kinds": list(store.KINDS), "formats": list(store.FORMATS),
         "rules": list(BASE_RULES) + list(FORMAT_RULES.get(plan["basics"].get("format", ""), ())),
-        "notice": {"by": notice_by, "executiveBy": executive_by, "required": _required(plan["basics"], plan["zoom"], included, today, notice_by)},
+        # The members' speaking limit: the board's adopted policy, or none on record (CIV 4925(b)); never a default.
+        "forum": forum_rule(),
+        "notice": {"by": notice_by, "executiveBy": executive_by,
+                   "required": _required(plan["basics"], plan["zoom"], included, today, notice_by, days, authority)},
         "steps": list(STEPS), "commands": commands, "updated": plan["updated"], "history": plan["history"],
         "agendaMarkdown": m.get("agendaMarkdown", ""), "caveats": list(CAVEATS) + list(m.get("caveats") or []),
     }

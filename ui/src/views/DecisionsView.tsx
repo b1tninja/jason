@@ -63,7 +63,7 @@ export function DecisionsView() {
     r.reload();
   });
   const saveDecision = (date: string, item: AgendaCandidate, d: DecisionDraft) => run(async () => {
-    const out = await postJson<Decision>("/api/decisions", { meeting: date, title: d.title, motion: d.motion, item: item.id, session: item.session, mover: d.mover, second: d.second, votes: d.votes, outcome: d.outcome, by: d.by, notes: d.notes });
+    const out = await postJson<Decision>("/api/decisions", { meeting: date, title: d.title, motion: d.motion, item: item.id, session: item.session, mover: d.mover, second: d.second, votes: d.votes, recused: d.recused, outcome: d.outcome, by: d.by, notes: d.notes });
     setSaved((s) => ({ ...s, [out.id]: out }));
   });
   return (
@@ -93,7 +93,7 @@ export function DecisionsView() {
                 </section>
               );
             })}
-            <Caveats items={["A recorded decision is the record of what the board decided; jason changes nothing it decided.", "An interested director is marked absent from the vote, not counted as no (Corp. Code 7233).", "jason lays out the options and the facts on file. It does not recommend one; the board chooses."]} />
+            <Caveats items={["A recorded decision is the record of what the board decided; jason changes nothing it decided.", "A director who discloses an interest is recorded as recused, as the secretary records the disclosure: not absent, not a no, and never inferred by jason. CIV 5350(b) lists matters an interested director shall not vote on; a contract is 5350(a), through Corporations Code 7233 and 7234. Whether a recused director counts toward the quorum is the bylaws' or counsel's to say; not on file, ask counsel.", "jason lays out the options and the facts on file. It does not recommend one; the board chooses."]} />
           </div>
         )}
       </RemoteView>

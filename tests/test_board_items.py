@@ -176,3 +176,26 @@ def test_board_items_as_google_tasks(tmp_path):
     assert second["closedFromTasks"] == ["b"] and b.status is ItemStatus.CLOSED and "closed" in b.history[-1]
     assert second["unknown"] == ["gone"] and second["created"] == 0
     assert second["updated"] == 1 and "Status: closed" in fake.patched[-1][1]["notes"]   # b's notes follow its status
+
+
+def test_the_notice_period_honors_a_longer_one_in_the_documents():
+    from types import SimpleNamespace
+
+    from jason.community.base import NoticePeriod
+    from jason.tasks.board_items import notice_period
+
+    meeting = date(2099, 3, 20)
+    none = SimpleNamespace(board_notice_period=lambda: None)
+    assert notice_period(community=none) == (4, "CIV 4920(a)") and notice_period(executive_only=True, community=none) == (2, "CIV 4920(b)(2)")
+    longer = SimpleNamespace(board_notice_period=lambda: NoticePeriod(days=10, source="Bylaws 1.2"))
+    assert notice_period(community=longer) == (10, "Bylaws 1.2; CIV 4920(b)(3)")
+    assert notice_date(meeting, community=longer) == date(2099, 3, 10)
+    # A documents' period does not reach a meeting held solely in executive session unless its provision says so (4920(b)(3)).
+    assert notice_date(meeting, executive_only=True, community=longer) == date(2099, 3, 18)
+    both = SimpleNamespace(board_notice_period=lambda: NoticePeriod(days=10, source="Bylaws 1.2", executive_days=5))
+    assert notice_period(executive_only=True, community=both) == (5, "Bylaws 1.2; CIV 4920(b)(3)")
+    # Shorter than the statute: the statute's floor stands.
+    shorter = SimpleNamespace(board_notice_period=lambda: NoticePeriod(days=2, source="Bylaws 1.2"))
+    assert notice_period(community=shorter) == (4, "CIV 4920(a)")
+    # The fixture profile's documents say four days: the statute's period, with both sources shown.
+    assert notice_period() == (4, f"CIV 4920(a); {mystique().board_notice_period().source}")

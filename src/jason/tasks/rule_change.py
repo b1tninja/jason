@@ -95,8 +95,12 @@ def timeline(schedule: MeetingSchedule | None, *, notice_date: date, decision: d
     window = None
     if fiscal_year_end is not None:   # the annual policy statement goes out 30 to 90 days before the fiscal year ends (5310(a))
         window = (fiscal_year_end - timedelta(days=90), fiscal_year_end - timedelta(days=30))
+    from jason.tasks.board_items import notice_period
+
+    # The statute's four days (AGENDA_NOTICE_DAYS), or the governing documents' longer period (4920(b)(3)).
+    agenda_days = max(AGENDA_NOTICE_DAYS, notice_period()[0])
     return Timeline(notice_date=notice_date, decision=decision, comment_deadline=comment,
-                    agenda_notice_by=decision - timedelta(days=AGENDA_NOTICE_DAYS), adoption_notice_by=adoption_by,
+                    agenda_notice_by=decision - timedelta(days=agenda_days), adoption_notice_by=adoption_by,
                     reversal_request_by=adoption_by + timedelta(days=REVERSAL_REQUEST_DAYS),
                     notice_by=decision - timedelta(days=NOTICE_DAYS), policy_statement=window)
 
@@ -574,7 +578,8 @@ def render_markdown(change: RuleChange, when: Timeline, current: dict[str, str],
         f"| Member notice goes out (general notice, 4045) | {when.notice_date} | assumed send date |",
         f"| Last day to send the notice for this meeting | {when.notice_by} | 4360(a): 28 days before |",
         f"| Members' written comments due | {when.comment_deadline} | the board's choice; 4360(b) |",
-        f"| Agenda and meeting notice out | {when.agenda_notice_by} | 4920(a): 4 days before |",
+        f"| Agenda and meeting notice out | {when.agenda_notice_by} | {(when.decision - when.agenda_notice_by).days} days before; "
+        f"4920(a), or the governing documents' longer period (4920(b)(3)) |",
         f"| **Board decides at its meeting** | **{when.decision}** | 4360(b); {when.lead_days} days after notice |",
         f"| Notice of the adopted change, at the latest | {when.adoption_notice_by} | 4360(c): 15 days after |",
         f"| Members' request for a reversal vote, at the latest | {when.reversal_request_by} | 4365(b): 30 days after the adoption notice (counted from the latest day it may go out) |",

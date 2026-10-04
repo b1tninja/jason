@@ -5,8 +5,9 @@ so finding the same matter again updates it. The board owns an item's status, ow
 never overwrites them, and ``sync_sheet`` reads them back from the Sheet the board edits before writing jason's columns.
 
 ``agenda`` drafts the next meeting's agenda from the items proposed or on the agenda, open session first and executive
-session after (CIV 4935), with the date the notice must go out (four days before, two for a meeting solely in executive
-session; CIV 4920) and the items that need a notice of their own. The draft is a starting point for the board; the
+session after (CIV 4935), with the date the notice must go out (``notice_date``: four days before, two for a meeting
+solely in executive session, or the governing documents' longer period; CIV 4920) and the items that need a notice of
+their own. The draft is a starting point for the board; the
 board sets the agenda.
 """
 
@@ -146,9 +147,36 @@ def set_fields(data_dir: Path, item_id: str, *, today: date | None = None, **cha
     return item
 
 
-def notice_date(meeting: date, *, executive_only: bool = False) -> date:
-    """The last day to give notice of a board meeting (CIV 4920(a), (b)(2))."""
-    return meeting - timedelta(days=2 if executive_only else 4)
+def notice_period(*, executive_only: bool = False, community: Any = None) -> tuple[int, str]:
+    """Days of notice before a board meeting, and where they come from. The statute's floor is four days, two for a
+    meeting held solely in executive session (CIV 4920(a), (b)(2)). Where the governing documents require longer, their
+    period governs (4920(b)(3)): the profile's ``board_notice_period()``. A documents' period reaches a meeting held
+    solely in executive session only when its provision says so (``NoticePeriod.executive_days``). The active profile is
+    read when ``community`` is not given; with none, the statute's period stands."""
+    from jason.community.models.meetings import EXECUTIVE_NOTICE_DAYS, NOTICE_DAYS
+
+    days, source = (EXECUTIVE_NOTICE_DAYS, "CIV 4920(b)(2)") if executive_only else (NOTICE_DAYS, "CIV 4920(a)")
+    if community is None:
+        try:
+            from jason.community import community as active
+
+            community = active()
+        except Exception:  # noqa: BLE001 - no profile: the statute's period
+            return days, source
+    period = getattr(community, "board_notice_period", lambda: None)()
+    if period is None:
+        return days, source
+    theirs = period.executive_days if executive_only else period.days
+    if theirs is not None and theirs > days:
+        return theirs, f"{period.source}; CIV 4920(b)(3)"
+    if theirs is not None and theirs == days:
+        return days, f"{source}; {period.source}"
+    return days, source
+
+
+def notice_date(meeting: date, *, executive_only: bool = False, community: Any = None) -> date:
+    """The last day to give notice of a board meeting: ``notice_period`` days before it."""
+    return meeting - timedelta(days=notice_period(executive_only=executive_only, community=community)[0])
 
 
 def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open: bool = False, community: Any = None) -> list[str]:
@@ -167,7 +195,8 @@ def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open:
     executive = [i for i in chosen if agenda_session(i) is Session.EXECUTIVE]
     out = [f"# DRAFT agenda: board of directors, {values['ASSOCIATION_NAME']}", ""]
     if meeting:
-        out.append(f"Meeting: {meeting:%A, %B %d, %Y}. Notice with this agenda by {notice_date(meeting):%A, %B %d} (CIV 4920(a)); "
+        days, basis = notice_period(community=community)
+        out.append(f"Meeting: {meeting:%A, %B %d, %Y}. Notice with this agenda by {meeting - timedelta(days=days):%A, %B %d} ({basis}); "
                    "an item not on the posted agenda cannot be acted on (CIV 4930).")
         out.append("")
     out += [f"1. Call to order; roll call and quorum ({values['CITE_DIRECTOR_QUORUM']})",
@@ -231,9 +260,9 @@ def sync_sheet(sheets: Any, spreadsheet_id: str, data_dir: Path, *, today: date 
     from jason.tasks import registers as reg_task
 
     if community is None:
-        from jason.community import mystique
+        from jason.community import community as active
 
-        community = mystique()
+        community = active()
     reg = reg_task.register(community, "board-items")
     reg_task.ensure(sheets, None, reg, data_dir, adopt=spreadsheet_id)
     reg_task.shape(sheets, reg, data_dir)
@@ -318,5 +347,5 @@ def create_sheet(sheets: Any) -> str:
     return created["spreadsheetId"]
 
 
-__all__ = ["load", "save", "upsert", "set_fields", "agenda", "list_lines", "notice_date", "to_rows", "sync_sheet", "task_body", "sync_tasks",
+__all__ = ["load", "save", "upsert", "set_fields", "agenda", "list_lines", "notice_date", "notice_period", "to_rows", "sync_sheet", "task_body", "sync_tasks",
            "create_sheet", "SHEET_TITLE"]

@@ -153,8 +153,13 @@ def board_meetings(community: Any, policy: CalendarPolicy, *, start: date, until
     schedule = community.meeting_schedule()
     if schedule is None:
         return []
+    from jason.tasks.board_items import notice_period
+
     hour = schedule_time(schedule.time) or time(19, 0)
     zone = ZoneInfo(tz)
+    # The statute's four days (NOTICE_DAYS), or the governing documents' longer period (CIV 4920(b)(3)).
+    days, basis = notice_period(community=community)
+    days = max(days, NOTICE_DAYS)
     out: list[PlannedEvent] = []
     day = schedule.next_meeting(start - timedelta(days=1), monthly=True)
     while day <= until:
@@ -166,7 +171,7 @@ def board_meetings(community: Any, policy: CalendarPolicy, *, start: date, until
         lines = [("Meeting of the board in a regular month" if regular else "Meeting of the board in a month the resolution "
                   "does not make regular; whether it is a regular or special meeting is before the board")
                  + (f" ({basis})." if basis else "."),
-                 f"Notice and agenda to members by {day - timedelta(days=NOTICE_DAYS)} (Civil Code 4920(a))."]
+                 f"Notice and agenda to members by {day - timedelta(days=days)} ({basis})."]
         if schedule.annual_month and day.month == schedule.annual_month:
             lines.append("The annual meeting of members falls in this month.")
         if zoom_link:
@@ -175,12 +180,12 @@ def board_meetings(community: Any, policy: CalendarPolicy, *, start: date, until
                                 summary=policy.regular_title if regular else policy.special_title, start=begins,
                                 end=begins + timedelta(minutes=policy.meeting_minutes), description="\n".join(lines),
                                 location=zoom_link or schedule.place, timezone=tz))
-        notice = day - timedelta(days=NOTICE_DAYS)
+        notice = day - timedelta(days=days)
         if notice >= start:
             out.append(PlannedEvent(key=f"{EventKind.MEETING_NOTICE.value}:{day.isoformat()}", kind=EventKind.MEETING_NOTICE,
                                     summary=policy.notice_title, start=notice, end=notice + timedelta(days=1),
                                     description=f"Last day to give members notice and the agenda of the {day:%B %d, %Y} "
-                                                f"board meeting (Civil Code 4920(a); two days for a meeting solely in "
+                                                f"board meeting ({basis}; two days for a meeting solely in "
                                                 f"executive session, 4920(b)(2)).",
                                     timezone=tz))
         day = schedule.next_meeting(day, monthly=True)

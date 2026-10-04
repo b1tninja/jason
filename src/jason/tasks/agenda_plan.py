@@ -1,7 +1,8 @@
 """The saved agenda plan for one board meeting: what a person entered while planning it.
 
-``data/meetings/plan-<date>.json`` holds, for one meeting date, the basics a person typed (start time, format under
-Civil Code 4926, location, join instructions, dial-in, help contact), each candidate board item's place on the agenda
+``data/meetings/plan-<date>.json`` holds, for one meeting date, the basics a person typed (start time, format: in
+person, hybrid under Civil Code 4090(b), or entirely by teleconference under 4926; location, join instructions, dial-in,
+help contact), each candidate board item's place on the agenda
 (whether it is included, its kind, the proposed motion, the minutes allotted, its order, the Drive files in its
 packet, and for an executive matter its Civil Code 4935 subject), the decision brief a person wrote for it (the question, the criteria, the options, and the facts on file),
 and the Zoom details entered by hand. None of it comes from the profile and none of it is jason's judgment: the
@@ -19,7 +20,9 @@ from pathlib import Path
 from typing import Any
 
 STORE = Path("meetings")
-FORMATS = ("in person", "hybrid", "teleconference")          # CIV 4090(b), 4926
+# In person (4090(a)); hybrid, a teleconference with a physical location (4090(b)); entirely by teleconference, with no
+# physical location (4926(a)). 4926's notice lines apply only to the last.
+FORMATS = ("in person", "hybrid", "teleconference")
 KINDS = ("consent", "discussion", "action", "executive")
 BASICS = ("start", "format", "location", "join", "dialIn", "help")
 ITEM_FIELDS = ("include", "kind", "motion", "allot", "order", "packet", "brief", "subject")
@@ -183,7 +186,7 @@ def _basics(raw: Any) -> dict[str, Any]:
         raise ValueError(f"basics.{unknown[0]}: not a basics field; the basics are {', '.join(BASICS)}")
     out = {k: str(v or "").strip() for k, v in raw.items() if k in BASICS}
     if "format" in out and out["format"] not in ("", *FORMATS):
-        raise ValueError(f"basics.format is one of {', '.join(FORMATS)} (CIV 4926)")
+        raise ValueError(f"basics.format is one of {', '.join(FORMATS)} (CIV 4090, 4926)")
     if "start" in out and out["start"] and not re.fullmatch(r"\d{2}:\d{2}", out["start"]):
         raise ValueError("basics.start is HH:MM")
     return out

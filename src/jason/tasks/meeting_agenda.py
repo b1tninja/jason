@@ -220,7 +220,10 @@ def draft(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: 
     """The next meeting's draft agenda (Markdown): the header the notice needs, the secretary's notes on the notice, and
     ``agenda_items``."""
     annual = schedule is not None and schedule.annual_month == meeting.month and schedule.day_in(meeting.year, meeting.month) == meeting
-    notice_by = meeting - timedelta(days=4)
+    from jason.tasks.board_items import notice_period
+
+    days, basis = notice_period()      # the statute's four days, or the governing documents' longer period (4920(b)(3))
+    notice_by = meeting - timedelta(days=days)
     out = [f"# DRAFT Agenda for {meeting.month}/{meeting.day}/{meeting.year % 100:02d}", ""]
     out.append(_meeting_line(previous.header, meeting, schedule))
     out.append("")
@@ -231,7 +234,7 @@ def draft(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: 
                "or email (CIV 4926(a)(1)(C), 4040).")
     out.append("Every vote of the directors at this meeting is taken by roll call (CIV 4926(a)(3)).")
     out.append("")
-    out.append(f"_Notice with this agenda must go out by {notice_by:%A, %B} {notice_by.day} (CIV 4920(a)); the board may act only on "
+    out.append(f"_Notice with this agenda must go out by {notice_by:%A, %B} {notice_by.day} ({basis}); the board may act only on "
                "items on this agenda (CIV 4930)._")
     if annual:
         out.append("")

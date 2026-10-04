@@ -24,8 +24,9 @@ Args = dict[str, str]
 
 CAVEATS = (
     "The chair runs the meeting and the board decides; jason keeps the agenda on screen and the record.",
-    "Director votes are a roll call by name (CIV 4926(a)(3)). Polls are members' input, never a board vote.",
-    "A recused director counts toward the quorum and not toward the vote (Corp. Code 7233; CIV 5350).",
+    "Director votes are a roll call by name (required for a meeting held entirely by teleconference, CIV 4926(a)(3)). Polls are members' input, never a board vote.",
+    "The quorum, the vote rule, and whether a recused director counts toward the quorum come from the bylaws (quoted) or counsel's reading (labeled); where one is not on file the room says so and asks counsel.",
+    "A recusal is the director's own disclosure, recorded by the secretary; jason applies none. CIV 5350(b) lists matters an interested director shall not vote on; a contract is 5350(a), through Corporations Code 7233 and 7234.",
     "A topic not on the posted agenda takes only a CIV 4930 path, and each choice is logged.",
     "Executive session stays out of the open minutes, recording, and transcript (CIV 4935, 5215); the host pauses and resumes them, not jason.",
     "In executive session the record is kept apart (P3, the private view): the open log notes only the 4935 subject in general terms, the times, and the return (CIV 4935(e)).",
@@ -99,8 +100,11 @@ def agenda(base: dict[str, Any], candidates: list[dict[str, Any]], room: dict[st
         return {"id": id_, "kind": kind, "label": KIND_LABELS.get(kind, kind.capitalize()), "title": title, "facts": [], "motion": "",
                 "threshold": "majority", "recused": [], "allot": 0, "packet": [], "brief": None, "session": "open session", **more}
 
+    from jason.tasks.meeting_room import forum_limit
+
+    # Open forum's time is the board's limit times the speakers; with no limit on record it has no allotment.
     items = [row("call", "call", "Call to order and roll call", allot=3),
-             row("forum", "forum", "Open forum", allot=int(room.get("openForum", {}).get("limitMinutes", 3) or 3) * 5)]
+             row("forum", "forum", "Open forum", allot=forum_limit(room)["minutes"] * 5)]
     executive = executive_matters(base, candidates)
     if candidates:
         picked = [c for c in candidates if c.get("include", True)]
@@ -240,6 +244,9 @@ def meeting_room(args: Args) -> dict[str, Any]:
     executive = {"shown": private, "active": bool(room["executive"].get("active")), "note": "" if private else HELD, "record": record}
     return {
         "found": True, "date": day, "today": base.get("today", ""), "directors": directors, "quorum": store.quorum(directors),
+        # What the room counts by, each with its source (the bylaws' words recited from disk, or counsel's reading,
+        # labeled), or "not on file; ask counsel".
+        "rules": store.board_rules(root),
         "items": items, "room": store.with_tallies(room), "executive": executive, "decisions": base.get("decisions", []),
         "plan": {"found": bool(candidates), "count": len(candidates)},
         "roster": roster, "offAgendaPaths": [{"path": k, "text": v} for k, v in store.OFF_AGENDA_PATHS.items()],

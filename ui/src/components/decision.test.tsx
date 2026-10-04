@@ -25,6 +25,25 @@ describe("DecisionCard", () => {
     expect(d.votes).toEqual({ "A. Director": "aye", "B. Director": "aye", "C. Director": "no" });
     expect(d.outcome).toBe("approved");
   });
+  it("records a recusal as one: the row reads recused, no vote or absence is saved for it, and the save passes it", async () => {
+    const onSave = vi.fn();
+    const user = userEvent.setup();
+    render(<DecisionCard title="Painting contract" directors={["A. Director", "B. Director", "C. Director"]} initial={{ votes: { "C. Director": "absent" } }} onSave={onSave} />);
+    await user.type(screen.getByLabelText("Motion, as made"), "Move to approve the painting contract");
+    await user.click(screen.getByRole("checkbox", { name: "C. Director" }));
+    expect(screen.getByText("recused")).toBeInTheDocument();
+    expect(screen.getByLabelText("C. Director: aye")).toBeDisabled();
+    await user.click(screen.getByLabelText("A. Director: aye"));
+    await user.click(screen.getByLabelText("B. Director: aye"));
+    expect(screen.getByText(/2 aye · 0 no · 0 abstain · 0 absent · 1 recused/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Record the decision" }));
+    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("2–0, C. Director recused");
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const d = onSave.mock.calls[0][0];
+    expect(d.recused).toEqual(["C. Director"]);
+    expect(d.votes).toEqual({ "A. Director": "aye", "B. Director": "aye" });
+  });
   it("tallies", () => {
     expect(tally({ a: "aye", b: "abstain", c: "zzz" })).toEqual({ aye: 1, no: 0, abstain: 1, absent: 0 });
   });

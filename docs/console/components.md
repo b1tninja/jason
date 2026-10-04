@@ -87,7 +87,7 @@ Built from the design handoff; listed here so the screen specs can name them.
 |---|---|
 | `DecisionBrief` | The question, the criteria, lettered options, and the facts. Never a recommendation (`BRIEF_FOOTER`) |
 | `DecisionCard` | The board's decision on one item: motion, mover and second, the roll call, the outcome in the board's word |
-| `RollCall` | Each director's vote by name, with `present`, `recused`, and `threshold` |
+| `RollCall` | Each director's vote by name, with `present`, `recused`, `threshold`, and the rules on file (`interested`, `quorum`, `basis`). A recused row reads "recused", never "absent". With the recusal rule not on file, the tally is worked both ways and a vote the readings decide differently is "held" ("not on file; ask counsel") |
 | `AgendaWizard`, `ReadinessRow`, `DriveAttach` | Planning a meeting: items, order, motions, packet, notice. jason reports computed checks only |
 | `MeetingStage`, `HostPanel` | The meeting room: the stage, attendance, motions, votes, the CIV 4930 guard, executive session as the host's act |
 | `BoardFields` | The board's columns on a board item, old → new behind a confirm |

@@ -23,7 +23,9 @@ const plan: AgendaPlan = {
   zoom: { topic: "", joinUrl: "", dialIn: "", command: null, note: "jason has no command that creates a board meeting on Zoom. Enter the join link and dial-in here." },
   candidates: [loan, plan7], kinds: ["consent", "discussion", "action", "executive"], formats: ["in person", "hybrid", "teleconference"],
   rules: ["Notice and the agenda to members four days ahead (CIV 4920)."],
-  notice: { by: "2026-10-17", executiveBy: "2026-10-19", required: [{ label: "Time and place of the meeting (CIV 4920)", ready: true }, { label: "Clear instructions for joining (CIV 4926(a)(1))", ready: false, detail: "no join instructions entered" }] },
+  noticeDays: 4, noticeAuthority: "CIV 4920(a)", executiveNoticeDays: 2, executiveNoticeAuthority: "CIV 4920(b)(2)",
+  forum: { onFile: false, minutes: 0, source: "", label: "No limit on record; the board sets it (CIV 4925(b))." },
+  notice: { by: "2026-10-17", executiveBy: "2026-10-19", required: [{ label: "Time and place of the meeting (CIV 4920(a))", ready: true }, { label: "A physical location where members may attend, with a director or designee present (CIV 4090(b))", ready: true }] },
   steps: ["Meeting", "Ready to act", "Order and motions", "Notice"],
   commands: { agendaDoc: "jason board --agenda <id> --date 2026-10-21 --doc --yes", packetDoc: "jason board --packet --date 2026-10-21 --doc --yes", minutesDraft: "jason board --minutes 2026-10-21", notice: 'jason board --set <item id> --status "on agenda" --meeting 2026-10-21', onAgenda: ['jason board --set reserve-loan --status "on agenda" --meeting 2026-10-21'] },
   updated: "", history: [], caveats: ["The board sets the agenda."],
@@ -75,6 +77,27 @@ describe("AgendaWizard", () => {
     expect(confirm).toHaveTextContent("Reserve loan not restored, motion: — → Move to restore the loan.");
     await user.click(within(confirm).getByRole("button", { name: "Yes, do it" }));
     expect(saved).toEqual([{ by: "D. Okafor", items: { "reserve-loan": { motion: "Move to restore the loan." } } }]);
+  });
+
+  it("cites a hybrid meeting to 4090(b), never 4926; shows the notice period with its source; assumes no forum limit", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<AgendaWizard plan={plan} onSave={() => {}} />);
+    expect(screen.getByLabelText("Join link for members attending remotely")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /4926/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Who can help/)).not.toBeInTheDocument();
+    expect(screen.getByText(/4 days ahead \(CIV 4920\(a\)\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "4 Notice" }));
+    expect(screen.getByText("What the notice must carry (CIV 4920, 4090(b))")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "3 Order and motions" }));
+    expect(screen.getByText(/no limit on record; the board sets it \(CIV 4925\(b\)\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/3 minutes/)).not.toBeInTheDocument();
+    // Entirely by teleconference: 4926's lines, and a documents' longer notice period with its source.
+    const tele: AgendaPlan = { ...plan, basics: { ...plan.basics, format: "teleconference", location: "" }, noticeBy: "2026-10-11", noticeDays: 10, noticeAuthority: "Bylaws 1.2; CIV 4920(b)(3)" };
+    rerender(<AgendaWizard key="tele" plan={tele} onSave={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "1 Meeting" }));
+    expect(screen.getByLabelText("Join instructions or link (CIV 4926(a)(1)(A))")).toBeInTheDocument();
+    expect(screen.getByLabelText("Who can help before and during, phone and email (CIV 4926(a)(1)(B))")).toBeInTheDocument();
+    expect(screen.getByText(/10 days ahead \(Bylaws 1\.2; CIV 4920\(b\)\(3\)\)/)).toBeInTheDocument();
   });
 
   it("clocks", () => {

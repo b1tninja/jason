@@ -554,6 +554,12 @@ class Mystique(Community):
         """Five seats (Bylaws 5.1, fixed by the board); a quorum is a majority of the directors in office, at least two (7.10)."""
         return BOARD
 
+    def board_notice_period(self):
+        """Bylaws 7.6: four days, the statute's period; it does not reach a meeting held solely in executive session (banking.py)."""
+        from .banking import BOARD_NOTICE
+
+        return BOARD_NOTICE
+
     def board_items_sheet(self):
         """The Google Sheet that holds the board's action items (banking.py)."""
         return BOARD_ITEMS_SHEET

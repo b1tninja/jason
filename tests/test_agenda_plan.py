@@ -62,7 +62,7 @@ CONFLICT = {**ITEM, "id": "paint-contract", "title": "Painting contract", "ask":
 
 
 def _meeting(items, today="2026-10-03", packet=""):
-    return {"found": True, "date": "2026-10-21", "today": today, "noticeBy": "2026-10-17", "executiveNoticeBy": "2026-10-19", "directors": ["A. Director"],
+    return {"found": True, "date": "2026-10-21", "today": today, "noticeBy": "2026-10-17", "executiveNoticeBy": "2026-10-19", "noticeDays": 4, "noticeAuthority": "CIV 4920(a)", "directors": ["A. Director"],
             "decisions": [], "items": items, "openCount": 1, "executiveCount": 0, "agendaMarkdown": "# Agenda", "packetMarkdown": packet, "minutesTemplate": "", "notes": [],
             "commands": {"agendaDoc": "jason board --agenda <id> --date 2026-10-21 --doc --yes", "packetDoc": "jason board --packet --date 2026-10-21 --doc --yes",
                          "minutesDraft": "jason board --minutes 2026-10-21", "notice": "jason board --set <item id> --status \"on agenda\" --meeting 2026-10-21"},
@@ -113,14 +113,14 @@ def test_loader_computes_readiness_from_the_plan_and_the_meeting(fakes, tmp_path
     assert exec_labels["Executive session marked (CIV 4935)"] is True and exec_labels["Supporting documents"] is False
     assert exec_labels["Notice can still be given by 2026-10-19 (CIV 4920)"] is True
     conflict = {c["label"]: c for c in by_id["paint-contract"]["readiness"]["checks"]}
-    assert conflict["Conflict disclosure recorded (Corp. Code 7233; CIV 5350)"]["ok"] is False
+    assert conflict["Conflict disclosure recorded (CIV 5350; Corp. Code 7233 through 5350(a))"]["ok"] is False
     assert out["candidates"][-1]["id"] == "payment-plan-7", "executive matters sort after open ones"
     assert out["zoom"]["command"] == "jason zoom --create-board-meeting --date 2026-10-21 --yes" and "Not scheduled" in out["zoom"]["note"]
     assert out["zoom"]["joinUrl"] == "" and out["zoom"]["dialIn"] == ""
     assert out["commands"]["onAgenda"] == [] and out["notice"]["by"] == "2026-10-17"
     required = {r["label"]: r for r in out["notice"]["required"]}
-    assert required["Time and place of the meeting (CIV 4920)"]["ready"] is False
-    assert required["The agenda: every item the board will discuss or act on (CIV 4930)"]["ready"] is False
+    assert required["Time and place of the meeting (CIV 4920(a))"]["ready"] is False
+    assert required["The agenda: every item the board will discuss or act on (CIV 4920(d), 4930(a))"]["ready"] is False
 
     out = write("2026-10-21", {"by": "D. Okafor", "basics": {"start": "18:30", "format": "teleconference", "join": "https://zoom.us/j/1", "dialIn": "+1 555 0100", "help": "manager, 555-0100, help@example.org"},
                                "items": {"reserve-loan": {"include": True, "motion": "Move to restore the loan by 2026-10-31.", "packet": [{"id": "f1", "name": "Resolution", "kind": "doc", "url": ""}]},
@@ -131,12 +131,12 @@ def test_loader_computes_readiness_from_the_plan_and_the_meeting(fakes, tmp_path
     assert exec_labels["Executive session marked (CIV 4935)"]["ok"] is False and "CIV 4935" in exec_labels["Executive session marked (CIV 4935)"]["why"]
     assert out["commands"]["onAgenda"] == ['jason board --set reserve-loan --status "on agenda" --meeting 2026-10-21', 'jason board --set payment-plan-7 --status "on agenda" --meeting 2026-10-21']
     required = {r["label"]: r for r in out["notice"]["required"]}
-    assert required["Time and place of the meeting (CIV 4920)"]["ready"] is True
-    assert required["Clear instructions for joining (CIV 4926(a)(1))"]["ready"] is True
+    assert required["Time and place of the meeting (CIV 4920(a))"]["ready"] is True
+    assert required["Clear technical instructions on how to take part by teleconference (CIV 4926(a)(1)(A))"]["ready"] is True
     assert required["A telephone option for everyone entitled to take part (CIV 4926(a)(4))"]["ready"] is True
-    assert required["Phone and email of a person who can help before and during the meeting (CIV 4926(a)(1))"]["ready"] is True
+    assert required["Phone and email of a person who can help before and during the meeting (CIV 4926(a)(1)(B))"]["ready"] is True
     assert required["Executive session matters described generally (CIV 4935)"]["ready"] is True
-    assert required["Delivered by 2026-10-17, four days ahead (CIV 4920)"]["ready"] is True
+    assert required["Delivered by 2026-10-17, 4 days ahead (CIV 4920(a))"]["ready"] is True
     assert "A physical location where members may attend, with a director or designee present (CIV 4090(b))" not in required
     assert out["history"][-1].startswith(out["updated"][:10]) and "D. Okafor" in out["history"][-1]
     assert any("CIV 4926(a)(3)" in r for r in out["rules"])
@@ -155,7 +155,31 @@ def test_loader_notice_passed_and_packet_motion(fakes):
     notice = next(c for c in by_id["reserve-loan"]["readiness"]["checks"] if c["label"].startswith("Notice"))
     assert notice["ok"] is False and "2026-10-17" in notice["why"]
     assert by_id["reserve-loan"]["suggestion"].startswith("notice was due")
-    assert {r["label"]: r["ready"] for r in out["notice"]["required"]}["Delivered by 2026-10-17, four days ahead (CIV 4920)"] is False
+    assert {r["label"]: r["ready"] for r in out["notice"]["required"]}["Delivered by 2026-10-17, 4 days ahead (CIV 4920(a))"] is False
+
+
+def test_a_hybrid_meeting_is_4090b_not_4926(fakes):
+    from jason.web.extra.agenda_plan import agenda_plan, write
+
+    fakes["meeting"] = _meeting([ITEM])
+    out = write("2026-10-21", {"by": "D. Okafor", "basics": {"start": "18:30", "format": "hybrid", "location": "Clubhouse, 123 Main St"}})
+    labels = [r["label"] for r in out["notice"]["required"]]
+    assert "A physical location where members may attend, with a director or designee present (CIV 4090(b))" in labels
+    # 4926 is a meeting held entirely by teleconference; none of its lines, in the checklist or the rules, reach a hybrid one.
+    assert not any("4926" in label for label in labels) and not any("4926" in r for r in out["rules"])
+    join = next(r for r in out["notice"]["required"] if r["label"].startswith("How members join remotely"))
+    assert join["check"] is True and "not a statutory line" in join["label"]
+    out = agenda_plan({})
+    assert out["forum"]["onFile"] is False and out["forum"]["minutes"] == 0 and "the board sets it" in out["forum"]["label"]
+
+
+def test_the_notice_line_carries_the_documents_longer_period(fakes):
+    from jason.web.extra.agenda_plan import agenda_plan
+
+    fakes["meeting"] = {**_meeting([ITEM]), "noticeBy": "2026-10-11", "noticeDays": 10, "noticeAuthority": "Bylaws 1.2; CIV 4920(b)(3)"}
+    out = agenda_plan({})
+    assert out["noticeDays"] == 10 and out["noticeAuthority"] == "Bylaws 1.2; CIV 4920(b)(3)"
+    assert "Delivered by 2026-10-11, 10 days ahead (Bylaws 1.2; CIV 4920(b)(3))" in [r["label"] for r in out["notice"]["required"]]
 
 
 def test_writer_refuses_a_recommendation_and_passes_not_found_through(fakes):

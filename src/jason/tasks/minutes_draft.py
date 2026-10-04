@@ -73,7 +73,9 @@ def prompt(day: date, record: dict[str, Any]) -> str:
     lines += ["", "Agenda items:", *([f"- {i}" for i in record["items"]] or ["- (no agenda on file)"]),
               *(["", "Decisions the Secretary recorded at the meeting (the record; quote each motion, its mover, second, votes, and outcome as given, and do not infer a different vote from the transcript):",
                  *[f"- {d['title']}: \"{d['motion']}\" moved by {d.get('mover') or 'unknown'}, seconded by {d.get('second') or 'unknown'}; "
-                   f"votes {', '.join(f'{n} {v}' for n, v in (d.get('votes') or {}).items()) or 'not recorded'}; outcome {d.get('outcome') or 'not recorded'}"
+                   f"votes {', '.join(f'{n} {v}' for n, v in (d.get('votes') or {}).items()) or 'not recorded'}"
+                   + (f"; recused (disclosed an interest, did not vote) {', '.join(d['recused'])}" if d.get("recused") else "")
+                   + f"; outcome {d.get('outcome') or 'not recorded'}"
                    for d in decided]] if decided else []),
               "", "Executive session agenda headings:", *([f"- {h}" for h in record["executive"]] or ["- (none)"]),
               "", "Attendance (name, minutes on the call):",

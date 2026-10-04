@@ -198,21 +198,74 @@ class MeetingSchedule:
         raise ValueError("no meeting within two years")
 
 
+class VoteBasis(Enum):
+    """What carries a board motion, as the bylaws or counsel's reading of them set it."""
+
+    MAJORITY_PRESENT = "a majority of the directors present at a meeting at which a quorum is present"
+    MAJORITY_IN_OFFICE = "a majority of the directors in office"
+
+
+@dataclass(frozen=True)
+class RuleSource:
+    """Where a board rule comes from: the provision jason recites from disk (``cite``, as ``jason cite`` reads it:
+    "Bylaws 1.2"), or counsel's reading (``counsel`` names whose and when; ``reading`` is its words), shown labeled
+    as a reading, never as the provision's words."""
+
+    cite: str = ""
+    counsel: str = ""
+    reading: str = ""
+
+    @property
+    def label(self) -> str:
+        if self.counsel:
+            return f"{self.counsel}'s reading" + (f" of {self.cite}" if self.cite else "")
+        return self.cite
+
+
 @dataclass(frozen=True)
 class BoardRule:
     """The board's size and quorum as the bylaws set them. ``seats`` is the number the board fixed within
-    ``minimum``..``maximum``; a quorum is a majority of the directors then in office, never fewer than ``quorum_floor``."""
+    ``minimum``..``maximum``; a quorum is a majority of the directors then in office, never fewer than ``quorum_floor``.
+
+    ``vote_basis`` is what carries a motion, from ``vote_source``. ``interested_in_quorum`` says whether a director who
+    disclosed an interest and does not vote still counts toward the quorum and among the directors present, from
+    ``interested_source``. Either is None when neither the bylaws' words nor counsel's reading is on file: the meeting
+    room then says "not on file; ask counsel" and never fills it in."""
 
     seats: int
     minimum: int
     maximum: int
     quorum_floor: int = 2
     source: str = ""
+    vote_basis: VoteBasis | None = None
+    vote_source: RuleSource | None = None
+    interested_in_quorum: bool | None = None
+    interested_source: RuleSource | None = None
 
     def quorum(self, in_office: int | None = None) -> int:
         """Directors needed for a quorum when ``in_office`` directors hold office (default: every seat filled)."""
         serving = self.seats if in_office is None else in_office
         return max(serving // 2 + 1, self.quorum_floor)
+
+
+@dataclass(frozen=True)
+class NoticePeriod:
+    """The notice of a board meeting the governing documents require (CIV 4920(b)(3)): ``days`` before the meeting, from
+    ``source`` (the provision, "Bylaws 1.2"). ``executive_days`` is set only where the provision says it applies to a
+    meeting held solely in executive session; otherwise that meeting takes the statute's period."""
+
+    days: int
+    source: str
+    executive_days: int | None = None
+
+
+@dataclass(frozen=True)
+class SpeakingLimit:
+    """The time limit the board established for members to speak (CIV 4925(b)): ``minutes`` for each member, from the
+    board's adopted ``source`` (a resolution or policy)."""
+
+    minutes: int
+    source: str
 
 
 @dataclass(frozen=True)
@@ -1111,6 +1164,16 @@ class Community(ABC):
     def board(self) -> BoardRule | None:
         """The board's size and quorum rule. None until the specification sets it. Who holds the seats is PayHOA's
         "Board Member" tag, read live, not a fact here."""
+        return None
+
+    def board_notice_period(self) -> NoticePeriod | None:
+        """The notice of a board meeting the governing documents require, with its provision. None until the
+        specification sets it: the statute's period then applies (CIV 4920(a), (b))."""
+        return None
+
+    def open_forum_limit(self) -> SpeakingLimit | None:
+        """The time limit the board established for members to speak (CIV 4925(b)). None until the board adopts one:
+        the meeting room then says no limit is on record, never a default."""
         return None
 
     def board_items_sheet(self) -> str:
