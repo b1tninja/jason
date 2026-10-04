@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Card, Command, DataTable, Markdown, RemoteView, type Column } from "../components";
+import { Badge, Card, Command, DataTable, DrivePreview, EvidenceVersion, Markdown, ReadAllFromDrive, RemoteView, type Column } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 
@@ -75,20 +75,27 @@ const cols: Column<TemplateRow>[] = [
   { key: "authority", header: "Authority" },
   { key: "run", header: "The run fills", value: (t) => t.lint.run.length, render: (t) => <span className="row wrap">{t.lint.run.map((k) => <Badge key={k} tone="warn">{words(k)}</Badge>)}</span> },
   { key: "profile", header: "The profile fills", value: (t) => t.lint.profile.length + t.lint.general.length, render: (t) => <span className="muted">{t.lint.profile.length + t.lint.general.length} tokens</span> },
-  { key: "driveId", header: "Doc", render: (t) => t.driveId ? <a href={`https://docs.google.com/document/d/${t.driveId}/edit`} target="_blank" rel="noreferrer">built</a> : <Badge tone="warn">not built</Badge> },
+  // The Doc as jason's copy: a thumbnail from disk, Preview, Read from Drive, and Open in Google (DrivePreview).
+  { key: "driveId", header: "Doc", render: (t) => t.driveId ? <DrivePreview driveId={t.driveId} name={t.title} kind="doc" /> : <Badge tone="warn">not built</Badge> },
 ];
 
-/** The letter templates and a fill form for each: the body previews from the same text the Doc is built from. */
+/** The letter templates and a fill form for each: the body previews from the same text the Doc is built from. Each built
+ * template's Doc shows as jason's copy of it; "Read every template from Drive" exports them all on one sign-in. */
 export function TemplatesView() {
   const r = useApi<Listing>("/api/templates");
   const [open, setOpen] = useState<TemplateRow | null>(null);
+  const [version, setVersion] = useState(0);
   if (open) return <Fill t={open} back={() => setOpen(null)} />;
   return (
     <RemoteView r={r}>
       {(d) => (
         <Card title={`Letter templates (${d.templates.length})`}>
           <p className="muted">A template is a Drive Doc with {"{TOKENS}"}; the profile fills most, the run fills the rest, and a letter is a filled copy (`jason letter`). Pick one to fill it here and see how it reads.</p>
-          <DataTable rows={d.templates} columns={[...cols, { key: "fill", header: "", render: (t) => <button className="primary" onClick={() => setOpen(t)}>Fill</button> }]} searchable={false} />
+          <p className="muted">The Doc column shows jason's copy of each template, read from Drive when a person last asked; nothing is read from Google until someone does.</p>
+          <ReadAllFromDrive driveIds={d.templates.map((t) => t.driveId)} what="template" batch="templates" onDone={() => setVersion((v) => v + 1)} />
+          <EvidenceVersion.Provider value={version}>
+            <DataTable rows={d.templates} columns={[...cols, { key: "fill", header: "", render: (t) => <button className="primary" onClick={() => setOpen(t)}>Fill</button> }]} searchable={false} />
+          </EvidenceVersion.Provider>
         </Card>
       )}
     </RemoteView>

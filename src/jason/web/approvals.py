@@ -15,6 +15,9 @@
   it never writes to PayHOA. Behind the write guard and the token header, like a check.
   ``POST /api/evidence/refresh-all`` with ``{approval, by}`` reads every refreshable record of one plan on one sign-in
   (``jason.approvals.evidence.refresh_all``) and answers what it read and what failed, never the answers.
+  ``POST /api/evidence/refresh-many`` with ``{addresses, by}`` does the same for a page's list (a screen's "Read every
+  template from Drive"). A ``drive:<id>`` address is read on Google Drive's live context (``default_live`` for system
+  "google"), a PayHOA request on PayHOA's.
 - **View one document unmasked.** ``POST /api/evidence/view`` with ``{address, approval?, document, by}`` opens one of
   the documents an evidence answer lists (``jason.approvals.evidence_documents.view``): a person's ask to see it, so it
   is unmasked, logged in ``evidence/views.jsonl``, and behind the write guard and the token header. A submission or a
@@ -78,10 +81,17 @@ def mask(value: Any) -> Any:
 @contextmanager
 def default_live(kind: Any) -> Iterator[Any]:
     """The live context a kind needs, as the CLI builds it: PayHOA signed in non-interactively (a missing Keeper
-    session fails fast, ``KeeperAuthRequired``; ``jason login`` in a terminal fixes it)."""
+    session fails fast, ``KeeperAuthRequired``; ``jason login`` in a terminal fixes it); for ``system`` "google", Google
+    Drive on the association's OAuth, never interactive (a missing token fails fast, ``GoogleAuthRequired``)."""
     from jason.approvals.engine import Live
     from jason.config import data_dir
 
+    if kind.system == "google":
+        from jason.approvals.evidence import drive_live
+
+        with drive_live() as drive:
+            yield Live(drive.client, 0, data_dir(), None)
+        return
     if kind.system != "payhoa":
         yield Live(data_dir=data_dir())
         return
@@ -183,16 +193,45 @@ def _masked_evidence(out: dict[str, Any]) -> dict[str, Any]:
 
 # What a refresh's live context is built for: ``default_live`` (and a test's factory) read ``system`` and ``key``.
 EVIDENCE_REFRESH = SimpleNamespace(key="evidence-refresh", system="payhoa")
+EVIDENCE_REFRESH_DRIVE = SimpleNamespace(key="evidence-refresh", system="google")
+# A refresher's system (``Refresher.system``) to the live context it is read on.
+REFRESH_KINDS = {"PayHOA": EVIDENCE_REFRESH, "Google Drive": EVIDENCE_REFRESH_DRIVE}
+
+
+def refresh_kind(system: str) -> SimpleNamespace:
+    """The live context a refresher's system is read on (PayHOA when it is not named)."""
+    return REFRESH_KINDS.get(system, EVIDENCE_REFRESH)
+
+
+def _address_kind(address: str) -> SimpleNamespace:
+    from jason.approvals.evidence import rule_for
+
+    rule, _ = rule_for(" ".join(str(address or "").split()))
+    return refresh_kind(rule.refresher.system if rule.refresher is not None else "")
 
 
 def refresh_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> dict[str, Any]:
     """``POST /api/evidence/refresh``: one record read again live for ``by`` and kept in jason's cache
-    (``jason.approvals.evidence.refresh``), then opened as ``GET /api/evidence`` opens it, masked."""
+    (``jason.approvals.evidence.refresh``), then opened as ``GET /api/evidence`` opens it, masked. A Drive file is read
+    on Google's live context, a PayHOA request on PayHOA's."""
     from jason.approvals.evidence import refresh
 
+    kind = _address_kind(_text(body, "address"))
     out = refresh(_text(body, "address"), by=by, approval_id=_text(body, "approval").strip(),
-                  client_factory=lambda: live(EVIDENCE_REFRESH))
+                  client_factory=lambda: live(kind))
     return _masked_evidence(out)
+
+
+def refresh_many_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> dict[str, Any]:
+    """``POST /api/evidence/refresh-many``: a page's list of addresses (``{addresses, by}``: "Read every template from
+    Drive") read again live for ``by`` on one sign-in (``jason.approvals.evidence.refresh_many``). The summary only,
+    masked; the page refetches what it shows."""
+    from jason.approvals.evidence import refresh_many, refresh_system
+
+    addresses = body.get("addresses")
+    kind = refresh_kind(refresh_system(addresses))
+    return mask(refresh_many(addresses, by=by, client_factory=lambda: live(kind),
+                             batch=_text(body, "batch").strip()[:60]))
 
 
 def refresh_all_evidence(body: dict[str, Any], by: str, live: LiveFactory) -> dict[str, Any]:
@@ -271,12 +310,18 @@ def disposition(how: str, name: str) -> str:
 def evidence_level(address: str) -> Any:
     """The data level of the documents behind an evidence address (``jason.web.access.Level``): a citation's documents
     are the association's and the law (P0; a confidential one is listed only in the private view, and its own answer
-    says P3); a PayHOA request's submission and files, and anything else, P2."""
+    says P3); a Drive file's copy at its file's level (``jason.tasks.drive_copies.level_of``: P3 confidential, P0 a
+    template or a file under a Drive root's path rule, else P2); a PayHOA request's submission and files, and anything
+    else, P2."""
     from jason.approvals.evidence import EvidenceKind, rule_for
     from jason.web.access import Level
 
     try:
-        rule, _ = rule_for(" ".join(str(address or "").split()))
+        rule, found = rule_for(" ".join(str(address or "").split()))
+        if rule.kind is EvidenceKind.DRIVE and found is not None:
+            from jason.tasks.drive_copies import data_root, level_of
+
+            return Level(level_of(data_root(), found.group(1)))
     except Exception:  # noqa: BLE001 - an address no rule reads is judged closed
         return Level.P2
     return Level.P0 if rule.kind is EvidenceKind.CITATION else Level.P2
@@ -424,6 +469,14 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
         skipped}`` (no answers); 400 for no person, no such approval, or too many addresses; 409 when Keeper did not
         answer or the cache is busy."""
         return _refresh_route(refresh_all_evidence)
+
+    @bp.post("/api/evidence/refresh-many")
+    def evidence_refresh_many_route():
+        """A page's list of evidence addresses read again live for the person (``{addresses, by, batch?}``) on one
+        sign-in, each kept and logged; never a write to the system read. 200 with ``{by, at, refreshed, failed,
+        skipped}`` (no answers); 400 for no person, a body that is not a list, too many addresses, or two systems;
+        409 when the sign-in did not answer (Keeper, Google) or the cache is busy."""
+        return _refresh_route(refresh_many_evidence)
 
     grants = Grants()
     bp.record_once(lambda state: state.app.extensions.setdefault("jason_evidence_grants", grants))
@@ -595,6 +648,7 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
     return bp
 
 
-__all__ = ["CAVEAT", "DOCUMENT_CSP", "EVIDENCE_REFRESH", "Grant", "Grants", "VIEW_TTL", "approvals",
-           "audit_log", "blueprint", "default_live", "disposition", "evidence", "mask", "plans", "refresh_all_evidence",
-           "refresh_evidence", "show", "view_evidence"]
+__all__ = ["CAVEAT", "DOCUMENT_CSP", "EVIDENCE_REFRESH", "EVIDENCE_REFRESH_DRIVE", "Grant", "Grants", "REFRESH_KINDS",
+           "VIEW_TTL", "approvals", "audit_log", "blueprint", "default_live", "disposition", "evidence", "mask", "plans",
+           "refresh_all_evidence", "refresh_evidence", "refresh_kind", "refresh_many_evidence", "show",
+           "view_evidence"]

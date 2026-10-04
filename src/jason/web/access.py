@@ -13,7 +13,8 @@ The person's decision: opening documents and files from the console needs a sign
   union of their rows. An admin with no office or manager role holds only the roster row. An admin viewing the
   console as someone (``jason-web --dev``) is judged as that someone, and the log names both.
 - **What a path is** is ``PATH_RULES``, matched in order by its place under data/ and by the stores' own flags (the
-  library's ``confidential``, the Zoom index's ``confidential`` or kind, the Drive holdings' ``confidential``).
+  library's ``confidential``, the Zoom index's ``confidential`` or kind, the Drive holdings' ``confidential``; a Drive
+  file's copy by ``jason.tasks.drive_copies.level_of``).
   Anything no row places is P2: closed, never open.
 - **``require``** answers a route: the ``Viewer``, or a 401 (no one signed in, or sign-in not set up on this
   jason-web) or a 403 with the reason. A fetch gets JSON with ``signIn``; a top-level navigation gets a small page.
@@ -277,8 +278,23 @@ def _holdings(rel: str, root: Path) -> Level | None:
     return Level.P3 if rel in _confidential_places(report) else None
 
 
+def _drive_copy(rel: str, root: Path) -> Level | None:
+    """A Drive file's copy (``drive/copies/<id>.*``, ``jason.tasks.drive_copies``) at its file's level: P3 when the
+    holdings mark it confidential, P0 for a letter template or a file under a Drive root's path rule, else P2."""
+    from jason.tasks.drive_copies import level_of, valid_id
+
+    file_id = Path(rel).name.split(".", 1)[0]
+    if not valid_id(file_id):
+        return None
+    try:
+        return Level(level_of(root, file_id))
+    except (OSError, ValueError):
+        return Level.P2
+
+
 PATH_RULES: tuple[PathRule, ...] = (
     PathRule("*", None, _holdings),
+    PathRule("drive/copies/*", Level.P2, _drive_copy),
     PathRule("spec/*", Level.P3),
     PathRule("cases/*", Level.P3),
     PathRule("legal/*", Level.P3),

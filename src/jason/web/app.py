@@ -48,6 +48,9 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     access.install(app, sources)            # the private view, and confidential listings held back until it is open
     app.config["JASON_ALLOW_APPLY"] = bool(allow_apply and approvals_live is not None)
     app.register_blueprint(approvals_routes(live=approvals_live, allow_apply=allow_apply, writes=approvals_writes))
+    from jason.web.drive import blueprint as drive_routes
+
+    app.register_blueprint(drive_routes())      # a Drive file's kept thumbnail, from disk (jason.tasks.drive_copies)
 
     @app.get("/api/session")
     def session():

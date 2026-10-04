@@ -9,6 +9,8 @@
 - **A citation.** The whole section as stored, and the governing document's own file, when ``jason cite`` names one
   (a library path, or a Drive id the Drive holdings place in the library or under the data folder) and the library
   does not hold it as confidential: the file itself, and the library's extracted text of it.
+- **A Drive file** (``drive:<id>``). jason's copy of it (``data/drive/copies``): its PDF (``pdf``), a Doc's text
+  (``text``), a Sheet's first sheet (``csv``), a stored image (``image``), each when on disk.
 - **A board item or a command.** None.
 
 **Confidential documents** (a library file held as confidential, or any copy of one by its digest; a Drive file the
@@ -251,6 +253,51 @@ def _drive(root: Path, drive_id: str, label: str = "", *, private: bool = False)
                                   _size(path), _mtime(path), f"{label}: a copy on disk of the Drive file" if label else
                                   "a copy on disk of the Drive file", LIBRARY_CAVEAT, path, root)])
     return []
+
+
+DRIVE_TEXT_NOTE = {"text/markdown": "the Doc's text, exported as Markdown",
+                   "text/plain": "the Doc's text, exported as plain text (Google would not export Markdown)"}
+
+
+def drive_documents(root: Path, drive_id: str, *, private: bool = False) -> list[Document]:
+    """jason's copy of a Drive file (``jason.tasks.drive_copies``), each document only when on disk: ``pdf`` (a Doc,
+    Sheet, or Slides file as PDF, or a stored PDF), ``text`` (a Doc's Markdown or plain text), ``csv`` (a Sheet's first
+    sheet), ``image`` (a stored image). A stored file the holdings already placed on disk is that file. One the
+    holdings mark confidential only with ``private``, marked confidential."""
+    from jason.tasks import drive_copies
+
+    record = drive_copies.read_record(root, drive_id)
+    if record is None:
+        return []
+    secret = drive_copies.confidential(root, drive_id)
+    if secret and not private:
+        return []
+    name = str(record.get("name") or drive_id)
+    read_at = str(record.get("readAt") or "")
+    via = str(record.get("via") or "")
+    note = f"Exported from Drive by {via}." if via else "Exported from Drive."
+    folder = drive_copies.copies_dir(root)
+    files = drive_copies.kept(root, drive_id)
+    out: list[Document] = []
+    reused = str(record.get("reused") or "")
+    if reused and inside(Path(root) / reused, Path(root)):
+        path = Path(root) / reused
+        kind = kind_of(path.name)
+        if kind in ("pdf", "image"):
+            out.append(Document(kind, name, kind, _size(path), read_at, "The same file, already on disk.",
+                                drive_copies.CAVEAT, path, Path(root)))
+    pdf_name = name if name.lower().endswith(".pdf") else f"{name}.pdf"
+    for ext, doc_id, shown, kind, said in (
+            ("pdf", "pdf", pdf_name, "pdf", note),
+            ("md", "text", f"{name}, its text", "text",
+             DRIVE_TEXT_NOTE.get(str(record.get("textMime") or ""), "the Doc's text")),
+            ("csv", "csv", f"{name}, the first sheet (CSV)", "text", "the Sheet's first sheet, as CSV"),
+            *((f"image.{e}", "image", name, "image", note) for e in ("png", "jpg", "gif", "webp"))):
+        path = files.get(ext)
+        if path is None or not inside(path, folder) or any(d.id == doc_id for d in out):
+            continue
+        out.append(Document(doc_id, shown, kind, _size(path), read_at, said, drive_copies.CAVEAT, path, folder))
+    return confidential(out) if secret else out
 
 
 def citation_documents(root: Path, got: dict[str, Any], *, statute: bool, read_at: str = "",
@@ -716,6 +763,8 @@ def documents_for(address: str, root: Path, *, private: bool = False) -> tuple[s
     rule, found = rule_for(address)
     if rule.kind is EvidenceKind.PAYHOA_SUBMISSION and found is not None:
         return rule.kind.value, request_documents(root, int(found.group(1)))
+    if rule.kind is EvidenceKind.DRIVE and found is not None:
+        return rule.kind.value, drive_documents(root, found.group(1), private=private)
     if rule.kind is EvidenceKind.CITATION:
         from jason.tasks import cite
 
@@ -814,5 +863,6 @@ def view(address: str, document: str, *, by: str, approval_id: str = "", data_di
 
 
 __all__ = ["ATTACHMENT_CAVEAT", "CONFIDENTIAL", "CONFIDENTIAL_NOTE", "Document", "EXTENSIONS", "MAX_TEXT", "OCTET", "Opened", "UNMASKED", "VIEW_LOG",
-           "citation_documents", "confidential", "content_type", "documents_for", "file_id", "inside", "kind_of",
+           "citation_documents", "confidential", "content_type", "documents_for", "drive_documents", "file_id",
+           "inside", "kind_of",
            "request_documents", "submission_view", "view"]

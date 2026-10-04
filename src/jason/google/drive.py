@@ -14,7 +14,7 @@ from typing import Any, Callable
 import httpx
 
 from jason.google.docs import GoogleDocs
-from jason.google.errors import GoogleError
+from jason.google.errors import GoogleError, GoogleExportTooLarge, GoogleHttpError
 from jason.google.gmail import GoogleGmail
 from jason.google.sheets import GoogleSheets
 
@@ -26,6 +26,8 @@ _API = "https://www.googleapis.com/drive/v3"
 _UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _FILE_FIELDS = "id,name,mimeType,size,modifiedTime,parents,webViewLink"
+# The hosts a file's thumbnailLink points at; jason's token is sent to no other.
+THUMBNAIL_HOSTS = ("googleusercontent.com", "google.com", "googleapis.com")
 
 
 class GoogleDrive:
@@ -165,6 +167,49 @@ class GoogleDrive:
         if not response.is_success:
             raise GoogleError(f"HTTP {response.status_code} exporting {file_id} as {mime_type}")
         return response.content
+
+    def file_metadata(self, file_id: str, fields: str) -> dict[str, Any]:
+        """One file's metadata with the ``fields`` asked (``capabilities``, ``thumbnailLink``, ``downloadRestrictions``),
+        read-only (``files.get``). A refusal is ``GoogleHttpError`` with Google's status and reason."""
+        response = self._http.get(f"{_API}/files/{file_id}", params={"fields": fields, "supportsAllDrives": True},
+                                  headers=self._headers())
+        if not response.is_success:
+            raise _http_error(response, f"reading {file_id}'s metadata")
+        return _json(response)
+
+    def export_file(self, file_id: str, mime_type: str) -> bytes:
+        """A Google Doc, Sheet, or Slides file exported as ``mime_type`` (``files.export``), in memory, read-only.
+        Over Google's export limit (10 MB) is ``GoogleExportTooLarge``; another refusal (a type Google does not export
+        the file as) is ``GoogleHttpError`` with its status and reason."""
+        response = self._http.get(f"{_API}/files/{file_id}/export", params={"mimeType": mime_type},
+                                  headers=self._headers())
+        if not response.is_success:
+            raise _http_error(response, f"exporting {file_id} as {mime_type}")
+        return response.content
+
+    def download_bytes(self, file_id: str) -> bytes:
+        """A stored file's bytes (a PDF, an image) in memory (``files.get?alt=media``), read-only. A Google Doc, Sheet,
+        or Slides file needs ``export_file``."""
+        response = self._http.get(f"{_API}/files/{file_id}", params={"alt": "media", "supportsAllDrives": True},
+                                  headers=self._headers())
+        if not response.is_success:
+            raise _http_error(response, f"downloading {file_id}")
+        return response.content
+
+    def fetch_link(self, url: str) -> tuple[bytes, str]:
+        """The bytes and content type behind a file's ``thumbnailLink``, read with this token. The link is short-lived,
+        so a caller keeps what it reads. Only Google's own hosts (``THUMBNAIL_HOSTS``) are asked: the token is never
+        sent elsewhere."""
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        if parts.scheme != "https" or not any(host == h or host.endswith("." + h) for h in THUMBNAIL_HOSTS):
+            raise GoogleError(f"not a Google link: {host or url[:40]}")
+        response = self._http.get(url, headers=self._headers(), follow_redirects=False)
+        if not response.is_success:
+            raise _http_error(response, "reading a thumbnail")
+        return response.content, response.headers.get("Content-Type", "")
 
     def list_revisions(self, file_id: str) -> list[dict[str, Any]]:
         """Every revision Drive keeps of a file, oldest first (read-only): its id, when it was saved, and for a Google
@@ -374,6 +419,19 @@ class GoogleDrive:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"}
+
+
+def _http_error(response: httpx.Response, what: str) -> GoogleHttpError:
+    """Google's refusal as an error: its status, its first reason, and its message; an export over the limit as
+    ``GoogleExportTooLarge``."""
+    error = _json(response).get("error")
+    error = error if isinstance(error, dict) else {}
+    reasons = [str(e.get("reason") or "") for e in error.get("errors") or () if isinstance(e, dict)]
+    reason = next((r for r in reasons if r), "")
+    said = str(error.get("message") or "")
+    message = f"HTTP {response.status_code} {what}" + (f": {said}" if said else "")
+    kind = GoogleExportTooLarge if reason == "exportSizeLimitExceeded" else GoogleHttpError
+    return kind(message, status=response.status_code, reason=reason)
 
 
 def _json(response: httpx.Response) -> dict[str, Any]:

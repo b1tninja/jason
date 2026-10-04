@@ -16,6 +16,11 @@ live system.
 - **A citation.** ``jason.tasks.cite.resolve``: the words recited from disk (``jason export-authorities`` for the
   statutes), never paraphrased.
 - **A board item.** ``data/board/items.json``; an executive-session item's summary and notes are held back.
+- **A Drive file** (``drive:<id>``). jason's copy (``jason.tasks.drive_copies``: ``drive/copies/<id>.*``, exported on a
+  person's click) as "Copy from Drive", and Drive's listing (``drive/files.json``, ``jason drive --sync``) as "Drive
+  catalog". ``changed`` is true when the catalog's ``modified`` is newer than the copy's ``modifiedTime`` ("Changed in
+  Drive since this copy"). Its documents are the copy's PDF, text, and CSV; its refresher exports it again from Drive
+  (``Google Drive``). A file the holdings mark confidential is held back outside the private view.
 
 **The private view.** ``resolve(..., private=True)`` is what jason-web asks while a person's private view is open
 (``jason.web.access``): a restricted book is recited (``jason cite --private``), a citation's confidential documents
@@ -70,6 +75,7 @@ class EvidenceKind(Enum):
     PAYHOA_SUBMISSION = "payhoa_submission"
     CITATION = "citation"
     BOARD_ITEM = "board_item"
+    DRIVE = "drive"
     COMMAND = "command"
     UNKNOWN = "unknown"
 
@@ -83,6 +89,8 @@ class SourceName(Enum):
     STATUTES = "Statutes on disk"
     DOCUMENTS = "Documents on disk"
     BOARD_ITEMS = "Board items"
+    DRIVE_COPY = "Copy from Drive"
+    DRIVE_CATALOG = "Drive catalog"
 
 
 @dataclass(frozen=True)
@@ -117,10 +125,12 @@ class Ask:
 @dataclass(frozen=True)
 class Refresher:
     """A live re-read of one record into jason's own cache: the system it reads, what a person is offered, and the
-    reader ``run(client, org_id, match, root, via)``. It never writes to the system it reads."""
+    reader ``run(client, org_id, match, root, via)``. It never writes to the system it reads. ``live`` is the context
+    manager that signs in to that system when the caller names none (default: PayHOA, ``payhoa_live``)."""
     system: str
     what: str
     run: Callable[[Any, int, re.Match[str], Path, str], None]
+    live: Callable[[], ContextManager[Any]] | None = None
 
     def as_dict(self) -> dict[str, str]:
         return {"system": self.system, "what": self.what}
@@ -592,6 +602,92 @@ def read_board_item(ask: Ask) -> dict[str, Any]:
     return out
 
 
+DRIVE_CHANGED = "Changed in Drive since this copy"
+DRIVE_LINKS = {"application/vnd.google-apps.document": "https://docs.google.com/document/d/{id}/edit",
+               "application/vnd.google-apps.spreadsheet": "https://docs.google.com/spreadsheets/d/{id}/edit",
+               "application/vnd.google-apps.presentation": "https://docs.google.com/presentation/d/{id}/edit"}
+DRIVE_FILE_LINK = "https://drive.google.com/file/d/{id}/view"
+MIME_WORDS = {"application/vnd.google-apps.document": "Google Doc",
+              "application/vnd.google-apps.spreadsheet": "Google Sheet",
+              "application/vnd.google-apps.presentation": "Google Slides", "application/pdf": "PDF"}
+
+
+def drive_link(file_id: str, mime: str = "", *links: str) -> str:
+    """The file's own page: the first link Drive gave (``webViewLink``, the catalog's ``link``), else the editor's
+    address for its type (a Doc's ``/document/d/ID/edit`` when the type is unknown)."""
+    given = next((str(x) for x in links if x and str(x).startswith("https://")), "")
+    if given:
+        return given
+    if mime and mime not in DRIVE_LINKS:
+        return DRIVE_FILE_LINK.format(id=file_id)
+    return DRIVE_LINKS.get(mime or "application/vnd.google-apps.document", "").format(id=file_id)
+
+
+def _against_drive(copy: dict[str, Any], listed: dict[str, Any], synced_at: str) -> tuple[bool | None, str]:
+    """The copy against Drive's listing: changed when the catalog's ``modified`` is newer than the copy's."""
+    then, now = _when(str(copy.get("modifiedTime") or "")), _when(str(listed.get("modified") or ""))
+    if then is None or now is None:
+        return None, "When the copy or Drive's listing was last modified is unknown: the two cannot be compared."
+    if now > then:
+        return True, (f"{DRIVE_CHANGED}: Drive's listing (synced {synced_at or 'at an unknown time'}) says it was "
+                      f"modified {listed.get('modified')}; the copy is of {copy.get('modifiedTime')}.")
+    return False, (f"Unchanged in Drive since this copy, as of the catalog's last sync ({synced_at or 'time unknown'}).")
+
+
+def read_drive(ask: Ask) -> dict[str, Any]:
+    """A Drive file: jason's copy of it and Drive's listing of it, from disk (``jason.tasks.drive_copies``)."""
+    from jason.approvals.evidence_documents import drive_documents
+    from jason.tasks import drive_copies
+
+    file_id = ask.match.group(1) if ask.match else ""
+    root = ask.root
+    record = drive_copies.read_record(root, file_id)
+    holding = drive_copies.holdings_row(root, file_id)
+    synced_at, listing = drive_copies.catalog(root)
+    listed = listing.get(file_id)
+    name = str((record or {}).get("name") or (listed or {}).get("name") or (holding or {}).get("name") or "")
+    mime = str((record or {}).get("mimeType") or (listed or {}).get("mimeType") or (holding or {}).get("mimeType") or "")
+    out: dict[str, Any] = {"label": name or f"Drive file {file_id}", "sources": [], "changed": None, "changedNote": "",
+                           "link": drive_link(file_id, mime, (record or {}).get("webViewLink", ""),
+                                              (listed or {}).get("link", "")),
+                           "caveats": [], "note": "", "found": bool(record or listed or holding)}
+    if not out["found"]:
+        out["note"] = (f"Drive file {file_id} is not in Drive's listing on disk and jason keeps no copy of it: `jason "
+                       "drive --sync` lists Drive, and ↻ Read from Drive exports it (a person's click).")
+        return out
+    if holding is not None and holding.get("confidential") and not ask.private:
+        out["note"] = "Confidential: its copy and its documents are held back; open the private view to see them."
+        return out
+    if record is not None:
+        via, by = str(record.get("via") or ""), str(record.get("by") or "")
+        fields = [mask_field("Name", name), mask_field("Type", MIME_WORDS.get(mime, mime)),
+                  mask_field("Modified in Drive", str(record.get("modifiedTime") or "")), mask_field("Read by", by)]
+        reused = str(record.get("reused") or "")
+        note = (f"Read by {via}." if via else "") + (f" The same file was already on disk ({reused}): nothing was "
+                                                     "downloaded." if reused else "")
+        out["sources"].append(source(SourceName.DRIVE_COPY, read_at=str(record.get("readAt") or ""),
+                                     digest=str(record.get("md5") or ""), fields=[f for f in fields if f["value"]],
+                                     caveat=drive_copies.CAVEAT, note=note.strip()))
+        out["caveats"].append(drive_copies.CAVEAT)
+    if listed is not None:
+        fields = [mask_field("Name", str(listed.get("name") or "")), mask_field("Type", MIME_WORDS.get(mime, mime)),
+                  mask_field("Modified", str(listed.get("modified") or ""))]
+        out["sources"].append(source(SourceName.DRIVE_CATALOG, read_at=synced_at,
+                                     fields=[f for f in fields if f["value"]],
+                                     caveat="Drive's listing as last synced (jason drive --sync), not a live read."))
+    if record is not None and listed is not None:
+        out["changed"], out["changedNote"] = _against_drive(record, listed, synced_at)
+    misses = []
+    if record is None:
+        misses.append("no copy from Drive yet: ↻ Read from Drive exports it, as a person's click")
+    if listed is None:
+        misses.append("Drive's listing on disk does not name it (`jason drive --sync` lists Drive)")
+    if misses:
+        out["note"] = "Not on disk: " + "; ".join(misses) + "."
+    out["documents"] = [d.as_dict() for d in drive_documents(root, file_id, private=ask.private)]
+    return out
+
+
 # What a command's words say it reads live, in order: the first that matches names the system.
 COMMAND_SYSTEMS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"--payhoa\b|\bsync-(catalog|request-files|bills|liens)\b|\bapprovals apply\b|\bmailroom\b"), "PayHOA"),
@@ -614,7 +710,7 @@ def _command_refresh(ask: Ask) -> list[dict[str, Any]]:
 def read_unknown(ask: Ask) -> dict[str, Any]:
     why = ("no address" if not ask.address else
            "jason cannot open this address: it is not a PayHOA request (payhoa:submission:N), a board item "
-           "(board-item:ID), a command (jason ...), or a citation jason cite reads")
+           "(board-item:ID), a Drive file (drive:ID), a command (jason ...), or a citation jason cite reads")
     return {"label": ask.address, "sources": [], "changed": None, "changedNote": "", "link": "", "caveats": [],
             "note": why + ".", "found": False}
 
@@ -647,6 +743,31 @@ def refresh_submission(client: Any, org_id: int, match: re.Match[str], root: Pat
     submission_cache.write(_files_root(root), sid, detail, via=via, form_id=form_id, form_name=name)
 
 
+def refresh_drive(client: Any, org_id: int, match: re.Match[str], root: Path, via: str) -> None:
+    """Export one Drive file again into jason's copies (``jason.tasks.drive_copies.export``) on a Drive client; the
+    person is the one ``via`` names ("console refresh by NAME"). Reads Drive only; writes nothing to it."""
+    from jason.tasks import drive_copies
+
+    del org_id
+    by = via.split(" by ", 1)[1] if " by " in via else ""
+    drive_copies.export(client, root, match.group(1), via=via, by=by)
+
+
+@contextmanager
+def drive_live() -> Iterator[Any]:
+    """Google Drive signed in non-interactively with the association's OAuth (drive.readonly): a missing Keeper session
+    fails fast (``KeeperAuthRequired``), and so does a missing or rejected Google token (``GoogleAuthRequired``).
+    Yields an object with ``client`` (``GoogleDrive``) and ``org_id`` (0: Drive has none)."""
+    from types import SimpleNamespace
+
+    from jason.agent import Jason
+
+    with Jason(interactive=False) as agent:
+        yield SimpleNamespace(client=agent.drive(interactive=False), org_id=0)
+
+
+DRIVE_ID = r"([A-Za-z0-9_-]{10,200})"
+
 # The rule rows, in order: the first whose matcher takes the address reads it.
 RULES: tuple[Resolver, ...] = (
     Resolver(EvidenceKind.PAYHOA_SUBMISSION, re.compile(r"^payhoa:submission:(\d+)$").match, read_submission,
@@ -664,6 +785,11 @@ RULES: tuple[Resolver, ...] = (
                       "sync the board's Sheet: read the board's columns back from Google, then write jason's",
                       "Google")),
              live=False),
+    Resolver(EvidenceKind.DRIVE, re.compile(rf"^drive:{DRIVE_ID}$").match, read_drive,
+             (Refresh("jason drive --sync", True, "re-read Drive's listing: every file's name, type, and modified time",
+                      "Google"),),
+             live=True,
+             refresher=Refresher("Google Drive", "Export this file again from Drive", refresh_drive, drive_live)),
     Resolver(EvidenceKind.COMMAND, re.compile(r"^jason\s+\S").match, read_command, (), live=False),
     Resolver(EvidenceKind.CITATION, _citation, read_citation,
              (Refresh("jason export-authorities", False,
@@ -786,10 +912,18 @@ def payhoa_live() -> Iterator[Any]:
 
 
 def _failure(exc: BaseException, system: str) -> str:
+    """The person's words for a live read that failed: the command that signs in again (Keeper, Google), a refusal as
+    jason said it (a Drive file that forbids copies), else the system and the error."""
+    from jason.google.errors import GoogleAuthRequired
     from jason.secrets import KeeperAuthRequired
+    from jason.tasks.drive_copies import GOOGLE_SIGN_IN, CopyRefused
 
     if isinstance(exc, KeeperAuthRequired) or type(exc).__name__ == "KeeperAuthRequired":
         return KEEPER_SIGN_IN
+    if isinstance(exc, GoogleAuthRequired):
+        return GOOGLE_SIGN_IN
+    if isinstance(exc, CopyRefused):
+        return str(exc)
     return f"{system} could not be read: {type(exc).__name__}: {exc}"
 
 
@@ -813,14 +947,17 @@ def _person(by: str) -> str:
 
 @contextmanager
 def _signed_in(factory: Callable[[], ContextManager[Any]] | None, root: Path, by: str, system: str,
-               addresses: list[str], batch: str = "") -> Iterator[Any]:
-    """One live client for the reads in the block (one sign-in). A sign-in that fails, before any read, is logged
-    once for each address it was opened for and raised as ``RefreshFailed`` with the person's message."""
+               addresses: list[str], batch: str = "",
+               default: Callable[[], ContextManager[Any]] | None = None) -> Iterator[Any]:
+    """One live client for the reads in the block (one sign-in): ``factory``, else the refresher's own ``default``,
+    else PayHOA. A sign-in that fails, before any read, is logged once for each address it was opened for and raised
+    as ``RefreshFailed`` with the person's message."""
     from contextlib import ExitStack
 
+    default = default or payhoa_live
     stack = ExitStack()
     try:
-        live = stack.enter_context((factory or payhoa_live)())
+        live = stack.enter_context((factory or default)())
     except Exception as exc:  # noqa: BLE001 - said to the person and logged, never a traceback
         error = _failure(exc, system)
         at = _now()
@@ -870,7 +1007,7 @@ def refresh(address: str, *, by: str, client_factory: Callable[[], ContextManage
     root = _root(data_dir)
     system = rule.refresher.system
     with hold(Resource.STORE, CACHE_LOCK, timeout=120, purpose=f"evidence refresh {address}"):
-        with _signed_in(client_factory, root, by, system, [address]) as live:
+        with _signed_in(client_factory, root, by, system, [address], default=rule.refresher.live) as live:
             entry = _keep_one(rule, found, address, live, root, by)
     if not entry["ok"]:
         raise RefreshFailed(entry["error"])
@@ -942,8 +1079,10 @@ def refresh_all(approval_id: str, *, by: str, client_factory: Callable[[], Conte
     if not addresses:
         return out                             # nothing to read: no sign-in
     system = systems.pop()
+    default = next((rule.refresher.live for _, rule, _ in addresses if rule.refresher is not None), None)
     with hold(Resource.STORE, CACHE_LOCK, timeout=120, purpose=f"evidence refresh-all {approval.id}"):
-        with _signed_in(client_factory, root, by, system, [a for a, _, _ in addresses], approval.id) as live:
+        with _signed_in(client_factory, root, by, system, [a for a, _, _ in addresses], approval.id,
+                        default=default) as live:
             for address, rule, found in addresses:
                 entry = _keep_one(rule, found, address, live, root, by, approval.id)
                 if entry["ok"]:
@@ -953,7 +1092,75 @@ def refresh_all(approval_id: str, *, by: str, client_factory: Callable[[], Conte
     return _scrub(out)
 
 
-__all__ = ["Ask", "CACHE_LOCK", "CAVEAT", "EvidenceKind", "KEEPER_SIGN_IN", "MAX_BATCH", "REFRESH_LOG", "RULES",
-           "Refresh", "RefreshFailed", "Refresher", "Resolver", "SNAPSHOT_CAVEAT", "SourceName", "mask_field",
-           "mask_text", "payhoa_live", "plan_addresses", "refresh", "refresh_all", "refresh_submission", "resolve",
-           "rule_for"]
+MAX_MANY = 100                                 # the most addresses one "refresh many" reads
+
+
+def many_addresses(addresses: Any) -> tuple[list[tuple[str, Resolver, re.Match[str]]], int]:
+    """A list of addresses, distinct and in order: those a live refresher reads, with their rule row and match, and how
+    many others there are. Refuses (``ValueError``) anything that is not a list of strings."""
+    if not isinstance(addresses, list) or not all(isinstance(a, str) for a in addresses):
+        raise ValueError("addresses is a list of evidence addresses (drive:ID, payhoa:submission:N)")
+    seen: set[str] = set()
+    live: list[tuple[str, Resolver, re.Match[str]]] = []
+    skipped = 0
+    for raw in addresses:
+        address = " ".join(raw.split())
+        if not address or address in seen:
+            continue
+        seen.add(address)
+        rule, found = rule_for(address)
+        if rule.refresher is None or found is None:
+            skipped += 1
+        else:
+            live.append((address, rule, found))
+    return live, skipped
+
+
+def refresh_system(addresses: Any) -> str:
+    """The one outside system a list of addresses is read from (``"Google Drive"``, ``"PayHOA"``), "" when none is
+    refreshable. Refuses (``ValueError``) a list read from more than one."""
+    live, _ = many_addresses(addresses)
+    systems = {rule.refresher.system for _, rule, _ in live if rule.refresher is not None}
+    if len(systems) > 1:
+        raise ValueError(f"these addresses are read from {', '.join(sorted(systems))}: one batch reads one system")
+    return next(iter(systems), "")
+
+
+def refresh_many(addresses: Any, *, by: str, client_factory: Callable[[], ContextManager[Any]] | None = None,
+                 data_dir: Path | None = None, batch: str = "") -> dict[str, Any]:
+    """Read a list of evidence addresses again live, for the person ``by``, on one client (one sign-in), each kept as
+    ``refresh`` keeps one and logged with its own line (with ``batch``, when named): a screen's "Read every template
+    from Drive". The machinery of ``refresh_all``, for addresses a page names rather than an approval's.
+
+    Refuses (``ValueError``) an empty ``by``, a body that is not a list, more than ``MAX_MANY`` refreshable addresses,
+    and addresses of more than one system. A sign-in that fails is ``RefreshFailed`` before any read; a read that fails
+    is in ``failed`` and the rest go on. ``{by, at, refreshed: [address], failed: [{address, error}], skipped}``."""
+    from jason.locks import Resource, hold
+
+    by = _person(by)
+    root = _root(data_dir)
+    live, skipped = many_addresses(addresses)
+    if len(live) > MAX_MANY:
+        raise ValueError(f"{len(live)} records to read again; one batch reads at most {MAX_MANY}")
+    system = refresh_system(addresses)
+    at = _now()
+    out: dict[str, Any] = {"by": by, "at": at, "refreshed": [], "failed": [], "skipped": skipped}
+    if not live:
+        return out                             # nothing to read: no sign-in
+    default = next((rule.refresher.live for _, rule, _ in live if rule.refresher is not None), None)
+    with hold(Resource.STORE, CACHE_LOCK, timeout=120, purpose=f"evidence refresh-many ({len(live)})"):
+        with _signed_in(client_factory, root, by, system, [a for a, _, _ in live], batch, default=default) as client:
+            for address, rule, found in live:
+                entry = _keep_one(rule, found, address, client, root, by, batch)
+                if entry["ok"]:
+                    out["refreshed"].append(address)
+                else:
+                    out["failed"].append({"address": address, "error": entry["error"]})
+    return _scrub(out)
+
+
+__all__ = ["Ask", "CACHE_LOCK", "CAVEAT", "DRIVE_CHANGED", "EvidenceKind", "KEEPER_SIGN_IN", "MAX_BATCH", "MAX_MANY",
+           "REFRESH_LOG", "RULES", "Refresh", "RefreshFailed", "Refresher", "Resolver", "SNAPSHOT_CAVEAT",
+           "SourceName", "drive_link", "drive_live", "many_addresses", "mask_field", "mask_text", "payhoa_live",
+           "plan_addresses", "refresh", "refresh_all", "refresh_drive", "refresh_many", "refresh_submission",
+           "refresh_system", "resolve", "rule_for"]

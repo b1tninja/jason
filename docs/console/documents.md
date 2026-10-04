@@ -41,7 +41,7 @@ What is built and what is proposed are marked in each section. The evidence rout
 |---|---|---|
 | Address | What a piece of evidence names: `payhoa:submission:N`, `CIV 4041`, `jason://decl/6.2(a)`, `board-item:ID`, `drive:ID`, `gmail:MESSAGE` (proposed), `mail:ID` (proposed) | an `Evidence` row on a plan item, a canvas clip, a board item, a letter |
 | Document | One readable thing an address has: `{id, name, kind, size, readAt, note}` | `resolve(address).documents` |
-| Copy | The bytes or record jason keeps, with `readAt`, `via` (what read it), and a digest | `payhoa-files/requests/N/submission.json`, `library/files/...`, `drive/copies/ID.*` (proposed), `gmail/messages/ID.json` (proposed) |
+| Copy | The bytes or record jason keeps, with `readAt`, `via` (what read it), and a digest | `payhoa-files/requests/N/submission.json`, `library/files/...`, `drive/copies/ID.*`, `gmail/messages/ID.json` (proposed) |
 | Refresher | How one address is read again from its source, if it can be | a resolver row's `refresher` (`jason.approvals.evidence`) |
 | View | One person opening one document, logged | `POST /api/evidence/view` |
 | Grant | A ten-minute link to the bytes of one viewed file | `GET /api/evidence/document/<token>` |
@@ -182,20 +182,27 @@ A modal `<dialog>` (`showModal()`), about 92vw by 90vh. Width is capped for read
 
 ### Google Docs, Sheets, and Slides
 
-**Status:** proposed.
+**Status:** built: the copy, its refresher, freshness, restrictions, the size limit, and the `drive:<id>` evidence row (`jason.tasks.drive_copies`, `jason.approvals.evidence`), with the Templates screen's Doc column as the first screen to show them (`DrivePreview`). A Sheet's CSV opens as text; the `table` renderer and a CSV per sheet are proposed.
 
-**Truth:** Drive. Today jason keeps Drive's metadata (`drive/files.json`) and a copy only when the same bytes arrived another way (`drive/holdings.json` `elsewhere`). Google-native files have no copy.
+**Truth:** Drive. jason keeps Drive's metadata (`drive/files.json`), a copy when the same bytes arrived another way (`drive/holdings.json` `elsewhere`), and its own copy once a person reads a file from Drive.
 
-**Copy (proposed):** `drive/copies/<id>.<ext>`, with `drive/copies/<id>.json` recording `{readAt, via, modifiedTime, mimeType, md5}`:
-- **a Doc:** exported as PDF (to read and print), and as Markdown or plain text (to search and cite);
-- **a Sheet:** exported as CSV per sheet (for the `table` renderer) and PDF;
-- **Slides:** exported as PDF.
+**Copy:** `drive/copies/<id>.<ext>`, with `drive/copies/<id>.json` recording `{readAt, via, by, modifiedTime, mimeType, name, md5?, sizes, webViewLink, textMime?, reused?}`:
+- **a Doc:** exported as PDF (to read and print), and as Markdown (`text/markdown`; plain text when Google refuses it) to search and cite: `<id>.pdf`, `<id>.md`;
+- **a Sheet:** exported as PDF and its first sheet as CSV (`text/csv`): `<id>.pdf`, `<id>.csv`. A CSV per sheet is proposed;
+- **Slides:** exported as PDF;
+- **the thumbnail:** the file's `thumbnailLink`, read with jason's token at once (it is short-lived; only Google's hosts are asked) and kept as `<id>.png`. None when Drive gives none.
 
-**Refresher:** `files.export` (or `files.get?alt=media` for a stored file), on a person's click, with the association's OAuth.
-- **Size:** Google's export is limited to 10 MB. A larger Doc is exported as PDF through `exportLinks` if it allows, or the viewer says it is too large and links the original.
-- **Restrictions:** the console honors `downloadRestrictions` and `copyRequiresWriterPermission`. A file that forbids copies is shown only as a link card.
+Each file is written to a temporary name and replaced, the record last, under the store lock `drive-copies`; a fresh copy removes the files an earlier one left.
 
-**Freshness:** the panel compares the copy's `modifiedTime` with Drive's metadata from the last catalog sync, and says "Changed in Drive since this copy" when they differ. It never refreshes on its own.
+**Evidence:** `drive:<id>` is a resolver row. Its sources are "Copy from Drive" (`readAt`, by, `modifiedTime`) and "Drive catalog" (the listing's `modified`, as of its `syncedAt`); its documents `pdf`, `text` (the Markdown), and `csv`, each only when on disk; its `link` the file's `webViewLink`, else the catalog's `link`, else the editor's address for its type.
+
+**Refresher:** `files.export` (or `files.get?alt=media` for a stored file), on a person's click, with the association's OAuth: ↻ in the evidence panel, "Read from Drive" in a `DrivePreview`, or "Read every template from Drive" (`POST /api/evidence/refresh-many`, one sign-in). It goes through `/api/evidence/refresh` and its rules: signed in, P2, the person's name, and a line in `evidence/refreshes.jsonl` (system "Google Drive"). A missing Google token fails fast and names `jason drive --sync --interactive`.
+- **Size:** Google's export is limited to 10 MB. A larger file is refused: "too large to export (Google exports up to 10 MB); open it in Google". Exporting a large Doc's PDF through `exportLinks` is proposed.
+- **Restrictions:** jason reads `capabilities`, `copyRequiresWriterPermission`, and `downloadRestrictions` first. A file that forbids copies is refused, said, and logged; jason keeps no copy, and the console links the original.
+
+**Freshness:** the answer compares the copy's `modifiedTime` with Drive's metadata from the last catalog sync, and says "Changed in Drive since this copy" (`changed: true`) when the catalog's is newer. It never refreshes on its own.
+
+**Thumbnails:** `GET /api/drive/thumb/<id>` serves the kept PNG from disk (`jason.web.drive`): signed in, the file's level, logged in `access/served.jsonl`, with `Cache-Control: private, max-age=300`, `nosniff`, and `CSP: sandbox`; 404 "No preview yet" without one. The browser asks jason, never Google, so a screen may load it.
 
 **Original:** `webViewLink` in a new tab: editing happens in Google, signed in as the person.
 
@@ -208,15 +215,15 @@ A modal `<dialog>` (`showModal()`), about 92vw by 90vh. Width is capped for read
 
 The `Embed` component's Google kinds move to this rule (see [Embed](#the-embed-component)).
 
-**Level:** by the holdings row. A confidential row is held back like a confidential library file.
+**Level:** by the holdings row (`drive_copies.level_of`): a confidential row is P3, held back like a confidential library file (listed and opened only in the private view); a letter template's Doc is P0; a file under a Drive root's path rule is P0, as a library file is; any other is P2. `access.PATH_RULES` places `drive/copies/*` by the same rule.
 
 ### Drive PDFs and images
 
-**Status:** proposed.
+**Status:** built.
 
-- **Copy order:** first the copy already held elsewhere (the holdings' `elsewhere`: a library file, an email attachment, a PayHOA attachment); otherwise `files.get?alt=media` into `drive/copies/` on a person's click.
+- **Copy order:** first the copy already held elsewhere (the holdings' `elsewhere`: a library file, an email attachment, a PayHOA attachment), named in the record as `reused` with nothing downloaded; otherwise `files.get?alt=media` into `drive/copies/` on a person's click (`<id>.pdf`, or `<id>.image.<ext>` for an image, checked by its bytes' signature).
 - **Renders** as a pdf or an image.
-- **Level:** by the holdings row.
+- **Level:** by the holdings row, as above.
 
 ### Google Forms
 
@@ -327,7 +334,7 @@ It changes in four ways (proposed):
 1. **Submission rendering** (in progress): sections, grouped choices, same-as pairs, file names, help, and required.
 2. **Close the serving gaps:** `/api/file` callers to the document service; the library's confidential flag to the private view (built: the switch, the band, and the evidence's confidential documents).
 3. **The viewer's header actions:** Open the original, ↻ inside the viewer, and the held-back count.
-4. **Drive copies:** the `drive:` resolver row with its export refresher, and the Doc, Sheet, and Slides renderers (pdf, markdown, table).
+4. **Drive copies** (built, but the `table` renderer): the `drive:` resolver row with its export refresher, thumbnails, and the Doc, Sheet, and Slides renderers (pdf and markdown built; a Sheet's CSV opens as text until the `table` renderer). `DrivePreview` shows a file as jason's copy on the Templates screen; packets, governing documents, and drafts are next.
 5. **Embed's allowlist, sandbox, and document cards.**
 6. **Google Forms:** the blank form and responses as submissions.
 7. **Gmail messages:** sanitized bodies, blocked remote images, attachments.
