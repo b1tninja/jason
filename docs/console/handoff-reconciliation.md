@@ -144,8 +144,8 @@ Found during this reconciliation. Each gets a lesson and a guard (AGENTS.md):
 
 | Fix | What is wrong |
 |---|---|
-| **The executive session reaches the open minutes** | Log entries made during executive session go into the room's open log, which the draft minutes copy. `decide` records them as "open session", and the general note falls back to the item's title. |
-| **The owner view shows delinquency** | The owner Overview renders the board's digest (owners in default, liens), and the owner nav includes Records (CIV 5200), which lists the liens the association placed. |
+| **The executive session reaches the open minutes** (fixed: lesson `executive-session-in-open-log`) | Log entries made during executive session go into the room's open log, which the draft minutes copy. `decide` records them as "open session", and the general note falls back to the item's title. Now a separate P3 record; the open log carries the 4935 subject's general words only. Still open: the agenda Doc's executive subitems reach the minutes model as headings. |
+| **The owner view shows delinquency** (fixed: lesson `owner-view-showed-delinquency`) | The owner Overview renders the board's digest (owners in default, liens), and the owner nav includes Records (CIV 5200), which lists the liens the association placed. Now the server answers `view=owner` reads from the owner loaders alone (`jason.web.extra.owner_view`), and the Overview is `/api/owner-digest`. |
 | **Recusal and quorum are hardcoded** | "Recused directors count toward quorum" is cited as if it were statute (`meeting_room.py`, `RollCall`). The vote basis is fixed, and with no rule on file the director is counted silently. The Decisions caveat says "marked absent", and `DecisionCard` does not pass `recused`. |
 | **The notice date ignores the documents** | `notice_date` always uses four days. The hybrid meeting is cited as 4926. |
 | **The open-forum limit is 3 minutes in code** | `meeting_room.py` and `AgendaWizard` |
