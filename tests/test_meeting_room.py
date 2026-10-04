@@ -140,7 +140,7 @@ def test_executive_session_polls_admission_suggestions_and_adjournment(tmp_path)
     _room(tmp_path)
     with pytest.raises(ValueError):
         store.update(tmp_path, DAY, {"action": "executive_end"}, "S. Clerk")
-    room = store.update(tmp_path, DAY, {"action": "executive_start", "note": "a member discipline hearing"}, "S. Clerk")
+    room = store.update(tmp_path, DAY, {"action": "executive_start", "subjects": ["member_discipline"], "note": "a member discipline hearing"}, "S. Clerk")
     assert room["executive"]["active"] and "host pauses the recording" in room["log"][-1]["title"]
     with pytest.raises(ValueError, match="executive"):
         store.update(tmp_path, DAY, {"action": "adjourn"}, "S. Clerk")
@@ -229,7 +229,10 @@ def test_loader_merges_the_meeting_the_room_and_falls_back_without_a_plan(fakes)
     out = meeting_room({"date": DAY})
     assert out["found"] and out["quorum"] == 3 and out["directors"] == FIVE
     assert [i["id"] for i in out["items"]] == ["call", "forum", "landscape", "exec", "adjourn"]
-    assert out["items"][2]["label"] == "Item 1 · Action" and out["items"][3]["matters"] == ["Hearing, unit 7"]
+    # The executive matter has no 4935 subject named: it is counted, never named by its title, and cannot go executive yet.
+    assert out["items"][2]["label"] == "Item 1 · Action" and out["items"][3]["matters"] == [] and out["items"][3]["unnamed"] == 1
+    assert out["items"][3]["subjectNote"].startswith("name the 4935 subject first") and "Hearing, unit 7" not in json.dumps(out)
+    assert out["executive"] == {"shown": False, "active": False, "note": "Executive session: the record is kept apart (open the private view to see it).", "record": None}
     assert out["plan"] == {"found": False, "count": 0} and "not built yet" in out["notes"]
     assert out["roster"]["count"] == 0 and "roster not synced" in out["roster"]["note"]
     assert [p["path"] for p in out["offAgendaPaths"]] == ["b", "c", "d1", "d2", "d3"]
@@ -257,13 +260,17 @@ def test_loader_orders_the_plans_included_candidates(fakes):
          "packet": [{"id": "f1", "name": "Draft budget", "kind": "sheet"}], "brief": {"question": "Which?", "criteria": [], "options": []}},
         {"id": "minutes", "title": "Approve the minutes", "kind": "consent", "include": True, "order": 1, "facts": ["Draft out since 2026-10-03"]},
         {"id": "trim", "title": "Repaint the trim", "kind": "action", "include": False, "order": 3},
-        {"id": "delinq", "title": "Delinquent accounts", "kind": "exec", "session": "executive", "include": True, "order": 4, "general": "delinquent assessment accounts"},
+        {"id": "delinq", "title": "Delinquent accounts", "kind": "exec", "session": "executive", "include": True, "order": 4,
+         "general": "free text is not the general note", "subject": "assessment_payment"},
     ]}
     out = meeting_room({"date": DAY})
     assert [i["id"] for i in out["items"]] == ["call", "forum", "minutes", "budget", "exec", "adjourn"]
     assert out["items"][2]["label"] == "Item 1 · Consent" and out["items"][2]["facts"] == ["Draft out since 2026-10-03"]
     assert out["items"][3]["packet"][0]["name"] == "Draft budget" and out["items"][3]["brief"]["question"] == "Which?"
-    assert out["items"][4]["matters"] == ["delinquent assessment accounts"] and out["plan"] == {"found": True, "count": 4}
+    assert out["items"][4]["matters"] == ["a member's payment of assessments"] and out["plan"] == {"found": True, "count": 4}
+    assert out["items"][4]["motion"] == "Move to adjourn to executive session to discuss a member's payment of assessments (Civil Code 4935(a), (c))."
+    assert out["items"][4]["executiveMatters"] == [{"ref": "1", "subject": "assessment_payment", "general": "a member's payment of assessments", "named": True}]
+    assert "Delinquent accounts" not in json.dumps(out) and "delinq" not in json.dumps(out["items"][4])
     fakes.plan.agenda_plan = lambda args: (_ for _ in ()).throw(RuntimeError("boom"))
     out = meeting_room({"date": DAY})
     assert any("agenda plan: RuntimeError" in n for n in out["notes"]) and [i["id"] for i in out["items"]][2] == "landscape"

@@ -1,5 +1,6 @@
-import { Card, Caveats, DataTable, DueDate, Embed, Findings, Pill, RemoteView, type Column } from "../components";
+import { Card, Caveats, DataTable, DueDate, Embed, Findings, Pill, RemoteView, type Audience, type Column } from "../components";
 import { useApi } from "../lib/useApi";
+import { disclosureCols, type Disclosure } from "./OwnerDigestView";
 import type { Calendar, Obligation } from "./types";
 
 const ORDER = ["overdue", "no evidence", "due soon", "upcoming", "done late", "done", "listed", "no store shows it"];
@@ -18,8 +19,34 @@ const cols: Column<Obligation>[] = [
     render: (r) => <Findings items={r.history.filter((h) => h.standing && h.standing !== "done").map((h) => `${h.deadline ?? h.date}: ${h.standing}${h.daysLate ? ` (${h.daysLate}d late)` : ""}`)} empty={r.history.length ? `${r.history.length} on time` : "none shown"} /> },
 ];
 
-/** The recurring deadlines, overdue first. A payment is evidence a thing was done, not proof. */
-export function CalendarView() {
+/** The owner view of the annual disclosures (`GET /api/calendar?view=owner`): what every member receives each year, when
+ * it is due, and the day the delivery ledger shows it went out. Not the association's deadlines (taxes, filings,
+ * inspections) or their standings, which are the board's. */
+export function OwnerDisclosures() {
+  const r = useApi<{ found?: boolean; note?: string; asOf: string; disclosures: Disclosure[]; caveats?: string[] }>("/api/calendar?view=owner");
+  return (
+    <RemoteView r={r}>
+      {(d) => (
+        <div className="stack">
+          <Card title={`Annual disclosures as of ${d.asOf}`}>
+            {d.note && <p className="muted">{d.note}</p>}
+            <DataTable rows={d.disclosures} columns={disclosureCols} rowKey={(x) => x.key} searchable={false} />
+          </Card>
+          <Caveats items={d.caveats} />
+        </div>
+      )}
+    </RemoteView>
+  );
+}
+
+/** The recurring deadlines, overdue first. A payment is evidence a thing was done, not proof. The owner view is
+ * `OwnerDisclosures`. */
+export function CalendarView({ audience = "board" }: { audience?: Audience } = {}) {
+  if (audience === "owner") return <OwnerDisclosures />;
+  return <BoardCalendar />;
+}
+
+function BoardCalendar() {
   const r = useApi<Calendar>("/api/calendar");
   const embeds = useApi<Embeds>("/api/embeds");
   const em = embeds.status === "ready" && embeds.data.found !== false && embeds.data.calendarId ? embeds.data : null;

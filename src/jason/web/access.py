@@ -496,7 +496,9 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("insurance/*", Level.P2),         # policies, claims, and the insurer's letters, with policy numbers
     PathRule("reports/*", Level.P2),           # books and ledger reports: members' balances by unit
     PathRule("packets/*", Level.P1),           # a meeting's packet as assembled; executive items go in their own P3 folders
-    PathRule("meetings/*", Level.P1),          # a meeting's plan and the room's record
+    PathRule("meetings/room-*-executive*", Level.P3),     # the room's executive record (room-<date>-executive.json), kept
+                                                    # apart from the open record (CIV 4935(e), 4950(a))
+    PathRule("meetings/*", Level.P1),          # a meeting's plan and the room's open record
     PathRule("tax-bills/*", Level.P1),         # the association's own property tax bills
     PathRule("vendors/*", Level.P2),           # vendors' records: a W-9's taxpayer id can be a sole proprietor's SSN
     PathRule("key-documents/*.json", Level.P1),     # the key documents' store: who linked what, and their notes

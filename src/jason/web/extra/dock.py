@@ -205,7 +205,7 @@ def _q_overdue(today: date) -> dict[str, Any]:
 def _q_last_decisions() -> dict[str, Any]:
     from jason.tasks import decisions as store
 
-    rows = store.load(_root())
+    rows = store.open_only(store.load(_root()))     # an executive-session decision is the private view's (CIV 4935(e))
     if not rows:
         return {"answer": "", "sources": []}
     last = max(d.meeting for d in rows)

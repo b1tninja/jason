@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { roomData } from "./meetingroom.fixture";
+import { EXEC_ITEM, SECRET_TITLE, roomData } from "./meetingroom.fixture";
 import { MeetingRoomView, hashQuery, script, stageContent } from "./MeetingRoomView";
 
 function mockFetch(routes: Record<string, (init?: RequestInit, url?: string) => unknown>) {
@@ -53,6 +53,22 @@ describe("MeetingRoomView", () => {
     expect(screen.queryByLabelText("Host panel")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Next item →" })).not.toBeInTheDocument();
     expect(screen.getByText(/You are watching the open session/)).toBeInTheDocument();
+  });
+
+  it("holds the members' stage while the board is in executive session, with the general note only", async () => {
+    window.location.hash = "/meeting-room?audience=owner&date=2026-10-21";
+    const items = roomData().items.slice();
+    items.splice(3, 0, EXEC_ITEM);
+    const note = "member discipline (Civil Code 4935(a), (b))";
+    mockFetch({ "/api/meeting-room": () => roomData({ items, executive: { shown: false, active: true, note: "kept apart", record: null } },
+      { current: 2, executive: { active: true, startedAt: "2026-10-21T19:00:00+00:00", endedAt: "", note } }) });
+    render(<MeetingRoomView />);
+    expect(await screen.findByRole("heading", { name: "The board is in executive session" })).toBeInTheDocument();
+    const stage = screen.getByRole("region", { name: "Meeting stage" });
+    expect(stage).toHaveTextContent(`The board is meeting in executive session to discuss ${note}.`);
+    expect(stage).not.toHaveTextContent("Renew the landscape contract");
+    expect(document.body.textContent).not.toContain(SECRET_TITLE);
+    expect(screen.queryByLabelText("Host panel")).not.toBeInTheDocument();
   });
 
   it("shows a write's refusal and the tool's not-found note", async () => {

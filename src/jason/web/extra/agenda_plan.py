@@ -165,7 +165,7 @@ def agenda_plan(args: Args) -> dict[str, Any]:
             "id": item["id"], "title": item.get("title", ""), "ask": item.get("ask", ""), "session": item.get("agendaSession", ""),
             "authority": item.get("authority", ""), "priority": item.get("priority", ""), "evidence": list(item.get("evidence") or []),
             "evidenceRefs": refs_from_strings(item.get("evidence") or [], data_dir=root),
-            "kind": kind, "include": bool(saved.get("include", False)),
+            "kind": kind, "include": bool(saved.get("include", False)), "subject": str(saved.get("subject", "") or ""),
             "motion": str(saved.get("motion", "") or "") or _packet_motion(packet_md, item),
             "allot": int(saved.get("allot", 10)), "order": int(saved.get("order", n)),
             "packet": list(saved.get("packet") or []), "brief": saved.get("brief"),

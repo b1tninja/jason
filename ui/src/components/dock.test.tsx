@@ -17,7 +17,7 @@ afterEach(() => vi.unstubAllGlobals());
 const counts = { deadlines: 2, tasks: 1 };
 
 describe("DockToolbar", () => {
-  it("shows four pills with red counts for the board, and only Ask for owners", () => {
+  it("shows four pills with red counts for the board, and no dock for owners", () => {
     const { unmount } = render(<DockToolbar open="tasks" onToggle={() => {}} counts={counts} audience="board" />);
     const bar = screen.getByRole("toolbar", { name: "Dock" });
     expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Deadlines2", "Tasks1", "Scratchpad", "Ask"]);
@@ -25,17 +25,18 @@ describe("DockToolbar", () => {
     expect(within(bar).getByRole("button", { name: /Deadlines/ })).toHaveAttribute("aria-expanded", "false");
     unmount();
     render(<DockToolbar open={null} onToggle={() => {}} counts={counts} audience="owner" />);
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask"]);
+    expect(screen.queryByRole("toolbar", { name: "Dock" })).toBeNull();
+    expect(screen.queryAllByRole("button")).toEqual([]);
   });
 
-  it("toggles by id and lists the drawers owners may open", async () => {
+  it("toggles by id; no drawer is the owner view's (Ask reads the board's stores)", async () => {
     const user = userEvent.setup();
     const toggled: string[] = [];
     render(<DockToolbar open={null} onToggle={(id) => toggled.push(id)} counts={{ deadlines: 0, tasks: 0 }} audience="board" />);
     await user.click(screen.getByRole("button", { name: "Scratchpad" }));
     expect(toggled).toEqual(["notes"]);
     expect(screen.queryByLabelText(/overdue/)).not.toBeInTheDocument();
-    expect(DOCK_DRAWERS.filter((d) => d.owner).map((d) => d.id)).toEqual(["ask"]);
+    expect(DOCK_DRAWERS.filter((d) => d.owner).map((d) => d.id)).toEqual([]);
   });
 });
 

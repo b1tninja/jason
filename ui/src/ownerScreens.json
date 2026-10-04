@@ -1,0 +1,13 @@
+{
+  "screens": {
+    "digest": ["owner-digest"],
+    "room": ["meeting-room"],
+    "meetings": ["meetings"],
+    "disclosures": ["calendar"],
+    "reserves": ["reserves"],
+    "records-requests": ["records-requests"],
+    "insurance": ["insurance"],
+    "owner-page": ["community-profile"]
+  },
+  "shell": ["theme"]
+}

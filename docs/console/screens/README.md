@@ -47,7 +47,7 @@ These come from the principles in [README.md](../README.md#principles). They are
   - **None on record:** the store was read, and the thing jason looks for is not in it. Not proof it did not happen. "None on record. A notice posted where jason does not look is not on disk."
 - **Every section shows its freshness and its command** where the loader gives a sync time: when its store was last synced, and a `Command` that refreshes it.
 - **Reads are from disk; live reads are a person's action.** A screen never calls PayHOA, Google, or Zoom on load. A live read (a check, a sync) is a button behind the write guard, or a command.
-- **The owner view.** A new screen starts board-only (`owner: false` in `SCREENS`). An owner version is its own decision.
+- **The owner view.** A new screen starts board-only (`owner: false` in `SCREENS`). An owner version is its own decision, and it needs an owner loader (`OWNER_SOURCES` in `jason.web.extra.owner_view`) and its sources in `ui/src/ownerScreens.json`: in the owner view the server answers no other source.
 - **Restricted material.** Until the private view exists ([security-and-privacy.md](../security-and-privacy.md#data-levels)), a screen that would show P2 or P3 values lists the item by name or date only, with the command that shows it in a terminal.
 
 ## Roles, in short

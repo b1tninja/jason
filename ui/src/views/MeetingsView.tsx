@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, DataTable, DocList, Findings, RemoteView, type Column, type DocRef } from "../components";
+import { Badge, Card, Caveats, DataTable, DocList, Findings, RemoteView, type Audience, type Column, type DocRef } from "../components";
 import { useApi } from "../lib/useApi";
 import type { Meeting, Meetings } from "./types";
 
@@ -28,8 +28,8 @@ function Has({ has }: { has: Meeting["has"] }) {
 
 /** One meeting's documents, a row list per record kind (notice, agendas, minutes, transcript, recordings). A record jason
  * cannot open yet (Zoom's cloud, a Gmail message, PayHOA's mailing log) stays a badge in the table above. */
-export function MeetingDocs({ date }: { date: string }) {
-  const r = useApi<OneMeeting>(`/api/meetings?date=${encodeURIComponent(date)}`);
+export function MeetingDocs({ date, owner = false }: { date: string; owner?: boolean }) {
+  const r = useApi<OneMeeting>(`/api/meetings?date=${encodeURIComponent(date)}${owner ? "&view=owner" : ""}`);
   return (
     <Card title={`Records of ${date}`}>
       <RemoteView r={r}>
@@ -54,9 +54,12 @@ const cols: Column<Meeting>[] = [
   { key: "checks", header: "Checks", render: (r) => <Findings items={r.checks} empty="none" />, value: (r) => r.checks.length },
 ];
 
-/** Every meeting's records and checks (minutes 30 days on, a recording held after the minutes, a transcript into executive session). */
-export function MeetingsView() {
-  const r = useApi<Meetings>("/api/meetings");
+/** Every meeting's records and checks (minutes 30 days on, a recording held after the minutes, a transcript into executive session).
+ * The owner view (`audience="owner"`) reads `GET /api/meetings?view=owner`: each meeting's open-session records on file
+ * (the notice, the agendas, the minutes), with no titles, checks, or schedule gaps, which are the board's. */
+export function MeetingsView({ audience = "board" }: { audience?: Audience } = {}) {
+  const owner = audience === "owner";
+  const r = useApi<Meetings>(owner ? "/api/meetings?view=owner" : "/api/meetings");
   const [flagged, setFlagged] = useState(false);
   const [open, setOpen] = useState("");
   return (
@@ -67,13 +70,14 @@ export function MeetingsView() {
           <button type="button" className={open === m.date ? "" : "primary"} aria-expanded={open === m.date} aria-label={`${open === m.date ? "Close" : "Show"} the records of ${m.date}`}
             onClick={() => setOpen(open === m.date ? "" : m.date)}>{open === m.date ? "Close" : "Records"}</button>
         ) };
+        const shown = owner ? cols.filter((c) => c.key === "date" || c.key === "has") : cols;
         return (
           <div className="stack">
-            <Card title={`Meetings (${d.meetings.length})`} actions={<label><input type="checkbox" checked={flagged} onChange={(e) => setFlagged(e.target.checked)} /> only with checks</label>}>
-              <DataTable rows={rows} columns={[...cols, records]} />
+            <Card title={`Meetings (${d.meetings.length})`} actions={owner ? undefined : <label><input type="checkbox" checked={flagged} onChange={(e) => setFlagged(e.target.checked)} /> only with checks</label>}>
+              <DataTable rows={rows} columns={[...shown, records]} />
             </Card>
-            {open && <MeetingDocs key={open} date={open} />}
-            {!!d.scheduleGaps?.length && (
+            {open && <MeetingDocs key={open} date={open} owner={owner} />}
+            {!owner && !!d.scheduleGaps?.length && (
               <Card title={`Scheduled days with no record (${d.scheduleGaps.length})`}>
                 <p className="row wrap">{d.scheduleGaps.map((g) => <Badge key={g} tone="warn">{g}</Badge>)}</p>
               </Card>

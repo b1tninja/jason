@@ -5,6 +5,13 @@ vote, and the outcome. It is jason's own store (``data/board/decisions.json``), 
 meeting through the UI or a command. jason never decides: it records the board's decision in the board's words,
 and the minutes draft quotes it. A roll-call vote is required for some matters (recording a lien, Civil Code 5673);
 the record keeps every vote so the minutes can show it.
+
+A decision made in executive session is marked ``session="executive session"`` with its Civil Code 4935
+``subject``. The minutes of a board meeting "other than an executive session" go to members (4950(a)), and "Any
+matter discussed in executive session shall be generally noted in the minutes of the immediately following meeting
+that is open to the entire membership" (4935(e)). So the open views (``open_only``: the minutes draft, the
+meeting's page, the decisions screen outside the private view) leave an executive decision out and note it only by
+its subject's general words; its motion, title, and votes are shown only in the private view.
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ class Decision:
     motion: str                               # the motion as made, in the board's words
     item: str = ""                            # the board item id, when there is one
     session: str = "open session"             # or "executive session"
+    subject: str = ""                          # an executive decision's ExecutiveSubject value (CIV 4935(a)-(d))
     mover: str = ""
     second: str = ""
     votes: dict[str, str] = field(default_factory=dict)   # director -> Vote value
@@ -48,7 +56,9 @@ class Decision:
     history: list[str] = field(default_factory=list)
 
 
-EDITABLE = ("title", "motion", "item", "session", "mover", "second", "votes", "outcome", "by", "notes")
+EDITABLE = ("title", "motion", "item", "session", "subject", "mover", "second", "votes", "outcome", "by", "notes")
+OPEN = "open session"
+EXECUTIVE = "executive session"
 OUTCOMES = tuple(o.value for o in Outcome)
 VOTES = tuple(v.value for v in Vote)
 
@@ -84,8 +94,13 @@ def _validate(changes: dict[str, Any]) -> None:
             raise ValueError(f"votes is {{director: one of {', '.join(VOTES)}}}")
     if "outcome" in changes and changes["outcome"] not in ("", *OUTCOMES):
         raise ValueError(f"outcome is one of {', '.join(OUTCOMES)}, or empty while the vote is open")
-    if "session" in changes and changes["session"] not in ("open session", "executive session"):
+    if "session" in changes and changes["session"] not in (OPEN, EXECUTIVE):
         raise ValueError("session is open session or executive session")
+    if "subject" in changes and changes["subject"]:
+        from jason.community.models.meetings import ExecutiveSubject, executive_subject
+
+        if executive_subject(changes["subject"]) is None:
+            raise ValueError(f"subject is one of {', '.join(s.value for s in ExecutiveSubject)} (CIV 4935(a)-(d))")
     if "meeting" in changes:
         date.fromisoformat(str(changes["meeting"]))
 
@@ -108,6 +123,30 @@ def save(data_dir: Path, items: list[Decision]) -> Path:
 def for_meeting(data_dir: Path, day: date | str) -> list[Decision]:
     iso = day if isinstance(day, str) else day.isoformat()
     return [d for d in load(data_dir) if d.meeting == iso]
+
+
+def is_executive(d: Decision) -> bool:
+    """Whether the board made d in executive session."""
+    return d.session == EXECUTIVE
+
+
+def open_only(rows: list[Decision]) -> list[Decision]:
+    """The decisions an open view shows: an executive-session decision is left out (CIV 4935(e), 4950(a))."""
+    return [d for d in rows if not is_executive(d)]
+
+
+def general_notes(rows: list[Decision]) -> list[str]:
+    """The executive decisions among ``rows``, noted generally by their 4935 subjects and never by title or motion:
+    "The board met in executive session to discuss litigation (Civil Code 4935(a))." (4935(e)). One line for all of
+    them; a decision with no subject is counted, not described."""
+    from jason.community.models.meetings import executive_general_note
+
+    shut = [d for d in rows if is_executive(d)]
+    if not shut:
+        return []
+    said = executive_general_note([d.subject for d in shut])
+    return [f"The board met in executive session to discuss {said}." if said else
+            "The board met in executive session; the 4935 subject of what it decided there is not named (the secretary names it)."]
 
 
 def _store_lock(fn):

@@ -11,7 +11,7 @@ The Governance group already runs the board loop:
 | **Meetings and minutes** (`#/meetings`, `ConsoleMeetings`; owner view too) | Each meeting's records on hand (agenda, notice, minutes, transcript, recording) and its checks (no minutes 30 days on, a recording held after the minutes, a transcript into executive session), with scheduled days that have no record |
 | **Next meeting** (`#/meeting`) | One meeting: the last days to give notice (CIV 4920), items by session (executive by title only), the agenda draft, the packet with each item's packet files as jason's copies (`DocumentPreview`) and "Read every packet file from Drive", the minutes frame, and the commands that write each Doc |
 | **Plan a meeting** (`#/agenda`, `ConsoleAgenda`) | The four-step `AgendaWizard`: meeting, ready to act, order and motions (each packet file attached with its `DocumentPreview`: thumbnail, Preview, Read from Drive, Open in Google), notice |
-| **Meeting room** (`#/room`, `ConsoleMeetingRoom`) | `MeetingStage` and `HostPanel`: attendance, motions, roll calls by name, the CIV 4930 guard, executive session as the host's act; draft minutes go to Approvals for the secretary. A packet file "shown on stage" is jason's copy, opened as one logged view and shown inline for the board; with no copy, its preview card. Members (`audience=owner`) see only a card naming it ("members receive the packet with the agenda"). Never a frame of Google |
+| **Meeting room** (`#/room`, `ConsoleMeetingRoom`) | `MeetingStage` and `HostPanel`: attendance, motions, roll calls by name, the CIV 4930 guard, executive session as the host's act; draft minutes go to Approvals for the secretary. A packet file "shown on stage" is jason's copy, opened as one logged view and shown inline for the board; with no copy, its preview card. Members (`audience=owner`) see only a card naming it ("members receive the packet with the agenda"). Never a frame of Google. The executive session is kept apart: see [The meeting room's executive session](#the-meeting-rooms-executive-session) |
 | **Decisions** (`#/decisions`, `ConsoleDecisions`) | A `DecisionBrief` per matter above its `DecisionCard` |
 | **Minutes review** (`#/minutes-review`) | The minutes draft's blanks as a form, the privacy flags beside their lines; a filled copy saved, the draft never edited |
 | **Hearings**, **Rule changes** (`#/hearings`, `#/rules`) | The 5855 and 4360 clocks and the board's decisions on them |
@@ -115,12 +115,30 @@ Each screen shows its documents with `Doc`, fed the loader's `DocRef`s ([doc-com
 - **A file in time, delivery not on record:** "a file in time; its delivery is not on record". A file never meets a notice clock.
 - **The draft claims a quorum the count does not support:** "The draft says a quorum was present; the count does not support it. Correct the attendance, or the statement." Shown first.
 
+## The meeting room's executive session
+
+Civil Code 4935(e), as stored on disk: "Any matter discussed in executive session shall be generally noted in the minutes of the immediately following meeting that is open to the entire membership." The minutes members receive are those of a board meeting "other than an executive session" (4950(a)). The room keeps two records:
+
+| Record | Holds | Level |
+|---|---|---|
+| `meetings/room-<date>.json` (the open record) | Everything in open session; for an executive session only: "The board adjourned to executive session at TIME to discuss SUBJECTS (Civil Code 4935(…))", and "The board met in executive session from TIME to TIME to discuss SUBJECTS (…). The board returned to open session." The executive state keeps the general note, the subjects, and each session's times | P1 |
+| `meetings/room-<date>-executive.json` (the executive record) | Each session's matters (id, 4935 subject, title), and every log entry, motion, roll call, and admission made while the room is in executive session; the chair's free note | P3: the private view only |
+
+- **The general words** are the matter's `ExecutiveSubject` in the statute's words (`EXECUTIVE_GENERAL_TERMS`: litigation; matters relating to the formation of contracts with third parties; member discipline; personnel matters; a member's payment of assessments; whether to foreclose on a lien), with the subdivisions that name it. Never the item's title or id, which can name the member or the matter.
+- **A matter with no 4935 subject cannot go into executive session.** The plan carries it (`subject` on an agenda plan item), or the chair names it in the room's Zoom tab before starting; until every matter has one, "Start executive session" is not offered and the store refuses: "name the 4935 subject first".
+- **Motions in executive session** are the executive record's (`x1`, `x2`, …), voted and decided there, and recorded in `board/decisions.json` with `session: "executive session"` and the matter's `subject`. The meeting page, the decisions screen, the Dock, and the minutes draft leave such a decision out and note it by its subject (`decisions.open_only`, `general_notes`); the decisions screen lists it only in the private view, counting it as held back otherwise. A motion is voted in the session it was moved in; an open motion on the floor is decided before the board adjourns. Polls and transcript suggestions wait for the open session.
+- **The loader** (`GET /api/meeting-room`) answers anyone who opens the room, members included, so outside the private view its `executive` is `{shown: false, record: null, note: "Executive session: the record is kept apart (open the private view to see it)."}` and the executive item carries only `matters` (the general words) and `executiveMatters` (`ref`, `subject`, `general`, `named`). For a signed-in person whose private view is open and whose offices open P3, it adds the record and the matters' ids and titles, and logs the answer in `access/served.jsonl` under the executive file's path.
+- **The host panel:** "Prepare draft minutes" builds the letter from the open log only (`minutesLetter`). While the room is in executive session, the Minutes tab shows the executive log in the private view and the held line otherwise; the Motion and Roll call tabs work on the executive record's motions, so the host opens the private view to run them.
+- **The members' stage** shows the hold card for as long as the room is in executive session, with the general note only.
+- **Room files written before the record was kept apart** are not rewritten: `python -m jason.tasks.meeting_room --check-executive DATE` (or `all`) counts the open entries that fall inside an executive window, never their text, for a person to decide what to do.
+
 ## Privacy
 
-- Executive-session material is listed by date only. The draft never holds it: the model is given the transcript only up to the executive break.
+- Executive-session material is listed by date only. The draft never holds it: the model is given the transcript only up to the executive break, the room's open record only, and an executive decision only by its 4935 subject in general terms.
 - Confidential lines in the open draft (Civil Code 4935 subjects) are shown in full to the Secretary and manager, with the instruction to read each before the draft is shared.
 - A caller shown only by a telephone number is "unidentified caller" with the last four digits.
-- The owner view shows the meetings' records as built, not the watch's assignments or the checks.
+- The owner view shows the meetings' records as built, not the watch's assignments or the checks. Its loader (`meetings?view=owner`) sends each meeting's open-session records on file alone: the notice, the agendas, and the minutes (draft or approved) where they are posted (the PayHOA library, Drive, a PayHOA communication), never confidential. No title (a call's topic can name a hearing), no transcript, recording, chat, or summary, no executive session agenda, no jason draft, no checks or schedule gaps, and no meeting with no member record.
+- The owner view's meeting room is the stage alone (`meeting-room?view=owner`): the open items, the current one, the directors present, and the motions on open items. The executive item is "Executive session" with nothing of its matters; no owner roster, log, polls, admitted names, packet, brief, or commands.
 
 ## Acceptance criteria
 

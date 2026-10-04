@@ -11,7 +11,7 @@ interface Req {
   decisions: Decisions; by: string; recorded: string; updated: string; history: string[]; stages: ClockStage[]; dueBy: string; standing: string; citations: Record<string, string>;
 }
 interface Kind { record: string; label: string; citation: string; meaning: string; retention: string; files: number | null; gap: string }
-interface Source { found?: boolean; count: number; counts: Record<string, number>; requests: Req[]; kinds: Kind[]; vias: string[]; note?: string; caveats: string[] }
+interface Source { found?: boolean; count: number; counts: Record<string, number>; requests: Req[]; kinds: Kind[]; vias: string[]; note?: string; caveats: string[]; produced?: string }
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const label = (kinds: Kind[], record: string) => kinds.find((k) => k.record === record)?.label ?? record.replace(/_/g, " ");
@@ -161,12 +161,16 @@ const OWNER_CAVEATS = [
   "A request recorded here is received by the association; a person answers it. jason produces nothing on its own.",
 ];
 
-/** The owner view: the records members may inspect, and a form that records a request for any of them. */
+export const PRODUCED_LATER = "What the board produced for you will show here once owners have accounts. Until then the association sends it to you directly.";
+
+/** The owner view's records screen: the records members may ask for, a form that records a request for any of them, and
+ * where what the board produced will show. The server sends it the record kinds alone (`?view=owner`,
+ * `jason.web.extra.owner_view.owner_records`): no member's request and no count of the shelf, which is the board's. */
 function OwnerRecords({ raw }: { raw: Source }) {
   const cols: Column<Kind>[] = [
     { key: "label", header: "Record" },
     { key: "citation", header: "Civil Code" },
-    { key: "files", header: "On the shelf", value: (k) => k.files ?? -1, render: (k) => (k.files == null ? <span className="muted">—</span> : <Badge tone={k.files > 0 ? "good" : "neutral"}>{k.files > 0 ? `${k.files} on file` : "not on file"}</Badge>) },
+    { key: "retention", header: "Kept", render: (k) => k.retention || <span className="muted">—</span> },
   ];
   return (
     <div className="stack">
@@ -178,6 +182,9 @@ function OwnerRecords({ raw }: { raw: Source }) {
       <Card title="Record kinds">
         <DataTable rows={raw.kinds} columns={cols} rowKey={(k) => k.record} searchable={false} />
       </Card>
+      <Card title="What the board produced">
+        <p className="muted">{raw.produced || PRODUCED_LATER}</p>
+      </Card>
     </div>
   );
 }
@@ -185,12 +192,12 @@ function OwnerRecords({ raw }: { raw: Source }) {
 /** Members' requests for association records (CIV 5200-5240), against the 5210 clocks, with the decisions a person recorded.
  * In the owner view (`audience="owner"` or `?view=owner`) it is the request form and the record kinds, nothing of other members' requests. */
 export function RecordsRequestsView({ audience }: { audience?: "board" | "owner" } = {}) {
-  const r = useApi<Source>("/api/records-requests");
+  const owner = audience ? audience === "owner" : ownerFromHash();
+  const r = useApi<Source>(owner ? "/api/records-requests?view=owner" : "/api/records-requests");
   const [open, setOpen] = useState("");
   const [patched, setPatched] = useState<Record<string, Req>>({});
   const [added, setAdded] = useState<Req[]>([]);
   const today = new Date();
-  const owner = audience ? audience === "owner" : ownerFromHash();
   return (
     <RemoteView r={r}>
       {(raw) => {

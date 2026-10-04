@@ -10,8 +10,23 @@ export class ApiError extends Error {
   }
 }
 
+/** Whether the console is in the owner view: `?view=owner` in the hash (`#/<screen>?view=owner`). */
+export function ownerView(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hash;
+  return h.includes("?") && new URLSearchParams(h.slice(h.indexOf("?") + 1)).get("view") === "owner";
+}
+
+/** A read as the owner view makes it: every `/api/<source>` read carries `view=owner`, so the server answers it from
+ * the owner loaders alone (`jason.web.extra.owner_view`) and refuses a source that has none. The session is not a
+ * source. Outside the owner view, and for a path that already says its view, the path is unchanged. */
+export function forView(path: string, owner: boolean = ownerView()): string {
+  if (!owner || !path.startsWith("/api/") || path.startsWith("/api/session") || /[?&]view=/.test(path)) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}view=owner`;
+}
+
 export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(path, { signal, headers: { Accept: "application/json" } });
+  const res = await fetch(forView(path), { signal, headers: { Accept: "application/json" } });
   let body: unknown = null;
   try {
     body = await res.json();

@@ -17,9 +17,14 @@ import { RollCall, outcome, type Threshold } from "./RollCall";
 
 export interface PacketFile { id?: string; name: string; kind?: string; url?: string; ref?: string; real?: boolean }
 export interface DecisionBriefData { question: string; criteria: string[]; options: { label: string; values: string[] }[]; facts?: string[] }
+/** One executive matter as the loader gives it: its place (`ref`) and its Civil Code 4935 subject in general terms;
+ * `id` and `title` only in the private view. A matter with no subject (`named` false) cannot go into executive session. */
+export interface ExecutiveMatter { ref: string; subject: string; general: string; named: boolean; id?: string; title?: string }
 export interface AgendaItem {
   id: string; kind: string; label: string; title: string; facts: string[]; motion: string; threshold: Threshold | string; recused: string[];
-  allot: number; packet: PacketFile[]; brief: DecisionBriefData | null; session: string; matters?: string[]; suggestion?: string;
+  allot: number; packet: PacketFile[]; brief: DecisionBriefData | null; session: string;
+  /** The executive item's matters, in the 4935 subjects' general words only (never a title; CIV 4935(e)). */
+  matters?: string[]; executiveMatters?: ExecutiveMatter[]; unnamed?: number; subjectNote?: string; suggestion?: string;
 }
 export interface MotionTally { aye: number; no: number; abstain: number; recused: number; recusedNames: string[]; voters: string[]; needs: number; answered: boolean; state: "open" | "carries" | "fails"; line: string }
 export interface Motion {
@@ -30,7 +35,9 @@ export interface LogEntry { at: string; title: string; tone?: "neutral" | "good"
 export interface RoomRecord {
   date: string; directors: string[]; current: number; presenter: "jason" | "chair"; view: "host" | "shared"; mode: "co-host" | "host" | "portal";
   attendance: Record<string, "present" | "absent" | "remote">; calledToOrder: string; openForum: { count: number; limitMinutes: number };
-  motions: Motion[]; log: LogEntry[]; executive: { active: boolean; startedAt: string; endedAt: string; note: string };
+  motions: Motion[]; log: LogEntry[];
+  /** The open record's executive state: the general note and times only (the record itself is `MeetingRoomData.executive`). */
+  executive: { active: boolean; startedAt: string; endedAt: string; note: string; subjects?: string[]; sessions?: { startedAt: string; endedAt: string; subjects: string[] }[] };
   polls: { at: string; question: string; results: Record<string, number>; note: string }[]; admitted: string[];
   transcriptSuggestions: { at: string; text: string; who?: string; state: "suggested" | "added" | "dismissed" }[];
   adjournedAt: string; present: string[]; quorum: number; history: string[];
@@ -40,6 +47,35 @@ export interface MeetingRoomData {
   decisions: unknown[]; plan: { found: boolean; count: number }; roster: { synced: string; count: number; rows: { name: string; unit: string }[]; note: string };
   offAgendaPaths: { path: string; text: string }[]; zoom: { commands: Record<string, string>; admitCommand: string; note: string };
   commands: Record<string, string>; minutesKey: string; notes: string[]; caveats: string[];
+  /** The executive record (`meetings/room-<date>-executive.json`, P3): `record` only when the server found this viewer's
+   * private view open; otherwise null with `note` saying it is kept apart. Never sent to a member audience. */
+  executive?: ExecutiveShown;
+}
+export interface ExecutiveRecord {
+  date: string; log: LogEntry[]; motions: Motion[]; admitted: string[];
+  sessions: { startedAt: string; endedAt: string; matters: { id: string; subject: string; title: string }[] }[];
+}
+export interface ExecutiveShown { shown: boolean; active: boolean; note: string; record: ExecutiveRecord | null }
+
+/** What the room says where the executive record would be, outside the private view. */
+export const EXECUTIVE_HELD = "Executive session: the record is kept apart (open the private view to see it).";
+
+/** The subjects Civil Code 4935(a)-(d) allows, in the statute's words (`ExecutiveSubject`, `EXECUTIVE_GENERAL_TERMS`). */
+export const EXECUTIVE_SUBJECTS: { value: string; words: string; cite: string }[] = [
+  { value: "litigation", words: "litigation", cite: "4935(a)" },
+  { value: "formation_of_contracts", words: "matters relating to the formation of contracts with third parties", cite: "4935(a)" },
+  { value: "member_discipline", words: "member discipline", cite: "4935(a), (b)" },
+  { value: "personnel", words: "personnel matters", cite: "4935(a)" },
+  { value: "assessment_payment", words: "a member's payment of assessments", cite: "4935(a), (c)" },
+  { value: "foreclosure", words: "whether to foreclose on a lien", cite: "4935(d)" },
+];
+
+/** The room as the host acts on it: in executive session, the executive record's motions in place of the open ones
+ * (only when the private view shows them; otherwise none). */
+export function sessionRoom(data: MeetingRoomData): RoomRecord {
+  const r = data.room;
+  if (!r.executive.active) return r;
+  return { ...r, motions: data.executive?.record?.motions ?? [] };
 }
 /** What a person's action sends to POST /api/write/meeting-room/<date>; the view adds `by` and `directors`. Resolves to
  * whether the store took it: a refusal is shown by the view, and a sequence of actions stops at the first one refused. */
@@ -298,24 +334,42 @@ const hhmm = (iso: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour
 
 export function motionFor(room: RoomRecord, item: AgendaItem | undefined): Motion | undefined {
   if (!item) return undefined;
-  const mine = room.motions.filter((m) => m.itemId === item.id);
+  // The executive item's motions are the executive record's (ids x1, x2, …), each on one of its matters.
+  const mine = room.motions.filter((m) => m.itemId === item.id || (item.kind === "exec" && m.id.startsWith("x")));
   return mine.find((m) => !m.result) ?? mine[mine.length - 1];
 }
 
-/** The minutes as the room recorded them: the roster and the quorum, then each logged line with its time, then the executive note. */
+/** The open minutes as the room recorded them: the roster and the quorum, then each line of the OPEN log with its time.
+ * Built from `data.room.log` only, never from the executive record or an item's title: the open log already carries
+ * the executive session's general note (its 4935 subjects in general terms), its times, and the return, which is all
+ * 4935(e) asks ("generally noted in the minutes"); members receive minutes "other than an executive session" (4950(a)). */
 export function minutesLetter(data: MeetingRoomData, legal: string): MinutesLetter {
   const r = data.room;
   const absent = r.directors.filter((n) => !r.present.includes(n));
   const roster = `Present: ${r.present.join(", ") || "none recorded"}.${absent.length ? ` Absent: ${absent.join(", ")}.` : ""}`;
-  const exec = data.items.find((i) => i.kind === "exec");
   return {
     key: data.minutesKey, kind: "Draft minutes", title: `Minutes of the open meeting of the board, ${data.date} (draft)`, date: data.date,
     to: "Board, for approval at the next meeting; members on request (CIV 4950)", via: "Drive and the members' portal", approver: "the secretary",
     signoff: `Secretary, ${legal}`, sentCommand: data.commands.minutesDraft ?? "",
     body: [`Open meeting of the board of directors, ${data.date}. ${roster} A quorum is ${data.quorum} directors.`]
-      .concat(r.log.map((l) => `${hhmm(l.at)}. ${l.title}`))
-      .concat(exec?.matters?.length ? [`The board met in executive session to discuss ${exec.matters.join(" and ")} (Civil Code 4935(e)).`] : []),
+      .concat(r.log.map((l) => `${hhmm(l.at)}. ${l.title}`)),
   };
+}
+
+/** While the room is in executive session: the executive record's log for a viewer whose private view is open, else the
+ * line that says it is kept apart. Never shown to members (the host panel is the board's). */
+function ExecutiveLog({ data }: { data: MeetingRoomData }) {
+  const record = data.executive?.record;
+  if (!record) return <p className="notice notice-warn" role="note">{data.executive?.note || EXECUTIVE_HELD}</p>;
+  return (
+    <div className="hp-section" role="region" aria-label="Executive session record">
+      <div className="row wrap"><span className="muted">Executive session record</span><Badge tone="warn">private view</Badge></div>
+      {record.log.length ? (
+        <ol className="hp-log">{record.log.map((l, i) => <li key={i} className={l.tone ? `hp-log-${l.tone}` : undefined}><span className="hp-time">{hhmm(l.at)}</span><span>{l.title}</span></li>)}</ol>
+      ) : <p className="muted">Nothing recorded in executive session yet.</p>}
+      <p className="limit">Kept apart from the open minutes (CIV 4935(e), 4950(a)); the open log notes the subject in general terms only.</p>
+    </div>
+  );
 }
 
 /** The host's side of the room: six tabs that read the loader's data and send each change through `onAction`, behind `Confirm`. */
@@ -325,12 +379,15 @@ export function HostPanel({ room: data, onAction, busy, me, shown = {}, onShow, 
   const item = data.items[Math.min(r.current, data.items.length - 1)];
   const canWrite = !busy && !!me.trim();
   const needName = !me.trim() && <p className="notice notice-warn">Enter who is recording (above) before making an entry.</p>;
+  // In executive session the motions and roll calls are the executive record's: shown only in the private view.
+  const acting: MeetingRoomData = r.executive.active ? { ...data, room: sessionRoom(data) } : data;
+  const held = r.executive.active && !data.executive?.record;
   return (
     <aside className="hostpanel" aria-label="Host panel">
       <Tabs active={tab} onChange={setTab} tabs={[
         { id: "agenda", label: "Agenda", content: <AgendaTab data={data} item={item} onAction={onAction} canWrite={canWrite} shown={shown} onShow={onShow} forum={forum} onMotion={() => setTab("motion")} /> },
-        { id: "motion", label: "Motion", content: <MotionTab key={item?.id} data={data} item={item} onAction={onAction} canWrite={canWrite} onFloor={() => setTab("roll")} /> },
-        { id: "roll", label: "Roll call", content: <RollTab key={`${item?.id}:${motionFor(r, item)?.id ?? ""}`} data={data} item={item} onAction={onAction} canWrite={canWrite} /> },
+        { id: "motion", label: "Motion", content: held ? <ExecutiveLog data={data} /> : <MotionTab key={`${item?.id}:${r.executive.active}`} data={acting} item={item} onAction={onAction} canWrite={canWrite} onFloor={() => setTab("roll")} /> },
+        { id: "roll", label: "Roll call", content: <RollTab key={`${item?.id}:${motionFor(acting.room, item)?.id ?? ""}`} data={acting} item={item} onAction={onAction} canWrite={canWrite} /> },
         { id: "packet", label: "Packet", content: <PacketTab item={item} shown={shown} onShow={onShow} /> },
         { id: "minutes", label: "Minutes", content: <MinutesTab data={data} onAction={onAction} canWrite={canWrite} onMinutes={onMinutes} legal={legal} /> },
         { id: "zoom", label: "Zoom", content: <ZoomTab data={data} item={item} onAction={onAction} canWrite={canWrite} /> },
@@ -405,6 +462,9 @@ function MotionTab({ data, item, onAction, canWrite, onFloor }: TabProps & { onF
   const [mover, setMover] = useState("");
   const [second, setSecond] = useState("");
   const [recused, setRecused] = useState<string[]>(item?.recused ?? []);   // the panel keys this tab by item, so a new item resets the draft
+  // In executive session (private view), a motion is on one of the matters: its decision is recorded under that matter.
+  const matters = r.executive.active ? (item?.executiveMatters ?? []).filter((m) => m.id) : [];
+  const [matter, setMatter] = useState(matters[0]?.id ?? "");
   if (!item || item.kind === "call" || item.kind === "forum") {
     return <p className="muted">{item?.kind === "call" ? "Take attendance in Roll call. The board has no motion during the call to order." : "The board takes no action during open forum (CIV 4930(a))."}</p>;
   }
@@ -422,6 +482,11 @@ function MotionTab({ data, item, onAction, canWrite, onFloor }: TabProps & { onF
         {COMMON_MOTIONS.map((m) => <button key={m.id} className="hp-chip" aria-pressed={tpl === m.id} onClick={() => { setTpl(m.id); setText(m.id === defaultTpl && item.motion ? item.motion : m.text); }}>{m.label}</button>)}
       </div>
       {(tplObj.note || tplObj.cite) && <p className="muted">{[tplObj.note, tplObj.cite].filter(Boolean).join(" ")}</p>}
+      {matters.length > 0 && (
+        <label className="hp-field">Matter (executive session) <select value={matter} onChange={(e) => setMatter(e.target.value)}>
+          {matters.map((m) => <option key={m.id} value={m.id}>{m.title || m.general}</option>)}
+        </select></label>
+      )}
       <label className="hp-field">Motion <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} /></label>
       <div className="grid-2 hp-grid">
         <label className="hp-field">Moved by <select value={mover} onChange={(e) => setMover(e.target.value)}><option value="">choose</option>{movers.map((n) => <option key={n}>{n}</option>)}</select></label>
@@ -432,8 +497,8 @@ function MotionTab({ data, item, onAction, canWrite, onFloor }: TabProps & { onF
       </fieldset>
       <div className="row wrap">
         {ready ? (
-          <Confirm busy={!canWrite} onConfirm={async () => { if (await onAction("motion_draft", { itemId: item.id, title: item.title, text: text.trim(), mover, second, recused, threshold })) onFloor(); }}
-            summary={<p>Put on the floor: "{text.trim()}" moved by {mover}, seconded by {second}{recused.length ? `; ${recused.join(", ")} recused` : ""}. Threshold: {threshold}. {here.length} of {r.directors.length} directors present, quorum {data.quorum}. Logged in the minutes.</p>}>
+          <Confirm busy={!canWrite} onConfirm={async () => { const on = matters.find((m) => m.id === matter); if (await onAction("motion_draft", { itemId: on?.id ?? item.id, title: on?.title || item.title, text: text.trim(), mover, second, recused, threshold })) onFloor(); }}
+            summary={<p>Put on the floor: "{text.trim()}" moved by {mover}, seconded by {second}{recused.length ? `; ${recused.join(", ")} recused` : ""}. Threshold: {threshold}. {here.length} of {r.directors.length} directors present, quorum {data.quorum}. {r.executive.active ? "Logged in the executive session record, kept apart from the open minutes." : "Logged in the minutes."}</p>}>
             Put the motion on the floor
           </Confirm>
         ) : <span className="muted">{!quorumOk ? `No quorum: ${here.length} present, ${data.quorum} needed. Take attendance in Roll call.` : "Choose two different directors: one moves, one seconds."}</span>}
@@ -525,6 +590,7 @@ function MinutesTab({ data, onAction, canWrite, onMinutes, legal }: Omit<TabProp
   const suggestions = r.transcriptSuggestions.map((s, i) => ({ ...s, i })).filter((s) => s.state === "suggested");
   return (
     <div className="hp-stack">
+      {(r.executive.active || (data.executive?.record?.log.length ?? 0) > 0) && <ExecutiveLog data={data} />}
       {r.log.length ? (
         <ol className="hp-log">{r.log.map((l, i) => <li key={i} className={l.tone ? `hp-log-${l.tone}` : undefined}><span className="hp-time">{hhmm(l.at)}</span><span>{l.title}</span></li>)}</ol>
       ) : <p className="muted">jason records the call to order, motions, votes, and adjournment as they happen.</p>}
@@ -550,13 +616,62 @@ function MinutesTab({ data, onAction, canWrite, onMinutes, legal }: Omit<TabProp
       <div className="hp-section">
         {onMinutes && (
           <Confirm busy={!canWrite} onConfirm={async () => { const err = await onMinutes(minutesLetter(data, legal)); setStatus(err ? { ok: false, text: err } : { ok: true, text: "Draft minutes queued in Approvals for the secretary. Approving them is a consent item at the next meeting." }); }}
-            summary={<p>Draft the minutes from this log ({r.log.length} entries) as a letter in Approvals, key {data.minutesKey}, approver the secretary. Nothing is posted or sent; the secretary reviews it first.</p>}>
+            summary={<p>Draft the open minutes from the open log ({r.log.length} entries) as a letter in Approvals, key {data.minutesKey}, approver the secretary. The executive session appears only as its general note (CIV 4935(e)). Nothing is posted or sent; the secretary reviews it first.</p>}>
             Prepare draft minutes
           </Confirm>
         )}
         {status && <p className={status.ok ? "notice" : "notice notice-error"}>{status.text}</p>}
         {data.commands.minutesDraft && <Command cmd={data.commands.minutesDraft} note="Drafts the minutes from the meeting's record (open portion only), with blanks for the Secretary; reads disk." />}
       </div>
+    </div>
+  );
+}
+
+/** The general note for a list of 4935 subjects, as the server writes it (`executive_general_note`):
+ * "litigation and member discipline (Civil Code 4935(a), (b))"; empty when none is named. */
+export function generalNote(subjects: string[]): string {
+  const named = [...new Set(subjects)].map((s) => EXECUTIVE_SUBJECTS.find((x) => x.value === s)).filter((x): x is (typeof EXECUTIVE_SUBJECTS)[number] => !!x);
+  if (!named.length) return "";
+  const words = named.map((s) => s.words);
+  const letters = [...new Set(named.flatMap((s) => s.cite.replace("4935", "").match(/[a-d]/g) ?? []))].sort();
+  const said = words.length === 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+  return `${said} (Civil Code 4935(${letters.join("), (")}))`;
+}
+
+/** Start executive session: each executive matter on the agenda goes in by its 4935 subject. A matter the agenda names
+ * none for takes the chair's choice from the six; until every matter has one, nothing starts ("name the 4935 subject
+ * first"). The confirm shows only the general words that go in the open minutes. */
+function ExecutiveStart({ data, onAction, canWrite }: { data: MeetingRoomData; onAction: RoomAction; canWrite: boolean }) {
+  const exec = data.items.find((i) => i.kind === "exec");
+  const matters = exec?.executiveMatters ?? [];
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  if (!matters.length) return <p className="muted">No executive matter is on the agenda. The board adjourns to executive session only on a Civil Code 4935 subject.</p>;
+  const subjectOf = (m: ExecutiveMatter) => m.subject || picked[m.ref] || "";
+  const ready = matters.every((m) => subjectOf(m));
+  const note = generalNote(matters.map(subjectOf).filter(Boolean));
+  return (
+    <div className="hp-stack" role="group" aria-label="Executive matters">
+      <ol className="hp-agenda">
+        {matters.map((m) => (
+          <li key={m.ref}>
+            <span className="hp-time">{m.ref}</span>
+            {m.named ? <span>{m.title ? `${m.title}: ` : ""}{m.general}</span> : (
+              <label className="hp-field">{m.title ? `${m.title}: ` : `Matter ${m.ref}: `}name its 4935 subject
+                <select value={picked[m.ref] ?? ""} onChange={(e) => setPicked({ ...picked, [m.ref]: e.target.value })}>
+                  <option value="">choose</option>
+                  {EXECUTIVE_SUBJECTS.map((s) => <option key={s.value} value={s.value}>{s.words} ({s.cite})</option>)}
+                </select>
+              </label>
+            )}
+          </li>
+        ))}
+      </ol>
+      {ready ? (
+        <Confirm busy={!canWrite} onConfirm={() => onAction("executive_start", { matters: matters.map((m) => ({ ref: m.ref, subject: subjectOf(m) })) })}
+          summary={<p>Log in the open minutes that the board adjourned to executive session to discuss {note}, with the time. Nothing else about these matters goes in the open record. The host pauses the cloud recording and the live transcript and moves the {data.room.present.length} directors present; jason does not control Zoom from here.</p>}>
+          Start executive session
+        </Confirm>
+      ) : <p className="notice notice-warn">{exec?.subjectNote || "name the 4935 subject first"}</p>}
     </div>
   );
 }
@@ -627,17 +742,12 @@ function ZoomTab({ data, item, onAction, canWrite }: TabProps) {
       {item?.kind === "forum" && <p className="muted">When a member has the floor, the host unmutes them for {r.openForum.limitMinutes} minutes.</p>}
       <div className="hp-section">
         <p>Executive session: members leave the room, and the recording and transcript stop. Executive session minutes are not open to inspection (CIV 4935, 5215).</p>
-        {!r.executive.active ? (
-          <Confirm busy={!canWrite} onConfirm={() => onAction("executive_start", { note: item?.matters?.join(" and ") ?? "" })}
-            summary={<p>Log that the board adjourned to executive session{item?.matters?.length ? ` to discuss ${item.matters.join(" and ")}` : ""}. The host pauses the cloud recording and the live transcript and moves the {r.present.length} directors present; jason does not control Zoom from here.</p>}>
-            Start executive session
-          </Confirm>
-        ) : (
-          <Confirm busy={!canWrite} onConfirm={() => onAction("executive_end")} summary={<p>Log that the board returned to open session. The host resumes the recording and the live transcript; the open minutes note the matters generally (CIV 4935(e)).</p>}>
+        {!r.executive.active ? <ExecutiveStart data={data} onAction={onAction} canWrite={canWrite} /> : (
+          <Confirm busy={!canWrite} onConfirm={() => onAction("executive_end")} summary={<p>Log that the board returned to open session, with the times. The open minutes note the matters only in general terms: {r.executive.note || "their 4935 subjects"} (CIV 4935(e)). The host resumes the recording and the live transcript.</p>}>
             Return to open session
           </Confirm>
         )}
-        {r.executive.active && <p className="limit">In executive session since {hhmm(r.executive.startedAt)}. Members wait for the open session to resume.</p>}
+        {r.executive.active && <p className="limit">In executive session since {hhmm(r.executive.startedAt)}. Members wait for the open session to resume. What the board does now is kept in the executive record, apart from the open minutes.</p>}
       </div>
       <p className="muted">{data.zoom.note}</p>
       {data.zoom.commands.recordingPause && (

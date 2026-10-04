@@ -191,10 +191,20 @@ describe("Reserves", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
-  it("the owner view leaves the study out", async () => {
-    serve(IN);
+  it("the owner view is the reserve funding summary from the owner loader: no borrowings, no study card", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ found: true, note: "", caveats: ["The figures are the preparer's estimates."],
+        summary: { fiscalYear: 2099, preparer: "Example Reserve Co", prepared: "2098-09-01", percentFunded: 0.452, projectedEndOfYearCents: 45_200_00, requiredEndOfYearCents: 100_000_00, annualContributionCents: 12_000_00 },
+        years: [{ fiscalYear: 2098, percentFunded: 0.41 }, { fiscalYear: 2099, percentFunded: 0.452 }] }), { status: 200 });
+    }));
     render(<ReservesView audience="owner" />);
-    expect(await screen.findByRole("button", { name: `Open ${notice.name}` })).toBeInTheDocument();
+    expect(await screen.findByText("Reserve funding summary, fiscal year 2099")).toBeInTheDocument();
+    expect(urls).toEqual(["/api/reserves?view=owner"]);
+    expect(screen.getAllByText("45.2%").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Borrowings from the reserve/)).toBeNull();
     expect(screen.queryByText("The reserve study")).toBeNull();
+    expect(screen.queryByRole("button", { name: `Open ${notice.name}` })).toBeNull();
   });
 });

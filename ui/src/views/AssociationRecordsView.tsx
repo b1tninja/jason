@@ -108,9 +108,15 @@ function Instruments() {
               ))}
             </ul>
           </Card>
-          <Card title={`Liens the association placed (${d.placed.length})`}>
-            <DataTable rows={d.placed} columns={lifecycleCols} />
-          </Card>
+          {d.placedHeld ? (
+            <Card title={`Liens: in the private view (${d.placedHeld})`}>
+              <p className="muted">{d.placedNote || "Liens the association placed are delinquency detail (restricted): open the private view to list them."}</p>
+            </Card>
+          ) : (
+            <Card title={`Liens the association placed (${d.placed.length})`}>
+              <DataTable rows={d.placed} columns={lifecycleCols} />
+            </Card>
+          )}
           <Card title={`Recorded against the association (${d.against.length})`}>
             <DataTable rows={d.against} columns={lifecycleCols} />
           </Card>
@@ -140,6 +146,9 @@ function InventoryView() {
   );
 }
 
+/** The board's records screen: the 5200 inventory, the governing documents, and the recorded instruments. Not in the
+ * owner view (it is the library's inventory; some records are withheld, CIV 5215): an owner asks through the records
+ * request form. The liens the association placed are listed only in the private view; the server holds them back. */
 export function AssociationRecordsView() {
   const [tab, setTab] = useState("inventory");
   return (

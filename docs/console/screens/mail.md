@@ -5,7 +5,7 @@
 Built screens, each showing its documents with `Doc` ([doc-component.md](../doc-component.md)):
 - **Mail triage** (`#/mail-triage`, `MailTriageView`): the mail brief's lanes (act, review, not scanned), each letter with a person's recorded choice (scan, forward, shred, discard, keep).
 - **Inbox** (`#/inbox`, `InboxView`): the letters to act on and the PayHOA requests pending, among everything waiting on the association.
-- **Insurance** (`#/insurance`, `InsuranceView`) and **renewals** (`#/renewals`, `InsuranceRenewalsView`): each policy against what PayHOA paid and what the mail says, with the notices and the claims the mail acknowledges.
+- **Insurance** (`#/insurance`, `InsuranceView`) and **renewals** (`#/renewals`, `InsuranceRenewalsView`): each policy against what PayHOA paid and what the mail says, with the notices and the claims the mail acknowledges. The owner view of `#/insurance` is the insurance summary (CIV 5300(b)(9)) from its own loader (`insurance?view=owner`): each policy's kind, carrier, term, and deductible when the profile records it; no policy number, premium, standing, letter, notice, finding, or claim.
 
 This spec names the documents those screens show and how. It adds no screen.
 

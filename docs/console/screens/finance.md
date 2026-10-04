@@ -9,7 +9,7 @@ The Money group already covers most of what this spec asked for:
 | Console screen | What it shows | Loaders |
 |---|---|---|
 | **Payments with questions** (`#/payments`, `ConsolePayments`) | The monthly review under CIV 5500: budget against actual with the categories furthest off, each account's reconciliation with its open items, the payments with questions, and the delinquent accounts by standing, marked executive session | `budget`, `reconciliations`, `invoices`, `collections` |
-| **Reserves and budget** (`#/reserves`, `ConsoleReserves`; owner view too) | Each borrowing's 5515 record as a checklist, contributions against the budget, movements nothing explains | `reserves` |
+| **Reserves and budget** (`#/reserves`, `ConsoleReserves`; owner view too) | Each borrowing's 5515 record as a checklist, contributions against the budget, movements nothing explains. The owner view (`OwnerReserves`, `reserves?view=owner`) is the reserve funding summary the budget report carries (CIV 5565, 5570), from the latest study: percent funded, projected and fully funded reserves at year end, the annual contribution, and percent funded over the studies on file. Never the ledger's transfers, borrowings, or memos | `reserves` |
 | **Reserve findings** (`#/reserve-findings`) | The board's 5515 finding per borrowing | `reserve-findings` |
 | **Liens and delinquency** (`#/liens`, `ConsoleLiens`) | The board's step per delinquent account beside its standing | `delinquency` |
 | **Books checks** (`#/books`) | Utility payments against the bills they paid; the treasurer's reports validated against the ledger | `utility-payments`, `ledger-validation` |
@@ -77,7 +77,7 @@ Each document these screens name is a `Doc` fed a `DocRef` from its loader ([doc
 - A file whose name holds two spaces in a row stays a name too, until the evidence address keeps the spaces.
 - A treasurer's report copy the library no longer holds stays its file name.
 
-The owner view of `#/reserves` leaves the study out (Privacy, below).
+The owner view of `#/reserves` is the reserve funding summary alone, from the owner loader: no study card, no borrowings (Privacy, below).
 
 ## Components
 
@@ -100,7 +100,7 @@ The owner view of `#/reserves` leaves the study out (Privacy, below).
 
 - Account numbers by their last four digits only. A full account or routing number is P4 and never in any source these bands read.
 - Delinquency stays on `#/payments` and `#/liens` as built: an executive-session subject (Civil Code 4935(a)), by unit for the manager and treasurer.
-- None of these bands is in the owner view, except the reserve study on `#/reserves` once the board decides what owners see of it.
+- None of these bands is in the owner view. On `#/reserves` the owner view is sent the summary the budget report carries (`reserves?view=owner`), never the ledger's rows; the study itself once the board decides what owners see of it.
 
 ## Acceptance criteria
 

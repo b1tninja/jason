@@ -34,14 +34,53 @@ const cols: Column<Policy>[] = [
   { key: "findings", header: "Findings", render: (r) => <Findings items={r.findings} empty="none" />, value: (r) => r.findings.length },
 ];
 
+/** A policy as the owner loader sends it (`jason.web.extra.owner_view.owner_insurance`): the summary CIV 5300(b)(9) asks for. */
+interface OwnerPolicy { kind: string; building?: string | number | null; carrier: string; termEnd: string | null; terms: { start?: string; end?: string }[]; deductibleCents?: number | null }
+
+const ownerCols: Column<OwnerPolicy>[] = [
+  { key: "kind", header: "Policy", render: (r) => <>{r.kind.replace(/_/g, " ")}{r.building != null && r.building !== "" ? <span className="muted"> bldg {String(r.building)}</span> : null}</> },
+  { key: "carrier", header: "Carrier" },
+  { key: "termEnd", header: "Term ends", value: (r) => r.termEnd ?? "9999", render: (r) => r.termEnd ?? <span className="muted">—</span> },
+  { key: "deductibleCents", header: "Deductible", align: "right", value: (r) => r.deductibleCents ?? -1,
+    render: (r) => (r.deductibleCents != null ? <Money cents={r.deductibleCents} /> : <span className="muted">—</span>) },
+];
+
+/** The owner view of insurance: the insurance summary the budget report carries (CIV 5300(b)(9)), from
+ * `GET /api/insurance?view=owner`. The server sends each policy's kind, carrier, term, and deductible, and nothing of the
+ * policy numbers, premiums, standings, findings, the association's mail, or the claims. */
+function OwnerInsurance() {
+  const r = useApi<{ found?: boolean; note?: string; asOf: string; policies: OwnerPolicy[]; caveats?: string[] }>("/api/insurance?view=owner");
+  return (
+    <RemoteView r={r}>
+      {(d) => (
+        <div className="stack">
+          <Card title={`Policies as of ${d.asOf}`}>
+            <DataTable rows={d.policies} columns={ownerCols} searchable={false} rowKey={(p) => `${p.kind}-${p.building ?? ""}`} />
+          </Card>
+          <Card title="Terms">
+            <Timeline events={d.policies.flatMap((p) => p.terms.filter((t) => t.start).map((t, i) => ({
+              id: `${p.kind}-${p.building ?? ""}-${i}`, date: t.start!, title: <>{p.kind.replace(/_/g, " ")}</>,
+              detail: <>{t.start} to {t.end ?? "?"}</>, tone: "neutral" as const,
+            })))} />
+          </Card>
+          <Caveats items={d.caveats} />
+        </div>
+      )}
+    </RemoteView>
+  );
+}
+
 /** The policy register against what PayHOA paid and what the mail says, with the notices' and claim letters' scans as
  * rows (P2: each View is one logged view). jason buys, renews, cancels, and claims nothing.
  *
- * The owner view (`audience="owner"`) is the policy summary alone: a member sees the policies and their terms, not the
- * association's mail, so the letters column, the notices, and the claims the mail acknowledges are left out entirely. */
+ * The owner view (`audience="owner"`) is `OwnerInsurance`, the policy summary alone, from the owner loader. */
 export function InsuranceView({ audience = "board" }: { audience?: Audience } = {}) {
+  if (audience === "owner") return <OwnerInsurance />;
+  return <BoardInsurance />;
+}
+
+function BoardInsurance() {
   const r = useApi<Insurance>("/api/insurance");
-  const owner = audience === "owner";
   return (
     <RemoteView r={r}>
       {(d) => {
@@ -51,9 +90,9 @@ export function InsuranceView({ audience = "board" }: { audience?: Audience } = 
         return (
           <div className="stack">
             <Card title={`Policies as of ${d.asOf}`}>
-              <DataTable rows={d.policies} columns={owner ? cols.filter((c) => c !== lettersCol) : cols} searchable={false} />
-              {!owner && notices.length > 0 && <DocList docs={notices} variant="row" title="Notices in the mail" />}
-              {!owner && <HeldLetters letters={heldOf(letters)} />}
+              <DataTable rows={d.policies} columns={cols} searchable={false} />
+              {notices.length > 0 && <DocList docs={notices} variant="row" title="Notices in the mail" />}
+              <HeldLetters letters={heldOf(letters)} />
             </Card>
             <Card title="Terms">
               <Timeline events={d.policies.flatMap((p) => p.terms.filter((t) => t.start).map((t, i) => ({
@@ -61,7 +100,7 @@ export function InsuranceView({ audience = "board" }: { audience?: Audience } = 
                 detail: <>{t.start} to {t.end ?? "?"}{t.paidCents != null && <> · <Money cents={t.paidCents} /></>}</>, tone: t.paidCents ? "good" : "warn",
               })))} />
             </Card>
-            {!owner && d.claims.length > 0 && (
+            {d.claims.length > 0 && (
               <Card title={`Claims the mail acknowledges (${d.claims.length})`}>
                 <DataTable rows={d.claims} columns={[{ key: "received", header: "Received" }, { key: "claimNumber", header: "Claim" }, { key: "dateOfLoss", header: "Date of loss" }, { key: "kind", header: "Letter" }]} />
                 {claimLetters.length > 0 && <DocList docs={claimLetters} variant="row" title="Claim letters" />}

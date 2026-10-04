@@ -45,6 +45,9 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     app = Flask(__name__, static_folder=None)
     token = guard.install(app, hosts=hosts)
     signin.install(app, sign_in or signin.default_sign_in())
+    from jason.web.extra import owner_view
+
+    owner_view.install(app, sources)        # ?view=owner: only the owner loaders answer, ahead of every other hook
     access.install(app, sources)            # the private view, and confidential listings held back until it is open
     app.config["JASON_ALLOW_APPLY"] = bool(allow_apply and approvals_live is not None)
     app.register_blueprint(approvals_routes(live=approvals_live, allow_apply=allow_apply, writes=approvals_writes))

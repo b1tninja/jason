@@ -8,10 +8,10 @@ The Records group already shows the records' standing:
 
 | Console screen | What it shows | Loaders |
 |---|---|---|
-| **Records (CIV 5200)** (`#/records`, `ConsoleRecords`; owner view too) | Each 5200 record with its citation, retention, where the specification keeps it, how many files are there, and its gap; the governing documents, each with its recorded PDF and its Drive file previewed side by side (`DocumentPreview`: "Recorded copy" first, then "Drive copy") and "Read every governing document from Drive"; the governing instruments as a timeline; the developer deliveries found and missing; liens the association placed; filings against it | `association-records`, `records-inventory`, `governing-documents` |
+| **Records (CIV 5200)** (`#/records`, `ConsoleRecords`; the board's only) | Each 5200 record with its citation, retention, where the specification keeps it, how many files are there, and its gap; the governing documents, each with its recorded PDF and its Drive file previewed side by side (`DocumentPreview`: "Recorded copy" first, then "Drive copy") and "Read every governing document from Drive"; the governing instruments as a timeline; the developer deliveries found and missing; liens the association placed, listed only in the private view (outside it, "Liens: in the private view" with their count: the server holds the rows back, `placedHeld`); filings against it | `association-records`, `records-inventory`, `governing-documents` |
 | **Document ingestion** (`#/ingestion`) | Files by classification method and by kind, the records covered, the unclassified list; what each recorded copy says about itself | `library-status`, `document-readings` |
 | **Leads** (`#/leads`) | Everything unpinned, in one list: unclassified files, records gaps, supersessions the specification does not pin, missing deliveries | `leads` |
-| **Records requests** (`#/records-requests`) | Member requests for records with their 5210 clocks and the board's decisions | `records-requests` |
+| **Records requests** (`#/records-requests`; "Records" in the owner view) | Member requests for records with their 5210 clocks and the board's decisions. The owner view is the records screen: the request form (`RequestForm`), the record kinds a member may ask for with their citation and retention, and "What the board produced", which shows once owners have accounts. Its loader in the owner view (`records-requests?view=owner`) sends the kinds alone: no member's request, no count of the shelf. An owner link to `#/records` lands here | `records-requests` |
 
 `GET /api/library` (`?kind=`, `?record=`, `?period=`, `?words=`, `?confidential=1`) already searches the classified library; the onboarding screen uses it to mark a received item.
 
@@ -86,6 +86,8 @@ The Records group already shows the records' standing:
 - File names can name owners. Search results show names to the board view only.
 - A confidential file is held back and counted (`include_confidential=False`, the default). Showing it is a deliberate request (`?confidential=1`), and, once the private view exists, opened there and logged.
 - Restricted 5200 records (the membership list, executive-session minutes, ballots) are listed by kind only.
+- The liens the association placed are delinquency detail beyond the unit (P3): the loader lists them only while the person's private view is open, and otherwise sends their count alone.
+- The owner view has no library and no records inventory: some records are withheld (CIV 5215). Its records screen is the request form, and its loader sends the record kinds alone ([security-and-privacy.md](../security-and-privacy.md#roles)).
 - Search words can name a person. The screen's route never carries them; the loader takes them as a query today, so a POST form of the search is the safer shape ([security-and-privacy.md](../security-and-privacy.md#urls)).
 
 ## Acceptance criteria

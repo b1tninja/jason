@@ -99,6 +99,43 @@ class ExecutiveSubject(Enum):
     FORECLOSURE = "foreclosure"          # a decision to foreclose on a lien (5705(b))
 
 
+# Each subject in the statute's own words, and the subdivisions of Civil Code 4935 that name it. 4935(e): "Any matter
+# discussed in executive session shall be generally noted in the minutes of the immediately following meeting that is
+# open to the entire membership." The open record notes a matter by these words and never by its item's title, which
+# can name the member, the party, or the matter.
+EXECUTIVE_GENERAL_TERMS: dict[ExecutiveSubject, tuple[str, tuple[str, ...]]] = {
+    ExecutiveSubject.LITIGATION: ("litigation", ("a",)),
+    ExecutiveSubject.CONTRACTS: ("matters relating to the formation of contracts with third parties", ("a",)),
+    ExecutiveSubject.DISCIPLINE: ("member discipline", ("a", "b")),
+    ExecutiveSubject.PERSONNEL: ("personnel matters", ("a",)),
+    ExecutiveSubject.ASSESSMENTS: ("a member's payment of assessments", ("a", "c")),
+    ExecutiveSubject.FORECLOSURE: ("whether to foreclose on a lien", ("d",)),
+}
+
+
+def executive_subject(value: Any) -> ExecutiveSubject | None:
+    """The ``ExecutiveSubject`` a stored word names, or None for an empty or unknown word (a miss stays a miss)."""
+    if isinstance(value, ExecutiveSubject):
+        return value
+    try:
+        return ExecutiveSubject(str(value or "").strip())
+    except ValueError:
+        return None
+
+
+def executive_general_note(subjects: Any) -> str:
+    """The general words for ``subjects`` with their citation, as the open minutes note them (Civil Code 4935(e)):
+    "litigation and member discipline (Civil Code 4935(a), (b))". Empty when no subject is named."""
+    named = [s for s in (executive_subject(v) for v in subjects or ()) if s is not None]
+    named = list(dict.fromkeys(named))
+    if not named:
+        return ""
+    words = [EXECUTIVE_GENERAL_TERMS[s][0] for s in named]
+    letters = sorted({x for s in named for x in EXECUTIVE_GENERAL_TERMS[s][1]})
+    said = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+    return f"{said} (Civil Code 4935({'), ('.join(letters)}))"
+
+
 @dataclass(frozen=True)
 class AgendaItem:
     number: str
@@ -1326,7 +1363,8 @@ register(MisfiledMinutesModel())
 register(ExecutiveSessionModel())
 register(CommitteeReportModel())
 
-__all__ = ["MeetingType", "MeetingBody", "MinutesLayout", "Outcome", "ExecutiveSubject", "AgendaItem", "MeetingHeader", "Action",
+__all__ = ["MeetingType", "MeetingBody", "MinutesLayout", "Outcome", "ExecutiveSubject", "EXECUTIVE_GENERAL_TERMS",
+           "executive_subject", "executive_general_note", "AgendaItem", "MeetingHeader", "Action",
            "Agenda", "Minutes", "ExecutiveSession", "CommitteeReport", "Proposal", "AgendaModel", "MinutesModel",
            "MisfiledMinutesModel", "ExecutiveSessionModel", "CommitteeReportModel", "normalize", "parse_items", "meeting_header",
            "meeting_title", "actions_in", "classify_executive", "library_rows", "library_text", "meeting_files", "notice_mailings"]

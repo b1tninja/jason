@@ -67,4 +67,5 @@ def test_minutes_prompt_quotes_recorded_decisions():
     # The prompt builder is pure text; exercise it without the Zoom stores by loading only that function.
     src = Path("src/jason/tasks/minutes_draft.py").read_text(encoding="utf-8")
     assert "Decisions the Secretary recorded" in src
-    assert re.search(r'"decisions": \[as_dict\(d\) for d in for_meeting\(data_dir, day\)\]', src)
+    # Only the open decisions reach the model; an executive one is noted by its 4935 subject (CIV 4935(e)).
+    assert re.search(r'"decisions": \[as_dict\(d\) for d in open_only\(recorded\)\]', src)

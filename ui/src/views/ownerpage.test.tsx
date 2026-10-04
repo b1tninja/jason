@@ -53,8 +53,11 @@ describe("RecordsRequestsView for owners", () => {
       requests: [{ id: "r1", receivedOn: "2026-09-24", unit: "Unit 31", via: "email", records: ["minutes"], purpose: "", membershipList: false, years: [], decisions: { purposeAdequate: null, withheld: [], producedOn: "", inspectedOrCopies: "", feeCents: 0, note: "" }, by: "", recorded: "", updated: "", history: [], stages: [], dueBy: "2026-10-08", standing: "open", citations: {} }] });
     render(<RecordsRequestsView audience="owner" />);
     expect(await screen.findByText("Request a record")).toBeInTheDocument();
+    expect(String(vi.mocked(fetch).mock.calls[0][0])).toBe("/api/records-requests?view=owner");   // the owner loader
     expect(screen.getByRole("button", { name: "Send request" })).toBeDisabled();
-    expect(screen.getByText("3 on file")).toBeInTheDocument();
+    expect(screen.queryByText("3 on file")).toBeNull();                                             // the shelf is the board's
+    expect(screen.getByText("What the board produced")).toBeInTheDocument();
+    expect(screen.getByText(/once owners have accounts/)).toBeInTheDocument();
     expect(screen.queryByText("Unit 31")).toBeNull();
     expect(screen.queryByText(/Records requests \(/)).toBeNull();
     expect(screen.queryByText("Receive a request")).toBeNull();

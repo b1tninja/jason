@@ -30,6 +30,9 @@ export interface AssociationRecords {
   governing: Governing[];
   deliveries: { delivery: string; found: string[]; missing: string[] }[];
   placed: Lifecycle[]; against: Lifecycle[];
+  /** Liens the association placed are delinquency detail (P3): outside the private view the server holds them back,
+   * sends `placed` empty, and counts them here. */
+  placedHeld?: number; placedNote?: string;
   notices: { number: string; recorded: string; filing: string }[];
   unplaced: { number: string; recorded: string; filing: string; recordedBy: string }[];
 }

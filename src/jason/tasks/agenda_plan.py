@@ -2,8 +2,8 @@
 
 ``data/meetings/plan-<date>.json`` holds, for one meeting date, the basics a person typed (start time, format under
 Civil Code 4926, location, join instructions, dial-in, help contact), each candidate board item's place on the agenda
-(whether it is included, its kind, the proposed motion, the minutes allotted, its order, and the Drive files in its
-packet), the decision brief a person wrote for it (the question, the criteria, the options, and the facts on file),
+(whether it is included, its kind, the proposed motion, the minutes allotted, its order, the Drive files in its
+packet, and for an executive matter its Civil Code 4935 subject), the decision brief a person wrote for it (the question, the criteria, the options, and the facts on file),
 and the Zoom details entered by hand. None of it comes from the profile and none of it is jason's judgment: the
 readiness checks are computed by the loader (``jason.web.extra.agenda_plan``) from this plan and the meeting, and a
 brief never carries a recommendation. ``update`` refuses a body that tries to add one. jason decides nothing here; it
@@ -22,7 +22,7 @@ STORE = Path("meetings")
 FORMATS = ("in person", "hybrid", "teleconference")          # CIV 4090(b), 4926
 KINDS = ("consent", "discussion", "action", "executive")
 BASICS = ("start", "format", "location", "join", "dialIn", "help")
-ITEM_FIELDS = ("include", "kind", "motion", "allot", "order", "packet", "brief")
+ITEM_FIELDS = ("include", "kind", "motion", "allot", "order", "packet", "brief", "subject")
 BRIEF_FIELDS = ("question", "criteria", "options", "facts")
 PACKET_FIELDS = ("id", "name", "kind", "url")
 ZOOM_FIELDS = ("topic", "joinUrl", "dialIn")
@@ -162,6 +162,16 @@ def _item(raw: Any, name: str) -> dict[str, Any]:
             out[k] = _packet(v, f"{name}.packet")
         elif k == "brief":
             out[k] = _brief(v, f"{name}.brief")
+        elif k == "subject":
+            # An executive matter's Civil Code 4935 subject (``ExecutiveSubject``): the open minutes note the matter by
+            # it, never by the item's title ("generally noted in the minutes", 4935(e)). Empty clears it.
+            from jason.community.models.meetings import ExecutiveSubject
+
+            word = str(v or "").strip()
+            choices = [s.value for s in ExecutiveSubject]
+            if word and word not in choices:
+                raise ValueError(f"{name}.subject is one of {', '.join(choices)} (CIV 4935(a)-(d))")
+            out[k] = word
     return out
 
 

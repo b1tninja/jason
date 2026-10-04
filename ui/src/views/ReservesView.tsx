@@ -48,16 +48,71 @@ const moveCols: Column<Move>[] = [
   { key: "memo", header: "Memo", value: (m) => m.memo || m.description },
 ];
 
-/** The reserves: each borrowing's 5515 record, contributions against the budget, and the movements nothing explains.
- * The board's view adds the latest reserve study as a card; the owner view leaves it out until the board decides what
- * owners see of it (docs/console/screens/finance.md, Privacy). */
+interface ReserveSummary {
+  fiscalYear?: number | null; preparer?: string; prepared?: string | null; level?: string | null;
+  beginningBalanceCents?: number | null; annualContributionCents?: number | null; requiredEndOfYearCents?: number | null;
+  projectedEndOfYearCents?: number | null; percentFunded?: number | null; sufficientFor30Years?: boolean | null; components?: number;
+}
+export interface OwnerReservesData {
+  found?: boolean; note?: string; summary: ReserveSummary | null;
+  years: { fiscalYear?: number | null; percentFunded?: number | null; projectedEndOfYearCents?: number | null; requiredEndOfYearCents?: number | null }[];
+  caveats?: string[];
+}
+
+const pct = (v?: number | null) => (v == null ? "—" : `${Math.round(v * 1000) / 10}%`);
+const cents = (v?: number | null) => (v == null ? <span className="muted">—</span> : <Money cents={v} />);
+
+/** The owner view of the reserves: the reserve funding summary members receive with the budget report (CIV 5565, 5570),
+ * from the latest study (`GET /api/reserves?view=owner`). Not the ledger's transfers, borrowings, or memos: those are
+ * the board's, and a member asks for the reserve records through the records request form. */
+export function OwnerReserves() {
+  const r = useApi<OwnerReservesData>("/api/reserves?view=owner");
+  return (
+    <RemoteView r={r}>
+      {(d) => (
+        <div className="stack">
+          {d.summary && (
+            <Card title={`Reserve funding summary${d.summary.fiscalYear ? `, fiscal year ${d.summary.fiscalYear}` : ""}`}>
+              <div className="stats">
+                <Stat label="Percent funded" value={pct(d.summary.percentFunded)} />
+                <Stat label="Projected reserves, year end" value={cents(d.summary.projectedEndOfYearCents)} />
+                <Stat label="Fully funded, year end" value={cents(d.summary.requiredEndOfYearCents)} />
+                <Stat label="Annual contribution" value={cents(d.summary.annualContributionCents)} />
+              </div>
+              <p className="muted">{d.summary.preparer ? `Prepared by ${d.summary.preparer}` : "Preparer not read"}{d.summary.prepared ? ` on ${d.summary.prepared}` : ""}.</p>
+            </Card>
+          )}
+          {d.years.length > 1 && (
+            <Card title="Over the studies on file">
+              <DataTable rows={d.years} searchable={false} rowKey={(y) => String(y.fiscalYear ?? "")} columns={[
+                { key: "fiscalYear", header: "Fiscal year", value: (y) => y.fiscalYear ?? 0 },
+                { key: "percentFunded", header: "Percent funded", align: "right", value: (y) => y.percentFunded ?? -1, render: (y) => pct(y.percentFunded) },
+                { key: "projectedEndOfYearCents", header: "Projected", align: "right", value: (y) => y.projectedEndOfYearCents ?? -1, render: (y) => cents(y.projectedEndOfYearCents) },
+                { key: "requiredEndOfYearCents", header: "Fully funded", align: "right", value: (y) => y.requiredEndOfYearCents ?? -1, render: (y) => cents(y.requiredEndOfYearCents) },
+              ]} />
+            </Card>
+          )}
+          <Caveats items={d.caveats} />
+        </div>
+      )}
+    </RemoteView>
+  );
+}
+
+/** The reserves: each borrowing's 5515 record, contributions against the budget, and the movements nothing explains,
+ * with the latest reserve study as a card. The owner view is `OwnerReserves`, the summary the budget report carries. */
 export function ReservesView({ audience = "board" }: { audience?: Audience } = {}) {
+  if (audience === "owner") return <OwnerReserves />;
+  return <BoardReserves />;
+}
+
+function BoardReserves() {
   const r = useApi<Reserves>("/api/reserves");
   return (
     <RemoteView r={r}>
       {(d) => (
         <div className="stack">
-          {d.study && audience !== "owner" && (
+          {d.study && (
             <Card title="The reserve study">
               <p className="muted">The latest study on disk, the one the funding plan is read from. Its figures are the preparer's estimates; the board adopts the plan.</p>
               <Doc doc={d.study} variant="card" />

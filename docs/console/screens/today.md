@@ -4,7 +4,18 @@ Bands added to `#/digest` · phase 2 · CLI: `jason attention`
 
 ## In the console
 
-The console's first screen is **Board digest** (`#/digest`, `ConsoleDigest`; "Overview" in the owner view). It renders `board_digest` (`GET /api/board-digest`) through `DigestView`. Beside it:
+The console's first screen is **Board digest** (`#/digest`, `ConsoleDigest`). It renders `board_digest` (`GET /api/board-digest`) through `DigestView`.
+
+The owner view's **Overview** on the same route is not the board's digest, which lists owners in default and liens on current owners. It is the member digest, `OwnerDigestView` over `GET /api/owner-digest` (`jason.web.extra.owner_view.owner_digest`):
+- the next open meeting, with its date, time, and place, and its agenda once posted (the notice and agenda on file, never jason's draft);
+- the latest approved open minutes;
+- the annual disclosures members receive, each with its window and the day the delivery ledger shows it went out;
+- the community's adopted standards and policies. A proposed policy is never shown; until the board adopts one there are none, and it says so;
+- how to make a records request, with the 5210 clocks, and a link to the records screen.
+
+It carries no owner's name, unit, balance, lien, delinquency, hearing, discipline, or executive item.
+
+Beside the board's digest:
 - the dock's **Deadlines** drawer gives what falls due, grouped, with a screen hint (`/api/dock?part=deadlines`);
 - **Inbox** (`#/inbox`, `open_items`) gives what is waiting on the association across the stores;
 - **Jobs** (`#/jobs`) gives the queue and who confirmed each write;

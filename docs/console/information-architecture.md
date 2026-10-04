@@ -16,7 +16,7 @@ The design project names each screen as a component (`ConsoleDigest`, `ConsoleAp
 
 | Group | Screen (nav label) | Route | Design name | Owner view | Reads |
 |---|---|---|---|---|---|
-| Overview | Board digest ("Overview" for owners) | `#/digest` | `ConsoleDigest` | yes | `/api/board-digest` |
+| Overview | Board digest ("Overview" for owners) | `#/digest` | `ConsoleDigest` | yes: the member digest | `/api/board-digest`; the owner view `/api/owner-digest` |
 | Overview | Approvals (with the pending count) | `#/approvals` | `ConsoleApprovals` | no | `/api/approvals`; the engine's routes being added |
 | Overview | Duties by cadence | `#/duties` | `ConsoleDuties` | no | `/api/duties` |
 | Overview | Inbox | `#/inbox` | — | no | `/api/open-items` |
@@ -26,23 +26,25 @@ The design project names each screen as a component (`ConsoleDigest`, `ConsoleAp
 | Governance | Board action items | `#/actions` (alias `board`) | `ConsoleActions` | no | `/api/board-items` |
 | Governance | Decisions | `#/decisions` | `ConsoleDecisions` | no | `/api/decisions` |
 | Governance | Plan a meeting | `#/agenda` | `ConsoleAgenda` | no | `/api/agenda-plan` |
-| Governance | Meeting room ("Live meeting" for owners) | `#/room` | `ConsoleMeetingRoom` | yes | `/api/meeting-room` |
-| Governance | Meetings and minutes | `#/meetings` | `ConsoleMeetings` | yes | `/api/meetings` |
+| Governance | Meeting room ("Live meeting" for owners) | `#/room` | `ConsoleMeetingRoom` | yes: the stage alone | `/api/meeting-room` |
+| Governance | Meetings and minutes | `#/meetings` | `ConsoleMeetings` | yes: open-session notices, agendas, minutes | `/api/meetings` |
 | Governance | Next meeting, Minutes review | `#/meeting`, `#/minutes-review` | — | no | `/api/meeting`, `/api/minutes-review` |
-| Governance | Annual disclosures | `#/disclosures` (alias `calendar`) | `ConsoleDisclosures` | yes | `/api/calendar` |
+| Governance | Annual disclosures | `#/disclosures` (alias `calendar`) | `ConsoleDisclosures` | yes: the disclosures members receive | `/api/calendar` |
 | Governance | Rule changes, Hearings, Owner information | `#/rules`, `#/hearings`, `#/owner-info` | — | no | `/api/rule-changes`, `/api/hearings`, `/api/owner-info` |
 | Governance | Canvases, Templates, Registers | `#/canvases`, `#/templates`, `#/registers` | — | no | `/api/canvases`, `/api/templates`, `/api/registers` |
 | Money | Payments with questions | `#/payments` (alias `money`) | `ConsolePayments` | no | `/api/budget`, `/api/reconciliations`, `/api/invoices`, `/api/collections` |
-| Money | Reserves and budget | `#/reserves` | `ConsoleReserves` | yes | `/api/reserves` |
+| Money | Reserves and budget | `#/reserves` | `ConsoleReserves` | yes: the reserve funding summary | `/api/reserves` |
 | Money | Reserve findings | `#/reserve-findings` | — | no | `/api/reserve-findings` |
 | Money | Liens and delinquency | `#/liens` (alias `delinquency`) | `ConsoleLiens` | no | `/api/delinquency` |
 | Money | Books checks, Title watch | `#/books`, `#/title` | — | no | `/api/utility-payments`, `/api/ledger-validation`, `/api/title-watch` |
-| Records | Records (CIV 5200) | `#/records` | `ConsoleRecords` | yes | `/api/association-records`, `/api/records-inventory` |
-| Records | Records requests ("Request a record" for owners) | `#/records-requests` | — | yes | `/api/records-requests` |
-| Records | Insurance | `#/insurance` | `ConsoleInsurance` | yes | `/api/insurance` |
+| Records | Records (CIV 5200) | `#/records` | `ConsoleRecords` | no (an owner link lands on Records requests) | `/api/association-records`, `/api/records-inventory` |
+| Records | Records requests ("Records" for owners: the request form) | `#/records-requests` | — | yes: the form and the record kinds | `/api/records-requests` |
+| Records | Insurance | `#/insurance` | `ConsoleInsurance` | yes: the insurance summary | `/api/insurance` |
 | Records | Insurance renewals, Legal, Document ingestion | `#/renewals`, `#/legal`, `#/ingestion` | — | no | `/api/insurance-renewals`, `/api/legal-cases`, `/api/library-status` |
 | Records | Owner page | `#/owner-page` | the community profile page | yes | `/api/community-profile` |
-| (header) | The dock: Deadlines, Tasks, Scratchpad, Ask | a drawer, not a route | the dock | Ask only | `/api/dock?part=` |
+| (header) | The dock: Deadlines, Tasks, Scratchpad, Ask | a drawer, not a route | the dock | no | `/api/dock?part=` |
+
+In the owner view every read carries `view=owner`, and the server answers it from the owner loaders alone (`jason.web.extra.owner_view`): a screen marked "yes" is sent only what a member is entitled to, and any other source is refused (403). `ui/src/ownerScreens.json` names the sources each owner screen reads; [security-and-privacy.md](security-and-privacy.md#roles) has the rule.
 
 ## The spec's screens, mapped
 

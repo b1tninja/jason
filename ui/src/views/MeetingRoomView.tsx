@@ -42,6 +42,12 @@ export function stageContent(d: MeetingRoomData, item: AgendaItem | undefined, s
   return { kind: "facts", facts: item.facts };
 }
 
+/** The members' hold card while the board is in executive session: the open record's general note only (CIV 4935(e)). */
+export function holdNote(d: MeetingRoomData): string {
+  const said = d.room.executive.note;
+  return said ? `The board is meeting in executive session to discuss ${said}.` : "The board is meeting in executive session.";
+}
+
 /** jason's script for the caption bar, one or two sentences a presenter would say. */
 export function script(d: MeetingRoomData, item: AgendaItem | undefined): string {
   const r = d.room;
@@ -127,9 +133,11 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
         const vw = owner ? "shared" : (view ?? room.view);
         const md = mode ?? room.mode;
         const left = forumLeft ?? room.openForum.limitMinutes * 60;
-        const content = stageContent(d, item, shown, left, speakers);
+        // Members see the hold card for as long as the board is in executive session, whatever item the host has open.
+        const holding = owner && room.executive.active;
+        const content: StageContent | null = holding ? { kind: "executive", note: holdNote(d) } : stageContent(d, item, shown, left, speakers);
         const caption = pres === "jason"
-          ? <><strong>jason</strong> · {script(d, item)}</>
+          ? <><strong>jason</strong> · {holding ? `${holdNote(d)} The open session resumes when the board returns.` : script(d, item)}</>
           : <span>{md === "portal" ? "Chair presenting from the portal · jason taking notes" : `Chair presenting · jason ${md === "host" ? "hosting" : "co-hosting"} and taking notes`}</span>;
         const settingsChanged = pres !== room.presenter || md !== room.mode || (!owner && vw !== room.view);
         const doAct = act(d);
@@ -190,7 +198,7 @@ export function MeetingRoomView({ audience, wordmark = "jason", legal = "the ass
             {error && <p className="notice notice-error" role="alert">{error}</p>}
             <div className={vw === "host" ? "room-body" : "room-body room-shared"}>
               <div className="room-stage">
-                <MeetingStage stageRef={stageRef} wordmark={wordmark} legal={legal} item={{ label: item?.label ?? "", title: item?.title ?? "No agenda" }} content={content} caption={caption}
+                <MeetingStage stageRef={stageRef} wordmark={wordmark} legal={legal} item={holding ? { label: "Executive session", title: "The board is in executive session" } : { label: item?.label ?? "", title: item?.title ?? "No agenda" }} content={content} caption={caption}
                   progress={d.items.length ? (idx + 1) / d.items.length : 0} live={owner || vw === "shared"} time={item?.allot ? `${item.allot} min` : undefined}
                   audience={owner ? "owner" : "board"} />
                 {!owner && (

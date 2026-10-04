@@ -967,6 +967,45 @@ LESSONS: tuple[Lesson, ...] = (
                                  "tests/test_web_access.py (P4 and P3 letters; /api/file refuses P4)",
                                  "tests/test_mail_docrefs.py (no reference, Held)"),
            docs=("docs/console/security-and-privacy.md (Built: levels a store's own flag decides)",)),
+    Lesson("executive-session-in-open-log", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "In the meeting room, entries, motions, and roll calls made during executive session went into the "
+           "room's open log; the draft minutes letter copied that log, decide recorded the decision as \"open "
+           "session\", and the general note fell back to the item's title.",
+           "The room kept one record with an executive flag on its entries. Nothing tied the record to Civil Code "
+           "4935(e) (\"shall be generally noted in the minutes of the immediately following meeting that is open "
+           "to the entire membership\") or to the open minutes of 4950(a).",
+           "Executive session now writes a separate record, meetings/room-<date>-executive.json, at P3 and shown "
+           "only in the private view. The open log gets only the general note, from the item's ExecutiveSubject, "
+           "never its title; an item with no subject cannot go into executive session. Decisions made there are "
+           "marked executive and kept out of the open views, the dock, and the minutes draft. "
+           "`python -m jason.tasks.meeting_room --check-executive all` counts executive entries in open logs.",
+           Status.FIXED, guards=("tests/test_meeting_room_executive.py",
+                                 "ui/src/components/meetingstage.test.tsx (HostPanel executive tests)",
+                                 "ui/src/views/meetingroom.test.tsx (the hold card)"),
+           docs=("docs/console/screens/meetings-and-minutes.md", "docs/console/security-and-privacy.md"),
+           notes=("Still open: the agenda Doc's executive subitems reach the minutes model as headings.",)),
+    Lesson("owner-view-showed-delinquency", date(2026, 10, 4), (Area.DOCUMENTS, Area.GOVERNING),
+           "The owner view's Overview rendered the board's digest, with owners in default and liens on current "
+           "owners, and its nav included Records (CIV 5200), which listed the liens the association placed. Other "
+           "owner screens got the board's loaders and hid rows only in the browser: other members' records "
+           "requests, policy numbers and claims, the reserve ledger, call titles and checks, and the meeting "
+           "room's owner roster and executive matters. The live meeting screen never got its audience, so owners "
+           "saw the host panel, and the Ask drawer offered owners the board's questions and the library.",
+           "The owner view was a filter on which screens show, plus client-side hiding. Nothing on the server "
+           "knew a read came from the owner view, and each owner screen reused a board loader.",
+           "Every read in the owner view carries view=owner, and the server answers it only from OWNER_SOURCES "
+           "(jason.web.extra.owner_view): each copies an allowlist of what a member is entitled to under CIV 4925, "
+           "4950, 5300, 5565/5570, 5200-5215, and 4041. Any other read is refused with 403. The owner Overview is "
+           "the member digest (/api/owner-digest); Records (CIV 5200) and the dock are board-only; an owner's "
+           "records screen is the request form; liens the association placed are held back on the server outside "
+           "the private view.",
+           Status.FIXED, guards=("ui/src/ownerScreens.json (each owner screen's sources)",
+                                 "tests/test_web_owner_view.py (no delinquent owner, lien, hearing, or executive "
+                                 "item in any owner source; OWNER_SOURCES equals the JSON)",
+                                 "ui/src/views/ownerview.test.tsx (each owner screen reads only its sources with "
+                                 "view=owner and renders no board-only section)"),
+           docs=("docs/console/security-and-privacy.md (Built: the server answers the owner view)",),
+           notes=("Still open: the standalone #/meeting-room?audience=owner link does not carry view=owner.",)),
 )
 
 

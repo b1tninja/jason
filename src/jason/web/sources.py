@@ -42,10 +42,29 @@ def board_items(args: Args) -> dict[str, Any]:
     return {**out, "items": [_with_evidence_refs(i, root) for i in out["items"]]}
 
 
+LIENS_HELD = ("Liens the association placed are delinquency detail (restricted): open the private view to list "
+              "them.")
+
+
 def association_records(args: Args) -> dict[str, Any]:
+    """The association's recorded instruments. The liens it placed on owners (``placed``) are delinquency detail
+    beyond the unit, P3 by the data levels: they are listed only while the person's private view is open
+    (``jason.web.access.private_open``), and otherwise counted (``placedHeld``) and held back on the server."""
     from jason.mcp.county import association_records as tool
 
-    return tool()
+    out = tool()
+    placed = out.get("placed") if isinstance(out, dict) else None
+    if not placed:
+        return out
+    try:
+        from jason.web.access import private_open
+
+        shown = private_open()
+    except Exception:  # noqa: BLE001 - no request, no sign-in: closed
+        shown = False
+    if shown:
+        return out
+    return {**out, "placed": [], "placedHeld": len(placed), "placedNote": LIENS_HELD}
 
 
 def records_inventory(args: Args) -> dict[str, Any]:
@@ -401,9 +420,11 @@ def meeting(args: Args) -> dict[str, Any]:
         directors = []
     from jason.tasks import decisions as decided
 
+    recorded = decided.for_meeting(root, day)
     return {
         "found": True, "date": iso, "today": today.isoformat(), "directors": directors,
-        "decisions": [decided.as_dict(d) for d in decided.for_meeting(root, day)],
+        # An executive-session decision is noted only generally here (CIV 4935(e)); its record is the private view's.
+        "decisions": [decided.as_dict(d) for d in decided.open_only(recorded)], "executiveDecisions": decided.general_notes(recorded),
         "noticeBy": notice_date(day).isoformat(), "executiveNoticeBy": notice_date(day, executive_only=True).isoformat(),
         "items": rows, "openCount": sum(1 for r in rows if r["agendaSession"] == "open session"),
         "executiveCount": sum(1 for r in rows if r["agendaSession"] != "open session"),
@@ -489,15 +510,29 @@ def embeds(args: Args) -> dict[str, Any]:
 
 def decisions(args: Args) -> dict[str, Any]:
     """The board's recorded decisions (`tasks.decisions`), all or for one ``meeting``, with each vote's tally and what the
-    votes say on their face; the outcome is the board's word. Reads disk only."""
+    votes say on their face; the outcome is the board's word. Reads disk only.
+
+    A decision made in executive session is listed only in the private view (``meeting_room.private_view``, logged);
+    otherwise it is left out and counted in ``heldBack``, with its meetings' general notes (CIV 4935(e))."""
     from jason.mcp.county import _data_dir
     from jason.tasks import decisions as store
+    from jason.web.extra.meeting_room import private_view
 
     root = _data_dir(None)
     day = args.get("meeting", "").strip()
     rows = store.for_meeting(root, day) if day else store.load(root)
-    return {"found": True, "count": len(rows), "outcomes": list(store.OUTCOMES), "votes": list(store.VOTES),
-            "decisions": [store.as_dict(d) for d in sorted(rows, key=lambda d: (d.meeting, d.recorded), reverse=True)]}
+    held = [d for d in rows if store.is_executive(d)]
+    if held and not private_view(day, path="board/decisions.json"):
+        rows = store.open_only(rows)
+    else:
+        held = []
+    out = {"found": True, "count": len(rows), "outcomes": list(store.OUTCOMES), "votes": list(store.VOTES),
+           "decisions": [store.as_dict(d) for d in sorted(rows, key=lambda d: (d.meeting, d.recorded), reverse=True)]}
+    if held:
+        meetings = sorted({d.meeting for d in held}, reverse=True)
+        out.update(heldBack=len(held), executiveNotes=[{"meeting": m, "notes": store.general_notes([d for d in held if d.meeting == m])} for m in meetings],
+                   note=f"{len(held)} executive-session decision(s) held back (Civil Code 4935(e)); open the private view to see them.")
+    return out
 
 
 # The facts a profile supplies, by duty, as Community methods with empty defaults; supplied when the call returns
@@ -792,6 +827,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "key-documents": "jason.web.extra.key_documents:key_documents",
     "instrument-graph": "jason.web.extra.key_documents:instrument_graph",
     "governing-documents": "jason.web.extra.governing_documents:governing_documents",  # with recorded and Drive copies
+    "owner-digest": "jason.web.extra.owner_view:owner_digest",  # the owner's Overview, in place of the board's digest
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",

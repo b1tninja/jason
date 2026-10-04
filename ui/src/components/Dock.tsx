@@ -6,12 +6,14 @@ import { ActionRegister } from "./ActionRegister";
 import { Scratchpad } from "./Scratchpad";
 import { AskPanel } from "./AskPanel";
 
-/** The dock's four drawers. Owners see only Ask. */
+/** The dock's four drawers, all the board's. Ask is not in the owner view: it lists everyone's earlier questions, its
+ * common answers read the deadlines and the board's decisions, and a question is answered from the library. An owner
+ * asks the association through its contacts (the owner page). */
 export const DOCK_DRAWERS: { id: string; label: string; title: string; owner: boolean }[] = [
   { id: "deadlines", label: "Deadlines", title: "Deadlines", owner: false },
   { id: "tasks", label: "Tasks", title: "Action register", owner: false },
   { id: "notes", label: "Scratchpad", title: "Scratchpad", owner: false },
-  { id: "ask", label: "Ask", title: "Ask jason", owner: true },
+  { id: "ask", label: "Ask", title: "Ask jason", owner: false },
 ];
 
 /** The console screen a dock row points at, by id, in words. Unknown ids read as themselves. */
@@ -55,6 +57,7 @@ export function DockToolbar({ open, onToggle, counts, audience }: {
   open: string | null; onToggle: (id: string) => void; counts: { deadlines: number; tasks: number }; audience: "board" | "owner";
 }) {
   const shown = DOCK_DRAWERS.filter((d) => audience !== "owner" || d.owner);
+  if (!shown.length) return null;
   return (
     <div role="toolbar" aria-label="Dock" className="dock">
       {shown.map((d) => {

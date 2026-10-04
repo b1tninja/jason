@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetServerSession } from "../lib/api";
 import type { EvidenceAnswer } from "./Evidence";
-import { HostPanel, MEMBERS_PACKET_LINE, MeetingStage, type MinutesLetter } from "./MeetingStage";
-import { DRIVE_BID, roomData } from "../views/meetingroom.fixture";
+import { EXECUTIVE_HELD, HostPanel, MEMBERS_PACKET_LINE, MeetingStage, generalNote, minutesLetter, type MeetingRoomData, type MinutesLetter } from "./MeetingStage";
+import { DRIVE_BID, EXEC_ITEM, SECRET_MOTION, SECRET_TITLE, roomData } from "../views/meetingroom.fixture";
 import { RollCall, outcome } from "./RollCall";
 
 describe("RollCall, extended", () => {
@@ -203,11 +203,83 @@ describe("HostPanel", () => {
     await user.click(screen.getByRole("tab", { name: "Zoom" }));
     expect(screen.getByText(/roster not synced/)).toBeInTheDocument();
     expect(screen.getByText("Polls are for members' input, never for board votes. Director votes are a roll call by name (CIV 4926(a)(3)).")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start executive session" })).toBeInTheDocument();
+    expect(screen.getByText(/No executive matter is on the agenda/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start executive session" })).not.toBeInTheDocument();
   });
 
   it("asks for a name before any entry", () => {
     render(<HostPanel room={roomData()} onAction={vi.fn(async () => true)} me="" />);
     expect(screen.getByText(/Enter who is recording/)).toBeInTheDocument();
+  });
+});
+
+// -- the executive session, kept apart (CIV 4935(e): "generally noted in the minutes") ------------------------------------
+
+const NOTE = "member discipline (Civil Code 4935(a), (b))";
+/** A room in executive session: the open log holds the general note; the executive record (when shown) the rest. */
+function inSession(record: boolean): MeetingRoomData {
+  const items = roomData().items.slice();
+  items.splice(3, 0, EXEC_ITEM);
+  return roomData({
+    items,
+    executive: record
+      ? { shown: true, active: true, note: "", record: { date: "2026-10-21", admitted: [], sessions: [{ startedAt: "2026-10-21T19:00:00+00:00", endedAt: "", matters: [{ id: "hearing-7", subject: "member_discipline", title: SECRET_TITLE }] }],
+          log: [{ at: "2026-10-21T19:01:00+00:00", title: `Item opened: ${SECRET_TITLE}` }, { at: "2026-10-21T19:05:00+00:00", title: `Motion by D. Okafor, seconded by E. Lind: ${SECRET_MOTION}` }], motions: [] } }
+      : { shown: false, active: true, note: EXECUTIVE_HELD, record: null },
+  }, {
+    current: 3,
+    executive: { active: true, startedAt: "2026-10-21T19:00:00+00:00", endedAt: "", note: NOTE, subjects: ["member_discipline"] },
+    log: [{ at: "2026-10-21T18:30:00+00:00", title: "Called to order.", tone: "good" },
+      { at: "2026-10-21T19:00:00+00:00", title: `The board adjourned to executive session at 12:00 PM to discuss ${NOTE}. Members left the open session.`, tone: "warn" }],
+  });
+}
+
+describe("The executive session in the host panel", () => {
+  it("builds the open minutes letter from the open log only: the general note, never the executive record", () => {
+    const letter = minutesLetter(inSession(true), "Sample Association");
+    const text = letter.body.join("\n");
+    expect(text).toContain(`to discuss ${NOTE}`);
+    expect(text).not.toContain(SECRET_TITLE);
+    expect(text).not.toContain(SECRET_MOTION);
+    expect(text).not.toContain("unit 7");
+    expect(letter.body).toHaveLength(3);                                  // the heading line and the two open entries
+  });
+
+  it("shows the executive log only when the private view gives it, else the held line", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<HostPanel room={inSession(false)} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    await user.click(screen.getByRole("tab", { name: "Minutes" }));
+    expect(screen.getByText(EXECUTIVE_HELD)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(SECRET_TITLE);
+    await user.click(screen.getByRole("tab", { name: "Motion" }));
+    expect(screen.getByText(EXECUTIVE_HELD)).toBeInTheDocument();       // no motion drafted where the host could not vote on it
+    unmount();
+    render(<HostPanel room={inSession(true)} onAction={vi.fn(async () => true)} me="S. Clerk" />);
+    await user.click(screen.getByRole("tab", { name: "Minutes" }));
+    const shut = screen.getByRole("region", { name: "Executive session record" });
+    expect(shut).toHaveTextContent(SECRET_MOTION);
+    expect(screen.queryByText(EXECUTIVE_HELD)).not.toBeInTheDocument();
+  });
+
+  it("starts executive session only once every matter has its 4935 subject, and sends no title", async () => {
+    const onAction = vi.fn(async (_a: string, _b?: Record<string, unknown>) => true);
+    const user = userEvent.setup();
+    const d = inSession(false);
+    const data = roomData({ items: d.items }, { current: 3 });
+    render(<HostPanel room={data} onAction={onAction} me="S. Clerk" />);
+    await user.click(screen.getByRole("tab", { name: "Zoom" }));
+    expect(screen.queryByRole("button", { name: "Start executive session" })).not.toBeInTheDocument();
+    expect(screen.getByText(/name the 4935 subject first/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(/Matter 2: name its 4935 subject/), "litigation");
+    await user.click(screen.getByRole("button", { name: "Start executive session" }));
+    expect(screen.getByRole("group", { name: "Confirm" })).toHaveTextContent("to discuss member discipline and litigation (Civil Code 4935(a), (b))");
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    expect(onAction).toHaveBeenCalledWith("executive_start", { matters: [{ ref: "1", subject: "member_discipline" }, { ref: "2", subject: "litigation" }] });
+  });
+
+  it("words the general note as the server does", () => {
+    expect(generalNote(["litigation", "personnel"])).toBe("litigation and personnel matters (Civil Code 4935(a))");
+    expect(generalNote(["foreclosure"])).toBe("whether to foreclose on a lien (Civil Code 4935(d))");
+    expect(generalNote(["a title", ""])).toBe("");
   });
 });

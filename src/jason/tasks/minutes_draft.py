@@ -5,7 +5,8 @@ transcript up to the executive session's break (``jason.tasks.zoom.executive_bre
 and the agenda's items (the Doc, ``data/meetings/agenda-docs``). Zoom's AI summary is not given: it can retell the
 executive session. The model writes each ``MinutesSection`` by its prompt (``jason.community.minutes_template``) as
 JSON, with the transcript's words that support each section; the executive session section gets only the agenda's
-general headings. What the record does not show is written as a blank for the Secretary, never guessed.
+general headings, the meeting room's general notes (its open file, never the executive record), and an executive
+decision's 4935 subject in general terms (CIV 4935(e)), never its title, motion, or votes. What the record does not show is written as a blank for the Secretary, never guessed.
 
 The draft is written to ``data/board/minutes-draft-<date>.md`` and then asked the minutes questions
 (``jason.community.question_sets.MINUTES``): each gap left is a line the Secretary fills from memory or the video. jason
@@ -158,15 +159,39 @@ def meeting_record(data_dir: Path, community: Any, day: date) -> dict[str, Any]:
     callers = json.loads(callers_file.read_text(encoding="utf-8")) if callers_file.is_file() else {}
     known_callers = {n: c for n, c in callers.items() if n in attendance}
     unidentified = [n for n in attendance if re.fullmatch(r"[\d\s()+-]{7,}", n) and n not in callers]
-    from jason.tasks.decisions import as_dict, for_meeting
+    from jason.tasks.decisions import as_dict, for_meeting, general_notes, open_only
 
+    # The model is given the open record only: an executive-session decision is noted by its 4935 subject in general
+    # terms (4935(e)), never by its title, motion, or votes; the room's executive sessions likewise (room_general).
+    recorded = for_meeting(data_dir, day)
     return {"zoom": row["uuid"], "topic": str(row.get("topic") or ""), "kind": meeting_kind(str(row.get("topic") or "")),
-            "items": list(dict.fromkeys(items)), "executive": list(dict.fromkeys(executive)),
-            "decisions": [as_dict(d) for d in for_meeting(data_dir, day)],
+            "items": list(dict.fromkeys(items)),
+            "executive": list(dict.fromkeys(executive + room_general(data_dir, day) + general_notes(recorded))),
+            "decisions": [as_dict(d) for d in open_only(recorded)],
             "knownCallers": known_callers, "unidentified": unidentified,
             "directors": directors,
             "attendance": [(n, round(s / 60)) for n, s in sorted(attendance.items(), key=lambda kv: -kv[1])],
             "transcript": transcript[:55_000], "brokeAtExecutive": brk is not None}
+
+
+def room_general(data_dir: Path, day: date) -> list[str]:
+    """The meeting room's executive sessions for ``day`` as the open record notes them: the 4935 subjects' general
+    words with their citation, one line a session (Civil Code 4935(e): "Any matter discussed in executive session shall
+    be generally noted in the minutes ..."). Read from the open room file only (``meetings/room-<date>.json``), never
+    the executive record; none when the room was not used."""
+    from jason.community.models.meetings import executive_general_note
+    from jason.tasks.meeting_room import load
+
+    try:
+        room = load(Path(data_dir), day.isoformat())
+    except (OSError, ValueError, KeyError):
+        return []
+    out: list[str] = []
+    for s in (room.get("executive") or {}).get("sessions") or []:
+        said = executive_general_note(s.get("subjects") or [])
+        if said:
+            out.append(f"The board met in executive session to discuss {said}.")
+    return out
 
 
 def _tokens(name: str) -> set[str]:

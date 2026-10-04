@@ -5,6 +5,18 @@ const FIVE = ["D. Okafor", "E. Lind", "F. Marsh", "G. Petrov", "H. Quinn"];
 /** A made-up Drive id: the second bid is a Doc in Drive, so the stage shows jason's copy of it (never a Google frame). */
 export const DRIVE_BID = "1FakeBidDoc00002";
 
+/** A made-up executive item: two matters, one with its 4935 subject and one without; titles only as the private view
+ * gives them. The general words are all an open view may carry. */
+export const EXEC_ITEM: MeetingRoomData["items"][number] = {
+  id: "exec", kind: "exec", label: "Executive session", title: "Adjourn to executive session", facts: [], motion: "Move to adjourn to executive session to discuss member discipline (Civil Code 4935(a), (b)).",
+  threshold: "majority", recused: [], allot: 2, packet: [], brief: null, session: "open session", matters: ["member discipline"], unnamed: 1,
+  subjectNote: "name the 4935 subject first: 1 executive matter without a Civil Code 4935 subject",
+  executiveMatters: [{ ref: "1", subject: "member_discipline", general: "member discipline", named: true }, { ref: "2", subject: "", general: "", named: false }],
+};
+/** The words of a made-up executive record: none may reach an open view. */
+export const SECRET_TITLE = "Hearing, unit 7 (made-up owner Q. Sample)";
+export const SECRET_MOTION = "Move to fine the owner of unit 7 $100.";
+
 export function roomData(over: Partial<MeetingRoomData> = {}, room: Partial<MeetingRoomData["room"]> = {}): MeetingRoomData {
   return {
     found: true, date: "2026-10-21", today: "2026-10-03", directors: FIVE, quorum: 3,
