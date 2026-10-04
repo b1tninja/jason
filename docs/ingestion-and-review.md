@@ -1,6 +1,6 @@
 # Ingestion and review
 
-**Status:** step 1 (the inventory) is built: `jason models --basis`, [document-models/README.md](document-models/README.md). The rest is proposed, October 4, 2026. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
+**Status:** October 4, 2026. Built: step 1 (the inventory: `jason models --basis`, [document-models/README.md](document-models/README.md)), step 3 for legal cases (`jason review --collection`, [manager-review.md](manager-review.md)), and step 4 (readings of the law as records: `jason readings`, [law-readings.md](law-readings.md)). Step 2 is in progress; the rest is proposed. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
 
 ## The idea
 
@@ -140,6 +140,8 @@ General lenses worth writing first, each useful for any collection:
 
 A profile adds its own lenses the way it adds task prompts.
 
+The Completeness lens is built for one collection, the life safety records (`jason inspections`). Its expected documents are the periods of each obligation that applies to each system. Its evidence is a reading placed by its own fields, or a person's completion. A reading that lacks a field is unplaced with the field named, a document no reader has read is "not read", and "not on file" never means "not done". Its findings rest on the profile, the readings store, and the as-of date, so it is a review, not ingestion.
+
 ### A collection
 
 A set of documents reviewed together, with the larger context that applies to all of them.
@@ -194,7 +196,8 @@ A context pack is what a lens gives a model or a person to review with. `context
 |---|---|
 | S: the law | the lens's authority scope, searched in the index |
 | G: governing documents | the same, by standing and kind |
-| R: records | the collection's members, searched in the index by the collection's `Scope` |
+| R: records | unchanged: the association's records by kind |
+| C: a collection (built) | the collection's members, searched in the index by its `Scope`, labeled with what they are (for a case: evidence gathered for the matter, neither the record nor the law) |
 | F: facts | the profile's facts and the collection's context |
 | D: the draft | the document under review, by its digest |
 
@@ -220,10 +223,18 @@ The same document can then be reviewed under two packs, and the two results are 
    - `Collection` as a record. A legal case is the first: its index catalog and its record in the specification.
    - `assemble` takes a lens, a document digest, and a collection.
    - A manager review is keyed by its lens, the draft's digest, and the pack's digest, and no longer overwritten by slug.
+   - Built for legal cases (`document_collections`; the name `collections` was taken by assessment collections). The pack's C tier reads the collection's index scope, and the case's record in the specification is a fact source.
+   - A manager review is kept under `data/reviews/<task>/<collection>/<digest>.json` (`review_store`), keyed by the question, the draft, the collection, and each source's text digest. `data/briefs` is still the latest copy.
+   - The case file's PDFs are read once into `<name>.pdf.txt` (`case_files.extract_text`). The manifest records the method and the file's SHA-256. An OCR or vision reading is checked against the PDF before it is quoted.
+   - Open: `assemble` takes no lens or document digest yet. The review's digest has no as-of date or lens version. A collection has no summary page.
 4. **Readings of the law as records.**
    - A reading store keyed to each provision's text digest, filled first from what exists: the `Conflict` rows, the statutory terms, and the readings the docs already label.
    - The authorities' manifest gets a digest per section (docs/rag-roadmap.md, item 3), so a changed provision marks its readings stale.
    - A review recites the provision and attaches a reading only where one is stored.
+   - Built. `law_text.section_digest` and the manifest's digests; replaced words kept under `data/authorities/history/<citation>/<digest>.md`; `law_readings.LawReading`, `status`, and `recite`; `Community.law_readings()`, empty by default.
+   - The store is empty. Filling it is a person's work: each `Conflict` row, statutory term, and labeled reading in the docs is a candidate that a person confirms, with whose it is, before it becomes a row. jason converts none.
+   - On the shelf that day: 1,042 sections on 101 pages. Six sections are printed in two versions under one number.
+   - Open: a review does not yet call `recite`.
 5. **The general lenses,** one at a time, each measured on a small set of documents with known answers before it is relied on.
 
 ## Limits and risks

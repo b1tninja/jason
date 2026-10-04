@@ -1167,6 +1167,54 @@ LESSONS: tuple[Lesson, ...] = (
                                  "pattern is found", "python -m jason.community.boundary"),
            notes=("Not yet in the boundary's terms: the directory's other counterparties (law firms, vendors). One "
                   "general reader still names a law firm in its patterns (models/legal_collections.py).",)),
+    Lesson("reading-untied-from-the-words", date(2026, 10, 4), (Area.GOVERNING,),
+           "A reading of a provision was kept as a sentence in a rule row or a doc, with nothing tying it to the words "
+           "it read. When the statute was amended the sentence stayed, and nothing marked it for review.",
+           "The body of authorities and the readings of it were one text: no digest of a section's words existed, and "
+           "an export overwrote the words it replaced.",
+           "A reading is a LawReading that names the digest of each provision's words; law_readings.status sets it "
+           "aside as stale when the words change, and recite gives the words first, then each current reading labeled "
+           "with whose it is. An export keeps the words it replaces (data/authorities/history). The store starts "
+           "empty: a person confirms each reading before it becomes a row.",
+           Status.FIXED, guards=("tests/test_law_readings.py", "law_readings.status", "jason readings --stale"),
+           docs=("docs/law-readings.md", "docs/ingestion-and-review.md")),
+    Lesson("lettered-and-doubled-sections-misread", date(2026, 10, 4), (Area.GOVERNING,),
+           "authority_text cannot read a section whose number ends in a letter (sixteen on the shelf), and where the "
+           "publication prints two versions of a section under one number, every reader quotes the first with nothing "
+           "saying which is in force.",
+           "The citation pattern takes digits only, and a page was assumed to hold one text a section.",
+           "law_text and recite read lettered sections and show both versions with a caveat. Still to do: "
+           "authority_text and jason cite, and choosing the version in force on a date from the section's own "
+           "operative words.",
+           Status.OPEN, docs=("docs/law-readings.md",)),
+    Lesson("case-file-searchable-only-by-transcripts", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A legal case's fetched file was searchable only through its transcripts: the PDFs had no text beside them, "
+           "so a review of the case could not cite a filing. The first extraction also showed that OCR makes thousands "
+           "of tokens of a photograph exhibit, which would have been indexed as the filing's words.",
+           "The index takes text files, and the fetch kept PDFs as they came. Nothing counted the files it could not "
+           "read.",
+           "case_files.extract_text writes <name>.pdf.txt from the text layer and sends only scanned pages to OCR; "
+           "ocr.reads_as_words leaves a page of noise unread and listed; the index context line says how each file "
+           "was read; held-back files are never extracted or indexed. The context pack says how many of a "
+           "collection's files the index lacks.",
+           Status.FIXED, guards=("tests/test_case_files.py", "ocr.reads_as_words", "jason index --plan (leftOut)",
+                                 "tests/test_document_collections.py (the pack's gap line)"),
+           docs=("docs/manager-review.md", "docs/mcp.md")),
+    Lesson("quoted-as-from-the-shelf-when-it-was-not", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A reference doc quoted a regulation's subsection under \"from the adopted text\" when the adopted text on "
+           "the shelf does not print that subsection; the words came from another print.",
+           "The quotation was written into the doc by hand, and nothing checked it against the file.",
+           "Record-keeping provisions are RecordRule rows recited from disk by their locator, and a miss says the "
+           "words are not on the shelf and quotes nothing. The doc now names the print the words came from.",
+           Status.FIXED, guards=("jason.tasks.inspections.recite",
+                                 "tests/test_inspections.py: a provision the shelf does not print is said to be missing"),
+           docs=("docs/fire-protection.md",)),
+    Lesson("wrapped-date-not-read", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A reader returned no inspection date where the PDF wrapped the date across a line, so the report could "
+           "not be placed in a period and the period showed as not on file.",
+           "dates_in wants one space before the year; a line break there is not one.",
+           "Still to do: read dates across a line break (dates_in or the reader), with a fixture that wraps one.",
+           Status.OPEN, docs=("docs/fire-protection.md",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "
@@ -1179,7 +1227,8 @@ LESSONS: tuple[Lesson, ...] = (
            "--build), scoped by catalog and standing, and returns passages with their caveats for the client to "
            "answer from; a legal case's file is a confidential case-<key> catalog. scripts/eval_anythingllm.py still "
            "scores a workspace on the gold set. The mail, the reports, the docs, and the classified library joined the "
-           "index on October 4, 2026 (jason.tasks.index_sources); the case files' PDFs still need text extracts.",
+           "index on October 4, 2026 (jason.tasks.index_sources), and the case files' PDFs have text extracts beside them "
+           "(jason cases --extract-text), each indexed with how it was read.",
            Status.FIXED, guards=("scripts/eval_retrieval.py --index", "tests/test_passage_index.py (document_search)",
                                  "tests/test_local_tools.py (board profile)"),
            docs=("docs/applicability.md", "docs/document-tools.md (model trials)", "docs/mcp.md")),

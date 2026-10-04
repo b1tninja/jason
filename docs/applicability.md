@@ -121,6 +121,7 @@ jason's vectors move from one `.npy` file per passage (`data/retrieval/vectors`)
 - **Self-query.** jason may draw the facets out of the question itself ("the 2023 sprinkler reports"), shown to the person as the filter it used.
 - **Applicability.** A passage whose applicability is "does not apply" for the facts in hand is dropped. An "undetermined" one is kept and flagged with the missing fact.
 - **Confidentiality.** A confidential row is filtered by the caller's role, the way the MCP tools hold confidential files back now.
+- **Collections.** A named scope with a context (`document_collections`): the pack ranks it as its own tier, and a confidential one only for a board audience.
 
 **Context headers.** Before a passage is embedded and indexed, jason prepends a short header of where it sits: the document, section, standing, date, and what it applies to. This follows Anthropic's [contextual retrieval](https://anthropic.com/news/contextual-retrieval): contextual embeddings cut retrieval failures by 35%, 49% with keyword search, and 67% with reranking. The header is built from jason's own records, not written by a model. That makes it cheap, repeatable, and the same on every run. It is measured on the gold set before it is kept.
 
@@ -175,6 +176,7 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
    - `LifeSafetySystem` and `Community.life_safety_systems()`, empty by default. A standard is entered only with the record that states it. Two records that differ are both tested, and jason picks neither.
    - `Obligation.applies` (default: always). `life_safety.applicable(community)` asks each obligation of each system and returns the three groups. An undetermined answer is a question, and `jason applies` prints them.
    - The fire-protection deliverable rules each carry `applies`: a water-based system, and the vendor's kinds of work as each provision says. The contract reader still decides in its own code (step 7).
+   - `jason inspections` (`jason.tasks.inspections`) uses the three groups for completeness. For each system, the obligations that apply get periods and the records on file in each. Those that do not apply are listed with the deciding fact, so nothing is expected. The record-keeping provisions are `RecordRule` rows, recited from the shelf, and a provision the shelf does not print is said to be missing.
    - Still to do: file the questions as intake questions; convert the other rows (elevated elements, the notice catalog, filing rules).
 4. **The index.** First part built October 4, 2026: `jason.community.passage_index`, `jason index`. Its engine is SQLite with the vectors as blobs (no new dependency), ranked by `retrieval`'s own functions.
    - Built:
@@ -201,9 +203,8 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
 8. **Retiring AnythingLLM.** Done October 4, 2026.
    - **Snapshot first:** every workspace's document list was saved (`data/anythingllm/snapshots/20261004-125545.json`).
    - **`document_search`** replaces `passage_search` in the board profile, which still has thirty-eight tools. It searches the passage index and returns passages with their standing and caveats, with no chat model.
-   - **Case files:** each legal case's fetched file is a confidential `case-<key>` catalog (standing `evidence`) in `jason index --build`.
+   - **Case files:** each legal case's fetched file is a confidential `case-<key>` catalog (standing `evidence`) in `jason index --build`: its transcripts, and the text extract beside each PDF (`jason cases --extract-text`). An extract's context line names the source file and how it was read (text layer, OCR, or a vision reading). Held-back records are never extracted.
    - **Removed:** `jason anythingllm`, `anythingllm_query`, `anythingllm_status`, the catalog sync, the collector OCR engine, the app checks in `jason local-ai`, and the `anythingllm_*` settings.
-   - **Not yet in the index:** the case PDFs, which have no text extracts.
 
 ## Open questions
 
