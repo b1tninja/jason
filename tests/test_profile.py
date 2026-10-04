@@ -201,6 +201,26 @@ def test_an_import_of_the_profile_is_found(tmp_path):
     assert profile_imports(tmp_path, "oakridge") == ["src/jason/a.py:3", "src/jason/b.py:1", "src/jason/c.py:3"]
 
 
+def test_a_manager_is_an_instance_term_and_a_reader_finds_it_through_the_sender_directory():
+    from jason.community.sources import Sender, SourceKind, manager_in, manager_name
+
+    kinds = {t.text: t.kind for t in instance_terms(mystique())}
+    managers = [s for s in mystique().senders() if s.kind is SourceKind.MANAGER]
+    assert managers and all(kinds.get(s.name) == "manager" for s in managers)
+    listed = (Sender("Oak Ridge Management", SourceKind.MANAGER, ("OAK RIDGE MANAGEMENT",)),
+              Sender("Oak Ridge Roofing", SourceKind.VENDOR, ("OAK RIDGE ROOFING",)))
+    assert manager_in("Prepared by Oak Ridge Management, Inc.", listed) is listed[0]
+    assert manager_in("Invoice from Oak Ridge Roofing", listed) is None            # a vendor is not a manager
+    assert manager_name("Prepared by Oak Ridge Management", object()) == ""        # no directory: a miss
+
+
+def test_a_manager_named_in_a_general_pattern_is_found(tmp_path):
+    code = tmp_path / "src" / "jason"
+    code.mkdir(parents=True)
+    (code / "reader.py").write_text("import re\n\ndef f(t):\n    return re.search(r'Oak Ridge Management', t)\n", encoding="utf-8")
+    assert scan_code(tmp_path, (Term("Oak Ridge Management", "manager"),)) == {"src/jason/reader.py": ["Oak Ridge Management"]}
+
+
 def test_the_lesson_names_its_guard():
     from jason.community.lessons import LESSONS, lesson
 

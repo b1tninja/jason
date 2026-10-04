@@ -1117,6 +1117,22 @@ LESSONS: tuple[Lesson, ...] = (
            "are compared on data/retrieval/gold-law.json.",
            Status.FIXED, guards=("context_pack.LAW_FROM_INDEX = False", "tests/test_context_pack_index.py"),
            docs=("docs/applicability.md", "docs/rag-roadmap.md")),
+    Lesson("manager-named-in-general-readers", date(2026, 10, 4), (Area.REPOSITORY,),
+           "Six general readers recognized one association's former management companies by name in their patterns "
+           "(an agenda's layout and preparer, an owner ledger's manager, a case report's, a statement's and a budget "
+           "packet's preparer, a letterhead's office address), and one task searched Gmail for the manager's report by "
+           "its subject line. The boundary check did not see them.",
+           "The boundary's terms took vendors from the portals, developers, and banks, but not the sender directory, "
+           "where the managers are listed.",
+           "sources.manager_in and manager_name find a manager through the profile's senders of kind MANAGER, and a "
+           "header's office address through its former managers' mail addresses; with none listed, no manager is "
+           "named: a miss. The Gmail search is EvidencePlan.case_report_query. boundary.instance_terms now takes each "
+           "manager's name and words, so a general pattern or document that names one fails the check; a reader "
+           "named after the vendor whose layout it reads may be pointed to in a code span.",
+           Status.FIXED, guards=("tests/test_profile.py: a manager is an instance term; a manager named in a general "
+                                 "pattern is found", "python -m jason.community.boundary"),
+           notes=("Not yet in the boundary's terms: the directory's other counterparties (law firms, vendors). One "
+                  "general reader still names a law firm in its patterns (models/legal_collections.py).",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "

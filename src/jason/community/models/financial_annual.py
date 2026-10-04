@@ -37,6 +37,7 @@ from typing import Any
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, date_after, dates_in, register, squash
 from jason.community.models.financial_common import MONEY_LINE, disk_studies, dollars, long_date, signed_cents, spec_units
 from jason.community.reserve_study import ReserveDisclosure, read_disclosure
+from jason.community.sources import manager_name
 from jason.community.symbols import DocumentKind
 
 FISCAL_YEAR_END = (12, 31)          # the association's fiscal year is the calendar year
@@ -334,7 +335,7 @@ class DreBudgetWorksheetModel(DocumentModel):
         if not re.search(r"BUDGET WORKSHEET", text or "") or not re.search(r"RE 623|Bureau of Real Estate|Department of Real Estate", text, re.I):
             return None
         w = DreBudgetWorksheet(form="RE 623" if "RE 623" in text else "budget worksheet")
-        w.preparer = "VierraMoore, Inc." if re.search(r"VierraMoore", text) else ""
+        w.preparer = manager_name(text, context.community)
         prepared = re.search(r"(?:January|February|March|April|May|June|July|August|September|October|November|December),? 20\d\d", text[:2000],
                              re.I)
         w.prepared = prepared.group(0) if prepared else ""
@@ -484,7 +485,7 @@ POLICY_STATEMENT_ITEMS: dict[str, tuple[str, str]] = {
 
 @dataclass
 class AnnualReport:
-    preparer: str = ""                # "CiraConnect (RealManage)", "the association"
+    preparer: str = ""                # the manager the report names, else "the association"
     fiscal_year: int | None = None
     prepared: date | None = None
     monthly_assessment_cents: int | None = None
@@ -531,7 +532,7 @@ class AnnualReportModel(DocumentModel):
         if not re.search(r"Annual Budget Report|Annual Disclosures|Annual Policy Statement", text[:6000], re.I):
             return None
         a = AnnualReport()
-        a.preparer = "CiraConnect (RealManage)" if re.search(r"CiraConnect|RealManage", text[:8000]) else "the association"
+        a.preparer = manager_name(text[:8000], context.community) or "the association"
         body = squash(text[_after_contents(text):])
         a.budget_report_items = _items(body, BUDGET_REPORT_ITEMS)
         a.policy_items = _items(body, POLICY_STATEMENT_ITEMS)

@@ -30,7 +30,7 @@ The association's agendas and minutes are one Google Docs template exported to P
 
 `parse_items` returns `AgendaItem(number, title, subitems, notes, attachments)`. It stops at the Zoom summary ("Quick recap", "Summary", "Next steps"), the decorum rules, or an appendix. `meeting_header` reads the meeting type (`MeetingType`), the body (`MeetingBody`), the date, the time, whether the meeting is by teleconference, whether there is a dial-in, the meeting ID, a physical location if one is named, and the DRAFT mark.
 
-The former manager's agenda (The Helsing Group, January 2024) numbers its items 1 to 7: consent, review, action, discussion, member comment, and adjournment, with lettered sub-items. It reads with `layout = "manager"`.
+A manager's agenda is known by the manager's name in its header (a sender of kind `MANAGER` in the specification). It numbers its items 1 to 7: consent, review, action, discussion, member comment, and adjournment, with lettered sub-items. It reads with `layout = "manager"`.
 
 Cross-checks read the classified library on disk (`jason.tasks.library`), matching files by period. An annual meeting is matched by year and name. They say nothing when there is no library.
 

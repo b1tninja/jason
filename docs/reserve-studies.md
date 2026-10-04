@@ -15,7 +15,7 @@ A reserve study drives two budget lines: the transfer to reserves, and the reser
 
 Every preparer prints the disclosure in the statute's words, so `read_disclosure` reads it from any study. Each preparer lays out the rest in its own way, so each preparer is a `StudyReader`. `CaliforniaBuilderServices` reads the whole study, and its component sums and yearly schedule reconcile with the study's own totals. `HelsingGroup` reads the 30-year projection in its disclosure notes and its Detailed Component List, whose sum matches the study's grand total to within rounding.
 
-Helsing's Estimated Expenditure Schedule prints its columns out of order in the text layer. `read_study` hands every reader the words with their positions (`read_layout`), and `schedule_expenditures` rebuilds the table:
+The `HelsingGroup` reader's Estimated Expenditure Schedule prints its columns out of order in the text layer. `read_study` hands every reader the words with their positions (`read_layout`), and `schedule_expenditures` rebuilds the table:
 
 - A line is the words within two points of each other vertically.
 - A name sits at the left margin, and its amounts may spill onto the line under it.
@@ -24,7 +24,7 @@ Helsing's Estimated Expenditure Schedule prints its columns out of order in the 
 
 `BrowningReserveGroup` reads Section IV's 30-year funding plan, Section VII's tabular listing (checked against its total current replacement cost to the dollar), and the "Expenditures by Year" schedule (each year checked against its total).
 
-`read_disclosure` also reads the rates and the 30-year answer in any preparer's words. That covers Helsing's "2.00% per year was the assumed long-term interest rate" and its "Answer: Yes". Any other preparer yields its disclosure, date, level, and units. A new preparer's tables are a new reader.
+`read_disclosure` also reads the rates and the 30-year answer in any preparer's words. That covers the `HelsingGroup` reader's "2.00% per year was the assumed long-term interest rate" and its "Answer: Yes". Any other preparer yields its disclosure, date, level, and units. A new preparer's tables are a new reader.
 
 ## Sources
 

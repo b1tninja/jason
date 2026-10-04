@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, register
+from jason.community.sources import manager_name
 from jason.community.symbols import DocumentKind
 
 _OPEN = re.compile(r"Cases Currently Open.*?\n(.*?)(?:\n\s*This chart|\Z)", re.S | re.I)
@@ -83,8 +84,7 @@ class ManagerCaseReportModel(DocumentModel):
     def parse(self, text: str, context: ModelContext) -> ManagerCaseReport | None:
         if not re.search(r"Cases Currently Open", text or "", re.I):
             return None
-        manager = "The Helsing Group" if re.search(r"helsing", text or "", re.I) else ""
-        return ManagerCaseReport(manager, _as_of(text), open_cases(text))
+        return ManagerCaseReport(manager_name(text or "", context.community), _as_of(text), open_cases(text))
 
     def check(self, r: ManagerCaseReport, context: ModelContext) -> list[Finding]:
         work = [c for c in r.open_cases if is_work_case(c)]

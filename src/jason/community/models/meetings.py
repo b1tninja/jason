@@ -18,8 +18,9 @@ repayment options, and whether a special assessment may be considered, and its w
 The association's own agendas and minutes are one Google Docs template exported to PDF: a centered header (the
 association, the meeting, "To be held on" or "Held on", the date, Zoom details), roman-numeral items with lettered or
 lower-roman sub-items and attachment links, and a running footer. Minutes are the same document annotated under each
-item (2024-early 2025) or followed by a Zoom AI "Quick recap / Next steps / Summary" (mid 2025 on). The former
-manager's agenda (The Helsing Group) numbers its items 1-7 with consent, review, action, and discussion sections.
+item (2024-early 2025) or followed by a Zoom AI "Quick recap / Next steps / Summary" (mid 2025 on). A manager's
+agenda numbers its items 1-7 with consent, review, action, and discussion sections; it is known by the manager's name
+in its header, a sender of kind ``MANAGER`` in the specification (``sources.manager_in``).
 
 An agenda's text does not say when it went out; PayHOA's communications log (``data/payhoa/communications.json``) gives
 the day its notice email did, which the agenda check sets beside the four days 4920(a) requires, or the governing
@@ -53,6 +54,8 @@ from jason.community.document_models import (
     register,
     squash,
 )
+from jason.community.base import name_regex
+from jason.community.sources import fold, manager_in
 from jason.community.symbols import DocumentKind
 
 MINUTES_DAYS = 30          # CIV 4950(a)
@@ -329,7 +332,17 @@ def _first_item_at(text: str) -> int:
     return m.start() if m else min(len(text), 1500)
 
 
-def meeting_header(text: str) -> MeetingHeader:
+def _manager_letterhead(head: str, community: object) -> bool:
+    """The header carries a manager's name or its office address (the specification's senders of kind ``MANAGER`` and
+    its former managers' mail addresses): an address there is the manager's office, not where the meeting is held."""
+    if manager_in(head, getattr(community, "senders", tuple)()) is not None:
+        return True
+    folded = fold(head)
+    return any(getattr(a.kind, "name", "") == "FORMER_MANAGER" and any(fold(word) in folded for word in a.words)
+               for a in getattr(community, "mail_addresses", tuple)())
+
+
+def meeting_header(text: str, community: object = None) -> MeetingHeader:
     """The facts the template's header and footer give: the meeting, its date and time, and where it is held."""
     kind, body, _title = meeting_title(text)
     head = text[:_first_item_at(text)]
@@ -355,7 +368,7 @@ def meeting_header(text: str) -> MeetingHeader:
     m = re.search(r"(?:gather at|held at|Location:|meet in person at)\s*([^\n]+)", text, re.I)
     if m and _ADDRESS.search(m.group(1)):
         place = squash(m.group(1)).rstrip(" .")
-    elif _ADDRESS.search(head) and not re.search(r"Helsing|Executive Parkway", head):
+    elif _ADDRESS.search(head) and not _manager_letterhead(head, community):
         place = _ADDRESS.search(head).group(0)
     assoc = _ASSOCIATION.search(text)
     return MeetingHeader(
@@ -685,12 +698,14 @@ class AgendaModel(DocumentModel):
         items = parse_items(t)
         if not title and not items:
             return None
-        h = meeting_header(t)
+        h = meeting_header(t, context.community)
         a = Agenda(association=h.association, meeting_type=kind, body=body, meeting_date=h.meeting_date,
                    meeting_time=h.meeting_time, teleconference=h.teleconference, dial_in=h.dial_in,
                    meeting_id=h.meeting_id, physical_location=h.physical_location, items=items)
-        if re.search(r"Helsing", t[:300]):
-            a.layout, a.preparer = "manager", first(r"^\s*(The Helsing Group[^\n]*?)\s*$", t, flags=re.I | re.M)
+        manager = manager_in(t[:300], getattr(context.community, "senders", tuple)())
+        if manager is not None:
+            a.layout = "manager"
+            a.preparer = first(rf"^\s*({name_regex(manager.name)}[^\n]*?)\s*$", t, flags=re.I | re.M) or manager.name
         else:
             a.layout = "association"
         flat = squash(t)
@@ -1012,7 +1027,7 @@ class MinutesModel(DocumentModel):
         t = normalize(text)
         if not self.recognizes(t):
             return None
-        h = meeting_header(t)
+        h = meeting_header(t, context.community)
         r = Minutes(association=h.association, meeting_type=h.meeting_type, body=h.body, meeting_date=h.meeting_date,
                     meeting_time=h.meeting_time, teleconference=h.teleconference, physical_location=h.physical_location,
                     draft=h.draft or bool(re.search(r"^\s*DRAFT\s*$", t, re.M)))
@@ -1301,7 +1316,7 @@ class ExecutiveSessionModel(DocumentModel):
         t = normalize(text)
         if not re.search(r"Executive Session", t[:1500], re.I):
             return None
-        h = meeting_header(t)
+        h = meeting_header(t, context.community)
         items = parse_items(t)
         r = ExecutiveSession(association=h.association, meeting_date=h.meeting_date, meeting_time=h.meeting_time,
                              teleconference=h.teleconference, draft=h.draft, topics=items)

@@ -371,6 +371,9 @@ class EvidencePlan:
     max_bytes: int = 25_000_000
     site_words: tuple[str, ...] = ()  # other addresses that mean the whole community (a premises address no parcel has)
     vendor_work: tuple[VendorWork, ...] = ()
+    # The Gmail search that finds a manager's emailed case reports (their subject line is the manager's own); empty
+    # when the association received none, and then none are fetched.
+    case_report_query: str = ""
 
 
 def apply_vendor_work(evidence: Iterable["Evidence"], rules: Iterable[VendorWork], names: Mapping[str, str]) -> None:

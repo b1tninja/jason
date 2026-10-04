@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import Iterable
 
 from jason.community.base import NEVER
 
@@ -95,6 +96,23 @@ _ASSOCIATION = re.compile(r"\b((?:[A-Z0-9][A-Za-z0-9'&.-]*\s+){1,5}(?:COMMUNITY|
 def fold(text: str) -> str:
     """Upper-case letters and digits, one space between words: OCR's punctuation and line breaks do not matter."""
     return " " + re.sub(r"[^A-Z0-9]+", " ", text.upper()).strip() + " "
+
+
+def manager_in(text: str, senders: Iterable[Sender]) -> Sender | None:
+    """The management company a text names: the first sender of kind ``MANAGER`` one of whose words the text carries
+    (letters and digits only, so OCR's punctuation does not matter). None when the specification lists no manager or
+    the text names none: a miss."""
+    folded = fold(text or "")
+    for sender in senders:
+        if sender.kind is SourceKind.MANAGER and any(fold(word) in folded for word in sender.words):
+            return sender
+    return None
+
+
+def manager_name(text: str, community: object) -> str:
+    """The name of the management company a text names, from the community's sender directory; empty on a miss."""
+    found = manager_in(text, getattr(community, "senders", tuple)())
+    return found.name if found else ""
 
 
 def resolve(sender: str, text: str, senders: tuple[Sender, ...], *, own_name: str = "",

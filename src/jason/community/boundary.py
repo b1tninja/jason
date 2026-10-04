@@ -72,6 +72,14 @@ def instance_terms(community: Community) -> tuple[Term, ...]:
         add(_STREET_SUFFIX.sub("", street.value).title(), "street")
     for portal in _rows(community, "vendor_portals"):
         add(getattr(portal, "vendor", ""), "vendor")
+    # A management company the association has had: its name and the words that recognize it. A reader finds it
+    # through the sender directory (``sources.manager_in``), never by a name in a pattern.
+    for sender in _rows(community, "senders"):
+        if getattr(getattr(sender, "kind", None), "name", "") == "MANAGER":
+            add(getattr(sender, "name", ""), "manager")
+            for word in getattr(sender, "words", ()):
+                if not any(ch.isdigit() for ch in word):
+                    add(str(word).title(), "manager", minimum=5)
     for developer in _rows(community, "developers"):
         add(getattr(developer, "name", ""), "developer")
     for account in _rows(community, "bank_accounts"):
@@ -101,6 +109,10 @@ def _rows(community: Community, name: str) -> tuple:
     return tuple(rows or ())
 
 
+# Kinds of term a document may carry inside a code pointer (a reader named after the vendor whose layout it reads).
+PROSE_KINDS = ("name", "manager")
+
+
 def general_documents(root: Path) -> tuple[Path, ...]:
     """Every general document under the repository root."""
     files: list[Path] = []
@@ -121,7 +133,7 @@ def scan(root: Path, terms: tuple[Term, ...]) -> dict[str, list[str]]:
         text = path.read_text(encoding="utf-8", errors="replace")
         prose = _POINTER.sub("", text)
         hits = sorted({term.text for term, pattern in patterns
-                       if pattern.search(prose if term.kind == "name" else text)}, key=str.casefold)
+                       if pattern.search(prose if term.kind in PROSE_KINDS else text)}, key=str.casefold)
         if hits:
             found[path.relative_to(root).as_posix()] = hits
     return found

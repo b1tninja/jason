@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, register
+from jason.community.sources import manager_name
 from jason.community.models.financial_common import (
     MONEY_LINE,
     data_json,
@@ -418,7 +419,7 @@ class HelsingStatementModel(DocumentModel):
         if not re.search(r"GL Balance Sheet|GL Income Statement|Monthly Financial Statements", text):
             return None
         s = HelsingStatement()
-        s.preparer = "The Helsing Group" if re.search(r"Helsing", text, re.I) else ""
+        s.preparer = manager_name(text, context.community)
         s.excerpt = "Monthly Financial Statements" not in text[:400]
         s.sections = tuple(t.split("|")[0] for t in _SECTION_TITLES if re.search(r"(?:^|\n)[ \t]*(?:" + t + r")", text, re.I))
         sheet_at = text.find("GL Balance Sheet")

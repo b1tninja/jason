@@ -50,6 +50,11 @@ class FakeCommunity:
     def mail_addresses(self):
         return (SimpleNamespace(kind=SimpleNamespace(name="CURRENT"), words=("901 H ST",), requires=("PMB 188",)),)
 
+    def senders(self):
+        from jason.community.sources import Sender, SourceKind
+
+        return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),)
+
     def obligations(self):
         return (SimpleNamespace(name="Backflow assembly test", every_years=1, authority="annual test notice"),
                 SimpleNamespace(name="Fire sprinkler inspection and test", every_years=1, authority="NFPA 25"))
@@ -361,9 +366,9 @@ def test_owner_statement_duplicate_billed():
 # ---------------------------------------------------------------------------------------------------- owner history
 
 HELSING = f"""Mystique Community Association
-The Helsing Group, Inc.
-4000 Executive Parkway, Suite 100
-San Ramon, CA 94583
+Example Management Group, Inc.
+100 Example Parkway, Suite 100
+Anytown, CA 90000
  {FAKE_NAME}
 3101 Enchanted Walk Bldg 2  #99
 Sacramento, CA 95835
@@ -420,7 +425,7 @@ Balance:
 def test_owner_history_ledger():
     reading = read(DocumentKind.OWNER_HISTORY, HELSING, ctx())
     r = reading.record
-    assert reading.complete and r.manager == "The Helsing Group" and r.report_date == date(2024, 3, 7) and r.names_owner
+    assert reading.complete and r.manager == "Example Management Group" and r.report_date == date(2024, 3, 7) and r.names_owner
     (a,) = r.accounts
     assert a.property_address == "3101 ENCHANTED WALK" and a.building is Building.BLDG_2 and a.unit == "99"
     assert (a.entries, a.assessments, a.late_fees, a.interest, a.payments, a.balance) == (5, 64000, 6400, 704, 71104, 0)

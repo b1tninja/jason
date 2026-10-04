@@ -91,7 +91,7 @@ This is PayHOA's generated "Treasurer's Report" packet. It holds an index of the
 
 ## Monthly financial statements (`helsing-financial-statements`)
 
-These are The Helsing Group's "Monthly Financial Statements", a prior manager's monthly packets. The model reads full packets and the "Pages from" excerpts.
+These are a prior manager's "Monthly Financial Statements" packets. The preparer is the manager the packet names, a sender of kind `MANAGER` in the specification (`sources.manager_name`). The model reads full packets and the "Pages from" excerpts.
 
 **Record `HelsingStatement`** holds:
 
@@ -140,7 +140,7 @@ This covers the "Pro Forma Budget" packet (Budget Summary and Budget - Monthly) 
 
 ### Fund budgets (`read_fund_budget`)
 
-CiraConnect's "Revenue and Expense Budget Summary for FY 2023" has three columns: operating fund, replacement fund, and consolidated. `read_fund_budget` reads it into the same `Budget` record, and the annual report model uses it when the packet has no PayHOA budget. Each row is a label followed by one line per column, where "-" means none.
+The `ciraconnect` layout's "Revenue and Expense Budget Summary for FY 2023" has three columns: operating fund, replacement fund, and consolidated. `read_fund_budget` reads it into the same `Budget` record, and the annual report model uses it when the packet has no PayHOA budget. Each row is a label followed by one line per column, where "-" means none.
 
 - A row with three values is operating, replacement, and consolidated.
 - A pair of values that cancel is a transfer between the funds, so its consolidated figure is nil. The "Assessment Allocation" is one: it moves the reserve contribution from operating to replacement.
@@ -173,7 +173,7 @@ This model reads the summary when it is filed on its own.
 
 ### Annual budget report and policy statement (`annual-budget-report`)
 
-This covers CiraConnect's "Resident Budget Package" and the association's own "Annual Disclosures" packets. A packet with a contents page names every item there ("Reserve Funding Mechanism", "Anticipated Special Assessments"). Items are searched only after that page ends, at the "Annual Policy Statement" or the "Contact Information" page, whichever comes first, so a contents line is not counted as an item, even when a cover letter comes before the contents page.
+This covers the `ciraconnect` layout's "Resident Budget Package" and the association's own "Annual Disclosures" packets. A packet with a contents page names every item there ("Reserve Funding Mechanism", "Anticipated Special Assessments"). Items are searched only after that page ends, at the "Annual Policy Statement" or the "Contact Information" page, whichever comes first, so a contents line is not counted as an item, even when a cover letter comes before the contents page.
 
 The phrase rules skip a few look-alikes:
 
@@ -247,7 +247,7 @@ No Civil Code section governs these bills.
 
 ## Reserve studies (`reserve-study`)
 
-This model adapts `jason.community.reserve_study`. The library joins each PDF page's text with a newline, so an empty line is a page break. `split_pages` rebuilds the pages, and `read_pages` picks the preparer's reader: California Builder Services, The Helsing Group, Browning Reserve Group, or disclosure-only. On the library's studies this gives the same readings as `read_study` on the PDFs.
+This model adapts `jason.community.reserve_study`. The library joins each PDF page's text with a newline, so an empty line is a page break. `split_pages` rebuilds the pages, and `read_pages` picks the preparer's reader: `CaliforniaBuilderServices`, `HelsingGroup`, `BrowningReserveGroup`, or disclosure-only. On the library's studies this gives the same readings as `read_study` on the PDFs.
 
 **Record `ReserveStudyRecord`** holds:
 
@@ -259,7 +259,7 @@ This model adapts `jason.community.reserve_study`. The library joins each PDF pa
 - the 5570 note's interest and inflation rates and the 30-year answer, read from the form's own words when the preparer's reader misses them ("3.75 percent per year", "2.50% per year was the assumed long-term inflation rate", "Answer: Yes");
 - the components the study says were not visually inspected.
 
-When the preparer's reader has no itemized expenditures, `by_year_expenditures` reads Browning's "Expenditures by Year - Next 6 Years". Each component row gives its current cost, useful life, and (after the first year) its inflated cost. A year is kept only when its components' current costs add to the printed year total. Helsing's "Estimated Expenditure Schedule" comes out of the PDF in a scrambled column order, so it is not read. Its projection still gives each year's total spending.
+When the preparer's reader has no itemized expenditures, `by_year_expenditures` reads Browning's "Expenditures by Year - Next 6 Years". Each component row gives its current cost, useful life, and (after the first year) its inflated cost. A year is kept only when its components' current costs add to the printed year total. The `HelsingGroup` reader's "Estimated Expenditure Schedule" comes out of the PDF in a scrambled column order, so it is not read. Its projection still gives each year's total spending.
 
 **Required:** the preparer, the fiscal year, the prepared date, and the level.
 

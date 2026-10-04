@@ -113,7 +113,7 @@ Record `Contract` has these fields:
 - **Money:** `prices`, each with a label, amount, and period: one time, visit, month, year, hour, unit ("Price per unit to replace ..."), or percent. Also `items`, `total`, `authorized`, `validity_days`.
 - **Management terms:** `spending_limit`, `unlimited_transfers`, and `manager_statement`: the CIV 5375 items (`StatementItem`) a statement inside the agreement gives, read from that statement alone by the `STATEMENT_RULES` rows.
 
-The vendor is the specification's counterparty (`Mystique.senders()`) whose words appear first. A name in an address block or an email address does not count ("TO: RealManage", "Association c/o ..."). A vendor the directory lacks is read from the letterhead: the "Company" label, a company suffix, the parties clause, or the website.
+The vendor is the specification's counterparty (`Mystique.senders()`) whose words appear first. A name in an address block or an email address does not count ("TO:" a manager, "Association c/o ..."). A vendor the directory lacks is read from the letterhead: the "Company" label, a company suffix, the parties clause, or the website.
 
 The title is an upper-case heading on one line (a logo's stray letter on the line above does not join it). The first 8,000 characters are searched first, then the whole text, since Jensen's specifications addendum comes before its agreement. A heading about the agreement ("PARTIES TO THE AGREEMENT", "SERVICES INCLUDED IN YOUR AGREEMENT") is not a title; a heading the parties clause follows is preferred; a one-word heading takes the upper-case line above it (Signal Service's "COMMERCIAL LEASE ... INSPECTION AGREEMENT"). Else a mixed-case title line ("Proposal", "Bid"). Newman's engagement letter has no title.
 
@@ -126,7 +126,7 @@ Layouts:
   - Bravo Security's service agreement (Adobe Sign);
   - Signal Service's alarm monitoring lease: two DocuSign envelopes with certificates of completion, a 36-month term renewing for two years, and 30 days' notice;
   - Flock's order form: DocuSign anchor tags, 24 months renewing for 24;
-  - The Helsing Group's management agreement;
+  - a prior manager's management agreement;
   - Jensen's master landscape agreement;
   - Berding & Weil's contingency fee agreement;
   - Pro Active Pest Control's portal-signed service agreement;

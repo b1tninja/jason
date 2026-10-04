@@ -67,7 +67,7 @@ _SENDERS: tuple[Sender, ...] = (
     # statements of other associations came to the box from RealManage's lockbox (P.O. Box 803555, Dallas; they print
     # ciranet.com, RealManage's owner portal) and Vierra Moore's (P.O. Box 348600, Sacramento).
     Sender("The Helsing Group", SourceKind.MANAGER, ("HELSING",), role="prior manager", domains=('helsing.com',)),
-    Sender("RealManage", SourceKind.MANAGER, ("REALMANAGE", "REAL MANAGE", "CIRANET", "BOX 803555"),
+    Sender("RealManage", SourceKind.MANAGER, ("REALMANAGE", "REAL MANAGE", "CIRANET", "CIRACONNECT", "BOX 803555"),
            role="prior manager; other associations' owner statements from its lockbox"),
     Sender("Network Community Management", SourceKind.MANAGER, ("NETWORK COMMUNITY MANAGEMENT",), role="prior manager"),
     Sender("Newman Certified Public Accountant", SourceKind.ACCOUNTANT, ("NEWMAN CERTIFIED", "NEWMAN CPA"),

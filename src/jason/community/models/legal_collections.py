@@ -42,6 +42,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.invoices import parse_date
+from jason.community.sources import manager_name
 from jason.community.models.legal_shared import (
     DELINQUENT_AFTER_DAYS,
     FORECLOSURE_FLOOR,
@@ -216,7 +217,7 @@ class PreLienNoticeModel(DocumentModel):
             r.sender, r.sender_kind = "Severaid & Glahn, PC", SenderKind.ATTORNEY
         else:
             r.sender, r.sender_kind = "Mystique Community Association", SenderKind.ASSOCIATION
-        r.manager = "The Helsing Group" if re.search(r"Helsing", head, re.I) else ""
+        r.manager = manager_name(head, context.community)
         r.ledger_by = "Severaid & Glahn, PC" if re.search(r"Account Transaction Report\s*\n\s*Severaid", text, re.I) else ""
         r.property_address = site_address(first(r"Property Address\s*(?:\n[^\n]*){0,8}", text, 0) or "") or site_address(body[:1500])
         r.building = building_of(context, r.property_address)
@@ -583,7 +584,7 @@ class OwnerHistoryModel(DocumentModel):
     def parse(self, text: str, context: ModelContext) -> OwnerHistory | None:
         if not re.search(r"Property Address:", text or "") or not re.search(r"ASSOC ASSESSMENT|Balance Forward", text or ""):
             return None
-        r = OwnerHistory(manager="The Helsing Group" if re.search(r"Helsing", text) else "")
+        r = OwnerHistory(manager=manager_name(text, context.community))
         starts = [m.start() for m in re.finditer(r"Property Address:", text)]
         accounts = []
         for i, s in enumerate(starts):
@@ -609,7 +610,9 @@ class OwnerHistoryModel(DocumentModel):
         r.total_balance = sum(balances) if balances else None
         r.accounts_with_balance = sum(1 for b in balances if b > 0)
         r.accounts_over_90_days = sum(1 for a in r.accounts if len(a.aging) == 4 and a.aging[3] > 0)
-        r.names_owner = bool(re.search(r"San Ramon, CA 94583\n\s*[A-Z][a-z]+", text))
+        # The manager's letterhead ends with its city line; the owner's name is the next line (the owner's own city
+        # line is followed by "Property Address:").
+        r.names_owner = bool(re.search(r"[A-Za-z .]+, [A-Z]{2} \d{5}(?:-\d{4})?\n\s*(?!Property Address|Account)[A-Z][a-z]+", text))
         return r
 
     def check(self, r: OwnerHistory, context: ModelContext) -> list[Finding]:

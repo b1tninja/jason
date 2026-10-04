@@ -426,7 +426,10 @@ def case_report_evidence(text: str, *, ref: str, channel: str, ctx: dict[str, An
     from jason.community.models.manager_reports import _as_of
 
     day = _as_of(text)
-    manager = "The Helsing Group" if re.search(r"helsing", text or "", re.I) else "manager"
+    from jason.community.sources import manager_in
+
+    manager = manager_in(text or "", ctx.get("senders") or ())
+    manager = manager.name if manager else "manager"
     out = []
     for case in open_cases(text):
         if not is_work_case(case):

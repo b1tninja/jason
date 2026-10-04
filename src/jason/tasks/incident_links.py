@@ -310,7 +310,7 @@ def link(data_dir: Path, community: Any, *, drive: Any = None, gmail: Any = None
         if log and n % 10 == 0:
             log(f"  searched {n} of {len(events)} events")
     if gmail is not None:
-        saved, reports = fetch_case_reports(data_dir, gmail, private)
+        saved, reports = fetch_case_reports(data_dir, gmail, private, query=getattr(plan, "case_report_query", ""))
         fetched += saved
         kept_mail |= reports
         pruned_mail = _prune_mail(data_dir, kept_mail)
@@ -366,15 +366,15 @@ def _save_attachments(data_dir: Path, gmail: Any, hits: list[dict[str, Any]], pr
     return saved
 
 
-CASE_REPORT_QUERY = 'subject:"Helsing Report" has:attachment filename:pdf'
-
-
-def fetch_case_reports(data_dir: Path, gmail: Any, private: tuple[str, ...] = ()) -> tuple[int, set[str]]:
-    """Every manager case report in Gmail (the prior manager's weekly "Case Performance" PDFs), saved beside the synced
-    email attachments; the incident history reads each open case about the property. Returns the count saved and the
-    messages found, which keep their saved files from pruning."""
+def fetch_case_reports(data_dir: Path, gmail: Any, private: tuple[str, ...] = (), *, query: str = "") -> tuple[int, set[str]]:
+    """Every manager case report in Gmail (a manager's weekly "Case Performance" PDFs), saved beside the synced
+    email attachments; the incident history reads each open case about the property. ``query`` is the Gmail search
+    that finds them (``EvidencePlan.case_report_query``); without one nothing is searched. Returns the count saved
+    and the messages found, which keep their saved files from pruning."""
+    if not query:
+        return 0, set()
     hits = []
-    for row in gmail.iter_messages(CASE_REPORT_QUERY, limit=400):
+    for row in gmail.iter_messages(query, limit=400):
         try:
             meta = gmail.get_metadata(row["id"], headers=("From", "Subject", "Date"))
         except Exception:

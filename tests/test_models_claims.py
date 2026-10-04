@@ -28,6 +28,11 @@ class FakeCommunity:
     def name_pattern(self):
         return "mystique"
 
+    def senders(self):
+        from jason.community.sources import Sender, SourceKind
+
+        return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),)
+
 
 def ctx(name: str = "") -> ModelContext:
     return ModelContext(community=FakeCommunity(), today=TODAY, name=name)
@@ -216,9 +221,11 @@ This chart shows the average
 def test_a_manager_case_report_lists_its_open_cases_and_the_work_among_them():
     from jason.community.models.manager_reports import is_work_case, open_cases
 
-    reading = read(K.MANAGER_CASE_REPORT, CASE_REPORT + " The Helsing Group", ctx())
+    reading = read(K.MANAGER_CASE_REPORT, CASE_REPORT + " Example Management Group", ctx())
     r = reading.record
-    assert r.as_of == date(2023, 2, 3) and r.manager == "The Helsing Group"
+    assert r.as_of == date(2023, 2, 3) and r.manager == "Example Management Group"
+    # A manager the specification does not list is not named: a miss.
+    assert read(K.MANAGER_CASE_REPORT, CASE_REPORT + " Another Company", ctx()).record.manager == ""
     assert [c.number for c in r.open_cases] == ["00000001", "00000002", "00000003"]
     assert r.open_cases[1].case_type == "RFP/Proposals"
     assert [c.number for c in r.open_cases if is_work_case(c)] == ["00000002", "00000003"]

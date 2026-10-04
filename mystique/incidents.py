@@ -62,6 +62,8 @@ EVIDENCE = EvidencePlan(
     # The insurance policies, escrow instructions, and the landscaper's service location print 3048 Macon Dr for the
     # association's premises; no parcel has that address (the site's own is 3000 Macon Dr, in mail.py).
     site_words=("3048 MACON",),
+    # The prior manager emailed the board its weekly Case Performance report under this subject (2023).
+    case_report_query='subject:"Helsing Report" has:attachment filename:pdf',
     vendor_work=(
         # Summit is the association's roof repair vendor, called to each leak since at least 2017; its calls are the
         # roofs' upkeep. The work is maintenance; a claim on the same leak is still a claim.

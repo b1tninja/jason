@@ -73,7 +73,7 @@ Checks:
 - Rates over the caps (PROBLEM).
 - A late fee before day 15, or interest before day 30 (PROBLEM, 5650(b)).
 
-**`OwnerHistory`** reads The Helsing Group's owner ledgers: a single account, or the whole roll of accounts. The record has `manager`, `report_date`, `account_count`, `total_balance`, `accounts_with_balance`, and `accounts_over_90_days`. Each `AccountHistory` gives:
+**`OwnerHistory`** reads a prior manager's owner ledgers: a single account, or the whole roll of accounts. The record has `manager`, `report_date`, `account_count`, `total_balance`, `accounts_with_balance`, and `accounts_over_90_days`. Each `AccountHistory` gives:
 
 - the unit's address, building, and unit number;
 - the first and last posting and the number of entries;
