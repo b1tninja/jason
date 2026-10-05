@@ -1843,6 +1843,16 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/console/screens/document-kinds.md",),
            notes=("Not yet: the library ingests nothing from Gmail or the Drive until a person answers the folder "
                   "questions an ingest asks.",)),
+    Lesson("ladder-named-an-article-not-words", date(2026, 10, 4), (Area.DOCUMENTS, Area.GOVERNING),
+           "The loss packet's first run held step three: \"Provision not found on file\" for the declaration's article on "
+           "damage and casualty, a provision the documents do hold.",
+           "The ladder row named the article by its title (\"decl#Article 11\"), which the shelf does not know; and an article "
+           "number alone resolves to an outline of its sections, never to words, so even \"decl#11\" would have recited nothing.",
+           "The row names the operative sections (\"decl#11.1\", \"decl#11.2\"). A test resolves every provision of the "
+           "profile's ladder against the shelf and fails on any that comes back without words.",
+           Status.FIXED,
+           guards=("tests/test_unit_records_view.py::test_every_provision_of_the_profiles_ladder_recites_words_from_the_shelf",),
+           docs=("docs/unit-records-backend.md",)),
 )
 
 

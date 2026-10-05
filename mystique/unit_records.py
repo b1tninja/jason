@@ -42,7 +42,7 @@ LOSS_LADDER = (
     LadderStep(
         3,
         "Is it an insured casualty above the deductible?",
-        ("decl#Article 11", "decl#8.1(a)(iv)", "decl#8.1(a)(vi)"),
+        ("decl#11.1", "decl#11.2", "decl#8.1(a)(iv)", "decl#8.1(a)(vi)"),
         (UNIT_FINISHES,),
     ),
     LadderStep(

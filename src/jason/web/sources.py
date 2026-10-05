@@ -953,6 +953,9 @@ EXTRA_LOADERS: dict[str, str] = {
     "onboarding-session": "jason.web.extra.onboarding_setup:onboarding_session",  # gates, computed statuses, questions
     "paint": "jason.web.extra.paint:paint_view",  # the schedule against the catalog copy on disk; no network
     "paint-color": "jason.web.extra.paint:paint_color",  # GET /api/paint/color?code=
+    "facts": "jason.web.extra.unit_records:facts",  # community facts, assumed defaults; disk only
+    "unit-record": "jason.web.extra.unit_records:unit_record",  # ?unit=&plan= a unit's effective components and both coverage lists
+    "loss-packet": "jason.web.extra.unit_records:loss_packet",  # ?unit=&incident=&address= the ladder, recited from the shelf
     "library-kinds": "jason.web.extra.library_kinds:library_kinds",  # the kinds' shelf; ?kind= one kind's files; disk only
 }
 EXTRA_WRITERS: dict[str, str] = {
