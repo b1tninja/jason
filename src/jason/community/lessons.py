@@ -1616,6 +1616,22 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("plan-screen-defaults-stood-in-for-the-kind", date(2026, 10, 5), (Area.REPOSITORY,),
+           "The plan review read a two-person flag the server never sent and used its own 24-hour default for a "
+           "plan's age, so a two-person kind would have shown no second signer; its old-plan banner promised that apply "
+           "would re-read when the engine refuses; an item's rule showed as a citation with no words; the nav count "
+           "left out the plans; and a held item's board item was not a link.",
+           "The screen was built against the components' props before the plan's answer carried the kind, and the "
+           "banner's words were written before the engine's refusal of an old plan.",
+           "GET /api/approvals/<id> now carries the kind's facts, whether a second person must sign, and each rule "
+           "recited; GET /api/approvals counts the plans waiting on a person; the banner says apply refuses an old plan "
+           "and the apply step is not offered; a held item links to #/actions?item=ID; and a test walks every GET the "
+           "approvals routes answer to show none changes the store.",
+           Status.FIXED, guards=("tests/test_web_approvals.py: kindFacts, needsSecond, recitations, approvalsWaiting, "
+                                 "and no GET changes data/approvals/",
+                                 "ui/src/views/planapprovals.test.tsx: the kind's line, a recited rule, the board link, "
+                                 "and an old plan not offered to apply"),
+           docs=("docs/console/screens/approvals.md", "docs/console/mvp.md")),
     Lesson("boundary-misses-plain-strings", date(2026, 10, 5), (Area.REPOSITORY,),
            "With its baseline empty, the code boundary check still passed general modules whose tables and string "
            "constants held one association's facts: board-item options, request groups, stop-word sets, user agents, "
