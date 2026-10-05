@@ -78,6 +78,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [form-identifiers.md](form-identifiers.md): the campaign and copy markers on what jason sends; a marker is a hint.
 - [form-design.md](form-design.md): the form layout that guards against poor data entry (`jason form-lab`).
 - [form-fuzzer.md](form-fuzzer.md): testing the paper form and its reader with made-up answers and bad scans.
+- [form-workbench-ux.md](form-workbench-ux.md): specs for the design agent: the form workbench that pairs with the form decomposer (not built).
 
 ## Law, legal, insurance, and claims
 
