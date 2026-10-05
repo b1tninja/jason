@@ -37,6 +37,7 @@ The user's point: a set of known forms implies a procedure for each. So a form i
 | `key` | the form (`FormKey`) | `owner-info` |
 | `recognized by` | how an arrival is known to be this form: the marker's form code and campaigns, a PayHOA form id, a Google Form id, the printed title | marker code `NP`, PayHOA form 114542 |
 | `arrives by` | the channels it may come through | PayHOA, email, mailed scan, Google Form |
+| `authority` | the law it serves, as the canonical citation the rest of jason uses (`jason.community.references`): the process key | `CIV 4041` |
 | `procedure` | the SOP key that says what a person does with it (`jason sop KEY`) | `owner-info-cycle` |
 | `handler` | the code that reads an arrival into an answer and plans its effect | the response inbox, then `member_preferences.match` and `owner_info.plan_writes` |
 | `clocks` | the dates that run on it: return-by, the statutory day count, who sets it | answers by Oct 23; entered in PayHOA 30 days before the annual reports (4041(b)(1)) |
@@ -44,6 +45,26 @@ The user's point: a set of known forms implies a procedure for each. So a form i
 | `complete` | what makes it done | recorded in PayHOA |
 
 A new form type is a new row plus a procedure; an arrival that carries a form no row names goes to an "unknown form" lane for a person, never a guess. A check keeps the table honest: every row names a procedure that exists and a handler that is registered. The profile supplies the rows (the forms it uses, their markers and ids); the base class and the handlers are written once.
+
+## The citation is the process key; the reference is the copy key
+
+Two identifiers do two jobs, and neither replaces the other:
+
+- **The citation names the process.** `CIV 4041` is the owner information request. The same canonical string already keys the notice requirements (`jason notices`), the follow-up rules (`FollowUp.authority`: "CIV 4041(e), 4040(a)(2)"), the clocks, the conflicts, and the statutes shelf. So a known form's `authority` is the join: from `CIV 4041`, a person or a tool reaches the form, its procedure (`jason sop`), the notice requirement and its delivery rules, the clocks that run, and the board items about it. `Procedure` rows gain an `authority` (a tuple of citations) so `jason sop --authority "CIV 4041"` finds them. Other forms follow the same way: a records request by `CIV 5210`, internal dispute resolution by its section, and so on; a form for which the law gives no section takes the governing document's section it rests on.
+- **The reference names the copy.** `NP27E-4RK9T-C7` is one copy of that form sent to one owner for one unit in one cycle ([form-identifiers.md](form-identifiers.md)). It is exact where the citation is general.
+
+A citation is a **lead, not proof**: many documents cite 4041 (the annual policy statement, a reply that quotes the law), so a text that cites a form's authority is a candidate for that process, to be confirmed by the reference, the title and layout, or a person. It is most useful where there is no reference: a retyped or photocopied form still prints "Civil Code §4041" and its title; an email that quotes a section is about that process; and a returned letter that cites a section routes to the procedure that section keys. The order of strength is below.
+
+## The sent-copy catalog: the reference is already known
+
+Every copy jason sends is recorded when it goes: `data/forms/references.json`, written by `jason.tasks.form_references.record` (ids and hashes, never an address). Each entry is the copy's marker with its form, year, channel, unit, membership, when it was first and last sent, the file, and the fingerprints of what was filled in. At the time of writing it holds a marker for every emailed owner copy. A mailed letter's marker names the campaign only (every copy is the same), so the unit comes from the address written on the page.
+
+That catalog does two jobs the arrivals layer must use:
+
+1. **Identify an arrival exactly.** A reference found in an arrival's subject, quoted reply, or attachment text is looked up (`form_references.lookup`, which also takes a marker one character off to the one sent marker it is near). A hit gives the form, the cycle, and **the owner and unit the copy was sent to**, which is compared with the unit written on the page and the owner the sender matches. This is the strongest identification there is, and it needs no model.
+2. **Say who has not answered.** The sent copies are the **asked** side: every reference sent, to whom, when. Subtract the owners with an arrival or an answer, and what remains is who was asked and has not responded; owners with no reference and no letter batch are who was never asked. This is the outstanding list the cycle board shows, with the deliveries' outcomes from the notice ledger beside it.
+
+The response inbox as first built checks a marker's campaign only; it does not yet look the copy up. Using the catalog there is the first change to make ([Build order](#build-order), step 1b).
 
 ## The arrival
 
@@ -96,9 +117,10 @@ The reference is what ties an arrival to a request and, for a copy that differs 
 In order, stopping at the first sure answer:
 1. **A PayHOA submission** names its form: known by id (`payhoa_forms.record_for`). No reading needed.
 2. **A Google Form response** is known by the form's id.
-3. **An attachment's text layer** (a PDF's own text, or the mail service's `text.txt`) searched for a marker with `form_refs.parse`. A marker whose campaign is a known row is the form and the cycle. A copy marker also names the owner and unit it was sent to.
+3. **A reference in the text,** looked up in the sent-copy catalog (`form_references.lookup`): the subject, a quoted reply's body (read only for a candidate message), an attachment's text layer or the mail service's `text.txt`. A hit names the copy: form, cycle, owner, and unit as sent. A marker that matches no sent copy is kept as a finding ("a reference we did not send").
 4. **The first page by layout** (`form_reader.identify_form`) when there is no readable marker, only for a PDF or image from an outside sender, once, cached.
-5. **The subject** ("Re: Owner Information", "Form attached") as a weak lead, labeled low.
+5. **The printed title and the cited authority:** the page's text names a known form's title or cites its authority (`CIV 4041`). A candidate for that process, labeled medium; it needs a reference, a layout match, or a person to be sure.
+6. **The subject** ("Re: Owner Information", "Form attached") as a weak lead, labeled low.
 
 The step downloads an attachment only for a message from outside the association's domains that carries a PDF or image, once, into a private place (level P3), size-capped, and never for an arrival already identified by id. The identification keeps the copy's owner and unit **beside** the unit the person wrote and the owner the sender matches; where they differ it says so ([handoff-responses.md](console/handoff-responses.md) `ReferenceMatch`).
 
@@ -167,7 +189,8 @@ A route can also open a **clock**: a request's response day, a notice's follow-u
 
 ## Build order
 
-1. **The responses core** (building now): the form arrival, its reading and confirmation, the keyed answers. It is the first handler.
+1. **The responses core** (built; the command and MCP tools follow): the form arrival, its reading and confirmation, the keyed answers. It is the first handler.
+   - **1b.** Use the sent-copy catalog in the core: look a found reference up (`form_references.lookup`), keep the owner and unit as sent on the reading, compare them with the unit written and the sender, and read a candidate message's body for a quoted reference. Add `authority` to the form row and to `Procedure`. Then `jason responses --outstanding`: the asked-and-not-answered list, from the catalog less the arrivals.
 2. **Catalog and identify**, sources Gmail, the mail service, PayHOA forms and requests, and Google Forms, with the known-forms table: the cheap step on its own, and the `Arrival` widened from the form arrival. `jason arrivals`, its MCP tools, and the cadence.
 3. **Triage by rule** from the classifiers that exist (party, kind, clock), the correction path and the scorecard, then the local model for the remainder.
 4. **Routes** kind by kind, each with its procedure step and lesson, starting with the ones that already have a handler (member requests, invoices, bounces).
