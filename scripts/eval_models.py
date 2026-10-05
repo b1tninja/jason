@@ -66,6 +66,9 @@ def evaluate(root: Path, kinds: list[str], community) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from jason.config import apply_temp_dir_or_exit
+
+    apply_temp_dir_or_exit()          # JASON_TEMP_DIR: scratch off the system drive
     parser = argparse.ArgumentParser()
     parser.add_argument("kinds", nargs="+")
     parser.add_argument("--show", type=int, default=0)

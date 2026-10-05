@@ -71,6 +71,7 @@ MODULES: tuple[str, ...] = (
     "placer",
     "index",
     "verify_quotes",
+    "storage",
 )
 
 

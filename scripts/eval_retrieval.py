@@ -265,6 +265,9 @@ def parse_fusion(text: str) -> tuple[int, float]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from jason.config import apply_temp_dir_or_exit
+
+    apply_temp_dir_or_exit()          # JASON_TEMP_DIR: scratch off the system drive
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data")
     parser.add_argument("--gold", action="append", default=[], help="a gold file; repeat for several (default: gold.json)")

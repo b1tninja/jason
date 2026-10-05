@@ -304,6 +304,7 @@ def status_lines(s: dict[str, Any]) -> list[str]:
         out.append(f"Windows commit: {_gb(mem['committed'])} of {_gb(mem['commitLimit'])} used; RAM {_gb(mem['ram'])}")
         out.append("  page files in use: " + (", ".join(f"{p['file']} {_gb(p['size'])}" for p in mem.get("pageFiles") or []) or "none"))
         out.append("  page files set: " + ("; ".join(mem.get("pageFilesConfigured") or []) or "-"))
+    out.append("disk: `jason storage` lists where jason writes and each drive's free space (JASON_TEMP_DIR moves scratch)")
     for lock in s.get("locks") or []:
         out.append(f"lock {lock['lock']}: process {lock.get('pid')} ({lock.get('purpose') or lock.get('command', '')}) since {lock.get('since')}")
     out.append("")

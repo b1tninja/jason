@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -54,7 +55,7 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def _env_value(key: str) -> str:
+def _env_value(key: str, env_file: str | Path | None = None) -> str:
     """``key`` from the environment, else from .env (``resolve_env_path``), else ""."""
     value = os.environ.get(key, "").strip()
     if value:
@@ -62,7 +63,7 @@ def _env_value(key: str) -> str:
     try:
         from dotenv import dotenv_values
 
-        path = resolve_env_path(None)
+        path = resolve_env_path(env_file)
         values = dotenv_values(path) if path.is_file() else {}
     except Exception:  # noqa: BLE001 - an unreadable .env sets nothing
         return ""
@@ -228,6 +229,9 @@ class Settings:
     google_notebook_url: str = ""
     google_sheets_spreadsheet_id: str = ""
     lawlibrary_home: Path = Path("../lawlibrary")
+    # JASON_TEMP_DIR: where scratch, temp files, and rebuilt-index spill go ("" leaves the system's temp alone);
+    # apply_temp_dir() puts it into effect.
+    temp_dir: str = ""
     env_path: Path | None = None
     # Every "<name>_record_uid" in .env or the environment, by lower-case key: a vendor portal's Keeper record.
     record_uids: dict[str, str] = field(default_factory=dict)
@@ -416,6 +420,7 @@ class Settings:
             ),
             google_sheets_spreadsheet_id=google_sheets_spreadsheet_id,
             lawlibrary_home=Path(lawlibrary_home),
+            temp_dir=_get(values, "jason_temp_dir", "JASON_TEMP_DIR", default="") or _env_value("JASON_TEMP_DIR", env_path),
             env_path=env_path if env_path.is_file() else None,
             record_uids=_record_uids(values),
         )
@@ -435,3 +440,98 @@ def test_memberships(env_file: str | Path | None = None) -> set[int]:
     except Exception:
         pass
     return ids
+
+
+# ----- where scratch goes (JASON_TEMP_DIR) -----
+
+# The variables that name the temp folder for this process and every program it starts (Windows reads TEMP and TMP,
+# POSIX TMPDIR, SQLite's own spill files SQLITE_TMPDIR where the platform honors it, and pytest's tmp_path
+# PYTEST_DEBUG_TEMPROOT).
+TEMP_ENV_VARS = ("TEMP", "TMP", "TMPDIR", "SQLITE_TMPDIR", "PYTEST_DEBUG_TEMPROOT")
+
+_SYSTEM_TEMP: str | None = None   # the temp folder the process started with, noted before apply_temp_dir changes it
+
+
+class TempDirError(RuntimeError):
+    """``JASON_TEMP_DIR`` names a folder that cannot be used (its drive is missing or it cannot be written to)."""
+
+
+def system_temp() -> Path:
+    """The system's temp folder as the process found it, before ``apply_temp_dir`` moved it."""
+    return Path(_SYSTEM_TEMP) if _SYSTEM_TEMP else Path(tempfile.gettempdir())
+
+
+def temp_dir_setting(env_file: str | Path | None = None) -> str:
+    """``JASON_TEMP_DIR`` from the environment or .env ("" when unset). Reads no profile."""
+    return _env_value("JASON_TEMP_DIR", env_file)
+
+
+def resolve_temp_dir(value: str) -> Path:
+    """The folder ``value`` names: ``~`` expanded, a relative one taken from the data root's parent (the checkout)."""
+    path = Path(os.path.expandvars(value)).expanduser()
+    if not path.is_absolute():
+        path = data_root().parent / path
+    return path
+
+
+def temp_dir_problem(path: Path) -> str:
+    """Why ``path`` cannot be a temp folder, read without creating anything: its drive is missing, or no folder on the way
+    to it can be written to. "" when it can."""
+    if any(ord(c) < 32 for c in str(path)):
+        return ("JASON_TEMP_DIR holds a control character: a backslash path in double quotes in .env is read as escapes "
+                r"(\t, \n). Write it without quotes or with forward slashes (D:/scratch/jason/tmp).")
+    anchor = path.anchor
+    if anchor and not Path(anchor).exists():
+        return (f"JASON_TEMP_DIR is {path}, but the drive {anchor} does not exist. Connect it or change JASON_TEMP_DIR "
+                "in .env; jason will not fall back to the system temp folder.")
+    nearest = next((p for p in (path, *path.parents) if p.exists()), None)
+    if nearest is None or not nearest.is_dir() or not os.access(nearest, os.W_OK):
+        return (f"JASON_TEMP_DIR is {path}, which cannot be created or written to. Change it in .env; jason will not "
+                "fall back to the system temp folder.")
+    return ""
+
+
+def check_temp_dir(path: Path) -> Path:
+    """Create ``path`` and prove it can be written to, or raise ``TempDirError`` saying why. A missing drive is an error,
+    never a quiet fallback to the system drive."""
+    problem = temp_dir_problem(path)
+    if problem:
+        raise TempDirError(problem)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=path):
+            pass
+    except OSError as exc:
+        raise TempDirError(f"JASON_TEMP_DIR is {path}, which cannot be created or written to ({exc}). Change it in .env; "
+                           "jason will not fall back to the system temp folder.") from exc
+    return path
+
+
+def apply_temp_dir(env_file: str | Path | None = None) -> Path | None:
+    """Put ``JASON_TEMP_DIR`` into effect for this process and every program it starts: ``tempfile.tempdir`` and
+    ``TEMP_ENV_VARS``. Unset changes nothing and returns None. Safe to call again. Called when a command, a server, or a
+    script starts, never at import. Raises ``TempDirError`` when the folder cannot be used."""
+    global _SYSTEM_TEMP
+    value = temp_dir_setting(env_file)
+    if not value:
+        return None
+    if _SYSTEM_TEMP is None:
+        _SYSTEM_TEMP = tempfile.gettempdir()
+    path = check_temp_dir(resolve_temp_dir(value))
+    text = str(path)
+    tempfile.tempdir = text
+    for name in TEMP_ENV_VARS:
+        os.environ[name] = text
+    return path
+
+
+def apply_temp_dir_or_exit(env_file: str | Path | None = None) -> Path | None:
+    """``apply_temp_dir`` for a program's start (a server or a script): a folder that cannot be used ends it with the
+    reason on standard error and exit code 2, not a traceback."""
+    import sys
+
+    try:
+        return apply_temp_dir(env_file)
+    except TempDirError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

@@ -4647,10 +4647,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _apply_temp_dir(args: argparse.Namespace) -> None:
+    """Put JASON_TEMP_DIR into effect before the command runs (jason.config.apply_temp_dir). A command that reports on the
+    setting (``jason storage``) sets ``reports_temp_dir`` and meets a folder that cannot be used itself."""
+    from jason.config import TempDirError, apply_temp_dir
+
+    try:
+        apply_temp_dir(getattr(args, "env", None))
+    except TempDirError:
+        if not getattr(args, "reports_temp_dir", False):
+            raise
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        _apply_temp_dir(args)
         code = args.func(args)
     except Exception as exc:  # noqa: BLE001 — CLI surface
         print(f"Error: {exc}", file=sys.stderr)

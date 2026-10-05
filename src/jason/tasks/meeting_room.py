@@ -817,7 +817,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check-executive", metavar="DATE", required=True,
                         help="count the open room file's entries inside an executive window (YYYY-MM-DD, or all)")
     args = parser.parse_args(argv)
-    from jason.config import data_dir
+    from jason.config import apply_temp_dir_or_exit, data_dir
+
+    apply_temp_dir_or_exit()
 
     root = Path(data_dir())
     rows = check_all(root) if args.check_executive == "all" else [check_executive(root, args.check_executive)]

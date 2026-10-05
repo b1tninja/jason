@@ -255,8 +255,10 @@ def main(argv: list[str] | None = None) -> None:
                    help="not production: a signed-in admin (data/access/admins.json) may view the console as any "
                         "officer or office; writes are refused while they do")
     a = p.parse_args(argv)
+    from jason.config import apply_temp_dir_or_exit
     from waitress import serve
 
+    apply_temp_dir_or_exit()
     sign_in = signin.default_sign_in(required=a.require_sign_in, dev=a.dev)
     if a.dev:
         print("jason-web: --dev: a signed-in admin may view the console as anyone (writes refused meanwhile)",

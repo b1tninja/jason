@@ -354,6 +354,9 @@ def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: st
     model is loaded before an older one that would load another, and checks the job's own model with preflight (a
     9B job is not held back by the 27B's memory). With ``release_models``, after each GPU job it unloads the models no
     queued job needs, except jason's shared model (``release_idle``), so the next model finds the commit free."""
+    from jason.config import apply_temp_dir
+
+    apply_temp_dir(env_file)      # each job process inherits the worker's TEMP (JASON_TEMP_DIR), and applies it itself
     counts = {"done": 0, "failed": 0, "retried": 0, "deferred": 0, "released": 0}
     lock = threading.Lock()
     stop = threading.Event()

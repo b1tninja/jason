@@ -398,4 +398,7 @@ def build(profile: str = "", *, community: Any = None, data_dir: Path | None = N
 
 def main() -> None:
     _working_directory()
+    from jason.config import apply_temp_dir_or_exit
+
+    apply_temp_dir_or_exit()
     build(_profile()).run(transport="stdio")

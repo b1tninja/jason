@@ -198,6 +198,25 @@ What jason does with the mail it can read, and how it will rejoin conversations 
 
 jason's local models run on Ollama (`qwen3.6:27b` for OCR, classification, and extraction; `qwen3-embedding:8b` as the passage index's embedder, `jason index --build`). `jason local-ai` reports the stack. A model job holds jason's GPU lock and runs a preflight that fails fast on the CPU or when Windows is short of commit charge. A system-managed page file is often too small; a fixed 32 to 64 GB page file is the fix ([document-tools.md](document-tools.md)).
 
+## Where jason writes
+
+A rebuilt index, OCR page images, a model's files, and the county caches are large, and the system drive is often the small one. `jason storage` lists each place jason reads or writes: its path, drive, the drive's free space, and the size of what jason keeps there. `jason storage --check` exits 1 and says why when a drive is short of room (`--min-free-gb`, default 20), when scratch would land on the small drive, or when `JASON_TEMP_DIR` cannot be used.
+
+Put scratch on a roomy drive with one setting in `.env` (or the environment):
+
+```
+JASON_TEMP_DIR=D:\scratch\jason\tmp
+```
+
+A relative value is taken from the folder that holds the data directory. Unset, nothing changes. When it is set, each jason command, `jason-mcp`, `jason-web`, the worker and every job it starts, and the scripts in `scripts/` create the folder and point Python's `tempfile`, `TEMP`, `TMP`, `TMPDIR`, `SQLITE_TMPDIR`, and `PYTEST_DEBUG_TEMPROOT` at it, so every program jason starts (pymupdf, Tesseract, SQLite's sorts during `jason index --build`) uses it too. The tests put `tmp_path` there as well. Importing `jason` does nothing; the setting is applied when a program starts. A drive that is missing or a folder that cannot be written stops the run with a message, and jason does not fall back to the system temp folder.
+
+What it cannot move, and what you may choose to run yourself (jason never changes a system or user setting):
+
+- **Other programs' temp files**, and Windows itself, use the user's `TEMP` and `TMP`. To move them: `setx TEMP D:\temp` and `setx TMP D:\temp` (new programs only; make the folder first).
+- **A coding agent's own scratch folder** is the agent's setting, not jason's; it is usually under the user's `TEMP`, so the `setx` lines above would move it, and a session started before them still uses the old one.
+- **pip's cache**: `pip config set global.cache-dir D:\pip-cache`.
+- **Folders jason reads that have their own settings**: `ASSPY_HOME` (the county index cache; Windows default `%LOCALAPPDATA%\asspy`), `OLLAMA_MODELS`, `HF_HOME`, and `JASON_LOCK_DIR` (small). `jason storage` shows where each is.
+
 ## Using jason from Python
 
 ```python

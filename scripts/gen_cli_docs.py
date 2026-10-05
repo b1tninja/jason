@@ -197,6 +197,7 @@ GROUPS: dict[str, str] = {
     "spec": "Setup & maintenance",
     "jobs": "Setup & maintenance",
     "worker": "Setup & maintenance",
+    "storage": "Setup & maintenance",
 }
 
 # Options most commands take; listed once in the intro instead of per command.

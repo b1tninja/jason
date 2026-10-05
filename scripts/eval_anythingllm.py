@@ -67,6 +67,9 @@ def vector_search(key: str, slug: str, query: str, depth: int, api: str = API) -
 
 
 def main(argv: list[str] | None = None) -> int:
+    from jason.config import apply_temp_dir_or_exit
+
+    apply_temp_dir_or_exit()          # JASON_TEMP_DIR: scratch off the system drive
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data")
     parser.add_argument("--gold", action="append", default=[])

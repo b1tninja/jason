@@ -65,6 +65,9 @@ def other_rows() -> list[dict]:
 
 
 def main() -> None:
+    from jason.config import apply_temp_dir_or_exit
+
+    apply_temp_dir_or_exit()          # JASON_TEMP_DIR: scratch off the system drive
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-kind", type=int, default=3)
     ap.add_argument("--max-mb", type=float, default=8.0)

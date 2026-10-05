@@ -10,6 +10,15 @@ os.environ["JASON_SPEC_DIR"] = str(Path(__file__).parent / "fixtures" / "spec")
 os.environ["JASON_PROFILE"] = "mystique"
 os.environ.pop("JASON_PROFILE_DIR", None)
 
+# JASON_TEMP_DIR (environment or .env) puts scratch, and pytest's tmp_path (PYTEST_DEBUG_TEMPROOT, which pytest-xdist's
+# workers inherit), on that drive. Unset, nothing changes. pytest prunes only the pytest-of-<user> folders it made.
+try:
+    from jason.config import apply_temp_dir
+
+    apply_temp_dir()
+except Exception as exc:  # noqa: BLE001 - a JASON_TEMP_DIR that cannot be used stops the run, never falls back to C:
+    pytest.exit(f"JASON_TEMP_DIR: {exc}", returncode=2)
+
 
 @pytest.fixture(autouse=True)
 def _no_ollama_ocr(monkeypatch):

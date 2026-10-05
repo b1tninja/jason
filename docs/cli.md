@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-148 commands, by area:
+163 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
@@ -18,7 +18,8 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (4)
-- [Setup & maintenance](#setup--maintenance) (7)
+- [Setup & maintenance](#setup--maintenance) (8)
+- [Other](#other) (14)
 
 ## PayHOA & finance
 
@@ -229,7 +230,7 @@ PayHOA-first: list pending utility txs, sync only needed portals (SMUD / i-doxs)
 | Option | Value | Help |
 |---|---|---|
 | `--date-window-days` | DATE_WINDOW_DAYS | Max \|tx date - bill date\| in days (default: 7) |
-| `--source` | {smud,idoxs,proactive} | Limit to one bill source (default: all registered) |
+| `--source` | {smud,idoxs,proactive,signalservice} | Limit to one bill source (default: all registered) |
 | `--skip-sync` |  | Attach using local caches only (skip portal sync) |
 | `--dry-run` |  | List pending matches without portal sync or uploads |
 | `--approve` |  | Mark transaction approved after successful upload |
@@ -312,7 +313,7 @@ Match unapproved PayHOA transactions to registered bill sources (SMUD, City of S
 | Option | Value | Help |
 |---|---|---|
 | `--date-window-days` | DATE_WINDOW_DAYS | Max \|tx date - bill date\| in days (default: 7) |
-| `--source` | {smud,idoxs,proactive} | Limit to one bill source (default: all registered) |
+| `--source` | {smud,idoxs,proactive,signalservice} | Limit to one bill source (default: all registered) |
 | `--dry-run` |  | Print matches without uploading or downloading PDFs |
 | `--approve` |  | Mark transaction approved after successful upload |
 
@@ -612,6 +613,7 @@ Take a folder, zip, Drive folder, or files into the library: inventory, dedup, r
 | `--terms-model-name` | TERMS_MODEL_NAME | the Ollama model or Bedrock model id for --terms-model |
 | `--allow-remote-confidential` |  | let a remote --terms-model read a confidential file, for this run only |
 | `--no-ocr` |  | read text layers only; an image-only file is left unread |
+| `--no-law` |  | do not look the statutes the files cite up in lawlibrary; one off the authorities shelf is then unchecked |
 | `--gate` |  | print what the last ingest says for the onboarding session's ingest stage (read-only) |
 | `--json` |  | print the run as JSON |
 
@@ -644,7 +646,6 @@ The license numbers the documents print (contractor, alarm, pest, real estate, i
 | `--library` |  | read every file in the library and save the register |
 | `--people` |  | also list notaries' commissions and certifications |
 | `--json` |  | print JSON |
-
 
 ## Meetings, board & minutes
 
@@ -1162,6 +1163,8 @@ Each notice's delivery to every member, bounces and returns, and the follow-ups 
 | `--general` |  | a general notice (Civil Code 4045: a meeting notice) that was also posted where the annual policy statement designates, so the posting delivered it: a failed message is noted, a resend is owed only to a member who asked for individual delivery (4045(b)), and a bounce still asks for a working email. Not posted: leave this off, since the messages were the delivery |
 | `--json` |  | print JSON |
 | `--catalog` |  | the notice requirements the law sets (no KEY: all of them; KEY: one, with the governing documents' clauses and the stricter clock). Reads no PayHOA |
+| `--fact` | FACT=WORD | with --catalog: a fact about the meeting, rule change, or election, which decides the notices required only for some events: election=directors, rule_change=emergency, rule_scope=listed_subject, board_meeting=executive_session_only, meeting_format=entirely_by_teleconference, electronic_voting=opt_out (repeatable). The rows are then listed in three groups: applies, does not apply (with the deciding fact), and undetermined (with the missing fact) |
+| `--required` |  | with --catalog: the same three groups from the facts on hand alone (the profile's and the answered questions), with no fact said for an event |
 | `--proof` |  | the proof-of-notice record for KEY: the evidence its requirement calls for, the window, and who was reached late, from the ledger (sync first) |
 | `--requirement` | REQUIREMENT | with --proof: the catalog key, when KEY does not start with one |
 | `--event` | EVENT | with --proof: the day of the meeting, hearing, due date, or other anchor |
@@ -1178,7 +1181,7 @@ Check notices and jason's base templates for the elements the law requires (read
 | `keys` | optional (*) | the requirement keys to check (default: every base template) |
 | `--file` | PATH | a rendered notice to check instead of the bases |
 | `--requirement` | KEY | with --file: the catalog requirement it serves |
-| `--event` | FACT=WORD | a fact about the meeting, rule change, or election the notice is for, which decides an element only some notices need: meeting_format=entirely_by_teleconference, rule_change=emergency, electronic_voting=opt_out (repeatable) |
+| `--event` | FACT=WORD | a fact about the meeting, rule change, or election the notice is for, which decides an element only some notices need: meeting_format=entirely_by_teleconference, rule_change=emergency, electronic_voting=opt_out, election=amendment, director_quorum=at_least_20_percent (repeatable) |
 | `--no-law` |  | leave out the statements of law and the statutes' words |
 | `--json` |  | print the findings as JSON |
 
@@ -1210,6 +1213,7 @@ Export the words of the law Jason relies on from lawlibrary into data/authoritie
 |---|---|---|
 | `--list` |  | List the exported pages and the pointers without calling lawlibrary |
 | `--fetch-publications` |  | Also download the DRE publications into data/authorities/publications |
+| `--digests` |  | Record each section's digest in the manifest from the pages already on disk, without calling lawlibrary |
 
 ### `jason law-history`
 
@@ -1411,7 +1415,7 @@ Written provisions a higher authority displaces: what still governs and what yie
 
 | Option | Value | Help |
 |---|---|---|
-| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing, onboarding |
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing, onboarding, contracts |
 | `--open` |  | leave out the resolved ones |
 | `--leads` |  | find candidates: each change in the Davis-Stirling Act since 2014 that may postdate a document, with the section that cites it or speaks to its subject (reads the stored outlines and law history) |
 | `--document` | DOCUMENT | with --leads: one document's outline key (bylaws, enforcement-policy) |
@@ -1429,6 +1433,13 @@ Read the association's Gmail, headers only: PostScanMail notices against the syn
 | `--sync` |  | Read Gmail first (read-only; needs the Google token with the Gmail scope) |
 | `--days` | DAYS | How far back to read (default 730 days) |
 | `--files` |  | Save the PDF attachments of business email that look like documents |
+| `--file-vendor` | NAME | File the attachments a vendor sent from its known domains or emails in Drive (a sender directory name, or all) by the profile's filing rules (kind, then source); skips what Drive holds. Prints the plan; --yes uploads |
+| `--yes` |  | With --file-vendor: upload the attachments the plan marks file |
+| `--hold` | GLOB | With --file-vendor: hold back attachments whose names match (repeatable), for a person to verify |
+| `--why` |  | With --file-vendor: under each document, the filing rule's condition and the facts that decided it |
+| `--life-safety` |  | With --file-vendor: also file the life-safety reports (inspection reports) Drive already holds in their filing-rule folder: one loose in the root of My Drive is moved (it keeps its id, link, and sharing); one in another folder is copied there and the original stays. --yes does it |
+| `--via-gmail` |  | With --file-vendor: use Gmail's own Add to Drive, which links the file to its email. Lists what to save (data/gmail/save-to-drive.md) from Gmail's metadata only; --yes moves the copies saved to My Drive into their folders. Nothing is downloaded or uploaded |
+| `--filters-xml` | PATH | Write Gmail filters (the file Gmail imports) that label each vendor's mail Vendors/<vendor> by its known domains and emails (default data/gmail/vendor-filters.xml) |
 | `--json` |  | Print JSON |
 
 ### `jason drive`
@@ -1558,6 +1569,15 @@ Sync the Zoom account's meetings, transcripts, and AI summaries; list them with 
 | `--store-app` |  | Create the Keeper record for the Zoom app (with --account-id, --client-id); the secret is filled in Keeper |
 | `--account-id` | ACCOUNT_ID | With --store-app: the app's account id |
 | `--client-id` | CLIENT_ID | With --store-app: the app's client id |
+| `--create-board-meeting` |  | Schedule the board meeting on Zoom under the profile's board meeting policy (needs --yes); the join link and dial-in go to the notice |
+| `--date` | DATE | With --create-board-meeting: the meeting date YYYY-MM-DD (default the schedule's next) |
+| `--time` | TIME | With --create-board-meeting: the start, e.g. '7:00 pm' (default the schedule's hour) |
+| `--meeting-id` | MEETING_ID | With --recording or --caption: the live meeting's id |
+| `--recording` | {,start,pause,resume,stop} | Control the live meeting's cloud recording as the host (pause for an executive session); needs --meeting-id and --yes |
+| `--caption` | CAPTION | Post one line, prefixed 'jason:', into the live meeting's captions for everyone; needs --meeting-id and --yes |
+| `--lang` | LANG | With --caption: the caption language (default en-US) |
+| `--by` | BY | With --recording or --caption: who asked for it, for the log |
+| `--yes` |  | Confirm --create-board-meeting, --recording, or --caption |
 | `--json` |  | Print JSON |
 
 ### `jason contacts`
@@ -1647,6 +1667,10 @@ Vendor customer portals (ProActive): sync visits, products, files, and invoices 
 | `--key` | KEY | One portal from mystique/vendors.py (default every portal) |
 | `--sync` |  | Sign in and download what is new (non-interactive with the Keeper record) |
 | `--full` |  | With --sync: download every invoice and file again |
+| `--reports` |  | Sync the vendor's public report portal (the one a QR code on its reports names): the list and each PDF; needs no sign-in |
+| `--drive` |  | With --reports: file the kept reports in Drive by the profile's filing rules (skips what Drive holds; a life-safety report loose in the root moves into its folder, and one in another folder is copied there). Prints the plan; --yes does it |
+| `--yes` |  | With --reports --drive: upload and move what the plan marks |
+| `--from` | FILE | With --reports: also read QR codes from these PDFs or images to find portals |
 | `--verify` |  | Match PayHOA payments to the portal's payments and attached invoices |
 | `--visits` | VISITS | Latest visits to print per property |
 | `--limit` | LIMIT | With --verify: findings to print |
@@ -1912,7 +1936,7 @@ The job queue: add a jason command (jason jobs add -- gmail --sync), list, show,
 | Option | Value | Help |
 |---|---|---|
 | `--confirm` | CONFIRM | With add: the person who approved a command that writes (--yes) |
-| `--resource` | {,gpu,google,payhoa,local} | With add: the resource the command uses, when the guess is wrong |
+| `--resource` | {,gpu,google,payhoa,county,local} | With add: the resource the command uses, when the guess is wrong |
 | `--max-attempts` | MAX_ATTEMPTS | With add: tries for a read or sync (a write runs once) |
 | `--all` |  | List every job, not only queued, running, and failed |
 | `--tail` | TAIL | With show: lines of the job's log |
@@ -1930,13 +1954,24 @@ Run the job queue: one job at a time per resource (GPU, Google, PayHOA, local)
 | `--poll` | POLL | Seconds between looks at the queue |
 | `--keep-models` |  | Leave models loaded after GPU jobs (by default the worker unloads a model no queued job needs, except jason's shared model) |
 
+### `jason storage`
+
+Where jason writes: each place's path, drive, free space, and size; --check flags a drive short of room and scratch on the small drive
+
+| Option | Value | Help |
+|---|---|---|
+| `--check` |  | exit 1 and say why when a drive is short of room |
+| `--min-free-gb` | GB | free space below which a drive is a problem (default 20) |
+| `--no-sizes` |  | skip measuring the folders |
+| `--json` |  | print JSON |
+
 ### `jason lessons`
 
 What went wrong, what changed, and what is still open
 
 | Option | Value | Help |
 |---|---|---|
-| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing, onboarding |
+| `--area` | AREA | one area: owner-info, mailroom, email, forms, documents, repository, enforcement, rentals, governing, onboarding, contracts |
 | `--open` |  | only lessons still to act on (open or awaiting a decision) |
 | `--json` |  | print JSON |
 
@@ -1974,6 +2009,9 @@ Onboarding as a session: progress, stage gates, and the next questions ranked by
 | `--name` | NAME | with --new: the association's name as its notices give it |
 | `--county` | COUNTY | with --new or --lookup: the county whose public records hold the association's |
 | `--dir` | DIR | with --new: where to write the package (default: beside the default profile) |
+| `--associations` |  | with --county: the owners', commercial, and maintenance associations the county recorder's index shows (asspy's survey), to choose the association from; --find narrows by words |
+| `--find` | FIND | with --associations: only names holding these words |
+| `--locate` |  | locate the association's recorded documents in the county index (by its names, beside its governing instruments, and the builder's filings): leads for the session and the board's list in data/onboarding/ (alone: the active profile; with --new: the new one) |
 | `--lookup` |  | search the county recorder's public index for the association's name, read-only; each find becomes a FACT question with the found value as its suggestion (alone: the active profile) |
 
 ### `jason spec`
@@ -1984,3 +2022,217 @@ Where the active profile's private facts are read from; --migrate to the per-pro
 |---|---|---|
 | `--migrate` |  | copy the default profile's topic files (data/spec/TOPIC.json) into data/spec/PROFILE/; a dry run unless --yes |
 | `--yes` |  | with --migrate: copy, after a backup of each file copied |
+
+## Other
+
+### `jason readings`
+
+The board's and counsel's readings of the law and the governing documents, each checked against the words it read; --recite prints the words, then the readings
+
+| Option | Value | Help |
+|---|---|---|
+| `--stale` |  | only readings that are not current: the words changed, or are missing |
+| `--citation` | CITATION | readings of one provision: a statute's section (CIV-5855) or KEY#SECTION |
+| `--recite` | CITATION | print the provision's words, then the readings of them |
+| `--as-of` | AS_OF | with --recite or the list: the day asked about (YYYY-MM-DD) |
+| `--json` |  | print JSON |
+
+### `jason chronology`
+
+Every dated statement in a slice of the passage index, in date order, each quoted with its source (what the documents say, not what happened)
+
+| Option | Value | Help |
+|---|---|---|
+| `--catalog` | NAME | only this index catalog (repeat); a legal case's catalog, case-<key>, opens its own held files |
+| `--standing` | STANDING | authority, record, reference, page, or evidence (repeat) |
+| `--kind` | K | only this document kind (repeat) |
+| `--folder` | F | only under this data folder (repeat) |
+| `--confidential` |  | include the files held back unless asked |
+| `--title` | TITLE | the collection's title (default: the scope's own words) |
+| `--json` |  |  |
+| `--write` |  | save the generated page under data/collections/<slug>/; without it nothing is written |
+| `--from` | DATE | keep dates from this day (YYYY-MM-DD) |
+| `--to` | DATE | keep dates to this day (YYYY-MM-DD) |
+
+### `jason fact-conflicts`
+
+Where two documents in a slice of the passage index give different values for the same fact: both sides quoted, neither picked
+
+| Option | Value | Help |
+|---|---|---|
+| `--catalog` | NAME | only this index catalog (repeat); a legal case's catalog, case-<key>, opens its own held files |
+| `--standing` | STANDING | authority, record, reference, page, or evidence (repeat) |
+| `--kind` | K | only this document kind (repeat) |
+| `--folder` | F | only under this data folder (repeat) |
+| `--confidential` |  | include the files held back unless asked |
+| `--title` | TITLE | the collection's title (default: the scope's own words) |
+| `--json` |  |  |
+| `--write` |  | save the generated page under data/collections/<slug>/; without it nothing is written |
+
+### `jason collection`
+
+A collection's summary page: its files and how each was read, what is missing, the open questions, the conflicts, and the chronology, each statement with its source (a summary, not the record)
+
+| Option | Value | Help |
+|---|---|---|
+| `KEY` | optional (?) | the collection's key or its catalog (case-KEY); without it the collections are listed |
+| `--write` |  | save the page as data/collections/<key>/summary.md; without it nothing is written |
+| `--json` |  |  |
+
+### `jason applies`
+
+Which recurring duties apply to each life safety system, which do not and why, and which are undetermined (read-only, except --file-questions)
+
+| Option | Value | Help |
+|---|---|---|
+| `--system` | KEY | only this system (its key in the specification) |
+| `--all` |  | also the obligations asked of the association as a whole |
+| `--as-of` | YYYY-MM-DD | the date asked for (default: today) |
+| `--questions` |  | list the questions the undetermined answers raise, with each one's state in the intake queue; they include the association's standing facts the notice catalog turns on |
+| `--file-questions` |  | park those questions in the intake queue (data/intake/asks.json) for a person to answer |
+| `--json` |  | print JSON |
+
+### `jason inspections`
+
+Which inspection periods of each life safety system have a report on file, which do not, and what could not be placed (read-only unless --write)
+
+| Option | Value | Help |
+|---|---|---|
+| `--system` | KEY | only this system (its key in the specification) |
+| `--as-of` | YYYY-MM-DD | the date asked for (default: today) |
+| `--json` |  | print JSON |
+| `--write` |  | also save the page, data/reports/life-safety-records.md |
+
+### `jason sign-in`
+
+How people sign in to the console (jason-web); put a Google client in Keeper
+
+| Option | Value | Help |
+|---|---|---|
+| `--import-client` | FILE | a client_secret_*.json downloaded from the Cloud console |
+| `--for` | {community,jason} | whose sign-in client it is: this community's (default) or the installation's (admins, managers) |
+| `--key` | KEY | its name when there is more than one (default google, or jason-google) |
+| `--label` | LABEL | the button's words when there is more than one, e.g. "Management company" |
+| `--domain` | DOMAIN | an email domain whose accounts it accepts (repeat; default: the community's email domains) |
+| `--title` | TITLE | the Keeper record's title |
+| `--delete-file` |  | delete the downloaded file once Keeper has the client |
+| `--yes` |  | put it in Keeper and record it (without: say what it would do) |
+
+### `jason paint`
+
+The paint schedule with each color's hex and LRV, checked against the maker's catalog
+
+| Option | Value | Help |
+|---|---|---|
+| `--check` |  | exit 1 when a color is renamed, discontinued, or missing |
+| `--find` | TEXT | search the catalog by color name or number |
+| `--match` | CODE | the closest current colors to this one (SW 7027) |
+| `--exterior` |  | with --match: only colors the maker lists for exteriors |
+| `--read` | IMAGE | read a schedule's picture with the local vision model and check it against the catalog |
+| `--model` | MODEL | with --read: the Ollama model (default: jason's shared one) |
+| `--save` |  | with --read: keep the reading in the paint folder |
+| `--page` |  | write a swatch page to the paint folder |
+| `--refresh` |  | fetch the catalog again instead of using the week-old copy |
+| `--json` |  | print the findings as JSON |
+| `--to-doc` |  | make the palette a Google Doc with its swatches, and save its PDF; --yes does it |
+| `--folder` | DRIVE_ID | with --to-doc: the Drive folder (default: the signed-in Drive's top level) |
+| `--yes` |  | with --to-doc: really make or refresh the Doc |
+| `--descriptions` |  | with --page or --to-doc: also fetch each color's description (one call per color; the rest is read from the catalog on disk) |
+
+### `jason reference`
+
+The reference shelf: published guides that explain a process, kept apart from the law and the record
+
+| Option | Value | Help |
+|---|---|---|
+| `--fetch` |  | download the works that are not on disk, with a note and their text |
+| `--page` | WORK N | print page N of a work's text (the file name or part of the title) |
+| `--cites` | WORK | the statutes a work cites and where each stands: on the authorities shelf, in lawlibrary but not exported (exit 1), not found, or renumbered |
+| `--no-law` |  | with --cites: do not look a statute up in lawlibrary |
+| `--json` |  | print the list as JSON |
+
+### `jason key-documents`
+
+The key documents checklist (declaration, amendments, annexations, plans, maps, deeds) with links to each copy
+
+| Option | Value | Help |
+|---|---|---|
+| `--json` |  | print the checklist as JSON |
+| `--markdown` |  | print the checklist as a Markdown page |
+| `--link` | KEY | link a copy to this entry (with --file under data/, --drive, or --payhoa) |
+| `--upload` | KEY | copy --file into data/key-documents and link it to this entry |
+| `--unlink` | KEY | remove a link from this entry (the file stays); --link-id when it has several |
+| `--status` | KEY | record a person's status for this entry (with --set) |
+| `--file` | PATH | the file: under data/ for --link, anywhere for --upload |
+| `--drive` | ID | a Drive file id or link, for --link |
+| `--payhoa` | ID | a PayHOA library document id, for --link |
+| `--link-id` | ID | which link --unlink removes |
+| `--set` | STATUS | with --status: expected, located, held, or missing |
+| `--note` | NOTE | a few words kept with the write (required for missing: what was looked for, where) |
+| `--title` | TITLE | a title for an other/<name> entry, kept with its first link |
+| `--by` | NAME | the person making the write (required for every write) |
+
+### `jason instrument-graph`
+
+The recorded instruments as a graph (Mermaid or JSON): declaration, amendments, annexations, deeds, closings, liens
+
+| Option | Value | Help |
+|---|---|---|
+| `--association` |  | the association's governing instruments and land chain (the default) |
+| `--parcel` | APN | one parcel's chain, closings, and liens (repeatable) |
+| `--unit` | N | the parcel or parcels a unit number names |
+| `--all` |  | the association and every parcel (slow) |
+| `--around` | NUMBER | keep only the part around this instrument number |
+| `--depth` | DEPTH | with --around: how many edges out (default 2) |
+| `--kinds` | K1,K2 | only these edge kinds in the Mermaid (e.g. amends,annexes,supersedes) |
+| `--private` |  | the private view: owners as nodes, labeled by role and parcel |
+| `--names` |  | with --private --json: carry each private person's names (for the board's own use; never share) |
+| `--json` |  | nodes and edges with each edge's provenance, as JSON |
+| `--markdown` |  | a Markdown page with the Mermaid diagram, notes, and caveats |
+| `--direction` | {LR,TD,RL,BT} | the Mermaid flow direction |
+| `--out` | FILE | write to a file instead of printing |
+
+### `jason placer-history`
+
+A Placer parcel's recorded history; --processes draws its document processes as DAGs
+
+| Option | Value | Help |
+|---|---|---|
+| `parcel` | optional (?) | an address, a twelve-digit APN, or a document number |
+| `--processes` |  | also write processes.md: Mermaid DAGs of the chain, closings, loans, and liens |
+| `--render` | BUNDLE | redraw processes.md from a saved <apn>.json, without calling the county |
+| `--names` |  | show owners by name (P1) in processes-names.md; default: by role |
+| `--address` | ADDRESS | the address for the page title (default: the assessor's) |
+| `--out` | OUT | the folder to write (default data/reports/placer/<apn>) |
+| `--pause` | PAUSE | seconds between index searches (default 1) |
+
+### `jason index`
+
+The passage index: build it, report it, or search it by scope
+
+| Option | Value | Help |
+|---|---|---|
+| `--build` |  | cut the sources into passages and embed what is new |
+| `--no-embed` |  | with --build: cut and copy cached vectors only |
+| `--plan` |  | what a build would take, by catalog: files, how many are confidential, and what is left out and why (reads only) |
+| `--status` |  | what the index holds (the default) |
+| `--search` | QUESTION | rank the passages for a question |
+| `--mode` | {keyword,exact,dense,hybrid} |  |
+| `-k` | K |  |
+| `--catalog` | CATALOG | only this catalog (repeat) |
+| `--standing` | STANDING | authority, record, reference, or page (repeat) |
+| `--kind` | KIND | only this document kind (repeat) |
+| `--folder` | FOLDER | only under this data folder (repeat) |
+| `--confidential` |  | include the files held back unless asked |
+| `--json` |  |  |
+
+### `jason verify-quotes`
+
+Check an answer's quotations and citations against jason's stored words: found, altered, misattributed, or not found, and where
+
+| Option | Value | Help |
+|---|---|---|
+| `file` | optional (?) | the answer's text file; - or nothing reads standard input |
+| `--sources` | FILE_OR_TEXT | the hits the answer was written from: paths with passage numbers (governing/rules.md#3), citations (CIV 5855), or the hits as JSON; a file of them, or the text |
+| `--confidential` |  | name confidential files and show their words (for directors and counsel) |
+| `--json` |  | print JSON |

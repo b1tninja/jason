@@ -104,6 +104,7 @@ Copy `.env.example` → `.env` and fill Keeper record UIDs (never commit `.env`)
 - Never delete a live PayHOA form. Once a letter, QR code, or email links to a form, it is locked in `data/payhoa/forms.json` (`payhoa_forms.lock`): change it in place with `jason forms --payhoa KEY --update`, which keeps each question's id and answers. `--replace` refuses a locked form, and each owner-information send first checks that the form it links to is in PayHOA and on (`payhoa_forms.live_problem`).
 - Do not invent CC&R quotes from file names; quote document body text only when you have the file.
 - A request that runs a local model holds the GPU lock, and a store jason reads, changes, and writes back holds its store lock (`jason.locks`). A model job runs `jason.local_ai.preflight` first and fails fast on the CPU or short of commit. `jason local-ai` reports the stack; see [docs/document-tools.md](docs/document-tools.md).
+- Scratch, temp, and rebuilt-index artifacts go to the drive `JASON_TEMP_DIR` names (`jason.config.apply_temp_dir`, called when a program starts, never at import), never to the system drive when it is nearly full. `jason storage --check` says where jason writes and which drive is short. A new temp file uses `tempfile` or the environment's TEMP, never a path of its own.
 - Drive text watermarks (e.g. diagonal DRAFT) **cannot** be removed via the Docs API; remove them in the Docs editor before export.
 - Do not commit HARs, `.env`, or `secrets/google-token.json`.
 
