@@ -1185,6 +1185,12 @@ class Community(ABC):
         board's comment when a request is completed). None until set."""
         return None
 
+    def response_requests(self) -> tuple:
+        """The requests that expect answers, one ``jason.community.response_inbox.ResponseRequest`` each (its form,
+        cycle, PayHOA form key, the outside forms read into it, and its form-marker campaigns). Empty until set, and
+        then no request is watched for arrivals (``jason responses``, docs/responses-design.md)."""
+        return ()
+
     def request_topics(self):
         """The topics that make an owner's email a request of the association. Empty until set."""
         return ()

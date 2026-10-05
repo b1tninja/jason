@@ -1,6 +1,6 @@
 # Checking for new responses
 
-Status: design (2026-10-05). It adds one place to ask "has anyone answered?", over every way an owner can answer a request, and a command and an MCP tool to ask it. It closes lesson `returns-by-the-same-rules`.
+Status: design (2026-10-05); step 1 built (2026-10-05), see "Step 1, as built" below for where it differs. It adds one place to ask "has anyone answered?", over every way an owner can answer a request, and a command and an MCP tool to ask it. It closes lesson `returns-by-the-same-rules`.
 
 ## Why
 
@@ -149,3 +149,16 @@ The check is a registry source (`jason.integrations.registry`), so the scheduler
 2. The command.
 3. The MCP tools and `jason.api`, the registry cadences, the procedure step, the lessons, and the docs.
 4. Later: a Responses panel in the console (the dock's count of new responses, the list, the reading beside the scan), once the administrator's and board's screens have components for it.
+
+## Step 1, as built
+
+The records are `jason.community.response_inbox` (`Channel`, `State`, `Arrival`, `ResponseRequest`, `Window`; `Community.response_requests()`, default `()`; the profile's row in `mystique/forms.py`). The store, channels, check, acts, and the apply's hook are `jason.tasks.response_inbox`. `gather_answers` reads `keyed/` as one more channel; `jason.web.access.PATH_RULES` places `responses/*` at P3. Tests: `tests/test_response_inbox.py`. What differs from the design above:
+
+- **Module names.** `response_inbox`, not `responses`: `jason.community.responses` and `jason.tasks.responses` already hold the clocks for members' requests. The command module `jason.commands.responses` is free.
+- **`ResponseRequest.blank`** is a new field: the request's fillable PDF, relative to the data folder, which a scan is read against (`read_layout`). The design had no place for it.
+- **On disk the colon is a hyphen** (`files/gmail-1a10339bfc9fbdbe/`, `readings/gmail-….json`, `keyed/gmail-….json`): a colon is not allowed in a Windows file name. The id in every record keeps the colon.
+- **A PayHOA submission already `complete`** is kept as `seen` (with a note), not `new`: nothing waits on it. A later check marks a kept one `seen` when PayHOA completes it.
+- **A Gmail candidate** ignores a signature's logo or inline picture (an image named like `image001.png`, a GIF, or under 15 KB). A message must reach an association address or group (To or Cc on an own domain, or a group's List-Id), as the design says.
+- **Windows.** A request whose window is closed (a week past its return-by date) is skipped with the reason unless a person gives `--since`; a check with `--since` or `--from` does not move the per-request time the last check succeeded, so the next plain check still reads from there.
+- **`recorded`** is marked by an observer `owner_info_apply.plan_apply` attaches to the plan's writes (`ApplyPlan.observer`, a plain attribute on each `Write`, not a field). `execute_each` tells it the results, so the CLI's `--apply --yes` and the approvals kind both mark an arrival recorded when every write it calls for is made and nothing is left for the board or a person (the same test that completes a PayHOA request). It acts as `by`, else the operating-system user. With no writes at all `execute_each` is not called; the command then calls `plan.observer.heard([])`.
+- **Keyed answers name the unit, not a sign-in.** `FormAnswers.unit_id` is the unit the sender's address matched at read time (else the form's own unit address is used), `membership_id` is left empty, and the owner is matched by name (and the email the form gives), so an emailed return is never taken for a signed-in one.

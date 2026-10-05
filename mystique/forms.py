@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import date
 
+from jason.community import form_refs
+from jason.community.response_inbox import ResponseRequest
 from jason.community.forms import CONTACT, AnswerCycle, EarlierElections, FormImport, SuggestedChoices, FormKey, FormQuestion, FormTemplate, ImportRule, QuestionKind, ReadAs, FormStyle, Assurance, EmailCollection, GoogleFormChannel
 
 _DELIVERY = ("Email", "Mail", "Pick up in person")
@@ -226,4 +228,18 @@ FORM_TEMPLATES: tuple[FormTemplate, ...] = (
         ),
     ),
     OWNER_INFO,
+)
+
+# The requests that expect answers, watched by `jason responses` (docs/responses-design.md). The owner information
+# request is answered four ways: the PayHOA form, a Google Form (FORM_IMPORTS), a reply email carrying the filled form,
+# and the mailed letter's return, scanned. A scan is tied to the request by the marker its copy printed: the campaign
+# of the emailed copy (NP27E), of the mailed letter (NP27M), and of the PayHOA form (NP27P). Its fillable form is the
+# one `jason packet owner-information --build` makes, which a scanned return is read against.
+RESPONSE_REQUESTS = (
+    ResponseRequest(
+        key="owner-information-2027", title="Owner information request", form=OWNER_INFO, cycle=OWNER_INFO_CYCLE,
+        payhoa_form=OWNER_INFO.key.value, imports=FORM_IMPORTS,
+        marker_campaigns=tuple(form_refs.campaign(OWNER_INFO.code, OWNER_INFO_CYCLE.year, c)
+                               for c in (form_refs.Channel.EMAIL, form_refs.Channel.MAIL, form_refs.Channel.PAYHOA)),
+        blank="packets/owner-information-2027/owner-info-fillable.pdf"),
 )

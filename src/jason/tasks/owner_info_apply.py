@@ -93,6 +93,16 @@ def gather_answers(data_dir: Path, forms: Any, client: Any = None,
         if saved.is_file():
             answers += import_responses(json.loads(saved.read_text(encoding="utf-8")), rules)
             titles["google"] = rules.title
+    # a returned form (a reply email, a mailed scan) a person read and confirmed: the same answers a submission becomes
+    # (``response_inbox.confirm``, docs/responses-design.md)
+    from jason.tasks.response_inbox import keyed_answers
+
+    keyed = keyed_answers(data_dir, forms.OWNER_INFO.key)
+    answers += keyed
+    for prefix, title in (("email", "Returned form (email), confirmed by a person"),
+                          ("mail", "Returned form (mail), confirmed by a person")):
+        if any(a.source.startswith(prefix + ":") for a in keyed):
+            titles[prefix] = title
     if client is not None:
         from jason.tasks import submission_cache
         from jason.tasks.payhoa_forms import fetch_submissions, record_for
@@ -154,6 +164,7 @@ class ApplyPlan:
     comment: str = ""
     payhoa: bool = True
     left_out: int = 0                                    # writes dropped because they were on a test membership
+    observer: Any = None                                 # marks the inbox's arrivals recorded (response_inbox.observe_plan)
 
     @property
     def member_tag_rows(self) -> dict[int, list[dict[str, Any]]]:
@@ -162,11 +173,13 @@ class ApplyPlan:
 
 
 def plan_apply(client: Any, org: int, *, community: Any, forms: Any, cycle: Any, data_dir: Path, today: date,
-               payhoa: bool = True, env: Any = None, via: str = GATHER_VIA) -> ApplyPlan:
+               payhoa: bool = True, env: Any = None, via: str = GATHER_VIA, by: str = "") -> ApplyPlan:
     """Read PayHOA once and plan every write that would bring it up to date, as ``jason owner-info --apply`` lists them.
     With ``payhoa`` the PayHOA form's submissions are read too: the response policy then holds a unit's occupancy tag
     for the board where an owner's answer and the tag differ, and each owner's request is read with its findings; each
-    submission read is kept as its request's latest full read, ``via`` naming the command (``gather_answers``)."""
+    submission read is kept as its request's latest full read, ``via`` naming the command (``gather_answers``). The
+    responses inbox (``response_inbox``) hears what becomes of the plan's writes (``ApplyPlan.observer``, acting as
+    ``by``, else the operating-system user) and marks an arrival recorded when its writes are made."""
     from jason.config import test_memberships
     from jason.tasks.owner_info import plan_writes
 
@@ -182,6 +195,7 @@ def plan_apply(client: Any, org: int, *, community: Any, forms: Any, cycle: Any,
                      comment=getattr(forms, "OWNER_INFO_COMPLETED_COMMENT", ""))
     writes = kept
     if not payhoa:
+        plan.observer = _observe(plan, data_dir, by)
         return plan
     # the response policy holds an occupancy the unit's tag does not show for the board: its tag writes wait
     from jason.community.tags import TagPurpose, TagScope
@@ -205,7 +219,26 @@ def plan_apply(client: Any, org: int, *, community: Any, forms: Any, cycle: Any,
     record = record_for(data_dir, forms.OWNER_INFO.key.value)
     if record is not None:
         plan.statuses = {int(r["id"]): r.get("status") for r in reader.list_form_submissions(int(record["formId"]))}
+    plan.observer = _observe(plan, data_dir, by)
     return plan
+
+
+def observe(writes: list[Write], observer: Any) -> None:
+    """Attach ``observer`` to each write, as a plain attribute (not a dataclass field, so a saved plan, ``asdict``, and
+    a comparison never see it). ``execute_each`` tells it what became of the writes it was given."""
+    for w in writes:
+        w._observer = observer      # type: ignore[attr-defined]
+
+
+def _observe(plan: ApplyPlan, data_dir: Path, by: str) -> Any:
+    """The inbox's arrivals this plan's answers came from, to be marked recorded when their writes are made
+    (``response_inbox.observe_plan``); None when the inbox holds none. A failure here never stops a plan."""
+    from jason.tasks.response_inbox import observe_plan
+
+    try:
+        return observe_plan(plan, data_dir, by=by)
+    except Exception:  # noqa: BLE001 - the inbox is jason's own record, never a reason to fail a plan
+        return None
 
 
 def requests_left(plan: ApplyPlan, pending: list[Write]) -> list[ToComplete]:
@@ -248,7 +281,7 @@ def execute_each(client: Any, org_id: int, writes: list[Write], *,
     """Perform the writes in ``owner_info.execute``'s order (member tags added in batches by tag, then removals by the
     member's tag row, and unit tags) and say what became of each. ``before`` hears each request's writes just before it
     is made (an audit's intent line). The first failure stops the run: its writes are failed, and the rest are not
-    attempted."""
+    attempted. At the end, an observer attached to the writes (``observe``) hears the results, once."""
     from collections import defaultdict
 
     out: list[WriteResult] = []
@@ -269,6 +302,15 @@ def execute_each(client: Any, org_id: int, writes: list[Write], *,
             return
         out.extend(WriteResult(w, True, detail) for w in group)
 
+    def hear() -> None:
+        """Tell each observer attached to these writes (``observe``) what became of them, once."""
+        watchers = {id(o): o for w in writes if (o := getattr(w, "_observer", None)) is not None}
+        for o in watchers.values():
+            try:
+                o.heard([r for r in out if getattr(r.write, "_observer", None) is o])
+            except Exception:  # noqa: BLE001 - an observer never changes what was written
+                continue
+
     adds: dict[str, list[Write]] = defaultdict(list)
     for w in writes:
         if w.kind == "member tag +":
@@ -288,8 +330,9 @@ def execute_each(client: Any, org_id: int, writes: list[Write], *,
             call([w], lambda w=w: client.add_unit_tag(org_id, [w.target], w.value))
         elif w.kind == "unit tag -":
             call([w], lambda w=w: client.remove_unit_tag(org_id, [w.target], w.value))
+    hear()
     return out
 
 
 __all__ = ["ApplyPlan", "HeldWrite", "READS", "ReadOnce", "WriteRefused", "WriteResult", "execute_each",
-           "gather_answers", "ledger_rows", "live_read", "owner_information", "plan_apply", "requests_left"]
+           "gather_answers", "ledger_rows", "live_read", "observe", "owner_information", "plan_apply", "requests_left"]

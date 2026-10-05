@@ -11,7 +11,7 @@ This page maps the forms jason makes, sends, and reads back. The first form is t
 | 3. Plan | Who gets what: the emailed pre-filled copy, the mailed blank letter, suggested choices, occupancy signals, the county roll as a hint | `jason owner-info --send-plan`; `tasks/owner_send.py`, `tasks/owner_prefill.py`, `tasks/owner_county.py` | [owner-information.md](owner-information.md) |
 | 4. Mark | A printed marker at each page's top right and the same marker as a gray bar mark at the top left; a campaign for the mailed letter, a copy for each emailed one | `community/form_refs.py`, `community/form_marks.py`, `fillable.stamp_reference` | [form-identifiers.md](form-identifiers.md) |
 | 5. Send | One engine per channel, run slowly from a resumable ledger | `tasks/delivery_engines.py`, `jason.batches`; `jason owner-info --email-batch` / `--mail-batch`, `jason batches` | [batches.md](batches.md) |
-| 6. Return | A PayHOA form submission, a typed PDF, a paper scan, or a reply email | `tasks/member_preferences.py`, `fillable.read_answers`, `form_reader.read_scan`, `tasks/form_references.lookup` | [form-reader.md](form-reader.md) |
+| 6. Return | A PayHOA form submission, a Google Form response, a typed PDF or a paper scan in a reply email, or a mailed return scanned by the mail service. **The inbox** finds each (`jason responses`), keeps it under `data/responses/`, reads its attachments, and makes a person's confirmed reading the same `FormAnswers` a submission becomes | `tasks/response_inbox.py` (`check`, `read`, `confirm`, `keyed_answers`), `tasks/member_preferences.py`, `fillable.read_answers`, `form_reader.read_scan`, `tasks/form_references.lookup` | [responses-design.md](responses-design.md), [form-reader.md](form-reader.md) |
 | 7. Read | Align the scan to the form, drop the form out, read boxes and writing; the reading hints; the vision model | `community/form_layout.py`, `community/form_reader.py`, `community/form_hints.py`, `form_reader.VisionReader` | [form-reader.md](form-reader.md) |
 | 8. Compare and record | Each answer against what was on file (unchanged, changed, added, cleared), then tag writes in PayHOA | `owner_prefill.compare`; `tasks/owner_info.py` (`plan_writes`, `execute`); `jason owner-info ... --yes` | [owner-information.md](owner-information.md) |
 | 9. Test | Made-up returns of the real form, scanned badly and scored; layouts and readers compared | `jason form-fuzz` (`tasks/form_fuzz.py`), `jason form-lab` (`tasks/form_lab.py`), `tasks/form_scans.simulate` | [form-fuzzer.md](form-fuzzer.md), [form-design.md](form-design.md) |
@@ -152,6 +152,8 @@ Only a signed-in answer proves who sent it.
 | `tasks/owner_send.py` | task | `send_plan`, occupancy signals, `EmailHandler`, `MailHandler` |
 | `tasks/delivery_engines.py` | task | `Engine`, `EmailEngine` (copy identity), `MailroomEngine` (campaign identity), `ENGINES` |
 | `tasks/form_references.py` | task | `data/forms/references.json`: sent markers to ids and hashes; `lookup` |
+| `community/response_inbox.py` | types | `Arrival`, `Channel`, `State`, `ResponseRequest` (a request that expects answers: form, cycle, PayHOA form, outside forms, marker campaigns, blank form), `Window`; the profile gives them through `Community.response_requests()` |
+| `tasks/response_inbox.py` | task | The inbox of returns: the four channels' candidate rules, `check`, `read`, `confirm`, `keyed_answers` (read by `owner_info_apply.gather_answers`), `mark_recorded`, `observe_plan` |
 | `tasks/form_scans.py` | task | `simulate` (a scan: dpi, turn, scale, shift, blur, speckle, gamma, JPEG) and `score` |
 | `tasks/form_fuzz.py` | task | The owner-form fuzzer: answers, fills (typed, hand, cursive, pre-filled, edited), profiles, `run_case`, `lint`, `report`, the corpus |
 | `tasks/form_lab.py` | task | The layout lab: `Layout`, `SPACE`, `render`, the responder model (`Writer`, `AFFORDANCE`, `salience`), `battery`, `evaluate`, `search`, `benchmark`, `sample` |
@@ -175,6 +177,7 @@ Only a signed-in answer proves who sent it.
 | Path | Holds | Privacy |
 |---|---|---|
 | `data/forms/references.json` | Each sent marker: form, cycle, ids, send dates, field hashes | Ids and hashes only |
+| `data/responses/` | The inbox of returns: `inbox.json`, `acts.jsonl`, the emailed attachments in `files/<id>/`, `readings/`, and the confirmed answers in `keyed/` | **Owners' answers: P3** (`jason.web.access`); no personal email address is stored on an arrival |
 | `data/batches.db` | Batch items, statuses, events | Ids and errors, never an address |
 | `data/owner-info/send-plan-<date>.md` | The send plan | Names and units |
 | `data/owner-info/preview/` | Sample letters and emailed copies made for review | **Owner information; delete once reviewed** |

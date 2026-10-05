@@ -119,6 +119,9 @@ def data(tmp_path):
     ("zoom/meetings/2026-09-03-open/audio.m4a", P1), ("zoom/meetings/2026-01-01-unknown/audio.m4a", P2),
     ("payhoa-files/requests/620/lease.pdf", P2), ("forms/abc123/responses.json", P2), ("gmail/files/a.pdf", P2),
     ("mail/106090/scan.pdf", P2), ("mailroom/previews/letter.pdf", P2),
+    # the responses inbox: an owner's answers are not the open record (docs/responses-design.md)
+    ("responses/inbox.json", P3), ("responses/files/gmail-a1/scan.pdf", P3), ("responses/files/gmail-a1/photo.jpg", P3),
+    ("responses/readings/gmail-a1.json", P3), ("responses/keyed/gmail-a1.json", P3), ("responses/acts.jsonl", P3),
     ("photos/a.png", P1), ("drafts/notice.md", P1), ("board/minutes-draft-2026-09-15.md", P1),
     ("authorities/CIV/4041.md", P0), ("reader/decl/index.html", P0), ("artifacts/site-docs/page.pdf", P0),
     ("governing/ccrs.md", P0), ("governing/secret.md", P3),        # the holdings flag it

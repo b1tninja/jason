@@ -331,6 +331,13 @@ class Mystique(Community):
 
         return forms
 
+    def response_requests(self):
+        """The requests that expect answers: the owner information request, with its PayHOA form, outside forms, and
+        marker campaigns (forms.py)."""
+        from .forms import RESPONSE_REQUESTS
+
+        return RESPONSE_REQUESTS
+
     def request_forms(self):
         """PayHOA's request forms with their question ids, and the topics each takes (requests.py)."""
         from .requests import REQUEST_FORMS

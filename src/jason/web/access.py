@@ -483,6 +483,8 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("mail/*", Level.P2, _mail_letter),     # scanned incoming mail: senders, owners, and their addresses;
                                                     # a letter carrying a credential P4, another association's P3
     PathRule("mailroom/*", Level.P2),          # letters as mailed, with their recipients
+    PathRule("responses/*", Level.P3),         # owners' answers to a request: the inbox, the returned forms downloaded
+                                               # from email (a PDF or an image), their readings, and the keyed answers
     PathRule("transactions/*", Level.P2),      # invoices and bills, with vendors' and owners' account details
     PathRule("insurance-pdfs/*", Level.P2),    # policies and bills, with account and policy numbers
     PathRule("photos/*", Level.P1),
