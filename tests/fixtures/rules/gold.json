@@ -1,0 +1,17 @@
+{
+  "labelled": "made up for the tests",
+  "items": [
+    {"source": "example-decl", "quote": "The Board shall have the power to adopt, amend, and repeal reasonable Rules", "label": "yes", "holder": "board", "subjects": ["common_area"]},
+    {"source": "example-decl", "quote": "The Rules may concern parking, pets, signs", "label": "refers", "holder": "unstated", "subjects": ["parking", "pets", "signs", "vehicles"]},
+    {"source": "example-decl", "quote": "The Board shall give each Member written notice of a proposed Rule", "label": "limits", "holder": "board", "subjects": []},
+    {"source": "example-decl", "quote": "A Rule may be reversed by the affirmative vote", "label": "limits", "holder": "members", "subjects": []},
+    {"source": "example-decl", "quote": "The Board may adopt and enforce pet Rules", "label": "yes", "holder": "board", "subjects": ["pets"]},
+    {"source": "example-decl", "quote": "Owners shall comply with the Rules adopted by the Board", "label": "refers", "holder": "board", "subjects": []},
+    {"source": "example-decl", "quote": "These Rules shall remain in effect until modified by the Board", "label": "no", "holder": "unstated", "subjects": []},
+    {"source": "example-decl", "quote": "A reasonable time limit for members to speak at a meeting shall be established by the Board", "label": "yes", "holder": "board", "subjects": ["meetings"], "hard": true},
+    {"source": "example-decl", "quote": "The Design Committee may adopt design guidelines", "label": "yes", "holder": "committee", "subjects": ["architecture"]},
+    {"source": "example-decl", "quote": "The Board may levy a fine in accordance with a schedule of fines adopted by the Board", "label": "refers", "holder": "board", "subjects": ["fines"]},
+    {"source": "example-decl", "quote": "Vehicles shall be parked only in a garage or a marked space", "label": "no", "holder": "unstated", "subjects": []},
+    {"source": "example-decl", "quote": "The Board has the authority to designate quiet hours", "label": "yes", "holder": "board", "subjects": ["noise"], "hard": true}
+  ]
+}

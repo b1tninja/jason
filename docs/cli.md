@@ -10,7 +10,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
-- [Documents & library](#documents--library) (21)
+- [Documents & library](#documents--library) (22)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (24)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
@@ -581,6 +581,28 @@ The owner's manual taken apart: which sections are the operating rules, copies, 
 | `--concordance` |  | every old address to its new one, and every existing citation of the manual resolved |
 | `--render` |  | write the official rules and the generated manual to data/drafts, with the diff against the Doc's text; the rules hold the last adopted words, with jason's notes |
 | `--current` |  | with --render: the official rules in the working words (rules-and-regulations-current.md), with the same notes |
+
+### `jason rules`
+
+Who may make rules: the provisions that give the board, the association, or a committee the power to adopt rules, their subjects and limits, and which subjects have rules on file
+
+| Option | Value | Help |
+|---|---|---|
+| `--find` |  | read the governing documents for grants and limits (the rules' reading) and store them |
+| `--model` | NAME | with --find or --measure: also ask the local model (default qwen3.5:9b); needs Ollama, the GPU lock, and commit |
+| `--samples` | SAMPLES | with --model: extra samples a candidate at temperature 0.3, for self-consistency (default 3) |
+| `--wait` | WAIT | with --model: seconds to wait for another job's GPU lock (default 3600) |
+| `--again` |  | with --model: ask again even where an answer is saved |
+| `--document` | KEY | with --find: one document (an outline key); repeatable; default every governing document |
+| `--all` |  | list the limits too, not only the grants |
+| `--tier` | {likely,suggested,conflict} | list only this tier |
+| `--subjects` |  | each subject: the authority found, the rules on file, and the Civil Code 4355 reading |
+| `--measure` |  | precision and recall of each reader against data/rules/gold.json |
+| `--review` | ID | record a person's review of one reading |
+| `--status` | {confirmed,corrected,rejected} | with --review |
+| `--note` | NOTE | with --review: the reviewer's note |
+| `--by` | BY | with --review: the reviewer |
+| `--json` |  | JSON output |
 
 ### `jason revisions`
 
