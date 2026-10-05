@@ -1616,6 +1616,62 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("program-adoption-needs-the-act", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "A required program existed and had been adopted, but looked unadopted: the minutes that adopted it were in "
+           "no index catalog, so no search or quote check could find the act. Elsewhere a revision report printed "
+           "\"adoption on record\" for minutes that only quoted the section.",
+           "Minutes were indexed only from a later year, and the report treated a minute that names a section as one "
+           "that adopts it. Minute verbs (delegated, directed, \"we would like to\", listed in a packet, approved, "
+           "adopted) were not told apart.",
+           "Designed (docs/programs.md): the adopting act is its own evidence, named in the catalog row; minutes are "
+           "read for references like \"CC&R 7.8 (a)\" and for their verbs. Still to build: index the older minutes, the "
+           "lens check program-not-adopted, and a test that a quotation never prints as an adoption.",
+           Status.OPEN, docs=("docs/programs.md",)),
+    Lesson("inspection-record-needs-a-date", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A required quarterly inspection was kept on a reused worksheet with no date, inspector, or signature: each "
+           "walk cleared the last one's answers, a copy looked like a new inspection, and the only dates were the "
+           "file's revision times, which jason keeps no store of.",
+           "The record was a form to fill, not a log to append, and jason had no kind for an inspection log.",
+           "Designed (docs/programs.md): an inspection-log kind that is dated and appended, with inspector and photos; "
+           "a payment is not an inspection and a last-modified date is not an inspection date. Still to build: the "
+           "kind, its reader, and the lens check inspection-quarter-missing.",
+           Status.OPEN, docs=("docs/programs.md",)),
+    Lesson("silent-cadence-is-the-boards", date(2026, 10, 5), (Area.GOVERNING,),
+           "The duty reader gave \"periodically\", \"immediately\", and \"at all times\" no interval and no deadline, so "
+           "the program's steps that used them had no clock and no question.",
+           "Only a stated number of days or months became a recurrence; a silent or event cadence was dropped.",
+           "Designed (docs/programs.md): the catalog row says which cadences the document fixes and which the board "
+           "must set; a silent one is a question and a written policy proposed for the board, never a default "
+           "interval jason picks. Still to build in the duty reader.",
+           Status.OPEN, docs=("docs/programs.md",)),
+    Lesson("outside-mandates-are-duties", date(2026, 10, 5), (Area.GOVERNING,),
+           "A city's conditions of approval for the development required a monthly exterior inspection, a maintenance "
+           "program the planning director approves, and a repaint interval; none sat in a duty list, an obligation "
+           "row, or a reserve assumption, and a reserve study set a longer repaint cycle than the condition.",
+           "jason read duties from the governing documents and the statutes only; the conditions were running text "
+           "in a plan set.",
+           "Designed (docs/programs.md): a source tier below statute for conditions of approval, with a duty reader "
+           "for them; whether they bind, and which buildings, is for the city or counsel. Still to build.",
+           Status.OPEN, docs=("docs/programs.md",)),
+    Lesson("reserve-study-assumes-maintenance", date(2026, 10, 5), (Area.GOVERNING,),
+           "A reserve study's useful lives assume maintenance, but the studies stated few of those assumptions, left "
+           "out components the declaration names, and one update shortened a life by three years with no maintenance "
+           "consequence recorded; the same interval appeared in four conflicting forms across the association's "
+           "papers.",
+           "Nothing tied the study's components and lives to a maintenance schedule, and the readers took the "
+           "funding table, not the component narratives.",
+           "Designed (docs/programs.md): a component register at the core of a maintenance program, aligned with the "
+           "study, the conditions, the board's sheet, and the owner-facing manual as a first-class check. Still to "
+           "build: the register and the study-narrative reader.",
+           Status.OPEN, docs=("docs/programs.md",)),
+    Lesson("drive-ingestion-needs-screening", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "Reading Drive Docs for a review found a counsel letter with no kind and not marked confidential, and a "
+           "Doc holding access codes in plain text.",
+           "Drive ingestion classified by name and folder and ran no screen for privileged advice or secrets.",
+           "Designed (docs/programs.md, the ingestion section): privileged material held back by default and a "
+           "secret scan of Doc text, both before any reader or index sees the file. Still to build; the secrets "
+           "themselves belong in the credential vault, not a Doc.",
+           Status.OPEN, docs=("docs/programs.md",)),
     Lesson("a-requirement-is-not-a-document", date(2026, 10, 5), (Area.GOVERNING,),
            "A provision that obliges the association to adopt a program (an inspection program, a maintenance manual) "
            "was tracked as deadlines and notices, with no record of the instrument itself: whether it exists, whether "
