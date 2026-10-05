@@ -118,6 +118,8 @@ Not in jason-ui and not being added now. Each waits on a decision in [mvp.md](mv
 | `JobStatus` | A plan or sync running as a job, its log tail, and its result | Whether engine plans run in the request or as jobs ([architecture.md](architecture.md#locking)) |
 | `CiteBox` | Any expression `jason cite` takes, answered as a `Recitation` | The governing-documents reader ([screens/governing-documents.md](screens/governing-documents.md)) |
 | `DiffTable` | Before and after for a text: a section's versions, a notice's text against what was kept | The same, and the notices screen |
+| `AnswerWord` (a `Pill` preset), `VerdictRow`, `SourcedFact`, `StandingFacts`, `FactQuestionRow` (a `QuestionCard` preset), `EventFactsPicker`, `CatalogGroups`, `BuildingInspectionRow`, `DueUnder` | What applies: the three-valued answer with its deciding or missing fact, the question a person answers, the event facts, and the per-building 5551 record | [handoff-applicability-questions.md](handoff-applicability-questions.md): the `#/applies` decisions |
+| `ConfirmationsQueue`, `QueueCounts`, `CandidateReading`, `ProvisionRecital`, `StandingChoice`, `AdoptionState`, `StaleWordsBanner`, `GoldLabelRow`, `GoldProgress`, `DecisionRow`, `WhoDecides`, `JasonAside` | The confirmations queue: a person's signed confirmation of a reading, a gold label, or a decision, adopting nothing | [handoff-confirmations-queue.md](handoff-confirmations-queue.md): the `#/confirmations` decisions |
 
 ## Accessibility
 

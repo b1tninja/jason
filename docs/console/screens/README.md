@@ -25,6 +25,8 @@ One page per screen of the earlier spec, now read against the console that exist
 | [requests-and-links.md](requests-and-links.md) | `#/drafts`, the key documents tab, `#/canvases`, `#/templates`, and `Embed` | Their documents on `Doc` (built) | 2 |
 | [people.md](people.md) | `#/people` (`PeopleView`) | Built, read-only: offices, holders, vacancies, sign-in | 2 |
 | [status.md](status.md) | `#/status` (`StatusView`) | Built, read-only, administrator only: sources, sign-ins, gates, failures | 2 |
+| What applies (proposed; [../handoff-applicability-questions.md](../handoff-applicability-questions.md)) | none (its parts are in the dock's Deadlines, [life-safety.md](life-safety.md), [notices.md](notices.md), and the onboarding session) | Proposed whole, `#/applies` | 3 |
+| Confirmations (proposed; [../handoff-confirmations-queue.md](../handoff-confirmations-queue.md)) | none (its parts are in `jason readings`, `jason lessons --open`, and the draft gold file) | Proposed whole, `#/confirmations` | 2 |
 
 Screens built with no spec here: the meeting room, decisions, and agenda (from the design handoff), insurance and renewals (`ConsoleInsurance`; their documents are in [mail.md](mail.md)), canvases and templates (their documents are in [requests-and-links.md](requests-and-links.md)), registers, legal, and the community profile page ([web-ui.md](../../web-ui.md#views-uisrcviews-hash-routes)).
 
