@@ -1616,6 +1616,34 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("procedures-left-the-events-facts-unsaid", date(2026, 10, 5), (Area.GOVERNING,),
+           "The catalog could sort the conditional notice rows by an event's facts (jason notices --catalog --fact), but "
+           "no procedure for an election, a rule change, or a board meeting told the person to say them, so each run "
+           "left the conditional rows to the reader again.",
+           "The event facet and the --fact flag were built after the procedures were written, and there was no election "
+           "or rule-change procedure at all.",
+           "The election and rule-change procedures exist, and they and board-packet open with the step that says the "
+           "event's facts and reads the three groups, naming the lesson that put the conditions into data; a test holds "
+           "that each has it, that every jason command a step names is a subcommand, and that every procedure and docs "
+           "reference exists.",
+           Status.FIXED, guards=("tests/test_lessons_procedures.py: the election, rule-change, and board-packet "
+                                 "procedures say the event's facts; every jason command a step names is a command the "
+                                 "parser has",),
+           docs=("docs/notices.md",)),
+    Lesson("building-clocks-asked-of-the-association", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "Civil Code 5551(k) (a building permitted from 2020 is inspected within six years of its certificate of "
+           "occupancy) and (l) (three or more attached units) are about one building each, but the only record was the "
+           "association's obligation row counted from one report's date, so a newer building's shorter clock and a "
+           "building the section does not reach had no place, and a missing date read as the row's own.",
+           "No per-building record existed; the applicability condition was asked of the association once.",
+           "ElevatedElementsInspection (jason.community.elevated_inspections) is one building's record from the "
+           "profile's private facts (Community.elevated_elements_inspections(), empty by default): its last inspection "
+           "with the licensed professional and report, the (k) and (l) answers in three values, and the next due day "
+           "under (b)(1)/(i) or (k). A date not on record is a question in jason applies and a \"date not on record\" "
+           "row in jason deadlines, never a guess. Still to do: the per-building questions are printed, not filed in "
+           "the intake queue; the association's own rows are not yet entered (a person enters them).",
+           Status.FIXED, guards=("tests/test_elevated_inspections.py: an unknown date is a question, not a guess",),
+           docs=("docs/applicability.md",)),
     Lesson("term-pattern-matches-another-clock", date(2026, 10, 5), (Area.GOVERNING,),
            "Four statutory terms (the penalty cap, the lien release after payment, the ballots' mailing, and the "
            "nominations notice) and the mechanic's lien action carried a pattern that also fits another clause of the "

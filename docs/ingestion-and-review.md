@@ -157,6 +157,8 @@ A set of documents reviewed together, with the larger context that applies to al
 
 For a legal case, the context is the case's record in the specification (its events and duties) plus a summary page built from the case file. A document in two collections is ingested once and reviewed in each.
 
+For the exterior elevated elements the record is per building (`jason applies`, the section "by building"): each building's last inspection with its licensed professional and the report on file, whether 5551(k) and (l) reach it, and its next due day under the section's cycle. A report ingested for a building whose record has no date of inspection is a question for a person, who enters the date from the report's first page (5551(e)(5)(A)); jason reads none of these dates from the file itself.
+
 ### A review
 
 Keyed by (document digest, text digest, lens, lens version, collection, as-of date, context digest). The context digest is a hash of what the lens read: the law's text, the profile's facts, the other stores' rows.
