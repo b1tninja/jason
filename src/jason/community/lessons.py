@@ -1616,6 +1616,25 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("review-as-of-and-quote-check-ignored-the-versions", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "A review as of an earlier day treated a document's citation of a renumbered section (a former Davis-Stirling "
+           "number) as a missing section, and verify_quotes confirmed a quotation against whichever edition the shelf "
+           "held, so a quote of an earlier or later version of a statute passed or was called NOT FOUND without saying "
+           "which version it was.",
+           "The pack followed citations by number against the law as it stands now, and the quote check read one edition "
+           "and never the history; the successor table and the earlier versions were on disk but no reader joined them "
+           "to a day.",
+           "law_text.version_on gives the version in force on a day with every version held and where each stands; "
+           "quote_check checks a statute's quotation against that version (--as-of) and names a quotation of another "
+           "version (OTHER VERSION, never clean); law_citations.resolve reads a former number through the exported "
+           "successor table as of a day, recites the successor as of the day and the former section's own words as they "
+           "last stood, and leaves a number the table does not place open. Still open: the no-day pack reads former "
+           "numbers by the grammar's fixed range, not the table, and prompts.verify (the pack's own near-match check) "
+           "still accepts a quote of another version that differs by a word.",
+           Status.FIXED, guards=("tests/test_law_in_force.py",
+                                 "tests/test_quote_check.py::test_a_quotation_of_another_version_of_the_statute_is_named_not_confirmed",
+                                 "tests/test_law_citations.py: an unresolved number stays open; the no-day pack is unchanged"),
+           docs=("docs/law-readings.md", "docs/collections.md")),
     Lesson("procedures-left-the-events-facts-unsaid", date(2026, 10, 5), (Area.GOVERNING,),
            "The catalog could sort the conditional notice rows by an event's facts (jason notices --catalog --fact), but "
            "no procedure for an election, a rule change, or a board meeting told the person to say them, so each run "
