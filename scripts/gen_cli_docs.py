@@ -198,6 +198,9 @@ GROUPS: dict[str, str] = {
     "jobs": "Setup & maintenance",
     "worker": "Setup & maintenance",
     "storage": "Setup & maintenance",
+    "serve": "Setup & maintenance",
+    "daemon": "Setup & maintenance",
+    "integrations": "Setup & maintenance",
 }
 
 # Options most commands take; listed once in the intro instead of per command.

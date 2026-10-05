@@ -11,7 +11,7 @@ export interface StatusSource {
   key: string; name: string; what: string; store: string;
   lastRead: string; ageSeconds: number | null;
   standing: "" | "current" | "stale" | "failed" | "not signed in" | "never read" | string;
-  note: string; fix: string; staleAfterDays: number | null; staleSource: string;
+  note: string; fix: string; staleAfterDays: number | null; staleAfter?: string; staleSource: string;
   lastJob: StatusJob | null; signIn: string;
 }
 export interface StatusSignIn { at: string; event: string; name: string; role?: string; as?: string; provider?: string; why?: string }
@@ -71,7 +71,7 @@ function SourceRow({ s }: { s: StatusSource }) {
       </div>
       <div><Standing word={s.standing} /></div>
       {s.note && <p className="status-source-note">{s.note}</p>}
-      {s.staleSource && <p className="muted">Stale after {s.staleAfterDays} days ({s.staleSource}).</p>}
+      {s.staleSource && <p className="muted">Stale after {s.staleAfter || `${s.staleAfterDays} days`} ({s.staleSource}).</p>}
       {attention ? <Command cmd={s.fix} /> : (
         <details>
           <summary>Refresh command</summary>

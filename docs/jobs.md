@@ -32,7 +32,9 @@ jason worker --once
 - **One lane per resource.** The worker runs one job at a time per resource, and jobs on different resources side by side. Two model jobs never run together, but a Gmail sync can run during a model pass.
 - **Each job is its own process,** with its output in `data/jobs/logs/<id>.log`.
 - **`--once`** stops when nothing is due; without it the worker keeps polling (`--poll`, 20 seconds).
-- **Only one worker runs at a time.** A second one stops with "another worker is running".
+- **One worker per community.** Its guard is `jobs-worker-<profile>` (an OS lock, freed by a crash). A second worker for the same community stops with "another worker is running"; another community's worker runs beside it. Each job runs as its worker's community (`JASON_PROFILE`).
+- **The GPU is the machine's.** Model jobs never run two at a time across communities: a GPU job that finds another community's model job running waits ten minutes without using an attempt.
+- **The service locks are per community.** `Resource.PAYHOA` and `Resource.GOOGLE` are keyed by the community (`locks.account()`, lock `payhoa-<profile>`). The worker holds neither; a job's own process takes the lock where it writes (a PayHOA batch, an approval's apply).
 - **A model job waits for its own model.** Each GPU job's model is the one its flags name (`--model-name`,
   `--terms-model-name`, `--model NAME`), else jason's model (`jason jobs` shows it). Before the job starts, the worker
   runs the same check as `jason local-ai` for that model: a 9B job is not held back by the 27B's memory. If Ollama is
@@ -65,14 +67,14 @@ The table is `data/jobs.db` (SQLite). It records, for each job:
 
 ## Scheduling
 
-Scheduling stays with Windows. A scheduled task only adds a job; the worker, started at sign-in, runs it. Setting up the tasks is a person's step. For example, in a terminal:
+**Running the worker at boot:** `jason serve` runs jason-web and the worker in one process (`--profile P` or `--all`, `--no-web`, `--no-worker`). `jason serve --install-task` prints the Task Scheduler entry that starts it at boot (restart on failure, no time limit); with `--yes`, from a terminal run as administrator, it creates it. `jason daemon status` reads each community's heartbeat (`<data>/jobs/heartbeat.json`); `jason daemon stop` asks the process to drain and stop. See [scheduler-daemon-design.md](scheduler-daemon-design.md).
+
+Scheduling the jobs themselves stays with Windows until the scheduler is built. A scheduled task only adds a job; the worker runs it. Setting up the tasks is a person's step. For example, in a terminal:
 
 ```bash
 schtasks /Create /SC DAILY /ST 02:00 /TN "jason gmail sync" /TR "D:\code\jason\.venv\Scripts\jason.exe jobs add -- gmail --sync"
 ```
 
-```bash
-schtasks /Create /SC ONLOGON /TN "jason worker" /TR "D:\code\jason\.venv\Scripts\jason.exe worker"
-```
+The older `schtasks /Create /SC ONLOGON /TN "jason worker" ...` entry is replaced by `jason serve --install-task`; remove it so the two do not race for the worker's guard.
 
 A write that should run on a schedule needs its approval recorded at the time it is scheduled (`--confirm`). Approving a whole schedule of writes is the board's decision, not jason's.

@@ -112,10 +112,22 @@ def test_a_store_that_is_not_there_is_never_read_and_is_not_created(root, tmp_pa
 def test_no_threshold_is_invented(root, tmp_path):
     """A source that declares no threshold shows its age and no word: not current, not stale, however old."""
     _write_json(root, "zoom/meetings.json", {"syncedAt": "2001-01-01T00:00:00+00:00", "meetings": []})
-    out = st.status_of(root, settings=_token(tmp_path), now=NOW, gate_view=_gates)
+    undeclared = st.Source("zoom", "Zoom", "meetings", st.json_stamp("zoom/meetings.json", "syncedAt"), "jason zoom")
+    out = st.status_of(root, settings=_token(tmp_path), now=NOW, gate_view=_gates, sources=(undeclared,))
     zoom = _row(out, "zoom")
-    assert zoom["standing"] == "" and zoom["staleAfterDays"] is None and zoom["ageSeconds"] > 0
-    assert all(s.stale_after_days is None for s in st.SOURCES)                            # none declares one yet
+    assert zoom["standing"] == "" and zoom["staleAfterDays"] is None and zoom["staleAfter"] == ""
+    assert zoom["ageSeconds"] > 0 and out["counts"] == {"no threshold": 1}
+
+
+def test_each_source_takes_its_integrations_threshold(root, tmp_path):
+    """Each row's threshold is its integration's default stale_after (jason.integrations.registry), named."""
+    from jason.integrations.registry import cadence_for, integration_of
+
+    assert all(s.stale_after_days == cadence_for(s.key).stale_after_days for s in st.SOURCES)
+    assert all(integration_of(s.key).name in s.stale_source for s in st.SOURCES)
+    _write_json(root, "zoom/meetings.json", {"syncedAt": "2001-01-01T00:00:00+00:00", "meetings": []})
+    zoom = _row(st.status_of(root, settings=_token(tmp_path), now=NOW, gate_view=_gates), "zoom")
+    assert zoom["standing"] == st.STALE and zoom["staleAfter"] == "2d" and "Zoom" in zoom["staleSource"]
 
 
 def test_a_declared_threshold_says_current_or_stale(root):
@@ -147,7 +159,7 @@ def test_failed_jobs_set_the_standing_and_list_as_failures(root, tmp_path):
     assert drive["lastJob"]["status"] == "failed" and drive["lastJob"]["command"] == "jason drive --sync"
     zoom = _row(out, "zoom")
     assert zoom["standing"] == st.NOT_SIGNED_IN and zoom["fix"] == "jason login"
-    assert _row(out, "mail")["standing"] == ""                     # read since the failure: the read stands
+    assert _row(out, "mail")["standing"] == st.CURRENT             # read since the failure: the read stands
     assert _row(out, "gmail")["lastJob"]["status"] == "done"
     jobs = [f for f in out["failures"] if f["kind"] == "job"]
     assert [f["job"] for f in jobs] == [5, 3, 2, 1]                # newest first; a job with no source still listed

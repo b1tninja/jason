@@ -29,9 +29,21 @@ from typing import Any, Iterator
 
 class Resource(Enum):
     GPU = "gpu"            # the local model server (Ollama): one generation request from jason at a time
-    GOOGLE = "google"      # the association's Google account
-    PAYHOA = "payhoa"      # the PayHOA session
+    GOOGLE = "google"      # a community's Google account; the key is the community (``account()``)
+    PAYHOA = "payhoa"      # a community's PayHOA session; the key is the community (``account()``)
     STORE = "store"        # a file jason reads, changes, and writes back; the key names it ("board-items")
+
+
+def account(profile: str = "") -> str:
+    """The key of a service lock (``Resource.GOOGLE``, ``Resource.PAYHOA``): the community whose account it is, the
+    active profile by default. Each community signs in to its own accounts, so two communities' jobs never wait on
+    each other, and one community's jobs never run two at a time against its account
+    (``hold(Resource.PAYHOA, account())``, lock ``payhoa-<profile>``). Reading the name loads no profile."""
+    if profile:
+        return profile
+    from jason.community.profile import profile_name
+
+    return profile_name()
 
 
 class ResourceBusy(RuntimeError):
@@ -168,4 +180,4 @@ def holders() -> list[dict[str, Any]]:
     return out
 
 
-__all__ = ["Resource", "ResourceBusy", "hold", "holders", "lock_dir"]
+__all__ = ["Resource", "ResourceBusy", "account", "hold", "holders", "lock_dir"]

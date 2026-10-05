@@ -26,7 +26,7 @@ A past meeting's UUID can hold ``/`` or ``+``: it is URL-encoded, and encoded tw
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterator
@@ -54,7 +54,7 @@ class ZoomCredentials:
 
     account_id: str
     client_id: str
-    client_secret: str
+    client_secret: str = field(repr=False)     # never shown in a log or a traceback
 
     @classmethod
     def from_fields(cls, fields: dict[str, str]) -> ZoomCredentials:

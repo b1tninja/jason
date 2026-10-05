@@ -55,6 +55,14 @@ jason login
 
 It updates `%USERPROFILE%\.keeper\keeper-config.json` with the device token and the stored master password, which later runs use with no prompt. When the login is missing, jason fails fast with `KeeperAuthRequired` and says to run `jason login`.
 
+### The vault
+
+Credentials are moving from `.env` record UIDs to vault paths, `jason/<scope>/<community or "instance">/<integration>/<name>` ([integrations-design.md](integrations-design.md#the-vault)). In Keeper, an entry is a record titled with its path, in a folder named `jason` at the top of your vault.
+- `jason vault status` shows the backend, whether it answers, and which `.env` keys are still read. It never prompts.
+- `jason vault migrate` shows the plan. `jason vault migrate --yes`, run in a terminal, copies each record to its path and never overwrites one.
+
+Check the new records in Keeper, then remove the moved `*_record_uid` keys from `.env`. Until then, jason reads the `.env` record and logs the key as deprecated.
+
 ## Google Workspace
 
 jason signs in as a Workspace user (SSO). The OAuth client's id and secret live in a Keeper record. The refresh token from the first browser sign-in is kept in `secrets/google-token.json`. Google Photos, Vault, and Tasks each keep their own token beside it, so adding one never asks the others to consent again. Which scopes are asked for is in `jason.google.scopes`.

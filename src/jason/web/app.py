@@ -18,6 +18,7 @@ from typing import Any, Callable
 from flask import Flask, jsonify, make_response, request, send_from_directory
 
 from jason.web import access, guard, signin
+from jason.web.flags import add_arguments
 from jason.web.approvals import LiveFactory, blueprint as approvals_routes, default_live
 from jason.web.sources import confirm_owner_info_write, default_loaders, extra_writer, set_board_item, write_canvas, write_decision, write_hearing_decision, write_request
 
@@ -240,39 +241,35 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     return app
 
 
-def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="jason-web", description="Serve the board UI: reads, and writes to jason's own "
-                                "stores behind the write guard. PayHOA is written only with --allow-apply.")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8080)
-    p.add_argument("--dist", type=Path, default=None, help="built UI folder (default ui/dist)")
-    p.add_argument("--allow-apply", action="store_true",
-                   help="turn on POST /api/approvals/<id>/apply: an approved plan written to PayHOA, after a live "
-                        "re-read, by the named person who echoes its fingerprint. Off by default")
-    p.add_argument("--require-sign-in", action="store_true",
-                   help="refuse every write until an officer signs in with Google (docs/setup.md, Console sign-in)")
-    p.add_argument("--dev", action="store_true",
-                   help="not production: a signed-in admin (data/access/admins.json) may view the console as any "
-                        "officer or office; writes are refused while they do")
-    a = p.parse_args(argv)
-    from jason.config import apply_temp_dir_or_exit
-    from waitress import serve
-
-    apply_temp_dir_or_exit()
+def prepare(a: argparse.Namespace, error: Callable[[str], Any]) -> Flask:
+    """The app jason-web's flags ask for, after saying aloud what is on (apply, sign-in, --dev). ``error`` refuses a
+    flag that cannot be met (the parser's ``error``)."""
     sign_in = signin.default_sign_in(required=a.require_sign_in, dev=a.dev)
     if a.dev:
         print("jason-web: --dev: a signed-in admin may view the console as anyone (writes refused meanwhile)",
               file=sys.stderr)
     if a.require_sign_in and not sign_in.configured:
-        p.error("--require-sign-in needs Google sign-in set up: `jason sign-in` shows what is missing "
-                "(docs/setup.md, Console sign-in)")
+        error("--require-sign-in needs Google sign-in set up: `jason sign-in` shows what is missing "
+              "(docs/setup.md, Console sign-in)")
     if a.allow_apply:
         print("jason-web: apply is ON: an approved plan can be written to PayHOA from the console", file=sys.stderr)
     if sign_in.configured:
         which = ", ".join(f"{p.key} ({p.source})" for p in sign_in.all())
         print(f"jason-web: Google sign-in is on with {which}{' and required for writes' if a.require_sign_in else ''}; "
               f"its redirect is http://{a.host}:{a.port}{signin.CALLBACK}", file=sys.stderr)
-    serve(create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,), sign_in=sign_in), host=a.host, port=a.port)
+    return create_app(a.dist, allow_apply=a.allow_apply, hosts=(a.host,), sign_in=sign_in)
+
+
+def main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(prog="jason-web", description="Serve the board UI: reads, and writes to jason's own "
+                                "stores behind the write guard. PayHOA is written only with --allow-apply.")
+    add_arguments(p)
+    a = p.parse_args(argv)
+    from jason.config import apply_temp_dir_or_exit
+    from waitress import serve
+
+    apply_temp_dir_or_exit()
+    serve(prepare(a, p.error), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

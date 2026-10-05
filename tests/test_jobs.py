@@ -148,7 +148,7 @@ def test_the_mcp_tool_reads_the_queue(tmp_path):
 def test_only_one_worker_runs(tmp_path):
     from jason.locks import Resource, hold
 
-    with hold(Resource.STORE, "jobs-worker"):
+    with hold(Resource.STORE, jobs.worker_guard("mystique")):                # the active profile's (conftest)
         import subprocess
         import sys
 

@@ -445,7 +445,7 @@ class Recorder:
 
 def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: Path | None = None) -> Applied:
     """Re-plan live; refuse and supersede when an approved item changed; else apply only the approved items."""
-    from jason.locks import Resource, hold
+    from jason.locks import Resource, account, hold
 
     by = _named(by, "an apply")
     data_dir = data_dir if data_dir is not None else live.data_dir
@@ -458,7 +458,9 @@ def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: 
             audit.append(data_dir, "apply.refused", approval=a.id, kind=a.kind, actor=by, via=via,
                          fingerprint=a.fingerprint, detail="; ".join(problems))
             raise Refused("; ".join(problems))
-        with hold(kind.resource, f"approval-{ident}", timeout=60, purpose=f"apply {ident}"):
+        # A service's lock is the community's account (one writer per account); any other resource, the approval.
+        service = kind.resource in (Resource.PAYHOA, Resource.GOOGLE)
+        with hold(kind.resource, account() if service else f"approval-{ident}", timeout=60, purpose=f"apply {ident}"):
             try:
                 planned = kind.plan(live, a.scope)
                 _check_items(planned.items)

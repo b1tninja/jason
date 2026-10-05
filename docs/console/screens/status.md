@@ -31,7 +31,7 @@ The sources: the PayHOA catalog, transactions, general ledger, budget, reconcili
   - `failed`: the newest queued job that runs the source's command failed after its last read.
   - `not signed in`: that failure, or a live refresh of the source's system since its last read, failed at the sign-in (Keeper or Google); or a Google source with no Google token on this machine. The fix is then the sign-in: `jason login`, or the Google command with `--interactive`.
   - `never read`: no stamp in its store.
-  - `current` and `stale`: only by a threshold the source declares (`Source.stale_after_days`, with `stale_source` naming where it is written). No source declares one yet, so each shows its age and "no threshold declared". Status never invents a threshold.
+  - `current` and `stale`: only by a threshold the source declares (`Source.stale_after_days`, with `stale_source` naming where it is written). Each source takes its integration's default `stale_after` (`jason.integrations.registry`, [integrations-design.md](../../integrations-design.md#defaults-from-rate-limits)), and the row carries it as `staleAfter` (`1h`, `2d`). A source with none shows its age and "no threshold declared". Status never invents a threshold.
 - **A live refresh reads one record.** Its failure marks the source only when it was the sign-in. Any other refresh failure is listed under failures.
 - **An `--offline` run reads nothing**, so it is not a refresh.
 

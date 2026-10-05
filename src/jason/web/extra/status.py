@@ -16,7 +16,8 @@ read-only, and one that is not there is "never read", not created).
   failed after its last read), ``not signed in`` (that failure, or a live refresh of its system since its last read,
   failed at the sign-in; or a Google source with no Google token on disk), ``never read`` (no stamp in its store). ``current`` and ``stale`` need a threshold the source declares
   (``Source.stale_after_days`` with ``stale_source``, where it is written); a source that declares none shows its age
-  and no word. No threshold is invented here.
+  and no word. No threshold is invented here: each row in ``SOURCES`` takes its integration's ``stale_after``
+  (``jason.integrations.registry``, the defaults of docs/integrations-design.md), and ``stale_source`` names it.
 - **Sign-ins** are the newest lines of ``web/sign-ins.jsonl``: who, when, what happened; the account's email and Google
   ``sub`` are left out and a refusal's words are masked (``jason.approvals.audit.mask``).
 - **Gates** are onboarding's five stage gates (``jason.tasks.onboarding_session.status_dict``), as setup shows them.
@@ -29,7 +30,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -57,7 +58,8 @@ ACTING = "Viewing as {who} (admin view): Status is the administrator's own. Go b
 CAVEATS = (
     "Read from disk only: each last read is the store's own stamp. Nothing here calls Google, PayHOA, Keeper, or the "
     "network, and nothing here retries or writes.",
-    "A source says current or stale only by a threshold it declares; without one it shows its age and no word.",
+    "A source says current or stale only by a threshold it declares (its integration's default stale-after, a "
+    "default the board or the administrator may change); without one it shows its age and no word.",
     "Sources sign in at a terminal (jason login, or the command with --interactive); the browser never holds a "
     "credential.",
 )
@@ -259,7 +261,23 @@ def _sources() -> tuple[Source, ...]:
     )
 
 
-SOURCES: tuple[Source, ...] = _sources()
+def _declared(sources: Iterable[Source]) -> tuple[Source, ...]:
+    """Each source with the threshold its integration declares (``jason.integrations.registry``): its cadence's
+    ``stale_after``, and ``stale_source`` naming the integration's default. A source that already declares one, or
+    whose integration gives none, is left as it is."""
+    from jason.integrations.registry import cadence_for, integration_of
+
+    out = []
+    for s in sources:
+        cad, integ = cadence_for(s.key), integration_of(s.key)
+        if s.stale_after_days is None and cad is not None and integ is not None and cad.stale_after_days is not None:
+            s = replace(s, stale_after_days=cad.stale_after_days,
+                        stale_source=f"{integ.name}'s default, {cad.stale_after} (jason.integrations)")
+        out.append(s)
+    return tuple(out)
+
+
+SOURCES: tuple[Source, ...] = _declared(_sources())
 
 
 # --- the job queue, read-only ------------------------------------------------------------------------------------------
@@ -359,6 +377,14 @@ def _reader(source: Source, settings: Any = None) -> Reader:
     return source.read
 
 
+def _span(days: float | None) -> str:
+    """A threshold in words: ``1h`` under a day, ``2d`` otherwise; "" for none."""
+    if days is None:
+        return ""
+    hours = days * 24
+    return f"{hours:g}h" if hours < 24 else f"{days:g}d"
+
+
 def source_row(source: Source, root: Path, *, jobs: list[dict[str, Any]], refreshes: list[dict[str, Any]],
                now: datetime, settings: Any = None) -> dict[str, Any]:
     """One source's row: its last read from its own stamp, its age, its standing word only where the records say it,
@@ -396,7 +422,8 @@ def source_row(source: Source, root: Path, *, jobs: list[dict[str, Any]], refres
     return {"key": source.key, "name": source.name, "what": source.what, "store": source.store,
             "lastRead": got.at, "ageSeconds": int((now - at).total_seconds()) if at else None,
             "standing": standing, "note": note, "fix": fix,
-            "staleAfterDays": source.stale_after_days, "staleSource": source.stale_source,
+            "staleAfterDays": source.stale_after_days, "staleAfter": _span(source.stale_after_days),
+            "staleSource": source.stale_source,
             "lastJob": _job_row(last) if last is not None else None,
             "signIn": source.sign_in}
 
@@ -491,6 +518,18 @@ def gates(root: Path, settings: Any = None) -> dict[str, Any]:
 
 # --- the answer --------------------------------------------------------------------------------------------------------
 
+def source_rows(root: Path, *, settings: Any = None, now: datetime | None = None, sources: Iterable[Source] = SOURCES,
+                jobs: list[dict[str, Any]] | None = None,
+                refreshes: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Each source's row from the data folder ``root`` (disk only), as Status lists them; ``jason.integrations`` reads
+    its connections' states from them."""
+    root = Path(root)
+    at = now or datetime.now(timezone.utc)
+    jobs = _jobs(root) if jobs is None else jobs
+    refreshes = _refreshes(root) if refreshes is None else refreshes
+    return [source_row(s, root, jobs=jobs, refreshes=refreshes, now=at, settings=settings) for s in sources]
+
+
 def status_of(root: Path, *, settings: Any = None, sign_in_log: Path | None = None, now: datetime | None = None,
               gate_view: Callable[[Path, Any], dict[str, Any]] | None = None,
               sources: Iterable[Source] = SOURCES) -> dict[str, Any]:
@@ -500,7 +539,7 @@ def status_of(root: Path, *, settings: Any = None, sign_in_log: Path | None = No
     rows = tuple(sources)
     jobs = _jobs(root)
     refreshes = _refreshes(root)
-    listed = [source_row(s, root, jobs=jobs, refreshes=refreshes, now=at, settings=settings) for s in rows]
+    listed = source_rows(root, settings=settings, now=at, sources=rows, jobs=jobs, refreshes=refreshes)
     counts: dict[str, int] = {}
     for r in listed:
         word = r["standing"] or "no threshold"
@@ -550,4 +589,4 @@ def status(args: Args) -> dict[str, Any]:
 
 __all__ = ["CAVEATS", "CURRENT", "FAILED", "NEVER_READ", "NOT_SIGNED_IN", "REFUSED", "Read", "SOURCES", "STALE",
            "Source", "column_stamp", "failures", "gates", "json_stamp", "newest_json_stamp", "require_admin",
-           "sign_ins", "source_row", "status", "status_of", "sync_runs"]
+           "sign_ins", "source_row", "source_rows", "status", "status_of", "sync_runs"]

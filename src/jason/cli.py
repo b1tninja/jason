@@ -1744,8 +1744,14 @@ def cmd_local_ai(args: argparse.Namespace) -> int:
 
 
 def cmd_vault(args: argparse.Namespace) -> int:
-    """Google Vault: list the Workspace's matters and their holds (read-only)."""
+    """Google Vault: list the Workspace's matters and their holds (read-only). ``status`` or ``migrate``: the
+    credential vault (``jason.commands.vault``)."""
     import json
+
+    if getattr(args, "action", None):
+        from jason.commands.vault import run
+
+        return run(args)
 
     with _agent(args) as agent:
         with agent.google_vault() as vault:
@@ -3987,9 +3993,12 @@ def build_parser() -> argparse.ArgumentParser:
     local_ai.add_argument("--unload", default="", help="Unload this model from Ollama, or 'all' (needs --yes)")
     local_ai.add_argument("--yes", action="store_true", help="Confirm --restart-ollama or --unload")
     local_ai.set_defaults(func=cmd_local_ai)
-    vault = sub.add_parser("vault", help="Google Vault: list matters and legal holds (read-only; first run needs --interactive to consent)")
+    vault = sub.add_parser("vault", help="Google Vault: list matters and legal holds (read-only; first run needs --interactive to consent); `vault status|migrate`: the credential vault (Keeper)")
     _add_common(vault)
     vault.add_argument("--json", action="store_true", help="Print JSON")
+    from jason.commands.vault import add_arguments as _vault_arguments
+
+    _vault_arguments(vault)
     vault.set_defaults(func=cmd_vault)
 
     templates = sub.add_parser("templates",help="The letter templates in Drive and their {TOKENS}; --build --yes builds missing ones")

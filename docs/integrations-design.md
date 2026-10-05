@@ -1,6 +1,6 @@
 # Integrations and the community credential vault
 
-Status: design (2026-10-05), not built. It turns each service jason talks to into an **integration** that an administrator configures for each community, with its credentials in a **vault** behind one interface. The secret manager behind that interface is chosen when jason is containerized and deployed; until then the vault's backend is Keeper, as it is today. Companions: [scheduler-daemon-design.md](scheduler-daemon-design.md) (how often each integration is read) and [console/handoff-instance-and-integrations.md](console/handoff-instance-and-integrations.md) (the screens and the setup dialogs). Earlier research it builds on: [credential-store-research.md](credential-store-research.md), [deployment-research.md](deployment-research.md), [install-design.md](install-design.md).
+Status: design (2026-10-05). Build step 1, the registry and the connections, and build step 2, the vault with its Keeper backend, are built ([Build order](#build-order)). It turns each service jason talks to into an **integration** that an administrator configures for each community, with its credentials in a **vault** behind one interface. The secret manager behind that interface is chosen when jason is containerized and deployed; until then the vault's backend is Keeper, as it is today. Companions: [scheduler-daemon-design.md](scheduler-daemon-design.md) (how often each integration is read) and [console/handoff-instance-and-integrations.md](console/handoff-instance-and-integrations.md) (the screens and the setup dialogs). Earlier research it builds on: [credential-store-research.md](credential-store-research.md), [deployment-research.md](deployment-research.md), [install-design.md](install-design.md).
 
 ## Where it stands today
 
@@ -179,13 +179,24 @@ Each integration declares its limits, a default cadence, a **floor** (the fastes
 | `jason integrations import KEY FILE --community C [--yes] [--delete-file]` | moves a provider's credential file into the vault under the community's path; prints nothing secret |
 | `jason integrations connect KEY --community C [--interactive]` | runs the sign-in (a browser for OAuth; a hidden prompt for a password) |
 | `jason integrations disconnect KEY --community C --yes --by NAME` | revokes, deletes the vault entry, pauses the schedules, logs it |
-| `jason vault status` | the backend, whether it answers, the paths per community (names only) |
-| `jason vault migrate [--yes]` | copies today's `.env`-named Keeper records under the new vault paths for the active community; `.env` then keeps only the vault's own login |
+| `jason vault status` | the backend, whether it answers (never prompting), the paths per community, and the `.env` keys still read (names only) |
+| `jason vault migrate [--community C] [--yes]` | plans copying today's `.env`-named Keeper records under the new vault paths for the active community; `--yes`, from a person at a terminal, copies them (create only). `.env` then keeps only the vault's own login. Plain `jason vault` is still Google Vault's matters and holds |
 
 ## Build order
 
 1. The `Integration` registry in code and `Connection` rows in each community's data (`data/<profile>/integrations.json`), read by the Status screen.
+   **Built 2026-10-05** (`src/jason/integrations/`):
+   - **The registry** (`registry.py`): each integration's scope, auth, capabilities (writes off by default), rate limit, setup steps, and one `Cadence` a refresh command with the defaults above. Status's sources keep their keys; calendar, tasks, `idoxs`, and `vendor-portals` are added. Mail and permits are `proposed` (not in the table above). `county-secured` is `manual`: it needs a roll workbook a person downloads.
+   - **The connections** (`connections.py`): `integrations.json` sits in the active profile's data folder, and the installation's in `<data root>/instance/`. It is written under the store lock. `state_of` works out today's state from what exists: a credential configured (only whether), the vault's login, the Google token file, Status's rows, the last check, and a pause.
+   - **Status** reads each source's `stale_after` from the registry, so it says current or stale; `stale_source` names the integration's default.
+   - **`jason integrations list` and `check`**: `check --live` asks a person at a terminal and runs one small read (Google, PayHOA, Zoom, the local models), and records the result on the connection.
+   - **Not yet:** a Status row for calendar, tasks, `idoxs`, and the vendor portals. The vendor portals' store keeps no last-read stamp.
 2. The `SecretStore` interface with the Keeper backend, vault paths, and `jason vault migrate`. Per-community lookups for Google, Zoom, PayHOA, and the portals.
+   **Built 2026-10-05** (`src/jason/vault/`), except the per-community lookups:
+   - **The mapping:** a vault path is a Keeper record whose title is the path, in a folder named `jason` at the top of the vault (user or shared folder; subfolders count). A record outside that folder is never read as an entry. Two records with one title are an error. `login`, `password`, `url`, and `oneTimeCode` are the record's typed fields; any other field is a masked custom field with its name as the label. The version is the record's Keeper revision.
+   - **The fallback:** `credential(community, integration, name)` reads the path first, then the record its `.env` key names (`resolver.LEGACY`; a portal's `<key>_record_uid` by the profile's portal rows), logging the key as deprecated.
+   - **Switched so far:** PostScanMail (`postscanmail/api-key`) and Zoom (`zoom/app`). PayHOA, SMUD, i-doxs, Accela, the vendor portals, the Google client, and console sign-in still read their `.env` record UID.
+   - **Tests:** `MemoryStore` and a fake Keeper.
 3. Google Workspace as a Web client per community, with the browser sign-in from the console and tokens by account.
 4. The console's dialogs ([handoff](console/handoff-instance-and-integrations.md)), each over `jason integrations`.
 5. Later, with containerization: the backend swap (SSM or Secrets Manager; OpenBao off AWS).

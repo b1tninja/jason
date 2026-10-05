@@ -1858,17 +1858,62 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_meeting_room_subsidiary.py", "ui/src/components/subsidiary.test.tsx"),
            docs=("docs/console/screens/meetings-and-minutes.md (Table, continue, refer, and withdraw)",),
            notes=("Still open: two main motions on the same item at one meeting still replace each other's decision.",)),
+    Lesson("credential-repr-showed-secrets", date(2026, 10, 5), (Area.ONBOARDING, Area.REPOSITORY),
+           "The credential dataclasses (LoginCredentials, PayhoaCredentials, IdoxsCredentials, ZoomCredentials) showed "
+           "passwords, one-time codes, and client secrets in their default repr, so a traceback or a debug log could "
+           "carry them.", "Dataclasses print every field unless told not to, and no check looked for secret fields.",
+           "The secret fields have repr=False, and the vault's Secret shows only its field names and cannot be pickled.",
+           Status.FIXED, guards=("tests/test_vault.py::test_credential_records_hide_their_secrets_in_repr",),
+           docs=("docs/integrations-design.md (The vault)",),
+           notes=("Still open: a test that finds any new dataclass with a secret-named field lacking repr=False.",)),
+    Lesson("worker-guard-per-machine", date(2026, 10, 5), (Area.ONBOARDING,),
+           "The job worker's single-instance guard carried no community, so a second community could not run a worker; "
+           "and once guards were per community, two communities' model jobs could load on the card at once.",
+           "The worker was written for one association on one machine.",
+           "The guard is jobs-worker-<profile>; a machine-wide jobs-gpu-lane lock covers the GPU lane, and a model job "
+           "that finds it taken waits without spending an attempt. PayHOA writes hold the community's account lock "
+           "(locks.account), so two batches for one community no longer run at once.",
+           Status.FIXED, guards=("tests/test_serve.py",), docs=("docs/jobs.md", "docs/scheduler-daemon-design.md")),
+    Lesson("serve-logs-nowhere-under-task-scheduler", date(2026, 10, 5), (Area.ONBOARDING,),
+           "Under Task Scheduler, jason serve's printed lines go nowhere; only the heartbeat's refused and failed fields "
+           "and each job's own log remain.", "The service was built before its log.",
+           "The design's rotating data/<profile>/serve.log is still to build.",
+           Status.OPEN, docs=("docs/scheduler-daemon-design.md",)),
+    Lesson("task-restart-on-failure-limits", date(2026, 10, 5), (Area.ONBOARDING,),
+           "Task Scheduler restarts a jason serve that exits with a failure, but not one that hangs; a hung serve shows "
+           "only as stale in jason daemon status.", "Restart-on-failure watches the exit, not the heartbeat.",
+           "A watchdog that acts on a stale heartbeat (or a service wrapper that does) is still to choose.",
+           Status.OPEN, docs=("docs/scheduler-daemon-design.md",)),
     Lesson("sources-declare-no-freshness", date(2026, 10, 4), (Area.ONBOARDING, Area.REPOSITORY),
            "The administrator's Status screen can say a data source is current or stale only by a threshold the source "
            "declares, and none does, so every source shows its age with no standing word.",
            "How often each source should be read was never written down; jobs refresh them on a person's command.",
            "Status reads Source.stale_after_days with stale_source naming where the threshold is written, and shows "
            "the age alone until one is. A Keeper sign-in cannot be checked from disk, so a Keeper source reads "
-           "\"not signed in\" only after a failed job or refresh.",
-           Status.DECISION, guards=("tests/test_web_status.py (no invented standing)",),
-           docs=("docs/console/screens/status.md",),
-           notes=("The administrator or the board decides each source's cadence (docs/jobs.md), recorded on the "
-                  "source's row.",)),
+           "\"not signed in\" only after a failed job or refresh. Since 2026-10-05 each source takes its threshold from "
+           "its integration's cadence (jason.integrations.registry), the defaults from rate limits.",
+           Status.FIXED, guards=("tests/test_web_status.py::test_each_source_takes_its_integrations_threshold",
+                                 "tests/test_integrations.py::test_floors_and_thresholds_hold_against_each_cadence",
+                                 "tests/test_web_status.py (no invented standing)"),
+           docs=("docs/console/screens/status.md", "docs/integrations-design.md (Defaults from rate limits)"),
+           notes=("The figures are defaults until the administrator or the board adopts them "
+                  "(docs/integrations-design.md, open decisions).",)),
+    Lesson("nul-is-a-tty", date(2026, 10, 5), (Area.ONBOARDING, Area.REPOSITORY),
+           "An agent ran jason integrations check zoom --live with stdin redirected from NUL; on Windows NUL answers "
+           "isatty() True, so the guard meant for a person at a terminal let one read-only Zoom call through and "
+           "recorded it as a check (the record was removed).",
+           "The guard asked isatty(), which a character device answers yes to, not whether stdin is a console.",
+           "jason.commands.integrations.at_terminal asks Windows for the console's mode (GetConsoleMode); "
+           "jason integrations check --live and jason vault migrate --yes use it.",
+           Status.FIXED, guards=("tests/test_integrations.py (at_terminal gates --live)",),
+           notes=("Prompts that rely on input() rather than isatty() are not covered; an agent's --yes is still "
+                  "refused only by the agent's own rules.",)),
+    Lesson("cadence-without-status-row", date(2026, 10, 5), (Area.ONBOARDING,),
+           "Calendar, Tasks, i-doxs, and the vendor portals have cadences but no Status row, so their integrations read "
+           "\"never read\".", "Their stores keep no last-read stamp Status reads: the vendor portals' account.json has "
+           "none, and Calendar and Tasks share one stamp (schedule/google-read.json) and one command.",
+           "Status rows for i-doxs (its sync runs) and Calendar and Tasks, and a syncedAt in the vendor portals' sync.",
+           Status.OPEN, docs=("docs/integrations-design.md",)),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
            "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",

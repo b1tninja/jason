@@ -115,6 +115,23 @@ class Jason:
             )
         return self._vault
 
+    def vault_store(self):
+        """The credential vault (``jason.vault``): Keeper, over this agent's one Keeper session."""
+        from jason.vault.keeper import KeeperStore
+
+        return KeeperStore.from_session(self._vault_session())
+
+    def credential(self, integration: str, name: str):
+        """A credential for the active community: its vault path first, else the Keeper record its ``.env`` key names
+        (``jason.vault.resolver``; the fallback logs the key as deprecated). Fails fast with ``KeeperAuthRequired``
+        when not interactive."""
+        from jason.community.profile import profile_name
+        from jason.vault.resolver import credential
+
+        store = self.vault_store()
+        return credential(profile_name(), integration, name, store=store, record_uids=self.settings.record_uids,
+                          load_record=store.load_by_uid)
+
     def credentials(
         self, record_uid: str, *, require_totp: bool = False
     ) -> LoginCredentials:
@@ -992,13 +1009,16 @@ class Jason:
         return client
 
     def postscanmail(self):
-        """The read-only PostScanMail client, with the API key from the Keeper record ``postscanmail_record_uid``."""
+        """The read-only PostScanMail client, with the API key from the vault (``postscanmail/api-key``), else the
+        Keeper record ``postscanmail_record_uid`` (its password field)."""
         from jason.postscanmail.client import PostScanMail
+        from jason.vault.resolver import CredentialMissing
 
-        uid = self.settings.record_uid("postscanmail")
-        if not uid:
-            raise ValueError("postscanmail_record_uid is not set in .env")
-        return PostScanMail(self._vault_session().get_secret(uid))
+        try:
+            secret = self.credential("postscanmail", "api-key")
+        except CredentialMissing as exc:
+            raise ValueError(f"no PostScanMail API key: {exc}") from None
+        return PostScanMail(secret.first("api_key", "password"))
 
     def sync_mail(self, *, full: bool = False, log: Any = None) -> dict[str, int]:
         """Sync the association's PostScanMail mailbox to ``data/mail``: records, scans, text, and the sort."""
@@ -1008,17 +1028,18 @@ class Jason:
             return sync(client, self.settings.payhoa_catalog.parent, full=full, log=log, community=self.community)
 
     def zoom(self):
-        """The Zoom client for the association's account, from the Server-to-Server OAuth app on the Keeper record
-        ``zoom_record_uid`` (custom fields account_id, client_id, client_secret)."""
-        from jason.secrets import _field_value, extract_custom_fields
+        """The Zoom client for the association's account, from the Server-to-Server OAuth app in the vault
+        (``zoom/app``), else the Keeper record ``zoom_record_uid`` (custom fields account_id, client_id,
+        client_secret)."""
+        from jason.vault.resolver import CredentialMissing
         from jason.zoom.client import Zoom, ZoomCredentials
 
-        uid = self.settings.record_uid("zoom")
-        if not uid:
-            raise ValueError("zoom_record_uid is not set in .env")
-        record = self._vault_session().load_record(uid)
+        try:
+            secret = self.credential("zoom", "app")
+        except CredentialMissing as exc:
+            raise ValueError(f"no Zoom app: {exc}") from None
         # The client secret is a custom field, or the record's password field (where `jason zoom --store-app` puts it).
-        fields = {"client_secret": _field_value(record, "password"), **extract_custom_fields(record)}
+        fields = {"client_secret": secret.get("password", ""), **{k: v for k, v in secret.items() if k != "password"}}
         return Zoom(ZoomCredentials.from_fields({k: v for k, v in fields.items() if v}))
 
     def store_zoom_app(self, account_id: str, client_id: str, client_secret: str = "") -> str:

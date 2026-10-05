@@ -29,23 +29,23 @@ class KeeperAuthRequired(RuntimeError):
 @dataclass(frozen=True)
 class LoginCredentials:
     login: str
-    password: str
-    totp_code: str | None = None
+    password: str = field(repr=False)
+    totp_code: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
 class PayhoaCredentials:
     email: str
-    password: str
-    totp_code: str
+    password: str = field(repr=False)
+    totp_code: str = field(repr=False)
 
 
 @dataclass(frozen=True)
 class IdoxsCredentials:
     username: str
-    password: str
+    password: str = field(repr=False)
     # Custom-field label (word in the security question) -> answer
-    security_answers: dict[str, str] = field(default_factory=dict)
+    security_answers: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 def keeper_config_path(path: str | Path | None = None) -> Path:
@@ -528,6 +528,12 @@ class VaultSession:
         self._vault.auto_sync = False
         self._vault.sync_down()
 
+    @property
+    def online(self) -> Any:
+        """The keepersdk ``VaultOnline``, logged in and synced on first use (``jason.vault.keeper`` reads it)."""
+        self.open()
+        return self._vault
+
     def load_record(self, record_uid: str) -> Any:
         self.open()
         record = self._vault.vault_data.load_record(record_uid)
@@ -556,12 +562,16 @@ class VaultSession:
         notes: str = "",
         folder_uid: str | None = None,
         custom: dict[str, str] | None = None,
+        one_time_code: str = "",
+        hidden_custom: bool = False,
     ) -> str:
         """Create a typed login record in the vault and return its UID.
 
         The secret goes in the password field, so ``get_secret`` reads it
         back the same way for every service. The value is never logged.
-        ``custom`` adds labeled text fields (an app's account id, client id).
+        ``custom`` adds labeled text fields (an app's account id, client id);
+        with ``hidden_custom`` they are masked ``secret`` fields instead.
+        ``one_time_code`` is a TOTP seed (an otpauth URI) for the oneTimeCode field.
         """
         from keepersdk.vault.record_management import add_record_to_folder
         from keepersdk.vault.vault_record import TypedField, TypedRecord
@@ -571,12 +581,15 @@ class VaultSession:
         record.record_type = "login"
         record.title = title
         record.notes = notes
-        for field_type, value in (("login", login), ("password", password), ("url", url)):
+        typed = [("login", login), ("password", password), ("url", url)]
+        if one_time_code:
+            typed.append(("oneTimeCode", one_time_code))
+        for field_type, value in typed:
             field = TypedField.create_field(field_type)
             field.value = [value] if value else []
             record.fields.append(field)
         for label, value in (custom or {}).items():
-            field = TypedField.create_field("text", label)
+            field = TypedField.create_field("secret" if hidden_custom else "text", label)
             field.value = [value] if value else []
             record.custom.append(field)
         return add_record_to_folder(self._vault, record, folder_uid)

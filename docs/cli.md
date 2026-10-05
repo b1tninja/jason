@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-163 commands, by area:
+166 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
@@ -18,7 +18,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (4)
-- [Setup & maintenance](#setup--maintenance) (8)
+- [Setup & maintenance](#setup--maintenance) (11)
 - [Other](#other) (14)
 
 ## PayHOA & finance
@@ -1240,11 +1240,14 @@ The Davis-Stirling Act's history: where each former Civil Code 1350-1378 section
 
 ### `jason vault`
 
-Google Vault: list matters and legal holds (read-only; first run needs --interactive to consent)
+Google Vault: list matters and legal holds (read-only; first run needs --interactive to consent); `vault status|migrate`: the credential vault (Keeper)
 
 | Option | Value | Help |
 |---|---|---|
 | `--json` |  | Print JSON |
+| `action` | {status,migrate} | status or migrate: the credential vault (Keeper); none: Google Vault's matters and holds |
+| `--community` | COMMUNITY | With migrate: the community whose paths the records go under (default: the active profile) |
+| `--yes` |  | With migrate: copy the records in Keeper (a person at a terminal); without, the plan only |
 
 ### `jason deadlines`
 
@@ -1956,17 +1959,6 @@ Run the job queue: one job at a time per resource (GPU, Google, PayHOA, local)
 | `--poll` | POLL | Seconds between looks at the queue |
 | `--keep-models` |  | Leave models loaded after GPU jobs (by default the worker unloads a model no queued job needs, except jason's shared model) |
 
-### `jason storage`
-
-Where jason writes: each place's path, drive, free space, and size; --check flags a drive short of room and scratch on the small drive
-
-| Option | Value | Help |
-|---|---|---|
-| `--check` |  | exit 1 and say why when a drive is short of room |
-| `--min-free-gb` | GB | free space below which a drive is a problem (default 20) |
-| `--no-sizes` |  | skip measuring the folders |
-| `--json` |  | print JSON |
-
 ### `jason lessons`
 
 What went wrong, what changed, and what is still open
@@ -2024,6 +2016,75 @@ Where the active profile's private facts are read from; --migrate to the per-pro
 |---|---|---|
 | `--migrate` |  | copy the default profile's topic files (data/spec/TOPIC.json) into data/spec/PROFILE/; a dry run unless --yes |
 | `--yes` |  | with --migrate: copy, after a backup of each file copied |
+
+### `jason storage`
+
+Where jason writes: each place's path, drive, free space, and size; --check flags a drive short of room and scratch on the small drive
+
+| Option | Value | Help |
+|---|---|---|
+| `--check` |  | exit 1 and say why when a drive is short of room |
+| `--min-free-gb` | GB | free space below which a drive is a problem (default 20) |
+| `--no-sizes` |  | skip measuring the folders |
+| `--json` |  | print JSON |
+
+### `jason serve`
+
+Run jason-web and the job worker in one process, for one community or --all; --install-task sets it to start at boot
+
+| Option | Value | Help |
+|---|---|---|
+| `--profile` | PROFILE | the community to serve (default the active profile) |
+| `--all` |  | one worker per profile, each behind its own guard; the web serves the active profile |
+| `--no-web` |  | run no web server |
+| `--no-worker` |  | run no worker |
+| `--no-scheduler` |  | reserved for the scheduler to come; does nothing yet |
+| `--host` | HOST |  |
+| `--port` | PORT |  |
+| `--dist` | DIST | built UI folder (default ui/dist) |
+| `--allow-apply` |  | turn on POST /api/approvals/<id>/apply: an approved plan written to PayHOA, after a live re-read, by the named person who echoes its fingerprint. Off by default |
+| `--require-sign-in` |  | refuse every write until an officer signs in with Google (docs/setup.md, Console sign-in) |
+| `--dev` |  | not production: a signed-in admin (data/access/admins.json) may view the console as any officer or office; writes are refused while they do |
+| `--poll` | POLL | seconds between the worker's looks at the queue |
+| `--keep-models` |  | leave models loaded after GPU jobs (as jason worker) |
+| `--install-task` |  | print the Task Scheduler entry that runs jason serve at startup (with --yes, create it) |
+| `--uninstall-task` |  | print the command that removes it (with --yes, run it) |
+| `--yes` |  | with --install-task or --uninstall-task: do it |
+
+### `jason daemon`
+
+jason serve's heartbeat (status) and drain request (stop); kills nothing
+
+| Option | Value | Help |
+|---|---|---|
+| `action` | {status,stop} |  |
+| `--profile` | PROFILE | one community (default every profile) |
+| `--json` |  | with status: print JSON |
+
+### `jason integrations`
+
+Each service jason talks to: its connection's state, account, capabilities, last check, and cadences (never a credential's value)
+
+#### `jason integrations list`
+
+each integration of the community, or of the installation, from disk
+
+| Option | Value | Help |
+|---|---|---|
+| `--community` | C | the community (default the active profile) |
+| `--instance` |  | the installation's integrations |
+| `--json` |  | print JSON |
+
+#### `jason integrations check`
+
+one integration's reading from disk; --live runs its read through the service
+
+| Option | Value | Help |
+|---|---|---|
+| `key` |  | the integration (jason integrations list names them) |
+| `--community` | C | the community (default the active profile) |
+| `--live` |  | also read through the service (a person at a terminal); the outcome is recorded |
+| `--by` | NAME | with --live: who ran it, recorded on a first connection |
 
 ## Other
 

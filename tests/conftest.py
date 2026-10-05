@@ -24,6 +24,14 @@ except Exception as exc:  # noqa: BLE001 - a JASON_TEMP_DIR that cannot be used 
 os.environ["JASON_CONFIG"] = str(Path(__file__).parent / "fixtures" / "no-user-config.env")
 
 
+@pytest.fixture
+def memory_vault():
+    """An empty in-memory credential vault (``jason.vault.MemoryStore``): a test never reaches Keeper."""
+    from jason.vault import MemoryStore
+
+    return MemoryStore()
+
+
 @pytest.fixture(autouse=True)
 def _no_ollama_ocr(monkeypatch):
     """A test never reaches the machine's Ollama for OCR; a loaded model also exhausts commit and crashes numpy."""

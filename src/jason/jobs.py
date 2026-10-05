@@ -16,7 +16,8 @@ The rules the queue keeps:
   enough Windows commit), and is tried again later rather than failed.
 
 The worker does not hold the GPU lock itself (the job's own model requests take it, and holding it would block them);
-one worker with one queue per resource keeps two GPU jobs from running at once. Scheduling stays with Windows: a
+one worker per community with one queue per resource, and the machine's GPU lane lock (``GPU_LANE``) across
+communities, keep two GPU jobs from running at once. Scheduling stays with Windows: a
 scheduled task only adds a job (``jason jobs add -- gmail --sync``), and the worker runs it.
 """
 
@@ -29,13 +30,14 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-from jason.locks import Resource, ResourceBusy, hold
+from jason.locks import Resource, ResourceBusy, account, hold
 
 
 class JobStatus(Enum):
@@ -199,7 +201,7 @@ def add(data_dir: Path, argv: list[str], *, confirmed_by: str = "", max_attempts
     argv = [a for a in argv if a != "--"]
     if not argv:
         raise JobRefused("give the jason command to run, after --")
-    if argv[0] in ("worker", "jobs", "login"):
+    if argv[0] in ("worker", "jobs", "login", "serve", "daemon"):
         raise JobRefused(f"`jason {argv[0]}` is not a job")
     if "--interactive" in argv:
         raise JobRefused("a command that needs a browser (--interactive) cannot run in the worker; run it yourself")
@@ -321,8 +323,10 @@ def _defer(data_dir: Path, job: Job, reason: str, seconds: float) -> None:
 
 
 def run_job(data_dir: Path, job: Job, *, python: str = sys.executable, env_file: str | None = None,
-            runner: Callable[..., int] | None = None) -> tuple[int, str]:
-    """Run one claimed job in its own process; returns its exit code and the last lines it printed."""
+            runner: Callable[..., int] | None = None, profile: str = "") -> tuple[int, str]:
+    """Run one claimed job in its own process; returns its exit code and the last lines it printed. With ``profile``
+    the process runs as that community (``JASON_PROFILE``), so one ``jason serve --all`` runs each profile's jobs as
+    its own."""
     argv = list(job.argv) + (["--env", env_file] if env_file and "--env" not in job.argv else [])
     out = log_path(data_dir, job.id)
     with out.open("a", encoding="utf-8") as log:
@@ -332,7 +336,8 @@ def run_job(data_dir: Path, job: Job, *, python: str = sys.executable, env_file:
             code = runner(argv, log)
         else:
             # Unbuffered, so `jason jobs show` follows a long job as it prints.
-            env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
+                   **({"JASON_PROFILE": profile} if profile else {})}
             proc = subprocess.Popen([python, "-m", "jason.cli", *argv], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                     env=env, cwd=os.getcwd())
             with _connect(data_dir) as conn:
@@ -342,13 +347,32 @@ def run_job(data_dir: Path, job: Job, *, python: str = sys.executable, env_file:
     return code if isinstance(code, int) else 1, "\n".join(tail)[-1500:]
 
 
+GPU_LANE = "jobs-gpu-lane"      # the machine's GPU lane (Resource.STORE), shared by every community's worker
+
+
+def worker_guard(profile: str) -> str:
+    """The key of a community's worker lock (``Resource.STORE``): one worker per community on this machine, and two
+    communities' workers side by side. An OS byte-lock, so a crashed worker leaves it free."""
+    return f"jobs-worker-{profile}"
+
+
 def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: str | None = None,
          preflight: Callable[..., None] | None = None, runner: Callable[..., int] | None = None,
          log: Callable[[str], None] = print, retry_in: float = 300.0, defer_for: float = 600.0,
          loaded: Callable[[], frozenset[str]] | None = None, release_models: bool = False,
-         unload: Callable[[str], Any] | None = None) -> dict[str, int]:
+         unload: Callable[[str], Any] | None = None, profile: str = "", stop: threading.Event | None = None,
+         current: dict[str, Any] | None = None) -> dict[str, int]:
     """Run the queue: one thread per job class, each taking that class's jobs one at a time. With ``once``, return when
-    every class has nothing due; else keep polling. Only one worker runs at a time (the jobs-worker lock).
+    every class has nothing due; else keep polling. Only one worker runs at a time for a community (the
+    ``jobs-worker-<profile>`` lock, ``profile`` the active one by default), and each job runs as that community.
+
+    ``stop``, set by another thread (``jason serve`` on Ctrl-C or a drain request), stops the lanes as Ctrl-C does:
+    each finishes its running job and takes no more. ``current`` is filled with each lane's running job (id, command,
+    since; None when idle), for the heartbeat.
+
+    The worker holds no service lock (``Resource.PAYHOA``, ``Resource.GOOGLE``) itself: a job's own process takes it
+    where it writes, and holding it here would refuse that process. One lane per resource keeps the community's jobs
+    on one account apart.
 
     The GPU lane schedules by model: it asks which models Ollama has loaded (``loaded``), takes the oldest job whose
     model is loaded before an older one that would load another, and checks the job's own model with preflight (a
@@ -359,7 +383,10 @@ def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: st
     apply_temp_dir(env_file)      # each job process inherits the worker's TEMP (JASON_TEMP_DIR), and applies it itself
     counts = {"done": 0, "failed": 0, "retried": 0, "deferred": 0, "released": 0}
     lock = threading.Lock()
-    stop = threading.Event()
+    stop = stop if stop is not None else threading.Event()
+    community = account(profile)
+    lanes: dict[str, Any] = current if current is not None else {}
+    lanes.update({cls.value: None for cls in JobClass})
     from jason.community.ollama_extractor import DEFAULT_MODEL
 
     def model_ready(model: str) -> str:
@@ -392,30 +419,48 @@ def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: st
                 if once:
                     return
                 continue
-            log(f"job {job.id} [{cls.value}] starts: {job.command}")
-            try:
-                code, summary = run_job(data_dir, job, env_file=env_file, runner=runner)
-            except Exception as exc:          # the process could not start, or the runner failed: the job fails, the lane goes on
-                code, summary = 1, f"the job could not run: {exc}"
-            _finish(data_dir, job, code, summary, retry_in=retry_in)
-            after = get(data_dir, job.id)
-            with lock:
-                key = "done" if after.status is JobStatus.DONE else "retried" if after.status is JobStatus.QUEUED else "failed"
-                counts[key] += 1
-            log(f"job {job.id} {after.status.value} (exit {code})")
-            if cls is JobClass.GPU and release_models:
+            with ExitStack() as gate:
+                if cls is JobClass.GPU:
+                    # The card is the machine's, not the community's: one model job at a time across every community's
+                    # worker. Not the GPU lock itself, which the job's own model requests take.
+                    try:
+                        gate.enter_context(hold(Resource.STORE, GPU_LANE, timeout=1, purpose=f"job {job.id} ({community})"))
+                    except ResourceBusy as exc:
+                        reason = f"another community's model job is running ({exc})"
+                        _defer(data_dir, job, reason, defer_for)
+                        with lock:
+                            counts["deferred"] += 1
+                        log(f"job {job.id} waits: {reason}")
+                        if once:
+                            return
+                        continue
+                log(f"job {job.id} [{cls.value}] starts: {job.command}")
+                lanes[cls.value] = {"id": job.id, "command": job.command, "since": _now()}
                 try:
-                    gone = release_idle(data_dir, loaded=(loaded or loaded_models)(), shared=DEFAULT_MODEL, unload=unload)
-                except Exception as exc:      # noqa: BLE001 - Ollama gone: nothing to release
-                    log(f"could not release idle models: {exc}")
-                    gone = []
-                if gone:
-                    with lock:
-                        counts["released"] += len(gone)
-                    log(f"released {', '.join(gone)}: no queued job needs them")
+                    code, summary = run_job(data_dir, job, env_file=env_file, runner=runner, profile=community)
+                except Exception as exc:          # the process could not start, or the runner failed: the job fails, the lane goes on
+                    code, summary = 1, f"the job could not run: {exc}"
+                finally:
+                    lanes[cls.value] = None
+                _finish(data_dir, job, code, summary, retry_in=retry_in)
+                after = get(data_dir, job.id)
+                with lock:
+                    key = "done" if after.status is JobStatus.DONE else "retried" if after.status is JobStatus.QUEUED else "failed"
+                    counts[key] += 1
+                log(f"job {job.id} {after.status.value} (exit {code})")
+                if cls is JobClass.GPU and release_models:
+                    try:
+                        gone = release_idle(data_dir, loaded=(loaded or loaded_models)(), shared=DEFAULT_MODEL, unload=unload)
+                    except Exception as exc:      # noqa: BLE001 - Ollama gone: nothing to release
+                        log(f"could not release idle models: {exc}")
+                        gone = []
+                    if gone:
+                        with lock:
+                            counts["released"] += len(gone)
+                        log(f"released {', '.join(gone)}: no queued job needs them")
 
     try:
-        with hold(Resource.STORE, "jobs-worker", timeout=1, purpose="jason worker"):
+        with hold(Resource.STORE, worker_guard(community), timeout=1, purpose=f"jason worker ({community})"):
             # Only one worker runs, so a job still marked running was left by a worker that stopped mid-job.
             with _connect(data_dir) as conn:
                 stale = [_job(r) for r in conn.execute("SELECT * FROM jobs WHERE status = 'running'").fetchall()]
@@ -435,7 +480,7 @@ def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: st
                 for t in threads:
                     t.join()
     except ResourceBusy as exc:
-        raise JobRefused(f"another worker is running ({exc})") from exc
+        raise JobRefused(f"another worker is running for {community} ({exc})") from exc
     return counts
 
 
@@ -455,4 +500,4 @@ def lines(items: list[Job]) -> list[str]:
 
 
 __all__ = ["JobStatus", "JobClass", "JobRefused", "Job", "job_class", "add", "get", "jobs", "cancel", "work", "run_job",
-           "log_path", "lines"]
+           "log_path", "lines", "worker_guard"]

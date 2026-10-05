@@ -32,7 +32,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable, Protocol
 
-from jason.locks import Resource, hold
+from jason.locks import Resource, account, hold
 
 
 class ItemStatus(Enum):
@@ -237,16 +237,20 @@ def resolve(data_dir: Path, batch_id: str, key: str, *, sent: bool) -> None:
 
 def run(data_dir: Path, batch_id: str, handler: Handler, *, pace: Pace = Pace(), limit: int | None = None,
         sleep: Callable[[float], None] = time.sleep, say: Callable[[str], None] = print,
-        rng: random.Random | None = None, remaining: Callable[[], int | None] = lambda: None) -> dict[str, int]:
+        rng: random.Random | None = None, remaining: Callable[[], int | None] = lambda: None,
+        profile: str = "") -> dict[str, int]:
     """Send a batch's remaining items through ``handler``, slowly, recording each step. ``limit`` stops after that many
     items are sent (a first test). ``remaining`` reads the API's own count of requests left (the client's
-    ``rate_remaining``); below ``Pace.headroom`` the run cools down first. Returns the item counts by status."""
+    ``rate_remaining``); below ``Pace.headroom`` the run cools down first. Returns the item counts by status.
+
+    The run holds the community's PayHOA lock (``profile``, the active one by default): one PayHOA writer per
+    community at a time, and another community's batch never waits on it."""
     rng = rng or random.Random()
     info = batch(data_dir, batch_id)
     if info["status"] in (BatchStatus.DONE.value, BatchStatus.CANCELLED.value):
         say(f"batch {batch_id} is {info['status']}: nothing to do")
         return info["counts"]
-    with hold(Resource.PAYHOA, f"batch-{batch_id}", timeout=5, purpose=f"batch {batch_id}"):
+    with hold(Resource.PAYHOA, account(profile), timeout=5, purpose=f"batch {batch_id}"):
         _set_batch(data_dir, batch_id, BatchStatus.RUNNING)
         try:
             _recover(data_dir, batch_id, handler, say)
