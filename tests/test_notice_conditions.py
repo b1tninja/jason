@@ -37,9 +37,13 @@ def _said(fact, value, where="the agenda"):
 
 def test_a_conditional_sign_has_its_condition_and_its_words():
     conditional = [s for rows in SIGNS.values() for s in rows if s.applies is not ALWAYS]
-    assert {s.when for s in conditional} == {"an emergency rule change (4360(d))",
-                                             "a meeting held entirely by teleconference (4926)",
-                                             "an association that uses electronic voting"}
+    assert {s.when for s in conditional} == {
+        "an emergency rule change (4360(d))", "a meeting held entirely by teleconference (4926)",
+        "an association that uses electronic voting",
+        "an association that allows voting by electronic secret ballot (5105)",
+        "governing documents that require a quorum for an election of directors, unless one lower than 20 percent "
+        "(5115(b)(6))",
+        "an election to approve an amendment of the governing documents (5115(g))"}
     for sign in conditional:
         assert facts_tested(sign.applies) and all(f.facet is Facet.EVENT for f in facts_tested(sign.applies))
     for rows in SIGNS.values():

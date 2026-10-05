@@ -12,12 +12,27 @@ batches' prefix: "board-meeting-2026-10-20"), the governing documents' ``NoticeP
 from the documents all link here by key. A profile adds the notices only its documents require through
 ``Community.notice_provisions()``; it does not restate these.
 
+A row that is required only for some events carries ``applies`` (``jason.community.notice_conditions``), written from
+the section's words. ``applicable(facts)`` sorts the rows by it into three groups: applies (the notice is required, on
+its clock), does not apply (with the fact that decided it), and undetermined (with the missing fact; never read as
+"not required"). A row with no condition applies whenever its event happens. Where the section's words leave the
+condition open, the row keeps its prose ``note`` and no condition.
+
 This is an index of what the statutes say, for drafting and for proving delivery. It is not legal advice; where a row
 has a ``caveat``, counsel reads it first.
 """
 
 from __future__ import annotations
 
+from typing import Iterable
+
+from jason.community.applicability import ALWAYS, Fact, Facts, Partition, facts_tested, partition
+from jason.community.notice_conditions import (ACCLAMATION_KEPT_AVAILABLE, DIRECTOR_ELECTION,
+                                               DIRECTOR_OR_RECALL_ELECTION, ELECTRONIC_SECRET_BALLOT,
+                                               ELECTRONIC_VOTING_OPT_OUT, EMERGENCY_BOARD_MEETING,
+                                               ENTIRELY_BY_TELECONFERENCE, EXECUTIVE_SESSION_ONLY_MEETING,
+                                               LISTED_RULE_CHANGE, LISTED_RULE_CHANGE_NOT_EMERGENCY,
+                                               ORDINARY_BOARD_MEETING, same_event)
 from jason.community.notices import (Anchor, Comparison, Evidence, Method, NoticeKind, NoticeProvision,
                                      NoticeRequirement, Recipients, Timing, Unit, combined)
 
@@ -46,7 +61,8 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         words=r"at least four days before the meeting", individual_on_request=True, term="board meeting notice",
         also=("CIV 4045", "CIV 4926", "CIV 4930"), evidence=(Evidence.AGENDA,),
         note="A governing document that requires a longer period controls (4920(b)(3)); for an emergency meeting or "
-             "one held only in executive session only if it says it applies to those."),
+             "one held only in executive session only if it says it applies to those.",
+        applies=ORDINARY_BOARD_MEETING),
     NoticeRequirement(
         "board-meeting-executive", "Board meeting held only in executive session", "CIV 4920",
         Recipients.ALL_MEMBERS, G, (Method.GENERAL,), (_before(Anchor.MEETING, 2),),
@@ -54,14 +70,16 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         words=r"at least two days prior to the meeting", individual_on_request=True, term="executive session notice",
         also=("CIV 4935",), evidence=(Evidence.AGENDA,),
         note="Matters discussed in executive session are generally noted in the minutes of the next open meeting "
-             "(4935(e))."),
+             "(4935(e)).",
+        applies=EXECUTIVE_SESSION_ONLY_MEETING),
     NoticeRequirement(
         "board-meeting-emergency", "Emergency board meeting", "CIV 4920", Recipients.ALL_MEMBERS, None, (),
         words=r"not required to give notice of the time and place", delivers=False, also=("CIV 4923", "CIV 4910"),
         evidence=(Evidence.MINUTES,),
         note="No notice is required. Called by the president or any two other directors for circumstances that could "
              "not reasonably have been foreseen (4923); a meeting by email needs every director's written consent, "
-             "filed with the minutes (4910(b)(2)). The minutes are the evidence of the emergency."),
+             "filed with the minutes (4910(b)(2)). The minutes are the evidence of the emergency.",
+        applies=EMERGENCY_BOARD_MEETING),
     NoticeRequirement(
         "board-meeting-directors", "Special board meeting: notice to the directors", "CORP 7211", Recipients.BOARD,
         None, (Method.FIRST_CLASS_MAIL, Method.PERSONAL_DELIVERY, Method.ELECTRONIC), (_before(Anchor.MEETING, 4),),
@@ -83,7 +101,8 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
          "notices, with instructions"),
         words=r"Clear technical instructions on how\s+to participate by teleconference", carried_by="board-meeting",
         note="Not for a meeting at which ballots are counted (4926(b)); directors vote by roll call; everyone may "
-             "join by telephone."),
+             "join by telephone.",
+        applies=ENTIRELY_BY_TELECONFERENCE),
     NoticeRequirement(
         "disaster-meeting-first", "First teleconference meeting during a declared emergency", "CIV 5450",
         Recipients.ALL_MEMBERS, I, (Method.INDIVIDUAL,), (),
@@ -126,7 +145,8 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         Recipients.ALL_MEMBERS, G, (Method.GENERAL,), (_before(Anchor.NOMINATION_DEADLINE, 30),),
         ("the procedure for submitting a nomination", "the deadline"),
         words=r"at least 30 days before any deadline for submitting a nomination", individual_on_request=True,
-        term="notice of nominations", note="Elections of directors and recall elections only (5115(a))."),
+        term="notice of nominations", note="Elections of directors and recall elections only (5115(a)).",
+        applies=DIRECTOR_OR_RECALL_ELECTION),
     NoticeRequirement(
         "acclamation-initial", "Initial notice of an election that may end in acclamation", "CIV 5103",
         Recipients.ALL_MEMBERS, I, (Method.INDIVIDUAL,), (_before(Anchor.NOMINATION_DEADLINE, 90),),
@@ -136,14 +156,16 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
          "candidates than positions"),
         words=r"at least 90 days before the deadline for submitting nominations", term="acclamation notice",
         note="Required only if the association may seat candidates by acclamation; also a regular election within the "
-             "last three years (5103(a))."),
+             "last three years (5103(a)).",
+        applies=ACCLAMATION_KEPT_AVAILABLE),
     NoticeRequirement(
         "acclamation-reminder", "Reminder notice before the nomination deadline", "CIV 5103", Recipients.ALL_MEMBERS,
         I, (Method.INDIVIDUAL,), (_before(Anchor.NOMINATION_DEADLINE, 7, 30),),
         ("the number of positions", "the deadline", "the manner of nominating",
          "the names of the qualified candidates as of the reminder",
          "the acclamation statement, unless the candidates already outnumber the positions"),
-        words=r"between 7 and 30 days before the deadline for submitting nominations"),
+        words=r"between 7 and 30 days before the deadline for submitting nominations",
+        applies=ACCLAMATION_KEPT_AVAILABLE),
     NoticeRequirement(
         "nomination-acknowledgment", "Acknowledgment of a nomination, and the nominee's qualification", "CIV 5103",
         Recipients.NOMINATOR_AND_NOMINEE, None, (Method.WRITTEN, Method.ELECTRONIC),
@@ -151,7 +173,8 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         ("to the nominator: the nomination was received", "to the nominee: qualified, or not qualified with the basis "
          "and the procedure to appeal under 5900 and following"),
         words=r"within seven business days of receiving a nomination",
-        note="A condition of seating by acclamation; one communication when nominator and nominee are the same."),
+        note="A condition of seating by acclamation; one communication when nominator and nominee are the same.",
+        applies=ACCLAMATION_KEPT_AVAILABLE),
     NoticeRequirement(
         "pre-ballot-notice", "Election notice before ballots go out", "CIV 5115", Recipients.ALL_MEMBERS, G,
         (Method.GENERAL,), (_before(Anchor.BALLOTS_DISTRIBUTED, 30),),
@@ -163,7 +186,8 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         words=r"at least 30 days before the ballots are distributed", individual_on_request=True,
         also=("CIV 5105",),
         note="Members may verify their own entries on the voter and candidate lists at least 30 days before ballots "
-             "are distributed; the inspector corrects an error within two business days (5105(a)(7))."),
+             "are distributed; the inspector corrects an error within two business days (5105(a)(7)).",
+        applies=DIRECTOR_OR_RECALL_ELECTION),
     NoticeRequirement(
         "ballots", "Ballots, return envelopes, and the election rules", "CIV 5115", Recipients.ALL_MEMBERS, None,
         (Method.FIRST_CLASS_MAIL, Method.PERSONAL_DELIVERY), (_before(Anchor.VOTING_DEADLINE, 30),),
@@ -179,21 +203,24 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         "electronic-ballot-notice", "Notice of an electronic secret ballot", "CIV 5105", Recipients.ALL_MEMBERS, I,
         (Method.INDIVIDUAL, Method.ELECTRONIC), (_before(Anchor.ELECTION, 30),),
         ("how to get access to the internet-based voting system", "how to vote by electronic secret ballot"),
-        words=r"individual notice of the electronic secret ballot to each member 30 days before the election"),
+        words=r"individual notice of the electronic secret ballot to each member 30 days before the election",
+        applies=ELECTRONIC_SECRET_BALLOT),
     NoticeRequirement(
         "electronic-opt-out-notice", "Notice of the deadline to opt out of electronic voting", "CIV 5105",
         Recipients.ALL_MEMBERS, I, (Method.INDIVIDUAL,), (_before(Anchor.OPT_OUT_DEADLINE, 30),),
         ("the member's current voting method", "the email that will be used, for an electronic voter",
          "that a member who wants a paper ballot must opt out", "how to opt out", "the deadline to opt out"),
         words=r"at least 30 days before the deadline to opt out of voting by electronic secret ballot",
-        note="A member may change voting method no later than 90 days before an election (5105(i)(1)(A))."),
+        note="A member may change voting method no later than 90 days before an election (5105(i)(1)(A)).",
+        applies=ELECTRONIC_VOTING_OPT_OUT),
     NoticeRequirement(
         "reconvened-election-meeting", "Reconvened meeting after an election without a quorum", "CIV 5115",
         Recipients.ALL_MEMBERS, G, (Method.GENERAL,), (_before(Anchor.RECONVENED_MEETING, 15),),
         ("the date, time, and location", "the list of all candidates",
          "that 20 percent of the members will satisfy the quorum, unless the documents set a lower one"),
         words=r"No less than 15 days prior to the date of the reconvened meeting",
-        note="The reconvened meeting is at least 20 days after the adjourned one (5115(d)(2))."),
+        note="The reconvened meeting is at least 20 days after the adjourned one (5115(d)(2)).",
+        applies=DIRECTOR_ELECTION),
     NoticeRequirement(
         "election-results", "Tabulated results of an election", "CIV 5120", Recipients.ALL_MEMBERS, G,
         (Method.GENERAL,), (_after(Anchor.ELECTION, 15),), ("the tabulated results",),
@@ -215,7 +242,8 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         words=r"at least 28 days before making the rule change", individual_on_request=True,
         term="notice of a rule change", also=("CIV 4355", "CIV 4365"),
         note="Only for rules on the subjects in 4355(a). The decision is made at a board meeting after considering "
-             "members' comments (4360(b)). No notice for an emergency rule change (4360(d))."),
+             "members' comments (4360(b)). No notice for an emergency rule change (4360(d)).",
+        applies=LISTED_RULE_CHANGE_NOT_EMERGENCY),
     NoticeRequirement(
         "rule-change-adopted", "Adopted rule change", "CIV 4360", Recipients.ALL_MEMBERS, G, (Method.GENERAL,),
         (_after(Anchor.RULE_CHANGE, 15),),
@@ -223,12 +251,14 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
          "(it lasts at most 120 days)"),
         words=r"not more than 15 days after making the rule change", individual_on_request=True,
         note="Members owning 5 percent of the separate interests may call a vote to reverse it, by a written request "
-             "delivered within 30 days after this notice (4365(b))."),
+             "delivered within 30 days after this notice (4365(b)).",
+        applies=LISTED_RULE_CHANGE),
     NoticeRequirement(
         "rule-change-reversal-results", "Results of a member vote to reverse a rule change", "CIV 4365",
         Recipients.ALL_MEMBERS, G, (Method.GENERAL,), (_after(Anchor.CLOSE_OF_VOTING, 15),),
         ("the results of the vote",), words=r"not more than 15 days after the close of voting",
-        note="The vote is held 35 to 90 days after the association receives a proper request (4365(b))."),
+        note="The vote is held 35 to 90 days after the association receives a proper request (4365(b)).",
+        applies=LISTED_RULE_CHANGE_NOT_EMERGENCY),
     NoticeRequirement(
         "rental-amendment-4741", "Board amendment deleting or restating an unlawful rental restriction", "CIV 4741",
         Recipients.ALL_MEMBERS, G, (Method.GENERAL,), (_before(Anchor.ACTION, 28),),
@@ -607,6 +637,86 @@ def requirement(key: str) -> NoticeRequirement:
     raise KeyError(key)
 
 
+def conditional(rows: Iterable[NoticeRequirement] | None = None) -> tuple[NoticeRequirement, ...]:
+    """The rows that are required only for some events: those that carry a condition."""
+    return tuple(r for r in (REQUIREMENTS if rows is None else rows) if r.applies is not ALWAYS)
+
+
+def applicable(facts: Facts | None = None, rows: Iterable[NoticeRequirement] | None = None) -> Partition:
+    """Each row's answer for the facts on hand (the event's, as the caller says them, beside the association's
+    standing ones), in the rows' order:
+
+    - ``applies``: the notice is required, on its clock. A row with no condition is here: it is required whenever
+      its event happens;
+    - ``does_not_apply``: not required, with the fact that decided it (``Verdict.deciding``);
+    - ``undetermined``: the facts do not say, with the missing fact (``Verdict.question()``). Never "not required".
+
+    With no facts every conditional row is undetermined."""
+    return partition(REQUIREMENTS if rows is None else rows, facts or Facts())
+
+
+def about(rows: Iterable[NoticeRequirement], said: Iterable[Fact]) -> tuple[tuple[NoticeRequirement, ...],
+                                                                             tuple[NoticeRequirement, ...]]:
+    """The conditional rows an event's facts are about, and the rest. ``said`` are the facts the caller stated. A row
+    is about the event when its condition tests one of them or another fact of the same kind of event
+    (``notice_conditions.SAME_EVENT``), or tests no fact of one event at all (its condition is the association's
+    standing facts alone). The rest turn on another kind of event, whose facts were not said: they are set aside, not
+    answered. With nothing said, every row is kept."""
+    said = same_event(frozenset(said))
+    kept, aside = [], []
+    for row in rows:
+        own = frozenset(f for f in facts_tested(row.applies) if f.per_event)
+        (kept if not said or not own or own & said else aside).append(row)
+    return tuple(kept), tuple(aside)
+
+
+def line(row: NoticeRequirement) -> str:
+    """One row as the catalog lists it: its key, statute, kind of delivery, and clock."""
+    clock = "; ".join(t.describe() for t in row.timing) or (f"with {row.carried_by}" if row.carried_by else "")
+    kind = row.kind.value if row.kind else ", ".join(m.name.lower() for m in row.methods) or "no delivery"
+    return f"  {row.key:32} {row.statute:10} {kind:28} {clock}" + ("" if row.verified else "  [unverified]")
+
+
+def _to_say(fact: Fact) -> str:
+    """How a missing fact is settled: an event's fact is said by the caller, a standing one by the profile or a person."""
+    if fact.per_event:
+        return f"say it with --fact {fact.value}=WORD ({', '.join(str(m.value) for m in fact.spec.kind)})"
+    return "a standing fact: the profile states it, or jason applies --questions asks a person"
+
+
+def applicable_lines(facts: Facts | None = None, said: Iterable[Fact] = (),
+                     rows: Iterable[NoticeRequirement] | None = None) -> list[str]:
+    """The conditional rows in their three groups, as plain lines. ``said`` are the facts the caller stated for the
+    event; rows about another kind of event are set aside and named, not answered."""
+    facts = facts or Facts()
+    every = tuple(REQUIREMENTS if rows is None else rows)
+    shown, aside = about(conditional(every), said)
+    parts = applicable(facts, shown)
+    lines = [f"{len(conditional(every))} of {len(every)} notice requirements are required only for some events. Each is "
+             f"answered from the facts on hand.",
+             "The others carry no condition: each is required whenever its event happens (jason notices --catalog)."]
+    if facts.values:
+        lines += ["", "Facts on hand"] + [f"  {v.describe()}" for v in facts.values]
+    lines += ["", f"Applies: required when its event happens, on its clock ({len(parts.applies)})"]
+    for row, verdict in parts.applies:
+        lines += [line(row), f"      rule: {verdict.condition.describe()}"]
+    lines += ["", f"Does not apply: not required ({len(parts.does_not_apply)})"]
+    for row, verdict in parts.does_not_apply:
+        lines += [line(row), "      decided by " + "; ".join(v.describe() for v in verdict.deciding)]
+    lines += ["", f"Undetermined: the facts do not say, which is never \"not required\" ({len(parts.undetermined)})"]
+    for row, verdict in parts.undetermined:
+        lines += [line(row), f"      rule: {verdict.condition.describe()}"]
+        lines += [f"      unknown: {fact.topic}: {_to_say(fact)}" for fact in verdict.missing]
+        if verdict.conflicting:
+            lines.append("      sources disagree: " + "; ".join(v.describe() for v in verdict.conflicting))
+    if aside:
+        lines += ["", f"Set aside ({len(aside)}): each turns on another kind of event, whose facts were not said"]
+        for row in aside:
+            own = sorted(f.value for f in facts_tested(row.applies) if f.per_event)
+            lines.append(f"  {row.key:32} {row.statute:10} turns on: {', '.join(own)}")
+    return lines
+
+
 def provisions(community: object | None = None, key: str | None = None) -> tuple[NoticeProvision, ...]:
     """The profile's governing-document notice clauses (``Community.notice_provisions()``), for one requirement when
     ``key`` is given."""
@@ -640,4 +750,5 @@ def effective(key: str, community: object | None = None):
     return row, clocks, notes, found
 
 
-__all__ = ["REQUIREMENTS", "effective", "for_ledger", "provisions", "requirement", "rule_requirements"]
+__all__ = ["REQUIREMENTS", "about", "applicable", "applicable_lines", "conditional", "effective", "for_ledger", "line",
+           "provisions", "requirement", "rule_requirements"]

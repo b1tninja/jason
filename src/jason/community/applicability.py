@@ -186,6 +186,50 @@ class ElectronicVoting(_Word):
     OPT_IN = "opt_in"            # 5105(i)(1)(C)(ii): a member opts in to vote by electronic secret ballot
 
 
+class ElectionKind(_Word):
+    """What a vote of the members decides, as Civil Code 5100(a)(1) and (b) list what the election article governs.
+    5115(a) and (b) name two of them: "elections of directors" and "recall elections"."""
+
+    DIRECTORS = "directors"            # 5100(a)(1): "election ... of directors"; 5115(a), (b)
+    RECALL = "recall"                  # 5115(a), (b): "recall elections"; 5100(a)(1): "removal of directors"
+    ASSESSMENT = "assessment"          # 5100(a)(1): "assessments legally requiring a vote"
+    AMENDMENT = "amendment"            # 5100(a)(1): "amendments to the governing documents"; 5115(g)
+    EXCLUSIVE_USE = "exclusive_use"    # 5100(a)(1): "the grant of exclusive use of common area pursuant to Section 4600"
+    OTHER = "other"                    # 5100(b): a topic the operating rules expressly put under the article
+
+
+class RuleScope(_Word):
+    """Whether a rule change is one Civil Code 4360 and 4365 reach, as 4355 divides it."""
+
+    LISTED_SUBJECT = "listed_subject"  # 4355(a): an operating rule that relates to one or more of the subjects it lists
+    NOT_REACHED = "not_reached"        # 4355(a): it relates to none of them; 4355(b): or it is a board action listed there
+
+
+class BoardMeetingKind(_Word):
+    """Which notice a board meeting takes, as Civil Code 4920 divides it."""
+
+    ORDINARY = "ordinary"                              # 4920(a): neither of the two below
+    EXECUTIVE_SESSION_ONLY = "executive_session_only"  # 4920(b)(2): a nonemergency meeting held solely in executive session
+    EMERGENCY = "emergency"                            # 4920(b)(1): an emergency meeting held pursuant to Section 4923
+
+
+class Acclamation(_Word):
+    """Whether the association keeps seating by acclamation available. Civil Code 5103 leaves it to the association
+    ("may, but is not required to"), whatever the governing documents say, and makes its notices conditions of it."""
+
+    AVAILABLE = "available"      # the association means to meet 5103's conditions, so the board may seat by acclamation
+    NOT_USED = "not_used"        # the association holds the vote whatever the number of candidates
+
+
+class DirectorQuorum(_Word):
+    """What the governing documents require as a quorum for an election of directors, as Civil Code 5115(b)(6)
+    divides it. The documents only: a quorum another law requires (5115(d)(1)) is not this fact."""
+
+    NONE = "none"                              # the documents require no quorum for an election of directors
+    AT_LEAST_20_PERCENT = "at_least_20_percent"  # 5115(b)(6)(A): the documents require one, of 20 percent or more
+    BELOW_20_PERCENT = "below_20_percent"      # 5115(b)(6)(B): the documents provide for a quorum lower than 20 percent
+
+
 _LABELS: dict[Enum, str] = {
     SystemKind.FIRE_SPRINKLER: "fire sprinkler system",
     SystemKind.STANDPIPE: "standpipe system",
@@ -231,6 +275,22 @@ _LABELS: dict[Enum, str] = {
     ElectronicVoting.NONE: "not used",
     ElectronicVoting.OPT_OUT: "used, with members opting out (5105(i)(1)(C)(i))",
     ElectronicVoting.OPT_IN: "used, with members opting in (5105(i)(1)(C)(ii))",
+    ElectionKind.DIRECTORS: "election of directors",
+    ElectionKind.RECALL: "recall election",
+    ElectionKind.ASSESSMENT: "vote on an assessment (5100(a)(1))",
+    ElectionKind.AMENDMENT: "election to approve an amendment of the governing documents",
+    ElectionKind.EXCLUSIVE_USE: "vote on a grant of exclusive use of common area (4600)",
+    ElectionKind.OTHER: "vote on another topic the operating rules put under the election article (5100(b))",
+    RuleScope.LISTED_SUBJECT: "one listed in 4355(a)",
+    RuleScope.NOT_REACHED: "none listed in 4355(a), or the change is a board action listed in 4355(b)",
+    BoardMeetingKind.ORDINARY: "neither an emergency meeting nor one held solely in executive session (4920(a))",
+    BoardMeetingKind.EXECUTIVE_SESSION_ONLY: "a nonemergency meeting held solely in executive session (4920(b)(2))",
+    BoardMeetingKind.EMERGENCY: "an emergency meeting (4923)",
+    Acclamation.AVAILABLE: "kept available (5103)",
+    Acclamation.NOT_USED: "not used",
+    DirectorQuorum.NONE: "none",
+    DirectorQuorum.AT_LEAST_20_PERCENT: "20 percent or more",
+    DirectorQuorum.BELOW_20_PERCENT: "lower than 20 percent (5115(b)(6)(B))",
 }
 
 # The water-based fire protection systems (the scope of NFPA 25 and of Title 19's chapter on them). A general group.
@@ -247,6 +307,7 @@ class FactSpec:
     article: bool = False        # the label takes "a"/"an" after "is"
     exact: bool = False          # a name compared as written (a sender row's), not a code compared without case
     topic: str = ""              # how a missing fact is named, where the noun alone would not say
+    standing: bool = False       # an event-facet fact that holds from one event to the next: see ``Fact.standing``
 
 
 class Fact(Enum):
@@ -275,6 +336,11 @@ class Fact(Enum):
     MEETING_FORMAT = "meeting_format"
     RULE_CHANGE = "rule_change"
     ELECTRONIC_VOTING = "electronic_voting"
+    ELECTION = "election"
+    RULE_SCOPE = "rule_scope"
+    BOARD_MEETING = "board_meeting"
+    ACCLAMATION = "acclamation"
+    DIRECTOR_QUORUM = "director_quorum"
 
     @property
     def spec(self) -> FactSpec:
@@ -283,6 +349,20 @@ class Fact(Enum):
     @property
     def facet(self) -> Facet:
         return self.spec.facet
+
+    @property
+    def standing(self) -> bool:
+        """Where the fact comes from. A standing fact is the association's own and holds from one event to the next:
+        its property and place, and what its governing documents, election rules, or standing practice settle. The
+        profile states it (``Community.applicability_facts()``), and where the profile does not, it is a question for
+        a person. Any other event-facet fact is one meeting's, rule change's, or election's: the caller that knows
+        the event says it, and it is never asked as a standing question."""
+        return self.facet in (Facet.PROPERTY, Facet.PLACE) or self.spec.standing
+
+    @property
+    def per_event(self) -> bool:
+        """A fact about one event, which only the caller that knows the event can give."""
+        return self.facet is Facet.EVENT and not self.spec.standing
 
     @property
     def noun(self) -> str:
@@ -376,7 +456,21 @@ _SPECS: dict[Fact, FactSpec] = {
     Fact.RULE_CHANGE: FactSpec(Facet.EVENT, RuleChangeKind, "the rule change",
                                topic="whether the rule change is an emergency one"),
     Fact.ELECTRONIC_VOTING: FactSpec(Facet.EVENT, ElectronicVoting, "electronic voting",
-                                     topic="whether an election rule allows electronic secret ballots"),
+                                     topic="whether an election rule allows electronic secret ballots", standing=True),
+    Fact.ELECTION: FactSpec(Facet.EVENT, ElectionKind, "the election", article=True,
+                            topic="what the election decides (directors, a recall, an assessment, an amendment)"),
+    Fact.RULE_SCOPE: FactSpec(Facet.EVENT, RuleScope, "the rule change's subject",
+                              topic="whether the rule change is on a subject Civil Code 4355(a) lists"),
+    Fact.BOARD_MEETING: FactSpec(Facet.EVENT, BoardMeetingKind, "the board meeting",
+                                 topic="whether the board meeting is an emergency one or held solely in executive "
+                                       "session"),
+    Fact.ACCLAMATION: FactSpec(Facet.EVENT, Acclamation, "seating by acclamation",
+                               topic="whether the association keeps seating by acclamation available (5103)",
+                               standing=True),
+    Fact.DIRECTOR_QUORUM: FactSpec(Facet.EVENT, DirectorQuorum,
+                                   "the governing documents' quorum for an election of directors",
+                                   topic="whether the governing documents require a quorum for an election of "
+                                         "directors, and whether it is lower than 20 percent", standing=True),
 }
 assert set(_SPECS) == set(Fact)
 
@@ -1014,7 +1108,8 @@ def condition_from_dict(data: Mapping[str, Any]) -> Condition:
 
 __all__ = [
     "Facet", "SystemKind", "InstallationStandard", "Work", "PartyRole", "CommonInterest", "OccupancyClass",
-    "SigningPlace", "HomeImprovement", "MeetingFormat", "RuleChangeKind", "ElectronicVoting",
+    "SigningPlace", "HomeImprovement", "MeetingFormat", "RuleChangeKind", "ElectronicVoting", "ElectionKind",
+    "RuleScope", "BoardMeetingKind", "Acclamation", "DirectorQuorum",
     "WATER_BASED_FIRE_PROTECTION", "HOME_IMPROVEMENT_CONTRACT", "filing_facts", "FactSpec", "Fact", "Source", "FactValue", "Facts",
     "profile_facts", "Answer", "Verdict", "Is", "In", "AtLeast", "Below", "InForce", "ALWAYS", "AllOf", "AnyOf",
     "Not", "Except", "Condition", "evaluate", "facts_tested", "Partition", "partition", "condition_from_dict",

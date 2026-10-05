@@ -305,7 +305,14 @@ def test_wrong_type_is_an_error_not_a_miss():
 
 
 def test_the_event_facet_holds_what_one_meeting_rule_change_or_election_is():
-    assert {f for f in Fact if f.facet is Facet.EVENT} == {Fact.MEETING_FORMAT, Fact.RULE_CHANGE, Fact.ELECTRONIC_VOTING}
+    event = {f for f in Fact if f.facet is Facet.EVENT}
+    assert event == {Fact.MEETING_FORMAT, Fact.RULE_CHANGE, Fact.ELECTRONIC_VOTING, Fact.ELECTION, Fact.RULE_SCOPE,
+                     Fact.BOARD_MEETING, Fact.ACCLAMATION, Fact.DIRECTOR_QUORUM}
+    # Where each comes from: the association's standing facts are the profile's, the rest one event's caller's.
+    assert {f for f in event if f.standing} == {Fact.ELECTRONIC_VOTING, Fact.ACCLAMATION, Fact.DIRECTOR_QUORUM}
+    assert {f for f in event if f.per_event} == event - {Fact.ELECTRONIC_VOTING, Fact.ACCLAMATION, Fact.DIRECTOR_QUORUM}
+    assert Fact.UNIT_COUNT.standing and Fact.COUNTY.standing and not Fact.UNIT_COUNT.per_event
+    assert not Fact.SYSTEM.standing and not Fact.AS_OF.standing and not Fact.AMOUNT.per_event
     assert len(Facet) == 8
     by_teleconference = Is(Fact.MEETING_FORMAT, MeetingFormat.ENTIRELY_BY_TELECONFERENCE)
     assert by_teleconference.describe() == "the meeting is held entirely by teleconference (4926)"

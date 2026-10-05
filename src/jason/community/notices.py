@@ -30,6 +30,8 @@ from datetime import date, timedelta
 from enum import Enum
 from typing import Iterable
 
+from jason.community.applicability import ALWAYS, Condition
+
 
 class NoticeKind(Enum):
     INDIVIDUAL = "individual delivery (4040)"
@@ -254,7 +256,12 @@ class NoticeRequirement:
     (a regex, checked against the exported statute by ``tests/test_notice_catalog.py``), so a change in the law fails
     the build rather than leaving the row stale. ``verified`` is False for a row whose section is not on disk: it says
     so instead of inventing the rule. ``delivers`` is False for a deadline that is not a delivery (records produced
-    within 10 business days; a payment-plan meeting within 45 days)."""
+    within 10 business days; a payment-plan meeting within 45 days).
+
+    ``applies`` is when the notice is required, where the section's own words say (``jason.community.notice_conditions``):
+    a condition over the event's facts and the association's standing ones, answered in three ways by
+    ``notice_catalog.required``. The default is always: the row is required whenever its event happens. A condition
+    the words leave open is not encoded; it stays in ``note``."""
 
     key: str
     title: str
@@ -276,6 +283,7 @@ class NoticeRequirement:
     evidence: tuple[Evidence, ...] = ()   # beyond what its methods call for
     note: str = ""
     caveat: str = ""                      # unclear in the text: for counsel
+    applies: Condition = ALWAYS           # when the notice is required, from the section's words; default: always
 
     def proof(self) -> tuple[Evidence, ...]:
         """The evidence that proves this notice was given: what its methods call for, then its own."""

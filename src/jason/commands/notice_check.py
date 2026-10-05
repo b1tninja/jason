@@ -94,7 +94,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--event", action="append", metavar="FACT=WORD",
                    help="a fact about the meeting, rule change, or election the notice is for, which decides an element "
                         "only some notices need: meeting_format=entirely_by_teleconference, rule_change=emergency, "
-                        "electronic_voting=opt_out (repeatable)")
+                        "electronic_voting=opt_out, election=amendment, director_quorum=at_least_20_percent "
+                        "(repeatable)")
     p.add_argument("--no-law", action="store_true", help="leave out the statements of law and the statutes' words")
     p.add_argument("--json", action="store_true", help="print the findings as JSON")
     p.set_defaults(func=cmd_notice_check)

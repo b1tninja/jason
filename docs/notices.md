@@ -16,7 +16,7 @@ The records are code, so jason can act on them:
 | `NoticeStrength` | `notices.py` | how strongly the record shows a notice given: delivered, sent with follow-ups owed, sent, or a file |
 | `NoticeRecord` | `src/jason/tasks/notice_evidence.py` | one record that a notice went out (or was written), with its strength; counts only |
 
-Commands: `jason notice-check` checks a notice or jason's base templates for each required element (below); `jason notices --catalog` lists the requirements; `jason notices KEY --catalog` prints one with the documents' clauses and the stricter clock; `jason notices KEY --proof --event DATE` prints a notice's proof (below); `jason cite jason://notice/KEY` prints the notice as a record (below). The tests (`tests/test_notice_catalog.py`) check every verified row's words against the statute on disk and every pinned period against `statutory_terms`, so a change in the law fails the build instead of leaving a row stale.
+Commands: `jason notice-check` checks a notice or jason's base templates for each required element (below); `jason notices --catalog` lists the requirements; `jason notices --catalog --fact election=directors` sorts the rows required only for some events by the facts of one event ([below](#when-a-row-is-required)); `jason notices KEY --catalog` prints one with the documents' clauses and the stricter clock; `jason notices KEY --proof --event DATE` prints a notice's proof (below); `jason cite jason://notice/KEY` prints the notice as a record (below). The tests (`tests/test_notice_catalog.py`) check every verified row's words against the statute on disk and every pinned period against `statutory_terms`, so a change in the law fails the build instead of leaving a row stale.
 
 ## Instruments that change a governing document
 
@@ -102,6 +102,72 @@ The policy statement carries what makes notices work: who receives documents for
 ## The catalog
 
 Each row is a `NoticeRequirement` in `notice_catalog.REQUIREMENTS`, keyed for linking. Recipients, method (`general` = 4045, `individual` = 4040), and the clock; the content lists, notes, and evidence are in the rows (`jason notices KEY --catalog`). Seventy-three rows; seventy-one are verified against the statute's words on disk. The two that are not say why.
+
+### When a row is required
+
+Fifteen rows are required only for some events. Each carries the condition as data (`NoticeRequirement.applies`, an [applicability](applicability.md) condition), written from the section's own words. The conditions are in `jason.community.notice_conditions`, each beside the words it is written from, and a test checks those words against the statute on disk.
+
+| Rows | Required when | The words |
+| --- | --- | --- |
+| `board-meeting` | the board meeting is neither an emergency meeting nor held solely in executive session | 4920(a): "Except as provided in subdivision (b)" |
+| `board-meeting-executive` | a nonemergency meeting held solely in executive session | 4920(b)(2) |
+| `board-meeting-emergency` | an emergency meeting (the row says no notice is required) | 4920(b)(1) |
+| `teleconference-meeting` | the meeting is held entirely by teleconference | 4926(a), (a)(1) |
+| `nomination-procedure`, `pre-ballot-notice` | an election of directors or a recall election | 5115(a): "shall only apply to elections of directors and to recall elections"; 5115(b) |
+| `acclamation-initial`, `acclamation-reminder`, `nomination-acknowledgment` | an election of directors, and the association keeps seating by acclamation available | 5103: "may, but is not required to ... if all of the following conditions have been met" |
+| `electronic-ballot-notice` | an election rule allows electronic secret ballots, except in an assessment election | 5105(i), (i)(3)(A) |
+| `electronic-opt-out-notice` | the election rule lets members opt out of electronic voting | 5105(i)(4) |
+| `reconvened-election-meeting` | an election of directors | 5115(d)(2), (3) |
+| `rule-change-proposed`, `rule-change-reversal-results` | the rule is on a subject 4355(a) lists, except an emergency rule change | 4355(a), (b); 4360(a), (d); 4365(h) |
+| `rule-change-adopted` | the rule is on a subject 4355(a) lists | 4355(a), (b) |
+
+- **Three answers.** `notice_catalog.applicable(facts)` sorts the rows:
+  - **applies:** the notice is required when its event happens, on its clock;
+  - **does not apply:** not required, with the fact that decided it;
+  - **undetermined:** the facts do not say, with the missing fact. It is never read as "not required".
+- **A row with no condition** is required whenever its event happens.
+- **With no facts, nothing changes.** `jason notices --catalog` and `jason notices KEY --catalog` print as they always have. The prose `note` of each converted row stays.
+- **Two kinds of fact** (`Fact.standing`):
+  - **One event's facts** are said by the caller that knows the event: `--fact election=directors`.
+  - **The association's standing facts** come from the profile (`Community.applicability_facts()`). Where the profile does not state one, it is a question for a person ([intake.md](intake.md)).
+
+```
+jason notices --catalog --fact election=directors                    # the notices for an election of directors
+jason notices --catalog --fact rule_scope=listed_subject --fact rule_change=emergency
+jason notices --catalog --fact board_meeting=executive_session_only
+jason notices pre-ballot-notice --catalog --fact election=recall     # one row, and each conditional element
+jason notices --catalog --required                                   # every conditional row, from the facts on hand alone
+```
+
+Rows about another kind of event (a rule change, when the facts said are an election's) are set aside and named, not answered.
+
+**The facts.** Each is a closed set whose members are the statute's own distinctions.
+
+| Fact | Members | From | Who says it |
+|---|---|---|---|
+| `election` | `directors`, `recall`, `assessment`, `amendment`, `exclusive_use`, `other` | Civil Code 5100(a)(1) and (b); 5115(a) | the caller |
+| `rule_scope` | `listed_subject`, `not_reached` | Civil Code 4355(a) and (b) | the caller |
+| `rule_change` | `noticed`, `emergency` | Civil Code 4360(a) and (d) | the caller |
+| `board_meeting` | `ordinary`, `executive_session_only`, `emergency` | Civil Code 4920(a), (b)(2), (b)(1) | the caller |
+| `meeting_format` | `in_person`, `teleconference_with_location`, `entirely_by_teleconference` | Civil Code 4090, 4926(a) | the caller |
+| `electronic_voting` | `none`, `opt_out`, `opt_in` | Civil Code 5105(i)(1)(C) | the profile (the election operating rules) |
+| `acclamation` | `available`, `not_used` | Civil Code 5103 | the profile (the board's standing choice) |
+| `director_quorum` | `none`, `at_least_20_percent`, `below_20_percent` | Civil Code 5115(b)(6) | the profile (the bylaws) |
+
+**Acclamation is the association's choice, not a fact about its documents.** Section 5103 applies "notwithstanding ... any contrary provision in the governing documents" and says the association "may, but is not required to" seat by acclamation. Whether it keeps that available is for the board to decide once and write down ("Where the law is silent, write it down"); jason asks, and does not choose.
+
+**Rows that keep their condition as prose.** A condition is encoded only where the section's words settle it and a closed set can carry it. These stay in `note`:
+
+| Row | The condition | Why it is not data |
+| --- | --- | --- |
+| `disaster-meeting-first` | gathering in person is unsafe or impossible in a declared emergency (5450(a)); the first meeting held under the section for that emergency (5450(b)(1)) | the words are definite; two more event facts, not yet added |
+| `financial-review` | gross income over $75,000 in the fiscal year, "unless the governing documents impose more stringent standards" (5305) | needs the year's gross income as a fact and a "more than" test; the documents' own standard is read first |
+| `payment-plan-meeting` | the request is mailed within 15 days of the pre-lien notice's postmark (5665(b)) | a date test between two postmarks, not a closed set |
+| `emergency-assessment-resolution` | an expense under 5610(c) | which of 5610's three emergencies an expense is, is a finding the board makes |
+| `pesticide-unit`, `pesticide-common-area` | the association applies a pesticide "without a licensed pest control operator" (4777(b)(1)) | the words are definite; one more fact, not yet added |
+| `acclamation-reminder` (its last element) | the statement is not required if the candidates already outnumber the positions (5103(b)(2)(E)) | a count on the day the reminder goes out |
+| `reconvened-election-meeting` (its last element) | the 20 percent statement "unless the association's governing documents provide for a lower quorum ... if the association's governing documents require a quorum" (5115(d)(3)(C)) | two readings: see the open questions |
+| the acclamation rows | "a regular election for the directors in the last three years" (5103(a)) | a condition of acclamation beside the notices, not of the notices; the words do not say the notices fall away without it |
 
 ### Meetings
 
@@ -359,13 +425,16 @@ jason notice-check --file data/drafts/NOTICE.md --requirement rule-change-propos
 jason notice-check --file data/drafts/NOTICE.md --requirement rule-change-adopted --event rule_change=noticed
 ```
 
-**The event's facts.** A conditional element turns on a fact about the meeting, rule change, or election. Each fact is a closed set whose members are the statute's own distinctions:
+**The event's facts.** A conditional element turns on a fact about the meeting, rule change, or election. The facts are the same closed sets that decide when a row is required ([above](#when-a-row-is-required)). The conditional elements:
 
-| Fact | Members | From |
+| Requirement | Element | Required when |
 |---|---|---|
-| `meeting_format` | `in_person`, `teleconference_with_location`, `entirely_by_teleconference` | Civil Code 4090(a), 4090(b), and 4926(a) (and 5450(b)) |
-| `rule_change` | `noticed`, `emergency` | Civil Code 4360(a) and (d) |
-| `electronic_voting` | `none`, `opt_out`, `opt_in` | Civil Code 5105(i)(1)(C)(i) and (ii) |
+| `rule-change-adopted` | the text, purpose and effect, and expiry date | `rule_change=emergency` (4360(c), (d)) |
+| `board-meeting` | the teleconference instructions, help contact, and reminder | `meeting_format=entirely_by_teleconference` (4926(a)(1)) |
+| `annual-policy-statement` | the electronic voting opt-in or opt-out procedures | `electronic_voting` is `opt_out` or `opt_in` (5105(i)(1)(D)) |
+| `pre-ballot-notice` | when electronic ballots are due, and preliminary instructions | `electronic_voting` is `opt_out` or `opt_in` (5115(b)(2)) |
+| `pre-ballot-notice` | the statement about a reconvened meeting at a 20 percent quorum | `director_quorum=at_least_20_percent` (5115(b)(6)(A), (B)) |
+| `ballots` | the text of the proposed amendment | `election=amendment` (5115(g)(1)) |
 
 - **Said by a person.** `--event FACT=WORD` states one, and may be repeated. The profile's own facts (`Community.applicability_facts()`) are read beside it, so an association whose election rules settle electronic voting states it once.
 - **Three answers.**
@@ -413,3 +482,8 @@ It also lists the changes it could not place in the concordance and the count of
 - Whether a 4741(f) or 4235 amendment to the declaration takes effect before it is recorded.
 - Whether a document's "notice to all members" with no method named is satisfied by general notice.
 - Members' meetings: the Corporations Code's notice period (7511) is not on disk; the bylaws' period governs until it is read.
+- Whether a recall election's pre-ballot notice carries the reconvened-meeting statement. Section 5115(b)(6)(A) conditions it on the documents requiring "a quorum for an election of directors", and 5115(b) reaches recall elections too. jason tests the documents' quorum only, as the words do.
+- How 5115(d)(3)(C) reads: whether "if the association's governing documents require a quorum" limits the whole 20 percent statement or only "that the ballots will be counted if a quorum is reached". The quorum may also come from Corporations Code 7512 (5115(d)(2)). The element is not a condition until this is read.
+- Whether 5103 reaches an election that fills seats after a recall. jason reads its notices as required for an election of directors, from "the number of board positions that will be filled at the election" (5103(b)(1)(A)).
+- Whether the "recall elections" of 5115(a) and (b) are the "removal of directors" of 5100(a)(1). jason treats them as one kind of election.
+- Whether the acclamation notices are still owed when the association held no regular election of directors in the last three years (5103(a)), so that acclamation is not available anyway.

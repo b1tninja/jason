@@ -16,8 +16,9 @@ statute subdivision the element is read from, so a report recites the law beside
 - ``NOT_REQUIRED``: a conditional element the event's facts rule out, with the fact that decided it.
 
 **A conditional element.** An element only some notices need carries ``applies``, a condition over the event's facts
-(``jason.community.applicability``: how the meeting is held, whether the rule change is an emergency one, whether an
-election rule allows electronic secret ballots), and ``when``, the same condition in the catalog's words. ``check``
+(``jason.community.notice_conditions``: how the meeting is held, whether the rule change is an emergency one, whether
+an election rule allows electronic secret ballots, whether the documents require a quorum for an election of
+directors, whether the election approves an amendment), and ``when``, the same condition in the catalog's words. ``check``
 takes the facts the caller has. With none, the condition is undetermined and the finding names the missing fact
 (``needs``); the words are still checked, and a missing element is reported with ``when``, as before the condition
 was data. With facts, an element that does not apply is ``NOT_REQUIRED``, and one that applies and is missing is a gap
@@ -39,8 +40,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
 
-from jason.community.applicability import (ALWAYS, Answer, Condition, ElectronicVoting, Facet, Fact, Facts, FactValue,
-                                           In, Is, MeetingFormat, RuleChangeKind, Source, Verdict, evaluate)
+from jason.community.applicability import (ALWAYS, Answer, Condition, Facet, Fact, Facts, FactValue, Source, Verdict,
+                                           evaluate)
+from jason.community.notice_conditions import (AMENDMENT_ELECTION, DIRECTOR_QUORUM_STATEMENT, ELECTRONIC_VOTING_USED,
+                                               EMERGENCY_RULE_CHANGE, ENTIRELY_BY_TELECONFERENCE)
 from jason.community.notices import NoticeRequirement
 
 
@@ -119,12 +122,8 @@ class ElementFinding:
 
 _TOK = r"\{[A-Z][A-Z0-9_]*\}"
 
-# The conditions the conditional elements turn on. Each is the statute's own distinction (the closed sets in
-# ``jason.community.applicability``), and each ``when`` beside it is the catalog's words for it.
-EMERGENCY_RULE_CHANGE: Condition = Is(Fact.RULE_CHANGE, RuleChangeKind.EMERGENCY)
-ENTIRELY_BY_TELECONFERENCE: Condition = Is(Fact.MEETING_FORMAT, MeetingFormat.ENTIRELY_BY_TELECONFERENCE)
-ELECTRONIC_VOTING_USED: Condition = In(Fact.ELECTRONIC_VOTING, frozenset({ElectronicVoting.OPT_OUT, ElectronicVoting.OPT_IN}),
-                                       "used under an election operating rule (5105(i))")
+# The conditions the conditional elements turn on are in ``jason.community.notice_conditions``, each beside the
+# statute's words it is written from. Each ``when`` here is the catalog's words for its condition.
 
 # The signs, by requirement key, in the order of the requirement's ``content``. A test holds the two in step: an
 # element added to the catalog without a sign fails the build.
@@ -142,6 +141,37 @@ SIGNS: dict[str, tuple[Sign, ...]] = {
         Sign("for an emergency rule change: its text, purpose and effect, and the date it expires (it lasts at most "
              "120 days)", "CIV 4360(c), (d)", all_of=(r"\bpurpose\b", r"\bexpires?\b"),
              applies=EMERGENCY_RULE_CHANGE, when="an emergency rule change (4360(d))"),
+    ),
+    "pre-ballot-notice": (
+        Sign("when and where ballots are returned by mail or by hand to the inspector", "CIV 5115(b)(1)",
+             all_of=(r"ballots?\b[^.]{0,120}\b(?:returned|received|mailed|delivered|handed)",
+                     r"inspectors? of elections?")),
+        Sign("for electronic voting: when electronic ballots are due and preliminary instructions", "CIV 5115(b)(2)",
+             any_of=(r"electronic (?:secret )?ballots?",), applies=ELECTRONIC_VOTING_USED,
+             when="an association that allows voting by electronic secret ballot (5105)"),
+        Sign("the date, time, and location of the meeting at which a quorum is determined and ballots are counted",
+             "CIV 5115(b)(3)",
+             all_of=(r"ballots? (?:will be|are|shall be) (?:counted|tabulated)|count(?:ing)? (?:of )?the ballots",
+                     r"\bdate\b|\btime\b|\bp\.?m\.?\b|\ba\.?m\.?\b",
+                     r"\bplace\b|\blocation\b|teleconference|video conference")),
+        Sign("the list of all candidates' names that will appear on the ballot", "CIV 5115(b)(4)",
+             any_of=(r"\bcandidates?\b",)),
+        Sign("if the documents require a quorum: the statement about a reconvened meeting at a 20 percent quorum",
+             "CIV 5115(b)(6)", all_of=(r"reconvened meeting", r"20 percent|twenty percent|20%"),
+             applies=DIRECTOR_QUORUM_STATEMENT,
+             when="governing documents that require a quorum for an election of directors, unless one lower than 20 "
+                  "percent (5115(b)(6))"),
+    ),
+    "ballots": (
+        Sign("the ballot, which does not identify the voter", "CIV 5115(c)", checkable=False),
+        Sign("two preaddressed envelopes and return instructions", "CIV 5115(c)",
+             all_of=(r"envelopes?", r"\breturn")),
+        Sign("the election operating rules, or their website address with the phrase 5105(h)(4)(B)(i) prescribes",
+             "CIV 5105(h)(4)(B)", any_of=(r"rules governing this election may be found here",
+                                          r"election (?:operating )?rules (?:are|is) enclosed")),
+        Sign("for an amendment: the text of the proposed amendment (5115(g))", "CIV 5115(g)",
+             any_of=(r"text of the proposed amendment",), applies=AMENDMENT_ELECTION,
+             when="an election to approve an amendment of the governing documents (5115(g))"),
     ),
     "discipline-hearing": (
         Sign("the date, time, and place of the meeting", "CIV 5855(b)",

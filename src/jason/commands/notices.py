@@ -13,6 +13,10 @@ on the next --sync. Read-only in PayHOA.
 
 ``jason notices --catalog`` lists what the law requires of each kind of notice (``jason.community.notice_catalog``);
 ``jason notices KEY --catalog`` prints one, with the governing documents' clauses and the stricter clock.
+Some rows are required only for some events (``NoticeRequirement.applies``). ``jason notices --catalog --fact
+election=directors`` says a fact about the event and lists those rows in three groups: applies, does not apply (with
+the fact that decided it), and undetermined (with the missing fact; never read as "not required"). ``--required``
+does the same from the facts on hand alone. With neither, the catalog prints as it always has.
 ``jason notices KEY --proof --event DATE`` prints the notice's proof-of-notice record (``tasks.notice_proof``): the
 evidence its requirement calls for, what the ledger shows, the window, and who was reached only after it. A ledger
 KEY names its requirement by starting with it ("board-meeting-2026-10-20"); otherwise give --requirement.
@@ -36,17 +40,38 @@ def notice_batches(data_dir: Path, key: str) -> list[dict[str, Any]]:
     return [b for b in batches.batches(data_dir) if str(b.get("id", "")).startswith(key) and "-test" not in str(b["id"])]
 
 
-def _catalog(key: str | None) -> int:
-    """The notice requirements (jason.community.notice_catalog), or one with the governing documents' clauses."""
+def _event_facts(args: argparse.Namespace, found: Any):
+    """The facts a conditional row is answered from, and the ones the person said: the profile's own
+    (``Community.applicability_facts()``), then each ``--fact FACT=WORD``. (None, None) when no fact was asked for,
+    so the catalog prints as it always has."""
+    from jason.community.applicability import Facts, profile_facts
+    from jason.community.notice_elements import event_facts
+
+    pairs = getattr(args, "fact", None) or ()
+    if not pairs and not getattr(args, "required", False):
+        return None, None
+    said = event_facts(pairs, where="jason notices --fact")
+    return Facts.build(profile=profile_facts(found)).merge(said), frozenset(v.fact for v in said.values)
+
+
+def _catalog(key: str | None, args: argparse.Namespace | None = None) -> int:
+    """The notice requirements (jason.community.notice_catalog), or one with the governing documents' clauses. With
+    ``--fact`` or ``--required``, the rows that are required only for some events, sorted by the facts on hand."""
     from jason.community import community
-    from jason.community.notice_catalog import REQUIREMENTS, effective, for_ledger, provisions
+    from jason.community.notice_catalog import REQUIREMENTS, applicable_lines, effective, for_ledger, line, provisions
 
     found = community()
+    try:
+        facts, said = _event_facts(args, found) if args is not None else (None, None)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not key and facts is not None:
+        print("\n".join(applicable_lines(facts, said)))
+        return 0
     if not key:
         for r in REQUIREMENTS:
-            clock = "; ".join(t.describe() for t in r.timing) or (f"with {r.carried_by}" if r.carried_by else "")
-            kind = r.kind.value if r.kind else ", ".join(m.name.lower() for m in r.methods) or "no delivery"
-            print(f"  {r.key:32} {r.statute:10} {kind:28} {clock}" + ("" if r.verified else "  [unverified]"))
+            print(line(r))
         own = [p for p in provisions(found) if not p.requirement]
         if own:
             print("\nThe governing documents' own notices:")
@@ -88,7 +113,35 @@ def _catalog(key: str | None) -> int:
     for n in (r.note, r.caveat and f"for counsel: {r.caveat}"):
         if n:
             print(f"  {n}")
+    if facts is not None:
+        for text in _applies_lines(r, facts):
+            print(text)
     return 0
+
+
+def _applies_lines(row: Any, facts: Any) -> list[str]:
+    """Whether one row, and each of its conditional elements, is required for the facts on hand."""
+    from jason.community.applicability import ALWAYS, evaluate
+    from jason.community.notice_elements import signs_for
+
+    def answer(verdict: Any) -> list[str]:
+        out = [f"{verdict.answer.value}: {verdict.condition.describe()}"]
+        if verdict.undetermined:
+            out.append(f"  {verdict.question()} (undetermined is never \"not required\")")
+        elif verdict.deciding:
+            out.append("  decided by " + "; ".join(v.describe() for v in verdict.deciding))
+        return out
+
+    if row.applies is ALWAYS:
+        lines = ["  when required: always (the row carries no condition: whenever its event happens)"]
+    else:
+        first, *rest = answer(evaluate(row.applies, facts))
+        lines = [f"  when required: {first}"] + [f"  {text}" for text in rest]
+    for sign in signs_for(row):
+        if sign.applies is not ALWAYS:
+            first, *rest = answer(evaluate(sign.applies, facts))
+            lines += [f"  element \"{sign.element}\" ({sign.cite}): {first}"] + [f"  {text}" for text in rest]
+    return lines
 
 
 def _proof(args: argparse.Namespace, data_dir: Path) -> int:
@@ -126,7 +179,7 @@ def cmd_notices(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
     from jason.tasks import notice_ledger
 
     if args.catalog:
-        return _catalog(args.key)
+        return _catalog(args.key, args)
     data_dir = _data_dir(args)
     if args.proof and args.key:
         return _proof(args, data_dir)
@@ -188,6 +241,16 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--catalog", action="store_true",
                    help="the notice requirements the law sets (no KEY: all of them; KEY: one, with the governing "
                         "documents' clauses and the stricter clock). Reads no PayHOA")
+    p.add_argument("--fact", action="append", metavar="FACT=WORD",
+                   help="with --catalog: a fact about the meeting, rule change, or election, which decides the notices "
+                        "required only for some events: election=directors, rule_change=emergency, "
+                        "rule_scope=listed_subject, board_meeting=executive_session_only, "
+                        "meeting_format=entirely_by_teleconference, electronic_voting=opt_out (repeatable). The rows "
+                        "are then listed in three groups: applies, does not apply (with the deciding fact), and "
+                        "undetermined (with the missing fact)")
+    p.add_argument("--required", action="store_true",
+                   help="with --catalog: the same three groups from the facts on hand alone (the profile's and the "
+                        "answered questions), with no fact said for an event")
     p.add_argument("--proof", action="store_true",
                    help="the proof-of-notice record for KEY: the evidence its requirement calls for, the window, and "
                         "who was reached late, from the ledger (sync first)")
