@@ -109,7 +109,7 @@ Guaranteed replacement cost carries a condition about reporting additions or imp
 
 A loss inside a unit passes through these provisions, in this order. Quoted words govern; the notes are readings.
 
-1. **7.6, Association Liability:** "the Association shall not be responsible or liable for any maintenance, repair, or replacement of
+1. **7.3, Association Liability:** "the Association shall not be responsible or liable for any maintenance, repair, or replacement of
    a Unit or Exclusive Use Common Area or any Improvement thereon, except to the extent that the need for such maintenance, repair,
    or replacement results from the negligence or fault of the Association, its employees, contractors, or agents."
 2. **7.11, Owner Responsibility for Consequential Damage:** "Except as provided by Article 11 of this Declaration, an Owner is
@@ -131,9 +131,9 @@ Reading to give each effect: 7.11 allocates the **cost** of repairing an owner's
 provides, and Article 11 governs an insured casualty. So the order of questions after a loss is: (1) what is the item (original,
 replaced, upgraded, or personal property); (2) where did the cause originate (association-maintained source, the owner's own system,
 a contractor, a tenant); (3) is it a covered, insured casualty above the deductible (Article 11 and the policy) or not (7.11); (4)
-negligence of the association or its agents (7.6, 7.11's "gross negligence"), or of an owner or household (7.9); (5) who pays the
-deductible (the missing guidelines). 7.6 says "negligence or fault" and 7.11 says "gross negligence": on the usual rule that a
-particular provision controls a general one (Code of Civil Procedure 1859), 7.11 governs consequential damage and 7.6 governs
+negligence of the association or its agents (7.3, 7.11's "gross negligence"), or of an owner or household (7.9); (5) who pays the
+deductible (the missing guidelines). 7.3 says "negligence or fault" and 7.11 says "gross negligence": on the usual rule that a
+particular provision controls a general one (Code of Civil Procedure 1859), 7.11 governs consequential damage and 7.3 governs
 maintenance responsibility. That is a reading, and where it matters the board asks counsel.
 
 Civil Code 4775(a)(3) allocates repair of the separate interest to the owner "unless otherwise provided in the declaration," so the

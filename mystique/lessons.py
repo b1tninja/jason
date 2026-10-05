@@ -71,4 +71,14 @@ LESSONS = (
            "deadlines shows them overdue; the board sets the inspection dates. Still open: a check that reads each "
            "vendor invoice's line description, not its email subject.",
            Status.OPEN, docs=("mystique/notes/fire-protection-records.md", "board item fire-sprinkler-inspections")),
+    Lesson("citation-resolves-but-says-something-else", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "The loss ladder and its profile page cited the declaration's section 7.6 for the clause that makes the "
+           "association liable for its own negligence or fault. The section that says it is 7.3; 7.6 is Board Discretion. "
+           "The citation resolved, so nothing complained.",
+           "A section number was carried from a summary into the profile and never read back against the recorded "
+           "words. A citation that resolves to some section is not a citation to the words the page relies on.",
+           "The ladder and its two pages now cite 7.3 (verified with jason cite against the reader). Still open: a check "
+           "that reads each ladder citation's heading against the step's question, so a number that resolves to other "
+           "words is found. It needs the real declaration on disk, so it cannot run on a clean checkout.",
+           Status.OPEN, docs=("mystique/docs/unit-records-profile.md", "mystique/docs/unit-records-findings.md")),
 )

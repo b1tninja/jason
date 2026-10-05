@@ -38,7 +38,7 @@ UNIT_COVERAGE = UnitCoverage(
 
 LOSS_LADDER = (
     LadderStep(1, "What is the item?", ("decl#8.1(a)(i)(B)", "decl#8.4"), (UNIT_FINISHES, BUILDER_OPTIONS)),
-    LadderStep(2, "Where did the cause originate?", ("decl#7.6", "decl#7.11", "decl#7.9"), (CONSEQUENTIAL_DAMAGE,)),
+    LadderStep(2, "Where did the cause originate?", ("decl#7.3", "decl#7.11", "decl#7.9"), (CONSEQUENTIAL_DAMAGE,)),
     LadderStep(
         3,
         "Is it an insured casualty above the deductible?",
@@ -48,7 +48,7 @@ LOSS_LADDER = (
     LadderStep(
         4,
         "Whose negligence, and of what degree?",
-        ("decl#7.6", "decl#7.9", "decl#7.11"),
+        ("decl#7.3", "decl#7.9", "decl#7.11"),
         (CONSEQUENTIAL_DAMAGE,),
     ),
     LadderStep(5, "Who pays the deductible?", ("decl#8.1(a)(vii)",), (DEDUCTIBLE_GUIDELINES,)),

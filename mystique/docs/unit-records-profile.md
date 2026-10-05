@@ -24,9 +24,9 @@ components ([paint-findings.md](paint-findings.md)): seven-year life, due 2027 t
 | Step | Question | Citations |
 |---|---|---|
 | 1 | What is the item? | `decl#8.1(a)(i)(B)`, `decl#8.4` |
-| 2 | Where did the cause originate? | `decl#7.6`, `decl#7.11`, `decl#7.9` |
+| 2 | Where did the cause originate? | `decl#7.3`, `decl#7.11`, `decl#7.9` |
 | 3 | Is it an insured casualty above the deductible? | `decl#Article 11` (11.1), `decl#8.1(a)(iv)`, `decl#8.1(a)(vi)`, the policy's valuation |
-| 4 | Whose negligence, and of what degree? | `decl#7.6`, `decl#7.9`, `decl#7.11` ("gross negligence") |
+| 4 | Whose negligence, and of what degree? | `decl#7.3`, `decl#7.9`, `decl#7.11` ("gross negligence") |
 | 5 | Who pays the deductible? | `decl#8.1(a)(vii)` |
 
 ## `open_questions()`
