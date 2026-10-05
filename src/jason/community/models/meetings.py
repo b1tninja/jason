@@ -399,6 +399,8 @@ _NUMBER = re.compile(r"^\s*(\d{1,2})\.\s*(.*)$")
 _LOWER_ROMAN = re.compile(r"^\s*([ivx]{1,4})\.\s*(.*)$")
 _LETTER = re.compile(r"^\s*([a-hA-H])\.\s*(.*)$")
 _BULLET = re.compile(r"^\s*[●○•◦▪■]\s*(.*)$")
+
+
 def _end(context: ModelContext | None = None) -> re.Pattern[str]:
     """The line where an agenda's items stop: the Zoom summary, the decorum rules, an appendix, or the association's
     meeting calendar appended under its name (``Community.name``, from ``context``; with none, no calendar line ends
