@@ -39,7 +39,8 @@
       "viewport": "1000x1400"
     },
     "HostPanel": {
-      "cardMode": "column"
+      "cardMode": "column",
+      "viewport": "1000x1100"
     },
     "BoardFields": {
       "cardMode": "column"
@@ -105,6 +106,14 @@
     },
     "Seal": {
       "cardMode": "column"
+    },
+    "AssemblyRegister": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "FilingPlan": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
     }
   },
   "readmeHeader": ".design-sync/conventions.md",

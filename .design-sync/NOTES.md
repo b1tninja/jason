@@ -140,6 +140,9 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 
 ## Known render warns
 
+- `[RENDER_THIN] CitationChip.html`: no authored preview yet, so the card is the typographic floor (its name only).
+  Authoring `.design-sync/previews/CitationChip.tsx` clears it.
+
 - `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's
   `ChildrenThrow` cell throws on purpose to show the shape-tolerant fallback; the boundary catches it, React logs
   it, the root renders. Expected on every validate.
@@ -197,3 +200,4 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   they upload under the plan's `guidelines/**`. Only general docs go there (the profile boundary test passes on
   them): never `mystique/` or anything naming the association. Their relative links point at repo paths and break
   in the project (the files are flat); the design agent finds them by name. Add a new handoff by appending its path.
+- **Inspections and portals previews** (`DocumentCodes`, `ReportPortalCard`, `PortalReportRow`, `HoldingChips`, `FilingPlan`, `NoticeClock`, `AssemblyRegister`, `Discrepancy`, `TesterCheck`, `TextGrade`, `NotOursNotice`, `WatchRow`) draw their plainly fake data from `inspectionFixtures`, exported by `jason-ui`, so they import from the library alone. Not yet captured: the design-sync build has not been run on them, and their dark-mode and 320 px layouts are unchecked.
