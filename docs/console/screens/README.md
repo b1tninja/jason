@@ -15,6 +15,7 @@ One page per screen of the earlier spec, now read against the console that exist
 | [paint.md](paint.md) | none | Proposed whole, `#/paint` | 3 |
 | [life-safety.md](life-safety.md) | none (its parts are in the dock, `#/actions`, `#/insurance`) | Proposed whole, `#/life-safety` | 3 |
 | [community-facts.md](community-facts.md) | none | Proposed whole, `#/facts` | 3 |
+| [document-kinds.md](document-kinds.md) | part (`#/ingestion` counts kinds and methods) | Proposed whole, `#/ingestion/kinds` | 3 |
 | [unit-record.md](unit-record.md) | none | Proposed whole, a tab of `#/members` and `#/loss-packet` | 4 |
 | [members-and-units.md](members-and-units.md) | none | Proposed whole, `#/members` | 4 (needs P2 masking) |
 | [notices.md](notices.md) | none | Proposed whole, `#/notices` | 2 |

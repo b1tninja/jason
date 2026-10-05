@@ -7,6 +7,8 @@ a list of files with a kind word in one column. This pass gives the kinds a face
 on it, how each file came to be called what it is, and what jason read from it. Nothing here is built. The first build will use the
 sample data below as test fixtures (made-up names only), and the real payloads will have the same shapes.
 
+The screen's data, actions, privacy, and acceptance criteria are in [screens/document-kinds.md](screens/document-kinds.md).
+
 ## The idea in four sentences
 
 jason knows a closed set of **document kinds** (a declaration, minutes, a bank statement, a grant deed, an insurance policy, and sixty
