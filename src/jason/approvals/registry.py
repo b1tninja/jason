@@ -78,7 +78,8 @@ KINDS: tuple[ActionKind, ...] = (
         planner="jason.approvals.kinds.owner_info:plan",
         applier="jason.approvals.kinds.owner_info:apply",
         clock="the owner-information cycle (Civil Code 4040, 4041)",
-        rule="the board's owner-information completion rule (AGENTS.md)",
+        rule="the board's owner-information completion rule "
+             "(Community.owner_information: OWNER_INFO_COMPLETED_COMMENT)",
         aliases=("payhoa.owner-info.tags",),
     ),
 )

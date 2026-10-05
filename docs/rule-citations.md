@@ -163,8 +163,12 @@ recites the row, in `jason.tasks.rule_rows`:
 - **A miss.** An unknown table (`unknown_document`, with the registered tables), or a row the table does not have
   (`not_in_document`, with the rows it has).
 
-A rule the item writes as prose ("the board's owner-information completion rule (AGENTS.md)") is not an address: it stays a
-miss until the item cites the row or the document it means.
+An attribute the specification keeps in a module is recited with the comment written above it, where the decision and its
+date are written, and where it is written (`comment`, `where`). So the owner-information completion rule is cited as
+`Community.owner_information: OWNER_INFO_COMPLETED_COMMENT`: the comment the owner is sent, with the board's rule above it.
+
+A rule the item writes as prose ("the board's rule (AGENTS.md)") is not an address: it stays a miss until the item cites the
+row or the document it means. Every plan kind's rule is an address; a test holds them to it.
 
 ## Using it
 

@@ -257,8 +257,17 @@ def _spec(table: str, key: str, community: Any) -> Recited:
     if not key.isupper() or not hasattr(held, key):
         return Recited(False, citation, table, key, reason="no_such_row", detail=f"Community.{method}() has no attribute {key}")
     value = getattr(held, key)
-    words = f"{key}: {_plain(value)}"
-    return Recited(True, citation, table, key, f"the profile's {method}", words, {"key": key, "value": _plain(value)}, (),
+    row: dict[str, Any] = {"key": key, "value": _plain(value)}
+    lines = [f"{key}: {_plain(value)}"]
+    # A module's attribute carries its reason in the comment above it (a board decision, with its date): recite it.
+    comment, where = _comment_above(held, key) if inspect.ismodule(held) else ("", "")
+    if comment:
+        row["comment"] = comment
+        lines.append(f"comment: {comment}")
+    if where:
+        row["where"] = where
+        lines.append(f"written at: {where}")
+    return Recited(True, citation, table, key, f"the profile's {method}", "\n".join(lines), row, (),
                    "", "", "the profile (the specification)")
 
 

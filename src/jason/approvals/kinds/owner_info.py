@@ -31,6 +31,10 @@ from jason.approvals.engine import Live, Planned
 from jason.approvals.model import (Change, ChangeOp, Evidence, ItemClass, PlanItem, Result, digest, item_id)
 
 KEY = "owner-info-tags"
+# The board's rule (October 1, 2026), cited where the specification keeps it: the comment above the completion comment
+# says when a request is completed, and the comment is what the owner is sent (``jason cite`` recites both).
+COMPLETION_RULE = ("the board's owner-information completion rule "
+                   "(Community.owner_information: OWNER_INFO_COMPLETED_COMMENT)")
 
 
 @dataclass
@@ -261,7 +265,7 @@ def build(p: Any, *, cycle: Any = None, today: date | None = None, read_at: str 
                             "complete", "nothing is left but its writes: once they are made, the request is marked "
                             "complete and the board's comment is emailed to the owner", group=group,
                             change=Change(ChangeOp.SET, "request status", "complete", status, "complete"),
-                            rule="the board's owner-information completion rule (AGENTS.md)", evidence=evidence,
+                            rule=COMPLETION_RULE, evidence=evidence,
                             basis=digest(state), depends_on=deps)
             items.append(item)
             ctx.requests[item.id] = sid
@@ -285,7 +289,7 @@ def build(p: Any, *, cycle: Any = None, today: date | None = None, read_at: str 
         items.append(PlanItem(item_id(KEY, "request stays open", target, "open"), "request stays open", target, group,
                               "; ".join(t.left), "only a request with nothing left is completed (the board's rule); "
                               "what is left: " + mask("; ".join(t.left)), group=group,
-                              rule="the board's owner-information completion rule (AGENTS.md)", evidence=evidence,
+                              rule=COMPLETION_RULE, evidence=evidence,
                               basis=digest(state), klass=ItemClass.INFORMATIONAL, depends_on=deps))
         counts["requestsStayOpen"] += 1
     clock = None

@@ -1662,8 +1662,12 @@ LESSONS: tuple[Lesson, ...] = (
            "The resolver knew documents and statutes, not jason's own tables of decisions kept as data.",
            "rule_rows.TABLES recites a row as data, labeled jason's own row and never the association's rule, with the "
            "board decision it rests on when the row names one. A prose rule stays a miss until it cites a row or a "
-           "document.",
-           Status.FIXED, guards=("rule_rows.TABLES", "tests/test_scoping.py"), docs=("docs/rule-citations.md",)),
+           "document. The last one, the owner-information completion rule, now cites the specification "
+           "(Community.owner_information: OWNER_INFO_COMPLETED_COMMENT), recited with the board's decision written "
+           "above it; every plan kind's rule must recite.",
+           Status.FIXED, guards=("rule_rows.TABLES", "tests/test_scoping.py",
+                                 "test_every_plan_kinds_rule_is_an_address_the_approvals_screen_recites"),
+           docs=("docs/rule-citations.md",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

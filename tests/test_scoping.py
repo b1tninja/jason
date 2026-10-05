@@ -296,6 +296,32 @@ def test_one_attribute_of_the_specification_is_recited_through_a_community_metho
     assert not resolve("Community.__init__: X", shelf=shelf)["found"]
 
 
+def test_a_module_attribute_is_recited_with_the_decision_written_above_it(tmp_path):
+    import importlib.util
+    from types import SimpleNamespace
+
+    source = tmp_path / "made_up_forms.py"
+    source.write_text("# The board, January 2, 2000: a made-up decision.\n# Its second line.\nDONE_COMMENT = 'thanks'\n",
+                      encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("made_up_forms", source)
+    held = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(held)
+    shelf = Shelf(SimpleNamespace(living_documents=lambda: (), citable_documents=lambda: (), owner_information=lambda: held),
+                  tmp_path, repo=tmp_path / "no-repo")
+    r = resolve("the board's rule (Community.owner_information: DONE_COMMENT)", shelf=shelf)
+    assert r["found"] and r["row"]["comment"] == "The board, January 2, 2000: a made-up decision. Its second line."
+    assert "made-up decision" in r["text"] and r["row"]["where"].endswith("made_up_forms.py:3")
+
+
+def test_every_plan_kinds_rule_is_an_address_the_approvals_screen_recites():
+    from jason.approvals import registry
+    from jason.web import approvals
+
+    for kind in registry.kinds():
+        r = approvals.recite(kind.rule)
+        assert r["found"], (kind.key, kind.rule, r.get("reason"))
+
+
 def test_the_approvals_screen_recites_a_row_as_it_recites_a_section():
     from jason.web import approvals
 
