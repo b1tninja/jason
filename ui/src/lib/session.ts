@@ -43,6 +43,7 @@ interface SignInState {
   account: SignedIn | null; setup?: SignInSetup; error: string;
   canActAs: boolean; acting: Acting | null; actAsPeople: { name: string; role: string }[]; actAsRoles: string[];
   privateView: PrivateView | null;
+  roleClass: string;
 }
 
 /** The browser-session flag that says the private view was just opened, so the band takes focus once after the reload. */
@@ -79,21 +80,21 @@ export const privateActs = {
  * `--dev` whom an admin may view the console as, and the private view (`privateView`; `privateFocus` once just after
  * it was opened). */
 export function useSignIn() {
-  const [state, setState] = useState<SignInState>({ account: null, error: "", canActAs: false, acting: null, actAsPeople: [], actAsRoles: [], privateView: null });
+  const [state, setState] = useState<SignInState>({ account: null, error: "", canActAs: false, acting: null, actAsPeople: [], actAsRoles: [], privateView: null, roleClass: "" });
   const [privateFocus] = useState<boolean>(takeOpened);
   useEffect(() => {
     let on = true;
     serverSession().then((s) => on && setState({
       account: s.signedIn ?? null, setup: s.signIn, error: s.signInError ?? "", canActAs: !!s.canActAs,
       acting: s.acting ?? null, actAsPeople: s.actAsPeople ?? [], actAsRoles: s.actAsRoles ?? [],
-      privateView: s.private ?? null,
+      privateView: s.private ?? null, roleClass: s.roleClass ?? "",
     }));
     return () => { on = false; };
   }, []);
   const links = signInLinks(state.setup, typeof window !== "undefined" ? window.location.hash : "");
   const out = useCallback(async () => {
     await signOut(state.setup);
-    setState((s) => ({ ...s, account: null, acting: null, canActAs: false }));
+    setState((s) => ({ ...s, account: null, acting: null, canActAs: false, roleClass: "" }));
   }, [state.setup]);
   const viewAs = useCallback(async (target: { name?: string; role?: string }) => {
     const acting = await actAs(state.setup, target);
@@ -150,5 +151,6 @@ export function useSession(given?: readonly Person[]) {
     me, setMe, people, canApprove: can, account: signIn.account, signInLinks: signIn.signInLinks, signInError: signIn.error,
     signOut: signIn.signOut, acting: signIn.acting, canActAs: signIn.canActAs, actAsPeople: signIn.actAsPeople,
     actAsRoles: signIn.actAsRoles, actAs: signIn.actAs, privateView: signIn.privateView, privateFocus: signIn.privateFocus,
+    roleClass: signIn.roleClass,
   };
 }

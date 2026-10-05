@@ -615,4 +615,8 @@ TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_qu
          embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list, approval_show,
          evidence)
 
+from jason.mcp.paint import TOOLS as _PAINT_TOOLS, paint_check, paint_colors, paint_match  # noqa: E402
+
+TOOLS = TOOLS + _PAINT_TOOLS      # the color schedule against the maker's catalog copy (jason.mcp.paint)
+
 __all__ = [t.__name__ for t in TOOLS] + ["TOOLS"]

@@ -29,6 +29,7 @@ from .pins import PINS
 from .plans import FLOOR_PLANS
 from .annexations import SUPERSESSIONS
 from .solar import SOLAR_PROGRAM
+from .paint import PAINT_SCHEDULES
 from .utilities import UTILITY_ACCOUNTS, UTILITY_BUDGET_LINES, UTILITY_ROLL
 from .banking import BANK_ACCOUNTS, BOARD, BOARD_ITEMS_SHEET, MEETING_SCHEDULE, RESERVE_BUDGET_LINES
 from .cases import LEGAL_CASES
@@ -126,6 +127,10 @@ class Mystique(Community):
         """Governing instruments a later one rescinded, as that later instrument's body states."""
         return SUPERSESSIONS
 
+    def paint_schedules(self):
+        """The developer's exterior color and materials palette."""
+        return PAINT_SCHEDULES
+
     def solar_program(self):
         """The developer's shared solar: the buildings, the lease funds, and who services the leases."""
         return SOLAR_PROGRAM
@@ -133,6 +138,38 @@ class Mystique(Community):
     def vendor_portals(self):
         """Vendor customer portals (vendors.py)."""
         return VENDOR_PORTALS
+
+    def facts(self):
+        """Starter community facts (unit_records.py)."""
+        from .unit_records import FACTS
+
+        return FACTS
+
+    def original_specs(self):
+        """Empty: the developer's finish and appliance schedules by plan are not in the library."""
+        return ()
+
+    def unit_coverage(self):
+        """The declaration's and the policy's component lists (unit_records.py)."""
+        from .unit_records import UNIT_COVERAGE
+
+        return UNIT_COVERAGE
+
+    def loss_ladder(self):
+        """The five questions of a loss and their provisions (unit_records.py)."""
+        from .unit_records import LOSS_LADDER
+
+        return LOSS_LADDER
+
+    def open_questions(self):
+        """The questions put to the agent, counsel, and the board (unit_records.py)."""
+        from .unit_records import OPEN_QUESTIONS
+
+        return OPEN_QUESTIONS
+
+    def deductible_policy(self):
+        """None until the board adopts the guideline Declaration 8.1(a)(vii) calls for."""
+        return None
 
     def email_filing(self):
         """Where vendors' email attachments go in Drive (vendors.py)."""

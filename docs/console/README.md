@@ -34,6 +34,7 @@ It plans every write to PayHOA, Google, and the mail as a dry run. The console p
 | [doc-component.md](doc-component.md) | `Doc`, the one component for every document reference: the `DocRef` a loader returns, the four variants (chip, row, card, inline), their states, and the checklist a screen follows to adopt it |
 | [documents.md](documents.md) | One viewer for every kind of document: the copy jason keeps, how each kind renders and refreshes, who may see it, serving untrusted bytes safely, the gaps to close, and the build order |
 | [redesign-review.md](redesign-review.md) | The design project's twelve redesign "rethinks", each kept, corrected, or held against the law, the roster, and the approvals engine, and the order to build them |
+| [handoff-unit-records.md](handoff-unit-records.md) | The design pass on the paint palette, community facts, the unit manual, and the loss packet: the components, their states, data shapes, sample data, what the design must keep, and the decisions open |
 | [handoff-discovery.md](handoff-discovery.md) | The design pass on finding the association, locating its documents, the key documents, and the instrument graph: the four components, their states and sample data, what the design must keep, and the decisions open |
 | [mvp.md](mvp.md) | What is built, the first build from here with its acceptance criteria, moving `--yes` onto approvals, the prototype library, and the open decisions |
 

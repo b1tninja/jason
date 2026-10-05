@@ -61,6 +61,8 @@ MODULES: tuple[str, ...] = (
     "spec",
     "approvals",
     "sign_in",
+    "paint",
+    "reference",
     "key_documents",
     "instrument_graph",
     "placer",

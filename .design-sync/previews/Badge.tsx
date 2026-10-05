@@ -39,3 +39,13 @@ export const InlineWithText = () => (
     Minutes for 2026-07-10 <Badge tone="bad">missing</Badge>; the 2026-08-14 set is <Badge tone="good">in the library</Badge>.
   </p>
 );
+
+/** An explicit glyph beside the word, 1em, in the tone's color; a badge never takes one by default. */
+export const WithGlyph = () => (
+  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+    <Badge glyph="receipt">receipt on file</Badge>
+    <Badge tone="good" glyph="badge-check">approved</Badge>
+    <Badge tone="warn" glyph="calendar-clock">notice due</Badge>
+    <Badge tone="bad" glyph="lock">refused</Badge>
+  </div>
+);

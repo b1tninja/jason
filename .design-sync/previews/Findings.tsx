@@ -27,3 +27,12 @@ export const LateHistory = () => (
     <Findings items={[]} empty="6 on time" />
   </div>
 );
+
+/** The default question mark, `glyph={false}` (off, for a dense cell), and a named glyph, one under another. */
+export const GlyphVariants = () => (
+  <div style={{ display: "grid", gap: 12 }}>
+    <Findings items={["default: no reserve study on file"]} />
+    <Findings items={["glyph off: no reserve study on file"]} glyph={false} />
+    <Findings items={["named glyph: policy term ended 2026-09-30"]} glyph="calendar-clock" />
+  </div>
+);

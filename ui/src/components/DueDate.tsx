@@ -1,4 +1,5 @@
 import { Badge } from "./Badge";
+import { glyphForStatus } from "../lib/statusGlyph";
 
 export function daysUntil(iso: string, today = new Date()): number {
   const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
@@ -13,7 +14,7 @@ export function DueDate({ iso, today }: { iso?: string | null; today?: Date }) {
   const when = days === 0 ? "today" : days < 0 ? `${-days}d overdue` : `in ${days}d`;
   return (
     <span className="due">
-      <time dateTime={iso}>{iso}</time> <Badge tone={tone}>{when}</Badge>
+      <time dateTime={iso}>{iso}</time> <Badge tone={tone} glyph={glyphForStatus(when, tone)}>{when}</Badge>
     </span>
   );
 }

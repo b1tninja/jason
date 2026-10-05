@@ -5,15 +5,16 @@ import { DeadlineList } from "./DeadlineList";
 import { ActionRegister } from "./ActionRegister";
 import { Scratchpad } from "./Scratchpad";
 import { AskPanel } from "./AskPanel";
+import { Glyph, type GlyphName } from "./Glyph";
 
 /** The dock's four drawers, all the board's. Ask is not in the owner view: it lists everyone's earlier questions, its
  * common answers read the deadlines and the board's decisions, and a question is answered from the library. An owner
  * asks the association through its contacts (the owner page). */
-export const DOCK_DRAWERS: { id: string; label: string; title: string; owner: boolean }[] = [
-  { id: "deadlines", label: "Deadlines", title: "Deadlines", owner: false },
-  { id: "tasks", label: "Tasks", title: "Action register", owner: false },
-  { id: "notes", label: "Scratchpad", title: "Scratchpad", owner: false },
-  { id: "ask", label: "Ask", title: "Ask jason", owner: false },
+export const DOCK_DRAWERS: { id: string; label: string; title: string; owner: boolean; glyph: GlyphName }[] = [
+  { id: "deadlines", label: "Deadlines", title: "Deadlines", owner: false, glyph: "calendar-clock" },
+  { id: "tasks", label: "Tasks", title: "Action register", owner: false, glyph: "list-checks" },
+  { id: "notes", label: "Scratchpad", title: "Scratchpad", owner: false, glyph: "notebook" },
+  { id: "ask", label: "Ask", title: "Ask jason", owner: false, glyph: "message-circle-question-mark" },
 ];
 
 /** The console screen a dock row points at, by id, in words. Unknown ids read as themselves. */
@@ -71,6 +72,7 @@ export function DockToolbar({ open, onToggle, counts, audience }: {
         const n = d.id === "deadlines" ? counts.deadlines : d.id === "tasks" ? counts.tasks : 0;
         return (
           <button key={d.id} type="button" aria-expanded={open === d.id} className={`dock-pill${open === d.id ? " on" : ""}`} onClick={() => onToggle(d.id)}>
+            <Glyph name={d.glyph} size={20} className="dock-glyph" />
             {d.label}
             {n > 0 && <span className="dock-count" aria-label={`${n} overdue${whose}`} title={counts.note || undefined}>{n}</span>}
           </button>

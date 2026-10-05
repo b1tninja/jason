@@ -37,3 +37,26 @@ export const SmallTable = () => (
 
 /** No rows at all: the empty state, not an empty grid. */
 export const Empty = () => <DataTable rows={[] as Row[]} columns={columns} />;
+
+type Pay = { date: string; payee: string; kind: "check" | "ach" | "card"; cents: number };
+const pays: Pay[] = [
+  { date: "2026-09-02", payee: "Valley Landscape Co.", kind: "check", cents: 185000 },
+  { date: "2026-09-05", payee: "City Water Utility", kind: "ach", cents: 412377 },
+  { date: "2026-09-11", payee: "Pacific Elevator Service", kind: "card", cents: 96000 },
+  { date: "2026-09-15", payee: "Harbor Insurance Agency", kind: "ach", cents: 1240000 },
+];
+
+/** `kind: "money"` takes integer cents, right-aligns and shows dollars with no render; a `glyph` accessor puts the payment kind's mark beside the word. */
+export const MoneyAndGlyphColumns = () => (
+  <DataTable
+    searchable={false}
+    rows={pays}
+    caption="Payments by kind"
+    columns={[
+      { key: "date", header: "Date", kind: "date" },
+      { key: "payee", header: "Payee" },
+      { key: "kind", header: "Kind", glyph: (r: Pay) => ({ check: "file-text", ach: "landmark", card: "banknote" } as const)[r.kind] },
+      { key: "cents", header: "Amount", kind: "money" },
+    ]}
+  />
+);

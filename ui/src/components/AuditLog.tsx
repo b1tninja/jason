@@ -1,10 +1,22 @@
 import { Timeline, type TimelineEvent } from "./Timeline";
+import type { GlyphName } from "./Glyph";
 import { personName, plural, short, type AuditEntry, type ChainCheck } from "../lib/approvals";
 
 const TONE: Partial<Record<AuditEntry["event"], TimelineEvent["tone"]>> = {
   "item.applied": "good", "approval.applied": "good", "cli.applied": "good", "approval.confirmed": "good",
   "item.failed": "bad", "approval.failed": "bad", "plan.failed": "bad", "apply.refused": "bad",
   "item.uncertain": "warn", "item.blocked": "warn", "approval.superseded": "warn", "approval.declined": "warn",
+};
+
+/** What each logged event is, as its provenance glyph: planned (proposal), decided and confirmed (badge-check), signed
+ * (signature), written (send), taken back (undo-2), refused (lock), stopped (octagon-alert), failed (triangle-alert). */
+const GLYPH: Partial<Record<AuditEntry["event"], GlyphName>> = {
+  "plan.created": "proposal", "plan.failed": "triangle-alert",
+  "item.decided": "badge-check", "approval.submitted": "signature", "approval.confirmed": "badge-check",
+  "approval.declined": "undo-2", "approval.withdrawn": "undo-2", "approval.superseded": "history",
+  "apply.started": "send", "apply.refused": "lock", "item.applying": "send", "item.applied": "send", "approval.applied": "send",
+  "cli.applied": "send", "item.failed": "triangle-alert", "approval.failed": "triangle-alert",
+  "item.uncertain": "circle-question-mark", "item.blocked": "octagon-alert", "item.not_applied": "circle-dashed",
 };
 
 function count(result: unknown): number {
@@ -67,6 +79,7 @@ export function AuditLog({ entries, approval, compact = false, chain }: {
     date: `${e.at.slice(0, 16).replace("T", " ")}`,
     title: auditWords(e),
     tone: TONE[e.event] ?? "neutral",
+    glyph: GLYPH[e.event],
     detail: [e.detail, e.fingerprint ? `fingerprint ${short(e.fingerprint)}` : "", `line ${e.seq}`, e.via ? `via ${e.via}` : ""].filter(Boolean).join(" · "),
   }));
   return (

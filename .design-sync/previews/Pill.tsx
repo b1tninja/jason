@@ -30,3 +30,13 @@ export const LienStandings = () => (
     <Pill word="RELEASED" />
   </div>
 );
+
+/** Each status word carries its attention glyph by default; `glyph` swaps it and `glyph={false}` leaves it off. */
+export const GlyphChoices = () => (
+  <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
+    <Pill word="overdue" />
+    <Pill word="done" glyph="badge-check" />
+    <Pill word="deferred" glyph="undo-2" />
+    <Pill word="overdue" glyph={false} meaning="the glyph left off" />
+  </div>
+);

@@ -33,3 +33,8 @@ export const UnderACard = () => (
     <Caveats items={["The schedule is the adopted budget's; a transfer that lands a day late is still counted in its month."]} />
   </div>
 );
+
+/** Each caveat carries the info mark, so several read as separate notes. */
+export const NoteMarks = () => (
+  <Caveats items={["Counts are the signed-in person's own, not the board's.", "A letter is mailed only by a person; the preview is not a send."]} />
+);

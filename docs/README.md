@@ -77,6 +77,16 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [mystique-site.md](mystique-site.md): the association's public Google Site, its embedded Drive folders, and the page-to-library map.
 - [photos.md](photos.md): photos taken in from shared Google Photos albums, kept in jason's album and in Drive.
 - [registers.md](registers.md): running records kept as Google Sheets (action items, hold notices, approvals, rule changes).
+- [reference-shelf.md](reference-shelf.md): published guides that explain a process, kept as a catalog apart from the law, the record, and Jason's pages (`jason reference`).
+- [subdivision-process.md](subdivision-process.md): how a residential subdivision is mapped, reported, and handed to its association, read from the Department of Real Estate's guide on the reference shelf.
+- [paint.md](paint.md): paint schedules, the maker's open color catalog, and `jason paint`.
+- [paint-design.md](paint-design.md): proposal for how a community enters its colors and the paint assistant built on them.
+- [install-design.md](install-design.md): proposal for a first-run install guide that provisions secrets, assets, and checks.
+- [credential-store-research.md](credential-store-research.md): research notes on a local credential store (AWS Secrets Manager emulators, OpenBao, the OS keyring).
+- [deployment-research.md](deployment-research.md): research notes on a low-cost hosted deployment (compute, Bedrock, secrets, Google).
+- [paint-ui-design.md](paint-ui-design.md): the paint screen (a buildings-by-surfaces matrix with painted and due dates) and the facts it needs.
+- [unit-records-design.md](unit-records-design.md): community facts as assumed defaults, a manual for each unit, and a loss packet for claims.
+- [unit-records-backend.md](unit-records-backend.md): the backend for paint, community facts, and unit records: records, storage, loaders, tools, tests, and build order.
 
 ### Document models
 

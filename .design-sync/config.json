@@ -116,6 +116,13 @@
     "../docs/console/doc-component.md",
     "../docs/console/redesign-review.md",
     "../docs/console/handoff-reconciliation.md",
-    "../docs/console/handoff-reconciliation-3.md"
+    "../docs/console/handoff-reconciliation-3.md",
+    "../docs/console/handoff-unit-records.md",
+    "../docs/paint-ui-design.md",
+    "../docs/paint-design.md",
+    "../docs/unit-records-design.md",
+    "../docs/console/screens/paint.md",
+    "../docs/console/screens/community-facts.md",
+    "../docs/console/screens/unit-record.md"
   ]
 }

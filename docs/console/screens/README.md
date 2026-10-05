@@ -12,10 +12,13 @@ One page per screen of the earlier spec, now read against the console that exist
 | [finance.md](finance.md) | `#/payments` (`ConsolePayments`), `#/reserves` (`ConsoleReserves`), `#/liens` (`ConsoleLiens`), `#/books`, `#/title` | Adds bank balances, the reserve study, and the ledger's reports | 2 |
 | [requests.md](requests.md) | partly `#/inbox`, `#/drafts`, `#/records-requests` | A new screen, `#/requests` | 2 |
 | [onboarding.md](onboarding.md) | partly `#/communities`, `#/onboarding` | A new band of `#/onboarding`: the session | 2 |
+| [paint.md](paint.md) | none | Proposed whole, `#/paint` | 3 |
+| [life-safety.md](life-safety.md) | none (its parts are in the dock, `#/actions`, `#/insurance`) | Proposed whole, `#/life-safety` | 3 |
+| [community-facts.md](community-facts.md) | none | Proposed whole, `#/facts` | 3 |
+| [unit-record.md](unit-record.md) | none | Proposed whole, a tab of `#/members` and `#/loss-packet` | 4 |
 | [members-and-units.md](members-and-units.md) | none | Proposed whole, `#/members` | 4 (needs P2 masking) |
 | [notices.md](notices.md) | none | Proposed whole, `#/notices` | 2 |
 | [governing-documents.md](governing-documents.md) | none | Proposed whole, `#/documents` | 2 |
-| [life-safety.md](life-safety.md) | none (its parts are in the dock, `#/actions`, `#/insurance`) | Proposed whole, `#/life-safety` | 3 |
 | [mail.md](mail.md) | `#/mail-triage`, `#/inbox`'s letters and requests, `#/insurance`, `#/renewals` | Their documents on `Doc` (built) | 2 |
 | [board-items.md](board-items.md) | `#/actions` (`ConsoleActions`) | Its evidence on `Doc` (built) | 2 |
 | [requests-and-links.md](requests-and-links.md) | `#/drafts`, the key documents tab, `#/canvases`, `#/templates`, and `Embed` | Their documents on `Doc` (built) | 2 |

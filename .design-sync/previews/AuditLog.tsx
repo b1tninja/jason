@@ -28,3 +28,15 @@ export const Compact = () => <AuditLog entries={[...entries, ...done]} approval=
 
 /** A broken chain, as the server's verify reports it. */
 export const Broken = () => <AuditLog entries={done} chain={{ ok: false, line: 21, why: "the hash does not match the line" }} />;
+
+/** Provenance glyphs in one log: planned, signed, declined, refused, failed, blocked. */
+export const EveryGlyph = () => (
+  <AuditLog entries={[
+    line(30, "a", "b", { event: "plan.created", result: { approvable: 3 } }),
+    line(31, "b", "c", { event: "approval.submitted", result: "approved", items: ["x1", "x2"] }),
+    line(32, "c", "d", { event: "approval.declined", detail: "second person declined" }),
+    line(33, "d", "e", { event: "apply.refused", detail: "plan changed since it was approved" }),
+    line(34, "e", "f", { event: "item.failed", item: "x1", label: "105 EXAMPLE WAY: Lee Placeholder", op: "member tag +", value: "Paperless", detail: "PayHOA refused" }),
+    line(35, "f", "g", { event: "item.blocked", item: "x2", label: "106 EXAMPLE WAY: Kim Invented", op: "member tag +", value: "Notices by Email" }),
+  ]} />
+);

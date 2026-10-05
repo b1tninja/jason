@@ -32,14 +32,76 @@ def _with_evidence_refs(item: dict[str, Any], root: Any = None) -> dict[str, Any
     return {**item, "evidenceRefs": refs_from_strings(item.get("evidence") or [], data_dir=root)}
 
 
-def board_items(args: Args) -> dict[str, Any]:
+def _executive_item(row: dict[str, Any]) -> bool:
+    """Whether a board item's row goes to executive session (``agenda_session``); a row that cannot be read is held."""
+    from jason.community.board_items import Session, agenda_session
+    from jason.tasks.board_items import _decode
+
+    try:
+        return agenda_session(_decode(row)) is Session.EXECUTIVE
+    except Exception:  # noqa: BLE001 - anything unclear keeps the row held
+        return True
+
+
+def _planned_executive_subjects(root: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The 4935 subject the agenda plans give each item, by id: the plan of the meeting the item names, else the latest
+    plan on disk that gives it one; none when no plan does."""
+    from datetime import date as _date
+    from pathlib import Path
+
+    from jason.tasks.board_packet import _planned_subjects
+
+    days: list[_date] = []
+    for p in sorted((Path(root) / "meetings").glob("plan-*.json"), reverse=True):
+        try:
+            days.append(_date.fromisoformat(p.stem.removeprefix("plan-")))
+        except ValueError:
+            continue
+    plans: dict[_date, dict[str, Any]] = {}
+    out: dict[str, Any] = {}
+    for r in rows:
+        try:
+            own = [_date.fromisoformat(str(r.get("meeting") or "").strip())]
+        except ValueError:
+            own = []
+        for d in own + days:
+            if d not in plans:
+                plans[d] = _planned_subjects(root, d)
+            if plans[d].get(r["id"]):
+                out[r["id"]] = plans[d][r["id"]]
+                break
+    return out
+
+
+def board_items(args: Args, *, private: bool | None = None) -> dict[str, Any]:
+    """The board's action items (``/api/board-items``), each with ``evidenceRefs`` beside its evidence strings.
+
+    An executive-session item (``agenda_session``; CIV 4935(e)) is answered whole only in the private view
+    (``meeting_room.private_view``, logged as ``board/items.json``). Otherwise it is a held row
+    (``held_executive_row``): ``executive-<n>``, its 4935 subject's general words when an agenda plan names one, and
+    where it stands (status, priority, meeting, due), never its title, summary, ask, notes, evidence, or id;
+    ``executiveHeld`` counts them. ``private``: None asks the request."""
     from jason.mcp.county import _data_dir, board_items as tool
 
     out = tool(include_closed=_flag(args, "closed"))
     if not out.get("items"):
         return out
     root = _data_dir(None)
-    return {**out, "items": [_with_evidence_refs(i, root) for i in out["items"]]}
+    executive = {r["id"] for r in out["items"] if _executive_item(r)}
+    if executive and private is None:
+        private = _private_view("", "board/items.json")
+    if not executive or private:
+        return {**out, "items": [_with_evidence_refs(i, root) for i in out["items"]], "executiveHeld": 0}
+    subjects = _planned_executive_subjects(root, [r for r in out["items"] if r["id"] in executive])
+    rows: list[dict[str, Any]] = []
+    n = 0
+    for r in out["items"]:
+        if r["id"] in executive:
+            n += 1
+            rows.append(held_executive_row(n, {**r, "agendaSession": "executive session"}, subjects.get(r["id"])))
+        else:
+            rows.append(_with_evidence_refs(r, root))
+    return {**out, "items": rows, "executiveHeld": n, "executiveHeldNote": EXECUTIVE_HELD_NOTE.format(n=n)}
 
 
 LIENS_HELD = ("Liens the association placed are delinquency detail (restricted): open the private view to list "
@@ -889,6 +951,8 @@ EXTRA_LOADERS: dict[str, str] = {
     "governing-documents": "jason.web.extra.governing_documents:governing_documents",  # with recorded and Drive copies
     "owner-digest": "jason.web.extra.owner_view:owner_digest",  # the owner's Overview, in place of the board's digest
     "onboarding-session": "jason.web.extra.onboarding_setup:onboarding_session",  # gates, computed statuses, questions
+    "paint": "jason.web.extra.paint:paint_view",  # the schedule against the catalog copy on disk; no network
+    "paint-color": "jason.web.extra.paint:paint_color",  # GET /api/paint/color?code=
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
@@ -973,9 +1037,11 @@ BOARD_FIELDS = ("status", "owner", "meeting", "notes")
 
 
 def set_board_item(item_id: str, changes: dict[str, Any]) -> dict[str, Any]:
-    """Change a board item's board-owned fields. Anything else is refused (``ValueError``), as ``jason board --set`` refuses it."""
+    """Change a board item's board-owned fields. Anything else is refused (``ValueError``), as ``jason board --set`` refuses it.
+    An executive-session item is changed only in the private view (its answer is the whole item, logged as
+    ``board/items.json``); outside it the item is answered as missing (``KeyError``), so the id is not confirmed."""
     from jason.mcp.county import _data_dir
-    from jason.tasks.board_items import _encode, set_fields
+    from jason.tasks.board_items import _encode, load, set_fields
 
     unknown = sorted(set(changes) - set(BOARD_FIELDS))
     if unknown:
@@ -984,6 +1050,9 @@ def set_board_item(item_id: str, changes: dict[str, Any]) -> dict[str, Any]:
     if not clean:
         raise ValueError("nothing to change")
     root = _data_dir(None)
+    current = next((_encode(i) for i in load(root) if i.id == item_id), None)
+    if current is not None and _executive_item(current) and not _private_view("", "board/items.json"):
+        raise KeyError(item_id)
     return _with_evidence_refs(_encode(set_fields(root, item_id, **clean)), root)
 
 

@@ -45,7 +45,7 @@ export { Scratchpad } from "./Scratchpad";
 export { AskPanel } from "./AskPanel";
 export { BoardFields, type BoardFieldsItem } from "./BoardFields";
 export { RequestForm, DELIVERIES, type RequestKind, type RecordedRequest, type Delivery } from "./RequestForm";
-export { ConsoleShell, ScreenHeader, visibleScreens, OWNER_BANNER, type ConsoleScreen, type ConsoleShellProps, type Audience } from "./ConsoleShell";
+export { ConsoleShell, ScreenHeader, visibleScreens, landingScreen, DEFAULT_LANDING, OWNER_BANNER, type ConsoleScreen, type ConsoleShellProps, type Audience, type Role, type Move } from "./ConsoleShell";
 export { PrivateSwitch, PrivateAsk, PrivateBand, PRIVATE_MINUTES, PRIVATE_DEFAULT, PRIVATE_HINT, clockTime, minutesLeft, type PrivateSwitchProps, type PrivateBandProps } from "./PrivateSwitch";
 export type { PrivateView, PrivateOpenBody } from "../lib/api";
 // Approvals engine (jason.approvals): the engine's JSON in, no mapping layer. lib/approvals.ts has the types and rules.
@@ -79,3 +79,9 @@ export { Stamp, type StampProps } from "./Stamp";
 export { Seal, type SealProps } from "./Seal";
 export { RoutingTag, RoutingTags, type RoutingTagProps } from "./RoutingTag";
 export { STAMP_WORDS, SEAL_WORDS, SEAL_STATE_WORDS, NOT_A_MARK, ROLE_GLYPH, UNASSIGNED, isStampWord, isSealWord, roleWords, type StampWord, type StampTone, type SealWord, type SealState, type RoutingOwner } from "../lib/marks";
+export { glyphForStatus } from "../lib/statusGlyph";
+// Paint (docs/console/screens/paint.md): the palette, a color's detail, and a date with its source. Props only.
+export { Swatch, PAINT_STATUS_WORDS, ENTERED_WORD, inkFor, luminance, contrastRatio, parseHex, swatchWord, driftText, type PaintColor, type SwatchSize } from "./Swatch";
+export { PaletteMatrix, PAINT_CAPTION, NO_SCHEDULE, NO_PAINT_ROW, ageInDays, copyAge, drift as paintDrift, type PaintSchedule } from "./PaletteMatrix";
+export { ColorDetail, TOUCH_UP_CAVEAT, NO_DESCRIPTION, type PaintColorDetail } from "./ColorDetail";
+export { SourcedDate, NEEDS_INPUT_INVITATION, dateText as sourcedDateText } from "./SourcedDate";

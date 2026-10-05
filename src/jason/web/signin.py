@@ -532,6 +532,39 @@ def install(app: Flask, sign_in: SignIn) -> None:
         return None
 
 
+def role_class(offices: str, admin: bool = False) -> str:
+    """What a person is to the console, from the offices the roster gives them (comma-joined, as ``Person.role``): an
+    ``officer`` holds a board office; a ``manager`` holds the manager's office and no board office; an ``administrator``
+    is one of jason's admins who holds no office (the roster marks that as the role ``admin``); a person who is none of
+    these is "" (the console shows them the owner view). An admin who holds an office is that office's class: the admin
+    flag is a separate power (setup, plan approvals), not a seat at the board."""
+    held = {o.strip().lower() for o in offices.split(",") if o.strip()}
+    if held & {r.value for r in _board_offices()}:
+        return "officer"
+    if "manager" in held:
+        return "manager"
+    if admin or "admin" in held:
+        return "administrator"
+    return ""
+
+
+def _board_offices():
+    from jason.community.base import OfficerRole
+
+    return [r for r in OfficerRole if r is not OfficerRole.MANAGER]
+
+
+def role_of_session(a: Account | None, acting: Acting | None, roster: Any = ()) -> str:
+    """The signed-in person's role class; while an admin views as someone, that someone's (a named person's offices from
+    the roster, or the named office); signed out, ""."""
+    if acting is not None:
+        if acting.name:
+            hit = next((p for p in roster if p.name == acting.name), None)
+            return role_class(hit.role if hit else "", False)
+        return role_class(acting.role, False)
+    return role_class(a.role, a.admin) if a else ""
+
+
 def session_info() -> dict[str, Any]:
     """What ``GET /api/session`` adds: who is signed in, the ways to sign in, whether it is required, its last
     refusal, and under ``--dev`` whom an admin may view the console as."""
@@ -555,6 +588,7 @@ def session_info() -> dict[str, Any]:
                        "dev": bool(sign_in and sign_in.dev), "actAs": ACT_AS,
                        "providers": [{"key": p.key, "label": p.label, "source": p.source} for p in providers]},
             "signInError": error,
+            "roleClass": role_of_session(a, acting, sign_in.roster() if sign_in and acting and acting.name else ()),
             "canActAs": can_act,
             "acting": asdict(acting) if acting else None,
             "actAsPeople": [{"name": p.name, "role": p.role} for p in sign_in.roster()] if can_act and sign_in else [],
@@ -563,5 +597,6 @@ def session_info() -> dict[str, Any]:
 
 __all__ = ["ACT_AS", "Account", "Acting", "CALLBACK", "Client", "Person", "Provider", "RECORD_KEY", "Refused", "SCOPES",
            "SIGN_OUT", "START", "SignIn", "VIA", "account_for", "acting_as", "claims_of", "client_record",
-           "current_account", "default_sign_in", "install", "keeper_client", "roster_of", "session_info",
+           "current_account", "default_sign_in", "install", "keeper_client", "role_class", "role_of_session", "roster_of",
+           "session_info",
            "signed_in_name"]

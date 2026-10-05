@@ -57,6 +57,9 @@ export interface Acting { name: string; role: string }
 export interface ServerSession {
   token?: string; header?: string; applyEnabled?: boolean; liveChecks?: boolean; approvalsWrites?: boolean;
   signedIn?: SignedIn | null; signIn?: SignInSetup; signInError?: string;
+  /** What the signed-in person (or whom an admin views as) is to the console: "officer", "manager", "administrator", or
+   * "" (derived on the server from their offices, `jason.web.signin.role_class`). */
+  roleClass?: string;
   canActAs?: boolean; acting?: Acting | null; actAsPeople?: { name: string; role: string }[]; actAsRoles?: string[];
   private?: PrivateView;
 }

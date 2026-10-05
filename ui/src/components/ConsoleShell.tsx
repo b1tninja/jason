@@ -1,18 +1,39 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PrivateOpenBody, PrivateView } from "../lib/api";
 import { PrivateBand, PrivateSwitch } from "./PrivateSwitch";
+import { Glyph, type GlyphName } from "./Glyph";
 
 export type Audience = "board" | "owner";
 
-/** One screen in the console's nav. `owner` marks the screens an owner sees; `ownerLabel` is its name there. */
+/** What the signed-in person is to the console: an officer (a director or an officer), the manager, the administrator
+ * (runs jason's setup and plan approvals, holds no office), or an owner (the read-only member view). Derived on the server
+ * from the session's offices; the shell never works it out from a name. */
+export type Role = "officer" | "manager" | "administrator" | "owner";
+
+/** One screen in the console's nav. `owner` marks the screens an owner sees; `ownerLabel` is its name there. With `roles`,
+ * the screen shows only to those roles; without it, a board view shows every screen and an owner view the `owner` ones. */
 export interface ConsoleScreen {
   id: string;
   label: string;
   ownerLabel?: string;
   group: string;
   owner?: boolean;
+  roles?: readonly Role[];
+  /** A mark beside the label in the nav (20px). */
+  glyph?: GlyphName;
   /** A count shown after the label, e.g. approvals pending. */
   count?: number;
+}
+
+/** One line of the role strip: "2 waiting for your approval". `go` opens the screen or drawer the count is about. */
+export interface Move { n: number; label: string; go: () => void }
+
+/** The screen each role lands on: officers the board digest, the manager the duties by cadence, the administrator the
+ * approvals, an owner the overview. A shell's `landing` overrides any of them. */
+export const DEFAULT_LANDING: Readonly<Record<Role, string>> = { officer: "digest", manager: "duties", administrator: "approvals", owner: "digest" };
+
+export function landingScreen(role: Role | undefined, landing?: Partial<Record<Role, string>>): string | undefined {
+  return role ? landing?.[role] ?? DEFAULT_LANDING[role] : undefined;
 }
 
 export interface ConsolePerson { name: string; role?: string }
@@ -47,6 +68,14 @@ export interface ConsoleShellProps {
       onExpired?: () => void; focus?: boolean;
     };
   };
+  /** The signed-in person's role (`Role`), derived on the server; an owner audience is always the owner role. With it,
+   * screens that declare `roles` filter by it. */
+  role?: Role;
+  /** The role strip's moves, shown above the landing screen's content ("Name, office: your moves"): what is waiting on this
+   * person, each a link with a count, muted at zero. */
+  moves?: readonly Move[];
+  /** The screen each role lands on, where it differs from `DEFAULT_LANDING`. The strip shows only there. */
+  landing?: Partial<Record<Role, string>>;
   /** The dock toolbar, rendered in the header. */
   dock?: ReactNode;
   /** A pinned drawer: a sticky column beside the page. */
@@ -90,9 +119,25 @@ function useBarHeight() {
   return ref;
 }
 
-/** The screens an audience sees, in nav order. */
-export function visibleScreens(screens: readonly ConsoleScreen[], audience: Audience): ConsoleScreen[] {
-  return screens.filter((s) => audience === "board" || s.owner);
+/** The screens an audience (and, when given, a role) sees, in nav order. A screen with `roles` shows to those roles only;
+ * one without follows the audience as before. An owner audience is the owner role whatever `role` says. */
+export function visibleScreens(screens: readonly ConsoleScreen[], audience: Audience, role?: Role): ConsoleScreen[] {
+  const effective: Role | undefined = audience === "owner" ? "owner" : role;
+  return screens.filter((s) => (s.roles && effective ? s.roles.includes(effective) : audience === "board" || s.owner));
+}
+
+/** The strip above the landing screen: "Name, office: your moves", each move a link with its count (red, muted at zero). */
+function RoleStrip({ who, moves }: { who: string; moves: readonly Move[] }) {
+  return (
+    <section className="role-strip" aria-label="Your moves">
+      <strong>{who}: your moves</strong>
+      {moves.map((m) => (
+        <button key={m.label} type="button" className={`link role-move${m.n ? "" : " quiet"}`} onClick={m.go}>
+          <b>{m.n}</b> {m.label}
+        </button>
+      ))}
+    </section>
+  );
 }
 
 const nameOf = (s: ConsoleScreen, audience: Audience) => (audience === "owner" && s.ownerLabel) || s.label;
@@ -104,11 +149,14 @@ const actingTarget = (v: string): { name?: string; role?: string } =>
 /** The console's frame: a sticky header (wordmark, legal name, records date, the sign-in pick, the private view's switch
  * and, while it is open, its band, the dock, the Board / Owner view control), a grouped left nav that becomes a "Go to" select under 720px, the main column, and the slots
  * for a pinned or a floating drawer. The shell routes; it decides nothing. */
-export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, current, onGo, audience, onAudience, session, dock, pinned, floating, children }: ConsoleShellProps) {
+export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, current, onGo, audience, onAudience, session, role, moves, landing, dock, pinned, floating, children }: ConsoleShellProps) {
   const narrow = useNarrow();
   const bar = useBarHeight();
-  const visible = visibleScreens(screens, audience);
+  const visible = visibleScreens(screens, audience, role);
   const owner = audience === "owner";
+  const effectiveRole: Role | undefined = owner ? "owner" : role;
+  const who = session?.account ?? session?.people.find((p) => p.name === session.me) ?? (session?.me ? { name: session.me, role: undefined } : null);
+  const strip = effectiveRole && moves?.length && current === landingScreen(effectiveRole, landing) ? moves : null;
   const grouped = groups.map((g) => ({ label: g, items: visible.filter((s) => s.group === g) })).filter((g) => g.items.length);
   const account = !owner ? session?.account : null;
   const showPicker = !owner && !account && session && session.people.length > 0;
@@ -190,6 +238,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
                 <p className="console-group-label">{g.label}</p>
                 {g.items.map((s) => (
                   <button key={s.id} aria-current={s.id === current ? "page" : undefined} onClick={() => onGo(s.id)}>
+                    {s.glyph && <Glyph name={s.glyph} size={20} className="console-nav-glyph" />}
                     {nameOf(s, audience)}{s.count ? ` (${s.count})` : ""}
                   </button>
                 ))}
@@ -199,6 +248,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
         )}
         <main className="console-main">
           {owner && <p className="console-owner-banner">{OWNER_BANNER}</p>}
+          {strip && who && <RoleStrip who={who.role ? `${who.name}, ${who.role}` : who.name} moves={strip} />}
           {children}
         </main>
         {pinned}
@@ -209,9 +259,10 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
 }
 
 /** The screen header pattern: an H1 in the brand font and a one-line muted summary. */
-export function ScreenHeader({ title, summary, actions }: { title: ReactNode; summary?: ReactNode; actions?: ReactNode }) {
+export function ScreenHeader({ title, summary, actions, glyph }: { title: ReactNode; summary?: ReactNode; actions?: ReactNode; glyph?: GlyphName }) {
   return (
     <header className="screen-head">
+      {glyph && <span className="screen-glyph"><Glyph name={glyph} size={22} /></span>}
       <div>
         <h1>{title}</h1>
         {summary && <p className="muted">{summary}</p>}

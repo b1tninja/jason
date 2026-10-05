@@ -44,6 +44,23 @@ describe("BoardItemsView", () => {
     expect(within(await screen.findByRole("region", { name: "on agenda" })).getByText("Reserve loan not restored")).toBeInTheDocument();
   });
 
+  it("shows a held executive item by its 4935 subject, with no details or board fields, outside the private view", async () => {
+    const held = { ...item, id: "executive-1", title: "An executive-session matter: a member's payment of assessments", summary: "", ask: "",
+      category: "", authority: "", evidence: [], evidenceRefs: [], session: "executive session", status: "proposed", meeting: "2026-10-21",
+      held: true, subject: "assessment_payment", general: "a member's payment of assessments" };
+    mockFetch({ "/api/board-items": () => ({ found: true, items: [item, held], executiveHeld: 1,
+      executiveHeldNote: "1 executive-session item(s) listed by their Civil Code 4935 subject only (4935(e)); open the private view to see their titles." }) });
+    render(<BoardItemsView />);
+    expect(await screen.findByText(/listed by their Civil Code 4935 subject only/)).toBeInTheDocument();
+    const lane = screen.getByRole("region", { name: "proposed" });
+    expect(within(lane).getByText(held.title)).toBeInTheDocument();
+    expect(within(lane).getByText(/open the private view to see it and change its board fields/)).toBeInTheDocument();
+    expect(within(lane).queryByRole("button")).not.toBeInTheDocument();          // no "Details and board fields"
+    expect(within(lane).queryByLabelText("Status")).not.toBeInTheDocument();
+    expect(within(lane).queryByText(/Ask:/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Details/ })).toHaveLength(1);    // the open item's only
+  });
+
   it("shows the tool's not-found note", async () => {
     mockFetch({ "/api/board-items": () => ({ found: false, items: [], note: "run jason board" }) });
     render(<BoardItemsView />);

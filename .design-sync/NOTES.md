@@ -98,7 +98,38 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - Tall cards: `KeyDocuments` (1000x2000), `DocumentLocator` and `LocatedDocuments` (1000x1400), `BoardList` (1000x1100),
   `InstrumentGraph` (1200x1000); the graph's timeline scrolls sideways inside its box by design.
 
-## Marks (built 2026-10-04, not yet synced)
+## Re-sync 2026-10-04 (afternoon): guidelines only
+
+- All 89 components were verified by the project's anchor (0 changed, 0 new); the upload carried the README and
+  `guidelines/` only (writes are always the full set, so every file was re-sent). The marks below were already in the
+  project, so the note's "not yet synced" was stale.
+- `guidelinesGlob` is an explicit list, so a handoff page reaches the design agent only when it is listed: added
+  `handoff-unit-records`, `paint-ui-design`, `paint-design`, `unit-records-design`, and the paint, community-facts, and
+  unit-record screen specs (2026-10-04). Guidelines are flattened by file name (`screens/paint.md` becomes `guidelines/paint.md`),
+  so avoid two docs with the same base name.
+- The project's `templates/design_handoff_community_console/` copy was gone from the final listing; the sync never
+  deletes under `templates/`, so the design agent or the app removed it.
+- Full render pass: 88 of 89 clean; `RemoteView` is the known intentional throw. `EvidenceEntries` and `ReadAllFromDrive`
+  are floor cards (unauthored).
+- Windows: `.ds-sync/node_modules/playwright` is 1.63.0 (pins chromium-1243, in `%LOCALAPPDATA%\ms-playwright`). The
+  `.ds-sync` scripts are copied from the bundled skill, not committed.
+
+- **Glyphs through the status components (built 2026-10-04, not yet synced).** `Pill`, `DueDate`, `Timeline`, `AuditLog`,
+  `Findings`, `Caveats`, `EmptyState`, `DataTable` (a `money` kind and a `glyph` column) and `Badge` (an explicit `glyph`)
+  now carry glyphs. The driver keys a component on its `.d.ts`, `.prompt.md` and preview, so it called only `HostPanel`
+  changed and would NOT re-grade these although they render differently: capture them with
+  `package-capture.mjs --components <list> --spot-check-components <list>` and read the sheets before uploading. The sheets
+  were read 2026-10-04 and looked right; the upload waits on another session's unfinished `HostPanel`/`MeetingStage`/`Tabs`
+  phone-sheet work, which would otherwise ship half-built (and `[GRID_OVERFLOW] HostPanel (Sheet)` wants a
+  `cfg.overrides.HostPanel` entry).
+
+- **Roles on `ConsoleShell` (built 2026-10-04, not yet synced).** `ConsoleShell` takes `role`, `moves`, `landing`; a
+  `ConsoleScreen` takes `roles` and `glyph`; `ScreenHeader` takes `glyph`; `DOCK_DRAWERS` carry a glyph (the pills show it).
+  `DEFAULT_LANDING`, `landingScreen`, `Role`, `Move` are exported. The role class comes from the server (`roleClass` in
+  `/api/session`). `ConsoleShell` and `DockToolbar` previews will need their prop sets looked at again before upload; the
+  role strip is not in the shell's preview yet (add a cell with `role="officer"` and `moves`).
+
+## Marks (built 2026-10-04, synced)
 
 - `Glyph`, `Stamp`, `Seal`, `RoutingTag`, `RoutingTags` have authored previews; `Glyph` (the whole set, 312) and `Seal`
   (7em seals in a row) are column cards in `cfg.overrides`. The glyph bodies are static SVG from

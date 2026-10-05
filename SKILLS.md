@@ -521,3 +521,9 @@ pytest tests/test_form_reader.py tests/test_form_marks.py tests/test_form_lab.py
 ```
 
 Reports and corpora are under `data/forms/fuzz/` and `data/forms/lab/`. The answers are made up (the `example` domains), so run neither tool on owner records. A model run preflights, holds the GPU lock, and unloads the model when done. Add a row to the model trials after trying a model. The responder model in `form_lab` is an assumption, stated so it can be argued with; tune it against real filled copies, not against the numbers it produces. Change `owner_prefill.normalize` only before copies are sent, since sent copies' fingerprints are hashes of it. See [docs/form-fuzzer.md](docs/form-fuzzer.md) and [docs/form-design.md](docs/form-design.md).
+
+## Answer a paint color question
+
+1. `jason paint` shows the schedule with each color's hex, LRV, and family; `jason paint --check` reports a color renamed or discontinued since the schedule was printed.
+2. For a discontinued color or a touch-up, `jason paint --match "SW 7029" --exterior` lists the closest current colors. Say it is a screen match; the number on the schedule governs.
+3. Do not edit the schedule to follow the catalog. A change to what was approved is the board's and the architectural record's. See [docs/paint.md](docs/paint.md).

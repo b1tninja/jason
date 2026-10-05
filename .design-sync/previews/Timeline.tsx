@@ -26,3 +26,28 @@ export const LienLifecycle = () => (
 
 /** Nothing to show. */
 export const Empty = () => <Timeline events={[]} />;
+
+/** Provenance glyphs on each event: proposed, decided, sent, taken back, locked. */
+export const ProvenanceGlyphs = () => (
+  <Timeline
+    events={[
+      { id: "1", date: "2026-09-02", title: "Late-fee waiver proposed to the board", glyph: "proposal" },
+      { id: "2", date: "2026-09-10", title: "Board approved the waiver", detail: "2 of 3 directors", glyph: "badge-check", tone: "good" },
+      { id: "3", date: "2026-09-12", title: "Letter sent to the owner", detail: "mailed by a person", glyph: "send" },
+      { id: "4", date: "2026-09-20", title: "Waiver taken back after a payment bounced", glyph: "undo-2", tone: "warn" },
+      { id: "5", date: "2026-09-21", title: "Account locked from further changes", glyph: "lock", tone: "bad" },
+    ]}
+  />
+);
+
+/** Tone only, no glyph given: good, warn, and bad take the attention glyph for their tone; the neutral one keeps a blank slot so titles align. */
+export const MixedTones = () => (
+  <Timeline
+    events={[
+      { id: "a", date: "2026-08-01", title: "Reserve study received", tone: "neutral" },
+      { id: "b", date: "2026-08-15", title: "Transfer landed", tone: "good" },
+      { id: "c", date: "2026-09-15", title: "Transfer late", tone: "warn" },
+      { id: "d", date: "2026-10-01", title: "Transfer missing", tone: "bad" },
+    ]}
+  />
+);

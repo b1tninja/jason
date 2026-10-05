@@ -3,6 +3,10 @@ import { Badge, type Tone } from "./Badge";
 import { Command } from "./Command";
 import { Confirm } from "./Confirm";
 import { Timeline, type TimelineEvent } from "./Timeline";
+import { Glyph, type GlyphName } from "./Glyph";
+import { RoutingTag } from "./RoutingTag";
+import { Seal } from "./Seal";
+import { Stamp } from "./Stamp";
 import { BOARD, canApprove as mayApprove, type Person } from "../lib/session";
 
 export type Stage = "draft" | "saved" | "requested" | "approved" | "sent";
@@ -48,6 +52,23 @@ export function approvalLine(l: Letter): string[] {
   const reply = l.replyTo?.trim();
   return [drafted, approved, "jason is automated; the officers sign, jason never does.", reply ? `${REPLIES}: ${reply}` : REPLIES];
 }
+
+/** The kind's glyph, by the words of `kind`; the plain document when none fits. Decoration: the kind's words stay. */
+export function kindGlyph(kind: string): GlyphName {
+  const k = (kind || "").toLowerCase();
+  if (/notice/.test(k)) return "notice";
+  if (/letter|mail|inquiry|reply/.test(k)) return "mail";
+  return "file-text";
+}
+
+/** The approver as the routing tag reads it: "the board" is the role "board". */
+export function approverRole(approver: string): string {
+  return (approver || BOARD).trim().toLowerCase().replace(/^the\s+/, "");
+}
+
+function approvalEntry(l: Letter) { return [...(l.log ?? [])].reverse().find((e) => APPROVAL.test(e.title)); }
+function approvedBy(l: Letter): string | undefined { return approvalEntry(l)?.by || undefined; }
+function approvedDate(l: Letter): string | undefined { return l.meeting || approvalEntry(l)?.date || undefined; }
 
 function ApprovalLine({ letter }: { letter: Letter }) {
   return (
@@ -105,7 +126,9 @@ export function DraftLetter({ letter, readonly = false, me = "", people = [], on
       <header className="draft-letter-head">
         <div className="row wrap">
           <Badge tone={readonly ? "neutral" : badgeTone}>{readonly ? letter.ownerBadge || "posted" : badgeText}</Badge>
+          <Glyph name={kindGlyph(letter.kind)} size="16px" />
           <strong>{letter.kind || "Document"}</strong>
+          {!readonly && <RoutingTag owner={{ role: approverRole(approver) }} />}
         </div>
         <span className="muted">{readonly ? "As delivered to members." : "jason drafts it. Nothing is sent without approval."}</span>
       </header>
@@ -121,6 +144,12 @@ export function DraftLetter({ letter, readonly = false, me = "", people = [], on
       </div>
       {!readonly && (
         <footer className="draft-letter-foot">
+          <div className="row wrap draft-letter-marks">
+            {/* Seals are what jason did; the stamps are a person's, shown only once one has acted and on the record. */}
+            <Seal word={stage === "draft" ? "drafted" : "filed"} size="4.5em" inline detail={stage === "draft" ? undefined : letter.key} />
+            {(stage === "approved" || stage === "sent") && <Stamp word="approved" tilt={0} by={approvedBy(letter)} date={approvedDate(letter)} />}
+            {stage === "sent" && <Stamp word="sent" tilt={0} sentRef={letter.sentRef} date={letter.sentOn} />}
+          </div>
           {!me && stage !== "sent" && <p className="muted">Pick whose name goes on the record before taking a step.</p>}
           <div className="row wrap">
             {stage === "draft" && (

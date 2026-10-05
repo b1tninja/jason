@@ -15,7 +15,7 @@ This page maps what the console needs onto them. Where the earlier spec named a 
 
 | The console needs | jason-ui | Notes |
 |---|---|---|
-| The frame: wordmark, legal name, sign-in pick, dock, Board / Owner view, grouped nav, a "Go to" select under 720 px | `ConsoleShell` | Replaces the prototype's `app-shell` and `nav`. Nav counts come from the screen list (`count`); the approvals count is the letters waiting on the signed-in person's approval (the dock's counts), or the inbox's pending count with nobody signed in |
+| The frame: wordmark, legal name, sign-in pick, dock, Board / Owner view, grouped nav, a "Go to" select under 720 px | `ConsoleShell` | Replaces the prototype's `app-shell` and `nav`. Nav counts come from the screen list (`count`); the approvals count is the letters waiting on the signed-in person's approval (the dock's counts), or the inbox's pending count with nobody signed in. **Roles (October 4, 2026):** `role` (`officer`, `manager`, `administrator`, `owner`; the server derives it from the person's offices as `GET /api/session`'s `roleClass`, `jason.web.signin.role_class`) filters a screen that declares `roles` (the manager does not see Decisions); `moves` is the role strip above the role's landing screen (`landingScreen`, `DEFAULT_LANDING`: officer to the digest, manager to the duties, administrator to Approvals), built from the dock's counts (`lib/roles.ts`); a nav item, a dock pill, and `ScreenHeader` take a `glyph` |
 | The page header | `ScreenHeader` (`title`, `summary`, `actions`) | Replaces `page-header`. One `h1` per screen |
 | A titled section | `Card` (`title`, `actions`) | Replaces `section-card`. Its freshness line and command go inside it (below) |
 | Bands of one screen | `Tabs` (controlled) | |

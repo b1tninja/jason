@@ -1571,6 +1571,23 @@ LESSONS: tuple[Lesson, ...] = (
                                  "missing_statute_as_a_miss", "tests/test_meeting_notice.py::test_the_agenda_template_"
                                  "points_to_the_recited_section"),
            docs=("docs/board-agenda.md", "docs/base-templates.md")),
+    Lesson("board-items-list-executive-titles", date(2026, 10, 4), (Area.GOVERNING,),
+           "GET /api/board-items, behind the console's Board items screen, listed every executive-session item whole "
+           "to anyone who could load the page (title, summary, ask, authority, notes, evidence, id); its card offered "
+           "the board-fields form, and a write to an executive item answered the whole item.",
+           "The fix for the meeting page and the agenda plan (executive-title-in-console-agenda) held back those two "
+           "loaders only; the board items loader and its write were another path to the same items.",
+           "sources.board_items answers an executive item whole only in the private view, logged; otherwise a held "
+           "row (executive-<n>, its 4935 subject's general words from the agenda plan, else \"An executive-session "
+           "matter\", and its status, priority, meeting, and due date). set_board_item answers an executive item as "
+           "missing (404) outside the private view. The screen shows a held row with no details and no board fields.",
+           Status.FIXED, guards=("tests/test_meeting_room_executive.py::test_the_board_items_listing_holds_an_executive_"
+                                 "item_back_outside_the_private_view",
+                                 "tests/test_meeting_room_executive.py::test_a_held_board_item_with_no_planned_subject_"
+                                 "says_only_executive_session", "ui/src/views/views.test.tsx (the held executive item)"),
+           docs=("docs/console/screens/board-items.md", "docs/web-ui.md"),
+           notes=("Not yet: the evidence resolver's board-item:<id> label still names an executive item's title (a "
+                  "caller must know the id), and the stdio MCP tool board_items lists items whole.",)),
 )
 
 

@@ -942,7 +942,7 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
 .glyph { display: inline-block; flex: none; vertical-align: -0.14em; }
 
 .stamp {
-  --stamp-size: 2.2em; --stamp-tilt: -6deg;
+  --stamp-size: 2.2em; --stamp-tilt: -6deg; /* @kind other */
   display: inline-grid; justify-items: center; align-content: center; gap: calc(var(--stamp-size) * .03);
   height: var(--stamp-size); padding: 0 calc(var(--stamp-size) * .21); box-sizing: border-box;
   border: max(1.5px, calc(var(--stamp-size) * .042)) solid currentColor; border-radius: var(--r);
@@ -990,3 +990,127 @@ dialog.doc-viewer.doc-viewer-inline { position: static; margin: 0; width: 100%; 
 .routing-name, .routing-adoption { color: var(--muted); }
 .routing-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 @media print { .stamp, .seal { opacity: 1; } }
+
+/* Glyphs beside words (UPSTREAM-SPEC "Glyph integration"): 16px in rows, the word stays the label, colour inherits. */
+.badge-glyph, .tl-glyph, .cell-glyph, .caveat-glyph { vertical-align: -0.14em; margin-right: .3em; }
+.badge-glyph { margin-right: .25em; }
+.tl-glyph-none { display: inline-block; width: 1em; }
+.caveats p { display: flex; gap: .4rem; align-items: baseline; } .caveat-glyph { flex: none; align-self: flex-start; margin: .22em 0 0; }
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 1rem 0; text-align: center; }
+.empty-glyph { margin-right: 0; opacity: .7; }
+td.money-cell, th.money-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Roles on the console shell (REDESIGN-SPEC "Roles"): the role strip above the landing screen, and the marks on the nav,
+   the dock pills and the screen header. The community accent colours the header glyph only. */
+.role-strip { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline; padding: 10px 0 12px; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
+.role-strip strong { font-family: var(--brand-font, var(--serif)); font-weight: var(--brand-weight, 500); font-size: 17px; flex: 1 1 100%; }
+@media (min-width: 1000px) { .role-strip strong { flex: 0 1 auto; margin-right: 8px; } }
+.role-strip .role-move { display: inline-flex; gap: 6px; align-items: center; color: var(--ink); }
+.role-strip .role-move b { font-weight: 600; color: var(--bad); font-variant-numeric: tabular-nums; }
+.role-strip .role-move.quiet b { color: var(--muted); }
+.console-nav-glyph, .dock-glyph { flex: none; margin-right: 0; }
+.dock-pill { display: inline-flex; gap: 6px; align-items: center; }
+.screen-glyph { flex: none; align-self: flex-start; display: inline-grid; place-items: center; width: 40px; height: 40px; background: var(--paper); border: 1px solid var(--rule); color: var(--accent); }
+.screen-head .screen-glyph + div { flex: 1 1 18rem; }
+
+/* --- upstream small items: screen title brand vars, phone field grid, draft letter marks --- */
+/* The screen title reads only --brand-font and --brand-weight; case and tracking stay plain. */
+:root .screen-head h1 { text-transform: none; letter-spacing: 0; }
+/* A field grid track may shrink below its input's width, so inputs never push the page sideways on a phone. */
+.fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fields > *, .fields input, .fields select, .fields textarea { min-width: 0; }
+@media (max-width: 640px) { .fields { grid-template-columns: minmax(0, 1fr); } .fields input, .fields select, .fields textarea { width: 100%; box-sizing: border-box; } }
+/* The seal and stamps in a draft letter's foot. */
+.draft-letter-marks { align-items: center; gap: 10px 16px; }
+/* --- end upstream small items --- */
+/* --- paint: Swatch, PaletteMatrix, ColorDetail, SourcedDate (.swatch-*, .paint-*) --- */
+.swatch { display: inline-flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; padding: 0; max-width: 100%; }
+button.swatch { cursor: pointer; border-radius: var(--r); min-height: 24px; min-width: 24px; }
+button.swatch:hover .swatch-fill { outline: 2px solid var(--accent); outline-offset: 1px; }
+.swatch-fill { display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--r); font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.swatch-nofill { background: var(--paper); border-style: dashed; color: var(--ink); }
+.swatch-tile .swatch-fill { width: 96px; height: 96px; }
+.swatch-card .swatch-fill { width: 120px; height: 84px; }
+.swatch-code { font-weight: 600; font-variant-numeric: tabular-nums; }
+.swatch-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.swatch-printed, .swatch-hex { color: var(--muted); font-size: 12px; }
+.swatch-chip { flex-direction: row; align-items: center; gap: 6px; min-height: 24px; }
+.swatch-chip .swatch-fill { flex: none; width: 24px; height: 24px; padding: 0; }
+.swatch-chip .swatch-text { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.paint-matrix { display: grid; gap: .6rem; min-width: 0; }
+.paint-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.paint-title { margin: 0; font-family: var(--serif); font-size: 1.15rem; }
+.paint-prepared, .paint-copy { margin: 0; }
+.paint-toggle { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; border: 0; padding: 0; margin: 0; }
+.paint-toggle legend { float: left; padding: 0 8px 0 0; font-size: var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.paint-radio { display: inline-flex; gap: 6px; align-items: center; min-height: 24px; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); cursor: pointer; }
+.paint-radio input { margin: 0; width: 16px; height: 16px; }
+.paint-table .paint-caption { caption-side: top; position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.paint-table th[scope="row"] { white-space: normal; }
+.paint-surface, .paint-note { display: block; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.paint-nopaint { color: var(--muted); font-style: italic; }
+.paint-unavailable { font-size: 13.5px; }
+.paint-caption-text { margin: 0; padding-top: .4rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+.paint-flags-title, .paint-chips-title { margin: 0 0 4px; font-size: var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.paint-detail { display: grid; gap: .6rem; justify-items: start; }
+.paint-detail-title { margin: 0; font-family: var(--serif); font-size: 1.1rem; }
+.paint-description { margin: 0; }
+.paint-chip-list { display: flex; flex-wrap: wrap; gap: 6px 14px; list-style: none; margin: 0; padding: 0; }
+.paint-date-docs { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; }
+.paint-date-enter { min-height: 24px; margin-left: 6px; }
+@media (max-width: 719px) {
+  .paint-table, .paint-table tbody, .paint-table tr, .paint-table td, .paint-table th[scope="row"] { display: block; width: 100%; }
+  .paint-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .paint-table tr { margin: 0 0 .6rem; padding: .4rem .6rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+  .paint-table td[data-label]::before { content: attr(data-label); display: block; font-size: var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .paint-table td, .paint-table th[scope="row"] { border-bottom: 0; }
+  .paint-table [hidden] { display: none; }
+}
+@media print {
+  .paint-toggle, .paint-date-enter { display: none; }
+  .paint-matrix [hidden] { display: table-cell !important; }
+  .paint-table .paint-caption { position: static; width: auto; height: auto; clip-path: none; }
+  .paint-table, .paint-table tr, .paint-table td, .paint-table th { break-inside: avoid; }
+  .paint-table th, .paint-table td { border-bottom: 1px solid #000; }
+  .paint-caption-text { color: #000; border-top-color: #000; }
+}
+/* --- end paint --- */
+
+/* --- data views: density and grid (from the design's data-views.css, October 4, 2026) ---
+   Opt in with data-grid="ruled" | "ledger" | "open" and data-density="compact" | "standard" | "comfortable" on any container;
+   nothing here applies without the attribute. Community themes reach only --accent here; the radius is fixed so a rounded
+   theme cannot round a ledger. The design's icon masks and plan-group rules are not carried (Glyph replaces the first). */
+[data-grid] { --dv-py: .55rem; --dv-px: .75rem; --dv-fs: 14px; --dv-head: var(--muted); --dv-head-bg: color-mix(in srgb, var(--ink) 2.5%, var(--panel)); --dv-rule: color-mix(in srgb, var(--ink) 22%, transparent); --dv-hover: color-mix(in srgb, var(--ink) 3.5%, var(--panel)); --dv-zebra: var(--panel); --dv-select: color-mix(in srgb, var(--accent) 11%, var(--panel)); --dv-frame: 1px solid var(--line); --dv-radius: 8px; }
+[data-grid][data-density="compact"] { --dv-py: .3rem; --dv-px: .6rem; --dv-fs: 13px; }
+[data-grid][data-density="comfortable"] { --dv-py: .8rem; --dv-px: .9rem; --dv-fs: 15px; }
+[data-grid] .table-wrap { display: grid; gap: 8px; overflow-x: auto; }
+[data-grid] .table-wrap > table { font-family: system-ui, sans-serif; font-size: var(--dv-fs); background: var(--panel); border: var(--dv-frame); border-radius: var(--dv-radius); border-collapse: separate; border-spacing: 0; }
+[data-grid] caption { caption-side: top; text-align: left; font-size: 12px; color: var(--muted); padding: 0 2px 6px; }
+[data-grid] thead th { font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--dv-head); background: var(--dv-head-bg); padding: calc(var(--dv-py) * .8) var(--dv-px); border-bottom: 1px solid var(--dv-rule); white-space: nowrap; vertical-align: bottom; }
+[data-grid] thead th:first-child { border-top-left-radius: calc(var(--dv-radius) - 1px); }
+[data-grid] thead th:last-child { border-top-right-radius: calc(var(--dv-radius) - 1px); }
+[data-grid] tbody td { padding: var(--dv-py) var(--dv-px); border-bottom: 1px solid var(--line); background: var(--panel); vertical-align: top; }
+[data-grid] tbody tr:nth-child(even) td { background: var(--dv-zebra); }
+[data-grid] tbody tr:last-child td { border-bottom: 0; }
+[data-grid] tbody tr:hover td { background: var(--dv-hover); }
+[data-grid] tbody tr.selected td { background: var(--dv-select); }
+[data-grid] tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+[data-grid] td.num, [data-grid] th.num, [data-grid] td.date { font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-grid] th button { color: inherit; }
+[data-grid] th button:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+[data-grid] th[aria-sort] button { color: var(--ink); }
+[data-grid] td input, [data-grid] td select { font: inherit; color: var(--ink); background: color-mix(in srgb, var(--accent) 4%, var(--panel)); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; max-width: 100%; box-sizing: border-box; }
+[data-grid] td input:focus-visible, [data-grid] td select:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+[data-grid] td input[type="checkbox"] { width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
+[data-grid="ledger"] { --dv-zebra: color-mix(in srgb, var(--ink) 3.5%, var(--panel)); --dv-rule: var(--ink); --dv-head: var(--ink); --dv-head-bg: var(--panel); }
+[data-grid="ledger"] thead th { border-bottom-width: 2px; font-size: 12.5px; }
+[data-grid="ledger"] tbody td { border-bottom-color: transparent; }
+[data-grid="ledger"] td.num, [data-grid="ledger"] th.num { border-left: 1px solid var(--line); font-variant-numeric: tabular-nums slashed-zero; }
+[data-grid="ledger"] tfoot td { border-top: 3px double var(--ink); font-weight: 650; }
+[data-grid="open"] { --dv-frame: 0 solid transparent; --dv-head-bg: transparent; --dv-radius: 0px; --dv-rule: var(--ink); }
+[data-grid="open"] .table-wrap > table { background: transparent; }
+[data-grid="open"] thead th { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; padding-left: 0; }
+[data-grid="open"] tbody td { background: transparent; padding-left: 0; }
+[data-grid="open"] tbody tr:hover td { background: transparent; }
+[data-grid="open"] tbody tr.selected td { background: var(--dv-select); }
+/* --- end data views --- */

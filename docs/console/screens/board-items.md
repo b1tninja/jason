@@ -25,6 +25,14 @@ The evidence is shown with `Doc`, fed the loader's references ([doc-component.md
 
 An older server that answers no `evidenceRefs` shows the strings as chips, as before. The MCP tool `board_items` is unchanged: the references are the console's.
 
+## Executive items
+
+An item `agenda_session` puts in executive session (CIV 4935(e)) is answered whole only in the private view, logged in `access/served.jsonl` as `board/items.json`. Otherwise:
+
+- **The listing** answers a held row (`held_executive_row`): `executive-<n>`, `held`, the 4935 subject's general words ("An executive-session matter: a member's payment of assessments", from the agenda plan of the item's meeting, else the latest plan naming it; else "An executive-session matter"), and where it stands (status, priority, meeting, due). Never its title, summary, ask, authority, notes, evidence, `evidenceRefs`, history, or id. `executiveHeld` counts them; `executiveHeldNote` says so.
+- **The card** (`HeldBoardItemCard`) shows the subject and where it stands, with no details and no `BoardFields`.
+- **The write** (`POST /api/board-items/<id>`) on an executive item answers 404, as a missing item, outside the private view; inside it the answer is logged the same way. `jason board --set` at the terminal is unchanged.
+
 ## Acceptance criteria
 
 1. A string that names a document jason keeps opens it as one logged view (`POST /api/evidence/view`); nothing is viewed on load.

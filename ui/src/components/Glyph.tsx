@@ -42,7 +42,7 @@ export function Glyph({ name, size = "1em", label, stroke, className }: GlyphPro
   const s = typeof size === "number" ? `${size}px` : size;
   const a11y = label ? { role: "img", "aria-label": label } : { "aria-hidden": true as const };
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" className={className ? `glyph ${className}` : "glyph"} width={s} height={s} viewBox="0 0 24 24"
+    <svg className={className ? `glyph ${className}` : "glyph"} width={s} height={s} viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth={stroke ?? strokeFor(size)} strokeLinecap="round" strokeLinejoin="round"
       focusable="false" data-glyph={name} {...a11y} dangerouslySetInnerHTML={{ __html: body }} />
   );

@@ -198,6 +198,10 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     def health():
         return jsonify(ok=True, ui=(dist / "index.html").is_file(), sources=sorted(sources), writes=[w for w, on in (("board-items", board_writer), ("canvases", canvas_writer), ("decisions", decision_writer), ("onboarding", request_writer), ("owner-info", owner_info_writer), ("hearings", hearing_writer)) if on] + (sorted(__import__("jason.web.sources", fromlist=["EXTRA_WRITERS"]).EXTRA_WRITERS) if extra_writes else []))
 
+    @app.get("/api/paint/color")
+    def paint_color_source():
+        return source("paint-color")
+
     @app.get("/api/<name>")
     def source(name: str):
         load = sources.get(name)

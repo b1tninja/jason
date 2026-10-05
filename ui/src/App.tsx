@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  Card, ConsoleShell, DOCK_DRAWERS, DockDrawerBody, DockToolbar, Drawer, ErrorNotice, Loading, useDockCounts, visibleScreens,
+  Card, ConsoleShell, DOCK_DRAWERS, DockDrawerBody, DockToolbar, Drawer, ErrorNotice, Loading, landingScreen, useDockCounts, visibleScreens,
   type Audience, type ConsoleScreen,
 } from "./components";
+import { roleMoves, roleOf } from "./lib/roles";
 import { DigestView, type Digest } from "./DigestView";
 import { useApi } from "./lib/useApi";
 import { useHash } from "./lib/useHash";
@@ -96,7 +97,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "status", label: "Status", group: "Overview", view: () => <Status /> },
   // Governance
   { id: "actions", label: "Board action items", group: "Governance", aliases: ["board"], view: () => <BoardItemsView /> },
-  { id: "decisions", label: "Decisions", group: "Governance", view: () => <DecisionsView /> },
+  { id: "decisions", label: "Decisions", group: "Governance", roles: ["officer", "administrator"], view: () => <DecisionsView /> },
   { id: "agenda", label: "Plan a meeting", group: "Governance", view: () => <PlanMeetingView /> },
   { id: "room", label: "Meeting room", ownerLabel: "Live meeting", group: "Governance", owner: true, view: ({ audience }) => <MeetingRoomView audience={audience} /> },
   { id: "meetings", label: "Meetings and minutes", group: "Governance", owner: true, view: ({ audience }) => <MeetingsView audience={audience} /> },
@@ -168,11 +169,20 @@ export function App() {
   const [drawer, setDrawer] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
 
-  const visible = visibleScreens(SCREENS, audience) as ScreenDef[];
+  // What the signed-in person is to the console, from the server: a manager does not see Decisions, an administrator
+  // lands on Approvals. With none known the nav is filtered by the audience alone, as before roles.
+  const role = audience === "owner" ? undefined : roleOf(session.roleClass);
+  const visible = visibleScreens(SCREENS, audience, role) as ScreenDef[];
   const found = findScreen(rawId.split("/")[0], audience);
   const current = found && visible.some((s) => s.id === found.id) ? found : (visible[0] as ScreenDef);
 
   const navigate = (id: string, a: Audience) => { window.location.hash = `/${id}${a === "owner" ? "?view=owner" : ""}`; };
+  // A person who opens the console with no route in the address lands where their role does (an explicit link is kept).
+  useEffect(() => {
+    const start = role ? landingScreen(role) : undefined;
+    if (start && !window.location.hash.replace(/^#\/?/, "") && SCREENS.some((s) => s.id === start)) navigate(start, "board");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
   const go = (id: string) => {
     navigate(id, audience);
     if (!(pinned && wide)) setDrawer(null); // a floating drawer closes on navigation; a pinned one stays
@@ -206,6 +216,8 @@ export function App() {
       onGo={go}
       audience={audience}
       onAudience={setAudience}
+      role={role}
+      moves={role && session.account ? roleMoves(role, { approvals: counts.approvals, pending, tasks: counts.tasks, deadlines: counts.deadlines }, { go, openDrawer: (id) => setDrawer(id) }) : undefined}
       session={{ me: session.me, setMe: session.setMe, people: session.people, account: session.account,
                  signInLinks: session.signInLinks, signInError: session.signInError, onSignOut: () => { void session.signOut(); },
                  actAs: session.canActAs ? {

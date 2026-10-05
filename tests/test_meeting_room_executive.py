@@ -308,21 +308,25 @@ EXEC_ASK = "Accept Q. Sample's offer of twelve months."
 
 @pytest.fixture
 def meeting_web(tmp_path, monkeypatch):
-    """The real ``meeting`` loader over a tmp data folder with one open and one executive board item, the agenda plan
-    naming the executive one's 4935 subject, and an app with made-up sign-in serving ``/api/meeting``."""
+    """The real ``meeting`` and ``board_items`` loaders over a tmp data folder with one open and one executive board item,
+    the agenda plan naming the executive one's 4935 subject, and an app with made-up sign-in serving ``/api/meeting``,
+    ``/api/board-items``, and the board's write."""
     from jason.community.board_items import BoardItem, ItemCategory, ItemStatus
     from jason.tasks import agenda_plan
-    from jason.tasks.board_items import save
+    from jason.tasks.board_items import _encode, load, save
 
     saved = {k: sys.modules.get(k) for k in ("jason.mcp", "jason.mcp.county")}
     county = types.ModuleType("jason.mcp.county")
     county._data_dir = lambda _=None: tmp_path
+    county.board_items = lambda include_closed=False, data_dir=None: {
+        "found": True, "items": [_encode(i) for i in load(tmp_path) if include_closed or i.status.value != "closed"]}
     pkg = types.ModuleType("jason.mcp")
     pkg.__path__ = []
     pkg.county = county
     sys.modules["jason.mcp"], sys.modules["jason.mcp.county"] = pkg, county
     save(tmp_path, [BoardItem("sample-payment-plan", EXEC_TITLE, "Owner Q. Sample owes.", EXEC_ASK, ItemCategory.COLLECTIONS,
-                              status=ItemStatus.PROPOSED, notes="Offered twelve months."),
+                              status=ItemStatus.PROPOSED, notes="Offered twelve months.", authority="CIV 5665",
+                              evidence=("Q. Sample's ledger, made up",)),
                     BoardItem("repaint", "Repaint the carports", "Peeling.", "Approve the bid.", ItemCategory.MAINTENANCE,
                               status=ItemStatus.PROPOSED)])
     agenda_plan.update(tmp_path, DAY, {"items": {"sample-payment-plan": {"subject": "assessment_payment"}}}, by="S. Clerk")
@@ -332,7 +336,8 @@ def meeting_web(tmp_path, monkeypatch):
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text("<!doctype html><html></html>", encoding="utf-8")
-    app = create_app(dist, {"meeting": sources.meeting}, approvals_live=None, sign_in=webclient.roster_sign_in())
+    app = create_app(dist, {"meeting": sources.meeting, "board-items": sources.board_items}, approvals_live=None,
+                     sign_in=webclient.roster_sign_in())
     try:
         yield types.SimpleNamespace(app=app, root=tmp_path, sources=sources)
     finally:
@@ -370,6 +375,54 @@ def test_the_meeting_loader_lists_executive_titles_only_in_the_private_view(meet
     assert line["path"] == "board/items.json" and line["level"] == "P3" and line["private"] is True
     # Whole for a caller that keeps the private view itself (the meeting room, the agenda plan); no request asked.
     assert any(r["title"] == EXEC_TITLE for r in meeting_web.sources.meeting({"date": DAY}, private=True)["items"])
+
+
+# -- the board items screen: an executive item whole only in the private view ----------------------------------------------
+
+def test_the_board_items_listing_holds_an_executive_item_back_outside_the_private_view(meeting_web):
+    secrets = (EXEC_TITLE, "Q. Sample", EXEC_ASK, "sample-payment-plan", "Offered twelve months", "CIV 5665")
+    for c in (webclient.client(meeting_web.app),                                                   # nobody signed in
+              webclient.sign_in(webclient.client(meeting_web.app), "Dana Director")):              # P3, no private view
+        out = c.get("/api/board-items").json
+        assert all(s not in json.dumps(out) for s in secrets), "an executive item's title, ask, notes, evidence, or id"
+        held = next(r for r in out["items"] if r.get("held"))
+        assert held["id"] == "executive-1" and held["subject"] == "assessment_payment"          # the latest plan's subject
+        assert held["title"] == "An executive-session matter: a member's payment of assessments"
+        assert (held["status"], held["priority"], held["session"]) == ("proposed", "normal", "executive session")
+        assert held["evidence"] == [] and held["evidenceRefs"] == [] and held["history"] == []
+        assert out["executiveHeld"] == 1 and "private view" in out["executiveHeldNote"]
+        assert any(r["title"] == "Repaint the carports" and "evidenceRefs" in r for r in out["items"])   # open as it is
+        # The board's write is not offered on a held row: the real id answers as missing and changes nothing.
+        assert c.post("/api/board-items/sample-payment-plan", json={"notes": "x"}).status_code == 404
+        assert c.post("/api/board-items/executive-1", json={"notes": "x"}).status_code == 404
+    assert _served(meeting_web.root) == []
+    from jason.tasks.board_items import load
+
+    assert next(i for i in load(meeting_web.root) if i.id == "sample-payment-plan").notes == "Offered twelve months."
+    director = webclient.sign_in(webclient.client(meeting_web.app), "Dana Director")
+    assert director.post("/api/private", json={"reason": "executive session prep"}).status_code == 200
+    shown = director.get("/api/board-items").json
+    row = next(r for r in shown["items"] if r["id"] == "sample-payment-plan")
+    assert row["title"] == EXEC_TITLE and row["ask"] == EXEC_ASK and row["evidenceRefs"] and shown["executiveHeld"] == 0
+    line = _served(meeting_web.root)[-1]
+    assert line["path"] == "board/items.json" and line["level"] == "P3" and line["private"] is True
+    saved = director.post("/api/board-items/sample-payment-plan", json={"status": "on agenda"})
+    assert saved.status_code == 200 and saved.json["title"] == EXEC_TITLE and saved.json["status"] == "on agenda"
+    assert len(_served(meeting_web.root)) == 2                                                   # the write's answer, logged
+
+
+def test_a_held_board_item_with_no_planned_subject_says_only_executive_session(meeting_web):
+    from jason.community.board_items import BoardItem, ItemCategory, Session
+    from jason.tasks.board_items import load, save
+
+    save(meeting_web.root, load(meeting_web.root) + [BoardItem("made-up-suit", "Suit by made-up Z. Party", "s", "Direct counsel.",
+                                                               ItemCategory.LEGAL, session=Session.EXECUTIVE)])
+    out = meeting_web.sources.board_items({})                                                  # no request: held
+    rows = [r for r in out["items"] if r.get("held")]
+    assert [r["title"] for r in rows] == ["An executive-session matter: a member's payment of assessments",
+                                          "An executive-session matter"]
+    assert "Z. Party" not in json.dumps(out) and out["executiveHeld"] == 2
+    assert any(r["title"] == "Suit by made-up Z. Party" for r in meeting_web.sources.board_items({}, private=True)["items"])
 
 
 def test_a_room_kept_apart_counts_nothing_inside_its_windows(tmp_path):

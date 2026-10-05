@@ -6,7 +6,27 @@ import { BOARD_STATUSES, type BoardItem } from "./types";
 
 /** A board item as `/api/board-items` answers it: its evidence strings, and beside them `evidenceRefs`, each string as
  * the server mapped it (a document reference, a command, or text; docs/console/doc-component.md). */
-export type BoardItemWithRefs = BoardItem & { evidenceRefs?: EvidenceEntry[] };
+export type BoardItemWithRefs = BoardItem & { evidenceRefs?: EvidenceEntry[]; held?: boolean; subject?: string; general?: string };
+
+/** What a held executive item says: where the rest of it is, and why it is not here. */
+export const BOARD_HELD_LINE = "Listed by its Civil Code 4935 subject only (4935(e)); open the private view to see it and change its board fields.";
+
+/** An executive-session item outside the private view: its 4935 subject and where it stands, no details and no board
+ * fields (the server answers it as `executive-<n>`, with no title, ask, notes, evidence, or id). */
+export function HeldBoardItemCard({ item }: { item: BoardItemWithRefs }) {
+  return (
+    <article className="item" data-priority={item.priority}>
+      <header className="row wrap">
+        <Pill word={item.priority} />
+        <Badge tone="warn">executive</Badge>
+        <DueDate iso={item.due} />
+      </header>
+      <h4>{item.title}</h4>
+      {item.meeting && <p className="muted">Meeting: {item.meeting}</p>}
+      <p className="muted">{BOARD_HELD_LINE}</p>
+    </article>
+  );
+}
 
 /** An item's history lines ("YYYY-MM-DD: what") as Timeline events; a line without a day is undated. */
 function historyEvents(history: readonly string[]): TimelineEvent[] {
@@ -57,7 +77,7 @@ export function BoardItemCard({ item, onSaved }: { item: BoardItemWithRefs; onSa
 
 export function BoardItemsView() {
   const [closed, setClosed] = useState(false);
-  const r = useApi<{ found: boolean; items: BoardItemWithRefs[] }>(`/api/board-items?closed=${closed}`);
+  const r = useApi<{ found: boolean; items: BoardItemWithRefs[]; executiveHeld?: number; executiveHeldNote?: string }>(`/api/board-items?closed=${closed}`);
   const [patched, setPatched] = useState<Record<string, BoardItemWithRefs>>({});
   return (
     <div className="stack">
@@ -68,13 +88,16 @@ export function BoardItemsView() {
         {(d) => {
           const items = d.items.map((i) => (patched[i.id] ? { ...i, ...patched[i.id] } : i));
           return (
-            <Kanban
-              lanes={closed ? BOARD_STATUSES : BOARD_STATUSES.filter((s) => s !== "closed")}
-              items={items}
-              laneOf={(i) => i.status}
-              keyOf={(i) => i.id}
-              render={(i) => <BoardItemCard item={i} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
-            />
+            <>
+              {d.executiveHeldNote && <p className="muted">{d.executiveHeldNote}</p>}
+              <Kanban
+                lanes={closed ? BOARD_STATUSES : BOARD_STATUSES.filter((s) => s !== "closed")}
+                items={items}
+                laneOf={(i) => i.status}
+                keyOf={(i) => i.id}
+                render={(i) => i.held ? <HeldBoardItemCard item={i} /> : <BoardItemCard item={i} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
+              />
+            </>
           );
         }}
       </RemoteView>

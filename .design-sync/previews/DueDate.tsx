@@ -27,3 +27,14 @@ export const CalendarColumn = () => (
     <DueDate iso={undefined} today={today} />
   </div>
 );
+
+/** Distance carries its attention glyph: overdue and due soon each get a mark, a far date none. Stacked with labels. */
+export const WithGlyphs = () => (
+  <table style={{ borderCollapse: "collapse" }}>
+    <tbody>
+      {([["Budget mailing", "2026-08-20"], ["Hearing notice", "2026-10-09"], ["Policy renewal", "2027-02-01"]] as const).map(([what, iso]) => (
+        <tr key={what}><td style={{ paddingRight: 16 }}>{what}</td><td><DueDate iso={iso} today={today} /></td></tr>
+      ))}
+    </tbody>
+  </table>
+);

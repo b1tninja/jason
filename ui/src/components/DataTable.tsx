@@ -1,6 +1,8 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EmptyState } from "./States";
 import { SearchBox } from "./SearchBox";
+import { Glyph, type GlyphName } from "./Glyph";
+import { Money } from "./Money";
 
 export interface Column<T> {
   key: string;
@@ -9,8 +11,11 @@ export interface Column<T> {
   /** Sort/filter value; defaults to row[key]. */
   value?: (row: T) => string | number;
   align?: "left" | "right";
-  /** `date`: an ISO day that never wraps and uses tabular figures. */
-  kind?: "date";
+  /** `date`: an ISO day that never wraps and uses tabular figures. `money`: integer cents, right-aligned in tabular figures
+   * and shown as dollars (with no `render`, the cell is a `Money`). */
+  kind?: "date" | "money";
+  /** A glyph beside the cell's word: payment kinds, record kinds, request kinds. One glyph column per table at most. */
+  glyph?: (row: T) => GlyphName | undefined;
 }
 
 type Dir = "asc" | "desc";
@@ -57,7 +62,14 @@ export function DataTable<T extends object>({
   const toggle = (key: string) =>
     setSort((s) => (s?.key !== key ? { key, dir: "asc" } : s.dir === "asc" ? { key, dir: "desc" } : null));
 
-  const cellClass = (c: Column<T>) => [c.align === "right" ? "num" : "", c.kind === "date" ? "date" : ""].filter(Boolean).join(" ") || undefined;
+  const cellClass = (c: Column<T>) =>
+    [c.align === "right" || c.kind === "money" ? "num" : "", c.kind === "date" ? "date" : "", c.kind === "money" ? "money-cell" : ""].filter(Boolean).join(" ") || undefined;
+  const cell = (c: Column<T>, r: T): ReactNode => {
+    const raw = val(c, r);
+    const body = c.render ? c.render(r) : c.kind === "money" && typeof raw === "number" ? <Money cents={raw} /> : String(raw);
+    const name = c.glyph?.(r);
+    return name ? <><Glyph name={name} size="1em" className="cell-glyph" />{body}</> : body;
+  };
   const keyOf = (r: T, i: number) => (rowKey ? rowKey(r) : String(i));
   const onKey = (r: T) => (e: KeyboardEvent<HTMLTableRowElement>) => {
     if (onSelect && e.key === "Enter" && e.target === e.currentTarget) { e.preventDefault(); onSelect(r); }
@@ -99,7 +111,7 @@ export function DataTable<T extends object>({
                 >
                   {columns.map((c) => (
                     <td key={c.key} className={cellClass(c)}>
-                      {c.render ? c.render(r) : String(val(c, r))}
+                      {cell(c, r)}
                     </td>
                   ))}
                 </tr>

@@ -862,8 +862,40 @@ class Community(ABC):
         """The developer's shared solar program, or None when the community has none."""
         return None
 
+    def paint_schedules(self) -> tuple:
+        """The association's paint schedules (``jason.community.paint.PaintSchedule``). Empty until the specification sets them."""
+        return ()
+
     def vendor_portals(self) -> tuple[VendorPortal, ...]:
         """Vendor customer portals jason reads bills and service records from. Empty until the specification sets them."""
+        return ()
+
+    def facts(self) -> tuple:
+        """What the association knows about itself (``jason.community.facts.Fact``). Empty until the specification sets them."""
+        return ()
+
+    def original_specs(self) -> tuple:
+        """Each plan's original finishes and equipment (``jason.community.unit_record.OriginalSpec``). Empty until set."""
+        return ()
+
+    def unit_coverage(self):
+        """The two lists the documents draw for a unit's components (``unit_record.UnitCoverage``), or None."""
+        return None
+
+    def loss_ladder(self) -> tuple:
+        """The five questions of a loss and their provisions (``loss_packet.LadderStep``). Empty until set."""
+        return ()
+
+    def open_questions(self) -> tuple:
+        """Questions the association has put to an agent, counsel, or the board (``loss_packet.OpenQuestion``). Empty until set."""
+        return ()
+
+    def deductible_policy(self):
+        """The board's adopted deductible guideline as a rule row, or None until adopted."""
+        return None
+
+    def interior_reports(self) -> tuple:
+        """Owner-reported interior colors by plan. Empty until a register supplies them."""
         return ()
 
     def mail_addresses(self):
