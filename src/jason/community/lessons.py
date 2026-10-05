@@ -220,6 +220,40 @@ LESSONS: tuple[Lesson, ...] = (
            "OCR reading is likely only when two independent readers agree.",
            Status.FIXED, guards=("tasks.intake.ocr_reading_asks (copy slips asked; agreement tiers)",),
            docs=("docs/ocr-correction.md",)),
+    Lesson("real-word-misread-needs-the-page", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "A word misread as another real word (\"ot\" for \"of\") passed every word list. A bigram channel flagged it "
+           "but could not choose between the twins, and the local model with no image chose right 11 times in 63.",
+           "A word list sees only non-words, and a language model with no image judges how a sentence reads, not "
+           "what the page printed.",
+           "The noisy channel only flags a real word (Options.real_words, at a posterior of 0.95); the word is sent "
+           "to the page's crop (route_real), and the crop reading is taken only when it is one a crop can give. "
+           "Measured: the crop fixed 47 of 63 on the certified copy and 161 of 218 at 85 dpi, with no right word "
+           "changed.",
+           Status.FIXED, guards=("ocr_correct.Options.real_words", "tasks.ocr_correct.routed",
+                                 "tasks.ocr_correct.usable_reading", "tests/test_ocr_routing.py"),
+           docs=("docs/ocr-correction.md",),
+           notes=("real-words stays an option off by default: below 0.95 it changes words the copy kept.",)),
+    Lesson("one-edit-candidates-miss-two-glyph-misreads", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "The candidate rules asked for one edit, so a word read two or three letters wrong (\"tJnit\") had no right "
+           "candidate: 69% of non-words and 44% of two-glyph misreads on the certified copy had theirs listed. A "
+           "model shown the crop with candidates did worse than the crop read freely.",
+           "Any chooser is bounded by its candidates; a list cut too short makes a confident wrong pick.",
+           "A vocabulary search within three edits, scored by a confusion channel learned from aligned readings and "
+           "rendered statutes, lifts the listed share to 94% and 80%. The page's crop is read without candidates, and "
+           "the vision chooser is kept out of the default route.",
+           Status.FIXED, guards=("ocr_vocab.search", "ocr_channel.learn", "jason intake --scan --vision-route suspects",
+                                 "tests/test_ocr_channel.py"),
+           docs=("docs/ocr-correction.md",)),
+    Lesson("misread-glyph-sets-the-case", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A correction copied the misread glyph's capital onto the word (\"Lhe\" in mid-sentence became \"The\"), and "
+           "a defined term such as \"Unit\" was never a term, because the term list left out every word the general "
+           "list knows.",
+           "The case of a misread letter says nothing about the printed word's case.",
+           "case_for keeps the token's case when its first letter was read right, and otherwise takes it from the "
+           "sentence and the document's own terms (document_term_forms: a word capitalized mid-sentence often enough). "
+           "Recomputing the case every time lost 17 right words to fix 4.",
+           Status.FIXED, guards=("ocr_correct.case_for", "lexicon.document_term_forms", "tests/test_ocr_channel.py"),
+           docs=("docs/ocr-correction.md",)),
     Lesson("duty-gold-overstates", OCT_2026, (Area.GOVERNING,),
            "The phrase grammar for duties scored precision 1.00 on its gold sets, while random samples of its readings "
            "across all the governing documents had about four in five of the right kind.",

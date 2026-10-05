@@ -407,14 +407,18 @@ PROCEDURES: tuple[Procedure, ...] = (
                  refs=("docs/living-documents.md",), lessons=("plain-text-loses-the-marks", "amended-by-hand-drifts")),
             Step("Park every uncertainty as a question, and answer them: the kind, OCR readings (the likely ones in a "
                  "batch after a look), drift, an amendment's silent changes, orphaned notes. The text rules read the "
-                 "OCR beside the working copy; --model adds the local model as a second reader of the doubtful words "
-                 "and --vision the page's crop of a number or operative word in doubt.",
-                 command="jason intake --scan [--model] [--vision]; jason intake --likely; "
+                 "OCR beside the working copy (with a vocabulary search, case from the sentence, and the document's "
+                 "terms: --ocr-options); --model adds the local model as a second reader of the doubtful words and "
+                 "--vision the page's crop of every word the rules cannot settle (--vision-route suspects). Learn the "
+                 "letters this association's scans misread first, once (--learn-channel).",
+                 command="jason intake --learn-channel; jason intake --scan [--model] [--vision]; jason intake --likely; "
                          "jason intake --answer ID TEXT --by NAME",
                  check="no answer without a name; a likely reading has two readers that agree and changes no number "
-                       "or operative word without the page; a question for counsel goes to the board's canvas",
+                       "or operative word without the page; a reading the crop alone makes is held, not likely; a "
+                       "question for counsel goes to the board's canvas",
                  refs=("docs/ocr-correction.md",),
-                 lessons=("model-corrects-the-drafting", "copy-shares-ocr-slips"), person=True),
+                 lessons=("model-corrects-the-drafting", "copy-shares-ocr-slips", "real-word-misread-needs-the-page",
+                          "one-edit-candidates-miss-two-glyph-misreads", "misread-glyph-sets-the-case"), person=True),
             Step("For a scan with no working copy (most library files), write the OCR suggestions beside its text and "
                  "look first at the worst-read files: a high share of words no English list knows is a file to read "
                  "again (the Tesseract tool, or the vision model).",
