@@ -1797,8 +1797,11 @@ LESSONS: tuple[Lesson, ...] = (
            "Connections were defined by group, not by what the answer is.",
            "A connect item is any item checked by a credential setting or answered by a Keeper record's name, "
            "whatever its group; it shows the terminal command only. intake.secret_reason still guards every value.",
-           Status.DECISION, guards=("tests/test_web_intake.py (keys and codes is command-only)",),
-           notes=("A person decides whether POST /api/write/intake refuses Keeper-record questions outright.",)),
+           Status.OPEN, guards=("tests/test_web_intake.py (keys and codes is command-only)",),
+           notes=("Decided 2026-10-04: onboarding credentials and integrations (Google Workspace's OAuth web "
+                  "application, Keeper, PayHOA, Zoom) is an administrator's flow still to be built; until then the "
+                  "console shows the terminal command and the route accepts a Keeper record's name as the CLI does "
+                  "(docs/onboarding.md, Connecting integrations).",)),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
            "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",

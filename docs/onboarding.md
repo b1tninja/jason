@@ -107,6 +107,25 @@ jason onboard --new KEY --name NAME            # a new association's profile pac
 - **Every answer is signed.** Who answered and when, and who confirmed and when.
 - **The same queue.** Answering, confirming, and applying use the intake queue's own paths (`jason intake`). `jason intake --scan` also parks these questions. Over MCP, `answer_intake_question` answers one (parking a question `next_questions` listed first, as `--answer` does) and `onboarding_confirm` is the second person. `onboarding_status` and `next_questions` read the session ([mcp.md](mcp.md)).
 
+## Connecting integrations (TODO)
+
+Onboarding a real association means an administrator connects its integrations. Today each is set up at a terminal by a person ([setup.md](setup.md)), and the console's setup tab shows the command, never a field:
+- **Google Workspace:** the Cloud project and its APIs, an OAuth web-application client (consent screen, scopes, redirect URIs for jason-web's sign-in), the token, the Drive home, the groups, the calendar; later jason's own mailbox.
+- **Keeper:** the vault and the records every other credential lives in; `jason login`, with device approval.
+- **PayHOA:** the organization id and its Keeper record.
+- **Zoom:** the app (`jason zoom --store-app`) and its Keeper record.
+- **The others a profile names:** PostScanMail, a vendor's portal, the county's sources.
+
+**To build:** an administrator's flow for connecting each integration. What it must keep:
+- the administrator only, signed in, never while viewing as someone else;
+- no secret typed into, shown in, logged by, or stored by the console: the secret goes to Keeper, and the console holds the record's name;
+- the narrowest scope that does the job, read-only first, with the scopes listed before consent;
+- a connection checked by a read before it counts as connected, and who connected it and when recorded;
+- revoking and rotating, as visible as connecting;
+- a profile's own facts (which services it uses) staying in the profile, and the onboarding checklist computing whether each is connected.
+
+Until it is built, the write route (`POST /api/write/intake/<id>`) still accepts an answer naming a Keeper record, as `jason onboard --answer` and the MCP tool do; `intake.secret_reason` refuses anything that looks like a secret.
+
 ## Starting a new association
 
 A new association is a new profile package ([profiles.md](profiles.md)). `jason onboard --new` writes one from jason's general templates (`src/jason/templates/profile/`):

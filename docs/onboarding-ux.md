@@ -79,7 +79,8 @@ The first tab of `#/onboarding` is a view over the session (`GET /api/onboarding
   person runs. A secret is refused with the reason, and the field is cleared. A high-stakes answer waits on a second
   person, who confirms it on the same tab.
 - **Connections** (a credential setting, a Keeper-held sign-in) show the terminal command (`jason login`, or the
-  answer naming the Keeper record), never a field.
+  answer naming the Keeper record), never a field. Connecting integrations in the console is still to be built
+  ([onboarding.md](onboarding.md#connecting-integrations-todo)).
 - With no one signed in, or while an admin views as someone else, the questions are shown without a form.
 
 ## Who has what
