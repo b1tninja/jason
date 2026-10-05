@@ -1783,7 +1783,7 @@ def incident_history(building: int | None = None, address: str = "", work: str =
     Each event has its work (repair, maintenance, improvement, inspection), its causes (roof leak, plumbing leak,
     vehicle collision, ...), and whether an insurance claim is tied to it (claimed, with claim numbers) or it names a
     sudden cause with no claim on file; its standing against the master policy's deductible (claimed, claim candidate when the
-    paperwork's cost reaches the deductible, under deductible, sudden with cost unknown). Filter by building (1-8), address words ("123 Main"), work, claims_only,
+    paperwork's cost reaches the deductible, under deductible, sudden with cost unknown). A claim paper on another's policy (an owner's own insurer) is listed in otherInsurerClaims and does not count as the association's claim or its cost: the insurer's involvement is a lead for deeper analysis. Filter by building (1-8), address words ("123 Main"), work, claims_only,
     cause words, or since (YYYY-MM-DD). Routine upkeep and inspections with no claim and no sudden cause are left out
     unless include_routine or a work is named. Amounts are integer cents. An event is a rule's reading of the paperwork;
     whether a peril was covered is the insurer's answer; a claim file's snippet is held back. Reads disk only."""

@@ -44,6 +44,10 @@ EVENT_WINDOW_DAYS = 150
 SAME_UNIT_DAYS = 45
 
 
+# ``Evidence.claim_of`` for a claim paper on another's policy (``Policyholder.OTHER`` in the claim readers).
+OTHER_POLICY = "other"
+
+
 class Work(Enum):
     """What the association had done. Every event is part of the maintenance history by its work."""
 
@@ -538,6 +542,7 @@ class Evidence:
     hint: str = ""                            # the vendor rule that set its work, when one did
     claim_status: str = ""                    # the carrier's status, from a loss run ("Closed With Pay")
     claim_paid_cents: int | None = None       # what the carrier paid on the claim, from a loss run
+    claim_of: str = ""                        # "other" when the claim paper is on another's policy (an owner's own insurer), else ""
 
     @property
     def where(self) -> tuple[Place, ...]:
@@ -745,15 +750,40 @@ class Event:
         return tuple(sorted({claim_key(e.claim) for e in self.evidence if e.claim}))
 
     @property
+    def other_insurer_claims(self) -> tuple[str, ...]:
+        """The claims with a paper on another's policy (an owner's own insurer), one per claim however its papers print
+        the number. They are shown apart: the association is not the insured on that paper, and the insurer's involvement
+        in the loss is a lead for a person to analyze. Each paper stands by what it says: a claim number two policies'
+        papers share (a program contractor's form beside the association's carrier's letter) lists here, and only the
+        paper on another's policy is left out of what the association claimed and recovered."""
+        return tuple(sorted({claim_key(e.claim) for e in self.evidence if e.claim and e.claim_of == OTHER_POLICY}))
+
+    def _own(self) -> list[Evidence]:
+        """The papers not on another's policy."""
+        return [e for e in self.evidence if e.claim_of != OTHER_POLICY]
+
+    @property
     def claim_outcomes(self) -> dict[str, dict]:
-        """Each claim the carrier's loss run records: its status and what it paid."""
-        return {e.claim: {"status": e.claim_status, "paidCents": e.claim_paid_cents, "carrier": e.vendor}
-                for e in self.evidence if e.claim and e.claim_status}
+        """Each claim paper's outcome: its status and what it paid. A paper on another's policy says so."""
+        out: dict[str, dict] = {}
+        for e in self.evidence:
+            if e.claim and e.claim_status:
+                # One entry per claim number as printed: once any paper under it is on another's policy, the entry says so.
+                other = e.claim_of == OTHER_POLICY or "policyholder" in out.get(e.claim, {})
+                out[e.claim] = {"status": e.claim_status, "paidCents": e.claim_paid_cents, "carrier": e.vendor,
+                                **({"policyholder": OTHER_POLICY} if other else {})}
+        return out
+
+    @property
+    def claim_papers(self) -> bool:
+        """Any insurance claim paper is tied to the event, on the association's policy or another's. Events group by it."""
+        return any(e.claimed for e in self.evidence)
 
     @property
     def claimed(self) -> bool:
-        """An insurance claim is on file for the event: the line between upkeep and a covered loss is the insurer's."""
-        return any(e.claimed for e in self.evidence)
+        """An insurance claim is on file for the event: the line between upkeep and a covered loss is the insurer's. A
+        claim on another's policy (an owner's own insurer) is not the association's claim and does not count."""
+        return any(e.claimed for e in self._own())
 
     @property
     def sudden(self) -> bool:
@@ -769,11 +799,13 @@ class Event:
         """The most the paperwork puts on the event: the largest quote, the invoices, the payments, or a carrier's figure."""
         # The largest single figure, not a sum: a month of small repairs is not one loss. A claim's own estimates are parts
         # of one loss (the repair and the water mitigation), so their distinct amounts add.
-        figures = [e.amount_cents for e in self.evidence if e.amount_cents]
-        figures += [e.payment["amountCents"] for e in self.evidence if e.payment and e.payment.get("amountCents", 0) > 0]
-        estimates = {e.amount_cents for e in self.evidence if e.claimed and e.claim and e.amount_cents and not e.claim_status
+        # A paper on another's policy (an owner's own insurer) puts its figures on that policy, not on the association's loss.
+        own = self._own()
+        figures = [e.amount_cents for e in own if e.amount_cents]
+        figures += [e.payment["amountCents"] for e in own if e.payment and e.payment.get("amountCents", 0) > 0]
+        estimates = {e.amount_cents for e in own if e.claimed and e.claim and e.amount_cents and not e.claim_status
                      and e.stage in (Stage.PROPOSAL, Stage.CLAIM)}
-        settled = [e.claim_paid_cents for e in self.evidence if e.claim_paid_cents]
+        settled = [e.claim_paid_cents for e in own if e.claim_paid_cents]
         if len(estimates) > 1 and not settled:
             figures.append(sum(estimates))
         return max(figures) if figures else None
@@ -792,8 +824,10 @@ class Event:
 
     @property
     def routine(self) -> bool:
-        """Upkeep and inspections only, with no claim and no sudden cause."""
-        return not self.claimed and not self.sudden and set(self.works) <= {Work.MAINTENANCE, Work.INSPECTION, Work.NONE}
+        """Upkeep and inspections only, with no claim and no sudden cause. An event with another insurer's claim paper is
+        not routine: that insurer's involvement is a lead."""
+        return (not self.claimed and not self.other_insurer_claims and not self.sudden
+                and set(self.works) <= {Work.MAINTENANCE, Work.INSPECTION, Work.NONE})
 
     @property
     def vendors(self) -> tuple[str, ...]:
@@ -820,14 +854,14 @@ def _related(event: Event, ev: Evidence) -> bool:
         if not (mine & theirs and ev.day and event.first and abs((ev.day - event.first).days) <= 3):
             return False
     # Routine upkeep joins a claim only through the claim's own unit: a year of pest invoices is not a liability claim.
-    if event.claimed and not ev.claimed and ev.work is Work.MAINTENANCE and not (mine & theirs):
+    if event.claim_papers and not ev.claimed and ev.work is Work.MAINTENANCE and not (mine & theirs):
         return False
     if mine and theirs:
         if not mine & theirs:
             return False
         # One unit's paperwork within weeks of its event is that event: the police report, the contractor's proposal,
         # and the reimbursement notice share an address and dates, not always a word.
-        if ev.day and event.last and abs((ev.day - event.last).days) <= SAME_UNIT_DAYS and (event.claimed or event.sudden):
+        if ev.day and event.last and abs((ev.day - event.last).days) <= SAME_UNIT_DAYS and (event.claim_papers or event.sudden):
             return True
         if ev.vendor and ev.vendor in event.vendors:
             return True
@@ -942,4 +976,4 @@ def within(event: Event, since: date | None) -> bool:
 __all__ = ["EVENT_WINDOW_DAYS", "Work", "ClaimStanding", "Cause", "Element", "Stage", "PlaceRole", "Rule", "CAUSE_RULES", "ELEMENT_RULES",
            "STAGE_RULES", "Place", "Evidence", "Event", "scope_text", "causes_in", "elements_in", "stage_of", "work_of",
            "claimed_in", "claim_key", "LossRunClaim", "read_loss_run", "loss_run_text", "places_in", "located", "read_evidence", "is_repair_paperwork", "TRADE_KINDS", "VendorWork",
-           "apply_vendor_work", "group_events", "snippet_of", "cause_counts", "within", "SUDDEN"]
+           "apply_vendor_work", "group_events", "snippet_of", "cause_counts", "within", "SUDDEN", "OTHER_POLICY"]

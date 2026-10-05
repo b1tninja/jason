@@ -49,6 +49,15 @@ class Level(Enum):
     DISTRICT = "special district"
 
 
+class Policyholder(Enum):
+    """Whose policy a claim paper is on: the association's own (its master policy or another it carries), another's (an
+    owner's own homeowner policy, a driver's), or not known. Not known is the default: a carrier's name does not say."""
+
+    ASSOCIATION = "association"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class Sender:
     """One counterparty: its name, kind, a government agency's level, and the words that recognize it.
@@ -56,7 +65,9 @@ class Sender:
     ``words`` are matched against a document's sender field and its letterhead (the first lines), letters and
     digits only. ``payhoa_vendor`` is its name in PayHOA's vendor directory, when the association pays it.
     ``role`` says what it is to the association ("flood insurance carrier", "prior manager"). ``domains`` are the email
-    domains it writes from, so its email is read beside its letters.
+    domains it writes from, so its email is read beside its letters. ``holder`` is, for an insurer, whose policies its
+    claim papers are on when the directory says (``Policyholder.OTHER`` for an owner's own homeowner insurer); it is
+    ``UNKNOWN`` unless a person has said so, since a name in the directory does not tell whose policy a paper is on.
     """
 
     name: str
@@ -66,6 +77,7 @@ class Sender:
     payhoa_vendor: str = ""
     role: str = ""
     domains: tuple[str, ...] = ()
+    holder: Policyholder = Policyholder.UNKNOWN
 
     def writes_from(self, address: str) -> bool:
         """Whether an email address is at one of its domains (or a subdomain)."""
@@ -240,5 +252,5 @@ def other_associations(text: str, *, own_name: str = "") -> tuple[str, ...]:
     return tuple(n for n in found if not any(o != n and squeezed[n].endswith(squeezed[o]) for o in found))
 
 
-__all__ = ["SourceKind", "Level", "Sender", "KIND_WORDS", "resolve", "other_associations", "fold", "sender_in", "sender_name",
+__all__ = ["SourceKind", "Level", "Policyholder", "Sender", "KIND_WORDS", "resolve", "other_associations", "fold", "sender_in", "sender_name",
            "first_sender_in", "manager_in", "manager_name"]

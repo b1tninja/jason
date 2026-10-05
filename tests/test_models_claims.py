@@ -18,7 +18,7 @@ TODAY = date(2026, 9, 29)
 class FakeCommunity:
     def insurance(self):
         master = SimpleNamespace(kind=SimpleNamespace(name="MASTER"), carrier="Example National Insurance Company (admitted)",
-                                 program="Example Program Services", number="EX-1")
+                                 program="Example Program Services", number="EX-1", prior_numbers=("EX-100200", "EX-100100"))
         return SimpleNamespace(policies=(master,))
 
     def streets(self):
@@ -30,10 +30,12 @@ class FakeCommunity:
         return "mystique"
 
     def senders(self):
-        from jason.community.sources import Sender, SourceKind
+        from jason.community.sources import Policyholder, Sender, SourceKind
 
         return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),
                 Sender("Elm Mutual Insurance", SourceKind.INSURER, ("ELM MUTUAL", "ELM INSURANCE EXCHANGE")),
+                Sender("Cedar Home Insurance", SourceKind.INSURER, ("CEDAR HOME",), role="an owner's own insurer on homeowner claims",
+                       holder=Policyholder.OTHER),
                 Sender("Example Claims Administrators", SourceKind.INSURER, ("EXAMPLE CLAIMS",)),
                 Sender("Elm Roofing", SourceKind.VENDOR, ("ELM ROOFING",)))
 
@@ -270,3 +272,115 @@ def test_case_report_evidence_places_each_case_once():
     assert [r.sha256 for r in rows] == ["case:00000002", "case:00000003"]
     claim = rows[1]
     assert claim.claim == "5020000002-1-1" and claim.claimed and [p.address for p in claim.where] == ["5703 WHIMSICAL LN"]
+
+
+# -- whose policy a claim paper is on ----------------------------------------------------------------------------------
+
+OWNER_ESTIMATE = """Insured:
+An Owner
+Claim Number: 8800-00-0001
+Type of Loss: WATER
+Date of Loss:
+6/4/2026
+Estimate:
+Cedar Home estimate
+RCV
+$7,040.72
+Less Deductible
+$500.00
+Net Claim
+$6,540.72
+"""
+
+OWNER_LETTER = """Subject:
+Status of your claim
+June 20, 2026
+Insured:
+An Owner
+Claim Number:
+9900-00-0002
+Policy Number:
+HO-7000123
+Loss Date:
+06/04/2026
+"""
+
+
+def holder(kind, text, name=""):
+    return read(kind, text, ctx(name)).record.policyholder
+
+
+def test_a_paper_on_a_carrier_the_insurance_record_lists_is_the_associations():
+    from jason.community.sources import Policyholder
+
+    check = "Remittance advice\nAmount\nCheck Number\nIssued Date\n8271.92\n755000\n09-16-2026\nFrom\nExample National Insurance\nMemo\nAZ000001\n"
+    reading = read(K.CLAIM_PAYMENT, check, ctx())
+    assert reading.record.policyholder is Policyholder.ASSOCIATION and "owner-carrier-paper" not in codes(reading)
+    # The program the record names is the association's too.
+    assert holder(K.CLAIM_PAYMENT, "Statement of loss\nNet Loss\n100.00\nExample Program Services\n") is Policyholder.ASSOCIATION
+    # The association's own letters keep the findings they had: the insured says so.
+    for letter in (DISCLAIMER, SETTLEMENT, NO_CONTACT):
+        r = read(K.CLAIM_LETTER, letter, ctx())
+        assert r.record.policyholder is Policyholder.ASSOCIATION and "owner-carrier-paper" not in codes(r)
+
+
+def test_a_policy_number_the_specification_lists_is_the_associations_whatever_the_carrier():
+    from jason.community.sources import Policyholder
+
+    text = OWNER_LETTER.replace("HO-7000123", "EX-100200")
+    r = read(K.CLAIM_LETTER, text, ctx())
+    assert r.record.carrier == "" and r.record.policyholder is Policyholder.ASSOCIATION and "owner-carrier-paper" not in codes(r)
+
+
+def test_a_carrier_the_directory_says_writes_an_owners_policies_is_other_and_the_paper_carries_the_lead():
+    from jason.community.sources import Policyholder
+
+    r = read(K.CLAIM_ESTIMATE, OWNER_ESTIMATE, ctx())
+    assert (r.record.carrier, r.record.policyholder) == ("Cedar Home Insurance", Policyholder.OTHER)
+    found = codes(r)["owner-carrier-paper"]
+    assert found.severity is Severity.CHECK
+    # It names whose policy and the association's carriers, and says it is a lead for a person, not a determination.
+    assert "Cedar Home Insurance's policy, not the association's" in found.message
+    assert "Example National Insurance Company (admitted)" in found.message and "not a determination" in found.message
+    # The same on a payment (its own findings stay) and a work authorization.
+    paid = read(K.CLAIM_PAYMENT, "Statement of loss\nNet Loss\n100.00\nLess Depreciation\n(10.00)\nCedar Home Insurance\n", ctx())
+    assert paid.record.policyholder is Policyholder.OTHER and {"owner-carrier-paper", "depreciation-held-back"} <= set(codes(paid))
+    auth = read(K.CLAIM_AUTHORIZATION, "WORK AUTHORIZATION\nCLAIM#:\n8800000001-1\nYour Insurance Carrier Cedar Home submitted a request\n", ctx())
+    assert auth.record.policyholder is Policyholder.OTHER and "owner-carrier-paper" in codes(auth) and "authorized" in codes(auth)
+
+
+def test_a_letter_that_is_not_the_associations_and_prints_a_policy_number_the_specification_lacks_is_other():
+    from jason.community.sources import Policyholder
+
+    r = read(K.CLAIM_LETTER, OWNER_LETTER, ctx())
+    assert r.record.carrier == "" and not r.record.association_is_insured and r.record.policyholder is Policyholder.OTHER
+    assert "this paper is on another insurer's policy, not the association's" in codes(r)["owner-carrier-paper"].message.lower()
+
+
+def test_a_primacy_letter_is_one_finding_on_another_policy_and_a_carrier_nobody_listed_is_unknown():
+    from jason.community.sources import Policyholder
+
+    primacy = read(K.CLAIM_LETTER, PRIMACY, ctx())
+    assert primacy.record.policyholder is Policyholder.OTHER, "the letter says it is the owner's carrier deferring to the master policy"
+    assert [f.code for f in primacy.findings if f.code.startswith("owner-carrier")] == ["owner-carrier-defers"]
+    defers = codes(primacy)["owner-carrier-defers"]
+    assert defers.severity is Severity.CHECK and "not a determination" in defers.message and "()" not in defers.message
+    cedar = read(K.CLAIM_LETTER, PRIMACY.replace("Birch Property and Casualty Insurance Company", "Cedar Home Insurance"), ctx())
+    assert cedar.record.carrier == "Cedar Home Insurance" and "(Cedar Home Insurance)" in codes(cedar)["owner-carrier-defers"].message
+    # A directory carrier with no holder stated, and a letter naming no insured and no policy number, are not guessed at.
+    assert holder(K.CLAIM_PAYMENT, "Statement of loss\nNet Loss\n100.00\nElm Mutual\n") is Policyholder.UNKNOWN
+    unlisted = read(K.CLAIM_LETTER, "Birch Insurance\nClaim Number: 4400-00-0001\nLoss Date:\n01/02/2026\n", ctx())
+    assert unlisted.record.carrier == "" and unlisted.record.policyholder is Policyholder.UNKNOWN
+    assert not [f for f in unlisted.findings if f.code.startswith("owner-carrier")]
+
+
+def test_a_claim_paper_on_another_policy_marks_its_evidence():
+    from jason.community.incidents import OTHER_POLICY, Stage
+    from jason.tasks.incidents import enrich_claim
+    from tests.test_incidents import ev
+
+    context = {"community": FakeCommunity()}
+    other = enrich_claim(ev(OWNER_ESTIMATE, title="Cedar estimate.pdf"), OWNER_ESTIMATE, context)
+    assert other.claim_of == OTHER_POLICY and other.claimed and other.stage is Stage.CLAIM and other.claim == "8800-00-0001"
+    mine = ev(SETTLEMENT, title="Settlement.pdf")
+    assert enrich_claim(mine, SETTLEMENT, context).claim_of == "", "the association's claim paper is not marked"

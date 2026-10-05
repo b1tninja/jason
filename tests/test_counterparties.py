@@ -136,3 +136,16 @@ def test_the_report_counts_payments_not_money_coming_in(tmp_path) -> None:
     assert rows["First Citizens Bank"]["payments"] == 0
     assert rows["ProActive Pest Control"]["paidCents"] == 16500
     assert any("ProActive Pest Control" in line for line in report_lines(report))
+
+
+def test_the_profile_lists_an_owners_own_insurers_as_the_holders_of_their_own_policies() -> None:
+    from jason.community.sources import Policyholder, sender_in
+
+    senders = mystique().senders()
+    for text, name in (("CSAA Insurance Exchange\nAAA Insurance", "AAA Insurance"),
+                       ("Garrison Property and Casualty Insurance Company", "USAA (Garrison Property and Casualty)")):
+        found = sender_in(text, senders, SourceKind.INSURER)
+        assert found is not None and found.name == name and found.holder is Policyholder.OTHER
+        assert "owner" in found.role
+    # The association's own carriers and administrators are not declared another's.
+    assert sender_in("Philadelphia Indemnity Insurance Company", senders, SourceKind.INSURER).holder is Policyholder.UNKNOWN

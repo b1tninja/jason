@@ -22,6 +22,11 @@ is the owner's carrier deferring to the master). What a model reads is evidence 
 
 A claim paper names owners, policyholders, and drivers; the library holds these kinds as confidential, and a record
 keeps no person's name except the carrier's and the program contractor's.
+
+Each reading that carries a carrier also says whose policy the paper is on (``Policyholder``: the association's, another's,
+or unknown; ``policyholder_of`` gives the rules). A paper on another's policy (an owner's own homeowner insurer) is a lead
+for a person, not a determination: it carries the finding ``owner-carrier-paper``, and the incident history keeps it apart
+from the association's claim.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ from jason.community.base import alternation, street_words
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, cents, date_after, first, register, squash
 from jason.community.incidents import LOSS_RUN, LossRunClaim, claim_key, read_loss_run
 from jason.community.reviews import AS_OF
-from jason.community.sources import SourceKind, fold, sender_name
+from jason.community.sources import Policyholder, SourceKind, fold, sender_in
 from jason.community.symbols import DocumentKind
 
 # A company's legal form, which a check or a letterhead may leave off its name.
@@ -60,21 +65,101 @@ def _printed(name: str, folded: str) -> bool:
     return any(part.strip() and fold(part) in folded for part in (bare, _LEGAL_FORM.sub("", bare)))
 
 
-def carrier_of(text: str, context: ModelContext) -> str:
-    """The carrier or claims administrator a claim paper names, by its name in the specification.
+def carrier_found(text: str, context: ModelContext) -> tuple[str, Policyholder]:
+    """The carrier or claims administrator a claim paper names, by its name in the specification, and whose policies
+    the specification says it writes.
 
-    In order: a policy's carrier in the insurance record (``Community.insurance``), found by its name; an insurer in the
-    sender directory (``Community.senders``), found by the words the directory gives it; a policy's program, by its
-    name. One the specification lists in neither place is not named: a miss, and the reading then lacks its carrier.
-    An owner's own carrier, or the other driver's, is found only once the directory lists it."""
+    In order: a policy's carrier in the insurance record (``Community.insurance``), found by its name, which is the
+    association's; an insurer in the sender directory (``Community.senders``), found by the words the directory gives it,
+    with the holder its row states (``Sender.holder``, unknown unless a person said); a policy's program, by its name,
+    which is the association's. One the specification lists in none of these places is not named: a miss, and the
+    reading then lacks its carrier. An owner's own carrier, or the other driver's, is found only once the directory
+    lists it."""
     folded = fold(text or "")
     for name in _record_names(context, "carrier"):
         if _printed(name, folded):
-            return name
-    listed = sender_name(text or "", context.community, SourceKind.INSURER)
+            return name, Policyholder.ASSOCIATION
+    listed = sender_in(text or "", getattr(context.community, "senders", tuple)(), SourceKind.INSURER)
     if listed:
-        return listed
-    return next((name for name in _record_names(context, "program") if _printed(name, folded)), "")
+        return listed.name, listed.holder
+    return next(((name, Policyholder.ASSOCIATION) for name in _record_names(context, "program") if _printed(name, folded)),
+                ("", Policyholder.UNKNOWN))
+
+
+def carrier_of(text: str, context: ModelContext) -> str:
+    """The carrier or claims administrator a claim paper names (``carrier_found``), or "" for a miss."""
+    return carrier_found(text, context)[0]
+
+
+def _squeeze(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
+
+
+def _prints_number(value: str) -> bool:
+    """Whether a policy-number field holds a number (a digit among at least five letters and digits), not the next label."""
+    flat = _squeeze(value)
+    return len(flat) >= 5 and any(ch.isdigit() for ch in flat)
+
+
+def _listed_number(value: str, context: ModelContext) -> bool:
+    """Whether a printed policy number is one the insurance record lists, a prior term's too."""
+    community = context.community
+    try:
+        catalog = community.insurance() if community is not None else None
+    except Exception:
+        return False
+    printed = _squeeze(value)
+    numbers = (_squeeze(n) for policy in getattr(catalog, "policies", ()) or ()
+               for n in (getattr(policy, "number", ""), *getattr(policy, "prior_numbers", ())))
+    return any(len(n) >= 6 and n in printed for n in numbers)
+
+
+def policyholder_of(carrier_holder: Policyholder, context: ModelContext, *, policy_number: str = "",
+                    association_is_insured: bool | None = None, owners_carrier: bool = False) -> Policyholder:
+    """Whose policy a claim paper is on, by rule and never by a carrier's name alone. In order:
+
+    1. The carrier (or program) is one the specification's insurance record lists, or a directory row says it writes the
+       association's policies: the paper is on the ASSOCIATION's policy.
+    2. The paper prints a policy number the insurance record lists (a prior term's too): the ASSOCIATION's.
+    3. The carrier is in the sender directory with its row stating another's policies (an owner's own homeowner
+       insurer): OTHER.
+    4. The paper says it is the owner's carrier writing (a primacy letter deferring to the master policy): OTHER.
+    5. A letter names the association as the insured: the ASSOCIATION's.
+    6. A letter that does not name the association as the insured prints a policy number the specification does not
+       list: OTHER.
+    Otherwise UNKNOWN. A carrier the directory lists with no holder stated is UNKNOWN: its name does not say whose policy
+    a paper is on (an association's prior carrier and its claims administrator are listed beside an owner's insurer)."""
+    if carrier_holder is Policyholder.ASSOCIATION:                                          # rule 1
+        return Policyholder.ASSOCIATION
+    if _prints_number(policy_number) and _listed_number(policy_number, context):          # rule 2
+        return Policyholder.ASSOCIATION
+    if carrier_holder is Policyholder.OTHER:                                                # rule 3
+        return Policyholder.OTHER
+    if owners_carrier:                                                                      # rule 4
+        return Policyholder.OTHER
+    if association_is_insured:                                                              # rule 5
+        return Policyholder.ASSOCIATION
+    if association_is_insured is False and _prints_number(policy_number):                  # rule 6
+        return Policyholder.OTHER
+    return Policyholder.UNKNOWN
+
+
+def owner_paper_lead(carrier: str, context: ModelContext) -> str:
+    """The sentence a paper on another's policy carries: whose policy it is, and that what follows is for a person."""
+    mine = _record_names(context, "carrier")
+    listed = f" (the specification lists the association's carriers: {', '.join(mine)})" if mine else ""
+    whose = f"{carrier}'s" if carrier else "another insurer's"
+    return (f"this paper is on {whose} policy, not the association's{listed}, so the association is not the insured on it; "
+            "whether the loss touches the master policy or a common area, how a deductible falls under the governing documents, "
+            "or whether the insurer may look to the association is for a person to analyze. It is a lead, not a determination")
+
+
+def owner_paper_finding(record: object, context: ModelContext) -> list[Finding]:
+    """The finding for a paper on another's policy (``owner-carrier-paper``, CHECK), or none for any other paper."""
+    if getattr(record, "policyholder", None) is not Policyholder.OTHER:
+        return []
+    lead = owner_paper_lead(getattr(record, "carrier", ""), context)
+    return [Finding("owner-carrier-paper", lead[0].upper() + lead[1:], Severity.CHECK)]
 
 
 def _us_day(text: str) -> date | None:
@@ -227,6 +312,7 @@ class ClaimLetter:
     paid_cents: int | None = None
     program_contractor: str = ""            # "Lionsbridge Contractor Group"
     canceled_effective: date | None = None  # a disclaimer's policy cancellation date
+    policyholder: Policyholder = Policyholder.UNKNOWN   # whose policy the letter is on (``policyholder_of``)
 
 
 class ClaimLetterModel(DocumentModel):
@@ -237,7 +323,8 @@ class ClaimLetterModel(DocumentModel):
     def parse(self, text: str, context: ModelContext) -> ClaimLetter | None:
         if not re.search(r"claim", text or "", re.I) or LOSS_RUN.search((text or "")[:600]):
             return None
-        r = ClaimLetter(carrier=carrier_of(text, context))
+        carrier, holder = carrier_found(text, context)
+        r = ClaimLetter(carrier=carrier)
         head = (text or "")[:3000]
         r.letter_date = _us_day(first(r"\n((?:January|February|March|April|May|June|July|August|September|October|November|December)"
                                       r"\s+\d{1,2},\s*\d{4})\s*\n", head)) or date_after(r"\bDate:", head, window=30)
@@ -264,6 +351,8 @@ class ClaimLetterModel(DocumentModel):
         r.canceled_effective = _us_day(canceled.group(1)) if canceled else None
         if not r.claim_number:
             return None
+        r.policyholder = policyholder_of(holder, context, policy_number=r.policy_number, association_is_insured=r.association_is_insured,
+                                         owners_carrier=r.letter_type is LetterType.PRIMACY)
         return r
 
     def check(self, r: ClaimLetter, context: ModelContext) -> list[Finding]:
@@ -284,11 +373,19 @@ class ClaimLetterModel(DocumentModel):
             found.append(Finding("reservation-of-rights", f"{r.carrier} reserves its rights on claim {r.claim_number}: coverage is "
                                  "not yet accepted; counsel should read the letter", Severity.CHECK))
         if r.letter_type is LetterType.PRIMACY:
-            found.append(Finding("owner-carrier-defers", f"an owner's carrier ({r.carrier}) defers to the association's master "
-                                 "policy for the building; it asks for the master carrier's settlement or denial", Severity.INFO))
+            who = f"an owner's carrier ({r.carrier})" if r.carrier else "an owner's carrier"
+            defers = f"{who} defers to the association's master policy for the building; it asks for the master carrier's settlement or denial"
+            if r.policyholder is Policyholder.OTHER:
+                # One finding, not two: the primacy letter already says it is the owner's carrier; its lead is for a person.
+                lead = owner_paper_lead(r.carrier, context)
+                found.append(Finding("owner-carrier-defers", f"{defers}. {lead[0].upper()}{lead[1:]}", Severity.CHECK))
+            else:
+                found.append(Finding("owner-carrier-defers", defers, Severity.INFO))
         if r.letter_type is LetterType.SETTLEMENT and r.program_contractor:
             found.append(Finding("paid-to-program-contractor", f"{r.carrier} paid {r.program_contractor}, which releases the funds as "
                                  "the repairs are done: a certificate of satisfaction closes it", Severity.INFO))
+        if r.letter_type is not LetterType.PRIMACY:
+            found += owner_paper_finding(r, context)
         return found
 
 
@@ -320,6 +417,7 @@ class ClaimPayment:
     check_number: str = ""
     issued: date | None = None
     amount_cents: int | None = None
+    policyholder: Policyholder = Policyholder.UNKNOWN   # whose policy the payment is on
 
 
 class ClaimPaymentModel(DocumentModel):
@@ -332,7 +430,8 @@ class ClaimPaymentModel(DocumentModel):
         check = bool(re.search(r"remittance advice|check number|payable to", text or "", re.I))
         if not (statement or check):
             return None
-        r = ClaimPayment(carrier=carrier_of(text, context), statement=statement and not check)
+        carrier, holder = carrier_found(text, context)
+        r = ClaimPayment(carrier=carrier, statement=statement and not check, policyholder=policyholder_of(holder, context))
         r.claim_number = first(r"\b([A-Z]{2}\d{6})\b", text) or _after(r"CLAIM #", text, 30)
         r.date_of_loss = _us_day(_after(r"DATE OF LOSS", text, 30))
         if statement:
@@ -362,7 +461,7 @@ class ClaimPaymentModel(DocumentModel):
             elif context.data_dir:
                 found.append(Finding("not-deposited", f"check {r.check_number} for ${r.amount_cents / 100:,.2f}, issued {r.issued}, is not "
                                      "in the stored ledger within 60 days: confirm it was deposited", Severity.CHECK))
-        return found
+        return found + owner_paper_finding(r, context)
 
 
 # -- the claim's repair paperwork ------------------------------------------------------------------------------------
@@ -383,6 +482,7 @@ class ClaimAuthorization:
     address: str = ""
     program_contractor: str = ""
     signed: date | None = None
+    policyholder: Policyholder = Policyholder.UNKNOWN   # whose policy the authorization is on
 
 
 class ClaimAuthorizationModel(DocumentModel):
@@ -403,7 +503,8 @@ class ClaimAuthorizationModel(DocumentModel):
         blank = re.search(r"Your Insurance Carrier\s*(.*?)\s*submitt", text or "", re.I | re.S)
         # The carrier is typed into a blank, and OCR spaces its letters ("_F_a_r_m_e_rs___").
         typed = re.sub(r"[_\s]+", "", blank.group(1)) if blank else ""
-        r = ClaimAuthorization(form=form, carrier=carrier_of(text, context) or (typed if 2 < len(typed) < 40 else ""))
+        carrier, holder = carrier_found(text, context)
+        r = ClaimAuthorization(form=form, carrier=carrier or (typed if 2 < len(typed) < 40 else ""), policyholder=policyholder_of(holder, context))
         typed = re.sub(r"\s+", "", _after(r"CLAIM\s*#", text, 30))
         # A blank form's empty field reads the next label ("DATE OF LOSS:"); a claim number has digits.
         r.claim_number = typed if re.search(r"\d{5}", typed) else first(r"\b(\d{9,10}(?:-\d{1,3})+)\b", (context.name or "") + " " + text)
@@ -415,13 +516,14 @@ class ClaimAuthorizationModel(DocumentModel):
         return r
 
     def check(self, r: ClaimAuthorization, context: ModelContext) -> list[Finding]:
+        found: list[Finding] = []
         if r.form is AuthorizationType.WORK_AUTHORIZATION:
-            return [Finding("authorized", f"the insured authorized the carrier to pay {r.program_contractor or 'the program contractor'} "
-                            f"for claim {r.claim_number}; the deductible and depreciation stay the insured's", Severity.INFO)]
-        if r.form is AuthorizationType.CERTIFICATE_OF_SATISFACTION:
-            return [Finding("repairs-accepted", f"a certificate of satisfaction for claim {r.claim_number}: the repairs were accepted"
-                            + (f" on {r.signed}" if r.signed else ""), Severity.INFO)]
-        return []
+            found.append(Finding("authorized", f"the insured authorized the carrier to pay {r.program_contractor or 'the program contractor'} "
+                                 f"for claim {r.claim_number}; the deductible and depreciation stay the insured's", Severity.INFO))
+        elif r.form is AuthorizationType.CERTIFICATE_OF_SATISFACTION:
+            found.append(Finding("repairs-accepted", f"a certificate of satisfaction for claim {r.claim_number}: the repairs were accepted"
+                                 + (f" on {r.signed}" if r.signed else ""), Severity.INFO))
+        return found + owner_paper_finding(r, context)
 
 
 # -- the carrier's estimate ------------------------------------------------------------------------------------------
@@ -439,6 +541,7 @@ class ClaimEstimate:
     deductible_cents: int | None = None
     net_claim_cents: int | None = None
     mitigation: bool = False            # a water mitigation (dry-out) estimate, not the repairs
+    policyholder: Policyholder = Policyholder.UNKNOWN   # whose policy the estimate is on
 
 
 class ClaimEstimateModel(DocumentModel):
@@ -450,7 +553,8 @@ class ClaimEstimateModel(DocumentModel):
         # The estimate's own header (Xactimate prints "Type of Loss"); a settlement letter that encloses one does not.
         if not re.search(r"Type of Loss", text or "", re.I) or not re.search(r"estimate", text or "", re.I):
             return None
-        r = ClaimEstimate(carrier=carrier_of(text, context))
+        carrier, holder = carrier_found(text, context)
+        r = ClaimEstimate(carrier=carrier, policyholder=policyholder_of(holder, context))
         r.claim_number = re.sub(r"\s+", "", _after(r"Claim Number", text, 30))
         r.type_of_loss = _after(r"Type of Loss", text, 40)
         r.date_of_loss = _us_day(_after(r"Date of Loss", text, 30))
@@ -471,7 +575,7 @@ class ClaimEstimateModel(DocumentModel):
         if master and r.replacement_cost_cents and r.replacement_cost_cents < master:
             found.append(Finding("under-master-deductible", f"the estimate (${r.replacement_cost_cents / 100:,.2f}) is under the master "
                                  f"policy's ${master / 100:,.0f} deductible: a claim on the master policy would pay nothing", Severity.INFO))
-        return found
+        return found + owner_paper_finding(r, context)
 
 
 def _master_deductible(context: ModelContext) -> int | None:
@@ -517,4 +621,4 @@ for _model in (LossRunModel(), ClaimLetterModel(), ClaimPaymentModel(), ClaimAut
 
 __all__ = ["LossRun", "LossRunModel", "LetterType", "ClaimLetter", "ClaimLetterModel", "ClaimPayment", "ClaimPaymentModel",
            "AuthorizationType", "ClaimAuthorization", "ClaimAuthorizationModel", "ClaimEstimate", "ClaimEstimateModel", "PoliceReport",
-           "PoliceReportModel", "carrier_of", "claim_key"]
+           "PoliceReportModel", "carrier_of", "carrier_found", "policyholder_of", "Policyholder", "owner_paper_finding", "claim_key"]

@@ -336,3 +336,82 @@ def test_the_specification_carries_the_master_deductible():
 
     master = load_mystique().insurance().master()
     assert master is not None and master.deductible_cents == 1_000_000
+
+
+# -- a claim on another's policy (an owner's own insurer) ---------------------------------------------------------------
+
+
+def _leak_invoice(amount: int = 1_500_000):
+    return ev("INVOICE\nJobsite address\n5615 Whimsical Lane\nRoof leak repair\nTotal", title="Invoice 1.pdf", amount_cents=amount,
+              day=date(2026, 6, 10))
+
+
+def _claim_paper(number: str, *, other: bool, paid: int | None = None, amount: int | None = None, status: str = "settlement"):
+    paper = ev(f"Claim Number: {number}\nDate of Loss: 06/04/2026\nLoss location: 5615 Whimsical Lane\nWater damage.",
+               title=f"Claim {number}.pdf", day=date(2026, 6, 8), amount_cents=amount)
+    paper.claim_status, paper.claim_paid_cents = status, paid
+    if other:
+        paper.claim_of = "other"
+    return paper
+
+
+def test_an_event_with_only_another_insurers_claim_is_not_claimed_and_keeps_its_candidate_standing():
+    from jason.community.incidents import ClaimStanding
+
+    event = group_events([_leak_invoice(), _claim_paper("8800-00-0001", other=True, paid=5_000_000, amount=5_000_000)])[0]
+    assert len(group_events([_leak_invoice(), _claim_paper("8800-00-0001", other=True)])) == 1, "it is still the same loss"
+    assert not event.claimed and event.claims == ("8800-00-0001",) and event.other_insurer_claims == ("8800-00-0001",)
+    # The other insurer's paid amount is not the association's loss or recovery.
+    assert event.cost_cents == 1_500_000 and event.standing(1_000_000) is ClaimStanding.CANDIDATE
+    assert event.claim_outcomes["8800-00-0001"]["policyholder"] == "other"
+    assert not event.routine
+
+
+def test_an_event_with_both_counts_only_the_associations_claim():
+    from jason.community.incidents import ClaimStanding
+
+    mine = _claim_paper("5020000001-1", other=False, paid=900_000, amount=900_000)
+    theirs = _claim_paper("8800-00-0001", other=True, paid=5_000_000, amount=5_000_000)
+    event = group_events([_leak_invoice(500_000), mine, theirs])[0]
+    assert event.claimed and event.standing(1_000_000) is ClaimStanding.CLAIMED
+    assert event.cost_cents == 900_000, "the larger figure is on the other policy"
+    assert event.other_insurer_claims == ("8800-00-0001",) and event.claims == ("5020000001", "8800-00-0001")
+    assert "policyholder" not in event.claim_outcomes["5020000001-1"] and event.claim_outcomes["8800-00-0001"]["policyholder"] == "other"
+    # A claim number both policies' papers print stands by each paper: only the paper on another's policy is left out.
+    shared = group_events([mine, _claim_paper("5020000001-1", other=True, paid=5_000_000, amount=5_000_000, status="certificate")])[0]
+    assert shared.claimed and shared.cost_cents == 900_000 and shared.other_insurer_claims == ("5020000001",)
+
+
+def test_another_insurers_claim_is_serialized_shown_in_the_report_and_noted_but_other_events_are_unchanged():
+    from jason.tasks.incidents import OTHER_INSURER_CAVEAT, caveats, evidence_row, event_row, lines, select
+
+    other = group_events([_leak_invoice(), _claim_paper("8800-00-0001", other=True, paid=5_000_000, amount=5_000_000)])
+    row = event_row(other[0], deductible=1_000_000)
+    assert row["otherInsurerClaims"] == ["8800-00-0001"] and row["claimed"] is False and row["standing"] == "claim candidate"
+    assert row["claimOutcomes"]["8800-00-0001"]["policyholder"] == "other"
+    assert [d["claimOf"] for d in row["documents"] if "claimOf" in d] == ["other"]
+    report = {"found": True, "documents": 2, "byChannel": {}, "events": [row], "counts": {}, "caveats": caveats(other)}
+    assert OTHER_INSURER_CAVEAT in report["caveats"] and "does not count as the association's claim or recovery" in OTHER_INSURER_CAVEAT
+    assert select(report, claims=True) == [row], "an event with a claim on another's policy is a claim event to look at"
+    text = "\n".join(lines(report, [row]))
+    assert "CANDIDATE OWNER-INS" in text and "on another's policy: 8800-00-0001" in text
+    # An event with no such paper is as it was: no new keys, no new mark, no note.
+    plain = group_events([_leak_invoice(), _claim_paper("5020000001-1", other=False, paid=900_000, amount=900_000)])
+    plain_row = event_row(plain[0], deductible=1_000_000)
+    assert "otherInsurerClaims" not in plain_row and all("claimOf" not in d for d in plain_row["documents"])
+    assert all("policyholder" not in o for o in plain_row["claimOutcomes"].values())
+    assert OTHER_INSURER_CAVEAT not in caveats(plain)
+    assert "OWNER-INS" not in "\n".join(lines({**report, "events": [plain_row], "caveats": caveats(plain)}, [plain_row]))
+    assert not evidence_row(_leak_invoice()).get("claimOf") and evidence_row(_claim_paper("1", other=True))["claimOf"] == "other"
+
+
+def test_a_loss_with_only_another_insurers_paper_is_not_routine_and_is_still_searched_for_related_documents():
+    from jason.tasks.incident_links import wanted
+    from jason.tasks.incidents import event_row
+
+    paper = ev("Claim Number: 8800-00-0002\nDate of Loss: 06/04/2026\nLoss location: 5615 Whimsical Lane", title="Claim.pdf", day=date(2026, 6, 8))
+    paper.claim_of = "other"
+    event = group_events([paper])[0]
+    assert not event.claimed and not event.routine and event.standing(1_000_000).value == "none"
+    row = event_row(event, deductible=1_000_000)
+    assert wanted(row) and row["otherInsurerClaims"] == ["8800-00-0002"]

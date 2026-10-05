@@ -71,7 +71,7 @@ def keys_of(row: dict[str, Any]) -> dict[str, Any]:
 
 def wanted(row: dict[str, Any]) -> bool:
     """The events worth a search: a claim, a sudden cause, or a unit with a repair."""
-    return bool(row["claimed"] or row["sudden"] or (row["addresses"] and "repair" in row["work"]))
+    return bool(row["claimed"] or row.get("otherInsurerClaims") or row["sudden"] or (row["addresses"] and "repair" in row["work"]))
 
 
 # -- remote searches -------------------------------------------------------------------------------------------------

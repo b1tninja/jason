@@ -453,6 +453,8 @@ def enrich_claim(ev: Evidence, text: str, ctx: dict[str, Any]) -> Evidence:
     if not (ev.claimed or ev.stage is Stage.CLAIM):
         return ev
     from jason.community.document_models import ModelContext, read
+    from jason.community.incidents import OTHER_POLICY
+    from jason.community.sources import Policyholder
     from jason.community.symbols import DocumentKind
 
     context = ModelContext(community=ctx.get("community"), name=ev.title)
@@ -473,6 +475,9 @@ def enrich_claim(ev: Evidence, text: str, ctx: dict[str, Any]) -> Evidence:
         paid = getattr(r, "paid_cents", None) or getattr(r, "amount_cents", None)
         if paid and value in ("claim_letter", "claim_payment"):
             ev.claim_paid_cents = paid
+        # Whose policy the paper is on: one on another's (an owner's own insurer) is not the association's claim.
+        if getattr(r, "policyholder", None) is Policyholder.OTHER:
+            ev.claim_of = OTHER_POLICY
         ev.stage, ev.claimed = Stage.CLAIM, True
         break
     return ev
@@ -599,22 +604,31 @@ def _place_row(p: Any) -> dict[str, Any]:
 
 def evidence_row(ev: Evidence, *, private: bool = False) -> dict[str, Any]:
     held = ev.confidential and not private
-    return {"day": ev.day.isoformat() if ev.day else None, "channel": ev.channel, "ref": ev.ref, "title": ev.title,
-            "stage": ev.stage.value, "work": ev.work.value, "claimed": ev.claimed, "vendor": ev.vendor,
-            "amountCents": ev.amount_cents, "causes": [c.value for c in ev.causes], "elements": [e.value for e in ev.elements],
-            "places": [_place_row(p) for p in ev.where], "snippet": "" if held else ev.snippet, "claim": ev.claim,
-            "payment": ev.payment, "confidential": ev.confidential, "also": list(ev.also), "hint": ev.hint,
-            "claimStatus": ev.claim_status, "claimPaidCents": ev.claim_paid_cents}
+    row = {"day": ev.day.isoformat() if ev.day else None, "channel": ev.channel, "ref": ev.ref, "title": ev.title,
+           "stage": ev.stage.value, "work": ev.work.value, "claimed": ev.claimed, "vendor": ev.vendor,
+           "amountCents": ev.amount_cents, "causes": [c.value for c in ev.causes], "elements": [e.value for e in ev.elements],
+           "places": [_place_row(p) for p in ev.where], "snippet": "" if held else ev.snippet, "claim": ev.claim,
+           "payment": ev.payment, "confidential": ev.confidential, "also": list(ev.also), "hint": ev.hint,
+           "claimStatus": ev.claim_status, "claimPaidCents": ev.claim_paid_cents}
+    if ev.claim_of:
+        row["claimOf"] = ev.claim_of   # the paper is on another's policy
+    return row
 
 
 def event_row(event: Event, *, private: bool = False, deductible: int | None = None) -> dict[str, Any]:
+    other = event.other_insurer_claims
     return {"first": event.first.isoformat() if event.first else None, "last": event.last.isoformat() if event.last else None,
             "work": [w.value for w in event.works if w is not Work.NONE], "claimed": event.claimed, "sudden": event.sudden,
             "routine": event.routine, "costCents": event.cost_cents, "standing": event.standing(deductible).value, "causes": [c.value for c in event.causes], "elements": [e.value for e in event.elements],
             "addresses": list(event.addresses), "buildings": [int(b) for b in event.buildings], "communityWide": event.community_wide,
             "vendors": list(event.vendors), "estimatedCents": event.estimated_cents, "invoicedCents": event.invoiced_cents,
             "paidCents": event.paid_cents, "claims": list(event.claims), "claimOutcomes": event.claim_outcomes,
+            **({"otherInsurerClaims": list(other)} if other else {}),
             "documents": [evidence_row(e, private=private) for e in sorted(event.evidence, key=lambda e: (e.day or date.min, e.ref))]}
+
+
+OTHER_INSURER_CAVEAT = ("A claim on another's policy (an owner's own insurer) is shown apart: it does not count as the association's claim or "
+                        "recovery, and the insurer's involvement is a lead for deeper analysis.")
 
 
 def _tally(event: Event, deductible: int | None) -> list[str]:
@@ -624,6 +638,21 @@ def _tally(event: Event, deductible: int | None) -> list[str]:
     if standing is not ClaimStanding.NONE:
         marks.append(standing.value)
     return marks
+
+
+def caveats(events: list[Event]) -> list[str]:
+    """What a reader of the history must keep in mind. The note on a claim on another's policy appears only when an event has one."""
+    return [
+        "An event is read from the paperwork's own words by rule rows; a person confirms it before it is cited.",
+        "Claimed means the paperwork ties the event to an insurance claim; whether the peril was covered is the insurer's answer.",
+        "A claim candidate names a sudden cause (a leak, a break, a collision), has no claim on file, and its cost on the paperwork "
+        "reaches the master policy's deductible; under the deductible the carrier pays nothing. The cost is the paperwork's, "
+        "not the loss's: interior damage an owner paid may not be in it.",
+        "A unit is the street address the document names; an address labeled bill-to is the payer's, not the job's.",
+        "Confidential sources (claims, losses) keep their facts; their snippets are held back unless asked for.",
+        "Payments before January 2024 are not in the stored ledger, so older work shows its paperwork only.",
+        *([OTHER_INSURER_CAVEAT] if any(e.other_insurer_claims for e in events) else []),
+    ]
 
 
 def master_deductible(community: Any) -> int | None:
@@ -670,16 +699,7 @@ def run(data_dir: Path, community: Any, roots: dict, *, ocr: bool = True, privat
         "counts": dict(counts),
         "byBuilding": {k: dict(v) for k, v in sorted(result["byBuilding"].items())},
         "byUnit": {a: dict(v) for a, v in sorted(result["byUnit"].items(), key=lambda kv: (-kv[1]["events"], kv[0]))},
-        "caveats": [
-            "An event is read from the paperwork's own words by rule rows; a person confirms it before it is cited.",
-            "Claimed means the paperwork ties the event to an insurance claim; whether the peril was covered is the insurer's answer.",
-            "A claim candidate names a sudden cause (a leak, a break, a collision), has no claim on file, and its cost on the paperwork "
-            "reaches the master policy's deductible; under the deductible the carrier pays nothing. The cost is the paperwork's, "
-            "not the loss's: interior damage an owner paid may not be in it.",
-            "A unit is the street address the document names; an address labeled bill-to is the payer's, not the job's.",
-            "Confidential sources (claims, losses) keep their facts; their snippets are held back unless asked for.",
-            "Payments before January 2024 are not in the stored ledger, so older work shows its paperwork only.",
-        ],
+        "caveats": caveats(events),
     }
     out = Path(data_dir) / "reports" / REPORT
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -696,7 +716,7 @@ def load(data_dir: Path) -> dict[str, Any]:
 def select(report: dict[str, Any], *, building: int | None = None, address: str = "", work: str = "", claims: bool = False,
            standing: str = "",
            cause: str = "", since: str = "", routine: bool = True) -> list[dict[str, Any]]:
-    """The stored events a person asked for. ``claims`` keeps the claimed events; ``routine=False`` drops upkeep and
+    """The stored events a person asked for. ``claims`` keeps the claimed events, and those with a claim on another's policy; ``routine=False`` drops upkeep and
     inspections that carry no claim and no sudden cause."""
     rows = report.get("events") or []
     words = address.upper().replace("LANE", "LN").replace("DRIVE", "DR").split()
@@ -708,7 +728,7 @@ def select(report: dict[str, Any], *, building: int | None = None, address: str 
             continue
         if work and work not in r["work"]:
             continue
-        if claims and not r["claimed"]:
+        if claims and not (r["claimed"] or r.get("otherInsurerClaims")):
             continue
         if standing and r.get("standing") != standing:
             continue
@@ -745,9 +765,12 @@ def lines(report: dict[str, Any], rows: list[dict[str, Any]] | None = None, *, l
         span = r["first"] if r["first"] == r["last"] else f"{r['first']}..{r['last']}"
         mark = {"claimed": "CLAIM", "claim candidate": "CANDIDATE", "under deductible": "under-ded", "sudden, cost unknown": "sudden?"}.get(
             r.get("standing", ""), "")
+        if r.get("otherInsurerClaims"):
+            mark = f"{mark} OWNER-INS".strip()   # a claim on another's policy: shown apart from the association's
         out.append(f"{span}  {'+'.join(r['work']) or '-':<18} {mark:<9} {where} | {', '.join(r['causes'][:2]) or '-'} | {', '.join(r['elements'][:3]) or '-'} "
                    f"| {', '.join(r['vendors'][:2]) or '-'} | {len(r['documents'])} docs {money}"
                    + (f" | claim {', '.join(r['claims'])}" if r["claims"] else "")
+                   + (f" | on another's policy: {', '.join(r['otherInsurerClaims'])}" if r.get("otherInsurerClaims") else "")
                    + "".join(f" | {n}: {o['status']}" + (f" {_money(o['paidCents'])}" if o.get("paidCents") else "") for n, o in (r.get("claimOutcomes") or {}).items()))
     for c in report.get("caveats", []):
         out.append(f"  note: {c}")
@@ -755,4 +778,4 @@ def lines(report: dict[str, Any], rows: list[dict[str, Any]] | None = None, *, l
 
 
 __all__ = ["fetch", "select_drive", "collect", "history", "run", "load", "select", "lines", "file_text", "dedupe",
-           "payhoa_evidence", "email_evidence", "library_evidence", "drive_evidence", "evidence_row", "event_row"]
+           "caveats", "payhoa_evidence", "email_evidence", "library_evidence", "drive_evidence", "evidence_row", "event_row"]

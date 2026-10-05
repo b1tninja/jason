@@ -12,7 +12,7 @@ Association's backflow notice, addressed in care of Mystique.
 
 from __future__ import annotations
 
-from jason.community.sources import Level, Sender, SourceKind
+from jason.community.sources import Level, Policyholder, Sender, SourceKind
 
 G, U, I, B, V = SourceKind.GOVERNMENT, SourceKind.UTILITY, SourceKind.INSURER, SourceKind.BANK, SourceKind.VENDOR
 
@@ -48,6 +48,12 @@ _SENDERS: tuple[Sender, ...] = (
     Sender("Pennsylvania Manufacturers' Association Insurance Company", I, ("PENNSYLVANIA MANUFACTURERS", "WORKCOMP INVOICE", "CAIS, LLC"),
            role="workers' compensation policy since September 28, 2026, billed by CAIS through LaBarre/Oksnee"),
     Sender("Vitesse PSP", I, ("VITESSE",), role="insurance claim payments", domains=("vitesse.io",)),
+    # An owner's own homeowner insurers, from claim papers in the records (letters, estimates, authorizations, payments).
+    # The policies are the owners', not the association's: `holder` says so, and the history shows these claims apart.
+    Sender("AAA Insurance", I, ("AAA INSURANCE", "CSAA"), role="an owner's own insurer on homeowner claims", domains=("csaa.com",),
+           holder=Policyholder.OTHER),
+    Sender("USAA (Garrison Property and Casualty)", I, ("USAA", "GARRISON PROPERTY AND CASUALTY"),
+           role="an owner's own insurer on homeowner claims", holder=Policyholder.OTHER),
     # Banks
     Sender("First Citizens Bank", B, ("FIRST CITIZENS", "FIRST-CITIZENS", "PRIMARY ACCOUNT NUMBER ENDING IN"), role="reserve certificate of deposit <reserve cd (first citizens)>"),
     Sender("JPMorgan Chase", B, ("JPMORGAN", "CHASE BANK", "INDIANAPOLIS IN 46244", "CHASE FOR BUSINESS", "CHASE COM"), role="the association's bank: the operating, reserve, and reserve CD accounts"),

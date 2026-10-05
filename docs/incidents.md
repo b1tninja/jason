@@ -62,6 +62,20 @@ A carrier's loss run becomes one piece of evidence per claim it details: number,
 
 Claim numbers are compared by their base. Some carriers add feature suffixes (5021000019-1, 5021000019-1-1), and others a line number (030200001-002).
 
+### A claim on another's policy
+
+Some claim papers in an association's records are on an owner's own homeowner policy, not the association's: the owner's insurer's estimate, authorization, letter, or payment, or a letter deferring to the master policy. Each claim reading carries a `Policyholder` (`ASSOCIATION`, `OTHER`, or `UNKNOWN`; the rules are in [document-models/insurance-claims.md](document-models/insurance-claims.md)), and a paper on another's policy is marked on its evidence (`claim_of`, `claimOf` in the JSON).
+
+An owner's insurer's claim is not the association's, so the history keeps it apart:
+
+- **Claimed.** The event's `claimed`, `standing`, and `routine` count only the association's papers. An event with only another's claim is not `claimed`: a sudden cause with a cost that reaches the deductible stays a `claim candidate`.
+- **Cost.** A paper on another's policy puts none of its figures (its estimate, its paid amount) on the event's `costCents`: they are the other policy's loss, not the association's.
+- **Marks.** The event lists the claims with such a paper in `otherInsurerClaims`, and `claimOutcomes` marks each paper's `policyholder`. The text report marks the event `OWNER-INS` and names the claim ("on another's policy"), and the report carries a note. `--claims` and `--link` still take the event: the insurer's involvement in a loss is a lead worth a person's deeper analysis (whether the loss touches the master policy or a common area, how a deductible falls under the governing documents, whether the insurer may look to the association). It is a lead, not a determination.
+- **Grouping is unchanged.** The papers still join their loss's event by claim number, unit, and date, so the lead stands beside the association's own paperwork.
+- **A shared number.** A claim number two policies' papers print (a program contractor's form beside the association's carrier's letter) is listed once, and each paper stands by what it says: only the paper on another's policy is left out of the claimed and cost figures.
+
+Events with no such paper read exactly as before.
+
 ## Grouping into events
 
 Claim papers are grouped first (`claim_seeds`):
