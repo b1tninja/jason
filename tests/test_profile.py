@@ -193,6 +193,114 @@ def test_a_fact_in_a_pattern_a_word_list_or_a_default_is_found(tmp_path):
     assert scan_code(tmp_path, terms) == {"src/jason/patterns.py": ["Elm", "Main", "Oakridge"]}
 
 
+def test_a_fact_in_a_pattern_given_to_a_helper_is_found(tmp_path):
+    """A pattern is a pattern whoever compiles it: one given to a reader helper (``first``, ``date_after``,
+    ``amount_after``), or to a module's own function that hands its parameter to ``re``, is read as one given to ``re``."""
+    code = tmp_path / "src" / "jason"
+    (code / "models").mkdir(parents=True)
+    (code / "models" / "reader.py").write_text(textwrap.dedent('''
+        import re
+
+        from jason.community import document_models
+        from jason.community.document_models import date_after, first
+        from jason.models.shared import labeled
+
+
+        def _after(label, text):
+            return re.search(label + r"\\s*:\\s*(.+)", text)
+
+
+        def _money(text, label="Total"):
+            return _after(rf"(?:{label}) due", text)          # hands its own parameter on to a helper
+
+
+        def read(text, context):
+            sender = first(r"(Oak Ridge Title Company|Elm Escrow)", text)
+            signed = date_after(r"Birch Surety signed on", text)
+            paid = document_models.amount_after(label=r"paid to Cedar Bank", text=text)
+            return sender, signed, paid, _after(r"Maple Mutual policy", text), _money(text, "Aspen Law"), labeled("Spruce Paving", text)
+
+
+        def notes(pattern, text):
+            return pattern.search("Willow Roofing wrote")      # the text given to a compiled pattern, not a pattern
+    '''), encoding="utf-8")
+    (code / "models" / "shared.py").write_text("import re\n\n\ndef labeled(label, text):\n    return re.findall(label, text)\n", encoding="utf-8")
+    # A function of a helper's name that matches nothing: its argument is not a pattern.
+    (code / "other.py").write_text(textwrap.dedent('''
+        def first(items):
+            return items[0]
+
+
+        def _after(label, text):
+            return text.partition(label)[2]
+
+
+        HEAD = first(["Oak Ridge Title Company"])
+        TAIL = _after("Maple Mutual policy", "x")
+    '''), encoding="utf-8")
+    names = ("Oak Ridge Title Company", "Elm Escrow", "Birch Surety", "Cedar Bank", "Maple Mutual", "Aspen Law", "Spruce Paving", "Willow Roofing")
+    terms = tuple(Term(name, "vendor") for name in names)
+    assert scan_code(tmp_path, terms, adapters=()) == {"src/jason/models/reader.py": sorted(names[:-1])}
+
+
+def test_a_fact_in_a_modules_own_collection_is_found_by_the_wide_reading(tmp_path):
+    """The wide reading takes the strings of a module's (and a class's) own tuples, lists, sets, and dicts, with the
+    records in them. The committed check does not read those yet (docs/adapters.md, "What the check does not see")."""
+    from jason.community.adapters import Adapter
+    from jason.community.boundary import ADAPTERS_MODULE
+
+    code = tmp_path / "src" / "jason"
+    (code / "community").mkdir(parents=True)
+    (code / "tables.py").write_text(textwrap.dedent('''
+        """Reads Cedar Bank statements."""
+        from dataclasses import dataclass
+
+        CARRIERS = (("Oak Ridge Mutual", r"oakridgemutual|Oak Ridge Mutual"), ("Elm Indemnity", r"Elm Indemnity"))
+        STOP = frozenset({"board", "oakridge"})
+        NOTE = "Cedar Bank"
+        __all__ = ["oakridge"]
+
+
+        @dataclass
+        class Rule:
+            kind: str
+            senders: tuple = ()
+
+
+        RULES = [Rule("insurance", senders=("insurance", "birch surety"))]
+
+
+        class Reader:
+            escrow = {"holders": ["Maple Title"]}
+
+            def read(self, text):
+                return [word for word in ("local", "Aspen Law") if word in text]
+    '''), encoding="utf-8")
+    terms = (Term("Oak Ridge Mutual", "insurer"), Term("Elm Indemnity", "insurer"), Term("Birch Surety", "insurer"),
+             Term("Maple Title", "title or escrow company"), Term("Cedar Bank", "bank"), Term("Aspen Law", "law firm"),
+             Term("Oakridge", "name"))
+    assert scan_code(tmp_path, terms, adapters=()) == {}
+    # Not a plain string, a docstring, ``__all__``, or a tuple inside a function.
+    wide = ["Birch Surety", "Elm Indemnity", "Maple Title", "Oak Ridge Mutual", "Oakridge"]
+    assert scan_code(tmp_path, terms, adapters=(), wide=True) == {"src/jason/tables.py": wide}
+    # A declared adapter is still allowed its vendor, there and in the module that holds the declarations; nothing else is.
+    (tmp_path / ADAPTERS_MODULE).write_text('ROWS = (("src/jason/tables.py", "Elm Indemnity"), ("src/jason/x.py", "Maple Title"))\n', encoding="utf-8")
+    declared = (Adapter("src/jason/tables.py", "Elm Indemnity", "claim letters"),)
+    assert scan_code(tmp_path, terms, adapters=declared, wide=True) == {"src/jason/tables.py": [t for t in wide if t != "Elm Indemnity"],
+                                                                       ADAPTERS_MODULE: ["Maple Title"]}
+
+
+def test_no_general_table_names_a_counterparty_but_the_two_that_wait():
+    """Read wide, general code names a counterparty in a collection in two modules only: tables of one association's
+    facts that wait to move into the profile (docs/adapters.md). A reader's table of carriers, firms, or vendors is
+    found here; it takes them from the sender directory instead. When one of the two moves, drop it from this set."""
+    from jason.community.boundary import ADAPTER_KINDS
+
+    counterparties = tuple(t for t in instance_terms(community()) if t.kind in ADAPTER_KINDS)
+    waiting = {"src/jason/tasks/board_packet.py", "src/jason/tasks/request_sheet.py"}
+    assert set(scan_code(repo_root(), counterparties, wide=True)) == waiting
+
+
 def test_an_import_of_the_profile_is_found(tmp_path):
     code = tmp_path / "src" / "jason"
     code.mkdir(parents=True)

@@ -12,10 +12,16 @@ only shrinks: a new term fails the test, and so does a cleared one the baseline 
 (``python -m jason.community.boundary --update`` rewrites it).
 
 General code (``src/jason``) is held to the same terms where a fact hides in code: a regular
-expression it matches text with, a word list it filters by, and a default argument. Such a fact
-belongs in the profile behind a ``Community`` method with an empty default. Its baseline is
-``tests/fixtures/code_boundary.json`` and only shrinks the same way. General code never imports
-the profile package by name at all (`profile_imports`).
+expression it matches text with, a word list it filters by, and a default argument. The regular
+expression is read wherever it is handed over: to ``re``, to a reader helper (``first``,
+``date_after``, ``amount_after``), or to a module's own function that passes its parameter on as a
+pattern (`pattern_parameters`). Such a fact belongs in the profile behind a ``Community`` method
+with an empty default. Its baseline is ``tests/fixtures/code_boundary.json`` and only shrinks the
+same way. General code never imports the profile package by name at all (`profile_imports`).
+
+A module's own table (a tuple, list, set, or dict of names, words, or records) is read only by the
+wide reading (``scan_code(..., wide=True)``, ``python -m jason.community.boundary --wide``), which
+is a report and not yet part of the check: ``docs/adapters.md`` says what it still finds.
 
 A counterparty's name is treated two ways. A general reader that recognizes one by name is the
 bug: it finds the counterparty through the sender directory instead (``sources.sender_in``). A
@@ -234,23 +240,146 @@ _RE_CALLS = frozenset({"compile", "search", "match", "fullmatch", "findall", "fi
 _ESCAPE = re.compile(r"\\[A-Za-z]")
 
 
+# The readers' helpers that take a pattern (``jason.community.document_models``): the slots, by position and by name,
+# where it goes. `pattern_parameters` adds every other function in general code that hands a parameter on as a pattern.
+READER_HELPERS: dict[str, frozenset] = {"first": frozenset({0, "pattern"}), "amount_after": frozenset({0, "label"}),
+                                        "date_after": frozenset({0, "label"})}
+ADAPTERS_MODULE = "src/jason/community/adapters.py"
+
+
 def _strings(node: ast.AST) -> list[str]:
     return [n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
 
 
-def code_sites(tree: ast.AST) -> list[str]:
-    """The strings in ``tree`` where a fact hides in code: the pattern given to ``re``, a word list
-    (``"a b c".split()``), and a parameter's default. A docstring, a comment, or a message is not one."""
+def _pattern_arguments(call: ast.Call, helpers: dict[str, frozenset]) -> list[ast.AST]:
+    """The arguments of a call that are patterns: the first given to ``re``, and a helper's pattern slots."""
+    func = call.func
+    if isinstance(func, ast.Attribute) and func.attr in _RE_CALLS:
+        # ``re.search(pattern, ...)``. The same name on anything else is a compiled pattern's method, whose argument
+        # is the text.
+        mine = isinstance(func.value, ast.Name) and func.value.id == "re"
+        return [*call.args[:1], *(k.value for k in call.keywords if k.arg == "pattern")] if mine else []
+    if isinstance(func, ast.Name):
+        slots = helpers.get(func.id)
+    elif isinstance(func, ast.Attribute):
+        # A method called on its own object is the module's own. On anything else, only a reader helper by its name
+        # (``document_models.first(...)``): another object's method of some other name is not known.
+        own = isinstance(func.value, ast.Name) and func.value.id in ("self", "cls")
+        slots = helpers.get(func.attr) if own else READER_HELPERS.get(func.attr)
+    else:
+        slots = None
+    if not slots:
+        return []
+    return [arg for at, arg in enumerate(call.args) if at in slots] + [k.value for k in call.keywords if k.arg in slots]
+
+
+def _module_of(path: str) -> str:
+    """``src/jason/community/base.py`` as ``jason.community.base``; a package's ``__init__`` as the package."""
+    parts = path.removesuffix(".py").split("/")
+    parts = parts[1:] if parts[:1] == ["src"] else parts
+    return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+
+
+def _imported_names(tree: ast.AST, module: str, package: bool) -> dict[str, tuple[str, str]]:
+    """Each name a module imports with ``from M import N [as A]``, as (M, N), a relative M resolved."""
+    found: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        base = node.module or ""
+        if node.level:
+            parent = module.split(".") if package else module.split(".")[:-1]
+            parent = parent[: max(len(parent) - (node.level - 1), 0)]
+            base = ".".join([*parent, base] if base else parent)
+        for alias in node.names:
+            found[alias.asname or alias.name] = (base, alias.name)
+    return found
+
+
+def pattern_parameters(trees: dict[str, ast.AST]) -> dict[str, dict[str, frozenset]]:
+    """For each module (by path), the functions it can call whose parameter is matched against text, by the name the
+    module calls them, each with the slots (position and name) where the pattern goes.
+
+    These are the reader helpers, and every function in ``trees`` that hands a parameter to ``re`` as the pattern or to
+    another such function. A reader's own helper (``_after(label, text)``) is found this way, so a fact in the string
+    given to it is seen as one given to ``re`` is. A module knows its own functions and the ones it imports by name
+    (``from M import N``); a function of the same name in a module it does not import is another function."""
+    modules = {path: _module_of(path) for path in trees}
+    scope: dict[str, dict[str, tuple[str, str]]] = {}
+    functions: list[tuple[str, tuple[str, str], list[str], set[str], list[ast.Call]]] = []
+    for path, tree in trees.items():
+        own: dict[str, tuple[str, str]] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                positional = [a.arg for a in (*node.args.posonlyargs, *node.args.args)]
+                if positional[:1] in (["self"], ["cls"]):
+                    positional = positional[1:]
+                named = set(positional) | {a.arg for a in node.args.kwonlyargs}
+                own[node.name] = (modules[path], node.name)
+                functions.append((path, own[node.name], positional, named, [c for c in ast.walk(node) if isinstance(c, ast.Call)]))
+        scope[path] = {**_imported_names(tree, modules[path], path.endswith("__init__.py")), **own}
+    slots: dict[tuple[str, str], frozenset] = {}
+
+    def view(path: str) -> dict[str, frozenset]:
+        helpers = dict(READER_HELPERS)
+        for name, key in scope[path].items():
+            if key in slots:
+                helpers[name] = slots[key]
+            elif not (name in READER_HELPERS and key[0].endswith("document_models")):
+                helpers.pop(name, None)       # the module's own function of a helper's name, with no pattern parameter
+        return helpers
+
+    changed = True
+    while changed:
+        changed = False
+        views: dict[str, dict[str, frozenset]] = {}
+        for path, key, positional, named, calls in functions:
+            helpers = views[path] if path in views else views.setdefault(path, view(path))
+            handed = {n.id for call in calls for arg in _pattern_arguments(call, helpers)
+                      for n in ast.walk(arg) if isinstance(n, ast.Name)} & named
+            found = frozenset(handed) | frozenset(positional.index(p) for p in handed if p in positional)
+            if not found <= slots.get(key, frozenset()):
+                slots[key] = slots.get(key, frozenset()) | found
+                changed = True
+    return {path: view(path) for path in trees}
+
+
+def _collections(tree: ast.AST) -> list[str]:
+    """The strings in a module's (or a class's) own tuples, lists, sets, and dicts: a table of names or words, or of
+    records that carry them. ``__all__`` lists the module's own names and is left out."""
+    found: list[str] = []
+    bodies = [getattr(tree, "body", [])] + [node.body for node in getattr(tree, "body", []) if isinstance(node, ast.ClassDef)]
+    for node in (node for body in bodies for node in body):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
+            continue
+        if any(isinstance(n, (ast.Tuple, ast.List, ast.Set, ast.Dict)) for n in ast.walk(node.value)):
+            found += _strings(node.value)
+    return found
+
+
+def code_sites(tree: ast.AST, helpers: dict[str, frozenset] | None = None, *, wide: bool = False) -> list[str]:
+    """The strings in ``tree`` where a fact hides in code: a pattern given to ``re`` or to a function that matches its
+    parameter against text (``helpers``, by default the reader helpers and this tree's own), a word list
+    (``"a b c".split()``), and a parameter's default. A docstring, a comment, or a message is not one.
+
+    ``wide`` adds the strings of the module's and its classes' own collections (`_collections`). The committed check
+    does not read those: see ``docs/adapters.md``."""
+    helpers = pattern_parameters({"module.py": tree})["module.py"] if helpers is None else helpers
     found: list[str] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if isinstance(node, ast.Call):
+            found += [s for arg in _pattern_arguments(node, helpers) for s in _strings(arg)]
             func = node.func
-            if func.attr in _RE_CALLS and isinstance(func.value, ast.Name) and func.value.id == "re" and node.args:
-                found += _strings(node.args[0])
-            elif func.attr == "split" and isinstance(func.value, ast.Constant) and isinstance(func.value.value, str):
+            if isinstance(func, ast.Attribute) and func.attr == "split" and isinstance(func.value, ast.Constant) \
+                    and isinstance(func.value.value, str):
                 found.append(func.value.value)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             found += [s for d in (*node.args.defaults, *node.args.kw_defaults) if d is not None for s in _strings(d)]
+    if wide:
+        found += _collections(tree)
     return [_ESCAPE.sub(" ", s) for s in found]
 
 
@@ -258,20 +387,25 @@ def _code_files(root: Path) -> list[Path]:
     return sorted((root / GENERAL_CODE).rglob("*.py"))
 
 
-def scan_code(root: Path, terms: tuple[Term, ...], adapters: tuple | None = None) -> dict[str, list[str]]:
-    """For each general module, the instance terms its patterns, word lists, and defaults name (sorted).
+def scan_code(root: Path, terms: tuple[Term, ...], adapters: tuple | None = None, *, wide: bool = False) -> dict[str, list[str]]:
+    """For each general module, the instance terms its patterns, word lists, and defaults name (sorted). A pattern is
+    one given to ``re``, to a reader helper (``first``, ``date_after``, ``amount_after``), or to any function in general
+    code that hands its parameter on as a pattern (`pattern_parameters`). ``wide`` reads the modules' own collections
+    too (`code_sites`).
 
     A counterparty's name is not counted in a module declared as an adapter for that vendor's layout (``adapters``, by
-    default every declared one): there the name is the layout's signature. It is counted in every other module, and
-    every other kind of term is counted everywhere."""
+    default every declared one): there the name is the layout's signature. Nor is it counted in the module that holds
+    the declarations. It is counted in every other module, and every other kind of term is counted everywhere."""
     patterns = [(term, term.pattern()) for term in terms]
     rows = _adapters(adapters)
+    trees = {path.relative_to(root).as_posix(): ast.parse(path.read_text(encoding="utf-8")) for path in _code_files(root)}
+    helpers = pattern_parameters(trees)
     found: dict[str, list[str]] = {}
-    for path in _code_files(root):
-        module = path.relative_to(root).as_posix()
-        strings = code_sites(ast.parse(path.read_text(encoding="utf-8")))
+    for module, tree in trees.items():
+        strings = code_sites(tree, helpers[module], wide=wide)
         hits = sorted({term.text for term, pattern in patterns if any(pattern.search(s) for s in strings)
-                       and not (term.kind in ADAPTER_KINDS and any(row.module == module and row.names(term.text) for row in rows))},
+                       and not (term.kind in ADAPTER_KINDS and any(row.names(term.text) and module in (row.module, ADAPTERS_MODULE)
+                                                                   for row in rows))},
                       key=str.casefold)
         if hits:
             found[module] = hits
@@ -356,6 +490,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"clear {doc}: {', '.join(found)}")
         print(f"{sum(len(v) for v in current.values())} instance terms in {len(current)} {what}")
         ok = ok and drift.ok
+    if "--wide" in args:
+        # A report, not part of the check: what the modules' own collections name beyond the committed reading.
+        committed, wide = scan_code(root, terms), scan_code(root, terms, wide=True)
+        for module, found in wide.items():
+            more = [term for term in found if term not in committed.get(module, [])]
+            if more:
+                print(f"wide  {module}: {', '.join(more)}")
     for site in profile_imports(root, community().slug):
         print(f"import {site}: general code imports the profile package")
         ok = False

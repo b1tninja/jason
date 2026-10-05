@@ -79,13 +79,44 @@ These are adapters too, but not for an association's counterparty, so they need 
 - **Platforms.** The mail scanning service (`jason.postscanmail`), the pest control portal platform (`jason.fieldportals`), Google (`jason.google`), and Zoom (`jason.zoom`).
 - **Government forms.** The NFIP's declarations, a county's secured tax bill, the DRE's public report and budget worksheet, and the ACORD certificate.
 
+## What the check reads
+
+`boundary.code_sites` reads three places where a fact hides in code:
+
+- **A pattern, wherever it is handed over.** To `re`; to a reader helper (`first`, `date_after`, `amount_after` in `jason.community.document_models`); or to a module's own function that passes its parameter on as a pattern (`_after(label, text)`). `boundary.pattern_parameters` finds those functions. A module knows its own functions and the ones it imports by name, so a function of the same name in a module it does not import is not taken for one.
+- **A word list.** `"a b c".split()`.
+- **A default argument.**
+
+A reader that needs a counterparty takes it from the profile:
+
+| The reader wants | It asks |
+|---|---|
+| the law firm, manager, vendor, insurer, bank, or title company a text names | `sources.sender_in(text, senders, kind)`, or `sources.first_sender_in` where the text names two of a kind and the order matters |
+| a claim paper's carrier | a policy's carrier or program in `Community.insurance()`, then the sender directory |
+| a subdivider | `Community.developers()` |
+| the other side of a legal matter | `LegalCase.opposing` in `Community.legal_cases()` |
+| the association's own name | `Community.name` with `base.name_regex`, and `Community.name_pattern()` for the name word as letters print it |
+
+One the profile does not list is a miss: the reading lacks the value until a person adds the counterparty to the profile.
+
 ## What the check does not see
 
-`boundary.code_sites` reads three places where a fact hides in code: a pattern given to `re`, a word list (`"a b c".split()`), and a default argument. It does not read a plain string, a tuple of patterns, or a pattern given to a helper (`first(r"...")`). A counterparty named only there is not found.
+The check does not read a plain string, a message, or a module's own table: a tuple, list, set, or dict of names, words, or records.
 
-Known to remain on October 4, 2026, each a general module that names counterparties outside those three places:
+**The wide reading** reads the tables, and a class's own. `python -m jason.community.boundary --wide` lists what they name beyond the check, and `scan_code(..., wide=True)` is the same in code. It is a report, not part of the check: the tables below still hold one association's facts, and a baseline never gains an entry.
 
-- `src/jason/community/models/insurance_claims.py`: `_CARRIERS`, a list of carriers and administrators with their letterhead words.
-- `src/jason/community/models/developer_security.py`: escrow holders and sureties by name in a pattern given to `first`.
-- `src/jason/postscanmail/models.py`: a few senders' words among the generic words of the mail rules.
-- `src/jason/tasks/board_packet.py` and `src/jason/tasks/request_sheet.py`: motions and request groups written for one association.
+What the wide reading finds on October 4, 2026:
+
+- **Counterparties, in two modules.** `OPTIONS` in `src/jason/tasks/board_packet.py` (the options and motions for one association's board items) and `GROUPS` in `src/jason/tasks/request_sheet.py` (request ids with their vendors). Each is a table of one association's facts and belongs in the profile. `tests/test_profile.py` holds the set to these two, so a counterparty in any other module's table fails the test.
+- **The association's name word, in eight modules.**
+  - A stop word in four word sets: `tasks/agenda_items.py`, `tasks/intents.py`, `tasks/request_links.py`, and `tasks/paid_vs_approved.py`.
+  - The profile's folder in `tasks/law_sweep.py`.
+  - A vendor's name for the property in one `InvoiceFormat` row.
+  - Pointers into the profile in `community/lessons.py` and `community/procedures.py`.
+
+Neither reading sees a plain string. Known on the same day:
+
+- `src/jason/community/models/developer_security.py`: the name word in a check's comparison.
+- `src/jason/postscanmail/client.py` and `src/jason/zoom/client.py`: the association's name in the user agent each sends.
+- `src/jason/tasks/developer_security.py`: a note that names an escrow holder.
+- `src/jason/community/models/insurance_claims.py`: two program contractors by name in a pattern. They are in no profile, so they are no term yet.
