@@ -117,14 +117,15 @@ def _evidence(context: str, readings: dict[Any, str], guard: str) -> tuple[str, 
 
 
 def ocr_reading_asks(key: str, current: Any, copy: Any, vocab: Counter, *, lexicon: Any = None,
-                     extra: dict[str, list] | None = None, held: list | None = None) -> list[Ask]:
+                     extra: dict[str, list] | None = None, held: list | None = None, opts: Any = None) -> list[Ask]:
     """Where the base text (read by OCR) and the working copy differ by a few words in a section no amendment set.
 
     With ``lexicon`` (``ocr_correct``), each difference is also read by the text rules, and ``extra`` adds other
     readers' suggestions by section (the local model, the vision model): an ask is ``likely`` only when two independent
     readers agree and the guard passes (``ocr_correct.tier``). Where the working copy keeps the OCR's reading but the
     rules read the page otherwise (the copy's own slip, "ofthe"), or where there is no working copy, the rules'
-    suggestion is asked too. Without ``lexicon``, the working copy alone decides, as ``_likely`` says."""
+    suggestion is asked too. Without ``lexicon``, the working copy alone decides, as ``_likely`` says. ``opts`` are the
+    text rules' ``ocr_correct.Options`` (None is today's behavior)."""
     from jason.community.living import provisions_of
     from jason.community.ocr_correct import Method, Suggestion, Tier, combine, suggest, tier
 
@@ -135,7 +136,8 @@ def ocr_reading_asks(key: str, current: Any, copy: Any, vocab: Counter, *, lexic
             continue
         ours_t = p.body.split()
         subject = f"{key}#{p.number}"
-        rules = combine(suggest(ours_t, lexicon), (extra or {}).get(p.number, ())) if lexicon is not None else []
+        rules = (combine(suggest(ours_t, lexicon, **({"opts": opts} if opts is not None else {})), (extra or {}).get(p.number, ()))
+                 if lexicon is not None else [])
         covered: set[int] = set()
         same: set[int] = set()                                # tokens the working copy reads as the OCR did
         if p.number in theirs:

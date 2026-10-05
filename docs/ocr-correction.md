@@ -2,7 +2,7 @@
 
 A scanned instrument's OCR is mostly right and wrong in a few repeatable ways. jason reads the OCR again, word by word, with what it knows about the language the document must be in, and turns each doubt into a **suggestion**: a reading of a few tokens, with the method that read it, its evidence, and a guard. A suggestion is never a silent edit. It becomes a question in the intake queue (`jason intake`), and only a person's answer becomes a transcription (`living.Correction`, kind `TRANSCRIBED`). This page is the design, the measurements behind it, and how it plugs into `jason sop document-intake`.
 
-Code: `jason.community.lexicon` (what a word may be; the language model), `jason.community.ocr_correct` (the text rules, the guard, agreement), `jason.community.ocr_models` (the local text and vision models as readers), `jason.tasks.ocr_correct` (the corpus, second readers, the library's sidecars), and `jason.tasks.intake.ocr_reading_asks` (the queue).
+Code: `jason.community.lexicon` (what a word may be; the language model), `jason.community.ocr_correct` (the text rules, their `Options`, the guard, agreement), `jason.community.ocr_channel` (the confusions a recognizer makes, learned from aligned text), `jason.community.ocr_vocab` (candidates by search of the vocabulary), `jason.community.ocr_models` (the local text and vision models as readers and scorers), `jason.tasks.ocr_correct` (the corpus, routing to the page, second readers, the library's sidecars), `jason.tasks.ocr_synth` (rendered statutes read back, for the channel), and `jason.tasks.intake.ocr_reading_asks` (the queue).
 
 ## Why an English prior holds
 
@@ -25,9 +25,12 @@ A word list alone is not enough. General English lists are built from web text a
 |---|---|---|
 | layout | a word broken at a line's end, a stray bar or speck, a page number in the running text (`- 12 -`), a curly quote the OCR could not encode, a label's bracket (`{c)`), a label misread in its series (`(il)` after `(i)`), a word and its punctuation run together | `ocr_correct.layout_suggestions` |
 | lexicon | run-together words split by Viterbi over the language model; a non-word read as the likeliest word one or two OCR confusions away (`rn`/`m`, `li`/`h`, `1`/`l`), ranked by the words around it (a noisy channel) | `ocr_correct.correct_token`, `readings` |
+| lexicon, with `Options` | the same, with a learned channel (`ocr_channel`), a vocabulary search for words within three edits (`ocr_vocab`), a corrected word's capitals from its sentence and the document's defined terms (`case_for`), a defined term ranked up, and a real word read as another where the channel and the context favor it (`real_word_readings`); each is an option, and no option is the first version | `ocr_correct.Options`, `intake --ocr-options` |
 | local model | the tokens the lexicon doubts, marked in the passage; the model answers only for those | `ocr_models.OllamaTextCorrector.marked` |
 | local model as a scorer | the model chooses among the lexicon's readings with one letter, weighted by its token probabilities (Ollama's `top_logprobs`) | `OllamaTextCorrector.choose` |
-| vision | the word's crop of the page image, with its line for context | `ocr_models.VisionWordReader` |
+| vision | the word's crop of the page image, with its line for context; sent every word the English prior doubts and the real words the channel doubts (`routed`) | `ocr_models.VisionWordReader`, `tasks.ocr_correct.routed` |
+| vision as a scorer | the crop and the lexicon's readings; one letter back, weighted by its token probabilities (Ollama returns `top_logprobs` on a request that carries images) | `ocr_models.VisionChooser` |
+| vision, a line | the line's crop; the reading is taken only on the tokens the rules doubt | `ocr_models.VisionLineReader`, `line_suggestions` |
 | working copy | a person's hand-kept transcription of the same text | `tasks.intake.ocr_reading_asks` |
 
 The lexicon and layout rules read the same OCR with the same knowledge, so they count as one reader ("text rules"). The others each read something different.
@@ -131,19 +134,191 @@ On ten pages, the tool's options changed little: 300 dpi 1.82%, 200 dpi 2.49%, 4
 - Their suspect share fell from 3.1% to 0.7% after the editorial suggestions, mostly stray bars and specks.
 - Vision transcriptions of 25 files are cleaner (0.9% suspects). There the rules find mostly the drafters' own typos ("contactor"). Those stay single-reader suggestions that a crop settles. A vision transcription's bars, bullets, and checkboxes are text (`tables=True`).
 
+## Measurements, October 5, 2026: the word layer
+
+The question: make the obvious misreads the right English words, using the local models for candidate selection, context, and image-to-text. The line that started it (made up here, with the same faults): "the integrity ot Lhe tJnit and the roof". The text rules left all three: "ot" is a word the list knows, so it is never a suspect; "Lhe" was read "The" (the OCR's capital L copied onto the right word, mid-sentence); "tJnit" had no candidate (a wide "U" read as two glyphs, "tJ", which the hand list has no rule for, and the candidate search lowercased the "J" and allowed only one arbitrary edit).
+
+**The test sets.** The same alignment and scoring as October 2 (the restated declaration against the working copy; WER and CER; a suggestion is right when removing it, with the others applied, adds errors, harm when keeping it does; harm where the copy keeps the OCR's reading counted apart, written "+N"; the cleanest quarter of sections for edits to right words), rebuilt in scratch because the first scripts were gone. The numbers differ a little from October 2's table because the sections are numbered as builds now number them (`aligned`); today's rules read 2.22% where that table read 2.49%, with 1 harm and 9 copy-kept, as then. About 26,500 reference words, and six readings of the same scan, so the noise is varied:
+
+| Reading | WER as read | Today's text rules |
+|---|---:|---:|
+| PyMuPDF's page OCR, 300 dpi (the cached original) | 7.94% | 2.22% |
+| The Tesseract tool, 300 dpi (what `scan_text` reads now) | 1.99% | 1.59% |
+| The tool at 150 dpi | 2.31% | 1.89% |
+| The tool at 110 dpi | 4.00% | 3.23% |
+| The tool at 85 dpi | 11.52% | 7.23% |
+| The embedded text layer of the certified copy's PDF (a different scan and an older engine; natural errors like the line above) | 5.06% | 4.31% |
+
+Only resolution was varied. No preprocessing (binarization, despeckle, deskew) was measured; that is the preflight work's. The word layer reads what the engine gives it, so the order is: preflight rendition, Tesseract, then these readers.
+
+Anything learned (a channel, a threshold) was scored on sections it never saw: five folds of contiguous sections, a stand-in for pages, with the other four folds and every reading's aligned misreads as training data.
+
+**What the errors are.** Each differing block of the raw reading, by kind (edits; the share today's rules remove in brackets):
+
+| Class | Tool 300 dpi | Certified copy | Tool 85 dpi | PyMuPDF 300 dpi |
+|---|---:|---:|---:|---:|
+| segmentation (run together, split) | 116 (53%) | 157 (66%) | 849 (92%) | 1,508 (92%) |
+| digit (numbers, "two(2)", "1/12th") | 105 (2%) | 499 (6%) | 312 (11%) | 119 (10%) |
+| punctuation | 71 (8%) | 53 (8%) | 614 (7%) | 209 (54%) |
+| label ("(i)" for "(a)", structure) | 51 (0%) | 113 (0%) | 124 (2%) | 49 (0%) |
+| non-word, one slip ("shail") | 39 (67%) | 122 (45%) | 200 (70%) | 41 (68%) |
+| real word for another ("ot" for "of") | 40 (0%) | 87 (0%) | 285 (0%) | 41 (0%) |
+| two glyphs for one, a letter added ("concem") | 8 (50%) | 38 (29%) | 68 (46%) | 7 (57%) |
+| case | 18 (0%) | 49 (0%) | 21 (0%) | 13 (0%) |
+| dropped or added word, other | 85 | 239 | 617 | 135 |
+
+Much of "label", "digit", "dropped", and part of "real word" and "case" is the working copy's own structure and slips ("ln" for "In", "alI" for "all"), a floor no reader reaches. On the clean reading what is left for a word-level reader after today's rules is a few dozen words in 26,700 (about 0.1%); on the noisy ones it is 1% to 2%, mostly real-word errors (285 raw at 85 dpi), non-words, and two-glyph misreads.
+
+**Candidate recall** (how often the right word is among the candidates; it caps any chooser, text or vision), on words read wrongly one for one:
+
+| Source of candidates | Certified copy, non-words | Certified copy, two glyphs | 85 dpi, non-words | 85 dpi, real words |
+|---|---:|---:|---:|---:|
+| the hand list (today) | 47 of 68 | 11 of 25 | 83.7% | 80.0% |
+| + the learned channel | 49 of 68 | 14 of 25 | 90.3% | 85.2% |
+| search of the vocabulary within three edits, scored by the channel | 64 of 68 | 20 of 25 | 92.4% | |
+| Tesseract's own glyph alternatives (`lstm_choice_mode`, hOCR) | | | 35.8% | 25.2% |
+| union of all | | | 93.4% | 85.5% |
+
+Tesseract's alternatives add about one point beyond the channel and the search: the per-glyph choices do not line up with the characters of the word the engine finally printed (the dictionary and the beam search change it), so they are a weak source. The misses left are words far from the read ("irnvrng" for "having").
+
+**The learned channel.** `ocr_channel.learn` counts, from each misread word aligned with the word printed, the letter groups the recognizer read for what was printed ("tj" for "u", "rn" for "m"), and divides by the chances it had to misread those letters. Trained on the aligned readings by folds, it learned 117 rules from 744 pairs; trained on rendered statutes (40 pages of statute text, set in a serif face, degraded five ways, read by the tool, aligned: 2,546 pairs, no leakage because it never sees a scan or a record) it learned 197. The likeliest rules, as read > as printed, with the probability the recognizer misreads them:
+
+| Learned from the readings (by folds) | | From rendered statutes | |
+|---|---|---|---|
+| i > ii | 2.6% | i > ii | 18.9% |
+| m > rn | 2.5% | th > fb | 6.3% |
+| g > gs | 2.3% | m > rn | 5.8% |
+| g > ge | 1.0% | p > pd | 5.4% |
+| t > dat | 0.8% | d > db | 3.9% |
+| o > to | 0.6% | a > aa | 3.6% |
+| f > fa | 0.5% | i > tt | 3.5% |
+| b > ble | 0.4% | b > htt | 3.4% |
+| a > ad | 0.3% | w > tw | 2.4% |
+| i > ir | 0.3% | u > htt | 2.3% |
+| a > al | 0.3% | t > htt | 2.3% |
+| i > l | 0.2% | b > sb | 1.9% |
+| a > q | 0.2% | e > c | 1.8% |
+| a > ai | 0.2% | u > tt | 1.8% |
+| i > li | 0.2% | f > r | 0.95% |
+
+Many are a letter the engine dropped or doubled ("i" for "ii"); the rendered text's faults are of that low-resolution kind ("th" for "fb"). WER with each channel (the hand list stays beside it):
+
+| Channel | Certified copy | 85 dpi | PyMuPDF | Tool 300 dpi |
+|---|---:|---:|---:|---:|
+| hand list (today) | 4.31% | 7.23% | 2.22% | 1.59% |
+| + learned from the readings, by folds | 4.29% | 7.20% | 2.22% | 1.59% |
+| + rendered statutes | 4.25% | 7.18% | 2.22% | 1.59% |
+| + both | 4.26% | 7.17% | | |
+
+A small gain, positive on every noisy reading and nothing on the clean ones; the rendered text is the better source and the only one that does not need a scan with a working copy.
+
+**The methods, one switch at a time on top of the one before** (WER; "harm" is right words changed; "clean" is edits to right words per 1,000 in the cleanest quarter; time is cold, per token, on a machine with other jobs running):
+
+| Reader | Tool 300 dpi | Certified copy | 85 dpi | PyMuPDF 300 dpi | Right / harm (certified copy) | Time per token |
+|---|---:|---:|---:|---:|---|---|
+| OCR as read | 1.99% | 5.06% | 11.52% | 7.94% | | |
+| 0 today's text rules | 1.59% | 4.31% | 7.23% | 2.22% | 160 / 3 | 0.1 to 0.6 ms |
+| 1 + learned channel (hand list + rendered statutes) | 1.59% | 4.25% | 7.18% | 2.22% | 174 / 3 | 0.4 to 2.8 ms |
+| 2 + search of the vocabulary | 1.59% | 4.20% | 7.16% | 2.21% | 188 / 3 | +0.1 to 0.5 ms |
+| 3 + case by context, defined terms | 1.59% | 4.22% | 7.14% | 2.21% | 190 / 3 | none |
+| 4 + real-word detection, posterior 0.95 | 1.57% | 4.16% | 6.75% | 2.19% | 209 / 3 (+4) | about +0.1 ms |
+| 5 = 3 + the page's crop at every suspect | 1.55% | 3.82% | 6.68% | | 321 / 1 | 0.25 to 0.4 s a crop |
+| 6 = 4 + the page's crop at every suspect | 1.54% | 3.76% | 6.28% | | 340 / 1 (+4) | |
+| 7 = 6 + the page's crop at real words the channel doubts | 1.53% | 3.66% | 6.00% | | 367 / 1 (+4) | |
+
+Harm in the cleanest quarter, per 1,000 words: 0.00 for every step on the certified copy, and on the 85 dpi reading 0.24 today, 0.00 with the crop at suspects, 0.73 at step 4 alone and 0.49 with the crop. On the tool's 300 dpi reading step 4 is 0.41 (3 copy-kept words changed), the crop steps 0.00 to 0.41. Today's rules on the PyMuPDF reading read 0.22.
+
+What each class gains at the end (edits removed of the raw, certified copy / 85 dpi): non-words 55 to 110 of 122 and 140 to 177 of 200; two glyphs 11 to 35 of 38 and 31 to 55 of 68; real words 0 to 36 of 87 and 1 to 151 of 285; digits and labels (where the crop reads a suspect among them) 32 to 87 of 499 and 2 to 44 of 124; segmentation, case, and punctuation did not change. A count of "new" errors rises (23 to 58 on the certified copy) because the crop changes where the alignment cuts a block (page furniture, headings); the per-suggestion count of right words changed (1, +4 copy-kept) is the harm.
+
+**Switch by switch.**
+- **Learned channel and search.** Zero added harm everywhere. Words fixed, of the raw errors in a class (certified copy; 85 dpi): non-words 55, 64 with the channel, 70 with the search of 122 (140, 145, 145 of 200); two glyphs 11, 15, 18 of 38 (31, 36, 41 of 68). The search finds words two and three edits away that the old candidate step cannot (it allowed one arbitrary edit, plus a confusion). Cost: a one-time index of about 40,000 words (numpy; about 10 s) and about 0.3 ms a token.
+- **Case by context.** `case_for` takes the token's own case when its first letter was read right (a heading's "Restrictinns" is "Restrictions"), and only otherwise a defined term's capitals, a capital after a sentence's end, or the form the clean text mostly writes. A first version that always replaced the token's case lost 17 words to 4; this one is 4 won and 1 lost on the certified copy, 5 and 0 at 85 dpi. WER moves by 0.02 either way. "Lhe" mid-sentence is "the"; "tJnit" is "Unit" only with the next switch.
+- **Defined terms.** `lexicon.document_terms` leaves out a word the general list also knows, so "unit" was never a term. `document_term_forms` takes a different test, the words a document writes with a capital in the middle of its sentences nearly every time (in the corpus, "Unit"), and `term_bonus` ranks a candidate in that set up. With the rendered-statute channel and the bonus the line above reads "Unit" (posterior 0.88 against 0.11 for "tJnit"); without it the posterior was 0.51, under the 0.6 bar. The bonus alone moved no whole-document WER.
+- **Real-word errors.** The word list knows "ot", so the English prior never doubts it. The noisy channel over real words (Mays, Damerau and Mercer) compares the word as read, with a prior of 0.995 that a real word was printed as read, against the words one confusion away that are at least five times likelier by themselves, in the context of the bigram model. Swept (posterior to take a reading; ratio 5 or 30; the prior; certified copy / 85 dpi / tool 300 dpi, WER and clean-quarter harm per 1,000):
+
+  | Posterior | Certified copy | 85 dpi | Tool 300 dpi |
+  |---|---|---|---|
+  | none (step 3) | 4.29% / 0.00 | 7.20% / 0.24 | 1.59% / 0.00 |
+  | 0.5, ratio 30 | 4.25% / 2.15 | 6.67% / 1.95 | 1.65% / 1.64 |
+  | 0.8, ratio 30 | 4.26% / 0.72 | 6.75% / 1.70 | 1.62% / 0.82 |
+  | **0.95**, ratio 30 | 4.25% / 0.00 | 6.81% / 0.49 | 1.57% / 0.21 |
+
+  Below 0.95 it loses on a clean reading (the tool's own at 0.5 reads 1.65% for 1.59%) and above it gains only where the noise is high. So it is an option, on at 0.95 for a noisy reading. The line's "ot" is 0.46 for "of" and 0.31 for "at": the bigram model cannot choose between twins; the page can. The English prior alone flags 383 of 1,389 wrong tokens at 85 dpi; Tesseract's own word confidence (`tsv`) separates wrong tokens at AUC 0.80 to 0.85, and real-word errors among known words at 0.78 to 0.79 (below 60 confidence: 99 right words a thousand at 85 dpi, 4 a thousand on the tool's 300 dpi reading), a useful second detector for gating the channel's suggestion but it needs the engine's confidences kept beside the reading, which the cached text does not.
+- **Routing to the page.** A suspect with no candidate, a low posterior, or a real word the channel doubts at 0.2 goes to the crop. The routes are `guarded` (today's), `doubts`, and `suspects` (every one; also the doubted real words). See the next section.
+
+**The page's crop, read by qwen3.5:9b, against the text rules** (token level; the suspects with a known right reading; "fixes" are wrong tokens read right, "harms" right tokens changed to wrong):
+
+| Reading | Wrong as read | Text rules fix | The crop fixes | The crop harms (right tokens) |
+|---|---:|---:|---:|---:|
+| Certified copy | 263 | 91 (35%) | 222 (84%) | 0 of 20 |
+| 85 dpi | 389 | 198 (51%) | 298 (77%), 294 with a known-word gate | 5 of 19 without the gate, 0 with |
+| Tool, 300 dpi | 54 | 34 (63%) | 38 (70%) | 0 of 19 |
+
+The gate is `tasks.ocr_correct.usable_reading`: a reading with a "?", spanning lines, of several words where the OCR read one (a crop that took in a neighbour: "reoccupy his"), or that is itself a suspect is not taken. Its five 85 dpi harms were a changed letter ("hypothebate") and four crops that took in a neighbour. A crop read before the rules wins everywhere ("vision first, then rules": certified copy 3.82% against 3.91% for "rules first, the crop where they abstain"; 85 dpi 6.70% against 6.71%; tool 1.55% against 1.56%), so the rules are the fallback.
+
+On the real words the channel flags at 0.2 (certified copy 117 with a known right reading, 63 wrong; 85 dpi 261, 218 wrong; tool 62, 12 wrong):
+
+| Reader | Certified copy | 85 dpi | Tool 300 dpi |
+|---|---:|---:|---:|
+| the channel alone at 0.95 | 15 of 63 fixed, 6 of 54 right words changed | 96 of 218, 3 of 43 | 6 of 12, 3 of 50 |
+| the channel at 0.5 | 27 of 63, 52 of 54 changed | 140 of 218, 41 of 43 | 9 of 12, 48 of 50 |
+| the text model choosing among the twins (letter, p >= 0.9) | 11 of 63, 0 | 46 of 218, 0 | 2 of 12, 0 |
+| **the page's crop** | **47 of 63, 1 changed** | **161 of 218, 0** | **9 of 12, 0** |
+| the vision model choosing among the twins (crop and letter) | 27 of 63, 1 | 160 of 218, 0 | 8 of 12, 0 |
+
+The one right word the crop changed is the working copy's own slip ("tum" for "turn"). The page is the right judge of a real-word error; a language model with no image is not (qwen3.5:9b at p >= 0.9 fixes 11 of 63), and the bigram model is a flagger, not a judge.
+
+**The image-conditioned chooser** (the user's "image-text-to-text candidate selection"): the crop and its line, the token as read and the lexicon's top readings as lettered options and a last "none of these", one letter back, its `top_logprobs` the weights (`ocr_models.VisionChooser`). **Ollama 0.35.0 returns `logprobs` and `top_logprobs` on a chat request that carries images** (qwen3.5:9b: checked on a crop, "B" at 0.95). On the example line it works: "tJnit" among {tJnit, Unit, unit, tunit}: "Unit" at 0.97; "ot" among {ot, of, or, on}: "of" at 0.97 (the plain crop read "ot" back; it read "the" and "Unit" right). Over the suspects it does not beat the plain crop, and does not beat the text chooser either:
+
+| Where the right word is among the options | Certified copy (99) | 85 dpi (213) | Tool (36) |
+|---|---:|---:|---:|
+| the text rules' top reading | 91 | 198 | 34 |
+| the text chooser (qwen3.5:9b, letter) | 97 | 209 | 36 |
+| the vision chooser | 77 | 185 | 21 |
+| the plain crop | 88 | 166 | 28 |
+
+and its calibration is poor (certified copy: p >= 0.95 right 22 of 36; 0.8 to 0.95 right 27 of 114), against the text chooser's (p >= 0.95: 56 of 65). It is bounded by candidate recall (the suspects' right word is among the options for 101 of 268 at best), which is why the free crop reading is the default and the chooser is for the case where a person wants a reading that can only be a given one. Its guarantee, that it never writes a reading it was not given, is the same as the text chooser's, at the price of that recall.
+
+**A line, re-read** (`VisionLineReader`, `line_suggestions`): the line's crop is read, diffed with the OCR's tokens, and an edit is taken only where it falls on a doubted token and is minimal. Certified copy: 4.29% alone, 4.18% (221 edits), rules plus the line 4.01%; with every edit and no gate 4.08% (255 edits, 2 right words changed). Tool 300 dpi: 1.52% with the gate, 1.51% without (1 right word changed). The line's re-reading drifts little (a 9B model copies a line closely) and the gate costs about nothing, but the word's crop is the better reader (3.82%). 0.44 s a line alone, 3.7 s with the machine busy. The lines the model could not read (an HTTP 500 from Ollama on two readings) were skipped.
+
+**Voting across Tesseract streams** (ROVER style, lexicon-gated; five resolutions, 150 to 400 dpi, against the 300 dpi backbone): 1.99% to 1.86% as read (82 words changed) and 1.58% to 1.53% with the rules after. A gain of 0.05 points; the streams' errors are alike, so it is the preflight's variants (different binarization, deskew) that have room to differ, not resolution.
+
+**qwen3.6:27b was not tried**: `preflight` refused it again, 25.1 GB of commit needed and 17.5 GB free with no model loaded. qwen3.5:9b is Q4_K_M; a higher-precision build (Q8, FP8) is a download a person makes. The crops here are of typed text; the NVFP4 digit loss seen earlier is not tested by them (the crop route reads suspects, never a number).
+
+**The example line under each reader** (a line of the certified copy's text layer, the tokens "ot Lhe tJnit"; qwen3.5:9b for the model rows):
+
+| Reader | "ot Lhe tJnit" becomes | Time |
+|---|---|---:|
+| OCR as read | ot Lhe tJnit | |
+| 0 today's rules | ot The tJnit | 0.4 s the line |
+| 1 + learned channel | ot The tJnit | 0.05 s |
+| 2 + search | ot The tJnit | 0.2 s |
+| 3 + case by context | ot the tJnit | 2 ms |
+| 4 + defined terms | ot the Unit | 1 ms |
+| 5 + real words (0.95 or 0.5) | ot the Unit | 14 ms |
+| the channel's readings of "ot" | of 0.46, at 0.31, ot 0.06, or 0.03 | |
+| the page's crop, each word | ot, the, Unit | 1.6 s a word (first load) |
+| the vision chooser | Unit 0.97; of 0.97 | 0.14 s |
+| the text chooser | of 0.76 (or 0.15); Unit 0.50 against unit 0.48 | 4.4 s (first load) |
+| a line re-read | of the Unit, taken on all three | 5 s |
+
 ## Where it runs
 
 - **`jason intake --scan`**: for each living document whose base is a scan, or that has a working copy.
-  - The text rules read every unamended provision (`tasks.intake.ocr_reading_asks` with a `lexicon`).
+  - The text rules read every unamended provision (`tasks.intake.ocr_reading_asks` with a `lexicon` and `Options`).
+  - `--ocr-options` (default `search,case,terms`; an empty string is the October 2 rules; `real-words` adds the real-word reader and sends those words to the page) and `data/ocr/channel.json`, if `jason intake --learn-channel` wrote one, set the readings. Search needs numpy and is skipped without it.
   - Where the working copy differs by a few words, its reading and the rules' are compared. Agreement with a clean guard is likely.
   - Where the copy keeps the OCR's reading against a confident rule (its own slip), the rules' reading is asked.
   - A one-reader suggestion is not asked. It is kept in `data/living/<key>/ocr-suggestions.json`.
 - **`--model`** adds the local text model (marked suspects, `qwen3.5:9b`) as a second reader. `preflight` runs first and the model is released after.
   - On the declaration it took 93 s.
   - It turned 333 held suggestions into likely questions that a person can accept in a batch after a look (`jason intake --accept-likely --by NAME`).
-- **`--vision`** reads the page's crop for each guarded suggestion: a number or an operative word.
-  - The model is `JASON_OCR_MODEL`, else `OllamaVisionOcr`'s.
+- **`--vision`** reads the page's crop. `--vision-route` says for which tokens: `suspects` (the default since October 5: every word the English prior doubts, and the real words the channel doubts when `real-words` is on), `doubts` (only the suspects the text rules cannot settle), or `guarded` (the first version's: a guarded suggestion, a number or an operative word, which is always read).
+  - A crop's reading must pass `usable_reading` (no "?", one line, one word where the OCR read one, and not itself a suspect) before it is a suggestion; it enters the queue as the vision reader's, so it makes a question likely when the text rules agree with it, and a reading it alone makes is kept in `ocr-suggestions.json` like any one-reader suggestion.
+  - The model is `JASON_OCR_MODEL`, else `OllamaVisionOcr`'s. `preflight` runs first and the model is released after.
   - Word boxes are cached as `<scan>.words.json` beside the scan.
+- **`jason intake --learn-channel`** counts the letter groups OCR misread in each scanned living document against its working copy, and in statute text rendered, degraded, and read back by the Tesseract tool (`tasks.ocr_synth`; about two and a half minutes), into `data/ocr/channel.json`. The file holds letters and probabilities, no word of any document, and the next `--scan` reads it.
+- **Not wired to the queue:** the vision chooser (`VisionChooser`) and the line reader (`VisionLineReader`, `line_suggestions`) are measured above and are in the code for a person's own use; the default route is the word's crop.
 - **`jason intake --library-ocr [--library-kind KIND]`** writes `data/library/text/<id>.ocr-suggestions.json` beside each library text an OCR engine or the vision model read. It lists the worst-read files first, by their share of suspects.
   - The `.txt` is never rewritten: a reading is evidence.
   - A file near the top is one to read again with the Tesseract tool or the vision model.
@@ -169,7 +344,11 @@ Measured, it is the least faithful reader (above), so intake uses the marked-sus
 ## Not done yet
 
 - **Reading the declaration again with the Tesseract tool** would cut its OCR error by three quarters. It is a person's decision: the transcriptions already applied to the cached text name its words, and would go stale.
-- **qwen3.6:27b** as the text and vision reader, when commit allows (`preflight`).
+- **qwen3.6:27b** as the text and vision reader, when commit allows (`preflight` refused it again on October 5: 25.1 GB of commit needed, 17.5 GB free with nothing loaded; raising the page file is a system setting a person makes). Every vision number above is qwen3.5:9b at Q4_K_M; a Q8 or FP8 build is a download a person makes, and the crops should be checked on digits again if the quantization drops.
 - **`tessdata_best`'s `eng` model** (about 15 MB, from the tesseract-ocr project's `tessdata_best` repository). Downloading it is a person's step.
-- **Tesseract's word confidences** (the tool's `tsv`) as a second detector beside the English prior.
+- **Tesseract's word confidences** (the tool's `tsv`) kept beside a reading, to gate the real-word reader (AUC 0.78 to 0.79 for real-word errors; measured above, not wired: the cached text carries none).
+- **A surprisal map from a causal model** (vLLM `prompt_logprobs`, or a masked model's pseudo-log-likelihood) for the real-word errors: Ollama returns probabilities for the tokens it generates, not for the prompt, so it cannot give one. The measurement above says the page, not a language model, is the judge of a real-word error; a map would only improve the flagging, which with the channel and the bigram model reaches 218 of the 285 real-word errors at 85 dpi (the flagged ones, with a known right reading, among the raw blocks).
+- **A page-level transcript from the 27B as a disagreement map** (Consensus Entropy): not run, for the same commit reason.
+- **Voting across preflight variants** (binarization, despeckle, deskew), after the preflight work: resolution streams alone gave 0.05 points.
+- **Fine-tuned correctors** (ByT5 on the rendered pairs): the measured headroom on a clean reading is a few dozen words, so there is no case for one yet; on a noisy reading the page's crop already reads about three quarters of the misreads.
 - **Structure from a document model** (headings and numbering, the outline's weak spot): PaddleOCR-VL, MinerU, granite-docling, olmOCR. See the trials table in [document-tools.md](document-tools.md).

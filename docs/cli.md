@@ -569,7 +569,10 @@ Questions jason could not decide while taking documents in: classify, OCR readin
 | `--by` | BY | the person answering or confirming (required) |
 | `--apply` |  | turn answers into the records the next run uses |
 | `--model` |  | with --scan: the local text model reads the doubtful words too (a second reader) |
-| `--vision` |  | with --scan: the vision model reads the page's crop of a number or operative word in doubt |
+| `--vision` |  | with --scan: the vision model reads the page's crop of the words in doubt (--vision-route says which) |
+| `--vision-route` | {guarded,doubts,suspects} | with --scan --vision: which tokens the page's crop is read for: every word the English prior doubts (default), the words the text rules cannot settle, or only the guarded suggestions (a number, an operative word; the first version's) |
+| `--ocr-options` | LIST | with --scan: the text rules' extra readings, comma separated (default search,case,terms; an empty string is the first version's rules): search (words within three edits), case (capitals from the sentence and the document's terms), terms (a defined term ranks up), real-words (a real word read as another the context makes likelier; sends those words to the page too) |
+| `--learn-channel` |  | count the letters OCR misreads (against each working copy, and in rendered statutes read back by the Tesseract tool) into data/ocr/channel.json; --scan reads it (letters only, no word of any document) |
 | `--library-ocr` |  | write OCR suggestions beside the library's OCR texts and list the worst-read files |
 | `--library-kind` | LIBRARY_KIND | with --library-ocr: only this kind (repeatable) |
 

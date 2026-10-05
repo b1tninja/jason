@@ -30,6 +30,7 @@ from enum import Enum
 from typing import Iterable, Sequence
 
 from jason.community.lexicon import Lexicon, TokenClass, core
+from jason.community.ocr_channel import Channel
 
 
 class Method(Enum):
@@ -128,6 +129,34 @@ def _match_case(model: str, word: str) -> str:
     return word
 
 
+_SENTENCE_END = re.compile(r"[.?!][\"')\]]*$")
+
+
+def case_for(word: str, read: str, prev: str, lexicon: Lexicon) -> str:
+    """A corrected word's capitals from where it stands, not from a misread first glyph: all capitals when the token
+    was ("OWNER"); the token's own case when its first letter was read right ("Restrictinns" is "Restrictions", as
+    the heading wrote it); otherwise the document's own form for a defined term ("tJnit" is "Unit"); a capital after a
+    sentence's end; else the form the clean text mostly writes (a name keeps its capital, "Lhe" mid-sentence is "the").
+    After a label, at the start of a passage, or where the clean text says too little, the token's own case stands:
+    those places can begin a sentence or not."""
+    letters = [c for c in read if c.isalpha()]
+    if letters and all(c.isupper() for c in letters) and len(letters) > 1:
+        return word.upper()
+    if letters and letters[0].lower() == word[:1].lower():
+        return _match_case(read, word)               # the first glyph was read right, so its case was too
+    form = lexicon.term_forms.get(word.lower())
+    if form:
+        return form
+    if prev and _SENTENCE_END.search(prev):
+        return word[:1].upper() + word[1:]
+    if not prev or re.fullmatch(r"[\(\[{]?[A-Za-z0-9]{1,5}[\)\]}][.,:;]?|[:;\"'“‘]", prev):
+        return _match_case(read, word)
+    share = lexicon.capital_share(word)
+    if share is None:
+        return _match_case(read, word)
+    return word[:1].upper() + word[1:] if share >= 0.6 else word.lower()
+
+
 # The noisy channel: what OCR tends to read for what was printed (printed -> read is the reverse of these pairs).
 # Each pair is (as read, as printed).
 CONFUSIONS: tuple[tuple[str, str], ...] = (
@@ -145,10 +174,31 @@ LOG_EDIT = math.log(0.001)           # any other letter added, dropped, or chang
 LOG_KEEP = math.log(0.9)             # the word was read right
 
 
-def _edits1(word: str) -> Iterable[tuple[str, float]]:
+@dataclass(frozen=True)
+class Options:
+    """Switches for the readings beyond today's text rules; the default is today's behavior. Each is measured in
+    docs/ocr-correction.md ("Measurements, October 5, 2026")."""
+
+    channel: Channel | None = None     # the confusions a recognizer makes; None is the hand list (``CONFUSIONS``)
+    case_by_context: bool = False      # a corrected word's capitals from its sentence and the document's terms, not
+                                       # from the misread first glyph ("Lhe" mid-sentence is "the")
+    term_bonus: float = 0.0            # log weight added to a candidate that is one of the document's defined terms
+    real_words: float = 0.0            # a real word is read as another when the noisy channel's posterior for the other
+                                       # reaches this (0 is off); words already read as real words are doubted only then
+    search: bool = False               # also search the vocabulary for words within three edits (``ocr_vocab``)
+    real_keep: float = math.log(0.995) # the prior that a real word was printed as read
+    real_ratio: float = 5.0            # the other word must be this many times likelier than the one read, by itself
+    route_real: float = 0.0            # a real word whose best other reading has this posterior is sent to the page (0 off)
+
+
+DEFAULT = Options()
+HAND_CHANNEL = Channel("hand", tuple((r, p, LOG_CONFUSION) for r, p in CONFUSIONS))
+
+
+def _edits1(word: str, channel: Channel | None = None) -> Iterable[tuple[str, float]]:
     """Every string one OCR edit from ``word``, with the edit's log probability."""
     letters = "abcdefghijklmnopqrstuvwxyz"
-    yield from _confusions(word)
+    yield from _confusions(word, channel)
     for i, ch in enumerate(word):
         junk = not ch.isalpha()
         cost = LOG_JUNK if junk else LOG_EDIT
@@ -164,7 +214,10 @@ def _edits1(word: str) -> Iterable[tuple[str, float]]:
             yield word[:i] + word[i + 1] + word[i] + word[i + 2:], LOG_EDIT
 
 
-def _confusions(word: str) -> Iterable[tuple[str, float]]:
+def _confusions(word: str, channel: Channel | None = None) -> Iterable[tuple[str, float]]:
+    if channel is not None:
+        yield from channel.reads(word)
+        return
     for wrong, right in CONFUSIONS:
         start = word.find(wrong)
         while start >= 0:
@@ -172,11 +225,13 @@ def _confusions(word: str) -> Iterable[tuple[str, float]]:
             start = word.find(wrong, start + 1)
 
 
-def candidates(word: str, lexicon: Lexicon) -> dict[str, float]:
+def candidates(word: str, lexicon: Lexicon, channel: Channel | None = None, steps: int = 2) -> dict[str, float]:
     """Words of the lexicon within two OCR edits of ``word``, at most one of them an arbitrary letter edit (the other a
-    known confusion or a stray mark), with the channel's log probability; lowercase, case restored by the caller."""
+    known confusion or a stray mark), with the channel's log probability; lowercase, case restored by the caller.
+    ``channel`` is the recognizer's confusions (``ocr_channel``); None is the hand list. ``steps`` 1 stops after one edit
+    (the real-word check, which runs on every word)."""
     w = word.lower()
-    key = ("candidates", w)
+    key = ("candidates", w, channel.name if channel is not None else "", steps)
     if key in lexicon.cache:
         return lexicon.cache[key]
     found: dict[str, float] = {}
@@ -186,13 +241,13 @@ def candidates(word: str, lexicon: Lexicon) -> dict[str, float]:
             found[cand] = cost
 
     first: dict[str, float] = {}
-    for cand, cost in _edits1(w):
+    for cand, cost in _edits1(w, channel):
         if cost > first.get(cand, -math.inf):
             first[cand] = cost
     for cand, cost in first.items():
         keep(cand, cost)
-    for cand, cost in first.items():
-        second = _edits1(cand) if cost > LOG_EDIT else _confusions(cand)
+    for cand, cost in first.items() if steps > 1 else ():
+        second = _edits1(cand, channel) if cost > LOG_EDIT else _confusions(cand, channel)
         for cand2, cost2 in second:
             keep(cand2, cost + cost2)
     lexicon.cache[key] = found
@@ -219,7 +274,13 @@ def _score(lexicon: Lexicon, words: list[str], prev: str, nxt: str) -> float:
     return s
 
 
-def readings(tokens: Sequence[str], i: int, lexicon: Lexicon) -> dict[str, float]:
+def _posterior(options: dict, head: str, tail: str) -> dict[str, float]:
+    top = max(options.values())
+    z = sum(math.exp(v - top) for v in options.values())
+    return {head + " ".join(k) + tail: math.exp(v - top) / z for k, v in options.items()}
+
+
+def readings(tokens: Sequence[str], i: int, lexicon: Lexicon, opts: Options = DEFAULT) -> dict[str, float]:
     """The readings the lexicon weighs for a suspect token, as whole tokens (its punctuation kept), with their
     posterior probabilities, the token as read among them; empty when the token is not a suspect or holds a digit."""
     token = tokens[i]
@@ -239,20 +300,114 @@ def readings(tokens: Sequence[str], i: int, lexicon: Lexicon) -> dict[str, float
         options[tuple(pieces)] = LOG_CONFUSION / 2 + _score(lexicon, [p.lower() for p in pieces], prev, nxt) + (
             2.0 if re.search(r"[a-z][A-Z]", word) else 0.0)
     if kind is TokenClass.SUSPECT and len(word) >= 2:
-        for cand, cost in candidates(word, lexicon).items():
-            key = (_match_case(word, cand),)
-            options[key] = max(options.get(key, -math.inf), cost + _score(lexicon, [cand], prev, nxt))
-    top = max(options.values())
-    z = sum(math.exp(v - top) for v in options.values())
-    return {head + " ".join(k) + tail: math.exp(v - top) / z for k, v in options.items()}
+        before = tokens[i - 1] if i > 0 else ""
+        found = dict(candidates(word, lexicon, opts.channel))
+        if opts.search:
+            from jason.community.ocr_vocab import search
+
+            for cand, cost in search(word, lexicon, opts.channel or HAND_CHANNEL).items():
+                if _wordlike(cand, lexicon) and re.fullmatch(r"[a-z]+(?:-[a-z]+)?", cand):
+                    found[cand] = max(found.get(cand, -math.inf), cost)
+        for cand, cost in found.items():
+            if opts.case_by_context:
+                key = (case_for(cand, word, before, lexicon),)
+            else:
+                key = (_match_case(word, cand),)
+            bonus = opts.term_bonus if (cand in lexicon.terms or cand in lexicon.term_forms) else 0.0
+            options[key] = max(options.get(key, -math.inf), cost + bonus + _score(lexicon, [cand], prev, nxt))
+    return _posterior(options, head, tail)
 
 
-def correct_token(tokens: Sequence[str], i: int, lexicon: Lexicon, *, min_posterior: float = 0.6
-                  ) -> Suggestion | None:
-    """The lexicon's reading of a suspect token: a split into words, or the likeliest word a few OCR edits away, if
-    it beats the token as read; None when the token is not a suspect or nothing beats it."""
+# A real word read for another: "ot" for "of". The word list knows both, so the English prior never doubts "ot"; the
+# noisy channel does: the context makes "of" far likelier, and the recognizer reads "ot" for "of" now and then.
+
+def real_word_readings(tokens: Sequence[str], i: int, lexicon: Lexicon, opts: Options) -> dict[str, float]:
+    """The readings of a token that is a word, as whole tokens with their posteriors, the token as read among them:
+    the words one channel step away that the context makes likelier. Empty when the token is not a plain word or no
+    other word is within reach."""
     token = tokens[i]
-    found = readings(tokens, i, lexicon)
+    kind = lexicon.classify(token)
+    if kind not in (TokenClass.WORD, TokenClass.TERM):
+        return {}
+    head, word, tail = _split_edges(token)
+    if not word or not re.fullmatch(r"[A-Za-z]+", word):
+        return {}
+    w = word.lower()
+    prev, nxt = _context(tokens, i, i + 1)
+    base = lexicon.p(w)
+    options: dict[tuple[str, ...], float] = {(word,): opts.real_keep + _score(lexicon, [w], prev, nxt)}
+    before = tokens[i - 1] if i > 0 else ""
+    for cand, cost in candidates(word, lexicon, opts.channel, steps=1).items():
+        if not lexicon.is_english(cand) and not lexicon.in_domain(cand):
+            continue
+        if lexicon.p(cand) < opts.real_ratio * base or cand in ("a", "i"):
+            continue
+        key = (case_for(cand, word, before, lexicon) if opts.case_by_context else _match_case(word, cand),)
+        bonus = opts.term_bonus if (cand in lexicon.terms or cand in lexicon.term_forms) else 0.0
+        options[key] = max(options.get(key, -math.inf), cost + bonus + _score(lexicon, [cand], prev, nxt))
+    return _posterior(options, head, tail) if len(options) > 1 else {}
+
+
+def real_word_token(tokens: Sequence[str], i: int, lexicon: Lexicon, opts: Options) -> Suggestion | None:
+    """A word the noisy channel reads as another word: the other word's posterior must reach ``opts.real_words``."""
+    if opts.real_words <= 0:
+        return None
+    token = tokens[i]
+    found = real_word_readings(tokens, i, lexicon, opts)
+    if not found:
+        return None
+    ranked = sorted(found.items(), key=lambda kv: -kv[1])
+    (right, posterior), (_, second) = ranked[0], ranked[1] if len(ranked) > 1 else ("", 0.0)
+    if right == token or posterior < opts.real_words:
+        return None
+    return Suggestion(i, i + 1, token, right, Fix.CHARACTER, (Method.LEXICON,), round(posterior, 3),
+                      (f"real word; {posterior:.0%} for the other reading against {1 - posterior:.0%} as read",))
+
+
+@dataclass(frozen=True)
+class Doubt:
+    """A token the text rules cannot settle and the page should: where to look, and why."""
+
+    index: int
+    why: str                          # "no candidate", "low posterior", "real word"
+    posterior: float = 0.0
+
+
+def doubts(tokens: Sequence[str], lexicon: Lexicon, opts: Options = DEFAULT, *, min_posterior: float = 0.6
+           ) -> list[Doubt]:
+    """The tokens to send to the page image: a suspect with no candidate reading, or none the context settles, and (with
+    ``opts.route_real``) a real word the channel doubts. A suspect the text rules settle is not sent: the vision model
+    is asked for guarded readings and for what the rules cannot read."""
+    out = []
+    for i, token in enumerate(tokens):
+        kind = lexicon.classify(token)
+        head, word, tail = _split_edges(token)
+        if kind.suspect:
+            if not word or re.search(r"\d", word) or not re.search(r"[A-Za-z]", word):
+                continue                                          # a mark or a number: the guard's business
+            found = readings(tokens, i, lexicon, opts)
+            ranked = sorted(found.items(), key=lambda kv: -kv[1])
+            if len(ranked) < 2:
+                out.append(Doubt(i, "no candidate"))
+            elif ranked[0][0] == token or ranked[0][1] < min_posterior:
+                out.append(Doubt(i, "low posterior", ranked[0][1]))
+        elif opts.route_real > 0:
+            found = real_word_readings(tokens, i, lexicon, opts)
+            ranked = sorted(found.items(), key=lambda kv: -kv[1])
+            if ranked and ranked[0][0] != token and ranked[0][1] >= opts.route_real:
+                out.append(Doubt(i, "real word", ranked[0][1]))
+    return out
+
+
+def correct_token(tokens: Sequence[str], i: int, lexicon: Lexicon, *, min_posterior: float = 0.6,
+                  opts: Options = DEFAULT) -> Suggestion | None:
+    """The lexicon's reading of a suspect token: a split into words, or the likeliest word a few OCR edits away, if
+    it beats the token as read; None when the token is not a suspect or nothing beats it. With ``opts.real_words`` a
+    real word is read as another the context makes likelier."""
+    token = tokens[i]
+    if not lexicon.classify(token).suspect:
+        return real_word_token(tokens, i, lexicon, opts)
+    found = readings(tokens, i, lexicon, opts)
     if len(found) < 2:
         return None
     ranked = sorted(found.items(), key=lambda kv: -kv[1])
@@ -399,17 +554,18 @@ def layout_suggestions(tokens: Sequence[str], lexicon: Lexicon, *, tables: bool 
     return out
 
 
-def lexicon_suggestions(tokens: Sequence[str], lexicon: Lexicon, *, min_posterior: float = 0.6) -> list[Suggestion]:
+def lexicon_suggestions(tokens: Sequence[str], lexicon: Lexicon, *, min_posterior: float = 0.6,
+                        opts: Options = DEFAULT) -> list[Suggestion]:
     out = []
     for i in range(len(tokens)):
-        s = correct_token(tokens, i, lexicon, min_posterior=min_posterior)
+        s = correct_token(tokens, i, lexicon, min_posterior=min_posterior, opts=opts)
         if s is not None:
             out.append(s)
     return out
 
 
-def suggest(tokens: Sequence[str], lexicon: Lexicon, *, language_check: bool = True, tables: bool = False
-            ) -> list[Suggestion]:
+def suggest(tokens: Sequence[str], lexicon: Lexicon, *, language_check: bool = True, tables: bool = False,
+            opts: Options = DEFAULT) -> list[Suggestion]:
     """The text rules' suggestions for a passage's tokens: layout first, then the lexicon on the tokens layout left.
     A passage that is not in English gets none (``lexicon.language_of``)."""
     from jason.community.lexicon import language_of
@@ -418,7 +574,7 @@ def suggest(tokens: Sequence[str], lexicon: Lexicon, *, language_check: bool = T
         return []
     found = layout_suggestions(tokens, lexicon, tables=tables)
     taken = {k for s in found for k in range(s.start, s.end)}
-    for s in lexicon_suggestions(tokens, lexicon):
+    for s in lexicon_suggestions(tokens, lexicon, opts=opts):
         if s.start not in taken:
             found.append(s)
     return sorted(found, key=lambda s: s.start)
@@ -473,5 +629,6 @@ def tier(s: Suggestion, rivals: Sequence[Suggestion] = ()) -> Tier:
     return Tier.LIKELY if Method.PERSON in s.methods or Method.VISION in s.methods else Tier.SUGGESTED
 
 
-__all__ = ["CONFUSIONS", "Fix", "Method", "Suggestion", "Tier", "apply", "candidates", "combine", "correct_token", "readings",
-           "guard", "layout_suggestions", "lexicon_suggestions", "suggest", "tier"]
+__all__ = ["CONFUSIONS", "DEFAULT", "Doubt", "Fix", "HAND_CHANNEL", "Method", "Options", "Suggestion", "Tier", "apply",
+           "candidates", "case_for", "combine", "correct_token", "doubts", "readings", "real_word_readings", "guard",
+           "layout_suggestions", "lexicon_suggestions", "suggest", "tier"]

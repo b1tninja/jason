@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
-from jason.community.lexicon import Lexicon, document_terms, language_of
+from jason.community.lexicon import Lexicon, document_term_forms, document_terms, language_of
 from jason.community.ocr_correct import Method, Suggestion, suggest
 
 
@@ -49,7 +49,61 @@ def corpus_texts(data_dir: Path, *, exclude: Iterable[str] = ()) -> list[str]:
 def lexicon_for(data_dir: Path, text: str = "", *, exclude: Iterable[str] = ()) -> Lexicon:
     """The language model for reading ``text``: the corpus, with the document's own defined terms and names."""
     lexicon = Lexicon.from_texts(corpus_texts(data_dir, exclude=exclude))
-    return lexicon.with_terms(document_terms(text, lexicon)) if text else lexicon
+    if not text:
+        return lexicon
+    terms = document_terms(text, lexicon)
+    return lexicon.with_terms(terms, document_term_forms(text, terms))
+
+
+OPTION_NAMES = ("search", "case", "terms", "real-words")
+
+
+def options_for(names: Iterable[str] = (), channel: Any = None) -> Any:
+    """The text rules' ``Options`` for the names a person gave (``jason intake --ocr-options search,case``): ``search``
+    looks the vocabulary over for words within three edits, ``case`` sets a corrected word's capitals from its sentence and
+    the document's terms, ``terms`` ranks a defined term up, ``real-words`` reads a real word as another where the context
+    and the channel make the other far likelier. No names is today's behavior. ``channel`` is a learned
+    ``ocr_channel.Channel`` (``learn_channel``), merged with the hand list."""
+    import math
+
+    from jason.community.ocr_correct import HAND_CHANNEL, Options
+    from jason.community.ocr_vocab import available
+
+    wanted = set(names)
+    unknown = wanted - set(OPTION_NAMES)
+    if unknown:
+        raise ValueError(f"no OCR option {', '.join(sorted(unknown))}: {', '.join(OPTION_NAMES)}")
+    return Options(channel=HAND_CHANNEL.merged(channel, "hand+learned") if channel is not None else None,
+                   case_by_context="case" in wanted, term_bonus=2.0 if "terms" in wanted else 0.0,
+                   search="search" in wanted and available(), real_words=0.95 if "real-words" in wanted else 0.0,
+                   route_real=0.2 if "real-words" in wanted else 0.0, real_ratio=5.0, real_keep=math.log(0.995))
+
+
+def channel_path(data_dir: Path) -> Path:
+    return Path(data_dir) / "ocr" / "channel.json"
+
+
+def load_channel(data_dir: Path) -> Any:
+    """The channel ``learn_channel`` saved, or None."""
+    from jason.community.ocr_channel import Channel
+
+    path = channel_path(data_dir)
+    return Channel.from_dict(json.loads(path.read_text(encoding="utf-8"))) if path.is_file() else None
+
+
+def learn_channel(pairs: Iterable[tuple[str, str]], printed: Iterable[str], data_dir: Path | None = None, *,
+                  min_count: int = 2) -> Any:
+    """The channel counted from (as read, as printed) pairs (``ocr_channel.aligned_pairs`` of a reading and its working
+    copy, or of rendered clean text read back), saved to ``data/ocr/channel.json`` when ``data_dir`` is given. Only letters
+    are counted: the file holds no word of any document."""
+    from jason.community.ocr_channel import learn
+
+    channel = learn(pairs, printed, min_count=min_count)
+    if data_dir is not None:
+        path = channel_path(data_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(channel.to_dict(), indent=1), encoding="utf-8")
+    return channel
 
 
 def suspects(tokens: Sequence[str], lexicon: Lexicon) -> list[int]:
@@ -127,10 +181,77 @@ def crops(pdf: Path, words: Sequence[dict], k: int, *, dpi: int = 300) -> tuple[
     return base64.b64encode(word_png).decode("ascii"), base64.b64encode(line_png).decode("ascii")
 
 
+def line_words(words: Sequence[dict], k: int) -> list[int]:
+    """The indexes of the page words on the same line as word ``k``, in order."""
+    w = words[k]
+    return [n for n, x in enumerate(words) if x["page"] == w["page"] and x["block"] == w["block"] and x["line"] == w["line"]]
+
+
+def line_crop(pdf: Path, words: Sequence[dict], members: Sequence[int], *, dpi: int = 300) -> str:
+    """The crop of one line (the page words ``members``), as base64 PNG."""
+    import base64
+
+    import pymupdf
+
+    line = [words[n] for n in members]
+    with pymupdf.open(str(pdf)) as doc:
+        page = doc[line[0]["page"]]
+        x0, y0 = min(x["box"][0] for x in line), min(x["box"][1] for x in line)
+        x1, y1 = max(x["box"][2] for x in line), max(x["box"][3] for x in line)
+        png = page.get_pixmap(dpi=dpi, clip=pymupdf.Rect(x0 - 3, y0 - 2, x1 + 3, y1 + 2)).tobytes("png")
+    return base64.b64encode(png).decode("ascii")
+
+
+ROUTES = ("guarded", "doubts", "suspects")
+
+
+def routed(passages: dict[str, Sequence[str]], lexicon: Lexicon, route: str = "doubts", opts: Any = None
+           ) -> dict[str, list[Suggestion]]:
+    """The tokens to send to the page's crop, as one-token placeholder suggestions (``vision_readings`` fills in what the
+    page says): ``"doubts"`` are the suspects the text rules cannot settle (no candidate, or none the context settles) and,
+    with ``opts.route_real``, real words the noisy channel doubts; ``"suspects"`` is every token the English prior doubts
+    (and those real words).
+    The guarded suggestions (``"guarded"``, today's) are the caller's: they are the text rules' own."""
+    from jason.community.ocr_correct import DEFAULT, Fix, doubts
+
+    if route not in ROUTES or route == "guarded":
+        return {}
+    opts = opts or DEFAULT
+    out: dict[str, list[Suggestion]] = {}
+    for section, tokens in passages.items():
+        tokens = list(tokens)
+        found = doubts(tokens, lexicon, opts)
+        if route == "suspects":
+            marks = sorted({i for i in suspects(tokens, lexicon) if re.search(r"[A-Za-z]{2,}", tokens[i])}
+                           | {d.index for d in found if d.why == "real word"})
+        else:
+            marks = [d.index for d in found]
+        if marks:
+            out[section] = [Suggestion(i, i + 1, tokens[i], tokens[i], Fix.OTHER, (Method.VISION,)) for i in marks]
+    return out
+
+
+def usable_reading(wrong: str, read: str, lexicon: Lexicon | None) -> bool:
+    """Whether the page's crop reading may stand as a suggestion for ``wrong``: a reading that holds a "?", that spans
+    lines, or that is several words when the OCR read one (a crop that took in a neighbour: "reoccupy his" for
+    "reoccupy") is the model wandering; and, given the lexicon, the reading must not be a suspect itself (a model that
+    copies a misreading back, or invents a non-word, has read nothing a person should be asked about)."""
+    if not read or read == wrong or "?" in read or "\n" in read:
+        return False
+    if len(read.split()) > 1 and read.replace(" ", "") != wrong:
+        return False
+    return not (lexicon is not None and any(lexicon.suspect(piece) for piece in read.split()))
+
+
 def vision_readings(pdf: Path, words: Sequence[dict], passages: dict[str, Sequence[str]],
-                    wanted: dict[str, list[Suggestion]], reader: Any) -> dict[str, list[Suggestion]]:
+                    wanted: dict[str, list[Suggestion]], reader: Any, *, lexicon: Lexicon | None = None
+                    ) -> dict[str, list[Suggestion]]:
     """The vision model's reading of each wanted suggestion's word, cropped from the page, as a suggestion of its
-    own (the same span; its reading, whatever it is). ``wanted``: {section: suggestions to check}; one-token spans."""
+    own (the same span; its reading, whatever it is). ``wanted``: {section: suggestions to check}; one-token spans.
+    With ``lexicon`` a reading must pass ``usable_reading`` (the token routed from the suspects, ``routed``, is read
+    without the text rules' guess, and the crop is held to what a crop can say)."""
+    from jason.community.ocr_correct import Fix
+
     out: dict[str, list[Suggestion]] = {}
     for section, items in wanted.items():
         tokens = passages.get(section) or ()
@@ -142,9 +263,13 @@ def vision_readings(pdf: Path, words: Sequence[dict], passages: dict[str, Sequen
                 continue
             word_png, line_png = crops(pdf, words, k)
             read = reader.read(word_png, line_png)
-            if not read or read == s.wrong or "?" in read:
+            if lexicon is not None:
+                if not usable_reading(s.wrong, read, lexicon):
+                    continue
+            elif not read or read == s.wrong or "?" in read:
                 continue                              # the page reads as the OCR did, or is unreadable
-            out.setdefault(section, []).append(Suggestion(s.start, s.end, s.wrong, read, s.fix, (Method.VISION,), 0.8,
+            fix = s.fix if s.right != s.wrong else (Fix.SPLIT if read.replace(" ", "") == s.wrong else Fix.CHARACTER)
+            out.setdefault(section, []).append(Suggestion(s.start, s.end, s.wrong, read, fix, (Method.VISION,), 0.8,
                                                           (f"vision: read the page's crop as \"{read}\"",)))
     return out
 
@@ -185,7 +310,8 @@ def library_suggestions(data_dir: Path, *, kinds: Iterable[str] = (), limit: int
                 continue                                    # a text layer or an extract: no OCR to correct
             if text.startswith("# ") and "\n" in text:
                 text = text.split("\n", 1)[1]               # jason's header line ("# name - ocr: `engine`")
-            lex = base.with_terms(document_terms(text, base))
+            terms = document_terms(text, base)
+            lex = base.with_terms(terms, document_term_forms(text, terms))
             tokens = text.split()
             lang = language_of(" ".join(tokens[:600]), lex)
             found = [] if lang.language not in ("en", "") else suggest(tokens, lex, language_check=False, tables=vision)
@@ -215,5 +341,6 @@ def _row(s: Suggestion) -> dict:
     return row
 
 
-__all__ = ["corpus_texts", "crops", "lexicon_for", "library_suggestions", "locate", "model_readings", "page_words",
-           "suspects", "vision_readings"]
+__all__ = ["OPTION_NAMES", "ROUTES", "channel_path", "corpus_texts", "crops", "learn_channel", "lexicon_for",
+           "library_suggestions", "line_crop", "line_words", "load_channel", "locate", "model_readings", "options_for",
+           "page_words", "routed", "suspects", "usable_reading", "vision_readings"]

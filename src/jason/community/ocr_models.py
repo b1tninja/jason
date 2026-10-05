@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
+from jason.community.ocr_channel import _edit_distance
 from jason.community.ocr_correct import Fix, Method, Suggestion
 
 DEFAULT_TEXT_MODEL = "qwen3.5:9b"
@@ -86,6 +87,20 @@ READINGS_SCHEMA: dict[str, Any] = {
         "required": ["n", "text"]}}},
     "required": ["readings"],
 }
+
+
+def letter_weights(answer: dict, letters: str) -> dict[str, float]:
+    """The probability of each letter as the one-token answer's first token, read from Ollama's ``top_logprobs`` (a
+    request with ``logprobs`` and ``top_logprobs``), normalized over ``letters``; all equal when none is returned."""
+    import math
+
+    weights = {c: 0.0 for c in letters}
+    for row in (answer.get("logprobs") or [{}])[0].get("top_logprobs") or []:
+        c = str(row.get("token") or "").strip()
+        if c in weights:
+            weights[c] += math.exp(float(row.get("logprob") or -100))
+    total = sum(weights.values())
+    return {c: (w / total if total else 1.0 / len(letters)) for c, w in weights.items()}
 
 
 def marked_passage(tokens: Sequence[str], suspects: Sequence[int]) -> str:
@@ -215,8 +230,6 @@ class OllamaTextCorrector:
         """The model as a scorer, not a writer: it picks among the readings of token ``i`` (the token as read and the
         lexicon's candidates) with one letter, and the probabilities of the letters (Ollama's ``top_logprobs``) are
         its weights; a reading it cannot name is never written. Returns {reading: probability}."""
-        import math
-
         from jason.community.ollama_extractor import _post
 
         letters = "ABCDEFGH"[: len(options)]
@@ -230,13 +243,8 @@ class OllamaTextCorrector:
                    "messages": [{"role": "user", "content": prompt}]}
         poster = self.fetch or (lambda url, body: _post(url, body, self.timeout))
         answer = poster(f"{self.base_url}/api/chat", payload)
-        weights = {c: 0.0 for c in letters}
-        for row in (answer.get("logprobs") or [{}])[0].get("top_logprobs") or []:
-            c = str(row.get("token") or "").strip()
-            if c in weights:
-                weights[c] += math.exp(float(row.get("logprob") or -100))
-        total = sum(weights.values()) or 1.0
-        return {o: weights[c] / total for c, o in zip(letters, options)}
+        weights = letter_weights(answer, letters)
+        return {o: weights[c] for c, o in zip(letters, options)}
 
     def marked(self, tokens: Sequence[str], suspects: Sequence[int]) -> list[Suggestion]:
         if not suspects:
@@ -297,6 +305,122 @@ class VisionWordReader:
             return ""
 
 
-__all__ = ["CORRECTIONS_SCHEMA", "DEFAULT_TEXT_MODEL", "EXPECTATIONS_PROMPT", "MARKED_PROMPT", "OllamaTextCorrector",
-           "READINGS_SCHEMA", "VISION_WORD_PROMPT", "VisionWordReader", "accepted", "marked_passage", "minimal",
-           "parse_corrections", "parse_readings"]
+# The vision model on a whole line, held to the places the text rules doubt.
+
+VISION_LINE_PROMPT = """The image is one line cut from a scanned, typed legal document. Copy exactly the characters \
+printed: letters, digits, and punctuation, keeping capitals as printed and the spaces between words as printed. Do not \
+correct spelling or grammar, and do not guess words that are not there; if a character is unreadable, write ? for it. \
+Answer in JSON: {"text": "..."}."""
+
+
+@dataclass
+class VisionLineReader:
+    """A vision model reading one line's crop of the page image."""
+
+    model: str = ""
+    base_url: str = "http://localhost:11434"
+    timeout: int = 300
+    fetch: Callable[[str, dict], dict] | None = None
+
+    def read(self, line_png_b64: str, *, context: int = 0) -> str:
+        import os
+
+        from jason.community.ocr import OLLAMA_OCR_CONTEXT, OLLAMA_OCR_MODEL
+        from jason.community.ollama_extractor import _post
+
+        model = self.model or os.environ.get("JASON_OCR_MODEL") or OLLAMA_OCR_MODEL
+        payload = {"model": model, "stream": False, "think": False, "format": WORD_SCHEMA, "keep_alive": "5m",
+                   "options": {"temperature": 0, "num_ctx": context or OLLAMA_OCR_CONTEXT, "num_predict": 400},
+                   "messages": [{"role": "user", "content": VISION_LINE_PROMPT, "images": [line_png_b64]}]}
+        poster = self.fetch or (lambda url, body: _post(url, body, self.timeout))
+        answer = poster(f"{self.base_url}/api/chat", payload)
+        try:
+            return str(json.loads(str((answer.get("message") or {}).get("content") or "{}")).get("text") or "").strip()
+        except ValueError:
+            return ""
+
+
+def line_suggestions(tokens: Sequence[str], reread: str, doubted: Sequence[int], *, offset: int = 0,
+                     max_ratio: float = 0.6) -> list[Suggestion]:
+    """The vision model's re-reading of a line as suggestions, only where it differs from the OCR's tokens on a doubted
+    token (an index of ``tokens``): a re-reading that wanders elsewhere is not taken, and an edit that changes more than
+    ``minimal`` allows is not either (the same guard as every model's edit). ``offset`` shifts the spans to the passage's
+    token numbers. A line with a "?" in the re-reading, or one far longer or shorter than the OCR's, is not used."""
+    import difflib
+
+    new = reread.split()
+    if not new or "?" in reread or not tokens:
+        return []
+    if not 0.7 <= len(new) / len(tokens) <= 1.4:
+        return []
+    out = []
+    marks = set(doubted)
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=list(tokens), b=new, autojunk=False).get_opcodes():
+        if tag == "equal" or i2 == i1:
+            continue                                            # a word the OCR never read is not a suspect's reading
+        # Words changed one for one are judged one by one: a neighbour the rules do not doubt is left as it was.
+        spans = ([(i1 + d, i1 + d + 1, j1 + d, j1 + d + 1) for d in range(i2 - i1)]
+                 if tag == "replace" and i2 - i1 == j2 - j1 else [(i1, i2, j1, j2)])
+        for a, b, c, d in spans:
+            if not marks.intersection(range(a, b)) or tokens[a:b] == new[c:d]:
+                continue
+            right = " ".join(new[c:d])
+            s = Suggestion(offset + a, offset + b, " ".join(tokens[a:b]), right,
+                           Fix.SPLIT if right.replace(" ", "") == "".join(tokens[a:b]) else
+                           Fix.STRAY if not right else Fix.CHARACTER, (Method.VISION,), 0.7,
+                           (f"vision: the line's crop reads \"{right}\"",))
+            if minimal(s) or (b - a == 1 and d - c == 1 and _edit_distance(s.wrong.lower(), right.lower()) <= 1):
+                out.append(s)               # a short word one letter off is minimal too ("ot" for "of")
+    return out
+
+
+# The vision model as a scorer: the crop and the readings the text rules weigh, and one letter back.
+
+NONE_OF_THESE = "(none of these)"
+
+VISION_CHOOSE_PROMPT = """The first image is one word (or a few) cut from a scanned, typed legal document; the second \
+is its whole line, for context. An OCR engine read the word as "{word}", which may be wrong. Which of these is printed \
+in the first image? Letters, digits, and capitals count: choose the option that matches the characters you see. If \
+none matches, choose the last letter.
+{options}
+Answer with one letter."""
+
+
+@dataclass
+class VisionChooser:
+    """The vision model as a scorer, not a writer: it sees the word's crop and the candidate readings (the token as
+    read and the readings the lexicon weighs) and answers with one letter; the letters' probabilities (Ollama's
+    ``top_logprobs``, which it returns on a request that carries images) are its weights. It never writes a reading it
+    was not given: the last option says the page matches none of them. Returns {reading: probability}, ``NONE_OF_THESE``
+    among them."""
+
+    model: str = ""
+    base_url: str = "http://localhost:11434"
+    timeout: int = 300
+    fetch: Callable[[str, dict], dict] | None = None
+
+    def choose(self, word_png_b64: str, line_png_b64: str, as_read: str, options: Sequence[str],
+               *, context: int = 0) -> dict[str, float]:
+        import os
+
+        from jason.community.ocr import OLLAMA_OCR_CONTEXT, OLLAMA_OCR_MODEL
+        from jason.community.ollama_extractor import _post
+
+        model = self.model or os.environ.get("JASON_OCR_MODEL") or OLLAMA_OCR_MODEL
+        shown = [o for o in dict.fromkeys(options)][:7]
+        letters = "ABCDEFGH"[: len(shown) + 1]
+        lines = "\n".join(f"{c}) {o}" for c, o in zip(letters, shown)) + f"\n{letters[-1]}) none of these"
+        images = [word_png_b64] + ([line_png_b64] if line_png_b64 else [])
+        payload = {"model": model, "stream": False, "think": False, "logprobs": True, "top_logprobs": 10,
+                   "keep_alive": "5m", "options": {"temperature": 0, "num_ctx": context or OLLAMA_OCR_CONTEXT, "num_predict": 1},
+                   "messages": [{"role": "user", "content": VISION_CHOOSE_PROMPT.format(word=as_read, options=lines),
+                                 "images": images}]}
+        poster = self.fetch or (lambda url, body: _post(url, body, self.timeout))
+        weights = letter_weights(poster(f"{self.base_url}/api/chat", payload), letters)
+        return {**{o: weights[c] for c, o in zip(letters, shown)}, NONE_OF_THESE: weights[letters[-1]]}
+
+
+__all__ = ["CORRECTIONS_SCHEMA", "DEFAULT_TEXT_MODEL", "EXPECTATIONS_PROMPT", "MARKED_PROMPT", "NONE_OF_THESE",
+           "OllamaTextCorrector", "READINGS_SCHEMA", "VISION_CHOOSE_PROMPT", "VISION_LINE_PROMPT", "VISION_WORD_PROMPT",
+           "VisionChooser", "VisionLineReader", "VisionWordReader", "accepted", "letter_weights", "line_suggestions",
+           "marked_passage", "minimal", "parse_corrections", "parse_readings"]

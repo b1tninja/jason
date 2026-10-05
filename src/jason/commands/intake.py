@@ -20,8 +20,11 @@ from typing import Any, Callable
 from jason.commands._shared import data_dir as _data_dir
 
 
-def _second_readers(ld, built, lexicon, data_dir, *, model: bool, vision: bool) -> dict:
-    """The local model's and the vision model's readings of a living document's doubtful words, by section."""
+def _second_readers(ld, built, lexicon, data_dir, *, model: bool, vision: bool, route: str = "suspects",
+                    opts: Any = None) -> dict:
+    """The local model's and the vision model's readings of a living document's doubtful words, by section. ``route``
+    says which tokens the vision model reads: the guarded suggestions (a number, an operative word: today's), and with
+    ``doubts`` or ``suspects`` the words the text rules cannot settle, or every word the English prior doubts."""
     from jason.community.ocr_correct import combine, suggest
     from jason.local_ai import LocalAIUnavailable, preflight, unload
     from jason.tasks import living_docs
@@ -63,9 +66,15 @@ def _second_readers(ld, built, lexicon, data_dir, *, model: bool, vision: bool) 
             return extra
         words = ocr_task.page_words(pdf, cache / f"{ld.base.ref}.words.json")
         # Only the guarded suggestions (a number, an operative word) go to the page: the rest have two text readers.
-        wanted = {k: [s for s in combine(suggest(t, lexicon), extra.get(k, ())) if s.guard] for k, t in passages.items()}
+        rules = {"opts": opts} if opts is not None else {}
+        wanted = {k: [s for s in combine(suggest(t, lexicon, **rules), extra.get(k, ())) if s.guard]
+                  for k, t in passages.items()}
         try:
             seen = ocr_task.vision_readings(pdf, words, passages, {k: v for k, v in wanted.items() if v}, reader)
+            if route != "guarded":
+                found = ocr_task.routed(passages, lexicon, route, opts)
+                for k, v in ocr_task.vision_readings(pdf, words, passages, found, reader, lexicon=lexicon).items():
+                    seen[k] = seen.get(k, []) + v
         finally:
             try:
                 unload(model_name)
@@ -76,7 +85,8 @@ def _second_readers(ld, built, lexicon, data_dir, *, model: bool, vision: bool) 
     return extra
 
 
-def _scan(data_dir, *, model: bool = False, vision: bool = False) -> tuple[list, tuple[str, ...]]:
+def _scan(data_dir, *, model: bool = False, vision: bool = False, route: str = "suspects",
+          options: tuple[str, ...] = ("search", "case", "terms")) -> tuple[list, tuple[str, ...]]:
     import json
 
     from jason.community import community
@@ -105,10 +115,12 @@ def _scan(data_dir, *, model: bool = False, vision: bool = False) -> tuple[list,
         # The language model never learns from the document it reads, nor from its own working copy.
         text = " ".join(p.body for p in built.current.provisions)
         lexicon = ocr_task.lexicon_for(data_dir, text, exclude=(ld.key,))
-        extra = _second_readers(ld, built, lexicon, data_dir, model=model, vision=vision) if (model or vision) else {}
+        opts = ocr_task.options_for(options, ocr_task.load_channel(data_dir)) if (options or ocr_task.load_channel(data_dir)) else None
+        extra = (_second_readers(ld, built, lexicon, data_dir, model=model, vision=vision, route=route, opts=opts)
+                 if (model or vision) else {})
         held: list = []
         asks += intake_task.ocr_reading_asks(ld.key, built.current, copy, vocab, lexicon=lexicon, extra=extra,
-                                             held=held)
+                                             held=held, opts=opts)
         # One reader's suggestions are kept for the record, not asked: --model (or --vision) adds the second reader.
         path = living_docs.living_dir(data_dir, ld.key) / "ocr-suggestions.json"
         path.write_text(json.dumps([{"section": section, "wrong": s.wrong, "right": s.right, "fix": s.fix.value,
@@ -126,6 +138,54 @@ def _scan(data_dir, *, model: bool = False, vision: bool = False) -> tuple[list,
     except Exception as exc:  # noqa: BLE001 - the checklist failing must not lose the document questions
         print(f"onboarding questions not read: {type(exc).__name__}: {exc}", file=sys.stderr)
     return asks, tuple(scope)
+
+
+def _learn_channel(data_dir) -> str:
+    """``--learn-channel``: count the letters a recognizer misread in each scanned living document's base, against its
+    working copy, and save the rule table (letters only) to ``data/ocr/channel.json``. The reading is the raw one: no
+    transcription is applied, and the lexicon's own corpus is not read."""
+    from jason.community import community, ocr_channel
+    from jason.community.living import provisions_of
+    from jason.tasks import living_docs, ocr_reread
+    from jason.tasks import ocr_correct as ocr_task
+
+    pairs: list = []
+    printed: list = []
+    for ld in community().living_documents():
+        if ld.base.kind.value != "scan" or not ld.working_doc:
+            continue
+        copy = living_docs.working_copy(ld, data_dir)
+        if copy is None:
+            continue
+        try:
+            built = living_docs.build(ld, data_dir, transcribed=())
+        except ValueError as exc:
+            print(f"{ld.key}: {exc}", file=sys.stderr)
+            continue
+        hyp, _ = ocr_reread.page_tokens(built.current.provisions)
+        ref, _ = ocr_reread.page_tokens(provisions_of(copy))
+        pairs += ocr_channel.aligned_pairs(hyp, ref)
+        printed += ref
+    from pathlib import Path
+
+    from jason.community.ocr import TesseractCli
+    from jason.tasks import ocr_synth
+
+    real = len(pairs)
+    synthetic = 0
+    if TesseractCli.available():
+        # Clean public text, rendered, degraded, and read back by the Tesseract tool: more misreads than a copy gives.
+        texts = [p.read_text(encoding="utf-8", errors="replace") for p in sorted((Path(data_dir) / "authorities").rglob("*.md"))]
+        if texts:
+            fake, spoken = ocr_synth.synthetic_pairs(texts)
+            pairs, printed, synthetic = pairs + fake, printed + spoken, len(fake)
+    if not pairs:
+        return "no scanned living document with a working copy, and no rendered text: nothing to learn the channel from"
+    channel = ocr_task.learn_channel(pairs, printed, data_dir)
+    top = ", ".join(f"{r}>{p}" for r, p, _ in channel.table(8))
+    return (f"learned {len(channel.rules)} rules from {real} words a working copy shows were misread and {synthetic} read "
+            f"back from rendered statutes into {ocr_task.channel_path(data_dir)}: {top} (as read > as printed); "
+            f"jason intake --scan reads it from now on")
 
 
 def print_applied(done: list, refused: list, shown: list) -> None:
@@ -154,8 +214,13 @@ def cmd_intake(args: argparse.Namespace) -> int:
                   f"{r['suggestions']} suggestions ({r['guarded']} for a person): {r['path']} [{r['engine']}]")
         if not (args.scan or args.answer or args.confirm or args.accept_likely or args.apply):
             return 0
+    if args.learn_channel:
+        print(_learn_channel(data_dir))
+        if not (args.scan or args.answer or args.confirm or args.accept_likely or args.apply):
+            return 0
     if args.scan:
-        found, scope = _scan(data_dir, model=args.model, vision=args.vision)
+        found, scope = _scan(data_dir, model=args.model, vision=args.vision, route=args.vision_route,
+                             options=tuple(o for o in (args.ocr_options or "").split(",") if o))
         asks = intake.merge(asks, found, scope=scope)
         intake.save(data_dir, asks)
         counts = Counter((a.kind.value, a.status.value) for a in asks)
@@ -231,7 +296,20 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--model", action="store_true",
                    help="with --scan: the local text model reads the doubtful words too (a second reader)")
     p.add_argument("--vision", action="store_true",
-                   help="with --scan: the vision model reads the page's crop of a number or operative word in doubt")
+                   help="with --scan: the vision model reads the page's crop of the words in doubt (--vision-route says which)")
+    p.add_argument("--vision-route", choices=("guarded", "doubts", "suspects"), default="suspects",
+                   help="with --scan --vision: which tokens the page's crop is read for: every word the English prior doubts "
+                        "(default), the words the text rules cannot settle, or only the guarded suggestions (a number, an "
+                        "operative word; the first version's)")
+    p.add_argument("--ocr-options", metavar="LIST", default="search,case,terms",
+                   help="with --scan: the text rules' extra readings, comma separated (default search,case,terms; an empty "
+                        "string is the first version's rules): search (words within three edits), case (capitals from the "
+                        "sentence and the document's terms), terms (a defined term ranks up), real-words (a real word read "
+                        "as another the context makes likelier; sends those words to the page too)")
+    p.add_argument("--learn-channel", action="store_true",
+                   help="count the letters OCR misreads (against each working copy, and in rendered statutes read back by "
+                        "the Tesseract tool) into data/ocr/channel.json; --scan reads it (letters only, no word of any "
+                        "document)")
     p.add_argument("--library-ocr", action="store_true",
                    help="write OCR suggestions beside the library's OCR texts and list the worst-read files")
     p.add_argument("--library-kind", action="append", help="with --library-ocr: only this kind (repeatable)")

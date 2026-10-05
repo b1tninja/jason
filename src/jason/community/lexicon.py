@@ -105,6 +105,8 @@ class Lexicon:
     unigrams: Counter = field(default_factory=Counter)
     bigrams: Counter = field(default_factory=Counter)
     terms: frozenset = frozenset()
+    cased: Counter = field(default_factory=Counter, repr=False, compare=False)   # words as the clean text writes them
+    term_forms: dict = field(default_factory=dict, repr=False, compare=False)    # a defined term -> its capitals
     english: Callable[[str], float] = _wordfreq
     min_count: int = 2               # a word seen this often in the clean corpus is a word
     english_floor: float = 1e-7      # a word this frequent in general English is a word (zipf 2)
@@ -120,15 +122,28 @@ class Lexicon:
         return lex
 
     def add(self, text: str) -> None:
-        words = [w.lower() for w in _LETTERS.findall(text)]
+        found = _LETTERS.findall(text)
+        self.cased.update(found)
+        words = [w.lower() for w in found]
         self.unigrams.update(words)
         self.bigrams.update(zip(words, words[1:]))
         self.total += len(words)
 
-    def with_terms(self, terms: Iterable[str]) -> "Lexicon":
+    def with_terms(self, terms: Iterable[str], forms: dict | None = None) -> "Lexicon":
+        """The same model with the document's own terms (lowercased) and, when given, how it writes them
+        (``document_term_forms``: {"unit": "Unit"})."""
         from dataclasses import replace
 
-        return replace(self, terms=frozenset(t.lower() for t in terms), cache={})
+        return replace(self, terms=frozenset(t.lower() for t in terms), term_forms=dict(forms or {}), cache={})
+
+    def capital_share(self, word: str, *, min_seen: int = 5) -> float | None:
+        """The share of a word's appearances in the clean text that begin with a capital (sentence starts included);
+        None when the clean text has too few to say."""
+        w = word.lower()
+        total = self.unigrams.get(w, 0)
+        if total < min_seen:
+            return None
+        return sum(self.cased.get(f, 0) for f in {w.capitalize(), w.upper()} if f != w) / total
 
     # What a token is.
 
@@ -273,6 +288,29 @@ def document_terms(text: str, lexicon: Lexicon, *, repeats: int = 3) -> set[str]
     return out
 
 
+def document_term_forms(text: str, terms: Iterable[str] = (), *, min_seen: int = 5) -> dict[str, str]:
+    """The words a document capitalizes in the middle of its sentences, nearly every time, as it writes them ("unit" ->
+    "Unit" in a declaration that defines "Unit" and never writes "unit"): its defined terms in their defined capitals,
+    including those a general word list also knows (``document_terms`` leaves those out). A word the text also writes in
+    lowercase mid-sentence is left to the sentence. ``terms`` are added when the text writes them the same way once."""
+    wanted = {t.lower() for t in terms}
+    counts: dict[str, Counter] = {}
+    prev = ""
+    for token in text.split():
+        c = core(token)
+        mid = bool(prev) and not re.search(r"[.?!:][\"')\]]*$", prev) and not re.fullmatch(r"[\(\[{]?[A-Za-z0-9]{1,5}[\)\]}][.,:;]?", prev)
+        if mid and _LETTERS.fullmatch(c) and len(c) > 1 and not c.isupper():
+            counts.setdefault(c.lower(), Counter())[c] += 1
+        prev = token
+    out = {}
+    for low, forms in counts.items():
+        capital = sum(v for f, v in forms.items() if f[:1].isupper())
+        total = sum(forms.values())
+        if capital >= (1 if low in wanted else min_seen) and capital >= 0.9 * total:
+            out[low] = max((f for f in forms if f[:1].isupper()), key=forms.get)
+    return out
+
+
 # Language identification, by the share of a passage's words each language's list knows.
 
 LANGUAGES = ("en", "es", "vi", "fil", "zh", "ko", "ru", "fr", "pt", "de", "it")
@@ -328,5 +366,5 @@ def language_of(text: str, lexicon: Lexicon | None = None, *, floor: float = 1e-
     return LanguageReading(best, en, shares[best], len(words))
 
 
-__all__ = ["LANGUAGES", "LanguageReading", "Lexicon", "TERMS_OF_ART", "TokenClass", "core", "document_terms",
-           "language_of", "wordfreq_available"]
+__all__ = ["LANGUAGES", "LanguageReading", "Lexicon", "TERMS_OF_ART", "TokenClass", "core", "document_term_forms",
+           "document_terms", "language_of", "wordfreq_available"]
