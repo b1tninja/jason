@@ -22,7 +22,7 @@ The design project names each screen as a component (`ConsoleDigest`, `ConsoleAp
 | Overview | Inbox | `#/inbox` | — | no | `/api/open-items` |
 | Overview | Mail triage, Drafts, Leads, Jobs | `#/mail-triage`, `#/drafts`, `#/leads`, `#/jobs` | — | no | `/api/mail-triage`, `/api/request-links?drafts=1`, `/api/leads`, `/api/jobs` |
 | Overview | Communities, Onboarding | `#/communities`, `#/onboarding` | — | no | `/api/communities`, `/api/onboarding` |
-| Overview | Status | `#/status` | — | no | `/api/health` |
+| Overview | Status | `#/status` | — | no | `/api/status`, `/api/health` (an admin only; [screens/status.md](screens/status.md)) |
 | Governance | Board action items | `#/actions` (alias `board`) | `ConsoleActions` | no | `/api/board-items` |
 | Governance | Decisions | `#/decisions` | `ConsoleDecisions` | no | `/api/decisions` |
 | Governance | Plan a meeting | `#/agenda` | `ConsoleAgenda` | no | `/api/agenda-plan` |

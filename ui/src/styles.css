@@ -1114,3 +1114,13 @@ button.swatch:hover .swatch-fill { outline: 2px solid var(--accent); outline-off
 [data-grid="open"] tbody tr:hover td { background: transparent; }
 [data-grid="open"] tbody tr.selected td { background: var(--dv-select); }
 /* --- end data views --- */
+/* --- the administrator's Status (docs/console/screens/status.md): the standing's word carries the meaning --- */
+.status-sources { list-style: none; margin: 0; padding: 0; }
+.status-source { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline;
+  padding: 10px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.status-source > p, .status-source > details, .status-source > .command { grid-column: 1 / -1; margin: 0; }
+.status-source-head { min-width: 0; }
+.status-source-head .muted { display: block; }
+.status-source-store { font-size: .85em; }
+@media (max-width: 760px) { .status-source { grid-template-columns: minmax(0, 1fr); } }
+/* --- end Status --- */

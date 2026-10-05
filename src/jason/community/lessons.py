@@ -1834,6 +1834,17 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_meeting_room_subsidiary.py", "ui/src/components/subsidiary.test.tsx"),
            docs=("docs/console/screens/meetings-and-minutes.md (Table, continue, refer, and withdraw)",),
            notes=("Still open: two main motions on the same item at one meeting still replace each other's decision.",)),
+    Lesson("sources-declare-no-freshness", date(2026, 10, 4), (Area.ONBOARDING, Area.REPOSITORY),
+           "The administrator's Status screen can say a data source is current or stale only by a threshold the source "
+           "declares, and none does, so every source shows its age with no standing word.",
+           "How often each source should be read was never written down; jobs refresh them on a person's command.",
+           "Status reads Source.stale_after_days with stale_source naming where the threshold is written, and shows "
+           "the age alone until one is. A Keeper sign-in cannot be checked from disk, so a Keeper source reads "
+           "\"not signed in\" only after a failed job or refresh.",
+           Status.DECISION, guards=("tests/test_web_status.py (no invented standing)",),
+           docs=("docs/console/screens/status.md",),
+           notes=("The administrator or the board decides each source's cadence (docs/jobs.md), recorded on the "
+                  "source's row.",)),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
            "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",

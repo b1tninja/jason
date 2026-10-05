@@ -34,12 +34,21 @@ describe("the console by role", () => {
     expect(within(strip).getByRole("button", { name: "2 of your tasks overdue" })).toBeInTheDocument();
   });
 
-  it("lands an administrator on Approvals and keeps Decisions in their nav", async () => {
+  it("lands an administrator on Status and keeps Decisions in their nav", async () => {
     serve({ token: "t", header: "X-Jason-Token", signedIn: { name: "Ana Admin", role: "admin", email: "a@example.org", admin: true }, roleClass: "administrator" },
       { who: "", scope: "everyone" });
     render(<App />);
-    await waitFor(() => expect(window.location.hash).toBe("#/approvals"));
+    await waitFor(() => expect(window.location.hash).toBe("#/status"));
+    expect(within(nav()).getByRole("button", { name: /^Status/ })).toHaveAttribute("aria-current", "page");
     expect(within(nav()).getByRole("button", { name: "Decisions" })).toBeInTheDocument();
+  });
+
+  it("never shows Status in the nav to anyone but one of jason's admins", async () => {
+    serve({ token: "t", header: "X-Jason-Token", signedIn: { name: "Lee Officer", role: "president", email: "l@example.org" }, roleClass: "officer" });
+    render(<App />);
+    await screen.findByRole("navigation", { name: "Duties" });
+    await waitFor(() => expect(window.location.hash).toBe("#/digest"));
+    expect(within(nav()).queryByRole("button", { name: /^Status/ })).toBeNull();
   });
 
   it("keeps an explicit link, and filters nothing when no one is signed in", async () => {
@@ -49,6 +58,7 @@ describe("the console by role", () => {
     await screen.findByRole("navigation", { name: "Duties" });
     expect(window.location.hash).toBe("#/liens");
     expect(within(nav()).getByRole("button", { name: "Decisions" })).toBeInTheDocument();
+    expect(within(nav()).queryByRole("button", { name: /^Status/ })).toBeNull();   // no one signed in: no admin screen
     expect(screen.queryByRole("region", { name: "Your moves" })).toBeNull();
   });
 });

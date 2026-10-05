@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Card, ConsoleShell, DOCK_DRAWERS, DockDrawerBody, DockToolbar, Drawer, ErrorNotice, Loading, landingScreen, useDockCounts, visibleScreens,
+  ConsoleShell, DOCK_DRAWERS, DockDrawerBody, DockToolbar, Drawer, ErrorNotice, Loading, landingScreen, useDockCounts, visibleScreens,
   type Audience, type ConsoleScreen,
 } from "./components";
 import { roleMoves, roleOf } from "./lib/roles";
@@ -46,24 +46,13 @@ import { MeetingRoomView } from "./views/MeetingRoomView";
 import { OwnerPageView } from "./views/OwnerPageView";
 import { OwnerDigestView } from "./views/OwnerDigestView";
 import { PeopleView } from "./views/PeopleView";
+import { StatusView } from "./views/StatusView";
 
 function BoardDigest() {
   const r = useApi<Digest>("/api/board-digest");
   if (r.status === "loading") return <Loading />;
   if (r.status === "error") return <ErrorNotice error={r.error} onRetry={r.reload} />;
   return <DigestView digest={r.data} />;
-}
-
-function Status() {
-  const r = useApi<{ ok: boolean; ui: boolean; sources: string[]; writes: string[] }>("/api/health");
-  if (r.status === "loading") return <Loading />;
-  if (r.status === "error") return <ErrorNotice error={r.error} onRetry={r.reload} />;
-  return (
-    <Card title="Server">
-      <p>Sources: {r.data.sources.join(", ") || "none"}</p>
-      <p>Writes: {r.data.writes.join(", ") || "none"}</p>
-    </Card>
-  );
 }
 
 export const GROUPS = ["Overview", "Governance", "Money", "Records"] as const;
@@ -74,6 +63,14 @@ interface ScreenDef extends ConsoleScreen {
   aliases?: string[];
   /** Hash ids that land here in the owner view (a board screen's id an owner link once named). */
   ownerAliases?: string[];
+  /** One of jason's admins only, viewing as themselves (the server refuses anyone else; the nav follows it). */
+  admin?: boolean;
+}
+
+/** Whether the session is one of jason's admins as themselves: the administrator's role, or an admin who also holds an
+ * office. Never in the owner view, and never while an admin views the console as someone else. */
+export function adminSession(s: { account?: { admin?: boolean } | null; acting?: unknown }, role: string | undefined, audience: Audience): boolean {
+  return audience !== "owner" && !s.acting && (role === "administrator" || !!s.account?.admin);
 }
 
 /** Every screen, grouped as the console's nav shows them. `owner` marks what an owner sees: each such screen reads only
@@ -94,7 +91,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "jobs", label: "Jobs", group: "Overview", view: () => <JobsView /> },
   { id: "communities", label: "Communities", group: "Overview", view: () => <CommunitiesView /> },
   { id: "onboarding", label: "Onboarding", group: "Overview", view: () => <OnboardingView /> },
-  { id: "status", label: "Status", group: "Overview", view: () => <Status /> },
+  // The administrator's landing: sources, sign-ins, setup's gates, failures (GET /api/status, an admin only).
+  { id: "status", label: "Status", group: "Overview", admin: true, view: () => <StatusView /> },
   // Governance
   { id: "actions", label: "Board action items", group: "Governance", aliases: ["board"], view: () => <BoardItemsView /> },
   { id: "decisions", label: "Decisions", group: "Governance", roles: ["officer", "administrator"], view: () => <DecisionsView /> },
@@ -170,9 +168,12 @@ export function App() {
   const [pinned, setPinned] = useState(false);
 
   // What the signed-in person is to the console, from the server: a manager does not see Decisions, an administrator
-  // lands on Approvals. With none known the nav is filtered by the audience alone, as before roles.
+  // lands on Status. With none known the nav is filtered by the audience alone, as before roles. An admin-only screen
+  // (Status) is in the nav only for one of jason's admins as themselves; the server refuses it to anyone else.
   const role = audience === "owner" ? undefined : roleOf(session.roleClass);
-  const visible = visibleScreens(SCREENS, audience, role) as ScreenDef[];
+  const admin = adminSession(session, role, audience);
+  const allowed = SCREENS.filter((s) => !s.admin || admin);
+  const visible = visibleScreens(allowed, audience, role) as ScreenDef[];
   const found = findScreen(rawId.split("/")[0], audience);
   const current = found && visible.some((s) => s.id === found.id) ? found : (visible[0] as ScreenDef);
 
@@ -180,7 +181,7 @@ export function App() {
   // A person who opens the console with no route in the address lands where their role does (an explicit link is kept).
   useEffect(() => {
     const start = role ? landingScreen(role) : undefined;
-    if (start && !window.location.hash.replace(/^#\/?/, "") && SCREENS.some((s) => s.id === start)) navigate(start, "board");
+    if (start && !window.location.hash.replace(/^#\/?/, "") && allowed.some((s) => s.id === start)) navigate(start, "board");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
   const go = (id: string) => {
@@ -197,7 +198,7 @@ export function App() {
 
   // Signed in, the Approvals badge is the letters waiting on this person's approval (the dock's counts); else everyone's.
   const waiting = counts.scope === "mine" && typeof counts.approvals === "number" ? counts.approvals : pending;
-  const screens: ConsoleScreen[] = SCREENS.map(({ view: _view, aliases: _aliases, ...s }) => (s.id === "approvals" ? { ...s, count: waiting } : s));
+  const screens: ConsoleScreen[] = allowed.map(({ view: _view, aliases: _aliases, ...s }) => (s.id === "approvals" ? { ...s, count: waiting } : s));
   const View = current.view;
   const drawerDef = drawer ? DOCK_DRAWERS.find((d) => d.id === drawer) : undefined;
   const drawerNode = drawerDef && (

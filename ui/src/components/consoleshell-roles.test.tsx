@@ -31,7 +31,7 @@ describe("visibleScreens by role", () => {
 
 describe("landingScreen", () => {
   it("is the role's own screen unless the shell names another", () => {
-    expect(DEFAULT_LANDING).toEqual({ officer: "digest", manager: "duties", administrator: "approvals", owner: "digest" });
+    expect(DEFAULT_LANDING).toEqual({ officer: "digest", manager: "duties", administrator: "status", owner: "digest" });
     expect(landingScreen("manager")).toBe("duties");
     expect(landingScreen("manager", { manager: "approvals" })).toBe("approvals");
     expect(landingScreen(undefined)).toBeUndefined();

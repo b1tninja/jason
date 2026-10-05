@@ -20,7 +20,7 @@ The design agent's fourth cut (2026-10-04, evening) answers [handoff-reconciliat
 
 ## New in this cut
 
-- **Status** (`ConsoleStatus`), the administrator's landing. There is no `GET /api/status` yet. It is the build's: each source's last read and standing (current, stale, failed, not signed in) from the stores' own `syncedAt` and the job queue, the fix as a `Command`, the sign-ins (`sign-ins.jsonl`), the five gates (from `/api/onboarding-session`), and recent failures. Administrator only.
+- **Status** (`ConsoleStatus`), the administrator's landing. `GET /api/status` is now built (below, item 2): each source's last read and standing (current, stale, failed, not signed in) from the stores' own `syncedAt` and the job queue, the fix as a `Command`, the sign-ins (`sign-ins.jsonl`), the five gates (from `/api/onboarding-session`), and recent failures. Administrator only.
 - **The members' copy of the packet.** Agreed as designed: it drops draft motions, option briefs, and privileged files, and goes to the secretary through Approvals before posting. A member's copy is reviewed, never filtered silently.
 - **`docref.js`.** Fine as a stand-in; the loaders already return `DocRef`s (`refs_from_strings`), so it goes when the templates read the routes.
 - **Light and dark.** Keep the seven scheme tokens together, as `scheme.css` does.
@@ -28,7 +28,7 @@ The design agent's fourth cut (2026-10-04, evening) answers [handoff-reconciliat
 ## The build's, from this cut
 
 1. **Subsidiary motions in the meeting room:** table, continue, and refer as motions with a roll call; withdraw as a logged act.
-2. **`GET /api/status`** for the administrator's landing.
+2. **`GET /api/status`** for the administrator's landing. Done: `jason.web.extra.status` and `#/status`, where the administrator lands ([screens/status.md](screens/status.md)). No source declares a freshness threshold yet, so none says current or stale.
 3. **The members' copy of the packet** through Approvals. Done: `jason board --packet --audience members [--by NAME]` ([board-agenda.md](../board-agenda.md#the-board-packet)); the approver is the specification's (`Community.document_approvers`).
 4. **Setup's screen** read against the template's grouping, now that the routes exist. *Done* ([onboarding-ux.md](../onboarding-ux.md#setting-up-in-the-console)): the gates with what holds the current one, the checklist by group, each item's status, seals, and next step, standing questions, first-run empty states; the loader adds each ask's `standing` and `clock`. Where the build differs from `ConsoleSetup`:
    - **Groups and gates are the server's:** 15 groups, not the template's 28, and the gates START, INGEST, ESTABLISH, OPERATE, ADOPT, each over its own items, not over groups.

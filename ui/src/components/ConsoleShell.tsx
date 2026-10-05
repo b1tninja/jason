@@ -28,9 +28,10 @@ export interface ConsoleScreen {
 /** One line of the role strip: "2 waiting for your approval". `go` opens the screen or drawer the count is about. */
 export interface Move { n: number; label: string; go: () => void }
 
-/** The screen each role lands on: officers the board digest, the manager the duties by cadence, the administrator the
- * approvals, an owner the overview. A shell's `landing` overrides any of them. */
-export const DEFAULT_LANDING: Readonly<Record<Role, string>> = { officer: "digest", manager: "duties", administrator: "approvals", owner: "digest" };
+/** The screen each role lands on: officers the board digest, the manager the duties by cadence, the administrator Status
+ * (sources, sign-ins, setup's gates, failures; handoff-reconciliation.md correction 6), an owner the overview. A shell's
+ * `landing` overrides any of them. */
+export const DEFAULT_LANDING: Readonly<Record<Role, string>> = { officer: "digest", manager: "duties", administrator: "status", owner: "digest" };
 
 export function landingScreen(role: Role | undefined, landing?: Partial<Record<Role, string>>): string | undefined {
   return role ? landing?.[role] ?? DEFAULT_LANDING[role] : undefined;
