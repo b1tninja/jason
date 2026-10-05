@@ -162,6 +162,22 @@ The room counts by the profile's `BoardRule` and policies, never by jason. The l
 - **The decision records it:** `decisions.Decision.recused`, never "absent" and never a no. `DecisionCard` takes it, and the minutes draft is given it.
 - **A limit stored with no person behind it** (the room's earlier 3-minute default) reads as no limit on record.
 
+## Table, continue, refer, and withdraw
+
+Table, continue, and refer are motions the board votes on (`meeting_room.MOTION_KINDS`). Nothing disposes of an item without a vote except a withdrawal.
+
+| Motion | `motion_draft` adds | Carried |
+|---|---|---|
+| Table | `kind: "table"` | Decision outcome `tabled`. The item stays on the board's list for a later motion to take it from the table |
+| Continue | `kind: "continue"`, `meeting` (a later date) | Outcome `continued`. The board item's `meeting` is set to that date |
+| Refer | `kind: "refer"`, `to` (a committee or person, named) | Outcome `referred`. The board item's `owner` notes the referral. jason names no one |
+
+- **Like any motion:** two different directors present move and second, neither recused. The roll call runs under the same threshold and the same `BoardRule`. A vote that the two recusal readings decide differently is held. The open log and the minutes letter carry the motion line and the roll call. In executive session all of it goes to the executive record.
+- **Against a motion on the floor:** the subsidiary motion applies to the item's pending motion (`appliesTo`) and is decided first. Only one is on the floor at a time. Carried, the pending motion's result becomes the word. Failed, the pending motion is back on the floor.
+- **The decision:** `decisions.Decision.kind` with id `<date>--<item>--<kind>`, so it never replaces the main motion's decision. A failed subsidiary motion records `denied`.
+- **Withdraw** (`withdraw`, `{motion}`): the mover's act before any vote is recorded. It is logged with no roll call and no decision, and the motion's result is `withdrawn`.
+- **The stamp:** after the vote, the stage, the agenda list, and the Motion and Roll call tabs show the motion's word (`motionWord`): `tabled`, `continued`, `referred`, `carried`, `failed`, or `withdrawn`.
+
 ## Privacy
 
 - Executive-session material is listed by date only. The draft never holds it: the model is given the transcript only up to the executive break, the room's open record only, and an executive decision only by its 4935 subject in general terms. An executive item on the agenda Doc goes only by its 4935 subject (the agenda plan's, else `classify_executive` on its words), never its own words; one with no subject goes as a blank for the Secretary.

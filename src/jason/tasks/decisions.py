@@ -52,6 +52,7 @@ class Decision:
     votes: dict[str, str] = field(default_factory=dict)   # director -> Vote value
     recused: list[str] = field(default_factory=list)      # directors who disclosed an interest and did not vote
     outcome: str = ""                         # Outcome value, or "" while the vote is open
+    kind: str = ""                            # "" for a main motion; "table", "continue", or "refer" (KINDS)
     by: str = ""                              # who recorded it
     notes: str = ""
     recorded: str = ""
@@ -59,11 +60,14 @@ class Decision:
     history: list[str] = field(default_factory=list)
 
 
-EDITABLE = ("title", "motion", "item", "session", "subject", "mover", "second", "votes", "recused", "outcome", "by", "notes")
+EDITABLE = ("title", "motion", "item", "session", "subject", "mover", "second", "votes", "recused", "outcome", "kind", "by", "notes")
 OPEN = "open session"
 EXECUTIVE = "executive session"
 OUTCOMES = tuple(o.value for o in Outcome)
 VOTES = tuple(v.value for v in Vote)
+# A motion to table, continue, or refer is a decision of its own: carried, its outcome is its word (tabled, continued,
+# referred); failed, "denied". Its id carries the kind, so it never replaces the main motion's decision on the item.
+KINDS = ("", "table", "continue", "refer")
 
 
 def _now() -> str:
@@ -105,6 +109,8 @@ def _validate(changes: dict[str, Any]) -> None:
             raise ValueError(f"{', '.join(both)}: recused, so no vote (and no absence) is recorded for them")
     if "outcome" in changes and changes["outcome"] not in ("", *OUTCOMES):
         raise ValueError(f"outcome is one of {', '.join(OUTCOMES)}, or empty while the vote is open")
+    if "kind" in changes and changes["kind"] not in KINDS:
+        raise ValueError("kind is table, continue, or refer, or empty for a main motion")
     if "session" in changes and changes["session"] not in (OPEN, EXECUTIVE):
         raise ValueError("session is open session or executive session")
     if "subject" in changes and changes["subject"]:
@@ -185,7 +191,8 @@ def record(data_dir: Path, meeting: str, title: str, motion: str, **fields: Any)
         raise ValueError(f"{', '.join(unknown)}: not a decision field")
     _validate(fields)
     item = str(fields.get("item", "")).strip()
-    key = f"{meeting}--{item or slug(motion)}"
+    kind = str(fields.get("kind", "") or "").strip()
+    key = f"{meeting}--{item or slug(motion)}" + (f"--{kind}" if kind else "")
     items = load(data_dir)
     now = _now()
     found = next((d for d in items if d.id == key), None)

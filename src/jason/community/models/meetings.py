@@ -97,6 +97,8 @@ class Outcome(Enum):
     APPROVED = "approved"
     DENIED = "denied"
     TABLED = "tabled"
+    CONTINUED = "continued"    # a motion to continue carried: the item goes to a later meeting
+    REFERRED = "referred"      # a motion to refer carried: the item goes to a committee or a person to report back
 
 
 class ExecutiveSubject(Enum):

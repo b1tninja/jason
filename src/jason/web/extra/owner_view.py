@@ -425,7 +425,7 @@ def owner_insurance(args: Args, loaders: Loaders) -> dict[str, Any]:
 
 ITEM_KEYS = ("id", "kind", "label", "title", "facts", "motion", "threshold", "recused", "allot", "session")
 MOTION_KEYS = ("id", "itemId", "title", "text", "mover", "second", "recused", "threshold", "votes", "result", "decidedAt",
-               "movedAt", "tally")
+               "movedAt", "tally", "kind", "appliesTo", "meeting", "to")
 ROOM_KEYS = ("date", "directors", "current", "presenter", "view", "mode", "attendance", "calledToOrder", "openForum",
              "adjournedAt", "present", "quorum")
 

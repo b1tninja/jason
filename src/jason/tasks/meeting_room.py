@@ -31,6 +31,14 @@ topic not on the agenda may take only the CIV 4930 paths. The members' speaking 
 limit is on record and never assumes one. A decided motion is also written to ``jason.tasks.decisions`` (with its
 recusals) so the minutes draft quotes it; one decided in executive session is marked so there, and the open views
 leave it out.
+
+Table, continue, and refer are motions the board votes on (``MOTION_KINDS``): each needs its mover and second, is voted
+by roll call under the same rules, and is recorded as a decision whose outcome is the motion's own word when it carries
+(``SUBSIDIARY_WORDS``; "denied" when it fails). Carried, it moves the item: tabled, the item stays on the board's list
+for a later motion to take it from the table; continued, the board item's ``meeting`` becomes the named meeting's date;
+referred, the board item's ``owner`` notes the committee or person the motion named (the board's referral, never one
+jason chooses). A motion pending on the item when one of these is moved is decided after it, and takes the word when it
+carries. Only ``withdraw`` takes a motion off the floor without a vote: the mover's act, before the roll call, logged.
 """
 
 from __future__ import annotations
@@ -53,7 +61,14 @@ MODES = ("co-host", "host", "portal")
 ATTENDANCE = ("present", "absent", "remote")
 THRESHOLDS = ("majority", "two-thirds")
 VOTES = ("aye", "no", "abstain")
-RESULTS = ("carried", "failed", "")
+# A motion is a main motion, or a motion to table, continue (to a later meeting, named by its date), or refer (to a
+# committee or a person, named). Each is moved, seconded, and voted by roll call like any other; carried, it gives the
+# item its word (``SUBSIDIARY_WORDS``) and the main motion pending on the item, if any, takes that word as its result.
+MOTION_KINDS = ("main", "table", "continue", "refer")
+SUBSIDIARY_WORDS = {"table": "tabled", "continue": "continued", "refer": "referred"}
+# The only way a motion leaves the floor without a vote: its mover withdraws it before the roll call (``withdraw``).
+WITHDRAWN = "withdrawn"
+RESULTS = ("carried", "failed", *SUBSIDIARY_WORDS.values(), WITHDRAWN, "")
 SUGGESTION_STATES = ("suggested", "added", "dismissed")
 OPEN_SESSION = "open session"
 EXECUTIVE_SESSION = "executive session"
@@ -81,7 +96,7 @@ OFF_AGENDA_PATHS: dict[str, str] = {
 IDENTIFY_FIRST = "The board identified the item to the members before acting (CIV 4930(e))."
 
 ACTIONS = ("call_to_order", "go_to", "set_presenter", "set_view", "set_mode", "attendance", "open_forum", "motion_draft", "vote", "decide",
-           "off_agenda", "executive_start", "executive_end", "poll", "admit", "suggest", "suggestion_state", "adjourn")
+           "withdraw", "off_agenda", "executive_start", "executive_end", "poll", "admit", "suggest", "suggestion_state", "adjourn")
 
 
 def _now() -> str:
@@ -413,6 +428,33 @@ def _int(value: Any, what: str, least: int = 0) -> int:
     return n
 
 
+def _subsidiary_text(kind: str, meeting: str = "", to: str = "") -> str:
+    """The motion's words when the person gives none: "Move to table this item.", "... continue this item to the meeting
+    of DATE.", "... refer this item to NAME, to report back to the board." """
+    return {"table": "Move to table this item.", "continue": f"Move to continue this item to the meeting of {meeting}.",
+            "refer": f"Move to refer this item to {to}, to report back to the board."}[kind]
+
+
+def _moved_item(data_dir: Path, motion: dict[str, Any]) -> str:
+    """What a carried motion to continue or refer changes on the board's list (``board_items.set_fields``): the item's
+    ``meeting`` becomes the named meeting's date, or its ``owner`` the committee or person the board named. A tabled item
+    stays on the list as it is. Returns the line for the log, or "" for a tabled item; an item not on the list changes
+    nothing and says so."""
+    kind, item = motion.get("kind", "main"), str(motion.get("itemId") or "")
+    if kind not in ("continue", "refer"):
+        return ""
+    change = {"meeting": motion.get("meeting", "")} if kind == "continue" else {"owner": motion.get("to", "")}
+    if not item:
+        return "No board item is named on the motion; the board's list is not changed."
+    try:
+        from jason.tasks import board_items
+
+        board_items.set_fields(data_dir, item, **change)
+    except KeyError:
+        return f"The item is not on the board's list ({item}); the list is not changed."
+    return ""
+
+
 def matters_of(body: dict[str, Any]) -> list[dict[str, str]]:
     """The matters an ``executive_start`` takes into executive session, each ``{id, subject, title}``, from ``matters``
     (a list of objects) or ``subjects`` (a list of words). Every matter needs its 4935 subject (an ``ExecutiveSubject``
@@ -491,6 +533,13 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
             raise ValueError("that motion was moved in open session; the board votes on it when it returns to open session")
         return found, executive
 
+    def floor_first(motion: dict[str, Any], executive: bool) -> None:
+        """Refused while a motion to table, continue, or refer is pending on ``motion``: the board decides that one first."""
+        pool = closed()["motions"] if executive else room["motions"]
+        sub = next((m for m in pool if m.get("appliesTo") == motion["id"] and not m["result"]), None)
+        if sub is not None:
+            raise ValueError(f"the motion to {sub.get('kind')} ({sub['id']}) is on the floor; the board decides it first")
+
     if action == "call_to_order":
         if room["calledToOrder"]:
             raise ValueError(f"already called to order at {room['calledToOrder']}")
@@ -538,9 +587,27 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
             each = f", {limit['minutes']} minutes each ({limit['source']})" if limit["minutes"] else "; no time limit on record"
             log(f"Open forum: {n} member{'s' if n != 1 else ''} spoke{each} (CIV 4925(b)).")
     elif action == "motion_draft":
+        kind = _one_of(body.get("kind") or "main", MOTION_KINDS, "kind")
         text = str(body.get("text", "") or "").strip()
-        if not text:
+        if not text and kind == "main":
             raise ValueError("a motion needs its text")
+        named: dict[str, str] = {}
+        if kind == "continue":
+            raw = str(body.get("meeting", "") or "").strip()
+            try:
+                later = date.fromisoformat(raw).isoformat()
+            except ValueError as exc:
+                raise ValueError("a motion to continue names the later meeting by its date (YYYY-MM-DD)") from exc
+            if later <= room["date"]:
+                raise ValueError(f"a motion to continue names a meeting after this one ({room['date']})")
+            named["meeting"] = later
+        elif kind == "refer":
+            to = str(body.get("to", "") or "").strip()
+            if not to:
+                raise ValueError("a motion to refer names the committee or the person it goes to")
+            named["to"] = to
+        if kind != "main" and not text:
+            text = _subsidiary_text(kind, named.get("meeting", ""), named.get("to", ""))
         mover = _director(room, body.get("mover"), "mover")
         second = _director(room, body.get("second"), "second")
         if mover == second:
@@ -567,18 +634,28 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
                 short = (f"With {', '.join(recused)} recused, {len(rest)} directors present are not recused; a quorum is {q}. "
                          f"Whether a recused director counts toward the quorum is {NOT_ON_FILE}.")
         where = closed()["motions"] if ex["active"] else room["motions"]
-        motion = {"id": f"{'x' if ex['active'] else 'm'}{len(where) + 1}", "itemId": str(body.get("itemId", "") or ""),
+        item_id = str(body.get("itemId", "") or "")
+        applies = ""
+        if kind != "main":
+            # It applies to the motion pending on the same item in this session, if any; one at a time.
+            pending = [m for m in where if not m["result"] and str(m.get("itemId", "")) == item_id]
+            if any(m.get("kind", "main") != "main" for m in pending):
+                raise ValueError("a motion to table, continue, or refer is already on the floor for this item; the board decides it first")
+            applies = pending[-1]["id"] if pending else ""
+        motion = {"id": f"{'x' if ex['active'] else 'm'}{len(where) + 1}", "itemId": item_id,
                   "title": str(body.get("title", "") or "").strip(), "text": text, "mover": mover, "second": second, "recused": recused,
                   "threshold": threshold, "votes": {}, "result": "", "decidedAt": "", "movedAt": now,
-                  "session": EXECUTIVE_SESSION if ex["active"] else OPEN_SESSION}
+                  "session": EXECUTIVE_SESSION if ex["active"] else OPEN_SESSION, "kind": kind, "appliesTo": applies, **named}
         where.append(motion)
-        log(f"Motion by {mover}, seconded by {second}: {text}" + (f" {', '.join(recused)} recused." if recused else ""))
+        log(f"Motion{'' if kind == 'main' else ' to ' + kind} by {mover}, seconded by {second}: {text}"
+            + (f" {', '.join(recused)} recused." if recused else ""))
         if short:
             log(short, "warn")
     elif action == "vote":
-        motion, _ = find(body.get("motion"))
+        motion, executive = find(body.get("motion"))
         if motion["result"]:
             raise ValueError("the vote on that motion is recorded; a new motion is a new vote")
+        floor_first(motion, executive)
         name = _director(room, body.get("name"), "vote")
         if name in motion["recused"]:
             raise ValueError(f"{name} is recused from this motion and does not vote")
@@ -589,6 +666,7 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
         motion, executive = find(body.get("motion"))
         if motion["result"]:
             raise ValueError("already decided")
+        floor_first(motion, executive)
         rule = _board()
         t = tally(motion, room, rule)
         if not t["answered"]:
@@ -609,6 +687,20 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
             + (f", {', '.join(t['recusedNames'])} recused" if t["recusedNames"] else "") + f" ({motion['threshold']}, {t['needs']} needed"
             + "".join(f"; {u}" for u in unruled) + ").",
             "good" if motion["result"] == "carried" else "warn")
+        kind = motion.get("kind", "main")
+        word = SUBSIDIARY_WORDS.get(kind, "")
+        moved = ""
+        if word and motion["result"] == "carried":
+            # The motion pending on the item when this one was moved takes its word; the item moves accordingly.
+            pool = closed()["motions"] if executive else room["motions"]
+            target = next((m for m in pool if m["id"] == motion.get("appliesTo")), None)
+            if target is not None and not target["result"]:
+                target.update(result=word, decidedAt=now, disposedBy=motion["id"])
+            moved = {"table": "The item was tabled; it stays on the board's list for a later motion to take it from the table.",
+                     "continue": f"The item was continued to the meeting of {motion.get('meeting', '')}.",
+                     "refer": f"The item was referred to {motion.get('to', '')}, to report back to the board."}[kind]
+            note = _moved_item(data_dir, motion)
+            log(moved + (f" {note}" if note else ""), "warn" if note else "neutral")
         from jason.tasks import decisions
 
         votes = dict(motion["votes"])
@@ -625,9 +717,23 @@ def update(data_dir: Path, day: str, body: dict[str, Any], by: str, *, directors
         decisions.record(data_dir, room["date"], motion["title"] or motion["text"][:60], motion["text"], item=motion["itemId"],
                          session=EXECUTIVE_SESSION if executive else OPEN_SESSION, subject=subject,
                          mover=motion["mover"], second=motion["second"], votes=votes, recused=list(motion["recused"]),
-                         outcome="approved" if motion["result"] == "carried" else "denied", by=by,
-                         notes=(f"Recused: {', '.join(motion['recused'])}. " if motion["recused"] else "") + f"Threshold {motion['threshold']}; {t['line']}"
-                         + "".join(f" Note: {u}." for u in unruled))
+                         outcome=(word or "approved") if motion["result"] == "carried" else "denied", by=by,
+                         kind="" if kind == "main" else kind,
+                         notes=(f"{moved} " if moved else "") + (f"Recused: {', '.join(motion['recused'])}. " if motion["recused"] else "")
+                         + f"Threshold {motion['threshold']}; {t['line']}" + "".join(f" Note: {u}." for u in unruled))
+    elif action == "withdraw":
+        motion, executive = find(body.get("motion"))
+        if motion["result"]:
+            raise ValueError("that motion is decided; only a motion still on the floor is withdrawn")
+        if motion["votes"]:
+            raise ValueError("the roll call has begun; the mover withdraws a motion only before the vote")
+        floor_first(motion, executive)
+        name = str(body.get("name", "") or motion["mover"]).strip()
+        if name != motion["mover"]:
+            raise ValueError(f"only the mover ({motion['mover']}) withdraws the motion")
+        motion.update(result=WITHDRAWN, decidedAt=now, withdrawnBy=name)
+        log(f"Motion{'' if motion.get('kind', 'main') == 'main' else ' to ' + motion['kind']} withdrawn by {name}, the mover, "
+            f"before the vote: {motion['text']}")
     elif action == "off_agenda":
         path = str(body.get("path", "") or "").strip()
         if path not in OFF_AGENDA_PATHS:
@@ -834,8 +940,9 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["ACTIONS", "ATTENDANCE", "EXECUTIVE_SESSION", "IDENTIFY_FIRST", "MODES", "NAME_SUBJECT", "NOT_ON_FILE", "NO_FORUM_LIMIT",
-           "OFF_AGENDA_PATHS", "OPEN_SESSION", "PRESENTERS", "RETURNED", "THRESHOLDS", "VIEWS", "VOTES", "board_rules", "check_all",
+__all__ = ["ACTIONS", "ATTENDANCE", "EXECUTIVE_SESSION", "IDENTIFY_FIRST", "MODES", "MOTION_KINDS", "NAME_SUBJECT", "NOT_ON_FILE",
+           "NO_FORUM_LIMIT", "OFF_AGENDA_PATHS", "OPEN_SESSION", "PRESENTERS", "RESULTS", "RETURNED", "SUBSIDIARY_WORDS", "THRESHOLDS",
+           "VIEWS", "VOTES", "WITHDRAWN", "board_rules", "check_all",
            "check_executive", "empty", "empty_executive", "executive_path", "executive_view", "forum_limit", "forum_rule", "load",
            "load_executive", "matters_of", "needed", "present", "quorum", "save",
            "save_executive", "tally", "update", "with_tallies"]

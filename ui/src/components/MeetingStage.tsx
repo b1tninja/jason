@@ -13,6 +13,8 @@ import { embedUrls, type EmbedKind } from "./Embed";
 import { evidenceUrl, type EvidenceAnswer } from "./Evidence";
 import { Tabs } from "./Tabs";
 import { NOT_ON_FILE, NO_FORUM_LIMIT, RollCall, outcome, type Threshold, type VoteBasis } from "./RollCall";
+import { Stamp } from "./Stamp";
+import type { StampWord } from "../lib/marks";
 
 // -- shapes shared with the loader (GET /api/meeting-room) -------------------------------------------------------------
 
@@ -39,9 +41,39 @@ export interface BoardRules {
   interested: RuleLine & { counts: boolean | null };
   openForum?: { onFile: boolean; minutes: number; source: string; label: string };
 }
+/** A main motion, or a motion to table, continue (to a later meeting, `meeting`), or refer (to a committee or a person,
+ * `to`): each moved, seconded, and voted by roll call. */
+export type MotionKind = "main" | "table" | "continue" | "refer";
+/** `carried`/`failed` after the roll call; a main motion a carried subsidiary motion took off the floor has that motion's
+ * word (`tabled`, `continued`, `referred`); `withdrawn` is the mover's act before the vote, with no roll call. */
+export type MotionResult = "carried" | "failed" | "tabled" | "continued" | "referred" | "withdrawn" | "";
 export interface Motion {
   id: string; itemId: string; title: string; text: string; mover: string; second: string; recused: string[]; threshold: Threshold | string;
-  votes: Record<string, string>; result: "carried" | "failed" | ""; decidedAt: string; movedAt: string; tally: MotionTally;
+  votes: Record<string, string>; result: MotionResult; decidedAt: string; movedAt: string; tally: MotionTally;
+  /** Absent on a room written before subsidiary motions: a main motion. */
+  kind?: MotionKind; appliesTo?: string; meeting?: string; to?: string; disposedBy?: string; withdrawnBy?: string;
+}
+
+/** The three subsidiary motions: each is itself voted; carried, it gives the item its word. */
+export const SUBSIDIARY: Record<Exclude<MotionKind, "main">, { word: StampWord; label: string }> = {
+  table: { word: "tabled", label: "Move to table" },
+  continue: { word: "continued", label: "Move to continue" },
+  refer: { word: "referred", label: "Move to refer" },
+};
+
+/** The stamp word a decided motion shows: a carried subsidiary motion's own word, else its result; "" while open. */
+export function motionWord(m: Pick<Motion, "result" | "kind"> | undefined): StampWord | "" {
+  if (!m?.result) return "";
+  if (m.result === "carried" && m.kind && m.kind !== "main") return SUBSIDIARY[m.kind].word;
+  return m.result;
+}
+
+/** What a carried motion does to the item, in the room's words; "" for a main motion. */
+export function motionEffect(m: Pick<Motion, "kind" | "meeting" | "to">): string {
+  if (m.kind === "table") return "the item is tabled and stays on the board's list for a later motion to take it from the table";
+  if (m.kind === "continue") return `the item is continued to the meeting of ${m.meeting || "[date]"}`;
+  if (m.kind === "refer") return `the item is referred to ${m.to || "[a committee or a person]"}, to report back to the board`;
+  return "";
 }
 export interface LogEntry { at: string; title: string; tone?: "neutral" | "good" | "warn" | "bad"; by?: string }
 export interface RoomRecord {
@@ -100,7 +132,7 @@ export type RoomAction = (action: string, body?: Record<string, unknown>) => Pro
 
 export type StageContent =
   | { kind: "facts"; facts: string[] }
-  | { kind: "motion"; text: string; mover: string; second: string; heading?: string; result?: string }
+  | { kind: "motion"; text: string; mover: string; second: string; heading?: string; result?: string; word?: StampWord | "" }
   | { kind: "attendance"; rows: { name: string; role?: string; present: boolean }[]; quorum: string }
   | { kind: "countdown"; seconds: number; speaker: string }
   | { kind: "executive"; note: string }
@@ -256,6 +288,7 @@ function StageBlock({ content, audience = "board", packetCopy }: { content: Stag
           <span className="stage-kicker">{content.heading ?? (content.result ? "Motion" : content.mover ? "Motion on the floor" : "Proposed motion")}</span>
           <p className="stage-motion">{content.text}</p>
           <span className="stage-byline">{content.mover ? `Moved by ${content.mover}, seconded by ${content.second}` : "Not yet moved"}</span>
+          {content.word && <Stamp word={content.word} by={content.word === "withdrawn" ? "by the mover, no vote" : "the board"} />}
           {content.result && <p className="stage-result">{content.result}</p>}
         </div>
       );
@@ -305,13 +338,14 @@ function StageBlock({ content, audience = "board", packetCopy }: { content: Stag
 // -- the host panel ----------------------------------------------------------------------------------------------------
 
 /** Common motions, as templates a person edits. The brackets are blanks; the text is the board's once moved. */
-export const COMMON_MOTIONS: { id: string; label: string; threshold: Threshold; cite?: string; note?: string; text: string }[] = [
+export const COMMON_MOTIONS: { id: string; kind?: Exclude<MotionKind, "main">; label: string; threshold: Threshold; cite?: string; note?: string; text: string }[] = [
   { id: "approve-minutes", label: "Approve the minutes", threshold: "majority", text: "Move to approve the minutes of the [date] open meeting as presented." },
   { id: "approve-contract", label: "Approve a contract", threshold: "majority", cite: "CIV 5350(a)", note: "5350(a) applies Corporations Code 7233 and 7234 to a contract the board approves. A director who discloses an interest is recorded as recused; how 7233 counts them is counsel's to read.", text: "Move to approve the contract with [vendor] for [scope] at [amount], and authorize [officer] to sign." },
   { id: "adopt-resolution", label: "Adopt a resolution", threshold: "majority", text: "Move to adopt the resolution as presented." },
-  { id: "continue", label: "Continue to a later meeting", threshold: "majority", cite: "CIV 4930(d)(3)", note: "Within 30 days, the next meeting may act without re-noticing the item.", text: "Move to continue this item to the [date] meeting." },
-  { id: "refer", label: "Direct the manager to report back", threshold: "majority", cite: "CIV 4930(c)", text: "Move to direct the manager to report back on [matter] at the [date] meeting." },
-  { id: "table", label: "Table the item", threshold: "majority", text: "Move to table this item." },
+  { id: "continue", kind: "continue", label: "Continue to a later meeting", threshold: "majority", cite: "CIV 4930(d)(3)", note: "Voted by roll call. Within 30 days, the next meeting may act without re-noticing the item.", text: "Move to continue this item to the meeting of [date]." },
+  { id: "refer", kind: "refer", label: "Refer to a committee or a person", threshold: "majority", note: "Voted by roll call. The motion names whom it goes to; jason chooses no one.", text: "Move to refer this item to [committee or person], to report back to the board." },
+  { id: "table", kind: "table", label: "Table the item", threshold: "majority", note: "Voted by roll call. A tabled item stays on the board's list for a later motion to take it from the table.", text: "Move to table this item." },
+  { id: "take", label: "Take from the table", threshold: "majority", note: "A main motion: carried, the board takes up the tabled item again.", text: "Move to take from the table the item [title]." },
   { id: "exec", label: "Adjourn to executive session", threshold: "majority", cite: "CIV 4935(a)", text: "Move to adjourn to executive session to discuss [general description]." },
   { id: "emergency", label: "Act on an item not on the agenda", threshold: "two-thirds", cite: "CIV 4930(d)(2), (e)", note: "Identify the item to members first. Two-thirds of directors present, or every director present if fewer than two-thirds of the board is here.", text: "Move to find that [matter] needs immediate action and came to the board's attention after the agenda was posted." },
   { id: "adjourn", label: "Adjourn", threshold: "majority", text: "Move to adjourn." },
@@ -359,7 +393,9 @@ export function motionFor(room: RoomRecord, item: AgendaItem | undefined): Motio
   if (!item) return undefined;
   // The executive item's motions are the executive record's (ids x1, x2, …), each on one of its matters.
   const mine = room.motions.filter((m) => m.itemId === item.id || (item.kind === "exec" && m.id.startsWith("x")));
-  return mine.find((m) => !m.result) ?? mine[mine.length - 1];
+  // The latest motion still on the floor: a motion to table, continue, or refer is decided before the motion it applies to.
+  const pending = mine.filter((m) => !m.result);
+  return pending[pending.length - 1] ?? mine[mine.length - 1];
 }
 
 /** A rule's words as the loader recited them from disk (quoted, with the provision), or counsel's reading (labeled). */
@@ -460,7 +496,7 @@ function AgendaTab({ data, item, onAction, canWrite, shown, onShow, forum, onMot
   const [pick, setPick] = useState<number | null>(null);
   const [limit, setLimit] = useState("");
   const r = data.room;
-  const resultOf = (it: AgendaItem) => motionFor(r, it)?.result;
+  const resultOf = (it: AgendaItem) => motionWord(motionFor(r, it));
   const picked = pick !== null && pick !== r.current ? data.items[pick] : undefined;
   return (
     <div className="hp-stack">
@@ -488,7 +524,7 @@ function AgendaTab({ data, item, onAction, canWrite, shown, onShow, forum, onMot
           <li key={it.id} aria-current={i === r.current ? "step" : undefined}>
             <span className="hp-time">{it.allot ? `${it.allot} min` : ""}</span>
             {i === r.current ? <strong>{it.title}</strong> : <button className="link hp-jump" aria-pressed={pick === i} onClick={() => setPick(i)}>{it.title}</button>}
-            <span>{resultOf(it) && <Badge tone={resultOf(it) === "carried" ? "good" : "bad"}>{resultOf(it)!}</Badge>}</span>
+            <span>{resultOf(it) && <Stamp word={resultOf(it)} tilt={0} size="1.6em" />}</span>
           </li>
         ))}
       </ol>
@@ -532,24 +568,56 @@ function MotionTab({ data, item, onAction, canWrite, onFloor }: TabProps & { onF
   // In executive session (private view), a motion is on one of the matters: its decision is recorded under that matter.
   const matters = r.executive.active ? (item?.executiveMatters ?? []).filter((m) => m.id) : [];
   const [matter, setMatter] = useState(matters[0]?.id ?? "");
+  const [meeting, setMeeting] = useState("");
+  const [to, setTo] = useState("");
+  // With a motion on the floor, a subsidiary motion is drafted against it ("Move to table", …); null: not drafting one.
+  const [against, setAgainst] = useState<Exclude<MotionKind, "main"> | null>(null);
   if (!item || item.kind === "call" || item.kind === "forum") {
     return <p className="muted">{item?.kind === "call" ? "Take attendance in Roll call. The board has no motion during the call to order." : "The board takes no action during open forum (CIV 4930(a))."}</p>;
   }
-  if (current && !current.result) return <p>On the floor: "{current.text}" moved by {current.mover}, seconded by {current.second}. <button className="link" onClick={onFloor}>Vote in Roll call</button></p>;
+  const pending = current && !current.result ? current : null;
+  const pendingKind = pending?.kind ?? "main";
+  const draft = (id: string) => { const m = COMMON_MOTIONS.find((x) => x.id === id); setTpl(id); setText(id === defaultTpl && item.motion ? item.motion : m?.text ?? ""); };
+  const floor = pending && (
+    <div className="hp-stack" role="group" aria-label="On the floor">
+      <p>On the floor{pendingKind !== "main" ? ` (motion to ${pendingKind})` : ""}: "{pending.text}" moved by {pending.mover}, seconded by {pending.second}. <button className="link" onClick={onFloor}>Vote in Roll call</button></p>
+      {pendingKind === "main" && !against && (
+        <div className="row wrap">
+          <span className="muted">Or move to table, continue, or refer it; each is itself voted by roll call:</span>
+          {(Object.keys(SUBSIDIARY) as Exclude<MotionKind, "main">[]).map((k) => (
+            <button key={k} className="hp-chip" onClick={() => { setAgainst(k); draft(k); }}>{SUBSIDIARY[k].label}</button>
+          ))}
+        </div>
+      )}
+      <Confirm busy={!canWrite} onConfirm={() => onAction("withdraw", { motion: pending.id, name: pending.mover })}
+        summary={<p>Log that {pending.mover}, the mover, withdrew "{pending.text}" before the vote. No roll call and no decision; the only way a motion leaves the floor without a vote.{pendingKind !== "main" ? " The motion it applied to is back on the floor." : ""}</p>}>
+        Withdraw (the mover, before the vote)
+      </Confirm>
+    </div>
+  );
+  if (pending && (pendingKind !== "main" || !against)) return floor;
   const tplObj = COMMON_MOTIONS.find((m) => m.id === tpl) ?? COMMON_MOTIONS[0];
   const threshold: Threshold = tplObj.threshold;
+  const kind = tplObj.kind;
   const here = r.present;
   const movers = here.filter((n) => !recused.includes(n));
   const quorumOk = here.length >= data.quorum && data.quorum > 0;
-  const ready = !!mover && !!second && mover !== second && quorumOk && text.trim().length > 0;
+  const named = kind === "continue" ? meeting > r.date : kind === "refer" ? to.trim().length > 0 : true;
+  const ready = !!mover && !!second && mover !== second && quorumOk && text.trim().length > 0 && named;
+  const chips = against ? COMMON_MOTIONS.filter((m) => m.kind) : COMMON_MOTIONS;
   return (
     <div className="hp-stack">
-      {current?.result && <p className="muted">Decided: {current.result}, {current.tally.aye}–{current.tally.no}–{current.tally.abstain}. A new motion is a new vote.</p>}
+      {floor}
+      {current?.result && <p className="muted">Decided: <Stamp word={motionWord(current)} tilt={0} size="1.6em" /> {current.result === "withdrawn" ? "no vote" : `${current.tally.aye}–${current.tally.no}–${current.tally.abstain}`}. A new motion is a new vote.</p>}
       <div className="wrap row" role="group" aria-label="Common motions">
-        {COMMON_MOTIONS.map((m) => <button key={m.id} className="hp-chip" aria-pressed={tpl === m.id} onClick={() => { setTpl(m.id); setText(m.id === defaultTpl && item.motion ? item.motion : m.text); }}>{m.label}</button>)}
+        {chips.map((m) => <button key={m.id} className="hp-chip" aria-pressed={tpl === m.id} onClick={() => draft(m.id)}>{m.label}</button>)}
       </div>
       {(tplObj.note || tplObj.cite) && <p className="muted">{[tplObj.note, tplObj.cite].filter(Boolean).join(" ")}</p>}
-      {matters.length > 0 && (
+      {kind === "continue" && <label className="hp-field">To the meeting of <input type="date" min={r.date} value={meeting} onChange={(e) => setMeeting(e.target.value)} /></label>}
+      {kind === "continue" && meeting && meeting <= r.date && <p className="notice notice-warn">Name a meeting after this one ({r.date}).</p>}
+      {kind === "refer" && <label className="hp-field">Referred to (a committee or a person, named) <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="the landscape committee" /></label>}
+      {against && <button className="link" onClick={() => setAgainst(null)}>Back to the motion on the floor</button>}
+      {matters.length > 0 && !against && (
         <label className="hp-field">Matter (executive session) <select value={matter} onChange={(e) => setMatter(e.target.value)}>
           {matters.map((m) => <option key={m.id} value={m.id}>{m.title || m.general}</option>)}
         </select></label>
@@ -564,11 +632,17 @@ function MotionTab({ data, item, onAction, canWrite, onFloor }: TabProps & { onF
       </fieldset>
       <div className="row wrap">
         {ready ? (
-          <Confirm busy={!canWrite} onConfirm={async () => { const on = matters.find((m) => m.id === matter); if (await onAction("motion_draft", { itemId: on?.id ?? item.id, title: on?.title || item.title, text: text.trim(), mover, second, recused, threshold })) onFloor(); }}
-            summary={<p>Put on the floor: "{text.trim()}" moved by {mover}, seconded by {second}{recused.length ? `; ${recused.join(", ")} recused` : ""}. Threshold: {threshold}. {here.length} of {r.directors.length} directors present, quorum {data.quorum}. {r.executive.active ? "Logged in the executive session record, kept apart from the open minutes." : "Logged in the minutes."}</p>}>
+          <Confirm busy={!canWrite} onConfirm={async () => {
+            const on = pending ? { id: pending.itemId, title: pending.title } : matters.find((m) => m.id === matter);
+            const sub = kind ? { kind, ...(kind === "continue" ? { meeting } : kind === "refer" ? { to: to.trim() } : {}) } : {};
+            if (await onAction("motion_draft", { itemId: on?.id ?? item.id, title: on?.title || item.title, text: text.trim(), mover, second, recused, threshold, ...sub })) { setAgainst(null); onFloor(); }
+          }}
+            summary={<p>Put on the floor: "{text.trim()}" moved by {mover}, seconded by {second}{recused.length ? `; ${recused.join(", ")} recused` : ""}. Threshold: {threshold}. {here.length} of {r.directors.length} directors present, quorum {data.quorum}.{kind ? ` The board votes on it by roll call; carried, ${motionEffect({ kind, meeting, to: to.trim() })}${pending ? `, and the motion on the floor goes with it` : ""}.` : ""} {r.executive.active ? "Logged in the executive session record, kept apart from the open minutes." : "Logged in the minutes."}</p>}>
             Put the motion on the floor
           </Confirm>
-        ) : <span className="muted">{!quorumOk ? `No quorum: ${here.length} present, ${data.quorum} needed. Take attendance in Roll call.` : "Choose two different directors: one moves, one seconds."}</span>}
+        ) : <span className="muted">{!quorumOk ? `No quorum: ${here.length} present, ${data.quorum} needed. Take attendance in Roll call.`
+          : !named ? (kind === "continue" ? "Name the later meeting's date." : "Name the committee or the person it goes to.")
+          : "Choose two different directors: one moves, one seconds."}</span>}
       </div>
     </div>
   );
@@ -612,9 +686,12 @@ function RollTab({ data, item, onAction, canWrite }: TabProps) {
       {data.rules && [data.rules.quorum, data.rules.voteBasis, data.rules.interested]
         .filter((l, i, all) => l.onFile && (l.words || l.reading) && all.findIndex((o) => o.source === l.source && o.counsel === l.counsel) === i)
         .map((l) => <RuleWords key={`${l.source}|${l.counsel ?? ""}`} line={l} />)}
-      {!open && <p className="muted">No motion on the floor.</p>}
+      {!open && (current?.result
+        ? <p className="muted">No motion on the floor. Last: <Stamp word={motionWord(current)} tilt={0} size="1.6em" /> "{current.text}"{current.result === "withdrawn" ? ", withdrawn by the mover before the vote" : `, ${current.tally.aye}–${current.tally.no}–${current.tally.abstain}`}.</p>
+        : <p className="muted">No motion on the floor.</p>)}
       {open && result && (
         <div className="hp-vote">
+          {open.kind && open.kind !== "main" && <p><strong>Roll call on the motion to {open.kind}:</strong> "{open.text}". Carried, {motionEffect(open)}.</p>}
           <p className="muted">{open.threshold === "two-thirds"
             ? `Roll call. Needs two-thirds of the directors present (${result.needs} yes), or every one of them if fewer than two-thirds of the board is here (CIV 4930(d)(2)).`
             : `Roll call. ${data.rules?.voteBasis.onFile ? `Needs ${data.rules.voteBasis.basis} (${data.rules.voteBasis.label})` : "Needs a majority of the directors present"}: ${result.needs} yes.`}</p>
@@ -625,7 +702,7 @@ function RollTab({ data, item, onAction, canWrite }: TabProps) {
             <p className="notice notice-warn">The two readings decide this vote differently. Whether a recused director counts is {NOT_ON_FILE}; the vote is not recorded as carried or failed. The board may continue the item until counsel's reading is on file.</p>
           ) : result.answered ? (
             <Confirm busy={!canWrite} onConfirm={async () => { for (const n of result.voters) if (!(await onAction("vote", { motion: open.id, name: n, vote: votes[n] }))) return; if (await onAction("decide", { motion: open.id })) setVotes({}); }}
-              summary={<p>Record the roll call in the minutes and the decisions: {result.voters.map((n) => `${n} ${votes[n]}`).join(", ")}. {result.line} Threshold: {open.threshold}.</p>}>
+              summary={<p>Record the roll call in the minutes and the decisions: {result.voters.map((n) => `${n} ${votes[n]}`).join(", ")}. {result.line} Threshold: {open.threshold}.{open.kind && open.kind !== "main" ? ` ${result.state === "carries" ? `Carried, ${motionEffect(open)}; the decision's outcome is "${SUBSIDIARY[open.kind].word}".` : "Failed, the item stays where it is."}` : ""}</p>}>
               Record the vote
             </Confirm>
           ) : <span className="muted">Each director present answers aye, no, or abstain, by name.</span>}

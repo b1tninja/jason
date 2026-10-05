@@ -1821,6 +1821,19 @@ LESSONS: tuple[Lesson, ...] = (
            "directors' packet at the level its header claims (for the directors and counsel), and the members' copy "
            "its own path rule. Which level reaches every director, and only them, is a decision for a person.",
            Status.OPEN),
+    Lesson("subsidiary-motions-recorded-approved", date(2026, 10, 4), (Area.GOVERNING,),
+           "The meeting room's \"Table the item\", \"Continue to a later meeting\", and \"Direct the manager to report "
+           "back\" templates were main motions: a carried motion to table was recorded as approved, stamped carried, "
+           "and the item never moved. Decisions were keyed <date>--<item>, so a second motion on the same item "
+           "silently replaced the first decision.",
+           "The room had no notion of a motion's kind, so every motion carried as approved.",
+           "motion_draft takes a kind (table, continue with a meeting date, refer with whom); each is moved, seconded, "
+           "and voted by roll call under the board's rules, applies to the pending motion, and when carried records "
+           "its own word and moves the item (continued: its meeting; referred: the owner the board named). Withdraw "
+           "is the mover's logged act before any vote. Subsidiary decisions are keyed --<kind>.",
+           Status.FIXED, guards=("tests/test_meeting_room_subsidiary.py", "ui/src/components/subsidiary.test.tsx"),
+           docs=("docs/console/screens/meetings-and-minutes.md (Table, continue, refer, and withdraw)",),
+           notes=("Still open: two main motions on the same item at one meeting still replace each other's decision.",)),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
            "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",

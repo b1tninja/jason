@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge, Caveats, Confirm, HostPanel, MeetingStage, RemoteView } from "../components";
-import { forumLine, motionFor, type AgendaItem, type MeetingRoomData, type MinutesLetter, type PacketFile, type StageContent } from "../components/MeetingStage";
+import { forumLine, motionEffect, motionFor, motionWord, type AgendaItem, type MeetingRoomData, type MinutesLetter, type PacketFile, type StageContent } from "../components/MeetingStage";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
@@ -43,7 +43,14 @@ export function stageContent(d: MeetingRoomData, item: AgendaItem | undefined, s
   if (item.kind === "exec") return { kind: "executive", note: `The board is adjourning to executive session to discuss ${(item.matters ?? []).join(" and ") || "the matters noticed"}.` };
   if (item.kind === "adjourn") return { kind: "adjourned", at: r.adjournedAt ? new Date(r.adjournedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "" };
   const m = motionFor(r, item);
-  if (m) return { kind: "motion", text: m.text, mover: m.mover, second: m.second, result: m.result ? `${m.result === "carried" ? "Carried" : "Failed"}, ${m.tally.aye}–${m.tally.no}–${m.tally.abstain}${m.recused.length ? `, ${m.recused.join(", ")} recused` : ""}` : "" };
+  if (m) {
+    const word = motionWord(m);
+    const result = !m.result ? "" : m.result === "withdrawn" ? "Withdrawn by the mover before the vote."
+      : `${m.result === "failed" ? "Failed" : "Carried"}, ${m.tally.aye}–${m.tally.no}–${m.tally.abstain}${m.recused.length ? `, ${m.recused.join(", ")} recused` : ""}`
+        + (m.result === "carried" && m.kind && m.kind !== "main" ? `: ${motionEffect(m)}.` : "");
+    return { kind: "motion", text: m.text, mover: m.mover, second: m.second, result, word,
+      ...(m.kind && m.kind !== "main" ? { heading: m.result ? `Motion to ${m.kind}` : `Motion to ${m.kind} on the floor` } : {}) };
+  }
   if (item.motion) return { kind: "motion", text: item.motion, mover: "", second: "" };
   return { kind: "facts", facts: item.facts };
 }
@@ -67,8 +74,10 @@ export function script(d: MeetingRoomData, item: AgendaItem | undefined): string
   let line = `Item ${idx}, ${item.title}.${item.facts.length ? ` ${item.facts.join(". ")}.` : ""}`;
   if (item.recused.length) line += ` ${item.recused.join(", ")} has disclosed an interest and will not vote.`;
   const m = motionFor(r, item);
-  if (m?.result) line += ` The motion ${m.result}, ${m.tally.aye}–${m.tally.no}–${m.tally.abstain}.`;
-  else if (m) line += " The motion has been moved and seconded. The secretary will call the roll.";
+  const what = m?.kind && m.kind !== "main" ? `The motion to ${m.kind}` : "The motion";
+  if (m?.result === "withdrawn") line += ` ${what} was withdrawn by the mover before the vote.`;
+  else if (m?.result) line += ` ${what} ${m.result === "failed" ? "failed" : "carried"}, ${m.tally.aye}–${m.tally.no}–${m.tally.abstain}.${m.result === "carried" && m.kind && m.kind !== "main" ? ` ${motionEffect(m).replace(/^t/, "T")}.` : ""}`;
+  else if (m) line += ` ${what} has been moved and seconded. The secretary will call the roll.`;
   else if (item.motion) line += " The proposed motion is on the screen.";
   return line;
 }

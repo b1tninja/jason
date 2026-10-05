@@ -7,7 +7,9 @@ import { RollCall, tally } from "./RollCall";
 /** `recused`: the directors who disclosed an interest and did not vote, as the secretary records each. Never marked
  * absent, never counted as a no, and never inferred. */
 export interface DecisionDraft { title: string; motion: string; item?: string; session?: string; mover: string; second: string; votes: Record<string, string>; recused: string[]; outcome: string; by: string; notes: string }
-export const OUTCOMES = ["approved", "denied", "tabled"];
+/** The board's words for a decision (`decisions.OUTCOMES`): tabled, continued, and referred are the outcomes of those
+ * motions, each voted. */
+export const OUTCOMES = ["approved", "denied", "tabled", "continued", "referred"];
 
 /** The votes to save: none for a recused director (their row is off in the roll call). */
 export function votesWithoutRecused(votes: Record<string, string>, recused: readonly string[]): Record<string, string> {
