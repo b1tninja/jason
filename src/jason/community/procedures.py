@@ -530,6 +530,12 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Run the checklist until only the items a person supplies are missing, and give each an owner.",
                  command="jason onboard --checklist --write; jason schedule",
                  lessons=("takeover-list-omits-statutory-items",)),
+            Step("For a change of manager, read the outgoing agreement first: its term, its non-renewal and "
+                 "termination clauses, and what it owes at transition. Count each notice window back from the term's "
+                 "end, both edges, and send by the delivery the clause names.",
+                 check="the window's first and last days are written down before the notice is sent; proof of delivery "
+                       "is kept with the notice",
+                 refs=("docs/contracts.md (Notice)",), lessons=("notice-window-has-two-edges",), person=True),
             Step("For a change of manager, before the termination date: request the records (Civil Code 5205), confirm "
                  "the board's portal access through the handover, and tell each vendor.", person=True),
         ),
@@ -546,6 +552,14 @@ PROCEDURES: tuple[Procedure, ...] = (
                  "and gates that would move.", command="jason ingest SOURCE",
                  check="a new version of a living or citable document is read beside the current text, never applied",
                  lessons=("packet-read-as-version",)),
+            Step("Read the report's contract terms: each contract's deliverables (logs, reports, records at the end) and "
+                 "findings (notice windows, arbitration, limits on claims, transfers). For a closer reading, have a model "
+                 "review them; Bedrock sends the words to AWS, so a person chooses it.",
+                 command="jason ingest SOURCE --terms-model ollama; jason contract-terms --list",
+                 check="a finding is a lead read beside the contract's words and the statute; a deliverable worth "
+                       "tracking becomes a board item or a register row, decided by a person",
+                 refs=("docs/contracts.md (Contract terms in the ingestion pipeline)",),
+                 lessons=("notice-window-has-two-edges",), person=True),
             Step("If many files have no kind, add the local model.", command="jason ingest SOURCE --model",
                  check="preflight passes; the model is unloaded afterwards (jason local-ai)"),
             Step("Park the questions and answer them in the ranked queue.",

@@ -80,6 +80,8 @@ pip install -e ".[models]"
 pip install -e ".[ocr]"
 # Optional QR codes for links in printed letters and notices (segno):
 pip install -e ".[qr]"
+# Optional Claude on Amazon Bedrock for the contract-terms review (anthropic[bedrock]; AWS credentials from the AWS chain):
+pip install -e ".[bedrock]"
 ```
 
 ```bash

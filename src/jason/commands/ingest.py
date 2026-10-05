@@ -42,6 +42,12 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     parser.add_argument("--model", nargs="?", const="", default=None,
                         help="ask a local Ollama model about files no rule placed (preflight and the GPU lock first; "
                              "the default model when no name is given)")
+    parser.add_argument("--terms-model", choices=("ollama", "bedrock"), default=None,
+                        help="have a model review each contract's terms (the grammar reads them without one; bedrock "
+                             "sends the words to AWS and skips a confidential file)")
+    parser.add_argument("--terms-model-name", default="", help="the Ollama model or Bedrock model id for --terms-model")
+    parser.add_argument("--allow-remote-confidential", action="store_true",
+                        help="let a remote --terms-model read a confidential file, for this run only")
     parser.add_argument("--no-ocr", action="store_true", help="read text layers only; an image-only file is left unread")
     parser.add_argument("--gate", action="store_true",
                         help="print what the last ingest says for the onboarding session's ingest stage (read-only)")
@@ -66,6 +72,11 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
         from jason.community.content import ModelClassifier
 
         model = ModelClassifier(model=args.model)
+    terms_backend = None
+    if args.terms_model:
+        from jason.community.term_model import backend_named
+
+        terms_backend = backend_named(args.terms_model, model=args.terms_model_name)
     with ExitStack() as stack:
         drive = None
         if any(task.drive_folder_id(s) for s in args.source):
@@ -77,11 +88,22 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
                 return 2
         try:
             result = task.run(community(), root, list(args.source), drive=drive, model=model, ocr=not args.no_ocr,
-                              apply_files=args.apply, park=args.park, log=lambda s: print(s, file=sys.stderr))
+                              apply_files=args.apply, park=args.park, terms_backend=terms_backend,
+                              allow_remote=args.allow_remote_confidential, log=lambda s: print(s, file=sys.stderr))
         except ValueError as exc:
             print(f"jason ingest: {exc}", file=sys.stderr)
             return 2
+        except Exception as exc:  # noqa: BLE001 - the terms model went away mid-run: say so, file nothing half-read
+            from jason.community.term_model import ModelUnavailable
+
+            if not isinstance(exc, ModelUnavailable):
+                raise
+            print(f"jason ingest: the terms model is unavailable: {exc}", file=sys.stderr)
+            return 2
         finally:
+            close = getattr(terms_backend, "close", None)
+            if callable(close):
+                close()
             if model is not None:
                 try:
                     from jason.local_ai import unload

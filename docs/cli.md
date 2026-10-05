@@ -6,11 +6,11 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-146 commands, by area:
+148 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
-- [Documents & library](#documents--library) (19)
+- [Documents & library](#documents--library) (21)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (24)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
@@ -607,9 +607,43 @@ Take a folder, zip, Drive folder, or files into the library: inventory, dedup, r
 | `--apply` |  | copy the ready files into the library store and record them in library.db |
 | `--park` |  | park the questions in the intake queue (jason intake) |
 | `--model` | MODEL | ask a local Ollama model about files no rule placed (preflight and the GPU lock first; the default model when no name is given) |
+| `--terms-model` | {ollama,bedrock} | have a model review each contract's terms (the grammar reads them without one; bedrock sends the words to AWS and skips a confidential file) |
+| `--terms-model-name` | TERMS_MODEL_NAME | the Ollama model or Bedrock model id for --terms-model |
+| `--allow-remote-confidential` |  | let a remote --terms-model read a confidential file, for this run only |
 | `--no-ocr` |  | read text layers only; an image-only file is left unread |
 | `--gate` |  | print what the last ingest says for the onboarding session's ingest stage (read-only) |
 | `--json` |  | print the run as JSON |
+
+### `jason contract-terms`
+
+Read a contract's terms: duties, deadlines, money, notice windows, dispute resolution, and what the counterparty must produce (grammar, and a model with --model ollama\|bedrock)
+
+| Option | Value | Help |
+|---|---|---|
+| `source` | optional (*) | files, Drive file links, or drive:ID |
+| `--library` |  | read every contract and proposal in the library |
+| `--model` | {ollama,bedrock} | have a model review the grammar's reading (ollama: this machine; bedrock: AWS) |
+| `--model-name` | MODEL_NAME | the Ollama model, or the Bedrock model id |
+| `--model-trust` | {fill,full} | fill (default): the model adds missed terms and fills unstated parties; full: its kind, party, topic, and deliverable verdicts replace the grammar's |
+| `--region` | REGION | the Bedrock region (else JASON_BEDROCK_REGION or AWS_REGION) |
+| `--aws-profile` | AWS_PROFILE | the AWS profile for Bedrock (else JASON_BEDROCK_PROFILE) |
+| `--confidential` |  | treat the named files as confidential |
+| `--allow-remote-confidential` |  | let a remote backend read a confidential file, for this run only |
+| `--list` |  | list the saved readings (read-only) |
+| `--json` |  | print the readings as JSON |
+| `--out` | OUT | write the markdown to this file as well |
+
+### `jason licenses`
+
+The license numbers the documents print (contractor, alarm, pest, real estate, insurance, and others), who holds each, and the board's page to check it
+
+| Option | Value | Help |
+|---|---|---|
+| `file` | optional (*) | files to read (a PDF, a scan, a .txt) |
+| `--library` |  | read every file in the library and save the register |
+| `--people` |  | also list notaries' commissions and certifications |
+| `--json` |  | print JSON |
+
 
 ## Meetings, board & minutes
 
@@ -1892,6 +1926,7 @@ Run the job queue: one job at a time per resource (GPU, Google, PayHOA, local)
 |---|---|---|
 | `--once` |  | Stop when nothing is due |
 | `--poll` | POLL | Seconds between looks at the queue |
+| `--keep-models` |  | Leave models loaded after GPU jobs (by default the worker unloads a model no queued job needs, except jason's shared model) |
 
 ### `jason lessons`
 

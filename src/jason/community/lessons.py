@@ -27,6 +27,7 @@ class Area(Enum):
     RENTALS = "rentals"                  # leasing approvals and limits
     GOVERNING = "governing"              # the governing documents themselves: amendments, citations, meetings
     ONBOARDING = "onboarding"            # taking on an association, or a change of manager: its records and access
+    CONTRACTS = "contracts"              # vendor and manager agreements: their terms, notices, and readings
 
 
 class Status(Enum):
@@ -567,6 +568,92 @@ LESSONS: tuple[Lesson, ...] = (
            "Only the outgoing manager held them, and nothing named them or a date in the termination.",
            "Name these items, with dates, in the termination notice; keep the board's portal access through the "
            "handover; have the outgoing manager copy the board.", Status.DECISION, docs=("docs/onboarding.md",)),
+    Lesson("notice-window-has-two-edges", OCT_2026, (Area.CONTRACTS, Area.ONBOARDING),
+           "A board's notice not to renew a management agreement went out by email two days after the window closed: "
+           "the agreement asked for written notice at least 60 and no more than 120 days before the term's end.",
+           "Nothing counted the window back from the term's end, or listed its opening and closing dates and the "
+           "delivery each notice clause names.",
+           "Before a term ends, read every notice clause (non-renewal, termination without cause, breach and cure), and "
+           "write down its window, both edges, and the delivery it names; send inside the window by that delivery, "
+           "and keep proof of delivery. Where a late notice may have renewed the term, the board asks counsel.",
+           Status.OPEN, docs=("docs/contracts.md (Notice)",),
+           notes=("To build: the contract model's auto-renewal finding also gives the window's first day when the "
+                  "clause sets a longest notice, and the delivery the clause names.",)),
+    Lesson("name-rule-files-others-agreements", OCT_2026, (Area.CONTRACTS, Area.DOCUMENTS, Area.ONBOARDING),
+           "A lender's assignment of an investor-owner's property-management agreement, named \"... Assignment of "
+           "Management Agreement\", sat among the association's management contracts; the name rule made it a contract.",
+           "The library's chain stops at its first match, so a file's name decided its kind before its words were "
+           "read, and nothing asked whether the association was a party.",
+           "Ingest weighs each new file's kind before reading it: every phrase rule, the document's shape, the kind's "
+           "own reader, and for an agreement whether the association is a party. A disagreement, or an agreement "
+           "between others, is a CLASSIFY question that names what the paper reads as (a lease, an owner's rental "
+           "papers, a lender's papers), and the file is held until a person answers.",
+           Status.FIXED, guards=("jason.community.kind_analysis.analyze (association_is_party, THIRD_PARTY)",
+                                 "jason.tasks.ingest.needs_kind (disagrees, weak)", "tests/test_kind_analysis.py"),
+           docs=("docs/onboarding.md (Ingest, step 3)",)),
+    Lesson("model-invents-contract-clauses", OCT_2026, (Area.CONTRACTS, Area.DOCUMENTS),
+           "Asked to review a management agreement's terms, a 9B local model listed 20 clauses that are not in the "
+           "contract, among them binding arbitration, a two-year claims limit, and a manager's indemnity, and flipped the "
+           "grammar's deliverable and topic calls about as often wrongly as rightly.",
+           "A small model completes a contract from what contracts usually say; asked for what was missed, it supplies "
+           "the usual clauses.",
+           "A model's term is kept only when its quote is in the text, and by default (--model-trust fill) the model "
+           "only adds grounded terms and fills unstated parties; the grammar's fields stand. The trial is a row in "
+           "docs/document-tools.md.",
+           Status.FIXED, guards=("term_model._missed (find_quote)", "term_model.merge(trust='fill')",
+                                 "tests/test_contract_terms.py::test_merge_keeps_only_grounded_terms",
+                                 "tests/test_contract_terms.py::test_fill_keeps_the_grammars_reading_and_only_fills_and_adds"),
+           docs=("docs/contracts.md (How far the model is trusted)", "docs/document-tools.md (Model trials)")),
+    Lesson("gpu-lane-checked-the-default-model", OCT_2026, (Area.DOCUMENTS,),
+           "The job queue's GPU lane checked whether jason's 27B model could load before every model job, so a job for "
+           "a 9B model waited on the 27B's memory; it took jobs in order, so it could load one model, then another, then "
+           "the first again; and it put a Bedrock job (off this machine) on the GPU lane.",
+           "The lane knew a job was a GPU job, not which model it loads.",
+           "Each GPU job's model is read from its flags (jobs.job_model); preflight checks that model; the lane takes a "
+           "job whose model is loaded first; after a job the worker unloads models no queued job needs, keeping the "
+           "shared model AnythingLLM also uses; a remote backend is not a GPU job.",
+           Status.FIXED, guards=("jason.jobs.job_model / job_class (_remote)", "jason.jobs._claim(loaded=...)",
+                                 "jason.jobs.release_idle", "tests/test_jobs.py"),
+           docs=("docs/jobs.md (Running the queue)",)),
+    Lesson("contract-role-labels-joined", OCT_2026, (Area.CONTRACTS, Area.DOCUMENTS),
+           "An order form's role labels (\"CUSTOMER:\" above the customer's steps, the vendor's name above its own) were "
+           "joined to the line above by unwrapping, so the customer's steps were read as no one's and its orders "
+           "(\"Provide access ...\") not at all; and \"Example Holdings Inc. dba ... will complete the work\" lost its "
+           "subject at \"Inc.\".",
+           "Unwrapping kept a break only after a colon, not before a label; the \"will\" reader stopped its subject at any "
+           "period.",
+           "A role label keeps its own line; the lines under it take the label's party (contract_terms._role_terms); a "
+           "dba, a parenthetical short form, and a label are the party's words (party_aliases); a company suffix's "
+           "period does not end a subject.",
+           Status.FIXED, guards=("jason.community.contract_terms.unwrap (label)", "contract_terms._role_terms",
+                                 "contract_terms._alias_words", "tests/test_contract_fixtures.py::"
+                                 "test_aliases_roles_and_topics"),
+           docs=("docs/contracts.md (Parties and licenses)",)),
+    Lesson("exemption-read-as-prohibition", OCT_2026, (Area.CONTRACTS,),
+           "\"Manager shall not be obligated to attend meetings on weekends\" was read as a prohibition on the manager, "
+           "and \"We are not responsible for any loss\" was not read at all, so a review missed what the vendor had "
+           "released itself from.",
+           "The grammar reads \"shall not\" as a prohibition and has no reading for a release from a duty.",
+           "Exemptions are their own kind, read by the exemptions rows; a sentence that also binds stays a duty; a "
+           "counterparty's release is a finding. Discretion and incorporated standards are read on every term too.",
+           Status.FIXED, guards=("jason.community.contract_terms._qualify", "jason.community.exemptions",
+                                 "tests/test_contract_fixtures.py::test_exemptions_discretion_standards_and_options"),
+           docs=("docs/contracts.md (Parties and licenses)",)),
+    Lesson("contract-terms-console-encoding", OCT_2026, (Area.CONTRACTS,),
+           "jason contract-terms --library stopped after reading every file because the Windows console could not print "
+           "a contract's bullet (\"▪\"); the readings were saved, but the run reported an error.",
+           "The report quotes the contract's own characters, and the console's code page has none for some of them.",
+           "The command prints with errors replaced, so a character the console lacks shows as \"?\".",
+           Status.FIXED, guards=("jason.commands.contract_terms.run (reconfigure)",)),
+    Lesson("contract-fill-in-date-misread", OCT_2026, (Area.CONTRACTS, Area.DOCUMENTS),
+           "The contract model read a management agreement's typed start date as blank, counted its term from the "
+           "signing date, and gave it a 30-day notice; the agreement runs from the typed date and ends at the close "
+           "of the calendar month after the month of notice.",
+           "The PDF's text layer prints a typed fill-in on its own line, away from the blank it fills; the notice rules "
+           "have no row for a notice that takes effect at the end of the following month.",
+           "Read a lone date line near a blank as that blank's fill-in; add a notice row for end-of-following-month "
+           "terminations; until then a person checks commencement-blank and term-end findings against the page.",
+           Status.OPEN, docs=("docs/document-models/contracts.md", "docs/contracts.md (How jason reads a contract)")),
     Lesson("gmail-store-window", OCT_2026, (Area.EMAIL,),
            "A history search found nothing in the stored Gmail because the store keeps a limited window.",
            "The Gmail sync stores a rolling window of messages.",

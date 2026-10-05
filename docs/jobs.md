@@ -9,7 +9,9 @@ jason jobs add -- gmail --sync
 ```
 
 Everything after `--` is the jason command, without the word "jason". The queue guesses the resource the command uses from its name and flags; `--resource` corrects a wrong guess:
-- **gpu:** a local model, such as `outlines --model`, `models`, or anything with `--model`, `--extractor`, `--ocr`, or `--reader`;
+- **gpu:** a local model, such as `outlines --model`, `models`, or anything with `--model`, `--extractor`, `--ocr`,
+  `--reader`, or `--terms-model`. A command that names a model off this machine (`--model bedrock`,
+  `--terms-model bedrock`) is local: it waits on the network, not the card;
 - **google:** the association's Google account, such as `gmail`, `drive`, `calendar`, `templates`, `board --sheet`, or `outlines --fetch`;
 - **payhoa:** the PayHOA session, such as `books`, `budget`, `reconcile`, or `invoices`;
 - **county:** a county's public index, such as `onboard --locate` or `onboard --lookup` (the console's "locate" button queues the first). A locate runs dozens of searches, so it keeps its own lane and never holds up the local jobs;
@@ -31,7 +33,19 @@ jason worker --once
 - **Each job is its own process,** with its output in `data/jobs/logs/<id>.log`.
 - **`--once`** stops when nothing is due; without it the worker keeps polling (`--poll`, 20 seconds).
 - **Only one worker runs at a time.** A second one stops with "another worker is running".
-- **A model job waits for the model.** Before a GPU job starts, the worker runs the same check as `jason local-ai`. If Ollama is down, has no GPU, or Windows commit is too full to load the model, the job goes back in the queue for ten minutes without using an attempt.
+- **A model job waits for its own model.** Each GPU job's model is the one its flags name (`--model-name`,
+  `--terms-model-name`, `--model NAME`), else jason's model (`jason jobs` shows it). Before the job starts, the worker
+  runs the same check as `jason local-ai` for that model: a 9B job is not held back by the 27B's memory. If Ollama is
+  down, has no GPU, or Windows commit is too full to load the model, the job goes back in the queue for ten minutes
+  without using an attempt. A model already loaded needs no new commit.
+- **A loaded model is used first.** The GPU lane asks Ollama what is loaded and takes the oldest job whose model is
+  loaded before an older job that would load another. Jobs for the same model run back to back.
+- **One model serves jason and AnythingLLM.** jason's model callers ask for `qwen3.6:27b` with a 65,536-token context,
+  and AnythingLLM's chat asks for the same (`jason local-ai` shows both). Ollama reloads a model whose context
+  differs, so a caller that changes either reloads it for everyone; OCR's own context is the known exception.
+- **Idle models are released.** After each GPU job, the worker unloads every model no queued or running job needs.
+  It keeps jason's shared model (AnythingLLM uses it too) and the embedder, so the next model finds the commit free.
+  `--keep-models` turns this off.
 - **The worker holds no GPU lock itself.** Each model request in the job takes the lock (`jason.locks`), and the lanes keep two model jobs apart.
 - **A worker that stopped mid-job** leaves the job marked running. The next worker finds it and records it as stopped: a read is queued again, and a write fails and waits for a person.
 

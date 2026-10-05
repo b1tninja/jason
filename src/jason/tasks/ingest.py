@@ -97,6 +97,13 @@ class FileItem:
     target: str = ""                         # the library path it is filed at
     questions: list[str] = field(default_factory=list)
     filed: bool = False
+    analysis: dict[str, Any] = field(default_factory=dict)       # the preliminary kind analysis (``kind_analysis``)
+    readings: dict[str, dict[str, Any]] = field(default_factory=dict)   # each kind reader's summary, by reader key
+
+    @property
+    def terms(self) -> dict[str, Any]:
+        """The contract-terms reader's summary, when the file is an agreement."""
+        return self.readings.get("contract-terms", {})
 
     @property
     def key(self) -> str:
@@ -138,7 +145,8 @@ class FileItem:
                 "period": self.period, "records": list(self.records), "category": self.category,
                 "confidential": self.confidential, "version": self.version, "book": self.book, "bookHow": self.book_how,
                 "folder": self.folder, "folderHow": self.folder_how, "target": self.target,
-                "questions": list(self.questions), "status": self.status}
+                "questions": list(self.questions), "status": self.status, "analysis": dict(self.analysis),
+                "readings": {k: dict(v) for k, v in self.readings.items()}}
 
 
 def sha256_of(path: Path) -> str:
@@ -462,8 +470,10 @@ def _from_library(item: FileItem, rows: dict[str, dict[str, Any]]) -> None:
 
 
 def needs_kind(item: FileItem) -> bool:
-    """A miss, or a model's answer too weak to file on its own word."""
-    return not item.kind or (item.method == "MODEL" and (item.confidence or 0) < LOW_CONFIDENCE)
+    """A miss, a model's answer too weak to file on its own word, or a kind the analysis of the text disagrees with
+    (``kind_analysis``: another kind reads better, or an agreement the association is not a party to)."""
+    return (not item.kind or (item.method == "MODEL" and (item.confidence or 0) < LOW_CONFIDENCE)
+            or item.analysis.get("verdict") in ("disagrees", "weak"))
 
 
 # --- Versions ---------------------------------------------------------------------------------------------------------
@@ -731,24 +741,41 @@ def questions(items: list[FileItem], texts: dict[str, str], community: Any, *, g
                 candidates.append(guess.kind.value)
             if item.version.get("kind"):
                 candidates.append(str(item.version["kind"]))
+            analysed = [c["kind"] for c in item.analysis.get("candidates", [])[:3]]
+            candidates += analysed
             candidates +=[k for k, _ in siblings[item.rel.rsplit("/", 1)[0]].most_common(3)]
             candidates = list(dict.fromkeys(c for c in candidates if c))[:CHOICES]
             evidence = base + [f"begins: {head}" if head else f"no text read ({item.text_source or 'no reader'})"]
             if guess is not None:
                 evidence.append(f"model: {guess.kind.value if guess.kind else 'unknown'} at {guess.confidence:.2f}: "
                                 f"{guess.reason}")
-            if item.kind:
+            disagrees = item.analysis.get("verdict") in ("disagrees", "weak")
+            if item.kind and not disagrees:
                 evidence.append(f"classified {item.kind} by {item.method} at {item.confidence or 0:.2f}, below "
                                 f"{LOW_CONFIDENCE}")
+            for c in item.analysis.get("candidates", [])[:3]:
+                evidence.append(f"analysis: {c['kind']} {c['score']}: {'; '.join(c['reasons'][:4])}")
+            evidence += [f"analysis: {n}" for n in item.analysis.get("notes", [])]
             if candidates:
                 evidence.append("candidates: " + ", ".join(candidates))
             if item.version:
                 evidence.append(f"shares its words with {item.version.get('document') or item.version.get('group')}")
+            question = ("No rule classified this file with confidence. Which kind of document is it? (a DocumentKind "
+                        "value; 'dismiss' to leave it out)")
+            if disagrees:
+                question = (f"The {item.method.lower()} rule calls this file {item.kind}, but its text "
+                            f"{'reads otherwise' if item.analysis.get('verdict') == 'disagrees' else 'barely supports it'}"
+                            " (see the analysis). Which kind of document is it? (a DocumentKind value; 'dismiss' to "
+                            "leave it out)")
+            verdict = item.analysis.get("verdict")
+            if verdict == "disagrees" or (verdict in ("proposed", "weak") and item.analysis.get("suggestion")):
+                suggestion = str(item.analysis.get("suggestion") or "")
+            else:
+                suggestion = candidates[0] if item.kind or (guess is not None and guess.kind is not None) else ""
             a = Ask(ask_id(AskKind.CLASSIFY, item.subject, ""), AskKind.CLASSIFY, item.subject,
-                    "No rule classified this file with confidence. Which kind of document is it? (a DocumentKind "
-                    "value; 'dismiss' to leave it out)",
+                    question,
                     choices=tuple(candidates) + ("another kind (type its value)",),
-                    suggestion=candidates[0] if item.kind or (guess is not None and guess.kind is not None) else "",
+                    suggestion=suggestion,
                     evidence=tuple(evidence), serves="",
                     detail={"path": item.subject, "file": item.rel, "sha256": item.sha256, "ingest": True})
             out.append(a)
@@ -961,11 +988,50 @@ class Result:
                 "moved": self.moved, "gates": self.gates, "notes": self.notes, "files": [i.row() for i in self.items]}
 
 
+def read_by_kind(items: list[FileItem], texts: dict[str, str], root: Path, *, community: Any = None,
+                 backend: Any = None, allow_remote: bool = False, today: date | None = None,
+                 log: Callable[[str], None] = lambda s: None) -> list[str]:
+    """The kind stage: each new file's kind weighed (``kind_analysis.analyze``), then the readers for that kind run
+    (``kind_readers``): its document model, a contract's terms, a governing document's norms. A kind the analysis only
+    proposes or questions is read too, so a person answering the question sees what each reading found; a file with
+    no kind and no proposal is not read. ``backend`` (a person's choice) reviews a contract's terms; a remote backend
+    skips a confidential file unless ``allow_remote``. Returns notes."""
+    from jason.community.kind_analysis import Verdict, analyze
+    from jason.community.kind_readers import ReaderContext, run_readers
+
+    notes: list[str] = []
+    for item in items:
+        text = texts.get(item.sha256, "")
+        if item.duplicate_of or item.library_path or not text.strip():
+            continue
+        analysis = analyze(item.name, text, classified=item.kind, method=item.method, confidence=item.confidence,
+                           community=community, data_dir=root, today=today)
+        item.analysis = analysis.as_dict()
+        kinds = [analysis.kind] if analysis.kind else []
+        if analysis.verdict is Verdict.DISAGREES and analysis.suggestion and analysis.suggestion != item.kind:
+            kinds.append(analysis.suggestion)
+        for n, kind in enumerate(kinds):
+            ctx = ReaderContext(key=f"ingest-{item.key}" + (f"-as-{kind}" if n else ""), name=item.rel, kind=kind,
+                                community=community, data_dir=root, today=today, confidential=item.confidential,
+                                backend=backend if n == 0 else None, allow_remote=allow_remote, log=log)
+            for key, summary in run_readers(text, ctx).items():
+                item.readings[key if n == 0 else f"{key} (as {kind})"] = summary
+            notes += ctx.notes
+    return notes
+
+
+def read_terms(items: list[FileItem], texts: dict[str, str], root: Path, **kw: Any) -> list[str]:
+    """The kind stage over the given files (kept for callers that read only contracts)."""
+    return read_by_kind(items, texts, root, **kw)
+
+
 def run(community: Any, data_dir: Path, sources: list[str], *, drive: Any = None, model: Any = None, ocr: bool = True,
         apply_files: bool = False, park: bool = False, settings: Any = None, today: date | None = None,
+        terms_backend: Any = None, allow_remote: bool = False,
         log: Callable[[str], None] = lambda s: None) -> Result:
-    """The whole chain. Writes only under ``data/``: staged copies and text, the report, and with ``apply_files`` the
-    library, with ``park`` the intake queue."""
+    """The whole chain. Writes only under ``data/``: staged copies and text, the report, each contract's terms, and with
+    ``apply_files`` the library, with ``park`` the intake queue. ``terms_backend`` is the model that reviews a
+    contract's terms (``jason.community.term_model``); the grammar reads them without one."""
     from jason.community import intake
     from jason.tasks.library import person_kinds
 
@@ -999,6 +1065,8 @@ def run(community: Any, data_dir: Path, sources: list[str], *, drive: Any = None
         if n % 25 == 0:
             log(f"read {n} of {len(items)}")
     notes += state.get("notes", [])
+    notes += read_by_kind(items, texts, root, community=community, backend=terms_backend, allow_remote=allow_remote,
+                          today=today, log=log)
     known = known_documents(community, root)
     groups = find_versions(items, texts, known)
     propose(community, items, root, answered=answered_folders(stored))
@@ -1146,6 +1214,13 @@ def lines(result: Result) -> list[str]:
                a.kind.value for a in result.asks).most_common()) + ")" if result.asks else "")
            + ("" if not result.asks else ", parked" if result.parked else ", not parked: --park parks them"),
            f"filed: {c['filed']}" if result.applied else "dry run: nothing filed (--apply files the ready ones)"]
+    verdicts = Counter(i.analysis.get("verdict") for i in result.unique if i.analysis)
+    if verdicts:
+        out.append("kind analysis: " + ", ".join(f"{k} {v}" for k, v in verdicts.most_common()))
+    termed = [i for i in result.unique if i.terms]
+    if termed:
+        out.append(f"contract terms: {len(termed)} contracts read, {sum(len(i.terms.get('deliverables', [])) for i in termed)} "
+                   f"deliverables, {sum(len(set(i.terms.get('findings', []))) for i in termed)} kinds of finding")
     for m in result.moved:
         out.append(f"checklist {m['key']}: {m['before']} -> {m['after']}")
     for g in result.gates:

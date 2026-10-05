@@ -34,6 +34,11 @@ charts = [
 models = [
     "anthropic>=0.40",
 ]
+# Claude on Amazon Bedrock for the contract-terms review (jason contract-terms --model bedrock): the Mantle client and
+# the AWS credential chain. No AWS secret is stored by jason.
+bedrock = [
+    "anthropic[bedrock]>=1.11",
+]
 # QR codes for the links in letters, notices, and forms (segno: pure Python, SVG and PNG, no other dependencies).
 qr = [
     "segno>=1.6",

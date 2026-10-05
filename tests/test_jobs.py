@@ -70,6 +70,53 @@ def test_a_gpu_job_waits_while_the_model_cannot_load(tmp_path):
     assert jobs.get(tmp_path, job.id).status is JobStatus.DONE and calls == [["outlines", "--model"]]
 
 
+def test_a_jobs_model_and_lane():
+    from jason.community.ollama_extractor import DEFAULT_MODEL
+
+    assert jobs.job_class(["contract-terms", "x.pdf", "--model", "bedrock"]) is JobClass.LOCAL      # off this machine
+    assert jobs.job_class(["ingest", "box", "--terms-model", "ollama"]) is JobClass.GPU
+    assert jobs.job_class(["ingest", "box", "--terms-model", "bedrock"]) is JobClass.LOCAL
+    assert jobs.job_model(["contract-terms", "x.pdf", "--model", "ollama", "--model-name", "qwen3.5:9b"]) == "qwen3.5:9b"
+    assert jobs.job_model(["ingest", "box", "--terms-model", "ollama"]) == DEFAULT_MODEL
+    assert jobs.job_model(["classify", "--model=qwen3:14b"]) == "qwen3:14b"
+    assert jobs.job_model(["outlines", "--model", "--model-doc", "bylaws"]) == DEFAULT_MODEL
+    assert jobs.job_model(["gmail", "--sync"]) == ""
+
+
+def test_the_gpu_lane_uses_a_loaded_model_first_and_checks_each_jobs_model(tmp_path):
+    big = jobs.add(tmp_path, ["outlines", "--model"])                                   # the default model, oldest
+    small = jobs.add(tmp_path, ["contract-terms", "a.pdf", "--model", "ollama", "--model-name", "qwen3.5:9b"])
+    run, calls = _runner({"outlines": [0], "contract-terms": [0]})
+    checked = []
+    jobs.work(tmp_path, once=True, runner=run, preflight=lambda model: checked.append(model),
+              loaded=lambda: frozenset({"qwen3.5:9b"}), log=lambda s: None)
+    assert calls[0][0] == "contract-terms" and checked[0] == "qwen3.5:9b"                 # the loaded model went first
+    assert jobs.get(tmp_path, small.id).status is JobStatus.DONE and jobs.get(tmp_path, big.id).status is JobStatus.DONE
+
+
+def test_idle_models_are_released_but_the_shared_one_and_needed_ones_stay(tmp_path):
+    from jason.community.ollama_extractor import DEFAULT_MODEL
+
+    jobs.add(tmp_path, ["contract-terms", "b.pdf", "--model", "ollama", "--model-name", "qwen3:14b"])
+    gone = []
+    out = jobs.release_idle(tmp_path, loaded=frozenset({DEFAULT_MODEL, "qwen3.5:9b", "qwen3:14b", "qwen3-embedding:8b"}),
+                            shared=DEFAULT_MODEL, unload=gone.append)
+    assert out == gone == ["qwen3.5:9b"]
+
+
+def test_the_worker_releases_after_a_gpu_job_only_when_asked(tmp_path):
+    jobs.add(tmp_path, ["contract-terms", "a.pdf", "--model", "ollama", "--model-name", "qwen3.5:9b"])
+    run, _ = _runner({"contract-terms": [0, 0]})
+    gone = []
+    kw = dict(once=True, runner=run, preflight=lambda model: None, loaded=lambda: frozenset({"qwen3.5:9b"}),
+              unload=gone.append, log=lambda s: None)
+    jobs.work(tmp_path, **kw)
+    assert gone == []
+    jobs.add(tmp_path, ["contract-terms", "c.pdf", "--model", "ollama", "--model-name", "qwen3.5:9b"])
+    counts = jobs.work(tmp_path, release_models=True, **kw)
+    assert gone == ["qwen3.5:9b"] and counts["released"] == 1
+
+
 def test_a_job_whose_runner_fails_or_whose_worker_stopped_is_not_left_running(tmp_path):
     import sqlite3
 

@@ -1,5 +1,5 @@
 {
-  "_about": "Made-up contracts, one per shape the contract-terms audit of 2026-10-04 found in real vendor contracts (data/contracts/terms-audit-2026-10-04.md). Every name, address, and number is fake. 'expect' holds what the reader should give now, for the fixes already made (duplicates, 'will', we/you, initials, counterparty_name, bullets, licenses). 'open' holds what a later fix should give (checked options, noise, topic phrases, exemptions, discretion, incorporated standards, passive 'will be', aliases and role labels); move a row from 'open' to 'expect' when its fix lands. A 'contains' is a substring of a term's quote, matched case-insensitively after collapsing whitespace.",
+  "_about": "Made-up contracts, one per shape the contract-terms audit of 2026-10-04 found in real vendor contracts (data/contracts/terms-audit-2026-10-04.md). Every name, address, and number is fake. 'expect' holds what the reader should give now, for the fixes already made (duplicates, 'will', we/you, initials, counterparty_name, bullets, licenses, page noise, statutory notices, Title 19 deliverables). 'open' holds what a later fix should give (checked options, noise, topic phrases, exemptions, discretion, incorporated standards, passive 'will be', aliases and role labels); move a row from 'open' to 'expect' when its fix lands. A 'contains' is a substring of a term's quote, matched case-insensitively after collapsing whitespace.",
   "01_monitoring_second_person.txt": {
     "shape": "A vendor's form in the second person, no definition of we/you; the whole contract twice (copy and signed copy) then a DocuSign certificate page; a license printed as 'C10 600001' in the letterhead; checkboxes in the header.",
     "expect": {
@@ -41,13 +41,17 @@
       ],
       "deliverables": [
         "written inspection report within ten (10) days"
-      ]
-    },
-    "open": {
+      ],
       "noise_excluded": [
         "Certificate Pages: 5",
         "Envelope Id",
         "Signature Adoption"
+      ],
+      "passive": [
+        {
+          "contains": "will be performed to meet the minimum requirements",
+          "party": "counterparty"
+        }
       ],
       "checked_options": {
         "selected": [
@@ -74,14 +78,9 @@
           "contains": "meet the minimum requirements of NFPA 72",
           "standard": "NFPA 72"
         }
-      ],
-      "passive_will": [
-        {
-          "contains": "will be performed to meet the minimum requirements",
-          "party": "counterparty"
-        }
       ]
-    }
+    },
+    "open": {}
   },
   "02_sprinkler_proposal_bullets.txt": {
     "shape": "A proposal on letterhead with 'o' bullets on their own lines, the vendor abbreviated to initials (T.E.F.S.C.) with no definition, an incorporated standard, an exclusions list, option lines with the X marks extracted later in the text, and an Adobe Sign audit trail.",
@@ -129,32 +128,28 @@
       ],
       "deliverables": [
         "Inspection Testing & Maintenance Reports"
-      ]
-    },
-    "open": {
-      "checked_options": {
-        "note": "The two X marks belong to the Annual and Quarterly lines only by their position on the page (same y); from text alone the reader should say 'options not read', never guess.",
-        "from_text": "not read",
-        "with_layout": {
-          "selected": [
-            "Annual Inspection",
-            "Quarterly Inspection"
-          ],
-          "not_selected": [
-            "Five Year Inspection"
-          ]
-        }
-      },
+      ],
       "noise_excluded": [
         "Final Audit Report",
         "Transaction ID",
         "Document emailed to"
       ],
-      "signature": {
-        "signer": "Example Director",
-        "title": "Board member",
-        "date": "2026-04-16"
-      },
+      "passive": [
+        {
+          "contains": "shall be properly tagged",
+          "party": "counterparty",
+          "deliverable": true
+        },
+        {
+          "contains": "System(s) shall be inspected in strict accordance",
+          "party": "counterparty"
+        }
+      ],
+      "options_not_read": [
+        "Five Year Inspection",
+        "Annual Inspection",
+        "Quarterly Inspection"
+      ],
       "exemptions": [
         "Repairs and/or corrections of deficiencies",
         "Integrity of the existing systems",
@@ -165,19 +160,28 @@
           "contains": "strict accordance with NFPA #25 2013 CALIFORNIA",
           "standard": "NFPA 25 (2013 California Edition), Title 19"
         }
-      ],
-      "max_unstated_pct": 40,
-      "passive": [
-        {
-          "contains": "System(s) shall be inspected in strict accordance",
-          "party": "counterparty"
-        },
-        {
-          "contains": "shall be properly tagged",
-          "party": "counterparty",
-          "deliverable": true
-        }
       ]
+    },
+    "open": {
+      "checked_options": {
+        "note": "The two X marks belong to the Annual and Quarterly lines only by their position on the page (same y); from text alone the reader should say 'options not read', never guess. The reader gives from_text now (expect.options_not_read); with_layout waits for a layout reader.",
+        "with_layout": {
+          "selected": [
+            "Annual Inspection",
+            "Quarterly Inspection"
+          ],
+          "not_selected": [
+            "Five Year Inspection"
+          ]
+        },
+        "from_text": "not read"
+      },
+      "signature": {
+        "signer": "Example Director",
+        "title": "Board member",
+        "date": "2026-04-16"
+      },
+      "max_unstated_pct": 40
     }
   },
   "03_roof_repair_letterhead.txt": {
@@ -197,31 +201,7 @@
           "holder": "Example Home Services"
         }
       ],
-      "terms": []
-    },
-    "open": {
-      "aliases": [
-        "Sample Holdings Inc.",
-        "EHS"
-      ],
-      "scope_items": [
-        "Reset and secure 3 slipped/loose tiles",
-        "Replace approximately 12 linear feet of flashing",
-        "Install new underlayment"
-      ],
-      "topic": [
-        {
-          "contains": "Reset and secure 3 slipped/loose tiles",
-          "topic": "scope of work",
-          "not_topic": "breach and cure"
-        }
-      ],
-      "passive_will": [
-        {
-          "contains": "Debris will be removed from the site",
-          "party": "counterparty"
-        }
-      ],
+      "terms": [],
       "noise_excluded": [
         "Page 2 of 4",
         "Page 3 of 4"
@@ -229,6 +209,23 @@
       "statutory_notice": [
         "Under the California Mechanics' Lien Law",
         "CSLB is the state consumer protection agency"
+      ],
+      "passive": [
+        {
+          "contains": "Debris will be removed from the site",
+          "party": "counterparty"
+        }
+      ],
+      "aliases": [
+        "Sample Holdings Inc.",
+        "EHS"
+      ],
+      "topic": [
+        {
+          "contains": "Reset and secure 3 slipped/loose tiles",
+          "topic": "scope of work",
+          "not_topic": "breach and cure"
+        }
       ],
       "prohibition": [
         {
@@ -247,6 +244,13 @@
           "kind": "duty",
           "party": "counterparty"
         }
+      ]
+    },
+    "open": {
+      "scope_items": [
+        "Reset and secure 3 slipped/loose tiles",
+        "Replace approximately 12 linear feet of flashing",
+        "Install new underlayment"
       ],
       "alias_deliverables": [
         "written warranty of five (5) years"
@@ -282,11 +286,6 @@
         "monthly financial statements within fifteen (15) days",
         "draft agenda for each regular meeting",
         "deliver all records to the Association within thirty (30) days"
-      ]
-    },
-    "open": {
-      "noise_excluded": [
-        "Page 3 of 22 Version 3.33 BK, Revised 1/1/2022"
       ],
       "exemptions": [
         "Manager shall not be obligated to attend meetings on weekends",
@@ -303,7 +302,7 @@
         },
         {
           "contains": "Either party may terminate this Agreement for any reason",
-          "degree": "one-side change",
+          "degree": "mutual change",
           "holder": "either"
         }
       ],
@@ -312,6 +311,11 @@
           "contains": "Manager will endeavor to make helpful suggestions",
           "holder": "counterparty"
         }
+      ]
+    },
+    "open": {
+      "noise_excluded": [
+        "Page 3 of 22 Version 3.33 BK, Revised 1/1/2022"
       ]
     }
   },
@@ -345,9 +349,7 @@
       ],
       "deliverables": [
         "monthly service report"
-      ]
-    },
-    "open": {
+      ],
       "topic": [
         {
           "contains": "trees being allowed to breach the safety height",
@@ -363,12 +365,14 @@
           "not_topic": "fees and price"
         }
       ],
-      "scope_items": [
-        "repair minor leaks at no additional cost"
-      ],
       "exemptions": [
         "we make no representations or warranties as to the installed materials",
         "We shall not be responsible for any damages other than direct damages"
+      ]
+    },
+    "open": {
+      "scope_items": [
+        "repair minor leaks at no additional cost"
       ]
     }
   },
@@ -382,9 +386,8 @@
           "kind": "duty",
           "party": "counterparty"
         }
-      ]
-    },
-    "open": {
+      ],
+      "noise_excluded": [],
       "role_labels": [
         {
           "contains": "Prepare the items below, as needed",
@@ -411,14 +414,14 @@
           "holder": "counterparty"
         }
       ],
-      "noise_excluded": [],
       "topic": [
         {
           "contains": "Standard Implementation Fee $350.00",
           "topic": "fees and price"
         }
       ]
-    }
+    },
+    "open": {}
   },
   "07_paving_extra_work.txt": {
     "shape": "A proposal whose letterhead names the vendor and prints its license and classes; a 'Bill To ... c/o' customer block; a clause 'Extra Work. Owner agrees to pay <vendor>' that must not become the counterparty's name; numbered imperative scope; 'price includes'; a warranty; an exclusions line; fee-shifting.",
@@ -451,6 +454,9 @@
       ],
       "findings": [
         "fee-shifting"
+      ],
+      "exemptions": [
+        "Exclusions: permits, engineering, and repairs to the base"
       ]
     },
     "open": {
@@ -467,9 +473,6 @@
           "party": "counterparty",
           "period_months": 12
         }
-      ],
-      "exemptions": [
-        "Exclusions: permits, engineering, and repairs to the base"
       ]
     }
   },
@@ -503,16 +506,16 @@
       "deliverables": [
         "certificate of insurance naming us as an additional insured",
         "itemized invoice after each visit"
-      ]
-    },
-    "open": {
+      ],
       "discretion": [
         {
           "contains": "We may, but are not obligated to, inspect the work",
           "degree": "permission without duty",
           "holder": "association"
         }
-      ],
+      ]
+    },
+    "open": {
       "consent_release": [
         {
           "contains": "without our prior written consent",

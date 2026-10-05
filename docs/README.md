@@ -14,6 +14,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [base-templates.md](base-templates.md): plan for general base templates (letters, notices, forms, packets) rendered per profile, with the statutory catalog.
 - [cli.md](cli.md): every `jason` command and its options, generated from the parser by `scripts/gen_cli_docs.py`.
 - [mcp.md](mcp.md): the jason-mcp tools.
+- [mcp-local-dev.md](mcp-local-dev.md): developing the MCP server with one local process for every session (research and proposal).
 - [web-ui.md](web-ui.md): the React UI, its WSGI server, and the API.
 - [web-ui-decisions.md](web-ui-decisions.md): where jason needs a person, and the UI component for each.
 - [onboarding-ux.md](onboarding-ux.md): onboarding a community: the portal, the request list a manager sends, and ingestion.
@@ -128,6 +129,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 ## Law, legal, insurance, and claims
 
 - [community-manager.md](community-manager.md): the manager's duties and the statutes they sit on.
+- [contracts.md](contracts.md): what a contract is and how jason reviews one: formation, reading, what the law limits, the review checklist, management agreements, and notice.
 - [notices.md](notices.md): every notice the law requires (recipients, method, clock, content), the instruments that change a governing document, unreachable owners, and the proof of notice.
 - [manager-review.md](manager-review.md): how jason reviews a task: the base prompt, the task prompts, and the context pack.
 - [law-history.md](law-history.md): the Davis-Stirling Act's former sections, their successors, and every change since 2011.

@@ -101,6 +101,8 @@ GROUPS: dict[str, str] = {
     "cite": "Documents & library",
     "intake": "Documents & library",
     "ingest": "Documents & library",
+    "contract-terms": "Documents & library",
+    "licenses": "Documents & library",
     # Law, legal, insurance & claims
     "conflicts": "Law, legal, insurance & claims",
     # Setup & maintenance

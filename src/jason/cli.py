@@ -1614,7 +1614,8 @@ def cmd_worker(args: argparse.Namespace) -> int:
 
     data_dir = Settings.load(args.env).payhoa_catalog.parent
     try:
-        counts = jobs.work(data_dir, once=args.once, poll=args.poll, env_file=args.env)
+        counts = jobs.work(data_dir, once=args.once, poll=args.poll, env_file=args.env,
+                           release_models=not getattr(args, "keep_models", False))
     except jobs.JobRefused as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -3922,6 +3923,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(worker)
     worker.add_argument("--once", action="store_true", help="Stop when nothing is due")
     worker.add_argument("--poll", type=float, default=20.0, help="Seconds between looks at the queue")
+    worker.add_argument("--keep-models", action="store_true",
+                        help="Leave models loaded after GPU jobs (by default the worker unloads a model no queued job "
+                             "needs, except jason's shared model)")
     worker.set_defaults(func=cmd_worker)
     outlines = sub.add_parser("outlines", help="Outline the governing documents and resolutions; map their references to each other and the law")
     _add_common(outlines)

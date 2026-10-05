@@ -184,6 +184,14 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
     Authority("HSC", "13195", "13199", "automatic fire extinguishing systems: the State Fire Marshal's inspection, testing, and maintenance "
               "regulations (13195) and who must be licensed to test and maintain them (13196.5), behind Title 19, Chapter 5",
               Basis.LIFE_SAFETY),
+    Authority("CIV", "1549", "1633", "what a contract is and how one is made: the parties, consent, a lawful object, and "
+              "consideration (1550), and when a contract must be in writing (1624)", Basis.CONTRACTS),
+    Authority("CIV", "1667", "1670.5", "contracts the law will not enforce: exempting a party from its own fraud or willful "
+              "injury (1668), and an unconscionable clause (1670.5)", Basis.CONTRACTS),
+    Authority("CIV", "1671", "1671", "liquidated damages: when a sum the parties fixed in advance is enforceable", Basis.CONTRACTS),
+    Authority("CIV", "1717", "1717", "a contract's attorney fee clause runs both ways, to whichever party prevails", Basis.CONTRACTS),
+    Authority("CCP", "337", "337", "four years to sue on a written contract", Basis.CONTRACTS),
+    Authority("CCP", "1281", "1281.2", "an agreement to arbitrate is enforced, and when a court orders arbitration", Basis.CONTRACTS),
     Authority("CORP", "8310", "8340", "corporate records and their inspection", Basis.RECORD),
     Authority("CCP", "1858", "1866", "construing a statute or instrument: give effect to all its provisions (1858), the "
               "intention pursued and the particular over the general (1859)", Basis.INTERPRETATION),

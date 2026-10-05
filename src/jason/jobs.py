@@ -61,7 +61,40 @@ class JobRefused(ValueError):
 
 
 # Which resource a command uses: by its first word, and for some by a flag. A command not listed is local.
-_GPU_FLAGS = ("--model", "--extractor", "--ocr", "--reader")
+_GPU_FLAGS = ("--model", "--extractor", "--ocr", "--reader", "--terms-model")
+# Model backends that run off this machine: a job that names one is not a GPU job (it waits on the network, not the card).
+_REMOTE_BACKENDS = ("bedrock", "aws")
+# The flags that name the Ollama model a GPU job loads, in the order they are read.
+_MODEL_NAME_FLAGS = ("--model-name", "--terms-model-name", "--model")
+
+
+def _flag_value(argv: list[str], flag: str) -> str | None:
+    """The value given to ``flag`` ("--model x" or "--model=x"); "" when the flag stands alone; None when absent."""
+    for n, a in enumerate(argv):
+        if a == flag:
+            nxt = argv[n + 1] if n + 1 < len(argv) else ""
+            return "" if nxt.startswith("--") else nxt
+        if a.startswith(flag + "="):
+            return a.split("=", 1)[1]
+    return None
+
+
+def _remote(argv: list[str]) -> bool:
+    return any((_flag_value(argv, f) or "").lower() in _REMOTE_BACKENDS for f in ("--model", "--terms-model"))
+
+
+def job_model(argv: list[str]) -> str:
+    """The Ollama model a GPU job will load: the one its flags name, else jason's model. A backend word ("ollama") is
+    not a model name. "" for a job that loads no local model."""
+    if job_class(argv) is not JobClass.GPU:
+        return ""
+    for flag in _MODEL_NAME_FLAGS:
+        value = _flag_value(argv[1:], flag)
+        if value and value.lower() not in ("ollama", "local") + _REMOTE_BACKENDS:
+            return value
+    from jason.community.ollama_extractor import DEFAULT_MODEL
+
+    return DEFAULT_MODEL
 _CLASS_OF_COMMAND: dict[str, JobClass] = {
     "gmail": JobClass.GOOGLE, "drive": JobClass.GOOGLE, "calendar": JobClass.GOOGLE, "templates": JobClass.GOOGLE,
     "vault": JobClass.GOOGLE, "photos": JobClass.GOOGLE, "forms": JobClass.GOOGLE, "drafts": JobClass.GOOGLE,
@@ -75,6 +108,8 @@ _CLASS_OF_COMMAND: dict[str, JobClass] = {
 def job_class(argv: list[str]) -> JobClass:
     """The resource a jason command line uses."""
     if not argv:
+        return JobClass.LOCAL
+    if _remote(argv[1:]):
         return JobClass.LOCAL
     if any(a in _GPU_FLAGS or a.startswith(tuple(f + "=" for f in _GPU_FLAGS)) for a in argv[1:]):
         return JobClass.GPU
@@ -205,12 +240,17 @@ def cancel(data_dir: Path, job_id: int) -> Job:
     return job
 
 
-def _claim(data_dir: Path, cls: JobClass) -> Job | None:
-    """Take the oldest queued job of ``cls`` that is due, marking it running."""
+def _claim(data_dir: Path, cls: JobClass, *, loaded: frozenset[str] = frozenset()) -> Job | None:
+    """Take a queued job of ``cls`` that is due, marking it running: the oldest, except that on the GPU lane the
+    oldest job whose model is already loaded (``loaded``, Ollama's names) goes first, so a loaded model is used
+    before another is loaded in its place."""
     with _connect(data_dir) as conn:
         conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT * FROM jobs WHERE status = 'queued' AND job_class = ? AND (not_before = '' OR not_before <= ?) "
-                           "ORDER BY id LIMIT 1", (cls.value, _now())).fetchone()
+        rows = conn.execute("SELECT * FROM jobs WHERE status = 'queued' AND job_class = ? AND (not_before = '' OR not_before <= ?) "
+                            "ORDER BY id", (cls.value, _now())).fetchall()
+        row = rows[0] if rows else None
+        if rows and cls is JobClass.GPU and loaded:
+            row = next((r for r in rows if _loaded_as(job_model(json.loads(r["argv"])), loaded)), rows[0])
         if row is None:
             conn.execute("COMMIT")
             return None
@@ -218,6 +258,48 @@ def _claim(data_dir: Path, cls: JobClass) -> Job | None:
                      (_now(), row["id"]))
         conn.execute("COMMIT")
     return get(data_dir, row["id"])
+
+
+def _loaded_as(model: str, loaded: frozenset[str]) -> bool:
+    """Whether ``model`` ("qwen3.6:27b", or "qwen3.6" for its latest tag) is among Ollama's loaded names."""
+    return bool(model) and any(n == model or n.split(":")[0] == model or n == model + ":latest" for n in loaded)
+
+
+def loaded_models(ollama_url: str = "") -> frozenset[str]:
+    """The models Ollama has loaded now; empty when it does not answer."""
+    from jason.local_ai import OLLAMA_URL, _get
+
+    try:
+        return frozenset(m["name"] for m in _get(f"{ollama_url or OLLAMA_URL}/api/ps").get("models", []))
+    except (OSError, ValueError):
+        return frozenset()
+
+
+def queued_models(data_dir: Path) -> set[str]:
+    """The models the queued and running GPU jobs need."""
+    with _connect(data_dir) as conn:
+        rows = conn.execute("SELECT argv FROM jobs WHERE job_class = 'gpu' AND status IN ('queued','running')").fetchall()
+    return {job_model(json.loads(r["argv"])) for r in rows}
+
+
+def release_idle(data_dir: Path, *, loaded: frozenset[str], shared: str = "", unload: Callable[[str], Any] | None = None
+                 ) -> list[str]:
+    """Unload each loaded model no queued or running GPU job needs, except ``shared`` (jason's own model, which
+    AnythingLLM's chat also uses at the same context, so keeping it loaded serves both). Returns what it unloaded."""
+    needed = queued_models(data_dir)
+    if unload is None:
+        from jason.local_ai import unload as unload_model
+
+        unload = unload_model
+    out = []
+    for name in sorted(loaded):
+        if _loaded_as(shared, frozenset({name})) or any(_loaded_as(m, frozenset({name})) for m in needed):
+            continue
+        if name.startswith(("qwen3-embedding", "nomic-embed", "mxbai-embed")):
+            continue                             # the embedder serves search; it is small and always wanted
+        unload(name)
+        out.append(name)
+    return out
 
 
 def _finish(data_dir: Path, job: Job, code: int, summary: str, *, retry_in: float = 0.0, note: str = "") -> None:
@@ -261,39 +343,45 @@ def run_job(data_dir: Path, job: Job, *, python: str = sys.executable, env_file:
 
 
 def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: str | None = None,
-         preflight: Callable[[], None] | None = None, runner: Callable[..., int] | None = None,
-         log: Callable[[str], None] = print, retry_in: float = 300.0, defer_for: float = 600.0) -> dict[str, int]:
+         preflight: Callable[..., None] | None = None, runner: Callable[..., int] | None = None,
+         log: Callable[[str], None] = print, retry_in: float = 300.0, defer_for: float = 600.0,
+         loaded: Callable[[], frozenset[str]] | None = None, release_models: bool = False,
+         unload: Callable[[str], Any] | None = None) -> dict[str, int]:
     """Run the queue: one thread per job class, each taking that class's jobs one at a time. With ``once``, return when
-    every class has nothing due; else keep polling. Only one worker runs at a time (the jobs-worker lock)."""
-    counts = {"done": 0, "failed": 0, "retried": 0, "deferred": 0}
+    every class has nothing due; else keep polling. Only one worker runs at a time (the jobs-worker lock).
+
+    The GPU lane schedules by model: it asks which models Ollama has loaded (``loaded``), takes the oldest job whose
+    model is loaded before an older one that would load another, and checks the job's own model with preflight (a
+    9B job is not held back by the 27B's memory). With ``release_models``, after each GPU job it unloads the models no
+    queued job needs, except jason's shared model (``release_idle``), so the next model finds the commit free."""
+    counts = {"done": 0, "failed": 0, "retried": 0, "deferred": 0, "released": 0}
     lock = threading.Lock()
     stop = threading.Event()
+    from jason.community.ollama_extractor import DEFAULT_MODEL
 
-    def model_ready() -> str:
-        if preflight is not None:
-            try:
-                preflight()
-            except Exception as exc:          # LocalAIUnavailable, or the server not answering
-                return str(exc)
-            return ""
-        from jason.local_ai import LocalAIUnavailable
-        from jason.local_ai import preflight as check
-
+    def model_ready(model: str) -> str:
+        check = preflight
+        if check is None:
+            from jason.local_ai import preflight as check  # type: ignore[no-redef]
         try:
-            check()
-        except LocalAIUnavailable as exc:
+            try:
+                check(model or DEFAULT_MODEL)
+            except TypeError:                 # a preflight that takes no model
+                check()
+        except Exception as exc:              # LocalAIUnavailable, or the server not answering
             return str(exc)
         return ""
 
     def lane(cls: JobClass) -> None:
         while not stop.is_set():
-            job = _claim(data_dir, cls)
+            now_loaded = (loaded or loaded_models)() if cls is JobClass.GPU else frozenset()
+            job = _claim(data_dir, cls, loaded=now_loaded)
             if job is None:
                 if once:
                     return
                 stop.wait(poll)
                 continue
-            if cls is JobClass.GPU and (reason := model_ready()):
+            if cls is JobClass.GPU and (reason := model_ready(job_model(job.argv))):
                 _defer(data_dir, job, reason, defer_for)
                 with lock:
                     counts["deferred"] += 1
@@ -312,6 +400,16 @@ def work(data_dir: Path, *, once: bool = False, poll: float = 20.0, env_file: st
                 key = "done" if after.status is JobStatus.DONE else "retried" if after.status is JobStatus.QUEUED else "failed"
                 counts[key] += 1
             log(f"job {job.id} {after.status.value} (exit {code})")
+            if cls is JobClass.GPU and release_models:
+                try:
+                    gone = release_idle(data_dir, loaded=(loaded or loaded_models)(), shared=DEFAULT_MODEL, unload=unload)
+                except Exception as exc:      # noqa: BLE001 - Ollama gone: nothing to release
+                    log(f"could not release idle models: {exc}")
+                    gone = []
+                if gone:
+                    with lock:
+                        counts["released"] += len(gone)
+                    log(f"released {', '.join(gone)}: no queued job needs them")
 
     try:
         with hold(Resource.STORE, "jobs-worker", timeout=1, purpose="jason worker"):
@@ -343,7 +441,8 @@ def lines(items: list[Job]) -> list[str]:
     for j in items:
         who = f"; confirmed by {j.confirmed_by}" if j.confirmed_by else ""
         out.append(f"{j.id:>4} {j.status.value:<9} [{j.job_class.value:<6}] {j.command}")
-        detail = f"added {j.created}{who}; attempt {j.attempts} of {j.max_attempts}"
+        model = job_model(j.argv) if j.job_class is JobClass.GPU else ""
+        detail = f"added {j.created}{who}; attempt {j.attempts} of {j.max_attempts}" + (f"; model {model}" if model else "")
         if j.finished:
             detail += f"; finished {j.finished} (exit {j.exit_code})"
         if j.note:
