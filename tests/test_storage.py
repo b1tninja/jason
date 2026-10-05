@@ -25,6 +25,7 @@ def clean_temp(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "_SYSTEM_TEMP", None)
     monkeypatch.delenv("JASON_TEMP_DIR", raising=False)
     monkeypatch.setenv("JASON_ENV", str(tmp_path / "no.env"))       # no .env supplies one
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "no-appdata"))   # no machine's old default folder is looked at
     yield
     for name, value in keep.items():
         if value is None:
@@ -182,6 +183,50 @@ def test_the_user_config_files_are_listed_by_path(clean_temp, monkeypatch, tmp_p
     assert jason_config == {"name": "jason", "path": str(named), "exists": True}
     text = "\n".join(storage.lines(rep))
     assert "user config" in text and str(named) in text
+
+
+def test_data_left_in_an_old_default_folder_is_a_problem(clean_temp, monkeypatch, tmp_path):
+    local = tmp_path / "local"
+    (local / "asspy" / "samples").mkdir(parents=True)
+    (local / "asspy" / "samples" / "tried.json").write_text("{}", encoding="utf-8")
+    (local / "jason" / "locks").mkdir(parents=True)
+    (local / "jason" / "locks" / "gpu.lock").write_bytes(b"")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("JASON_TEMP_DIR", str(tmp_path / "tmp"))
+    monkeypatch.setenv("JASON_LOCK_DIR", str(tmp_path / "locks-now"))
+    monkeypatch.setenv("ASSPY_HOME", str(tmp_path / "asspy-now"))
+    rep = _report(tmp_path, {})
+    names = {old["name"] for old in rep["legacy"]}
+    assert "locks" in names
+    assert any("old default folder" in line and str(local / "jason" / "locks") in line for line in rep["problems"])
+    pytest.importorskip("asspy.paths")
+    from asspy.paths import legacy_home
+
+    if legacy_home() is not None:                        # an asspy new enough to name its old default
+        assert "asspy" in names
+
+
+def test_an_old_default_folder_that_is_empty_or_current_is_no_problem(clean_temp, monkeypatch, tmp_path):
+    local = tmp_path / "local"
+    (local / "jason" / "locks").mkdir(parents=True)                 # empty
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("JASON_TEMP_DIR", str(tmp_path / "tmp"))
+    monkeypatch.setenv("JASON_LOCK_DIR", str(tmp_path / "locks-now"))
+    assert [old for old in _report(tmp_path, {})["legacy"] if old["name"] == "locks"] == []
+    (local / "jason" / "locks" / "gpu.lock").write_bytes(b"")
+    monkeypatch.setenv("JASON_LOCK_DIR", str(local / "jason" / "locks"))   # the current folder is that one
+    assert [old for old in _report(tmp_path, {})["legacy"] if old["name"] == "locks"] == []
+
+
+def test_the_lock_folder_defaults_to_the_home_folder_not_appdata(clean_temp, monkeypatch, tmp_path):
+    from jason import locks
+
+    monkeypatch.delenv("JASON_LOCK_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    folder = locks.lock_dir()
+    assert folder == tmp_path / ".jason" / "locks" and "AppData" not in folder.parts
 
 
 def test_roomy_drives_are_no_problem(clean_temp, monkeypatch, tmp_path):

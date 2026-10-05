@@ -185,19 +185,19 @@ def _anchored(value: str | Path) -> Path:
 
 
 def resolve_env_path(path: str | Path | None = None) -> Path:
+    """The project's .env: the path given, else ``JASON_ENV``, else the checkout's own, else one in the working
+    directory (an installed copy has no checkout). The checkout's comes before the working directory's, so another
+    project's .env in the folder a command is started from is never taken for jason's."""
     if path is not None:
         return Path(path)
     env = os.environ.get("JASON_ENV")
     if env:
         return Path(env)
-    cwd = Path.cwd() / ".env"
-    if cwd.is_file():
-        return cwd
     # jason package lives at .../jason/src/jason/config.py → repo root is parents[2]
     repo_env = Path(__file__).resolve().parents[2] / ".env"
     if repo_env.is_file():
         return repo_env
-    return cwd
+    return Path.cwd() / ".env"
 
 
 def _default_smud_db() -> Path:
@@ -254,10 +254,10 @@ class Settings:
     characteristics_db: Path = _in_data("characteristics.db")
     google_oauth_record_uid: str = ""
     google_oauth_client_file: Path | None = None
-    google_oauth_token_file: Path = Path("secrets/google-token.json")
+    google_oauth_token_file: Path = _anchored("secrets/google-token.json")
     google_notebook_url: str = ""
     google_sheets_spreadsheet_id: str = ""
-    lawlibrary_home: Path = Path("../lawlibrary")
+    lawlibrary_home: Path = _anchored("../lawlibrary")
     # JASON_TEMP_DIR: where scratch, temp files, and rebuilt-index spill go ("" leaves the system's temp alone);
     # apply_temp_dir() puts it into effect.
     temp_dir: str = ""

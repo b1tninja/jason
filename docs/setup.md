@@ -227,7 +227,9 @@ What it cannot move, and what you may choose to run yourself (jason never change
 - **Other programs' temp files**, and Windows itself, use the user's `TEMP` and `TMP`. To move them: `setx TEMP D:\temp` and `setx TMP D:\temp` (new programs only; make the folder first).
 - **A coding agent's own scratch folder** is the agent's setting, not jason's; it is usually under the user's `TEMP`, so the `setx` lines above would move it, and a session started before them still uses the old one.
 - **pip's cache**: `pip config set global.cache-dir D:\pip-cache`.
-- **Folders jason reads that have their own settings**: `ASSPY_HOME` (the county index cache; Windows default `%LOCALAPPDATA%\asspy`; name it in `~/.asspy/.env`), `LAWLIBRARY_DATA` (name it in `~/.lawlibrary/.env`), `OLLAMA_MODELS`, `HF_HOME`, and `JASON_LOCK_DIR` (small). `jason storage` shows where each is.
+- **Folders jason reads that have their own settings**: `ASSPY_HOME` (the county index cache; default `~/.asspy`; name it in `~/.asspy/.env`), `LAWLIBRARY_DATA` (default `~/.lawlibrary/data` on Windows; name it in `~/.lawlibrary/.env`), `OLLAMA_MODELS`, `HF_HOME`, and `JASON_LOCK_DIR` (small; default `~/.jason/locks`). `jason storage` shows where each is.
+
+None of the defaults is under `AppData`. A program launched by a packaged application (the Claude desktop app) has its `AppData\Local` writes redirected into a private per-package cache, so one person's terminal and agent could keep two folders under the same path, and two jason processes could take their locks in two lock folders and not see each other's. Data left in an old default (`%LOCALAPPDATA%\asspy`, `%LOCALAPPDATA%\lawlibrary`, `%LOCALAPPDATA%\jason\locks`) is moved by hand; `jason storage` lists any it finds.
 
 ## Using jason from Python
 

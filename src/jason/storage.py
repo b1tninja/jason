@@ -121,26 +121,73 @@ def _asspy_config() -> Path | None:
         return None
 
 
-def _lawlibrary_paths(home: Path) -> tuple[Path | None, Path | None]:
-    """lawlibrary's archive folder and user config file, asked of the checkout itself (its ``core`` module), so the answer
-    is the one lawlibrary uses: its environment, its .env, its user config, then its platform default. (None, None) when
-    the checkout is not there, or does not answer."""
+_LAWLIBRARY_ASK = ("import core; print(core.data_dir()); print(core.config_path()); "
+                   "print(getattr(core, 'legacy_data_dir', lambda: None)() or '')")
+
+
+def _lawlibrary_paths(home: Path) -> tuple[Path | None, Path | None, Path | None]:
+    """lawlibrary's archive folder, user config file, and old default folder, asked of the checkout itself (its ``core``
+    module), so the answer is the one lawlibrary uses: its environment, its .env, its user config, then its default.
+    (None, None, None) when the checkout is not there, or does not answer."""
     import subprocess
     import sys
 
     if not (home / "core.py").is_file():
-        return None, None
+        return None, None, None
     venv = home / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     python = str(venv) if venv.is_file() else sys.executable
     try:
-        done = subprocess.run([python, "-c", "import core; print(core.data_dir()); print(core.config_path())"],
+        done = subprocess.run([python, "-c", _LAWLIBRARY_ASK],
                               capture_output=True, text=True, encoding="utf-8", cwd=str(home), timeout=30)
     except (OSError, subprocess.SubprocessError):
-        return None, None
-    found = (done.stdout or "").strip().splitlines()
+        return None, None, None
+    found = (done.stdout or "").splitlines()
     if done.returncode != 0 or len(found) < 2:
-        return None, None            # an older lawlibrary with no user config: nothing to report
-    return Path(found[-2]), Path(found[-1])
+        return None, None, None      # an older lawlibrary with no user config: nothing to report
+    legacy = found[2].strip() if len(found) > 2 else ""
+    return Path(found[0].strip()), Path(found[1].strip()), Path(legacy) if legacy else None
+
+
+def _asspy_legacy() -> Path | None:
+    try:
+        from asspy.paths import legacy_home
+
+        return legacy_home()
+    except Exception:  # noqa: BLE001 - asspy not installed, or too old to name its old default
+        return None
+
+
+def _has_files(path: Path) -> int:
+    """How many files are below ``path`` (counting stops at 1000); 0 when it is not there."""
+    count = 0
+    try:
+        for _root, _dirs, files in os.walk(path):
+            count += len(files)
+            if count >= 1000:
+                break
+    except OSError:
+        return 0
+    return count
+
+
+def _legacy_places(current: dict[str, Path | None], lawlibrary_legacy: Path | None) -> list[dict[str, Any]]:
+    """Data left in a folder that used to be a default, now moved to ``current[name]``: each old folder that still holds
+    files and is not the current one. The old defaults sat under AppData, where a program launched by a packaged
+    application sees its own redirected copy, so a stray writer or a forgotten copy is worth finding."""
+    local = (os.environ.get("LOCALAPPDATA") or "").strip()
+    old = {"asspy": _asspy_legacy(), "lawlibrary": lawlibrary_legacy,
+           "locks": Path(local) / "jason" / "locks" if local else None}
+    found: list[dict[str, Any]] = []
+    for name, path in old.items():
+        if path is None or not path.is_dir():
+            continue
+        target = current.get(name)
+        if target is not None and path.resolve() == Path(target).resolve():
+            continue
+        files = _has_files(path)
+        if files:
+            found.append({"name": name, "path": str(path), "files": files, "moveTo": str(target) if target else ""})
+    return found
 
 
 def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = True,
@@ -184,6 +231,8 @@ def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = 
     places.append(place("Hugging Face cache (HF_HOME)", hf, measure=True))
     places.append(place("locks", lock_dir(), note="held while a model or a store is in use", tiny=True))
     lawlibrary_config: Path | None = None
+    lawlibrary_legacy: Path | None = None
+    archive: Path | None = None
     try:
         from jason.config import Settings
 
@@ -191,7 +240,7 @@ def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = 
         token = Path(settings.google_oauth_token_file).resolve()
         places.append(place("Google token", token, note="path and drive only", tiny=True))
         places.append(place("Keeper config", Path(settings.keeper_config), note="path and drive only", tiny=True))
-        archive, lawlibrary_config = _lawlibrary_paths(Path(settings.lawlibrary_home))
+        archive, lawlibrary_config, lawlibrary_legacy = _lawlibrary_paths(Path(settings.lawlibrary_home))
         if archive is not None:
             places.append(place("lawlibrary archive (LAWLIBRARY_DATA)", archive, measure=True))
     except Exception:  # noqa: BLE001 - settings that cannot be read leave these out
@@ -209,6 +258,7 @@ def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = 
         "temp": {"configured": bool(setting), "setting": setting, "path": temp.path, "systemTemp": str(system),
                  "systemTempDrive": drive_of(system), "systemTempFree": free_of(system), "error": temp_error},
         "configs": configs,
+        "legacy": _legacy_places({"asspy": asspy, "lawlibrary": archive, "locks": lock_dir()}, lawlibrary_legacy),
         "minFreeGb": min_free_gb,
     }
     out["problems"] = problems(out, free_of(data_dir), drive_of(data_dir), min_free_gb)
@@ -222,6 +272,10 @@ def problems(rep: dict[str, Any], data_free: int | None, data_drive: str, min_fr
     temp = rep["temp"]
     if temp["error"]:
         found.append(temp["error"])
+    for old in rep.get("legacy", []):
+        where = f"; move it to {old['moveTo']}" if old["moveTo"] else ""
+        found.append(f"{old['files']}{'+' if old['files'] >= 1000 else ''} files are left in {old['path']}, an old default "
+                     f"folder for {old['name']} that nothing now reads{where} (docs/setup.md, Where jason writes)")
     low: dict[str, tuple[int, list[str]]] = {}
     for p in rep["places"]:
         if p["free"] is not None and p["free"] < floor and not p.get("tiny"):

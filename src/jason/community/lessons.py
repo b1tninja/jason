@@ -1635,13 +1635,16 @@ LESSONS: tuple[Lesson, ...] = (
            "reads its own user config from the home folder (~/.jason/.env, ~/.asspy/.env, ~/.lawlibrary/.env), outside "
            "AppData and the same from any working directory; the environment wins, then a project's .env, then the "
            "user config; jason's relative path settings are taken from the checkout, not the working directory; and "
-           "jason storage lists the files and where lawlibrary's archive resolves. Still a person's: TEMP and TMP at "
-           "user level and PIP_CACHE_DIR.",
+           "jason storage lists the files and where lawlibrary's archive resolves. No default is under AppData now "
+           "(asspy ~/.asspy, lawlibrary ~/.lawlibrary/data on Windows, jason's locks ~/.jason/locks), and jason storage "
+           "flags data left in an old default folder. Still a person's: TEMP and TMP at user level and PIP_CACHE_DIR.",
            Status.FIXED, guards=("config.apply_temp_dir",
                                  "asspy_home.apply",
                                  "config.user_config_path and config.env_file_values (tests/test_user_config.py: the "
                                  "user config is found from any working directory and under the project's .env)",
                                  "asspy.paths.configured and lawlibrary core.config_path (their tests)",
+                                 "tests/test_storage.py: the lock folder defaults to the home folder; data left in an "
+                                 "old default folder is a problem",
                                  "tests/test_storage.py: the setting moves tempfile, the environment, a child "
                                  "process, and pytest's tmp_path; a low drive and scratch on it are flagged",
                                  "tests/test_asspy_home.py: .env names the home and the environment wins"),

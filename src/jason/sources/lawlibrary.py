@@ -18,7 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-DEFAULT_HOME = Path("../lawlibrary")
+# The checkout beside jason's, taken from jason's own folder and not the working directory (``lawlibrary_home`` in .env or
+# the user config names another).
+DEFAULT_HOME = Path(__file__).resolve().parents[3].parent / "lawlibrary"
 
 # Runs with lawlibrary's checkout as the working directory. A span too large for one text answer is split
 # at the numeric midpoint until each half answers, so a chapter of forty sections still comes back whole.

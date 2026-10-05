@@ -6,7 +6,7 @@ commit and crashes the model server; two writers of the same store lose one anot
 resource for the length of a ``with`` block and waits, up to its timeout, while another process has it.
 
 The lock is an operating-system lock on a byte of a file in the lock folder (``JASON_LOCK_DIR``, else
-``%LOCALAPPDATA%/jason/locks``), so it is released when the holding process ends, even by a crash. Beside it a small
+``~/.jason/locks``), so it is released when the holding process ends, even by a crash. Beside it a small
 JSON note says who holds it (process, command, purpose, since), for ``holders`` and ``jason local-ai``; the note is
 advice, the lock is the fact. Within one process a lock is re-entrant: a function that holds the board store may call
 another that takes it again.
@@ -42,8 +42,19 @@ _held = threading.local()
 
 
 def lock_dir() -> Path:
-    base = os.environ.get("JASON_LOCK_DIR") or str(Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "jason" / "locks")
-    path = Path(base)
+    """The lock folder: ``JASON_LOCK_DIR`` (environment, a project's .env, or the user config), else ``~/.jason/locks``.
+    The default is in the home folder, not under AppData: a program launched by a packaged application has its AppData
+    writes redirected to a private cache, so two jason processes of one person could lock in two folders and not see each
+    other's locks, which is what the locks are for."""
+    base = os.environ.get("JASON_LOCK_DIR")
+    if not base:
+        try:
+            from jason.config import _env_value
+
+            base = _env_value("JASON_LOCK_DIR")
+        except Exception:  # noqa: BLE001 - settings that cannot be read leave the default
+            base = ""
+    path = Path(base).expanduser() if base else Path.home() / ".jason" / "locks"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
