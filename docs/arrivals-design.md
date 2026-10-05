@@ -55,6 +55,51 @@ Two identifiers do two jobs, and neither replaces the other:
 
 A citation is a **lead, not proof**: many documents cite 4041 (the annual policy statement, a reply that quotes the law), so a text that cites a form's authority is a candidate for that process, to be confirmed by the reference, the title and layout, or a person. It is most useful where there is no reference: a retyped or photocopied form still prints "Civil Code §4041" and its title; an email that quotes a section is about that process; and a returned letter that cites a section routes to the procedure that section keys. The order of strength is below.
 
+## Handlers are registered to citations; no handler is a finding
+
+The routing question becomes one lookup: **is there a registered handler for this citation?** A handler declares the law it serves where it is written, so the code and the process it implements cannot drift apart.
+
+```python
+from jason.handlers import handler, Role
+
+@handler("CIV 4041", role=Role.FORM_RETURN, form="owner-info", procedure="owner-info-cycle",
+         channels=(Channel.PAYHOA, Channel.GMAIL, Channel.MAIL, Channel.FORMS))
+class OwnerInformationReturns:
+    def accepts(self, arrival): ...      # is this arrival one of mine? (the identification, the form key)
+    def read(self, arrival): ...         # evidence: a reading, never an answer
+    def plan(self, keyed): ...           # what it would change; a plan, not a write
+
+@handler("CIV 4041(e)", "CIV 4040(a)(2)", role=Role.BOUNCE, procedure="notice-delivery")
+class UndeliverableNotices: ...          # an email that bounced: resend by mail, ask for a working address
+
+@handler("CIV 5210", role=Role.REQUEST, procedure="records-request") 
+class RecordsRequests: ...
+```
+
+- **Registration.** `@handler(*citations, role=..., procedure=..., ...)` adds a `Handler` row to the registry as the module is imported. The set of handler modules is an explicit list in `jason.handlers` (importing jason loads no profile; handlers are general code, and a profile supplies only the data they read: which forms, markers, and ids). The citations are the canonical strings of `jason.community.references` (`CIV 4041`, `CIV 4041(e)`), and a handler for a section covers its subdivisions: a lookup for `CIV 4041(e)` finds a handler for `CIV 4041(e)` first, then `CIV 4041`.
+- **Roles.** Several handlers may serve one section, each for a different job: a form return, a bounce or undeliverable notice, a member's request, a notice's delivery, a legal or government notice. The role is part of the route, so `CIV 4041` with a bounce goes to the bounce handler and with a returned form to the form handler.
+- **Lookup.** An arrival carries candidate citations: its identified form's `authority`, a statute its text cites (the references grammar, `CIV 4041`), a notice it answers (the ledger's `FollowUp.authority`), a clock's authority. The router asks the registry for a handler of the arrival's role under each, and the first whose `accepts` says yes takes it. The arrival keeps which handler took it and why.
+- **Kept honest by tests.** Every handler's citations parse and are on the statutes shelf (`citation_gaps`); its `procedure` exists and lists it; every known form's `authority` has a registered form-return handler; no two handlers claim the same citation and role.
+- **Existing code is registered, not rewritten.** The owner-information returns (4041), the notice delivery follow-ups (4041(e), 4040, 4050), the members' request clocks (5210 and the response standard), the election, rule-change, and hearing notices, and the annual disclosures already carry their authority in rule rows (`NoticeRule.authority`, `FollowUp.authority`, the duties catalog). Each gets a thin `@handler` that points at it.
+
+**No handler is a finding, not an error.** When an arrival's role and citations have no registered handler, or no citation can be named at all, the arrival goes to the **needs a person** lane (the manager handles it by hand; nothing is dropped, and nothing is guessed), and jason records a **gap**:
+
+| Field | |
+|---|---|
+| `key` | the citation and role, or the kind and the party when no citation was found ("CIV 5915 / request", "government notice / authority") |
+| `seen` | how many arrivals, first and last date, and which channels |
+| `examples` | arrival ids only (never a subject, a sender, or any content) |
+| `handled by hand` | when a person marks an arrival done, what they did, in their own words and by name: the first draft of the procedure |
+| `state` | open, acknowledged by the admin, in development, built (closed by a handler registering for it) |
+
+Gaps are brought to the **administrator**, who is the person that can develop a handler:
+- the Status screen's "needs development" band (and `jason handlers --gaps`, and an administrator-only MCP tool), listing each gap with its count and age, most arrivals first;
+- the dock for an administrator shows the count; nothing is shown about the content;
+- a gap that recurs becomes a candidate lesson and, once a person acknowledges it, a development item with the steps the manager took by hand;
+- a gap closes by itself when a handler registers for its key, and the arrivals waiting on it are routed on the next pass (the registry is the only thing that changes).
+
+The same list is the **coverage report** the project can read the other way: the citations the association's procedures, notice catalog, and documents' duties name that no handler serves (`jason handlers --coverage`) is a map of what jason does not yet do, ranked by how often arrivals of that kind have come in.
+
 ## The sent-copy catalog: the reference is already known
 
 Every copy jason sends is recorded when it goes: `data/forms/references.json`, written by `jason.tasks.form_references.record` (ids and hashes, never an address). Each entry is the copy's marker with its form, year, channel, unit, membership, when it was first and last sent, the file, and the fingerprints of what was filled in. At the time of writing it holds a marker for every emailed owner copy. A mailed letter's marker names the campaign only (every copy is the same), so the unit comes from the address written on the page.
@@ -193,7 +238,7 @@ A route can also open a **clock**: a request's response day, a notice's follow-u
    - **1b.** Use the sent-copy catalog in the core: look a found reference up (`form_references.lookup`), keep the owner and unit as sent on the reading, compare them with the unit written and the sender, and read a candidate message's body for a quoted reference. Add `authority` to the form row and to `Procedure`. Then `jason responses --outstanding`: the asked-and-not-answered list, from the catalog less the arrivals.
 2. **Catalog and identify**, sources Gmail, the mail service, PayHOA forms and requests, and Google Forms, with the known-forms table: the cheap step on its own, and the `Arrival` widened from the form arrival. `jason arrivals`, its MCP tools, and the cadence.
 3. **Triage by rule** from the classifiers that exist (party, kind, clock), the correction path and the scorecard, then the local model for the remainder.
-4. **Routes** kind by kind, each with its procedure step and lesson, starting with the ones that already have a handler (member requests, invoices, bounces).
+4. **The handler registry** (`jason.handlers`: `@handler`, `Role`, the lookup by citation and role, the gap record, `jason handlers --gaps --coverage`), then **routes** kind by kind, each registered to its citation with its procedure step and lesson, starting with the ones that already have code (owner-information returns, the notice follow-ups, member requests, invoices, bounces).
 5. **Console** (the Inbox as lanes) and the design agent's spec.
 6. The conversation catalog ([conversations-design.md](conversations-design.md)) feeds the triage once built: a reply is a continuation, a forward is an assignment.
 
