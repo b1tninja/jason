@@ -176,6 +176,28 @@ def sync_runs(path_of: Callable[[Path], Path], column: str = "") -> Reader:
     return read
 
 
+def channel_stamp(channels: tuple[str, ...], rel: str = "responses/inbox.json") -> Reader:
+    """The responses inbox's check of ``channels`` (``jason responses --check``; docs/responses-design.md): the newest
+    ``lastOk`` among them is the last read, and a channel whose last try failed is an error the last check logged
+    (its reason is already masked when the inbox keeps it). A channel nobody has checked, or that was skipped, adds
+    neither."""
+    def read(root: Path) -> Read:
+        path = Path(root) / rel
+        if not path.is_file():
+            return Read()
+        try:
+            kept = json.loads(path.read_text(encoding="utf-8")).get("channels") or {}
+        except (OSError, ValueError, AttributeError):
+            return Read()
+        rows = {c: kept[c] for c in channels if isinstance(kept.get(c), dict)}
+        stamps = [str(r.get("lastOk") or "") for r in rows.values()]
+        failed = {c: r for c, r in rows.items() if r.get("ended") in ("failed", "sign-in")}
+        errors = tuple(f"{c}: {r.get('reason') or r.get('ended')}" for c, r in sorted(failed.items()))
+        return Read(max((s for s in stamps if s), default=""), errors,
+                    max((str(r.get("lastTried") or "") for r in failed.values()), default=""))
+    return read
+
+
 SMUD_STAMP = "last_synced_at"           # smud's accounts table, for a store filled before it kept runs
 
 
@@ -240,6 +262,14 @@ def _sources() -> tuple[Source, ...]:
         Source("gmail", "Gmail", "the association's mail, headers only",
                json_stamp("gmail/correspondence.json", "syncedAt"), "jason gmail --sync", (("gmail", "--sync"),),
                "Gmail", "google", store="gmail/correspondence.json (syncedAt)"),
+        Source("responses-gmail", "Responses by email, mail, and form", "replies to the association's requests: Gmail, "
+               "scanned mail, and saved Google Form responses",
+               channel_stamp(("gmail", "mail", "forms")), "jason responses --check --channel gmail --channel mail "
+               "--channel forms", (("responses", "--check", "gmail"),), "Gmail", "google",
+               store="responses/inbox.json (channels.gmail, mail, forms: lastOk)"),
+        Source("responses-payhoa", "Responses in PayHOA", "the owner-information form's submissions",
+               channel_stamp(("payhoa",)), "jason responses --check --channel payhoa", (("responses", "--check", "payhoa"),),
+               "PayHOA", "keeper", store="responses/inbox.json (channels.payhoa: lastOk)"),
         Source("zoom", "Zoom", "meetings, recordings, transcripts, and summaries",
                json_stamp("zoom/meetings.json", "syncedAt"), "jason zoom", (("zoom",),), "Zoom", "keeper",
                store="zoom/meetings.json (syncedAt)"),

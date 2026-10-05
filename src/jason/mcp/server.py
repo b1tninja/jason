@@ -17,6 +17,7 @@ from jason.config import Settings
 from jason.mcp.discovery import TOOLS as DISCOVERY_TOOLS
 from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
 from jason.mcp.index import recorder_around, recorder_descend, recorder_detail, recorder_priors, recorder_search
+from jason.mcp.response_inbox import TOOLS as RESPONSE_TOOLS
 from jason.mcp.rolls import (
     secured_parcel,
     secured_roll,
@@ -329,7 +330,7 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
-ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + RESPONSE_TOOLS
 
 # A profile is a named subset, in the order a client lists them. A client picks better from the board set: the
 # digest, the briefs, the law, and the index search, not the research tools behind them.
@@ -338,6 +339,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "board_digest", "title_watch", "association_collections", "budget_status", "bank_accounts", "utility_brief", "utility_payments", "vendor_portal", "pest_program", "incident_history", "insurance_policies", "reserve_study", "reserve_transfers", "invoice_review", "bank_reconciliations", "mail_brief", "zoom_meetings", "meeting_records", "hearings", "insurance_review", "association_calendar", "open_items", "party_brief", "unit_brief", "escrow_brief", "recent_filings", "lifecycle_of", "assessment_liens",
         "explain_filing", "solar_status", "unit_characteristics", "duty_brief", "records_inventory", "authorities",
         "records_request", "document_search", "library_search", "manager_context",
+        "new_responses", "response",       # has anyone answered the request: what the last check kept (response_inbox.py)
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.

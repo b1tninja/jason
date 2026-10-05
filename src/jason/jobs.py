@@ -81,6 +81,17 @@ def _flag_value(argv: list[str], flag: str) -> str | None:
     return None
 
 
+def _flag_values(argv: list[str], flag: str) -> list[str]:
+    """Every value given to a repeatable ``flag`` ("--channel a --channel=b")."""
+    out = []
+    for n, a in enumerate(argv):
+        if a == flag and n + 1 < len(argv) and not argv[n + 1].startswith("--"):
+            out.append(argv[n + 1])
+        elif a.startswith(flag + "="):
+            out.append(a.split("=", 1)[1])
+    return out
+
+
 def _remote(argv: list[str]) -> bool:
     return any((_flag_value(argv, f) or "").lower() in _REMOTE_BACKENDS for f in ("--model", "--terms-model"))
 
@@ -127,6 +138,15 @@ def job_class(argv: list[str]) -> JobClass:
         return JobClass.GOOGLE
     if (argv[0] == "meetings" and "--sync" in argv[1:]) or (argv[0] == "utilities" and "--payments" in argv[1:]):
         return JobClass.PAYHOA         # meetings --sync reads PayHOA's notices (and Zoom); utilities --payments, PayHOA
+    if argv[0] == "responses":
+        # A check of the PayHOA channel alone takes PayHOA's lane; any other check (Gmail, mailed scans, Google Forms, or
+        # every channel) and a --read (an email's attachments) take Google's. Listing, confirming, and the rest read disk.
+        channels = {v.lower() for v in _flag_values(argv[1:], "--channel")}
+        if "--check" in argv[1:]:
+            return JobClass.PAYHOA if channels == {"payhoa"} else JobClass.GOOGLE
+        if "--read" in argv[1:]:
+            return JobClass.GOOGLE
+        return JobClass.LOCAL
     return _CLASS_OF_COMMAND.get(argv[0], JobClass.LOCAL)
 
 

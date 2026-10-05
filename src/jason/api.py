@@ -17,6 +17,8 @@ and require ``by``.
     api.section_refs("Declaration 6.2(a)", hops=2, direction="both")
     api.read_record("jason://decl/6.2(a)")["text"]     # the MCP resource's Markdown: the recitation first
     api.record_resources()                              # what jason-mcp lists as resources
+    api.new_responses()["arrivals"]                      # what the last `jason responses --check` kept, newest first
+    api.response("gmail:abc123")["left"]                 # one arrival: its reading (evidence), its acts, what is left
 
 The MCP server's other tools (the PayHOA catalog, deeds, liens, finance, mail, meetings, the law) are importable from
 ``jason.mcp.county``, ``jason.mcp.index``, and ``jason.mcp.rolls`` the same way. ``docs/mcp.md`` lists every tool.
@@ -54,6 +56,7 @@ from jason.mcp.governance import (
     schedule_assignments,
     section_refs,
 )
+from jason.mcp.response_inbox import new_responses, response
 
 
 
@@ -79,4 +82,4 @@ def read_record(address: str, data_dir=None) -> dict:
             "lastModified": page.last_modified}
 
 
-__all__ = [t.__name__ for t in TOOLS] + ["read_record", "record_resources"]
+__all__ = [t.__name__ for t in TOOLS] + ["new_responses", "read_record", "record_resources", "response"]

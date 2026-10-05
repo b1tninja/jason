@@ -6,13 +6,13 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-167 commands, by area:
+168 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (23)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
-- [Owners, requests, notices & forms](#owners-requests-notices--forms) (24)
+- [Owners, requests, notices & forms](#owners-requests-notices--forms) (25)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
@@ -1159,7 +1159,35 @@ The owner information cycle (CIV 4040, 4041): standing, deadlines, and PayHOA up
 | `--apply` |  | read PayHOA live and list the writes that bring it up to date |
 | `--show` | SHOW | with --apply: how many writes to list (default 15) |
 | `--yes` |  | with --apply: write them in PayHOA |
-| `--by` | NAME | with --apply --yes: the person who confirmed the writes, for the approvals audit log (default --confirmed-by, else the operating-system user) |
+| `--by` | NAME | with --apply --yes: the person who confirmed the writes, for the approvals audit log and the responses inbox's 'recorded' act (default --confirmed-by, else the operating-system user) |
+
+### `jason responses`
+
+Has anyone answered? The inbox of responses to a request (PayHOA form, Google Form, reply email, mailed scan): check, read, confirm, dismiss
+
+| Option | Value | Help |
+|---|---|---|
+| `--check` |  | a live, read-only look at each channel (Gmail, PayHOA, the mail on disk, saved Google Form responses); keeps new arrivals in jason's own inbox. A person at a console, or --by scheduler |
+| `--list` |  | the inbox from disk, newest first |
+| `--show` | ID | one arrival: its facts, files, reading, keyed answers, and acts (masked) |
+| `--read` | ID | download its attachments and read the form from them (needs --by; a person at a console, or --by scheduler); the reading is evidence, never an answer |
+| `--confirm` | ID | a person says the reading is what the form says (needs --by); makes keyed answers; writes nothing to PayHOA |
+| `--seen` | ID | mark arrivals looked at and left (needs --by) |
+| `--seen-all` |  | mark every new arrival seen (needs --by; --request narrows) |
+| `--dismiss` | ID | not an answer: a question, a duplicate, not the form (needs --by and --why) |
+| `--channel` | {payhoa,gmail,mail,forms} | with --check or --list: only this channel (repeatable) |
+| `--from` | ADDRESS | with --check: every message from this address in the window, marking which were kept (Gmail; the address is not printed or stored) |
+| `--since` | DATE | with --check: read from this day (YYYY-MM-DD), past a closed window |
+| `--state` | {new,seen,read,keyed,recorded,dismissed} | with --list: only arrivals in this state |
+| `--request` | K | with --list or --seen-all: only this request's key |
+| `--unit` | U | with --list: only units whose label contains this |
+| `--new` |  | with --list: only new arrivals |
+| `--days` | N | with --list: only arrivals from the last N days |
+| `--model` | NAME | with --read: also read handwriting with this local vision model (after the local-AI preflight, holding the GPU lock) |
+| `--set` | FIELD=VALUE | with --confirm: correct a field (repeatable; an empty VALUE clears it; a checkbox's options joined with ';') |
+| `--why` | TEXT | with --confirm: a note; with --dismiss: the reason (required) |
+| `--by` | NAME | who does it, for the log (--confirm, --read, --seen, --dismiss require it); a check run by the scheduler passes --by scheduler |
+| `--json` |  | print JSON |
 
 ### `jason rentals`
 

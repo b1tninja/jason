@@ -238,7 +238,7 @@ def test_the_prompts_are_served_with_the_onboarding_tools_and_the_board_set_is_u
     assert [t.__name__ for t in tools_for("onboarding")] == [
         "onboarding_status", "next_questions", "intake_questions", "answer_intake_question", "onboarding_confirm",
         "association_directory", "documents_located"]
-    assert len(tools_for("board")) == 38
+    assert len(tools_for("board")) == 40
 
     async def listed(profile):
         return [p.name for p in await build(profile).list_prompts()]

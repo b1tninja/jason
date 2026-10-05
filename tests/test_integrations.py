@@ -84,8 +84,66 @@ def test_google_workspace_is_each_communitys_own_web_client():
     g = integration("google-workspace")
     assert g.scope is Scope.COMMUNITY and g.auth is AuthMethod.OAUTH_WEB
     assert len(g.setup_steps) == 9 and "Internal" in g.setup_steps[3].admin_does
-    assert {c.source_key for c in g.sources} == {"drive", "gmail", "calendar", "tasks"}
+    assert {c.source_key for c in g.sources} == {"drive", "gmail", "calendar", "tasks", "responses-gmail"}
     assert g.rate_limit.source and g.rate_limit.read_on
+
+
+def test_the_response_checks_are_proposed_cadences_in_the_right_lanes():
+    """The check for new responses (docs/responses-design.md, Cadence): proposed, never faster than its floor, a read that
+    records nothing, and each on its account's job lane."""
+    from jason import jobs
+
+    gmail, payhoa = cadence_for("responses-gmail"), cadence_for("responses-payhoa")
+    assert integration_of("responses-gmail").key == "google-workspace" and integration_of("responses-payhoa").key == "payhoa"
+    assert gmail.argv == ("responses", "--check", "--channel", "gmail", "--channel", "mail", "--channel", "forms",
+                          "--by", "scheduler")
+    assert payhoa.argv == ("responses", "--check", "--channel", "payhoa", "--by", "scheduler")
+    assert (gmail.every, gmail.window, gmail.outside, gmail.floor, gmail.stale_after) == ("1h", "07-22", "4h", "15m", "1d")
+    assert (payhoa.every, payhoa.window, payhoa.outside, payhoa.floor, payhoa.stale_after) == ("2h", "07-22", "", "1h", "1d")
+    assert gmail.proposed and payhoa.proposed and not gmail.manual and not payhoa.manual
+    assert not {"--yes", "--apply", "--confirm", "--read"} & set(gmail.argv + payhoa.argv)       # a check records nothing
+    from jason.cli import build_parser
+
+    for cad in (gmail, payhoa):                                      # the scheduler's command line is one the CLI parses
+        parsed = build_parser().parse_args(list(cad.argv))
+        assert parsed.command == "responses" and parsed.check and parsed.by == "scheduler"
+    assert build_parser().parse_args(list(gmail.argv)).channel == ["gmail", "mail", "forms"]
+    assert jobs.job_class(list(gmail.argv)) is jobs.JobClass.GOOGLE
+    assert jobs.job_class(list(payhoa.argv)) is jobs.JobClass.PAYHOA
+    # the lane follows the channels asked for: PayHOA alone, else Google (Gmail is among them); disk-only acts are local
+    assert jobs.job_class(["responses", "--check", "--channel=payhoa"]) is jobs.JobClass.PAYHOA
+    assert jobs.job_class(["responses", "--check", "--channel", "payhoa", "--channel", "gmail"]) is jobs.JobClass.GOOGLE
+    assert jobs.job_class(["responses", "--check"]) is jobs.JobClass.GOOGLE
+    assert jobs.job_class(["responses", "--read", "gmail:abc", "--by", "A"]) is jobs.JobClass.GOOGLE
+    for argv in (["responses"], ["responses", "--list", "--new"], ["responses", "--show", "gmail:abc"],
+                 ["responses", "--confirm", "gmail:abc", "--by", "A"]):
+        assert jobs.job_class(argv) is jobs.JobClass.LOCAL, argv
+
+
+def test_status_reads_the_responses_checks_from_the_inboxs_channels(tmp_path):
+    """Status shows the two sources by the inbox's own stamp (the newest channel check that succeeded), and a channel whose
+    last try failed is an error that check logged. Nothing is called."""
+    root = tmp_path / "data"
+    assert [s.key for s in st.SOURCES if s.key.startswith("responses-")] == ["responses-gmail", "responses-payhoa"]
+    tok = tmp_path / "t.json"
+    tok.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(google_oauth_token_file=tok, smud_db=None)
+    rows = {r["key"]: r for r in st.source_rows(root, settings=settings, now=NOW)}
+    assert rows["responses-gmail"]["standing"] == st.NEVER_READ and rows["responses-payhoa"]["lastRead"] == ""
+    (root / "responses").mkdir(parents=True)
+    (root / "responses" / "inbox.json").write_text(json.dumps({"version": 1, "arrivals": {}, "channels": {
+        "gmail": {"lastOk": "2099-10-04T11:00:00+00:00", "lastTried": "2099-10-04T11:00:00+00:00", "ended": "ok"},
+        "mail": {"lastOk": "2099-10-04T11:30:00+00:00", "lastTried": "2099-10-04T11:30:00+00:00", "ended": "ok"},
+        "forms": {"lastTried": "2099-10-04T11:30:00+00:00", "ended": "skipped", "reason": "no request"},
+        "payhoa": {"lastOk": "2099-10-01T09:00:00+00:00", "lastTried": "2099-10-04T11:45:00+00:00", "ended": "sign-in",
+                   "reason": "KeeperAuthRequired: sign in"}}}), encoding="utf-8")
+    rows = {r["key"]: r for r in st.source_rows(root, settings=settings, now=NOW)}
+    assert rows["responses-gmail"]["lastRead"] == "2099-10-04T11:30:00+00:00" and rows["responses-gmail"]["standing"] == st.CURRENT
+    assert rows["responses-payhoa"]["lastRead"] == "2099-10-01T09:00:00+00:00" and rows["responses-payhoa"]["standing"] == st.STALE
+    assert rows["responses-gmail"]["staleAfter"] == "1d" and rows["responses-payhoa"]["staleAfter"] == "1d"
+    read = st.SOURCES[[s.key for s in st.SOURCES].index("responses-payhoa")].read(root)
+    assert read.errors == ("payhoa: KeeperAuthRequired: sign in",) and read.error_at == "2099-10-04T11:45:00+00:00"
+    assert st.SOURCES[[s.key for s in st.SOURCES].index("responses-gmail")].read(root).errors == ()
 
 
 def test_rate_limits_say_where_or_none_published():

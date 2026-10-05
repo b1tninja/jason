@@ -81,12 +81,24 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason owner-info --mail-batch --yes --confirmed-by NAME",
                  check="the Mailroom preview's recipients and price", refs=("jason mailroom --prices",),
                  lessons=("letters-cannot-be-recalled", "letter-link-per-unit")),
+            Step("Check for new responses, read each returned form, and confirm what it says. An owner can answer in "
+                 "PayHOA, by a reply email, by a mailed scan, or in a Google Form; the check looks at all four.",
+                 command="jason responses --check; jason responses --list --new; jason responses --read ID --by NAME; "
+                         "jason responses --confirm ID --by NAME",
+                 check="a reading is evidence for a person; nothing is an answer until a person confirms it; nothing is "
+                       "written to PayHOA by a check; a channel that failed says why under its last check (the board's "
+                       "new_responses tool shows each channel's age)",
+                 refs=("docs/responses-design.md",),
+                 lessons=("returns-by-the-same-rules", "form-return-found-by-searching-the-mailbox",
+                          "payhoa-submission-list-row-shape-unconfirmed"), person=True),
             Step("Triage the answers as they come in: what to record, enter, confirm, or hold for the board.",
                  command="jason owner-info --responses --canvas",
                  check="each finding's outcome; the board's questions in its canvas (mystique/notes/canvas)",
                  lessons=("answers-need-a-policy",)),
             Step("Record the answers as they come in: dry run, then write; or as an approval, decided item by item "
-                 "by a named person and applied only if nothing changed since.",
+                 "by a named person and applied only if nothing changed since. An answer a person confirmed from an "
+                 "email or a scan (keyed) is planned by --apply like a PayHOA answer, and the arrival is marked "
+                 "recorded once its writes are made.",
                  command="jason owner-info --apply --payhoa; then --yes --by NAME (or jason approvals plan "
                          "owner-info-tags; show ID; decide ID --items ... --by NAME; submit ID; apply ID; apply ID --yes)",
                  check="each write's reason; a request left open says why; held items are never approved; apply "
@@ -824,6 +836,11 @@ PROCEDURES: tuple[Procedure, ...] = (
         "Keep the association's records and people's details out of public history.",
         (
             Step("Keep the community's facts in the private specification (mystique/), never in jason."),
+            Step("Before writing a new file, list its exact path and read git status for it: a name that sounds free may "
+                 "be taken, and a tracked file the writer replaces is restored from git only if it was tracked.",
+                 command="ls PATH; git status --short PATH",
+                 check="the path does not exist, or it is a file you mean to change (read it first)",
+                 lessons=("new-module-name-already-taken",)),
             Step("Use made-up values in fixtures; the operator's own ids go in .env.",
                  refs=(".env.example",), lessons=("no-real-data-in-fixtures",)),
             Step("Scan what will be committed for names, personal emails, phone numbers, and ids.",

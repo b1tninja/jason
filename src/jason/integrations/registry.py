@@ -284,6 +284,12 @@ GOOGLE_WORKSPACE = Integration(
         Cadence("tasks", ("schedule", "--read-google"), every="1h", floor="15m", stale_after="1d",
                 limit="50,000 requests a day per project",
                 note="the same command reads Calendar and Tasks today (data/schedule/google-read.json)"),
+        Cadence("responses-gmail", ("responses", "--check", "--channel", "gmail", "--channel", "mail", "--channel",
+                                    "forms", "--by", "scheduler"),
+                every="1h", window="07-22", outside="4h", floor="15m", stale_after="1d", proposed=True,
+                limit="6,000 quota units a minute per user (headers and attachment names only; nothing is downloaded)",
+                note="has anyone answered a request: replies in Gmail, scans from the mail service, and saved Google "
+                     "Form responses, kept in data/responses; a check reads and keeps, and records nothing in PayHOA"),
     ),
     credential="the OAuth Web client, and one refresh token per account jason reads with",
     vault_names=("oauth-client", "token/<account>"),
@@ -344,6 +350,10 @@ PAYHOA = Integration(
                 note="weekly, and the 5th of each month"),
         Cadence("utility-payments", ("utilities", "--payments", "--fetch"), cron="0 5 * * 1", floor="1d",
                 stale_after="9d", note="PayHOA's utility payments and their bills; weekly, as the utilities"),
+        Cadence("responses-payhoa", ("responses", "--check", "--channel", "payhoa", "--by", "scheduler"),
+                every="2h", window="07-22", floor="1h", stale_after="1d", proposed=True,
+                note="has anyone answered a request: the owner-information form's submissions, kept in data/responses; "
+                     "a check reads and keeps, and records nothing in PayHOA"),
     ),
     credential="the member's username, password, and TOTP seed, in one entry",
     vault_names=("login",),

@@ -140,7 +140,82 @@ LESSONS: tuple[Lesson, ...] = (
            "An emailed-back form had to be read and judged by hand.",
            "Only PayHOA submissions run through --apply.",
            "owner-info --returns DIR: returned PDFs and scans through the same rules, trust levels, and dry run.",
-           Status.OPEN, docs=(RUNBOOK,)),
+           Status.FIXED,
+           guards=("tests/test_response_inbox.py::test_confirm_makes_the_answers_a_submission_becomes_with_a_persons_corrections",
+                   "tests/test_response_inbox.py::test_keyed_answers_make_the_same_writes_as_a_payhoa_submission_with_the_same_answers",
+                   "tests/test_response_inbox.py::test_an_arrival_is_recorded_when_the_writes_it_calls_for_are_made",
+                   "tests/test_responses_command.py::test_a_confirmed_answer_plans_the_same_writes_as_a_payhoa_answer_with_the_same_answers",
+                   "tests/test_mcp_response_inbox.py (the board's new_responses and response tools read the inbox from disk)"),
+           docs=(RUNBOOK, "docs/responses-design.md"),
+           notes=("The path is not owner-info --returns DIR. `jason responses --check` keeps each arrival (PayHOA, Gmail, "
+                  "the mail service, a Google Form) in data/responses; --read reads its attachments; a person's --confirm "
+                  "makes the same FormAnswers a PayHOA submission becomes, which `jason owner-info --apply` plans under the "
+                  "same rules and trust levels, dry run first. A reading is evidence; only the confirmation is an answer.",)),
+    Lesson("form-return-found-by-searching-the-mailbox", date(2026, 10, 5), (Area.OWNER_INFO, Area.FORMS, Area.EMAIL),
+           "An owner's filled form reached the association's shared mailbox as a reply, and a scanned return came through "
+           "PostScanMail, and nothing told jason. A person found the reply by searching Gmail for the sender's address, read "
+           "the scan by eye, and keyed the answers by hand.",
+           "jason asked one place, PayHOA's submissions, whether anyone had answered, and the request can be answered four "
+           "ways. Nothing looked at the others, so an answer outside PayHOA was found only when a person went looking.",
+           "One inbox over every way an owner can answer: a check reads Gmail headers and attachment names, the mail "
+           "service's scans on disk, the Google Form's saved responses, and PayHOA's submissions, keeps what is new, and "
+           "stores no personal address. The board's tools say what the last check kept and how old it is; the scheduler "
+           "runs the check by the registry's cadences once a person adopts them.",
+           Status.FIXED,
+           guards=("jason responses --check (jason.tasks.response_inbox.check)",
+                   "tests/test_response_inbox.py::test_gmail_candidates_follow_the_design_and_keep_no_address",
+                   "tests/test_response_inbox.py::test_a_check_keeps_only_new_arrivals_dedupes_and_overlaps_a_day",
+                   "tests/test_mcp_response_inbox.py::test_new_responses_lists_each_state_with_the_channels_last_check_and_its_age",
+                   "tests/test_integrations.py::test_the_response_checks_are_proposed_cadences_in_the_right_lanes"),
+           docs=("docs/responses-design.md",)),
+    Lesson("payhoa-submission-list-row-shape-unconfirmed", date(2026, 10, 5), (Area.OWNER_INFO, Area.FORMS),
+           "The PayHOA channel of the responses check reads a submission's time and member from the list row and the "
+           "detail, and no live look at the shape of either has been made for this form.",
+           "PayhoaChannel was written from the client's method names and the stored submissions, and reads `createdAt`, "
+           "`membershipId`, and the member's name tolerantly (several places, a missing one is a name 'an owner signed in "
+           "to PayHOA' and no time). A row whose time sits under another key would be kept with no date, and the window "
+           "would not apply to it.",
+           "A person runs `jason responses --check --channel payhoa` against the live form once and compares what it kept "
+           "(date, name, unit) with the submissions in PayHOA; then pin the shape in a test with the keys PayHOA really "
+           "uses and drop the keys it does not.",
+           Status.OPEN, docs=("docs/responses-design.md",)),
+    Lesson("new-module-name-already-taken", date(2026, 10, 5), (Area.REPOSITORY,),
+           "A new module was written to a path a tracked file already held, and the Write tool replaced that file without "
+           "a word; git restored it. Two modules for members' requests (`jason.tasks.responses`, "
+           "`jason.community.responses`) already own the name `responses`.",
+           "Write silently replaces an existing file, and much of src/ is untracked, so a replaced file may not be "
+           "recoverable. The name `responses` sounded free because a different feature uses it.",
+           "Before writing a new file, list its exact path and read git status for it; a taken name gets another "
+           "(`response_inbox`). A file that is untracked has no copy in git: read it first.",
+           Status.FIXED,
+           guards=("procedure check-in: list and git status the exact path before writing a new file",
+                   "jason.tasks.response_inbox and jason.community.response_inbox are the names; the members' clocks keep "
+                   "`responses`"),
+           docs=("docs/responses-design.md (Step 1, as built: module names)",)),
+    Lesson("a-hook-on-results-is-silent-when-the-step-is-skipped", date(2026, 10, 5), (Area.OWNER_INFO,),
+           "An answer a person confirmed from an email stayed `keyed` after `owner-info --apply` found PayHOA already "
+           "showed everything it calls for: with no writes, nothing ran the observer that marks an arrival recorded.",
+           "The observer listened to each write's result, and a plan with no writes calls no result.",
+           "The apply command tells the observer when the plan is empty (`plan.observer.heard([])`), and names the "
+           "person with --by.",
+           Status.FIXED,
+           guards=("tests/test_responses_command.py::test_a_plan_with_no_writes_marks_the_arrival_recorded",),
+           docs=("docs/responses-design.md (Step 2, as built)",)),
+    Lesson("reading-keeps-no-membership-id", date(2026, 10, 5), (Area.OWNER_INFO,),
+           "A returned form's reading names the owner and unit the sender matched but keeps no membership id, so "
+           "`jason responses --read` and the `response` tool compare a printed reference's copy with the owner by name "
+           "and unit only.",
+           "The reading was built before the sent-copy catalog was used to identify an arrival.",
+           "Keep the membership id on the reading and compare it with the id the sent copy names (the catalog lookup is "
+           "the next change: docs/arrivals-design.md, build step 1b).",
+           Status.OPEN, docs=("docs/arrivals-design.md",)),
+    Lesson("cli-doc-behind-the-parser", date(2026, 10, 5), (Area.REPOSITORY,),
+           "docs/cli.md lists fewer commands than the parser has, because sessions add their command's section by "
+           "hand while others' commands are not yet in the file.",
+           "The generated file is edited in many hands and regenerated by no one.",
+           "Run scripts/gen_cli_docs.py once the shared files settle, and make the commit hook or a test compare the "
+           "documented count with the parser's.",
+           Status.OPEN, docs=("docs/cli.md",)),
     Lesson("bounces-are-silent", OCT_2026, (Area.EMAIL,),
            "A bounced email never reached jason.",
            "PayHOA's mailer receives the bounce after the send succeeded.",

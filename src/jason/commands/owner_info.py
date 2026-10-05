@@ -117,7 +117,8 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
         client, org = agent.payhoa(), agent.org_id
         planned = plan_apply(client, org, community=community, forms=forms, cycle=cycle, data_dir=data_dir,
                              today=today, payhoa=args.payhoa, env=getattr(args, "env", None),
-                             via="jason owner-info --apply")
+                             via="jason owner-info --apply",
+                             by=(getattr(args, "by", None) or getattr(args, "confirmed_by", None) or ""))
         writes, rows = planned.writes, planned.rows
         for h in planned.held:
             print(f"  held for the board ({h.rule}): {h.write.kind} {h.write.label} {h.write.value}")
@@ -133,6 +134,13 @@ def _apply(args: argparse.Namespace, agent_factory: Callable[[Any], Any], commun
             print(f"    {w.kind:14} {w.label[:40]:40} {w.value[:70]}  ({w.why})")
         if not writes:
             print("PayHOA is up to date for this cycle.")
+            if planned.observer is not None:
+                # no write will call the observer, so tell it now: an answer from the responses inbox that PayHOA
+                # already shows is recorded (the inbox is jason's own file; nothing is written to PayHOA)
+                marked = planned.observer.heard([])
+                if marked:
+                    print(f"  the responses inbox marks {', '.join(marked)} recorded: PayHOA already shows what "
+                          f"{'it calls' if len(marked) == 1 else 'they call'} for")
         elif not args.yes:
             print(f"Dry run ({len(writes)} writes, read live just now): add --yes to write them in PayHOA.")
         else:
@@ -674,6 +682,6 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--show", type=int, default=15, help="with --apply: how many writes to list (default 15)")
     p.add_argument("--yes", action="store_true", help="with --apply: write them in PayHOA")
     p.add_argument("--by", metavar="NAME",
-                   help="with --apply --yes: the person who confirmed the writes, for the approvals audit log (default "
-                        "--confirmed-by, else the operating-system user)")
+                   help="with --apply --yes: the person who confirmed the writes, for the approvals audit log and the "
+                        "responses inbox's 'recorded' act (default --confirmed-by, else the operating-system user)")
     p.set_defaults(func=lambda a: cmd_owner_info(a, agent_factory))

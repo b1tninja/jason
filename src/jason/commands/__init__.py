@@ -30,6 +30,7 @@ MODULES: tuple[str, ...] = (
     "statute_align",
     "delivery",
     "owner_info",
+    "responses",
     "qr",
     "rentals",
     "batches",
