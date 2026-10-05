@@ -433,6 +433,17 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Check what the document changes against the law and the other documents: conflict leads, duties, "
                  "notice requirements.", command="jason conflicts --leads --document KEY",
                  refs=("procedure law-review",), lessons=("law-outdates-provisions",)),
+            Step("Read the citations the document makes, scoped to the documents they mean.",
+                 command="jason cite --scan FILE; jason cite EXPR --in KEY --on DAY",
+                 check="every ambiguous_document is a question for a person, never a pick; a document's own text is "
+                       "read with --in its key and --on its day",
+                 refs=("docs/rule-citations.md",), lessons=("citation-needs-its-document",), person=True),
+            Step("Find the rule-making power it grants, and the rules on file for each subject.",
+                 command="jason rules --find --model; jason rules --subjects",
+                 check="each conflict-tier row is read against its words; a subject with rules on file and no named "
+                       "grant, or a grant with no rule, is a finding for the board, never an accusation",
+                 refs=("docs/rule-authority.md",),
+                 lessons=("model-answers-for-its-neighbor", "grant-without-a-rule-noun"), person=True),
             Step("Record what the intake taught as lessons, and update this procedure.",
                  command="jason lessons --area governing", refs=("AGENTS.md (Lessons and procedures)",)),
         ),

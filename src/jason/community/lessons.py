@@ -1616,6 +1616,63 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("model-answers-for-its-neighbor", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "Asked about one marked sentence of a section, the local model quoted a neighboring sentence's power; the "
+           "quote was in the section, so the verbatim check passed, and asked what a general power covers it listed "
+           "every subject.",
+           "The check asked only whether the quoted words were somewhere in the section, and the subjects were not "
+           "tied to words.",
+           "rule_authority.model_reading requires the operative words in the marked sentence, else the answer is no, "
+           "and drops a subject no word of the section reaches.",
+           Status.FIXED, guards=("tests/test_rule_authority.py",), docs=("docs/rule-authority.md",)),
+    Lesson("rule-reader-tuned-on-its-gold", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "The rule-only reader of rule-making grants scored precision 1.00 on the gold set, but its patterns were tuned "
+           "while reading those same candidates; only the model's first run was blind.",
+           "One association's documents served as both the tuning set and the test.",
+           "Still to do: a held-out half, and a second association's gold set, before the figures are relied on.",
+           Status.OPEN, docs=("docs/rule-authority.md",)),
+    Lesson("grant-without-a-rule-noun", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "A delegation with no rule noun (\"shall be established by the Board\" for a time limit, \"may designate quiet "
+           "hours\", a power to establish fines) was read as a reference or not collected, so five of nineteen grants "
+           "were missed by the rules.",
+           "The collector looked for an adoption verb with a rule noun.",
+           "A delegation pattern collects the first kind, and the model's reading shows the disagreement as a conflict "
+           "row for a person. Still open for wording the patterns do not look for.",
+           Status.OPEN, docs=("docs/rule-authority.md",)),
+    Lesson("guide-describes-power-not-power", date(2026, 10, 5), (Area.GOVERNING,),
+           "A guide's sentence describing the board's power to make rules read like a grant of it.",
+           "Every part of a manual was read the same way.",
+           "Parts: a grant stated only in a guidance part is listed apart (\"stated in guidance only\") and never counted "
+           "as authority.",
+           Status.FIXED, guards=("rule_authority.parts_from_manual", "tests/test_rule_authority.py"),
+           docs=("docs/rule-authority.md",)),
+    Lesson("citation-needs-its-document", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "Of the bare citations in the association's own documents, 348 of 493 were unresolved (every one in letters, "
+           "notices, and minutes), and a book's common name silently meant its first document.",
+           "A number counted as a section only when a name came with it, and the grammar scoped a bare number only "
+           "inside an outline.",
+           "jason.community.scoping scopes a citation by the citing document, its day, and the citation's form, with the "
+           "basis recorded; two documents that fit are ambiguous_document naming both, never a pick; a nearby name is a "
+           "lead; jason cite --in KEY --on DAY and --scan FILE.",
+           Status.FIXED, guards=("jason.community.scoping", "tests/test_scoping.py", "jason cite --scan"),
+           docs=("docs/rule-citations.md",)),
+    Lesson("rule-row-cited-as-a-document", date(2026, 10, 5), (Area.GOVERNING, Area.OWNER_INFO),
+           "Plan items that cite jason's own rule rows (owner_responses.RULES: delivery) showed as unknown_document on "
+           "the approvals screen.",
+           "The resolver knew documents and statutes, not jason's own tables of decisions kept as data.",
+           "rule_rows.TABLES recites a row as data, labeled jason's own row and never the association's rule, with the "
+           "board decision it rests on when the row names one. A prose rule stays a miss until it cites a row or a "
+           "document.",
+           Status.FIXED, guards=("rule_rows.TABLES", "tests/test_scoping.py"), docs=("docs/rule-citations.md",)),
+    Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
+           "its own sections hung its sublist twice (\"18(18)(a)\").",
+           "The outline readers assumed one place per number.",
+           "A repeated number is cited by place (R-3(i)~2); the sublist hangs once; text outlines read lettered rules. "
+           "Outlines already on disk keep the old numbering until jason outlines is re-run.",
+           Status.FIXED, guards=("DiskResolver.provision", "outline_from_doc", "outline_from_text",
+                                 "tests/test_scoping.py"),
+           docs=("docs/rule-citations.md",)),
     Lesson("plan-screen-defaults-stood-in-for-the-kind", date(2026, 10, 5), (Area.REPOSITORY,),
            "The plan review read a two-person flag the server never sent and used its own 24-hour default for a "
            "plan's age, so a two-person kind would have shown no second signer; its old-plan banner promised that apply "
