@@ -86,6 +86,8 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [install-design.md](install-design.md): proposal for a first-run install guide that provisions secrets, assets, and checks.
 - [credential-store-research.md](credential-store-research.md): research notes on a local credential store (AWS Secrets Manager emulators, OpenBao, the OS keyring).
 - [deployment-research.md](deployment-research.md): research notes on a low-cost hosted deployment (compute, Bedrock, secrets, Google).
+- [integrations-design.md](integrations-design.md): each service as an integration an administrator configures per community, the credential vault behind one interface, and defaults from rate limits.
+- [scheduler-daemon-design.md](scheduler-daemon-design.md): jason as a service: `jason serve` (web, worker, scheduler), cadences, leases, and the commands.
 - [paint-ui-design.md](paint-ui-design.md): the paint screen (a buildings-by-surfaces matrix with painted and due dates) and the facts it needs.
 - [unit-records-design.md](unit-records-design.md): community facts as assumed defaults, a manual for each unit, and a loss packet for claims.
 - [unit-records-backend.md](unit-records-backend.md): the backend for paint, community facts, and unit records: records, storage, loaders, tools, tests, and build order.

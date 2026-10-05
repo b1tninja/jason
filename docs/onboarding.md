@@ -109,6 +109,8 @@ jason onboard --new KEY --name NAME            # a new association's profile pac
 
 ## Connecting integrations (TODO)
 
+The design is [integrations-design.md](integrations-design.md) (integrations, the vault, defaults from rate limits) and [scheduler-daemon-design.md](scheduler-daemon-design.md); the screens and setup dialogs are [console/handoff-instance-and-integrations.md](console/handoff-instance-and-integrations.md).
+
 Onboarding a real association means an administrator connects its integrations. Today each is set up at a terminal by a person ([setup.md](setup.md)), and the console's setup tab shows the command, never a field:
 - **Google Workspace:** the Cloud project and its APIs, an OAuth web-application client (consent screen, scopes, redirect URIs for jason-web's sign-in), the token, the Drive home, the groups, the calendar; later jason's own mailbox.
 - **Keeper:** the vault and the records every other credential lives in; `jason login`, with device approval.
