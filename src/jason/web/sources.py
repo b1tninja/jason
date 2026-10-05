@@ -953,6 +953,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "onboarding-session": "jason.web.extra.onboarding_setup:onboarding_session",  # gates, computed statuses, questions
     "paint": "jason.web.extra.paint:paint_view",  # the schedule against the catalog copy on disk; no network
     "paint-color": "jason.web.extra.paint:paint_color",  # GET /api/paint/color?code=
+    "library-kinds": "jason.web.extra.library_kinds:library_kinds",  # the kinds' shelf; ?kind= one kind's files; disk only
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
