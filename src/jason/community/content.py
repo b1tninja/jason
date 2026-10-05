@@ -106,6 +106,10 @@ TITLE_RULES: tuple[ContentRule, ...] = (
                                         "confirm our understanding of the terms", "confirm our acceptance and understanding",
                                         "you have requested that we perform"), 1500),
     ContentRule(DocumentKind.CONTRACT, ("agreement", "contract"), 150),
+    # A preparer's package of the year's returns opens with a cover letter that lists the enclosed forms and says the filing
+    # instructions follow; no single form's title is in its opening words.
+    ContentRule(DocumentKind.TAX_RETURN, ("filing instructions for the", "return(s) for the year ended", "form 1120-h",
+                                          "form 199", "form 100"), 1500, 2),
     # An owner's filled application (a parking variance, an architectural request) opens with the form's own title.
     ContentRule(DocumentKind.FORM, ("permit application", "application for", "improvement request", "request form"), TITLE),
     ContentRule(DocumentKind.NOTICE, ("disclosure of pending litigation", "notice of", "notice to", "nuisance alarm notice",
@@ -117,7 +121,8 @@ BODY_RULES: tuple[ContentRule, ...] = (
     # Before the owner statement and the invoice: a utility bill also says "amount due".
     ContentRule(DocumentKind.UTILITY_BILL, ("your electric bill", "utility service bill", "total electric service charges", "electricity charges", "per cubic foot", "storm drainage", "meter summary"), min_hits=2),
     ContentRule(DocumentKind.OWNER_STATEMENT, ("all current charges due", "statement date", "previous balance", "amount due"), min_hits=2),
-    ContentRule(DocumentKind.ESCROW_REQUEST, ("requestor information", "escrow", "resale", "demand"), min_hits=2),
+    ContentRule(DocumentKind.ESCROW_REQUEST, ("requestor information", "escrow", "resale", "demand", "projected closing date",
+                                              "current owner", "new owner"), min_hits=2),
     ContentRule(DocumentKind.OWNER_HISTORY, ("owner history", "ownership history")),
     ContentRule(DocumentKind.GRANT_DEED, ("grant deed", "documentary transfer tax")),
     ContentRule(DocumentKind.MINUTES, ("held on", "called to order", "motion", "carried", "adjourned", "present:"), 6000, 3),

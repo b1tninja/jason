@@ -1824,6 +1824,25 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/console/screens/board-items.md", "docs/web-ui.md"),
            notes=("Not yet: the evidence resolver's board-item:<id> label still names an executive item's title (a "
                   "caller must know the id), and the stdio MCP tool board_items lists items whole.",)),
+    Lesson("kinds-in-other-stores-were-gaps", date(2026, 10, 4), (Area.DOCUMENTS, Area.ONBOARDING),
+           "The shelf of document kinds showed seventeen kinds with no files, among them tax returns, utility bills, a "
+           "title company's resale demand, and security reports, although a search of Gmail and the Drive found all four: "
+           "the library holds only what PayHOA's document library holds. Ingesting the finds then classified five by "
+           "rule and left a preparer's tax-return package (a cover letter that lists the forms) and the demand "
+           "unplaced; the package was called a form.",
+           "The phrase rules named a tax return only by a form's title in the opening words, and a resale demand only by "
+           "the words escrow, resale, or demand, which a title company's request may not use. A kind with no files in the "
+           "library is not proof the association has none.",
+           "A package's cover letter and a title company's request each have a phrase rule (ContentRule, tax return and "
+           "escrow request). The kinds' shelf says where a missing kind would come from, and a gap is read against the "
+           "mail and the Drive before it is called missing. A library folder for utility bills and security reports is "
+           "the specification's, for a person to name.",
+           Status.FIXED,
+           guards=("tests/test_content_rules.py (a preparer's cover letter is a tax return; a title company's request is "
+                   "an escrow request)",),
+           docs=("docs/console/screens/document-kinds.md",),
+           notes=("Not yet: the library ingests nothing from Gmail or the Drive until a person answers the folder "
+                  "questions an ingest asks.",)),
 )
 
 

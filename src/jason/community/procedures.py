@@ -550,8 +550,9 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Read the dry run: duplicates, files already held, versions, copies, questions, and the checklist items "
                  "and gates that would move.", command="jason ingest SOURCE",
-                 check="a new version of a living or citable document is read beside the current text, never applied",
-                 lessons=("packet-read-as-version",)),
+                 check="a new version of a living or citable document is read beside the current text, never applied; "
+                       "a kind with no files in the library is read against the mail and the Drive before it is called missing",
+                 lessons=("packet-read-as-version", "kinds-in-other-stores-were-gaps")),
             Step("Read the report's contract terms: each contract's deliverables (logs, reports, records at the end) and "
                  "findings (notice windows, arbitration, limits on claims, transfers). For a closer reading, have a model "
                  "review them; Bedrock sends the words to AWS, so a person chooses it.",
