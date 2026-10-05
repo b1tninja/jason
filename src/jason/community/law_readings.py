@@ -499,30 +499,43 @@ class Recital:
         mine = [p for p in r.status.provisions if target_of(p.citation) == self.citation]
         return ", ".join(f"{p.citation} digest {p.now[:MIN_DIGEST]}" for p in mine)
 
+    def about_lines(self) -> list[str]:
+        """What the words are, as the recital says it above them: their source and digest, and, asked as of a day,
+        whether the disk shows them in force that day and how. Nothing for a provision that was not found."""
+        if not self.found:
+            return []
+        out = [f"Source: {self.source}" if self.source else "Source: not recorded", f"Digest of these words: {self.digest}"]
+        if self.as_of is not None:
+            out.append(f"As of: {self.as_of.isoformat()}")
+        if self.as_of is not None and self.decided:
+            day = self.as_of.isoformat()
+            if self.in_force:
+                out.append(f"In force on {day}: {self.basis}")
+                out += [f"Own words that decide it: \"{q}\"" for q in self.quotes]
+            else:
+                out.append(f"Not shown to be in force on {day}: these are the words on the shelf now; {self.basis}")
+        if self.note:
+            out.append(f"History (jason's note, not part of the words): {self.note}")
+        return out
+
     def lines(self, *, stale: bool = True) -> list[str]:
         """The recital as text: the words, then the readings. ``stale=False`` leaves out what is not applied."""
         if not self.found:
             out = [f"{self.citation}: {self.reason}"]
         else:
-            out = [self.citation, f"Source: {self.source}" if self.source else "Source: not recorded",
-                   f"Digest of these words: {self.digest}"]
-            if self.as_of is not None:
-                out.append(f"As of: {self.as_of.isoformat()}")
-            if self.as_of is not None and self.decided:
-                day = self.as_of.isoformat()
-                if self.in_force:
-                    out.append(f"In force on {day}: {self.basis}")
-                    out += [f"Own words that decide it: \"{q}\"" for q in self.quotes]
-                else:
-                    out.append(f"Not shown to be in force on {day}: these are the words on the shelf now; {self.basis}")
-            if self.note:
-                out.append(f"History (jason's note, not part of the words): {self.note}")
-            out += ["", self.words, ""]
+            out = [self.citation, *self.about_lines(), "", self.words, ""]
             for n, other in enumerate(self.others, start=2):
                 out += [f"{self.citation}, version {n} of {len(self.others) + 1} on the shelf",
                         f"Source: {other.source}" if other.source else "Source: not recorded",
                         f"Digest of these words: {other.digest}", "", other.words, ""]
             out += [f"Caveat: {c}" for c in self.caveats]
+        return out + self.reading_lines(stale=stale)
+
+    def reading_lines(self, *, stale: bool = True) -> list[str]:
+        """The readings of the words, as the recital lists them under the words: each current one labeled with whose
+        it is, its standing, and its date; then, with ``stale``, those not applied and those dated after the day
+        asked, each apart. Never the words."""
+        out: list[str] = []
         if self.readings:
             out.append("Readings of these words (each a reading, not the words):")
             out += [f"- [{r.reading.key}] {label(r.reading)} Reads {self._read(r)}." for r in self.readings]

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from typing import Any
 
@@ -224,6 +225,24 @@ def system_prompt(association: tuple[str, ...] = ()) -> str:
     return BASE_PROMPT + "\n\nTHE ASSOCIATION:\n" + "\n".join(f"  - {line}" for line in association)
 
 
+def as_of_lines(day: date) -> tuple[str, ...]:
+    """What a task is told when its pack is built as of a day (``context_pack.assemble(as_of=)``): how to use the
+    words each source gives for that day, and what a reading attached to a source is. General: it names no
+    provision, and it follows the task's own cautions (``task_text``'s ``extra``). A pack with no day gets none."""
+    d = day.isoformat()
+    return (
+        f"AS OF: {d}. The matter turns on that day. Above its words, each law source (S) and each governing source "
+        f"(G) says whether those words are shown to be the words in force on {d}.",
+        f"Recite a provision's words as its source gives them for {d}. Where a source says its words are not shown to "
+        "be in force on that day, say so in the answer, and do not rely on them as the law or the rule of that day.",
+        "A reading attached under a source's words is a reading, labeled with whose it is. It is never the provision's "
+        "words: never quote it as them, and give it only marked as a reading and whose. A reading listed as stale, not "
+        "applied, or dated after that day is not applied. Where two readings remain, say so: the board asks counsel.",
+        "The law was found by searching it as it stands now, then recited as of that day: a section repealed since "
+        "then is not among the sources. The records and jason's facts are as they are now.",
+    )
+
+
 def _kind_words(kind: DocumentKind) -> str:
     return kind.value.replace("_", " ")
 
@@ -264,9 +283,14 @@ class Checked:
     unknown_sources: list[str] = field(default_factory=list)
 
 
-def verify(answer: dict[str, Any], sources: dict[str, str]) -> Checked:
+READING_QUOTED = "a reading attached to the source, not the provision's words"
+
+
+def verify(answer: dict[str, Any], sources: dict[str, str], readings: dict[str, str] | None = None) -> Checked:
     """Every quote must be found in the text of the source id it cites (``questions.grounded``), and every source a
-    consideration names must exist."""
+    consideration names must exist. ``readings`` (``ContextPack.reading_texts``) holds, by source id, what the
+    readings attached to a source say: a quote found there and not in the source's own words is not grounded, and its
+    reason says it quoted a reading as the provision (``READING_QUOTED``)."""
     from jason.community.questions import grounded
 
     checked = Checked(answer)
@@ -278,6 +302,8 @@ def verify(answer: dict[str, Any], sources: dict[str, str]) -> Checked:
                 checked.ungrounded.append({"source": sid, "quote": quote, "why": "no such source"})
             elif grounded(quote, sources[sid]):
                 checked.grounded += 1
+            elif readings and readings.get(sid) and grounded(quote, readings[sid]):
+                checked.ungrounded.append({"source": sid, "quote": quote, "why": READING_QUOTED})
             else:
                 checked.ungrounded.append({"source": sid, "quote": quote, "why": "not found in the source"})
     for item in answer.get("considerations") or []:
@@ -296,5 +322,5 @@ def parse_answer(text: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-__all__ = ["ANSWER_SCHEMA", "BASE_PROMPT", "Audience", "Checked", "FactSource", "TaskKind", "TaskPrompt", "Tier",
-           "parse_answer", "system_prompt", "task_text", "verify"]
+__all__ = ["ANSWER_SCHEMA", "BASE_PROMPT", "READING_QUOTED", "Audience", "Checked", "FactSource", "TaskKind", "TaskPrompt",
+           "Tier", "as_of_lines", "parse_answer", "system_prompt", "task_text", "verify"]

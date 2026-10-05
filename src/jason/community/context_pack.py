@@ -66,13 +66,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from jason.community.authority_order import Tier, tier_of_citation, tier_of_kind
 from jason.community.passages import Passage, passages_of
-from jason.community.prompts import Audience, TaskPrompt, system_prompt, task_text
+from jason.community.prompts import Audience, TaskPrompt, as_of_lines, system_prompt, task_text
 from jason.community.symbols import DocumentKind, PayhoaFolder
 
 # The governing extracts on disk and the PayHOA folder each mirrors (its folder decides a kind a name leaves open).
@@ -131,6 +132,42 @@ _LETTER_ORDER = {"S": 0, "G": 1, "R": 2, "C": 3, "F": 4, "D": 5}
 
 
 @dataclass(frozen=True)
+class AttachedReading:
+    """A stored reading listed under a source's words (``law_readings.LawReading``), as the review's record keeps it."""
+
+    key: str
+    standing: str              # plain, reading, two_readings
+    whose: str                 # board, counsel, jason (a lead)
+    dated: str
+    state: str                 # current (attached as a reading); stale, missing, misquoted (listed, not applied); later
+    provision: str             # the provision it was listed under
+    says: str = ""             # the reading's own sentences: never the provision's words (``ContextPack.reading_texts``)
+
+
+@dataclass(frozen=True)
+class Recitation:
+    """What a law or governing source recites: the provision and the digest of its words. In a pack built as of a
+    day it also says whether the disk shows the source's words in force that day, what the page prints above the
+    words (``above``: what they are), the provision's words given under a passage that is not them (``words``), and
+    the readings listed last (``below``, ``readings``), each labeled. Without a day only the citation and the digest
+    are set, and the page prints nothing more."""
+
+    citation: str              # "CIV 5855", "bylaws#7.2"; "" when no section is named for a governing passage
+    digest: str = ""
+    as_of: date | None = None
+    shown: bool | None = None  # as of a day: the source gives words shown to be in force that day
+    # How: prior, current, own_words, not_shown (``law_text.Decided``), not_found; for a governing passage as_amended
+    # (the passage itself), as_amended_below (the section's words under it), not_kept, unnamed.
+    decided: str = ""
+    others: tuple[str, ...] = ()   # the digests of the other versions given, where the words do not decide between them
+    above: tuple[str, ...] = ()
+    words: str = ""
+    words_title: str = ""
+    below: tuple[str, ...] = ()
+    readings: tuple[AttachedReading, ...] = ()
+
+
+@dataclass(frozen=True)
 class Source:
     id: str
     tier: Tier
@@ -145,6 +182,7 @@ class Source:
     standing: Any = None       # its ``passage_index.Standing``, where the source has one
     file: str = ""             # the file it was read from, under the data directory
     section: str = ""          # the section or passage within the file
+    provision: Recitation | None = None    # a law source's, always; a governing source's in a pack built as of a day
 
 
 @dataclass(frozen=True)
@@ -169,9 +207,25 @@ class ContextPack:
     # a confidential collection is refused to any audience but the board, with a gap line.
     collection: Any = None
     collection_included: bool = False
+    # The day the matter turns on, when the caller named one: the law and the governing documents are then recited as
+    # of that day (``assemble``). None is today, and the pack is what it was before a review took a day.
+    as_of: date | None = None
 
     def texts(self) -> dict[str, str]:
-        return {s.id: s.text for s in self.sources}
+        """Each source's words, for checking a quotation (``prompts.verify``): its text, and the provision's words
+        given under a governing passage as of a day. Never a reading."""
+        return {s.id: s.text + (f"\n{s.provision.words}" if s.provision is not None and s.provision.words else "")
+                for s in self.sources}
+
+    def reading_texts(self) -> dict[str, str]:
+        """By source id, what the readings listed under a source say: a quotation found here and not in the source's
+        words quotes a reading as the provision (``prompts.verify``)."""
+        found = {s.id: "\n".join(r.says for r in s.provision.readings if r.says) for s in self.sources if s.provision is not None}
+        return {sid: says for sid, says in found.items() if says}
+
+    def as_of_lines(self) -> tuple[str, ...]:
+        """What the task is told about the day the pack was built for (``prompts.as_of_lines``). None without one."""
+        return as_of_lines(self.as_of) if self.as_of is not None else ()
 
     def _ordered(self) -> list[Source]:
         return sorted((s for s in self.sources if not s.id.startswith("D")),
@@ -196,15 +250,26 @@ class ContextPack:
                        "document's words, so say so and name the document, and never cite it as the record or a rule.")
 
     def task_prompt(self) -> str:
-        """The task's prompt for this pack: the task's own text, and the collection's lines when it has sources."""
-        return task_text(self.task, ask=self.ask, draft=self.draft, extra=self.collection_lines())
+        """The task's prompt for this pack: the task's own text, the as-of lines when the pack was built for a day,
+        and the collection's lines when it has sources."""
+        return task_text(self.task, ask=self.ask, draft=self.draft, extra=self.as_of_lines() + self.collection_lines())
 
     def sources_text(self) -> str:
         blocks = []
         for s in self._ordered():
             note = f" — {s.note}" if s.note else ""
             what = f"collection ({s.label})" if s.label else f"tier {int(s.tier)} ({s.tier.label})"
-            blocks.append(f"[{s.id}] {what}: {s.title}{note}\n{s.text.strip()}")
+            p = s.provision
+            if p is None or not p.above:
+                blocks.append(f"[{s.id}] {what}: {s.title}{note}\n{s.text.strip()}")
+                continue
+            # Built as of a day: what the words are, the words, the provision's words under a passage, the readings.
+            lines = [f"[{s.id}] {what}: {s.title}{note}", "ABOUT THE WORDS (not part of them):", *(f"  {a}" for a in p.above),
+                     "THE WORDS:", s.text.strip()]
+            if p.words:
+                lines += [p.words_title, p.words.strip()]
+            lines += p.below                   # the readings, each labeled as one: never the words
+            blocks.append("\n".join(lines))
         if self.shelf:
             blocks.append("THE LAW ON HAND, by chapter (not sources; what retrieval could draw on):\n" + "\n".join(f"  {line}" for line in self.shelf))
         return "\n\n".join(blocks)
@@ -216,7 +281,15 @@ class ContextPack:
             note = f" — {s.note}" if s.note else ""
             where = f" ({s.place})" if s.place else ""
             what = f"Collection: {s.label}" if s.label else f"Tier {int(s.tier)}: {s.tier.label}"
-            parts += [f"### [{s.id}] {s.title}{where}", f"*{what}{note}*", "", s.text.strip(), ""]
+            p = s.provision
+            if p is None or not p.above:
+                parts += [f"### [{s.id}] {s.title}{where}", f"*{what}{note}*", "", s.text.strip(), ""]
+                continue
+            parts += [f"### [{s.id}] {s.title}{where}", f"*{what}{note}*", "", *(f"- {a}" for a in p.above), "", s.text.strip(), ""]
+            if p.words:
+                parts += [p.words_title, "", p.words.strip(), ""]
+            if p.below:
+                parts += [*p.below, ""]
         if self.shelf:
             parts += ["## The law on hand, by chapter", ""] + [f"- {line}" for line in self.shelf] + [""]
         if self.gaps:
@@ -458,6 +531,14 @@ def governing_sources(community: Any, task: TaskPrompt, data_dir: Path, *, ask: 
                       mode: str = "keyword", limit: int = 16, search: Callable[..., Any] | None = None) -> list[tuple[Tier, str, str, str, float]]:
     """The best passages for the task's questions: (tier, title, text, place, score), copies folded, best first. When the
     task names governing kinds, only those kinds are kept."""
+    return [row for row, _ in governing_passages(community, task, data_dir, ask=ask, draft=draft, k=k, mode=mode,
+                                                 limit=limit, search=search)]
+
+
+def governing_passages(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "", draft: str = "", k: int = 4,
+                       mode: str = "keyword", limit: int = 16, search: Callable[..., Any] | None = None
+                       ) -> list[tuple[tuple[Tier, str, str, str, float], Passage]]:
+    """``governing_sources``, each row with the passage it was read from (its file and its section heading)."""
     from jason.community import retrieval
 
     folders = [(data_dir / rel, folder) for rel, folder in CORPUS if (data_dir / rel).is_dir()]
@@ -471,6 +552,7 @@ def governing_sources(community: Any, task: TaskPrompt, data_dir: Path, *, ask: 
     hits.sort(key=lambda h: -h[0])
     kept: list[tuple[Tier, str, str, str, float]] = []
     kinds: list[Any] = []
+    read: list[Passage] = []
     for score, passage in hits:
         name = _doc_name(passage.path)
         kind = community.classify_document(name, folder_of.get(str(passage.path.parent.resolve())))
@@ -480,9 +562,195 @@ def governing_sources(community: Any, task: TaskPrompt, data_dir: Path, *, ask: 
             continue
         kept.append((tier_of_kind(kind), name, passage.text, f"{passage.path.name}, passage {passage.index}", score))
         kinds.append(kind)
+        read.append(passage)
         if len(kept) >= limit:
             break
-    return kept
+    return list(zip(kept, read))
+
+
+# --- as of a day -----------------------------------------------------------------------------------------------------
+#
+# A pack built as of a day recites each provision through ``law_readings.recite``: the words in force that day where
+# the disk shows them, else the words held now under a plain label, and under them each stored reading as a reading.
+
+def _attached(recital: Any) -> tuple[AttachedReading, ...]:
+    """The readings a recital lists, as the review's record keeps them: current, not applied (by state), or later."""
+    rows = ([(r, r.status.state.value) for r in (*recital.readings, *recital.not_applied)]
+            + [(r, "later") for r in recital.later])
+    return tuple(AttachedReading(r.reading.key, r.reading.standing.value, r.reading.whose.value,
+                                 r.reading.dated.isoformat(), state, recital.citation,
+                                 " ".join(part for part in (r.reading.reading, *r.reading.alternatives) if part))
+                 for r, state in rows)
+
+
+def law_as_of(section: LawSection, data_dir: Path, as_of: date, readings: Sequence[Any] = (), *,
+              community: Any = None) -> tuple[str, str, Recitation]:
+    """One law source as of a day: (its words, its status for the source's note, what it recites).
+
+    The words are those ``recite`` gives for the day: an earlier version with its range and the act that made it, the
+    current words where a record places them in force by then, or, of two versions printed under one number, the one
+    their own words pick, with the deciding sentences. Where the disk does not show which words governed, the words
+    on the shelf now are given under "Not shown to be in force", every version when the shelf prints several, with
+    what would bring the earlier words. Where the shelf cannot be asked at all (the section is not on it), the words
+    the pack was given are kept under the same label. Never today's words silently."""
+    from jason.community import law_readings, law_text
+
+    day = as_of.isoformat()
+    recital = law_readings.recite(section.citation, data_dir, readings, as_of, community=community)
+    below = tuple(recital.reading_lines())
+    if not recital.found:
+        digest = law_text.words_digest(section.text)
+        above = (f"Digest of these words: {digest}", f"As of: {day}",
+                 f"Not shown to be in force on {day}: these are the words the pack was given, and the shelf could not be "
+                 f"asked about that day ({recital.reason or 'the section was not found on the shelf'})")
+        return section.text, f"NOT SHOWN TO BE IN FORCE on {day}", Recitation(
+            section.citation, digest, as_of, False, "not_found", above=above, below=below, readings=_attached(recital))
+    words = recital.words
+    for n, other in enumerate(recital.others, start=2):
+        words += (f"\n\n[{recital.citation}, version {n} of {len(recital.others) + 1} on the shelf; digest {other.digest}]"
+                  f"\n\n{other.words}")
+    above = (*recital.about_lines(), *(f"Caveat: {c}" for c in recital.caveats))
+    status = f"in force on {day}" if recital.in_force else f"NOT SHOWN TO BE IN FORCE on {day}: the words on the shelf now"
+    return words, status, Recitation(recital.citation, recital.digest, as_of, recital.in_force, recital.decided,
+                                     tuple(o.digest for o in recital.others), above, below=below, readings=_attached(recital))
+
+
+def _run(text: str) -> str:
+    """A text's words in order, punctuation and case aside, with a space at either end so a word matches whole."""
+    return " " + " ".join(re.findall(r"[a-z0-9]+", (text or "").casefold())) + " "
+
+
+def _passage_is(passage: Passage, words: str) -> bool:
+    """Whether a passage's words are a section's words: the passage is a run of the section's words, or it holds the
+    section's words whole and nothing else but the labels its own heading names (the section's number and caption,
+    the article above it). One changed word is a difference; so is another section's sentence in the passage."""
+    mine, theirs = _run(passage.text), _run(words)
+    if not mine.strip() or not theirs.strip():
+        return False
+    if mine in theirs:
+        return True
+    at = mine.find(theirs)
+    if at < 0:
+        return False
+    labels = set(_run(passage.heading).split())
+    return all(word in labels for word in (mine[:at] + " " + mine[at + len(theirs):]).split())
+
+
+def _overlap(a: str, b: str) -> bool:
+    """One text holds most of the other's words: a passage that sits in a section, or a short section in a passage."""
+    wa, wb = _words(a), _words(b)
+    return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= SAME_TEXT
+
+
+def section_numbers(heading: str) -> list[str]:
+    """The section numbers a passage's heading names, innermost first: the number each label after the document's
+    title opens with ("7.2 Notice" is 7.2, "ARTICLE 7 MEETINGS" is 7). A label that opens with no number names none."""
+    from jason.community.outlines import normalize_number
+
+    out: list[str] = []
+    for label in reversed([part.strip() for part in (heading or "").split(" > ")[1:]]):
+        words = label.split()
+        if not words:
+            continue
+        token = words[1] if words[0].casefold() == "article" and len(words) > 1 else words[0]
+        number = normalize_number(token.rstrip(".:-"))
+        if any(ch.isdigit() for ch in number) and number not in out:
+            out.append(number)
+    return out
+
+
+def governing_section(passage: Passage, data_dir: Path, community: Any, as_of: date, readings: Sequence[Any] = (), *,
+                      outlines: Any = None) -> tuple[Any, str, list[str], str]:
+    """The section of a document jason keeps by section that a governing passage falls in, recited as of the day:
+    (the recital, the document's key, the numbers its heading names, why none was found).
+
+    The G tier ranks passages, not sections. A passage the index cut on its sections carries the section's path in
+    its heading; the document is the one whose outline matches the passage's file (``OutlineIndex.find``, as the
+    cutter found it). Each number the heading names is tried, innermost first, and counts only when the document has
+    that section and the section's words and the passage's overlap. A passage cut by words, a file no outline
+    matches, and a heading with no number name no section: a miss with its reason, never a guess."""
+    from jason.community import law_readings
+    from jason.community.passage_sections import OutlineIndex, export_header
+
+    if not (hasattr(community, "living_documents") and hasattr(community, "citable_documents")):
+        return None, "", [], "the profile keeps no documents by section"
+    numbers = section_numbers(passage.heading)
+    if not numbers:
+        return None, "", [], ("its heading names no numbered section" if passage.heading
+                              else "it was cut by words and carries no section heading")
+    try:
+        text = Path(passage.path).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        text = ""
+    title, meta, _ = export_header(text)
+    outline = (outlines or OutlineIndex.load(Path(data_dir) / "outlines")).find(Path(passage.path), title, meta)
+    key = str((outline or {}).get("key") or "")
+    if not key:
+        return None, "", numbers, "no outline of a document jason keeps matches its file"
+    why = ""
+    for number in numbers:
+        recital = law_readings.recite(f"{key}#{number}", data_dir, readings, as_of, community=community)
+        if recital.found and _overlap(passage.text, recital.words):
+            return recital, key, numbers, ""
+        why = recital.reason or f"the passage's words are not those of {key}#{number} as jason keeps it"
+    return None, key, numbers, why
+
+
+def governing_as_of(passage: Passage, data_dir: Path, community: Any, as_of: date, readings: Sequence[Any] = (), *,
+                    outlines: Any = None) -> tuple[str, Recitation]:
+    """One governing source as of a day: (its status for the source's note, what it recites). The source's text stays
+    the passage, which is its file's words as the file reads now.
+
+    - **A document kept as amended** (``Community.living_documents()``): where the passage's words are in its
+      section as amended to the day, the passage is in force that day. Where they are not, the section's words on
+      that day are given under the passage (``Recitation.words``), and those are the words to recite.
+    - **A document kept only as it reads now:** the passage is labeled not shown to be in force that day.
+    - **A passage no section is named for:** the same label, with why. No reading is attached to it.
+
+    The readings of the section, and of each section around it the heading names, are listed last, each labeled."""
+    from jason.community import law_readings
+
+    day = as_of.isoformat()
+    recital, key, numbers, why = governing_section(passage, data_dir, community, as_of, readings, outlines=outlines)
+    if recital is None:
+        above = (f"As of: {day}",
+                 f"Not shown to be in force on {day}: these are the words of this file as it reads now. No section of a "
+                 f"document jason keeps by section is named for the passage ({why}), so its words on that day were not "
+                 "looked up, and no reading is attached by section.")
+        return f"NOT SHOWN TO BE IN FORCE on {day}: the file as it reads now", Recitation("", "", as_of, False, "unnamed", above=above)
+    target = recital.citation
+    kept = any(getattr(d, "key", "") == key for d in community.living_documents())
+    words = title = ""
+    if kept and _passage_is(passage, recital.words):
+        decided, status = "as_amended", f"in force on {day}"
+        line = (f"In force on {day}: the passage's words are in {target} as jason keeps the document amended to that day.")
+    elif kept:
+        decided, status = "as_amended_below", f"in force on {day}: the words of {target} under the passage"
+        line = (f"The passage is this file's copy as it reads now, and its words are not the words of {target} as jason "
+                f"keeps the document amended to {day}. In force on {day}: the words of {target} that follow the passage; "
+                "recite those.")
+        words, title = recital.words, f"{target} as amended to {day} (digest {recital.digest}; {recital.source}):"
+    else:
+        decided, status = "not_kept", f"NOT SHOWN TO BE IN FORCE on {day}: the file as it reads now"
+        line = (f"Not shown to be in force on {day}: {key} is not kept as amended. These are the words of this file as it "
+                "reads now, which may differ from the words in force that day.")
+    section_words = f"on {day}" if kept else "now"
+    above = (f"The passage falls in {target} ({recital.source}). Digest of the section's words {section_words}: {recital.digest}",
+             f"As of: {day}", line,
+             *(f"Caveat: {c}" for c in recital.caveats if not c.startswith(f"{key} is not kept as amended")))
+    below = list(recital.reading_lines())
+    attached = list(_attached(recital))
+    for number in numbers:
+        # A reading of a section around the passage's reads words the passage is part of.
+        outer = f"{key}#{number}"
+        if outer == target or not any(r.reads(outer) for r in readings):
+            continue
+        around = law_readings.recite(outer, data_dir, readings, as_of, community=community)
+        if around.found and (around.readings or around.not_applied or around.later):
+            below += [f"Of {outer}, a section the passage sits in (digest {around.digest}):", *around.reading_lines()]
+            attached += _attached(around)
+    return status, Recitation(target, recital.digest, as_of, kept, decided, above=above, words=words, words_title=title,
+                              below=tuple(below), readings=tuple(attached))
 
 
 # --- the records -----------------------------------------------------------------------------------------------------
@@ -845,17 +1113,45 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
              search: Callable[..., Any] | None = None, files: Callable[[DocumentKind], list[tuple[str, str, str]]] | None = None,
              fact_runner: Callable[[str, dict[str, Any]], Any] | None = None, use_index: bool = True,
              law_index: bool | None = None, embedder: Any = None, collection: Any = None,
-             records_index: bool | None = None, records_reach: RecordReach | None = None) -> ContextPack:
+             records_index: bool | None = None, records_reach: RecordReach | None = None,
+             as_of: date | None = None) -> ContextPack:
     """The pack for one task. With ``use_index`` the governing documents come from the passage index when it covers
     them (``index_covers``), and so does the law's ranking when ``law_index`` (default ``LAW_FROM_INDEX``) and the
     records when ``records_index`` (default ``RECORDS_FROM_INDEX``; ``records_reach``, default ``RECORDS_REACH``, picks
     the files of each kind); the rest are cut from the folders and the library. ``search``, ``law``, and ``files``
     replace a tier's reader (tests). ``embedder`` replaces the local embedder in dense and hybrid modes. ``collection``
     (``document_collections.Collection``) adds the C sources and the collection's context lines; without it the pack
-    is what it was before collections."""
+    is what it was before collections.
+
+    ``as_of`` is the day the matter turns on. None is today, and the page is then byte for byte what it was before a
+    review took a day; each law source still carries its provision's digest (``Source.provision``), which costs no
+    read. With a day:
+
+    - **S:** the sections are found as before, in the law as it stands now, and each is then recited as of the day
+      (``law_as_of``, through ``law_readings.recite``): the words in force that day with their range and the act
+      that made them, or the words on the shelf now under "Not shown to be in force". A section the shelf prints in
+      two versions is one source: the version its own words make operative that day, or both when they do not decide.
+    - **G:** a passage stays its file's words as the file reads now, and says so. Where its heading names a section of
+      a document jason keeps by section, the section is recited as of the day (``governing_as_of``): for a document
+      kept as amended, the section's words on that day, given under the passage when the passage is not them.
+    - **Readings** (``Community.law_readings()``): each stored reading of a provision is listed under its words,
+      labeled with whose it is, its standing, and its date; a stale one is listed as stale and not applied; one dated
+      after the day is set apart. A reading is never part of a source's text (``ContextPack.texts``).
+    - **R, C, F** are as they are now: nothing in them is recited by date.
+    - The task's prompt gains the as-of lines (``prompts.as_of_lines``), and the gaps count the sources not shown to
+      be in force that day.
+
+    Reciting a section of a document kept as amended reads its versions, which ``section_refs.build_versions``
+    caches under ``data/section-refs`` when the cache is stale, as ``jason cite`` does."""
     from jason.community.passage_index import Standing
 
-    pack = ContextPack(task, ask=ask, draft=draft, association=tuple(community.prompt_context()), collection=collection)
+    pack = ContextPack(task, ask=ask, draft=draft, association=tuple(community.prompt_context()), collection=collection,
+                       as_of=as_of)
+    readings: tuple[Any, ...] = ()
+    if as_of is not None:
+        from jason.community import law_readings
+
+        readings = law_readings.readings(community)
     rank = _ranker(mode, data_dir, embedder)
     questions = _questions(task, ask, draft)
     indexed = _indexed(data_dir) if use_index else None
@@ -881,7 +1177,8 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
 
         def search(query: str, *folders: Path | str, k: int, data_dir: Path, mode: str) -> Sequence[Any]:
             return retrieval.search(query, *folders, k=k, data_dir=data_dir, mode=mode, embedder=embedder)
-    governing = governing_sources(community, task, data_dir, ask=ask, draft=draft, k=k, mode=mode, search=search)
+    read = governing_passages(community, task, data_dir, ask=ask, draft=draft, k=k, mode=mode, search=search)
+    governing = [row for row, _ in read]
     cited: set[str] = set()
     if follow_citations:
         cited = set(cited_statutes([text for _, _, text, _, _ in governing])[0])
@@ -896,16 +1193,49 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
             else:
                 pack.gaps.append(f"{citation} is cited by a source but is not in the law on hand")
         pack.gaps += [f"{c} is a former Davis-Stirling number cited by a source; find the section in force" for c in prior]
+    from jason.community.law_text import words_digest
+
+    if as_of is not None:
+        # One source a section: two versions under one number are recited together, by their own words.
+        seen: set[str] = set()
+        chosen = [(s, score) for s, score in chosen if not (s.citation in seen or seen.add(s.citation))]
     for n, (section, score) in enumerate(chosen, 1):
         note = "found for the task's topics" if score else ""
         if section.citation in cited:
             note = (note + "; " if note else "") + "cited by a governing document"
+        words, recited = section.text, Recitation(section.citation, words_digest(section.text))
+        if as_of is not None:
+            words, status, recited = law_as_of(section, data_dir, as_of, readings, community=community)
+            note = (note + "; " if note else "") + status
         pack.sources.append(Source(f"S{n}", tier_of_citation(section.citation), section.citation,
-                                   _trim(section.text, STATUTE_CHARS), section.chapter, score, note,
-                                   standing=Standing.AUTHORITY, file=section.file, section=section.citation))
+                                   _trim(words, STATUTE_CHARS), section.chapter, score, note,
+                                   standing=Standing.AUTHORITY, file=section.file, section=section.citation,
+                                   provision=recited))
 
-    for n, (tier, title, text, place, score) in enumerate(sorted(governing, key=lambda g: (g[0], -g[4])), 1):
-        pack.sources.append(Source(f"G{n}", tier, title, text, place, score, standing=Standing.RECORD))
+    outlines = None
+    if as_of is not None and read:
+        from jason.community.passage_sections import OutlineIndex
+
+        outlines = OutlineIndex.load(data_dir / "outlines")
+    for n, ((tier, title, text, place, score), passage) in enumerate(sorted(read, key=lambda g: (g[0][0], -g[0][4])), 1):
+        if as_of is None:
+            pack.sources.append(Source(f"G{n}", tier, title, text, place, score, standing=Standing.RECORD))
+            continue
+        status, recited = governing_as_of(passage, data_dir, community, as_of, readings, outlines=outlines)
+        pack.sources.append(Source(f"G{n}", tier, title, text, place, score, status, standing=Standing.RECORD,
+                                   provision=recited))
+    if as_of is not None:
+        day = as_of.isoformat()
+        for letter, what, why in (
+                ("S", "law", "each gives the words on the shelf now under that label, with what would bring the earlier "
+                             "words (jason law-history --versions reads the session publications lawlibrary holds)"),
+                ("G", "governing", "a document not kept as amended, or a passage whose heading names no section, is given "
+                                   "as its file reads now")):
+            tier_sources = [s for s in pack.sources if s.id.startswith(letter)]
+            dark = [s.id for s in tier_sources if s.provision is not None and not s.provision.shown]
+            if dark:
+                pack.gaps.append(f"as of {day}: {len(dark)} of the {len(tier_sources)} {what} sources are not shown to be in "
+                                 f"force that day ({', '.join(dark)}): {why}")
 
     records = None
     if files is None and indexed and (RECORDS_FROM_INDEX if records_index is None else records_index):
@@ -950,7 +1280,8 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
     return pack
 
 
-__all__ = ["COLLECTION_PASSAGES", "COLLECTION_PER_FILE", "CORPUS", "GOVERNING_KINDS", "ContextPack", "LawSection",
-           "RecordReach", "Source", "assemble", "cited_statutes", "collection_sources", "fact_sources", "governing_sources",
-           "index_covers", "index_law_ranking", "index_record_sources", "index_search", "law_corpus", "law_shelf",
-           "law_sources", "library_files", "record_sources"]
+__all__ = ["COLLECTION_PASSAGES", "COLLECTION_PER_FILE", "CORPUS", "GOVERNING_KINDS", "AttachedReading", "ContextPack",
+           "LawSection", "Recitation", "RecordReach", "Source", "assemble", "cited_statutes", "collection_sources",
+           "fact_sources", "governing_as_of", "governing_passages", "governing_section", "governing_sources",
+           "index_covers", "index_law_ranking", "index_record_sources", "index_search", "law_as_of", "law_corpus",
+           "law_shelf", "law_sources", "library_files", "record_sources", "section_numbers"]
