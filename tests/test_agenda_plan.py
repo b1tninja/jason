@@ -82,7 +82,7 @@ def fakes(tmp_path, monkeypatch):
     import jason.web.sources as sources
 
     holder = {"meeting": _meeting([ITEM])}
-    monkeypatch.setattr(sources, "meeting", lambda args: holder["meeting"])
+    monkeypatch.setattr(sources, "meeting", lambda args, **_: holder["meeting"])
     try:
         yield holder
     finally:
@@ -93,9 +93,11 @@ def fakes(tmp_path, monkeypatch):
                 sys.modules[k] = v
 
 
-def test_loader_computes_readiness_from_the_plan_and_the_meeting(fakes, tmp_path):
+def test_loader_computes_readiness_from_the_plan_and_the_meeting(fakes, tmp_path, monkeypatch):
+    import jason.web.sources as sources
     from jason.web.extra.agenda_plan import agenda_plan, write
 
+    monkeypatch.setattr(sources, "_private_view", lambda day, path: True)    # the private view is open: whole candidates
     fakes["meeting"] = _meeting([ITEM, EXEC, CONFLICT])
     out = agenda_plan({})
     assert out["steps"] == ["Meeting", "Ready to act", "Order and motions", "Notice"]
@@ -141,6 +143,27 @@ def test_loader_computes_readiness_from_the_plan_and_the_meeting(fakes, tmp_path
     assert out["history"][-1].startswith(out["updated"][:10]) and "D. Okafor" in out["history"][-1]
     assert any("CIV 4926(a)(3)" in r for r in out["rules"])
     assert (tmp_path / "meetings" / "plan-2026-10-21.json").is_file()
+
+
+def test_outside_the_private_view_an_executive_candidate_is_held_by_its_4935_subject(fakes, tmp_path):
+    from jason.web.extra.agenda_plan import agenda_plan, write
+
+    fakes["meeting"] = _meeting([ITEM, EXEC])
+    out = write("2026-10-21", {"by": "D. Okafor", "items": {"payment-plan-7": {"include": True, "kind": "executive", "subject": "assessment_payment",
+                                                                              "motion": "Move to accept the made-up plan for unit 7."},
+                                                             "reserve-loan": {"include": True}}})
+    text = json.dumps(out)
+    for secret in ("payment-plan-7", "Payment plan, unit 7", "Decide the plan", "unit 7"):
+        assert secret not in text                                  # no title, ask, motion, or id; not in the history either
+    held = out["candidates"][-1]
+    assert held["held"] is True and held["id"] == "executive-1" and held["include"] is True and held["kind"] == "executive"
+    assert held["subject"] == "assessment_payment" and held["general"] and held["general"] in held["title"]
+    assert held["readiness"]["checks"] and out["executiveHeld"] == 1
+    assert out["commands"]["onAgenda"] == ['jason board --set reserve-loan --status "on agenda" --meeting 2026-10-21']
+    assert "items.executive-1.include" in out["history"][-1]
+    # Whole for a caller that keeps the private view itself (the meeting room).
+    whole = agenda_plan({}, private=True)
+    assert whole["candidates"][-1]["id"] == "payment-plan-7" and whole["executiveHeld"] == 0
 
 
 def test_loader_notice_passed_and_packet_motion(fakes):

@@ -376,17 +376,55 @@ def photos(args: Args) -> dict[str, Any]:
     return {"found": bool(albums), "albums": albums}
 
 
-def meeting(args: Args) -> dict[str, Any]:
+EXECUTIVE_HELD_TITLE = "An executive-session matter"
+EXECUTIVE_HELD_NOTE = ("{n} executive-session item(s) listed by their Civil Code 4935 subject only (4935(e)); open the "
+                       "private view to see their titles.")
+# What a held executive row keeps: where it stands, never what it is (its id is a slug of the title).
+_HELD_KEEPS = ("agendaSession", "priority", "status", "meeting", "due", "opened")
+
+
+def held_executive_row(n: int, row: dict[str, Any], subject: Any = None) -> dict[str, Any]:
+    """An executive item's row outside the private view: ``executive-<n>``, its 4935 subject (the agenda plan's, or "")
+    with the statute's general words, and where it stands; never its title, ask, summary, evidence, notes, or id."""
+    from jason.community.models.meetings import EXECUTIVE_GENERAL_TERMS, executive_subject
+
+    s = executive_subject(subject)
+    general = EXECUTIVE_GENERAL_TERMS[s][0] if s is not None else ""
+    out: dict[str, Any] = {"id": f"executive-{n}", "title": f"{EXECUTIVE_HELD_TITLE}: {general}" if general else EXECUTIVE_HELD_TITLE,
+                           "summary": "", "ask": "", "category": "", "authority": "", "evidence": [], "evidenceRefs": [],
+                           "session": "executive session", "special_notice": "", "owner": "", "notes": "", "source": "",
+                           "history": [], "held": True, "subject": s.value if s is not None else "", "general": general}
+    out.update({k: row.get(k) for k in _HELD_KEEPS if k in row})
+    return out
+
+
+def _private_view(day: str, path: str) -> bool:
+    try:
+        from jason.web.extra.meeting_room import private_view
+
+        return private_view(day, path=path)
+    except Exception:  # noqa: BLE001 - anything unclear keeps the titles held
+        return False
+
+
+def meeting(args: Args, *, private: bool | None = None) -> dict[str, Any]:
     """One board meeting as the board sees it: the date (default the schedule's next), the last days to give notice
     (CIV 4920: four days; two for an executive-only meeting), the items proposed or on the agenda by session, the agenda
     draft, the packet (each item's background, the law, what the records show now, options, a draft motion), the
     minutes frame the Secretary fills, and the commands that write the Doc, the packet, and the minutes draft. Reads
-    disk only; the page writes none of them."""
+    disk only; the page writes none of them.
+
+    The executive session is kept apart (CIV 4935(e)). The agenda draft and the minutes frame name its matters only by
+    their 4935 subjects (``board_items.agenda``). An executive item's row (its title, ask, and id) is listed only in the
+    private view (``meeting_room.private_view``, logged as ``board/items.json``); otherwise it is a held row
+    (``held_executive_row``) and ``executiveHeld`` counts them. ``private``: None asks the request; a caller that keeps
+    the private view itself (the meeting room, the agenda plan) passes True and holds back what it answers."""
     from datetime import date as _date
 
     from jason.community.board_items import ItemStatus, agenda_session
     from jason.mcp.county import _data_dir
     from jason.tasks.board_items import _encode, agenda, load, notice_date, notice_period
+    from jason.tasks.board_packet import _planned_subjects
     from jason.tasks.meeting_agenda import minutes_template
 
     community = _community()
@@ -399,7 +437,23 @@ def meeting(args: Args) -> dict[str, Any]:
         return {"found": False, "note": "date is YYYY-MM-DD"}
     items = [i for i in load(root) if i.status in (ItemStatus.PROPOSED, ItemStatus.ON_AGENDA)]
     rows = [{**_encode(i), "agendaSession": agenda_session(i).value} for i in items]
-    agenda_lines = agenda(items, day, community=community)
+    subjects = _planned_subjects(root, day)
+    agenda_lines = agenda(items, day, community=community, subjects=subjects)
+    executive_ids = [r["id"] for r in rows if r["agendaSession"] != "open session"]
+    held = 0
+    if executive_ids and private is None:
+        private = _private_view(day.isoformat(), "board/items.json")
+    if executive_ids and not private:
+        held = len(executive_ids)
+        n = 0
+        shown: list[dict[str, Any]] = []
+        for r in rows:
+            if r["id"] in executive_ids:
+                n += 1
+                shown.append(held_executive_row(n, r, subjects.get(r["id"])))
+            else:
+                shown.append(r)
+        rows = shown
     notes: list[str] = []
     try:
         from jason.tasks.board_packet import packet as build_packet
@@ -433,6 +487,7 @@ def meeting(args: Args) -> dict[str, Any]:
         "executiveNoticeAuthority": notice_period(executive_only=True, community=community)[1],
         "items": rows, "openCount": sum(1 for r in rows if r["agendaSession"] == "open session"),
         "executiveCount": sum(1 for r in rows if r["agendaSession"] != "open session"),
+        "executiveHeld": held, **({"executiveHeldNote": EXECUTIVE_HELD_NOTE.format(n=held)} if held else {}),
         "agendaMarkdown": "\n".join(agenda_lines), "packetMarkdown": packet_md, "minutesTemplate": minutes_md, "notes": notes,
         "commands": {
             "agendaDoc": f"jason board --agenda <previous agenda Doc id> --date {iso} --doc --yes",

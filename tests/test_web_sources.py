@@ -463,9 +463,12 @@ def test_meeting_builds_the_spine_from_the_board_items(county, tmp_path, monkeyp
     ]}))
     out = sources.meeting({})
     assert out["found"] and out["date"] == "2026-10-20" and out["noticeBy"] == "2026-10-16" and out["executiveNoticeBy"] == "2026-10-18"
-    assert [i["id"] for i in out["items"]] == ["reserve-loan", "unit-14-delinquency"]
+    # Outside the private view (no request here) the executive item is held: no title, ask, or id (CIV 4935(e)).
+    assert [i["id"] for i in out["items"]] == ["reserve-loan", "executive-1"] and out["executiveHeld"] == 1
+    assert "Unit 14" not in json.dumps(out) and "unit-14-delinquency" not in json.dumps(out)
     assert out["openCount"] == 1 and out["executiveCount"] == 1
     assert "Reserve loan not restored" in out["agendaMarkdown"]
+    assert [i["id"] for i in sources.meeting({}, private=True)["items"]] == ["reserve-loan", "unit-14-delinquency"]
     assert out["commands"]["packetDoc"] == "jason board --packet --date 2026-10-20 --doc --yes"
     assert sources.meeting({"date": "2026-11-17"})["noticeBy"] == "2026-11-13"
     assert sources.meeting({"date": "soon"})["found"] is False

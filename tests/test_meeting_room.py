@@ -294,10 +294,10 @@ def fakes(tmp_path, monkeypatch):
             "items": [{"id": "landscape", "title": "Renew the landscape contract", "agendaSession": "open session", "ask": "approve a bid", "authority": "CIV 5350"},
                       {"id": "hearing", "title": "Hearing, unit 7", "agendaSession": "executive session"}],
             "commands": {"minutesDraft": f"jason board --minutes {DAY}"}}
-    monkeypatch.setattr(sources, "meeting", lambda args: {"found": False, "note": "date is YYYY-MM-DD"} if args.get("date") == "bad" else base)
+    monkeypatch.setattr(sources, "meeting", lambda args, **_: {"found": False, "note": "date is YYYY-MM-DD"} if args.get("date") == "bad" else base)
     plan = types.ModuleType("jason.web.extra.agenda_plan")
     plan.result = {"found": False, "note": "not built yet"}
-    plan.agenda_plan = lambda args: plan.result
+    plan.agenda_plan = lambda args, **_: plan.result
     sys.modules["jason.web.extra.agenda_plan"] = plan
     try:
         yield types.SimpleNamespace(plan=plan, base=base, root=tmp_path)
@@ -361,7 +361,7 @@ def test_loader_orders_the_plans_included_candidates(fakes):
     assert out["items"][4]["motion"] == "Move to adjourn to executive session to discuss a member's payment of assessments (Civil Code 4935(a), (c))."
     assert out["items"][4]["executiveMatters"] == [{"ref": "1", "subject": "assessment_payment", "general": "a member's payment of assessments", "named": True}]
     assert "Delinquent accounts" not in json.dumps(out) and "delinq" not in json.dumps(out["items"][4])
-    fakes.plan.agenda_plan = lambda args: (_ for _ in ()).throw(RuntimeError("boom"))
+    fakes.plan.agenda_plan = lambda args, **_: (_ for _ in ()).throw(RuntimeError("boom"))
     out = meeting_room({"date": DAY})
     assert any("agenda plan: RuntimeError" in n for n in out["notes"]) and [i["id"] for i in out["items"]][2] == "landscape"
 

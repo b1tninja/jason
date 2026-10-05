@@ -266,6 +266,30 @@ def test_the_packet_names_an_executive_matter_by_its_subject_only(tmp_path):
     assert "a member's payment of assessments (Civil Code 4935(a), (c))" in executive and UNKNOWN_SUBJECT in executive
 
 
+def test_the_console_agenda_names_an_executive_matter_by_its_subject_only():
+    from jason.tasks.board_items import agenda
+    from jason.tasks.meeting_agenda import CONFIRM, UNKNOWN_SUBJECT
+
+    # Made-up names in executive items' titles and asks; one with the plan's subject, one jason reads, one it cannot.
+    items = [_item("plan", title="Payment plan for John Sample", ask="Accept John Sample's offer.", status=ItemStatus.PROPOSED,
+                   category=ItemCategory.COLLECTIONS),
+             _item("suit", title="Lawsuit against Acme Example Roofing", ask="Direct counsel on Acme Example.",
+                   status=ItemStatus.ON_AGENDA, session=Session.EXECUTIVE),
+             _item("odd", title="Pat Placeholder", ask="Discuss Pat Placeholder.", status=ItemStatus.PROPOSED, session=Session.EXECUTIVE),
+             _item("open", title="Repaint the carports", ask="Approve the bid.", status=ItemStatus.PROPOSED)]
+    lines = agenda(items, date(2099, 3, 17), community=mystique(), subjects={"plan": "assessment_payment"})
+    text = "\n".join(lines)
+    for secret in ("John Sample", "Accept John Sample", "Acme Example", "Direct counsel", "Pat Placeholder", "Discuss Pat"):
+        assert secret not in text
+    assert "**Repaint the carports**" in text and "Approve the bid." in text          # an open item by its title and ask
+    executive = text.split("## Executive session")[1]
+    assert "a member's payment of assessments (Civil Code 4935(a), (c))" in executive
+    assert "litigation" in executive and CONFIRM in executive and executive.count(UNKNOWN_SUBJECT) == 1
+    # The minutes frame takes one business section for the executive session, never a title.
+    frame = "\n".join(minutes_template(date(2099, 3, 17), [], lines))
+    assert "Adjourn to executive session" in frame and "Pat Placeholder" not in frame and "John Sample" not in frame
+
+
 def test_the_board_items_title_comes_from_the_profile(tmp_path):
     from types import SimpleNamespace
 

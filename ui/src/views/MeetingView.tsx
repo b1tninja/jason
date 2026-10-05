@@ -53,10 +53,13 @@ function MeetingPacketFiles({ date }: { date: string }) {
   );
 }
 
-type Row = BoardItem & { agendaSession: string };
+/** An item as the loader gives it. Outside the private view an executive one is `held`: no title, ask, or id, only its
+ * Civil Code 4935 subject (`subject`, in the statute's words `general`; 4935(e)). */
+type Row = BoardItem & { agendaSession: string; held?: boolean; subject?: string; general?: string };
 interface Decision extends DecisionDraft { id: string; meeting: string; item: string; session: string; recorded: string; updated: string; history: string[]; tally: Record<string, number>; suggested: string }
 interface Meeting {
   found?: boolean; note?: string; date: string; today: string; noticeBy: string; executiveNoticeBy: string; items: Row[]; openCount: number; executiveCount: number;
+  executiveHeld?: number; executiveHeldNote?: string;
   directors: string[]; decisions: Decision[];
   agendaMarkdown: string; packetMarkdown: string; minutesTemplate: string; notes: string[];
   commands: { agendaDoc: string; packetDoc: string; minutesDraft: string; notice: string }; caveats?: string[];
@@ -132,10 +135,11 @@ export function MeetingView() {
             <Stat label="Notice by (open meeting, CIV 4920(a))" value={<DueDate iso={d.noticeBy} today={new Date(d.today + "T12:00:00")} />} />
             <Stat label="Notice by (executive only, 4920(b)(2))" value={<DueDate iso={d.executiveNoticeBy} today={new Date(d.today + "T12:00:00")} />} />
             <Stat label="Open session items" value={d.openCount} />
-            <Stat label="Executive session items" value={d.executiveCount} hint="listed by title only; CIV 4935" />
+            <Stat label="Executive session items" value={d.executiveCount} hint="by the 4935 subject on the agenda; CIV 4935(e)" />
           </div>
           <Card title={`Items proposed or on the agenda (${d.items.length})`}>
             <p className="muted">An item is noticed for a meeting with the board's own columns; no action may be taken on one not on the noticed agenda (CIV 4930).</p>
+            {d.executiveHeldNote && <p className="notice">{d.executiveHeldNote}</p>}
             <DataTable rows={d.items} columns={cols} searchable={false} />
             <Command cmd={d.commands.notice} note="Sets the board's status and meeting on an item; nothing else changes." />
           </Card>
@@ -150,7 +154,7 @@ export function MeetingView() {
               <div className="stack">
               <MeetingPacketFiles date={d.date} />
               <Card title="Packet">
-                <p className="muted">Each item: background, the question for the board, the law quoted, what the records show now, the board's notes with live reports, options, and a draft motion. Executive items by title only.</p>
+                <p className="muted">Each item: background, the question for the board, the law quoted, what the records show now, the board's notes with live reports, options, and a draft motion. Executive items by their 4935 subject only; their research goes to the directors separately.</p>
                 {d.packetMarkdown ? <div className="preview"><Markdown text={d.packetMarkdown} /></div> : <p className="notice notice-warn">{d.notes.find((n) => n.startsWith("packet")) ?? "No packet for this meeting."}</p>}
                 <Command cmd={d.commands.packetDoc} note="Writes the packet as a confidential Doc, private until shared; a Drive write a person confirms." />
               </Card>
@@ -173,7 +177,8 @@ export function MeetingView() {
                     <p className="muted">A kept recording may be under a litigation hold; the page shows it and deletes nothing.</p>
                   </div>
                 )}
-                {d.items.map((item) => {
+                {(d.executiveHeld ?? 0) > 0 && <p className="muted">A decision on an executive matter is recorded in the private view, where its title is shown.</p>}
+                {d.items.filter((item) => !item.held).map((item) => {
                   const existing = saved[`${d.date}--${item.id}`] ?? d.decisions.find((x) => x.item === item.id);
                   return <DecisionCard key={item.id + (existing?.updated ?? "")} title={item.title} directors={d.directors} initial={existing ? { ...existing } : { session: item.agendaSession }} busy={busy} onSave={(dd) => save(d.date, item, dd)} />;
                 })}

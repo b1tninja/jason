@@ -18,6 +18,9 @@ export interface AgendaCandidate {
   id: string; title: string; ask: string; session: string; authority?: string; priority?: string; evidence?: string[];
   kind: AgendaKind; include: boolean; motion: string; allot: number; order: number; packet: DriveFile[]; brief?: Brief | null;
   readiness: { ready: boolean; checks: ReadinessCheck[] }; suggestion: string;
+  /** An executive matter outside the private view: no title, ask, motion, packet, or id; its 4935 subject only (`subject`, in
+   * the statute's general words `general`). It is changed in the private view only (CIV 4935(e)). */
+  held?: boolean; subject?: string; general?: string;
 }
 export interface NoticeLine { label: string; ready: boolean; detail?: string }
 export interface AgendaPlan {
@@ -69,12 +72,15 @@ export function clock(hhmm: string): string {
   return `${((h + 11) % 12) + 1}:${String(mm).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
 }
 
+/** What a held executive matter says: where its title is, and why it is not here. */
+export const HELD_LINE = "Listed by its Civil Code 4935 subject only; open the private view to see it and change its place on the agenda (4935(e)).";
+
 /** One candidate on the Ready to act step: include, title, readiness Pill, the checks inline, jason's one line. */
 export function ReadinessRow({ candidate, onToggle }: { candidate: AgendaCandidate; onToggle?: (include: boolean) => void }) {
   const c = candidate;
   return (
     <article className="readiness">
-      <input type="checkbox" checked={c.include} onChange={(e) => onToggle?.(e.target.checked)} aria-label={`Put ${c.title} on the agenda`} />
+      <input type="checkbox" checked={c.include} disabled={c.held} onChange={(e) => onToggle?.(e.target.checked)} aria-label={`Put ${c.title} on the agenda`} />
       <div className="readiness-body">
         <div className="row wrap">
           <strong>{c.title}</strong>
@@ -87,6 +93,7 @@ export function ReadinessRow({ candidate, onToggle }: { candidate: AgendaCandida
           ))}
         </ul>
         {c.suggestion && <p className="readiness-say">jason: {c.suggestion}</p>}
+        {c.held && <p className="muted">{HELD_LINE}</p>}
       </div>
     </article>
   );
@@ -155,7 +162,7 @@ export function AgendaWizard({ plan, onSave, busy }: { plan: AgendaPlan; onSave:
   push({ id: "call", title: "Call to order; roll call and quorum", allot: 3, fixed: true });
   openOrdered.forEach((c) => push({ id: c.id, title: c.title, allot: items[c.id].allot, fixed: false, cand: c, draft: items[c.id] }));
   push({ id: "forum", title: "Member comment (CIV 4925(b))", allot: 15, fixed: true, note: forumNote(plan.forum) });
-  if (execIncluded.length) push({ id: "exec", title: "Adjourn to executive session (CIV 4935)", allot: execIncluded.reduce((s, c) => s + (items[c.id].allot || 0), 0), fixed: true, note: execIncluded.map((c) => c.title).join("; ") + " (by title only; noted generally in the next open minutes, 4935(e))" });
+  if (execIncluded.length) push({ id: "exec", title: "Adjourn to executive session (CIV 4935)", allot: execIncluded.reduce((s, c) => s + (items[c.id].allot || 0), 0), fixed: true, note: execIncluded.map((c) => (c.held ? c.general || "a matter whose 4935 subject is not named" : c.title)).join("; ") + " (the open agenda names each by its 4935 subject only; noted generally in the next open minutes, 4935(e))" });
   push({ id: "adjourn", title: "Adjournment", allot: 1, fixed: true });
   const total = rows.reduce((s, r) => s + r.allot, 0);
   const readyCount = plan.candidates.filter((c) => c.readiness.ready && c.session !== EXEC).length;

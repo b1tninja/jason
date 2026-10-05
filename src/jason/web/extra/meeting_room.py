@@ -39,11 +39,12 @@ KIND_LABELS = {"call": "Call to order", "forum": "Open forum", "consent": "Conse
 
 
 def _candidates(date: str) -> tuple[list[dict[str, Any]], str]:
-    """The agenda plan's candidates for ``date``, or none with the reason."""
+    """The agenda plan's candidates for ``date``, or none with the reason. Whole: the room holds back the executive
+    matters' ids and titles itself (``agenda``)."""
     try:
         from jason.web.extra.agenda_plan import agenda_plan
 
-        plan = agenda_plan({"date": date})
+        plan = agenda_plan({"date": date}, private=True)
     except Exception as exc:  # the plan is another store; the room stands without it
         return [], f"agenda plan: {type(exc).__name__}: {exc}"
     if not isinstance(plan, dict) or plan.get("found") is False:
@@ -225,7 +226,8 @@ def meeting_room(args: Args) -> dict[str, Any]:
     from jason.tasks import meeting_room as store
     from jason.web.sources import meeting as meeting_loader
 
-    base = meeting_loader(args)
+    # Whole: the room's answer names an executive matter only by its 4935 subject outside the private view (``agenda``).
+    base = meeting_loader(args, private=True)
     if base.get("found") is False:
         return base
     root = _data_dir(None)
@@ -261,7 +263,8 @@ def _agenda_matters(day: str) -> list[dict[str, str]] | None:
     try:
         from jason.web.sources import meeting as meeting_loader
 
-        base = meeting_loader({"date": day})
+        # Whole: the matters' ids and titles go to the executive record (P3), never into the write's answer.
+        base = meeting_loader({"date": day}, private=True)
         if base.get("found") is False:
             return None
         candidates, _ = _candidates(day)

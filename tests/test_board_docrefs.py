@@ -123,7 +123,7 @@ def test_agenda_plan_candidates_carry_evidence_refs(data, monkeypatch):
             "priority": "high", "evidence": EVIDENCE}
     meeting = {"found": True, "date": "2099-10-21", "today": "2099-10-03", "noticeBy": "2099-10-17", "executiveNoticeBy": "2099-10-19",
                "directors": [], "decisions": [], "items": [item], "packetMarkdown": "", "commands": {}, "caveats": []}
-    monkeypatch.setattr(sources, "meeting", lambda args: meeting)
+    monkeypatch.setattr(sources, "meeting", lambda args, **_: meeting)
     out = agenda_plan({})
     c = out["candidates"][0]
     assert c["evidence"] == EVIDENCE

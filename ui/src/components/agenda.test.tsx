@@ -43,6 +43,15 @@ describe("ReadinessRow", () => {
     expect(screen.getByText("executive session")).toBeInTheDocument();
     expect(screen.getByText("ready")).toBeInTheDocument();
   });
+
+  it("holds an executive matter outside the private view: its subject only, and it cannot be toggled", () => {
+    const held = { ...plan7, id: "executive-1", title: "An executive-session matter: a member's payment of assessments", ask: "", motion: "",
+      held: true, subject: "assessment_payment", general: "a member's payment of assessments" };
+    render(<ReadinessRow candidate={held} />);
+    expect(screen.getByText(held.title)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
+    expect(screen.getByText(/open the private view to see it/)).toBeInTheDocument();
+  });
 });
 
 describe("AgendaWizard", () => {

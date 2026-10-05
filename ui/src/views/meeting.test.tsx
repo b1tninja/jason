@@ -13,7 +13,7 @@ const audioView = { kind: "audio", name: "audio.m4a", readAt: "", url: "/api/evi
 
 /** Answers /api/meeting with one noticed item and /api/embeds with the calendar and a recording dated the meeting day;
  * a view of the recording answers its short-lived link. Records each POST. */
-function mockFetch(posts: [string, unknown][] = []) {
+function mockFetch(posts: [string, unknown][] = [], meeting: Record<string, unknown> = {}) {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") posts.push([url, JSON.parse(String(init.body))]);
     return url === "/api/evidence/view" ? new Response(JSON.stringify(audioView), { status: 200 })
@@ -28,7 +28,7 @@ function mockFetch(posts: [string, unknown][] = []) {
       found: true, date: url.includes("date=") ? url.split("date=")[1] : "2026-10-20", today: "2026-10-03", noticeBy: "2026-10-16", executiveNoticeBy: "2026-10-18",
       items: [item], openCount: 1, executiveCount: 0, directors: ["A. Director", "B. Director"], decisions: [], agendaMarkdown: "# Agenda\n\n1. **Reserve loan not restored**", packetMarkdown: "# Board packet\n\n## 1. Reserve loan not restored\n\n**The question for the board.** Decide whether to restore", minutesTemplate: "# Minutes", notes: [],
       commands: { agendaDoc: "jason board --agenda <id> --date 2026-10-20 --doc --yes", packetDoc: "jason board --packet --date 2026-10-20 --doc --yes", minutesDraft: "jason board --minutes 2026-10-20", notice: "jason board --set <item id> --status \"on agenda\" --meeting 2026-10-20" },
-      caveats: ["No action may be taken on an item not on the noticed agenda (CIV 4930)."],
+      caveats: ["No action may be taken on an item not on the noticed agenda (CIV 4930)."], ...meeting,
     }), { status: 200 });
   }));
   return posts;
@@ -76,5 +76,20 @@ describe("MeetingView", () => {
     expect(document.querySelector('audio[src*="/api/file"], a[href*="/api/file"]')).toBeNull();
     expect(screen.getByText(/under a litigation hold/)).toBeInTheDocument();
     expect(screen.queryByTitle("Earlier meeting")).not.toBeInTheDocument();
+  });
+
+  it("shows a held executive item by its 4935 subject, with no decision card, outside the private view", async () => {
+    const held = { ...item, id: "executive-1", title: "An executive-session matter: a member's payment of assessments", ask: "", authority: "", category: "",
+      agendaSession: "executive session", held: true, subject: "assessment_payment", general: "a member's payment of assessments" };
+    mockFetch([], { items: [item, held], executiveCount: 1, executiveHeld: 1,
+      executiveHeldNote: "1 executive-session item(s) listed by their Civil Code 4935 subject only (4935(e)); open the private view to see their titles." });
+    render(<MeetingView />);
+    expect(await screen.findByText(/listed by their Civil Code 4935 subject only/)).toBeInTheDocument();
+    expect(screen.getByText(held.title)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /Decisions/ }));
+    expect(screen.getByText(/recorded in the private view/)).toBeInTheDocument();
+    // one card for the open item and one for "another motion"; none for the held matter
+    expect(screen.getAllByText(item.title, { selector: "strong" })).toHaveLength(1);
+    expect(screen.queryByText(held.title, { selector: "strong" })).not.toBeInTheDocument();
   });
 });

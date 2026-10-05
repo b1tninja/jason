@@ -176,9 +176,9 @@ def web(tmp_path, monkeypatch):
             "items": [{"id": "landscape", "title": "Renew the landscape contract", "agendaSession": "open session"},
                       {"id": "hearing-7", "title": TITLE, "agendaSession": "executive session"}],
             "commands": {}}
-    monkeypatch.setattr(sources, "meeting", lambda args: base)
+    monkeypatch.setattr(sources, "meeting", lambda args, **_: base)
     plan = types.ModuleType("jason.web.extra.agenda_plan")
-    plan.agenda_plan = lambda args: {"found": False, "note": "no plan"}
+    plan.agenda_plan = lambda args, **_: {"found": False, "note": "no plan"}
     sys.modules["jason.web.extra.agenda_plan"] = plan
     from jason.web.app import create_app
     from jason.web.extra.meeting_room import meeting_room
@@ -298,6 +298,78 @@ def test_the_check_counts_entries_inside_an_executive_window_without_their_text(
     out = capsys.readouterr().out
     assert out.strip() == f"{DAY}: 1 executive window(s); inside them 3 log entries, 1 motion(s), 1 poll(s), 0 suggestion(s); total 5"
     assert "made-up" not in out
+
+
+# -- the meeting page's loader: executive items' titles only in the private view ------------------------------------------
+
+EXEC_TITLE = "Payment plan for made-up owner Q. Sample"
+EXEC_ASK = "Accept Q. Sample's offer of twelve months."
+
+
+@pytest.fixture
+def meeting_web(tmp_path, monkeypatch):
+    """The real ``meeting`` loader over a tmp data folder with one open and one executive board item, the agenda plan
+    naming the executive one's 4935 subject, and an app with made-up sign-in serving ``/api/meeting``."""
+    from jason.community.board_items import BoardItem, ItemCategory, ItemStatus
+    from jason.tasks import agenda_plan
+    from jason.tasks.board_items import save
+
+    saved = {k: sys.modules.get(k) for k in ("jason.mcp", "jason.mcp.county")}
+    county = types.ModuleType("jason.mcp.county")
+    county._data_dir = lambda _=None: tmp_path
+    pkg = types.ModuleType("jason.mcp")
+    pkg.__path__ = []
+    pkg.county = county
+    sys.modules["jason.mcp"], sys.modules["jason.mcp.county"] = pkg, county
+    save(tmp_path, [BoardItem("sample-payment-plan", EXEC_TITLE, "Owner Q. Sample owes.", EXEC_ASK, ItemCategory.COLLECTIONS,
+                              status=ItemStatus.PROPOSED, notes="Offered twelve months."),
+                    BoardItem("repaint", "Repaint the carports", "Peeling.", "Approve the bid.", ItemCategory.MAINTENANCE,
+                              status=ItemStatus.PROPOSED)])
+    agenda_plan.update(tmp_path, DAY, {"items": {"sample-payment-plan": {"subject": "assessment_payment"}}}, by="S. Clerk")
+    import jason.web.sources as sources
+    from jason.web.app import create_app
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><html></html>", encoding="utf-8")
+    app = create_app(dist, {"meeting": sources.meeting}, approvals_live=None, sign_in=webclient.roster_sign_in())
+    try:
+        yield types.SimpleNamespace(app=app, root=tmp_path, sources=sources)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def test_the_meeting_loader_lists_executive_titles_only_in_the_private_view(meeting_web):
+    secrets = (EXEC_TITLE, "Q. Sample", EXEC_ASK, "sample-payment-plan", "Offered twelve months")
+    for c in (webclient.client(meeting_web.app),                                                   # nobody signed in
+              webclient.sign_in(webclient.client(meeting_web.app), "Pat Example"),                 # an office without P3
+              webclient.sign_in(webclient.client(meeting_web.app), "Dana Director")):              # P3, no private view
+        out = c.get(f"/api/meeting?date={DAY}").json
+        text = json.dumps(out)
+        assert all(s not in text for s in secrets), "an executive item's title, ask, notes, or id outside the private view"
+        held = next(r for r in out["items"] if r["agendaSession"] == "executive session")
+        assert held["held"] is True and held["id"] == "executive-1" and held["subject"] == "assessment_payment"
+        assert held["title"] == "An executive-session matter: a member's payment of assessments"
+        assert out["executiveHeld"] == 1 and out["executiveCount"] == 1 and "private view" in out["executiveHeldNote"]
+        assert any(r["title"] == "Repaint the carports" for r in out["items"])                     # an open item as it is
+        assert "a member's payment of assessments (Civil Code 4935(a), (c))" in out["agendaMarkdown"]
+    assert _served(meeting_web.root) == []
+    director = webclient.sign_in(webclient.client(meeting_web.app), "Dana Director")
+    assert director.post("/api/private", json={"reason": "executive session prep"}).status_code == 200
+    shown = director.get(f"/api/meeting?date={DAY}").json
+    row = next(r for r in shown["items"] if r["agendaSession"] == "executive session")
+    assert row["title"] == EXEC_TITLE and row["id"] == "sample-payment-plan" and shown["executiveHeld"] == 0
+    # The agenda draft is posted to members: it names the matter by its subject even in the private view.
+    assert EXEC_TITLE not in shown["agendaMarkdown"] and EXEC_ASK not in shown["agendaMarkdown"]
+    assert EXEC_TITLE not in shown["minutesTemplate"]
+    line = _served(meeting_web.root)[-1]
+    assert line["path"] == "board/items.json" and line["level"] == "P3" and line["private"] is True
+    # Whole for a caller that keeps the private view itself (the meeting room, the agenda plan); no request asked.
+    assert any(r["title"] == EXEC_TITLE for r in meeting_web.sources.meeting({"date": DAY}, private=True)["items"])
 
 
 def test_a_room_kept_apart_counts_nothing_inside_its_windows(tmp_path):

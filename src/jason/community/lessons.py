@@ -1537,9 +1537,19 @@ LESSONS: tuple[Lesson, ...] = (
            notes=("A person decides whether POST /api/write/intake refuses Keeper-record questions outright.",)),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
-           "ask.", "It predates meeting_agenda.executive_lines.",
-           "Still to do: route its executive lines through executive_lines, with a test that a title never appears.",
-           Status.OPEN),
+           "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",
+           "It predates meeting_agenda.executive_lines and the private view.",
+           "agenda() names the executive session by executive_lines with the agenda plan's subjects, so the draft and "
+           "the minutes frame carry no title. GET /api/meeting and /api/agenda-plan answer an executive item whole "
+           "only in the private view (logged); otherwise a held row with its 4935 subject. The meeting room and the "
+           "plan call them whole (private=True) and hold back themselves; the UI records no decision on a held row.",
+           Status.FIXED,
+           guards=("tests/test_board_items.py::test_the_console_agenda_names_an_executive_matter_by_its_subject_only",
+                   "tests/test_meeting_room_executive.py::test_the_meeting_loader_lists_executive_titles_only_in_the_"
+                   "private_view",
+                   "tests/test_agenda_plan.py::test_outside_the_private_view_an_executive_candidate_is_held_by_its_4935_"
+                   "subject"),
+           docs=("docs/console/screens/meetings-and-minutes.md",)),
     Lesson("teleconference-reminder-paraphrased", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
            "meeting_agenda.format_lines and the agenda template word the 4926(a)(1)(C) individual-delivery reminder in "
            "jason's own phrasing.", "They were written before the rule to recite, not paraphrase.",

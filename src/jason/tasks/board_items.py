@@ -192,10 +192,16 @@ def notice_date(meeting: date, *, executive_only: bool = False, community: Any =
     return meeting - timedelta(days=notice_period(executive_only=executive_only, community=community)[0])
 
 
-def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open: bool = False, community: Any = None) -> list[str]:
+def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open: bool = False, community: Any = None,
+           subjects: dict[str, Any] | None = None) -> list[str]:
     """A draft agenda in Markdown from the items proposed or on the agenda (and, with ``include_open``, every open item).
-    The association's name and its bylaws on a quorum come from the profile (the active one unless given)."""
+    The association's name and its bylaws on a quorum come from the profile (the active one unless given).
+
+    The agenda is posted to members, so an executive-session matter is named only by the general nature of its business
+    (CIV 4935(e)), never by its title or ask: ``meeting_agenda.executive_lines``, from ``subjects`` (the agenda plan's
+    4935 subject by item id), else jason's reading flagged to confirm, else a blank."""
     from jason.community.template_values import profile_values
+    from jason.tasks.meeting_agenda import executive_lines
 
     if community is None:
         from jason.community import community as active
@@ -232,9 +238,9 @@ def agenda(items: list[BoardItem], meeting: date | None = None, *, include_open:
         out.append("")
         out.append("## Executive session (CIV 4935); noted generally in the next open minutes (4935(e))")
         out.append("")
-        for item in executive:
-            out.append(f"{n}. **{item.title}** ({item.priority.value}). {item.ask}")
-            n += 1
+        out.append(f"{n}. **Adjourn to executive session**")
+        out.extend(f"   - {line}" for line in executive_lines([], executive, subjects or {}))
+        n += 1
     out += ["", f"{n}. Adjournment", "", "_Drafted by jason from the board's action items; the board sets the agenda._"]
     return out
 

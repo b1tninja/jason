@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Badge, Caveats, Confirm, DecisionBrief, DecisionCard, RemoteView, Stamp, type AgendaCandidate, type AgendaPlan, type Brief, type DecisionDraft, type EvidenceEntry } from "../components";
+import { HELD_LINE } from "../components/AgendaWizard";
 import { EvidenceEntries } from "../components/EvidenceEntries";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
@@ -88,8 +89,12 @@ export function DecisionsView() {
                     {c.session === "executive session" && <Badge tone="warn">executive session</Badge>}
                     {existing?.outcome && <Stamp word={existing.outcome} by={existing.by || undefined} date={existing.recorded?.slice(0, 10) || undefined} tilt={0} size="1.9em" />}
                   </div>
-                  {c.brief ? <DecisionBrief decision={c.brief} sources={c.evidenceRefs} /> :<BriefForm item={c} by={by} busy={busy} onSave={(b) => saveBrief(d.date, c, b)} />}
-                  <DecisionCard key={c.id + (existing?.updated ?? "")} title={c.title} directors={d.directors} initial={existing ? { ...existing } : { session: c.session, motion: c.motion }} busy={busy} onSave={(dd) => saveDecision(d.date, c, dd)} />
+                  {c.held ? <p className="muted">{HELD_LINE} Its brief and its decision are written there.</p> : (
+                    <>
+                      {c.brief ? <DecisionBrief decision={c.brief} sources={c.evidenceRefs} /> :<BriefForm item={c} by={by} busy={busy} onSave={(b) => saveBrief(d.date, c, b)} />}
+                      <DecisionCard key={c.id + (existing?.updated ?? "")} title={c.title} directors={d.directors} initial={existing ? { ...existing } : { session: c.session, motion: c.motion }} busy={busy} onSave={(dd) => saveDecision(d.date, c, dd)} />
+                    </>
+                  )}
                 </section>
               );
             })}

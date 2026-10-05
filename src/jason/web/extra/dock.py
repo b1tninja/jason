@@ -306,7 +306,7 @@ def _notes() -> dict[str, Any]:
 def _q_next_meeting() -> dict[str, Any]:
     from jason.web.sources import meeting
 
-    m = meeting({})
+    m = meeting({}, private=False)    # the counts only: no executive title, so no private view to ask for or log
     if not m.get("found"):
         return {"answer": "", "sources": []}
     return {"answer": f"The next board meeting is {m['date']}. The agenda notice is due by {m['noticeBy']} (CIV 4920); an executive-only meeting's by {m['executiveNoticeBy']}. "

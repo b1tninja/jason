@@ -133,7 +133,7 @@ def _required(basics: dict[str, Any], zoom: dict[str, Any], included: list[dict[
                      "detail": "" if dial else "no dial-in entered"})
     if any(c.get("session") == EXECUTIVE_WORD for c in included):
         rows.append({"label": "Executive session matters described generally (CIV 4935)", "ready": True,
-                     "detail": "listed by title only; noted generally in the next open minutes (4935(e))"})
+                     "detail": "named by the 4935 subject only, never a title; noted generally in the next open minutes (4935(e))"})
     ahead = f"{notice_days} days ahead" if notice_days else "ahead"
     rows.append({"label": f"Delivered by {notice_by}, {ahead} ({notice_authority})", "ready": today <= notice_by,
                  "detail": "" if today <= notice_by else f"the notice date has passed (today {today})"})
@@ -155,14 +155,32 @@ def _zoom(root: Any, day: str, saved: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def agenda_plan(args: Args) -> dict[str, Any]:
+def _held(n: int, c: dict[str, Any]) -> dict[str, Any]:
+    """An executive candidate outside the private view: what the plan needs to place it (its session, kind, whether it
+    is included, its minutes and order, its 4935 subject in general words) and its readiness, under ``executive-<n>``;
+    never its title, ask, motion, packet, brief, evidence, or id (CIV 4935(e))."""
+    from jason.web.sources import held_executive_row
+
+    row = held_executive_row(n, {"agendaSession": c["session"], "priority": c.get("priority", "")}, c.get("subject"))
+    checks = [{k: v for k, v in check.items() if k != "why"} for check in c["readiness"]["checks"]]
+    return {"id": row["id"], "title": row["title"], "ask": "", "session": c["session"], "authority": "", "priority": row["priority"],
+            "evidence": [], "evidenceRefs": [], "kind": c["kind"], "include": c["include"], "subject": row["subject"],
+            "general": row["general"], "motion": "", "allot": c["allot"], "order": c["order"], "packet": [], "brief": None,
+            "readiness": {"ready": c["readiness"]["ready"], "checks": checks}, "suggestion": "", "held": True}
+
+
+def agenda_plan(args: Args, *, private: bool | None = None) -> dict[str, Any]:
     """The meeting loader's output merged with the saved plan: ``candidates`` with computed readiness, ``notice`` with
-    the required contents, the ``steps``, the ``commands``, and the ``zoom`` fields a person enters by hand."""
+    the required contents, the ``steps``, the ``commands``, and the ``zoom`` fields a person enters by hand.
+
+    An executive candidate's title, ask, motion, packet, brief, and id are answered only in the private view
+    (``meeting_room.private_view``, logged as ``meetings/plan-<date>.json``); otherwise it is held (``_held``), the
+    history names it by its held id, and ``executiveHeld`` counts them. ``private`` as the meeting loader's."""
     from jason.approvals.docref import refs_from_strings
     from jason.tasks import agenda_plan as store
     from jason.web.sources import meeting
 
-    m = meeting(args)
+    m = meeting(args, private=True)
     if not m.get("found", True):
         return m
     root = _data_dir()
@@ -188,9 +206,23 @@ def agenda_plan(args: Args) -> dict[str, Any]:
             "suggestion": _suggestion(checks),
         })
     candidates.sort(key=lambda c: (c["session"] == EXECUTIVE_WORD, c["order"]))
+    history = list(plan["history"])
+    executive = [c for c in candidates if c["session"] == EXECUTIVE_WORD]
+    if executive and private is None:
+        from jason.web.sources import _private_view
+
+        private = _private_view(day, f"meetings/plan-{day}.json")
+    if executive and not private:
+        places = {c["id"]: n for n, c in enumerate(executive, 1)}
+        candidates = [_held(places[c["id"]], c) if c["id"] in places else c for c in candidates]
+        # The history names what changed by item id, a slug of its title: an executive one by its held id.
+        for real, n in sorted(places.items(), key=lambda kv: -len(kv[0])):
+            history = [line.replace(f"items.{real}.", f"items.executive-{n}.") for line in history]
     included = [c for c in candidates if c["include"]]
     commands = dict(m.get("commands") or {})
-    commands["onAgenda"] = [commands.get("notice", "").replace("<item id>", c["id"]) for c in included if commands.get("notice")]
+    # A held item's command would carry its id: it is given in the private view only.
+    commands["onAgenda"] = [commands.get("notice", "").replace("<item id>", c["id"]) for c in included
+                            if commands.get("notice") and not c.get("held")]
     from jason.tasks.meeting_room import forum_rule
 
     days, authority = m.get("noticeDays"), str(m.get("noticeAuthority") or "CIV 4920")
@@ -206,7 +238,8 @@ def agenda_plan(args: Args) -> dict[str, Any]:
         "forum": forum_rule(),
         "notice": {"by": notice_by, "executiveBy": executive_by,
                    "required": _required(plan["basics"], plan["zoom"], included, today, notice_by, days, authority)},
-        "steps": list(STEPS), "commands": commands, "updated": plan["updated"], "history": plan["history"],
+        "steps": list(STEPS), "commands": commands, "updated": plan["updated"], "history": history,
+        "executiveHeld": sum(1 for c in candidates if c.get("held")),
         "agendaMarkdown": m.get("agendaMarkdown", ""), "caveats": list(CAVEATS) + list(m.get("caveats") or []),
     }
 
