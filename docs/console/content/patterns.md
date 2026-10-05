@@ -2,7 +2,7 @@
 
 The patterns the console uses for the things it does most: show a plan, take approvals, catch a stale plan, handle what cannot be undone, tell a person what changed, show dense tables, work from the keyboard, and meet WCAG 2.2 AA. Each pattern gives the recommendation first, then the sources behind it, each with one short quote.
 
-The quotes were checked against the pages on Oct 3, 2026. Each is under 15 words.
+The quotes were checked against the pages on Oct 3, 2026. Each is under 15 words. The three patterns just before "Accessibility: WCAG 2.2 AA", which are about jason's own rules (a computed answer, a question a person answers, a decision that belongs to the board), cite the repository's axioms and screen specs instead of outside pages, and quote nothing.
 
 ## Showing a plan as a diff
 
@@ -107,6 +107,57 @@ Most of jason's PayHOA writes can be reversed by another write: a tag added can 
 - The ARIA grid pattern: "Only one of the focusable elements contained by the grid is included in the page tab sequence" ([APG: Grid](https://www.w3.org/WAI/ARIA/apg/patterns/grid/)). That is right for a spreadsheet and wrong for a list of decisions, which is why the console does not use it here.
 - GitHub notes "You can disable character key shortcuts, while still allowing shortcuts that use modifier keys" ([Keyboard shortcuts](https://docs.github.com/en/get-started/accessibility/keyboard-shortcuts)).
 - WCAG 2.1.4 requires that "A mechanism is available to turn the shortcut off" ([Understanding 2.1.4](https://www.w3.org/WAI/WCAG22/Understanding/character-key-shortcuts.html)).
+
+## A computed answer, with the facts it turns on
+
+For a screen that shows an answer jason worked out from facts: whether a rule applies, whether a program is adopted, whether a change needs approval. ([handoff-applicability-questions.md](../handoff-applicability-questions.md), [handoff-programs.md](../handoff-programs.md))
+
+**Recommendation**
+- **Three answers, never two.** Applies, does not apply, and **undetermined** are three groups with three words and three counts. A screen that totals the first two and drops the third hides the question. Undetermined is never grouped with "does not apply" and never read as "nothing due".
+- **The answer is jason's reading, and the screen says so once,** at the head of the list: "jason's reading of each row's condition against the facts on hand. A reading, not legal advice." No word on the screen reads as a ruling: not "decided", not "compliant", not "required" for an undetermined row.
+- **The facts come with the word.** Each answer is followed on the same line by the facts it **turns on** or **lacks**, each with its source (profile, document, a person's answer, the day). On a phone the facts wrap in full; they are never moved behind a disclosure and never cut short, because they are the reason to trust or doubt the word.
+- **The authority is recited first, the condition second,** and the condition is labeled as jason's words for the row, so a person can compare them with the statute's.
+- **A computed date is labeled computed,** shows what it was counted from, and where the counting date is not on record shows **date not on record** with the question, never a placeholder or "overdue".
+- **A long group may fold, never vanish.** A group of known answers that is mostly trivial (a rule about backflow, asked of a sprinkler system) folds with its heading and count in text. An undetermined group never folds.
+- **An answer given by a person is a fact, not a correction.** Where it disagrees with the specification, both are shown, the row stays undetermined, and no control picks one.
+
+**Sources**
+- AGENTS.md, "Recite the rule; label the reading" (quote, then cite; label every reading) and "Follow what is written" ("A miss stays a miss"): the screen applies them to a computed answer.
+- [content/style.md](style.md#applicability-and-programs-the-words-the-new-screens-use) for the words.
+
+## A question a person answers
+
+For a question jason cannot settle: a fact a record states, a board's choice on record, a counting date. ([handoff-applicability-questions.md](../handoff-applicability-questions.md))
+
+**Recommendation**
+- **Say what the answer decides, what would settle it, and who may give it,** before the form: the rows waiting on it, each linked; the kinds of record; and whether it is a record's fact or the board's choice.
+- **Start with nothing chosen.** No answer is pre-filled or preselected, even where jason or the profile has a value: the profile's value is shown above as stated. A suggestion the person signs reads as the person's own answer.
+- **A closed set is radio buttons;** a many-valued fact, checkboxes; a number or a date, a field of that kind. A free-text field on a closed set only makes answers the queue cannot read. Where the answer needs the record that states it, the record is a required field beside the choices, and the save control says why it is off.
+- **Save is a `Confirm` in the person's name,** with the question, the answer, and the record restated, and what it does not do ("This records what the record says. It decides nothing for the board.").
+- **A re-answer says what it replaces,** with the earlier person and day, and what it clears. If someone answered after the page was opened, the write is refused and nothing is written.
+- **Dismiss is its own act,** with its consequence beside it ("The rows stay undetermined") and a short reason.
+- **After the write, say what moved,** on every screen it reached ("3 notice rows now apply; 2 program rows now ask for a document"), in a status message in place.
+- **A refusal keeps what was typed,** except a refused secret, and says "Nothing was written."
+
+**Sources**
+- README principle 4 (nothing is recorded without a person) and the write guard ([security-and-privacy.md](../security-and-privacy.md)).
+- The intake queue's own rules (`jason.community.intake`): a new answer clears an earlier confirmation, and a secret is refused and never stored.
+
+## A decision that belongs to the board
+
+For any question the law or the documents leave to the board: a policy to adopt, a reading to confirm, a fact only the board decides, an improvement request. ([README principle 5](../README.md#principles), [approval-workflow.md](../approval-workflow.md#12-the-board-decides-by-vote))
+
+**Recommendation**
+- **There is never an approve button.** The board decides by a vote at a meeting, recorded by an officer with the meeting's date. The console has a control to **put the item on the board's agenda**, a `Confirm` in a person's name, and nothing that says approve, adopt, accept, or decide.
+- **The vote is recorded once, where every vote is** (the meeting room and the decisions screen). Every other screen reads it and says "adopted by the board at its meeting of Oct 7, recorded by NAME, secretary".
+- **A brief lists options and never recommends.** A person's or a reviewer's recommendation sits beside it, labeled with their name, never inside it and never as the system's.
+- **Until the vote, the word is "not adopted" only if the board declined;** otherwise it is **no act on record**. A draft is "proposed, not adopted".
+- **A person's act on the way is named for what it is:** "confirmed for the board's agenda by NAME", "put on the board's agenda by NAME". It never reads as the board's.
+- **What the law leaves open goes to the board as a written policy proposal** (AGENTS.md: "Where the law is silent, write it down"), and where the law is unclear rather than silent, counsel reads it first, through the board.
+
+**Sources**
+- AGENTS.md, "Where the law is silent, write it down" and its limits (jason proposes; the board adopts; a rule on a listed subject needs notice).
+- [handoff-confirmations-queue.md](../handoff-confirmations-queue.md), [handoff-programs.md](../handoff-programs.md), and [handoff-improvement-requests.md](../handoff-improvement-requests.md), which apply it.
 
 ## Accessibility: WCAG 2.2 AA
 
