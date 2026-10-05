@@ -31,7 +31,7 @@ A second association never reads the first one's data.
 |---|---|---|
 | Stores, caches, and generated pages | `data/` | `data/<profile>/` |
 | Onboarding's answers (`facts`, `leads`) | `data/spec/<profile>.json` | `data/spec/<profile>.json` |
-| Private fact topics (`bank_accounts`, `utility_accounts`, `cases`, `holds`, `senders`) | `data/spec/<profile>/<topic>.json` | `data/spec/<profile>/<topic>.json` |
+| Private fact topics (`bank_accounts`, `utility_accounts`, `cases`, `holds`, `senders`, `elevated_elements`) | `data/spec/<profile>/<topic>.json` | `data/spec/<profile>/<topic>.json` |
 
 - **The data root** is `JASON_DATA_DIR` (environment or `.env`) when set, else `data/` beside the checkout (`jason.config.data_root`). It is the only place the folder is named.
 - **A profile's data folder** is the folder of `PAYHOA_CATALOG` when `.env` sets it, else `jason.config.default_data_dir()`. Code asks `jason.config.data_dir()` or the settings when it needs the path, never `Path("data")` and never a default argument that evaluates the profile. `tests/test_profile_data.py` fails on a new `Path("data")` in `src/jason`.

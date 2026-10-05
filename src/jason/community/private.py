@@ -5,8 +5,8 @@ number, a person's name or address, a settlement figure, counsel's direct contac
 never checked in, and each profile has its own:
 
 - ``spec/<profile>.json``: the profile's own facts file, the answers onboarding records (``facts``, ``leads``);
-- ``spec/<profile>/<topic>.json``: one file per topic (``bank_accounts``, ``cases``, ``holds``, ``senders``,
-  ``utility_accounts``), read by ``facts(topic)``.
+- ``spec/<profile>/<topic>.json``: one file per topic (``bank_accounts``, ``cases``, ``elevated_elements``,
+  ``holds``, ``senders``, ``utility_accounts``), read by ``facts(topic)``.
 
 ``facts(name)`` reads the active profile's; a missing file is an empty answer, so a checkout without the private data
 still runs, with those facts absent. A second association never reads the first one's topics.
