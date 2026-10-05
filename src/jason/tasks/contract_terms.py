@@ -44,6 +44,9 @@ class TermsReading:
     noise: list[dict[str, Any]] = field(default_factory=list)   # what ``page_noise.strip_noise`` removed
     options: list[Any] = field(default_factory=list)    # ``checked_options.Option``, each offered option and its mark
     excluded: list[str] = field(default_factory=list)   # the items listed under an "Exclusions:" heading
+    scope: list[dict[str, Any]] = field(default_factory=list)       # ``scope_items``: each item, its kind and party
+    warranties: list[dict[str, Any]] = field(default_factory=list)  # ``warranties``: who warrants what, for how long
+    signatures: list[dict[str, Any]] = field(default_factory=list)  # ``signature_blocks``: each signing block
 
     @property
     def deliverables(self) -> list[ct.ContractTerm]:
@@ -66,6 +69,7 @@ class TermsReading:
                 "noise": list(self.noise),
                 "options": [{"label": o.label, "checked": o.checked, "marker": o.marker} for o in self.options],
                 "excluded": list(self.excluded),
+                "scope": list(self.scope), "warranties": list(self.warranties), "signatures": list(self.signatures),
                 "findings": [{"code": f.code, "message": f.message, "severity": f.severity.value,
                               "authority": f.authority} for f in self.findings],
                 "dropped": self.dropped}
@@ -110,13 +114,123 @@ def read(text: str, *, key: str, name: str = "", backend: Any = None, confidenti
             seen.add((o.label.lower(), o.checked))
             options.append(o)
     excluded = list(dict.fromkeys(excluded_items(clean)))
+    scope, signatures = scope_of(clean, parties), signatures_in(clean)
+    warranties = warranties_in(clean, parties, counterparty)
     return TermsReading(key=key, name=name or key, text_sha=hashlib.sha256(body.encode("utf-8")).hexdigest()[:16],
                         counterparty=counterparty, parties=parties, terms=terms,
                         findings=ct.findings(terms) + license_findings(licenses, counterparty) + notice_findings(notices)
-                        + option_findings(options, excluded),
+                        + option_findings(options, excluded) + scope_findings(scope, warranties, signatures),
                         method=method, dropped=dropped, confidential=confidential, licenses=licenses, noise=noise,
-                        options=options, excluded=excluded,
+                        options=options, excluded=excluded, scope=scope, warranties=warranties, signatures=signatures,
                         read_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+
+def _side(parties: ct.PartyTerms, words: str) -> str:
+    """The party ``words`` name, or "unstated": a holder the text does not tie to a side is never guessed."""
+    return parties.party_of(words).value if words else ct.Party.UNSTATED.value
+
+
+def scope_of(text: str, parties: ct.PartyTerms) -> list[dict[str, Any]]:
+    """The scope items (``scope_items``), each the counterparty's work unless it sits under the association's role
+    label ("CUSTOMER:"); an optional or alternate item is not in the base price."""
+    from jason.community.scope_items import find_scope_items
+
+    out, seen = [], set()
+    for item in find_scope_items(text):
+        if item.text.lower() in seen:            # a contract printed twice lists its scope once
+            continue
+        seen.add(item.text.lower())
+        side = parties.party_of(item.heading) if item.heading else ct.Party.UNSTATED
+        party = ct.Party.ASSOCIATION if side is ct.Party.ASSOCIATION else ct.Party.COUNTERPARTY
+        out.append({"text": item.text, "kind": item.kind.value, "heading": item.heading, "party": party.value})
+    return out
+
+
+def warranties_in(text: str, parties: ct.PartyTerms, counterparty: str = "") -> list[dict[str, Any]]:
+    """Each warranty the contract gives (``warranties``): who, what, for how long, and from when.
+
+    The holder is the party its words name, or the counterparty's own name. In the counterparty's own form, a passive
+    warranty of the work ("All work performed is guaranteed for 7 years") is the counterparty's, labeled as a reading,
+    as a passive duty is (``contract_terms.PASSIVE_READING``). A noun warranty with no holder ("The roof's warranty is
+    ten years") keeps "unstated": a manufacturer's warranty is not the vendor's."""
+    from jason.community.warranties import WarrantyForm, find_warranties
+
+    out = []
+    for w in find_warranties(text):
+        party, note = _side(parties, w.holder_words), ""
+        if party == ct.Party.UNSTATED.value and w.holder_words and counterparty and \
+                _same_party(w.holder_words, counterparty):
+            party = ct.Party.COUNTERPARTY.value
+        elif party == ct.Party.UNSTATED.value and w.form is WarrantyForm.PASSIVE and parties.vendor_form:
+            party, note = ct.Party.COUNTERPARTY.value, ct.PASSIVE_READING
+        out.append({"holder": w.holder_words, "party": party, "note": note, "form": w.form.value,
+                    "covers": [c.value for c in w.covers], "covered": w.covered_words, "months": w.period_months,
+                    "start": w.start.value if w.start else "", "written": w.written, "deliverable": w.deliverable,
+                    "sentence": " ".join(w.sentence.split())[:240]})
+    return out
+
+
+def signatures_in(text: str) -> list[dict[str, Any]]:
+    """Each signing block (``signature_blocks``): for whom, by whom, the title, the date, and whether it is signed."""
+    from jason.community.signature_blocks import signature_blocks
+
+    return [{"for": b.party_words, "signer": b.signer, "title": b.title, "date": b.date, "signed": b.signed,
+             "kind": b.kind.value} for b in signature_blocks(text)]
+
+
+def scope_findings(scope: list[dict[str, Any]], warranties: list[dict[str, Any]],
+                   signatures: list[dict[str, Any]]) -> list[Finding]:
+    """Leads from the scope, the warranties, and the signing: an option outside the base price, each warranty's term,
+    and a copy no one has signed."""
+    from jason.community.document_models import Severity
+
+    out = []
+    options = [s["text"] for s in scope if s["kind"] == "optional or alternate"]
+    if options:
+        out.append(Finding("scope-options", f"offered at extra cost or as an alternate, not in the base price: "
+                           f"{'; '.join(o[:80] for o in options[:6])}", Severity.INFO))
+    for w in warranties:
+        if w["months"]:
+            out.append(Finding("warranty", f"{w['holder'] or 'unnamed'} ({w['party']}) warrants "
+                               f"{w['covered'] or ', '.join(w['covers']) or 'the work'} for {w['months']} months"
+                               + (f" from {w['start']}" if w["start"] else "") + f": \"{w['sentence'][:160]}\"",
+                               Severity.INFO))
+    if signatures and not any(s["signed"] for s in signatures):
+        out.append(Finding("unsigned-copy", "the signature blocks are blank: this copy is not the signed agreement; the "
+                           "signed copy is the record", Severity.CHECK))
+    return out
+
+
+def fill_options_from_pdf(reading: TermsReading, pdf: Path) -> int:
+    """Settle the options the text could not read (``checked=None``) from the marks' places on the PDF's pages
+    (``layout_marks``). Only an option still unread is filled, matched by its label; a mark the layout cannot place
+    stays unread. Returns how many were filled; the findings are recomputed for the options."""
+    from jason.community.checked_options import Option
+    from jason.community.layout_marks import marks_from_pdf
+
+    unread = {" ".join(o.label.split()).lower(): i for i, o in enumerate(reading.options) if o.checked is None}
+    if not unread:
+        return 0
+    try:
+        import pymupdf
+    except ImportError:  # pragma: no cover - the pdf extra is not installed
+        import fitz as pymupdf
+    with pymupdf.open(str(pdf)) as doc:
+        pages = doc.page_count
+    filled = 0
+    for page in range(pages):
+        layout = marks_from_pdf(pdf, page)
+        for lo in layout.options:
+            i = unread.get(" ".join(lo.label.split()).lower())
+            if i is not None and lo.checked is not None:
+                o = reading.options[i]
+                reading.options[i] = Option(o.label, lo.checked, o.marker, o.start, o.end)
+                filled += 1
+                unread.pop(" ".join(lo.label.split()).lower())
+    if filled:
+        keep = [f for f in reading.findings if f.code not in ("options-chosen", "options-not-read", "excluded-items")]
+        reading.findings = keep + option_findings(reading.options, reading.excluded)
+    return filled
 
 
 def option_findings(options: list[Any], excluded: list[str]) -> list[Finding]:
@@ -261,6 +375,20 @@ def markdown(reading: TermsReading, *, quote_chars: int = 220) -> str:
         out.append(f"- License: {m.label} {m.number}" + (f" ({m.classification})" if m.classification else "")
                    + (f", {m.jurisdiction}" if m.jurisdiction and m.jurisdiction != "CA" else "")
                    + (f", beside {m.holder}" if m.holder else "") + (f"; check {m.verify}" if m.verify else ""))
+    for s in reading.signatures:
+        out.append(f"- Signing block{' for ' + s['for'] if s['for'] else ''}: "
+                   + (f"signed by {s['signer'] or 'a signature'}" + (f", {s['title']}" if s["title"] else "")
+                      + (f", {s['date']}" if s["date"] else "") if s["signed"] else "blank"))
+    if reading.scope:
+        out += ["", "## Scope of work", "", "| Party | Kind | Item |", "| --- | --- | --- |"]
+        out += [f"| {s['party']} | {s['kind']} | {_cell(s['text'][:quote_chars])} |" for s in reading.scope]
+    if reading.warranties:
+        out += ["", "## Warranties", "", "| Holder | Covers | Months | From | Words |", "| --- | --- | --- | --- | --- |"]
+        out += [f"| {_cell(w['holder'] or 'unnamed')} ({w['party']}) | {_cell(w['covered'] or ', '.join(w['covers']))} | "
+                f"{w['months'] or ''} | {w['start']} | {_cell(w['sentence'][:quote_chars])} |" for w in reading.warranties]
+    if reading.options:
+        out += ["", "## Options offered", ""]
+        out += [f"- {'[x]' if o.checked else '[ ]' if o.checked is False else '[?]'} {o.label}" for o in reading.options]
     out += ["", "## Findings", ""]
     out += [f"- **{f.code}** ({f.severity.value}{', ' + f.authority if f.authority else ''}): {_cell(f.message)}"
             for f in reading.findings] or ["None."]

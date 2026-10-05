@@ -160,7 +160,13 @@
           "contains": "strict accordance with NFPA #25 2013 CALIFORNIA",
           "standard": "NFPA 25 (2013 California Edition), Title 19"
         }
-      ]
+      ],
+      "signature": {
+        "signer": "Example Director",
+        "title": "Board member",
+        "date": "2026-04-16"
+      },
+      "max_unstated_pct": 40
     },
     "open": {
       "checked_options": {
@@ -175,13 +181,7 @@
           ]
         },
         "from_text": "not read"
-      },
-      "signature": {
-        "signer": "Example Director",
-        "title": "Board member",
-        "date": "2026-04-16"
-      },
-      "max_unstated_pct": 40
+      }
     }
   },
   "03_roof_repair_letterhead.txt": {
@@ -244,9 +244,7 @@
           "kind": "duty",
           "party": "counterparty"
         }
-      ]
-    },
-    "open": {
+      ],
       "scope_items": [
         "Reset and secure 3 slipped/loose tiles",
         "Replace approximately 12 linear feet of flashing",
@@ -255,7 +253,8 @@
       "alias_deliverables": [
         "written warranty of five (5) years"
       ]
-    }
+    },
+    "open": {}
   },
   "04_management_agreement.txt": {
     "shape": "A management agreement with defined parties ('the \"Association\"', 'hereinafter \"MANAGER\"'), a page footer inside a sentence, an exemption written as 'shall not be obligated', a disclaimer, an effort standard, sole discretion over fees, and termination for any reason.",
@@ -311,13 +310,12 @@
           "contains": "Manager will endeavor to make helpful suggestions",
           "holder": "counterparty"
         }
-      ]
-    },
-    "open": {
+      ],
       "noise_excluded": [
         "Page 3 of 22 Version 3.33 BK, Revised 1/1/2022"
       ]
-    }
+    },
+    "open": {}
   },
   "05_landscape_signature_block.txt": {
     "shape": "The parties defined as we/you in the opening; a signature block whose 'Initial' and 'President' / 'Company' lines must not become the counterparty's name; the word 'breach' in a sentence that is not about breach; scope promised 'at no additional cost'.",
@@ -368,13 +366,12 @@
       "exemptions": [
         "we make no representations or warranties as to the installed materials",
         "We shall not be responsible for any damages other than direct damages"
-      ]
-    },
-    "open": {
+      ],
       "scope_items": [
         "repair minor leaks at no additional cost"
       ]
-    }
+    },
+    "open": {}
   },
   "06_implementation_role_labels.txt": {
     "shape": "An order form whose vendor uses a short name ('Sample Cameras') for 'Sample Cameras Group Inc.', implementation steps under line-leading role labels ('SAMPLE CAMERAS:' and 'CUSTOMER:'), imperative lines under each label, and a right to change the terms unilaterally.",
@@ -457,9 +454,7 @@
       ],
       "exemptions": [
         "Exclusions: permits, engineering, and repairs to the base"
-      ]
-    },
-    "open": {
+      ],
       "scope_items": [
         "Crack seal all cracks over 1/4 inch",
         "Apply two coats of seal coat",
@@ -474,7 +469,8 @@
           "period_months": 12
         }
       ]
-    }
+    },
+    "open": {}
   },
   "08_association_drafted_we.txt": {
     "shape": "The association's own form, which defines 'we' as the Association and 'you' as the Contractor: the definition must win over the default (we = counterparty).",
@@ -513,15 +509,14 @@
           "degree": "permission without duty",
           "holder": "association"
         }
-      ]
-    },
-    "open": {
+      ],
       "consent_release": [
         {
           "contains": "without our prior written consent",
           "holder": "association"
         }
       ]
-    }
+    },
+    "open": {}
   }
 }

@@ -259,3 +259,26 @@ def test_ingest_stage_reads_contracts_only(tmp_path):
     notes = read_terms([contract, minutes], {contract.sha256: CONTRACT, minutes.sha256: CONTRACT}, tmp_path)
     assert not notes and contract.terms["terms"] > 0 and not minutes.terms
     assert (tmp_path / task.STORE / f"ingest-{contract.key}.json").is_file()
+
+
+def test_options_the_text_cannot_read_are_filled_from_the_page_layout(tmp_path):
+    pymupdf = pytest.importorskip("pymupdf")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for y, line in ((100, "______ Five Year Inspection"), (120, "______ Annual Inspection"),
+                    (140, "______ Quarterly Inspection")):
+        page.insert_text((50, y), line, fontsize=11)
+    page.insert_text((62, 119), "X", fontsize=11)
+    page.insert_text((62, 139), "X", fontsize=11)
+    pdf = tmp_path / "proposal.pdf"
+    doc.save(str(pdf))
+    doc.close()
+    text = ("Example Fire Sprinkler Company proposes the inspections below.\n"
+            "______ Five Year Inspection\n______ Annual Inspection\n______ Quarterly Inspection\n")
+    reading = task.read(text, key="file-proposal", name="proposal.pdf")
+    assert [o.checked for o in reading.options] == [None, None, None]
+    assert task.fill_options_from_pdf(reading, pdf) == 3
+    assert {o.label: o.checked for o in reading.options} == {
+        "Five Year Inspection": False, "Annual Inspection": True, "Quarterly Inspection": True}
+    codes = {f.code for f in reading.findings}
+    assert "options-chosen" in codes and "options-not-read" not in codes

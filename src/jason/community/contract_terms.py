@@ -573,6 +573,8 @@ class ContractTerm:
     discretion: str = ""             # ``discretion.Degree`` value: the room the term leaves its holder
     discretion_over: str = ""        # what that room is over: price, terms, termination, ...
     standards: tuple[str, ...] = ()  # the codes or standards the term brings in by reference
+    warranty_months: int = 0         # the warranty's period the term gives (``warranties``), 0 for none or unstated
+    consent: str = ""                # whose consent or approval the term requires (``consent``): a Party value or words
 
     @property
     def id(self) -> str:
@@ -867,7 +869,9 @@ def _qualify(text: str, parties: PartyTerms, sections: list[Section], out: list[
     a party or gives one room is read as a term too, so the reading carries every exemption and discretion."""
     from jason.community.discretion import discretion_of
     from jason.community.exemptions import clauses, exemption_of
+    from jason.community.consent import consent_of
     from jason.community.incorporated_standards import incorporated, label
+    from jason.community.warranties import warranties_of
 
     def qualified(t: ContractTerm) -> ContractTerm:
         changes: dict[str, Any] = {}
@@ -892,6 +896,17 @@ def _qualify(text: str, parties: PartyTerms, sections: list[Section], out: list[
         found = incorporated(t.quote)
         if found:
             changes["standards"] = tuple(dict.fromkeys(label(s) for s in found))
+        # A warranty the term gives: its period, and a written warranty promised is a deliverable ("EHS will provide a
+        # written warranty of five (5) years").
+        given = [w for w in warranties_of(t.quote) if w.period_months or w.deliverable]
+        if given and t.kind is not TermKind.EXEMPTION:
+            changes["warranty_months"] = next((w.period_months for w in given if w.period_months), 0)
+            if any(w.deliverable for w in given) and t.party is Party.COUNTERPARTY:
+                changes["deliverable"] = True
+        gate = consent_of(t.quote)
+        if gate is not None:
+            who = parties.party_of(gate.holder_words) if gate.holder_words else Party.UNSTATED
+            changes["consent"] = who.value if who is not Party.UNSTATED else gate.holder_words
         return dc_replace(t, **changes) if changes else t
 
     terms = [qualified(t) for t in out]

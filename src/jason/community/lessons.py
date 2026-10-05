@@ -639,6 +639,19 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("jason.community.contract_terms._qualify", "jason.community.exemptions",
                                  "tests/test_contract_fixtures.py::test_exemptions_discretion_standards_and_options"),
            docs=("docs/contracts.md (Parties and licenses)",)),
+    Lesson("warranty-holder-unattributed", OCT_2026, (Area.CONTRACTS,),
+           "On the library's contracts, every warranty read came back with no party: \"Example Co. warranties all work "
+           "for one year\" (the noun used as the verb), \"All work performed is guaranteed for 7 years\" in the vendor's "
+           "own form, and a holder named by the company's full name; and \"guarantees the pricing ... one year\" was read "
+           "as a warranty.",
+           "The warranty rows knew the verb and the noun but not the vendor's own usage; the party map knew the defined "
+           "words but not the counterparty's name; a price lock shares the warranty's words.",
+           "A row reads \"warranties all work\"; a holder matching the counterparty's name is the counterparty's; a "
+           "passive warranty in the counterparty's own form is its, labeled as a reading; a price lock is refused. A "
+           "noun warranty with no holder stays unattributed, since a manufacturer's warranty is not the vendor's.",
+           Status.FIXED, guards=("jason.community.warranties (_PRICE_LOCK, the 'warranties' row)",
+                                 "jason.tasks.contract_terms.warranties_in", "tests/test_warranties.py"),
+           docs=("docs/contracts.md (Parties and licenses)",)),
     Lesson("contract-terms-console-encoding", OCT_2026, (Area.CONTRACTS,),
            "jason contract-terms --library stopped after reading every file because the Windows console could not print "
            "a contract's bullet (\"▪\"); the readings were saved, but the run reported an error.",

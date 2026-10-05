@@ -279,7 +279,26 @@ ingest report's "Contract terms" table summarizes each file.
   no cue is a mention, not an incorporation, and a city's "Title 19" is not the state's.
 - **Checked options** (`checked_options`): the options a proposal offers and whether its own line marks each one. A
   mark that the text layer puts elsewhere belongs to an option only by its place on the page. Such an option is left
-  unread (`options-not-read`), never guessed. A signature block's blank ("(print name)") is not an option.
+  unread (`options-not-read`), never guessed. A signature block's blank ("(print name)") is not an option. For a PDF,
+  `jason contract-terms FILE.pdf` then reads the page layout (`layout_marks`). A mark on an option's blank or its
+  baseline settles that option. A mark that fits two options, or none, stays unread. Only an option the text left
+  unread is filled.
+- **Scope of work** (`scope_items`) is read in three kinds:
+  - Work: a scope line, bulleted or a plain order ("Reset and secure 3 slipped tiles").
+  - Included: what the price covers ("Traffic control is included at no additional cost").
+  - Optional or alternate: an item offered at extra cost or under an optional heading. It is not in the base price
+    (`scope-options`).
+  - Never scope: a line under "Exclusions", or work "by others" or "by owner".
+  - The work is the counterparty's, unless it sits under the association's role label.
+- **Warranties** (`warranties`): who warrants what, for how long in months, and from when. "will provide a written
+  warranty of five (5) years" makes the term a deliverable. A disclaimer is an exemption, not a warranty. A warranty
+  with no holder ("The roof's warranty is ten years") stays unattributed, because a manufacturer's warranty is not the
+  vendor's.
+- **Consent** (`consent`) records whose consent or approval a term requires: "without our prior written consent", or
+  "subject to Board approval". A document's approval ("upon approval of this proposal") names no party and is not a
+  consent gate.
+- **Signing** (`signature_blocks`) records each block's party, signer, title, and date. If every block is blank, the
+  copy is not the signed agreement (`unsigned-copy`). "Prepared by:" and "Submitted by:" are not signatures.
 
 **Licenses** (`jason.community.licenses`, `jason licenses`):
 

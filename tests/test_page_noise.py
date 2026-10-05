@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from jason.community.page_noise import strip_noise
 
@@ -46,11 +49,14 @@ def test_page_numbers_go_and_are_grouped_by_shape():
     assert pages["count"] == 3 and pages["text"] == "Page 2 of 4"
 
 
-def test_footer_inside_a_sentence_is_left_alone():
+def test_form_footer_inside_a_sentence_is_cut_and_the_sentence_joined():
     text = (FIXTURES / "04_management_agreement.txt").read_text(encoding="utf-8")
     clean, removed = strip_noise(text)
-    assert "Manager shall have no Page 3 of 22 Version 3.33 BK, Revised 1/1/2022 authority" in clean
-    assert removed == []
+    assert "Manager shall have no authority to execute or enter into contracts" in clean
+    assert "Version 3.33" not in clean and "Page 3 of 22" not in clean
+    assert removed == [{"kind": "form-footer", "text": "Page 3 of 22 Version 3.33 BK, Revised 1/1/2022", "count": 1,
+                        "row": "page-then-stamp"}]
+    assert clean.count("\n") == text.count("\n")
 
 
 def test_running_header_on_each_page_is_kept_once_and_form_feeds_survive():
@@ -68,3 +74,70 @@ def test_a_line_repeated_twice_is_not_a_running_line():
     text = "Customer: Example Community Association\nTerms\nCustomer: Example Community Association\n"
     clean, removed = strip_noise(text)
     assert clean == text and removed == []
+
+
+# --- Form footers: a page count with the form's version or revision stamp, cut wherever it sits ----------------------
+
+
+def _expected_noise():
+    data = json.loads((FIXTURES / "expected.json").read_text(encoding="utf-8"))
+    for name, row in data.items():
+        if name.startswith("_"):
+            continue
+        for words in {**row.get("expect", {}), **row.get("open", {})}.get("noise_excluded", []):
+            yield name, words
+
+
+@pytest.mark.parametrize("name,words", list(_expected_noise()))
+def test_expected_noise_rows_are_stripped(name, words):
+    clean, _ = strip_noise((FIXTURES / name).read_text(encoding="utf-8"))
+    assert " ".join(words.split()).lower() not in " ".join(clean.split()).lower()
+
+
+def test_form_footer_and_its_repeats_go_on_their_own_lines_and_inside_sentences():
+    footer = "Page {} of 3 Version 2.1 XY, Revised 3/15/2024"
+    text = "\f".join([
+        f"1. The contractor shall clean the gutters.\n{footer.format(1)}",
+        f"2. The contractor shall {footer.format(2)} haul away debris.\n",
+        f"{footer.format(3)}\n3. The owner shall pay on receipt.",
+    ])
+    clean, removed = strip_noise(text)
+    assert "Version 2.1" not in clean and "Revised 3/15/2024" not in clean
+    assert "2. The contractor shall haul away debris." in clean
+    assert clean.count("\f") == 2
+    footers = kinds(removed)["form-footer"]
+    assert footers["count"] == 3 and footers["text"] == footer.format(1)
+
+
+def test_stamp_before_the_page_count_is_cut_too():
+    text = "Rev. 4 AB, Revised 01/2023 Page 2 of 9\nThe vendor shall carry insurance.\n"
+    clean, removed = strip_noise(text)
+    assert clean == "The vendor shall carry insurance.\n"
+    assert kinds(removed)["form-footer"]["row"] == "stamp-then-page"
+
+
+def test_footer_cut_keeps_indent_and_the_following_word():
+    clean, _ = strip_noise("    Page 1 of 2 Version 1.0 the Board shall meet.")
+    assert clean == "    the Board shall meet."      # a lowercase word after the version is not a form code
+
+
+@pytest.mark.parametrize("text", [
+    "The rules were adopted and as revised on 1/1/2022 by the Board remain in force.\n",
+    "Version 2 of the reserve study is attached as Exhibit B.\n",
+    "The form was Revised 1/1/2022 and Version 3.33 is current.\n",
+    "See Page 3 of 22 of the reserve study for the component list.\n",
+    "Exhibit A, Page 3 of 22, lists the version of the plans revised by the architect.\n",
+])
+def test_version_or_revision_in_contract_words_is_kept(text):
+    clean, removed = strip_noise(text)
+    assert clean == text and removed == []
+
+
+def test_a_plans_revision_cited_in_a_sentence_is_kept():
+    text = "The fee schedule (see Page 2 of 5 Rev. 3 of the attached plans) applies.\n"
+    assert strip_noise(text)[0] == text
+
+
+def test_a_sentence_opening_after_a_footer_keeps_its_first_word():
+    clean, removed = strip_noise("Page 1 of 2 Version 1.0 A contractor shall keep the site clean.\n")
+    assert clean.strip() == "A contractor shall keep the site clean." and removed

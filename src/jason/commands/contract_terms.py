@@ -150,6 +150,11 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
                 except task.RemoteRefused as exc:
                     print(f"jason contract-terms: {exc}", file=sys.stderr)
                     return 2
+                if not file_id and path.suffix.lower() == ".pdf":
+                    # An option whose mark the text layer put elsewhere is read from the page layout.
+                    filled = task.fill_options_from_pdf(reading, path)
+                    if filled:
+                        log(f"{name}: {filled} options read from the page layout")
                 log(f"saved {task.save(root, reading)}")
                 readings.append(reading)
     except ModelUnavailable as exc:

@@ -146,3 +146,25 @@ def test_exemptions_discretion_standards_and_options(readings, name):
     if exp.get("options_not_read"):
         assert all(options.get(x, "missing") is None for x in exp["options_not_read"]), options
         assert any(f["code"] == "options-not-read" for f in r["findings"])
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_scope_warranties_consent_and_signing(readings, name):
+    r, exp = readings[name], EXPECTED[name]["expect"]
+    for words in exp.get("scope_items", []):
+        assert any(_n(words) in _n(s["text"]) for s in r["scope"]), f"scope item not read: {words!r}"
+    for want in exp.get("warranty", []):
+        hit = next((w for w in r["warranties"] if _n(want["contains"]) in _n(w["sentence"])), None)
+        assert hit is not None, f"warranty not read: {want['contains']!r}"
+        assert hit["party"] == want["party"] and hit["months"] == want["period_months"], hit
+    by_id = {t["id"]: t for t in r["terms"]}
+    delivered = [_n(by_id[i]["quote"]) for i in r["deliverables"] if i in by_id]
+    for words in exp.get("alias_deliverables", []):
+        assert any(_n(words) in d for d in delivered), f"no deliverable holds {words!r}"
+    for want in exp.get("consent_release", []):
+        hit = _term(r, want["contains"])
+        assert hit is not None and hit["consent"] == want["holder"], hit
+    if "signature" in exp:
+        want = exp["signature"]
+        assert any(s["signed"] and s["signer"] == want["signer"] and s["title"] == want["title"]
+                   and s["date"] == want["date"] for s in r["signatures"]), r["signatures"]
