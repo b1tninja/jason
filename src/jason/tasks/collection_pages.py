@@ -14,9 +14,13 @@ and later a vendor's file or a meeting's packet. ``summarize`` reads the stores 
    statements it gave. A file the collection's rule holds back is counted, never named.
 4. **What is missing or unread**: files with no text, image pages unread, words an OCR engine read, files that gave
    no dated statement, mentions of a month and a day with no year, and what the conflict rules could not compare.
-5. **Open questions**: the facts the stores leave undetermined. jason answers none.
-6. **Conflicts of fact** (``fact_conflicts``): every side kept, neither picked.
-7. **Chronology: what the documents say** (``chronology``): the documents' own dates apart from the dates they speak
+5. **Citations of the law** (``law_citations``): each statute the documents cite, resolved to the law in force on the
+   day asked (``as_of``; the shelf now without one). A former number is read through the successor table on disk and
+   both the former section and its successor are recited where held ("cites former X, now Y"); one the table does
+   not place stays open, and no successor is guessed.
+6. **Open questions**: the facts the stores leave undetermined. jason answers none.
+7. **Conflicts of fact** (``fact_conflicts``): every side kept, neither picked.
+8. **Chronology: what the documents say** (``chronology``): the documents' own dates apart from the dates they speak
    about, each statement quoted with its file and passage.
 
 Every statement names the file and passage it rests on, and nothing here finds that an event happened: it says only
@@ -40,6 +44,7 @@ from typing import Any, Iterable, Sequence
 
 from jason.community import chronology as ch
 from jason.community import fact_conflicts as fc
+from jason.community import law_citations as lc
 from jason.community.document_collections import (CHRONOLOGY_SECTION, SUMMARY_LABEL, SUMMARY_PAGE, Collection,
                                                   CollectionKind, case_matter, context_heading, duty_line)
 from jason.community.passage_index import IndexFile, Standing
@@ -47,6 +52,7 @@ from jason.community.passage_index import IndexFile, Standing
 WHAT = "What this collection is"
 FILES = "Sources: the collection's files"
 MISSING = "What is missing or unread"
+CITATIONS = "Citations of the law"
 QUESTIONS = "Open questions"
 CONFLICTS = "Conflicts of fact"
 CHRONOLOGY = CHRONOLOGY_SECTION
@@ -66,6 +72,9 @@ CAVEATS: tuple[str, ...] = (
     "belongs in the store it came from.",
     "A file with no text gave this page nothing. What it says is not here, and the page does not say that it is "
     "silent.",
+    "A citation of the law is read by the citation grammar and resolved from the disk: a former number through the "
+    "successor table jason law-history --export keeps, one it does not place left open. The words recited are "
+    "jason's copies, not an official restatement, and a reading of them is labeled as one.",
 )
 
 
@@ -187,6 +196,8 @@ class Summary:
     fetched: bool = True                     # ... and the folder has been fetched
     matter: tuple[str, ...] = ()             # what the matter is, as the specification's record holds it
     duties: tuple[Any, ...] = ()             # the specification's duties for the matter (``CaseDuty``)
+    citations: tuple[lc.Use, ...] = ()       # the statutes the documents cite, each resolved (``law_citations``)
+    as_of: date | None = None                # the day the citations were resolved to; None is the shelf now
 
     @property
     def title(self) -> str:
@@ -245,6 +256,24 @@ class Summary:
             out.append(Gap("kinds-not-compared", "Stored readings of these kinds have no rule row and were not "
                                                  "compared: " + ", ".join(self.conflicts.not_compared) + ".",
                            len(self.conflicts.not_compared)))
+        not_held = [u for u in self.citations if u.resolved.resolution is lc.Resolution.NOT_HELD]
+        if not_held:
+            out.append(Gap("law-not-held", "Cited and not on the shelf, so not recited: "
+                                           + ", ".join(u.cited for u in not_held) + ". jason cite brings a section down.",
+                           len(not_held)))
+        former_words = [u for u in self.citations if u.resolved.resolution is lc.Resolution.FORMER
+                        and u.resolved.former is not None and not u.resolved.former.found]
+        if former_words:
+            out.append(Gap("former-words-not-held", "Cited by a former number whose own words jason does not hold, so "
+                                                    "only the successor is recited: " + ", ".join(u.cited for u in former_words)
+                                                    + ". A person adds a former section's words from an official source "
+                                                    "(jason law-history --add-version).", len(former_words)))
+        then = [u for u in self.citations if u.resolved.resolution is lc.Resolution.THEN_CURRENT
+                and not any(t.found for t in u.resolved.words)]
+        if then:
+            out.append(Gap("then-words-not-held", "Cited by the number in force on the day asked, before the renumbering, "
+                                                  "and the words of that day are not held: " + ", ".join(u.cited for u in then)
+                                                  + ".", len(then)))
         return tuple(out)
 
     # --- the open questions ------------------------------------------------------------------------------------------
@@ -268,6 +297,10 @@ class Summary:
         for n, conflict in enumerate(self.conflicts.conflicts, 1):
             out.append(f"Which value holds for {conflict.subject}: {conflict.what}? The documents give "
                        f"{len(conflict.sides)} values (conflict {n} below), and jason picks neither.")
+        for use in self.citations:
+            if use.resolved.open:
+                out.append(f"What section, if any, now holds what {use.cited} held? {use.resolved.note.split('; ', 1)[-1]}. "
+                           f"Cited by {'; '.join(f'{d} (passage {p})' for d, p in use.cited_by)}.")
         own = {e.place.path for e in events if e.document_day or e.role is ch.DateRole.DOCUMENT}
         own |= {place.path for e in events if e.role is ch.DateRole.DOCUMENT for place in e.also}
         for row in self.files:
@@ -303,6 +336,9 @@ class Summary:
                 "datedStatements": chronology["events"], "statementsByRole": chronology["byRole"],
                 "nearCopiesFolded": chronology["folded"], "recordedEvents": chronology["recorded"],
                 "duties": len(self.duties), "conflicts": len(self.conflicts.conflicts),
+                "citations": len(self.citations),
+                "citationsByResolution": {r.value: sum(1 for u in self.citations if u.resolved.resolution is r)
+                                          for r in lc.Resolution if any(u.resolved.resolution is r for u in self.citations)},
                 "missing": len(self.gaps()), "openQuestions": len(self.questions())}
 
     def as_dict(self) -> dict[str, Any]:
@@ -310,11 +346,39 @@ class Summary:
         return {"key": c.key, "title": c.title, "kind": c.kind.value, "generatedBy": "jason (rule-based; no model)",
                 "standing": "a summary, not the record", "confidential": self.confidential,
                 "scope": ch.describe_scope(c.scope), "label": c.label, "counts": self.counts(),
+                "asOf": self.as_of.isoformat() if self.as_of else None,
                 "context": {"title": c.context_title, "lines": list(c.context)},
                 "files": [row.as_dict() for row in self.files], "heldBack": self.held_back,
-                "missing": [gap.as_dict() for gap in self.gaps()], "openQuestions": list(self.questions()),
+                "missing": [gap.as_dict() for gap in self.gaps()],
+                "citations": [use.as_dict() for use in self.citations], "openQuestions": list(self.questions()),
                 "conflicts": self.conflicts.as_dict(), "chronology": self.chronology.as_dict(),
                 "caveats": [*CAVEATS, *ch.CAVEATS, *fc.CAVEATS]}
+
+    # --- the citations of the law ------------------------------------------------------------------------------------
+
+    def _citations_section(self) -> list[str]:
+        day = self.as_of.isoformat() if self.as_of else ""
+        against = (f"the law in force on {day}, where the disk shows it" if day else
+                   "the words on the shelf now (no day was asked: jason collection KEY --as-of DAY resolves them to a day)")
+        out = [f"## {CITATIONS}", "",
+               f"Each statute the collection's documents cite, read by the citation grammar and resolved to {against}. "
+               "A former number is read through the successor table the law history keeps on disk (the Law Revision "
+               "Commission's disposition table and Comments, as exported), and both the former section and its "
+               "successor are recited where jason holds their words. A citation the table does not place is open: no "
+               "successor is guessed. The words are jason's copies, not an official restatement.", ""]
+        if not self.citations:
+            return [*out, "No statute citation was read in the collection's files.", ""]
+        for use in self.citations:
+            r = use.resolved
+            label = {lc.Resolution.FORMER: "former number", lc.Resolution.UNRESOLVED: "OPEN",
+                     lc.Resolution.THEN_CURRENT: "the number then in force", lc.Resolution.NOT_HELD: "not on the shelf",
+                     lc.Resolution.CURRENT: "on the shelf"}[r.resolution]
+            out += [f"### {use.cited} ({label})", "",
+                    "- Cited by: " + "; ".join(f"{d} (passage {p})" for d, p in use.cited_by)]
+            out += [f"  > {q}" for q in use.quotes]
+            out += r.lines()
+            out.append("")
+        return out
 
     # --- the page ----------------------------------------------------------------------------------------------------
 
@@ -396,13 +460,16 @@ class Summary:
                 f"{c.title} is a collection of documents reviewed together ({c.kind.value}; key {c.key}). Its material "
                 f"is {c.label}.", "",
                 f"The sections below give the collection's files and how each was read, what is missing or unread, "
+                f"the citations of the law resolved to {('the law in force on ' + self.as_of.isoformat()) if self.as_of else 'the shelf now'}, "
                 f"the open questions, the conflicts of fact, and the chronology of what the documents say.", ""]
         out += self._context_section()
         out += self._files_section()
         out += [f"## {MISSING}", ""]
         out += [f"- {gap.text}" for gap in gaps] or ["Nothing is recorded as missing or unread. That is not a finding "
                                                      "that the collection is complete."]
-        out += ["", f"## {QUESTIONS}", "",
+        out += [""]
+        out += self._citations_section()
+        out += [f"## {QUESTIONS}", "",
                 "Facts the stores leave undetermined, found by rule. Each is a question for a person, and jason "
                 "answers none.", ""]
         out += [f"- {question}" for question in questions] or ["None was found by rule."]
@@ -419,11 +486,12 @@ class Summary:
 
 
 def summarize(community: Any, data_dir: Path | str, collection: Collection, *, today: date | None = None,
-              readings: Sequence[dict[str, Any]] | None = None) -> Summary:
+              readings: Sequence[dict[str, Any]] | None = None, as_of: date | None = None) -> Summary:
     """The summary of one collection, from the stores: the passage index under the collection's scope, the
-    specification's record of the matter, the collection's folder (a legal case's manifest and extracts), and the
-    document readers' stored readings (``readings`` replaces them). Reads only. Raises ``FileNotFoundError`` when
-    there is no passage index."""
+    specification's record of the matter, the collection's folder (a legal case's manifest and extracts), the
+    document readers' stored readings (``readings`` replaces them), and the statutes the documents cite, resolved to
+    the law in force on ``as_of`` (the shelf now without one). Reads only. Raises ``FileNotFoundError`` when there
+    is no passage index."""
     data_dir = Path(data_dir)
     case = case_of(community, collection)
     chronology = ch.chronology(data_dir, collection.scope, collection.title,
@@ -435,11 +503,12 @@ def summarize(community: Any, data_dir: Path | str, collection: Collection, *, t
         from jason.tasks.case_files import inventory as case_inventory
 
         inventory = case_inventory(data_dir, case)
+    citations = lc.in_scope(data_dir, collection.scope, as_of, community=community)
     return Summary(collection, chronology, conflicts, file_rows(data_dir, collection, chronology.files, inventory),
                    held_back=inventory.held_back if inventory is not None else 0, has_folder=inventory is not None,
                    fetched=inventory.fetched if inventory is not None else True,
                    matter=case_matter(case) if case is not None else (),
-                   duties=tuple(case.duties) if case is not None else ())
+                   duties=tuple(case.duties) if case is not None else (), citations=citations, as_of=as_of)
 
 
 def summary_path(data_dir: Path | str, collection: Collection) -> Path:

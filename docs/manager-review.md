@@ -129,6 +129,24 @@ the day. Above its words the source says what they are:
 - A section printed in two versions is one source, not two.
 - jason's `- History:` note is printed above the words, marked as jason's. It is not part of them.
 
+**A former section number.** A governing passage, the draft, or a collection's document may cite a section by a
+number a renumbering retired (the Davis-Stirling Act's 1350 to 1378, now 4000 to 6150). With a day, such a citation
+is not reported as a section not on hand: it is read through the successor table `jason law-history --export` keeps
+on disk (`law_citations.resolve`; [collections.md](collections.md), "Citations of the law"):
+
+- **A day on or after the renumbering.** The successor the table names comes into the pack as a law source, recited
+  as of the day, with the note "cites former X, now Y (disposition table ...)". Where the history holds the former
+  section's own words (a version a person added), they come in too, recited as of the last day the former number
+  was the law, so both are recited. Where they are not held, a gap says so and the successor stands alone.
+- **A day before the renumbering.** The cited number was the section in force. Its words come in where the history
+  holds them; otherwise a gap says a person adds them (`jason law-history --add-version`).
+- **A number the table does not place** (not continued, omitted, or no row) stays an open gap. No successor is guessed.
+- **A collection's documents** also bring in the current sections they cite, recited as of the day, up to
+  `law_citations.MAX_CITED_SECTIONS`; the rest are named in a gap. The law sources keep their place before the
+  governing and collection sources.
+
+Without a day the pack reads a former number as it did: a gap line, "find the section in force".
+
 **G, the governing documents.** The tier ranks passages, not sections, and a passage is its file's words as the file
 reads now. With a day, jason names the section a passage falls in and recites that:
 
@@ -159,17 +177,20 @@ readings remain, the board asks counsel. The base prompt is unchanged.
 
 **What is not covered:**
 
-- **The search is today's.** A section repealed or renumbered between the day and now is not found, so it is not
-  among the sources. The prompt says so.
+- **The search is today's.** A section repealed between the day and now is not found by the topics, so it is among
+  the sources only where a source cites it and the history holds its words. The prompt says so. A renumbered one is
+  found through its citation (above), not by the topics.
 - **R, C, and F are as they are now.** The records, a collection's material, and jason's facts are not filtered or
   recited by date.
 - **A governing passage with no section named** gets no as-of words and no reading.
 - **A document not kept as amended** has no words for an earlier day. Keeping it as amended (a `LivingDocument`
   row) is what would give them.
 - **A day before a kept document existed** is not detected: the base text is given.
-- **The quote check accepts a near match.** `prompts.verify` passes a quote that is nine tenths the source's words, so
-  a quote of today's words can pass against a source that gives an earlier version differing by a word.
-  `jason verify-quotes` is strict, but it checks against the shelf now and does not read the history.
+- **The pack's own quote check accepts a near match.** `prompts.verify` passes a quote that is nine tenths the
+  source's words, so a quote of today's words can pass against a source that gives an earlier version differing by a
+  word. `jason verify-quotes --as-of DAY` is strict: it checks a statute's quotation against the version in force
+  that day and names a quotation of another version ([law-readings.md](law-readings.md), "Checking an answer's
+  quotations").
 
 ## Reviews are kept
 

@@ -168,8 +168,10 @@ def test_the_page_carries_its_header_its_sections_and_its_confidentiality(data):
     assert f"- Collection: {KEY} (legal case). Its material is evidence gathered for this matter: neither the record nor the law." in page
     assert f"- Rebuilt, never edited: jason collection {KEY} --write writes this page again whole from the stores." in page
     headings = [line[3:] for line in page.splitlines() if line.startswith("## ")]
-    assert headings == [cp.WHAT, "The specification's record of the matter", cp.FILES, cp.MISSING, cp.QUESTIONS,
-                        cp.CONFLICTS, cp.CHRONOLOGY, "Caveats"]
+    assert headings == [cp.WHAT, "The specification's record of the matter", cp.FILES, cp.MISSING, cp.CITATIONS,
+                        cp.QUESTIONS, cp.CONFLICTS, cp.CHRONOLOGY, "Caveats"]
+    assert "No statute citation was read in the collection's files." in _section(page, cp.CITATIONS)
+    assert summary.as_dict()["citations"] == [] and summary.as_dict()["asOf"] is None
     assert summary.confidential and summary.as_dict()["confidential"] and summary.as_dict()["standing"] == "a summary, not the record"
     assert "never quoted in place of the documents" in _section(page, "Caveats")
     # An open collection's page says it is open.

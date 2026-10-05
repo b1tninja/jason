@@ -232,6 +232,8 @@ With `as_of`:
 
 **A review calls it.** A context pack built as of a day (`jason review --as-of DATE`; [manager-review.md](manager-review.md), "As of a day") recites each law source, and the section each governing passage falls in, through `recite`. The label and digest go above the words, the readings under them, and the stored review records the digest, whether the words were shown in force, and each reading's key, standing, and state.
 
+**A former section number.** A document written under a retired numbering cites a section that no longer exists by that number. As of a day, `law_citations.resolve` reads it through the successor table `jason law-history --export` keeps (`succession`): the successor is recited as of the day, the former section's own words as they last stood where the history holds them, and the finding says "cites former X, now Y". A number the table does not place stays open; no successor is guessed. The as-of pack, the collection summary page ([collections.md](collections.md), "Citations of the law"), and the records lens's `cites-former-sections` finding all say it this way.
+
 ## Checking an answer's quotations
 
 A search returns passages, and the client writes the answer. `jason.community.quote_check.check(answer, data_dir, sources="", include_confidential=False)` reads the answer and says whether each quotation is the stored words. The MCP tool is `verify_quotes`; the command is `jason verify-quotes FILE`.

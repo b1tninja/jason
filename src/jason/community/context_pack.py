@@ -1116,6 +1116,101 @@ def _collection_tier(pack: ContextPack, collection: Any, questions: Sequence[str
     return True
 
 
+# --- the law a document cites, as of a day ----------------------------------------------------------------------------
+
+def former_sections_as_of(texts: Sequence[str], by_citation: dict[str, list[LawSection]], data_dir: Path, as_of: date,
+                          gaps: list[str], *, community: Any = None) -> tuple[list[tuple[LawSection, date]], dict[str, str]]:
+    """The former-section citations the texts make, resolved to the law in force on the day
+    (``law_citations.resolve``): the sections to bring into the pack as law sources, each with the day it is recited
+    as of (a successor on the shelf as of the day; the former section's own words, where the history holds them, as
+    of the last day the former number was the law), and the note each source carries ("cites former X, now Y"); a
+    gap line says what could not be brought in. A citation the successor table does not place is an open gap;
+    nothing is guessed."""
+    from jason.community.law_citations import Resolution, former_in, resolve
+
+    more: list[tuple[LawSection, date]] = []
+    notes: dict[str, str] = {}
+    day = as_of.isoformat()
+    for c in former_in(texts, data_dir):
+        found = resolve(data_dir, c.citation, as_of, community=community, prior=c.prior)
+        if found.resolution is Resolution.FORMER:
+            for base in found.successor_bases:
+                if base in by_citation:
+                    more += [(s, as_of) for s in by_citation[base]]
+                    notes[base] = found.note
+                else:
+                    gaps.append(f"{found.note}; {base} is not in the law on hand (jason cite {base.replace(' ', '-')} brings it down)")
+            if found.former is not None and found.former.found and found.former_day is not None:
+                more.append((LawSection(found.base, f"{found.base}: a former section, from the history", found.former.words),
+                             found.former_day))
+                notes[found.base] = (f"cited as {found.cited}: the former section's own words as last in force (to "
+                                     f"{found.former_day.isoformat()}); now {', '.join(found.successors)}")
+            elif found.former is not None:
+                gaps.append(f"{found.cited} is cited; the former section's own words are not held ({found.former.reason}); "
+                            "its successor is in the pack")
+        elif found.resolution is Resolution.THEN_CURRENT:
+            text = found.words[0] if found.words else None
+            if text is not None and text.found:
+                more.append((LawSection(found.base, f"{found.base}: the number in force on {day}", text.words), as_of))
+                notes[found.base] = found.note
+            else:
+                gaps.append(found.note)
+        else:
+            gaps.append(found.note + ("" if found.open else "; nothing is brought in"))
+    return more, notes
+
+
+def _collection_citations_as_of(pack: ContextPack, by_citation: dict[str, list[LawSection]], data_dir: Path, as_of: date,
+                                readings: Sequence[Any], *, community: Any = None) -> None:
+    """The statutes a collection's sources cite, brought into the pack as law sources recited as of the day: a
+    current number's section from the law on hand, a former number through the successor table. The new sources
+    continue the S numbering and sit after the law sources already there; at most ``MAX_CITED_SECTIONS`` come in."""
+    from jason.community.law_citations import MAX_CITED_SECTIONS, cited_in, former_in, renumbered
+    from jason.community.passage_index import Standing
+
+    texts = [s.text for s in pack.sources if s.id.startswith("C")]
+    if not texts:
+        return
+    have = {s.section for s in pack.sources if s.id.startswith("S")}
+    more: list[tuple[LawSection, str]] = []
+    former = {c.citation for c in former_in(texts, data_dir)}
+    for text in texts:
+        for c in cited_in(text):
+            code, _, number = c.base.rpartition(" ")
+            if c.citation in former or c.base in have or renumbered(data_dir, code, number) is not None:
+                continue
+            if c.base not in by_citation:
+                pack.gaps.append(f"{c.base} is cited by a document of the collection but is not in the law on hand")
+                have.add(c.base)
+                continue
+            for s in by_citation[c.base]:
+                if s.citation not in have:
+                    more.append((s, "cited by a document of the collection"))
+                    have.add(s.citation)
+    sections, notes = former_sections_as_of(texts, by_citation, data_dir, as_of, pack.gaps, community=community)
+    days: dict[str, date] = {}
+    for s, on in sections:
+        if s.citation not in have:
+            more.append((s, notes.get(s.citation, "cited by a document of the collection")))
+            have.add(s.citation)
+            days[s.citation] = on
+    if len(more) > MAX_CITED_SECTIONS:
+        left = ", ".join(s.citation for s, _ in more[MAX_CITED_SECTIONS:])
+        pack.gaps.append(f"the collection's documents cite more sections than the pack brings in ({MAX_CITED_SECTIONS}); "
+                         f"not brought in: {left}")
+        more = more[:MAX_CITED_SECTIONS]
+    at = max((k for k, s in enumerate(pack.sources) if s.id.startswith("S")), default=-1) + 1
+    n = sum(1 for s in pack.sources if s.id.startswith("S"))
+    for section, why in more:
+        n += 1
+        words, status, recited = law_as_of(section, data_dir, days.get(section.citation, as_of), readings, community=community)
+        pack.sources.insert(at, Source(f"S{n}", tier_of_citation(section.citation), section.citation,
+                                       _trim(words, STATUTE_CHARS), section.chapter, 0.0, f"{why}; {status}",
+                                       standing=Standing.AUTHORITY, file=section.file, section=section.citation,
+                                       provision=recited))
+        at += 1
+
+
 # --- jason's records -------------------------------------------------------------------------------------------------
 
 def fact_sources(task: TaskPrompt, data_dir: Path, *, runner: Callable[[str, dict[str, Any]], Any] | None = None) -> tuple[list[tuple[str, str]], list[str]]:
@@ -1232,6 +1327,8 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
     read = governing_passages(community, task, data_dir, ask=ask, draft=draft, k=k, mode=mode, search=search)
     governing = [row for row, _ in read]
     cited: set[str] = set()
+    former_notes: dict[str, str] = {}
+    recite_days: dict[str, date] = {}      # a former section's own words are recited as of the last day they were the law
     if follow_citations:
         cited = set(cited_statutes([text for _, _, text, _, _ in governing])[0])
         current, prior = cited_statutes([text for _, _, text, _, _ in governing] + ([draft] if draft else []))
@@ -1240,7 +1337,17 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
                 pack.gaps.append(f"{citation} is cited by a source but is not in the law on hand")
             # A cited section comes whole: every version printed under its number, never one of two.
             chosen += [(s, 0.0) for s in by_citation.get(citation, ()) if absent(s)]
-        pack.gaps += [f"{c} is a former Davis-Stirling number cited by a source; find the section in force" for c in prior]
+        if as_of is None:
+            pack.gaps += [f"{c} is a former Davis-Stirling number cited by a source; find the section in force" for c in prior]
+        else:
+            # As of a day a former number is read through the successor table: the section in force that day comes in
+            # as a source, both recited, and one the table does not place stays an open gap.
+            texts = [text for _, _, text, _, _ in governing] + ([draft] if draft else [])
+            more, former_notes = former_sections_as_of(texts, by_citation, data_dir, as_of, pack.gaps, community=community)
+            for s, on in more:
+                if absent(s):
+                    chosen.append((s, 0.0))
+                    recite_days[s.citation] = on
     from jason.community.law_text import words_digest
 
     if as_of is not None:
@@ -1255,9 +1362,12 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
         note = "found for the task's topics" if score else ""
         if section.citation in cited:
             note = (note + "; " if note else "") + "cited by a governing document"
+        if section.citation in former_notes:
+            note = (note + "; " if note else "") + former_notes[section.citation]
         words, recited = section.text, Recitation(section.citation, words_digest(section.text))
         if as_of is not None:
-            words, status, recited = law_as_of(section, data_dir, as_of, readings, community=community)
+            words, status, recited = law_as_of(section, data_dir, recite_days.get(section.citation, as_of), readings,
+                                               community=community)
             note = (note + "; " if note else "") + status
         elif section.version:
             note = (note + "; " if note else "") + section.version
@@ -1308,6 +1418,8 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
     if collection is not None:
         pack.collection_included = _collection_tier(pack, collection, questions, data_dir, k=k, mode=mode,
                                                     embedder=embedder, indexed=indexed)
+        if as_of is not None and follow_citations and pack.collection_included:
+            _collection_citations_as_of(pack, by_citation, data_dir, as_of, readings, community=community)
 
     if draft:
         pack.sources.append(Source("D1", Tier.RECORD, "the current text under review", draft, "draft"))
@@ -1336,6 +1448,6 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
 
 __all__ = ["COLLECTION_PASSAGES", "COLLECTION_PER_FILE", "CORPUS", "GOVERNING_KINDS", "AttachedReading", "ContextPack",
            "LawSection", "Recitation", "RecordReach", "Source", "assemble", "cited_statutes", "collection_sources",
-           "fact_sources", "governing_as_of", "governing_passages", "governing_section", "governing_sources",
+           "fact_sources", "former_sections_as_of", "governing_as_of", "governing_passages", "governing_section", "governing_sources",
            "index_covers", "index_law_ranking", "index_record_sources", "index_search", "law_as_of", "law_corpus",
            "law_shelf", "law_sources", "library_files", "record_sources", "section_numbers"]

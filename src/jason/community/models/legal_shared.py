@@ -236,13 +236,24 @@ def former_sections(text: str) -> tuple[str, ...]:
 
 
 def former_sections_finding(sections, now: Sequence[str] = ()) -> list[Finding]:
-    """Former Civil Code sections a letter or notice cites; with ``now`` (``governing_shared.sections_now``), where each
-    one is today."""
+    """Former Civil Code sections a letter or notice cites, each read through the law history on disk where ``now``
+    (``governing_shared.sections_now``) places it: "cites former Civil Code 1363(g), now CIV 5855 (disposition
+    table)". One the history does not place, or that was not continued, is said to be open: no successor is
+    guessed, and the citation is not reported as a missing section."""
     if not sections:
         return []
-    where = ("; " + "; ".join(now)) if now else ""
-    return [Finding("cites-former-sections", f"cites former Civil Code section(s) {', '.join(sections)}; the Davis-Stirling Act now "
-                    f"sits at Civil Code 4000 to 6150 (Stats. 2012, Ch. 180){where}", Severity.CHECK)]
+    placed = {line.split(" ", 1)[0]: line for line in now}
+    parts = []
+    for s in sections:
+        line = placed.get(s, "")
+        if " is now " in line:
+            parts.append(f"former Civil Code {s}, now {line.split(' is now ', 1)[1]}")
+        elif line:
+            parts.append(f"former Civil Code {s}, {line.split(' ', 1)[1]}: open")
+        else:
+            parts.append(f"former Civil Code {s}, not placed by the law history on disk (jason law-history --export): open")
+    return [Finding("cites-former-sections", "cites " + "; ".join(parts) + " (the Davis-Stirling Act was renumbered to "
+                    "Civil Code 4000 to 6150 by Stats. 2012, Ch. 180, operative January 1, 2014)", Severity.CHECK)]
 
 
 def former_now(r, records) -> list[str]:

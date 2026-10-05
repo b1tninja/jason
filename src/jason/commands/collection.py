@@ -41,8 +41,17 @@ def cmd_collection(args: argparse.Namespace) -> int:
     if found is None:
         print(f"no collection {args.key!r}: jason collection lists them", file=sys.stderr)
         return 2
+    as_of = None
+    if getattr(args, "as_of", None):
+        from datetime import date
+
+        try:
+            as_of = date.fromisoformat(args.as_of)
+        except ValueError:
+            print(f"--as-of takes a day as YYYY-MM-DD, not {args.as_of!r}", file=sys.stderr)
+            return 2
     try:
-        summary = collection_pages.summarize(community, data, found)
+        summary = collection_pages.summarize(community, data, found, as_of=as_of)
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -67,5 +76,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                    help="the collection's key or its catalog (case-KEY); without it the collections are listed")
     p.add_argument("--write", action="store_true",
                    help="save the page as data/collections/<key>/summary.md; without it nothing is written")
+    p.add_argument("--as-of", dest="as_of", metavar="DAY",
+                   help="resolve the statutes the documents cite to the law in force on this day (YYYY-MM-DD): a "
+                        "former number through the successor table, both recited; without it, the shelf now")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_collection)

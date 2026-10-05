@@ -116,6 +116,7 @@ A collection is a named set of documents with what holds for all of them (`jason
 | The specification's record of the matter | for a legal case: its forum, role, and status, then its events, then its duties | the `LegalCase` record, and nothing else |
 | Sources: the collection's files | each file with its kind, its standing, how its words were read, the pages no reader gave words for, and its dated statements | the passage index; a case's manifest and extracts (`case_files.inventory`) |
 | What is missing or unread | files with no text and why, text the index does not hold, image pages unread, files an OCR engine read, files with no dated statement, mentions of a month and a day with no year, what the conflict rules could not compare | the same, by rule |
+| Citations of the law | each statute the documents cite, resolved to the law in force on the day asked: a current number with its digest and whether it is shown in force; a former number read through the successor table, "cites former X, now Y", with both recited where held; one the table does not place, open | `law_citations` ([below](#citations-of-the-law)) |
 | Open questions | the facts the stores leave undetermined | below |
 | Conflicts of fact | every side with its source | `fact_conflicts` |
 | Chronology: what the documents say | the documents' own dates, apart from the dates at a head, in a header, or in a file's name, apart from the dates they speak about | `chronology` |
@@ -127,8 +128,36 @@ A collection is a named set of documents with what holds for all of them (`jason
   - a duty the specification's record does not show either way;
   - an event the specification records on a day for which no statement was read in the files;
   - each conflict of fact;
+  - a former section number the successor table does not place;
   - a file whose own date was not read at its head;
   - a date a document gives as "on or about".
+
+### Citations of the law
+
+`jason collection KEY --as-of DAY` resolves each statute the collection's documents cite to the law in force on that
+day (`jason.community.law_citations`); without a day, to the shelf now, and the page says so. Every citation is read
+by the one citation grammar (`references.extract`) from the passages in the collection's scope, and listed with the
+documents and passages that make it and the sentence it sits in.
+
+| The number | What the page says | Read from |
+|---|---|---|
+| in force on the day | "cites CIV 9901(b): on the shelf (digest ...), in force on DAY", with the digest, source, and how the day is known; the words are not repeated | the shelf and the history (`law_readings.provision_text`) |
+| retired by a renumbering before the day | "cites former CIV 9803(g), now CIV 9901 (disposition table and commission comment: continued; renumbered to ... by ..., operative DAY)", then the former section's own words as they last stood (the day before the renumbering) where the history holds them, and the successor's words in force on the day, each quoted whole with its digest | the successor table `jason law-history --export` keeps (`succession.successors`), and the shelf and history for the words |
+| cited before the renumbering (the day asked is earlier) | "cites CIV 9803(g), the number in force on DAY", with its words where held | the history |
+| one the table does not place (not continued, omitted, no row, or no table exported) | "an open finding, and no successor is guessed"; also an open question | the table |
+| not on the shelf | "not on the shelf", with what brings it down | the shelf |
+
+- **The renumbering is data.** Which former numbers moved where, by which act, operative when, is read from the
+  exported table's own `recodifications` rows, never from a number in the code. A made-up table in a test is read the
+  same way as the Commission's.
+- **A former section's own words are never recited as the law of the day asked.** They are recited as they last
+  stood, labeled with that day. The successor is the law of the day asked.
+- **Both recited, or the gap says why not.** A former section whose words the history does not hold is listed under
+  "What is missing or unread" (a person adds them from an official source, `jason law-history --add-version`); so is a
+  cited section not on the shelf.
+- **The same reading serves the as-of review.** `jason review --collection KEY --as-of DAY` brings the sections a
+  collection's documents cite into the pack as law sources, a former number through its successor
+  ([manager-review.md](manager-review.md), "A former section number").
 
 **Where it is kept.** `--write` saves `data/collections/<key>/summary.md` under the store lock. Without it nothing is written. The page is written whole each time and never edited: the same stores give the same bytes, apart from the line that carries the date.
 
@@ -177,6 +206,7 @@ So the stored-field rule has one conflict read and found real, and the text rule
 - **Confidentiality carries over.** A page is as confidential as its strictest source.
 - **A file with no text gave the summary nothing.** The page lists it as not read. It does not say the file is silent.
 - **An open question is found by rule.** A question the rules do not look for is not listed, and "none was found" is not a finding that nothing is open.
+- **A citation is read by the grammar.** One it misses (a number alone, a code it does not know) is not listed. A successor is the table's reading of the Commission's documents; the statute's words are the law, and a reading of them is labeled as one.
 
 ## Not built
 
