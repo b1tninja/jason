@@ -7,3 +7,5 @@ This folder is the `mystique` profile's own documentation: this association's se
 - [responses.md](responses.md): what the association's members' requests held, and how well their kinds are read.
 - [manual.md](manual.md): the Owner's Manual and Rules taken apart: its parts, the classification and its questions, the books, the official rules and their adoption history, the generated manual, and what the board decides.
 - [living.md](living.md): the living CC&Rs' readings: the OCR re-read trial and its numbers.
+- [improvement-requests.md](improvement-requests.md): home improvement requests mapped to the association's provisions, its forms, the clocks against the meeting schedule, and the gaps where a written policy is needed.
+- [maintenance-manual.md](maintenance-manual.md): the declaration's inspection and maintenance manual: the requirement, what the records hold, the review by component, proposed obligations, and the manual's outline for the board.

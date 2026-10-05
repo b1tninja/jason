@@ -32,6 +32,7 @@ One page per screen of the earlier spec, now read against the console that exist
 | Law as of a day and the quote check (proposed; [../handoff-as-of-and-quote-check.md](../handoff-as-of-and-quote-check.md)) | none (its parts are `jason cite`, `jason verify-quotes --as-of`, and the `law_in_force` tool) | Components shared across screens, and `#/documents/check` | 2 |
 | The machine (proposed; [../handoff-storage-and-settings.md](../handoff-storage-and-settings.md)) | extends [status.md](status.md) (`#/status`) | Proposed band, `#/instance/machine` | 2 |
 | Programs (proposed; [../handoff-programs.md](../handoff-programs.md)) | none (its parts are `jason duties --documents`, `jason deadlines`, `jason inspections`, `jason pests`, `jason backflow`, `jason collection`) | Proposed whole, `#/programs` | 3 |
+| Home improvement requests (proposed; [../handoff-improvement-requests.md](../handoff-improvement-requests.md)) | none (its parts are `jason respond`, the board loop, and the unit record) | Proposed band of `#/requests` (`?kind=architectural`, `?id=`), a tab of `#/members?unit=`, and an owner's unit page | 3 |
 
 Screens built with no spec here: the meeting room, decisions, and agenda (from the design handoff), insurance and renewals (`ConsoleInsurance`; their documents are in [mail.md](mail.md)), canvases and templates (their documents are in [requests-and-links.md](requests-and-links.md)), registers, legal, and the community profile page ([web-ui.md](../../web-ui.md#views-uisrcviews-hash-routes)).
 
