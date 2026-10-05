@@ -101,10 +101,11 @@ MAIL_RULES: tuple[MailRule, ...] = (
     MailRule(MailKind.ESCROW, Urgency.ACT, senders=("title", "escrow"), phrases=("demand", "payoff", "resale", "escrow no", "estoppel"),
              min_hits=2),
     MailRule(MailKind.UTILITY, Urgency.FILE, senders=("department of utilities", "smud", "water company", "pg&e", "republic services")),
-    MailRule(MailKind.BANK, Urgency.REVIEW, senders=("bank", "credit union", "chase"), phrases=("certificate of deposit", "account statement",
-                                                                                              "statement period")),
-    MailRule(MailKind.INSURANCE, Urgency.REVIEW, senders=("insurance", "program administrators", "indemnity", "farmers", "assurance",
-                                                          "underwriters", "mcgowan"),
+    # The sender words here are generic. A bank or an insurer by name is the profile's: a letter these words leave
+    # unsorted takes its kind from the sender directory (``jason.tasks.mail.sort``).
+    MailRule(MailKind.BANK, Urgency.REVIEW, senders=("bank", "credit union"), phrases=("certificate of deposit", "account statement",
+                                                                                     "statement period")),
+    MailRule(MailKind.INSURANCE, Urgency.REVIEW, senders=("insurance", "program administrators", "indemnity", "assurance", "underwriters"),
              phrases=("renewal", "declarations", "policy period", "premium", "certificate of insurance"), min_hits=2),
     MailRule(MailKind.CHECK, Urgency.REVIEW, phrases=("pay to the order of", "to the order of", "void after", "refund check",
                                                       "non-negotiable", "check number"), min_hits=1),

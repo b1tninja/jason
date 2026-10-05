@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 
+from jason.community.base import alternation, name_regex
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -37,6 +38,7 @@ from jason.community.document_models import (
     register,
     squash,
 )
+from jason.community.sources import SourceKind, first_sender_in
 from jason.community.symbols import DocumentKind
 
 
@@ -196,6 +198,27 @@ def _spec_report(context: ModelContext, file_number: str = "", phase: int | None
     return None
 
 
+def _own_name(context: ModelContext) -> str:
+    """The association's name, as the specification gives it; empty without one."""
+    return str(getattr(context.community, "name", "") or "")
+
+
+def _developer(text: str, context: ModelContext) -> str:
+    """A subdivider the specification pins, as the text prints it with its company form ("Oak Ridge Homes, LLC"); empty
+    when it pins none or the text names none."""
+    developers = getattr(context.community, "developers", tuple)() if context.community is not None else ()
+    names = [name for developer in developers or () for name in (developer.name, *developer.names)]
+    return first(rf"((?:{alternation(names)}),? (?:LLC|Inc\.?|L\.?P\.?))", text) if names else ""
+
+
+def _named(text: str, context: ModelContext, *kinds: SourceKind, skip: str = "") -> str:
+    """The counterparty of one of ``kinds`` the text names first, by its name in the specification's sender directory;
+    one the directory does not list is not named: a miss."""
+    senders = getattr(context.community, "senders", tuple)() if context.community is not None else ()
+    found = first_sender_in(text, senders or (), *kinds, skip=(skip,) if skip else ())
+    return found.name if found else ""
+
+
 def _obligee_check(name: str, context: ModelContext, what: str) -> list[Finding]:
     if name and "mystique" not in name.lower():
         return [Finding("not-the-association", f"the {what} names {name!r}, not the association", Severity.PROBLEM, "10 CCR 2792.23(a)(10)")]
@@ -271,9 +294,10 @@ class SubsidyAgreementModel(DocumentModel):
         r.phases = tuple(int(n) for n in dict.fromkeys(re.findall(r"PHASES?\s+(\d)", head, re.I) + re.findall(r"\band (\d)\b", head[:200])))
         r.phase = r.phases[0] if len(r.phases) == 1 else None
         r.amended = bool(re.search(r"AMENDED", head, re.I))
-        r.association = "Mystique Community Association" if re.search(r"Mystique Community Association", flat) else ""
+        own = _own_name(context)
+        r.association = own if own and re.search(name_regex(own), flat, re.I) else ""
         r.declarant = first(r"and\s+(.{5,80}?),\s+an?\s+(?:California|Delaware)\s+limited liability company\s*\(\"?(?:Declarant|Subdivider)", flat) or \
-            first(r"(Watt Communities at Mystique,? LLC|WL Homes,? LLC)", flat)
+            _developer(flat, context)
         r.made_on, _ = _made_on(flat)
         units = re.search(r"consists of [a-z-]+ \((\d+)\) residential Units", flat, re.I)
         r.units_in_phase = int(units.group(1)) if units else None
@@ -407,10 +431,12 @@ class BondReleaseModel(DocumentModel):
         r = BondRelease()
         found = dates_in(flat[:400])
         r.dated = found[0] if found else None
-        r.by_association = bool(re.search(r"^\s*Mystique Community Association", text or "")) or bool(re.search(r"SPECIAL RESOLUTION", flat[:200]))
-        r.sender = "Mystique Community Association" if r.by_association else \
-            first(r"(Placer Title Company|PLACER TITLE|First American Title Company|Fidelity National Title|Chicago Title)", flat)
-        r.recipient = first(r"(The Hanover Insurance Company|American Contractors Indemnity Company|First American Title Company|Placer Title)", flat[40:])
+        own = _own_name(context)
+        r.by_association = bool(own and re.search(rf"^\s*{name_regex(own)}", text or "", re.I)) or bool(re.search(r"SPECIAL RESOLUTION", flat[:200]))
+        # The escrow holder that asks for the release, and the surety or escrow holder it writes to, are the title
+        # companies and insurers the sender directory lists, each by its name there.
+        r.sender = own if r.by_association else _named(flat, context, SourceKind.TITLE_ESCROW)
+        r.recipient = _named(flat[40:], context, SourceKind.INSURER, SourceKind.TITLE_ESCROW, skip=r.sender)
         bonds: dict[str, ReleasedBond] = {}
         for m in re.finditer(r"(?:Phase\s*(\d)\s+)?(\d{7,10})\s+([\w ]{3,40}?Bond)\s+\$\s?([\d,]+)", flat):
             bonds[m.group(2)] = ReleasedBond(m.group(2), int(m.group(1)) if m.group(1) else _phase(flat), squash(m.group(3)), _money("$" + m.group(4)))

@@ -117,6 +117,24 @@ def sender_name(text: str, community: object, *kinds: SourceKind) -> str:
     return found.name if found else ""
 
 
+def first_sender_in(text: str, senders: Iterable[Sender], *kinds: SourceKind, skip: Iterable[str] = ()) -> Sender | None:
+    """The counterparty of one of ``kinds`` a text names first: where ``sender_in`` takes the directory's order, this
+    takes the text's, for a letter that names two of a kind (the escrow holder that writes, and the one it writes to).
+    ``skip`` leaves out senders by name, so the one who wrote the letter is not also read as who it was sent to. None
+    when the specification lists no such sender or the text names none: a miss."""
+    folded = fold(text or "")
+    skipped = set(skip)
+    best: tuple[int, Sender] | None = None
+    for sender in senders:
+        if (kinds and sender.kind not in kinds) or sender.name in skipped:
+            continue
+        for word in sender.words:
+            at = folded.find(fold(word))
+            if at >= 0 and (best is None or at < best[0]):
+                best = (at, sender)
+    return best[1] if best else None
+
+
 def manager_in(text: str, senders: Iterable[Sender]) -> Sender | None:
     """The management company a text names: ``sender_in`` for the kind ``MANAGER``. None when the specification lists no
     manager or the text names none: a miss."""
@@ -223,4 +241,4 @@ def other_associations(text: str, *, own_name: str = "") -> tuple[str, ...]:
 
 
 __all__ = ["SourceKind", "Level", "Sender", "KIND_WORDS", "resolve", "other_associations", "fold", "sender_in", "sender_name",
-           "manager_in", "manager_name"]
+           "first_sender_in", "manager_in", "manager_name"]

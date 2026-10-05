@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from jason.community.base import NEVER, name_regex
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -69,6 +70,31 @@ def _firm(text: str, context: ModelContext) -> str:
     """The law firm the text names, by its name in the specification's sender directory; a firm it does not list is not
     named: a miss."""
     return sender_name(text, context.community, SourceKind.LAW_FIRM)
+
+
+def _own_word(context: ModelContext) -> str:
+    """A pattern for the association's name word as letters print it (``Community.name_pattern``); `NEVER` without one."""
+    return getattr(context.community, "name_pattern", str)() or NEVER
+
+
+def _own_name(context: ModelContext) -> str:
+    """A pattern for the association's full name (``base.name_regex``); `NEVER` when the specification gives none."""
+    return name_regex(str(getattr(context.community, "name", "") or ""))
+
+
+def _opposing(text: str, context: ModelContext) -> tuple[str, ...]:
+    """The businesses the specification's legal matters are against (``LegalCase.opposing``) that the text names, in the
+    text's order, without the comma before a company form. A private person is listed there by role only ("a unit
+    owner") and is never read from a letter; a party no matter lists is not named: a miss."""
+    cases = getattr(context.community, "legal_cases", tuple)() if context.community is not None else ()
+    names = dict.fromkeys(name for case in cases or () for name in getattr(case, "opposing", ()) if name[:1].isupper())
+    found: list[tuple[int, str]] = []
+    for name in names:
+        words = [re.escape(word.rstrip(",.")) + (",?" if word.endswith(",") else r"\.?" if word.endswith(".") else "") for word in name.split()]
+        hit = re.search(r"\s+".join(words), text, re.I)
+        if hit:
+            found.append((hit.start(), name.replace(",", "")))
+    return tuple(name for _at, name in sorted(found))
 
 
 @dataclass
@@ -131,7 +157,7 @@ class LegalLetterModel(DocumentModel):
             r.letter_type = LetterType.TRUST_DISBURSEMENT
         elif firm and re.search(r"Dear Member", flat, re.I):
             r.letter_type = LetterType.MEMBERSHIP_UPDATE
-        r.sender = firm or ("Board of Directors" if re.search(r"Board of Directors\s*\n?\s*Mystique", text) else "")
+        r.sender = firm or ("Board of Directors" if re.search(rf"Board of Directors\s*\n?\s*(?i:{_own_word(context)})", text) else "")
         r.sender_is_counsel = bool(firm)
         r.recipient = Recipient.MEMBERSHIP if re.search(r"Dear Member|\nMembership\s*\n", text) else \
             Recipient.OWNER if re.search(r"Dear Homeowner|Property Address:", text) else \
@@ -141,13 +167,12 @@ class LegalLetterModel(DocumentModel):
         r.building = building_of(context, r.property_address)
         r.letter_date = date_after(r"\bDate:\s*", text, window=40) or (dates_in(text[:600]) or [None])[0]
         subject = first(r"Subject:\s*([^\n]+(?:\n(?!Dear|To:)[^\n]+)?)", text) or \
-            first(r"RE:\s*(?:\n\s*)*(?:MYSTIQUE COMMUNITY ASSOCIATION\s*\n\s*)?(?:\n\s*)*([^\n]+)", text)
+            first(rf"RE:\s*(?:\n\s*)*(?:{_own_name(context)}\s*\n\s*)?(?:\n\s*)*([^\n]+)", text)
         r.subject = subject[:200]
         r.draft = bool(re.search(r"^\s*DRAFT\s*$", text, re.M))
         r.privileged = bool(re.search(r"PRIVILEGED|CONFIDENTIAL", text))
         r.delivery = "U.S. Mail" if re.search(r"VIA U\.S\. MAIL", text, re.I) else "Electronic Mail" if re.search(r"VIA ELECTRONIC MAIL", text, re.I) else ""
-        parties = re.findall(r"(Watt Communities at Mystique,? LLC|WC Development Services,? Inc\.?|Milgard)", flat)
-        r.parties = tuple(dict.fromkeys(p.replace(",", "") for p in parties))
+        r.parties = _opposing(flat, context)
         named = re.search(r"Buildings? ((?:\d, )*\d,? (?:and|&) \d)", flat)
         r.buildings_named = tuple(Building(int(n)) for n in re.findall(r"\d", named.group(1))) if named else ()
         amount = first(r"total settlement amount is (\$[\d,]+(?:\.\d\d)?)", flat)

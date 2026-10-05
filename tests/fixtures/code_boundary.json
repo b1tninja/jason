@@ -9,8 +9,7 @@
   "Mystique"
  ],
  "src/jason/community/models/developer_security.py": [
-  "Mystique",
-  "Mystique Community Association"
+  "Mystique"
  ],
  "src/jason/community/models/governing_rules.py": [
   "Mystique"
@@ -18,10 +17,6 @@
  "src/jason/community/models/legal_collections.py": [
   "Mystique",
   "Mystique Community Association"
- ],
- "src/jason/community/models/legal_letters.py": [
-  "Mystique",
-  "Watt Communities at Mystique"
  ],
  "src/jason/community/models/legal_records.py": [
   "Mystique",

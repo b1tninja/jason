@@ -102,6 +102,66 @@ def test_the_release_reads_the_escrow_holders_table():
     assert ReleaseGround.PERFORMED in r.grounds
 
 
+class Listed:
+    """A specification with made-up counterparties: an escrow holder, a surety, and a subdivider."""
+
+    name = "Oak Ridge Community Association"
+
+    def senders(self):
+        from jason.community.sources import Sender, SourceKind
+
+        return (Sender("Elm Escrow Company", SourceKind.TITLE_ESCROW, ("ELM ESCROW",)),
+                Sender("Example Title Company", SourceKind.TITLE_ESCROW, ("EXAMPLE TITLE",)),
+                Sender("Example Surety Company", SourceKind.INSURER, ("EXAMPLE SURETY",)),
+                Sender("Example Roofing", SourceKind.VENDOR, ("EXAMPLE ROOFING",)))
+
+    def developers(self):
+        from jason.community.base import Developer
+
+        return (Developer("Example Homes", ("EXAMPLE HOMES", "EXAMPLE HMS")),)
+
+
+class Unlisted:
+    name = "Oak Ridge Community Association"
+
+
+def test_a_release_names_its_escrow_holder_and_surety_through_the_sender_directory():
+    def release(text, community):
+        return read(DocumentKind.BOND_RELEASE, text, ModelContext(community, None, date(2026, 9, 29))).record
+
+    # The escrow holder that writes is the first title company the letter names; who it writes to is the next listed
+    # surety or title company, never the writer again (its name is under the signature too).
+    r = release(RELEASE + "Sincerely,\nEXAMPLE TITLE COMPANY\ncc: Elm Escrow Company\n", Listed())
+    assert (r.sender, r.recipient, r.by_association) == ("Example Title Company", "Example Surety Company", False)
+    # A specification that lists neither names neither: a miss, not a guess from the letterhead.
+    r = release(RELEASE, Unlisted())
+    assert (r.sender, r.recipient) == ("", "") and r.bonds
+    # The association's own letter, under its own name, to the escrow holder.
+    own = "Oak Ridge Community Association\nMay 2, 2012\nElm Escrow Company\nRe: release of bond 1099999\n" \
+          "The Association releases the Phase 2 Assessment Bond; the subdivider has paid all assessments.\n"
+    r = release(own, Listed())
+    assert (r.by_association, r.sender, r.recipient) == (True, "Oak Ridge Community Association", "Elm Escrow Company")
+    assert not release(own.replace("Oak Ridge", "Elm Grove"), Listed()).by_association      # another association's letter
+
+
+def test_a_subsidy_agreement_names_the_association_and_a_pinned_subdivider():
+    def subsidy(text, community):
+        return read(DocumentKind.SUBSIDY_AGREEMENT, text, ModelContext(community, None, date(2026, 9, 29))).record
+
+    # An agreement that does not call its declarant "Declarant" in the parties' clause: the subdivider the specification
+    # pins, as the agreement prints it with its company form.
+    text = "OAK RIDGE SUBSIDY AGREEMENT - PHASE 3\nThis Subsidy Agreement is made by OAK RIDGE COMMUNITY\nASSOCIATION and " \
+           "Example Homes, LLC. The term shall commence on January 1, 2020, and shall continue until the date of the last closing. 5. Extension.\n"
+    r = subsidy(text, Listed())
+    assert (r.association, r.declarant) == ("Oak Ridge Community Association", "Example Homes, LLC")
+    r = subsidy(text, Unlisted())
+    assert (r.association, r.declarant) == ("Oak Ridge Community Association", "")           # no subdivider pinned: a miss
+    assert subsidy(text.replace("OAK RIDGE", "ELM GROVE"), Listed()).association == ""         # another association's agreement
+    # The profile's own agreement reads as before.
+    r = subsidy(SUBSIDY, ctx().community)
+    assert (r.association, r.declarant) == (mystique().name, "Example Homes LLC")
+
+
 def test_the_subsidy_agreement_reads_the_gap_and_checks_the_declaration_it_cites():
     reading = read(DocumentKind.SUBSIDY_AGREEMENT, SUBSIDY, ctx())
     r = reading.record

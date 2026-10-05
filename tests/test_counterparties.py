@@ -77,6 +77,32 @@ def test_another_associations_statement_is_misdirected_and_stays_out_of_the_cata
     assert ours["source"]["otherAssociations"] and not ours["source"]["misdirected"]
 
 
+def test_a_named_bank_or_insurer_is_known_through_the_directory_not_the_mail_rules() -> None:
+    class Listed:
+        def senders(self):
+            return (Sender("Oak Ridge Savings", SourceKind.BANK, ("OAK RIDGE SAVINGS",)),
+                    Sender("Elm Mutual", SourceKind.INSURER, ("ELM MUTUAL",)))
+
+        def parcels(self):
+            return ()
+
+    class Unlisted(Listed):
+        def senders(self):
+            return ()
+
+    card, privacy = "Your new debit card is enclosed.", "We have updated our privacy notice."
+    # The rules carry generic sender words only ("bank", "insurance"): a counterparty's name is no rule's word.
+    assert classify("Oak Ridge Savings", card).kind is MailKind.OTHER and classify("Elm Mutual", privacy).kind is MailKind.OTHER
+    assert classify("Oak Ridge Bank", card).kind is MailKind.BANK and classify("Elm Insurance Exchange", privacy).kind is MailKind.INSURANCE
+    # The profile's sender directory says what a named one is, and the letter takes its kind from that.
+    bank = sort({**_row("8"), "sender": "Oak Ridge Savings"}, card, Listed())
+    assert (bank["kind"], bank["urgency"], bank["source"]["name"]) == (MailKind.BANK.value, Urgency.REVIEW.value, "Oak Ridge Savings")
+    insurer = sort(_row("9"), "ELM MUTUAL\n" + privacy, Listed())
+    assert (insurer["kind"], insurer["source"]["name"]) == (MailKind.INSURANCE.value, "Elm Mutual")
+    # A profile that does not list it leaves the letter unsorted: a miss.
+    assert sort({**_row("8"), "sender": "Oak Ridge Savings"}, card, Unlisted())["kind"] == MailKind.OTHER.value
+
+
 def test_a_preliminary_notice_joins_the_claimants_payments(tmp_path) -> None:
     text = ("CALIFORNIA PRELIMINARY NOTICE for PRIVATE WORKS\nTHIS IS NOT A LIEN\nOWNER: MYSTIQUE COMMUNITYASSOC\n"
             "THE UNDERSIGNED CLAIMANT:\nCompany Name:\nJB BOSTICK COMPANY\nIn the Amount of:\n§ 1 9,377.00\n")

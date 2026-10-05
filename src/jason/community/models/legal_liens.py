@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import Enum
 
+from jason.community.base import name_regex
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -190,7 +191,11 @@ class AssessmentLienModel(DocumentModel):
         # A law firm the sender directory lists, by its name there; any other requester as the recorder's block prints it.
         r.requested_by = sender_name(text[:1200], context.community, SourceKind.LAW_FIRM) or \
             first(r"Recording Requested by[^\n]*\n(?:[^\n]*\n){0,3}?\s*([A-Z][A-Z&,. ]{5,})\n", text)
-        r.association = first(r"that (MYSTIQUE COMMUNITY ASSOCIATION)", flat) or ("Mystique Community Association" if "MYSTIQUE" in text.upper() else "")
+        # The association as the notice prints it after "that", else the specification's name when the text carries its
+        # name word; a notice that names neither names no association.
+        own = str(getattr(context.community, "name", "") or "")
+        word = getattr(context.community, "name_pattern", str)()
+        r.association = first(rf"that ({name_regex(own)})", flat) or (own if word and re.search(word, text, re.I) else "")
         r.association_address = first(r"whose address for the purpose of all matters addressed herein is ((?:[^,]+,){2,3}[^,]+?\d{5})", flat)
         r.declaration = first(r"Declaration[^.]{0,200}?recorded on [^,]+, \d{4}, in (Book \d+, at Page \d+)", flat)
         exhibit_a = text[text.find('EXHIBIT "A"'):] if 'EXHIBIT "A"' in text else text

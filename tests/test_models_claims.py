@@ -17,7 +17,8 @@ TODAY = date(2026, 9, 29)
 
 class FakeCommunity:
     def insurance(self):
-        master = SimpleNamespace(kind=SimpleNamespace(name="MASTER"), carrier="Example National", number="EX-1")
+        master = SimpleNamespace(kind=SimpleNamespace(name="MASTER"), carrier="Example National Insurance Company (admitted)",
+                                 program="Example Program Services", number="EX-1")
         return SimpleNamespace(policies=(master,))
 
     def streets(self):
@@ -31,7 +32,10 @@ class FakeCommunity:
     def senders(self):
         from jason.community.sources import Sender, SourceKind
 
-        return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),)
+        return (Sender("Example Management Group", SourceKind.MANAGER, ("EXAMPLE MANAGEMENT",)),
+                Sender("Elm Mutual Insurance", SourceKind.INSURER, ("ELM MUTUAL", "ELM INSURANCE EXCHANGE")),
+                Sender("Example Claims Administrators", SourceKind.INSURER, ("EXAMPLE CLAIMS",)),
+                Sender("Elm Roofing", SourceKind.VENDOR, ("ELM ROOFING",)))
 
 
 def ctx(name: str = "") -> ModelContext:
@@ -44,7 +48,8 @@ def codes(reading):
 
 DISCLAIMER = """ZT0000000
 Toll Free: (800) 435-7764
-Email: myclaim@farmersinsurance.com
+Email: myclaim@elmmutual.example
+Elm Insurance Exchange
 Please include your claim # on any correspondence
 National Document Center
 January 28, 2025
@@ -81,7 +86,7 @@ Location of Loss:
 5701 Whimsical Lane, Sacramento, CA
 Subject:
 Settlement Notice
-Farmers
+Elm Mutual
 payment has been made to Lionsbridge Contractor Group who will distribute the funds as the repairs are completed.
 Line of Coverage
 Building
@@ -95,10 +100,10 @@ Coverage conditions: we will not pay; the property is not covered under the poli
 """
 
 PRIMACY = """030000001 - 002
-Garrison Property and Casualty Insurance Company
+Birch Property and Casualty Insurance Company
 COVERAGE FOR YOUR CONDOMINIUM CLAIM
 March 6, 2023
-We've reviewed your condominium association's Master Policy and your USAA Condominium Policy to determine the primary insurer
+We've reviewed your condominium association's Master Policy and your Birch Condominium Policy to determine the primary insurer
 Policyholder:
 An Owner
 Claim number:
@@ -122,17 +127,17 @@ Subject:
 Claim Outcome Letter
 We've made several attempts to contact you. As of today, we haven't been able to reach you.
 we are currently unable to make payment and have closed your file.
-Farmers Insurance
+Elm Mutual Insurance
 """
 
 
 def test_a_disclaimer_for_a_canceled_policy_names_the_master_carrier():
     reading = read(K.CLAIM_LETTER, DISCLAIMER, ctx())
     r = reading.record
-    assert (r.carrier, r.claim_number, r.policy_number, r.loss_date) == ("Farmers", "7000000001-1", "0600000001", date(2025, 1, 21))
+    assert (r.carrier, r.claim_number, r.policy_number, r.loss_date) == ("Elm Mutual Insurance", "7000000001-1", "0600000001", date(2025, 1, 21))
     assert r.letter_type is LetterType.DENIAL and r.canceled_effective == date(2024, 9, 28) and r.association_is_insured
     finding = codes(reading)["filed-with-a-prior-carrier"]
-    assert finding.severity is Severity.PROBLEM and "Example National (EX-1)" in finding.message
+    assert finding.severity is Severity.PROBLEM and "Example National Insurance Company (admitted) (EX-1)" in finding.message
 
 
 def test_a_settlement_notice_is_a_settlement_though_it_quotes_policy_exclusions():
@@ -145,6 +150,8 @@ def test_primacy_and_no_contact_letters():
     primacy = read(K.CLAIM_LETTER, PRIMACY, ctx())
     assert primacy.record.letter_type is LetterType.PRIMACY and not primacy.record.association_is_insured
     assert primacy.record.claim_number == "030000001-002" and "owner-carrier-defers" in codes(primacy)
+    # An owner's own carrier is not in the specification: the letter reads, and its carrier is a miss for a person to list.
+    assert primacy.record.carrier == "" and primacy.missing == ("carrier",)
     closed = read(K.CLAIM_LETTER, NO_CONTACT, ctx())
     assert closed.record.letter_type is LetterType.CLOSED_NO_CONTACT and "closed-no-contact" in codes(closed)
 
@@ -155,28 +162,47 @@ def test_statement_of_loss_and_check():
     assert (statement.net_loss_cents, statement.deductible_cents, statement.depreciation_cents, statement.net_claim_cents) == \
         (1851600, 1000000, 24408, 827192)
     check = read(K.CLAIM_PAYMENT, "Remittance advice\nAmount\nCheck Number\nIssued Date\n8271.92\n755000\n09-16-2026\nFrom\n"
-                                  "Accelerant National Insurance\nMemo\nAZ000001 Mystique\nDATE OF LOSS\n5/29/2026\n", ctx())
+                                  "Example National Insurance\nMemo\nAZ000001 Mystique\nDATE OF LOSS\n5/29/2026\n", ctx())
     r = check.record
+    # The check prints the master carrier without "Company"; its name comes from the specification's insurance record.
     assert (r.carrier, r.claim_number, r.check_number, r.issued, r.amount_cents, r.date_of_loss) == \
-        ("Accelerant National Insurance Company", "AZ000001", "755000", date(2026, 9, 16), 827192, date(2026, 5, 29))
+        ("Example National Insurance Company (admitted)", "AZ000001", "755000", date(2026, 9, 16), 827192, date(2026, 5, 29))
+
+
+def test_the_carrier_is_the_specifications_and_one_it_does_not_list_is_a_miss():
+    from jason.community.models.insurance_claims import carrier_of
+
+    c = ctx()
+    # A policy's carrier in the insurance record comes first, though a listed administrator and the program are named too.
+    assert carrier_of("EXAMPLE CLAIMS ADMINISTRATORS for Example National Insurance Company, through Example Program Services", c) \
+        == "Example National Insurance Company (admitted)"
+    # Then an insurer in the sender directory, by the words the directory gives it; a vendor is not an insurer.
+    assert carrier_of("Example Claims Administrators, for Example Program Services", c) == "Example Claims Administrators"
+    assert carrier_of("myclaim@elm-mutual.example", c) == "Elm Mutual Insurance" and carrier_of("Elm Roofing", c) == ""
+    # Then a policy's program, by its name.
+    assert carrier_of("Issued through Example Program Services", c) == "Example Program Services"
+    # A carrier the specification lists nowhere, and a specification with no insurance record or directory: a miss.
+    assert carrier_of("Birch Property and Casualty Insurance Company", c) == ""
+    assert carrier_of("Elm Mutual Insurance", ModelContext(community=SimpleNamespace(), today=TODAY)) == ""
+    assert carrier_of("Elm Mutual Insurance", ModelContext(today=TODAY)) == ""
 
 
 def test_work_authorization_and_certificate():
     auth = read(K.CLAIM_AUTHORIZATION, "WORK AUTHORIZATION\nFOR REPAIRS AND DIRECTION OF PAYMENT\nDATE:\n5/30/2023\nCLAIM#:\n5020000001-1\n"
                                        "DATE OF LOSS:\n02/23/2023\nADDRESS:\n5701 Whimsical Lane Sacramento, CA 95835\nYour Insurance Carrier "
-                                       "Farmers submitted a request to CCA Global Partners, Inc. and its affiliate Lionsbridge Contracting Group\n"
+                                       "Elm Mutual submitted a request to CCA Global Partners, Inc. and its affiliate Lionsbridge Contracting Group\n"
                                        "6/5/2023\nDate\n", ctx()).record
     assert auth.form is AuthorizationType.WORK_AUTHORIZATION and auth.claim_number == "5020000001-1"
-    assert (auth.date_of_loss, auth.carrier, auth.signed) == (date(2023, 2, 23), "Farmers", date(2023, 6, 5))
+    assert (auth.date_of_loss, auth.carrier, auth.signed) == (date(2023, 2, 23), "Elm Mutual Insurance", date(2023, 6, 5))
     cos = read(K.CLAIM_AUTHORIZATION, "Certificate of Satisfaction\nThe work is complete.", ctx("Mystique - 231018 - Cert of satisfaction 5020000001-1 - COS.pdf"))
     assert cos.record.form is AuthorizationType.CERTIFICATE_OF_SATISFACTION and cos.record.claim_number == "5020000001-1"
 
 
 def test_carrier_estimate_and_police_report():
     estimate = read(K.CLAIM_ESTIMATE, "Insured:\nClaim Number: 1000-00-0001\nType of Loss: WATER\nDate of Loss:\n6/4/2026\nEstimate:\n"
-                                      "AAA Insurance estimate\nRCV\n$7,040.72\nLess Depreciation\n$407.22\nACV\n$6,633.50\nLess Deductible\n"
+                                      "Elm Mutual estimate\nRCV\n$7,040.72\nLess Depreciation\n$407.22\nACV\n$6,633.50\nLess Deductible\n"
                                       "$500.00\nNet Claim\n$6,133.50\n", ctx()).record
-    assert (estimate.carrier, estimate.claim_number, estimate.type_of_loss) == ("AAA Insurance", "1000-00-0001", "WATER")
+    assert (estimate.carrier, estimate.claim_number, estimate.type_of_loss) == ("Elm Mutual Insurance", "1000-00-0001", "WATER")
     assert (estimate.replacement_cost_cents, estimate.deductible_cents, estimate.net_claim_cents) == (704072, 50000, 613350)
     report = read(K.POLICE_REPORT, "Date: 5/29/26\nSubject: Request for Police Report No. 26-000001\nSacramento Police Department\n"
                                    "The incident at 3101 Enchanted Walk\nDriver: A Person\n", ctx("Police Report.pdf")).record

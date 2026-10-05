@@ -164,7 +164,8 @@ def test_the_cleared_modules_stay_cleared():
     cleared = {"src/jason/community/incidents.py", "src/jason/community/models/invoices.py",
                "src/jason/community/models/insurance_claims.py", "src/jason/community/models/correspondence.py",
                "src/jason/community/sources.py", "src/jason/postscanmail/models.py", "src/jason/tasks/mail.py",
-               "src/jason/tasks/mail_links.py", "src/jason/tasks/cross_checks.py", "src/jason/tasks/drive_labels.py"}
+               "src/jason/tasks/mail_links.py", "src/jason/tasks/cross_checks.py", "src/jason/tasks/drive_labels.py",
+               "src/jason/community/models/legal_letters.py", "src/jason/community/models/legal_liens.py"}
     assert not cleared & set(baseline)
 
 

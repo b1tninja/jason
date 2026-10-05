@@ -41,6 +41,16 @@ FAKE_NAME = "Quincy Zephyr"
 class FakeCommunity:
     """The slice of the specification the checks consult, with made-up units and parcels."""
 
+    name = "Mystique Community Association"
+
+    def name_pattern(self):
+        return "mystique"
+
+    def legal_cases(self):
+        # A business is listed by name; a private person by role only, and is never read from a letter.
+        return (SimpleNamespace(opposing=("Example Builders at Oak Ridge, LLC", "EB Development Services, Inc.")),
+                SimpleNamespace(opposing=("a unit owner (plaintiff)", "Example Builders at Oak Ridge, LLC")))
+
     _buildings = {"3101 ENCHANTED WALK": Building.BLDG_2, "3102 ENCHANTED WALK": Building.BLDG_3, "3101 MAGICAL WALK": Building.BLDG_4,
                   "3101 MACON DR": Building.BLDG_1, "5601 WHIMSICAL LN": Building.BLDG_8}
 
@@ -68,6 +78,18 @@ class FakeCommunity:
     def obligations(self):
         return (SimpleNamespace(name="Backflow assembly test", every_years=1, authority="annual test notice"),
                 SimpleNamespace(name="Fire sprinkler inspection and test", every_years=1, authority="NFPA 25"))
+
+
+class Unnamed(FakeCommunity):
+    """A specification that gives no name, no name word, and no legal matter."""
+
+    name = ""
+
+    def name_pattern(self):
+        return ""
+
+    def legal_cases(self):
+        return ()
 
 
 def ctx(name: str = "") -> ModelContext:
@@ -675,8 +697,8 @@ Mystique Community Association
 Notice of Settlement
 Dear Member:
 In accordance with Civil Code section 6100, we are pleased to report the Association has
-reached a negotiated settlement of claims against Watt Communities at Mystique, LLC and WC
-Development Services, Inc.; the claims related to Buildings 1, 2, and 4.
+reached a negotiated settlement of claims against Example Builders at Oak Ridge, LLC and EB
+Development Services, Inc.; the claims related to Buildings 1, 2, and 4. A unit owner and Example Windows are not parties.
 1. The Settlement Amount. The total settlement amount is $50,000.00.
 2. Limited Release of Claims: The claims included are limited to those construction defects, damages, and issues
 identified in the consultant's report. Please note that the Settlement Agreement does not include the following claims:
@@ -700,6 +722,41 @@ def test_settlement_disclosure():
     assert r.defects_described and r.other_claims_status and not r.repair_estimate and r.prints_credentials
     assert {"no-repair-estimate", "prints-credentials"} <= codes(reading.findings, Severity.CHECK)
     assert "no-other-claims-status" not in codes(reading.findings)
+    # The parties are the businesses the specification's legal matters are against, in the letter's order, each once; a
+    # business no matter lists, and a person listed by role, are not read.
+    assert r.parties == ("Example Builders at Oak Ridge LLC", "EB Development Services Inc.")
+    assert read(DocumentKind.LEGAL_CORRESPONDENCE, SETTLEMENT, ModelContext(community=Unnamed(), today=TODAY)).record.parties == ()
+
+
+def test_the_association_is_named_by_the_specification_not_by_the_reader():
+    """Another association's lien and letters read with its own name; a specification with no name reads none."""
+
+    class OakRidge(FakeCommunity):
+        name = "Oak Ridge Community Association"
+
+        def name_pattern(self):
+            return r"oak\s*r[il1]dge"
+
+    def as_oak_ridge(text):
+        return text.replace("MYSTIQUE", "OAK RIDGE").replace("Mystique", "Oak Ridge")
+
+    oak = ModelContext(community=OakRidge(), today=TODAY)
+    bare = ModelContext(community=Unnamed(), today=TODAY)
+    assert read(DocumentKind.RECORDED_LIEN, LIEN, ctx()).record.association == "MYSTIQUE COMMUNITY ASSOCIATION"
+    assert read(DocumentKind.RECORDED_LIEN, as_oak_ridge(LIEN), oak).record.association == "OAK RIDGE COMMUNITY ASSOCIATION"
+    # Without "that <name>", the name word anywhere gives the specification's name; OCR's spelling is the profile's too.
+    assert read(DocumentKind.RECORDED_LIEN, as_oak_ridge(LIEN).replace("that OAK RIDGE", "that the OAK R1DGE"), oak).record.association \
+        == "Oak Ridge Community Association"
+    assert read(DocumentKind.RECORDED_LIEN, LIEN, oak).record.association == ""        # another association's lien
+    assert read(DocumentKind.RECORDED_LIEN, LIEN, bare).record.association == ""       # no name in the specification
+    # A letter: the board's signature block, and the subject under the association's own name on the RE: line.
+    offer = read(DocumentKind.LEGAL_CORRESPONDENCE, as_oak_ridge(IDR_OFFER), oak).record
+    assert offer.sender == "Board of Directors"
+    assert read(DocumentKind.LEGAL_CORRESPONDENCE, IDR_OFFER, oak).record.sender == ""
+    letter = "DRAFT\nMembership\nOak Ridge Community Association\nRE:\nOAK RIDGE COMMUNITY ASSOCIATION\nReminder re: Window Claims\n" \
+             "Dear Member:\nOur office represents the Association.\nVery truly yours,\nSAMPLE & COUNSEL LLP\n"
+    assert LegalLetterModel().read(letter, oak).record.subject == "Reminder re: Window Claims"
+    assert LegalLetterModel().read(letter, bare).record.subject == "OAK RIDGE COMMUNITY ASSOCIATION"
 
 
 IDR_OFFER = f"""MYSTIQUE COMMUNITY ASSOCIATION

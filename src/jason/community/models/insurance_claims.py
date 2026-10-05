@@ -36,23 +36,45 @@ from jason.community.base import alternation, street_words
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, cents, date_after, first, register, squash
 from jason.community.incidents import LOSS_RUN, LossRunClaim, claim_key, read_loss_run
 from jason.community.reviews import AS_OF
+from jason.community.sources import SourceKind, fold, sender_name
 from jason.community.symbols import DocumentKind
 
-_CARRIERS = (("Farmers", r"farmersinsurance|Farmers Insurance|Truck Insurance Exchange|Fire Insurance Exchange"),
-             ("USAA (Garrison Property and Casualty)", r"USAA|Garrison Property"),
-             ("Accelerant National Insurance Company", r"Accelerant"),
-             ("AAA Insurance", r"AAA Insurance|\bCSAA\b"),
-             ("Athens Program Insurance Services", r"Athens"),
-             ("MG Skinner & Associates", r"MG ?Skinner"),
-             ("McGowan Program Administrators", r"McGowan"),
-             ("Philadelphia Insurance", r"Philadelphia Indemnity|Philadelphia Insurance"))
+# A company's legal form, which a check or a letterhead may leave off its name.
+_LEGAL_FORM = re.compile(r",?\s+(?:Company|Co\.?|Inc\.?|LLC|Corporation|Corp\.?)$", re.I)
 
 
-def carrier_of(text: str) -> str:
-    for name, pattern in _CARRIERS:
-        if re.search(pattern, text or "", re.I):
+def _record_names(context: ModelContext, field: str) -> list[str]:
+    """The carriers (or programs) of the policies in the specification's insurance record, in its order."""
+    community = context.community
+    try:
+        catalog = community.insurance() if community is not None else None
+    except Exception:
+        return []
+    return list(dict.fromkeys(name for policy in getattr(catalog, "policies", ()) or () if (name := getattr(policy, field, ""))))
+
+
+def _printed(name: str, folded: str) -> bool:
+    """Whether a text (folded) prints a company's name, with or without its legal form; a parenthesis is a note, not
+    part of the name."""
+    bare = re.sub(r"\(.*?\)", "", name).strip()
+    return any(part.strip() and fold(part) in folded for part in (bare, _LEGAL_FORM.sub("", bare)))
+
+
+def carrier_of(text: str, context: ModelContext) -> str:
+    """The carrier or claims administrator a claim paper names, by its name in the specification.
+
+    In order: a policy's carrier in the insurance record (``Community.insurance``), found by its name; an insurer in the
+    sender directory (``Community.senders``), found by the words the directory gives it; a policy's program, by its
+    name. One the specification lists in neither place is not named: a miss, and the reading then lacks its carrier.
+    An owner's own carrier, or the other driver's, is found only once the directory lists it."""
+    folded = fold(text or "")
+    for name in _record_names(context, "carrier"):
+        if _printed(name, folded):
             return name
-    return ""
+    listed = sender_name(text or "", context.community, SourceKind.INSURER)
+    if listed:
+        return listed
+    return next((name for name in _record_names(context, "program") if _printed(name, folded)), "")
 
 
 def _us_day(text: str) -> date | None:
@@ -139,7 +161,7 @@ class LossRunModel(DocumentModel):
             return None
         r = LossRun()
         r.claims = read_loss_run(text)
-        r.carrier = (r.claims[0].carrier if r.claims else "") or _after(r"Company:", text) or carrier_of(text)
+        r.carrier = (r.claims[0].carrier if r.claims else "") or _after(r"Company:", text) or carrier_of(text, context)
         r.policy = (r.claims[0].policy if r.claims else "") or _after(r"Policy #:", text)
         r.valued = (r.claims[0].valued if r.claims else None) or _us_day(_after(r"Valuation Date:", text))
         r.period = first(r"Date Range(?: Selection)?:?\s*\n?\s*([\d/]+\s*-\s*[\d/]+)", text)
@@ -215,7 +237,7 @@ class ClaimLetterModel(DocumentModel):
     def parse(self, text: str, context: ModelContext) -> ClaimLetter | None:
         if not re.search(r"claim", text or "", re.I) or LOSS_RUN.search((text or "")[:600]):
             return None
-        r = ClaimLetter(carrier=carrier_of(text))
+        r = ClaimLetter(carrier=carrier_of(text, context))
         head = (text or "")[:3000]
         r.letter_date = _us_day(first(r"\n((?:January|February|March|April|May|June|July|August|September|October|November|December)"
                                       r"\s+\d{1,2},\s*\d{4})\s*\n", head)) or date_after(r"\bDate:", head, window=30)
@@ -310,7 +332,7 @@ class ClaimPaymentModel(DocumentModel):
         check = bool(re.search(r"remittance advice|check number|payable to", text or "", re.I))
         if not (statement or check):
             return None
-        r = ClaimPayment(carrier=carrier_of(text), statement=statement and not check)
+        r = ClaimPayment(carrier=carrier_of(text, context), statement=statement and not check)
         r.claim_number = first(r"\b([A-Z]{2}\d{6})\b", text) or _after(r"CLAIM #", text, 30)
         r.date_of_loss = _us_day(_after(r"DATE OF LOSS", text, 30))
         if statement:
@@ -381,7 +403,7 @@ class ClaimAuthorizationModel(DocumentModel):
         blank = re.search(r"Your Insurance Carrier\s*(.*?)\s*submitt", text or "", re.I | re.S)
         # The carrier is typed into a blank, and OCR spaces its letters ("_F_a_r_m_e_rs___").
         typed = re.sub(r"[_\s]+", "", blank.group(1)) if blank else ""
-        r = ClaimAuthorization(form=form, carrier=carrier_of(text) or (typed if 2 < len(typed) < 40 else ""))
+        r = ClaimAuthorization(form=form, carrier=carrier_of(text, context) or (typed if 2 < len(typed) < 40 else ""))
         typed = re.sub(r"\s+", "", _after(r"CLAIM\s*#", text, 30))
         # A blank form's empty field reads the next label ("DATE OF LOSS:"); a claim number has digits.
         r.claim_number = typed if re.search(r"\d{5}", typed) else first(r"\b(\d{9,10}(?:-\d{1,3})+)\b", (context.name or "") + " " + text)
@@ -428,7 +450,7 @@ class ClaimEstimateModel(DocumentModel):
         # The estimate's own header (Xactimate prints "Type of Loss"); a settlement letter that encloses one does not.
         if not re.search(r"Type of Loss", text or "", re.I) or not re.search(r"estimate", text or "", re.I):
             return None
-        r = ClaimEstimate(carrier=carrier_of(text))
+        r = ClaimEstimate(carrier=carrier_of(text, context))
         r.claim_number = re.sub(r"\s+", "", _after(r"Claim Number", text, 30))
         r.type_of_loss = _after(r"Type of Loss", text, 40)
         r.date_of_loss = _us_day(_after(r"Date of Loss", text, 30))

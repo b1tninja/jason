@@ -40,7 +40,8 @@ _SENDERS: tuple[Sender, ...] = (
     Sender("Castle Rock Insurance Agency", I, ("CASTLE ROCK INSURANCE",), role="insurance agency on the Philadelphia flood policies"),
     Sender("Arden Insurance Services", I, ("ARDEN INSURANCE",)),
     Sender("McGowan Program Administrators", I, ("MCGOWAN",)),
-    Sender("Athens Program Insurance Services", I, ("ATHENS PROGRAM",), domains=('athensadmin.com',)),
+    # Its claim letters print "Athens Administrators" (privilege.py lists it by that name and this domain).
+    Sender("Athens Program Insurance Services", I, ("ATHENS PROGRAM", "ATHENS ADMINISTRATORS"), domains=('athensadmin.com',)),
     # CAIS bills both PMA-group policies on one account; its ACH debit ("CAIS Insurance") names neither.
     Sender("Manufacturers Alliance Insurance Company", I, ("MANUFACTURERS ALLIANCE", "CAIS INSURANCE"),
            role="crime (fidelity) policy, billed by CAIS through LaBarre/Oksnee; CAIS's debit also pays the workers' comp"),
