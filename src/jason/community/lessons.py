@@ -1567,6 +1567,42 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/adapters.md",),
            notes=("Matching helper functions by name alone flags unrelated calls (a .get with a default); resolve by "
                   "the module's own and imported names.",)),
+    Lesson("owners-insurers-claim-counted-as-the-associations", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A claim paper from an owner's own homeowner insurer was read as the association's claim: it made the loss "
+           "\"claimed\", hiding a claim candidate, and put the owner's insurer's estimate and payment into the event's "
+           "cost.",
+           "The readers named a carrier but not whose policy the paper was on, and the history counted any claim paper. "
+           "The old name patterns that happened to name those carriers had been removed in the boundary work, which "
+           "turned the papers into carrier-less readings and showed the gap.",
+           "Each claim reading carries a Policyholder (the association's, another's, or unknown) decided by rule from the "
+           "insurance record, the policy number, the letter's insured line, and the sender directory's holder for a "
+           "carrier; a paper on another's policy gets a finding that is a lead for a person, and the incident history "
+           "counts only the association's papers and lists the others apart (OWNER-INS, otherInsurerClaims). Whether the "
+           "loss touches the master policy, a common area, or the deductible's allocation is for a person to analyze.",
+           Status.FIXED, guards=("insurance_claims.policyholder_of",
+                                 "tests/test_models_claims.py: a carrier the directory says writes an owner's policies is "
+                                 "other and the paper carries the lead",
+                                 "tests/test_incidents.py: an event with only another insurer's claim is not claimed and "
+                                 "keeps its candidate standing"),
+           docs=("docs/incidents.md", "docs/document-models/insurance-claims.md")),
+    Lesson("a-directory-entry-does-not-say-whose-policy", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "The association's prior carrier and its claims administrator are listed in the sender directory beside "
+           "owners' insurers. A rule that read \"in the directory only\" as another's policy would have flipped about "
+           "twenty-four of the association's own papers.",
+           "A directory row names a counterparty, not whose policies it writes.",
+           "Sender.holder states whose policies a row writes; unset is unknown. A person sets it per row. The "
+           "certificate of satisfaction on one claim prints another carrier's group name under a claim that also has the "
+           "association's carrier's papers: whether it is on an owner's policy is for a person.",
+           Status.DECISION, docs=("docs/incidents.md",)),
+    Lesson("stub-passages-cost-first-places", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "Joining passages under 20 words into their neighbours removed every stub from the gold sets' top five and "
+           "kept recall@5, but MRR@10 fell 0.008: competitors a stub had sat above rose past answers already first.",
+           "A stub ranks well on few words, and removing it lifts whichever passage sat below it, which cannot be an "
+           "answer already in first place.",
+           "The join is built and off (passage_sections.MIN_PASSAGE_WORDS = 0); eval_retrieval.py --min-words and "
+           "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
+           "decide after gold-records.json exists.",
+           Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "

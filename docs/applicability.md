@@ -203,6 +203,7 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
    - The law pages' description passage is left out (the law questions' MRR@10 0.71 to 0.75).
    - The law tier of `context_pack` was compared on the law's gold set: sections whole 0.98 recall@5, the index's passages 0.96. It stays on sections whole.
    - The records tier was compared on the six tasks that name record kinds. Read from the index with the same latest files, it gave the library reader's sources on none: the index cuts on sections, the library reader on 220-word windows. It stays on the library reader (`RECORDS_FROM_INDEX` off).
+   - The section cut's stubs can be joined to their neighbours (`MIN_PASSAGE_WORDS`, off: measured in docs/document-tools.md). At 20 words no stub reaches a top five and recall holds, but six first-place answers fall to second, so it stays off until the pack's records have a gold set. Turning it on re-cuts every file.
    - With no catalog named, a search ranks the core catalogs (`CORE_CATALOGS`). Ranking the library, mail, reports, and docs at once took hybrid recall@5 from 0.86 to 0.83.
    - Still to do:
      - a gold set for the pack's records tier (`gold-records.json`: task, question, kind, the file that should be found), then the choice between the library reader and the index;
