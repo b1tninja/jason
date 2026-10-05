@@ -90,6 +90,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [deployment-research.md](deployment-research.md): research notes on a low-cost hosted deployment (compute, Bedrock, secrets, Google).
 - [integrations-design.md](integrations-design.md): each service as an integration an administrator configures per community, the credential vault behind one interface, and defaults from rate limits.
 - [scheduler-daemon-design.md](scheduler-daemon-design.md): jason as a service: `jason serve` (web, worker, scheduler), cadences, leases, and the commands.
+- [arrivals-design.md](arrivals-design.md): everything that comes in (Gmail, the mail service, PayHOA, forms) cataloged, the known form and its printed reference identified, then triaged by sender and kind and routed to the process that fits.
 - [responses-design.md](responses-design.md): checking for new responses to a request over every channel (PayHOA, forms, a reply email with a scan, mailed scans): the inbox, a reading as evidence, a person's confirmation, `jason responses`, and the MCP tools.
 - [paint-ui-design.md](paint-ui-design.md): the paint screen (a buildings-by-surfaces matrix with painted and due dates) and the facts it needs.
 - [unit-records-design.md](unit-records-design.md): community facts as assumed defaults, a manual for each unit, and a loss packet for claims.
