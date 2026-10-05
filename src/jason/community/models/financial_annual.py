@@ -37,6 +37,7 @@ from typing import Any
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, date_after, dates_in, register, squash
 from jason.community.models.financial_common import MONEY_LINE, disk_studies, dollars, long_date, signed_cents, spec_units
 from jason.community.reserve_study import ReserveDisclosure, read_disclosure
+from jason.community.reviews import RECORDS
 from jason.community.sources import manager_name
 from jason.community.symbols import DocumentKind
 
@@ -240,7 +241,40 @@ def _study_plan(context: ModelContext, year: int) -> tuple[Any, Any] | None:
     return max(rows, key=lambda pair: (pair[0].fiscal_year or 0, pair[0].prepared or date.min)) if rows else None
 
 
-def budget_findings(b: Budget, context: ModelContext) -> list[Finding]:
+def study_plan(b, records) -> dict[str, Any] | None:
+    """From the reserve studies on disk: the newest study whose funding plan has the budget's year (its fiscal year and
+    preparer) and the contribution it plans for that year. None for a budget with no reserve transfer or no year, or
+    when no study plans the year."""
+    if b is None or b.reserve_transfer_cents is None or not b.fiscal_year:
+        return None
+    plan = _study_plan(records, b.fiscal_year)
+    if not plan:
+        return None
+    study, row = plan
+    return {"fiscal_year": study.fiscal_year, "preparer": study.preparer, "contribution_cents": row.contribution_cents}
+
+
+def _transfer_against_plan(b, plan: dict[str, Any] | None) -> list[Finding]:
+    if plan is None:
+        return []
+    gap = b.reserve_transfer_cents - plan["contribution_cents"]
+    if abs(gap) > 10_000:
+        return [Finding("reserve-transfer-vs-study", f"the budget moves {dollars(b.reserve_transfer_cents)} to reserves in "
+                        f"{b.fiscal_year}; the FY{plan['fiscal_year']} study by {plan['preparer']} plans "
+                        f"{dollars(plan['contribution_cents'])}", Severity.CHECK, "CIV 5300(b)(3); CIV 5560(a)")]
+    return [Finding("reserve-transfer-matches-study", f"the reserve transfer matches the FY{plan['fiscal_year']} study's "
+                    f"plan for {b.fiscal_year} ({dollars(plan['contribution_cents'])})", Severity.INFO, "CIV 5560(a)")]
+
+
+@RECORDS.check("budget-reserve-plan", Budget, fields=("fiscal_year", "reserve_transfer_cents"), facts=study_plan, dated=False)
+def budget_reserve_plan(b, _as_of, plan: dict[str, Any] | None) -> list[Finding]:
+    """A budget's reserve transfer against the reserve study's funding plan for the same year."""
+    return _transfer_against_plan(b, plan)
+
+
+def budget_findings(b: Budget, context: ModelContext, slot: Any = budget_reserve_plan) -> list[Finding]:
+    """A budget's own findings, with ``slot`` (a records-lens check) where the reserve study's plan is set beside the
+    reserve transfer."""
     found: list[Finding] = []
     if None not in (b.total_income_cents, b.total_expenses_cents, b.net_cents) and b.total_income_cents - b.total_expenses_cents != b.net_cents:
         found.append(Finding("budget-does-not-foot", f"income {dollars(b.total_income_cents)} less expenses {dollars(b.total_expenses_cents)} "
@@ -263,18 +297,7 @@ def budget_findings(b: Budget, context: ModelContext) -> list[Finding]:
                              "an accrual basis", Severity.CHECK, "CIV 5300(b)(1)"))
     if b.reserve_transfer_cents is None:
         found.append(Finding("no-reserve-line", "no reserve transfer line is in the budget", Severity.CHECK, "CIV 5300(b)(3)"))
-    elif b.fiscal_year:
-        plan = _study_plan(context, b.fiscal_year)
-        if plan:
-            study, row = plan
-            gap = b.reserve_transfer_cents - row.contribution_cents
-            if abs(gap) > 10_000:
-                found.append(Finding("reserve-transfer-vs-study", f"the budget moves {dollars(b.reserve_transfer_cents)} to reserves in "
-                                     f"{b.fiscal_year}; the FY{study.fiscal_year} study by {study.preparer} plans "
-                                     f"{dollars(row.contribution_cents)}", Severity.CHECK, "CIV 5300(b)(3); CIV 5560(a)"))
-            else:
-                found.append(Finding("reserve-transfer-matches-study", f"the reserve transfer matches the FY{study.fiscal_year} study's "
-                                     f"plan for {b.fiscal_year} ({dollars(row.contribution_cents)})", Severity.INFO, "CIV 5560(a)"))
+    found.append(slot)   # the records lens's place: the reserve study's plan for the year
     if b.fiscal_year and b.generated:
         first, last = distribution_window(b.fiscal_year)
         if b.generated > last:
@@ -292,6 +315,7 @@ class PayhoaBudgetModel(DocumentModel):
     kind = DocumentKind.BUDGET
     name = "payhoa-budget"
     required = ("fiscal_year", "total_income_cents", "total_expenses_cents", "reserve_transfer_cents")
+    lens_checks = (budget_reserve_plan,)
 
     def parse(self, text: str, context: ModelContext) -> Budget | None:
         if not _PAYHOA_BUDGET.search(text or ""):
@@ -522,10 +546,22 @@ def _items(body: str, rules: dict[str, tuple[str, str]]) -> tuple[str, ...]:
     return tuple(key for key, (_what, pattern) in rules.items() if re.search(pattern, body, re.I))
 
 
+def packet_study_plan(a, records) -> dict[str, Any] | None:
+    """The reserve study's plan for the year of the budget the packet carries (``study_plan``)."""
+    return study_plan(a.budget, records)
+
+
+@RECORDS.check("packet-reserve-plan", AnnualReport, fields=("budget",), facts=packet_study_plan, dated=False)
+def packet_reserve_plan(a, _as_of, plan: dict[str, Any] | None) -> list[Finding]:
+    """The reserve transfer of the budget an annual packet carries, against the reserve study's plan for the year."""
+    return _transfer_against_plan(a.budget, plan)
+
+
 class AnnualReportModel(DocumentModel):
     kinds = (DocumentKind.ANNUAL_DISCLOSURE, DocumentKind.BUDGET)
     name = "annual-budget-report"
     required = ("fiscal_year", "budget_report_items", "policy_items")
+    lens_checks = (packet_reserve_plan,)
 
     def parse(self, text: str, context: ModelContext) -> AnnualReport | None:
         text = text or ""
@@ -619,8 +655,10 @@ class AnnualReportModel(DocumentModel):
                 found.append(Finding("percent-funded", f"the 5570 form reports reserves {d.percent_funded:.0%} funded", Severity.INFO,
                                      "CIV 5570(a)(6)"))
         if a.budget:
-            found += [f for f in budget_findings(a.budget, context) if f.code not in ("generated-after-window", "distribution-window",
-                                                                                     "prepared-before-window", "no-distribution-date")]
+            # The packet's own budget, with the records lens's place for the reserve study's plan kept among its findings.
+            found += [f for f in budget_findings(a.budget, context, slot=packet_reserve_plan)
+                      if not isinstance(f, Finding) or f.code not in ("generated-after-window", "distribution-window",
+                                                                      "prepared-before-window", "no-distribution-date")]
         if a.monthly_assessment_cents and a.budget and a.budget.per_unit_monthly_cents \
                 and abs(a.monthly_assessment_cents - a.budget.per_unit_monthly_cents) > 100:
             found.append(Finding("assessment-vs-budget", f"the letter sets {dollars(a.monthly_assessment_cents)} a month per unit; the budget's "

@@ -24,8 +24,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, register
+from jason.community.reviews import RECORDS
 from jason.community.sources import manager_name
 from jason.community.models.financial_common import (
     MONEY_LINE,
@@ -148,10 +150,38 @@ def _bank_names(context: ModelContext) -> set[str]:
     return words
 
 
+def stored_balance_sheet(r, records) -> dict[str, Any] | None:
+    """From PayHOA's stored balance sheets: the sheet for the report's month (the day it is as of) and the balance it
+    gives each bank account the report prints, in the sheet's order. None when no sheet is stored for the month."""
+    data = data_json(records, SHEETS)
+    sheet = (data or {}).get("sheets", {}).get(r.period) if r.period else None
+    if not sheet:
+        return None
+    printed = {a.label for a in r.bank_accounts}
+    return {"as_of": sheet.get("asOf", r.period),
+            "accounts": [[account["label"], account.get("cents")] for account in sheet.get("accounts", [])
+                         if account.get("section") == "Bank Accounts" and account.get("label") in printed]}
+
+
+@RECORDS.check("ledger-since", TreasurerReport, fields=("period", "bank_accounts"), facts=stored_balance_sheet, dated=False)
+def ledger_since(r, _as_of, sheet: dict[str, Any] | None) -> list[Finding]:
+    """Printed bank balances against PayHOA's balance sheet for the same month end, as the ledger stands now."""
+    if sheet is None:
+        return []
+    printed = {a.label: a.cents for a in r.bank_accounts}
+    changed = [f"{label} printed {dollars(printed[label])}, ledger now {dollars(cents)}"
+               for label, cents in sheet["accounts"] if printed[label] != cents]
+    if not changed:
+        return []
+    return [Finding("ledger-changed-since", f"PayHOA's balance sheet for {sheet['as_of']} no longer matches this copy: "
+                    + "; ".join(changed) + "; the printed report is the record of what the board was told", Severity.CHECK)]
+
+
 class TreasurerReportModel(DocumentModel):
     kind = DocumentKind.TREASURER_REPORT
     name = "payhoa-treasurers-report"
     required = ("period", "generated", "total_assets_cents", "total_liabilities_equity_cents", "reconciliations")
+    lens_checks = (ledger_since,)
 
     def parse(self, text: str, context: ModelContext) -> TreasurerReport | None:
         text = text or ""
@@ -298,27 +328,8 @@ class TreasurerReportModel(DocumentModel):
             if banks and bank and not ({w.casefold() for w in re.findall(r"[A-Za-z]{3,}", bank.group(1))} & banks):
                 found.append(Finding("reserve-at-unnamed-bank", f"'{account.label}' ({dollars(account.cents)}) holds reserve money at a bank the "
                                      "specification's bank accounts do not name", Severity.CHECK))
-        found += self._ledger(r, context)
+        found.append(ledger_since)   # the records lens's place: PayHOA's balance sheet for the month, as the ledger stands now
         return found
-
-    @staticmethod
-    def _ledger(r: TreasurerReport, context: ModelContext) -> list[Finding]:
-        """Printed bank balances against PayHOA's balance sheet for the same month end, as the ledger stands today."""
-        data = data_json(context, SHEETS)
-        sheet = (data or {}).get("sheets", {}).get(r.period) if r.period else None
-        if not sheet:
-            return []
-        printed = {a.label: a.cents for a in r.bank_accounts}
-        changed = []
-        for account in sheet.get("accounts", []):
-            if account.get("section") != "Bank Accounts" or account.get("label") not in printed:
-                continue
-            if printed[account["label"]] != account.get("cents"):
-                changed.append(f"{account['label']} printed {dollars(printed[account['label']])}, ledger now {dollars(account.get('cents'))}")
-        if not changed:
-            return []
-        return [Finding("ledger-changed-since", f"PayHOA's balance sheet for {sheet.get('asOf', r.period)} no longer matches this copy: "
-                        + "; ".join(changed) + "; the printed report is the record of what the board was told", Severity.CHECK)]
 
 
 # The Helsing Group's monthly financial statements.

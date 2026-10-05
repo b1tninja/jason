@@ -20,10 +20,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from datetime import date
+from typing import Any
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, register, squash
 from jason.community.models.financial_common import disk_studies, long_date, spec_units
 from jason.community.reserve_study import ReserveStudy, StudyLevel, by_year_expenditures, read_pages
+from jason.community.reviews import RECORDS
 from jason.community.symbols import DocumentKind
 
 SITE_VISIT_YEARS = 3   # CIV 5550(a)
@@ -77,10 +79,45 @@ def split_pages(text: str) -> list[str]:
     return pages or [text]
 
 
+def studies_on_disk(r, records) -> list[dict[str, Any]] | None:
+    """From the reserve studies on disk, oldest fiscal year first: each one's fiscal year, the day it was prepared, its
+    preparer, and its level. None when there are none, or the study under review gives no fiscal year."""
+    studies = disk_studies(records)
+    if not studies or not r.fiscal_year:
+        return None
+    return [{"fiscal_year": s.fiscal_year, "prepared": s.prepared, "preparer": s.preparer, "level": s.level.value if s.level else None}
+            for s in studies]
+
+
+@RECORDS.check("study-schedule", ReserveStudyRecord, fields=("fiscal_year",), facts=studies_on_disk)
+def study_schedule(r, as_of: date, studies: list[dict[str, Any]] | None) -> list[Finding]:
+    """Against the other studies on disk: whether this one is the latest, and when the next site visit falls due."""
+    if not studies:
+        return []
+    found: list[Finding] = []
+    newer = [s for s in studies if (s["fiscal_year"] or 0) > r.fiscal_year]
+    if newer:
+        latest = max(newer, key=lambda s: (s["fiscal_year"] or 0, s["prepared"] or date.min))
+        found.append(Finding("superseded", f"a later study is on disk (FY{latest['fiscal_year']} by {latest['preparer']})", Severity.INFO))
+        return found
+    visits = [s for s in studies if s["level"] in (StudyLevel.FULL.value, StudyLevel.UPDATE_WITH_SITE_VISIT.value) and s["fiscal_year"]]
+    if visits:
+        last = max(visits, key=lambda s: s["fiscal_year"])
+        due = last["fiscal_year"] + SITE_VISIT_YEARS
+        severity = Severity.CHECK if due <= as_of.year + 1 else Severity.INFO
+        found.append(Finding("next-site-visit", f"the last study with a site visit is FY{last['fiscal_year']} ({last['preparer']}); the next "
+                             f"is due for FY{due}", severity, "CIV 5550(a)"))
+    if r.fiscal_year < as_of.year:
+        found.append(Finding("no-current-study", f"no study on disk is newer than FY{r.fiscal_year}; the board reviews the study every year",
+                             Severity.CHECK, "CIV 5550(a)"))
+    return found
+
+
 class ReserveStudyModel(DocumentModel):
     kind = DocumentKind.RESERVE_STUDY
     name = "reserve-study"
     required = ("preparer", "fiscal_year", "prepared", "level")
+    lens_checks = (study_schedule,)
 
     def parse(self, text: str, context: ModelContext) -> ReserveStudyRecord | None:
         text = text or ""
@@ -165,31 +202,7 @@ class ReserveStudyModel(DocumentModel):
                                  "it must incorporate", Severity.CHECK, "CIV 5551(f)"))
         else:
             found.append(Finding("elevated-report-cited", "the study cites the elevated-element inspection report", Severity.INFO, "CIV 5551(f)"))
-        found += self._schedule(r, context)
-        return found
-
-    @staticmethod
-    def _schedule(r: ReserveStudyRecord, context: ModelContext) -> list[Finding]:
-        """Against the other studies on disk: whether this one is the latest, and when the next site visit falls due."""
-        studies = disk_studies(context)
-        if not studies or not r.fiscal_year:
-            return []
-        found: list[Finding] = []
-        newer = [s for s in studies if (s.fiscal_year or 0) > r.fiscal_year]
-        if newer:
-            latest = max(newer, key=lambda s: (s.fiscal_year or 0, s.prepared or date.min))
-            found.append(Finding("superseded", f"a later study is on disk (FY{latest.fiscal_year} by {latest.preparer})", Severity.INFO))
-            return found
-        visits = [s for s in studies if s.level in (StudyLevel.FULL, StudyLevel.UPDATE_WITH_SITE_VISIT) and s.fiscal_year]
-        if visits:
-            last = max(visits, key=lambda s: s.fiscal_year)
-            due = last.fiscal_year + SITE_VISIT_YEARS
-            severity = Severity.CHECK if due <= context.today.year + 1 else Severity.INFO
-            found.append(Finding("next-site-visit", f"the last study with a site visit is FY{last.fiscal_year} ({last.preparer}); the next "
-                                 f"is due for FY{due}", severity, "CIV 5550(a)"))
-        if r.fiscal_year < context.today.year:
-            found.append(Finding("no-current-study", f"no study on disk is newer than FY{r.fiscal_year}; the board reviews the study every year",
-                                 Severity.CHECK, "CIV 5550(a)"))
+        found.append(study_schedule)   # the records lens's place: the other studies on disk
         return found
 
 

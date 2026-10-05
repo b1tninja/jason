@@ -19,9 +19,11 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, register, squash
 from jason.community.models.financial_common import dollars
+from jason.community.reviews import RECORDS
 from jason.community.tax import DirectLevy, TaxBill, TaxLevy, direct_levies, parcel_number
 from jason.community.symbols import DocumentKind
 
@@ -78,10 +80,57 @@ def _bill(chunk: str) -> tuple[TaxBill, str, tuple[str, ...]] | None:
     return bill, number.group(1), delinquent
 
 
+def county_figures(d, records) -> dict[str, Any] | None:
+    """From the stored tax catalog (``jason sync-tax``): for each of the document's bills, by number, the tax office's
+    direct levies, total, and balance for the same parcel and bill, or None when the catalog lacks the bill. None when
+    there is no catalog on disk, the document has no bills, or the catalog cannot be read."""
+    if records.data_dir is None:
+        return None
+    path = Path(records.data_dir) / TAX_DB
+    if not path.is_file() or not d.bills:
+        return None
+    out: dict[str, Any] = {}
+    try:
+        with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as conn:
+            conn.row_factory = sqlite3.Row
+            for bill in d.bills:
+                row = conn.execute("SELECT direct_cents, total_cents, balance_cents FROM bills WHERE apn = ? AND number = ?",
+                                   (d.apn, bill.number)).fetchone()
+                out[str(bill.number)] = None if row is None else {k: row[k] for k in ("direct_cents", "total_cents", "balance_cents")}
+    except sqlite3.Error:
+        return None
+    return out
+
+
+@RECORDS.check("bills-per-county", TaxBillDocument, fields=("apn", "bills"), facts=county_figures, dated=False)
+def bills_per_county(d, _as_of, county: dict[str, Any] | None) -> list[Finding]:
+    """Each bill against the tax office's figures ``jason sync-tax`` stored for the same bill number."""
+    if county is None:
+        return []
+    found: list[Finding] = []
+    for bill in d.bills:
+        row = county[str(bill.number)]
+        if row is None:
+            found.append(Finding("not-in-tax-store", f"the {bill.year} bill {bill.number} is not in the stored tax catalog; run "
+                                 "jason sync-tax", Severity.INFO))
+            continue
+        if row["direct_cents"] is not None and bill.direct_cents is not None and row["direct_cents"] != bill.direct_cents:
+            found.append(Finding("direct-differs-from-county", f"the {bill.year} bill's direct levies are {dollars(bill.direct_cents)}; "
+                                 f"the county's bill page says {dollars(row['direct_cents'])}", Severity.CHECK))
+        if row["balance_cents"] is not None:
+            if row["balance_cents"] > 0:
+                found.append(Finding("unpaid-per-county", f"the county shows {dollars(row['balance_cents'])} still due on the "
+                                     f"{bill.year} bill", Severity.CHECK))
+            else:
+                found.append(Finding("paid-per-county", f"the county shows the {bill.year} bill paid", Severity.INFO))
+    return found
+
+
 class SacramentoTaxBillModel(DocumentModel):
     kind = DocumentKind.TAX_BILL
     name = "sacramento-secured-bill"
     required = ("apn", "bills")
+    lens_checks = (bills_per_county,)
 
     def parse(self, text: str, context: ModelContext) -> TaxBillDocument | None:
         text = text or ""
@@ -137,39 +186,7 @@ class SacramentoTaxBillModel(DocumentModel):
             if len({cents for _, cents in series.amounts}) > 1:
                 amounts = ", ".join(f"{year} {dollars(cents)}" for year, cents in series.amounts)
                 found.append(Finding("levy-changed", f"direct levy {series.code} {series.name}: {amounts}", Severity.INFO))
-        found += self._stored(d, context)
-        return found
-
-    @staticmethod
-    def _stored(d: TaxBillDocument, context: ModelContext) -> list[Finding]:
-        """Each bill against the tax office's figures ``jason sync-tax`` stored for the same bill number."""
-        if context.data_dir is None:
-            return []
-        path = Path(context.data_dir) / TAX_DB
-        if not path.is_file() or not d.bills:
-            return []
-        found: list[Finding] = []
-        try:
-            with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as conn:
-                conn.row_factory = sqlite3.Row
-                for bill in d.bills:
-                    row = conn.execute("SELECT direct_cents, total_cents, balance_cents FROM bills WHERE apn = ? AND number = ?",
-                                       (d.apn, bill.number)).fetchone()
-                    if row is None:
-                        found.append(Finding("not-in-tax-store", f"the {bill.year} bill {bill.number} is not in the stored tax catalog; run "
-                                             "jason sync-tax", Severity.INFO))
-                        continue
-                    if row["direct_cents"] is not None and bill.direct_cents is not None and row["direct_cents"] != bill.direct_cents:
-                        found.append(Finding("direct-differs-from-county", f"the {bill.year} bill's direct levies are {dollars(bill.direct_cents)}; "
-                                             f"the county's bill page says {dollars(row['direct_cents'])}", Severity.CHECK))
-                    if row["balance_cents"] is not None:
-                        if row["balance_cents"] > 0:
-                            found.append(Finding("unpaid-per-county", f"the county shows {dollars(row['balance_cents'])} still due on the "
-                                                 f"{bill.year} bill", Severity.CHECK))
-                        else:
-                            found.append(Finding("paid-per-county", f"the county shows the {bill.year} bill paid", Severity.INFO))
-        except sqlite3.Error:
-            return []
+        found.append(bills_per_county)   # the records lens's place: the tax office's stored figures for each bill
         return found
 
 

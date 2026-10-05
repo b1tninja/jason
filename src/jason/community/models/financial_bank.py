@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, register
 from jason.community.models.financial_common import (
@@ -27,6 +28,7 @@ from jason.community.models.financial_common import (
     signed_cents,
     spec_bank_accounts,
 )
+from jason.community.reviews import RECORDS
 from jason.community.symbols import DocumentKind
 
 RECONCILIATIONS = "payhoa/reconciliations.json"
@@ -74,10 +76,56 @@ _PRODUCT = re.compile(r"^[ \t]*(Chase [A-Za-z ]*?(?:Checking|Savings)[A-Za-z ]*?
 _NAME_LAST4 = re.compile(r"statements?-(\d{4})\b", re.I)
 
 
+def account_reconciliation(s, records) -> dict[str, Any] | None:
+    """From PayHOA's stored reconciliations: for the statement's account, the end of its first reconciliation, and the
+    reconciliation that ends with the statement's period (its ending and starting balances), if there is one. None when
+    the store has none for the account, or the statement gives no account or period."""
+    data = data_json(records, RECONCILIATIONS)
+    suffix = s.account_last4 or s.name_last4
+    if not data or not suffix or not s.period_end:
+        return None
+    rows = [r for r in data.get("reconciliations", []) if str(r.get("last4")) == suffix]
+    if not rows:
+        return None
+    same = [r for r in rows if r.get("end") == s.period_end.isoformat()]
+    return {"first": min(r.get("end") or "" for r in rows),
+            "same": {"endingBalance": same[0].get("endingBalance"), "startingBalance": same[0].get("startingBalance")} if same else None}
+
+
+@RECORDS.check("statement-reconciliation", BankStatement,
+               fields=("account_last4", "name_last4", "period_end", "beginning_cents", "ending_cents", "purpose"),
+               facts=account_reconciliation, dated=False)
+def statement_reconciliation(s, _as_of, stored: dict[str, Any] | None) -> list[Finding]:
+    """Against PayHOA's reconciliation of the same account and period: none held, balances that differ, or a match."""
+    if stored is None:
+        return []
+    suffix = s.account_last4 or s.name_last4
+    authority = "CIV 5500(b)" if s.purpose == "reserve" else "CIV 5500(a)"
+    r = stored["same"]
+    if r is None:
+        if s.period_end.isoformat() < stored["first"]:
+            return []   # before PayHOA's first reconciliation of this account
+        return [Finding("no-reconciliation", f"PayHOA holds no reconciliation of ...{suffix} for the period ending {s.period_end}",
+                        Severity.CHECK, authority)]
+    found = []
+    if s.ending_cents is not None and r.get("endingBalance") is not None and int(r["endingBalance"]) != s.ending_cents:
+        found.append(Finding("reconciliation-ending-differs", f"the reconciliation for {s.period_end} uses an ending balance of "
+                             f"{dollars(int(r['endingBalance']))}; the statement says {dollars(s.ending_cents)}", Severity.PROBLEM, authority))
+    if s.beginning_cents is not None and r.get("startingBalance") is not None and int(r["startingBalance"]) != s.beginning_cents:
+        found.append(Finding("reconciliation-beginning-differs", f"the reconciliation for {s.period_end} starts at "
+                             f"{dollars(int(r['startingBalance']))}; the statement's beginning balance is {dollars(s.beginning_cents)}",
+                             Severity.PROBLEM, authority))
+    if not found:
+        found.append(Finding("reconciled", f"PayHOA's reconciliation for {s.period_end} matches the statement's balances",
+                             Severity.INFO, authority))
+    return found
+
+
 class ChaseStatementModel(DocumentModel):
     kind = DocumentKind.BANK_STATEMENT
     name = "chase-statement"
     required = ("account_last4", "period_start", "period_end", "beginning_cents", "ending_cents", "deposits_cents")
+    lens_checks = (statement_reconciliation,)
 
     def parse(self, text: str, context: ModelContext) -> BankStatement | None:
         text = text or ""
@@ -186,38 +234,7 @@ class ChaseStatementModel(DocumentModel):
             found.append(Finding("reserve-withdrawal", f"{dollars(out)} left the reserve account this period{over}; each withdrawal "
                                  "needs two signers and a reserve purpose, and a transfer over the lesser of $10,000 or 5% of budgeted "
                                  "income needs the board's prior written approval", Severity.CHECK, "CIV 5510(a), (b); CIV 5502(a)(2)"))
-        found += self._reconciliation(s, context)
-        return found
-
-    @staticmethod
-    def _reconciliation(s: BankStatement, context: ModelContext) -> list[Finding]:
-        data = data_json(context, RECONCILIATIONS)
-        suffix = s.account_last4 or s.name_last4
-        if not data or not suffix or not s.period_end:
-            return []
-        rows = [r for r in data.get("reconciliations", []) if str(r.get("last4")) == suffix]
-        if not rows:
-            return []
-        authority = "CIV 5500(b)" if s.purpose == "reserve" else "CIV 5500(a)"
-        same = [r for r in rows if r.get("end") == s.period_end.isoformat()]
-        if not same:
-            first = min(r.get("end") or "" for r in rows)
-            if s.period_end.isoformat() < first:
-                return []   # before PayHOA's first reconciliation of this account
-            return [Finding("no-reconciliation", f"PayHOA holds no reconciliation of ...{suffix} for the period ending {s.period_end}",
-                            Severity.CHECK, authority)]
-        r = same[0]
-        found = []
-        if s.ending_cents is not None and r.get("endingBalance") is not None and int(r["endingBalance"]) != s.ending_cents:
-            found.append(Finding("reconciliation-ending-differs", f"the reconciliation for {s.period_end} uses an ending balance of "
-                                 f"{dollars(int(r['endingBalance']))}; the statement says {dollars(s.ending_cents)}", Severity.PROBLEM, authority))
-        if s.beginning_cents is not None and r.get("startingBalance") is not None and int(r["startingBalance"]) != s.beginning_cents:
-            found.append(Finding("reconciliation-beginning-differs", f"the reconciliation for {s.period_end} starts at "
-                                 f"{dollars(int(r['startingBalance']))}; the statement's beginning balance is {dollars(s.beginning_cents)}",
-                                 Severity.PROBLEM, authority))
-        if not found:
-            found.append(Finding("reconciled", f"PayHOA's reconciliation for {s.period_end} matches the statement's balances",
-                                 Severity.INFO, authority))
+        found.append(statement_reconciliation)   # the records lens's place: PayHOA's reconciliation for the period
         return found
 
 
