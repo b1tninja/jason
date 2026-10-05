@@ -405,6 +405,26 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason living KEY --fetch --working",
                  check="applied and not-in-effect lists; before-words findings; the rule rows' checks",
                  refs=("docs/living-documents.md",), lessons=("plain-text-loses-the-marks", "amended-by-hand-drifts")),
+            Step("Before reading a bulk or scanned PDF, preflight it: blank and near-blank pages, rotation, skew, "
+                 "resolution, the text layer's quality, and what the file carries (attachments and photographs are "
+                 "saved as their own documents, never opened or run). Keep the original; read the cleaned rendition "
+                 "only where a measured defect was found.",
+                 command="jason preflight FILE|FOLDER [--render --pdf] [--ocr] [--extract]",
+                 check="the original is untouched; no page with a mark is called blank; a clean page is unchanged; "
+                       "a text layer over the suspect limit is read again, not trusted",
+                 refs=("docs/pdf-preflight.md",),
+                 lessons=("cleaning-every-page-adds-errors", "blank-page-test-drops-the-page-number",
+                          "english-prior-misjudges-a-text-layer")),
+            Step("Segment a file that holds more than one document, or a document with parts (rules inside a manual, an "
+                 "exhibit or a report inside a packet): the stack of open documents, each with its parent and pages. "
+                 "Segment before blank removal. A boundary the rules and the model agree on is likely; one reader's is "
+                 "a suggestion.",
+                 command="jason segments FILE [--model] [--write]",
+                 check="the file is never split; each segment has a parent and absolute pages; a duplex scan's blanks "
+                       "are not separators",
+                 refs=("docs/document-segmentation.md",),
+                 lessons=("scan-holding-several-documents-read-as-one", "vision-model-leans-to-new-document",
+                          "duplex-blank-backs-are-not-separators")),
             Step("Park every uncertainty as a question, and answer them: the kind, OCR readings (the likely ones in a "
                  "batch after a look), drift, an amendment's silent changes, orphaned notes. The text rules read the "
                  "OCR beside the working copy (with a vocabulary search, case from the sentence, and the document's "

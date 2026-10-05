@@ -254,6 +254,63 @@ LESSONS: tuple[Lesson, ...] = (
            "Recomputing the case every time lost 17 right words to fix 4.",
            Status.FIXED, guards=("ocr_correct.case_for", "lexicon.document_term_forms", "tests/test_ocr_channel.py"),
            docs=("docs/ocr-correction.md",)),
+    Lesson("cleaning-every-page-adds-errors", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "Binarizing a scan before Tesseract (Otsu, Sauvola, Niblack) read worse than the gray page on every clean set "
+           "measured (0.3 to 1.5 points of word error), and so did tilting and smoothing every page.",
+           "The recognizer reads gray; \"clean it up first\" changes pages that had nothing wrong.",
+           "pdf_preflight cleans a page only for a measured defect (the auto variant: shading, dust, tilt of a degree "
+           "or more), and a page with none comes back as the same array. Where a defect is present it takes the page "
+           "from 25.79% to 2.02%, 7.33% to 1.88%, and 2.63% to 2.09%.",
+           Status.FIXED, guards=("page_prep.auto_clean", "tests/test_pdf_preflight.py"),
+           docs=("docs/pdf-preflight.md",)),
+    Lesson("blank-page-test-drops-the-page-number", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A blank-page test on ink alone would drop a page number or a stamp (an 8-point number is as faint as dust at "
+           "100 dpi), and the orientation detector called upright forms and tables upside down at low confidence.",
+           "Faintness and confidence are not evidence of emptiness or of rotation.",
+           "A page is blank only with no ink worth a mark, no character-like piece, and no text; analysis runs at "
+           "150 dpi; a rotation is believed only at confidence 5 or more. On the archive's labeled pages no page "
+           "with anything on it was called blank.",
+           Status.FIXED, guards=("pdf_preflight.OSD_MINIMUM", "tests/test_pdf_preflight.py"),
+           docs=("docs/pdf-preflight.md",)),
+    Lesson("english-prior-misjudges-a-text-layer", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "The share of words an English list does not know was taken as how badly a scanner's text layer was read, "
+           "but tables, names and addresses inflate it: its correlation with the real error rate was 0.28.",
+           "A word list measures strangeness, not error.",
+           "The 3% re-read limit is only a place to start. A better predictor is Tesseract's word confidence (kept "
+           "beside the reading by jason preflight --ocr) or agreement of two readings.",
+           Status.OPEN, guards=(), docs=("docs/pdf-preflight.md",)),
+    Lesson("scan-holding-several-documents-read-as-one", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "A scan that holds several documents (or rules inside an owner's manual) was classified, dated and read as "
+           "one, so its kind, date and parties were wrong for most pages.",
+           "Ingestion treated a file as a document.",
+           "jason segments reads the stack of open documents: continue, push an inner one (an exhibit, a report "
+           "inside a packet), pop back to the outer one, or start a new one; a part belongs to the innermost segment "
+           "and scoping_parts gives the scoping index its Part rows. It never splits the file. Measured on a labeled "
+           "gold set: first pages precision 0.92 and recall 0.84 on the rules alone; 31 of 33 held-out nested "
+           "documents found, but only 13 with the right parent, and the pop (an outer document resuming) was "
+           "found on 0 of 2 real resume pages.",
+           Status.OPEN, guards=("document_segments", "tests/test_document_segments.py", "tests/test_document_nesting.py"),
+           docs=("docs/document-segmentation.md",),
+           notes=("Open: resumes on real scans, over-nesting in long packets, passage-index segment columns, and a "
+                  "segmentation call from jason ingest.",)),
+    Lesson("vision-model-leans-to-new-document", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "The local vision model's yes or no on \"first page of a new document\" leaned to yes (held-out precision "
+           "0.35), and its closed choice on the stack answered one letter for every move; shown the page before as "
+           "well it was worse.",
+           "A small model asked a closed question without the document's structure has a prior of its own.",
+           "The rule pass decides; the model alone is a suggestion, and agreement with the rules is the likely tier "
+           "(held-out precision 0.89, recall 0.67).",
+           Status.FIXED, guards=("tests/test_document_segments.py", "docs/document-segmentation.md (measurements)"),
+           docs=("docs/document-segmentation.md",)),
+    Lesson("duplex-blank-backs-are-not-separators", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A duplex scan has a blank back after every page, and pleading paper's margin numbers read as page numbers; "
+           "both broke the separator and numbering cues.",
+           "The cues assumed a blank page is a break and a number in the margin is a page.",
+           "When more than a quarter of the pages are blank the blanks are backs, not separators, and margin line "
+           "numbers are dropped from the page lines.",
+           Status.FIXED, guards=("document_segments.DUPLEX", "PageInfo.numbered",
+                                 "test_pleading_line_numbers_are_not_page_numbers"),
+           docs=("docs/document-segmentation.md",)),
     Lesson("duty-gold-overstates", OCT_2026, (Area.GOVERNING,),
            "The phrase grammar for duties scored precision 1.00 on its gold sets, while random samples of its readings "
            "across all the governing documents had about four in five of the right kind.",
