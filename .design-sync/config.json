@@ -135,11 +135,18 @@
     "../docs/console/handoff-reconciliation-3.md",
     "../docs/console/handoff-held-setup-roster.md",
     "../docs/console/handoff-unit-records.md",
+    "../docs/console/handoff-contracts.md",
     "../docs/paint-ui-design.md",
     "../docs/paint-design.md",
     "../docs/unit-records-design.md",
     "../docs/console/screens/paint.md",
     "../docs/console/screens/community-facts.md",
-    "../docs/console/screens/unit-record.md"
+    "../docs/console/screens/unit-record.md",
+    "../docs/console/handoff-discovery.md",
+    "../docs/console/handoff-title-processes.md",
+    "../docs/console/handoff-inspections-and-portals.md",
+    "../docs/console/screens/life-safety.md",
+    "../docs/cross-connection-control.md",
+    "../docs/life-safety-inspections.md"
   ]
 }
