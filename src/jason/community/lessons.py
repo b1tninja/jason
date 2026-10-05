@@ -1616,6 +1616,17 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("term-pattern-matches-another-clock", date(2026, 10, 5), (Area.GOVERNING,),
+           "Four statutory terms (the penalty cap, the lien release after payment, the ballots' mailing, and the "
+           "nominations notice) and the mechanic's lien action carried a pattern that also fits another clause of the "
+           "section: 5685(b), 5115(a) and (b), 5850(d), and later subdivisions of 8460. The check passed whichever "
+           "sentence was left, so a change to the clause that sets the clock would not have been noticed.",
+           "The test asked only whether the pattern occurs somewhere in the section's text, and a short pattern such as "
+           "'at least 30 days' occurs in several subdivisions that set different clocks.",
+           "Each pattern is now the words of the one sentence that sets its clock, and a test requires that it match "
+           "exactly one place in the section (it runs where the statute is exported, and skips elsewhere).",
+           Status.FIXED, guards=("tests/test_statutory_terms.py::test_the_pattern_names_the_one_sentence_that_sets_the_clock",),
+           docs=("src/jason/community/statutory_terms.py",)),
     Lesson("temp-and-caches-followed-the-system-drive", date(2026, 10, 5), (Area.REPOSITORY,),
            "The system drive filled while the data sat on a drive with more than 500 GB free. Two index experiments "
            "left 6.2 GB and 4.2 GB copies of the project and its data (confidential) in the user's Temp, tests failed "
