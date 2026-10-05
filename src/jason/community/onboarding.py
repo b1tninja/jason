@@ -350,7 +350,9 @@ class FactAsk:
     ``lead_kinds`` are library document kinds that may hold the answer (their files are the question's evidence);
     ``lead_pattern`` a regular expression whose most common match in those files' text is jason's suggestion.
     ``clock`` names the legal clock the answer sets, when it sets one. ``stakes`` marks an answer a second person
-    confirms before it is applied."""
+    confirms before it is applied. ``topic`` names the private fact topic (``data/spec/<profile>/<topic>.json``) a
+    private answer is appended to, in that topic's form (``jason.community.roster``), instead of the profile's facts
+    file. ``standing`` asks it whatever the item's status: a record kept as it changes (a change of office, a term)."""
 
     question: str
     record: FactRecord = FactRecord.PRIVATE
@@ -360,6 +362,8 @@ class FactAsk:
     lead_kinds: tuple[DocumentKind, ...] = ()
     lead_pattern: str = ""
     method: str = ""                         # for a profile change: the ``Community`` method the answer fills
+    topic: str = ""
+    standing: bool = False
 
 
 @dataclass(frozen=True)
@@ -550,8 +554,13 @@ ITEMS: tuple[OnboardingItem, ...] = (
     OnboardingItem(
         "board-roster", Group.BOARD, "Directors and officers, with their offices, term dates, and contact",
         "who may act, sign, and be noticed; the incoming manager's first request", (S.BOARD, S.PRIOR_MANAGER),
-        "PayHOA's Board Member tag; data/payhoa/board-members.json", (Store("payhoa/board-members.json"),), (P, Q, H),
-        "jason board", private=True),
+        "PayHOA's Board Member tag; data/payhoa/board-members.json; Community.officers() from the private facts' "
+        "officers topic, each recorded change of office appended with the minutes that record it",
+        (Store("payhoa/board-members.json"),), (P, Q, H), "jason board", private=True,
+        note="A change of office is the board's act, recorded in the minutes; the question records it after.",
+        ask=A("Which office changed, who holds it now (or vacant), on what date did the board act, and which minutes "
+              "record it? Answer as: OFFICE; PERSON; YYYY-MM-DD; MINUTES (several changes separated by |).",
+              stakes=True, lead_kinds=(K.MINUTES,), topic="officers", standing=True)),
     OnboardingItem(
         "signers", Group.BOARD, "Bank signers, their order, and the board's approval limits for transfers",
         "transfers over the limit need the board's written approval (CIV 5380(b)(6), 5502)", (S.BOARD, S.BANK),
@@ -829,8 +838,15 @@ ITEMS: tuple[OnboardingItem, ...] = (
     # Elections
     OnboardingItem(
         "election-status", Group.ELECTIONS, "The election in progress or last held: results, seats and terms filled, next cycle",
-        "CIV 5100-5145", (S.PRIOR_MANAGER, S.BOARD), "Community.assignments()",
-        (Kinds((K.ELECTION_RESULTS,)), Method("assignments", contains="election")), (L, Q, H)),
+        "CIV 5100-5145", (S.PRIOR_MANAGER, S.BOARD),
+        "Community.assignments(); Community.terms() from the private facts' terms topic, each with its election record",
+        (Kinds((K.ELECTION_RESULTS,)), Method("assignments", contains="election"), Method("terms")), (L, Q, H),
+        private=True,
+        ask=A("Which terms did the election or the board's appointment fill? For each: the seat (director, or the "
+              "office), the person, the start, the end (or at the pleasure of the board), the election record (the "
+              "minutes or the inspector of elections' report), and the provision that sets the term. Answer as: SEAT; "
+              "PERSON; START; END; RECORD; PROVISION (several terms separated by |).",
+              stakes=True, lead_kinds=(K.ELECTION_RESULTS, K.MINUTES), topic="terms", standing=True)),
     OnboardingItem(
         "election-materials", Group.ELECTIONS, "Ballots and election materials, kept a year",
         "CIV 5125, 5200(c)", (S.PRIOR_MANAGER,), "book ballots",
@@ -1120,7 +1136,8 @@ def report_dicts(results: tuple[ItemResult, ...]) -> list[dict[str, Any]]:
          "why": r.item.why, "sources": [s.value for s in r.item.sources], "fills": r.item.fills,
          "origins": [o.value for o in r.item.origins], "fetch": r.item.fetch, "byPerson": r.item.by_person,
          "private": r.item.private, "note": r.item.note,
-         "ask": ({"question": r.item.ask.question, "record": r.item.ask.record.value, "stakes": r.item.ask.stakes}
+         "ask": ({"question": r.item.ask.question, "record": r.item.ask.record.value, "stakes": r.item.ask.stakes,
+                  "topic": r.item.ask.topic, "standing": r.item.ask.standing}
                  if r.item.ask else None),
          "findings": [{"passed": f.passed, "evidence": f.evidence} for f in r.findings]}
         for r in results

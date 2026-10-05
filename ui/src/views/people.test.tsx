@@ -86,6 +86,41 @@ describe("PeopleView", () => {
     expect(screen.getAllByText("[email]").length).toBe(3);
   });
 
+  it("shows terms on file with their election records, an ended one as due, and the questions that record them", async () => {
+    const q = (item: string, id: string, form: string) => ({
+      item, id, words: `The sample ${item} question.`, form,
+      commands: [`jason onboard --answer ${id} "${form}" --by "YOUR NAME"`, `jason onboard --confirm ${id} --by "SECOND PERSON"`, "jason onboard --apply"],
+    });
+    await show({
+      ...PEOPLE,
+      terms: {
+        onFile: true, note: "Each term as its election record gives it.", ended: 1,
+        rows: [
+          { person: "Lee Sample", seat: "director", office: "", start: "2096-03-01", end: "2098-02-28", endNote: "2098-02-28",
+            source: "Sample inspector's report, 2096", provision: "Bylaws 9.1", ended: true, status: "term ended; election due" },
+          { person: "Tess Sample", seat: "officer", office: "secretary", start: "2098-03-09", end: null, endNote: "at the pleasure of the board",
+            source: "Sample minutes, 2098-03-09", provision: "Bylaws 9.2", ended: false, status: "" },
+        ],
+        question: q("election-status", "t0000000001", "SEAT; PERSON; START; END; RECORD; PROVISION"),
+      },
+      change: { ...PEOPLE.change, built: true, gap: "", question: q("board-roster", "c0000000001", "OFFICE; PERSON (or vacant); YYYY-MM-DD; MINUTES"),
+                commands: q("board-roster", "c0000000001", "OFFICE; PERSON (or vacant); YYYY-MM-DD; MINUTES").commands },
+    });
+    expect(screen.queryByText("Terms: not on file.")).not.toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Terms on file" });
+    const [lee, tess] = within(list).getAllByRole("listitem");
+    expect(lee.textContent).toMatch(/term ended; election due/);
+    expect(within(lee).getByText("Sample inspector's report, 2096")).toBeInTheDocument();
+    expect(tess.textContent).toMatch(/at the pleasure of the board/);
+    expect(tess.textContent).not.toMatch(/election due/);
+    expect(within(tess).getByText("Sample minutes, 2098-03-09")).toBeInTheDocument();
+    expect(screen.getByText("The sample board-roster question.")).toBeInTheDocument();
+    expect(screen.getByText(/jason onboard --answer c0000000001/)).toBeInTheDocument();
+    expect(screen.getByText(/jason onboard --answer t0000000001/)).toBeInTheDocument();
+    expect(screen.queryByText("The board-roster question is not built yet.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
   it("is a board screen only", () => {
     const people = SCREENS.find((s) => s.id === "people");
     expect(people?.owner).toBeFalsy();

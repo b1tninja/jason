@@ -508,6 +508,15 @@ PROCEDURES: tuple[Procedure, ...] = (
                        "one who answered",
                  refs=("docs/onboarding.md (Onboarding by conversation)", "docs/mcp.md (Prompts)"),
                  lessons=("listed-question-not-answerable-over-mcp",), person=True),
+            Step("After the minutes record a change of office, or an election or appointment fills a seat, answer the "
+                 "standing question in its form (board-roster: OFFICE; PERSON or vacant; YYYY-MM-DD; MINUTES. "
+                 "election-status: SEAT; PERSON; START; END; RECORD; PROVISION); a second person confirms; then apply.",
+                 command="jason onboard --questions --group board (or elections); jason onboard --answer ID TEXT --by NAME; "
+                         "jason onboard --confirm ID --by NAME; jason onboard --apply",
+                 check="the minutes or the inspector's report are in hand before answering; the diff appends to the "
+                       "officers or terms topic and changes no row already there; the People screen shows the result",
+                 refs=("docs/onboarding.md (The roster, as it changes)", "docs/console/screens/people.md"),
+                 lessons=("board-roster-change-unrecorded",), person=True),
             Step("Send each source its request list, with three dates: at once, monthly after late fees, and at "
                  "transition; paper records come with a contents list for each box.",
                  command="jason onboard --request [SOURCE]", lessons=("outgoing-manager-only-items",), person=True),

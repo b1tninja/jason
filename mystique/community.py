@@ -556,6 +556,12 @@ class Mystique(Community):
 
         return sign_in()
 
+    def terms(self):
+        """Each director's and officer's term with its election record, from the private facts (officers.py, terms.json)."""
+        from .officers import terms
+
+        return terms()
+
     def board_meeting_policy(self):
         """A board meeting is a 90-minute Zoom meeting with a waiting room, recorded to the cloud (zoom.py)."""
         from .zoom import BOARD_MEETING_POLICY

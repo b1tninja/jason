@@ -1514,10 +1514,18 @@ LESSONS: tuple[Lesson, ...] = (
            "then by the board-roster question with a second person's confirmation, but the board-roster onboarding "
            "item has no question to answer, and no term (director or officer) is kept.",
            "The roster was written as private facts by hand; the onboarding item only checks PayHOA's board tag.",
-           "Still to build: a FactAsk on board-roster with stakes (a second person confirms), and term facts per "
-           "person and seat with their source (directors' terms from the members' election, officers' from the "
-           "board's), read through a Community method with an empty default.",
-           Status.OPEN, docs=("docs/console/screens/people.md",)),
+           "board-roster now asks a standing, high-stakes question (OFFICE; PERSON or vacant; the date the board "
+           "acted; the minutes). Applied by a person after a second person confirms, it is appended to the officers "
+           "topic, and roster.in_force makes the last act per office the holder. election-status asks each term "
+           "(seat, person, start, end or at the pleasure of the board, the election record, the provision), appended "
+           "to the terms topic and read by Community.terms() (Term, empty default). The People screen shows each term "
+           "with its source, 'term ended; election due' only from a recorded end, and the change section names the "
+           "question and its commands.",
+           Status.FIXED, guards=("tests/test_roster.py (stakes and topic; standing while present; form refused; the "
+                                 "route queues and waits on a second person; apply appends, never rewrites)",
+                                 "tests/test_web_people.py (terms with sources; the change section's question)",
+                                 "ui/src/views/people.test.tsx (terms, an ended term, the questions' commands)"),
+           docs=("docs/console/screens/people.md", "docs/onboarding.md (The roster, as it changes)")),
     Lesson("setup-questions-buried", date(2026, 10, 4), (Area.ONBOARDING,),
            "The ranked onboarding questions put hundreds of OCR and drift questions above every fact question, so the "
            "first page of the console's setup had no question a person could answer about the association.",

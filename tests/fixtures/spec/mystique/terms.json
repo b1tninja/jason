@@ -1,0 +1,6 @@
+[
+ {"person": "Quill Ashgrove", "seat": "director", "office": "", "start": "2097-03-01", "end": "2099-02-28", "source": "Inspector of elections' report, 2097 sample election", "provision": "Bylaws 9.1"},
+ {"person": "Wren Castlebury", "seat": "director", "office": "", "start": "2018-03-01", "end": "2020-02-29", "source": "Minutes of the sample annual meeting, 2018", "provision": "Bylaws 9.1"},
+ {"person": "Odo Fennimore", "seat": "officer", "office": "secretary", "start": "2097-03-15", "end": null, "source": "Minutes of the sample board meeting, 2097-03-15", "provision": "Bylaws 9.2"},
+ {"person": "", "seat": "director", "start": "2097-03-01", "source": "a row with no person is skipped"}
+]

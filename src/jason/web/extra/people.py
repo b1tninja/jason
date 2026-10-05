@@ -17,7 +17,10 @@ then recorded by a person through onboarding's board-roster item, which a second
 - **Management** (the profile's manager row and the portfolio managers, ``jason.access.officers_with_managers``) is not
   an office of the board; it approves what ``Officer.approves`` says.
 - **jason's admins** are not an office and approve nothing; an admin who also holds an office is listed under it.
-- **Terms** are not on file: jason keeps no term fact yet.
+- **Terms** are the profile's (``Community.terms``: private facts, each with its election record and the provision that
+  sets it); none on file says "Terms: not on file." A term whose recorded end is past says "term ended; election due";
+  jason computes no other date. The election-status question records a term.
+- **A change** points to the board-roster question (its id, words, and the commands that answer, confirm, and apply).
 
 Names are P1 (anyone on the roster); an email address is P2 and goes out masked (``[email]``) unless the person's private
 view is open and their offices open P2, when the answer is logged in ``access/served.jsonl``.
@@ -35,8 +38,12 @@ NO_PROVISION = "The governing documents' vacancy provision is not on file."
 NOT_AN_OFFICE = "Not an office; approves nothing."
 MANAGEMENT = "Management, not an office of the board."
 TERMS = "Terms: not on file."
+ENDED = "term ended; election due"
+NO_END = "no end date on record"
 CHANGE = ("A change of office is the board's act, recorded in the minutes; then the board-roster question records it "
           "(a second person confirms).")
+TERMS_NOTE = ("Each term as its election record gives it. A term is recorded by the election-status question (a second "
+              "person confirms).")
 MASKED = "Email addresses are masked. They show while your private view is open, if your offices open contact details."
 SHOWN = "Email addresses are shown: your private view is open. This answer is logged."
 CAVEATS = (
@@ -83,13 +90,41 @@ def _duties(role: str, rows: Iterable[Any], holders: list[dict[str, Any]], offic
     return out
 
 
+def question(item_key: str, form: str) -> dict[str, Any]:
+    """An onboarding item's standing question: its id in the intake queue, its words, and the commands that answer it,
+    confirm it (a second person), and apply it."""
+    from jason.community.intake import AskKind, ask_id
+    from jason.community.onboarding import item
+
+    ident = ask_id(AskKind.FACT, f"fact:{item_key}", "")
+    found = item(item_key)
+    return {"item": item_key, "id": ident, "words": found.ask.question if found and found.ask else "", "form": form,
+            "commands": [f'jason onboard --answer {ident} "{form}" --by "YOUR NAME"',
+                         f'jason onboard --confirm {ident} --by "SECOND PERSON"', "jason onboard --apply"]}
+
+
+def _term(t: Any, today: date) -> dict[str, Any]:
+    from jason.community.base import SeatKind
+    from jason.community.roster import PLEASURE
+
+    officer = t.seat is SeatKind.OFFICER
+    ended = t.ended(today)
+    return {"person": t.person, "seat": t.seat.value, "office": t.office.value if t.office else "",
+            "start": t.start.isoformat(), "end": t.end.isoformat() if t.end else None,
+            "endNote": t.end.isoformat() if t.end else (PLEASURE if officer else NO_END),
+            "source": t.source, "provision": t.provision, "ended": ended, "status": ENDED if ended else ""}
+
+
 def people_of(officers: Iterable[Any], *, roster: Iterable[Any] = (), admins: Iterable[Any] = (),
               managers: Iterable[Any] = (), community: str = "", duties: Iterable[Any] = (), board: Any = None,
-              vacancy: Any = None, unmask: bool = False, today: date | None = None) -> dict[str, Any]:
+              vacancy: Any = None, unmask: bool = False, today: date | None = None,
+              terms: Iterable[Any] = ()) -> dict[str, Any]:
     """The People and offices answer from the records themselves: the profile's ``officers``, the sign-in ``roster``
     (``jason.web.signin.Person``: who can sign in), jason's ``admins`` and portfolio ``managers``, the ``community``'s
-    profile key, the duty-owning ``duties`` (``Assignment``), the ``board`` rule, and ``vacancy`` (an office ->
-    ``VacancyProvision`` or None). ``unmask`` shows email addresses."""
+    profile key, the duty-owning ``duties`` (``Assignment``), the ``board`` rule, ``vacancy`` (an office ->
+    ``VacancyProvision`` or None), and the ``terms`` on file (``Term``). ``unmask`` shows email addresses."""
+    from jason.community.roster import CHANGE_FORM, TERM_FORM
+
     from jason.access import officers_with_managers
     from jason.community.base import OfficerRole
 
@@ -157,16 +192,18 @@ def people_of(officers: Iterable[Any], *, roster: Iterable[Any] = (), admins: It
                                  "canSignIn": bool(a.email), "admin": True, "email": _mask(a.email, unmask)}
 
     vacant = [o["office"] for o in offices if o["vacant"]]
-    return {"found": True, "asOf": (today or date.today()).isoformat(),
+    day = today or date.today()
+    term_rows = [_term(t, day) for t in terms]
+    asked = question("board-roster", CHANGE_FORM)
+    return {"found": True, "asOf": day.isoformat(),
             "offices": offices, "directors": {"holders": directors, "seats": seats},
             "management": management, "admins": admin_rows,
             "people": sorted(by_person.values(), key=lambda p: p["name"].lower()),
-            "vacant": vacant, "terms": {"onFile": False, "note": TERMS},
-            "change": {"note": CHANGE, "onboardingItem": "board-roster", "screen": "onboarding", "built": False,
-                       "commands": ["jason onboard --questions --group board", "jason onboard --answer ID TEXT --by NAME",
-                                    "jason onboard --confirm ID --by NAME", "jason onboard --apply"],
-                       "gap": "The board-roster question is not built yet: until it is, the officers are the private "
-                              "facts' officers topic, which a person changes after the minutes record the board's act."},
+            "vacant": vacant,
+            "terms": {"onFile": bool(term_rows), "note": TERMS_NOTE if term_rows else TERMS, "rows": term_rows,
+                      "ended": sum(1 for t in term_rows if t["ended"]), "question": question("election-status", TERM_FORM)},
+            "change": {"note": CHANGE, "onboardingItem": "board-roster", "screen": "onboarding", "built": True,
+                       "question": asked, "commands": asked["commands"], "gap": ""},
             "emailsShown": unmask, "emailsNote": SHOWN if unmask else MASKED,
             "caveats": list(CAVEATS)}
 
@@ -201,9 +238,14 @@ def people(args: Args) -> dict[str, Any]:
         board = c.board()
     except Exception:  # noqa: BLE001 - no board rule is no seats shown
         board = None
+    try:
+        terms = c.terms()
+    except Exception:  # noqa: BLE001 - terms that cannot be read are not on file
+        terms = ()
     return people_of(c.officers(), roster=tuple(sign_in.roster()) if sign_in else (), admins=admins(),
                      managers=managers(), community=profile_name(), duties=_duty_owners(), board=board,
-                     vacancy=c.vacancy_provision, unmask=_unmask(viewer))
+                     vacancy=c.vacancy_provision, unmask=_unmask(viewer), terms=terms)
 
 
-__all__ = ["CAVEATS", "CHANGE", "NOT_AN_OFFICE", "NO_PROVISION", "TERMS", "VACANT", "people", "people_of"]
+__all__ = ["CAVEATS", "CHANGE", "ENDED", "NOT_AN_OFFICE", "NO_END", "NO_PROVISION", "TERMS", "TERMS_NOTE", "VACANT",
+           "people", "people_of", "question"]

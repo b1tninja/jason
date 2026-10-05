@@ -13,9 +13,11 @@ import pytest
 import webclient
 
 from jason.access import Admin, Manager
-from jason.community.base import Officer, OfficerRole, VacancyProvision
+from datetime import date
+
+from jason.community.base import Officer, OfficerRole, SeatKind, Term, VacancyProvision
 from jason.community.schedule import Adoption, Assignment, Role, Trigger
-from jason.web.extra.people import CHANGE, NO_PROVISION, NOT_AN_OFFICE, TERMS, people_of
+from jason.web.extra.people import CHANGE, ENDED, NO_PROVISION, NOT_AN_OFFICE, TERMS, TERMS_NOTE, people_of
 from jason.web.signin import Person
 
 P, VP, S, T, D, M = (OfficerRole.PRESIDENT, OfficerRole.VICE_PRESIDENT, OfficerRole.SECRETARY, OfficerRole.TREASURER,
@@ -100,8 +102,41 @@ def test_emails_are_masked_unless_shown_and_terms_are_not_on_file():
     assert next(p for p in out["people"] if p["name"] == "Lee President")["email"] == "[email]"
     shown = people_of(OFFICERS, roster=ROSTER, unmask=True)
     assert next(p for p in shown["people"] if p["name"] == "Lee President")["email"] == "lee@example.org"
-    assert out["terms"] == {"onFile": False, "note": TERMS}
+    assert out["terms"]["onFile"] is False and out["terms"]["note"] == TERMS and out["terms"]["rows"] == []
     assert out["change"]["note"] == CHANGE and out["change"]["onboardingItem"] == "board-roster"
+
+
+# Made-up terms: one ended, one running, one officer with no end on record.
+TERMS_ON_FILE = (
+    Term("Lee President", SeatKind.DIRECTOR, date(2096, 3, 1), date(2098, 2, 28), None, "Inspector's report, 2096", "Bylaws 9.1"),
+    Term("Dana Director", SeatKind.DIRECTOR, date(2098, 3, 1), date(2100, 2, 28), None, "Inspector's report, 2098", "Bylaws 9.1"),
+    Term("Tess Two", SeatKind.OFFICER, date(2098, 3, 9), None, S, "Minutes, 2098-03-09", "Bylaws 9.2"),
+)
+
+
+def test_terms_on_file_show_with_their_sources_and_an_ended_term_says_so():
+    out = people_of(OFFICERS, terms=TERMS_ON_FILE, today=date(2099, 1, 1))
+    terms = out["terms"]
+    assert terms["onFile"] is True and terms["note"] == TERMS_NOTE and terms["ended"] == 1
+    lee, dana, tess = terms["rows"]
+    assert lee["status"] == ENDED and lee["ended"] is True and lee["source"] == "Inspector's report, 2096"
+    assert dana["status"] == "" and dana["endNote"] == "2100-02-28" and dana["provision"] == "Bylaws 9.1"
+    assert tess["office"] == "secretary" and tess["end"] is None and tess["endNote"] == "at the pleasure of the board"
+    assert tess["status"] == "" and tess["source"] == "Minutes, 2098-03-09"
+    assert all(t["source"] for t in terms["rows"])
+    assert terms["question"]["item"] == "election-status" and terms["question"]["commands"][-1] == "jason onboard --apply"
+
+
+def test_the_change_section_points_to_the_board_roster_question():
+    from jason.community.intake import AskKind, ask_id
+
+    change = people_of(OFFICERS)["change"]
+    ident = ask_id(AskKind.FACT, "fact:board-roster", "")
+    assert change["built"] is True and change["gap"] == ""
+    assert change["question"]["id"] == ident and "minutes" in change["question"]["words"]
+    assert change["commands"] == [f'jason onboard --answer {ident} "OFFICE; PERSON (or vacant); YYYY-MM-DD; MINUTES" '
+                                  f'--by "YOUR NAME"', f'jason onboard --confirm {ident} --by "SECOND PERSON"',
+                                  "jason onboard --apply"]
 
 
 # --- the route -----------------------------------------------------------------------------------------------------------
@@ -145,6 +180,9 @@ def test_the_route_answers_a_roster_person_with_emails_masked(app):
     assert [h["name"] for h in _office(out, "president")["holders"]] == ["Quill Ashgrove"]
     assert _office(out, "treasurer")["holders"][0]["canSignIn"] is True
     assert "example.org" not in r.get_data(as_text=True) and out["emailsShown"] is False
+    # The made-up terms topic: each term with its election record.
+    assert [t["person"] for t in out["terms"]["rows"]] == ["Wren Castlebury", "Quill Ashgrove", "Odo Fennimore"]
+    assert all(t["source"] for t in out["terms"]["rows"]) and out["terms"]["rows"][0]["status"] == ENDED
 
 
 def test_the_private_view_shows_emails_and_logs_it(app, tmp_path):

@@ -7,6 +7,9 @@ is the question's ``record`` (``jason.community.onboarding.FactRecord``):
 - **Private facts** (people, account numbers, the tax ID) merge into ``data/spec/<profile>.json`` under ``facts``,
   keyed by the checklist item. The file is copied to ``data/spec/backups/`` first, the change is shown as a diff, and
   a fact already there with another answer is never overwritten silently: apply refuses unless ``replace`` is given.
+  A question with a ``topic`` (a change of office, a term) appends its rows to that topic instead
+  (``data/spec/<profile>/<topic>.json``, in the form ``jason.community.roster`` reads), with a backup and a diff; a row
+  already there is not added twice, and nothing there is changed.
 - **Secrets** become a record that the secret is kept in Keeper, under the record the person named, with no value. (An
   answer that looks like a secret was refused when it was given: ``intake.secret_reason``.)
 - **Profile facts** (a book mapping, a pinned folder, a board seat count) become a proposed change: a patch under
@@ -98,6 +101,52 @@ def merge_private(profile: str, key: str, entry: dict[str, Any], *, spec_dir: Pa
     return Outcome(True, f"private facts {path.name}: {key}" + (f" (backup {backup.name})" if backup else ""), diff)
 
 
+def _same(row: dict[str, Any], old: Any) -> bool:
+    return isinstance(old, dict) and all(old.get(k) == v for k, v in row.items())
+
+
+def append_topic(profile: str, topic: str, a: Ask, *, spec_dir: Path | None = None) -> Outcome:
+    """Append an answer's rows (``jason.community.roster.rows_for``) to the private fact topic ``topic``, each signed
+    with who answered and confirmed: the file ``facts(topic)`` reads, copied to ``backups/`` first, the change shown as
+    a diff. A row already there is not added again; nothing already there is changed."""
+    from jason.community.private import path_of
+    from jason.community.private import spec_dir as default_spec_dir
+    from jason.community.roster import FormError, rows_for
+    from jason.locks import Resource, hold
+
+    if not profile:
+        return Outcome(False, reason="no profile named: the topic is data/spec/<profile>/<topic>.json")
+    try:
+        rows = rows_for(topic, a.answer)
+    except FormError as exc:
+        return Outcome(False, reason=f"not in the question's form: {exc}; answer again")
+    folder = Path(spec_dir) if spec_dir is not None else default_spec_dir()
+    path = path_of(topic, profile, folder=folder)
+    with hold(Resource.STORE, f"spec-{profile}-{topic}", timeout=120, purpose=f"private facts: {topic}"):
+        before = path.read_text(encoding="utf-8") if path.is_file() else ""
+        data = json.loads(before) if before.strip() else []
+        if not isinstance(data, list):
+            return Outcome(False, reason=f"{path.name} is not a JSON list; fix it by hand")
+        fresh = [r for r in rows if not any(_same(r, old) for old in data)]
+        if not fresh:
+            return Outcome(True, f"already in private facts {topic}")
+        data += [{**r, **_signature(a)} for r in fresh]
+        after = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
+        backup = None
+        if before:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            backup = folder / "backups" / f"{profile}-{topic}-{stamp}.json"
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            backup.write_text(before, encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(after, encoding="utf-8")
+    shown = before if not before or before.endswith("\n") else before + "\n"
+    diff = "".join(difflib.unified_diff(shown.splitlines(keepends=True), after.splitlines(keepends=True),
+                                        fromfile=f"{path.name} (before)", tofile=path.name))
+    return Outcome(True, f"private facts {topic}: {len(fresh)} row{'' if len(fresh) == 1 else 's'} added"
+                   + (f" (backup {backup.name})" if backup else ""), diff)
+
+
 def apply_fact(a: Ask, *, profile: str, data_dir: Path, community: Any = None, spec_dir: Path | None = None,
                replace: bool = False) -> Outcome:
     try:
@@ -107,6 +156,9 @@ def apply_fact(a: Ask, *, profile: str, data_dir: Path, community: Any = None, s
     key = str(a.detail.get("item") or a.serves or a.subject.removeprefix("fact:"))
     if record is FactRecord.PROFILE:
         return propose(a, data_dir=data_dir, community=community)
+    topic = str(a.detail.get("topic") or "")
+    if record is FactRecord.PRIVATE and topic:
+        return append_topic(profile, topic, a, spec_dir=spec_dir)
     if record is FactRecord.KEEPER:
         entry = {"kept_in": "Keeper", "record": a.answer.strip(), **_signature(a)}
     else:
@@ -264,5 +316,5 @@ def apply_answer(a: Ask, *, data_dir: Path, community: Any = None, profile: str 
     return Outcome(False, reason=f"no applier for {a.kind.value}")
 
 
-__all__ = ["Outcome", "PROPOSALS", "apply_answer", "apply_fact", "change_for", "insert_row", "merge_private",
+__all__ = ["Outcome", "PROPOSALS", "append_topic", "apply_answer", "apply_fact", "change_for", "insert_row", "merge_private",
            "pin_record", "propose"]

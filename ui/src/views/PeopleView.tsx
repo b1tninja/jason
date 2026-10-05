@@ -10,6 +10,13 @@ export interface PeopleOffice {
 }
 export interface PeoplePerson { name: string; offices: string[]; approves: string[]; recordsBoard: boolean; canSignIn: boolean; admin: boolean; email: string }
 export interface PeopleAdmin { name: string; holds: string[]; canSignIn: boolean; note: string }
+/** A standing onboarding question: its id in the intake queue, its words, its answer form, and the commands. */
+export interface PeopleQuestion { item: string; id: string; words: string; form: string; commands: string[] }
+/** One term as its election record gives it; `status` is "term ended; election due" only when its recorded end is past. */
+export interface PeopleTerm {
+  person: string; seat: string; office: string; start: string; end: string | null; endNote: string;
+  source: string; provision: string; ended: boolean; status: string;
+}
 export interface People {
   found: boolean; note?: string; asOf: string;
   offices: PeopleOffice[];
@@ -18,8 +25,8 @@ export interface People {
   admins: PeopleAdmin[];
   people: PeoplePerson[];
   vacant: string[];
-  terms: { onFile: boolean; note: string };
-  change: { note: string; onboardingItem: string; screen: string; built: boolean; commands: string[]; gap: string };
+  terms: { onFile: boolean; note: string; rows?: PeopleTerm[]; ended?: number; question?: PeopleQuestion };
+  change: { note: string; onboardingItem: string; screen: string; built: boolean; commands: string[]; gap: string; question?: PeopleQuestion };
   emailsShown: boolean; emailsNote: string;
   caveats: string[];
 }
@@ -85,6 +92,35 @@ function Office({ o }: { o: PeopleOffice }) {
   );
 }
 
+/** The terms on file, each with its election record and provision; an ended one says so, from its recorded end only. */
+function Terms({ terms }: { terms: People["terms"] }) {
+  const rows = terms.rows ?? [];
+  return (
+    <>
+      <p>{terms.note}</p>
+      {rows.length > 0 && (
+        <ul className="findings" aria-label="Terms on file">
+          {rows.map((t) => (
+            <li key={`${t.seat}-${t.office}-${t.person}-${t.start}`}>
+              <RoutingTag owner={{ role: t.office || t.seat, name: t.person }} />{" "}
+              <span>{t.start} to {t.endNote}</span>
+              {t.status && <strong> · {t.status}</strong>}
+              <br />
+              <span className="muted">Election record: <cite>{t.source}</cite>{t.provision ? <> · term set by <cite>{t.provision}</cite></> : null}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {terms.question && (
+        <>
+          <p className="muted">Recorded by the {terms.question.item} question ({terms.question.id}), in the form {terms.question.form}.</p>
+          {terms.question.commands.map((c) => <Command key={c} cmd={c} />)}
+        </>
+      )}
+    </>
+  );
+}
+
 const personCols = (emailsShown: boolean): Column<PeoplePerson>[] => [
   { key: "name", header: "Person" },
   { key: "offices", header: "Offices", value: (p) => p.offices.join(", "),
@@ -130,11 +166,17 @@ export function PeopleView() {
             ) : <p className="muted">No administrator is set up for this installation.</p>}
           </Card>
           <Card title="Terms">
-            <p>{d.terms.note}</p>
+            <Terms terms={d.terms} />
           </Card>
           <Card title="Recording a change">
             <p>{d.change.note}</p>
             <p>Onboarding item: <a href={`#/${d.change.screen}`}>{d.change.onboardingItem}</a></p>
+            {d.change.question && (
+              <>
+                <blockquote><p>{d.change.question.words}</p></blockquote>
+                <p className="muted">Question {d.change.question.id}; answer in the form {d.change.question.form}.</p>
+              </>
+            )}
             {!d.change.built && <p className="muted">{d.change.gap}</p>}
             {d.change.commands.map((c) => <Command key={c} cmd={c} />)}
           </Card>

@@ -688,6 +688,35 @@ class VacancyProvision:
     words: str = ""
 
 
+class SeatKind(Enum):
+    """Which seat a term is for: a director's seat the members elect, or an office the board fills."""
+
+    DIRECTOR = "director"
+    OFFICER = "officer"
+
+
+@dataclass(frozen=True)
+class Term:
+    """One person's term in a seat, as the record that filled it says: a private fact (``jason.community.roster``).
+
+    ``office`` is the office of an officer's term (None for a director's). ``end`` None: no end date on record, as
+    for an officer who serves at the pleasure of the board. ``source`` is the election record (the minutes of the
+    meeting that elected or appointed, or the inspector of elections' report); ``provision`` the governing documents'
+    provision that sets the term, as given (cited, not quoted). jason sets no term and invents no end: a term has ended
+    only when its recorded end is past (``ended``)."""
+
+    person: str
+    seat: SeatKind
+    start: date
+    end: date | None = None
+    office: OfficerRole | None = None
+    source: str = ""
+    provision: str = ""
+
+    def ended(self, today: date) -> bool:
+        return self.end is not None and self.end < today
+
+
 class IdentityProvider(Enum):
     """Who vouches for a person signing in to the console. Google (a Workspace account) is the one built; another
     is a new member here and a new flow in ``jason.web.signin``."""
@@ -885,6 +914,11 @@ class Community(ABC):
         """The provision that governs a vacancy in ``office`` (``VacancyProvision``), recited where no one holds it.
         None until the specification sets it: the console then says no one holds the office, and nothing more."""
         return None
+
+    def terms(self) -> tuple[Term, ...]:
+        """Each director's and officer's term (``Term``) with the election record that set it, from the private facts
+        (``data/spec/<profile>/terms.json``, read by ``jason.community.roster.terms_of``); empty until recorded."""
+        return ()
 
     def sign_in(self) -> tuple[SignInProvider, ...]:
         """How people sign in to the console for this community (``SignInProvider``): its own Google Workspace

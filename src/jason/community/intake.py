@@ -179,7 +179,8 @@ def secret_reason(text: str, kind: AskKind | None = None) -> str:
 
 def answer(asks: list[Ask], ident: str, text: str, by: str) -> Ask:
     """Record a person's answer. ``text`` may be a choice's number (1-based) or words. An answer that looks like a
-    secret is refused (``SecretRefused``) and nothing is written; a new answer clears an earlier confirmation."""
+    secret is refused (``SecretRefused``) and nothing is written; so is an answer not in the form its private fact
+    topic takes (``jason.community.roster``). A new answer clears an earlier confirmation."""
     if not by:
         raise ValueError("an answer names who gave it")
     a = next((x for x in asks if x.id == ident), None)
@@ -191,6 +192,13 @@ def answer(asks: list[Ask], ident: str, text: str, by: str) -> Ask:
     if why:
         raise SecretRefused(f"not stored: {why}. jason never keeps a secret. Put it in Keeper, then answer with the "
                             f"Keeper record's name (its title, not its value or id).")
+    topic = str(a.detail.get("topic") or "") if a.kind is AskKind.FACT else ""
+    if topic and text.lower() not in ("dismiss", "dismissed"):
+        from jason.community.roster import form_problem
+
+        problem = form_problem(topic, text)
+        if problem:
+            raise ValueError(f"not in the question's form: {problem}")
     a.answer, a.answered_by = text, by
     a.answered_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     a.confirmed_by = a.confirmed_at = ""

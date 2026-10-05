@@ -64,16 +64,17 @@ def legacy_path(name: str) -> Path:
     return spec_dir() / f"{name}.json"
 
 
-def path_of(name: str, profile: str = "") -> Path:
+def path_of(name: str, profile: str = "", *, folder: Path | None = None) -> Path:
     """The file ``facts(name, profile=profile)`` reads: the profile's own facts file when ``name`` is the profile,
     else its topic file, else (the default profile only) the legacy topic file. The topic file's path when none
-    exists."""
+    exists. ``folder`` is the private facts folder when not ``spec_dir()`` (a writer given its own)."""
     who = profile_of(profile)
+    root = Path(folder) if folder is not None else spec_dir()
     if name == who:
-        return spec_dir() / f"{who}.json"
-    own = spec_dir() / who / f"{name}.json"
+        return root / f"{who}.json"
+    own = root / who / f"{name}.json"
     if not own.is_file() and who == default_profile():
-        legacy = legacy_path(name)
+        legacy = root / f"{name}.json"
         if legacy.is_file():
             return legacy
     return own

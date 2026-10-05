@@ -10,6 +10,11 @@ approves nothing alone. A row may add "a fluent reviewer" (translations). "The b
 at a meeting (CIV 4910) that the president or the secretary records. ``email`` is the Google account the person signs
 in to jason-web with; a row without one cannot sign in.
 
+A change of office the board made is appended to the same topic by onboarding's board-roster question (``acted``, the
+date the board acted, and ``source``, the minutes): for each office, the row acted on last is in force
+(``jason.community.roster.in_force``). Each seat's term is ``data/spec/<profile>/terms.json``, appended by the
+election-status question and read by ``jason.community.roster.terms_of``; a missing file is no term.
+
 How people sign in to the console for this community is data/spec/<profile>/sign_in.json (``jason sign-in
 --import-client`` writes it): ``[{"key": "...", "record_uid": "...", "provider": "google", "domains": [...],
 "label": "..."}]``, each a Google client in Keeper. Empty, the installation's sign-in applies (jason.access).
@@ -18,7 +23,7 @@ jason's admins and the managers of a portfolio are the installation's, not the c
 
 from __future__ import annotations
 
-from jason.community.base import IdentityProvider, Officer, OfficerRole, SignInProvider
+from jason.community.base import IdentityProvider, Officer, OfficerRole, SignInProvider, Term
 
 DEFAULT_APPROVES: dict[OfficerRole, tuple[str, ...]] = {
     OfficerRole.PRESIDENT: ("the president",),
@@ -32,25 +37,27 @@ DEFAULT_APPROVES: dict[OfficerRole, tuple[str, ...]] = {
 
 def officers() -> tuple[Officer, ...]:
     from jason.community.private import facts
+    from jason.community.roster import in_force
 
     rows = []
-    for row in facts("officers", []):
+    for given, row in in_force(facts("officers", [])):
         name = str(row.get("name", "")).strip()
-        if not name:
+        try:
+            role = OfficerRole(given)
+        except ValueError:
             continue
-        given = row.get("role", "")
-        roles = []
-        for r in given if isinstance(given, list) else [given]:
-            try:
-                roles.append(OfficerRole(str(r).strip().lower()))
-            except ValueError:
-                continue
         approves = row.get("approves")
         email = str(row.get("email", "") or "").strip()
-        for role in roles:
-            rows.append(Officer(role, name, tuple(str(a) for a in approves) if isinstance(approves, list) else DEFAULT_APPROVES[role],
-                                email))
+        rows.append(Officer(role, name, tuple(str(a) for a in approves) if isinstance(approves, list) else DEFAULT_APPROVES[role],
+                            email))
     return tuple(rows)
+
+
+def terms() -> tuple[Term, ...]:
+    from jason.community.private import facts
+    from jason.community.roster import terms_of
+
+    return terms_of(facts("terms", []))
 
 
 def sign_in() -> tuple[SignInProvider, ...]:
@@ -61,4 +68,4 @@ def sign_in() -> tuple[SignInProvider, ...]:
     return providers_from(facts("sign_in", []))
 
 
-__all__ = ["DEFAULT_APPROVES", "officers", "sign_in"]
+__all__ = ["DEFAULT_APPROVES", "officers", "sign_in", "terms"]

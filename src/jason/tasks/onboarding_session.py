@@ -102,11 +102,12 @@ def _leads(ask: Any, library: Iterable[dict[str, Any]], data_dir: Path) -> tuple
 
 
 def fact_asks(results: Iterable[ItemResult], ctx: Context, data_dir: Path) -> list[Ask]:
-    """A ``FACT`` for each item a person supplies that is missing or partial."""
+    """A ``FACT`` for each item a person supplies that is missing or partial, and for each standing question (a record
+    kept as it changes, such as a change of office) whatever its item's status."""
     out = []
     for r in results:
         spec = r.item.ask
-        if spec is None or r.status is Status.PRESENT:
+        if spec is None or (r.status is Status.PRESENT and not spec.standing):
             continue
         subject = f"fact:{r.item.key}"
         leads, suggestion = _leads(spec, ctx.library, data_dir)
@@ -116,7 +117,8 @@ def fact_asks(results: Iterable[ItemResult], ctx: Context, data_dir: Path) -> li
                        f"{spec.question} {_RECORD_ANSWER[spec.record]}", choices=spec.choices, suggestion=suggestion,
                        evidence=evidence, serves=r.item.key, stakes=spec.stakes,
                        detail={"item": r.item.key, "record": spec.record.value, "group": r.item.group.value,
-                               "clock": spec.clock, "method": spec.method, "private": r.item.private}))
+                               "clock": spec.clock, "method": spec.method, "private": r.item.private,
+                               **({"topic": spec.topic} if spec.topic else {})}))
     return out
 
 
