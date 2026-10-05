@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from jason.community.document_models import (
+    Basis,
     DocumentModel,
     Finding,
     ModelContext,
@@ -46,7 +47,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.invoices import parse_date
-from jason.community.reviews import AS_OF
+from jason.community.reviews import AS_OF, RECORDS
 from jason.community.symbols import Building, DocumentKind, PolicyKind
 
 SOON_DAYS = 60
@@ -473,11 +474,55 @@ def summary_finding(rows: list[tuple[Coverage | None, str, int | None, int | Non
     return out
 
 
+def building_flood_terms(r, records) -> list[dict[str, Any]] | None:
+    """From the library: every flood declarations page for the policy's building, in the library's order, as its policy
+    number, term, building limit, deductible, and premium (the page under review among them). None for a page that
+    names no building."""
+    if r.building is None:
+        return None
+    return [{"policy_number": rec.policy_number, "term_start": rec.term_start, "term_end": rec.term_end, "limit": rec.limit,
+             "deductible": rec.deductible, "premium": rec.premium}
+            for _row, rec in library_records(records, DocumentKind.INSURANCE_POLICY, _nfip) if rec.building == r.building]
+
+
+@RECORDS.check("flood-other-terms", InsurancePolicy,
+               fields=("building", "policy_number", "term_start", "term_end", "limit", "deductible", "premium"),
+               facts=building_flood_terms, reads=(Basis.STORE, Basis.PROFILE), dated=False)
+def flood_other_terms(r, _as_of, terms: list[dict[str, Any]] | None) -> list[Finding]:
+    """Against the building's other flood declarations in the library: another policy for an overlapping term, and a
+    lower limit, a higher deductible, or another premium than the previous term's (CIV 5810)."""
+    if terms is None:
+        return []
+    found: list[Finding] = []
+    if r.term_start and r.term_end:
+        overlap = sorted({rec["policy_number"] for rec in terms
+                          if rec["policy_number"] and fold(rec["policy_number"]) != fold(r.policy_number)
+                          and rec["term_start"] and rec["term_end"] and rec["term_start"] < r.term_end and r.term_start < rec["term_end"]})
+        if overlap:
+            found.append(Finding("overlapping-flood-policy", f"another flood policy in the library covers building {int(r.building)} for "
+                                 f"an overlapping term ({', '.join(overlap)}); confirm only one is in force and any duplicate premium "
+                                 "was refunded", Severity.CHECK))
+    if r.term_start is None:
+        return found
+    earlier = [rec for rec in terms if rec["term_end"] and abs((rec["term_end"] - r.term_start).days) <= 3]
+    for prior in earlier[:1]:
+        if prior["limit"] and r.limit and r.limit < prior["limit"]:
+            found.append(Finding("limit-reduced", f"building coverage fell from {_money(prior['limit'])} to {_money(r.limit)} at this term; a "
+                                 "reduction in limits needs individual notice to members", Severity.CHECK, "CIV 5810"))
+        if prior["deductible"] and r.deductible and r.deductible > prior["deductible"]:
+            found.append(Finding("deductible-raised", f"the deductible rose from {_money(prior['deductible'])} to {_money(r.deductible)} at this "
+                                 "term; an increase in the deductible needs individual notice to members", Severity.CHECK, "CIV 5810"))
+        if prior["premium"] and r.premium:
+            found.append(Finding("premium-change", f"the premium went from {_money(prior['premium'])} to {_money(r.premium)} "
+                                 f"({(r.premium - prior['premium']) / prior['premium']:+.0%}) over the previous term", Severity.INFO))
+    return found
+
+
 class NfipFloodDeclarationsModel(DocumentModel):
     kind = DocumentKind.INSURANCE_POLICY
     name = "nfip-flood-declarations"
     required = ("carrier", "policy_number", "named_insured", "term_start", "term_end", "limit", "deductible", "premium", "building")
-    lens_checks = (policy_term,)
+    lens_checks = (policy_term, flood_other_terms)
 
     def parse(self, text: str, context: ModelContext) -> InsurancePolicy | None:
         return _nfip(text, context)
@@ -502,15 +547,7 @@ class NfipFloodDeclarationsModel(DocumentModel):
             if on_sheet:
                 found.append(Finding("number-not-on-sheet", f"flood policy {r.policy_number} for building {int(r.building)} is not on the "
                                      f"policy sheet, which lists {on_sheet[0].number} for that building", Severity.CHECK))
-        if r.building is not None and r.term_start and r.term_end:
-            overlap = sorted({rec.policy_number for _row, rec in library_records(context, DocumentKind.INSURANCE_POLICY, _nfip)
-                              if rec.building == r.building and rec.policy_number and fold(rec.policy_number) != fold(r.policy_number)
-                              and rec.term_start and rec.term_end and rec.term_start < r.term_end and r.term_start < rec.term_end})
-            if overlap:
-                found.append(Finding("overlapping-flood-policy", f"another flood policy in the library covers building {int(r.building)} for "
-                                     f"an overlapping term ({', '.join(overlap)}); confirm only one is in force and any duplicate premium "
-                                     "was refunded", Severity.CHECK))
-        found += change_findings(r, context)
+        found.append(flood_other_terms)   # the records lens's place: the building's other flood declarations in the library
         return found
 
 
@@ -549,26 +586,6 @@ def policy_findings(r: InsurancePolicy, context: ModelContext) -> list[Finding]:
         found.append(Finding("number-not-on-sheet", f"policy {r.policy_number} is not on the policy sheet (neither a current nor a prior "
                              "number)", Severity.CHECK))
     found += summary_finding([(r.coverage, r.carrier, r.limit, r.deductible)])
-    return found
-
-
-def change_findings(r: InsurancePolicy, context: ModelContext) -> list[Finding]:
-    """A lower limit or a higher deductible than the same building's previous term in the library (CIV 5810)."""
-    if r.building is None or r.term_start is None:
-        return []
-    earlier = [rec for _row, rec in library_records(context, DocumentKind.INSURANCE_POLICY, _nfip)
-               if rec.building == r.building and rec.term_end and abs((rec.term_end - r.term_start).days) <= 3]
-    found = []
-    for prior in earlier[:1]:
-        if prior.limit and r.limit and r.limit < prior.limit:
-            found.append(Finding("limit-reduced", f"building coverage fell from {_money(prior.limit)} to {_money(r.limit)} at this term; a "
-                                 "reduction in limits needs individual notice to members", Severity.CHECK, "CIV 5810"))
-        if prior.deductible and r.deductible and r.deductible > prior.deductible:
-            found.append(Finding("deductible-raised", f"the deductible rose from {_money(prior.deductible)} to {_money(r.deductible)} at this "
-                                 "term; an increase in the deductible needs individual notice to members", Severity.CHECK, "CIV 5810"))
-        if prior.premium and r.premium:
-            found.append(Finding("premium-change", f"the premium went from {_money(prior.premium)} to {_money(r.premium)} "
-                                 f"({(r.premium - prior.premium) / prior.premium:+.0%}) over the previous term", Severity.INFO))
     return found
 
 
@@ -874,11 +891,46 @@ def certificate_lines(r, as_of: date, _facts=None) -> list[Finding]:
     return found
 
 
+def flood_declarations(r, records) -> dict[str, list[dict[str, Any]]]:
+    """From the library: for each flood line on the certificate, by its policy number folded, the flood declarations
+    pages the library holds under that number, in the library's order, as their term end, building limit, and
+    deductible."""
+    files = library_records(records, DocumentKind.INSURANCE_POLICY, _nfip)
+    return {fold(l.policy_number): [{"term_end": rec.term_end, "limit": rec.limit, "deductible": rec.deductible}
+                                    for _row, rec in files if fold(rec.policy_number) == fold(l.policy_number)]
+            for l in r.lines if l.coverage is Coverage.FLOOD}
+
+
+@RECORDS.check("certificate-flood-lines", EvidenceOfInsurance, fields=("lines",), facts=flood_declarations,
+               reads=(Basis.STORE, Basis.PROFILE), dated=False)
+def certificate_flood_lines(r, _as_of, declarations: dict[str, list[dict[str, Any]]]) -> list[Finding]:
+    """Each flood line against the library's declarations for the same policy: no page for the line's term, or a limit or
+    deductible that differs."""
+    found: list[Finding] = []
+    for l in r.lines:
+        if l.coverage is not Coverage.FLOOD:
+            continue
+        same = declarations[fold(l.policy_number)]
+        if not same:
+            continue
+        term = [rec for rec in same if rec["term_end"] == l.expiration]
+        if not term:
+            found.append(Finding("no-policy-file-for-term", f"the library holds flood policy {l.policy_number} but no declarations for the "
+                                 f"term ending {l.expiration}", Severity.CHECK))
+            continue
+        rec = term[0]
+        if (rec["limit"] and l.limit and rec["limit"] != l.limit) or (rec["deductible"] and l.deductible and rec["deductible"] != l.deductible):
+            found.append(Finding("flood-line-differs", f"flood {l.policy_number}: the certificate shows {_money(l.limit)} / deductible "
+                                 f"{_money(l.deductible)}; the declarations show {_money(rec['limit'])} / {_money(rec['deductible'])}",
+                                 Severity.CHECK))
+    return found
+
+
 class AcordCertificateModel(DocumentModel):
     kind = DocumentKind.EVIDENCE_OF_INSURANCE
     name = "acord-certificate"
     required = ("issued", "producer", "insurers", "insured", "lines", "holder")
-    lens_checks = (certificate_lines,)
+    lens_checks = (certificate_lines, certificate_flood_lines)
 
     def parse(self, text: str, context: ModelContext) -> EvidenceOfInsurance | None:
         return _acord(text, context)
@@ -891,6 +943,7 @@ class AcordCertificateModel(DocumentModel):
         if r.insured and context.community is not None and not is_association(r.insured, context):
             found.append(Finding("insured-not-association", f"the insured is {r.insured!r}, not the association", Severity.PROBLEM))
         found += self._numbers(r, context)
+        found.append(certificate_flood_lines)   # the records lens's place: the flood declarations in the library
         found += self._statutes(r, context)
         return found
 
@@ -912,22 +965,6 @@ class AcordCertificateModel(DocumentModel):
                 if policy is not None and expected is not None and policy.kind is not expected:
                     found.append(Finding("line-kind-mismatch", f"{l.policy_number} is a {policy.kind.value} policy on the sheet; the certificate "
                                          f"shows it as {l.coverage.value.replace('_', ' ')}", Severity.CHECK))
-        files = library_records(context, DocumentKind.INSURANCE_POLICY, _nfip)
-        for l in r.lines:
-            if l.coverage is not Coverage.FLOOD:
-                continue
-            same = [rec for _row, rec in files if fold(rec.policy_number) == fold(l.policy_number)]
-            if not same:
-                continue
-            term = [rec for rec in same if rec.term_end == l.expiration]
-            if not term:
-                found.append(Finding("no-policy-file-for-term", f"the library holds flood policy {l.policy_number} but no declarations for the "
-                                     f"term ending {l.expiration}", Severity.CHECK))
-                continue
-            rec = term[0]
-            if (rec.limit and l.limit and rec.limit != l.limit) or (rec.deductible and l.deductible and rec.deductible != l.deductible):
-                found.append(Finding("flood-line-differs", f"flood {l.policy_number}: the certificate shows {_money(l.limit)} / deductible "
-                                     f"{_money(l.deductible)}; the declarations show {_money(rec.limit)} / {_money(rec.deductible)}", Severity.CHECK))
         return found
 
     def _statutes(self, r: EvidenceOfInsurance, context: ModelContext) -> list[Finding]:

@@ -23,7 +23,7 @@ from jason.community.document_models import DocumentModel, Finding, ModelContext
 from jason.community.symbols import DocumentKind
 
 from .governing_rules import RULE_NOTICE_DAYS, HearingTerms, hearing_findings, hearing_terms
-from .governing_shared import READER, coverage_finding, number_word, page_coverage, repealed_finding, repealed_sections
+from .governing_shared import READER, cites_repealed, coverage_finding, number_word, page_coverage, repealed_sections
 
 ELECTION_CYCLE_YEARS = 4  # CIV 5100(a)(2)
 _WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "nine": 9, "eleven": 11}
@@ -148,10 +148,14 @@ class ArticlesModel(DocumentModel):
         return found
 
 
+bylaws_repealed = cites_repealed("bylaws-repealed-sections", BylawsRecord)
+
+
 class BylawsModel(DocumentModel):
     kind = DocumentKind.BYLAWS
     name = "bylaws"
     required = ("title", "directors_min", "directors_max", "term_years", "member_quorum", "board_quorum")
+    lens_checks = (bylaws_repealed,)
 
     def parse(self, text: str, context: ModelContext) -> BylawsRecord | None:
         flat = squash(text)
@@ -236,7 +240,7 @@ class BylawsModel(DocumentModel):
                                  "the election rules must deny a ballot only to a non-member, notwithstanding any other law",
                                  Severity.CHECK, "CIV 5105(h)(1)"))
         found += hearing_findings(r.hearing)
-        found += repealed_finding(r.repealed_sections, context.data_dir)
+        found.append(bylaws_repealed)   # the records lens's place: the former sections cited, and where the law history puts each
         found += coverage_finding(r.toc_last_page, r.last_page_seen)
         return found
 

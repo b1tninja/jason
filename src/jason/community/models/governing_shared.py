@@ -13,9 +13,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from datetime import date
+from typing import Any, Sequence
 
 from jason.community.document_models import Finding, Severity, dates_in, squash
 from jason.community.readings import AnnexedProperty, Citation, Reader, Stamp
+from jason.community.reviews import RECORDS
 
 READER = Reader()
 
@@ -282,25 +284,38 @@ def recording_findings(r: Recording, name: str, *, authority: str = "") -> list[
     return found
 
 
-def repealed_finding(sections: tuple[str, ...], data_dir=None) -> list[Finding]:
-    """Former Davis-Stirling sections a document cites; with the exported law history, where each one is now."""
+def repealed_finding(sections: tuple[str, ...], now: Sequence[str] = ()) -> list[Finding]:
+    """Former Davis-Stirling sections a document cites; with ``now`` (``sections_now``), where each one is today."""
     if not sections:
         return []
     cited = ", ".join(sections)
-    where = _now_at(sections, data_dir)
+    where = ("; " + "; ".join(now)) if now else ""
     return [Finding("cites-repealed-sections", f"cites former Civil Code {cited}, since repealed and continued in new provisions "
                     f"(4000-6150){where}; the board may correct the cross-references by resolution", Severity.INFO, "CIV 4235(a)")]
 
 
-def _now_at(sections, data_dir) -> str:
-    """"; 1363(g) is now CIV 5855 (disposition table)" for the sections the stored history places, else ""."""
-    if data_dir is None:
-        return ""
+def sections_now(sections: Sequence[str], data_dir: Any) -> list[str]:
+    """From the exported law history on disk: "1363(g) is now CIV 5855 (disposition table)" for each of ``sections`` the
+    stored history places; none without the history."""
+    if not sections or data_dir is None:
+        return []
     from jason.community.succession import now_at
 
-    found = [now_at(data_dir, s) for s in sections]
-    found = [f for f in found if f]
-    return ("; " + "; ".join(found)) if found else ""
+    return [f for f in (now_at(data_dir, s) for s in sections) if f]
+
+
+def repealed_now(r, records) -> list[str]:
+    """Where each former section the record cites is now, from the exported law history (``sections_now``)."""
+    return sections_now(r.repealed_sections, records.data_dir) if r.repealed_sections else []
+
+
+def cites_repealed(key: str, record: type) -> Any:
+    """Register the records lens's check ``key`` on ``record``'s ``repealed_sections``: the former sections it cites,
+    each with where the law history on disk places it now. A reader lists the check and puts it where the finding goes."""
+    @RECORDS.check(key, record, fields=("repealed_sections",), facts=repealed_now, dated=False)
+    def repealed(r, _as_of, now: list[str]) -> list[Finding]:
+        return repealed_finding(r.repealed_sections, now)
+    return repealed
 
 
 def coverage_finding(toc_last: int | None, seen_last: int | None) -> list[Finding]:
@@ -358,4 +373,5 @@ class ExplainsMissing:
 __all__ = ["READER", "Recording", "Execution", "recording", "number_date", "as_document_numbers", "citations", "book_page_numbers",
            "map_reference", "name_number", "execution", "repealed_sections", "page_coverage", "annexed_property", "ordinal",
            "spec_ccrs_number", "spec_amendment_numbers", "spec_supersessions", "spec_reports", "spec_parcels", "spec_unit_blocks",
-           "recording_findings", "repealed_finding", "coverage_finding", "number_word", "explain_missing", "ExplainsMissing"]
+           "recording_findings", "repealed_finding", "sections_now", "cites_repealed", "coverage_finding", "number_word",
+           "explain_missing", "ExplainsMissing"]

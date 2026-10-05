@@ -15,8 +15,10 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from typing import Any, Sequence
 
 from jason.community.document_models import Finding, ModelContext, Severity
+from jason.community.reviews import RECORDS
 from jason.community.symbols import Building, Street
 
 DELINQUENT_AFTER_DAYS = 15          # CIV 5650(b)
@@ -233,17 +235,30 @@ def former_sections(text: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def former_sections_finding(sections, data_dir=None) -> list[Finding]:
+def former_sections_finding(sections, now: Sequence[str] = ()) -> list[Finding]:
+    """Former Civil Code sections a letter or notice cites; with ``now`` (``governing_shared.sections_now``), where each
+    one is today."""
     if not sections:
         return []
-    where = ""
-    if data_dir is not None:
-        from jason.community.succession import now_at
-
-        found = [f for f in (now_at(data_dir, s) for s in sections) if f]
-        where = ("; " + "; ".join(found)) if found else ""
+    where = ("; " + "; ".join(now)) if now else ""
     return [Finding("cites-former-sections", f"cites former Civil Code section(s) {', '.join(sections)}; the Davis-Stirling Act now "
                     f"sits at Civil Code 4000 to 6150 (Stats. 2012, Ch. 180){where}", Severity.CHECK)]
+
+
+def former_now(r, records) -> list[str]:
+    """Where each former section the record cites is now, from the exported law history on disk."""
+    from jason.community.models.governing_shared import sections_now
+
+    return sections_now(r.former_sections, records.data_dir) if r.former_sections else []
+
+
+def cites_former(key: str, record: type) -> Any:
+    """Register the records lens's check ``key`` on ``record``'s ``former_sections``: the former sections it cites, each
+    with where the law history on disk places it now. A reader lists the check and puts it where the finding goes."""
+    @RECORDS.check(key, record, fields=("former_sections",), facts=former_now, dated=False)
+    def former(r, _as_of, now: list[str]) -> list[Finding]:
+        return former_sections_finding(r.former_sections, now)
+    return former
 
 
 _CIV = re.compile(r"(?:Civil Code|Civ\.? Code|Civ\.)\s*(?:Section|Sections|Sec\.|§+)?\s*(\d{4}(?:\.\d+)?)(?:\s*\(\s*([a-z0-9]+)\s*\))?", re.I)
@@ -298,6 +313,6 @@ def days_between(a: date | None, b: date | None) -> int | None:
 
 __all__ = ["ChargeKind", "Charge", "charge_kind", "total", "late_charge_cap", "monthly_assessment", "ledger_findings", "ledger_counts", "site_address",
            "site_addresses", "building_of", "building_number", "apns_in", "known_parcels", "unit_count", "former_sections",
-           "former_sections_finding", "civil_code_citations", "words_to_cents", "days_between", "DELINQUENT_AFTER_DAYS",
+           "former_sections_finding", "cites_former", "civil_code_citations", "words_to_cents", "days_between", "DELINQUENT_AFTER_DAYS",
            "LATE_CHARGE_PERCENT", "LATE_CHARGE_FLOOR", "INTEREST_CAP_PERCENT", "INTEREST_AFTER_DAYS", "PRE_LIEN_DAYS",
            "LIEN_MAIL_DAYS", "RELEASE_DAYS", "FORECLOSURE_FLOOR"]

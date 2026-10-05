@@ -55,7 +55,7 @@ from jason.community.models.legal_shared import (
     building_of,
     charge_kind,
     former_sections,
-    former_sections_finding,
+    cites_former,
     ledger_counts,
     ledger_findings,
     monthly_assessment,
@@ -193,9 +193,13 @@ def _percent(pattern: str, text: str) -> float | None:
         return None
 
 
+notice_former_sections = cites_former("pre-lien-former-sections", PreLienNotice)
+
+
 class PreLienNoticeModel(DocumentModel):
     kind = DocumentKind.DELINQUENCY_NOTICE
     name = "pre-lien-notice"
+    lens_checks = (notice_former_sections,)
     # Not the total due: a letter without its itemized statement has none to give, and ``no-itemized-statement`` says so.
     required = ("notice_date", "property_address", "sender", "elements")
 
@@ -297,7 +301,7 @@ class PreLienNoticeModel(DocumentModel):
         if r.policy_interest_percent and r.policy_interest_percent > INTEREST_CAP_PERCENT:
             found.append(Finding("policy-interest-over-cap", f"the enclosed policy sets interest at {r.policy_interest_percent:g}% a year",
                                  Severity.PROBLEM, "CIV 5650(b)(3)"))
-        found += former_sections_finding(r.former_sections, context.data_dir)
+        found.append(notice_former_sections)   # the records lens's place: the former sections cited, and where the law history puts each
         if r.policy_enclosed and not r.policy_in_text:
             found.append(Finding("policy-not-in-text", "the letter says the Assessment Collection Policy is enclosed; this file does not "
                                  "carry it", Severity.INFO, "CIV 5660(a)"))

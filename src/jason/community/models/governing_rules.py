@@ -49,11 +49,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, date_after, dates_in, register, squash
+from jason.community.reviews import RECORDS
 from jason.community.symbols import DocumentKind
 
-from .governing_shared import READER, ExplainsMissing, number_word, repealed_finding, repealed_sections
+from .governing_shared import READER, ExplainsMissing, cites_repealed, number_word, repealed_sections
 from .legal_shared import DELINQUENT_AFTER_DAYS, INTEREST_AFTER_DAYS, INTEREST_CAP_PERCENT, LATE_CHARGE_PERCENT, PRE_LIEN_DAYS, RELEASE_DAYS
 
 PENALTY_CAP_CENTS = 10_000  # CIV 5850(c)(2)
@@ -552,15 +554,20 @@ def _day(d: date) -> str:
     return f"{d:%B} {d.day}, {d.year}"
 
 
-def adoption_leads(context: ModelContext, title: str) -> str:
-    """What the library's minutes say about adopting this document, as a clause to append to a finding (empty without a
-    library)."""
-    total, hits = adopting_minutes(context, title)
+def leads_clause(total: int, hits: list[str]) -> str:
+    """What the library's minutes say about adopting a document (``adopting_minutes``), as a clause to append to a
+    finding; empty with no minutes on file."""
     if not total:
         return ""
     if hits:
         return f"; minutes that mention adopting it: {', '.join(hits[:3])}"
     return f"; none of the library's {total} minutes mentions adopting it"
+
+
+def adoption_leads(context: ModelContext, title: str) -> str:
+    """What the library's minutes say about adopting this document, as a clause to append to a finding (empty without a
+    library)."""
+    return leads_clause(*adopting_minutes(context, title))
 
 
 def _title(text: str, pattern: str) -> str:
@@ -575,10 +582,33 @@ def _title(text: str, pattern: str) -> str:
 
 # Operating rules.
 
+def minutes_adopting(r, records) -> dict[str, Any] | None:
+    """From the library's minutes: how many are on file, and the names of those that mention adopting or approving the
+    document. None for a document that prints its adoption date."""
+    if r.adoption.adopted is not None:
+        return None
+    total, hits = adopting_minutes(records, r.title)
+    return {"minutes": total, "mention": hits}
+
+
+@RECORDS.check("rules-adoption", OperatingRulesRecord, fields=("title", "adoption", "effective"), facts=minutes_adopting, dated=False)
+def rules_adoption(r, _as_of, minutes: dict[str, Any] | None) -> list[Finding]:
+    """Rules that print no adoption date, with what the minutes on file say about adopting them."""
+    if minutes is None:
+        return []
+    printed = f" (it prints only an effective date, {_day(r.effective)})" if r.effective else ""
+    return [Finding("no-adoption-date", f"no adoption date is printed in the text{printed}; the minutes of the meeting that "
+                    f"adopted the rules are the record{leads_clause(minutes['minutes'], minutes['mention'])}", Severity.CHECK, "CIV 4360(b)")]
+
+
+rules_repealed = cites_repealed("rules-repealed-sections", OperatingRulesRecord)
+
+
 class OperatingRulesModel(DocumentModel):
     kind = DocumentKind.OPERATING_RULES
     name = "operating-rules"
     required = ("title", "effective", "rules")
+    lens_checks = (rules_adoption, rules_repealed)
 
     def parse(self, text: str, context: ModelContext) -> OperatingRulesRecord | None:
         codes = re.findall(r"^\s*([A-Z]-\d{1,2})\.\s+([A-Z][A-Z/&,' -]{2,60}?)\s*$", text, re.M)
@@ -617,14 +647,11 @@ class OperatingRulesModel(DocumentModel):
         found += fine_findings(r.fines)
         found += fee_findings(r.fines)
         found += hearing_findings(r.hearing)
-        if r.adoption.adopted is None:
-            printed = f" (it prints only an effective date, {_day(r.effective)})" if r.effective else ""
-            found.append(Finding("no-adoption-date", f"no adoption date is printed in the text{printed}; the minutes of the meeting that "
-                                 f"adopted the rules are the record{adoption_leads(context, r.title)}", Severity.CHECK, "CIV 4360(b)"))
+        found.append(rules_adoption)   # the records lens's place: no adoption date printed, and what the minutes on file say
         if not r.authority:
             found.append(Finding("no-authority-cited", "the rules do not cite the declaration or bylaw section that lets the board make "
                                  "them", Severity.INFO, "CIV 4350(b)"))
-        found += repealed_finding(r.repealed_sections, context.data_dir)
+        found.append(rules_repealed)   # the records lens's place: the former sections cited, and where the law history puts each
         return found
 
 
@@ -643,10 +670,51 @@ def adoption_note(adoption_: Adoption, *, certificate: bool = False, year: int |
     return f"no adoption date is printed in the text: {why}"
 
 
+def compilations_dating(r, records) -> list[list[Any]] | None:
+    """From the library's compilations (the operating rules on file): each one that prints this policy's title with an
+    effective date beside it, as its name and that date. None for a policy that prints a date of its own."""
+    if r.adopted is not None or r.effective is not None:
+        return None
+    return [[name, when] for name, when in compiled_effective(records, r.title)]
+
+
+@RECORDS.check("policy-compiled-date", PolicyRecord, fields=("title", "adopted", "effective"), facts=compilations_dating, dated=False)
+def policy_compiled_date(r, _as_of, compilations: list[list[Any]] | None) -> list[Finding]:
+    """A policy that prints no date, against the compilations on file that print one for it."""
+    return [Finding("effective-date-in-compilation", f"{name} prints this policy as effective {_day(when)}; this copy "
+                    "prints no date", Severity.INFO) for name, when in compilations or ()]
+
+
+def statements_with_policy(r, records) -> list[str] | None:
+    """From the library's annual policy statements (annual disclosures): the names of those that carry this policy. None
+    for a policy that is neither the collection policy nor the discipline policy."""
+    if r.subject not in (PolicySubject.COLLECTION, PolicySubject.ENFORCEMENT):
+        return None
+    return statements_carrying(records, r.title)
+
+
+@RECORDS.check("policy-statements", PolicyRecord, fields=("title", "subject", "fines"), facts=statements_with_policy, dated=False)
+def policy_statements(r, _as_of, statements: list[str] | None) -> list[Finding]:
+    """The collection policy and the discipline policy against the annual policy statements on file: which carry it."""
+    statements = statements or []
+    if r.subject is PolicySubject.COLLECTION:
+        where = f"; the annual policy statements on file carry it ({', '.join(statements[:3])})" if statements else ""
+        return [Finding("annual-policy-statement", "the collection policy belongs in the annual policy statement with the "
+                        f"statutory notice of assessments and foreclosure{where}", Severity.INFO, "CIV 5310(a)(6), (7); 5730")]
+    if r.subject is PolicySubject.ENFORCEMENT and r.fines and statements:
+        return [Finding("in-annual-policy-statement", f"the annual policy statements on file carry this policy "
+                        f"({', '.join(statements[:3])})", Severity.INFO, "CIV 5310(a)(8)")]
+    return []
+
+
+policy_repealed = cites_repealed("policy-repealed-sections", PolicyRecord)
+
+
 class PolicyModel(ExplainsMissing, DocumentModel):
     kinds = (DocumentKind.POLICY, DocumentKind.OPERATING_RULES)
     name = "board-policy"
     required = ("title", "adopted")
+    lens_checks = (policy_compiled_date, policy_statements, policy_repealed)
 
     def missing_notes(self, r: PolicyRecord, context: ModelContext) -> dict[str, tuple[str, str]]:
         note = f"{adoption_note(r.adoption)}{adoption_leads(context, r.title)}"
@@ -683,27 +751,17 @@ class PolicyModel(ExplainsMissing, DocumentModel):
         elif r.adopted is None and r.adoption.effective_text.lower() == "the date of adoption":
             found.append(Finding("effective-on-adoption-undated", "effective \"on the date of adoption\", but the text does not give that "
                                  "date; the minutes of the meeting that adopted it are the record", Severity.CHECK, "CIV 4360(b)"))
-        if r.adopted is None and r.effective is None:
-            for name, when in compiled_effective(context, r.title):
-                found.append(Finding("effective-date-in-compilation", f"{name} prints this policy as effective {_day(when)}; this copy "
-                                     "prints no date", Severity.INFO))
+        found.append(policy_compiled_date)   # the records lens's place: a compilation on file that dates this policy
         found += notice_finding(r.subjects)
         found += fine_findings(r.fines)
         found += fee_findings(r.fines)
         found += hearing_findings(r.hearing)
         found += collection_findings(r.collection)
-        statements = statements_carrying(context, r.title) if r.subject in (PolicySubject.COLLECTION, PolicySubject.ENFORCEMENT) else []
-        if r.subject is PolicySubject.COLLECTION:
-            where = f"; the annual policy statements on file carry it ({', '.join(statements[:3])})" if statements else ""
-            found.append(Finding("annual-policy-statement", "the collection policy belongs in the annual policy statement with the "
-                                 f"statutory notice of assessments and foreclosure{where}", Severity.INFO, "CIV 5310(a)(6), (7); 5730"))
+        found.append(policy_statements)   # the records lens's place: the annual policy statements on file that carry it
         if r.subject is PolicySubject.ENFORCEMENT and not r.fines:
             found.append(Finding("discipline-policy-statement", "the discipline policy belongs in the annual policy statement",
                                  Severity.INFO, "CIV 5310(a)(8)"))
-        elif r.subject is PolicySubject.ENFORCEMENT and statements:
-            found.append(Finding("in-annual-policy-statement", f"the annual policy statements on file carry this policy "
-                                 f"({', '.join(statements[:3])})", Severity.INFO, "CIV 5310(a)(8)"))
-        found += repealed_finding(r.repealed_sections, context.data_dir)
+        found.append(policy_repealed)   # the records lens's place: the former sections cited, and where the law history puts each
         return found
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jason.community.models.governing_shared import repealed_finding, repealed_sections
+from jason.community.models.governing_shared import repealed_finding, repealed_sections, sections_now
 from jason.community.succession import changes, now_at, successors
 from jason.tasks.law_history import export
 
@@ -91,7 +91,7 @@ def test_a_governing_documents_former_citations_keep_their_subdivisions_and_name
     export(FakeLibrary(), tmp_path)
     cited = repealed_sections("as provided in Civil Code Section 1363(g) and Section 1363 of the Civil Code")
     assert cited == ("1363(g)", "1363")
-    message = repealed_finding(cited, tmp_path)[0].message
+    message = repealed_finding(cited, sections_now(cited, tmp_path))[0].message   # the store is read apart from the finding
     assert "1363(g) is now CIV 5855" in message
     assert "is now" not in repealed_finding(cited)[0].message      # without the stored history, the finding says only "former"
     assert json.loads((tmp_path / "authorities" / "history" / "former-sections.json").read_text(encoding="utf-8"))["act"] == "davis-stirling"

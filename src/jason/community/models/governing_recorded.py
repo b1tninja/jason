@@ -42,7 +42,7 @@ from .governing_shared import (
     number_date,
     ordinal,
     page_coverage,
-    repealed_finding,
+    cites_repealed,
     repealed_sections,
     spec_amendment_numbers,
     spec_ccrs_number,
@@ -222,10 +222,14 @@ _DECLARANT_MEANS = re.compile(r"\W?Declarant\W?\s+(?:shall\s+)?means?\s+(.{3,160
 _RENTAL_CAP = re.compile(r"Not\s+more\s+than\s+[a-z -]*\((\d{1,3})\s?%\)[^.]{0,120}?\bUnits\b[^.]{0,120}?\b(?:leased|rented)", re.I)
 
 
+declaration_repealed = cites_repealed("declaration-repealed-sections", DeclarationRecord)
+
+
 class DeclarationModel(DocumentModel):
     kind = DocumentKind.DECLARATION
     name = "declaration"
     required = ("title", "declarant", "number", "recorded")
+    lens_checks = (declaration_repealed,)
 
     def parse(self, text: str, context: ModelContext) -> DeclarationRecord | None:
         title = instrument_title(text)
@@ -296,7 +300,7 @@ class DeclarationModel(DocumentModel):
                                  (r.equitable_servitudes, "no-equitable-servitudes", "restrictions stated as enforceable equitable servitudes")):
             if not flag:
                 found.append(Finding(code, f"the text does not show {what}", Severity.CHECK, "CIV 4250(a)"))
-        found += repealed_finding(r.repealed_sections, context.data_dir)
+        found.append(declaration_repealed)   # the records lens's place: the former sections cited, and where the law history puts each
         found += coverage_finding(r.toc_last_page, r.last_page_seen)
         return found
 

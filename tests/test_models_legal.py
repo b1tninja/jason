@@ -273,7 +273,8 @@ def test_statute_reprint_does_not_count_as_the_notice():
     r = PreLienNoticeModel().parse(letter, ctx())
     assert PreLienElement.BOARD_MEETING not in r.elements
     assert PreLienElement.FORECLOSURE_WARNING not in r.elements
-    missing = [f for f in PreLienNoticeModel().check(r, ctx()) if f.code == "pre-lien-element-missing"]
+    # ``check`` returns the reader's own findings with a slot for each lens check; the slots are not findings.
+    missing = [f for f in PreLienNoticeModel().check(r, ctx()) if getattr(f, "code", "") == "pre-lien-element-missing"]
     assert {f.authority for f in missing} >= {"CIV 5660(a)", "CIV 5660(c)", "CIV 5660(d)"}
     assert all(f.severity is Severity.PROBLEM for f in missing)
 

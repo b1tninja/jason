@@ -39,7 +39,7 @@ from jason.community.models.legal_shared import (
     civil_code_citations,
     days_between,
     former_sections,
-    former_sections_finding,
+    cites_former,
     site_address,
     unit_count,
 )
@@ -136,10 +136,14 @@ def _days(phrase: str) -> int | None:
     return int(m.group(2) or m.group(3))
 
 
+letter_former_sections = cites_former("letter-former-sections", LegalLetter)
+
+
 class LegalLetterModel(DocumentModel):
     kind = DocumentKind.LEGAL_CORRESPONDENCE
     name = "legal-letter"
     required = ("letter_date", "sender", "subject")
+    lens_checks = (letter_former_sections,)
 
     def parse(self, text: str, context: ModelContext) -> LegalLetter | None:
         if not re.search(r"\bDear\b|Very truly yours|Sincerely|RE:|Subject:", text or "", re.I):
@@ -227,7 +231,7 @@ class LegalLetterModel(DocumentModel):
                 severity = Severity.PROBLEM if lag > allowed else Severity.INFO
                 found.append(Finding("decision-notice-days", f"the board's written decision is dated {lag} days after its action; "
                                      f"the statute then allowed {allowed}", severity, "CIV 5855(f)"))
-        found += former_sections_finding(r.former_sections, context.data_dir)
+        found.append(letter_former_sections)   # the records lens's place: the former sections cited, and where the law history puts each
         if r.draft:
             found.append(Finding("draft", "the file is a draft; the letter sent may differ", Severity.INFO))
         if r.prints_credentials:
