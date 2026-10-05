@@ -130,6 +130,17 @@ For shading, Sauvola recovers most of the page and flattening all of it. For dus
 
 Tesseract's guide asks for 300 dpi (x-heights of about 20 pixels at 10 point) and notes its own Otsu binarizer is weak on uneven paper; its LSTM recognizer reads the gray image, which is why binarizing first did not help here. OCRmyPDF's pipeline order (rotate, remove background, deskew, clean) is the order `auto` takes, and its `--skip-text`, `--redo-ocr`, and `--force-ocr` are the choices `Recommendation` names (keep, read again, read the pages with no text), with a measure of the layer's quality that OCRmyPDF does not have. unpaper's aggressive filters can move text, so none is used. The notes and links are in the research file the preflight work kept (`D:\scratch\jason\ocr-research\preprocessing.md`, private scratch) and are summarized: https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html, https://tesseract-ocr.github.io/tessdoc/ReleaseNotes.html, https://github.com/tesseract-ocr/tesseract/issues/3083, https://ocrmypdf.readthedocs.io/en/latest/advanced.html, https://arxiv.org/pdf/2008.02777.
 
+## Measuring again, offline
+
+`scripts/bench_offline.py` repeats these measurements on any scan with no network and no model server. `ocr` reads a PDF
+under each preprocessing variant and resolution and scores each against a reference text you give it (word and character
+error rate, the words the variant got wrong that the baseline did not and the reverse, the pages better and worse, and a
+95% interval for the change from resampling pages); readings are cached by file hash, so a rerun only scores. `blank`
+scores the blank-page detector against labels, `throughput` times the preflight over a folder, and `segments` scores the
+segmentation rules against a gold file. The cache is a scratch folder, and its readings are derived from the records: keep
+them out of tracked files. Its alignment is a banded word-level edit distance, so compare variants with each other, not
+with a figure scored another way. Test: `tests/test_bench_offline.py`.
+
 ## What remains
 
 - **Scanner-program deskew by placement.** A page drawn from its placement is straight; its own pixels are tilted. The word layer's crops are cut from the rendition's pages, which are drawn, so they agree with the boxes in `ocr.words.json`.
