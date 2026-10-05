@@ -1735,8 +1735,25 @@ LESSONS: tuple[Lesson, ...] = (
            "active profile through jason.community.community(). With none set, no address or name is read: a miss.",
            Status.FIXED, guards=("tests/test_profile.py: scan_code against tests/fixtures/code_boundary.json (only "
                                  "shrinks), the cleared modules kept out of it, and profile_imports empty",),
-           notes=("Still in the baseline: the association's name in several model regexes, street names in "
-                  "community/scans.py, mail_links.CURRENT_ZIP, and the spec_module callers.",)),
+           notes=("Cleared 2026-10-05: the eleven modules the ratchet still tolerated (the name in model regexes and "
+                  "defaults, the streets in community/scans.py, the index words in index_cache, the Workspace's name "
+                  "on printed emails, the Drive names jason policies passes over) read Community.short_name, name, "
+                  "name_pattern(), streets(), index_project(), gmail_print_names(), and not_policy_names(); the code "
+                  "baseline is empty and tests/test_profile.py keeps it so. Still outside the check's reading "
+                  "(docs/adapters.md, 'What the check does not see'): OPTIONS in tasks/board_packet.py and GROUPS in "
+                  "tasks/request_sheet.py, the name word in four stop-word sets, the user agents, the parcel-number "
+                  "prefix, and the escrow note in tasks/developer_security.py.",)),
+    Lesson("wrapped-name-on-declarations", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A reader that matched a crime declarations page by the association's full name read no named insured: the "
+           "page wraps the name over two lines and the text layer gives the second line first.",
+           "A literal that happened to match the page's order was replaced by the full name from the specification, "
+           "which does not match the page's wrapped order.",
+           "A general name match uses the name's leading words (contracts_ins_package._named_insured), and a reader moved "
+           "from a literal to Community.name is reread on the real documents before the move is called done: dump the old "
+           "and new readings read-only and diff them.",
+           Status.FIXED, guards=("tests/test_profile.py: the reader test over a profile with no short name, index words, "
+                                 "print names, or file exclusions; the real-data diff recorded in the commit that cleared "
+                                 "the baseline",)),
     Lesson("agenda-executive-words-to-minutes-model", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
            "jason board --minutes DATE gave the local model the agenda Doc's executive-session subitems word for word "
            "as headings, so an agenda that named a member, a party, or a matter under an executive item passed those "
