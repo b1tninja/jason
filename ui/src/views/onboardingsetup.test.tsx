@@ -28,7 +28,7 @@ const session = {
   nextTotal: 2, answered: [], apply: { command: "jason onboard --apply", note: "Run by a person." }, caveats: ["A gate is jason's reading of the checklist."],
 };
 
-function stub(signedIn: { name: string } | null, post?: (url: string, body: Record<string, unknown>) => Response) {
+function stub(signedIn: { name: string } | null, post?: ((url: string, body: Record<string, unknown>) => Response) | null, data: unknown = session) {
   const posts: [string, Record<string, unknown>][] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
@@ -37,7 +37,7 @@ function stub(signedIn: { name: string } | null, post?: (url: string, body: Reco
       return post ? post(url, body) : new Response("{}", { status: 200 });
     }
     if (url.startsWith("/api/session")) return new Response(JSON.stringify({ token: "t", header: "X-Jason-Token", signedIn, signIn: { configured: true, start: "/auth/google" } }), { status: 200 });
-    if (url.startsWith("/api/onboarding-session")) return new Response(JSON.stringify(session), { status: 200 });
+    if (url.startsWith("/api/onboarding-session")) return new Response(JSON.stringify(data), { status: 200 });
     return new Response(JSON.stringify({ error: `unexpected ${url}` }), { status: 404 });
   }));
   return posts;
@@ -51,12 +51,82 @@ describe("SetupTab", () => {
     expect(within(gates).getAllByRole("listitem")).toHaveLength(5);
     expect(within(gates).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "step");
     expect(screen.getByText(/1 present, 0 partial, 2 missing/)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /jason read/ })).toBeInTheDocument();
-    const row = screen.getByText("The units").closest("tr")!;
+    expect(screen.getByRole("img", { name: /jason read, the checklist/ })).toBeInTheDocument();
+    const row = screen.getByRole("listitem", { name: "The units" });
     expect(within(row).getByText("present")).toBeInTheDocument();
+    expect(within(row).getByText("Nothing to do: its checks pass.")).toBeInTheDocument();
+    expect(within(row).getByRole("img", { name: /jason read, Community.units\(\): 2/ })).toBeInTheDocument();
+    const mb = screen.getByRole("listitem", { name: "The minute book" });
+    expect(within(mb).getByRole("img", { name: /not confirmed, private fact minute-book: not answered/ })).toBeInTheDocument();
+    expect(within(mb).getByText(/The answer goes to the private facts/)).toBeInTheDocument();
+    expect(within(mb).getByRole("button", { name: "Answer it under Questions" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /done|mark|complete/i })).toBeNull();
   });
 
+  it("groups the checklist by the server's groups, in its order", async () => {
+    stub({ name: "Sam Secretary" }, null, { ...session, groups: [
+      { group: "access", title: "System access", present: 0, partial: 0, missing: 1 },
+      { group: "records", title: "Records", present: 0, partial: 0, missing: 1 },
+      { group: "members", title: "Members", present: 1, partial: 0, missing: 0 },
+    ] });
+    render(<SetupTab />);
+    await screen.findByRole("list", { name: "The five gates" });
+    const titles = [...document.querySelectorAll("details > summary > strong")].map((s) => s.textContent);
+    expect(titles).toEqual(["System access", "Records", "Members"]);
+    expect(screen.getByText(/1 of 1 present, 0 partial, 0 missing · holds the start gate/)).toBeInTheDocument();
+    // the group holding the gate being worked opens first
+    expect(screen.getByText("System access").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("Records").closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("names what holds the gate being worked, a high-stakes item first and marked", async () => {
+    const signers = { key: "signers", group: "board", groupTitle: "The board", title: "Bank signers", why: "CIV 5380", status: "missing", findings: [], fetch: "", byPerson: true, stages: ["operate"],
+      ask: { id: "q-sg", question: "Who signs?", record: "private facts", stakes: true, standing: false, clock: "", inQueue: true, state: "open" }, connect: null };
+    const fiscal = { key: "fiscal-year", group: "finance", groupTitle: "Finances", title: "The fiscal year", why: "", status: "partial", findings: [{ passed: true, evidence: "bylaws read" }, { passed: false, evidence: "Community.fiscal_year_end(): empty" }], fetch: "", byPerson: true, stages: ["operate"], ask: null, connect: null };
+    stub({ name: "Sam Secretary" }, null, { ...session, stage: "operate", progress: { present: 4, partial: 1, missing: 1 },
+      gates: [gate("start", true), gate("ingest", true), gate("establish", true), gate("operate", false, [{ key: "fiscal-year", status: "partial" }, { key: "signers", status: "missing" }]), gate("adopt", false)],
+      items: [...session.items, signers, fiscal], next: [], nextTotal: 0 });
+    render(<SetupTab />);
+    const hold = await screen.findByRole("region", { name: "What holds the operate gate" });
+    const rows = within(hold).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Bank signers");
+    expect(within(rows[0]).getByText("high stakes")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("missing")).toBeInTheDocument();
+    expect(rows[1]).toHaveTextContent("The fiscal year");
+    expect(within(rows[1]).queryByText("high stakes")).toBeNull();
+    expect(within(hold).queryByRole("button", { name: /open|pass|done/i })).toBeNull();
+    const item = screen.getByRole("listitem", { name: "Bank signers" });
+    expect(within(item).getByText(/a second person confirms it/)).toBeInTheDocument();
+    expect(within(item).getByText("jason onboard --questions --group board")).toBeInTheDocument();
+    expect(screen.getByText(/No open questions for the operate gate/)).toBeInTheDocument();
+  });
+
+  it("labels a standing question standing, in the questions and on its item", async () => {
+    const roster = { key: "board-roster", group: "board", groupTitle: "The board", title: "Directors and officers", why: "", status: "present", findings: [{ passed: true, evidence: "roster: 5 people" }], fetch: "", byPerson: true, stages: ["operate"],
+      ask: { id: "q-br", question: "Has an office changed?", record: "private facts", stakes: true, standing: true, clock: "", inQueue: true, state: "open" }, connect: null };
+    stub({ name: "Sam Secretary" }, null, { ...session, items: [...session.items, roster],
+      next: [...session.next, { id: "q-br", kind: "fact", subject: "fact:board-roster", question: "Has an office changed?", choices: [], suggestion: "", likely: false, evidence: [], priority: 0, unblocks: {}, serves: "board-roster", highStakes: true, inQueue: true, record: "private facts", connect: null, standing: true }],
+      nextTotal: 3 });
+    render(<SetupTab />);
+    const card = (await screen.findByRole("heading", { name: "Has an office changed?", level: 3 })).closest("article")!;
+    expect(within(card.parentElement!).getByText("standing")).toBeInTheDocument();
+    const minute = screen.getByRole("heading", { name: "Who keeps the minute book?", level: 3 }).closest("article")!;
+    expect(within(minute.parentElement!).queryByText("standing")).toBeNull();
+    const item = screen.getByRole("listitem", { name: "Directors and officers" });
+    expect(within(item).getByText("standing")).toBeInTheDocument();
+    expect(within(item).getByText(/A standing question: Has an office changed\?/)).toBeInTheDocument();
+    expect(within(item).queryByText(/Nothing to do/)).toBeNull();
+  });
+
+  it("names the gate in each empty state on a first run", async () => {
+    stub({ name: "Sam Secretary" }, null, { ...session, progress: { present: 0, partial: 0, missing: 3 },
+      gates: [{ ...gate("start", false, [{ key: "vault", status: "missing" }]), opensWhen: "open once the vault is present" }, gate("ingest", false), gate("establish", false), gate("operate", false), gate("adopt", false)],
+      items: session.items.map((i) => ({ ...i, status: "missing" })), next: [], nextTotal: 0, answered: [] });
+    render(<SetupTab />);
+    expect(await screen.findByText("First run: nothing on the checklist is present yet. Begin with the start gate, open once the vault is present.")).toBeInTheDocument();
+    expect(screen.getByText(/No open questions for the start gate/)).toBeInTheDocument();
+    expect(screen.getByText(/No answer waits to be applied. An answer to a question for the start gate waits here/)).toBeInTheDocument();
+  });
   it("answers through Confirm as the signed-in person, and shows it waiting to be applied with the command", async () => {
     const posts = stub({ name: "Sam Secretary" }, () => new Response(JSON.stringify({ id: "q-mb", status: "answered", answeredBy: "Sam Secretary", answeredAt: "2026-10-04T12:01:00+00:00", highStakes: false, needsConfirmation: false, applied: false, apply: "jason onboard --apply", next: "Answered, waiting to be applied: a person runs jason onboard --apply in a terminal." }), { status: 200 }));
     const user = userEvent.setup();
@@ -97,9 +167,11 @@ describe("SetupTab", () => {
     expect(within(portal).getByText('jason onboard --answer q-portal "KEEPER RECORD NAME" --by "YOUR NAME"')).toBeInTheDocument();
     expect(within(portal).queryByRole("textbox")).toBeNull();
     expect(within(portal).queryByRole("radio")).toBeNull();
-    const vault = screen.getByText("The password vault").closest("tr")!;
+    const vault = screen.getByRole("listitem", { name: "The password vault" });
     expect(within(vault).getByText("jason login")).toBeInTheDocument();
+    expect(within(vault).getByText(/the console never takes a secret/)).toBeInTheDocument();
     expect(within(vault).queryByRole("textbox")).toBeNull();
+    expect(within(vault).queryByRole("radio")).toBeNull();
   });
 
   it("offers no answer form until a person signs in", async () => {

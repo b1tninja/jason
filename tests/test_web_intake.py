@@ -132,3 +132,33 @@ def test_the_session_gives_five_gates_and_computed_statuses_and_no_answer(web):
     assert "kept by Example Person" not in json.dumps(d)                # who answered, never the value
     assert all(q["connect"] is None or "commands" in q["connect"] for q in d["next"])
     assert {q["kind"] for q in d["next"]} <= {"fact", "map"} and d["otherOpen"]["command"] == "jason intake"
+
+
+def test_an_items_ask_carries_its_clock_and_standing_and_a_standing_question_sorts_last(web, monkeypatch):
+    """The Setup tab labels a standing question "standing" and shows the legal clock the profile names (never a date);
+    a standing question whose item is present sorts after the questions an item is missing."""
+    from dataclasses import replace
+
+    from jason.community.onboarding import ITEMS, Status
+    from jason.tasks import onboarding_session as task
+
+    standing = next(i.key for i in ITEMS if i.ask is not None and i.ask.standing)
+    clocked = next(i for i in ITEMS if i.ask is not None and i.ask.clock)
+    build = task.build
+
+    def held(*a, **k):                                          # the standing item is present; its question stays open
+        s = build(*a, **k)
+        s.results = tuple(replace(r, status=Status.PRESENT) if r.item.key == standing else r for r in s.results)
+        return s
+
+    monkeypatch.setattr(task, "build", held)
+    app, _, _, _ = web
+    d = webclient.sign_in(webclient.client(app), "Sam Secretary").get("/api/onboarding-session?limit=200&kinds=fact").json
+    items = {i["key"]: i for i in d["items"]}
+    assert items[standing]["status"] == "present" and items[standing]["ask"]["standing"] is True
+    assert items[clocked.key]["ask"]["clock"] == clocked.ask.clock
+    assert all(i["ask"]["standing"] is False for i in d["items"] if i["ask"] and i["key"] != standing
+               and not next(x for x in ITEMS if x.key == i["key"]).ask.standing)
+    marks = [(q["serves"], q["standing"]) for q in d["next"]]
+    assert marks[-1] == (standing, True) and len(marks) > 1             # after every question an item is missing
+    assert all(serves != standing for serves, _ in marks[:-1])

@@ -72,7 +72,15 @@ Each stage is a screen; the checklist spans them.
 
 The first tab of `#/onboarding` is a view over the session (`GET /api/onboarding-session`), not a store of its own:
 - **The five gates** (`StageSteps`) and each checklist item's status, *computed* from its checks. Nothing marks an item
-  done; it is present when its checks pass. The `read` seal says this is jason's reading, as of when.
+  done; it is present when its checks pass. The `read` seal says this is jason's reading, as of when. Under the gates,
+  what holds the gate being worked: every item behind it not yet present (the server's rule), high-stakes items first
+  and marked, and the gate's own checks that failed.
+- **The checklist by the server's groups** (`status_dict`'s `groups`, in its order; the group holding the current gate
+  opens first). Each item: its status as words and a glyph, what jason checked as `read` or `could-not-confirm` seals,
+  and its next step: nothing (present), a terminal command (a connection, or the command that reads it), or its
+  question with where the answer goes, its clock as the profile names it, and "standing" for a question asked whatever
+  the item's status (an office, a term), which sorts after the questions an item is missing.
+- **First run** (nothing present, nothing answered): each empty state names the gate to begin with.
 - **The questions.** An item with a `FactAsk` is a `QuestionCard`. A signed-in person answers through `Confirm`
   (`POST /api/write/intake/<id>`, [web-ui.md](web-ui.md)); the name is the signed-in one. The answer goes to the
   intake queue and nothing more: it shows as "answered, waiting to be applied" with `jason onboard --apply`, which a

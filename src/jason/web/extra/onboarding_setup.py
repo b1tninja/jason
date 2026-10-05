@@ -6,7 +6,9 @@ console; docs/console/screens/onboarding.md).
   item's ``FactAsk`` as a question with where its answer goes, the next questions ranked by what each answer unblocks,
   and the answers waiting to be applied. An item that is a connection (a Keeper-held sign-in, a credential setting) is
   ``connect``: the terminal command, never a field for a secret. No answer's value is ever in it: an answered question
-  says who answered and when.
+  says who answered and when. An item's ask carries its ``clock`` (the legal clock the answer sets, as the profile
+  names it; never a date) and ``standing``; a standing question (an office, a term: asked whatever its item's status)
+  is marked ``standing`` among the next questions and, once its item is present, sorts after the missing ones.
 - ``POST /api/write/intake/<id>``: ``{answer, by}`` records a signed-in roster person's answer in the intake queue
   (``jason.api.answer_intake_question``); ``{confirm: true, by}`` is a second person's confirmation of a high-stakes
   answer (``jason.api.onboarding_confirm``). It writes only ``data/intake/asks.json``: applying stays a person's
@@ -92,7 +94,7 @@ def onboarding_session(args: Args) -> dict[str, Any]:
     ``fact,map``, onboarding's own questions; ``all`` for every kind) picks them, and ``otherOpen`` counts the rest."""
     from jason.community import community
     from jason.community.intake import AskKind, AskStatus, ask_id
-    from jason.community.onboarding import stages_of
+    from jason.community.onboarding import Status, stages_of
     from jason.mcp.county import _data_dir
     from jason.tasks import onboarding_session as task
 
@@ -117,7 +119,8 @@ def onboarding_session(args: Args) -> dict[str, Any]:
         if r.item.ask is not None:
             stored = queue.get(ident)
             ask = {"id": ident, "question": r.item.ask.question, "record": r.item.ask.record.value,
-                   "stakes": r.item.ask.stakes, "inQueue": ident in session.stored,
+                   "stakes": r.item.ask.stakes, "standing": r.item.ask.standing, "clock": r.item.ask.clock,
+                   "inQueue": ident in session.stored,
                    **(_answered(stored) if stored is not None else {"state": "not asked"})}
         items.append({"key": r.item.key, "group": r.item.group.value, "groupTitle": r.item.group.title,
                       "title": r.item.title, "why": r.item.why, "status": r.status.value,
@@ -128,11 +131,17 @@ def onboarding_session(args: Args) -> dict[str, Any]:
     kinds = str(args.get("kinds") or "fact,map").strip()
     wanted = None if kinds == "all" else {k.strip() for k in kinds.split(",") if k.strip()}
     rows = [q for q in ranked if wanted is None or q.ask.kind.value in wanted]
+    # A standing question (a record kept as it changes: an office, a term) is asked whatever its item's status; one
+    # whose item is present sorts after the questions an item is missing, keeping the rank among each.
+    standing = {r.item.key: r.status for r in session.results if r.item.ask is not None and r.item.ask.standing}
+    held = {k for k, s in standing.items() if s is Status.PRESENT}
+    rows.sort(key=lambda q: q.ask.kind is AskKind.FACT and q.ask.serves in held)
     nxt = []
     for q in rows[:limit]:
         row = task.question_dict(q, session.stored)
         row["record"] = str(q.ask.detail.get("record") or "")
         row["connect"] = connect_keys.get(q.ask.serves)
+        row["standing"] = q.ask.kind is AskKind.FACT and q.ask.serves in standing
         nxt.append(row)
     waiting = [{"id": a.id, "kind": a.kind.value, "subject": a.subject, "question": a.question, "serves": a.serves,
                 "apply": _apply_for(a.kind), **_answered(a)}
