@@ -1107,7 +1107,7 @@ button.swatch:hover .swatch-fill { outline: 2px solid var(--accent); outline-off
 [data-grid="ledger"] tbody td { border-bottom-color: transparent; }
 [data-grid="ledger"] td.num, [data-grid="ledger"] th.num { border-left: 1px solid var(--line); font-variant-numeric: tabular-nums slashed-zero; }
 [data-grid="ledger"] tfoot td { border-top: 3px double var(--ink); font-weight: 650; }
-[data-grid="open"] { --dv-frame: 0 solid transparent; --dv-head-bg: transparent; --dv-radius: 0px; --dv-rule: var(--ink); }
+[data-grid="open"] { --dv-frame: 0 solid transparent; /* @kind other */ --dv-head-bg: transparent; --dv-radius: 0px; --dv-rule: var(--ink); }
 [data-grid="open"] .table-wrap > table { background: transparent; }
 [data-grid="open"] thead th { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; padding-left: 0; }
 [data-grid="open"] tbody td { background: transparent; padding-left: 0; }
