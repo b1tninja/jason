@@ -61,7 +61,7 @@ A general page that has instance detail ends with one pointer line, for example 
 - its Drive ids;
 - its PayHOA org id.
 
-It then lists the general documents that name any of them. Adding a fact to the profile extends the check. A code span that points into the profile (`mystique/meetings.py`) is allowed. The association's name in prose is not. A counterparty's name is allowed in a code span only where it points at a declared adapter, the reader of the layout that vendor prints ([adapters.md](adapters.md)); general code is held to the same terms in its patterns, word lists, and default arguments (`tests/fixtures/code_boundary.json`).
+It then lists the general documents that name any of them. Adding a fact to the profile extends the check. A code span that points into the profile (`mystique/meetings.py`) is allowed. The association's name in prose is not. A counterparty's name is allowed in a code span only where it points at a declared adapter, the reader of the layout that vendor prints ([adapters.md](adapters.md)); general code is held to the same terms in its patterns, word lists, default arguments, its modules' and classes' own tables, and its modules' own string constants (`tests/fixtures/code_boundary.json`).
 
 **Themes are profile data.** The association's brand for the console and its public owner page is one `Theme` row (`jason.community.base.Theme`) returned by `Community.theme()`: the accent and the text that sits on it, a second accent, the brand font with its weight, case, and tracking, the hero surface, dark-scheme overrides by the same keys, the surface layer the public page opts into with `data-reach="full"`, and a font stylesheet URL. The console reads it from `GET /api/theme` (`jason.web.extra.theme`) and scopes it to `[data-community="<slug>"]` (`ui/src/lib/theme.ts`); jason's data views take the brand layer only. No color, font, or wordmark appears in `src/jason/`, `ui/src/`, or these docs; a profile without a theme answers `found: false` and the console keeps its neutral look. The public page's facts come the same way, from `GET /api/community-profile` (`jason.web.extra.community_profile`), which reads `Community` methods alone and shows nothing for a method left at its empty default. This association: `mystique/docs/theme.md`.
 
@@ -93,12 +93,11 @@ The coupling was surveyed on October 2, 2026. jason hardcodes no Drive ids or Pa
    - Done (October 4 and 5, 2026; `tests/fixtures/code_boundary.json` is empty):
      - the association's name in regexes and default arguments (`index_cache`, `sources`, `models/*`), read from `community.name`, `community.name_pattern()`, `community.short_name`, and `community.index_project()`;
      - the street pattern in `incidents`, `scans`, and `models/invoices`, read from `community.streets()`;
-     - the Workspace's name on a printed email (`community.gmail_print_names()`) and the Drive names `jason policies` passes over (`community.not_policy_names()`).
-   - Still to do, in plain strings and tables the check does not read ([adapters.md](adapters.md), "What the check does not see"):
-     - the county map book and page (the parcel-number prefix in `scans`, `reports`, `unit_charts`, and `models/legal_shared`);
+     - the Workspace's name on a printed email (`community.gmail_print_names()`) and the Drive names `jason policies` passes over (`community.not_policy_names()`);
+     - the tables and module constants (October 5, 2026, when the check widened to them): the board items' options (`community.board_item_options()`), the request groups (`community.request_groups()`), the name word in the stop-word sets (`community.name_words()`), the profile's folder in the law sweep (`Community.root`), the user agents (`community.user_agent()`), the escrow note (`community.developer_security_notes()`), the matter filed with two recordings in the board packet (`community.recordings_note()`), the program contractors (`community.program_contractors()`), the county map book and page (`community.parcel_prefix()` from `PlanBlock.book_page`), and the property name in one invoice layout (`InvoiceFormat.names_association` with `community.name_pattern()`).
+   - Still to do, in strings the check does not read ([adapters.md](adapters.md), "What the check does not see"):
      - the city and ZIP line;
-     - the maintenance request groups in `request_sheet`;
-     - the prose in `board_packet`.
+     - the association's name in a function's body (`cli`, `property_report`, `reserve_study`, `recorder`) and a developer's in `audit`.
    - Each one reads `community.name`, `community.corporate_name`, `community.unit_city_state_zip()`, or a new profile field.
 5. **Data per profile (started).**
    - Every store derives `data/` from `Settings.payhoa_catalog.parent`.

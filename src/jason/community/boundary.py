@@ -12,16 +12,23 @@ only shrinks: a new term fails the test, and so does a cleared one the baseline 
 (``python -m jason.community.boundary --update`` rewrites it).
 
 General code (``src/jason``) is held to the same terms where a fact hides in code: a regular
-expression it matches text with, a word list it filters by, and a default argument. The regular
-expression is read wherever it is handed over: to ``re``, to a reader helper (``first``,
-``date_after``, ``amount_after``), or to a module's own function that passes its parameter on as a
-pattern (`pattern_parameters`). Such a fact belongs in the profile behind a ``Community`` method
-with an empty default. Its baseline is ``tests/fixtures/code_boundary.json`` and only shrinks the
-same way. General code never imports the profile package by name at all (`profile_imports`).
+expression it matches text with, a word list it filters by, a default argument, a module's or a
+class's own table (a tuple, list, set, or dict of names, words, or records), and a module's own
+string constant. The regular expression is read wherever it is handed over: to ``re``, to a reader
+helper (``first``, ``date_after``, ``amount_after``), or to a module's own function that passes its
+parameter on as a pattern (`pattern_parameters`). Such a fact belongs in the profile behind a
+``Community`` method with an empty default. Its baseline is ``tests/fixtures/code_boundary.json``
+and only shrinks the same way. General code never imports the profile package by name at all
+(`profile_imports`).
 
-A module's own table (a tuple, list, set, or dict of names, words, or records) is read only by the
-wide reading (``scan_code(..., wide=True)``, ``python -m jason.community.boundary --wide``), which
-is a report and not yet part of the check: ``docs/adapters.md`` says what it still finds.
+Two strings point at the profile package rather than name the association, as a document's code
+span does: a path, a call, or a dotted name (``oakridge/notes``, ``oakridge()``,
+``Oakridge.senders()``), and a lone module constant that is one lower-case word, the package's name
+(``DEFAULT_PROFILE = "oakridge"``). The same word in a table of words is the name word, and found.
+
+Every other string, in a function's body or a class's own lone constant, is read only by the wide
+reading (``scan_code(..., wide=True)``, ``python -m jason.community.boundary --wide``), which is a
+report and not part of the check: ``docs/adapters.md`` says what it still finds.
 
 A counterparty's name is treated two ways. A general reader that recognizes one by name is the
 bug: it finds the counterparty through the sender directory instead (``sources.sender_in``). A
@@ -95,6 +102,9 @@ def instance_terms(community: Community) -> tuple[Term, ...]:
         add(getattr(account, "bank", ""), "bank")
     for case in _rows(community, "legal_cases"):
         add(getattr(case, "case_number", ""), "case number")
+    for name in _rows(community, "program_contractors"):
+        add(name, "contractor")
+    add(_value(community, "parcel_prefix"), "parcel prefix", minimum=7)
     for group in _rows(community, "google_groups"):
         address = str(getattr(group, "address", ""))
         add(address, "group address")
@@ -116,6 +126,11 @@ def _rows(community: Community, name: str) -> tuple:
     if isinstance(rows, dict):
         rows = rows.values()
     return tuple(rows or ())
+
+
+def _value(community: Community, name: str) -> str:
+    method = getattr(community, name, None)
+    return str((method() if callable(method) else method) or "")
 
 
 # The sender directory's counterparties: the kinds of sender that are one association's own (its law firms, managers,
@@ -157,8 +172,14 @@ def sender_terms(senders: tuple) -> list[tuple[str, str, int]]:
     return found
 
 
-# Kinds of term a document may carry inside a code pointer: the profile's own name (a pointer into its package).
+# Kinds of term a document, or a string in code, may carry inside a code pointer: the profile's own name (a pointer into
+# its package).
 PROSE_KINDS = ("name",)
+# A pointer into the profile package inside a string in code: a path (``oakridge/notes``, ``oakridge/``), a call
+# (``oakridge()``), or a dotted name with a call (``Oakridge.senders()``).
+_CODE_POINTER = re.compile(r"(?<![\w/.-])[\w-]+/[\w./#-]*|\b[\w.]+\(\)")
+# One lower-case word on its own: a key or a package's name (``DEFAULT_PROFILE = "oakridge"``), never prose.
+_SLUG_WORD = re.compile(r"^[a-z][a-z0-9_]*$")
 # Kinds of term a document may carry inside a code pointer only where it points at a declared adapter: a reader of the
 # layout that vendor prints (``jason.community.adapters``).
 ADAPTER_KINDS = frozenset(COUNTERPARTY_KINDS.values())
@@ -344,29 +365,50 @@ def pattern_parameters(trees: dict[str, ast.AST]) -> dict[str, dict[str, frozens
     return {path: view(path) for path in trees}
 
 
-def _collections(tree: ast.AST) -> list[str]:
-    """The strings in a module's (or a class's) own tuples, lists, sets, and dicts: a table of names or words, or of
-    records that carry them. ``__all__`` lists the module's own names and is left out."""
+def _constants(tree: ast.AST) -> list[str]:
+    """The strings in a module's and its classes' own tables (a tuple, list, set, or dict of names, words, or records
+    that carry them), and in the module's own lone string constants (``NOTE = "..."``, an f-string's literal parts).
+
+    ``__all__`` lists the module's own names and is left out. So is a lone constant that is one lower-case word: a key
+    or the profile package's name (`_SLUG_WORD`), never a fact. A class's own lone string (an enum member) is not read:
+    ``docs/adapters.md`` says what still hides there."""
     found: list[str] = []
-    bodies = [getattr(tree, "body", [])] + [node.body for node in getattr(tree, "body", []) if isinstance(node, ast.ClassDef)]
-    for node in (node for body in bodies for node in body):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
-            continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
-            continue
-        if any(isinstance(n, (ast.Tuple, ast.List, ast.Set, ast.Dict)) for n in ast.walk(node.value)):
-            found += _strings(node.value)
+    module_body = getattr(tree, "body", [])
+    bodies = [(module_body, True)] + [(node.body, False) for node in module_body if isinstance(node, ast.ClassDef)]
+    for body, module_level in bodies:
+        for node in body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
+                continue
+            if any(isinstance(n, (ast.Tuple, ast.List, ast.Set, ast.Dict)) for n in ast.walk(node.value)):
+                found += _strings(node.value)
+            elif module_level and isinstance(node.value, (ast.Constant, ast.JoinedStr)):
+                found += [s for s in _strings(node.value) if not _SLUG_WORD.match(s)]
+    return found
+
+
+def _docstrings(tree: ast.AST) -> set[int]:
+    """The ids of the docstring nodes in ``tree``."""
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and body:
+            first = body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                found.add(id(first.value))
     return found
 
 
 def code_sites(tree: ast.AST, helpers: dict[str, frozenset] | None = None, *, wide: bool = False) -> list[str]:
     """The strings in ``tree`` where a fact hides in code: a pattern given to ``re`` or to a function that matches its
     parameter against text (``helpers``, by default the reader helpers and this tree's own), a word list
-    (``"a b c".split()``), and a parameter's default. A docstring, a comment, or a message is not one.
+    (``"a b c".split()``), a parameter's default, and the module's and its classes' own tables and the module's own
+    string constants (`_constants`). A docstring, a comment, or a message is not one.
 
-    ``wide`` adds the strings of the module's and its classes' own collections (`_collections`). The committed check
-    does not read those: see ``docs/adapters.md``."""
+    ``wide`` adds every other string in the module but its docstrings: a message, a string in a function's body, a
+    class's own lone constant. The committed check does not read those: see ``docs/adapters.md``."""
     helpers = pattern_parameters({"module.py": tree})["module.py"] if helpers is None else helpers
     found: list[str] = []
     for node in ast.walk(tree):
@@ -378,8 +420,14 @@ def code_sites(tree: ast.AST, helpers: dict[str, frozenset] | None = None, *, wi
                 found.append(func.value.value)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             found += [s for d in (*node.args.defaults, *node.args.kw_defaults) if d is not None for s in _strings(d)]
+    found += _constants(tree)
     if wide:
-        found += _collections(tree)
+        skipped = _docstrings(tree)
+        for node in getattr(tree, "body", []):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+            if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
+                skipped |= {id(n) for n in ast.walk(node)}
+        found += [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in skipped]
     return [_ESCAPE.sub(" ", s) for s in found]
 
 
@@ -388,14 +436,16 @@ def _code_files(root: Path) -> list[Path]:
 
 
 def scan_code(root: Path, terms: tuple[Term, ...], adapters: tuple | None = None, *, wide: bool = False) -> dict[str, list[str]]:
-    """For each general module, the instance terms its patterns, word lists, and defaults name (sorted). A pattern is
-    one given to ``re``, to a reader helper (``first``, ``date_after``, ``amount_after``), or to any function in general
-    code that hands its parameter on as a pattern (`pattern_parameters`). ``wide`` reads the modules' own collections
-    too (`code_sites`).
+    """For each general module, the instance terms its patterns, word lists, defaults, tables, and module constants
+    name (sorted). A pattern is one given to ``re``, to a reader helper (``first``, ``date_after``, ``amount_after``),
+    or to any function in general code that hands its parameter on as a pattern (`pattern_parameters`). ``wide`` reads
+    every other string in the module too (`code_sites`).
 
-    A counterparty's name is not counted in a module declared as an adapter for that vendor's layout (``adapters``, by
-    default every declared one): there the name is the layout's signature. Nor is it counted in the module that holds
-    the declarations. It is counted in every other module, and every other kind of term is counted everywhere."""
+    The profile's name may stand in a code pointer (`_CODE_POINTER`): a path or a call into its package points at it,
+    as a document's code span does. A counterparty's name is not counted in a module declared as an adapter for that
+    vendor's layout (``adapters``, by default every declared one): there the name is the layout's signature. Nor is it
+    counted in the module that holds the declarations. It is counted in every other module, and every other kind of
+    term is counted everywhere."""
     patterns = [(term, term.pattern()) for term in terms]
     rows = _adapters(adapters)
     trees = {path.relative_to(root).as_posix(): ast.parse(path.read_text(encoding="utf-8")) for path in _code_files(root)}
@@ -403,7 +453,9 @@ def scan_code(root: Path, terms: tuple[Term, ...], adapters: tuple | None = None
     found: dict[str, list[str]] = {}
     for module, tree in trees.items():
         strings = code_sites(tree, helpers[module], wide=wide)
-        hits = sorted({term.text for term, pattern in patterns if any(pattern.search(s) for s in strings)
+        prose = [_CODE_POINTER.sub("", s) for s in strings]
+        hits = sorted({term.text for term, pattern in patterns
+                       if any(pattern.search(s) for s in (prose if term.kind in PROSE_KINDS else strings))
                        and not (term.kind in ADAPTER_KINDS and any(row.names(term.text) and module in (row.module, ADAPTERS_MODULE)
                                                                    for row in rows))},
                       key=str.casefold)
@@ -491,7 +543,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{sum(len(v) for v in current.values())} instance terms in {len(current)} {what}")
         ok = ok and drift.ok
     if "--wide" in args:
-        # A report, not part of the check: what the modules' own collections name beyond the committed reading.
+        # A report, not part of the check: what the modules' other strings (messages, a function's own, a class's lone
+        # constants) name beyond the committed reading.
         committed, wide = scan_code(root, terms), scan_code(root, terms, wide=True)
         for module, found in wide.items():
             more = [term for term in found if term not in committed.get(module, [])]

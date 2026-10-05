@@ -160,7 +160,10 @@ def test_general_code_names_no_new_instance_facts():
 def test_the_code_baseline_is_empty():
     """The modules whose street and name patterns moved into the profile on 2026-10-04 left the baseline then, and the
     eleven that still named the association's name, its streets, its index words, its Workspace's name, and its Drive
-    folders left it on 2026-10-05: the ratchet holds nothing, and it only shrinks, so it never gains an entry."""
+    folders left it on 2026-10-05. The same day the check widened to the modules' own tables and constants, once the
+    board items' options, the request groups, the stop-word sets, the user agents, the escrow note, the program
+    contractors, and the parcel prefix had moved into the profile: the ratchet holds nothing, and it only shrinks, so it
+    never gains an entry."""
     import json
 
     assert json.loads(code_baseline_path().read_text(encoding="utf-8")) == {}
@@ -186,7 +189,7 @@ def test_a_fact_in_a_pattern_a_word_list_or_a_default_is_found(tmp_path):
             print("Oakridge")
             return re.search(rf"(?i){name}", text)
     '''), encoding="utf-8")
-    (code / "clean.py").write_text('MESSAGE = "Oakridge"\n', encoding="utf-8")
+    (code / "clean.py").write_text('def say():\n    print("Oakridge")\n', encoding="utf-8")       # a message, in a function
     terms = (Term("Oakridge", "name"), Term("Main", "street"), Term("Elm", "street"), Term("Birch", "street"))
     assert scan_code(tmp_path, terms) == {"src/jason/patterns.py": ["Elm", "Main", "Oakridge"]}
 
@@ -223,7 +226,8 @@ def test_a_fact_in_a_pattern_given_to_a_helper_is_found(tmp_path):
             return pattern.search("Willow Roofing wrote")      # the text given to a compiled pattern, not a pattern
     '''), encoding="utf-8")
     (code / "models" / "shared.py").write_text("import re\n\n\ndef labeled(label, text):\n    return re.findall(label, text)\n", encoding="utf-8")
-    # A function of a helper's name that matches nothing: its argument is not a pattern.
+    # A function of a helper's name that matches nothing: its argument is not a pattern (and, in a function's body, not a
+    # table either).
     (code / "other.py").write_text(textwrap.dedent('''
         def first(items):
             return items[0]
@@ -233,17 +237,19 @@ def test_a_fact_in_a_pattern_given_to_a_helper_is_found(tmp_path):
             return text.partition(label)[2]
 
 
-        HEAD = first(["Oak Ridge Title Company"])
-        TAIL = _after("Maple Mutual policy", "x")
+        def use():
+            return first(["Oak Ridge Title Company"]), _after("Maple Mutual policy", "x")
     '''), encoding="utf-8")
     names = ("Oak Ridge Title Company", "Elm Escrow", "Birch Surety", "Cedar Bank", "Maple Mutual", "Aspen Law", "Spruce Paving", "Willow Roofing")
     terms = tuple(Term(name, "vendor") for name in names)
     assert scan_code(tmp_path, terms, adapters=()) == {"src/jason/models/reader.py": sorted(names[:-1])}
 
 
-def test_a_fact_in_a_modules_own_collection_is_found_by_the_wide_reading(tmp_path):
-    """The wide reading takes the strings of a module's (and a class's) own tuples, lists, sets, and dicts, with the
-    records in them. The committed check does not read those yet (docs/adapters.md, "What the check does not see")."""
+def test_a_fact_in_a_table_or_a_module_constant_is_found_and_the_wide_reading_adds_the_rest(tmp_path):
+    """The check reads a module's and a class's own tuples, lists, sets, and dicts, with the records in them, and the
+    module's own lone string constants (an f-string's literal parts too). A string in a function's body, a message, and
+    a class's own lone constant are read only by the wide reading, a report (docs/adapters.md, "What the check does not
+    see"); a docstring and ``__all__`` by neither."""
     from jason.community.adapters import Adapter
     from jason.community.boundary import ADAPTERS_MODULE
 
@@ -256,6 +262,7 @@ def test_a_fact_in_a_modules_own_collection_is_found_by_the_wide_reading(tmp_pat
         CARRIERS = (("Oak Ridge Mutual", r"oakridgemutual|Oak Ridge Mutual"), ("Elm Indemnity", r"Elm Indemnity"))
         STOP = frozenset({"board", "oakridge"})
         NOTE = "Cedar Bank"
+        AGENT = f"jason (Oak Ridge Homeowners Association; {NOTE})"
         __all__ = ["oakridge"]
 
 
@@ -270,33 +277,45 @@ def test_a_fact_in_a_modules_own_collection_is_found_by_the_wide_reading(tmp_pat
 
         class Reader:
             escrow = {"holders": ["Maple Title"]}
+            surety = "Spruce Surety"
 
             def read(self, text):
+                print("Willow Roofing wrote")
                 return [word for word in ("local", "Aspen Law") if word in text]
     '''), encoding="utf-8")
     terms = (Term("Oak Ridge Mutual", "insurer"), Term("Elm Indemnity", "insurer"), Term("Birch Surety", "insurer"),
              Term("Maple Title", "title or escrow company"), Term("Cedar Bank", "bank"), Term("Aspen Law", "law firm"),
+             Term("Spruce Surety", "insurer"), Term("Willow Roofing", "vendor"), Term("Oak Ridge Homeowners Association", "name"),
              Term("Oakridge", "name"))
-    assert scan_code(tmp_path, terms, adapters=()) == {}
-    # Not a plain string, a docstring, ``__all__``, or a tuple inside a function.
-    wide = ["Birch Surety", "Elm Indemnity", "Maple Title", "Oak Ridge Mutual", "Oakridge"]
+    found = ["Birch Surety", "Cedar Bank", "Elm Indemnity", "Maple Title", "Oak Ridge Homeowners Association", "Oak Ridge Mutual",
+             "Oakridge"]
+    assert scan_code(tmp_path, terms, adapters=()) == {"src/jason/tables.py": found}
+    wide = sorted(found + ["Aspen Law", "Spruce Surety", "Willow Roofing"], key=str.casefold)
     assert scan_code(tmp_path, terms, adapters=(), wide=True) == {"src/jason/tables.py": wide}
     # A declared adapter is still allowed its vendor, there and in the module that holds the declarations; nothing else is.
     (tmp_path / ADAPTERS_MODULE).write_text('ROWS = (("src/jason/tables.py", "Elm Indemnity"), ("src/jason/x.py", "Maple Title"))\n', encoding="utf-8")
     declared = (Adapter("src/jason/tables.py", "Elm Indemnity", "claim letters"),)
-    assert scan_code(tmp_path, terms, adapters=declared, wide=True) == {"src/jason/tables.py": [t for t in wide if t != "Elm Indemnity"],
-                                                                       ADAPTERS_MODULE: ["Maple Title"]}
+    assert scan_code(tmp_path, terms, adapters=declared) == {"src/jason/tables.py": [t for t in found if t != "Elm Indemnity"],
+                                                             ADAPTERS_MODULE: ["Maple Title"]}
 
 
-def test_no_general_table_names_a_counterparty_but_the_two_that_wait():
-    """Read wide, general code names a counterparty in a collection in two modules only: tables of one association's
-    facts that wait to move into the profile (docs/adapters.md). A reader's table of carriers, firms, or vendors is
-    found here; it takes them from the sender directory instead. When one of the two moves, drop it from this set."""
-    from jason.community.boundary import ADAPTER_KINDS
-
-    counterparties = tuple(t for t in instance_terms(community()) if t.kind in ADAPTER_KINDS)
-    waiting = {"src/jason/tasks/board_packet.py", "src/jason/tasks/request_sheet.py"}
-    assert set(scan_code(repo_root(), counterparties, wide=True)) == waiting
+def test_a_string_in_code_may_point_at_the_profile_package_but_not_name_the_association(tmp_path):
+    """A path, a call, or a dotted name into the profile package is a pointer, as a document's code span is, and so is a
+    lone module constant that is one lower-case word (the package's name). The same word in a table of words, or the
+    name in prose, is the association's and found."""
+    code = tmp_path / "src" / "jason"
+    code.mkdir(parents=True)
+    (code / "pointers.py").write_text(textwrap.dedent('''
+        DEFAULT_PROFILE = "oakridge"
+        HINTS = ("a new rule row in oakridge/documents.py", "read through oakridge(), the older name", "Oakridge.senders() lists them",
+                 "the package (oakridge/) is its own repository")
+    '''), encoding="utf-8")
+    (code / "prose.py").write_text(textwrap.dedent('''
+        TITLE = "Oakridge document library"
+        STOP = frozenset({"board", "oakridge"})
+    '''), encoding="utf-8")
+    terms = (Term("Oakridge", "name"),)
+    assert scan_code(tmp_path, terms, adapters=()) == {"src/jason/prose.py": ["Oakridge"]}
 
 
 def test_an_import_of_the_profile_is_found(tmp_path):
@@ -576,6 +595,60 @@ def test_a_profile_without_a_short_name_index_words_print_names_or_file_exclusio
     _label_project_parties(cache, item, project="SMALL", association="SMALL COMMUNITY", developers=())
     assert cache.notes == ["other Small party BUILDERS AT SMALL LLC", "association party SMALL COMMUNITY ASSN"]
     assert re.search(mine.name_pattern(), mine.name, re.I)
+
+
+def test_a_profile_without_options_groups_notes_contractors_or_a_map_page_reads_none(small_profile, tmp_path):
+    """The facts moved out of general code's tables and strings on 2026-10-05 read through ``Community``: a profile
+    that sets none gets an empty answer and a miss, never a crash; the default profile reads as before."""
+    from jason.catalog import PayhoaCatalog
+    from jason.community.document_models import ModelContext
+    from jason.community.models.insurance_claims import program_contractor
+    from jason.community.reports import PlanBlock, unit_parcels
+    from jason.community.scans import read_scan
+    from jason.community.symbols import Building
+    from jason.tasks.board_packet import options_for
+    from jason.tasks.developer_security import register
+    from jason.tasks.law_sweep import _scanned
+    from jason.tasks.request_sheet import request_sheet_tabs
+    from jason.tasks.unit_charts import unit_chart_tabs
+
+    small, mine = community(), profiles.load_profile("mystique")
+    assert small.board_item_options() == () and small.request_groups() == () and small.developer_security_notes() == ()
+    assert small.program_contractors() == () and small.parcel_prefix() == "" and small.recordings_note() == ""
+    assert mine.recordings_note()
+    assert mine.board_item_options() and mine.request_groups() and mine.developer_security_notes() and mine.program_contractors()
+    assert mine.parcel_prefix().isdigit() and len(mine.parcel_prefix()) == 7
+    # The name words and the user agent come from the name any profile has.
+    assert small.name_words() == frozenset({"small", "community", "association"})
+    assert small.user_agent("read-only mail sync") == "jason (Small Community Association; read-only mail sync)"
+    # An item with no row gets no options and no motion: the packet frames it generically.
+    assert options_for("repaint", small) == ((), "") and options_for("repaint", object()) == ((), "")
+    assert all(options_for(row.item, mine) == (tuple(row.options), row.motion) for row in mine.board_item_options())
+    # A request with no row is listed as unclear, with its own message as the issue.
+    catalog = PayhoaCatalog(tmp_path / "payhoa.db")
+    catalog.upsert_requests(1, [{"id": 7, "formId": 9, "status": "pending", "createdAt": "2026-09-24T00:00:00Z",
+                                 "answers": [{"answer": "A gutter", "question": {"label": "Title"}},
+                                             {"answer": "It leaks.", "question": {"label": "Message"}}]}], form_names={9: "Maintenance Request"})
+    tabs = request_sheet_tabs(catalog, 1, community=small)
+    assert [row[0] for row in tabs["Unclear"][1:]] == ["Unclear"] and tabs["Unclear"][1][5] == "It leaks." and tabs["Association"][1:] == []
+    # The register's caveats carry the specification's notes after jason's general ones.
+    (tmp_path / "developer-security").mkdir()
+    assert register(tmp_path, small)["found"] is False
+    # A claim paper names a program contractor only from the specification's list.
+    text = "Payment has been made to Lionsbridge Contractor Group who will distribute the funds."
+    assert program_contractor(text, ModelContext(community=small)) == ""
+    assert program_contractor(text, ModelContext(community=mine)) == "Lionsbridge Contractor Group"
+    # A parcel number is read from a deed, and built from a unit, only under the profile's map book and page.
+    deed = tmp_path / "GD 200001010001.pdf.md"
+    deed.write_text("A.P.N.: 201-1170-024-0007 GRANT DEED UNIT 27", encoding="utf-8")
+    assert read_scan("200001010001", deed, parcel_prefix=small.parcel_prefix()).unit_parcels == ()
+    assert read_scan("200001010001", deed, parcel_prefix=mine.parcel_prefix()).unit_parcels == ("20111700240007",)
+    block = PlanBlock(Building.BLDG_3, "024", 21, 12)
+    assert unit_parcels(27, (block,)) == () and unit_chart_tabs((block,), ())["Unit numbers"][1:] == []
+    assert unit_parcels(27, mine.unit_blocks())[0][1] == "20111700240007"
+    # The law sweep reads the profile's package only when it sits in the project.
+    assert _scanned(tmp_path, None) == _scanned(tmp_path, tmp_path.parent / "elsewhere")
+    assert _scanned(tmp_path, tmp_path / "small")[2] == ("small", "**/*.py")
 
 
 def test_a_profile_without_systems_is_asked_which_it_has(small_profile):
