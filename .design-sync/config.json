@@ -135,6 +135,7 @@
     "../docs/console/handoff-reconciliation-3.md",
     "../docs/console/handoff-reconciliation-4.md",
     "../docs/console/handoff-instance-and-integrations.md",
+    "../docs/console/handoff-admin-components.md",
     "../docs/integrations-design.md",
     "../docs/scheduler-daemon-design.md",
     "../docs/console/handoff-held-setup-roster.md",
