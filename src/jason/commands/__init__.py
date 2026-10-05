@@ -55,6 +55,7 @@ MODULES: tuple[str, ...] = (
     "record_stages",
     "manual",
     "rules",
+    "segments",
     "respond",
     "attention",
     "revisions",

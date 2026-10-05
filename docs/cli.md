@@ -10,7 +10,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
-- [Documents & library](#documents--library) (22)
+- [Documents & library](#documents--library) (23)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (24)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
@@ -609,6 +609,25 @@ Who may make rules: the provisions that give the board, the association, or a co
 | `--note` | NOTE | with --review: the reviewer's note |
 | `--by` | BY | with --review: the reviewer |
 | `--json` |  | JSON output |
+### `jason segments`
+
+The documents in a scanned file and the parts of each: page ranges, kinds, titles, dates, and parties; the file is never split
+
+| Option | Value | Help |
+|---|---|---|
+| `id` | optional (?) | a library document id |
+| `--file` | FILE | a PDF anywhere on disk (its store id is its SHA-256's first sixteen digits) |
+| `--write` |  | store the reading at data/library/segments/ID.json |
+| `--again` |  | read the pages again, not from the stored reading |
+| `--model` | MODEL | add the local vision model as a second reader (default qwen3.5:9b); it holds the GPU lock |
+| `--pair` |  | with --model: show it the page before as well |
+| `--dpi` | DPI | with --model: the thumbnail's resolution |
+| `--embed` |  | add the embedder's change points as a reader |
+| `--ocr` |  | read a page with no text layer by OCR (slow) |
+| `--accept` | {any,agree,rules} | keep any reader's boundary (default), only those two readers share, or the rules' |
+| `--show` | ID | print a stored reading |
+| `--list` |  | list the stored readings |
+| `--json` |  |  |
 
 ### `jason revisions`
 

@@ -73,6 +73,7 @@ GROUPS: dict[str, str] = {
     "outlines": "Documents & library",
     "manual": "Documents & library",
     "rules": "Documents & library",
+    "segments": "Documents & library",
     "revisions": "Documents & library",
     "copies": "Documents & library",
     "packet": "Documents & library",
