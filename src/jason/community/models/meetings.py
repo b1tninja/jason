@@ -55,7 +55,8 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.base import name_regex
-from jason.community.reviews import AS_OF
+from jason.community.document_models import Basis
+from jason.community.reviews import AS_OF, RECORDS, Reviewed
 from jason.community.sources import fold, manager_in
 from jason.community.symbols import DocumentKind
 
@@ -196,7 +197,9 @@ class Agenda:
     tech_assistance: bool = False                     # a person to call or email for help with the teleconference
     individual_delivery_reminder: bool = False
     posted_on: date | None = None
-    notice_sent: date | None = None                   # PayHOA's notice email for this meeting (its communications log, not the text)
+    # PayHOA's notice email for this meeting: from its communications log, not the text. The records lens fills both
+    # (``agenda_notice``); the parse leaves them empty.
+    notice_sent: date | None = None
     notice_subject: str = ""
     items: tuple[AgendaItem, ...] = ()
     executive_topics: tuple[str, ...] = ()
@@ -686,11 +689,80 @@ def notice_need(executive_only: bool, context: ModelContext) -> tuple[int, str]:
     return notice_period(executive_only=executive_only, community=context.community)
 
 
+def notice_log(r, records) -> dict[str, Any]:
+    """From PayHOA's communications log: the notice emails for the agenda's meeting (the local day each went out and
+    its subject, earliest first) and the day the log starts; and the days of notice the meeting needs, with their
+    source, from the specification."""
+    sent, start = notice_mailings(records, r.meeting_date)
+    need, source = notice_need(r.meeting_type is MeetingType.EXECUTIVE, records)
+    return {"sent": [list(row) for row in sent], "start": start, "need": need, "source": source}
+
+
+@RECORDS.check("agenda-notice", Agenda, fields=("meeting_type", "body", "meeting_date", "posted_on"), facts=notice_log,
+               reads=(Basis.STORE, Basis.PROFILE))
+def agenda_notice(a, as_of: date, log: dict[str, Any]) -> Reviewed:
+    """Against the communications log: when the earliest notice email for this meeting went out and its subject (the
+    agenda's ``notice_sent`` and ``notice_subject``), whether that was in time, and, for an agenda that shows no posting
+    date, whether the log covers the meeting and has no notice."""
+    found: list[Finding] = []
+    notice_sent, notice_subject = log["sent"][0] if log["sent"] else (None, "")
+    need, basis = log["need"], log["source"]
+    board = a.body is not MeetingBody.MEMBERS and a.meeting_type is not MeetingType.EMERGENCY
+    if notice_sent and a.meeting_date:
+        lead = (a.meeting_date - notice_sent).days
+        if board and lead < need:
+            found.append(Finding("notice-sent-late", f"PayHOA's notice email ('{notice_subject}') went out {notice_sent}, {lead} "
+                                 f"day{'s' if lead != 1 else ''} before the meeting; board meeting notice is due {need} days before "
+                                 "(a posting the annual policy statement designates may have come sooner)", Severity.CHECK,
+                                 f"{basis}; CIV 4045"))
+        elif a.body is MeetingBody.MEMBERS and lead < MEMBERS_NOTICE_DAYS:
+            found.append(Finding("members-notice", f"PayHOA's notice email went out {notice_sent}, {lead} days before this members' "
+                                 f"meeting; written notice of a members' meeting is due {MEMBERS_NOTICE_DAYS} to 90 days before (the "
+                                 "inspector's pre-ballot notice, which names the counting meeting, may have served)", Severity.CHECK,
+                                 "Corp. Code 7511(a)"))
+    if not a.posted_on and not notice_sent and a.body is not MeetingBody.MEMBERS:
+        start = log["start"]
+        logged = bool(start and a.meeting_date and start <= a.meeting_date <= as_of)
+        found.append(Finding("posting-date-not-shown", "the agenda does not show when it was posted" +
+                             (", and PayHOA's communications log has no notice email for this meeting" if logged else "") +
+                             f"; notice with the agenda is due at least {need} days before the meeting",
+                             Severity.CHECK if logged else Severity.INFO, f"{basis}; CIV 4920(d)"))
+    return Reviewed(tuple(found), {"notice_sent": notice_sent, "notice_subject": notice_subject})
+
+
+def minutes_on_file(r, records) -> dict[str, Any] | None:
+    """From the library: the minutes on file for the agenda's meeting (their names), and, for each date of minutes the
+    agenda lists for approval, whether the library has minutes of that date. None with no meeting date or no library."""
+    if not r.meeting_date or records.data_dir is None:
+        return None
+    minutes = meeting_files(records, DocumentKind.MINUTES, r.meeting_date, r.meeting_type)
+    return {"minutes": [str(m.get("name") or "") for m in minutes],
+            "prior": {day.isoformat(): bool(library_rows(records, (DocumentKind.MINUTES,), day)) for day in r.prior_minutes}}
+
+
+@RECORDS.check("agenda-minutes", Agenda, fields=("meeting_date", "meeting_type", "prior_minutes"), facts=minutes_on_file)
+def agenda_minutes(a, as_of: date, on_file: dict[str, Any] | None) -> list[Finding]:
+    """Against the library: no minutes on file for this meeting once they are due, and minutes the agenda lists for
+    approval that the library lacks."""
+    if on_file is None:
+        return []
+    found: list[Finding] = []
+    due = a.meeting_date + timedelta(days=MINUTES_DAYS)
+    if not on_file["minutes"] and due < as_of:
+        found.append(Finding("no-minutes-on-file", f"the library has no minutes for this {a.meeting_date} meeting; minutes or a "
+                             f"summary were due to members by {due}", Severity.CHECK, "CIV 4950(a), 5210(a)(2)"))
+    for day in a.prior_minutes:
+        if not on_file["prior"][day.isoformat()]:
+            found.append(Finding("prior-minutes-not-on-file", f"the agenda lists minutes of {day} for approval; the library "
+                                 "has no minutes for that date", Severity.CHECK, "CIV 5200(a)(8), 5210(a)(2)"))
+    return found
+
+
 class AgendaModel(DocumentModel):
     kind = DocumentKind.AGENDA
     name = "meeting-agenda"
     required = ("meeting_type", "meeting_date", "meeting_time", "items")
-    enriched = ("notice_sent", "notice_subject")
+    lens_checks = (agenda_notice, agenda_minutes)
 
     def parse(self, text: str, context: ModelContext) -> Agenda | None:
         t = normalize(text)
@@ -736,13 +808,6 @@ class AgendaModel(DocumentModel):
             a.acclamation_item = squash(" ".join([acc.title, acc.notes]))
         return a
 
-    def enrich(self, a: Agenda, context: ModelContext) -> None:
-        """From the communications log, not the agenda's text: when the earliest notice email for this meeting went out,
-        and its subject."""
-        sent, _start = notice_mailings(context, a.meeting_date)
-        if sent:
-            a.notice_sent, a.notice_subject = sent[0]
-
     def check(self, a: Agenda, context: ModelContext) -> list[Finding]:
         found: list[Finding] = []
         need, basis = notice_need(a.meeting_type is MeetingType.EXECUTIVE, context)
@@ -752,25 +817,7 @@ class AgendaModel(DocumentModel):
             if board and lead < need:
                 found.append(Finding("notice-late", f"posted {a.posted_on}, {lead} days before the meeting; the notice is due {need} days "
                                      "before", Severity.PROBLEM, basis))
-        if a.notice_sent and a.meeting_date:
-            lead = (a.meeting_date - a.notice_sent).days
-            if board and lead < need:
-                found.append(Finding("notice-sent-late", f"PayHOA's notice email ('{a.notice_subject}') went out {a.notice_sent}, {lead} "
-                                     f"day{'s' if lead != 1 else ''} before the meeting; board meeting notice is due {need} days before "
-                                     "(a posting the annual policy statement designates may have come sooner)", Severity.CHECK,
-                                     f"{basis}; CIV 4045"))
-            elif a.body is MeetingBody.MEMBERS and lead < MEMBERS_NOTICE_DAYS:
-                found.append(Finding("members-notice", f"PayHOA's notice email went out {a.notice_sent}, {lead} days before this members' "
-                                     f"meeting; written notice of a members' meeting is due {MEMBERS_NOTICE_DAYS} to 90 days before (the "
-                                     "inspector's pre-ballot notice, which names the counting meeting, may have served)", Severity.CHECK,
-                                     "Corp. Code 7511(a)"))
-        if not a.posted_on and not a.notice_sent and a.body is not MeetingBody.MEMBERS:
-            _sent, start = notice_mailings(context, a.meeting_date)
-            logged = bool(start and a.meeting_date and start <= a.meeting_date <= context.today)
-            found.append(Finding("posting-date-not-shown", "the agenda does not show when it was posted" +
-                                 (", and PayHOA's communications log has no notice email for this meeting" if logged else "") +
-                                 f"; notice with the agenda is due at least {need} days before the meeting",
-                                 Severity.CHECK if logged else Severity.INFO, f"{basis}; CIV 4920(d)"))
+        found.append(agenda_notice)    # the records lens's place: the notice email in the communications log
         if a.teleconference and not a.physical_location:
             missing = []
             if not a.tech_assistance:
@@ -810,16 +857,7 @@ class AgendaModel(DocumentModel):
         if not a.member_comment and a.body is MeetingBody.BOARD and a.meeting_type is not MeetingType.EXECUTIVE:
             found.append(Finding("no-member-comment", "the agenda has no open forum or member comment item; members may speak at any "
                                  "open meeting", Severity.INFO, "CIV 4925(b)"))
-        if a.meeting_date and context.data_dir is not None:
-            minutes = meeting_files(context, DocumentKind.MINUTES, a.meeting_date, a.meeting_type)
-            due = a.meeting_date + timedelta(days=MINUTES_DAYS)
-            if not minutes and due < context.today:
-                found.append(Finding("no-minutes-on-file", f"the library has no minutes for this {a.meeting_date} meeting; minutes or a "
-                                     f"summary were due to members by {due}", Severity.CHECK, "CIV 4950(a), 5210(a)(2)"))
-            for day in a.prior_minutes:
-                if not library_rows(context, (DocumentKind.MINUTES,), day):
-                    found.append(Finding("prior-minutes-not-on-file", f"the agenda lists minutes of {day} for approval; the library "
-                                         "has no minutes for that date", Severity.CHECK, "CIV 5200(a)(8), 5210(a)(2)"))
+        found.append(agenda_minutes)   # the records lens's place: this meeting's minutes, and the minutes it approves, in the library
         return found
 
 
@@ -1039,11 +1077,75 @@ def minutes_as_of(r, as_of: date, _facts=None) -> list[Finding]:
     return found
 
 
+def next_open_minutes(r, records) -> dict[str, Any] | None:
+    """From the library: the next open meeting's minutes after these (their name and date), and whether they note an
+    executive session beyond the adjournment item. None when these minutes need no such note, or the library has no
+    later minutes."""
+    if r.layout is MinutesLayout.WRITTEN_CONSENT or not r.executive_session or r.executive_summary:
+        return None
+    if r.meeting_date is None or records.data_dir is None:
+        return None
+    later = sorted((str(x.get("period") or ""), x) for x in library_rows(records, (DocumentKind.MINUTES,))
+                   if str(x.get("period") or "") > r.meeting_date.isoformat() and len(str(x.get("period") or "")) == 10)
+    if not later:
+        return None
+    text = strip_furniture(library_text(records, later[0][1]))
+    text = re.sub(r"Adjourn to Executive Session|Only directors, managers[^\n]*(?:\n[^\n]*){0,3}executive session meetings\.?|"
+                  r"except for meetings of the board held in executive session", " ", text, flags=re.I)
+    return {"minutes": str(later[0][1].get("name") or ""), "date": later[0][0], "notes_executive_session": bool(re.search(r"executive session", text, re.I))}
+
+
+@RECORDS.check("minutes-executive-noted", Minutes, fields=("layout", "meeting_date", "executive_session", "executive_summary"),
+               facts=next_open_minutes, dated=False)
+def minutes_executive_noted(r, _as_of, following: dict[str, Any] | None) -> list[Finding]:
+    """Against the next open meeting's minutes in the library: an executive session these minutes adjourned to, which
+    neither they nor the next minutes note."""
+    if r.layout is MinutesLayout.WRITTEN_CONSENT:
+        return []
+    if r.executive_session and not r.executive_summary and not (following and following["notes_executive_session"]):
+        return [Finding("executive-session-not-noted", "the agenda adjourned to executive session; if the board met, its matters "
+                        "must be generally noted in the minutes of the next open meeting", Severity.CHECK, "CIV 4935(e)")]
+    return []
+
+
+def agenda_on_file(r, records) -> dict[str, Any] | None:
+    """From the library: the agenda on file for the minutes' meeting (its name), whether its items could be read, and
+    their titles. None for a meeting by written consent, with no meeting date, or with no library."""
+    if r.layout is MinutesLayout.WRITTEN_CONSENT or records.data_dir is None or r.meeting_date is None:
+        return None
+    agendas = meeting_files(records, DocumentKind.AGENDA, r.meeting_date, r.meeting_type)
+    if not agendas:
+        return {"on_file": False, "name": "", "read": False, "items": []}
+    agenda = AgendaModel().parse(library_text(records, agendas[0]), records)
+    read = agenda is not None and bool(agenda.items)
+    return {"on_file": True, "name": agendas[0]["name"], "read": read, "items": item_titles(agenda.items) if read else []}
+
+
+@RECORDS.check("minutes-agenda", Minutes, fields=("layout", "meeting_date", "meeting_type", "items"), facts=agenda_on_file,
+               reads=(Basis.STORE, Basis.PROFILE), dated=False)
+def minutes_agenda(r, _as_of, agenda: dict[str, Any] | None) -> list[Finding]:
+    """Against the meeting's agenda in the library: none on file, items the minutes list that the agenda does not, or
+    the agenda found."""
+    if agenda is None:
+        return []
+    if not agenda["on_file"]:
+        return [Finding("no-agenda-on-file", f"the library has no agenda for the {r.meeting_date} meeting", Severity.CHECK,
+                        "CIV 4920(d), 5200(a)(8)")] if r.layout is not MinutesLayout.NO_QUORUM else []
+    if not agenda["read"]:
+        return []
+    posted = agenda["items"]
+    extra = [t for t in _marked_titles(r.items) if not any(_same(t, p) for p in posted)]
+    if extra:
+        return [Finding("not-on-agenda", "the minutes list items the agenda on file does not: " + "; ".join(extra) +
+                        " (the posted agenda may differ from the library's copy)", Severity.CHECK, "CIV 4930(a)")]
+    return [Finding("agenda-on-file", f"the agenda for this meeting is in the library ({agenda['name']})", Severity.INFO)]
+
+
 class MinutesModel(DocumentModel):
     kind = DocumentKind.MINUTES
     name = "meeting-minutes"
     required = ("meeting_type", "meeting_date", "items")
-    lens_checks = (minutes_as_of,)
+    lens_checks = (minutes_as_of, minutes_executive_noted, minutes_agenda)
 
     def recognizes(self, t: str) -> bool:
         return bool(meeting_title(t)[2]) and bool(re.search(r"\bHeld\b|Minutes|called to order|Quick recap|Summary|quorum|adjourn", t, re.I)
@@ -1228,9 +1330,7 @@ class MinutesModel(DocumentModel):
         elif r.ai_summary:
             found.append(Finding("ai-summary", "the proceedings are an automated meeting summary (Zoom AI), not a record of each motion "
                                  "and vote; it is the minutes only once the board reviews and adopts it", Severity.INFO))
-        if r.executive_session and not r.executive_summary and not self._noted_next(r, context):
-            found.append(Finding("executive-session-not-noted", "the agenda adjourned to executive session; if the board met, its matters "
-                                 "must be generally noted in the minutes of the next open meeting", Severity.CHECK, "CIV 4935(e)"))
+        found.append(minutes_executive_noted)   # the records lens's place: the next open minutes' note of an executive session
         if r.executive_detail:
             found.append(Finding("executive-detail", "the AI summary in these open minutes recounts what the board discussed in executive "
                                  "session; the open minutes note those matters only generally, and a member's discipline or payment "
@@ -1244,7 +1344,7 @@ class MinutesModel(DocumentModel):
             else:
                 found.append(Finding("reserve-transfer-finding", "the minutes mention a transfer from reserves without saying when and how "
                                      "it will be repaid", Severity.CHECK, "CIV 5515(c)"))
-        found += self._against_agenda(r, context)
+        found.append(minutes_agenda)   # the records lens's place: the meeting's agenda in the library
         return found
 
     def _consent_findings(self, r: Minutes, context: ModelContext) -> list[Finding]:
@@ -1260,36 +1360,6 @@ class MinutesModel(DocumentModel):
         if short:
             text += f" ({board.seats} seats; a director who did not sign, or a vacant seat, should be confirmed)"
         return [Finding("written-consent", text, Severity.CHECK if short or late else Severity.INFO, "CIV 4910(b)(2)")]
-
-    def _noted_next(self, r: Minutes, context: ModelContext) -> bool:
-        """The next open meeting's minutes in the library note an executive session (beyond the adjournment item)."""
-        if r.meeting_date is None or context.data_dir is None:
-            return False
-        later = sorted((str(x.get("period") or ""), x) for x in library_rows(context, (DocumentKind.MINUTES,))
-                       if str(x.get("period") or "") > r.meeting_date.isoformat() and len(str(x.get("period") or "")) == 10)
-        if not later:
-            return False
-        text = strip_furniture(library_text(context, later[0][1]))
-        text = re.sub(r"Adjourn to Executive Session|Only directors, managers[^\n]*(?:\n[^\n]*){0,3}executive session meetings\.?|"
-                      r"except for meetings of the board held in executive session", " ", text, flags=re.I)
-        return bool(re.search(r"executive session", text, re.I))
-
-    def _against_agenda(self, r: Minutes, context: ModelContext) -> list[Finding]:
-        if context.data_dir is None or r.meeting_date is None:
-            return []
-        agendas = meeting_files(context, DocumentKind.AGENDA, r.meeting_date, r.meeting_type)
-        if not agendas:
-            return [Finding("no-agenda-on-file", f"the library has no agenda for the {r.meeting_date} meeting", Severity.CHECK,
-                            "CIV 4920(d), 5200(a)(8)")] if r.layout is not MinutesLayout.NO_QUORUM else []
-        agenda = AgendaModel().parse(library_text(context, agendas[0]), context)
-        if agenda is None or not agenda.items:
-            return []
-        posted = item_titles(agenda.items)
-        extra = [t for t in _marked_titles(r.items) if not any(_same(t, p) for p in posted)]
-        if extra:
-            return [Finding("not-on-agenda", "the minutes list items the agenda on file does not: " + "; ".join(extra) +
-                            " (the posted agenda may differ from the library's copy)", Severity.CHECK, "CIV 4930(a)")]
-        return [Finding("agenda-on-file", f"the agenda for this meeting is in the library ({agendas[0]['name']})", Severity.INFO)]
 
     def read(self, text: str, context: ModelContext, kind: DocumentKind | None = None) -> ModelReading | None:
         reading = super().read(text, context, kind)

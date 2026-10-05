@@ -12,17 +12,29 @@ function ``(fields, community) -> facts``; it gets those facts and never the spe
 function of three things, each with a digest: the fields it read, the facts it read, and the date. It never reads a
 store, and it can be made again from a stored reading without reading the document again.
 
+**The second lens is ``RECORDS``**, "against the association's other records": is the agenda's meeting in the minutes
+on file, does the statement match the reconciliation, is the bill paid by the county's figures. Its checks are the same
+kind of row, with one difference in where the facts come from. A facts function of this lens is given a ``Records``
+handle (the specification, the data directory, and the name of the file under review) and is **the only place another
+document or store is read**. It returns plain data: the other reading's relevant fields, a ledger total, a log row. The
+check itself is a function of its fields, the date where it says it needs one (``dated``), and those facts; it opens no
+store. The facts' digest is part of what the review read (``facts_sha``), so the review is made again exactly when the
+other records it rests on change, and stands when they do not. A check says what its facts read (``reads``: a store,
+the specification, or both), and a facts function that reads a part its check does not name is an error.
+
 **A reader says where a lens's findings go.** A reader lists its checks in ``lens_checks`` and may return a check
 from ``check`` among its findings, as a slot: ``DocumentModel.read`` puts that check's findings there. A check with no
 slot goes last. A reading's findings therefore keep the order they always had, and each finding from a lens carries the
-lens's key.
+lens's key and its check's. A slot is counted among the reading's own findings (those no lens made), so one lens made
+again does not move another's place.
 
 **The key.** A review is keyed by its document, the digest of the text read, the lens, the lens's version, and the
 as-of date. With the same key, the same fields, and the same facts, the stored review stands and is not made again
 (``Lens.review`` with ``known``). The lens's version is a hash of its source: this module and every module that
 registers one of its checks.
 
-Nothing here reads a file. ``jason.tasks.document_reviews`` keeps the store.
+Nothing here reads a file. A facts function of the records lens does, in the reader's module that registers it.
+``jason.tasks.document_reviews`` keeps the store.
 """
 
 from __future__ import annotations
@@ -157,9 +169,42 @@ class Reviewed:
     fields: Mapping[str, Any] = field(default_factory=dict)
 
 
+class Records:
+    """What a facts function of a lens that gathers (``RECORDS``) may read: the specification, the data directory, and
+    which file is under review (its name and library period, so a lookup can leave the file itself out). It carries no
+    date: what the other records say does not depend on the day they are asked.
+
+    ``read`` names the parts read since it was last cleared (``Basis.PROFILE`` for the specification, ``Basis.STORE`` for
+    the data directory), so ``Lens.review`` can hold a facts function to what its check declares. The readers' own
+    helpers that take a ``ModelContext`` for these parts take this as well."""
+
+    __slots__ = ("_community", "_data_dir", "name", "period", "read")
+
+    def __init__(self, community: Any = None, data_dir: Any = None, name: str = "", period: str = "") -> None:
+        self._community, self._data_dir, self.name, self.period = community, data_dir, name, period
+        self.read: set[Basis] = set()
+
+    @property
+    def community(self) -> Any:
+        self.read.add(Basis.PROFILE)
+        return self._community
+
+    @property
+    def data_dir(self) -> Any:
+        self.read.add(Basis.STORE)
+        return self._data_dir
+
+    def __repr__(self) -> str:
+        return f"Records({self.name!r})"
+
+
 @dataclass(eq=False)
 class LensCheck:
-    """One check of a lens: a function of a record's named fields, the as-of date, and the facts it names."""
+    """One check of a lens: a function of a record's named fields, the as-of date, and the facts it names.
+
+    ``declared`` is what its facts function reads (the specification, a store); None means the lens's usual: the
+    specification, or for a lens that gathers, a store. ``dated`` is whether the check is given the as-of date; a check
+    that is not gets None, and its findings do not say they rest on the date."""
 
     lens: "Lens"
     key: str
@@ -167,21 +212,46 @@ class LensCheck:
     fields: tuple[str, ...]
     fn: Callable[..., Any]
     facts: Callable[[Any, Any], Any] | None = None
+    declared: frozenset[Basis] | None = None
+    dated: bool = True
 
     @property
     def reads(self) -> frozenset[Basis]:
-        """What the check reads: the reading's fields, and the specification when it names facts."""
-        return frozenset({Basis.TEXT}) | (frozenset({Basis.PROFILE}) if self.facts else frozenset())
+        """What the check reads: the reading's fields, and what its facts function reads (the specification, a store)."""
+        if self.facts is None:
+            return frozenset({Basis.TEXT})
+        if self.declared is not None:
+            return frozenset({Basis.TEXT}) | self.declared
+        return frozenset({Basis.TEXT, Basis.STORE if self.lens.gathers else Basis.PROFILE})
+
+    @property
+    def needs_as_of(self) -> bool:
+        return self.lens.needs_as_of and self.dated
 
     def basis(self, finding: Finding) -> frozenset[Basis]:
-        return (self.reads | (frozenset({Basis.TODAY}) if self.lens.needs_as_of else frozenset())
+        return (self.reads | (frozenset({Basis.TODAY}) if self.needs_as_of else frozenset())
                 | (frozenset({Basis.LAW}) if finding.authority else frozenset()))
 
+    def gather(self, fields: Any, community: Any, records: "Records | None") -> Any:
+        """The check's facts: from the specification, or, for a lens that gathers, from the association's records. A
+        facts function that reads a part the check does not declare is an error."""
+        if not self.lens.gathers:
+            return self.facts(fields, community)
+        source = records if records is not None else Records(community)
+        source.read.clear()
+        facts = self.facts(fields, source)
+        undeclared = source.read - self.reads
+        if undeclared:
+            raise ValueError(f"{self!r}: its facts read {', '.join(sorted(b.value for b in undeclared))}, which the check does not declare")
+        return facts
+
     def __call__(self, fields: Any, as_of: date | None, facts: Any = None) -> Reviewed:
-        """The check on fields already rebuilt: its findings, each marked with the lens and its basis, and its fields."""
-        out = self.fn(fields, as_of, facts)
+        """The check on fields already rebuilt: its findings, each marked with the lens, the check, and its basis, and
+        its fields."""
+        out = self.fn(fields, as_of if self.dated else None, facts)
         made = out if isinstance(out, Reviewed) else Reviewed(tuple(out or ()))
-        return Reviewed(tuple(dataclasses.replace(f, lens=self.lens.key, basis=self.basis(f)) for f in made.findings), dict(made.fields))
+        return Reviewed(tuple(dataclasses.replace(f, lens=self.lens.key, check=self.key, basis=self.basis(f)) for f in made.findings),
+                        dict(made.fields))
 
     def __repr__(self) -> str:
         return f"<{self.lens.key}:{self.key}>"
@@ -189,26 +259,34 @@ class LensCheck:
 
 @dataclass(eq=False)
 class Lens:
-    """A reusable way to judge readings: its key, the question it asks, whether it needs an as-of date, and its checks."""
+    """A reusable way to judge readings: its key, the question it asks, whether it needs an as-of date, whether its
+    facts are gathered from the association's other records (``gathers``), and its checks."""
 
     key: str
     question: str
     needs_as_of: bool = False
     checks: dict[str, LensCheck] = field(default_factory=dict)
+    gathers: bool = False
 
-    def check(self, key: str, record: type, *, fields: Sequence[str], facts: Callable[[Any, Any], Any] | None = None) -> Callable[[Callable[..., Any]], LensCheck]:
-        """Register ``fn(fields, as_of, facts)`` as this lens's check ``key`` on ``record``'s named fields."""
+    def check(self, key: str, record: type, *, fields: Sequence[str], facts: Callable[[Any, Any], Any] | None = None,
+              reads: Iterable[Basis] | None = None, dated: bool = True) -> Callable[[Callable[..., Any]], LensCheck]:
+        """Register ``fn(fields, as_of, facts)`` as this lens's check ``key`` on ``record``'s named fields.
+
+        ``facts`` is ``(fields, community) -> facts``; for a lens that gathers it is ``(fields, records) -> facts``, with
+        a ``Records`` handle, and ``reads`` says which of the specification and the stores it reads. ``dated=False`` is a
+        check that needs no date."""
         def register(fn: Callable[..., Any]) -> LensCheck:
             if key in self.checks:
                 raise ValueError(f"the {self.key} lens already has a check {key!r}")
-            made = LensCheck(self, key, record, tuple(fields), fn, facts)
+            made = LensCheck(self, key, record, tuple(fields), fn, facts, None if reads is None else frozenset(reads), dated)
             self.checks[key] = made
             return made
         return register
 
     @property
     def reads(self) -> frozenset[Basis]:
-        """What the lens reads beyond the as-of date: the fields only (text), or the specification too. Never a store."""
+        """What the lens reads beyond the as-of date: the fields only (text), the specification, and, for a lens that
+        gathers, a store. Only a facts function reads either; a check never does."""
         out: frozenset[Basis] = frozenset({Basis.TEXT})
         for c in self.checks.values():
             out |= c.reads
@@ -245,16 +323,19 @@ class Lens:
         return tuple(dict.fromkeys(kind for kind, _reader in self.readers()))
 
     def review(self, plain: Mapping[str, Any], checks: Sequence[LensCheck], as_of: date | None, community: Any = None, *,
-               reading_version: str = "", known: "Review | None" = None) -> "Review":
+               records: Records | None = None, reading_version: str = "", known: "Review | None" = None) -> "Review":
         """This lens's review of one stored record, by ``checks`` (the ones its reader names).
 
-        ``known`` is the review already stored for the same document and text. It stands, and no check runs, when the
-        lens's version, the date, the fields the checks read, and the facts they read are all the same."""
+        ``records`` is what a gathering lens's facts functions read from (the specification, the data directory, the
+        file's own name); without it they are given the specification and no store. ``known`` is the review already
+        stored for the same document and text. It stands, and no check runs, when the lens's version, the date, the
+        fields the checks read, and the facts they read are all the same. The facts are always gathered: their digest is
+        how a changed record is noticed."""
         when = as_of if self.needs_as_of else None
         names = sorted({name for c in checks for name in c.fields})
         fields_sha = digest({name: plain.get(name) for name in names})
         views = {c.key: view(c.record, c.fields, plain) for c in checks}
-        facts = {c.key: c.facts(views[c.key], community) for c in checks if c.facts is not None}
+        facts = {c.key: c.gather(views[c.key], community, records) for c in checks if c.facts is not None}
         facts_sha = digest(to_plain(facts)) if facts else ""
         version = self.version
         if known is not None and (known.lens, known.lens_version, known.as_of, known.fields_sha, known.facts_sha, tuple(known.checks)) == \
@@ -332,7 +413,8 @@ class Review:
 def finding_from(row: Mapping[str, Any]) -> Finding:
     """A finding from its stored dict."""
     return Finding(str(row.get("code") or ""), str(row.get("message") or ""), Severity(row.get("severity") or Severity.CHECK.value),
-                   str(row.get("authority") or ""), frozenset(Basis(b) for b in row.get("basis") or ()), str(row.get("lens") or ""))
+                   str(row.get("authority") or ""), frozenset(Basis(b) for b in row.get("basis") or ()), str(row.get("lens") or ""),
+                   str(row.get("check") or ""))
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -350,7 +432,9 @@ def compose(record: Any, checks: Sequence[LensCheck], context: Any, *, reading_v
     types_ = hints(type(record))
     out = []
     for lens in dict.fromkeys(c.lens for c in checks):
-        review = lens.review(plain, [c for c in checks if c.lens is lens], context.today, context.community,
+        records = Records(context.community, getattr(context, "data_dir", None), str(getattr(context, "name", "") or ""),
+                          str(getattr(context, "period", "") or "")) if lens.gathers else None
+        review = lens.review(plain, [c for c in checks if c.lens is lens], context.today, context.community, records=records,
                              reading_version=reading_version, known=known.get(lens.key))
         for name, value in review.fields.items():
             setattr(record, name, hydrate(value, types_.get(name)))
@@ -359,7 +443,7 @@ def compose(record: Any, checks: Sequence[LensCheck], context: Any, *, reading_v
 
 
 def position(before: Iterable[Finding], others: Iterable[Finding]) -> int:
-    """Where a slot stands among ``others`` (a reading's findings from outside the lens, as they stand now): after as
+    """Where a slot stands among ``others`` (a reading's own findings, those no lens made, as they stand now): after as
     many of them as stood before it when the reading was made. A reader's own ``read`` may drop, reword, or add findings
     after the slots were filled, so the place is counted by code, not remembered."""
     left = [f.code for f in before]
@@ -372,21 +456,37 @@ def position(before: Iterable[Finding], others: Iterable[Finding]) -> int:
 
 
 def join(row: Mapping[str, Any], review: Review) -> dict[str, Any]:
-    """A stored row with ``review`` in place of the review of the same lens it was stored with: the other findings where
-    they were, the review's findings at the row's slots, and its derived fields in ``fields``. A row that records no
-    slots for the lens is returned as it is."""
-    stamp = (row.get("lenses") or {}).get(review.lens)
+    """A stored row with ``review`` in place of the review of the same lens it was stored with: the reading's own
+    findings where they were, the review's findings at the row's slots, every other lens's findings at theirs, and the
+    review's derived fields in ``fields``. A row that records no slots for the lens is returned as it is.
+
+    A slot's place is a count of the row's own findings before it. Where two lenses' slots stand at the same count,
+    ``order`` on their stamps (each slot's turn among all the row's slots) says which comes first."""
+    stamps = row.get("lenses") or {}
+    stamp = stamps.get(review.lens)
     if not stamp:
         return dict(row)
-    others = [f for f in row.get("findings") or [] if f.get("lens") != review.lens]
-    slots = sorted(((int(at), n, key) for n, (key, at) in enumerate((stamp.get("slots") or {}).items())))
+    own = [f for f in row.get("findings") or [] if f.get("lens") not in stamps]   # a finding of no lens the row stamps stays put
+    slots: list[tuple[int, int, str, str]] = []
+    placed: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for lens, other in stamps.items():
+        turn = other.get("order") or {}
+        keys = list(other.get("slots") or {})
+        slots += [(int(other["slots"][key]), int(turn.get(key, n)), lens, key) for n, key in enumerate(keys)]
+        if lens != review.lens:
+            # Another lens's findings stay as the row has them, each at its own check's slot.
+            for f in row.get("findings") or []:
+                if f.get("lens") == lens:
+                    placed.setdefault((lens, f.get("check") if f.get("check") in keys else (keys[0] if keys else "")), []).append(f)
+    for key, found in review.checks.items():
+        placed[(review.lens, key)] = [f.as_dict() for f in found]
     findings: list[dict[str, Any]] = []
     taken = 0
-    for at, _n, key in slots:
-        findings += others[taken:at]
+    for at, _turn, lens, key in sorted(slots):
+        findings += own[taken:at]
         taken = max(taken, at)
-        findings += [f.as_dict() for f in review.checks.get(key, ())]
-    findings += others[taken:]
+        findings += placed.pop((lens, key), [])
+    findings += own[taken:]
     out = dict(row)
     out["findings"] = findings
     if review.fields and isinstance(row.get("fields"), dict):
@@ -406,7 +506,13 @@ def lens_findings(row: Mapping[str, Any], lens: str) -> list[dict[str, Any]]:
 
 AS_OF = Lens("as-of", "As of a date: which terms have ended, which deadlines have passed, and what is due next?", needs_as_of=True)
 
-LENSES: dict[str, Lens] = {AS_OF.key: AS_OF}
+# The reading against the association's other records. Four of its checks also need the date (minutes not on file once
+# they are due, a site visit coming due), so its reviews are kept by date like the as-of lens's; a check that needs no
+# date says so (``dated=False``).
+RECORDS = Lens("records", "Against the association's other records: what do the other documents and stores on file say of this one?",
+               needs_as_of=True, gathers=True)
 
-__all__ = ["RULE", "Lens", "LensCheck", "Review", "Reviewed", "AS_OF", "LENSES", "stored", "digest", "hints", "hydrate", "view",
-           "finding_from", "compose", "position", "join", "lens_findings"]
+LENSES: dict[str, Lens] = {AS_OF.key: AS_OF, RECORDS.key: RECORDS}
+
+__all__ = ["RULE", "Lens", "LensCheck", "Records", "Review", "Reviewed", "AS_OF", "RECORDS", "LENSES", "stored", "digest", "hints",
+           "hydrate", "view", "finding_from", "compose", "position", "join", "lens_findings"]

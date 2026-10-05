@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 from jason.community.document_models import (
     DocumentModel,
@@ -35,7 +36,7 @@ from jason.community.document_models import (
     squash,
 )
 from jason.community.models.meetings import library_rows, library_text, normalize
-from jason.community.reviews import AS_OF
+from jason.community.reviews import AS_OF, RECORDS
 from jason.community.symbols import DocumentKind
 
 RESULTS_NOTICE_DAYS = 15      # CIV 5120(b)
@@ -156,11 +157,47 @@ def election_materials(r, as_of: date, _facts=None) -> list[Finding]:
     return []
 
 
+def next_board_meeting(r, records) -> dict[str, Any] | None:
+    """From the library: the board's next meeting after the election (the first agenda or minutes the library dates
+    after it), that meeting's minutes when they are on file (their name), and whether they speak of the election. None
+    with no election date or no library."""
+    if records.data_dir is None or r.election_date is None:
+        return None
+    later = sorted(str(x.get("period")) for x in library_rows(records, (DocumentKind.MINUTES, DocumentKind.AGENDA))
+                   if len(str(x.get("period") or "")) == 10 and str(x.get("period")) > r.election_date.isoformat())
+    if not later:
+        return {"meeting": None, "minutes": None, "mentions_election": False}
+    minutes = library_rows(records, (DocumentKind.MINUTES,), date.fromisoformat(later[0]))
+    if not minutes:
+        return {"meeting": later[0], "minutes": None, "mentions_election": False}
+    row = minutes[0]
+    return {"meeting": later[0], "minutes": str(row["name"]),
+            "mentions_election": bool(re.search(r"election|elected|acclamation", library_text(records, row), re.I))}
+
+
+@RECORDS.check("results-in-minutes", ElectionResults, fields=("election_date",), facts=next_board_meeting, dated=False)
+def results_in_minutes(r, _as_of, following: dict[str, Any] | None) -> list[Finding]:
+    """The tabulated results belong in the minutes of the board's next meeting: that meeting's minutes in the library."""
+    if following is None:
+        return []
+    if not following["meeting"] or date.fromisoformat(following["meeting"]) > r.election_date + timedelta(days=120):
+        return [Finding("results-minutes-not-on-file", "the library has no board meeting in the four months after this election to show "
+                        "the results were recorded in its minutes", Severity.CHECK, "CIV 5120(b)")]
+    if following["minutes"] is None:
+        return [Finding("results-minutes-not-on-file", f"the board's next meeting was {following['meeting']}; its minutes, which should "
+                        "record the results, are not in the library", Severity.CHECK, "CIV 5120(b)")]
+    if following["mentions_election"]:
+        return [Finding("results-in-minutes", f"the next board minutes ({following['minutes']}) take up the election", Severity.INFO,
+                        "CIV 5120(b)")]
+    return [Finding("results-not-in-minutes", f"the next board minutes ({following['minutes']}) do not mention the election results",
+                    Severity.CHECK, "CIV 5120(b)")]
+
+
 class ElectionResultsModel(DocumentModel):
     kind = DocumentKind.ELECTION_RESULTS
     name = "election-results"
     required = ("inspector", "election_date", "candidates", "certified")
-    lens_checks = (election_materials,)
+    lens_checks = (election_materials, results_in_minutes)
 
     def parse(self, text: str, context: ModelContext) -> ElectionResults | None:
         t = normalize(text)
@@ -234,7 +271,7 @@ class ElectionResultsModel(DocumentModel):
             notice_by = r.election_date + timedelta(days=RESULTS_NOTICE_DAYS)
             found.append(Finding("results-notice", f"general notice of the tabulated results was due by {notice_by}", Severity.INFO, "CIV 5120(b)"))
             found.append(election_materials)   # the as-of lens's place: the year for keeping the materials
-            found += _results_in_minutes(r, context)
+            found.append(results_in_minutes)   # the records lens's place: the next board meeting's minutes in the library
         return found
 
 
@@ -268,27 +305,6 @@ def _timeline(r: ElectionResults) -> list[Finding]:
                                  "30 days before", Severity.PROBLEM, "CIV 5103(b)(2)"))
     return found
 
-
-def _results_in_minutes(r: ElectionResults, context: ModelContext) -> list[Finding]:
-    """The tabulated results belong in the minutes of the board's next meeting: find that meeting's minutes in the library."""
-    if context.data_dir is None or r.election_date is None:
-        return []
-    # The board's next meeting: the first agenda or minutes after the election that the library dates.
-    later = sorted(str(x.get("period")) for x in library_rows(context, (DocumentKind.MINUTES, DocumentKind.AGENDA))
-                   if len(str(x.get("period") or "")) == 10 and str(x.get("period")) > r.election_date.isoformat())
-    if not later or date.fromisoformat(later[0]) > r.election_date + timedelta(days=120):
-        return [Finding("results-minutes-not-on-file", "the library has no board meeting in the four months after this election to show "
-                        "the results were recorded in its minutes", Severity.CHECK, "CIV 5120(b)")]
-    minutes = library_rows(context, (DocumentKind.MINUTES,), date.fromisoformat(later[0]))
-    if not minutes:
-        return [Finding("results-minutes-not-on-file", f"the board's next meeting was {later[0]}; its minutes, which should record the "
-                        "results, are not in the library", Severity.CHECK, "CIV 5120(b)")]
-    row = minutes[0]
-    text = library_text(context, row)
-    if re.search(r"election|elected|acclamation", text, re.I):
-        return [Finding("results-in-minutes", f"the next board minutes ({row['name']}) take up the election", Severity.INFO, "CIV 5120(b)")]
-    return [Finding("results-not-in-minutes", f"the next board minutes ({row['name']}) do not mention the election results",
-                    Severity.CHECK, "CIV 5120(b)")]
 
 
 def _spec_units(context: ModelContext) -> int | None:

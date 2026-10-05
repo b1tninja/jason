@@ -160,8 +160,8 @@ def test_a_reading_shows_what_it_showed_before_for_a_fixed_date():
         assert new.findings == old.findings and new.missing == old.missing and new.record == old.record
         was, now = old.as_dict(), new.as_dict()
         assert set(now) - set(was) == {"lenses"}
-        strip = lambda row: {**{k: v for k, v in row.items() if k not in ("lenses", "version", "fieldsBasis")},  # noqa: E731
-                             "findings": [{k: v for k, v in f.items() if k not in ("lens", "basis")} for f in row["findings"]]}
+        strip = lambda row: {**{k: v for k, v in row.items() if k not in ("lenses", "version", "fieldsBasis", "checkBasis")},  # noqa: E731
+                             "findings": [{k: v for k, v in f.items() if k not in ("lens", "check", "basis")} for f in row["findings"]]}
         assert strip(now) == strip(was)
 
 
@@ -386,7 +386,7 @@ AGENDA = ("Example Community Association\nRegular Meeting of the Board of Direct
           "Agenda\n1. Call to Order\n2. Open Forum\n3. Adjournment\n")
 
 
-def test_an_agendas_notice_fields_come_from_the_log_after_the_parse(monkeypatch, tmp_path):
+def test_an_agendas_notice_fields_come_from_the_log_through_the_records_lens(monkeypatch, tmp_path):
     from jason.community.models import meetings
 
     monkeypatch.setattr(meetings, "_mailings", lambda d: ({"subject": "Regular Meeting of the Board of Directors - March 17th at 7:00 pm",
@@ -397,14 +397,15 @@ def test_an_agendas_notice_fields_come_from_the_log_after_the_parse(monkeypatch,
     assert parsed.meeting_date == date(2026, 3, 17) and parsed.notice_sent is None and parsed.notice_subject == ""
     assert Basis.STORE not in context.since()               # the parse looked in no store
     reading = read(DocumentKind.AGENDA, AGENDA, ctx(date(2026, 3, 20), data_dir=tmp_path))
-    assert Basis.STORE not in reading.fields_basis
-    assert reading.enriched == ("notice_sent", "notice_subject") and Basis.STORE in reading.enriched_basis
+    assert Basis.STORE not in reading.fields_basis and reading.enriched == ()
+    assert Basis.STORE not in reading.check_basis           # nor did the reader's own check: the lens's facts did
     assert reading.record.notice_sent == date(2026, 3, 14) and "March 17th" in reading.record.notice_subject   # as a consumer sees it
     row = reading.as_dict()
-    assert row["fields"]["notice_sent"] == "2026-03-14" and row["enriched"]["fields"] == ["notice_sent", "notice_subject"]
-    assert "store" in row["enriched"]["basis"] and "notice-sent-late" in {f["code"] for f in row["findings"]}
+    assert row["fields"]["notice_sent"] == "2026-03-14" and row["lenses"]["records"]["fields"] == ["notice_sent", "notice_subject"]
+    late = next(f for f in row["findings"] if f["code"] == "notice-sent-late")
+    assert (late["lens"], late["check"]) == ("records", "agenda-notice") and "store" in late["basis"] and "checkBasis" in row
     apart = task.parts(row)
-    assert set(apart["enriched"]) == {"notice_sent", "notice_subject"} and "notice_sent" not in apart["ingestion"]["fields"]
+    assert set(apart["lens"]["records"]["fields"]) == {"notice_sent", "notice_subject"} and "notice_sent" not in apart["ingestion"]["fields"]
 
 
 def test_the_as_of_lens_is_a_record_of_rows():

@@ -20,8 +20,10 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import Enum
+from typing import Any
 
 from jason.community.document_models import (
+    Basis,
     DocumentModel,
     Finding,
     ModelContext,
@@ -33,6 +35,7 @@ from jason.community.document_models import (
 )
 from jason.community.invoices import parse_date
 from jason.community.models.meetings import AgendaModel, dollars, library_text, meeting_files, normalize, walk
+from jason.community.reviews import RECORDS
 from jason.community.symbols import DocumentKind
 
 
@@ -131,10 +134,42 @@ def _subject(text: str) -> ResolutionSubject:
     return ResolutionSubject.OTHER
 
 
+def adopting_agenda(r, records) -> dict[str, Any] | None:
+    """From the library: the agenda on file for the meeting that adopted the resolution (its name), and each of its items
+    as its title and its words (title, notes, and linked files). None with no adoption date or no library."""
+    if records.data_dir is None or r.adopted_on is None:
+        return None
+    agendas = meeting_files(records, DocumentKind.AGENDA, r.adopted_on)
+    if not agendas:
+        return {"on_file": False, "name": "", "items": []}
+    agenda = AgendaModel().parse(library_text(records, agendas[0]), records)
+    return {"on_file": True, "name": agendas[0]["name"],
+            "items": [[i.title, " ".join([i.title, i.notes, *i.attachments])] for i in walk(agenda.items)] if agenda else []}
+
+
+@RECORDS.check("resolution-agenda", Resolution, fields=("adopted_on", "subject", "title"), facts=adopting_agenda,
+               reads=(Basis.STORE, Basis.PROFILE), dated=False)
+def resolution_agenda(r, _as_of, agenda: dict[str, Any] | None) -> list[Finding]:
+    """The meeting that adopted it: its agenda in the library should carry the item."""
+    if agenda is None:
+        return []
+    if not agenda["on_file"]:
+        return [Finding("no-agenda-on-file", f"the library has no agenda for the {r.adopted_on} meeting that adopted it", Severity.CHECK,
+                        "CIV 4930(a), 5200(a)(8)")]
+    words = {"borrow_reserves": r"borrow", "invest_reserves": r"invest", "meeting_schedule": r"schedul|calendar",
+             "foreclosure": r"foreclos", "excess_income": r"70-604", "other": re.escape(r.title[11:30]) if r.title else r"resolution"}
+    pattern = words[r.subject.value] if r.subject else r"resolution"
+    hits = [title for title, text in agenda["items"] if re.search(pattern, text, re.I)]
+    if hits:
+        return [Finding("on-agenda", f"the {r.adopted_on} agenda carries it ('{hits[0]}')", Severity.INFO, "CIV 4930(a)")]
+    return [Finding("not-on-agenda", f"the {r.adopted_on} agenda in the library has no item for this resolution", Severity.CHECK, "CIV 4930(a)")]
+
+
 class ResolutionModel(DocumentModel):
     kind = DocumentKind.RESOLUTION
     name = "board-resolution"
     required = ("resolution_type", "title", "resolved", "adopted_on")
+    lens_checks = (resolution_agenda,)
 
     def parse(self, text: str, context: ModelContext) -> Resolution | None:
         t = normalize(text)
@@ -257,7 +292,7 @@ class ResolutionModel(DocumentModel):
                 found.append(Finding("attestation-unsigned", "the Secretary's attestation carries no signature in the text", Severity.CHECK))
         if r.subject is ResolutionSubject.BORROW_RESERVES:
             found += self._borrowing(r)
-        found += self._against_meeting(r, context)
+        found.append(resolution_agenda)   # the records lens's place: the adopting meeting's agenda in the library
         return found
 
     def _borrowing(self, r: Resolution) -> list[Finding]:
@@ -279,23 +314,6 @@ class ResolutionModel(DocumentModel):
             found.append(Finding("restore-reserves", f"restore the transferred money to reserves by {due}, or delay it only on a documented "
                                  "finding after the same notice", Severity.INFO, "CIV 5515(d)"))
         return found
-
-    def _against_meeting(self, r: Resolution, context: ModelContext) -> list[Finding]:
-        """The meeting that adopted it: its agenda in the library should carry the item."""
-        if context.data_dir is None or r.adopted_on is None:
-            return []
-        agendas = meeting_files(context, DocumentKind.AGENDA, r.adopted_on)
-        if not agendas:
-            return [Finding("no-agenda-on-file", f"the library has no agenda for the {r.adopted_on} meeting that adopted it", Severity.CHECK,
-                            "CIV 4930(a), 5200(a)(8)")]
-        agenda = AgendaModel().parse(library_text(context, agendas[0]), context)
-        words = {"borrow_reserves": r"borrow", "invest_reserves": r"invest", "meeting_schedule": r"schedul|calendar",
-                 "foreclosure": r"foreclos", "excess_income": r"70-604", "other": re.escape(r.title[11:30]) if r.title else r"resolution"}
-        pattern = words[r.subject.value] if r.subject else r"resolution"
-        hits = [i for i in walk(agenda.items) if re.search(pattern, " ".join([i.title, i.notes, *i.attachments]), re.I)] if agenda else []
-        if hits:
-            return [Finding("on-agenda", f"the {r.adopted_on} agenda carries it ('{hits[0].title}')", Severity.INFO, "CIV 4930(a)")]
-        return [Finding("not-on-agenda", f"the {r.adopted_on} agenda in the library has no item for this resolution", Severity.CHECK, "CIV 4930(a)")]
 
 
 register(ResolutionModel())

@@ -78,6 +78,8 @@ class Finding:
     basis: frozenset[Basis] = field(default=frozenset(), compare=False)
     # The lens that produced the finding ("as-of"); "" for a finding of the reading itself. No part of its identity either.
     lens: str = field(default="", compare=False)
+    # The lens's check that produced it ("policy-term"), so a stored row's lens findings can be told apart by check.
+    check: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.basis, frozenset):
@@ -89,6 +91,8 @@ class Finding:
             out["basis"] = basis_values(self.basis)
         if self.lens:
             out["lens"] = self.lens
+        if self.check:
+            out["check"] = self.check
         return out
 
 
@@ -166,8 +170,10 @@ class ModelReading:
     enriched: tuple[str, ...] = ()                  # the fields ``enrich`` may fill from another store, not from the text
     enriched_basis: frozenset[Basis] = frozenset()  # what ``enrich`` read
     reviews: tuple[Any, ...] = ()                   # the lenses' reviews joined into ``findings`` (``reviews.Review``)
-    # Per (lens, check): the findings from outside the lens that stood before the check's slot when the reading was made.
+    # Per (lens, check), in the order the slots stand: the reading's own findings (those no lens made) that stood before
+    # the check's slot when the reading was made.
     slots: dict[tuple[str, str], tuple[Finding, ...]] = field(default_factory=dict, repr=False, compare=False)
+    check_basis: frozenset[Basis] | None = None     # what the reader's own ``check`` read; None means not observed
 
     @property
     def complete(self) -> bool:
@@ -185,6 +191,8 @@ class ModelReading:
             out["version"] = self.version
         if self.fields_basis:
             out["fieldsBasis"] = basis_values(self.fields_basis)
+        if self.check_basis is not None:
+            out["checkBasis"] = basis_values(self.check_basis)
         if self.enriched:
             out["enriched"] = {"fields": list(self.enriched), "basis": basis_values(self.enriched_basis)}
         if self.reviews:
@@ -193,12 +201,17 @@ class ModelReading:
 
     def _lens_stamp(self, review: Any) -> dict[str, Any]:
         """What a row says of one lens joined into it: the lens's version, its as-of date, where each check's findings go
-        among the row's other findings, and the fields the lens derived."""
+        among the row's own findings (``slots``: how many of them stand before the check's), and the fields the lens
+        derived. A row with more than one lens also says each slot's turn among all its slots (``order``), which settles
+        two lenses' slots at the same place."""
         from jason.community.reviews import position
 
-        others = [f for f in self.findings if f.lens != review.lens]
+        own = self.own_findings
         out = {"version": review.lens_version, "asOf": review.as_of.isoformat() if review.as_of else None,
-               "slots": {key: position(self.slots.get((review.lens, key), ()), others) for key in review.checks}}
+               "slots": {key: position(self.slots.get((review.lens, key), ()), own) for key in review.checks}}
+        if len(self.reviews) > 1:
+            turn = {slot: n for n, slot in enumerate(self.slots)}
+            out["order"] = {key: turn.get((review.lens, key), len(turn)) for key in review.checks}
         if review.fields:
             out["fields"] = sorted(review.fields)
         return out
@@ -257,15 +270,15 @@ class DocumentModel:
         findings, reviews, slots = _join(self, record, layout, context, version)
         fields = frozenset() if parsed is None else frozenset({Basis.TEXT}) | parsed
         return ModelReading(kind or self.handles()[0], self.name or type(self).__name__, record, missing, tuple(findings),
-                            fields, version, _mark(context), self.enriched, looked_up or frozenset(), reviews, slots)
+                            fields, version, _mark(context), self.enriched, looked_up or frozenset(), reviews, slots, read)
 
 
 def _join(model: DocumentModel, record: Any, layout: list[Any], context: Any, version: str) -> tuple[list[Finding], tuple[Any, ...], dict]:
     """A reading's findings with its lenses' findings in their places, as of the context's date.
 
     ``layout`` is the reading's own findings with a lens check where that check's findings go; a check the reader lists
-    and did not place goes last. Returns the joined findings, the reviews, and, per check, the findings from outside its
-    lens that stand before it."""
+    and did not place goes last. Returns the joined findings, the reviews, and, per check in the slots' order, the
+    reading's own findings that stand before it."""
     placed = [item for item in layout if not isinstance(item, Finding)]
     if not placed and not model.lens_checks:
         return layout, (), {}
@@ -283,7 +296,7 @@ def _join(model: DocumentModel, record: Any, layout: list[Any], context: Any, ve
         if isinstance(item, Finding):
             findings.append(item)
             continue
-        slots[(item.lens.key, item.key)] = tuple(f for f in findings if f.lens != item.lens.key)
+        slots[(item.lens.key, item.key)] = tuple(f for f in findings if not f.lens)
         findings += by_lens[item.lens.key].checks.get(item.key, ())
     return findings, reviews, slots
 

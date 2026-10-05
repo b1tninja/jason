@@ -25,7 +25,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from jason.community.reviews import AS_OF, LENSES, Lens, Review, join, lens_findings
+from jason.community.reviews import AS_OF, LENSES, Lens, Records, Review, join, lens_findings
 from jason.locks import Resource, hold
 
 ROOT = Path("reviews") / "documents"
@@ -103,9 +103,10 @@ def dates(data_dir: Path, lens: str) -> list[date]:
 
 
 def _reviewed(rows: Iterable[dict[str, Any]], lens: Lens, as_of: date, community: Any,
-              stored: dict[str, Review]) -> Iterator[tuple[dict[str, Any], Review, list[str]]]:
+              stored: dict[str, Review], data_dir: Path | None = None) -> Iterator[tuple[dict[str, Any], Review, list[str]]]:
     """Each stored row the lens was joined into, with the lens's review of its stored fields as of ``as_of`` and the
-    checks the row names that the lens no longer has."""
+    checks the row names that the lens no longer has. A lens that gathers reads the association's other records under
+    ``data_dir`` as they stand now, through its facts functions; the document itself is not read."""
     for row in rows:
         stamp = (row.get("lenses") or {}).get(lens.key)
         if not stamp or not isinstance(row.get("fields"), dict):
@@ -113,7 +114,8 @@ def _reviewed(rows: Iterable[dict[str, Any]], lens: Lens, as_of: date, community
         keys = list(stamp.get("slots") or {})
         text_sha = str(row.get("textSha") or "")
         old = stored.get(str(row.get("id")))
-        review = lens.review(row["fields"], [lens.checks[k] for k in keys if k in lens.checks], as_of, community,
+        records = Records(community, data_dir, str(row.get("name") or ""), str(row.get("period") or "")) if lens.gathers else None
+        review = lens.review(row["fields"], [lens.checks[k] for k in keys if k in lens.checks], as_of, community, records=records,
                              reading_version=str(row.get("version") or ""), known=old if old is not None and old.text_sha == text_sha else None)
         yield row, replace(review, document=str(row.get("id") or ""), text_sha=text_sha, reader=str(row.get("model") or ""),
                            kind=str(row.get("kind") or "")), [k for k in keys if k not in lens.checks]
@@ -126,7 +128,7 @@ def joined_rows(data_dir: Path, community: Any, as_of: date, *, lens: Lens = AS_
 
     rows = load_readings(data_dir)
     stored = load(data_dir, lens.key, as_of if lens.needs_as_of else None)
-    fresh = {id(row): join(row, review) for row, review, _gone in _reviewed(rows, lens, as_of, community, stored)}
+    fresh = {id(row): join(row, review) for row, review, _gone in _reviewed(rows, lens, as_of, community, stored, Path(data_dir))}
     return [fresh.get(id(row), row) for row in rows]
 
 
@@ -164,6 +166,15 @@ CAVEATS = (
     "the document was read (asOf on the row); jason models reads again.",
     "A finding is a lead for a person, not a determination.",
 )
+# For a lens that gathers (the records lens): what its reviews rest on beside the stored fields.
+GATHERS_CAVEATS = (
+    "A review is made from a reading's stored fields and from the association's other records as they are on disk now (the "
+    "library, the ledger, the logs); the document itself is not read again. A field the reader got wrong is wrong here too.",
+    "Only the lens's findings are made again. A reading's own findings stand as of the date the document was read (asOf on "
+    "the row); jason models reads again.",
+    "What the other records lack is not shown to be absent: \"not on file\" means the library does not hold it.",
+    "A finding is a lead for a person, not a determination.",
+)
 
 
 def review_stored(data_dir: Path, community: Any, as_of: date, *, lens: Lens = AS_OF, kind: str = "",
@@ -176,7 +187,7 @@ def review_stored(data_dir: Path, community: Any, as_of: date, *, lens: Lens = A
     rows = [r for r in load_readings(data_dir) if not kind or r.get("kind") == kind]
     stored = load(data_dir, lens.key, as_of if lens.needs_as_of else None)
     reviews, changed, stored_as_of, gone_checks = [], [], Counter(), Counter()
-    for row, review, gone in _reviewed(rows, lens, as_of, community, stored):
+    for row, review, gone in _reviewed(rows, lens, as_of, community, stored, data_dir):
         reviews.append(review)
         stored_as_of[str(row["lenses"][lens.key].get("asOf") or "")] += 1
         gone_checks.update(gone)
@@ -189,7 +200,7 @@ def review_stored(data_dir: Path, community: Any, as_of: date, *, lens: Lens = A
     written = save(data_dir, reviews)
     readers = {name for _kind, name in lens.readers()}
     unstamped = sum(1 for r in rows if r.get("model") in readers and not (r.get("lenses") or {}).get(lens.key))
-    caveats = list(CAVEATS)
+    caveats = list(GATHERS_CAVEATS if lens.gathers else CAVEATS)
     if unstamped:
         caveats.append(f"{unstamped} readings by readers the lens reviews were stored before the lens was recorded on the row; "
                        "jason models reads them again.")
@@ -206,7 +217,9 @@ def review_lines(result: dict[str, Any]) -> list[str]:
     since = ", ".join(f"{day or 'no date'} ({n})" for day, n in result["storedAsOf"].items()) or "none"
     out = [f"The {result['lens']} lens (version {result['version']}) as of {result['asOf']}: {result['readings']} stored readings, "
            f"{result['findings']} findings; {result['made']} reviews made, {result['reused']} already stored",
-           f"  reads: the stored fields{' and the specification' if 'profile' in result['reads'] else ''}; no document and no other store",
+           f"  reads: the stored fields{' and the specification' if 'profile' in result['reads'] else ''}; "
+           + ("the association's other records as they are on disk now; no document is read again" if "store" in result["reads"]
+              else "no document and no other store"),
            f"  the rows were stored as of: {since}", ""]
     if not result["changed"]:
         out.append("Nothing changes against the stored readings.")
