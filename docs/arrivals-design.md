@@ -39,7 +39,7 @@ The user's point: a set of known forms implies a procedure for each. So a form i
 | `arrives by` | the channels it may come through | PayHOA, email, mailed scan, Google Form |
 | `authority` | the law it serves, as the canonical citation the rest of jason uses (`jason.community.references`): the process key | `CIV 4041` |
 | `procedure` | the SOP key that says what a person does with it (`jason sop KEY`) | `owner-info-cycle` |
-| `handler` | the code that reads an arrival into an answer and plans its effect | the response inbox, then `member_preferences.match` and `owner_info.plan_writes` |
+| `handler` | the code that reads an arrival into an answer and plans its effect: fixed by `authority` for a legal form, chosen at generation for a general one, and kept in the campaign record | the response inbox, then `member_preferences.match` and `owner_info.plan_writes` |
 | `clocks` | the dates that run on it: return-by, the statutory day count, who sets it | answers by Oct 23; entered in PayHOA 30 days before the annual reports (4041(b)(1)) |
 | `confirm` | who checks a reading, and whether a second person is needed | one person to confirm; apply is a person's yes |
 | `complete` | what makes it done | recorded in PayHOA |
@@ -54,6 +54,21 @@ Two identifiers do two jobs, and neither replaces the other:
 - **The reference names the copy.** `NP27E-4RK9T-C7` is one copy of that form sent to one owner for one unit in one cycle ([form-identifiers.md](form-identifiers.md)). It is exact where the citation is general.
 
 A citation is a **lead, not proof**: many documents cite 4041 (the annual policy statement, a reply that quotes the law), so a text that cites a form's authority is a candidate for that process, to be confirmed by the reference, the title and layout, or a person. It is most useful where there is no reference: a retyped or photocopied form still prints "Civil Code §4041" and its title; an email that quotes a section is about that process; and a returned letter that cites a section routes to the procedure that section keys. The order of strength is below.
+
+## The handler is chosen when the form is made
+
+jason sends only forms it has a procedure to process, so the handler is not found afterwards; it is **decided at generation and delivery and kept in the reference catalog**. Two families:
+
+| Family | Chosen by | Examples |
+|---|---|---|
+| **A process handler,** tied to a legal procedure | the form's `authority`: `CIV 4041` has exactly one form-return handler, registered to it (below) | owner information (4041), a records request (5210), internal dispute resolution |
+| **A general handler,** for a generic form tied to no law (`authority` is `None`) | a person, when the form is generated, from a short fixed list | collect only; append to a Google Sheet (a register); one board item or task per response; set PayHOA tags from the answers; draft a forward to a person |
+
+- **The catalog row.** A **campaign** record is made when a form is generated (`data/forms/campaigns.json`, beside `references.json`): the campaign code (`NP27E`), the form, the `authority` or `None`, the **handler key and its options** (the sheet and tab, the tag map, the person to forward to), the cycle dates, and who chose it and when. Every copy's reference in `references.json` points at its campaign, so an arrival with a reference is routed to its handler by one lookup, with no guessing and no "no handler" case.
+- **The invariant: a reference exists only if a handler does.** The generators (`jason forms --pdf`, `--payhoa`, `broadcast`, `owner-info --email-batch` and `--mail-batch`, the packet) refuse to make a marker for a form whose handler is not chosen and registered. A form with an `authority` takes its registered process handler; a form with none must name a general handler. There is no way to send a form nobody can process.
+- **A limited, fixed set.** General handlers are a short registry written in code, each with a typed options record, a dry-run plan, and the approval and confirmation every outside write already needs. A profile cannot add a handler by data; adding one is development, which is what keeps the list safe to choose from. Form **templates** (a survey, a sign-up, an RSVP, a volunteer list, a contact update) pair a layout with a default handler, and a template may carry its own custom handler.
+- **Aggregating into PayHOA or a sheet.** A Google Sheet is a register the association already keeps ([registers.md](registers.md)): each confirmed response appends a row, written only after a person confirms, as an approved plan. Aggregating into a **PayHOA form** is different: PayHOA takes a submission from the signed-in owner, and jason never creates or edits an owner's submission (AGENTS.md), so the proposal is the nearest safe equivalents (tags from the answers, a request comment, a register row). Whether PayHOA offers an administrator a way to enter a submission for an owner is unverified; if it does, it is the board's decision, not a default.
+- **What stays outside.** A response that arrives with no reference (a retyped or photocopied form, a form some other party sent) is not from a campaign; a person attaches it to one, the choice is recorded, and it is then handled like any other. A reference that is not in the catalog is "not ours" and goes to the unknown lane.
 
 ## Handlers are registered to citations; no handler is a finding
 
@@ -82,7 +97,7 @@ class RecordsRequests: ...
 - **Kept honest by tests.** Every handler's citations parse and are on the statutes shelf (`citation_gaps`); its `procedure` exists and lists it; every known form's `authority` has a registered form-return handler; no two handlers claim the same citation and role.
 - **Existing code is registered, not rewritten.** The owner-information returns (4041), the notice delivery follow-ups (4041(e), 4040, 4050), the members' request clocks (5210 and the response standard), the election, rule-change, and hearing notices, and the annual disclosures already carry their authority in rule rows (`NoticeRule.authority`, `FollowUp.authority`, the duties catalog). Each gets a thin `@handler` that points at it.
 
-**No handler is a finding, not an error.** When an arrival's role and citations have no registered handler, or no citation can be named at all, the arrival goes to the **needs a person** lane (the manager handles it by hand; nothing is dropped, and nothing is guessed), and jason records a **gap**:
+**No handler is a finding, not an error.** For a form jason made, a missing handler is caught earlier, at generation: the form is not made, and the refusal names the missing handler for the admin. What remains is the **unsolicited**: a message that is not a form return and whose kind has no route, a legal or government notice, a request of a kind with no handler, or a form from some other party. When such an arrival's role and citations have no registered handler, or no citation can be named at all, it goes to the **needs a person** lane (the manager handles it by hand; nothing is dropped, and nothing is guessed), and jason records a **gap**:
 
 | Field | |
 |---|---|
@@ -235,6 +250,7 @@ A route can also open a **clock**: a request's response day, a notice's follow-u
 ## Build order
 
 1. **The responses core** (built; the command and MCP tools follow): the form arrival, its reading and confirmation, the keyed answers. It is the first handler.
+   - **1a.** The campaign record and the generation gate: `data/forms/campaigns.json` (handler key, options, `authority` or `None`, who chose it), every reference pointing at its campaign, and the generators refusing a marker with no registered handler. The first two general handlers: collect only, and the Google Sheet register.
    - **1b.** Use the sent-copy catalog in the core: look a found reference up (`form_references.lookup`), keep the owner and unit as sent on the reading, compare them with the unit written and the sender, and read a candidate message's body for a quoted reference. Add `authority` to the form row and to `Procedure`. Then `jason responses --outstanding`: the asked-and-not-answered list, from the catalog less the arrivals.
 2. **Catalog and identify**, sources Gmail, the mail service, PayHOA forms and requests, and Google Forms, with the known-forms table: the cheap step on its own, and the `Arrival` widened from the form arrival. `jason arrivals`, its MCP tools, and the cadence.
 3. **Triage by rule** from the classifiers that exist (party, kind, clock), the correction path and the scorecard, then the local model for the remainder.
