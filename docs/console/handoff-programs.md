@@ -40,6 +40,17 @@ A provision says the association must adopt something; the console shows the req
 | `ProposalFlow` | band **Proposal**, only while the row is a gap | the draft and the board path | stages as `StageSteps`: draft · counsel's reading where unclear · board item · notice (a rule on a listed subject: a reading) · the board's vote · minutes · adoption read; the stage being worked marked; each gate in words |
 | `DraftPreview` | band **Proposal** | `program-draft` | the generated draft as a `Doc`, with `[BOARD CHOICE]` fields marked and counted, each recited requirement as a `Recitation`, "jason's proposed default, not adopted" on any proposed value; a draft that a base template does not yet cover ("no base template for this kind yet": the gap and the `Command`) |
 | `AdoptionBrief` (a `DecisionBrief` preset) | band **Proposal**, and the agenda | the options | adopt · adopt with changes · decline, and how the duty is met otherwise · ask counsel; the facts; **no recommendation** (`BRIEF_FOOTER`); the footer says the vote is the board's, at an open meeting, in its own minutes |
+| `LifecycleStrip` | `ProgramRow`, `ProgramPage` header | the six stages | mandate · written program · adopting act · implementation records · owner communication · review, one word each from the states in "The vocabulary"; a stage with no evidence is a word and its question, never blank; a stage that does not apply (no owner part) is "not required" with why; read as a list, never as a progress bar |
+| `SourceTier` (a `Pill` preset) | `ProgramRow` | the row's `source` | statute · statute with a condition · declaration · **condition of approval** (the agency named; "whether it binds the association is not settled", with the `ReadingLabel`); a condition-of-approval row is grouped apart from the declaration's |
+| `CadenceWord` (a `Pill` preset) | `ElementRecital`, `DerivedObligations` | an element's `cadence` | fixed ("every 3 months", the floor) · silent (**"the document sets none: the board's"**, with the proposed value labeled "proposed, not adopted" and its source) · event ("immediately": no number) · continuous ("at all times": verified by the walks, no date); an event or continuous element shows no due date and no "overdue" |
+| `VerbClass` (a `Pill` preset) | `AdoptionEvidenceRow` | an act's verb class | adopted · delegated · directed · listed · reviewed · quoted (shown as **"quotes the section: not an act"**) · declined; both the act's date and the document's own date are shown, labeled, with neither chosen as the date |
+| `LogEntryRow` | band **Implementation** | a `LogEntry` | dated entry (inspector, areas, condition, photo links counted not shown, the rows it satisfies); undated; "template reused: earlier entries are not in this copy"; "a copy of an earlier file"; "saved on DATE" (a Drive revision date, **never** "inspected on"); a payment shown apart as work, "not an inspection" |
+| `ComponentRegisterTable` | band **Component register** (a maintenance-type program) | the `ComponentRow`s | a row per component with its cells, each cell carrying its source; a component another source lists and this one omits ("not in the study"); an unconfirmed read row labeled so; a `DataTable` with filters by building, cost center, responsible party |
+| `AlignmentRow` | `ComponentRegisterTable`, band **Review** | an `AlignmentFinding` | each differing interval or life **side by side with its source and date** (as `Discrepancy`), the authority order beside them, "jason picks none"; an omission; a missing maintenance assumption (a question for the analyst) |
+| `OwnerPartRow` | band **Owners' part** | the association's part toward owners | notify · remind · enforce, with the decision or its absence ("the board decided not to require certification, DATE" shown as a decision, not a gap) |
+| `SubProgramRow` | band **The requirement**, the register | a parent's `parent` links | the sub-program's own standing word and a link; its steps are not restated; "counted once: one obligation per authority" |
+| `MemberRoleList` | `ProgramCollectionLink`, `ProgramPage` | the program's named members | grouped by role (mandate, program, adopting act, record, vendor record, mail, owner-facing, reference, sub-program), each a document or passage with its read state; a role with no member ("no adopting act on file") is a line; a held-back document ("held: privileged, not shown") is a line with the reason and no content |
+| `ScreenNotice` | the register, `ProgramPage` | the screening result | a Drive document held before indexing: privileged (by sender or phrase), no kind and unknown source, or **holding what looks like a credential** (never shown; "rotate it"); the minutes' range searched and what is not indexed ("not indexed before DATE") |
 | `ProgramCollectionLink` | page header | `program-<key>` | the collection's summary page, its pack in the workbench, its files (links into the workspaces named above); not built where the collection has no files indexed |
 
 ## The vocabulary
@@ -64,6 +75,16 @@ Every state is a word from the code (`ProgramStanding`, `Shape`, `Standing`, `An
 **The three answers** are as in [handoff-applicability-questions.md](handoff-applicability-questions.md#the-vocabulary): applies · does not apply · undetermined, the deciding or missing fact beside each. A conditional program row that is undetermined is a question, never missing.
 
 **The shapes** (`Shape`): adopt · adopt and implement · optional · presupposed.
+
+**The sources** (`Source`): statute · statute with a condition · declaration · condition of approval.
+
+**The cadences** (`Cadence`): fixed · silent · event · continuous. A silent cadence is never filled with a default.
+
+**The lifecycle's six stages**, each its own word: mandate (required · optional · presupposed · undetermined · counsel first), written program (not on file · on file · embedded · several candidates · not read), adopting act (no act on record · act on record · stated by the document itself · unsigned draft · adopted by a higher document), implementation records (the `Standing` words, or "no record kind shows it"), owner communication (not required · not on file · on file · a decision not to), review (none · reviewed · overdue · stale).
+
+**An act's verb class**: adopted · delegated · directed · listed · reviewed · quoted · declined. Only "adopted" counts as an adoption; the others are shown for what they are.
+
+**A log entry's states**: dated · undated · template reused · copy of an earlier file · saved on (a revision date). A payment is a row of its own: "work, not an inspection".
 
 **An evidence's states** are in the `EvidenceTrio` row above. "No act on record" is not "not adopted", "not on file" is not "not done", and "several candidates" has no pick; each says what was searched.
 
@@ -97,11 +118,17 @@ Made-up samples ("Example Village HOA", "Example Declaration 9.9", "CIV 9901"). 
                   "deciding": [], "missing": ["monetary_penalties"]},
        "standing": "presupposed", "evidence": null,
        "next": "answer the question", "question": "abdba3a040"}]},
+    {"source": "condition-of-approval", "rows": [
+      {"key": "coa-exterior-walk", "title": "Monthly exterior inspection", "authority": ["Example City permit PUD-0001, condition D1"], "source": "condition-of-approval", "shape": "adopt and implement",
+       "caveat": "whether this condition binds the association, and which buildings it reaches, is for the agency or counsel", "standing": "presupposed",
+       "answer": {"answer": "undetermined", "describe": "the approval names the applicant, not the association", "deciding": [], "missing": ["binds_association"]},
+       "lifecycle": {"mandate": "counsel first", "program": "not on file", "act": "no act on record", "records": "no record kind shows it", "owners": "not required", "review": "none"}}]},
     {"source": "declaration", "rows": [
       {"key": "decl-9-9", "title": "Moisture inspection and prevention program", "authority": ["decl#9.9(a)"], "source": "declaration", "shape": "adopt and implement",
        "confirmedBy": "Jane Example", "confirmedOn": "2026-10-03",
        "answer": {"answer": "applies", "describe": "the document states no scope", "deciding": [], "missing": []},
        "standing": "drafted",
+       "lifecycle": {"mandate": "required", "program": "on file", "act": "act on record", "records": "overdue", "owners": "not on file", "review": "none"},
        "evidence": {"document": {"state": "on file", "title": "Example moisture program (draft 2026)", "kind": "program", "docId": "lib:7c1e", "dates": {"written": "2026-03-02"}},
                     "adoption": {"state": "no act on record", "searched": "minutes 2025-01 to 2026-09: 19 sets, 2 not read"},
                     "implementation": {"state": "overdue", "count": 1, "of": 2}},
@@ -125,13 +152,38 @@ Made-up samples ("Example Village HOA", "Example Declaration 9.9", "CIV 9901"). 
       {"key": "step-1", "kind": "step", "cite": "decl#9.9(a)(i)", "words": "Inspect the common areas not less frequently than quarterly ...", "bearer": "association",
        "everyMonths": 3, "record": "program_record", "read": "grammar", "confirmed": "Jane Example"},
       {"key": "step-2", "kind": "step", "cite": "decl#9.9(a)(iv)", "words": "Periodically inspect the irrigation ...", "bearer": "association",
-       "everyMonths": 0, "question": "the words say 'periodically': the board states how often", "record": "program_record", "read": "grammar", "confirmed": null}],
+       "everyMonths": 0, "cadence": "silent", "question": "the words say 'periodically': the board states how often",
+       "proposed": {"everyMonths": 3, "source": "a study of the example reserve says every 3 months", "label": "proposed, not adopted"},
+       "record": "program_record", "read": "grammar", "confirmed": null},
+      {"key": "step-3", "kind": "step", "cite": "decl#9.9(a)(ii)", "words": "... immediately take appropriate corrective action ...", "bearer": "association",
+       "everyMonths": 0, "cadence": "event", "question": "'immediately' has no number: a reading for counsel; the board may state a day count", "confirmed": null}],
     "ownerDuties": [{"key": "owner-step-1", "cite": "decl#9.9(b)(i)", "words": "Inspect the Unit not less frequently than quarterly ...", "bearer": "owner", "everyMonths": 3,
                      "notice": {"row": "annual-policy-statement", "delivery": "not sent this year"}}]
   },
   "document": {"state": "on file", "title": "Example moisture program (draft 2026)", "kind": "program", "docId": "lib:7c1e", "digest": "sha256:ab12", "read": "text layer"},
-  "adoption": [{"kind": "none", "searched": {"sets": 19, "unread": 2, "from": "2025-01", "to": "2026-09"}}],
+  "lifecycle": {"mandate": "required", "program": "on file", "act": "act on record", "records": "overdue", "owners": "not on file", "review": "none"},
+  "adoption": [{"kind": "minutes motion", "verbClass": "adopted", "on": "2022-08-30", "documentDate": {"on": "2022-09-19", "label": "the document's own footer"},
+                "quote": "approved the example program, consisting of the steps in 9.9(a)", "passage": "minutes, item 3", "labels": ["two dates, both kept"]},
+               {"kind": "minutes entry", "verbClass": "quoted", "on": "2023-03-01", "counts": false, "label": "quotes the section: not an act"}],
+  "notSearched": {"minutesIndexedFrom": "2024-01", "searchedFrom": "2022-01", "note": "minutes before 2024-01 are not indexed; read from the cache"},
   "leads": [{"kind": "vendor proposal approved", "meeting": "2026-02-17", "item": "4", "label": "not an adoption: implementation evidence"}],
+  "members": [{"role": "mandate", "docId": "lib:decl", "title": "Example Declaration, 9.9", "read": "text layer"},
+              {"role": "program", "docId": "drive:aa11", "title": "Example moisture program", "copies": 3, "read": "text layer"},
+              {"role": "record", "docId": "drive:bb22", "title": "Example inspection worksheet", "read": "undated", "template": "reused"},
+              {"role": "adopting act", "docId": "lib:min2022", "title": "Minutes, 2022-08-30", "read": "not indexed"},
+              {"role": "adopting act", "held": true, "reason": "privileged: held, not shown"}],
+  "log": [{"entry": "2022-09-12", "inspector": "Casey Sample", "areas": 14, "photos": 6, "satisfies": ["step-1"], "kind": "dated"},
+          {"entry": null, "savedOn": "2024-12-02", "kind": "saved on", "label": "a revision date, not an inspection date"}],
+  "register": {"rows": [{"component": "Roof drains", "quantity": 12, "location": "buildings A to D", "costCenter": "building maintenance", "reserve": {"life": 20, "study": "Example study 2025"},
+                         "responsible": "association", "inspectionInterval": {"everyMonths": 6, "cadence": "fixed", "source": "study 2025"}, "assumption": "", "record": "log entry", "vendor": "",
+                         "parent": null}],
+               "alignment": [{"component": "Exterior paint", "values": [{"source": "the condition of approval", "interval": "at most 8 years", "kind": "floor"},
+                                                                         {"source": "the study of 2024", "interval": "10 years"},
+                                                                         {"source": "the board's sheet", "interval": "8 years"},
+                                                                         {"source": "the owners' manual", "interval": "about 7 years"}],
+                              "pick": "none"}]},
+  "ownerPart": {"part": "notify", "decision": null},
+  "subPrograms": [{"key": "pest-program", "standing": "adopted", "counted": "once"}],
   "review": {"asOf": "2026-10-05", "lens": "programs@3f9a", "stale": false,
              "elements": [{"key": "step-1", "result": "found at", "passage": "section 3", "basis": ["text"], "verdict": {"by": "Jane Example", "on": "2026-10-04", "word": "confirmed"}},
                           {"key": "step-2", "result": "not found", "searched": "anchors: irrigation, leaks", "basis": ["text"], "verdict": null}],
@@ -168,6 +220,14 @@ A `FactValue`, a `Finding`, a `Recitation` keep their built shapes.
 - **Not on file is not not done; no act on record is not not adopted** (principle 8). Each says what was searched, and the question that settles it.
 - **A conditional row that is undetermined is a question**, not "missing" and not "not required". It links to the fact's `FactQuestionRow`.
 - **A reference that cannot be resolved is a finding, never a guess.** Several candidates are all listed; jason picks none and the person binds one.
+- **Six stages, six words** (`LifecycleStrip`). A program that is written and adopted but never inspected reads as that; no blended "compliant", and no progress bar.
+- **A quotation is not an adoption.** An entry that only repeats the section is shown as "quotes the section: not an act". An act is shown with its verb class, and the document's date and the act's date side by side.
+- **A silent cadence is the board's.** "Periodically" is never shown as a number. A proposed value is labeled "proposed, not adopted" with its source. An event or continuous element has no due date and is never "overdue".
+- **A condition of approval is shown with its caveat**, in its own group, with "whether it binds the association is not settled"; it is never listed beside the declaration's rows as if it bound.
+- **A saved date is not an inspection date; a payment is not an inspection; a copy is not a new inspection.** Each shown as what it is.
+- **Alignment shows every value and picks none.** The sources' values for one component side by side with the authority order; no "use this one" control.
+- **One obligation per authority.** A sub-program is a row the parent links; its steps are never restated.
+- **A held document shows its reason and no content.** A privileged letter or a Doc that holds what looks like a credential is a line ("held: privileged"; "holds what looks like a credential: rotate it"), and the credential is never shown.
 - **A match is a lead.** An element "found at" a passage is where to read, not that it is met. "Confirmed" is a person's, with the name and date.
 - **A vendor's approval is not an adoption.** It is shown apart, labeled.
 - **No approve control.** The console has no control that adopts a program. The vote is the board's, at an open meeting; the console shows the draft, the notice a rule on a listed subject needs (as a reading), the brief, and the `Command` to put it on the agenda. The **adoption** is read from the minutes, or a person records it with their name and the record that states it.
@@ -181,7 +241,7 @@ A `FactValue`, a `Finding`, a `Recitation` keep their built shapes.
 
 Routes are proposed, consistent with [information-architecture.md](information-architecture.md#where-the-proposed-screens-go); none exists yet.
 
-- **Governance → Programs** (proposed): `#/programs` (board-only, `owner: false`). Views as `Tabs`: **Register** (`ProgramRegister`), **Gaps** (the three groups and the questions), **Detected** (`DetectionLead`s waiting on a person), **References** (`ReferenceRow`s, unresolved first). Query: `?source=statute|statute-conditional|declaration`, `?as_of=YYYY-MM-DD`, `?view=`. A program: `#/programs/<key>` with bands **The requirement**, **The document**, **Adoption**, **Review**, **Duties and dates**, **Owners' part**, **Questions**, **Proposal**. The header's `Command` is `jason programs` (`--gaps`, `--as-of`).
+- **Governance → Programs** (proposed): `#/programs` (board-only, `owner: false`). Views as `Tabs`: **Register** (`ProgramRegister`), **Gaps** (the three groups and the questions), **Detected** (`DetectionLead`s waiting on a person), **References** (`ReferenceRow`s, unresolved first). Query: `?source=statute|statute-conditional|declaration`, `?as_of=YYYY-MM-DD`, `?view=`. A program: `#/programs/<key>` with bands **The requirement**, **The document**, **Adoption**, **Implementation** (the log), **Component register** (a maintenance-type program only), **Review**, **Duties and dates**, **Owners' part**, **Members**, **Questions**, **Proposal**; the `LifecycleStrip` sits in the header. The header's `Command` is `jason programs` (`--gaps`, `--as-of`).
 - **The schedule and the dock's Deadlines** ([screens/schedule-and-duties.md](screens/schedule-and-duties.md)): a derived obligation a person added appears there as any obligation, with "from program KEY" linking back.
 - **Board items** ([screens/board-items.md](screens/board-items.md)): a proposal becomes an item whose agenda text is the `AdoptionBrief`'s facts; the item links back to the program.
 - **The confirmations queue** ([handoff-confirmations-queue.md](handoff-confirmations-queue.md)): a `DetectionLead` is a candidate reading there; confirming it adds the row.
@@ -198,6 +258,9 @@ Routes are proposed, consistent with [information-architecture.md](information-a
 | `program-gaps` | `GET /api/program-gaps?as_of=` | `tasks.programs.gaps` | three groups and the questions |
 | `program-references` | `GET /api/program-references?unresolved=` | `program_resolver.resolve` over `references` | rows with their resolution |
 | `program-detected` | `GET /api/program-detected` | `program_detect` readings, the duties' reviews | detected mandates and their state |
+| `program-register` | `GET /api/program-register?key=` | the program's `ComponentRow`s and `AlignmentFinding`s | the component register and its alignment findings |
+| `program-members` | `GET /api/program-members?key=` | `document_collections.of_program`, the screening's held list | members by role, with held-back documents as reasons |
+| `program-log` | `GET /api/program-log?key=` | the log kind's `LogEntry` readings | dated, undated, reused, copy, saved on |
 | `program-draft` | `GET /api/program-draft?key=` | the base template and the requirement's elements | the generated Markdown, the `[BOARD CHOICE]` count, the lint |
 
 **Writes to add**, each a `Confirm` in the signed-in person's name, through the write guard, refused without a name:
@@ -234,6 +297,11 @@ As [components.md](components.md#accessibility) and [content/patterns.md](conten
 7. **Counsel first.** Where a row is `COUNSEL_FIRST` or a reading is unclear, decide whether `ProposalFlow` shows "ask counsel" as a stage with its own record or only a note in the brief.
 8. **A program that an owner's duty twins.** Whether the two halves are one page or two (the association's program, each owner's), when the declaration states them in separate subdivisions.
 9. **Newer-law rows.** The third group of the gap report reads like a conflict list. Decide how it links to `jason conflicts` and the conflicts screen without a third copy of the lead.
+
+10. **Strip or sentence.** The `LifecycleStrip`'s six words in a row can read as a progress bar. Decide whether it is a list of labeled values, or a sentence ("written, adopted by a minute entry, not inspected, owners not told, never reviewed"); keep the words either way.
+11. **Where the component register lives.** For a maintenance-type program it is the core; it could be a band of the program page or its own route (`#/programs/<key>/register`) with filters. Decide with the volume (dozens of components).
+12. **Alignment's weight.** Four conflicting values for one component, with an authority order beside, is a dense row. Decide whether the register collapses an aligned component and opens a differing one by default.
+13. **A held document's line.** Whether the board's view shows the title of a held privileged letter ("held: privileged") or only a count.
 
 ## Not part of this pass
 

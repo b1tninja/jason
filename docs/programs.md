@@ -34,6 +34,8 @@ Every word is a state in code (to be `ProgramStanding` and its parts) so the con
 | **optional** | the provision attaches duties *if* the association adopts one ("if the Association adopts a program ..."); it does not oblige adopting | required |
 | **presupposed** | a provision speaks as if the instrument exists ("pursuant to the Association's program") without saying it must; whether it must is a question | adopted |
 
+A program also has a **lifecycle** of six stages (mandate, written program, adopting act, implementation records, owner communication, review), each with its own evidence and its own word; see "Finding what exists". A program can be written and adopted and never carried out, or carried out with no act on record.
+
 A miss stays a miss (AGENTS.md). **"Not on file" is never "not done"**, and **"no act on record" is never "not adopted"**: each is a state with the search that was made and the question that settles it.
 
 ## What exists
@@ -55,13 +57,16 @@ A miss stays a miss (AGENTS.md). **"Not on file" is never "not done"**, and **"n
 
 ## The catalog: one row per thing that must be adopted or kept
 
-`jason.community.program_catalog.REQUIREMENTS` (proposed), the notice catalog's shape. A row is a `ProgramRequirement` whose `source` is one of three.
+`jason.community.program_catalog.REQUIREMENTS` (proposed), the notice catalog's shape. A row is a `ProgramRequirement` whose `source` is one of four, in the order of authority (`authority_order.Tier`): the last is the lowest.
 
 | Source | Whose | Found by | Applies |
 |---|---|---|---|
 | **STATUTE** | every association | `jason cite` on a section of the shelf; the row's `words` are checked against the exported text by a test, as `tests/test_notice_catalog.py` does | always (`ALWAYS`) |
 | **STATUTE-CONDITIONAL** | an association for which a fact holds | the same | an `applies` condition over the facets of `applicability.py`, answered in three ways; a missing fact is a question |
 | **DECLARATION** | one association, by its governing documents | the detection rule below, read from `data/duties/*.json`, confirmed by a person | the document's own scope (its conditions), as a reading |
+| **CONDITION OF APPROVAL** | one development, by a public agency's approval of it (a city's conditions on a planned-development permit, a subdivision's map conditions, a recorded covenant to a public agency) | a **conditions reader** (below) over the approval document in the library, confirmed by a person | the approval's own scope (which parcels, buildings, or phases it names), as a reading |
+
+A **condition of approval** is a source below the statute and the governing documents, and it is a different kind of mandate: the governing documents may not repeat it, and whether it **binds the association** (as against the developer who applied), and which buildings it reaches, is a question for the agency or counsel, never settled by jason. The row says so in its `caveat`, shows the agency's own words, and is a `COUNSEL_FIRST` row until a person records the answer. It supplies **floors** that a program must respect (a monthly exterior inspection, a repaint interval, a maintenance program "subject to review and approval" by an officer of the agency): the review checks the program against them and, where the condition names an approver, asks whether the approval is on file. A condition that conflicts with the declaration or the law is a `Conflict` candidate, not a pick.
 
 A row is **not** written from memory. "A row with no recited words stays a question": a candidate whose operative words cannot be quoted from the shelf or a document is not a row; it is an open question with the search made.
 
@@ -71,7 +76,10 @@ A row is **not** written from memory. "A row with no recited words stays a quest
 |---|---|
 | `key` | stable, kebab-case ("fine-schedule"); the collection is `program-<key>`, the ledger and review keys start with it |
 | `title` | in words ("Schedule of monetary penalties") |
-| `source` | `STATUTE`, `STATUTE_CONDITIONAL`, or `DECLARATION` |
+| `source` | `STATUTE`, `STATUTE_CONDITIONAL`, `DECLARATION`, or `CONDITION_OF_APPROVAL` |
+| `bearers` | who the program binds: the association, each owner, or both (an owner's twin is its own element set; below) |
+| `register` | whether the program rests on a **component register** (a maintenance-type program does; below) |
+| `parent` | the key of the program this is a sub-program of, when it is one (below, "Overlap") |
 | `authority` | citations, as the notice catalog writes them (`CIV 5850`); for a declaration row, the document key and section (`decl#9.9`) with the permanent id |
 | `words` | the operative sentence, verbatim, from the shelf or the document, with its version in force |
 | `shape` | `ADOPT`, `ADOPT_AND_IMPLEMENT`, `OPTIONAL`, `PRESUPPOSED` (below) |
@@ -95,6 +103,7 @@ An element is one thing the requirement says a conforming instrument contains or
 | `kind` | `CONTENT` (it must state or provide for X), `STEP` (an act to do), `FREQUENCY` (how often), `PARTY` (who does or receives), `RECORD` (what is kept, and how long), `NOTICE` (what is told, to whom), `OWNER_DUTY` (a duty on owners), `ADOPTION` (how it is adopted), `LIMIT` (a bound the instrument may not cross), `CONDITION` |
 | `words` | the element's words, verbatim, checked against the source |
 | `bearer` | `deontic.Bearer`: association, board, officer, manager, owner, and so on |
+| `cadence` | which of four kinds the words set (below): `FIXED`, `SILENT`, `EVENT`, `CONTINUOUS` |
 | `every_months` | a recurrence read from the words (3 for "quarterly"); 0 when the words state none, and **"periodic" is not a number** |
 | `deadline` | `deontic.Deadline` when the words give one |
 | `record` | the kind of record that shows it done (a `DocumentKind`, or an `AssociationRecord`) |
@@ -113,6 +122,31 @@ For a statute row the elements are written by hand from the section, each with i
 | `PRESUPPOSED` | a duty that acts "pursuant to the Association's X program", "under a schedule adopted by the Board", "standards ..., if any exist" | the instrument is assumed; whether it must exist is a question |
 
 An `ADOPT` row is a gap when nothing is on file. An `OPTIONAL` row is never a gap. A `PRESUPPOSED` row is a **question for the board**, and where the law is silent it is a proposal ("Where the law is silent, write it down").
+
+### The four cadences (`Cadence`)
+
+The real cases showed that "how often" is not one thing. Each element says which kind its words set, and the catalog row says **which the document fixes and which the board must set**.
+
+| Cadence | The words | The element holds | Who sets the number |
+|---|---|---|---|
+| `FIXED` | "not less frequently than quarterly", "semiannually", "at least once every nine years" | `every_months` | the document or statute; a floor, which the board may exceed |
+| `SILENT` | "periodically", "from time to time", "as appropriate" | no number, and a question | **the board**; a policy proposal fills it, marked "proposed, not adopted"; until adopted the element has no clock |
+| `EVENT` | "immediately", "promptly", "as soon as reasonably practicable", "within 15 days of the postmark" | a response clock, not a recurrence; with a number it is a `Deadline`, without one it is a question | the document if it gives a number; else the board ("immediately" is a reading for counsel; the board may propose what it means: stop the source, begin repair, record the date) |
+| `CONTINUOUS` | "at all times", "shall maintain", "in a clean and proper operating condition" | a standing state, not a date | no number; shown by records of the state (a condition noted at each walk), never as an overdue date |
+
+An `EVENT` element is an **assignment of a response**, not an `Obligation` row (an `Obligation` counts from a record's date or an interval); a `CONTINUOUS` one is verified by the fixed-cadence inspections that look at it. A silent cadence is **never** filled with a default ("periodic" does not become annual): the proposal shows a value with its source ("the studies say every 5 years", "the builder's guide says twice a year in one place and once in another") and the board chooses. Where the sources for one interval disagree, the element is an **alignment finding** (below).
+
+### Two bearers, and the association's part toward owners
+
+A requirement may bind the association and, in the same words, each owner ("each Owner shall adopt and implement ..."). The two are separate element sets with their own bearer and cadence. The association's own program is `bearers: association`; each owner's is an `OwnerDuty` set. The association's **part toward owners** is one of three, and the row names which the document or the board has chosen:
+
+| Part | Means | Evidence |
+|---|---|---|
+| **notify** | tell owners their duty exists (the annual policy statement, a letter, the owners' manual) | the notice's proof; none on file is a finding about the association, not the owners |
+| **remind** | a recurring reminder (each season) | the reminder's record |
+| **enforce** | notice, hearing, and a charge under the documents' own process (never jason's act) | the enforcement record; the documents' process, not a program step |
+
+A document that is silent on the association's part leaves it a question for the board. A board decision *not* to require owners to certify is a recorded decision, not a gap, and shows as one.
 
 ## The candidates, checked on the shelf
 
@@ -162,13 +196,55 @@ The model extends, and does not duplicate, duties, obligations, and applicabilit
 | `AdoptionReading` | one `DocumentDuty` read as a mandate: shape, verb, object noun, program name as written, the steps (the duty ids it carries), the bearer | `DocumentDuty.id` | `data/programs/readings/<outline>.json`, ingestion (text only) |
 | `NamedReference` | a mention of a named instrument: who mentions it, where, its name as written, its noun, whether it is conditional ("if any") or expected ("as the Board may adopt") | `references.Reference` with a new `TargetKind` | beside the reference store |
 | `ProgramDocument` | a found document of this program: its digest and ids, its kind, its dates, where it was found (a file, a Drive id, or a section embedded in another document), and its `ProgramStanding` | `document_models` readings, the library | `data/programs/found.json` |
-| `AdoptionEvidence` | one act: kind (`RESOLUTION`, `MINUTES_MOTION`, `CERTIFICATE`, `SELF_STATED`, `BOARD_ITEM`), its date, the document and passage, the motion's words, the vote, who read it (grammar, model, person) | `models/meetings*.py`, `readings.AdoptionReader`, `record_stages` | with `ProgramDocument` |
+| `AdoptionEvidence` | one act: kind (`RESOLUTION`, `MINUTES_MOTION`, `CERTIFICATE`, `SELF_STATED`, `BOARD_ITEM`), its **verb class** (adopted, delegated, directed, listed, reviewed, quoted, declined), its date (and the document's own date, kept apart), the document and passage, the motion's words, the vote, who read it (grammar, model, person) | `models/meetings*.py`, `readings.AdoptionReader`, `record_stages` | with `ProgramDocument` |
+| `ComponentRegister`, `ComponentRow` | for a maintenance-type program: one row per component (below) | the reserve study, the board's component list, the cost centers | with the program; read from the sources, a person confirms |
+| `AlignmentFinding` | one interval or life that appears in more than one source with different values | `ComponentRow` over its sources | computed; a finding, never a pick |
+| `Program` (a profile row) | the association's own program: its key, requirement keys, named members by role, its sub-programs | `ProgramRequirement` | `Community.programs()`, empty by default |
+| `LogEntry` | one dated entry of an inspection log: date, inspector, areas, condition, photos, the rows it satisfies | `DocumentKind.PROGRAM_RECORD` readings | ingestion; `data/programs/readings/` |
 | `ProgramReview` | the review of one document under the programs lens: an `ElementResult` per element (found at a passage, not found, unknown, for a person), the three-part decision, each finding's `Basis` | `reviews.Review`, `Finding.basis` | `data/reviews/programs/<key>/<digest>/<as-of>.json` |
 | `Implementation` | per timed element, the occurrences expected in a window against the evidence | `Obligation`, `Standing`, `schedule_evidence` | computed, never stored as fixed |
 | `ProposedObligation` | an `Obligation` row a timed element implies: name, authority, `every_months`, `first_due`, `applies`, evidence kinds | `obligations.Obligation` | printed and proposed; a person adds it to the profile |
 | `OwnerDuty` | an element whose bearer is the owner, with the notice that tells owners and the record that shows it | `deontic.Bearer.OWNER`, `NoticeRequirement` | with its row |
 
 **An owner's duty is part of the program.** A requirement may bind the association *and* each owner (the same steps, in each unit). The owner's half is an `OwnerDuty` element: jason lists it, names the notice that tells owners (the annual policy statement, a letter), and tracks only what the association is to do (tell them); it enforces nothing and never inspects a unit. Whether a program that reaches into a unit is an operating rule on "use of a separate interest" (CIV 4355(a)(2)) is a labeled reading, and a question for counsel.
+
+## The component register at the core of a maintenance-type program
+
+A manual or schedule for the upkeep of the common area is, at its core, a **register of components**: what is maintained, by whom, how often, to what life. The requirement's words ("a manual for the periodic inspection and maintenance of the Common Area") are satisfied or not by this register, so it is the program's heart and the unit of review. A `ComponentRow`:
+
+| Field | Meaning |
+|---|---|
+| `component`, `quantity`, `location` | what it is, how much, and in which building or area |
+| `cost_center` | the association's cost center that bears it, where the instruments set cost centers |
+| `reserve` | the reserve study's component for it and its **useful life**, with the study and its date |
+| `responsible` | who maintains it: the association, the owner, a public entity, a vendor (as the documents state it) |
+| `interval` | the inspection interval and the maintenance interval, each with its **cadence kind** and its source |
+| `assumption` | the maintenance the study's life **assumes** (the narrative that says "seal coat every 5 years"), when the study states one |
+| `record` | the kind of record that shows it done (a log entry, a report, an invoice) |
+| `vendor` | the contract or vendor that does it |
+| `parent` | the program it belongs to if it is a sub-program's (below) |
+
+Rows are read from the sources (the declaration's list of components, the reserve study's lines, the board's own working list, the vendor contracts), each cell carrying its source, and confirmed by a person; jason invents no component and no interval.
+
+### Alignment is a first-class check
+
+The same interval appeared in the real case in **four conflicting forms**: a public condition's, the reserve study's, the board's working sheet, and the owners' manual. The programs lens has an `alignment` check over the register:
+
+- For each component, collect every stated interval or life, each with its source and date.
+- Where they **differ**, the finding lists all of them side by side, labeled by source, with the authority order beside ("the condition of approval's limit is a floor; the study's life exceeds it, with no approval on file"). **jason picks none**, as the conflicts-of-fact lens picks none; the board, the agency, counsel, or the analyst resolves.
+- Where a source **omits** a component another names (the study omits what the declaration lists and the board's sheet carries), the finding says so ("not in the study's list").
+- Where a study states no **maintenance assumption** for a component's life, it is a question for the analyst. The reserve-study component narratives are not read today (below), so this check waits on that reader.
+- `Finding.basis` is `TEXT` (each source's words), `STORE`, and `LAW` or the public condition where one is a limit.
+
+## Overlap: one obligation per authority
+
+A maintenance-type program touches many others (mold, pest, fire, backflow, elevated elements, the reserve study's visual inspection). The register must **not count one thing twice**:
+
+1. **One obligation per authority.** A statute's or a document's duty is one `Obligation` row; a second program that cites the same authority points at that row, and never copies it.
+2. **A task and its verifying inspection are not two rows.** "Clean the gutters twice a year" and "inspect that the gutters are clean" are one element with a task and a check; the invoice is the evidence of the task, the log entry of the check.
+3. **One visit can satisfy several rows, and the log says which.** A monthly walk that also serves a quarterly check records, on the entry, the rows it satisfies (`LogEntry.satisfies`); each row counts it once.
+4. **Sub-programs are rows the parent points at.** A sub-program (the pest program, the backflow test, the fire inspections, the elevated-elements inspection, a mold program) keeps its own `ProgramRequirement` and its own records; the parent lists it as a member with `parent` set and shows its standing, never restating its steps or its rows. The manual's component table cross-references, it does not duplicate.
+5. A finding that shows up twice (a leak found on a walk is a mold finding and a roof finding) is **one finding with two references**, not two.
 
 ## Detection: which duties are "adopt or implement"
 
@@ -193,28 +269,75 @@ The enumerated steps are the duty's inherited readings (the lead-in passes its k
 | `OPTIONAL` | a `permission` or `condition` reading whose trigger is "if the Association adopts", or a duty attached to "an X program that the Association may adopt" |
 | `PRESUPPOSED` | a **named-instrument reference** (below) in a duty's clause: "pursuant to the Association's 'X' program", "in accordance with a schedule adopted by the Board", "guidelines adopted by the Board", "standards ..., if any exist" |
 | owner's program | the `ADOPT` rule with an owner bearer |
+| condition of approval | the **conditions reader** (below), over an approval document: a lettered or numbered condition whose subject is "the homeowners' association", "the owner or operator", or the applicant, with a duty marker, read as a duty with its approver ("subject to review and approval by the Planning Director") and its floors ("not less than monthly", "at least once every 8 years") |
+
+### The conditions reader
+
+A city's or county's conditions of approval for a development are not in the governing documents, so the duty reader of the outlines never sees them. The conditions reader reads the **approval document** (a staff report, a resolution of approval, a map's conditions) as an outline of its own, with the same grammar as `deontic.read_outline`, and adds three things the grammar lacks:
+
+- **the subject**: "the homeowner's association", "the applicant", "the owner/operator", or a role of the agency; a condition whose subject is the applicant at the time of approval is read as **not the association's** until a person says it passed to it (it is the developer's, and whether it binds the association is the open question);
+- **the approver**: the officer or body whose review or approval the condition names, kept as a field, so the review can ask whether the approval is on file;
+- **the scope**: the parcels, buildings, or phases the approval names, as a fact for the row's `applies`.
+
+A reading is a lead for a person; a condition becomes a `CONDITION_OF_APPROVAL` row only on a person's confirmation. It is **not** read for a binding effect: jason recites the agency's words and the question.
 
 ### Keeping false positives out
 
 - The rule is **narrow on purpose**: precision first, because every hit becomes a row that a person confirms, and the confirmation queue is finite ([handoff-confirmations-queue.md](console/handoff-confirmations-queue.md)).
 - A hit is a **lead for a person** (`ReviewStatus`); only a confirmed hit enters `Community.program_requirements()`. A reading never becomes a row on its own.
 - **A miss stays a miss.** "Periodically", "from time to time", and "appropriate" are not frequencies: an element with no stated recurrence says so, and that is a question for the board, not a default ("periodic" never becomes "annual").
+- **A quote is not an adoption, a payment is not an inspection, a last-modified date is not an inspection date.** These three false positives (above) are guards in the readers, each with a test from a real false hit.
 - The stops are data (`program_detect.STOPS`), each with a test from a real false hit.
 - A **gold set** (`data/programs/gold/programs.json`, private; made-up twins under `tests/fixtures`) labels positives, optional and presupposed shapes, and look-alikes before the rule is tuned, in the manner of `scripts/eval_duties.py`; the rule is reported with precision and recall by shape, and read as "about four in five" until a person has reviewed the corpus, as [document-duties.md](document-duties.md) reads the grammar.
 
-## Finding what exists
+## Finding what exists: the lifecycle, a stage at a time
 
-For each required row, three questions, each its own state.
+Two real cases (a quarterly inspection program and a maintenance manual, each required by a declaration) showed that a program passes through **six stages, each with its own evidence, and each fails on its own**. A register that shows one blended "compliant" hides which stage is missing.
 
-| Question | Evidence | States |
+| Stage | The question | Evidence | States |
+|---|---|---|---|
+| 1. **Mandate** | what obliges the association, and what does it say? | the catalog row: the shelf, the declaration, or a condition of approval, recited | required · optional · presupposed · undetermined (a fact missing) · counsel first |
+| 2. **Written program** | is there a document of that kind? | the resolver (below) over the library, Drive, and the outlines | not on file · on file · embedded in another document at a section · several candidates (listed; jason picks neither) · not read |
+| 3. **Adopting act** | did the board adopt *that document*, by an act on record? | `AdoptionEvidence` | no act on record · act on record (kind, date, where) · stated by the document itself · unsigned draft · adopted by a document of higher authority |
+| 4. **Implementation records** | is each step done, on its clock, with a dated record? | the records by element and window (the log kind, below) | each timed element's `Standing`: done, done late, no evidence, upcoming, due soon, overdue, date not on record, no store shows it; and, for a continuous or event step, "no record kind shows it" |
+| 5. **Owner communication** | were owners told their part? | the notice's proof (the owners' manual, the annual statement, a letter) | not required · not on file · on file (date) · a decision not to (recorded) |
+| 6. **Review** | has the program been reviewed, against the law in force, in its own cycle? | the programs lens; the minutes of the review | none · reviewed (day, by whom) · overdue · stale |
+
+The program's overall word is computed from these: **missing** (required, no document), **drafted** (a document, no adoption evidence), **adopted** (document and act), **implemented** (and the records show the steps), **reviewed** (and a review exists as of a date), **current**, **stale**. A row with `fallback = STATUTE_DEFAULT` and no document of its own reads **default applies**, never "missing". The register shows the six stages as a strip, one word each.
+
+### Adoption is an act, and a quotation is not one
+
+The first real run of the revision report printed "adoption on record" for minutes that merely **quoted the section that required the program**. Naming a section is not adopting it. The rules for `AdoptionEvidence`:
+
+1. **An adoption is a board act whose date can differ from the document's own.** A program's footer may read "adopted" on one day while the minutes record the vote on another. Both are kept, labeled ("the document says; the minutes record"), and jason picks neither as *the* date.
+2. **A minutes entry counts only if its verb adopts the named instrument.** The verb is classed, each class a state of its own, from the motion's or entry's own sentence:
+
+| Verb class | Examples of the words | Counts as |
 |---|---|---|
-| **Is there a document of that kind?** | the resolver (below) over the library, Drive, and the outlines | not on file · on file · embedded in another document at a section · several candidates (both listed; jason picks neither) · not read |
-| **Was it adopted?** | `AdoptionEvidence`: a resolution; a minutes motion that adopts the named instrument; the instrument's own certificate; a board item's result | no act on record · act on record (with its date and where) · stated by the document itself · unsigned draft (a certificate whose date is blank) · adopted by a document of higher authority |
-| **Is it carried out?** | the implementation records by element and window | each timed element's `Standing`: done, done late, no evidence, upcoming, due soon, overdue, date not on record, no store shows it |
+| **adopted** | "adopted", "approved the program", "resolved to adopt", with a vote | **adoption** (a lead until a person confirms; the minutes' words recited) |
+| **delegated** | "delegated a director to draft", "asked management to prepare" | a step toward adoption; **not** an adoption |
+| **directed** | "we would like to direct management to ...", with no motion recorded | an intent; **not** an adoption |
+| **listed** | "the manual was in the packet", an agenda attachment | **not** an adoption; evidence the board had it |
+| **reviewed / discussed** | "Review Procedures" as an item | not an adoption; evidence of review |
+| **quoted / cited** | the section's words repeated, or a citation of it | **not** evidence at all of adoption; it is evidence of the mandate |
+| **declined** | "will not be implementing a certification program" | a recorded decision, shown as one |
 
-The program's overall word is computed from these, and from the review: **missing** (required, no document), **drafted** (a document, no adoption evidence), **adopted** (document and act), **implemented** (and the records show the steps), **reviewed** (and a review exists as of a date), **current**, **stale**. A row with `fallback = STATUTE_DEFAULT` and no document of its own reads **default applies**, never "missing".
+3. **A vendor's proposal approved, or a contract signed, is implementation evidence**, not adoption (a program's steps may be carried out by a contract; the board's approval is a CIV 5200 record).
+4. **A document that says it was adopted** is evidence of the claim, "stated by the document itself", until an act is found.
+5. Where nothing matches, the state is "no act on record" with the minutes searched: how many sets, from which month to which, how many unread, **and which are not in the index at all** (a search over an index that begins in 2024 cannot find a 2022 act; the gap is named, not silent).
 
-**An approval of a vendor's proposal is not the adoption of a program.** A vendor's service contract may carry out a program's steps; the board's approval of the contract is a record (CIV 5200) and evidence of *implementation*, and at most a lead that the board meant to adopt the program. jason lists it as such and does not count it as adoption.
+**An approval of a vendor's proposal is not the adoption of a program.** jason lists it apart and does not count it as adoption.
+
+### The implementation record: the inspection log kind
+
+A program's steps leave records of one shape: a **dated log** appended to, with an inspector, the area or component, the condition found, and photos. The kind (`DocumentKind.PROGRAM_RECORD`, subkind log) has fields a reader extracts (each its own dated entry, the inspector, the areas, the photo references) and four rules the real cases forced:
+
+- **A reused template erases history.** A worksheet cleared and refilled loses the earlier entries; the reader notes "a template reused: earlier entries are not in this copy" and counts only the entries the file holds, never inferring the rest.
+- **A copy is not a new inspection.** Two files with the same text, or a copy made on a later date, is one record; the later date is a copy date.
+- **A last-modified date is not an inspection date.** A file's Drive revision date is evidence that someone saved it; it is shown as "saved on", never as "inspected on". Drive revision history is evidence jason keeps no store of; a person may read it and record it, labeled.
+- **A payment is not an inspection.** A vendor's invoice for a repair or cleaning is evidence of the work, in its own row, never of an inspection; and a log with no dated entry is "undated", not "done late".
+
+Each entry is placed to a step and a window by its own fields (the Completeness lens of `jason inspections` is the model: a reading that lacks a field is "unplaced" with the field named). One visit can satisfy several rows, and the log names which (below).
 
 ## Review: the document against the requirement, element by element
 
@@ -229,6 +352,13 @@ A review is one **lens** (`programs`) applied to one `ProgramDocument` (or a col
 | `implemented-on-schedule` | per timed element, the standing of its derived obligation | `STORE`, `TODAY` | the same `Standing` words |
 | `law-in-force` | as of the day, are the authorities the words in force, and has a lead appeared since the document's date? | `LAW` | "the words as of that day" through `law_readings.recite`; "not shown to be in force"; or a `Conflict` candidate |
 | `review-overdue` | is the document's own review element (an annual review) done? | `STORE`, `TODAY` | overdue, or the date |
+| `cadence-set` | for each element, which of the four cadences the document fixes; a silent one has the board's number? | `TEXT`, `PROFILE` | fixed (the number); silent (a question; a proposed value shown as not adopted); event or continuous (no clock, how it is verified) |
+| `alignment` | does each component's interval or life agree across the sources? | `TEXT`, `STORE`, `LAW` | each differing value side by side with its source; an omission; no pick (above) |
+| `no-double-count` | does the program restate a row a sub-program or another authority already holds? | `PROFILE`, `STORE` | the row it duplicates, and the pointer to use instead |
+| `responsible-party` | does each component and step name who does it, for the association and for owners? | `TEXT` | named · not stated (a question) |
+| `owner-communication` | for an owner's twin: has the association's part (notify, remind, enforce) been done or decided? | `STORE`, `PROFILE` | the notice's proof, or the recorded decision not to |
+| `law-stated-in-program` | does a statement of law *inside* the program match the shelf **as of the day**? | `TEXT`, `LAW` | each cited section checked against the words in force on the program's date and today, through `law_readings.recite` and `quote_check`; "quotes the section as it stood before an amendment", "cites another code's name", or "not on the shelf" are findings of fact, none says a law was violated |
+| `conditions-carried` | for a condition of approval: does the program carry each floor, and is the named approver's approval on file? | `TEXT`, `STORE` | carried · not carried (the floor and the program's value) · approval not on file |
 
 An element's anchors **find passages; they do not decide**. "Found at section 4" is a lead; "met" is a person's confirmed verdict, kept with their name and the passage. A model may propose a verdict only with a verbatim quote that the document holds (`reference_model.find_quote`), as the duty reader does, and its answer is labeled the model's. A review decides nothing and is stored beside, not over, the reading. It is rerun when its key changes (the document's digest, the lens's version, the as-of day, the context digest).
 
@@ -246,7 +376,7 @@ Each timed element yields a **proposed** `Obligation`:
 The catalog applied to one association, in three groups and a fourth that is not a gap:
 
 1. **Required by statute, not found or not adopted:** each `STATUTE` or `STATUTE_CONDITIONAL` row whose answer is *applies*, with its three evidences. A row that is *undetermined* is not here: it is in the questions. A row that is `default applies` is listed apart, with the default's recital.
-2. **Required by the declaration, not found or not adopted:** each confirmed `DECLARATION` row, the same way. A `PRESUPPOSED` row is a question.
+2. **Required by the declaration, not found or not adopted:** each confirmed `DECLARATION` row, the same way. A `PRESUPPOSED` row is a question. A `CONDITION_OF_APPROVAL` row is listed here with its agency and its `COUNSEL_FIRST` caveat ("whether it binds the association is not settled"), apart from the declaration's rows, so a mandate that may not bind is never shown as one that does. Each row shows its **six stages** (the lifecycle above), so a program that is written, adopted by a minute entry, and never inspected reads as that.
 3. **Adopted, but now conflicting with a newer statute:** the leads `jason conflicts --leads` lists against each adopted program's authorities, and each `Conflict` row that touches one. jason notes; the board, counsel, or an amendment resolves.
 4. **Questions:** the facts missing for a conditional row, the presupposed rows, the elements for a person, the references unresolved.
 
@@ -306,6 +436,8 @@ An adopted program is only half done. Each timed element has an `Obligation` (de
 | A moisture or similar inspection program in a declaration | none | the worked example of an `ADOPT_AND_IMPLEMENT` declaration row with an owner's twin |
 | An inspection and maintenance manual | none | an `ADOPT` declaration row with a permission to revise and no stated frequency |
 
+Each of the three is, under a maintenance-type parent program, a **sub-program the parent points at** (`parent` on the row), never a copy of its rows ("Overlap"). A mold-type program and a maintenance-manual-type program are the two worked cases that shaped the lifecycle, the cadences, the register, and the overlap rules above; each has a profile page, and its private findings stay in the profile's notes.
+
 The code of the three precedents is not rewritten. Each becomes an instance when its `Obligation` rows, its watchlist, or its program record is attached to a `ProgramRequirement` (the row's `obligations` and `evidence` pointers), so that the register shows it beside the others. The deep dives (a program's collection, pack recipe, and lens checks) are **instances** of the general forms below.
 
 ## The ingestion pipeline: finding mandates and referenced programs
@@ -339,7 +471,7 @@ Each mention is a **reference row**: who mentions it (the source document and se
 **Exists:** `DocumentKind` already has `POLICY`, `OPERATING_RULES`, `ELECTION_RULES`, `RESOLUTION`, `MINUTES`, `INSPECTION_REPORT`, `ELEVATED_ELEMENT_INSPECTION`, `COMMITTEE_REPORT`, `FORM`, `TEMPLATE`; `classify_document` applies a profile's `KindRule`s (names, folders, paths) first, then `content.CONTENT_RULES` (phrases near the top), then `RECORD_RULES`, then a local model that never overrides a rule.
 
 **Add:**
-- two kinds, `DocumentKind.PROGRAM` (a written program, manual, plan, or schedule the association adopts) and `PROGRAM_RECORD` (a log, checklist, or report of one round of a program's steps), each with a shelf in `documents.PROFILE` (decision 3);
+- kinds. The real cases found **no kind** for a program, manual, schedule, responsibility chart, inspection log, worksheet, equipment manual, or warranty, and "the manual" meant **five different documents** (a developer's care guide, a draft chart, the program the declaration requires, an equipment manual, the owners' manual). So kinds are named by what the document **does**, not by the word "manual": `DocumentKind.PROGRAM` (a written program, manual, plan, or schedule the association adopts), `RESPONSIBILITY_CHART` (who maintains what), `PROGRAM_RECORD` (a log, checklist, or worksheet of one round of steps, with the log subkind of the previous section), `EQUIPMENT_MANUAL`, and `WARRANTY`; plus a **developer's care guide** is `PROGRAM`-like but marked `DEVELOPER_DELIVERED`, never the association's adopted manual until an act says so. Each has a shelf in `documents.PROFILE` and, where it is one, a CIV 5200 record (decision 3). A reference that says "the manual" is resolved by **kind and role** (the one the mandate requires) and, where several fit, lists them all and picks none;
 - generic `ContentRule`s whose phrases are the genre's own words, never a profile's: "this program", "the following steps", "inspection and maintenance manual", "purpose of this plan", "shall be reviewed annually", and, for the adoption act, "adopted by the board of directors on"; each needs its `min_hits` and a test from a real false hit;
 - a profile's `KindRule` rows for the association's own file names (its facts), as today;
 - a `RecordRule` tying a program adopted by the board to the minutes that record it (an adoption's evidence is a CIV 5200 record).
@@ -348,7 +480,7 @@ Each mention is a **reference row**: who mentions it (the source document and se
 
 **Exists:** minutes' `Action` rows (mover, seconder, vote, the decision's words: `_MOTION`), resolutions with `ResolutionType` and `ResolutionSubject`, `readings.AdoptionReader` ("adopted on", a blank `DATED:` line as an unsigned draft), `manual.AdoptionEvent` (noticed, adopted, delivered), `record_stages`.
 
-**Add:** a field on the minutes and resolution readers, `adopts: tuple[str, ...]`, the names of instruments a motion or resolution adopts, approves, ratifies, amends, or rescinds, read from the motion's sentence by a small grammar (verb, optional determiner, a noun phrase ending in a program noun); a `ResolutionSubject.PROGRAM`. A linking step matches each name to a reference or a `ProgramRequirement.names` by the same normalization, producing an `AdoptionEvidence` row with the quote. A motion that approves a *vendor proposal or contract* is classed as implementation evidence, not adoption. Where nothing matches, the state is "no act on record" with the minutes searched (which months, how many sets, how many unread). A person may record an act jason did not find (`--adopted`, signed).
+**Add:** a field on the minutes and resolution readers, `adopts: tuple[str, ...]`, the names of instruments a motion or resolution adopts, approves, ratifies, amends, or rescinds, read from the motion's sentence by a small grammar (verb, optional determiner, a noun phrase ending in a program noun); a `ResolutionSubject.PROGRAM`. A linking step matches each name to a reference or a `ProgramRequirement.names` by the same normalization, producing an `AdoptionEvidence` row with the quote. Each entry is given a **verb class** (adopted, delegated, directed, listed, reviewed, quoted, declined; the table above) by a small grammar over the entry's own sentence, so "delegated a director to draft", "we would like to direct management to", and "was listed in the packet" are not read as adoption, and a sentence that **only repeats the section** is read as the mandate's words and never as an act (the false "adoption on record" the revision report printed). A motion that approves a *vendor proposal or contract* is classed as implementation evidence, not adoption. The document's own stated date and the act's date are kept apart. Where nothing matches, the state is "no act on record" with the minutes searched (which months, how many sets, how many unread). A person may record an act jason did not find (`--adopted`, signed).
 
 ### (e) The resolver, and the ingestion-versus-review split
 
@@ -371,6 +503,34 @@ The pipeline is **re-run when a governing document changes** (an amendment: the 
 - **The resolver.** For each reference, labeled: the right document, an embedded copy, several, or none; precision of "not found" is the number that matters (a wrongly missing document is a false gap).
 - **The adoption link.** For each motion that adopts a named instrument, labeled: linked right, linked wrong, missed.
 - The figures and a trial row go in the trials table of [document-tools.md](document-tools.md) when a model is used.
+
+### What the two real cases found: the ingestion gaps, and what each needs
+
+Both cases, run by hand against a real library and Drive, hit the same gaps. Each is a task, in the order they block the rest.
+
+| Gap | Effect | What to add |
+|---|---|---|
+| **No `DocumentKind` for the genre** (program, manual, schedule, responsibility chart, inspection log, worksheet, equipment manual, warranty) | nothing finds a program by kind; a log is "unclassified" | the kinds and phrase rules in (c); the `ContentRule` phrases are the genre's own words |
+| **Drive Docs and Sheets unclassified and unindexed** | the program and its worksheets are invisible to search, to `verify-quotes`, and to the pack | classify Drive-native files outside a Drive root by content (`content.classify_text`), read them (text, with the sheet's tabs and cell dates), and add them to the passage index in their own catalog |
+| **Minutes before a date are not in the index** | an adopting act from earlier years is unsearchable and unquotable; "no act on record" would be a false gap | index the minutes cache back to the earliest set, and report on each program "minutes searched from X to Y; not indexed before Z" |
+| **References unresolved** ("the manual"; "CC&R 7.8 (a)", which names no document and so is ambiguous across two documents that both have a 7.8) | nothing links the act or the report to the section | the reference extractor of (b), with an **ambiguity state**: a section number with no document name lists every document that has it, and the minutes' own context (a "CC&R" abbreviation) is a lead, not a pick |
+| **Reserve-study component narratives not read** | the maintenance assumptions behind each life, and the components the study omits, are not available to the alignment check | a reserve-study reader that extracts per-component narrative: component, life, the maintenance assumed, with the page; it is a record reader (a `DocumentModel`), not a duty reader |
+| **Three copies of one document not folded** (a Doc, a PDF, a Word file of the same text) | three members, three hits, three false "several candidates" | fold by text digest and near-copy (the index already folds near copies; extend the program resolver to it) |
+| **A statement of law inside a program not checked** | a quoted pre-amendment statute, or one cited under another code's name, goes unseen | the `law-stated-in-program` check, over each citation in a program document, as of the program's date and today |
+| **The word "manual" means five documents** | a wrong resolution | kinds by function, and the resolver's role |
+| **The duty reader gives "immediately", "periodically", "at all times" no cadence** | no clock, silently | the four-cadence field on the element; `deontic` marks the cadence kind (it already reads `recurrence_months`) |
+| **A minutes revision report prints "adoption on record" for a quote** | a false adoption | the verb classes of (d) |
+| **A condition of approval is not outlined as a duty** | a mandate outside the declaration is missed | the conditions reader |
+| **An inspection log has no date field; its only dates are Drive revisions jason keeps no store of; photos in an album jason cannot read** | an inspection is undated or invented | the log kind's rules; a store of Drive revision dates **as evidence labeled "saved on"**, read-only and per file; photos counted by link, never read |
+
+### Screening on Drive ingestion
+
+Reading Drive Docs into the index brings in material that must be **held back or refused before it is read**. Two real findings:
+
+- **Privileged counsel letters** must be held back. A letter from counsel that had no document kind and no confidential flag would have entered the index and a pack. Screening classifies by **sender and content before indexing** (the sender directory's kind for counsel, and phrase rules for "privileged and confidential" and "attorney-client"), sets `confidential` and the privilege hold, and **a document whose kind is "" and whose source is unknown is held, not indexed** (a miss is held, not passed). A held document is listed with the reason, never read into a pack for a non-board audience, and never a member of a program's collection.
+- **A secret scan of a Doc's text** before it is indexed or summarized. A Doc in a real Drive held credentials in plain text. The scan is `intake.secret_reason` (the same check that refuses a secret in an answer) run over every Drive Doc and Sheet on ingestion; a hit holds the file, **redacts it from every page and pack**, and raises a finding for a person ("this Doc holds what looks like a credential: rotate it"), never quoting the secret.
+
+Both screens run **before** classification, indexing, and any model call, and are re-run when the rules change. They are ingestion, a function of the file's bytes and the sender directory.
 
 ## The programs lens, the context packs, the collections
 
@@ -395,7 +555,23 @@ The task prompt (`TaskPrompt`) names **topics and document kinds only**, never a
 
 ### A collection per program
 
-`document_collections.CollectionKind.PROGRAM` (to add), `of_program(requirement, found)`: members are an index `Scope` (the kinds of the requirement and of its records, the folders of the found documents); context lines are the requirement's recited words and elements, the found document, the adoption evidence, the implementation standings, and the open questions; its label says what its material is. `jason collection program-<key>` builds the summary page under `data/collections/program-<key>/summary.md`, indexed in the collection's own catalog as a page jason wrote and never a member ([collections.md](collections.md)): its files and how each was read, what is missing, the open questions, the conflicts of fact, and the chronology (a program's life: the mandating provision's dates, the document's, the adoption, each round of the steps).
+Today a collection is code: `document_collections.collections(community)` yields one per legal case with a case file, and a `Scope` selects catalogs, kinds, and folders, never "the documents about a program". So `jason collection program-<key>` answers "no collection" for every program. Both real cases hit this, and a `Scope` cannot be the answer: the members of a program are documents the **kinds and folders do not gather** (a minutes passage that adopts it, a worksheet in a Drive folder of unrelated files, one letter to one owner).
+
+The proposal is a profile row, `Program` (`Community.programs()`, empty by default), and `CollectionKind.PROGRAM` built from it by `document_collections.of_program(program)`. A `Program` holds the requirement keys it answers and its **named members, each with a role**:
+
+| Role | Members |
+|---|---|
+| `MANDATE` | the mandating provisions and their neighbours (the declaration's sections, a condition of approval, the statutes) |
+| `PROGRAM` | the written program or manual, every copy (folded: three copies of one manual are one member with three locations) |
+| `ADOPTING_ACT` | the minutes, the resolution, the board item that adopt or delegate it |
+| `RECORD` | the implementation records: logs, worksheets, reports, with their revision dates |
+| `VENDOR_RECORD` | contracts, proposals, and reports by the step they serve (not by vendor) |
+| `MAIL` | the correspondence about it |
+| `OWNER_FACING` | the documents that tell owners (the owners' manual, a letter, a notice) |
+| `REFERENCE` | the reserve study, the developer's deliveries, equipment manuals, warranties |
+| `SUB_PROGRAM` | a sub-program's own collection, by key (listed, not merged) |
+
+A member is a document id (or a passage: the minutes' item), never a copied text; a member's role and the `Scope` it falls under are both kept, so a program's collection can also take a `Scope` for the kinds it expects to find and report what the named list lacks. Its context lines are the requirement's recited words and elements, the found document, the adoption evidence **with its verb class**, the implementation standings, and the open questions; its label says what its material is. A privileged document is **never** a member ("Screening on Drive ingestion", above). The collection is confidential at the level of its strictest member. `jason collection program-<key>` builds the summary page under `data/collections/program-<key>/summary.md`, indexed in the collection's own catalog as a page jason wrote and never a member ([collections.md](collections.md)): its files and how each was read, what is missing, the open questions, the conflicts of fact, and the chronology (a program's life: the mandating provision's dates, the document's, the adoption, each round of the steps).
 
 ### A reference page per requirement
 
@@ -440,6 +616,11 @@ Tools (read-only, `--profile governance` and `board`): `program_register`, `prog
 6. **Owners' duties.** Whether jason may tell owners of the owner's half of a program, in the annual statement or a letter, and who writes the notice. jason enforces nothing.
 7. **Frequency.** Where the document says "periodic" and the law is silent, the board states the period. Until it does the element has no clock and one question.
 8. **Statute rows beyond the Civil Code.** Only the Civil Code was scanned. Decide the order of the other codes (Health and Safety, Business and Professions, Government) and the regulations.
+9. **A condition of approval.** Whether the conditions of a public approval bind the association is the agency's or counsel's. Decide who asks, and whether the row is shown as a floor jason checks the program against (with the caveat) or held out of the register until answered.
+10. **What an adopting act is.** Whether a minute entry that "approved the program" is an adequate adoption, or the board should adopt by resolution, is counsel's. Until then the entry is shown as an act on record, with its verb class and its date beside the document's own.
+11. **The association's part toward owners.** Notify, remind, or enforce, for an owner's twin of a program: the board's decision, recorded as one (including a decision not to require certification).
+12. **A store of Drive revision dates.** Whether jason keeps a read-only store of file revision dates as evidence (labeled "saved on"), and who may read it; a revision date is never an inspection date.
+13. **Screening before indexing.** The rule for a document with no kind and an unknown source (held, not indexed), and who releases a held one.
 
 ## Limits
 
