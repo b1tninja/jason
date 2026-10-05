@@ -69,10 +69,20 @@ def main() -> None:
     ap.add_argument("--per-kind", type=int, default=3)
     ap.add_argument("--max-mb", type=float, default=8.0)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--pick", action="append", default=[], metavar="KIND=PATH",
+                    help="a file a person (or a search of Gmail and Drive) found for a kind the name rules miss; repeatable")
     args = ap.parse_args()
     limit = int(args.max_mb * 1024 * 1024)
 
     rows = library_rows() + other_rows()
+    for pick in args.pick:
+        kind, _, path = pick.partition("=")
+        if kind not in {k.value for k in DocumentKind}:
+            raise SystemExit(f"--pick {pick!r}: {kind!r} is not a document kind")
+        file = Path(path)
+        if not file.is_file():
+            raise SystemExit(f"--pick {pick!r}: no such file")
+        rows.append({"kind": kind, "file": file, "confidential": False, "how": "picked by search"})
     by: dict[str, list[dict]] = {}
     for row in rows:
         if row["file"].stat().st_size <= limit:
@@ -81,7 +91,7 @@ def main() -> None:
     manifest, taken = {}, set()
     for kind in [k.value for k in DocumentKind] + ["unclassified"]:
         # library-classified first, then smaller files: a sample should open quickly
-        candidates = sorted(by.get(kind, []), key=lambda r: (r["how"] != "library", r["file"].stat().st_size))
+        candidates = sorted(by.get(kind, []), key=lambda r: (r["how"] not in ("library", "picked by search"), r["file"].stat().st_size))
         chosen = []
         if not args.dry_run and (OUT / kind).is_dir():
             shutil.rmtree(OUT / kind)  # this script's own folder for the kind; a rebuild replaces it
