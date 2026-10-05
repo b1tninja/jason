@@ -148,8 +148,10 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="executive session items are listed by title only"),
             Step("Draft the agenda from the last agenda Doc.", command="jason board --agenda DOC_ID --doc --yes",
                  check="the draft's format line names the meeting's format (the agenda plan's, or --format), not "
-                       "\"Format assumed\"; only a meeting held entirely by teleconference carries 4926's lines",
-                 refs=("docs/board-agenda.md",), lessons=("notice-date-ignored-documents",)),
+                       "\"Format assumed\"; only a meeting held entirely by teleconference carries 4926's lines, and "
+                       "its individual-delivery reminder recites 4045(b) and 4041(a)(1) with no highlighted miss",
+                 refs=("docs/board-agenda.md",), lessons=("notice-date-ignored-documents",
+                                                          "teleconference-reminder-paraphrased")),
             Step("Share the packet with the directors from Drive.", person=True),
         ),
         refs=("docs/board-agenda.md", "docs/payhoa-reports.md"),

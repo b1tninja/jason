@@ -19,7 +19,8 @@ What the notice says comes from records, never from a default:
   or the governing documents' longer period, 4920(b)(3)), as a date line, not a number in prose;
 - **the law it mentions**, recited from the statutes on disk (``data/authorities``, ``jason export-authorities``): 4930
   whole, 4045(b), and 4041(a)(1). A section not on disk is a highlighted miss that says so; its words are never
-  paraphrased in its place;
+  paraphrased in its place. The draft agenda recites the same 4045(b) and 4041(a)(1) through ``delivery_recitals``
+  and ``delivery_lines``;
 - **the signer** and the association's name from ``Community.identity()``.
 
 A value the records do not hold is left highlighted (``==[...]==``) for a person, and listed in ``Notice.review``.
@@ -49,6 +50,9 @@ RECITALS: dict[str, str] = {
     "RECITE_INDIVIDUAL_DELIVERY": "CIV 4045(b)",
     "RECITE_DELIVERY_METHOD": "CIV 4041(a)(1)",
 }
+# The two that say how a member asks for individual delivery: 4926(a)(1)(C)'s "instructions on how to do so". The notice
+# and the agenda (``meeting_agenda.individual_delivery_lines``) recite these same ones.
+DELIVERY_RECITALS = ("RECITE_INDIVIDUAL_DELIVERY", "RECITE_DELIVERY_METHOD")
 
 # What a person writes in place of a token the records leave empty; the blank stays highlighted in the draft.
 BLANKS: dict[str, str] = {
@@ -108,7 +112,7 @@ class Recital:
     def lines(self) -> list[str]:
         if not self.found:
             return [f"=={self.label}: not on disk ({self.reason}). Its words are not paraphrased here: run jason "
-                    "export-authorities, then draw the notice again.=="]
+                    "export-authorities, then draw it again.=="]
         how = "; the subdivision as jason split it from the section" if self.split else ""
         session = f", {self.session} session" if self.session else ""
         return [*(f"> {p}" for p in self.paragraphs), "",
@@ -210,6 +214,30 @@ def recite(data_dir: Path, citation: str, token: str = "") -> Recital:
     if last < len(words) - 1:
         out.append("…")
     return Recital(token, citation, True, tuple(out), split=True, **base)
+
+
+def delivery_recitals(data_dir: Path | None) -> list[Recital]:
+    """4045(b) and 4041(a)(1) (``DELIVERY_RECITALS``) from the statutes on disk. With no data directory, each is a miss."""
+    if data_dir is None:
+        return [Recital(t, RECITALS[t], False, reason="no statute shelf was given") for t in DELIVERY_RECITALS]
+    return [recite(data_dir, RECITALS[t], t) for t in DELIVERY_RECITALS]
+
+
+def delivery_lines(recitals: Iterable[Recital], request: str = "") -> list[str]:
+    """How a member asks for individual delivery, as the notice's "How this notice is delivered" gives it: each statute
+    recited (or its visible miss), then where to write. ``request`` is the association's address or email for notices
+    (``delivery_request``); with none, a blank for a person."""
+    out: list[str] = []
+    for r in recitals:
+        out += [f"{r.label} reads:", "", *r.lines(), ""]
+    where = request or f"==[{BLANKS['DELIVERY_REQUEST']}]=="
+    out.append(f"To ask for individual delivery, or to change your delivery method, write to {where}.")
+    return out
+
+
+def delivery_request(identity: Any) -> str:
+    """Where a member writes to ask for individual delivery: the designated recipient and address, and the email."""
+    return _delivery(identity)[1]
 
 
 # --- The agenda ------------------------------------------------------------------------------------------------------
@@ -446,6 +474,6 @@ def write(data_dir: Path, notice: Notice, letterhead: Any = None) -> dict[str, P
     return paths
 
 
-__all__ = ["BLANKS", "Meeting", "Notice", "NoticeRefused", "RECITALS", "Recital", "TEMPLATE", "agenda_lines",
-           "base_text", "choose_items", "email_html", "fill", "from_plan", "recite", "render", "select_blocks",
-           "statute_label", "write"]
+__all__ = ["BLANKS", "DELIVERY_RECITALS", "Meeting", "Notice", "NoticeRefused", "RECITALS", "Recital", "TEMPLATE",
+           "agenda_lines", "base_text", "choose_items", "delivery_lines", "delivery_recitals", "delivery_request",
+           "email_html", "fill", "from_plan", "recite", "render", "select_blocks", "statute_label", "write"]

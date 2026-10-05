@@ -2718,9 +2718,20 @@ def cmd_board(args: argparse.Namespace) -> int:
         with _agent(args) as agent:
             previous = read_doc(agent.docs(), args.agenda)
         before = date.fromisoformat(args.previous) if args.previous else None
+        # The individual-delivery reminder recites 4045(b) and 4041(a)(1) from the statutes on disk, as the notice does.
+        from jason.tasks.meeting_notice import delivery_recitals, delivery_request
+        from jason.tasks.meeting_agenda import delivery_section
+
+        request = delivery_request(active().identity())
         lines = draft(previous, load(data_dir), meeting, schedule, tech_contact=args.tech_contact or basics.get("help", ""),
                       previous_meeting=before, meeting_format=fmt, format_source=fmt_source if fmt else "",
-                      location=basics.get("location", ""), subjects=subjects)
+                      location=basics.get("location", ""), subjects=subjects, data_dir=data_dir,
+                      delivery_request=request)
+        if fmt in (None, MeetingFormat.TELECONFERENCE):
+            for r in delivery_recitals(data_dir):
+                if not r.found:
+                    print(f"{r.label} is not on disk ({r.reason}): the agenda shows the miss; run jason "
+                          "export-authorities, then draft again.", file=sys.stderr)
         out = data_dir / "board" / f"agenda-{meeting.isoformat()}.md"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines), encoding="utf-8")
@@ -2749,6 +2760,7 @@ def cmd_board(args: argparse.Namespace) -> int:
 
             template = template_for(active(), TemplateKind.AGENDA, data_dir, profile_name())
             body = agenda_items(previous, load(data_dir), meeting, schedule, previous_meeting=before, subjects=subjects)
+            body += delivery_section(data_dir, request)      # the template's note points here (4926(a)(1)(C))
             values = agenda_values(previous, meeting, schedule, tech_contact=args.tech_contact)
             short = f"{meeting.month}/{meeting.day}/{meeting.year % 100:02d}"
             docs_file = data_dir / "board" / "docs.json"

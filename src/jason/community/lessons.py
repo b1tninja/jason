@@ -1543,8 +1543,16 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("teleconference-reminder-paraphrased", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
            "meeting_agenda.format_lines and the agenda template word the 4926(a)(1)(C) individual-delivery reminder in "
            "jason's own phrasing.", "They were written before the rule to recite, not paraphrase.",
-           "Still to do: use the board meeting notice base's recital of 4045(b) and 4041 (jason board --notice).",
-           Status.OPEN),
+           "The agenda's reminder now says a member may request individual delivery of meeting notices (4926(a)(1)(C)) "
+           "and recites 4045(b) and 4041(a)(1) from the statutes on disk through the board meeting notice's own helpers "
+           "(meeting_notice.delivery_recitals, delivery_lines), with where to write; a statute not on disk is a "
+           "highlighted miss, and jason board --agenda says so. The agenda template's note points to that section "
+           "(\"How notices are delivered\", meeting_agenda.delivery_section) instead of wording the law.",
+           Status.FIXED, guards=("tests/test_meeting_notice.py::test_the_teleconference_agenda_recites_the_notices_"
+                                 "delivery_statutes", "tests/test_meeting_notice.py::test_the_agendas_reminder_shows_a_"
+                                 "missing_statute_as_a_miss", "tests/test_meeting_notice.py::test_the_agenda_template_"
+                                 "points_to_the_recited_section"),
+           docs=("docs/board-agenda.md", "docs/base-templates.md")),
 )
 
 

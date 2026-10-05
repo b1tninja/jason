@@ -301,3 +301,63 @@ def test_the_command_writes_the_notice_and_sends_nothing(shelf, monkeypatch, cap
     assert (shelf / "board" / "notices" / "notice-2099-01-20.html").is_file()
     args.format, args.ballots_counted = "teleconference", True
     assert cli._board_notice(args, shelf) == 2
+
+
+# --- The agenda's individual-delivery reminder recites the same words (lesson teleconference-reminder-paraphrased) -------
+
+# jason's old wording of the reminder, which paraphrased the law in place of reciting it.
+PARAPHRASES = ("write to the board", "by writing to the board", "You may ask to receive meeting notices")
+
+
+def _agenda(data_dir, fmt="teleconference", request="board@example.org"):
+    from jason.tasks.meeting_agenda import AgendaDoc, AgendaHeading, draft
+
+    previous = AgendaDoc(headings=[AgendaHeading("Call to Order", 4), AgendaHeading("Open Forum", 4),
+                                   AgendaHeading("Time and Place of next Regular Meeting", 4)])
+    return "\n".join(draft(previous, [], MEETING, None, meeting_format=fmt, tech_contact="Pat Doe",
+                           data_dir=data_dir, delivery_request=request))
+
+
+def test_the_teleconference_agenda_recites_the_notices_delivery_statutes(shelf):
+    text = _agenda(shelf)
+    assert "A member may request individual delivery of meeting notices (CIV 4926(a)(1)(C))." in text
+    assert "Civil Code Section 4045(b) reads:" in text and "Civil Code Section 4041(a)(1) reads:" in text
+    assert "> (b) A member who asks gets every general notice delivered to that member alone, the zebra rule." in text
+    assert "> (1) How the member wants notices" in text and "A second way" not in text
+    assert "write to board@example.org." in text
+    for said in PARAPHRASES:
+        assert said not in text, said
+    # One source of the words: each recital reads in the agenda exactly as in the notice of the same meeting.
+    notice = _draw(shelf, MeetingFormat.TELECONFERENCE)
+    for r in notice.recitals:
+        if r.token in mn.DELIVERY_RECITALS:
+            assert "\n".join(r.lines()) in text and "\n".join(r.lines()) in notice.markdown
+
+
+def test_the_agendas_reminder_shows_a_missing_statute_as_a_miss(tmp_path):
+    text = _agenda(_shelf(tmp_path, leave_out=("4045",)))
+    assert "==Civil Code Section 4045(b): not on disk (" in text and "Its words are not paraphrased here" in text
+    assert "zebra" not in text and "> (1) How the member wants notices" in text
+    bare = _agenda(None, request="")
+    assert bare.count("not on disk (no statute shelf was given)") == 2
+    assert "write to ==[the association's address or email for notices]==." in bare
+    for said in PARAPHRASES:
+        assert said not in bare, said
+
+
+def test_only_a_teleconference_agenda_carries_the_reminder(shelf):
+    for fmt in ("hybrid", "in person"):
+        text = _agenda(shelf, fmt)
+        assert "individual delivery" not in text and "4045(b)" not in text
+
+
+def test_the_agenda_template_points_to_the_recited_section(shelf):
+    from jason.community.templates import BODIES, TemplateKind
+    from jason.tasks.meeting_agenda import DELIVERY_HEADING, delivery_section
+
+    body = "\n".join(text for _, text in BODIES[TemplateKind.AGENDA])
+    assert f'"{DELIVERY_HEADING}"' in body and "4926(a)(1)(C)" in body
+    for said in PARAPHRASES:
+        assert said not in body, said
+    section = "\n".join(delivery_section(shelf, "board@example.org"))
+    assert f"### {DELIVERY_HEADING}" in section and "the zebra rule." in section

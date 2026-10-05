@@ -203,17 +203,19 @@ BODIES: dict[TemplateKind, tuple[tuple[Block, str], ...]] = {
         *_CLOSING,
     ),
     # The board's agenda on the letterhead. {AGENDA_ITEMS} is one paragraph that filling replaces with the numbered
-    # business (jason.tasks.meeting_agenda.agenda_items); the rest is what an all-teleconference meeting's notice must
-    # carry (CIV 4926(a)(1), (3)).
+    # business (jason.tasks.meeting_agenda.agenda_items) and, after it, the statutes on individual delivery recited from
+    # disk (meeting_agenda.delivery_section, "How notices are delivered"); the rest is what an all-teleconference
+    # meeting's notice must carry (CIV 4926(a)(1), (3)). The reminder recites no statute here: the section does.
     TemplateKind.AGENDA: (
         (TITLE, "{MEETING_KIND}"),
         (T, ""),
         (BOX, "**{MEETING_DATE} at {MEETING_TIME}**"),
         (BOX, "by {MEETING_PLATFORM}: {ZOOM_LINK}"),
         (BOX, "Meeting ID {ZOOM_MEETING_ID} · by telephone {ZOOM_PHONE}"),
-        (NOTE, "Technical help before and during the meeting: {TECH_CONTACT}. You may ask to receive meeting notices by "
-               "individual delivery by writing to the board. Every vote of the directors at this meeting is taken by roll "
-               "call (Civil Code Section 4926(a))."),
+        (NOTE, "Technical help before and during the meeting: {TECH_CONTACT}. A member may request individual delivery "
+               "of meeting notices; how to ask is under \"How notices are delivered\" after the agenda (Civil Code "
+               "Section 4926(a)(1)(C)). Every vote of the directors at this meeting is taken by roll call (Civil Code "
+               "Section 4926(a)(3))."),
         (T, ""),
         (T, "{AGENDA_ITEMS}"),
     ),

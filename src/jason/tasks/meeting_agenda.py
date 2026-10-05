@@ -11,8 +11,10 @@ meeting's agenda from it as Markdown:
   acted on (4930);
 - the header follows the meeting's format (``MeetingFormat``: the agenda plan's for the date, or a person's flag). A
   meeting held entirely by teleconference carries what 4926(a) asks of its notice: technical instructions, the
-  telephone and email of a person who can help before and during the meeting, the reminder that members may ask for
-  individual delivery of notices, and that every vote of the directors is by roll call (4926(a)(1), (3)). A hybrid
+  telephone and email of a person who can help before and during the meeting, the reminder that a member may request
+  individual delivery of meeting notices with 4045(b) and 4041(a)(1) recited from disk by the board meeting notice's
+  helpers (``individual_delivery_lines``; a statute not on disk is a visible miss), and that every vote of the
+  directors is by roll call (4926(a)(1), (3)). A hybrid
   meeting's names the physical location, with a director or the board's designee there (4090(b)); an in-person
   meeting's names its place. With no format given, the draft assumes the first and says so;
 - the standing items carry forward; the business items carry forward marked "carried over" for the board to keep or drop;
@@ -148,11 +150,23 @@ FORMAT_LABEL = {MeetingFormat.TELECONFERENCE: "held entirely by teleconference, 
                 MeetingFormat.IN_PERSON: "in person (CIV 4090(a))"}
 
 
-def format_lines(fmt: MeetingFormat, *, tech_contact: str = "", location: str = "") -> list[str]:
+def individual_delivery_lines(data_dir: Path | None, request: str = "") -> list[str]:
+    """4926(a)(1)(C)'s reminder that a member may request individual delivery, with how: 4045(b) and 4041(a)(1) recited
+    from the statutes on disk by the board meeting notice's own helpers (``meeting_notice.delivery_recitals``,
+    ``delivery_lines``), then where to write. A statute not on disk is a highlighted miss, never a paraphrase."""
+    from jason.tasks.meeting_notice import delivery_lines, delivery_recitals
+
+    return ["A member may request individual delivery of meeting notices (CIV 4926(a)(1)(C)).", "",
+            *delivery_lines(delivery_recitals(data_dir), request)]
+
+
+def format_lines(fmt: MeetingFormat, *, tech_contact: str = "", location: str = "", data_dir: Path | None = None,
+                 delivery_request: str = "") -> list[str]:
     """What the notice says about taking part, by the meeting's format. 4926's lines (technical instructions, a person
     who can help, the individual-delivery reminder, roll-call votes) are for a meeting held entirely by teleconference
     only (4926(a)); a hybrid meeting's notice names a physical location with a director or the board's designee there
-    (4090(b)); an in-person meeting's names its place (4920(a))."""
+    (4090(b)); an in-person meeting's names its place (4920(a)). The individual-delivery reminder recites the statutes
+    from ``data_dir`` (``individual_delivery_lines``); ``delivery_request`` is where a member writes."""
     if fmt is MeetingFormat.IN_PERSON:
         return [f"Members may attend the meeting at {location or '[the place of the meeting]'} (CIV 4920(a), 4925(a))."]
     if fmt is MeetingFormat.HYBRID:
@@ -161,9 +175,8 @@ def format_lines(fmt: MeetingFormat, *, tech_contact: str = "", location: str = 
                 "Members may also join by teleconference from the link, or by telephone at the number above with the meeting ID."]
     return ["To participate: join the Zoom meeting from the link, or by telephone at the number above with the meeting ID. "
             f"Technical help before and during the meeting: {tech_contact or '[name, telephone, and email of the person who can help]'} "
-            "(CIV 4926(a)(1)(A), (B)).",
-            "You may ask to receive meeting notices by individual delivery; write to the board at the association's address "
-            "or email (CIV 4926(a)(1)(C), 4040).",
+            "(CIV 4926(a)(1)(A), (B)).", "",
+            *individual_delivery_lines(data_dir, delivery_request), "",
             "Every vote of the directors at this meeting is taken by roll call (CIV 4926(a)(3))."]
 
 
@@ -285,13 +298,16 @@ def agenda_items(previous: AgendaDoc, items: list[BoardItem], meeting: date, sch
 
 def draft(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: Any, *, tech_contact: str = "",
           include_open: bool = False, previous_meeting: date | None = None, meeting_format: MeetingFormat | str | None = None,
-          format_source: str = "", location: str = "", subjects: dict[str, Any] | None = None) -> list[str]:
+          format_source: str = "", location: str = "", subjects: dict[str, Any] | None = None,
+          data_dir: Path | None = None, delivery_request: str = "") -> list[str]:
     """The next meeting's draft agenda (Markdown): the header the notice needs for the meeting's format, the
     secretary's notes on the notice, and ``agenda_items``.
 
     ``meeting_format`` is the meeting's ``MeetingFormat`` (from the agenda plan for the date or a person's flag;
     ``format_source`` says which). With none, the draft assumes a meeting held entirely by teleconference, as it always
-    drafted, and says it assumed so. ``subjects`` is the agenda plan's 4935 subject by item id (``executive_lines``)."""
+    drafted, and says it assumed so. ``subjects`` is the agenda plan's 4935 subject by item id (``executive_lines``).
+    ``data_dir`` holds the statutes the individual-delivery reminder recites, and ``delivery_request`` is where a member
+    writes (``format_lines``)."""
     annual = schedule is not None and schedule.annual_month == meeting.month and schedule.day_in(meeting.year, meeting.month) == meeting
     from jason.tasks.board_items import notice_period
 
@@ -303,7 +319,8 @@ def draft(previous: AgendaDoc, items: list[BoardItem], meeting: date, schedule: 
     out = [f"# DRAFT Agenda for {meeting.month}/{meeting.day}/{meeting.year % 100:02d}", ""]
     out.append(_meeting_line(previous.header, meeting, schedule, fmt, location))
     out.append("")
-    out += format_lines(fmt, tech_contact=tech_contact, location=location)
+    out += format_lines(fmt, tech_contact=tech_contact, location=location, data_dir=data_dir,
+                        delivery_request=delivery_request)
     out.append("")
     out.append(f"_Notice with this agenda must go out by {notice_by:%A, %B} {notice_by.day} ({basis}); the board may act only on "
                "items on this agenda (CIV 4930)._")
@@ -345,7 +362,17 @@ def agenda_values(previous: AgendaDoc, meeting: date, schedule: Any, *, tech_con
     return {k: v for k, v in values.items() if v}
 
 
-HIGHLIGHT = {"color": {"rgbColor": {"red": 1.0, "green": 0.95, "blue": 0.6}}}
+# The heading the agenda template's note points to ("how to ask follows the agenda"; ``templates.BODIES``).
+DELIVERY_HEADING = "How notices are delivered"
+
+
+def delivery_section(data_dir: Path | None, request: str = "") -> list[str]:
+    """The agenda Doc's closing section, after ``agenda_items``: the statutes on individual delivery recited from disk
+    and where to write (``individual_delivery_lines``), which the template's teleconference note points to."""
+    return ["", f"### {DELIVERY_HEADING}", "", *individual_delivery_lines(data_dir, request)]
+
+
+HIGHLIGHT ={"color": {"rgbColor": {"red": 1.0, "green": 0.95, "blue": 0.6}}}
 
 
 def insertion_requests(doc: dict[str, Any], items: list[BoardItem], *, before: str = "Open Forum",
@@ -405,5 +432,5 @@ def minutes_template(meeting: date, directors: list[str], agenda_lines: list[str
     return out
 
 
-__all__ = ["AgendaDoc", "AgendaHeading", "parse_doc", "read_doc", "agenda_items", "agenda_values", "draft", "format_lines",
-           "executive_lines", "minutes_template"]
+__all__ = ["AgendaDoc", "AgendaHeading", "parse_doc", "read_doc", "agenda_items", "agenda_values", "delivery_section",
+           "draft", "format_lines", "individual_delivery_lines", "executive_lines", "minutes_template"]
