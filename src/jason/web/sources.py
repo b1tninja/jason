@@ -944,6 +944,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "people": "jason.web.extra.people:people",  # who holds each office: a signed-in roster person only, read-only
     "theme": "jason.web.extra.theme:theme",
     "community-profile": "jason.web.extra.community_profile:community_profile",
+    "community": "jason.web.extra.community_record:community_record",  # the standing facts, each sourced: board only
     "associations": "jason.web.extra.discovery:associations",
     "documents-located": "jason.web.extra.discovery:documents_located",
     "key-documents": "jason.web.extra.key_documents:key_documents",

@@ -118,7 +118,7 @@ The design leaves out the recorded, corporate, meetings, elections, enforcement,
 - **Switching communities is not a browser setting.** The profile is fixed when jason-web starts (`JASON_PROFILE`). Another association is another installation or profile. `/api/communities` lists the portal.
 - **No theme file names a profile.** `themes/<profile>.css` duplicates the profile's own theme, which `/api/theme` serves.
 
-**Build (ours, optional):** one `GET /api/community` that merges `identity()`, `board()`, `board_notice_period()`, `open_forum_limit()`, and `fiscal_year_end()`, each with its source.
+**Build (ours, optional):** one `GET /api/community` that merges `identity()`, `board()`, `board_notice_period()`, `open_forum_limit()`, and `fiscal_year_end()`, each with its source. *Built* (`jason.web.extra.community_record`).
 
 ## People and offices
 
@@ -210,6 +210,6 @@ Replace each with made-up values (`example.org`, "123 Main St", "24CV000123"), a
 3. **People:** read-only from the session; term dates and a recorded board-roster change.
 4. **The notice template** from `notice_period()`, `open_forum_limit()`, and the 4090(b) and 4926 split, in the Markdown pipeline.
 5. **`HostPanel` as a sheet,** and the sticky Previous and Next row.
-6. **Optional:** `GET /api/community`.
+6. **Optional:** `GET /api/community`. *Done:* `jason.web.extra.community_record`, each fact with its source, board only ([web-ui.md](../web-ui.md)); no screen, since Community profile already shows the public part.
 
 The statement, the request picker, and the owner emails wait for the board's decisions (correction 22 and the build order's step 8).

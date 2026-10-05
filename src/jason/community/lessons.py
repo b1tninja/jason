@@ -1802,6 +1802,12 @@ LESSONS: tuple[Lesson, ...] = (
                   "application, Keeper, PayHOA, Zoom) is an administrator's flow still to be built; until then the "
                   "console shows the terminal command and the route accepts a Keeper record's name as the CLI does "
                   "(docs/onboarding.md, Connecting integrations).",)),
+    Lesson("signer-default-looks-chosen", date(2026, 10, 4), (Area.DOCUMENTS, Area.ONBOARDING),
+           "Identity.signer defaults to \"Board of Directors\", so a profile that never named a signer reads the same as "
+           "one that chose that wording.", "The default was written into the record instead of the templates.",
+           "GET /api/community flags the signer default: true. Still to do: an empty default on Identity.signer, with "
+           "the templates falling back to the general wording.",
+           Status.OPEN, guards=("tests/test_web_community.py (the signer default is flagged)",)),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
            "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",
