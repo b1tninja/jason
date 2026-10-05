@@ -42,16 +42,16 @@ def notice_batches(data_dir: Path, key: str) -> list[dict[str, Any]]:
 
 def _event_facts(args: argparse.Namespace, found: Any):
     """The facts a conditional row is answered from, and the ones the person said: the profile's own
-    (``Community.applicability_facts()``), then each ``--fact FACT=WORD``. (None, None) when no fact was asked for,
-    so the catalog prints as it always has."""
-    from jason.community.applicability import Facts, profile_facts
+    (``Community.applicability_facts()``), a person's answers about the association in the intake queue, then each
+    ``--fact FACT=WORD``. (None, None) when no fact was asked for, so the catalog prints as it always has."""
     from jason.community.notice_elements import event_facts
+    from jason.tasks.applicability_asks import association_facts
 
     pairs = getattr(args, "fact", None) or ()
     if not pairs and not getattr(args, "required", False):
         return None, None
     said = event_facts(pairs, where="jason notices --fact")
-    return Facts.build(profile=profile_facts(found)).merge(said), frozenset(v.fact for v in said.values)
+    return association_facts(found, _data_dir(args)).merge(said), frozenset(v.fact for v in said.values)
 
 
 def _catalog(key: str | None, args: argparse.Namespace | None = None) -> int:

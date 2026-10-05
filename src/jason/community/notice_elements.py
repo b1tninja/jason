@@ -275,6 +275,33 @@ def signs_for(requirement: NoticeRequirement) -> tuple[Sign, ...]:
     return tuple(rows.get(e) or Sign(e, requirement.statute, checkable=False) for e in requirement.content)
 
 
+@dataclass(frozen=True)
+class Conditional:
+    """One condition the notice catalog carries: a requirement's own (when the notice is required) or one of its
+    elements' (when a notice needs the element). ``name`` says which, for a question that waits on it."""
+
+    name: str
+    applies: Condition
+    authority: str = ""
+
+
+def conditionals(rows: Iterable[NoticeRequirement] | None = None) -> tuple[Conditional, ...]:
+    """Every condition of the catalog's rows (default: the general catalog) and of their elements, in the rows'
+    order. A caller asks them of the association's standing facts to find what a person must settle
+    (``jason.community.applicability_asks.standing_findings``)."""
+    if rows is None:
+        from jason.community.notice_catalog import REQUIREMENTS   # the catalog imports no element, so no cycle
+
+        rows = REQUIREMENTS
+    out: list[Conditional] = []
+    for row in rows:
+        if row.applies is not ALWAYS:
+            out.append(Conditional(f"notice {row.key}", row.applies, row.statute))
+        out += [Conditional(f"notice {row.key}: {sign.element}", sign.applies, sign.cite)
+                for sign in signs_for(row) if sign.applies is not ALWAYS]
+    return tuple(out)
+
+
 # --- Reading a notice ------------------------------------------------------------------------------------------------
 
 _TAG = re.compile(r"<[^>]+>")
@@ -465,6 +492,6 @@ def law_statements(text: str) -> list[LawStatement]:
     return out
 
 
-__all__ = ["ElementFinding", "LawStatement", "SIGNS", "STATUTE_TOKEN_NOTE", "Sign", "Status", "check",
+__all__ = ["Conditional", "conditionals", "ElementFinding", "LawStatement", "SIGNS", "STATUTE_TOKEN_NOTE", "Sign", "Status", "check",
            "check_element", "law_statements", "mask_recitals", "missing", "plain", "signs_for", "EVENT_FACTS",
            "event_facts", "EMERGENCY_RULE_CHANGE", "ENTIRELY_BY_TELECONFERENCE", "ELECTRONIC_VOTING_USED"]

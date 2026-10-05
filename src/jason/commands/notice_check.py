@@ -10,7 +10,8 @@ that would cite it (a proposal; nothing is changed). Writes ``data/reports/notic
 An element only some notices need (a teleconference meeting's instructions, an emergency rule change's expiry date)
 turns on a fact about the event. ``--event FACT=WORD`` says one (``meeting_format=entirely_by_teleconference``,
 ``rule_change=emergency``, ``electronic_voting=opt_out``; repeatable), and the profile's own facts
-(``Community.applicability_facts()``) are read beside it. An element the facts rule out does not apply, with the fact
+(``Community.applicability_facts()``) and a person's answers about the association in the intake queue (``jason
+applies --questions``) are read beside it. An element the facts rule out does not apply, with the fact
 that decided it; one they call for is required here. With no fact, the element is undetermined: it is checked and
 reported with its condition, and the fact that would settle it is named.
 
@@ -28,10 +29,10 @@ from typing import Any, Callable
 
 def cmd_notice_check(args: argparse.Namespace) -> int:
     from jason.community import community as active
-    from jason.community.applicability import Facts, profile_facts
     from jason.community.notice_elements import EVENT_FACTS, Status, event_facts
     from jason.config import Settings
     from jason.tasks import notice_templates as nt
+    from jason.tasks.applicability_asks import association_facts
     from jason.tasks.cite import Shelf
 
     if args.file and not args.requirement:
@@ -42,7 +43,9 @@ def cmd_notice_check(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    facts = Facts.build(profile=profile_facts(active())).merge(said)
+    data_dir = Settings.load(args.env).payhoa_catalog.parent
+    # The profile's facts, then a person's answers about the association in the intake queue, then what was said.
+    facts = association_facts(active(), data_dir).merge(said)
     try:
         checks = [nt.check_file(Path(args.file), args.requirement, facts)] if args.file \
             else nt.check_all(tuple(args.keys), facts)
@@ -55,7 +58,6 @@ def cmd_notice_check(args: argparse.Namespace) -> int:
                            "law": [{"line": s.line, "sentence": s.sentence, "citations": list(s.citations),
                                     "tokens": list(s.tokens)} for s in c.law]} for c in checks], indent=1))
         return 0
-    data_dir = Settings.load(args.env).payhoa_catalog.parent
     shelf = Shelf(active(), data_dir) if not args.no_law else None
     lines = nt.report_lines(checks, shelf=shelf, law=not args.no_law)
     if shelf is not None:

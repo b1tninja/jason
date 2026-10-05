@@ -11,6 +11,13 @@ missing fact for the same system is one question however many rows wait on it. T
 or its standing rules. A profile that lists no systems gets one question: which systems it has. Each question names
 the fact, the rows its answer would decide, and the kinds of record that would settle it (``SETTLED_BY``).
 
+**The notice catalog's standing facts.** A notice, or one of its elements, may turn on a standing fact about the
+association's own documents and practice: whether an election rule allows electronic secret ballots, whether the
+documents require a quorum for an election of directors, whether the board keeps seating by acclamation available.
+The profile states these (``Community.applicability_facts()``). Where it does not, ``standing_findings`` finds the
+rows that wait on one and ``questions(result, also=...)`` asks it once under ``applies:association``. A fact of one
+event (what one election decides) is never asked here: the caller that knows the event says it.
+
 **An answer is a fact.** ``answered(asks)`` reads each answered question of this kind: the value in the fact's own
 closed set (a choice's words, or its word in the JSON form), and after a semicolon the record that states it
 ("NFPA 13R; the 2006 permit"). It becomes a ``FactValue`` with source ``ANSWER`` and, as its ``where``, the question's
@@ -22,9 +29,9 @@ stays undetermined. A person answers again through the same path.
 - *Disagreement.* An answer that disagrees with a document or the profile does not win. The evaluation tests both, the
   row stays undetermined, and the question lists both. jason picks neither: a person corrects the specification, or
   answers again.
-- *The record.* A fact in ``NEEDS_RECORD`` (a system's installation standard) is read only with the record named: a
-  standard is entered with the record that states it (``jason.community.life_safety``), from a person as from the
-  profile.
+- *The record.* A fact in ``NEEDS_RECORD`` (a system's installation standard; the standing facts an election rule, a
+  bylaw, or the board's decision settles) is read only with the record named: a standard is entered with the record
+  that states it (``jason.community.life_safety``), from a person as from the profile.
 - *A second person.* A fact in ``CONFIRMED`` waits for a second person's confirmation, the intake queue's own guard
   for a high-stakes answer. The set is empty: no fact waits unless a person adds it here.
 
@@ -42,7 +49,7 @@ from datetime import date
 from enum import Enum
 from typing import Any, Iterable
 
-from jason.community.applicability import Facet, Fact, FactValue, Source
+from jason.community.applicability import ALWAYS, Facet, Fact, Facts, FactValue, Source, evaluate
 from jason.community.intake import Ask, AskKind, AskStatus, ask_id, high_stakes
 from jason.community.life_safety import SUBJECT_FACTS, Finding, SystemApplicability, row_name
 
@@ -54,8 +61,10 @@ _METHOD = "Community.life_safety_systems()"
 # A fact on one of these facets is the association's, whichever system's row asked for it.
 ASSOCIATION_FACETS: frozenset[Facet] = frozenset({Facet.PROPERTY, Facet.PLACE, Facet.EVENT})
 
-# Facts whose answer is read only with the record that states it named after a semicolon.
-NEEDS_RECORD: frozenset[Fact] = frozenset({Fact.INSTALLATION_STANDARD})
+# Facts whose answer is read only with the record that states it named after a semicolon: a system's standard, and
+# the standing facts that an election rule, a bylaw, or the board's own decision settles.
+NEEDS_RECORD: frozenset[Fact] = frozenset({Fact.INSTALLATION_STANDARD, Fact.ELECTRONIC_VOTING, Fact.ACCLAMATION,
+                                           Fact.DIRECTOR_QUORUM})
 
 # Facts whose answer a second person confirms before it is used. Empty by default.
 CONFIRMED: frozenset[Fact] = frozenset()
@@ -71,6 +80,11 @@ ASKS: dict[Fact, str] = {
     Fact.HOME_IMPROVEMENT: "is the work a home improvement (Business and Professions Code 7151 and 7151.2)?",
     Fact.ELECTRONIC_VOTING: "does an election operating rule allow electronic secret ballots, and do members opt "
                             "out or opt in (Civil Code 5105(i))?",
+    Fact.ACCLAMATION: "does the board keep seating by acclamation available for an election of directors (Civil Code "
+                      "5103)? The statute leaves the choice to the association, whatever its documents say, so this "
+                      "is the board's decision to record, not a reading of the documents.",
+    Fact.DIRECTOR_QUORUM: "do the governing documents require a quorum for an election of directors, and is it lower "
+                          "than 20 percent (Civil Code 5115(b)(6))?",
 }
 
 # The kinds of record that would settle each fact. Kinds only: which record an association holds is its own.
@@ -89,6 +103,8 @@ SETTLED_BY: dict[Fact, str] = {
     Fact.WATER_PURVEYOR: "a water bill",
     Fact.HOME_IMPROVEMENT: "counsel's written reading",
     Fact.ELECTRONIC_VOTING: "the election operating rules",
+    Fact.ACCLAMATION: "the election operating rules, or the board's resolution in its minutes",
+    Fact.DIRECTOR_QUORUM: "the bylaws' quorum section, or the election operating rules",
 }
 ANY_RECORD = "a record that states it"
 
@@ -185,9 +201,25 @@ def _subject(finding: Finding, fact: Fact) -> tuple[str, str, str]:
     return ASSOCIATION, "", "the association"
 
 
-def questions(result: SystemApplicability) -> tuple[FactQuestion, ...]:
-    """The undetermined answers as questions, one a subject and fact, in first-seen order. A fact of the time facet
-    is not asked: the caller gives the date."""
+def standing_findings(rows: Iterable[Any], facts: Facts) -> tuple[Finding, ...]:
+    """Rows asked of the association that wait on one of its standing facts (``Fact.standing``): each row whose
+    condition the facts leave undetermined with a standing fact missing, or with two sources disagreeing on one. A
+    row that waits only on one event's facts is not here: its caller says those, and nobody is asked them in
+    advance. ``rows`` are anything with ``applies`` and a name (``notice_elements.conditionals()``)."""
+    out: list[Finding] = []
+    for row in rows:
+        verdict = evaluate(getattr(row, "applies", None) or ALWAYS, facts)
+        if verdict.undetermined and (any(f.standing for f in verdict.missing)
+                                     or any(v.fact.standing for v in verdict.conflicting)):
+            out.append(Finding(row, None, verdict))
+    return tuple(out)
+
+
+def questions(result: SystemApplicability, also: Iterable[Finding] = ()) -> tuple[FactQuestion, ...]:
+    """The undetermined answers as questions, one a subject and fact, in first-seen order. ``also`` are findings from
+    other rows asked of the association (``standing_findings``: the notice catalog's), which join the same
+    questions. A fact of the time facet is not asked: the caller gives the date. Nor is a fact of one event (how one
+    meeting is held, what one election decides): the caller that knows the event says it."""
     found: dict[tuple[str, str], dict[str, Any]] = {}
 
     def slot(subject: str, system: str, name: str, fact: Fact | None, finding: Finding) -> dict[str, Any]:
@@ -199,10 +231,10 @@ def questions(result: SystemApplicability) -> tuple[FactQuestion, ...]:
                 entry[held].append(value)
         return entry
 
-    for finding in result.undetermined:
+    for finding in (*result.undetermined, *also):
         verdict = finding.verdict
         for fact in verdict.missing:
-            if fact.facet is Facet.TIME:
+            if fact.facet is Facet.TIME or fact.per_event:
                 continue
             if finding.system is None and fact in SUBJECT_FACTS:
                 slot(ASSOCIATION, "", "the association", None, finding)
@@ -411,6 +443,6 @@ def question_lines(found_questions: Iterable[FactQuestion], stored: Iterable[Ask
 
 __all__ = [
     "SCOPE", "ASSOCIATION", "SYSTEMS_KEY", "ASSOCIATION_FACETS", "NEEDS_RECORD", "CONFIRMED", "ASKS", "SETTLED_BY",
-    "system_subject", "FactQuestion", "questions", "read_answer", "Answered", "fact_of", "answer_value", "answered",
+    "system_subject", "FactQuestion", "standing_findings", "questions", "read_answer", "Answered", "fact_of", "answer_value", "answered",
     "applied_note", "question_lines",
 ]

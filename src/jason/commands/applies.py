@@ -13,6 +13,12 @@ that disagrees with the specification leaves the row undetermined with both name
 prints the same as JSON. ``--questions`` lists the questions the undetermined answers raise, one a subject and fact,
 each with the rows it would decide, the kinds of record that would settle it, and its state in the queue.
 
+The questions also cover the association's standing facts that the notice catalog turns on (whether an election rule
+allows electronic secret ballots, whether the documents require a quorum for an election of directors, whether the
+board keeps seating by acclamation available), where the profile does not state them
+(``Community.applicability_facts()``). They are asked under ``applies:association``. A fact of one event is not asked:
+``jason notices --catalog --fact`` says it.
+
 Read-only, except ``--file-questions``: a person's command that parks those questions in the intake queue, where
 ``jason intake --answer ID TEXT --by NAME`` (or the MCP tool ``answer_intake_question``) answers one. Nothing is filed
 on its own.
@@ -39,7 +45,8 @@ def cmd_applies(args: argparse.Namespace) -> int:
     data_dir = _data_dir(args)
     day = date.fromisoformat(args.as_of) if args.as_of else date.today()
     result, found = asks_task.evaluate(active, data_dir, as_of=day)
-    asked = questions(result)
+    # The notice catalog's rows that wait on a standing fact of the association's join the same questions.
+    asked = questions(result, asks_task.standing(active, found, as_of=day))
     if args.file_questions:
         counts = asks_task.file_questions(data_dir, asked)
         print(f"filed {len(asked)} questions in {data_dir / 'intake' / 'asks.json'}: {counts['new']} new, "
@@ -94,7 +101,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--all", action="store_true", help="also the obligations asked of the association as a whole")
     p.add_argument("--as-of", metavar="YYYY-MM-DD", help="the date asked for (default: today)")
     p.add_argument("--questions", action="store_true",
-                   help="list the questions the undetermined answers raise, with each one's state in the intake queue")
+                   help="list the questions the undetermined answers raise, with each one's state in the intake queue; "
+                        "they include the association's standing facts the notice catalog turns on")
     p.add_argument("--file-questions", action="store_true",
                    help="park those questions in the intake queue (data/intake/asks.json) for a person to answer")
     p.add_argument("--json", action="store_true", help="print JSON")

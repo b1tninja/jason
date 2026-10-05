@@ -129,7 +129,7 @@ Fifteen rows are required only for some events. Each carries the condition as da
 - **With no facts, nothing changes.** `jason notices --catalog` and `jason notices KEY --catalog` print as they always have. The prose `note` of each converted row stays.
 - **Two kinds of fact** (`Fact.standing`):
   - **One event's facts** are said by the caller that knows the event: `--fact election=directors`.
-  - **The association's standing facts** come from the profile (`Community.applicability_facts()`). Where the profile does not state one, it is a question for a person ([intake.md](intake.md)).
+  - **The association's standing facts** come from the profile (`Community.applicability_facts()`). Where the profile does not state one, it is a question for a person: `jason applies --questions` lists it under `applies:association`, `jason applies --file-questions` parks it in the intake queue, and the answer is read as a fact with source `answer` ([intake.md](intake.md#what-asks)). Each answer names the record that settles it.
 
 ```
 jason notices --catalog --fact election=directors                    # the notices for an election of directors
@@ -436,7 +436,7 @@ jason notice-check --file data/drafts/NOTICE.md --requirement rule-change-adopte
 | `pre-ballot-notice` | the statement about a reconvened meeting at a 20 percent quorum | `director_quorum=at_least_20_percent` (5115(b)(6)(A), (B)) |
 | `ballots` | the text of the proposed amendment | `election=amendment` (5115(g)(1)) |
 
-- **Said by a person.** `--event FACT=WORD` states one, and may be repeated. The profile's own facts (`Community.applicability_facts()`) are read beside it, so an association whose election rules settle electronic voting states it once.
+- **Said by a person.** `--event FACT=WORD` states one, and may be repeated. The profile's own facts (`Community.applicability_facts()`) and the answered questions in the intake queue are read beside it, so an association whose election rules settle electronic voting states it once.
 - **Three answers.**
   - The facts rule the element out: it does not apply, with the fact that decided it.
   - The facts call for it: it is required here, and a notice that lacks it has a gap.

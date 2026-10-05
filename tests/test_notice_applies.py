@@ -352,9 +352,11 @@ def test_with_no_facts_the_election_elements_are_undetermined_and_name_the_fact(
 # --- The command ----------------------------------------------------------------------------------------------------
 
 
-def test_the_command_sorts_the_catalog_by_the_facts_said(capsys):
+def test_the_command_sorts_the_catalog_by_the_facts_said(tmp_path, monkeypatch, capsys):
     from jason.cli import build_parser
 
+    monkeypatch.delenv("PAYHOA_CATALOG", raising=False)
+    monkeypatch.setenv("JASON_DATA_DIR", str(tmp_path))                 # no intake queue: no person's answers
     args = build_parser().parse_args(["notices", "--catalog", "--fact", "election=amendment"])
     assert args.func(args) == 0
     out = capsys.readouterr().out

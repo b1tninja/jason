@@ -47,7 +47,15 @@ jason intake --apply                     # answers into records: transcriptions,
 **Applicability questions are filed by a person.** `jason intake --scan` does not park them. `jason applies --questions` lists them, and `jason applies --file-questions` parks them.
 
 - **One question a subject and fact.** The same missing fact for the same system is one question, however many rows wait on it. Each names the rows its answer would decide and the kinds of record that would settle it.
-- **The answer.** It is the value, and after a semicolon the record that states it: `NFPA 13R; the 2006 permit`. A system's installation standard is read only with its record named.
+- **The association's standing facts.** Some rows turn on a fact about the association itself. The profile states these (`Community.applicability_facts()`); where it does not, each is one question under the subject `applies:association`:
+  - its property: the kind of development, the number of units;
+  - what its documents and practice settle for the notice catalog ([notices.md](notices.md#when-a-row-is-required)):
+    - whether an election operating rule allows electronic secret ballots;
+    - whether the governing documents require a quorum for an election of directors;
+    - whether the board keeps seating by acclamation available. This one is the board's decision to record, not a reading of the documents.
+- **One event's facts are not asked.** What one election decides, or whether one rule change is an emergency one, is said by the caller that knows the event (`jason notices --catalog --fact`, `jason notice-check --event`).
+- **The answer.** It is the value, and after a semicolon the record that states it: `NFPA 13R; the 2006 permit`. A system's installation standard is read only with its record named, and so are the three notice facts above: `not used; Election Rules 4.2`.
+- **Where an answer is read.** `jason applies`, `jason inspections`, `jason notices --catalog --fact`, and `jason notice-check` read the answers as facts beside the profile's.
 - **An answer that cannot be read** as the fact is listed with why and is not used. `--apply` refuses it, and the row stays undetermined.
 - **Disagreement.** An answer that disagrees with a document or the profile settles nothing. The row stays undetermined and lists both; jason picks neither.
 - **Applying.** `jason intake --apply` checks that the answer reads as the fact and marks it applied. The answer itself is the record.
