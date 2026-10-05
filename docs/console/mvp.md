@@ -23,13 +23,10 @@ The console is jason-ui served by jason-web ([architecture.md](architecture.md))
 - Sign in with Google (`jason.web.signin`), the private view, the owner view's loaders, and the role class.
 
 **What the criteria below still find missing** (judged on the committed code):
-- **The nav count** is the letters waiting on a person (`/api/approvals`'s `pending`, or the dock's `approvals` when someone is signed in). It does not add the plans waiting on a person.
-- **The plan header** shows who asked, the read time, the fingerprint, who signed, the clock, and the cost. It does not show the kind's risk or reversibility: `GET /api/approvals/<id>` answers the approval alone, with no `kind` record.
-- **An item's rule** shows as its citation ("Rule: …") and opens no `Recitation`: `PlanPanel` passes `PlanReview` no `recitations`, and the `cite` loader it would read does not exist ([screens/approvals.md](screens/approvals.md)).
-- **Two people and plan age** read defaults: `PlanPanel` passes `twoPerson` from a field the answer does not carry, and `maxAgeHours` is the component's default of 24, not the kind's `max_age_hours`. The kind built today is one-person with 24 hours, so nothing is wrong yet; the first two-person kind would show no second-person step.
-- **A plan older than its kind allows** is refused by the engine ("plan again", `engine.problems`), but the banner says "Decisions stand; apply reads live again first, or re-plan now". The words are corrected in the UI, not here.
 - **A person's hold** shows "held for the board by NAME" with the reason, but not the `jason board` command that proposes its board item.
-- **"No GET changes `data/approvals/`"** has no test that walks every GET route; `tests/test_web_approvals.py` checks that a GET to `check` is 405.
+- **An irreversible kind's apply** has no "type the count" step yet.
+
+Met since the spec audit: the nav count adds the plans waiting on a person (`approvalsWaiting`) to the letters; the plan header shows the kind's risk, approver, reversibility, and how long a plan stays current (`kindFacts` in `GET /api/approvals/<id>`, every kind at `GET /api/approvals/kinds`); an item's rule opens its `Recitation` (`recitations` in the same answer); `twoPerson` and `maxAgeHours` come from the kind; a plan older than its kind allows says that apply refuses it and offers the re-plan, as the engine does; a held item's board item links to `#/actions?item=ID`; and `tests/test_web_approvals.py::test_no_get_route_changes_the_approvals_store` walks every GET the approvals routes answer.
 
 ## The first build: engine approvals in `#/approvals`
 
@@ -46,7 +43,7 @@ The `owner-info-tags` kind, end to end in the browser, beside the letters. Every
 
 ### The screen
 
-- [ ] `#/approvals` lists letters and engine approvals in one inbox, each row saying which it is. The nav count is the letters awaiting approval plus the plans waiting on a person. (As built, one screen holds two sections: "Plans of writes", a table, above "Letters", the grouped inbox; and the nav count is the letters alone.)
+- [ ] `#/approvals` lists letters and engine approvals in one inbox, each row saying which it is. The nav count is the letters awaiting approval plus the plans waiting on a person. (As built, one screen holds two sections: "Plans of writes", a table, above "Letters", the grouped inbox.)
 - [ ] One approval shows its header: the kind's title, status, requested by, the read time, the fingerprint's first 12 hex, the clock (`summary.deadlines` for the cycle), the cost (`CostLine`: "No cost" for tag changes), and reversibility from the kind.
 - [ ] Items are grouped by owner (`group`). Each `WriteRow` shows the change before → after, why, the rule (opening its `Recitation` where `cite_document` resolves it), and the evidence.
 - [ ] Held for the board, for a person, confirm with the owner, and what follows are in their own sections, with `HeldNote` on the held. **None has a checkbox**, and the server refuses a decision on one.

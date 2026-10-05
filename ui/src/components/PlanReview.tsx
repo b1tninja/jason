@@ -16,7 +16,8 @@ import { SecondConfirm } from "./SecondConfirm";
 import { WriteRow } from "./WriteRow";
 import {
   cleanName, commands, decidable, groupItems, isApprovable, needsSecond, personName, plural, SECTIONS, short, signerProblem, staleness,
-  STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type DecideBody, type PlanItem, type Recheck, type SignBody,
+  STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type DecideBody, type KindFacts, type PlanItem, type Recheck,
+  type SignBody,
 } from "../lib/approvals";
 
 type Act<B> = (body: B) => void | Promise<void>;
@@ -58,13 +59,15 @@ export const PLAN_CAVEATS = [
  * apply command, or the result; and the audit history. Every write goes through `Confirm` as a named person (`me`) and
  * carries the plan's fingerprint. */
 export function PlanReview({
-  approval, me = "", audit, chain, recheck, now, maxAgeHours = 24, twoPerson = false, recitations, boardHref,
+  approval, me = "", audit, chain, recheck, now, maxAgeHours = 24, twoPerson = false, recitations, boardHref, kind,
   onDecide, onSubmit, onConfirmSecond, onDecline, onReplan, onOpen, busy, error, caveats = PLAN_CAVEATS,
   onCheck, onApply, applyBlocked, onWithdraw,
 }: {
   approval: Approval; me?: string; audit?: readonly AuditEntry[]; chain?: ChainCheck | null; recheck?: Recheck | null;
   now?: string; maxAgeHours?: number; twoPerson?: boolean; recitations?: Readonly<Record<string, Citation>>;
   boardHref?: (id: string) => string;
+  /** The kind's declared facts as the server sends them (`kindFacts`): shown in the header, never worked out here. */
+  kind?: KindFacts;
   onDecide?: Act<DecideBody>; onSubmit?: Act<SignBody>; onConfirmSecond?: Act<SignBody>; onDecline?: Act<SignBody & { reason: string }>;
   onReplan?: Act<{ by: string }>; onOpen?: (id: string) => void; busy?: boolean; error?: string; caveats?: readonly string[];
   /** Re-plan live and compare, writing nothing (the result comes back as `recheck`). */
@@ -104,7 +107,9 @@ export function PlanReview({
   const approvedCount = a.items.filter((i) => isApprovable(i) && i.decision === "approved").length;
   const signed = a.status === "approved" || a.status === "partially_approved";
   const second = needsSecond(a, twoPerson);
-  const ready = signed && (!second || !!a.second) && !stale.blocked;
+  // A plan older than its kind allows is refused at apply ("plan again"), so it is never offered as ready: the banner
+  // says so and offers the re-plan.
+  const ready = signed && (!second || !!a.second) && !stale.blocked && !stale.tooOld;
   const today = now ? new Date(now) : undefined;
   const by = (i: PlanItem) => a.items.filter((x) => (i.dependsOn ?? []).includes(x.id));
   const rule = (i: PlanItem) => {
@@ -132,6 +137,13 @@ export function PlanReview({
           {a.first && <> · signed by {personName(a.first.name)}, {when(a.first.at)}</>}
           {a.second && <> · confirmed by {personName(a.second.name)}</>}
         </p>
+        {kind && (
+          <p className="plan-kind">
+            {kind.title}: risk {kind.riskWords} ({kind.risk}) · {kind.approver} approves · undone: {kind.reversible || "not stated"} ·
+            planned again after {plural(kind.maxAgeHours, "hour", "hours")}
+            {kind.cost ? <> · cost: {kind.cost}</> : null}
+          </p>
+        )}
         {a.clock?.due && <p>Clock: {a.clock.what} <DueDate iso={a.clock.due} today={today} /></p>}
         <Evidence items={a.evidence} label="Read from" approval={a.id} level={3} />
         <RefreshAllEvidence approval={a.id} refs={refs} by={me.trim() ? me : undefined} onDone={() => setEvidenceVersion((v) => v + 1)} />
@@ -214,7 +226,7 @@ export function PlanReview({
       )}
       {ready && (
         <div className="stack-sm plan-apply">
-          <p>{plural(approvedCount, "approved change is", "approved changes are")} ready to apply.{stale.tooOld ? " The plan is old: apply re-plans first." : ""}</p>
+          <p>{plural(approvedCount, "approved change is", "approved changes are")} ready to apply.</p>
           {onApply && !applyBlocked ? (
             signerProblem(me) ? <p className="muted">{signerProblem(me)} Pick whose name goes on the record to apply.</p> : (
               <Confirm busy={busy} onConfirm={() => run(onApply, { by: cleanName(me), confirm: a.fingerprint }, `Apply asked for as ${cleanName(me)}.`)} summary={

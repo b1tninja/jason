@@ -75,6 +75,28 @@ describe("the Approvals screen's plans", () => {
     expect(posted[0].headers["X-Jason-Token"]).toBe("tok-1");
   });
 
+  it("shows the kind's declared facts, recites an item's rule, links a held item's board item, and refuses an old plan's apply", async () => {
+    const kindFacts = { key: "owner-info-tags", title: "Owner information tags", risk: "R2", riskWords: "member-facing record",
+      approver: "one person", twoPerson: false, reversible: "a tag removed again", maxAgeHours: 24, cost: "" };
+    const recitations = { "owner_info.FOR_A_PERSON": { found: true, citation: "owner_info.FOR_A_PERSON", text: "Test words recited whole." } };
+    stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) =>
+      url === `/api/approvals/${ID}` ? new Response(JSON.stringify({ ...plannedJson, kindFacts, needsSecond: false, recitations }), { status: 200 }) : base(url, init));
+    const user = userEvent.setup();
+    render(<ApprovalsView />);
+    const plans = await screen.findByRole("region", { name: "Plans of writes" });
+    await user.click(within(plans).getByText("Owner information: PayHOA tags and request completions"));
+    const open = await screen.findByRole("region", { name: "Open plan" });
+    expect(await within(open).findByText(/risk member-facing record \(R2\)/)).toBeInTheDocument();
+    expect(within(open).getByText(/planned again after 24 hours/)).toBeInTheDocument();
+    expect(within(open).getAllByText("Rule: owner_info.FOR_A_PERSON").length).toBeGreaterThan(0);
+    expect(within(open).getAllByRole("link", { name: "rental-approvals-4-15" })[0]).toHaveAttribute("href", "#/actions?item=rental-approvals-4-15");
+    // The fixture was read live long ago: the engine refuses its apply, so the page says so and offers no apply.
+    expect(within(open).getByText(/apply refuses it until it is planned again/)).toBeInTheDocument();
+    expect(within(open).queryByText(/ready to apply/)).not.toBeInTheDocument();
+  });
+
   it("reads the token from the page's meta tag first", async () => {
     const posted = stub({});
     const meta = document.createElement("meta");

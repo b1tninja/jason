@@ -1,8 +1,20 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge, BoardFields, Card, DueDate, Evidence, Kanban, Pill, RemoteView, Timeline, type EvidenceEntry, type TimelineEvent } from "../components";
 import { EvidenceEntries } from "../components/EvidenceEntries";
 import { useApi } from "../lib/useApi";
 import { BOARD_STATUSES, type BoardItem } from "./types";
+
+/** The link to one board item on this screen: `#/actions?item=ID` opens it and brings it into view (a plan's held item
+ * links here). */
+export function boardItemHref(id: string): string {
+  return `#/actions?item=${encodeURIComponent(id)}`;
+}
+
+/** The board item the address asks for (`?item=` in the hash), or "". */
+export function focusedItem(hash: string = typeof window === "undefined" ? "" : window.location.hash): string {
+  const at = hash.indexOf("?");
+  return at < 0 ? "" : new URLSearchParams(hash.slice(at + 1)).get("item") ?? "";
+}
 
 /** A board item as `/api/board-items` answers it: its evidence strings, and beside them `evidenceRefs`, each string as
  * the server mapped it (a document reference, a command, or text; docs/console/doc-component.md). */
@@ -37,11 +49,18 @@ function historyEvents(history: readonly string[]): TimelineEvent[] {
 }
 
 /** One matter the board is asked to decide. jason's columns are read-only; the board's four are editable (BoardFields). */
-export function BoardItemCard({ item, onSaved }: { item: BoardItemWithRefs; onSaved: (next: BoardItemWithRefs) => void }) {
-  const [open, setOpen] = useState(false);
+export function BoardItemCard({ item, onSaved, focus = false }: { item: BoardItemWithRefs; onSaved: (next: BoardItemWithRefs) => void; focus?: boolean }) {
+  const [open, setOpen] = useState(focus);
+  const at = useRef<HTMLElement>(null);
+  // Scrolled once the cards around it have laid out: a card above that grows after the first paint would push it away.
+  useEffect(() => {
+    if (!focus) return;
+    const t = setTimeout(() => at.current?.scrollIntoView?.({ block: "start" }), 150);
+    return () => clearTimeout(t);
+  }, [focus]);
 
   return (
-    <article className="item" data-priority={item.priority}>
+    <article ref={at} id={`board-item-${item.id}`} className="item" data-priority={item.priority} data-focused={focus || undefined}>
       <header className="row wrap">
         <Pill word={item.priority} />
         <Badge>{item.category}</Badge>
@@ -76,6 +95,7 @@ export function BoardItemCard({ item, onSaved }: { item: BoardItemWithRefs; onSa
 }
 
 export function BoardItemsView() {
+  const [focus] = useState(() => focusedItem());
   const [closed, setClosed] = useState(false);
   const r = useApi<{ found: boolean; items: BoardItemWithRefs[]; executiveHeld?: number; executiveHeldNote?: string }>(`/api/board-items?closed=${closed}`);
   const [patched, setPatched] = useState<Record<string, BoardItemWithRefs>>({});
@@ -95,7 +115,7 @@ export function BoardItemsView() {
                 items={items}
                 laneOf={(i) => i.status}
                 keyOf={(i) => i.id}
-                render={(i) => i.held ? <HeldBoardItemCard item={i} /> : <BoardItemCard item={i} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
+                render={(i) => i.held ? <HeldBoardItemCard item={i} /> : <BoardItemCard item={i} focus={i.id === focus} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
               />
             </>
           );

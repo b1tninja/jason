@@ -5,7 +5,8 @@ import { cleanName, commands, isJason, short, staleness, when, type Approval, ty
 /** The plan in hand is stale: superseded, changed since review (a re-plan differs: `recheck`, or the apply marked items
  * changed), or read longer ago than the kind allows. A change blocks approval: decisions on the old plan are not
  * applied, and the banner offers a re-plan (`onReplan`, behind `Confirm`, as `me`) beside the terminal command. A plan
- * that is only old keeps its decisions; apply re-plans first. Renders nothing for a fresh plan. */
+ * that is only old is refused at apply, as the engine refuses it ("plan again"): the re-plan is the way on, and the new
+ * plan is reviewed again. Renders nothing for a fresh plan. */
 export function ChangedBanner({ approval, recheck, now, maxAgeHours = 24, me = "", onReplan, onOpen, busy }: {
   approval: Approval; recheck?: Recheck | null; now?: string; maxAgeHours?: number; me?: string;
   onReplan?: (body: { by: string }) => void; onOpen?: (id: string) => void; busy?: boolean;
@@ -53,7 +54,7 @@ export function ChangedBanner({ approval, recheck, now, maxAgeHours = 24, me = "
   return (
     <section className="changed-banner changed-old" aria-labelledby={`changed-${approval.id}`}>
       <h3 id={`changed-${approval.id}`}>This plan was read {Math.round(s.ageHours ?? 0)} hours ago</h3>
-      <p>That is longer than the {maxAgeHours} hours this kind allows before apply. Decisions stand; apply reads live again first, or re-plan now.</p>
+      <p>That is longer than the {maxAgeHours} hours this kind allows before apply, so apply refuses it until it is planned again. Re-plan, then review the new plan; the decisions given here show on it as hints, not counted.</p>
       {replan}
     </section>
   );

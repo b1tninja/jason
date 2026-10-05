@@ -160,8 +160,11 @@ export function App() {
   const theme = useTheme();
   const session = useSession();
   // The owner view reads no board source: no approvals count, no dock counts (the owner shows neither).
-  const approvals = useApi<{ pending?: number }>(audience === "owner" ? "/api/approvals?view=owner" : "/api/approvals");
+  const approvals = useApi<{ pending?: number; approvalsWaiting?: number }>(audience === "owner" ? "/api/approvals?view=owner" : "/api/approvals");
   const pending = approvals.status === "ready" ? approvals.data.pending ?? 0 : 0;
+  // The engine's plans waiting on a person's decision, submission, or second signature (the server counts them) wait on
+  // any named person, so they count for everyone beside the letters.
+  const plansOpen = approvals.status === "ready" ? approvals.data.approvalsWaiting ?? 0 : 0;
   const counts = useDockCounts();
   const wide = useWide();
   const [drawer, setDrawer] = useState<string | null>(null);
@@ -196,8 +199,9 @@ export function App() {
     if (a === "owner" && drawer && !DOCK_DRAWERS.find((d) => d.id === drawer)?.owner) setDrawer(null);
   };
 
-  // Signed in, the Approvals badge is the letters waiting on this person's approval (the dock's counts); else everyone's.
-  const waiting = counts.scope === "mine" && typeof counts.approvals === "number" ? counts.approvals : pending;
+  // The Approvals badge: the letters waiting on this person's approval when signed in (the dock's counts), else everyone's,
+  // plus the plans of writes waiting on a person.
+  const waiting = (counts.scope === "mine" && typeof counts.approvals === "number" ? counts.approvals : pending) + plansOpen;
   const screens: ConsoleScreen[] = allowed.map(({ view: _view, aliases: _aliases, ...s }) => (s.id === "approvals" ? { ...s, count: waiting } : s));
   const View = current.view;
   const drawerDef = drawer ? DOCK_DRAWERS.find((d) => d.id === drawer) : undefined;

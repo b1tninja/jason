@@ -647,7 +647,7 @@ jason asks a person's approval for two different things, and the console keeps b
 | The trail | The letter's own `log`, every line naming its person | The audit log, hash-chained |
 | The component | `DraftLetter`, `ApprovalsInbox` | `PlanReview`, listed by `PlanApprovals`, with `WriteRow`, `HeldNote`, `ApproveBar`, `SecondConfirm`, `ChangedBanner`, `CostLine`, `ApplyResult`, `AuditLog` (built) |
 
-**One inbox.** `#/approvals` lists both kinds, the letters in `ApprovalsInbox` and the plans in `PlanApprovals`, each row saying which it is. The nav count today is the letters awaiting approval (`pending`); it should be the sum of those and the plans waiting on a person (a decision, a submission, or a second signature: `approvalsOpen` less the approved ones not waiting on a second person).
+**One inbox.** `#/approvals` lists both kinds, the letters in `ApprovalsInbox` and the plans in `PlanApprovals`, each row saying which it is. The nav count is the sum of the letters awaiting approval (`pending`, or the dock's count for the signed-in person) and the plans waiting on a person: a decision, a submission, or a second signature, counted by the server as `approvalsWaiting` (`approvalsOpen` less the signed plans that wait only to be applied).
 
 **How they meet.** A letter and a plan can be two halves of one act: a letter approved for its words, then a write that sends or files it. When a sending kind exists (`payhoa.mailroom.send`, `google.doc`), its plan names the approved letter as evidence, and the planner refuses a letter that is not at `approved`. The approval of the words never stands in for the approval of the write, or the other way round.
 

@@ -3,7 +3,9 @@
 - **Reads.** ``GET /api/approvals`` is the ``approvals`` loader: the letters inbox it always served
   (``jason.web.extra.approvals``) with the engine's approvals beside it under ``approvals`` (``?status=``, ``?kind=``);
   ``?key=`` is still one letter. ``GET /api/approvals/<id>`` is the Approval JSON as the engine stores it
-  (``approval.schema.json``); ``GET /api/approvals/audit`` the log (``?approval=``, ``?verify=1``);
+  (``approval.schema.json``), with the kind's declared facts, whether a second person must sign, and each item's rule
+  recited beside it (``show``); ``GET /api/approvals/kinds`` every kind as ``jason approvals kinds`` lists them;
+  ``GET /api/approvals/audit`` the log (``?approval=``, ``?verify=1``);
   ``GET /api/evidence?address=&approval=`` one evidence address opened from disk (``jason.approvals.evidence``); an
   executive board item whole only in the private view, logged in ``access/served.jsonl``.
 - **Check.** ``POST /api/approvals/<id>/check`` re-plans live and compares, writing nothing (``engine.check``, the
@@ -121,7 +123,24 @@ def plans(args: Args) -> dict[str, Any]:
     rows = [a for a in every if (not status or a.status.value == status) and (not kind or a.kind == kind)]
     rows.sort(key=lambda a: (a.status not in OPEN, a.requested_at))
     return {"approvals": mask([_row(a) for a in rows]), "approvalsOpen": sum(1 for a in every if a.status in OPEN),
+            "approvalsWaiting": sum(1 for a in every if _waits_on_a_person(a)),
             "approvalStatuses": statuses, "approvalsCaveat": CAVEAT}
+
+
+def _waits_on_a_person(a: Any) -> bool:
+    """Whether an open plan waits on a person's decision, submission, or second signature (the nav count): a signed
+    plan that needs no second person, or has one, waits only to be applied."""
+    from jason.approvals.engine import needs_second
+    from jason.approvals.model import ApprovalStatus as S
+
+    if a.status in (S.PLANNED, S.IN_REVIEW):
+        return True
+    if a.status in (S.APPROVED, S.PARTIALLY_APPROVED):
+        try:
+            return needs_second(a) and not a.second
+        except KeyError:                               # a kind this checkout no longer has: count it, a person looks
+            return True
+    return False
 
 
 def approvals(args: Args) -> dict[str, Any]:
@@ -140,11 +159,56 @@ def approvals(args: Args) -> dict[str, Any]:
     return out
 
 
+def kind_facts(kind: Any) -> dict[str, Any]:
+    """What a kind declares, as the plan's header shows it (``jason approvals kinds``): its risk, who approves, how it is
+    undone, how long a plan stays current, and what it costs. The screen reads these and never works them out."""
+    from jason.approvals.registry import Approver
+
+    return {"key": kind.key, "title": kind.title, "cli": kind.cli, "system": kind.system, "risk": kind.risk.name,
+            "riskWords": kind.risk.value, "approver": kind.approver.value,
+            "twoPerson": kind.approver is Approver.TWO_PERSON, "reversible": kind.reversible,
+            "maxAgeHours": kind.max_age_hours, "cost": kind.cost, "clock": kind.clock, "rule": kind.rule}
+
+
+def kinds(_args: Args | None = None) -> dict[str, Any]:
+    """Every action kind, as ``jason approvals kinds`` lists them."""
+    from jason.approvals import registry
+
+    return {"kinds": [kind_facts(k) for k in registry.kinds()]}
+
+
+def recite(rule: str) -> dict[str, Any]:
+    """A plan item's rule recited from the stored copy (``jason cite``): the words, the citation, the version in force,
+    and the caveat; a rule that does not resolve is a miss with its reason, never a paraphrase."""
+    from jason.config import data_dir
+    from jason.tasks import cite
+
+    try:
+        return cite.resolve(rule, text=True, data_dir=data_dir())
+    except Exception as exc:  # noqa: BLE001 - one rule that cannot be read is a miss, the plan still shows
+        return {"found": False, "citation": rule, "reason": f"{type(exc).__name__}: {exc}"}
+
+
 def show(ident: str) -> dict[str, Any]:
-    from jason.approvals import store
+    """The approval as the engine stores it, with what the screen must not work out for itself beside it: the kind's
+    declared facts (``kindFacts``; None for a kind this checkout no longer has), whether a second person must sign
+    (``needsSecond``: a two-person kind or a high-stakes approved item), and each rule its items cite, recited
+    (``recitations``, keyed by the rule as the item writes it)."""
+    from jason.approvals import registry, store
+    from jason.approvals.engine import needs_second
     from jason.approvals.model import to_dict
 
-    return mask(to_dict(store.load(ident)))
+    a = store.load(ident)
+    out = to_dict(a)
+    try:
+        kind = registry.get(a.kind)
+    except KeyError:
+        out["kindFacts"], out["needsSecond"] = None, None
+    else:
+        out["kindFacts"], out["needsSecond"] = kind_facts(kind), needs_second(a, kind)
+    rules = sorted({i.rule for i in a.items if i.rule})
+    out["recitations"] = {rule: recite(rule) for rule in rules}
+    return mask(out)
 
 
 def audit_log(args: Args) -> dict[str, Any]:
@@ -445,6 +509,10 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
     @bp.get("/api/approvals/audit")
     def audit_route():
         return _answer(lambda: audit_log(request.args.to_dict()))
+
+    @bp.get("/api/approvals/kinds")
+    def kinds_route():
+        return _answer(lambda: kinds(request.args.to_dict()))
 
     @bp.get("/api/approvals/<ident>")
     def show_route(ident: str):

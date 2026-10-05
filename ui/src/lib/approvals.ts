@@ -60,6 +60,14 @@ export interface ChainCheck { ok: boolean; line?: number; why?: string }
 /** `engine.Changed`: an approved item whose basis moved, is gone, or is now held, found by a re-plan. */
 export interface ChangedItem { id: string; op: string; label: string; then: string; now: string; why: string }
 
+/** What an action kind declares (`jason approvals kinds`; `kindFacts` beside a plan in `/api/approvals/<id>`): its risk,
+ * who approves, how it is undone, how long a plan stays current before apply refuses it, and its cost. The screen shows
+ * these as the server sends them and never works them out. */
+export interface KindFacts {
+  key: string; title: string; cli?: string; system?: string; risk: string; riskWords: string; approver: string;
+  twoPerson: boolean; reversible: string; maxAgeHours: number; cost?: string; clock?: string; rule?: string;
+}
+
 /** `engine.Recheck`: a re-plan compared with the approval (what `jason approvals apply ID` prints without --yes). */
 export interface Recheck { changed: ChangedItem[]; new?: PlanItem[] | number; then?: string; now?: string; problems?: string[] }
 

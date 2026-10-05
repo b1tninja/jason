@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { DataTable, Pill, PlanReview, RemoteView, type Column } from "../components";
 import { postJson, serverSession, type ApiError, type ServerSession } from "../lib/api";
 import { useApi } from "../lib/useApi";
-import { STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type Recheck } from "../lib/approvals";
+import { STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck } from "../lib/approvals";
+import type { Citation } from "../components/Recitation";
+import { boardItemHref } from "./BoardItemsView";
 
 /** An approval as a list carries it: the engine's record, or (from `GET /api/approvals`) its summary, where `items` is
  * a count and `byClass` counts the items by class. */
@@ -18,8 +20,13 @@ export function engineApprovals(page: unknown): Listed[] {
   return rows.filter((r): r is Listed => !!r && typeof r === "object" && typeof (r as Listed).id === "string" && (r as Listed).id.startsWith("apr-"));
 }
 
-/** `/api/approvals/<id>`: the engine's approval as the body, or wrapped beside its audit lines, chain check, and re-plan. */
-interface Detail { found?: boolean; note?: string; approval?: Approval; audit?: AuditEntry[]; chain?: ChainCheck | null; recheck?: Recheck | null; check?: Recheck | null; twoPerson?: boolean }
+/** `/api/approvals/<id>`: the engine's approval as the body, or wrapped beside its audit lines, chain check, and re-plan;
+ * with the kind's declared facts (`kindFacts`, null for a kind the checkout no longer has), whether a second person must
+ * sign (`needsSecond`), and each item's rule recited (`recitations`). */
+interface Detail {
+  found?: boolean; note?: string; approval?: Approval; audit?: AuditEntry[]; chain?: ChainCheck | null; recheck?: Recheck | null; check?: Recheck | null;
+  kindFacts?: KindFacts | null; needsSecond?: boolean | null; recitations?: Record<string, Citation>;
+}
 
 export function approvalOf(d: Detail & Partial<Approval>): Approval | null {
   if (d.approval && Array.isArray(d.approval.items)) return d.approval;
@@ -103,7 +110,9 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
         if (!a) throw new Error("not an approval");
         return (
           <PlanReview approval={a} me={me} audit={entries.length ? entries : d.audit} chain={chain ?? d.chain} recheck={recheck ?? d.recheck ?? d.check}
-            twoPerson={!!d.twoPerson} busy={busy} error={error} onOpen={onOpen}
+            kind={d.kindFacts ?? undefined} twoPerson={!!d.kindFacts?.twoPerson}
+            maxAgeHours={d.kindFacts?.maxAgeHours} recitations={d.recitations} boardHref={boardItemHref}
+            busy={busy} error={error} onOpen={onOpen}
             onDecide={step("decide", ({ items, decision, by, reason }) => ({ items, decision, by, reason }))}
             onSubmit={step("submit", ({ by }) => ({ by }))}
             onConfirmSecond={step("confirm", ({ by }) => ({ by }))}

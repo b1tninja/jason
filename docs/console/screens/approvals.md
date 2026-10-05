@@ -10,10 +10,7 @@ The model behind this screen is [approval-workflow.md](../approval-workflow.md):
 
 **What this spec adds:** the engine's **plans of writes** on the same screen (`PlanApprovals`), and the review of one of them (`PlanReview`). The routes are `jason.web.approvals` ([web-ui.md](../../web-ui.md#approvals)) and the components are built ([components.md](../components.md#approval)). The letters' part is unchanged.
 
-**As built, and what is still to do.** The plans are a "Plans of writes" table above the "Letters" groups, on one screen, not one interleaved list; a plan opens below its row as a `PlanReview`. Four things the layouts below show are not wired yet:
-- **The item's rule** shows as its citation ("Rule: Civil Code 4040(a)(2)"), with no "recite" disclosure: `PlanApprovals` passes `PlanReview` no `recitations`, and the `cite` loader that would feed them is not built ([governing-documents.md](governing-documents.md)).
-- **The header's risk and reversibility line** is not shown: the plan's answer carries no kind record (see Data, "The kind").
-- **The nav count** is the letters waiting on a person; it does not add the plans.
+**As built, and what is still to do.** The plans are a "Plans of writes" table above the "Letters" groups, on one screen, not one interleaved list; a plan opens below its row as a `PlanReview`. Built since the spec audit: the item's rule opens its `Recitation` (the plan's answer carries `recitations`), the header shows the kind's risk, approver, reversibility, and how long a plan stays current (`kindFacts`), a held item's board item links to `#/actions?item=ID`, and the nav count adds the plans waiting on a person (`approvalsWaiting`) to the letters. Still to do:
 - **"Open in PayHOA"** (Actions) has no control.
 
 ## Purpose and personas
@@ -31,9 +28,9 @@ A person reads a plan jason made, item by item, with each item's reason, rule, a
 | Part | Source |
 |---|---|
 | The inbox | `GET /api/approvals`: the letters (`letters`, `groups`, `pending`, `people`) and the engine's approvals (`approvals[]` with id, kind, title, status, counts by class and decision, who asked, when; `approvalsOpen`; `approvalsCaveat`). `?status=`, `?kind=` filter the plans |
-| One plan | `GET /api/approvals/<id>`: the `Approval` as stored (`approval.schema.json`), with its items, decisions, signatures, `costCents`, `clock`, `summary`, `result`, and `notes` |
-| The kind | `jason.approvals.registry.get(kind)`: `title`, `cli`, `risk`, `approver`, `reversible`, `cost`, `clock`, `rule`, `max_age_hours`. Not in any answer yet: add it to the plan's answer, or as `GET /api/approvals/kinds` (the CLI has `jason approvals kinds`). `PlanPanel` needs `approver` (is a second person always needed) and `max_age_hours` from it: today it passes the component's defaults, one person and 24 hours |
-| An item's rule, recited | `jason.api.cite_document(item.rule)` where the rule is a citation; a rule row by its address. A loader to add (`cite`, shared with [governing-documents.md](governing-documents.md)); `PlanReview` takes the answers as `recitations`, keyed by the rule, and the view passes none yet |
+| One plan | `GET /api/approvals/<id>`: the `Approval` as stored (`approval.schema.json`), with its items, decisions, signatures, `costCents`, `clock`, `summary`, `result`, and `notes`; beside it `kindFacts`, `needsSecond`, and `recitations` (below) |
+| The kind | `kindFacts` in the plan's answer (`jason.web.approvals.kind_facts`: `key`, `title`, `cli`, `system`, `risk`, `riskWords`, `approver`, `twoPerson`, `reversible`, `maxAgeHours`, `cost`, `clock`, `rule`), null for a kind the checkout no longer has; every kind at `GET /api/approvals/kinds` (as `jason approvals kinds`). `PlanPanel` passes `twoPerson` and `maxAgeHours` from it, and `needsSecond` says whether a second person must sign (a two-person kind or a high-stakes approved item) |
+| An item's rule, recited | `recitations` in the plan's answer, keyed by the rule as the item writes it: `jason.tasks.cite.resolve(rule)` on the profile's data, a rule that does not resolve a miss with its reason (`jason.web.approvals.recite`). The shared `cite` loader for [governing-documents.md](governing-documents.md) is still to add |
 | The audit | `GET /api/approvals/audit?approval=<id>` (`?verify=1` for the chain) |
 | Whether apply is on | `GET /api/session`: `applyEnabled`, `liveChecks` |
 | Who is signing | "Signed in as" (`useSession`), over `people` |
@@ -132,7 +129,7 @@ After submit, the bar becomes: **Check** (re-read, write nothing), and either **
 | No plans | "No plan of writes on disk." with the command that makes one (`jason approvals plan owner-info-tags --by NAME`) |
 | Planned, nothing to write | "Nothing to write. Every owner's tags already match their answers." Held and for-a-person sections still show |
 | In review | As drawn |
-| Plan too old | "This plan was read 26 hours ago. That is longer than the 24 hours this kind allows before apply." (`ChangedBanner`). Decisions stay, but the engine refuses an apply on a plan older than its kind allows ("plan again", `engine.problems`), so the banner should say to plan again. The built banner says "Decisions stand; apply reads live again first, or re-plan now", which the engine does not do (a defect in the banner, not in this spec) |
+| Plan too old | "This plan was read 26 hours ago. That is longer than the 24 hours this kind allows before apply." (`ChangedBanner`). The engine refuses an apply on a plan older than its kind allows ("plan again", `engine.problems`), so the banner says so ("apply refuses it until it is planned again") and offers the re-plan, and the apply step is not shown for it |
 | Changed since review | `ChangedBanner` first, with what changed and the new approval. `ApproveBar` is blocked |
 | Waiting on a second person | `SecondConfirm` for anyone but the first signer and the requester; for them: "Waiting on a second person. You signed this plan, so you cannot confirm it." |
 | Approved, apply off | The terminal command, and "Apply is off in this console: a person applies from a terminal, or starts jason-web with --allow-apply." |

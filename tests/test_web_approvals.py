@@ -82,6 +82,7 @@ def test_list_and_show(web, monkeypatch):
     a = _plan(web)
     listed = web.c.get("/api/approvals").json
     assert [r["id"] for r in listed["approvals"]] == [a.id] and listed["approvalsOpen"] == 1
+    assert listed["approvalsWaiting"] == 1                             # planned: waits on a person's decision
     assert listed["approvals"][0]["status"] == "planned" and listed["approvals"][0]["fingerprint"] == a.fingerprint
     assert "lettersError" in listed or "letters" in listed           # the letters inbox still answers beside it
     assert web.c.get("/api/approvals?status=planned").json["approvals"][0]["id"] == a.id
@@ -89,11 +90,79 @@ def test_list_and_show(web, monkeypatch):
     assert web.c.get("/api/approvals?status=nope").status_code == 400
     shown = web.c.get(f"/api/approvals/{a.id}")
     assert shown.status_code == 200
-    _validator("approval.schema.json").validate(shown.json)
+    beside = {"kindFacts", "needsSecond", "recitations"}                 # what the screen reads beside the record
+    assert beside <= set(shown.json)
+    _validator("approval.schema.json").validate({k: v for k, v in shown.json.items() if k not in beside})
     assert shown.json["fingerprint"] == a.fingerprint and len(shown.json["items"]) == len(a.items)
     assert web.c.get(f"/api/approvals/{a.id[:16]}").json["id"] == a.id       # a unique prefix
     assert web.c.get("/api/approvals/apr-none").status_code == 404
     assert web.factory.calls == []                                     # a read never builds a live context
+
+
+def test_show_carries_the_kinds_facts_and_each_rule_recited(web, monkeypatch):
+    recited = []
+    monkeypatch.setattr("jason.web.approvals.recite",
+                        lambda rule: recited.append(rule) or {"found": True, "citation": rule, "text": f"words of {rule}"})
+    a = _plan(web)
+    shown = web.c.get(f"/api/approvals/{a.id}").json
+    facts = shown["kindFacts"]
+    assert facts["key"] == "owner-info-tags" and facts["maxAgeHours"] == 24 and facts["twoPerson"] is False
+    assert facts["risk"] and facts["riskWords"] and facts["approver"] and "reversible" in facts
+    assert shown["needsSecond"] is False                               # one person; no high-stakes item approved yet
+    rules = {i.rule for i in a.items if i.rule}
+    assert rules and set(shown["recitations"]) == rules == set(recited)
+    assert all(c["found"] and c["text"] == f"words of {r}" for r, c in shown["recitations"].items())
+
+
+def test_a_rule_that_cannot_be_read_is_a_miss_not_an_error(web, monkeypatch):
+    def broken(*a, **k):
+        raise OSError("disk gone")
+    monkeypatch.setattr("jason.tasks.cite.resolve", broken)
+    a = _plan(web)
+    shown = web.c.get(f"/api/approvals/{a.id}")
+    assert shown.status_code == 200
+    miss = next(iter(shown.json["recitations"].values()))
+    assert miss["found"] is False and "disk gone" in miss["reason"]
+
+
+def test_a_signed_plan_waits_only_to_be_applied(web):
+    a = _plan(web)
+    _review(web, a)                                                    # decided and submitted by one person
+    listed = web.c.get("/api/approvals").json
+    assert listed["approvalsOpen"] == 1 and listed["approvalsWaiting"] == 0
+
+
+def test_the_kinds_route_lists_what_each_kind_declares(web):
+    listed = web.c.get("/api/approvals/kinds").json["kinds"]
+    tags = next(k for k in listed if k["key"] == "owner-info-tags")
+    assert tags["maxAgeHours"] == 24 and tags["approver"] and tags["riskWords"]
+    assert web.factory.calls == []                                     # listing kinds reads nothing live
+
+
+def test_no_get_route_changes_the_approvals_store(web, monkeypatch):
+    """Every GET the approvals routes answer (the list, one plan, the kinds, the audit, the evidence and its document
+    link, and the refused GETs of a check or an apply) leaves data/approvals/ byte for byte as it was."""
+    monkeypatch.setattr("jason.web.approvals.recite", lambda rule: {"found": False, "citation": rule, "reason": "test"})
+    a = _plan(web)
+    _review(web, a)
+    store_dir = web.data_dir / "approvals"
+    before = {p.relative_to(store_dir): p.read_bytes() for p in sorted(store_dir.rglob("*")) if p.is_file()}
+    assert before
+    walked = []
+    for rule in web.app.url_map.iter_rules():
+        if "GET" not in rule.methods or not (rule.endpoint.startswith("approvals.") or rule.rule == "/api/<source>"):
+            continue
+        url = rule.rule.replace("<ident>", a.id).replace("<token>", "no-such-token").replace("<source>", "approvals")
+        url = url.replace("<path:path>", "x")
+        if "<" in url:
+            continue
+        for query in ("", f"?approval={a.id}&verify=1", f"?address=board-item:x&approval={a.id}"):
+            web.c.get(url + query)
+            walked.append(url + query)
+    assert len(walked) >= 8
+    after = {p.relative_to(store_dir): p.read_bytes() for p in sorted(store_dir.rglob("*")) if p.is_file()}
+    assert after == before
+    assert web.factory.calls == []
 
 
 def test_the_letters_inbox_keeps_its_shape(web, monkeypatch):
