@@ -1616,6 +1616,26 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("temp-and-caches-followed-the-system-drive", date(2026, 10, 5), (Area.REPOSITORY,),
+           "The system drive filled while the data sat on a drive with more than 500 GB free. Two index experiments "
+           "left 6.2 GB and 4.2 GB copies of the project and its data (confidential) in the user's Temp, tests failed "
+           "with OSError when Temp was nearly full, and the county index cache (4 GB) sat on the system drive.",
+           "Python's tempfile, SQLite's sort spill (on Windows it follows TEMP and TMP, and ignores SQLITE_TMPDIR), "
+           "OCR page images, pytest's tmp_path, and child processes all follow the OS temp folder, and nothing named "
+           "where scratch goes. asspy reads only the process environment, so ASSPY_HOME written in .env moved nothing. "
+           "A plain index build does not spill (measured: 0 bytes), so the large copies were made by hand.",
+           "JASON_TEMP_DIR (environment or .env) is applied when a command, jason-mcp, jason-web, the worker, a script, "
+           "or pytest starts, and fails fast on a missing drive; jason.asspy_home.apply reads ASSPY_HOME from .env before "
+           "asspy is asked for a county's file; jason storage lists each place with its drive, free space, and size, and "
+           "--check flags a low drive and scratch on it; docs/scratch.md says where scratch goes and that a confidential "
+           "copy stays on the data drive and is removed when the check ends. Still a person's: TEMP and TMP at user "
+           "level, PIP_CACHE_DIR, and the sibling packages' own defaults (asspy's home, lawlibrary's fallback).",
+           Status.FIXED, guards=("config.apply_temp_dir",
+                                 "asspy_home.apply",
+                                 "tests/test_storage.py: the setting moves tempfile, the environment, a child "
+                                 "process, and pytest's tmp_path; a low drive and scratch on it are flagged",
+                                 "tests/test_asspy_home.py: .env names the home and the environment wins"),
+           docs=("docs/scratch.md", "docs/setup.md")),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "

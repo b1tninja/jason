@@ -103,6 +103,9 @@ def _asspy_home() -> Path | None:
     try:
         from asspy.paths import home
 
+        from jason import asspy_home
+
+        asspy_home.apply()
         return home()
     except Exception:  # noqa: BLE001 - asspy not installed: nothing to report
         return None

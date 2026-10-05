@@ -605,6 +605,13 @@ PROCEDURES: tuple[Procedure, ...] = (
         "Keep three things apart: what the documents say, what the provisions mean, and whether the facts meet them. "
         "Recite the words, label each reading, and check every quotation before the answer is given.",
         (
+            Step("Before a build or a copy of data: check where scratch and the caches will go.",
+                 command="jason storage --check",
+                 check="temp (JASON_TEMP_DIR) and ASSPY_HOME are on the data drive with room; work on a copy "
+                       "(JASON_DATA_DIR) goes under the scratch folder and a confidential copy is removed when the "
+                       "check ends",
+                 lessons=("temp-and-caches-followed-the-system-drive",),
+                 refs=("docs/scratch.md",)),
             Step("See what the index holds and what it holds back or cannot read.",
                  command="jason index --plan; jason cases --extract-text --case KEY; jason index --build",
                  check="the collection's files are in the index; a file listed as unreadable or partly read is opened "

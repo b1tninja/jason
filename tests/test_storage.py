@@ -215,3 +215,18 @@ def test_sizes_count_the_files_below_a_folder(tmp_path):
     assert storage.folder_size(tmp_path / "a") == 150
     assert storage.folder_size(tmp_path / "a" / "one.bin") == 100
     assert storage.folder_size(tmp_path / "missing") == 0
+
+
+def test_storage_reports_the_asspy_home_the_env_file_names(clean_temp, monkeypatch, tmp_path):
+    pytest.importorskip("asspy")
+    home = tmp_path / "counties-here"
+    env = tmp_path / "named.env"
+    env.write_text(f"ASSPY_HOME={home.as_posix()}\n", encoding="utf-8")
+    monkeypatch.setenv("JASON_ENV", str(env))
+    monkeypatch.delenv("ASSPY_HOME", raising=False)
+    try:
+        rep = storage.report(tmp_path, sizes=False)
+        named = [p for p in rep["places"] if p["name"].startswith("ASSPY_HOME")]
+        assert named and Path(named[0]["path"]) == home
+    finally:
+        os.environ.pop("ASSPY_HOME", None)           # apply() set it in the process
