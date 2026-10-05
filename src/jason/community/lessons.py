@@ -1616,6 +1616,29 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("a-requirement-is-not-a-document", date(2026, 10, 5), (Area.GOVERNING,),
+           "A provision that obliges the association to adopt a program (an inspection program, a maintenance manual) "
+           "was tracked as deadlines and notices, with no record of the instrument itself: whether it exists, whether "
+           "the board adopted it, whether it is carried out, whether a newer statute makes it stale. A deadline row "
+           "could show \"no store shows it\" for a program nobody had written.",
+           "jason modeled obligations and notices, not the instruments an association must adopt; the declaration's "
+           "duties were read, but an adoption duty was one more duty row.",
+           "Designed (docs/programs.md): an adoption catalog of statute, conditional, and declaration rows; the three "
+           "evidences (document, adoption act, implementation) as separate states, \"no act on record\" never read as "
+           "\"not adopted\" and \"not on file\" never as \"not done\"; review under a programs lens; drafts from base "
+           "templates for the board to adopt. Still to build: program_catalog with its test against the shelf, and the "
+           "law-review and document-intake procedure steps.",
+           Status.OPEN, docs=("docs/programs.md", "docs/console/handoff-programs.md")),
+    Lesson("a-detection-is-a-lead", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "A loose rule (an adopt or maintain verb plus a program or policy noun) scored 5 true of 15 on a real "
+           "corpus; the false hits were an insurance policy, a parliamentary procedure, and a document speaking of "
+           "itself.",
+           "The words \"policy\", \"procedure\", and \"adopted\" have several senses, and a rule that matched them anywhere "
+           "in a duty could not tell them apart.",
+           "The rule designed in docs/programs.md takes the head verb, a program noun, and stops for the known homonyms; a "
+           "detection enters the catalog only on a person's confirmation, and a gold set is labeled before tuning. Still "
+           "to build: program_detect, its gold set, and scripts/eval_programs.py.",
+           Status.OPEN, docs=("docs/programs.md",)),
     Lesson("review-as-of-and-quote-check-ignored-the-versions", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A review as of an earlier day treated a document's citation of a renumbered section (a former Davis-Stirling "
            "number) as a missing section, and verify_quotes confirmed a quotation against whichever edition the shelf "
