@@ -198,7 +198,7 @@ The tab row now scrolls sideways instead of widening the page.
 - **Nothing sends.** Sending, applying, and recording are a person's steps, shown as `PersonSteps`.
 - **Recite, never paraphrase.** A statute missing from disk is a visible miss.
 - **Seals for jason, stamps for a person, neither for a placeholder.**
-- **Made-up samples only** ("Sam Example", "123 Main St", `example.org`). No real names, case numbers, Drive ids, group addresses, or domains in a design file.
+- **Samples.** The design project is private and may use the association's real details where they help. What comes back into the repo is general: no association's facts in code or general docs, and made-up fixtures ("Sam Example", "123 Main St", `example.org`).
 
 ## Decisions that are the design's
 

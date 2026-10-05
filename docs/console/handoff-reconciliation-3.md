@@ -196,12 +196,9 @@ Serving the console to a phone is a deployment decision, not a layout one: jason
 
 ## The package itself
 
-The design files must hold no real facts. This cut's do:
-- **CommunityProfile:** a real person's name, a real case number, a real Drive id, and two real group addresses;
-- **the real domain** in the community record, the roster seed, and every rendered email;
-- **a calendar id** in the shape of a real one.
+The design project is private, and its files may use the association's real details where that helps the design read true (decided 2026-10-04). This cut has some: a person's name, a case number, a Drive id, and group addresses in CommunityProfile, and the real domain in the community record, the roster seed, and the rendered emails.
 
-Replace each with made-up values (`example.org`, "123 Main St", "24CV000123"), and keep fixtures in `tests/fixtures`. A design file names the sample association only.
+The repo is another matter: what comes back from the design into jason is general. Code, general docs, and base templates name no association (AGENTS.md, "Facts are data"), and test fixtures are made up and live in `tests/fixtures`. Real details in a design file stay in the design project.
 
 ## The build, from this cut
 
