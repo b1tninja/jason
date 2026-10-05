@@ -720,6 +720,173 @@ def quoted(citation: str, data_dir: Path, day: date | None = None) -> Quoted:
     return Quoted(base, day, held, picked, got.decided, note, got.quotes, tuple(rest), tuple(whys.items()))
 
 
+# --- The version of a section on a day, with every version held ---------------------------------------------------------
+
+NOT_RESTATEMENT = ("jason's consolidated text is not an official restatement: the words are the Legislature's session "
+                   "publication as lawlibrary read it, or a version a person added from an official source, never the "
+                   "chaptered act. Where the exact enacted text matters, counsel reads the Statutes.")
+
+
+@dataclass(frozen=True)
+class Held:
+    """One version of a section jason holds, on the shelf or in the history, with its recorded range and whether it
+    is the one in force on the day asked."""
+
+    digest: str
+    current: bool                # on the shelf now
+    start: str = ""              # ISO; "" is not recorded
+    floor: str = ""
+    until: str = ""
+    act: str = ""
+    source: str = ""
+    added: str = ""              # a version a person added by hand: who, and when
+    in_force: bool = False       # the version ``version_on`` places in force on the day
+    place: str = ""              # "earlier", "later", "in force", or "" where its range does not say
+
+    @property
+    def range(self) -> str:
+        return range_words(LawText("", "", self.digest, start=self.start, floor=self.floor, until=self.until, act=self.act))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"digest": self.digest, "current": self.current, "from": self.start, "printedBy": self.floor,
+                "until": self.until, "act": self.act, "source": self.source, "addedByHand": self.added,
+                "inForce": self.in_force, "place": self.place, "range": self.range}
+
+
+@dataclass(frozen=True)
+class VersionOn:
+    """The version of a section in force on a day, as far as the disk shows, with the words and every version held.
+
+    ``found`` is True when the disk shows which words governed that day (``in_force``); then ``text`` is that version,
+    ``words`` its words whole, and ``subdivision_words`` the words of the subdivision asked, split as jason splits a
+    section (``cite.label_text``), or "" when none was asked or it was not found. When ``found`` is False nothing is
+    picked: ``reason`` says why, and ``held`` still lists every version with its range for a person to read."""
+
+    citation: str                         # "CIV 5855"
+    subdivisions: str                     # "(b)(3)" as asked, or ""
+    day: date
+    found: bool
+    decided: Decided
+    text: LawText | None = None
+    subdivision_words: str = ""
+    basis: str = ""
+    quotes: tuple[str, ...] = ()
+    caveats: tuple[str, ...] = ()
+    held: tuple[Held, ...] = ()           # every version held, oldest first
+    reason: str = ""
+
+    @property
+    def words(self) -> str:
+        return self.text.words if self.text is not None else ""
+
+    @property
+    def digest(self) -> str:
+        return self.text.digest if self.text is not None else ""
+
+    @property
+    def start(self) -> str:
+        return self.text.start if self.text is not None else ""
+
+    @property
+    def until(self) -> str:
+        return self.text.until if self.text is not None else ""
+
+    def label(self) -> str:
+        """The version in one line, as a check names it: "the version in force on 2026-01-01 (digest ..., from
+        2025-06-30; made by ...)", or that none is shown."""
+        day = self.day.isoformat()
+        if not self.found:
+            return f"no version shown in force on {day}: {self.reason}"
+        t = self.text
+        return f"the version in force on {day} (digest {t.digest[:MIN_DIGEST]}, {range_words(t)})"
+
+    def as_dict(self) -> dict[str, Any]:
+        t = self.text
+        return {"citation": self.citation, "subdivisions": self.subdivisions, "asOf": self.day.isoformat(),
+                "found": self.found, "decided": self.decided.value, "basis": self.basis, "reason": self.reason,
+                "digest": self.digest, "words": self.words, "subdivisionWords": self.subdivision_words,
+                "from": self.start, "printedBy": t.floor if t else "", "until": self.until,
+                "untilBy": t.until_by if t else "", "act": t.act if t else "", "source": t.source if t else "",
+                "current": t.current if t else False, "addedByHand": t.added if t else "",
+                "decidingWords": list(self.quotes), "caveats": list(self.caveats),
+                "versions": [h.as_dict() for h in self.held]}
+
+
+def _place(version: LawText, picked: LawText | None, day: str) -> str:
+    """Where a held version stands against the one in force on the day: earlier, later, in force, or "" where its
+    recorded range does not say."""
+    if picked is not None and version.digest == picked.digest:
+        return "in force"
+    starts, ends = version.start or version.floor, version.until
+    if picked is not None:
+        if ends and (picked.start or picked.floor) and ends <= (picked.start or picked.floor):
+            return "earlier"
+        if starts and picked.until and starts >= picked.until:
+            return "later"
+    if ends and ends <= day:
+        return "earlier"
+    if starts and starts > day:
+        return "later"
+    return ""
+
+
+def every_version(citation: str, data_dir: Path) -> list[LawText]:
+    """Every version of a section jason holds, the shelf's and the history's, each digest once, oldest first by its
+    recorded start (the shelf's versions last among those with no start). Reads the disk only."""
+    root = Path(data_dir)
+    now = versions(citation, root)
+    earlier = [t for t in history_texts(citation, root) if all(t.digest != v.digest for v in now)]
+    ledger = {str(r.get("digest") or ""): r for r in version_ledger(root, citation).get("versions") or []}
+    current: list[LawText] = []
+    for v in now:
+        row, own = ledger.get(v.digest, {}), own_operative(v.words)
+        start = max(iso_day(str(row.get("from") or "")), own.start)
+        until = min((d for d in (iso_day(str(row.get("until") or "")), own.until) if d), default="")
+        current.append(LawText(v.citation, v.words, v.digest, v.source, v.session, v.page, v.note, True, "",
+                               act=str(row.get("act") or ""), start=start,
+                               floor="" if start else iso_day(str(row.get("floor") or "")), until=until,
+                               until_by=str(row.get("until_by") or ""), credit=str(row.get("note") or ""),
+                               editions=tuple(str(e) for e in row.get("editions") or [])))
+    return sorted(earlier + current, key=lambda t: (t.start or t.floor or "9999", t.current, t.digest))
+
+
+def version_on(citation: str, data_dir: Path, day: date) -> VersionOn:
+    """The version of a section in force on a day, read from the disk only (``in_force``), with its words, the words
+    of the subdivision the citation names, its range and act, and every version held with where each stands. A
+    citation may carry a subdivision ("CIV 4920(b)(3)"), a lettered number ("CIV 2924f"), or a doubled section
+    (one printed in two versions under its number). Writes nothing and asks no network: where the disk does not
+    show which words governed, nothing is picked and ``reason`` says what would bring them."""
+    root = Path(data_dir)
+    found = normal_citation(citation)
+    if found is None:
+        return VersionOn(citation, "", day, False, Decided.NOT_SHOWN,
+                         reason="say a code and a section, such as CIV 5855 or CIV 5855(a)",
+                         caveats=(NOT_RESTATEMENT,))
+    base, subdivisions = found
+    got = in_force(base, root, day)
+    picked = got.text
+    held = tuple(Held(t.digest, t.current, t.start, t.floor, t.until, t.act, t.source, t.added,
+                      picked is not None and t.digest == picked.digest, _place(t, picked, day.isoformat()))
+                 for t in every_version(base, root))
+    caveats = [*got.caveats, NOT_RESTATEMENT]
+    if picked is None:
+        return VersionOn(base, subdivisions, day, False, got.decided, basis=got.basis, caveats=tuple(caveats),
+                         held=held, reason=got.basis)
+    words = ""
+    if subdivisions:
+        from jason.community.cite import label_text
+
+        labels = re.findall(r"\(([^)]+)\)", subdivisions)
+        words = label_text(picked.words, labels)
+        if words:
+            caveats.append(f"the words of {subdivisions} are split from the section as jason splits it; the section "
+                           "itself is the source")
+        else:
+            caveats.append(f"{base}{subdivisions}: no paragraph of this version opens with {subdivisions} as jason "
+                           "splits the section; the whole section is given")
+    return VersionOn(base, subdivisions, day, True, got.decided, picked, words, got.basis, got.quotes, tuple(caveats), held)
+
+
 def section_digest(citation: str, data_dir: Path) -> str | None:
     """The digest of a section's words as they are on disk now, or None when the section is not on the shelf. Where
     the shelf holds two versions this is the first print's: a handle to compare with, not the version in force
@@ -744,8 +911,9 @@ def changes(data_dir: Path, citation: str = "") -> list[dict[str, Any]]:
     return rows
 
 
-__all__ = ["CHANGES_FILE", "Decided", "HISTORY_DIR", "InForce", "LawText", "MIN_DIGEST", "OwnWords", "Quoted",
-           "VERSIONS_FILE", "changes", "credit_line", "header_fields", "history_dir", "history_texts", "in_force",
-           "iso_day", "law_text", "made_year", "normal_citation", "own_operative", "page_sections", "quoted",
-           "range_words", "same_digest", "section_digest", "section_words", "shelf_numbers", "shelf_sections", "slug",
-           "source_line", "split_note", "split_page", "version_ledger", "versions", "words_digest"]
+__all__ = ["CHANGES_FILE", "Decided", "HISTORY_DIR", "Held", "InForce", "LawText", "MIN_DIGEST", "NOT_RESTATEMENT",
+           "OwnWords", "Quoted", "VERSIONS_FILE", "VersionOn", "changes", "credit_line", "every_version",
+           "header_fields", "history_dir", "history_texts", "in_force", "iso_day", "law_text", "made_year",
+           "normal_citation", "own_operative", "page_sections", "quoted", "range_words", "same_digest",
+           "section_digest", "section_words", "shelf_numbers", "shelf_sections", "slug", "source_line", "split_note",
+           "split_page", "version_ledger", "version_on", "versions", "words_digest"]

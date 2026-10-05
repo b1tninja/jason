@@ -13,6 +13,7 @@ and require ``by``.
     api.schedule_agenda(days=30, role="treasurer")
     api.answer_intake_question("c552e5c7c1", "contract", by="A Person")
     api.cite_document("Section 6.2(a) of the Declaration")["text"]     # the words, with the citation
+    api.law_in_force("CIV 5855(a)", as_of="2022-03-01")["words"]       # the version in force that day, disk only
     api.section_refs("Declaration 6.2(a)", hops=2, direction="both")
     api.read_record("jason://decl/6.2(a)")["text"]     # the MCP resource's Markdown: the recitation first
     api.record_resources()                              # what jason-mcp lists as resources
@@ -36,6 +37,7 @@ from jason.mcp.governance import (
     evidence,
     governance_digest,
     intake_questions,
+    law_in_force,
     living_document,
     member_requests,
     next_questions,

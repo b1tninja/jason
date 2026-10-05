@@ -443,6 +443,30 @@ def cite_document(expression: str, as_of: str = "", text: bool = True, data_dir:
     return resolve(expression, as_of=as_of or None, text=bool(text), data_dir=_root(data_dir))
 
 
+def law_in_force(citation: str, as_of: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+    """The version of a statute's section in force on a day, read from the disk only: ``citation`` is a code and a
+    section as people write it ("CIV 5855", "Civil Code section 4920(b)(3)", "CIV 2924f"); ``as_of`` (YYYY-MM-DD)
+    is the day, today when empty. Returns ``found`` (the disk shows which words governed that day), ``decided`` (how:
+    an earlier version's recorded range, a record of the current words, or the versions' own operative words), the
+    ``words`` whole and ``subdivisionWords`` for a subdivision asked, the version's ``digest``, ``from``, ``until``,
+    ``act``, and ``source``, the ``decidingWords``, and ``versions``: every version jason holds, on the shelf or in
+    the history, each with its range and whether it is earlier, later, or in force. When ``found`` is false nothing
+    is picked and ``reason`` says what would bring the words (``jason law-history --versions``, or a person adding
+    a version from an official source). Recite the words first, with the citation and the day; a reading of them
+    is yours, labeled as one. The consolidated text is not an official restatement (``caveats``); the session
+    publication is the Legislature's file, not the chaptered act. Writes nothing and asks no network."""
+    from jason.community import law_text
+
+    try:
+        day = date.fromisoformat(as_of) if as_of else date.today()
+    except ValueError:
+        return {"error": "as_of is a day as YYYY-MM-DD"}
+    found = law_text.version_on(citation, _root(data_dir), day)
+    out = found.as_dict()
+    out["caveat"] = law_text.NOT_RESTATEMENT
+    return out
+
+
 def section_refs(expression: str, hops: int = 1, direction: str = "out", data_dir: Path | None = None) -> dict[str, Any]:
     """The references around one section or record (same expressions as ``cite_document``). ``direction`` "out"
     follows what its words cite (other documents' sections, statutes on disk, resolutions, instruments) for ``hops``
@@ -613,9 +637,9 @@ def evidence(address: str, approval_id: str = "", data_dir: Path | None = None) 
 
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
-         notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, section_refs,
-         embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list, approval_show,
-         evidence)
+         notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, law_in_force,
+         section_refs, embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list,
+         approval_show, evidence)
 
 from jason.mcp.paint import TOOLS as _PAINT_TOOLS, paint_check, paint_colors, paint_match  # noqa: E402
 

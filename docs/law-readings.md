@@ -39,6 +39,8 @@ Two files share a name. `data/authorities/changes.json` is jason's log of its ow
 | `law_text(citation, data_dir, digest=None)` | the current words, or with `digest` the words that have it: current, else from the history |
 | `law_text(citation, data_dir, as_of=day)` | the words in force on that day, or `None` when the disk does not show which they were |
 | `in_force(citation, data_dir, day)` | the same, with how it is known, the deciding words, and the caveats |
+| `version_on(citation, data_dir, day)` | the version in force that day as one record: its words, the words of a subdivision the citation names ("CIV 4920(b)(3)"), its range and act, and every version held (shelf and history) with where each stands: earlier, later, or in force. Nothing is picked where the disk does not show it. `jason.api.law_in_force` and the governance tool `law_in_force` serve it. |
+| `every_version(citation, data_dir)` | every version held, the shelf's and the history's, oldest first, each with its recorded range |
 | `versions(citation, data_dir)` | every text the shelf holds under the citation |
 | `history_texts(citation, data_dir)` | the words the history holds: those exports replaced, and the earlier versions, each with its range where one is recorded |
 | `version_ledger(data_dir, citation)` | what `jason law-history --versions` recorded for the section |
