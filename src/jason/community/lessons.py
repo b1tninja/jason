@@ -1735,7 +1735,11 @@ LESSONS: tuple[Lesson, ...] = (
            notes=("Wanted: gen_cli_docs.py honoring --help and a --check mode; each session in its own worktree.",
                   "The index is shared too: on 2026-10-04 another session's commit (ad36baa, paint and glyphs) took "
                   "this session's staged board-items fix with it. Stage and commit in one command, or commit from a "
-                  "temporary index (GIT_INDEX_FILE) so another session's commit cannot sweep staged hunks.")),
+                  "temporary index (GIT_INDEX_FILE) so another session's commit cannot sweep staged hunks.",
+                  "A hunk is not a session's: a one-line change beside another session's uncommitted block shares its "
+                  "diff hunk, and staging the hunk takes both (2026-10-04, styles.css, undone before any push). For a "
+                  "small change in a file others are editing, stage HEAD's copy with only that change applied, and "
+                  "check the staged diff's line count before committing.")),
     Lesson("marks-mixed-who-acted", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The Decisions screen showed every recorded outcome as a green badge, denied included, and the design's "
            "glyph sheet mapped filed, a word for what jason did, to the stamp that marks a person's decision, with "
