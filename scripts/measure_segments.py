@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model-threshold", type=float, default=task.MODEL_THRESHOLD)
     ap.add_argument("--set", action="append", default=[], help="a cue weight, key=value; repeatable")
     ap.add_argument("--embed", action="store_true", help="read the embedder's cosines (qwen3-embedding) where not cached")
+    ap.add_argument("--moves", action="store_true", help="also ask the model each move as a closed choice (needs --model)")
     ap.add_argument("--only", action="append", default=[], help="score only files whose path holds this text; repeatable")
     ap.add_argument("--refresh", action="store_true", help="read the pages again")
     ap.add_argument("--unload", action="store_true", help="unload the model when done")
@@ -119,6 +120,32 @@ def main(argv: list[str] | None = None) -> int:
                                                                                       or "union" in variants) else None,
                            split=args.split, threshold=args.threshold, model_threshold=args.model_threshold,
                            weights=weights or None)
+    if args.moves and reader is not None:
+        total: dict[str, int] = {}
+        for f in task.gold_pages(Path(args.gold)):
+            if args.split != "all" and f.get("split") != args.split or f.get("boundaries") is None:
+                continue
+            if args.only and not any(o in f["path"] for o in args.only):
+                continue
+            pages, _ = pages_for(f)
+            target = cache / "model" / (_key(f["path"]) + f".{args.model.replace(':', '-')}.moves-{args.dpi}.json")
+            if target.is_file():
+                probs = {int(k): v for k, v in json.loads(target.read_text(encoding="utf-8")).items()}
+            else:
+                segs, moves = task.variant_tree(pages, "rules")
+                started = time.monotonic()
+                probs = task.read_moves(Path(f["path"]), pages, segs, moves, reader)
+                seconds["moves"] = seconds.get("moves", 0.0) + time.monotonic() - started
+                seconds["movesn"] = seconds.get("movesn", 0) + len(probs)
+                target.write_text(json.dumps(probs), encoding="utf-8")
+            for k, v in task.evaluate_moves(f, pages, probs).items():
+                total[k] = total.get(k, 0) + v
+        if total:
+            print(f"moves ({args.split}): {total['moves']} rule moves, {total['labeled']} at labeled pages; rules right "
+                  f"{total['rules_right']}; model asked {total['asked']}, right {total['model_right']}; model and rules name the "
+                  f"same move {total['agree']} times, right {total['agree_right']}")
+            if seconds.get("movesn"):
+                print(f"closed choice: {seconds['moves'] / seconds['movesn']:.2f} s a move over {seconds['movesn']} moves")
     if args.unload and args.model:
         from jason.local_ai import unload
 
@@ -134,6 +161,10 @@ def main(argv: list[str] | None = None) -> int:
               f"  (predicted {e['predicted']})")
     if seconds["n"]:
         print(f"model: {seconds['pages'] / seconds['n']:.2f} s a page over {seconds['n']} pages")
+    for v, n in result.get("nesting", {}).items():
+        print(f"nesting {v}: {n['gold']} labeled nested documents in {n['files']} files: found {n['found']}, right parent "
+              f"{n['parent']}, right end {n['end']}, {n['extra']} extra nested; resumes {n['popped']} of {n['resumes']} popped "
+              f"at the right page, {n['pops_extra']} other pops")
     p = result.get("parts")
     if p:
         print(f"parts: {p['gold']} labeled in {p['files']} files; anchor exact {p['anchor_exact']:.3f}, within one page "

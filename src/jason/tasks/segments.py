@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import Any
 
 from jason.community.document_segments import (
-    BLANK_CHARS, MODEL_THRESHOLD, THRESHOLD, VERSION, Boundary, Line, PageInfo, Reader, Segmentation, Tier, build_page,
-    decide, find_parts, score_pages, segments_from)
+    BLANK_CHARS, MODEL_THRESHOLD, THRESHOLD, VERSION, Boundary, Line, MoveKind, PageInfo, Reader, Segment, Segmentation, Tier,
+    build_page, decide, find_parts, score_pages, walk_segments)
 
 DEFAULT_MODEL = "qwen3.5:9b"
 
@@ -243,6 +243,31 @@ class OllamaPageReader:
         return None if total <= 0 else weights["Y"] / total
 
 
+    def move_probs(self, page_png_b64: str, before_png_b64: str, choices: dict[str, str]) -> dict[str, float] | None:
+        """The model's probability for each lettered move against the stack (``document_segments.move_choices``), from the
+        probabilities of the letters in its ``top_logprobs``; None when it named none of them. It is shown the page before
+        and the page, and the open documents by title."""
+        from jason.community.ollama_extractor import _post
+
+        lines = "\n".join(f"{k}) {v}" for k, v in choices.items())
+        prompt = ("The first image is a page of a scanned file that holds several documents, some inside others (an exhibit "
+                  "inside an agreement, a report inside a packet). The second image is the very next page. The documents "
+                  f"open at the first page, innermost last, are named below. Which is true of the second page?\n{lines}\n"
+                  "Answer with one letter.")
+        payload = {"model": self.model, "stream": False, "think": False, "logprobs": True, "top_logprobs": 12,
+                   "keep_alive": "10m", "options": {"temperature": 0, "num_ctx": self.context, "num_predict": 1},
+                   "messages": [{"role": "user", "content": prompt, "images": [before_png_b64, page_png_b64]}]}
+        poster = self.fetch or (lambda url, body: _post(url, body, self.timeout))
+        answer = poster(f"{self.base_url}/api/chat", payload)
+        weights = {k: 0.0 for k in choices}
+        for row in (answer.get("logprobs") or [{}])[0].get("top_logprobs") or []:
+            token = str(row.get("token") or "").strip().upper()[:1]
+            if token in weights:
+                weights[token] += math.exp(float(row.get("logprob") or -100))
+        total = sum(weights.values())
+        return None if total <= 0 else {k: v / total for k, v in weights.items()}
+
+
 def read_model(pdf: Path, pages: Sequence[PageInfo], reader: Any, *, progress: Callable[[int, int], None] | None = None
                ) -> dict[int, float]:
     """The model's probability for each page with words (the first is not asked): {page: p(new document)}."""
@@ -265,6 +290,62 @@ def read_model(pdf: Path, pages: Sequence[PageInfo], reader: Any, *, progress: C
             if progress:
                 progress(k + 1, len(todo))
     return out
+
+
+def read_moves(pdf: Path, pages: Sequence[PageInfo], segments: Sequence[Segment], moves: Sequence[Any], reader: Any
+               ) -> dict[int, dict[str, float]]:
+    """Ask the vision model each move the rule pass made but a continue, as a closed choice against the stack at that page
+    (continue, new inside, back to an outer document, new top-level), and return {page: {letter: probability}}. The
+    letters are ``document_segments.move_choices``'s; ``move_letter`` says which the rule pass's move is."""
+    import pymupdf
+
+    from jason.community.document_segments import move_choices, open_chain
+
+    live = [p for p in pages if not p.blank]
+    before = {b.n: a.n for a, b in zip(live, live[1:])}
+    out: dict[int, dict[str, float]] = {}
+    dpi = getattr(reader, "dpi", 72)
+    with pymupdf.open(str(pdf)) as doc:
+        def render(n: int) -> str:
+            return base64.b64encode(doc[n - 1].get_pixmap(dpi=dpi).tobytes("png")).decode("ascii")
+
+        for move in moves:
+            prev = before.get(move.page)
+            if move.kind is MoveKind.FIRST or prev is None:
+                continue
+            chain = open_chain(segments, prev)
+            if not chain:
+                continue
+            got = reader.move_probs(render(move.page), render(prev), move_choices(chain))
+            if got is not None:
+                out[move.page] = got
+    return out
+
+
+def attach_moves(seg: Segmentation, probs: dict[int, dict[str, float]]) -> Segmentation:
+    """Put the model's reading of each move on the move, and make the move ``LIKELY`` where the model's most probable
+    letter is the rule pass's move, ``SUGGESTED`` where it is not (the readers disagree: a person looks). The segments
+    keep their own tier, which is the boundary's."""
+    from dataclasses import replace
+
+    from jason.community.document_segments import move_letter, open_chain
+
+    live = [p for p in seg.pages if not p.blank]
+    before = {b.n: a.n for a, b in zip(live, live[1:])}
+    out = []
+    for move in seg.moves:
+        got = probs.get(move.page)
+        if got is None:
+            out.append(move)
+            continue
+        prev = before.get(move.page)
+        chain = open_chain(seg.segments, prev) if prev else []
+        top = max(got, key=got.get)
+        agree = top == move_letter(move, chain) and got[top] >= 0.5
+        out.append(replace(move, model=got, tier=Tier.LIKELY if agree else Tier.SUGGESTED,
+                           readers=(*move.readers, Reader.MODEL) if Reader.MODEL not in move.readers else move.readers))
+    seg.moves = out
+    return seg
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -320,12 +401,12 @@ def segment_pages(pages: Sequence[PageInfo], *, toc: Sequence[Sequence[Any]] = (
     scores = score_pages(pages, embeddings=embeddings, weights=weights)
     boundaries = decide(pages, rule_scores=scores, model=model, embeddings=embeddings, threshold=threshold,
                         model_threshold=model_threshold, accept=accept)
-    segments = segments_from(pages, boundaries, classify=kind_chain(community))
+    segments, moves = walk_segments(pages, boundaries, classify=kind_chain(community))
     parts = find_parts(pages, segments, toc=toc, text_of=text_of)
     return Segmentation(
         doc_id, sha, name, len(pages), {"rules": VERSION, **(readers or {})},
         {"threshold": threshold, "modelThreshold": model_threshold, "accept": accept, "weights": weights or {}},
-        boundaries, segments, parts, list(pages), datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        boundaries, segments, parts, list(pages), datetime.now(timezone.utc).isoformat(timespec="seconds"), moves)
 
 
 def segment_file(pdf: Path, *, doc_id: str = "", data_dir: Path | None = None, model: Any = None, embedder: Any = None,
@@ -365,6 +446,11 @@ def segment_file(pdf: Path, *, doc_id: str = "", data_dir: Path | None = None, m
     seg = segment_pages(pages, toc=toc, model=model_p, embeddings=embeds, community=community, accept=accept,
                         text_of=lambda n: [ln for ln in texts[n - 1].splitlines() if ln.strip()] if 0 < n <= len(texts) else [],
                         doc_id=doc_id, name=pdf.name, sha=sha, readers=readers)
+    if model is not None and hasattr(model, "move_probs"):
+        # The second reader on each move the rules made: the closed choice against the stack at that page.
+        probs = read_moves(pdf, pages, seg.segments, seg.moves, model)
+        attach_moves(seg, probs)
+        seg.readers["moves"] = f"{model.model} closed choice, {len(probs)} moves"
     if write and root is not None:
         save(root, seg)
     return seg
@@ -436,12 +522,13 @@ def part_accuracy(parts: Sequence[Any], gold: Sequence[dict[str, Any]], *, withi
 VARIANTS = ("rules", "model", "agree", "union", "rules-alone", "model-alone", "embed", "rules+embed", "all3")
 
 
-def variant_starts(pages: Sequence[PageInfo], variant: str, *, model: dict[int, float] | None = None,
+def variant_breaks(pages: Sequence[PageInfo], variant: str, *, model: dict[int, float] | None = None,
                    embeddings: dict[int, float] | None = None, threshold: float = THRESHOLD,
                    model_threshold: float = MODEL_THRESHOLD, weights: dict[str, float] | None = None) -> list[int]:
-    """The pages a reader (or readers) say start a document: ``rules`` (the cue pass), ``model`` (the vision model's
-    probability), ``agree`` (both), ``union`` (either). The first page with words is a start in every variant and is
-    left out of the figures (``evaluate``)."""
+    """The pages a reader (or readers) say break: ``rules`` (the cue pass), ``model`` (the vision model's probability),
+    ``agree`` (both), ``union`` (either), ``rules-alone`` and ``model-alone`` (one and not the other), ``embed`` (the
+    embedder's change points), ``rules+embed`` (the cues with the embedder's), ``all3`` (any two of the three). What a
+    break is, a new document or an outer one returning, is the walk's to say (``variant_tree``)."""
     from jason.community.document_segments import embedding_break
 
     rules = {n for n, (score, _) in score_pages(pages, weights=weights).items() if score >= threshold}
@@ -449,10 +536,60 @@ def variant_starts(pages: Sequence[PageInfo], variant: str, *, model: dict[int, 
                       if score >= threshold}
     said = {n for n, p in (model or {}).items() if p >= model_threshold}
     broke = {n for n, c in (embeddings or {}).items() if embedding_break(c)}
-    return sorted({"rules": rules, "model": said, "agree": rules & said, "union": rules | said, "rules-alone": rules - said, "model-alone": said - rules,
-                   "embed": broke,
-                   "rules+embed": with_embedding,
+    return sorted({"rules": rules, "model": said, "agree": rules & said, "union": rules | said, "rules-alone": rules - said,
+                   "model-alone": said - rules, "embed": broke, "rules+embed": with_embedding,
                    "all3": {n for n in rules | said | broke if sum([n in rules, n in said, n in broke]) >= 2}}[variant])
+
+
+def variant_tree(pages: Sequence[PageInfo], variant: str, **kw: Any) -> tuple[list[Segment], list[Any]]:
+    """The tree and the moves the walk makes from a variant's breaks."""
+    breaks = [Boundary(n, Tier.SUGGESTED, (Reader.RULES,)) for n in variant_breaks(pages, variant, **kw)]
+    return walk_segments(pages, breaks)
+
+
+def variant_starts(pages: Sequence[PageInfo], variant: str, **kw: Any) -> list[int]:
+    """The first pages of the documents a variant finds (an exhibit is nested, and counted there; a page where an outer
+    document returns is not a start). The first page with words is one in every variant, and is left out of the figures."""
+    return sorted(s.start for s in variant_tree(pages, variant, **kw)[0] if s.role == "document")
+
+
+def nesting_accuracy(segments: Sequence[Segment], moves: Sequence[Any], gold_nested: Sequence[dict[str, Any]],
+                     gold_resumes: Sequence[dict[str, Any]], rank: dict[int, int], *, maybe: Sequence[int] = ()) -> dict[str, Any]:
+    """How the tree meets the labeled nesting, within one content page. A labeled item {start, parent, end}: *found* when a
+    segment starts there, *parent* when that segment's parent starts at the labeled page, *end* when it ends there. A
+    segment that is nested and matches no labeled item is *extra*. A labeled resume {page, to}: *popped* when the walk pops
+    at that page back to the document that started at ``to``."""
+    def near(a: int, b: int) -> bool:
+        return abs(rank.get(a, a) - rank.get(b, b)) <= 1
+
+    by_key = {s.key: s for s in segments}
+    found = parent_ok = end_ok = 0
+    used: set[str] = set()
+    for g in gold_nested:
+        cand = [s for s in segments if s.key not in used and near(s.start, g["start"])]
+        if not cand:
+            continue
+        s = min(cand, key=lambda x: abs(rank.get(x.start, x.start) - rank.get(g["start"], g["start"])))
+        used.add(s.key)
+        found += 1
+        parent = by_key.get(s.parent)
+        if parent is not None and (near(parent.start, g["parent"]) or (parent.start in maybe and parent.start >= g["parent"])):
+            parent_ok += 1                 # a maybe page that split the parent leaves the child in a fragment of it
+        if near(s.end - s.blank_after, g["end"]):
+            end_ok += 1
+    extra = sum(1 for s in segments if s.parent and s.key not in used and not any(near(s.start, m) for m in maybe))
+    popped = pops = 0
+    pop_moves = [m for m in moves if m.kind is MoveKind.POP]
+    taken: set[int] = set()
+    for g in gold_resumes:
+        pops += 1
+        hit = next((m for i, m in enumerate(pop_moves) if i not in taken and near(m.page, g["page"])
+                    and by_key.get(m.segment) is not None and near(by_key[m.segment].start, g["to"])), None)
+        if hit is not None:
+            taken.add(pop_moves.index(hit))
+            popped += 1
+    return {"gold": len(gold_nested), "found": found, "parent": parent_ok, "end": end_ok, "extra": extra,
+            "resumes": pops, "popped": popped, "pops_extra": len(pop_moves) - len(taken)}
 
 
 def evaluate(files: Sequence[dict[str, Any]], pages_for: Callable[[dict[str, Any]], tuple[Sequence[PageInfo], Sequence[Any]]], *,
@@ -460,14 +597,16 @@ def evaluate(files: Sequence[dict[str, Any]], pages_for: Callable[[dict[str, Any
              embeddings_for: Callable[[dict[str, Any]], dict[int, float] | None] | None = None, split: str = "all",
              threshold: float = THRESHOLD, model_threshold: float = MODEL_THRESHOLD, weights: dict[str, float] | None = None,
              community: Any = None) -> dict[str, Any]:
-    """Score the readers against labeled files. A labeled file is ``{path, split, boundaries, maybe, window, parts}``;
-    ``boundaries`` null leaves the file out of the boundary figures and ``parts`` null out of the part figures. The first
-    page with words of each file is not counted (it is a start by definition); a prediction on a ``maybe`` page counts
-    neither way; ``window`` limits the pages scored. Boundary figures are exact and within one content page; part figures
+    """Score the readers against labeled files. A labeled file is ``{path, split, boundaries, maybe, window, parts, nested,
+    resumes}``; ``boundaries`` null leaves the file out of the boundary figures and ``parts`` null out of the part figures.
+    The first page with words of each file is not counted (it is a start by definition); a prediction on a ``maybe`` page
+    counts neither way; ``window`` limits the pages scored. Boundary figures are the first pages of documents (nested
+    ones too, exhibits not), exact and within one content page; the nesting figures are ``nesting_accuracy``; part figures
     are the anchor (a found part starts at the labeled page, or within one) and the span (it also ends there)."""
-    out: dict[str, Any] = {"variants": {}, "parts": {}, "files": []}
+    out: dict[str, Any] = {"variants": {}, "parts": {}, "nesting": {}, "files": []}
     chosen = [f for f in files if split == "all" or f.get("split") == split]
     rows: dict[str, list[tuple[dict, dict]]] = {v: [] for v in variants}
+    nest_rows: dict[str, list[dict[str, Any]]] = {v: [] for v in variants}
     part_rows: list[dict[str, Any]] = []
     for f in chosen:
         pages, toc = pages_for(f)
@@ -479,6 +618,7 @@ def evaluate(files: Sequence[dict[str, Any]], pages_for: Callable[[dict[str, Any
         embeds = embeddings_for(f) if embeddings_for else None
         gold = [n for n in (f.get("boundaries") or []) if lo <= n <= hi and n != first]
         maybe = [n for n in (f.get("maybe") or []) if lo <= n <= hi]
+        kw = {"model": model, "embeddings": embeds, "threshold": threshold, "model_threshold": model_threshold, "weights": weights}
         for v in variants:
             if f.get("boundaries") is None:
                 continue
@@ -486,19 +626,22 @@ def evaluate(files: Sequence[dict[str, Any]], pages_for: Callable[[dict[str, Any
                 continue
             if v in ("embed", "rules+embed", "all3") and not embeds:
                 continue
-            starts = [n for n in variant_starts(pages, v, model=model, embeddings=embeds, threshold=threshold,
-                                                model_threshold=model_threshold, weights=weights)
-                      if lo <= n <= hi and n != first]
+            segs, moves = variant_tree(pages, v, **kw)
+            starts = [s.start for s in segs if s.role == "document" and lo <= s.start <= hi and s.start != first]
             exact = prf(starts, gold, maybe=maybe, rank=rank)
             near = prf(starts, gold, within=1, maybe=maybe, rank=rank)
             rows[v].append((exact, near))
+            if f.get("nested") or f.get("resumes") or any(s.parent for s in segs):
+                window = [s for s in segs if lo <= s.start <= hi]
+                nest_rows[v].append(nesting_accuracy(window, [m for m in moves if lo <= m.page <= hi], f.get("nested") or [],
+                                                     f.get("resumes") or [], rank, maybe=maybe))
             out["files"].append({"path": f["path"], "split": f.get("split"), "variant": v, "exact": exact, "near": near,
                                  "missed": sorted(set(gold) - set(starts)), "extra": sorted(set(starts) - set(gold) - set(maybe))})
         if f.get("parts") is not None:
             boundaries = decide(pages, rule_scores=score_pages(pages, weights=weights), threshold=threshold, accept="rules")
             if f.get("boundaries") is None:
                 boundaries = [Boundary(first, Tier.LIKELY, (Reader.RULES,))]
-            segs = segments_from(pages, boundaries)
+            segs, _ = walk_segments(pages, boundaries)
             found = find_parts(pages, segs, toc=toc)
             span = part_accuracy(found, f["parts"], within=0)
             nearby = part_accuracy(found, f["parts"], within=1)
@@ -506,17 +649,68 @@ def evaluate(files: Sequence[dict[str, Any]], pages_for: Callable[[dict[str, Any
                               "found": [(p.title, p.start, p.end, p.basis) for p in found]})
     for v, pairs in rows.items():
         out["variants"][v] = {"exact": pooled([e for e, _ in pairs]), "near": pooled([n for _, n in pairs]), "files": len(pairs)}
+    for v, rs in nest_rows.items():
+        if rs:
+            keys = ("gold", "found", "parent", "end", "extra", "resumes", "popped", "pops_extra")
+            out["nesting"][v] = {k: sum(r[k] for r in rs) for k in keys} | {"files": len(rs)}
     if part_rows:
         g = sum(r["exact"]["gold"] for r in part_rows)
         n_found = sum(r["exact"]["found"] for r in part_rows)
-        n_span = sum(r["exact"]["span"] * r["exact"]["gold"] for r in part_rows)
         near_found = sum(r["near"]["found"] for r in part_rows)
         near_span = sum(r["near"]["exact"] for r in part_rows)
         extra = sum(r["near"]["extra"] for r in part_rows)
         out["parts"] = {"gold": g, "anchor_exact": n_found / g if g else 0.0, "anchor_near": near_found / g if g else 0.0,
                         "span_near": near_span / g if g else 0.0, "extra": extra, "files": len(part_rows), "rows": part_rows}
-        _ = n_span
     return out
+
+
+def gold_moves(f: dict[str, Any], first: int) -> dict[int, str]:
+    """The labeled move at each page of a gold file: B (a document inside another: every nested start, exhibits too), C
+    (a new top-level document: a boundary that is not nested), E/D (an outer document resumes: a labeled resume; the letter
+    is D, the nearest outer, unless the label says more levels, which it does not today)."""
+    nested = {g["start"] for g in f.get("nested") or []}
+    out = {n: "C" for n in (f.get("boundaries") or []) if n != first}
+    out.update({n: "B" for n in nested})
+    out.update({g["page"]: "D" for g in f.get("resumes") or []})
+    return out
+
+
+def evaluate_moves(f: dict[str, Any], pages: Sequence[PageInfo], probs: dict[int, dict[str, float]]) -> dict[str, int]:
+    """How the rule pass's moves and the model's closed-choice reading meet a gold file's labeled moves (the letters of
+    ``gold_moves``). Counted over the rule pass's moves that are at a labeled page: the rules right, the model's most
+    probable letter right, both the same letter (``LIKELY``), and how many of those same-letter moves are right."""
+    from jason.community.document_segments import move_letter, open_chain
+
+    live = [p for p in pages if not p.blank]
+    if not live:
+        return {}
+    first = live[0].n
+    gold = gold_moves(f, first)
+    segs, moves = variant_tree(pages, "rules")
+    before = {b.n: a.n for a, b in zip(live, live[1:])}
+    row = {"moves": 0, "labeled": 0, "rules_right": 0, "model_right": 0, "agree": 0, "agree_right": 0, "asked": 0}
+    maybe = set(f.get("maybe") or [])
+    for m in moves:
+        if m.kind is MoveKind.FIRST or m.page in maybe:
+            continue
+        row["moves"] += 1
+        want = gold.get(m.page)
+        if want is None:
+            continue
+        row["labeled"] += 1
+        chain = open_chain(segs, before.get(m.page, m.page))
+        mine = move_letter(m, chain)
+        row["rules_right"] += mine == want or (want == "D" and mine in "DEF" and m.kind is MoveKind.POP)
+        got = probs.get(m.page)
+        if got is None:
+            continue
+        row["asked"] += 1
+        top = max(got, key=got.get)
+        row["model_right"] += top == want or (want == "D" and top in "DEF")
+        if top == mine:
+            row["agree"] += 1
+            row["agree_right"] += mine == want or (want == "D" and mine in "DEF")
+    return row
 
 
 def gold_pages(path: Path) -> list[dict[str, Any]]:
@@ -525,6 +719,6 @@ def gold_pages(path: Path) -> list[dict[str, Any]]:
 
 
 __all__ = ["DEFAULT_MODEL", "OllamaPageReader", "default_data_dir", "evaluate", "file_id", "gold_pages", "kind_chain", "load",
-           "page_png", "part_accuracy", "parts_in_store", "pooled", "prf", "read_embeddings", "read_model", "read_pages",
+           "page_png", "part_accuracy", "parts_in_store", "pooled", "prf", "read_embeddings", "read_model", "read_moves", "attach_moves", "read_pages",
            "save", "segment_file", "segment_pages", "sha256_of", "stale", "store_dir", "store_path", "stored",
-           "text_of_pages", "variant_starts"]
+           "text_of_pages", "variant_breaks", "variant_starts", "variant_tree", "nesting_accuracy", "gold_moves", "evaluate_moves"]

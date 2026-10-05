@@ -43,22 +43,32 @@ def _resolve(args: argparse.Namespace, data_dir: Path) -> tuple[Path, str] | Non
     return None
 
 
-def lines(seg: Any) -> list[str]:
-    """A reading as text: each segment with its address, and each part."""
+def lines(seg: Any, *, moves: bool = False) -> list[str]:
+    """A reading as text: the tree of documents, each with its address and its parts; with ``moves``, the moves the walk
+    made (push, pop, new) and what decided each."""
     from jason.community.document_segments import address
 
-    out = [f"{seg.id}: {seg.page_count} pages, {len(seg.segments)} documents, {len(seg.parts)} parts "
+    nested = sum(1 for s in seg.segments if s.parent)
+    out = [f"{seg.id}: {seg.page_count} pages, {len(seg.segments)} documents ({nested} inside another), {len(seg.parts)} parts "
            f"(readers: {', '.join(k for k in seg.readers if not k.endswith('Seconds'))})"]
     for s in seg.segments:
         pages = f"p{s.start}" if s.start == s.end else f"p{s.start}-{s.end}"
+        runs = "" if len(s.runs) <= 1 else " (own " + ", ".join(f"{a}-{b}" if a != b else str(a) for a, b in s.runs) + ")"
         bits = [s.kind or "kind unread", s.date, "; ".join(s.parties)]
-        out.append(f"  {s.key:4s} {pages:9s} {s.tier.value:9s} {' + '.join(r.value for r in s.readers):14s} "
-                   f"{s.title[:48]!r:52s} {' | '.join(b for b in bits if b)}")
-        out.append(f"       {address(seg.id, segment=s.key)}  ({address(seg.id, pages=s.pages)})")
+        indent = "  " * s.depth
+        out.append(f"  {indent}{s.key:6s} {pages:9s}{runs} {s.tier.value:9s} {' + '.join(r.value for r in s.readers):14s} "
+                   f"{(s.label + ': ' if s.label else '')}{s.title[:44]!r} {' | '.join(b for b in bits if b)}")
+        out.append(f"  {indent}       {address(seg.id, segment=s.key)}  ({address(seg.id, pages=s.pages)})")
         for p in (x for x in seg.parts if x.segment == s.key):
             span = f"p{p.start}" if p.start == p.end else f"p{p.start}-{p.end}"
-            out.append(f"       part {p.key:30s} {span:9s} {p.kind.value:9s} via {p.basis}"
+            out.append(f"  {indent}       part {p.key:28s} {span:9s} {p.kind.value:9s} via {p.basis}"
                        + (f"; book {p.book}" if p.book else "") + f"  {address(seg.id, part=p.key)}")
+    if moves:
+        out.append("moves:")
+        for m in seg.moves:
+            closed = f", closed {' and '.join(m.closed)}" if m.closed else ""
+            model = f"; model says {max(m.model, key=m.model.get)} ({max(m.model.values()):.2f})" if m.model else ""
+            out.append(f"  p{m.page:<4d} {m.kind.value:5s} -> {m.segment}{closed} [{m.tier.value}] {'; '.join(m.signals[:3])}{model}")
     return out
 
 
@@ -78,7 +88,7 @@ def cmd_segments(args: argparse.Namespace) -> int:
         if seg is None:
             print(f"jason segments: no reading stored for {args.show}", file=sys.stderr)
             return 1
-        print("\n".join(lines(seg)))
+        print("\n".join(lines(seg, moves=getattr(args, "moves", False))))
         return 0
     found = _resolve(args, data_dir)
     if found is None:
@@ -109,7 +119,7 @@ def cmd_segments(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps({k: v for k, v in seg.to_dict().items() if k != "pages"}, indent=1))
     else:
-        print("\n".join(lines(seg)))
+        print("\n".join(lines(seg, moves=getattr(args, "moves", False))))
     print(("stored at " + str(task.store_path(data_dir, doc_id))) if args.write else "dry run: add --write to store it")
     return 0
 
@@ -132,6 +142,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                    help="keep any reader's boundary (default), only those two readers share, or the rules'")
     p.add_argument("--show", default="", metavar="ID", help="print a stored reading")
     p.add_argument("--list", action="store_true", help="list the stored readings")
+    p.add_argument("--moves", action="store_true", help="also print the moves the walk made at each page (push, pop, new) and what decided them")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_segments)
 

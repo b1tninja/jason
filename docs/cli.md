@@ -627,6 +627,7 @@ The documents in a scanned file and the parts of each: page ranges, kinds, title
 | `--accept` | {any,agree,rules} | keep any reader's boundary (default), only those two readers share, or the rules' |
 | `--show` | ID | print a stored reading |
 | `--list` |  | list the stored readings |
+| `--moves` |  | also print the moves the walk made at each page (push, pop, new) and what decided them |
 | `--json` |  |  |
 
 ### `jason revisions`

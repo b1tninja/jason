@@ -8,15 +8,27 @@ reads both from the pages, as readings:
 - a **Segment** is a page range of the source file, with its kind, title, date, and parties, and which readers said
   it starts there (``rules`` over the page cues, ``model`` the vision model, ``embedding`` a change in what the pages
   talk about). Two readers agreeing make a boundary ``LIKELY``; one alone is only ``SUGGESTED`` (the tiers of
-  ``ocr_correct.Tier``, for the same reason: independent readers are the confidence);
+  ``ocr_correct.Tier``, for the same reason: independent readers are the confidence). **Segments nest**: a document
+  can sit inside a document (an exhibit inside an instrument, a report inside a board packet), so the segments are a
+  tree. A segment's page range is absolute in the file and includes its children's; its own pages are its ``runs``
+  (the packet that spans pages 1 to 40 holds a report on 12 to 19, and its runs are 1-11 and 20-40);
 - a **Part** is a titled page range inside a segment, with the heading it starts at (its outline anchor, found again in
-  any other text of the same document), how it was found (a bookmark, a running header, a title, an exhibit label, a
-  contents page), and the book its title names where the canon says so (``books.book_named``: "Rules and Regulations"
-  is ``rules``).
+  any other text of the same document), how it was found (a bookmark, a running header, a title, a contents page), and
+  the book its title names where the canon says so (``books.book_named``: "Rules and Regulations" is ``rules``). A part
+  belongs to the innermost segment that holds its first page.
+
+**The stack.** The walk down the pages keeps a stack of open documents, each with what it expects next (its next page
+number, its running header and footer, its page size and type). At each page it makes one of four moves: *continue* the
+top; *push* a new document inside the top (an exhibit label, a first page while the top's "Page n of N" has not reached
+N); *pop* back to an outer document, whose own continuation returns (its next page number, its header and footer) and
+so closes every level above it, however many; or start a *new top-level* document, when none of the open ones continues
+and a first page is there. Each level below the top is checked, not only the parent. A document that is closed by an
+outer one's return is a child of it, even when it was first read as a sibling: a document is inside another exactly
+when the other has pages both before and after it. An exhibit or appendix is always a child of the document it follows.
 
 A segment or a part is a *reading*, never an edit: the source file is not split or rewritten, and a segment is a page
-range of it, addressed ``library:ID#p3-7`` (``#seg=N`` for the N-th segment, ``#part=SLUG`` for a part;
-``address``/``parse_address``). A boundary the readers do not see stays unseen: a miss is a miss.
+range of it, addressed ``library:ID#p3-7`` (``#seg=s2/s2.1`` for a segment by its path in the tree, ``#part=SLUG`` for
+a part; ``address``/``parse_address``). A boundary the readers do not see stays unseen: a miss is a miss.
 
 The rule pass is a table of **cues** (``CUES``): each a signal in the page, its weight, and which way it points. A page
 starts a document when the weights of the cues it shows reach ``THRESHOLD``. Adding a signal is adding a row. The cues
@@ -189,11 +201,47 @@ class Boundary:
                    tuple(raw.get("cues") or ()), raw.get("model"), raw.get("embedding"))
 
 
+class MoveKind(Enum):
+    FIRST = "first"             # the first page of the file opens the first document
+    CONTINUE = "continue"       # the page belongs to the document that holds the page before
+    PUSH = "push"               # a new document inside the open one
+    POP = "pop"                 # an outer document resumes; every level above it closes
+    NEW = "new"                 # a new top-level document: none of the open ones continues
+
+
+@dataclass(frozen=True)
+class Move:
+    """What the walk decided at one page against the stack, and what decided it. The log keeps every move but a
+    continue (a document of a hundred pages is a hundred of those)."""
+
+    page: int
+    kind: MoveKind
+    segment: str                                 # the segment the page belongs to after the move
+    closed: tuple[str, ...] = ()                 # the segments the move closed: a pop may close several at once
+    signals: tuple[str, ...] = ()                # what decided it: cues, and what the levels below expected
+    readers: tuple[Reader, ...] = ()
+    tier: Tier = Tier.SUGGESTED
+    model: dict[str, float] | None = None        # the vision model's probabilities over the four moves, where asked
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"page": self.page, "kind": self.kind.value, "segment": self.segment, "closed": list(self.closed),
+                "signals": list(self.signals), "readers": [r.value for r in self.readers], "tier": self.tier.value,
+                "model": None if self.model is None else {k: round(v, 3) for k, v in self.model.items()}}
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> Move:
+        return cls(raw["page"], MoveKind(raw["kind"]), raw.get("segment", ""), tuple(raw.get("closed") or ()),
+                   tuple(raw.get("signals") or ()), tuple(Reader(r) for r in raw.get("readers") or ()),
+                   Tier(raw.get("tier", "suggested")), raw.get("model"))
+
+
 @dataclass
 class Segment:
-    """One document in a file: pages ``start`` to ``end`` (1-based, inclusive)."""
+    """One document in a file: pages ``start`` to ``end`` (1-based, inclusive), absolute in the file and including the
+    pages of its children. ``key`` is its place in the tree: "s2" is the second top-level document and "s2.1" the first
+    document inside it."""
 
-    key: str                                     # "s1", "s2", ... in page order
+    key: str                                     # "s1", "s2", ... top level in page order; "s2.1" inside s2
     start: int
     end: int
     title: str = ""
@@ -206,6 +254,12 @@ class Segment:
     readers: tuple[Reader, ...] = ()
     confidence: float = 0.0                      # 0 to 1: the readers' own, combined
     blank_after: int = 0                         # blank pages at its end (backs, separators)
+    parent: str = ""                             # the key of the document it is inside; "" at the top
+    role: str = "document"                       # "document", or "exhibit" (an exhibit, appendix, attachment, schedule)
+    label: str = ""                              # an exhibit's label as printed ("Exhibit A")
+    aliases: tuple[str, ...] = ()                # the other names the label goes by ("Ex. A")
+    runs: tuple[tuple[int, int], ...] = ()       # its own pages: its range less its children's
+    move: str = ""                               # how it began: "first", "push", "new"
 
     @property
     def pages(self) -> tuple[int, int]:
@@ -215,11 +269,22 @@ class Segment:
     def count(self) -> int:
         return self.end - self.start + 1
 
+    @property
+    def depth(self) -> int:
+        return self.key.count(".")
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """What a citation calls it: the label and its aliases, else the title."""
+        return tuple(dict.fromkeys(n for n in (self.label, *self.aliases) if n)) or ((self.title,) if self.title else ())
+
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
         raw["tier"] = self.tier.value
         raw["readers"] = [r.value for r in self.readers]
         raw["parties"] = list(self.parties)
+        raw["aliases"] = list(self.aliases)
+        raw["runs"] = [list(r) for r in self.runs]
         raw["confidence"] = round(self.confidence, 3)
         return raw
 
@@ -229,6 +294,8 @@ class Segment:
         fields["tier"] = Tier(raw.get("tier", "suggested"))
         fields["readers"] = tuple(Reader(r) for r in raw.get("readers") or ())
         fields["parties"] = tuple(raw.get("parties") or ())
+        fields["aliases"] = tuple(raw.get("aliases") or ())
+        fields["runs"] = tuple(tuple(r) for r in raw.get("runs") or ())
         return cls(**fields)
 
 
@@ -245,18 +312,35 @@ class Part:
     end_anchor: str = ""                         # the next part's heading ("" at the end of the segment)
     basis: str = ""                              # "bookmark", "header run", "title", "exhibit label", "contents"
     book: str = ""                               # the book the title names (``books.book_named``), else ""
-    segment: str = ""                            # the segment's key
+    segment: str = ""                            # the innermost segment that holds its first page
     confidence: float = 0.0
     outline: tuple[str, ...] = ()                # the outline sections it holds, when an outline was matched to it
+    aliases: tuple[str, ...] = ()                # the other names it goes by
 
     @property
     def pages(self) -> tuple[int, int]:
         return (self.start, self.end)
 
+    @property
+    def document(self) -> str:
+        """The innermost document that holds the part: a segment's key. A part inside an exhibit is the exhibit's."""
+        return self.segment
+
+    @property
+    def label(self) -> str:
+        """What a person calls it: its title as the page prints it."""
+        return self.title
+
+    @property
+    def through(self) -> str:
+        """The heading it runs up to: the next part's, or "" at the end of its document."""
+        return self.end_anchor
+
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
         raw["kind"] = self.kind.value
         raw["outline"] = list(self.outline)
+        raw["aliases"] = list(self.aliases)
         raw["confidence"] = round(self.confidence, 3)
         return raw
 
@@ -265,6 +349,7 @@ class Part:
         fields = dict(raw)
         fields["kind"] = PartKind(raw["kind"])
         fields["outline"] = tuple(raw.get("outline") or ())
+        fields["aliases"] = tuple(raw.get("aliases") or ())
         return cls(**fields)
 
 
@@ -280,13 +365,42 @@ class Segmentation:
     readers: dict[str, str] = field(default_factory=dict)       # reader -> its version or model
     options: dict[str, Any] = field(default_factory=dict)       # threshold and weights used
     candidates: list[Boundary] = field(default_factory=list)    # every boundary any reader proposed
-    segments: list[Segment] = field(default_factory=list)
+    segments: list[Segment] = field(default_factory=list)       # the tree, in preorder
     parts: list[Part] = field(default_factory=list)
     pages: list[PageInfo] = field(default_factory=list)
     made: str = ""
+    moves: list[Move] = field(default_factory=list)             # every move but a continue, with what decided it
 
     def segment(self, key: str) -> Segment | None:
         return next((s for s in self.segments if s.key == key), None)
+
+    def top(self) -> list[Segment]:
+        return [s for s in self.segments if not s.parent]
+
+    def children_of(self, key: str) -> list[Segment]:
+        return [s for s in self.segments if s.parent == key]
+
+    def parent_of(self, key: str) -> Segment | None:
+        seg = self.segment(key)
+        return self.segment(seg.parent) if seg and seg.parent else None
+
+    def ancestors_of(self, key: str) -> list[Segment]:
+        """The documents that hold ``key``, the nearest first."""
+        out: list[Segment] = []
+        parent = self.parent_of(key)
+        while parent is not None:
+            out.append(parent)
+            parent = self.parent_of(parent.key)
+        return out
+
+    def path(self, key: str) -> list[str]:
+        """The keys from the top of the tree down to ``key`` ("s2", "s2.1")."""
+        return [s.key for s in reversed(self.ancestors_of(key))] + [key]
+
+    def chain_at(self, page: int) -> list[Segment]:
+        """The documents that hold a page, the outermost first: the innermost is the page's own."""
+        inner = self.segment_at(page)
+        return [*reversed(self.ancestors_of(inner.key)), inner] if inner else []
 
     def part(self, key: str) -> Part | None:
         return next((p for p in self.parts if p.key == key), None)
@@ -298,7 +412,12 @@ class Segmentation:
                 and (not segment or p.segment == segment)]
 
     def segment_at(self, page: int) -> Segment | None:
-        return next((s for s in self.segments if s.start <= page <= s.end), None)
+        """The innermost segment that holds ``page`` among its own pages (a blank back is its neighbor's)."""
+        own = [s for s in self.segments if any(a <= page <= b for a, b in s.runs)]
+        if own:
+            return max(own, key=lambda s: s.depth)
+        within = [s for s in self.segments if s.start <= page <= s.end]
+        return max(within, key=lambda s: s.depth) if within else None
 
     def part_at(self, page: int) -> Part | None:
         found = [p for p in self.parts if p.start <= page <= p.end]
@@ -309,7 +428,7 @@ class Segmentation:
                 "readers": self.readers, "options": self.options, "made": self.made,
                 "candidates": [b.to_dict() for b in self.candidates],
                 "segments": [s.to_dict() for s in self.segments], "parts": [p.to_dict() for p in self.parts],
-                "pages": [p.to_dict() for p in self.pages]}
+                "moves": [m.to_dict() for m in self.moves], "pages": [p.to_dict() for p in self.pages]}
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> Segmentation:
@@ -317,7 +436,8 @@ class Segmentation:
                    raw.get("options") or {}, [Boundary.from_dict(b) for b in raw.get("candidates") or ()],
                    [Segment.from_dict(s) for s in raw.get("segments") or ()],
                    [Part.from_dict(p) for p in raw.get("parts") or ()],
-                   [PageInfo.from_dict(p) for p in raw.get("pages") or ()], raw.get("made", ""))
+                   [PageInfo.from_dict(p) for p in raw.get("pages") or ()], raw.get("made", ""),
+                   [Move.from_dict(m) for m in raw.get("moves") or ()])
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -336,20 +456,27 @@ class Address:
         return address(self.id, pages=(self.start, self.end) if self.start else None, segment=self.segment, part=self.part)
 
 
+def seg_path(key: str) -> str:
+    """A segment's path from the top of the tree: "s2.1.3" is "s2/s2.1/s2.1.3"."""
+    parts = key.split(".")
+    return "/".join(".".join(parts[: i + 1]) for i in range(len(parts)))
+
+
 def address(doc_id: str, *, pages: tuple[int, int] | None = None, segment: str = "", part: str = "") -> str:
-    """``library:ID`` whole, ``library:ID#p3-7`` (``#p3`` one page), ``library:ID#seg=s2``, ``library:ID#part=SLUG``."""
+    """``library:ID`` whole, ``library:ID#p3-7`` (``#p3`` one page), ``library:ID#seg=s2/s2.1`` (a nested segment shows its
+    path; the pages stay absolute in the file), ``library:ID#part=SLUG``."""
     base = f"library:{doc_id}"
     if part:
         return f"{base}#part={part}"
     if segment:
-        return f"{base}#seg={segment}"
+        return f"{base}#seg={seg_path(segment)}"
     if pages and pages[0]:
         a, b = pages
         return f"{base}#p{a}" if a == b else f"{base}#p{a}-{b}"
     return base
 
 
-_ADDRESS = re.compile(r"^library:(?P<id>[A-Za-z0-9_-]{1,64})(?:#(?:p(?P<a>\d+)(?:-(?P<b>\d+))?|seg=(?P<seg>[A-Za-z0-9]+)"
+_ADDRESS = re.compile(r"^library:(?P<id>[A-Za-z0-9_-]{1,64})(?:#(?:p(?P<a>\d+)(?:-(?P<b>\d+))?|seg=(?P<seg>[A-Za-z0-9./]+)"
                       r"|part=(?P<part>[a-z0-9-]+)))?$")
 
 
@@ -359,7 +486,7 @@ def parse_address(text: str) -> Address | None:
         return None
     a = int(m["a"]) if m["a"] else 0
     b = int(m["b"]) if m["b"] else a
-    return Address(m["id"], a, max(a, b), m["seg"] or "", m["part"] or "")
+    return Address(m["id"], a, max(a, b), (m["seg"] or "").rsplit("/", 1)[-1], m["part"] or "")
 
 
 def resolve(seg: Segmentation, addr: Address | str) -> tuple[int, int] | None:
@@ -682,7 +809,7 @@ def page_cues(prev: PageInfo | None, page: PageInfo, *, embedding: float | None 
         fire("mid-sentence")
     opening = " ".join(ln.text for ln in _top_lines(page, 3, 0.4))
     if prev is not None:
-        if re.search(r"table of contents|^\W*contents", opening, re.I) or (_leader_page(page) and _leader_page(prev)):
+        if re.search(r"table of contents|^\W*contents\b", opening, re.I) or (_leader_page(page) and _leader_page(prev)):
             fire("contents-page")
         if any(_EXHIBIT_LINE.match(re.sub(r"\s+", " ", ln.text).strip()) for ln in _top_lines(page, 3, 0.4)):
             fire("exhibit-label")
@@ -861,38 +988,332 @@ def read_title(page: PageInfo) -> str:
 # ---------------------------------------------------------------------------------------------------------------------
 # Segments
 
+RESUME = 1.6                    # the evidence that an outer document continues at a page, at which it is taken to resume
+RESUME_MARGIN = 0.8             # ... and by how much it must beat the open document's own claim on the page
+LOOKBACK = 8                    # how many earlier documents may resume: the ones that closed most recently
 
-def segments_from(pages: Sequence[PageInfo], boundaries: Sequence[Boundary], *, classify: Callable[[str, str], tuple[str, str]]
-                  | None = None, text_of: Callable[[int, int], str] | None = None) -> list[Segment]:
-    """The pages cut at the boundaries. A blank page belongs to the segment before it. ``classify(title, text)`` gives
-    (kind, basis) and ``text_of(start, end)`` the segment's opening text; both optional."""
+_EXHIBIT_PARSE = re.compile(
+    r"^\W*(?P<word>exhibit|appendix|attachment|annex|schedule|addendum|enclosure)s?\s*[\"'“”]?\s*(?P<id>(?-i:[A-Z]{1,2}|\d{1,3}))\b", re.I)
+
+
+def exhibit_label(page: PageInfo) -> tuple[str, str, tuple[str, ...]] | None:
+    """The exhibit, appendix, attachment, or schedule a page opens as: (label, title, aliases), else None. The label is
+    "Exhibit A"; the title is the line under it, when there is one ("Statement Regarding Insurance Coverage"); an alias is
+    another way a citation writes it ("Ex. A"). A line of running text that begins with the word is no label: the line
+    is short, in the top of the page, and does not end as a sentence does."""
+    if _leader_page(page):
+        return None
+    for i, ln in enumerate(page.head[:3]):
+        text = re.sub(r"\s+", " ", ln.text).strip()
+        m = _EXHIBIT_PARSE.match(text)
+        if not m or ln.top >= 0.5 or len(text) > 60 or text.endswith((",", ";")):
+            continue
+        word, ident = m["word"].title(), m["id"].upper()
+        label = f"{word} {ident}"
+        title = ""
+        for nxt in page.head[i + 1:i + 3]:
+            t = re.sub(r"\s+", " ", nxt.text).strip(" .:-")
+            if len(t.split()) >= 2 and not _EXHIBIT_PARSE.match(t) and len(t) <= 90:
+                title = t
+                break
+        aliases = (f"Ex. {ident}",) if word == "Exhibit" else ()
+        return label, title, aliases
+    return None
+
+
+@dataclass
+class _Node:
+    """One open or closed document during the walk: where it started, its own pages, and what it expects next."""
+
+    idx: int
+    first: PageInfo
+    parent: int | None
+    role: str = "document"
+    label: str = ""
+    title: str = ""
+    aliases: tuple[str, ...] = ()
+    runs: list[list[int]] = field(default_factory=list)
+    last: PageInfo | None = None                 # its last page with words
+    lab: Label | None = None                     # that page's number
+    header: str = ""
+    footer: str = ""
+    terms: set[str] = field(default_factory=set)
+    boundary: Boundary | None = None
+    move: MoveKind = MoveKind.NEW
+    signals: tuple[str, ...] = ()
+    pending: bool = False                        # "Page n of N" and n has not reached N
+    ended: bool = False                          # n has reached N: nothing resumes
+
+    @property
+    def start(self) -> int:
+        return self.runs[0][0]
+
+    @property
+    def lastpage(self) -> int:
+        return self.runs[-1][1]
+
+
+def _continues(node: _Node, page: PageInfo) -> tuple[float, list[str]]:
+    """How far a page continues a document: its next page number, its running header and footer, its page size and type,
+    the words it shares with the document's last page, and a sentence left open. A document whose "Page n of N" reached N
+    has nothing to continue."""
+    if node.ended or node.last is None:
+        return -9.0, []
+    score, notes = 0.0, []
+    here = label_of(page)
+    if here and node.lab and here.roman == node.lab.roman:
+        if here.n == node.lab.n + 1 and (not here.total or not node.lab.total or here.total == node.lab.total):
+            score += 1.8
+            notes.append(f"page {here.n} follows {node.lab.n}")
+        elif here.n <= node.lab.n:
+            score -= 1.0
+            notes.append(f"page {here.n} does not follow {node.lab.n}")
+    if node.header and page.header:
+        if _same(node.header, page.header):
+            score += 0.8
+            notes.append("header returns")
+        elif _differs(node.header, page.header):
+            score -= 0.2
+    if node.footer and page.footer:
+        if _same(node.footer, page.footer):
+            score += 0.8
+            notes.append("footer returns")
+        elif _differs(node.footer, page.footer):
+            score -= 0.2
+    if _resized(node.last, page):
+        score -= 0.8
+        notes.append("page size differs")
+    else:
+        score += 0.2
+    if node.last.font and page.font:
+        score += 0.2 if node.last.font == page.font else -0.1
+    if node.terms and page.terms:
+        share = len(node.terms & set(page.terms)) / math.sqrt(len(node.terms) * len(page.terms))
+        if share >= 0.35:
+            score += 0.5
+            notes.append("same words")
+        elif share < 0.1:
+            score -= 0.4
+    if _sentence_open(page) and node.last.end.rstrip() and node.last.end.rstrip()[-1] not in '.!?:;")':
+        score += 0.6
+        notes.append("a sentence left open")
+    return score, notes
+
+
+_LISTING = re.compile(r"\b(?:included|enclosed|contents|packet)\b", re.I)
+COVER_PAGES = 3                 # a packet's cover has no more own pages than this
+
+
+def _adopt_listed(nodes: list[_Node], raw: list[Any], by_n: dict[int, PageInfo]) -> None:
+    """A packet's cover lists the documents in it ("Included Reports: Balance Sheet, Aging of Accounts ..."): a document of a
+    few pages that says it lists ("included", "enclosed", "contents", "packet"), followed by documents whose titles it
+    names, is their parent. The documents it names run on from one of the first two after it, with no more than one
+    unnamed between, and at least three are named; they are its children, whether or not the cover has pages after them."""
+    tops = sorted((n for n in nodes if n.parent is None and n.role == "document"), key=lambda n: n.start)
+    for i, cover in enumerate(tops):
+        if sum(b - a + 1 for a, b in cover.runs) > COVER_PAGES:
+            continue
+        followers = [n for n in tops[i + 1:] if n.parent is None]
+        if len(followers) < 3:
+            continue
+        own = [q for a, b in cover.runs for q in range(a, b + 1) if q in by_n and not by_n[q].blank]
+        lead = " ".join(by_n[q].lead for q in own)
+        if not _LISTING.search(lead):
+            continue
+        stream = _stream(lead)
+        counts: Counter[str] = Counter(_stream(ln.text) for n in followers for ln in n.first.head[:3])
+        common = max(2, len(followers) // 2)
+        cover_words = {w.lower() for w in re.findall(r"[A-Za-z]{3,}", lead)}
+
+        def names(line: str) -> bool:
+            words = [w.lower() for w in re.findall(r"[A-Za-z]{3,}", line)]
+            return len(_stream(line)) >= 8 and counts[_stream(line)] < common and (
+                _stream(line) in stream or len(words) >= 2 and sum(w in cover_words for w in words) >= max(2, 0.66 * len(words)))
+
+        flags = [any(names(ln.text) for ln in n.first.head[:3]) for n in followers]
+        last, gaps = -1, 0
+        for j, flag in enumerate(flags):
+            gaps = 0 if flag else gaps + 1
+            if flag:
+                last = j
+            if gaps > 1:
+                break
+        if sum(flags[: last + 1]) < 3 or not any(flags[:2]):
+            continue
+        kids = {n.idx for n in followers[: last + 1]}
+        for n in followers[: last + 1]:
+            n.parent = cover.idx
+        for k, row in enumerate(raw):
+            if row[2] in kids and row[1] is MoveKind.NEW:
+                raw[k] = (row[0], MoveKind.PUSH, row[2], row[3], (*row[4], f"listed on the cover of the document at page {cover.start}"), row[5])
+                nodes[row[2]].move = MoveKind.PUSH
+
+
+def walk(pages: Sequence[PageInfo], boundaries: Sequence[Boundary]) -> tuple[list[Segment], list[Move]]:
+    """Walk the pages with a stack of open documents and make a move at each page: continue the top, push a document
+    inside it, pop back to an outer one, or start a new top-level document. ``boundaries`` are the pages the readers say
+    break (``decide``); a break is a new document unless an outer document's continuation returns there, which is a pop.
+    A strong return of an outer document is a pop even where no reader saw a break. The tree is returned with absolute
+    page ranges, and the moves with what decided each."""
+    by_page = {b.page: b for b in boundaries}
+    nodes: list[_Node] = []
+    raw: list[tuple[int, MoveKind, int, tuple[int, ...], tuple[str, ...], Boundary | None]] = []
+    active: _Node | None = None
+
+    def chain(node: _Node | None) -> list[_Node]:
+        out: list[_Node] = []
+        while node is not None:
+            out.append(node)
+            node = nodes[node.parent] if node.parent is not None else None
+        return out
+
+    def place(node: _Node, page: PageInfo) -> None:
+        if node.runs and node.runs[-1][1] >= page.n - 1:
+            node.runs[-1][1] = page.n
+        else:
+            node.runs.append([page.n, page.n])
+        node.last = page
+        node.lab = label_of(page) or node.lab
+        node.header = page.header or node.header
+        node.footer = page.footer or node.footer
+        node.terms = set(page.terms)
+        total = node.lab.total if node.lab and not node.lab.roman else 0
+        node.pending = bool(total and node.lab.n < total)
+        node.ended = bool(total and node.lab.n >= total)
+
+    for page in pages:
+        if page.blank:
+            if active is not None:
+                if active.runs[-1][1] >= page.n - 1:
+                    active.runs[-1][1] = page.n
+            continue
+        if active is None:
+            active = _Node(0, page, None, move=MoveKind.FIRST, boundary=None)
+            nodes.append(active)
+            place(active, page)
+            raw.append((page.n, MoveKind.FIRST, 0, (), ("first page",), None))
+            continue
+        b = by_page.get(page.n)
+        own, own_notes = _continues(active, page)
+        # An outer document returns: the best of the levels below the top, then the documents that closed lately.
+        in_chain = {n.idx for n in chain(active)}
+        order = [n for n in chain(active)[1:]]            # the open levels below the top, nearest first
+        order += sorted((n for n in nodes if n.idx not in in_chain), key=lambda n: -n.lastpage)[:LOOKBACK]
+        best: tuple[float, _Node, list[str]] | None = None
+        for cand in order:
+            if cand.last is None or cand.role == "exhibit":
+                continue
+            score, notes = _continues(cand, page)
+            if cand.idx not in in_chain and not (any(" follows " in n for n in notes) and any(
+                    n in ("header returns", "footer returns", "same words") for n in notes)):
+                continue                   # a document that closed resumes on its page number and its look together
+            if score >= RESUME and score >= own + RESUME_MARGIN and (best is None or score > best[0]):
+                best = (score, cand, notes)
+        label = exhibit_label(page)
+        if best is not None:
+            target = best[1]
+            closed = tuple(n.idx for n in chain(active) if n.idx not in {m.idx for m in chain(target)})
+            before = target.lastpage
+            for n in nodes:
+                if n.idx != target.idx and n.start > before and n.parent == target.parent and n.idx not in {m.idx for m in chain(target)}:
+                    n.parent = target.idx          # a document that closed between a document's pages is inside it
+            place(target, page)
+            active = target
+            raw.append((page.n, MoveKind.POP, target.idx, closed, tuple(best[2]) + (f"inner claim {own:.1f}",), b))
+            continue
+        starts_exhibit = label is not None and not (active.role == "exhibit" and active.label == label[0])
+        if starts_exhibit or b is not None:
+            kind = MoveKind.NEW
+            parent: _Node | None = None
+            role, lab_text, title, aliases = "document", "", "", ()
+            signals = tuple(b.cues) if b is not None else ()
+            if starts_exhibit:
+                role, lab_text, title, aliases = "exhibit", label[0], label[1], label[2]
+                holder = next((n for n in chain(active) if n.role != "exhibit"), None)
+                parent = holder
+                signals = (f"exhibit label {label[0]}",) + signals
+                kind = MoveKind.PUSH if parent is not None else MoveKind.NEW
+            else:
+                pend = next((n for n in chain(active) if n.pending), None)
+                if pend is not None:
+                    parent, kind = pend, MoveKind.PUSH
+                    signals += (f"inside a document still at page {pend.lab.n} of {pend.lab.total}",)
+            node = _Node(len(nodes), page, parent.idx if parent is not None else None, role, lab_text, title, aliases,
+                         boundary=b, move=kind, signals=signals)
+            nodes.append(node)
+            place(node, page)
+            raw.append((page.n, kind, node.idx, (), signals, b))
+            active = node
+            continue
+        place(active, page)
+
+    _adopt_listed(nodes, raw, {p.n: p for p in pages})
+
+    # The tree: its keys, absolute page ranges, and the moves under those keys.
+    kids: dict[int | None, list[_Node]] = {}
+    for n in nodes:
+        kids.setdefault(n.parent, []).append(n)
+    keys: dict[int, str] = {}
+    order_out: list[_Node] = []
+
+    def number(parent: int | None, prefix: str) -> None:
+        for i, n in enumerate(sorted(kids.get(parent, []), key=lambda x: x.start), start=1):
+            keys[n.idx] = f"{prefix}{i}" if prefix else f"s{i}"
+            order_out.append(n)
+            number(n.idx, keys[n.idx] + ".")
+
+    number(None, "")
+    end_of: dict[int, int] = {}
+
+    def span_end(n: _Node) -> int:
+        end_of[n.idx] = max([n.lastpage] + [span_end(c) for c in kids.get(n.idx, [])])
+        return end_of[n.idx]
+
+    for n in kids.get(None, []):
+        span_end(n)
     by_n = {p.n: p for p in pages}
-    starts = sorted(b.page for b in boundaries)
-    if not starts:
-        return []
-    out: list[Segment] = []
-    for i, start in enumerate(starts):
-        end = (starts[i + 1] - 1) if i + 1 < len(starts) else (pages[-1].n if pages else start)
-        page = by_n.get(start)
-        b = next(b for b in boundaries if b.page == start)
+    segments: list[Segment] = []
+    for n in order_out:
         trailing = 0
-        for n in range(end, start, -1):
-            if by_n.get(n) and by_n[n].blank:
+        for q in range(end_of[n.idx], n.start, -1):
+            if by_n.get(q) is not None and by_n[q].blank:
                 trailing += 1
             else:
                 break
-        seg = Segment(f"s{i + 1}", start, end, basis="first page" if i == 0 else " ".join(b.cues) or "reader",
-                      tier=b.tier, readers=b.readers, blank_after=trailing,
-                      confidence=_confidence(b))
-        if page is not None:
-            seg.title = read_title(page)
-            seg.date = read_date(page.lead)
-            seg.parties = read_parties(page.lead)
-            opening = text_of(start, min(end, start + 1)) if text_of else page.lead
-            if classify is not None:
-                seg.kind, seg.kind_basis = classify(seg.title, opening or page.lead)
-        out.append(seg)
-    return out
+        b = n.boundary
+        seg = Segment(keys[n.idx], n.start, end_of[n.idx], title=n.title or read_title(n.first), date=read_date(n.first.lead),
+                      parties=read_parties(n.first.lead),
+                      basis="first page" if n.move is MoveKind.FIRST else " ".join(n.signals) or "reader",
+                      tier=b.tier if b is not None else Tier.LIKELY if n.move is MoveKind.FIRST else Tier.SUGGESTED,
+                      readers=b.readers if b is not None else (Reader.RULES,),
+                      confidence=_confidence(b) if b is not None else (1.0 if n.move is MoveKind.FIRST else 0.55),
+                      blank_after=trailing, parent=keys[n.parent] if n.parent is not None else "", role=n.role,
+                      label=n.label, aliases=n.aliases, runs=tuple((a, z) for a, z in n.runs), move=n.move.value)
+        segments.append(seg)
+    moves = [Move(pg, kind, keys[idx], tuple(keys[c] for c in closed), signals,
+                  b.readers if b is not None else (Reader.RULES,),
+                  b.tier if b is not None else Tier.SUGGESTED, None) for pg, kind, idx, closed, signals, b in raw]
+    return segments, moves
+
+
+def segments_from(pages: Sequence[PageInfo], boundaries: Sequence[Boundary], *, classify: Callable[[str, str], tuple[str, str]]
+                  | None = None, text_of: Callable[[int, int], str] | None = None) -> list[Segment]:
+    """The tree of segments the walk makes (``walk_segments`` also returns its moves). ``classify(title, text)`` gives
+    (kind, basis) and ``text_of(start, end)`` a segment's opening text; both optional."""
+    return walk_segments(pages, boundaries, classify=classify, text_of=text_of)[0]
+
+
+def walk_segments(pages: Sequence[PageInfo], boundaries: Sequence[Boundary], *,
+                  classify: Callable[[str, str], tuple[str, str]] | None = None,
+                  text_of: Callable[[int, int], str] | None = None) -> tuple[list[Segment], list[Move]]:
+    segments, moves = walk(pages, boundaries)
+    by_n = {p.n: p for p in pages}
+    if classify is not None:
+        for seg in segments:
+            page = by_n.get(seg.start)
+            opening = text_of(seg.start, min(seg.end, seg.start + 1)) if text_of else (page.lead if page else "")
+            seg.kind, seg.kind_basis = classify(seg.title, opening or (page.lead if page else ""))
+    return segments, moves
 
 
 def _confidence(b: Boundary) -> float:
@@ -977,20 +1398,11 @@ _EXHIBIT_LINE = re.compile(r"^\W*(?:exhibit|appendix|attachment|annex|schedule|a
 
 def title_marks(pages: Sequence[PageInfo], lo: int, hi: int) -> list[Mark]:
     """Marks at pages that open with a part's title: a line in the top of the page with a part word that is set big, or
-    alone in capitals, bold, or centered; an exhibit label wherever it opens the page."""
+    alone in capitals, bold, or centered. An exhibit label is not one: an exhibit is a document inside the document
+    (``walk``), a child segment."""
     out: list[Mark] = []
     for page in pages:
         if not (lo <= page.n <= hi) or page.blank:
-            continue
-        first = [ln for ln in page.head[:6] if ln.top < 0.4]
-        done = False
-        for ln in first[:4]:
-            text = re.sub(r"\s+", " ", ln.text).strip()
-            if _EXHIBIT_LINE.match(text) and len(text) <= 60:
-                out.append(Mark(page.n, text, "exhibit label"))
-                done = True
-                break
-        if done:
             continue
         found = title_line(page, PART_WORDS)
         if found and part_kind(found[0].text) is not None:
@@ -1080,8 +1492,11 @@ def find_parts(pages: Sequence[PageInfo], segments: Sequence[Segment], *, toc: S
     by_n = {p.n: p for p in pages}
     for seg in segments:
         lo, hi = seg.start, seg.end
-        marks = [*bookmark_marks(toc, lo, hi), *header_runs(pages, lo, hi), *title_marks(pages, lo, hi),
-                 *contents_marks(pages, lo, hi, text_of)]
+        # A segment's parts are read from its own pages: what its children hold is theirs.
+        owned = {n for a, z in (seg.runs or ((lo, hi),)) for n in range(a, z + 1)}
+        mine = [p for p in pages if p.n in owned]
+        marks = [m for m in [*bookmark_marks(toc, lo, hi), *header_runs(mine, lo, hi), *title_marks(mine, lo, hi),
+                             *contents_marks(mine, lo, hi, text_of)] if m.page in owned]
         best: dict[int, Mark] = {}
         for m in marks:
             cur = best.get(m.page)
@@ -1129,8 +1544,16 @@ def find_parts(pages: Sequence[PageInfo], segments: Sequence[Segment], *, toc: S
             parts.append(Part(key, m.title, kind, m.page, end, anchor=m.title,
                               end_anchor=picked[i + 1].title if i + 1 < len(picked) else "", basis=m.basis,
                               book=_book_of(m.title, kind), segment=seg.key,
-                              confidence=round(min(1.0, _score(m)), 3) if by_n.get(m.page) else 0.3))
+                              confidence=round(min(1.0, _score(m)), 3) if by_n.get(m.page) else 0.3,
+                              aliases=_aliases(m.title)))
     return parts
+
+
+def _aliases(title: str) -> tuple[str, ...]:
+    """The other ways a part's title is written: without a leading letter or number ("B. Community Regulations"), and in
+    ordinary capitals where the page prints it in capitals."""
+    base = re.sub(r"^\W*[A-Z0-9]{1,3}[.)]\s*", "", title).strip()
+    return tuple(dict.fromkeys(t for t in (base, base.title() if base.isupper() else "") if t and t != title))
 
 
 def _book_of(title: str, kind: PartKind) -> str:
@@ -1146,6 +1569,53 @@ def _book_of(title: str, kind: PartKind) -> str:
         if book is not None:
             return book.value
     return ""
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The move as a closed choice, for a second reader
+
+MOVE_LETTERS = "ABCDEF"         # A continue, B new inside the top, C new top-level, D and after: back to an outer document
+
+
+def open_chain(segments: Sequence[Segment], page: int) -> list[Segment]:
+    """The documents open at ``page``, the outermost first: those whose own pages include it, with the ancestors of the
+    innermost. ``page`` is the last page before the one a move is asked about."""
+    by_key = {s.key: s for s in segments}
+    own = [s for s in segments if any(a <= page <= b for a, b in (s.runs or ((s.start, s.end),)))]
+    if not own:
+        return []
+    inner = max(own, key=lambda s: s.depth)
+    out = [inner]
+    while out[-1].parent and out[-1].parent in by_key:
+        out.append(by_key[out[-1].parent])
+    return list(reversed(out))
+
+
+def move_choices(chain: Sequence[Segment]) -> dict[str, str]:
+    """The four moves as lettered choices against the stack: {letter: what it says}. A is to continue the innermost open
+    document, B a new document inside it, C a new top-level document, and D, E, F ... to go back to the open document
+    that holds it, the nearest first (each named by its title)."""
+    top = chain[-1] if chain else None
+    name = lambda seg: (seg.label or seg.title or seg.key)[:60]            # noqa: E731
+    out = {"A": f"it continues the innermost open document ({name(top)})" if top else "it continues the document",
+           "B": "it starts a new document inside the innermost open document",
+           "C": "it starts a new top-level document, and none of the open documents continues"}
+    for letter, outer in zip("DEF", list(reversed(chain[:-1]))[:3]):
+        out[letter] = f"it goes back to the outer document {name(outer)}, which resumes here"
+    return out
+
+
+def move_letter(move: Move, chain: Sequence[Segment]) -> str:
+    """The letter the rule pass's move corresponds to: continue A, push B, new C, pop to the k-th outer document D, E, F."""
+    if move.kind is MoveKind.CONTINUE:
+        return "A"
+    if move.kind is MoveKind.PUSH:
+        return "B"
+    if move.kind is MoveKind.POP:
+        outers = [s.key for s in reversed(chain[:-1])]
+        return "DEF"[outers.index(move.segment)] if move.segment in outers[:3] else "D"
+    return "C"
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1205,11 +1675,36 @@ def locate(seg: Segmentation, snippet: str, texts: Sequence[str]) -> tuple[int |
     return page, s.key if s else "", p.key if p else ""
 
 
+def scoping_parts(seg: Segmentation, document: Callable[[str], str] = lambda key: key) -> tuple[Any, ...]:
+    """The reading's parts and labeled exhibits as ``scoping.Part`` rows, which citation scoping reads (``document``,
+    ``anchor``, ``through``, ``book``, ``label``, ``aliases``):
+
+    - a **part** (the rules inside a manual): ``document`` is the innermost segment that holds it, ``anchor`` the heading
+      it starts at, ``through`` the heading it runs up to, ``book`` the book its title names, ``label`` its title, and
+      ``aliases`` the other ways the title is written;
+    - an **exhibit** (a labeled child segment): "Exhibit A" cited inside the instrument means that child, so its own key is
+      the ``document``, its label the ``label``, its aliases ("Ex. A") the ``aliases``, and its title's book the ``book``
+      where the canon names one. Its parts are its own.
+
+    ``document`` maps a segment's key to the key the caller's index uses for a document (a library address, an outline
+    key); by default the segment key. The names join the index's names, so "Exhibit A" and "the Rules" scope a citation."""
+    from jason.community.scoping import Part as ScopingPart
+
+    out: list[Any] = []
+    for part in seg.parts:
+        out.append(ScopingPart(document(part.document), part.anchor, part.book, part.label, part.aliases, part.through))
+    for child in seg.segments:
+        if child.role == "exhibit" and child.label:
+            out.append(ScopingPart(document(child.key), child.label, _book_of(child.title, PartKind.OTHER) if child.title else "",
+                                   child.label, child.aliases, ""))
+    return tuple(out)
+
+
 def in_part(part: Part, page: int | None) -> bool:
     return page is not None and part.start <= page <= part.end
 
 
 __all__ = ["Address", "BAND", "Boundary", "CUES", "Cue", "Line", "Mark", "PageInfo", "Part", "PartKind", "Reader",
-           "Segment", "Segmentation", "THRESHOLD", "Tier", "VERSION", "address", "build_page", "decide", "find_parts",
+           "Move", "MoveKind", "Segment", "Segmentation", "THRESHOLD", "Tier", "VERSION", "address", "build_page", "decide", "find_parts",
            "in_part", "label_of", "locate", "page_cues", "page_of", "parse_address", "part_kind", "part_span", "read_date",
-           "read_parties", "read_title", "resolve", "score_pages", "segments_from", "slug", "title_line"]
+           "MOVE_LETTERS", "move_choices", "move_letter", "open_chain", "read_parties", "read_title", "resolve", "score_pages", "scoping_parts", "segments_from", "slug", "title_line", "walk", "walk_segments", "exhibit_label", "seg_path"]

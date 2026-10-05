@@ -17,6 +17,10 @@ The part's pages and the manual task's classification of the outline's sections 
 
 Where the PDF has bookmarks they name some parts and not others, so the bookmark is one mark among several, and the page's own title wins where both are at the same page.
 
+## Exhibits and packets
+
+An exhibit is a child segment of the instrument it follows, not a part: the bylaws' exhibit on alternative dispute resolution and the declaration's exhibits have their own pages, labels ("Exhibit B"), and tree addresses (`library:ID#seg=s2/s2.2`). A packet whose cover lists its reports (the treasurer's report, the annual disclosure package) is the parent of the reports it lists. The profile fills the rest: `Community.book_entries` names the book an exhibit's or a part's title belongs to where the canon does not.
+
 ## The scanned archive
 
 The association's older records were scanned in three batches into 41 PDFs, 2,200 pages, named "Untitled N" with a scanner text layer. They are combined files: recorded instruments and the governing documents with their exhibits, the developer's reports, court filings on pleading paper, early management packages of one-page reports, plan sets, and duplex stacks with blank backs. They are the real test of segmentation. The labeled boundaries and parts are kept privately at `data/library/segments-gold.json` (page numbers only, git ignored); the tests use made-up PDFs.
