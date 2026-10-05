@@ -27,7 +27,7 @@ Add a module, `jason.community.applicability`. A rule-like row (an obligation, a
 | Property | condominium or planned development; the occupancy class; the number of units | the profile |
 | Place | state, county, city, water purveyor | the profile's region |
 | Transaction | the amount; where it was signed; who the buyer is | the contract's own figures and dates |
-| Time | in force between two dates; the edition adopted; within N years of an event | the existing `in_force` and `Prior`, folded in |
+| Time | in force between two dates; the edition adopted; within N years of an event | the existing `in_force` and `Prior`, folded in. A statute's dates are on disk: `law_text.in_force` gives the version of a day from each version's recorded range, and says when the disk does not show it. |
 | Event | how a meeting is held; whether a rule change is an emergency one; whether an election rule allows electronic secret ballots | the caller that knows the event (`jason notice-check --event`); the profile for a standing fact |
 
 - **Combining conditions.** A condition is all-of, any-of, or not, over facet tests, with exclusions spelled out. Example: a standard applies to water-based systems, except those installed under the one- and two-family standard.

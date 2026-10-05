@@ -238,6 +238,11 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="each stale reading is redone or confirmed by the board or counsel against the words now on "
                        "disk before it is used again",
                  refs=("docs/law-readings.md",), lessons=("reading-untied-from-the-words",)),
+            Step("Keep the earlier versions of the sections that changed, each with the range it was in force.",
+                 command="jason law-history --versions --since YEAR --shelf",
+                 check="0 where the shelf differs from the newest publication; a miss is a citation to correct",
+                 refs=("docs/law-readings.md (The words in force on a day)",),
+                 lessons=("recital-gave-todays-words-for-an-earlier-day",)),
             Step("Refresh the documents' outlines.", command="jason outlines --fetch",
                  check="a document added or adopted since is a citable document in the specification, with its "
                        "written date"),

@@ -243,6 +243,7 @@ The same document can then be reviewed under two packs, and the two results are 
    - Built. `law_text.section_digest` and the manifest's digests; replaced words kept under `data/authorities/history/<citation>/<digest>.md`; `law_readings.LawReading`, `status`, and `recite`; `Community.law_readings()`, empty by default.
    - The store is empty. Filling it is a person's work: each `Conflict` row, statutory term, and labeled reading in the docs is a candidate that a person confirms, with whose it is, before it becomes a row. jason converts none.
    - On the shelf that day: 1,042 sections on 101 pages. Six sections are printed in two versions under one number.
+   - The words in force on an earlier day: `recite(citation, data_dir, readings, as_of)` gives the version in force where the disk holds it (`jason law-history --versions`: 471 earlier versions from the 2011 to 2025 session publications), and otherwise the current words marked as not shown to be in force. A lens checks `Recital.in_force` before it judges a document against the law of its date.
    - Open: a review does not yet call `recite`.
 5. **The general lenses,** one at a time, each measured on a small set of documents with known answers before it is relied on.
    - Built first: the chronology and the conflicts of fact, over any `Scope` and a title ([collections.md](collections.md)). They store nothing; a page is generated again each time.

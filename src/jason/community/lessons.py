@@ -1363,6 +1363,26 @@ LESSONS: tuple[Lesson, ...] = (
                   "models/insurance_claims.py _CARRIERS, models/developer_security.py, postscanmail/models.py, "
                   "tasks/board_packet.py, tasks/request_sheet.py. Widening the sites to the model helpers' patterns adds "
                   "ten pairs; to every string, ninety-one.",)),
+    Lesson("recital-gave-todays-words-for-an-earlier-day", date(2026, 10, 4), (Area.GOVERNING,),
+           "A recital for an earlier day gave today's words: jason held one edition of each statute, so a review of an "
+           "older letter recited words not then in force, with only a caveat.",
+           "The export kept the current publication only; the law library's session publications from 2011 hold the "
+           "earlier words with the Legislature's notes, and nothing read them.",
+           "jason law-history --versions keeps each earlier version with the range it was in force (from, until, the "
+           "act that made it and the one that ended it), and recite(as_of=) recites the words of that day or says they "
+           "are not shown to be in force. A day that is not recorded stays not recorded. Before the 2011 publication "
+           "the shelf holds no code text (docs/law-readings.md, The gap).",
+           Status.FIXED, guards=("law_text.in_force", "law_readings.Recital.in_force", "tests/test_law_versions.py"),
+           docs=("docs/law-readings.md (The words in force on a day)",)),
+    Lesson("first-printed-is-not-in-force", date(2026, 10, 4), (Area.GOVERNING,),
+           "Where the publication prints a section twice under one number, readers quoted the first; for one section "
+           "on the shelf the first printed is the version that becomes operative in 2031.",
+           "Position on the page was taken for the order the versions operate in.",
+           "in_force picks by the versions' own operative words (\"shall remain in effect only until ...\", \"shall "
+           "be operative ...\") and quotes them; where the words state nothing, both are shown.",
+           Status.FIXED, guards=("law_text.in_force (Decided.OWN_WORDS)", "tests/test_law_versions.py",
+                                 "tests/test_quote_check.py: a section held in two versions says so"),
+           docs=("docs/law-readings.md",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "
