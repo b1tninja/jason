@@ -108,7 +108,7 @@ The alternatives, for later:
 - **One jason-owned External app, verified.** The best experience (the admin only consents), but `drive`, `drive.readonly`, `gmail.readonly`, and `gmail.compose` are restricted scopes, so it needs Google's verification and a **CASA security assessment every year** (about $540 at Tier 2, up to $4,500 at Tier 3, by third-party pricing), and one breach exposes every community. Worth it only at scale.
 - **Admin-trusted**: each Workspace admin marks jason's unverified client as Trusted. Google lists this as a case where verification is not needed; whether it holds for many unrelated organizations is not verified, and it does not cover consumer Gmail.
 - **A service account with domain-wide delegation.** Google advises against it: it can impersonate any user, super-admins included. Only for a narrow admin task (Groups membership), and then keyless.
-- **A Gmail-only community** (no Workspace) cannot use Internal. It uses an External app published "In production" and unverified: the warning screen, fewer than 100 users. Never "Testing" for Drive or Gmail: those tokens die in seven days.
+- **A Gmail-only community** (no Workspace) is not supported (decided 2026-10-05): it could not use an Internal app, only an unverified External one with a warning screen and fewer than 100 users. A community needs Google Workspace. And never "Testing" for Drive or Gmail: those tokens die in seven days.
 
 **The setup guide becomes the dialog.** The steps in [setup.md](setup.md#google-workspace) are the dialog's content, changed in four places:
 1. **The client is a Web application**, not a Desktop app: a hosted jason cannot receive a Desktop client's loopback redirect. Its authorized redirect URI is `https://<jason's host>/auth/google/callback` (and `http://127.0.0.1:8080/auth/google/callback` on this PC).
@@ -193,7 +193,7 @@ Each integration declares its limits, a default cadence, a **floor** (the fastes
 ## Open decisions
 
 1. ~~A Cloud project per community, or one verified jason app?~~ Decided 2026-10-05: a Cloud project per community.
-2. Support Gmail-only communities (unverified External app, a warning screen, under 100 users)?
+2. ~~Support Gmail-only communities?~~ Decided 2026-10-05: no; a community needs Google Workspace.
 3. The self-host VM: EC2 with an instance role (needed for SSM), or OpenBao?
 4. Keeper: the dev backend only, or the self-host backend through Keeper Secrets Manager (which ends the 30-day logout for a daemon)?
 5. Ask Google whether admin-trusted clients cover a service used by many organizations?

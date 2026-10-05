@@ -73,7 +73,7 @@ From [setup.md](../setup.md#google-workspace), changed to a **Web application** 
 
 **Errors in plain words**, from setup.md's troubleshooting: `redirect_uri_mismatch` (the address the console was opened at is not on the client; or the new URI hasn't taken effect yet); `org_internal` / "access blocked" (an account outside the organization); a disabled API (which one, and the Library link); the 7-day expiry of a "Testing" app (never use Testing for Drive or Gmail).
 
-**A Gmail-only community** (no Workspace) gets a branch at step 4: External, published "In production", unverified, under 100 users, with the warning screen explained. **The alternatives** (one verified jason app; admin-trusted; domain-wide delegation) are not offered in the dialog: a Cloud project per community is decided (2026-10-05).
+**A Gmail-only community** (no Workspace) is not supported (decided 2026-10-05): step 1 says a community needs Google Workspace, and the dialog stops there for a consumer account. **The alternatives** (one verified jason app; admin-trusted; domain-wide delegation) are not offered in the dialog: a Cloud project per community is decided (2026-10-05).
 
 ### Console sign-in
 
