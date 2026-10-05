@@ -176,7 +176,8 @@ def register(data_dir: Path, community: Any, *, today: date | None = None) -> di
         "caveats": [
             "A bond with no release on file may have been released without a copy reaching Drive; the escrow holder can confirm.",
             "A phase marked * is inferred: that phase's security agreement states the bond's exact sum.",
-            "Phases 1 and 2 (WL Homes, 2007-08) were secured before the current forms; their bonds' releases are letters to First American Title.",
+            # The specification's own notes: which phases were secured on earlier forms, whom a release went to.
+            *getattr(community, "developer_security_notes", tuple)(),
             "Read from OCR of scanned forms: numbers and amounts are the scans' as read; the originals are the record.",
         ],
     }

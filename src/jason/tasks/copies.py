@@ -54,6 +54,12 @@ def _formats() -> tuple:
     return INVOICE_FORMATS
 
 
+def _invoice(text: str, community: Any):
+    """The invoice a text holds, read with the vendor layouts and the association's name word
+    (``Community.name_pattern()``, for a layout that prints it); None for no text."""
+    return read_invoice(text, formats=_formats(), name_pattern=str(getattr(community, "name_pattern", str)() or "")) if text else None
+
+
 def _tx_of_path(path: Path) -> int | None:
     """The PayHOA transaction an attachment file belongs to: the export's "<tx id>-<name>" or the cache's "<tx id>/" folder."""
     parts = path.parts
@@ -121,7 +127,7 @@ def portal_invoice_copies(data_dir: Path, community: Any) -> list[DocumentCopy]:
                 text = pdf_text(pdf)
             except Exception:
                 text = ""
-            inv = read_invoice(text, formats=_formats()) if text else None
+            inv = _invoice(text, community)
             out.append(DocumentCopy(Channel.ISSUER_PORTAL, str(pdf), issuer=issuer, number=pdf.stem,
                                     issued=inv.invoice_date if inv else None, total_cents=inv.total_cents if inv else None,
                                     sha256=_sha(pdf), readable=bool(text and readable(text)), title=pdf.name, stage=Stage.INVOICE))
@@ -175,7 +181,7 @@ def email_copies(data_dir: Path, community: Any, *, ocr: Callable[[Path], str] |
         # What the association sent out was not issued by the people it went to (the RCS TC quote mailed to the reserve
         # study preparer as backup): only the document itself can name its issuer.
         outgoing = f.get("direction") == "out"
-        inv = read_invoice(text, formats=_formats()) if text else None
+        inv = _invoice(text, community)
         stage = _stage(f["name"], f.get("subject", ""), billed=bool(inv and inv.total_cents))
         issuer = email_issuer([] if outgoing else f.get("domains") or [], [] if outgoing else writers.get(f["messageId"], []),
                               text, f.get("subject", ""), community, bill=stage is not None)
@@ -201,7 +207,7 @@ def payhoa_copies(data_dir: Path, community: Any, roots: dict) -> list[DocumentC
     issuers = _issuers(community)
     from jason.community.invoice_formats import INVOICE_FORMATS
 
-    documents = read_documents(data_dir, snap, roots, INVOICE_FORMATS)
+    documents = read_documents(data_dir, snap, roots, INVOICE_FORMATS, str(getattr(community, "name_pattern", str)() or ""))
     out = []
     for tx in snap["transactions"]:
         if tx.get("deletedAt"):
@@ -230,7 +236,7 @@ def paper_copies(data_dir: Path, community: Any) -> list[DocumentCopy]:
             continue
         text_file = mail_dir(data_dir) / row["mailId"] / "text.txt"
         text = text_file.read_text(encoding="utf-8") if text_file.is_file() else ""
-        inv = read_invoice(text, formats=_formats()) if text else None
+        inv = _invoice(text, community)
         received = _day(row.get("received"))
         # A letter is a bill copy only when it reads as one: an amount, or a number. The City's backflow test notices
         # are sorted with its bills but carry neither.

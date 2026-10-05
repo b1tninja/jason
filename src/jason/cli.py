@@ -991,7 +991,7 @@ def cmd_law_history(args: argparse.Namespace) -> int:
 
         from jason.tasks.law_sweep import sweep, write
 
-        entries = sweep(_Path(__file__).resolve().parents[2], root, since=args.since)
+        entries = sweep(_Path(__file__).resolve().parents[2], root, since=args.since, profile_root=agent.community.root)
         if args.json:
             from dataclasses import asdict
 

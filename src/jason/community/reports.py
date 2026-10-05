@@ -66,6 +66,10 @@ class PlanBlock:
     ``first_subparcel`` is the subparcel of ``first_unit`` when the assessor
     did not start the units at 0001. ``plan`` names the numbering the block
     follows, so two blocks that share a unit number are told apart.
+    ``book_page`` is the assessor's map book and page the block is on, as
+    the first seven digits of its parcels' fourteen (``1234560`` for book
+    123, page 4560): a unit's parcel is built from it, so a block without
+    one names no parcel.
     """
 
     building: Building
@@ -75,6 +79,11 @@ class PlanBlock:
     parent_parcels: tuple[str, ...] = ()
     first_subparcel: int = 1
     plan: str = "2007 plan"
+    book_page: str = ""
+
+    def parcel(self, subparcel: int) -> str:
+        """The fourteen-digit parcel number of ``subparcel`` on this block, or "" when the block names no map page."""
+        return f"{self.book_page}{self.block}{subparcel:04d}" if self.book_page else ""
 
     @property
     def last_unit(self) -> int:
@@ -226,11 +235,12 @@ def unit_parcels(unit: int, blocks: tuple[PlanBlock, ...]) -> tuple[tuple[PlanBl
     """Every parcel a unit number could mean, with the block it is on.
 
     More than one answer is the overlap: the same number on two buildings.
+    A block that names no map page (``PlanBlock.book_page``) names no parcel.
     """
     found: list[tuple[PlanBlock, str]] = []
     for item in blocks:
-        if item.first_unit <= unit <= item.last_unit:
-            found.append((item, f"2011170{item.block}{unit - item.first_unit + item.first_subparcel:04d}"))
+        if item.first_unit <= unit <= item.last_unit and item.book_page:
+            found.append((item, item.parcel(unit - item.first_unit + item.first_subparcel)))
     return tuple(found)
 
 

@@ -36,7 +36,8 @@ import httpx
 
 API_URL = "https://api.zoom.us/v2/"
 TOKEN_URL = "https://zoom.us/oauth/token"
-USER_AGENT = "jason (Mystique Community Association; meeting history and hearings)"
+# The User-Agent sent when no caller names the association (``Community.user_agent("meeting history and hearings")`` does).
+USER_AGENT = "jason (meeting history and hearings)"
 RECORDING_WINDOW_DAYS = 30   # the recordings list takes a range of at most a month
 
 
@@ -78,11 +79,13 @@ class Zoom:
     """The association's Zoom account: meeting history read-only, and ``create_meeting``."""
 
     def __init__(self, credentials: ZoomCredentials, *, api_url: str = API_URL, token_url: str = TOKEN_URL,
-                 http: httpx.Client | None = None, timeout: float = 60.0, user: str = "me") -> None:
+                 http: httpx.Client | None = None, timeout: float = 60.0, user: str = "me",
+                 user_agent: str = USER_AGENT) -> None:
         self._creds = credentials
         self._api = api_url.rstrip("/") + "/"
         self._token_url = token_url
         self._user = user
+        self._user_agent = user_agent or USER_AGENT
         self._owns_http = http is None
         self._http = http or httpx.Client(timeout=timeout, follow_redirects=True)
         self._token = ""
@@ -108,7 +111,7 @@ class Zoom:
             self._token_url,
             data={"grant_type": "account_credentials", "account_id": self._creds.account_id},
             auth=(self._creds.client_id, self._creds.client_secret),
-            headers={"User-Agent": USER_AGENT},
+            headers={"User-Agent": self._user_agent},
         )
         if response.status_code in (400, 401, 403):
             reason = _reason(response)
@@ -123,7 +126,7 @@ class Zoom:
         return self._token
 
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.token()}", "Accept": "application/json", "User-Agent": USER_AGENT}
+        return {"Authorization": f"Bearer {self.token()}", "Accept": "application/json", "User-Agent": self._user_agent}
 
     def _request(self, method: str, path: str, *, params: dict[str, Any] | None = None, json: Any = None,
                  missing_ok: bool = False) -> dict[str, Any] | None:
@@ -203,7 +206,7 @@ class Zoom:
 
     def download(self, url: str, dest: Path) -> Path:
         """Save a recording file. The bearer token goes to Zoom's host only; the redirect to storage carries none."""
-        response = self._http.get(url, headers={"Authorization": f"Bearer {self.token()}", "User-Agent": USER_AGENT})
+        response = self._http.get(url, headers={"Authorization": f"Bearer {self.token()}", "User-Agent": self._user_agent})
         if not response.is_success:
             raise ZoomError(f"HTTP {response.status_code} downloading {url.split('?')[0]}")
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -229,7 +232,7 @@ class Zoom:
     def post_caption(self, caption_url: str, seq: int, text: str, *, lang: str = "en-US") -> None:
         """Post one line of caption text to the caption URL; ``seq`` counts up by one per line for the meeting."""
         response = self._http.post(caption_url, params={"seq": seq, "lang": lang}, content=text.encode("utf-8"),
-                                   headers={"Content-Type": "text/plain", "User-Agent": USER_AGENT})
+                                   headers={"Content-Type": "text/plain", "User-Agent": self._user_agent})
         if not response.is_success:
             raise ZoomError(f"HTTP {response.status_code} posting a caption: {_message(response)}")
 

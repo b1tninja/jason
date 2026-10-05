@@ -135,7 +135,7 @@ Nothing is written to Drive without the board's approval.
 - **what the records show now**: facts re-read from the review that found the item (`RESEARCHERS`: cost centers, reserve transfers, fire and insurance deadlines, developer securities);
 - **the board's notes**, with each `{REPORT:key}` in them shown as that report's last run (`jason.tasks.live_reports`), like documentation that says "run this command" and comments on the output: the report's command, what it reads, when it ran, and a link to its own Doc, then its rows, then the board's words around it. Set one with `jason board --set ITEM --notes "Commentary {REPORT:occupancy-signals} more commentary"`;
 - the evidence;
-- **options** and a **draft motion** (`OPTIONS`, or a generic frame);
+- **options** and a **draft motion** (the specification's `ItemOptions` row for the item, `Community.board_item_options()`, or a generic frame);
 - any notice the item needs of its own, and its deadline.
 
 Executive session items are listed by their Civil Code 4935 subject in general words only, never by title (`meeting_agenda.executive_lines`). The packet is research, not advice: the board weighs the options, and counsel's reading of the law governs.

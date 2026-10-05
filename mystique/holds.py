@@ -19,6 +19,11 @@ from datetime import date
 from jason.community.holds import LegalHoldSpec
 
 
+# What the directors' packet adds after the count of meetings whose recordings or transcripts Drive holds
+# (Community.recordings_note): two of them are filed with the matter above.
+RECORDINGS_NOTE = "including the May 20 and June 17, 2025 recordings filed with the 26CV016125 matter"
+
+
 def _with_private(spec: LegalHoldSpec) -> LegalHoldSpec:
     from jason.community.private import facts
 

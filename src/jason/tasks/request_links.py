@@ -27,13 +27,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from jason.community.base import name_words_of
 from jason.community.request_forms import form_for
 from jason.community.topics import Topic, topics_of
 
 REPORT = "request-links.json"
 NOTICE = re.compile(r"(?i)(maintenance|general|architectural)?\s*request\s*(submission|status change)|new comment")
-_STOP = {"with", "from", "that", "this", "have", "your", "about", "request", "requests", "question", "questions", "subject",
-         "please", "thank", "thanks", "hello", "mystique", "community", "association", "regarding", "follow", "update"}
+# Words a subject and a request share without meaning the same thing. The association's own name words join them at
+# run time (``Community.name_words()``).
+_STOP = frozenset({"with", "from", "that", "this", "have", "your", "about", "request", "requests", "question", "questions",
+                   "subject", "please", "thank", "thanks", "hello", "community", "association", "regarding", "follow", "update"})
 
 
 def _at(value: str) -> datetime | None:
@@ -45,8 +48,8 @@ def _at(value: str) -> datetime | None:
     return found.replace(tzinfo=timezone.utc) if found and found.tzinfo is None else found
 
 
-def _words(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _STOP}
+def _words(text: str, stop: frozenset[str] = _STOP) -> set[str]:
+    return {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in stop}
 
 
 def _text(value: Any) -> str:
@@ -116,13 +119,13 @@ def _notice_links(requests: list[dict[str, Any]], by_thread: dict[str, list[dict
     return links
 
 
-def _score(thread: dict[str, Any], request: dict[str, Any]) -> tuple[int, list[str]]:
+def _score(thread: dict[str, Any], request: dict[str, Any], stop: frozenset[str] = _STOP) -> tuple[int, list[str]]:
     reasons, score = [], 0
     shared = set(thread.get("topics") or []) & set(request["topics"])
     if shared:
         score += 2
         reasons.append("topic " + ", ".join(sorted(shared)))
-    words = _words(thread["subject"]) & _words(f"{request['title']} {request['message']}")
+    words = _words(thread["subject"], stop) & _words(f"{request['title']} {request['message']}", stop)
     if words:
         score += min(3, len(words))
         reasons.append("words " + ", ".join(sorted(words)[:4]))
@@ -146,6 +149,7 @@ def request_links(data_dir: Path, community: Any, *, today: datetime | None = No
     owner_threads = [r for r in rows if r["status"] not in ("notice", "internal") and _unit_of(r["parties"])]
     linked_threads: set[str] = set()
     owner_links: dict[int, list[dict[str, Any]]] = {}
+    stop = _STOP | name_words_of(community)
     for r in requests:
         if not r["unit"]:
             continue
@@ -157,7 +161,7 @@ def request_links(data_dir: Path, community: Any, *, today: datetime | None = No
         for t in owner_threads:
             if r["unit"] not in _unit_of(t["parties"]) or t["last"] < lo or t["first"] > hi:
                 continue
-            score, reasons = _score(t, r)
+            score, reasons = _score(t, r, stop)
             if score >= 2:
                 owner_links.setdefault(r["id"], []).append({"threadId": t["threadId"], "first": t["first"], "last": t["last"],
                                                             "subject": t["subject"][:90], "status": t["status"], "score": score,

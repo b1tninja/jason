@@ -6,6 +6,10 @@ page: land use ``AQ000A``, owned by the association, with no structure value.
 The association is taxed on the common-area parcels.
 """
 
+# The assessor's map book and page every parcel shares: the first seven digits of each fourteen (book 201, page
+# 1170). The plan blocks carry it (reports.py), and Community.parcel_prefix reads it from them.
+MAP_BOOK_PAGE = "2011170"
+
 UNITS: tuple[str, ...] = (
     "20111700220010",
     "20111700220011",

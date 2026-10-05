@@ -23,3 +23,9 @@ DEVELOPERS: tuple[Developer, ...] = (
         ("WATT COMMUNITIES AT MYSTIQUE", "WATT COMMUNIITIES AT MYSTIQUE"),
     ),
 )
+
+# What the developer-security register's reader should know about this association's bonds beyond the forms
+# (Community.developer_security_notes): the early phases' forms and the escrow holder their releases went to.
+SECURITY_NOTES: tuple[str, ...] = (
+    "Phases 1 and 2 (WL Homes, 2007-08) were secured before the current forms; their bonds' releases are letters to First American Title.",
+)

@@ -29,6 +29,9 @@ class FakeCommunity:
     def name_pattern(self):
         return "mystique"
 
+    def program_contractors(self):
+        return ("Lionsbridge Contractor Group", "Lionsbridge Contracting Group", "CCA Global Partners")
+
     def senders(self):
         from jason.community.sources import Policyholder, Sender, SourceKind
 

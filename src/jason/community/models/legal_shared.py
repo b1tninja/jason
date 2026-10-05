@@ -191,7 +191,7 @@ _APN = re.compile(r"\b(\d{3})\s?-\s?(\d{4})\s?-\s?(\d{3})\s?-\s?(\d{4})\b")
 
 
 def apns_in(text: str) -> tuple[str, ...]:
-    """Assessor parcel numbers written 201-1170-024-0007, as the spec's 14 digits."""
+    """Assessor parcel numbers written book-page-block-parcel (123-4560-001-0001), as the specification's 14 digits."""
     seen: list[str] = []
     for m in _APN.finditer(text or ""):
         apn = "".join(m.groups())

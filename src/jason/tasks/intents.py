@@ -27,12 +27,15 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from jason.community.base import name_words_of
 from jason.community.topics import Intent, Topic, intents_of
 
 REPORT = "intents.json"
 _MAINTENANCE_TOPICS = {Topic.MAINTENANCE.value, Topic.LANDSCAPING.value, Topic.PESTS.value}
-_STOP = {"with", "from", "that", "this", "have", "your", "about", "question", "questions", "subject", "please", "thanks", "hello",
-         "mystique", "community", "association", "regarding", "follow", "update", "request"}
+# Subject words that say nothing about the topic. The association's own name words join them at run time
+# (``Community.name_words()``): every subject may carry them.
+_STOP = frozenset({"with", "from", "that", "this", "have", "your", "about", "question", "questions", "subject", "please", "thanks",
+                   "hello", "community", "association", "regarding", "follow", "update", "request"})
 
 
 def _violations(data_dir: Path) -> list[dict[str, Any]]:
@@ -83,7 +86,8 @@ def answer_sources(topic: str, subject: str, data_dir: Path, community: Any, *, 
     source = next((s for s in community.topic_sources() if s.topic.value == topic), None)
     if source is None:
         return {}
-    words = " ".join(w for w in re.findall(r"[a-z]{4,}", subject.lower()) if w not in _STOP)
+    stop = _STOP | name_words_of(community)
+    words = " ".join(w for w in re.findall(r"[a-z]{4,}", subject.lower()) if w not in stop)
     key = (topic, words)
     if cache is not None and key in cache:
         return cache[key]

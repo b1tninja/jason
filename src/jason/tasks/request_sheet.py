@@ -1,10 +1,11 @@
 """Write open requests to a new Google Sheet, one tab per kind.
 
-Rows on a tab sit together by vendor. Owner mail that does not match the unit
-is marked, because that usually means a tenant lives there. A resident is a
-person on the request who is not one of the unit's owners. Photo columns use an IMAGE formula. The picture is a resized copy in
-Drive, shared so anyone with the link can fetch it, because Sheets loads
-photos without the viewer's sign-in. A PayHOA link does not display.
+The kind, the vendor, and the issue of each request are the specification's (``Community.request_groups()``, one
+``RequestGroup`` a request); a request with no row is listed as unclear with its own message. Rows on a tab sit
+together by vendor. Owner mail that does not match the unit is marked, because that usually means a tenant lives there.
+A resident is a person on the request who is not one of the unit's owners. Photo columns use an IMAGE formula. The
+picture is a resized copy in Drive, shared so anyone with the link can fetch it, because Sheets loads photos without
+the viewer's sign-in. A PayHOA link does not display.
 """
 
 from __future__ import annotations
@@ -17,42 +18,27 @@ from typing import Any, Protocol
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 from jason.catalog import PayhoaCatalog, person_name
+from jason.community.request_forms import RequestGroup, RequestKind
 from jason.tasks.export_requests import email_image
-
-# kind, vendor, short description. Kind names the tab.
-GROUPS: dict[int, tuple[str, str, str]] = {
-    260564: ("association", "City Gutters", "Exterior gutter pulled off the fascia at Building 4."),
-    256609: ("association", "Certified Handyman Service", "Caulk above the door frame is cracked."),
-    247055: ("association", "Landscaping", "A sprinkler sprays the house at 4 a.m."),
-    241161: ("association", "Landscaping", "Asks for a fruit tree where one was removed."),
-    227754: ("association", "Good Life Construction", "Vehicle collision damaged the garage wall and door."),
-    223260: ("association", "More than one trade", "Inspection photos: flashing at the front, drain grate at the back."),
-    220090: ("association", "HighClass Window and Gutter", "Second-floor gutter is clogged and the seam is leaking."),
-    189766: ("association", "Mirowski Electric", "Street light at Whimsical Lane and Picasso flickers."),
-    187182: ("association", "Landscaping", "Asks for a lime tree where a tree was removed."),
-    134617: ("association", "Drainage", "Rainwater collects around the building."),
-    129543: ("association", "Drainage", "Three drains on Whimsical Lane hold water."),
-    244572: ("homeowner", "Homeowner", "Bedroom door will not latch. Garage entry door is hard to lock."),
-    234633: ("homeowner", "Homeowner", "HVAC serving the unit has needed repeated service."),
-    176699: ("homeowner", "Homeowner", "Front door must be lifted before the lock will turn."),
-    166767: ("homeowner", "Homeowner", "Asks about cleaning a second-floor window."),
-    257206: ("unclear", "No listed garage-door vendor", "Garage door grinds on one side."),
-    172697: ("unclear", "Unclear", "Unit address light is out."),
-    172696: ("unclear", "Unclear", "Unit address light is out."),
-    160082: ("unclear", "Painter", "Paint is peeling on front doorframes in Building 4."),
-    259084: ("not maintenance", "No vendor", "Asks how many parking permits one residence may have."),
-    203251: ("not maintenance", "No vendor", "Asks where a second household car may park."),
-    201850: ("not maintenance", "No vendor", "Complaint about parking and the common area."),
-    163887: ("not maintenance", "No vendor", "Asks for two parking passes."),
-}
 
 TABS = ("Association", "Homeowner", "Unclear", "Not a repair")
 _TAB_FOR = {
-    "association": "Association",
-    "homeowner": "Homeowner",
-    "unclear": "Unclear",
-    "not maintenance": "Not a repair",
+    RequestKind.ASSOCIATION: "Association",
+    RequestKind.HOMEOWNER: "Homeowner",
+    RequestKind.UNCLEAR: "Unclear",
+    RequestKind.NOT_MAINTENANCE: "Not a repair",
 }
+_UNSORTED = RequestGroup(0, RequestKind.UNCLEAR, "Unclear")      # a request the specification has no row for
+
+
+def _community(community: Any) -> Any:
+    """``community``, else the active profile (read when asked for, never at import)."""
+    if community is not None:
+        return community
+    from jason.community import community as active
+
+    return active()
+
 
 HEADER = (
     "Vendor",
@@ -147,9 +133,12 @@ def embed_sheet_photos(
     drive: Any,
     spreadsheet_id: str,
     files_dir: Path,
+    *,
+    community: Any = None,
 ) -> int:
-    """Upload resized photos and write IMAGE formulas into an existing sheet."""
-    folder_id = _photo_folder(drive)
+    """Upload resized photos and write IMAGE formulas into an existing sheet. The pictures go to a Drive folder named
+    for the association (``Community.short_name``)."""
+    folder_id = _photo_folder(drive, f"{_community(community).short_name} request photos")
     image_root = files_dir.parent.parent / "payhoa-requests-images"
     uploaded = 0
     meta = sheets.get(spreadsheet_id, fields="sheets.properties")
@@ -217,14 +206,15 @@ def embed_sheet_photos(
     return uploaded
 
 
-def _photo_folder(drive: Any) -> str:
+def _photo_folder(drive: Any, name: str) -> str:
+    """The id of the Drive folder called ``name``, made when there is none."""
     rows = drive.list_files(
-        "name = 'Mystique request photos' and "
+        f"name = '{name}' and "
         "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     )
     if rows:
         return str(rows[0]["id"])
-    return str(drive.create_folder("Mystique request photos"))
+    return str(drive.create_folder(name))
 
 
 def attachment_columns(items: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
@@ -249,17 +239,21 @@ def request_sheet_tabs(
     statuses: tuple[str, ...] = ("pending",),
     files: dict[int, list[str]] | None = None,
     photos: dict[int, list[str]] | None = None,
+    community: Any = None,
 ) -> dict[str, list[list[Any]]]:
-    """Rows for each kind tab, vendors kept together, newest first inside a vendor."""
+    """Rows for each kind tab, vendors kept together, newest first inside a vendor. The kind, vendor, and issue of a
+    request are its ``RequestGroup`` row in the specification (``community``, else the active profile)."""
     photos = photos or {}
     people = _people(catalog, org_id)
     units = _units(catalog, org_id)
+    groups = {int(group.request_id): group for group in _community(community).request_groups()}
     grouped: dict[str, list[tuple[str, str, list[Any]]]] = {name: [] for name in TABS}
     names = files or {}
     for row in catalog.search_requests(org_id, statuses=statuses, include_raw=True, limit=None):
         request_id = int(row["id"])
-        kind, vendor, issue = GROUPS.get(request_id, ("unclear", "Unclear", ""))
-        tab = _TAB_FOR.get(kind, "Unclear")
+        group = groups.get(request_id, _UNSORTED)
+        vendor, issue = group.vendor, group.issue
+        tab = _TAB_FOR.get(group.kind, "Unclear")
         raw = _parse(row.get("raw_json"))
         title = _answer(raw, "Title") or str(row.get("title") or "")
         if not issue:

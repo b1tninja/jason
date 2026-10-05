@@ -310,9 +310,16 @@ class ClaimLetter:
     actual_cash_value_cents: int | None = None
     deductible_cents: int | None = None
     paid_cents: int | None = None
-    program_contractor: str = ""            # "Lionsbridge Contractor Group"
+    program_contractor: str = ""            # the carrier's managed repair contractor the letter names (``program_contractor``)
     canceled_effective: date | None = None  # a disclaimer's policy cancellation date
     policyholder: Policyholder = Policyholder.UNKNOWN   # whose policy the letter is on (``policyholder_of``)
+
+
+def program_contractor(text: str, context: ModelContext) -> str:
+    """The carrier's managed repair contractor a claim paper names, from the specification's list of them
+    (``Community.program_contractors()``, each spelling the carriers' letters use its own row). None listed, none read."""
+    names = tuple(getattr(context.community, "program_contractors", tuple)() or ())
+    return first(rf"({alternation(names)})", text) if names else ""
 
 
 class ClaimLetterModel(DocumentModel):
@@ -346,7 +353,7 @@ class ClaimLetterModel(DocumentModel):
         r.actual_cash_value_cents = _money(r"Actual Cash Value", text)
         r.deductible_cents = _money(r"Deductible", text)
         r.paid_cents = _money(r"(?:Amount Paid|Payment Amount|Net Claim|Total Paid)", text)
-        r.program_contractor = first(r"(Lionsbridge Contract(?:or|ing) Group|CCA Global Partners)", text)
+        r.program_contractor = program_contractor(text, context)
         canceled = re.search(r"canceled per your request\s+effective\s+(\w+ \d{1,2}, \d{4})", text or "", re.I)
         r.canceled_effective = _us_day(canceled.group(1)) if canceled else None
         if not r.claim_number:
@@ -510,7 +517,7 @@ class ClaimAuthorizationModel(DocumentModel):
         r.claim_number = typed if re.search(r"\d{5}", typed) else first(r"\b(\d{9,10}(?:-\d{1,3})+)\b", (context.name or "") + " " + text)
         r.date_of_loss = _us_day(_after(r"DATE OF LOSS", text, 30))
         r.address = squash(_after(r"ADDRESS", text, 80)) if re.search(r"\d{4} ", _after(r"ADDRESS", text, 80)) else ""
-        r.program_contractor = first(r"(Lionsbridge Contract(?:or|ing) Group|CCA Global Partners)", text)
+        r.program_contractor = program_contractor(text, context)
         signed = re.findall(r"\n\s*(\d{1,2}/\d{1,2}/\d{4})\s*\n", text or "")
         r.signed = _us_day(signed[-1]) if signed else None
         return r

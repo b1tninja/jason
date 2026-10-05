@@ -74,6 +74,17 @@ class BoardItem:
     history: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ItemOptions:
+    """The options and a draft motion the specification wrote for one board item, for the directors' packet
+    (``Community.board_item_options()``). An item with no row gets the packet's generic frame: act, refer, or defer, and
+    a motion built from the item's ask."""
+
+    item: str                                 # the item's id
+    options: tuple[str, ...]
+    motion: str = ""
+
+
 EXECUTIVE_CATEGORIES = {ItemCategory.COLLECTIONS}
 
 

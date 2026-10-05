@@ -26,16 +26,19 @@ from typing import Any
 
 from jason.community.agenda_items import expected_kinds, items_in_doc, mentions
 from jason.community.agenda_links import LinkKind
+from jason.community.base import name_words_of
 from jason.community.meeting_records import meeting_date
 
 OUT = Path("meetings") / "agenda-items.json"
 RECEIVED_DAYS = 45
-STOP = {"the", "and", "for", "of", "to", "a", "in", "on", "with", "review", "report", "proposal", "proposals", "see", "pdf", "all",
-        "open", "requests", "board", "association", "mystique", "community", "meeting", "discussion", "item", "items", "new"}
+# Words that say nothing about which document an item means. The association's own name words join them at run time
+# (``Community.name_words()``): every agenda and file carries them.
+STOP = frozenset({"the", "and", "for", "of", "to", "a", "in", "on", "with", "review", "report", "proposal", "proposals", "see", "pdf",
+                  "all", "open", "requests", "board", "association", "community", "meeting", "discussion", "item", "items", "new"})
 
 
-def _words(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z][a-z0-9]{3,}", text.lower()) if w not in STOP}
+def _words(text: str, stop: frozenset[str] = STOP) -> set[str]:
+    return {w for w in re.findall(r"[a-z][a-z0-9]{3,}", text.lower()) if w not in stop}
 
 
 def _names(data_dir: Path) -> list[dict[str, Any]]:
@@ -73,6 +76,7 @@ def _judge(kind: Any, expected: tuple) -> str:
 def build(data_dir: Path, community: Any) -> dict[str, Any]:
     link_rules, item_rules = tuple(community.agenda_link_rules()), tuple(community.agenda_item_rules())
     schedule = community.meeting_schedule()
+    stop = STOP | name_words_of(community)
     names = _names(data_dir)
     drive_by_id = {n["ref"]: n for n in names if n["where"] == "Drive"}
     by_folded: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -128,13 +132,13 @@ def build(data_dir: Path, community: Any) -> dict[str, Any]:
                     hint(n, day.isoformat(), item.label, "named", expected, kind)
             if expected and set(expected) & {k for k in expected if k.value in ("proposal", "invoice", "claim_estimate", "claim_letter",
                                                                                     "inspection_report")}:
-                words = _words(item.text)
+                words = _words(item.text, stop)
                 window = (day - timedelta(days=RECEIVED_DAYS)).isoformat()
                 for n in names:
                     if n["where"] != "Gmail" or not (window <= n["day"] <= day.isoformat()) or n["name"].casefold() in seen:
                         continue
                     kind = community.classify_document(n["name"], path=n.get("path") or "")
-                    shared = words & _words(n["name"] + " " + n.get("subject", ""))
+                    shared = words & _words(n["name"] + " " + n.get("subject", ""), stop)
                     if kind in expected and shared:
                         seen.add(n["name"].casefold())
                         related.append({"relation": "received", "where": "Gmail", "ref": n["ref"], "name": n["name"], "path": n["path"],

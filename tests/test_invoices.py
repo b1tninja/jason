@@ -49,8 +49,12 @@ Sacramento
 August 2026 service invoice
 2,832.
 """
-# The format names its customer line by a phrase; the fixture takes it from the format rather than repeating a person's name.
-E_AND_R += " ".join(p for p in next(f for f in INVOICE_FORMATS if f.vendor == "E&R Landscaping").phrases if p != "E.R") + " Example & Board\n"
+# The format names its customer line by the association's name word (the profile's, given to the reader as
+# ``name_pattern``) and the words after it (the row's ``names_association``); the fixture takes those words from the
+# format rather than repeating a person's name.
+E_AND_R_WORDS = next(f for f in INVOICE_FORMATS if f.vendor == "E&R Landscaping").names_association
+E_AND_R += f"Example {E_AND_R_WORDS} Example & Board\n"
+E_AND_R_NAME = r"example"
 
 
 def test_a_paid_invoice_reads_its_total_not_its_zero_amount_due() -> None:
@@ -65,9 +69,14 @@ def test_aws_dates_with_a_spaced_comma_and_usd_amounts() -> None:
 
 
 def test_a_vendor_format_reads_what_the_general_reader_cannot() -> None:
-    inv = read_invoice(E_AND_R, formats=INVOICE_FORMATS)
+    inv = read_invoice(E_AND_R, formats=INVOICE_FORMATS, name_pattern=E_AND_R_NAME)
     assert inv.method == "format:E&R Landscaping" and inv.vendor == "E&R Landscaping"
     assert inv.number == "80126" and inv.invoice_date == date(2026, 8, 31) and inv.total_cents == 283200
+    # A layout that prints the association's name needs the name word from the profile: without one it is not matched.
+    assert read_invoice(E_AND_R, formats=INVOICE_FORMATS).method == "general"
+    # The name word must stand right before the layout's words: elsewhere in the text it is not the customer line.
+    apart = E_AND_R.replace(f"Example {E_AND_R_WORDS}", E_AND_R_WORDS) + "Example\n"
+    assert read_invoice(apart, formats=INVOICE_FORMATS, name_pattern=E_AND_R_NAME).method == "general"
 
 
 def test_amounts_dates_and_vendor_names() -> None:

@@ -267,6 +267,18 @@ class Mystique(Community):
 
         return NOT_POLICY_NAMES
 
+    def program_contractors(self):
+        """The carrier's managed repair contractors on the association's claims, each spelling its own (insurance.py)."""
+        from .insurance import PROGRAM_CONTRACTORS
+
+        return PROGRAM_CONTRACTORS
+
+    def developer_security_notes(self):
+        """What the developer-security register's reader should know beyond the forms (developers.py)."""
+        from .developers import SECURITY_NOTES
+
+        return SECURITY_NOTES
+
     def citations(self):
         """The bylaws, enforcement policy, and declaration sections the notices cite (templates.CITATIONS)."""
         from .templates import CITATIONS
@@ -324,6 +336,18 @@ class Mystique(Community):
         from .requests import REQUEST_FORMS
 
         return REQUEST_FORMS
+
+    def request_groups(self):
+        """The open requests as a person sorted them for the request sheet (requests.py)."""
+        from .requests import REQUEST_GROUPS
+
+        return REQUEST_GROUPS
+
+    def board_item_options(self):
+        """The options and draft motions written for particular board items (board_options.py)."""
+        from .board_options import BOARD_ITEM_OPTIONS
+
+        return BOARD_ITEM_OPTIONS
 
     def request_topics(self):
         """The topics that are a request of the association when an owner raises them (requests.py)."""
@@ -500,6 +524,12 @@ class Mystique(Community):
         from .holds import LEGAL_HOLDS
 
         return LEGAL_HOLDS
+
+    def recordings_note(self):
+        """The two 2025 recordings filed with the dog attack matter (holds.py)."""
+        from .holds import RECORDINGS_NOTE
+
+        return RECORDINGS_NOTE
 
     def calendar_policy(self):
         """Board calendar titles; months outside the resolution are not called special (board_calendar.py)."""

@@ -28,6 +28,10 @@ class Spec:
     def index_association(self) -> str:
         return "MYSTIQUE COMMUNITY"
 
+    def name_pattern(self) -> str:
+        # The name word a vendor's layout prints for the property (E&R's "<name> Condos"): the profile's, not the row's.
+        return "myst[il1]que"
+
     def senders(self):
         return (Sender("Example Plumbing Co", SourceKind.VENDOR, ("EXAMPLE PLUMBING",), payhoa_vendor="Example Plumbing Co"),)
 

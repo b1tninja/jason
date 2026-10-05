@@ -8,7 +8,7 @@ from datetime import date
 import pytest
 
 from jason.community import community
-from jason.community.board_items import BoardItem, ItemCategory, Priority, Session
+from jason.community.board_items import BoardItem, ItemCategory, ItemOptions, Priority, Session
 from jason.tasks import approvals as store
 from jason.tasks import board_packet
 from jason.tasks.board_items import set_fields, upsert
@@ -54,7 +54,9 @@ def board(tmp_path, monkeypatch):
 
     monkeypatch.setitem(board_packet.RESEARCHERS, "repaint", board_packet._placed("P1")(books))
     monkeypatch.setitem(board_packet.RESEARCHERS, "settle", board_packet._placed("P3", Withheld.PRIVILEGED)(counsel))
-    monkeypatch.setitem(board_packet.OPTIONS, "repaint", (["Option alpha: take the low bid"], "Move that the board ZZMOTION."))
+    # The options and motion are the specification's (``Community.board_item_options``): a made-up row for this item.
+    options = (ItemOptions("repaint", ("Option alpha: take the low bid",), "Move that the board ZZMOTION."),)
+    monkeypatch.setattr(type(community()), "board_item_options", lambda self: options)
     return tmp_path
 
 

@@ -564,7 +564,7 @@ EXAMPLE CAPITAL FUND I, LLC
 herein called Grantee, the following described real property situated in Sacramento County.
 """
 
-BLOCK = PlanBlock(Building.BLDG_5, "099", 28, 10, first_subparcel=14)
+BLOCK = PlanBlock(Building.BLDG_5, "099", 28, 10, first_subparcel=14, book_page="2011170")
 
 
 def test_modern_grant_deed_fields_and_spec_checks():

@@ -14,7 +14,8 @@ from mystique.developers import DEVELOPERS
 
 APN = "20111700170008"
 PHASE_1 = PublicReport("130654SA", Building.BLDG_8, 1, 12, date(2007, 11, 15), "John Laing Homes", opened=date(2007, 9, 28), issued=date(2007, 9, 26))
-BLOCKS = (PlanBlock(Building.BLDG_3, "024", 21, 12, ("20111700160000",)), PlanBlock(Building.BLDG_8, "017", 81, 12, ("20111700040000",)))
+BLOCKS = (PlanBlock(Building.BLDG_3, "024", 21, 12, ("20111700160000",), book_page="2011170"),
+          PlanBlock(Building.BLDG_8, "017", 81, 12, ("20111700040000",), book_page="2011170"))
 HELD = (HeldUnits("201010121565", date(2010, 10, 12), Building.BLDG_3, (25, 26, 27, 30)),)
 
 CACHE = {
@@ -70,7 +71,7 @@ def _scans(tmp_path: Path):
         "Eugen S Redwood hereby GRANTS to Dunc Vale Plover UNIT 89",
         encoding="utf-8",
     )
-    return scan_index(tmp_path, STREETS)
+    return scan_index(tmp_path, STREETS, parcel_prefix="2011170")
 
 
 def test_a_scan_prints_the_parcel_the_unit_the_address_and_the_price(tmp_path: Path):

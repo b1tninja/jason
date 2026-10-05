@@ -573,6 +573,7 @@ class Jason:
             self.org_id,
             statuses=statuses,
             files=names,
+            community=self.community,
         )
         report = write_request_sheet(self.sheets(interactive=self._interactive), title, tables)
         embed_sheet_photos(
@@ -580,6 +581,7 @@ class Jason:
             self.drive(interactive=self._interactive),
             report.spreadsheet_id,
             root / "payhoa-files" / "requests",
+            community=self.community,
         )
         return report
 
@@ -591,6 +593,7 @@ class Jason:
             self.drive(interactive=self._interactive),
             spreadsheet_id,
             root / "payhoa-files" / "requests",
+            community=self.community,
         )
 
     def export_documents(self, dest: str | Path | None = None) -> DocumentExport:
@@ -1047,7 +1050,7 @@ class Jason:
             secret = self.credential("postscanmail", "api-key")
         except CredentialMissing as exc:
             raise ValueError(f"no PostScanMail API key: {exc}") from None
-        return PostScanMail(secret.first("api_key", "password"))
+        return PostScanMail(secret.first("api_key", "password"), user_agent=self.community.user_agent("read-only mail sync"))
 
     def sync_mail(self, *, full: bool = False, log: Any = None) -> dict[str, int]:
         """Sync the association's PostScanMail mailbox to ``data/mail``: records, scans, text, and the sort."""
@@ -1069,7 +1072,8 @@ class Jason:
             raise ValueError(f"no Zoom app: {exc}") from None
         # The client secret is a custom field, or the record's password field (where `jason zoom --store-app` puts it).
         fields = {"client_secret": secret.get("password", ""), **{k: v for k, v in secret.items() if k != "password"}}
-        return Zoom(ZoomCredentials.from_fields({k: v for k, v in fields.items() if v}))
+        return Zoom(ZoomCredentials.from_fields({k: v for k, v in fields.items() if v}),
+                    user_agent=self.community.user_agent("meeting history and hearings"))
 
     def store_zoom_app(self, account_id: str, client_id: str, client_secret: str = "", *, by: str = "") -> str:
         """Put the Zoom Server-to-Server OAuth app at the community's vault path ``zoom/app`` and return the path:

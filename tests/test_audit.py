@@ -9,7 +9,7 @@ from mystique.developers import DEVELOPERS
 
 PHASE_1 = PublicReport("130654SA", Building.BLDG_8, 1, 12, date(2007, 11, 15), "John Laing Homes", opened=date(2007, 9, 28), issued=date(2007, 9, 26))
 PHASE_2 = PublicReport("132246SA", Building.BLDG_3, 2, 12, date(2008, 2, 29), "John Laing Homes", issued=date(2008, 2, 1))
-BLOCKS = (PlanBlock(Building.BLDG_3, "024", 21, 12), PlanBlock(Building.BLDG_8, "017", 81, 12))
+BLOCKS = (PlanBlock(Building.BLDG_3, "024", 21, 12, book_page="2011170"), PlanBlock(Building.BLDG_8, "017", 81, 12, book_page="2011170"))
 HELD = (HeldUnits("201010121565", date(2010, 10, 12), Building.BLDG_3, (25, 26, 27, 30)),)
 
 

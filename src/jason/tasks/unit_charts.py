@@ -55,8 +55,10 @@ def unit_chart_tabs(
 def _unit_rows(blocks, address) -> list[list[Any]]:
     rows: list[list[Any]] = [["Building", "Numbering", "Unit", "Parcel", "Address", "Same number on", "Places a deed by unit"]]
     for block in sorted(blocks, key=lambda item: int(item.building)):
+        if not block.book_page:                 # a block on no map page names no parcel
+            continue
         for sub in range(block.first_subparcel, block.first_subparcel + block.count):
-            apn = f"2011170{block.block}{sub:04d}"
+            apn = block.parcel(sub)
             unit = plan_unit(apn, blocks)
             others = [
                 f"building {int(other.building)} {parcel_number(other_apn)}"

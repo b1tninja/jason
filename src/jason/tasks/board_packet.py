@@ -8,7 +8,8 @@ For every action item on the agenda (proposed or on agenda, ``data/board/items.j
 - **What the records show now**: the facts re-read from the review that found the item (the cost centers, the reserve
   transfers, the deadlines, the developer securities, the insurance), so the packet is as current as the data on disk;
 - **Evidence** to open: the documents and commands behind the item;
-- **Options** and a **draft motion** for the secretary to adapt, with any notice the item needs of its own;
+- **Options** and a **draft motion** for the secretary to adapt (the specification's ``board_item_options()`` where it
+  wrote them for the item, else a generic frame), with any notice the item needs of its own;
 - **Deadlines**.
 
 Executive session items are listed by their Civil Code 4935 subject in general words only, never by title
@@ -227,8 +228,10 @@ def _meeting_recordings(data_dir: Path, community: Any) -> list[str]:
     drive = sorted({m["date"] for m in catalog.get("meetings", []) for r in m["records"]
                     if r["where"] == "Drive" and r["kind"] in ("audio recording", "video recording", "transcript")})
     if drive:
-        out.append(f"Drive holds recordings or transcripts of {len(drive)} meetings ({drive[0]} to {drive[-1]}), including the "
-                   "May 20 and June 17, 2025 recordings filed with the 26CV016125 matter (`jason meetings`)")
+        # What else the specification says of the recordings Drive holds (``Community.recordings_note()``), if anything.
+        note = str(getattr(community, "recordings_note", str)() or "")
+        out.append(f"Drive holds recordings or transcripts of {len(drive)} meetings ({drive[0]} to {drive[-1]})"
+                   f"{', ' + note if note else ''} (`jason meetings`)")
     return out
 
 
@@ -274,80 +277,14 @@ RESEARCHERS: dict[str, Callable[[Path, Any], list[str]]] = {
     "developer-bond-phase-7": _securities,
 }
 
-# Options and a draft motion, by item; an item without one gets the generic frame.
-OPTIONS: dict[str, tuple[list[str], str]] = {
-    "reserve-loan-march-2024": (["Adopt a repayment plan restoring the $16,000 to reserves by a set date",
-                                 "Find, with documentation, that a temporary delay is in the association's best interest (5515(d))",
-                                 "Levy a special assessment to recover the funds (5515(e); limits in 5605)",
-                                 "Establish first whether the loan was repaid in a way the records do not show"],
-                                "Move that the board direct the treasurer to account for the $16,000 transferred from reserves on March 14, "
-                                "2024, and adopt the following plan to restore it to the reserve fund by ______: ______."),
-    "cost-centers-not-kept": (["Refer to counsel for an opinion on the annexations' cost center requirement and past allocations",
-                               "Direct the budget committee to present the 2027 budget with the General, Phases 1 and 2, and Annexed "
-                               "Property components", "Direct the reserve preparer to separate the cost centers' components and funding"],
-                              "Move that the board refer the cost center requirement of the declarations of annexation (section 1.3) to "
-                              "counsel and direct that the 2027 budget and reserve funding plan be prepared with the cost centers kept apart."),
-    "settlement-disclosure-6100": (["Direct counsel to prepare a supplemental 6100(a) disclosure to members (amendments are allowed and "
-                                    "keep their privilege, 6100(b), (c))",
-                                    "Direct the manager or secretary to add the latest 6100 information to every resale packet (4525(a)(7))",
-                                    "Direct the reserve preparer to itemize the unspent settlement funds separately (4177(b), 5565(b)(3))",
-                                    "Ask counsel first whether any defects were corrected, which would narrow the disclosure"],
-                                   "Move that the board direct counsel to prepare, for the board's review, a supplemental disclosure to "
-                                   "the members under Civil Code 6100 of the October 2023 settlement with the builder; that the latest "
-                                   "6100 information be included in every resale disclosure packet under Civil Code 4525(a)(7); and that "
-                                   "the reserve study preparer itemize the unspent settlement funds separately under Civil Code 4177(b) "
-                                   "and 5565(b)(3)."),
-    "defect-repairs-and-941-review": (["Adopt a repair plan by priority within the settlement funds (the settled items were "
-                                       "priced well above the net received), starting with site drainage and the garage entry "
-                                       "aprons",
-                                       "Decide whether the 2023-2024 JB Bostick concrete and seal coat work counts against the "
-                                       "settlement funds, and have the treasurer track the remaining funds as their own fund",
-                                       "Ask counsel in writing to prepare or review the repair contracts under the fee "
-                                       "agreement's post-recovery scope, and for the signed fee agreement",
-                                       "Calendar a building-condition review with counsel before the first 10-year date",
-                                       "Discuss the scope and the cost of repair in executive session: the pricing is marked "
-                                       "for mediation only (Evidence Code 1119)"],
-                                      "Move that the board ask Berding & Weil to confirm in writing that drafting, review, and "
-                                      "negotiation of contracts to repair the items released in the October 2023 settlement fall "
-                                      "within its contingency fee agreement, and to provide the signed agreement; direct [a "
-                                      "director] to obtain proposals for the site drainage and garage entry repairs for the "
-                                      "board's review; and schedule a review of building conditions with counsel before "
-                                      "February 2029."),
-    "minutes-ai-recap-executive": (["Direct the Secretary to replace the posted minutes (PayHOA Meetings and Resale Documents) with "
-                                    "versions that note executive session matters only generally, keeping the originals preserved "
-                                    "under the litigation hold",
-                                    "Stop appending Zoom's AI recap to the minutes; prepare minutes from the template (motions, "
-                                    "roll-call votes, a general note of the executive session)",
-                                    "Ask counsel whether members or buyers who received the resale packets need a notice"],
-                                   "Move that the board direct the Secretary to (1) prepare corrected minutes for each meeting whose "
-                                   "posted minutes carry Zoom's AI recap, noting executive session matters only generally (Civil Code "
-                                   "4935(e)), for approval at the next meeting; (2) replace the posted copies once approved, keeping "
-                                   "the originals preserved; and (3) no longer append AI summaries to minutes."),
-    "meeting-recordings-retention": (["Adopt a meeting records policy: approved minutes are the only record of proceedings; the "
-                                      "Secretary records open sessions only, announced, solely to prepare minutes; the recording, "
-                                      "transcript, and any AI summary are deleted within 30 days after the minutes are approved, "
-                                      "except anything under a litigation hold",
-                                      "Keep transcripts and AI summaries of open sessions as working papers, access limited to "
-                                      "directors, deleted on a fixed schedule; recordings deleted after the minutes",
-                                      "Turn off Zoom AI Companion and stop cloud recording before adjourning to executive session, "
-                                      "or hold executive session as a separate unrecorded meeting; never record hearings or counsel",
-                                      "Before deleting anything, ask defense counsel to confirm a litigation hold for the "
-                                      "26CV016125 matter and release what is not needed"],
-                                     "Move that the board (1) direct that no meeting recording, transcript, AI summary, or chat be "
-                                     "deleted until defense counsel for 26CV016125 confirms in writing what must be preserved; (2) "
-                                     "direct the Secretary to turn off Zoom AI Companion and to stop recording before any executive "
-                                     "session; and (3) direct the Secretary to present a meeting records policy for adoption at the "
-                                     "next meeting."),
-    "meeting-schedule-resolution": (["Adopt a resolution fixing regular meetings on the third Tuesday of every month at 7:00 pm on Zoom",
-                                     "Keep the quarterly schedule and notice the other months as special meetings"],
-                                    "Move that the board adopt an administrative resolution fixing regular board meetings on the third "
-                                    "Tuesday of each month at 7:00 pm by teleconference, superseding Resolution 20230130-1 as to regular meetings."),
-    "fire-sprinkler-inspections": (["Engage a State Fire Marshal licensed (A or C-16) firm for the annual inspection and test now",
-                                    "Contract the quarterly inspections, or train a person to do them (19 CCR 904.1)",
-                                    "Schedule the five-year internal inspection"],
-                                   "Move that the board authorize the treasurer to engage ______ for the annual fire sprinkler inspection and "
-                                   "test of buildings 3 and 8, not to exceed $______, and to arrange the quarterly inspections."),
-}
+def options_for(item_id: str, community: Any) -> tuple[tuple[str, ...], str]:
+    """The options and the draft motion the specification wrote for an item (``Community.board_item_options()``,
+    ``ItemOptions`` rows), or none: the packet then frames the item generically."""
+    rows = getattr(community, "board_item_options", None)
+    for row in (rows() if callable(rows) else ()):
+        if row.item == item_id:
+            return tuple(row.options), row.motion
+    return (), ""
 
 
 def item_section(item: BoardItem, data_dir: Path, community: Any, *, n: int, meeting: date | None = None) -> list[str]:
@@ -381,7 +318,7 @@ def item_section(item: BoardItem, data_dir: Path, community: Any, *, n: int, mee
     if item.evidence:
         out.append("**Evidence.** " + "; ".join(item.evidence))
         out.append("")
-    options, motion = OPTIONS.get(item.id, ([], ""))
+    options, motion = options_for(item.id, community)
     out.append("**Options.**")
     out.extend(f"{k}. {o}" for k, o in enumerate(options or ["Act as asked", "Refer for more information (to a committee, counsel, or a vendor)",
                                                             "Defer to a later meeting"], start=1))
@@ -581,7 +518,7 @@ def _member_section(item: BoardItem, data_dir: Path, community: Any, *, n: int, 
     files = _files_for_members(list(planned.get("packet") or []), data_dir, held)
     if files:
         out += ["**Files.** " + "; ".join(files), ""]
-    options, _ = OPTIONS.get(item.id, ([], ""))
+    options, _ = options_for(item.id, community)
     held[Withheld.OPTIONS] += len(options) or 3          # the directors' packet's options, or its generic three
     if planned.get("brief"):
         held[Withheld.OPTIONS] += 1
@@ -676,4 +613,4 @@ def request_members_copy(data_dir: Path, community: Any, copy: MembersCopy, path
 
 
 __all__ = ["Audience", "MembersCopy", "Omission", "Withheld", "citations", "item_section", "members_copy", "packet",
-           "request_members_copy", "statute_excerpt", "OPTIONS", "RESEARCHERS"]
+           "options_for", "request_members_copy", "statute_excerpt", "RESEARCHERS"]

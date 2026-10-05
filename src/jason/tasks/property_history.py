@@ -76,7 +76,7 @@ def load_parcel_histories(community: Any, root: Path) -> tuple[ParcelHistory, ..
     ranges = community.buildings()
     blocks = community.unit_blocks()
     held = community.held_units()
-    scans = scan_index(root, community.streets())
+    scans = scan_index(root, community.streets(), parcel_prefix=community.parcel_prefix())
     units = community.units()
     notes = parcel_notes(root / "parcel-notes.csv")
     periods_by_address: dict[str, list] = {}

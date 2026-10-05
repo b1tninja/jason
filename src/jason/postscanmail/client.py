@@ -23,7 +23,8 @@ from typing import Any, Iterator
 import httpx
 
 BASE_URL = "https://api.postscanmail.com/api/account-docs/v2/"
-USER_AGENT = "jason (Mystique Community Association; read-only mail sync)"
+# The User-Agent sent when no caller names the association (``Community.user_agent("read-only mail sync")`` does).
+USER_AGENT = "jason (read-only mail sync)"
 
 
 class PostScanMailError(Exception):
@@ -33,11 +34,13 @@ class PostScanMailError(Exception):
 class PostScanMail:
     """Read-only PostScanMail account client."""
 
-    def __init__(self, api_key: str, *, base_url: str = BASE_URL, http: httpx.Client | None = None, timeout: float = 60.0) -> None:
+    def __init__(self, api_key: str, *, base_url: str = BASE_URL, http: httpx.Client | None = None, timeout: float = 60.0,
+                 user_agent: str = USER_AGENT) -> None:
         if not api_key:
             raise PostScanMailError("no PostScanMail API key; set postscanmail_record_uid to its Keeper record")
         self._key = api_key
         self._base = base_url.rstrip("/") + "/"
+        self._user_agent = user_agent or USER_AGENT
         self._owns_http = http is None
         self._http = http or httpx.Client(timeout=timeout, follow_redirects=True)
 
@@ -52,7 +55,7 @@ class PostScanMail:
         self.close()
 
     def _headers(self) -> dict[str, str]:
-        return {"x-api-key": self._key, "Accept": "application/json", "User-Agent": USER_AGENT}
+        return {"x-api-key": self._key, "Accept": "application/json", "User-Agent": self._user_agent}
 
     def items_page(self, page: int = 1, *, sort_order: str = "desc") -> dict[str, Any]:
         """One page of mail items: the page object with ``data`` (the items), ``current_page``, ``last_page``, ``total``."""
@@ -85,7 +88,7 @@ class PostScanMail:
 
     def download(self, url: str, dest: Path) -> Path:
         """Save a signed cover-image or PDF link. The signature is the credential; the API key is not sent."""
-        response = self._http.get(url, headers={"User-Agent": USER_AGENT})
+        response = self._http.get(url, headers={"User-Agent": self._user_agent})
         if not response.is_success:
             raise PostScanMailError(f"HTTP {response.status_code} downloading {url.split('?')[0]}")
         dest.parent.mkdir(parents=True, exist_ok=True)

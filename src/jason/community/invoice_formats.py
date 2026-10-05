@@ -27,12 +27,15 @@ INVOICE_FORMATS: tuple[InvoiceFormat, ...] = (
         due_date=r"DUE DATE[^\n]*\n\s*(\d{1,2}/\d{1,2}/\d{4})",
         total=r"Invoice\s*\n\s*Total\s*\n\s*\$?([\d,]+\.\d\d)",
     ),
-    # E&R Landscaping: a one-page form, "E.R" header, the service month's last day as MM-DD-YYYY, a number on a line
-    # of its own made of a date's digits ("80126", "110725"), and the amount on a line of its own with no cents
-    # ("2,832."). Line items print their own amounts inside the line ("...,,,$850."), so only a whole line is the total.
+    # E&R Landscaping: a one-page form, "E.R" header, the customer line naming the property ("<the association> Condos",
+    # on every invoice and proposal: the name word is the profile's, ``names_association`` the word after it), the
+    # service month's last day as MM-DD-YYYY, a number on a line of its own made of a date's digits ("80126", "110725"),
+    # and the amount on a line of its own with no cents ("2,832."). Line items print their own amounts inside the line
+    # ("...,,,$850."), so only a whole line is the total.
     InvoiceFormat(
         "E&R Landscaping",
-        ("E.R", "Mystique Condos"),               # E&R's name for the property, on every invoice and proposal
+        ("E.R",),
+        names_association="Condos",
         number=r"(?m)^[\s|]*(\d{5,6})\s*$",
         invoice_date=r"(\d{2}-\d{2}-\d{4})",
         total=r"(?m)^[\s$]*(\d{1,3},\d{3}\.(?:\d\d)?)\s*$",

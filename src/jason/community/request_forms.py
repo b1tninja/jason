@@ -3,8 +3,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from jason.community.topics import Topic
+
+
+class RequestKind(Enum):
+    """Whose repair a maintenance request asks for, as the request sheet tabs them."""
+
+    ASSOCIATION = "association"
+    HOMEOWNER = "homeowner"
+    UNCLEAR = "unclear"
+    NOT_MAINTENANCE = "not maintenance"
+
+
+@dataclass(frozen=True)
+class RequestGroup:
+    """One open request as a person sorted it for the request sheet (``Community.request_groups()``): whose repair it
+    is, the vendor or trade it goes to, and the issue in a line. A request with no row is listed as unclear."""
+
+    request_id: int
+    kind: RequestKind
+    vendor: str
+    issue: str = ""
 
 
 @dataclass(frozen=True)
@@ -30,4 +51,4 @@ def form_for(topics: tuple[Topic, ...] | list[Topic], forms: tuple[RequestForm, 
     return next((f for f in forms if not f.topics), None)
 
 
-__all__ = ["RequestForm", "form_for"]
+__all__ = ["RequestForm", "RequestGroup", "RequestKind", "form_for"]

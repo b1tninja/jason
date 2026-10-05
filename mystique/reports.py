@@ -10,6 +10,8 @@ from datetime import date
 from jason.community.reports import HeldUnits, PhaseFile, PlanBlock, PublicReport
 from jason.community.symbols import Building
 
+from .parcels import MAP_BOOK_PAGE
+
 REPORTS: tuple[PublicReport, ...] = (
     PublicReport(
         "130654SA",
@@ -119,20 +121,20 @@ REPORTS: tuple[PublicReport, ...] = (
 # unit and a building 4 or 5 unit alike, so no Watt building is a plan block,
 # and a unit number places a deed only with the John Laing parent parcel.
 PLAN_BLOCKS: tuple[PlanBlock, ...] = (
-    PlanBlock(Building.BLDG_3, "024", 21, 12, ("20111700160000",)),
-    PlanBlock(Building.BLDG_8, "017", 81, 12, ("20111700040000", "20111700190000")),
+    PlanBlock(Building.BLDG_3, "024", 21, 12, ("20111700160000",), book_page=MAP_BOOK_PAGE),
+    PlanBlock(Building.BLDG_8, "017", 81, 12, ("20111700040000", "20111700190000"), book_page=MAP_BOOK_PAGE),
 )
 
 # Watt's numbering. The assessor started each of these blocks at subparcel
 # 0010 or 0014, and the unit numbers run down the street numbers. No parent
 # parcel is pinned, so none of these blocks places a deed by unit number.
 WATT_BLOCKS: tuple[PlanBlock, ...] = (
-    PlanBlock(Building.BLDG_1, "022", 1, 7, (), 10, "Watt numbering"),
-    PlanBlock(Building.BLDG_2, "023", 8, 10, (), 14, "Watt numbering"),
-    PlanBlock(Building.BLDG_4, "025", 18, 10, (), 14, "Watt numbering"),
-    PlanBlock(Building.BLDG_5, "026", 28, 10, (), 14, "Watt numbering"),
-    PlanBlock(Building.BLDG_6, "027", 38, 10, (), 14, "Watt numbering"),
-    PlanBlock(Building.BLDG_7, "028", 48, 10, (), 14, "Watt numbering"),
+    PlanBlock(Building.BLDG_1, "022", 1, 7, (), 10, "Watt numbering", MAP_BOOK_PAGE),
+    PlanBlock(Building.BLDG_2, "023", 8, 10, (), 14, "Watt numbering", MAP_BOOK_PAGE),
+    PlanBlock(Building.BLDG_4, "025", 18, 10, (), 14, "Watt numbering", MAP_BOOK_PAGE),
+    PlanBlock(Building.BLDG_5, "026", 28, 10, (), 14, "Watt numbering", MAP_BOOK_PAGE),
+    PlanBlock(Building.BLDG_6, "027", 38, 10, (), 14, "Watt numbering", MAP_BOOK_PAGE),
+    PlanBlock(Building.BLDG_7, "028", 48, 10, (), 14, "Watt numbering", MAP_BOOK_PAGE),
 )
 
 # Every block, both numberings. This is what a unit number is read against.

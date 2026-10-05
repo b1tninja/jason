@@ -40,15 +40,19 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from jason.community.base import name_words_of
+
 OUT = Path("meetings") / "paid-vs-approved.json"
 WINDOW_DAYS = 270
 MIN_APPROVAL = 50_000             # $500: smaller approvals (a bulb, a key box) are not followed
 LARGE_PAYMENT = 500_000           # $5,000
 OVER = 1.05
-_GENERIC = {"inc", "llc", "company", "co", "corp", "the", "and", "services", "service", "group", "construction", "control",
-            "pest", "roofing", "landscape", "landscaping", "plumbing", "electric", "association", "community", "mystique",
-            "insurance", "solutions", "systems", "repair", "repairs", "pro", "active", "city", "county", "sacramento",
-            "california", "builder", "window", "gutter", "door", "doors", "wildlife", "tree", "trees"}
+# Payee words that name a trade, a form of business, or a place, not one vendor. The association's own name words join
+# them at run time (``Community.name_words()``).
+_GENERIC = frozenset({"inc", "llc", "company", "co", "corp", "the", "and", "services", "service", "group", "construction", "control",
+                      "pest", "roofing", "landscape", "landscaping", "plumbing", "electric", "association", "community",
+                      "insurance", "solutions", "systems", "repair", "repairs", "pro", "active", "city", "county", "sacramento",
+                      "california", "builder", "window", "gutter", "door", "doors", "wildlife", "tree", "trees"})
 _PROPOSAL_NO = re.compile(r"\b(?:Proposal|Estimate|Quote|Contract|P\.?O\.?|Work Order)\s*(?:#|No\.?|Number)?\s*:?\s*"
                           r"((?=[A-Z0-9-]*\d)[A-Z]{0,4}-?\d[\w-]{1,})\b", re.I)
 
@@ -81,9 +85,9 @@ def _day(value: Any) -> date | None:
         return None
 
 
-def _key_words(payee: str) -> set[str]:
+def _key_words(payee: str, generic: frozenset[str] = _GENERIC) -> set[str]:
     # Five letters or more: "fire" in a sentence about a fire hazard is not The Fire Sprinkler Company.
-    return {w for w in re.findall(r"[a-z0-9]{5,}", (payee or "").lower()) if w not in _GENERIC}
+    return {w for w in re.findall(r"[a-z0-9]{5,}", (payee or "").lower()) if w not in generic}
 
 
 def approvals(data_dir: Path) -> list[dict[str, Any]]:
@@ -436,6 +440,7 @@ def build(data_dir: Path, *, community: Any = None, today: date | None = None) -
     approved = approvals(data_dir)
     paid = payments(data_dir)
     rules = community.premium_rules()
+    generic = _GENERIC | name_words_of(community)
     premiums: list[dict[str, Any]] = []
     terms: dict[Any, list[dict[str, Any]]] = {}
     days = sorted(d for p in paid if (d := _day(p["date"])))
@@ -464,7 +469,7 @@ def build(data_dir: Path, *, community: Any = None, today: date | None = None) -
             # A short estimate number ("000858") repeats across vendors: it links only to a payee the approval or its item
             # names. A long one (a contract or policy number) links alone.
             linked = [p for p in paid if (set(p["references"]) & numbers)
-                      and (any(len(n) >= 8 for n in set(p["references"]) & numbers) or _key_words(p["payee"]) & words)]
+                      and (any(len(n) >= 8 for n in set(p["references"]) & numbers) or _key_words(p["payee"], generic) & words)]
             how = "the invoice cites the approved proposal" if linked else ""
             if not linked and not a["amountCents"]:
                 # The item names the vendor and attaches its estimate; the vendor's invoice need not repeat the number. The
@@ -472,7 +477,7 @@ def build(data_dir: Path, *, community: Any = None, today: date | None = None) -
                 # The item may name several vendors (the proposals it weighed); of those not paid monthly, the one paid
                 # in the window is the accepted proposal's vendor, when there is exactly one.
                 near = set(re.findall(r"[a-z0-9]{4,}", a.get("context", "").lower()))
-                candidates = [p for p in paid if _key_words(p["payee"]) & near and p["payee"] not in recurring and not p["utility"]
+                candidates = [p for p in paid if _key_words(p["payee"], generic) & near and p["payee"] not in recurring and not p["utility"]
                               and p["key"] not in used                     # one payment answers one approval
                               and start is not None and _day(p["date"]) and start <= _day(p["date"]) <= start + timedelta(days=WINDOW_DAYS)]
                 if len({p["payee"] for p in candidates}) == 1:
@@ -489,7 +494,7 @@ def build(data_dir: Path, *, community: Any = None, today: date | None = None) -
                 d = _day(p["date"])
                 return d is not None and start <= d <= start + timedelta(days=WINDOW_DAYS)
 
-            linked = [p for p in paid if _key_words(p["payee"]) & words and within(p)]
+            linked = [p for p in paid if _key_words(p["payee"], generic) & words and within(p)]
             how = "the approval names the payee; paid within nine months" if linked else ""
             if not linked:
                 # The minutes often name the work, not the vendor ("$9,871 tree pruning"): a payment of the same amount

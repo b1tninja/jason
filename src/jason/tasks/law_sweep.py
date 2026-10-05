@@ -27,7 +27,8 @@ from jason.community.succession import now_at, standing
 # A Civil Code citation as jason writes it: "CIV 5855", "CIV 5855(c)", "Civil Code 5855", "Civil Code Section 1363(g)",
 # "Civ. Code § 5850". A bare number is not read; it is too often something else.
 CITATION = re.compile(r"(?:\bCIV|Civil\s+Code|Civ\.\s*Code)\s*(?:Section\s*|§+\s*)?(\d{4}(?:\.\d+)?)((?:\([a-z0-9]{1,4}\))*)")
-SCANNED = (("docs", "**/*.md"), ("src/jason", "**/*.py"), ("mystique", "**/*.py"), (".", "AGENTS.md"), (".", "SKILLS.md"), (".", "README.md"))
+# jason's own text. The profile's package (``Community.root``) is scanned beside it when it sits in the project.
+SCANNED = (("docs", "**/*.md"), ("src/jason", "**/*.py"), (".", "AGENTS.md"), (".", "SKILLS.md"), (".", "README.md"))
 CURRENT = (4000.0, 6150.0)
 FORMER = (1350.0, 1378.0)
 
@@ -48,10 +49,23 @@ class Entry:
     cites: list[Cite] = field(default_factory=list)
 
 
-def citations(project: Path) -> dict[str, list[Cite]]:
-    """Every Civil Code citation in jason's own text, by section number."""
+def _scanned(project: Path, profile_root: Path | None) -> tuple[tuple[str, str], ...]:
+    """`SCANNED`, and the profile's package (its specification cites the Act too) when it sits inside ``project``; a
+    profile installed elsewhere is its own repository and is not read."""
+    if profile_root is None:
+        return SCANNED
+    try:
+        folder = Path(profile_root).resolve().relative_to(project.resolve()).as_posix()
+    except ValueError:
+        return SCANNED
+    return (*SCANNED[:2], (folder, "**/*.py"), *SCANNED[2:])        # after jason's own code, as always
+
+
+def citations(project: Path, profile_root: Path | None = None) -> dict[str, list[Cite]]:
+    """Every Civil Code citation in jason's own text, and the profile's (``profile_root``, ``Community.root``), by section
+    number."""
     found: dict[str, list[Cite]] = defaultdict(list)
-    for base, pattern in SCANNED:
+    for base, pattern in _scanned(project, profile_root):
         for path in sorted((project / base).glob(pattern)):
             if not path.is_file() or "__pycache__" in path.parts:
                 continue
@@ -61,9 +75,10 @@ def citations(project: Path) -> dict[str, list[Cite]]:
     return found
 
 
-def sweep(project: Path, data_dir: Path, *, since: str = "") -> list[Entry]:
-    """The changed sections jason cites, oldest change first within each; ``since`` is an edition year ("2025")."""
-    cites = citations(project)
+def sweep(project: Path, data_dir: Path, *, since: str = "", profile_root: Path | None = None) -> list[Entry]:
+    """The changed sections jason cites, oldest change first within each; ``since`` is an edition year ("2025").
+    ``profile_root`` is the active profile's package (``Community.root``), read beside jason's own text."""
+    cites = citations(project, profile_root)
     by_section: dict[str, list[Cite]] = defaultdict(list)
     for cited, where in cites.items():
         by_section[re.sub(r"\(.*$", "", cited)] .extend(where)

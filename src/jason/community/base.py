@@ -783,6 +783,18 @@ class Community(ABC):
         sheet or a page jason makes for it. The full name until the specification sets a shorter one."""
         return self.name
 
+    def name_words(self) -> frozenset[str]:
+        """The words of the association's names, lower-cased: what a reader passes over when it matches a subject, a
+        title, or a payee by its words, since the association's own papers all carry them. From ``name``,
+        ``short_name``, and ``corporate_name``; a word of fewer than three letters is left out."""
+        names = (self.name, self.short_name, self.corporate_name)
+        return frozenset(w for name in names for w in re.findall(r"[a-z0-9]{3,}", str(name or "").casefold()))
+
+    def user_agent(self, purpose: str) -> str:
+        """The ``User-Agent`` jason sends a vendor's API on the association's behalf: who is calling and what for
+        (``jason (<the association>; <purpose>)``)."""
+        return f"jason ({self.name}; {purpose})"
+
     @property
     def region(self) -> str:
         """Where the association's public records are kept, as ``"<state>/<county>"`` (``"ca/<county>"``): which county
@@ -868,6 +880,21 @@ class Community(ABC):
     def unit_blocks(self):
         """Every building's unit numbering, for reading a unit number. Defaults to the plan blocks."""
         return self.plan_blocks()
+
+    def parcel_prefix(self) -> str:
+        """The assessor's map book and page the association's parcels share: the first seven digits of a
+        fourteen-digit parcel number (``1234560`` for book 123, page 4560). A deed reader looks for it before a block
+        and a parcel, and a unit's parcel is built from it. It is the page the unit blocks name
+        (``PlanBlock.book_page``) when they all name one; otherwise empty, and then no parcel number is read from a
+        scan or built from a unit number."""
+        pages = {str(getattr(block, "book_page", "") or "") for block in self.unit_blocks()}
+        pages.discard("")
+        return pages.pop() if len(pages) == 1 else ""
+
+    def developer_security_notes(self) -> tuple[str, ...]:
+        """The specification's own notes on its developer securities, for the register's caveats: which phases were
+        secured on earlier forms, and whom a release was sent to. Empty until set."""
+        return ()
 
     def held_units(self):
         """Bulk deeds that name the units of a building still held on that day."""
@@ -955,6 +982,11 @@ class Community(ABC):
     def premium_rules(self) -> PremiumRules | None:
         """How approvals in the minutes are followed to insurance premiums (``PremiumRules``), or None until set."""
         return None
+
+    def program_contractors(self) -> tuple[str, ...]:
+        """The contractors a carrier's managed repair program paid on the association's claims, as the carrier's letters
+        and work authorizations print them (each spelling its own). Empty until set, and then a claim paper names none."""
+        return ()
 
     def site(self) -> str:
         """The association's public website URL, or "" when it has none."""
@@ -1141,6 +1173,12 @@ class Community(ABC):
         """The association's request forms (form id, title/message/attachment question ids, topics). Empty until set."""
         return ()
 
+    def request_groups(self):
+        """Open maintenance requests as a person sorted them for the request sheet
+        (``jason.community.request_forms.RequestGroup``): whose repair each is, the vendor or trade it goes to, and the
+        issue in a line. Empty until set, and then every request is listed as unclear."""
+        return ()
+
     def owner_information(self):
         """The owner-information cycle's forms (Civil Code 4040, 4041): an object carrying ``OWNER_INFO`` (the form),
         ``OWNER_INFO_CYCLE``, ``EARLIER_ELECTIONS``, ``FORM_IMPORTS``, and ``OWNER_INFO_COMPLETED_COMMENT`` (the
@@ -1261,6 +1299,11 @@ class Community(ABC):
         """The legal holds in force (``jason.community.holds.LegalHoldSpec``). Empty until set."""
         return ()
 
+    def recordings_note(self) -> str:
+        """What else the directors' packet says of the meeting recordings and transcripts Drive holds, as a clause that
+        follows their count and dates (a recording filed with a matter, say). Empty until set."""
+        return ""
+
     def calendar_policy(self):
         """The board calendar's event titles (``jason.community.board_calendar.CalendarPolicy``). None until set."""
         return None
@@ -1373,6 +1416,12 @@ class Community(ABC):
         """The title of the board's action items Sheet and Google Tasks list, as the association named them. Empty until
         the specification sets it: jason then names them from the association's name (``board_items.sheet_title``)."""
         return ""
+
+    def board_item_options(self) -> tuple:
+        """The options and draft motion written for particular board items, for the directors' packet
+        (``jason.community.board_items.ItemOptions``). Empty until set; an item without a row gets the packet's generic
+        frame."""
+        return ()
 
     def procedures(self) -> tuple:
         """The community's own procedures (``jason.community.procedures.Procedure``), beside jason's general ones.
@@ -1550,6 +1599,14 @@ def name_regex(name: str) -> str:
     """The association's full name as a pattern: its words apart by any spacing, "Association" abbreviated or not."""
     words = [r"assoc(?:iation)?" if w.casefold() == "association" else re.escape(w) for w in (name or "").split()]
     return r"\s+".join(words) or NEVER
+
+
+def name_words_of(community: Any) -> frozenset[str]:
+    """``community.name_words()`` (the lower-cased words of the association's names) for any object that answers it;
+    none for one that does not. A word matcher adds them to its stop words: a profile that names no association passes
+    over none."""
+    words = getattr(community, "name_words", None)
+    return frozenset(words()) if callable(words) else frozenset()
 
 
 def read_unit_address(text: str) -> tuple[int | None, Street | None]:

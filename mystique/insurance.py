@@ -19,6 +19,10 @@ FLOOD_ZONE = ("A99: a high-risk Special Flood Hazard Area protected by levees st
 # utilities folder, and the dog attack matter's folder. ``jason policies`` passes these over (Community.not_policy_names).
 NOT_POLICY_NAMES: tuple[str, ...] = (r"REVIEW - MYSTIQUE", r"Vendors,\s+Utilities", r"Dog Attack")
 
+# The carrier's managed repair program's contractors on the association's claims, each spelling the carrier's letters
+# and work authorizations print (Community.program_contractors). A claim paper that names one is read as paid to it.
+PROGRAM_CONTRACTORS: tuple[str, ...] = ("Lionsbridge Contractor Group", "Lionsbridge Contracting Group", "CCA Global Partners")
+
 
 # The board's policy sheet (September 29, 2026) lists N030PK2940-00, G74805796, and 4124011561232Y. The carriers'
 # own letters show the number each term carried; the sheet's are earlier terms and stay as prior numbers.

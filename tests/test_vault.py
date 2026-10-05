@@ -432,6 +432,11 @@ def _agent_with(monkeypatch, store, uids):
     agent = Jason(settings=settings)
     monkeypatch.setattr(agent, "vault_store", lambda: store)
     monkeypatch.setattr("jason.community.profile.profile_name", lambda: "oakview")
+    # The profile is a name only here: the clients take their User-Agent from a stand-in specification.
+    from types import SimpleNamespace
+
+    stand_in = SimpleNamespace(user_agent=lambda purpose: f"jason (Oakview Owners Association; {purpose})")
+    monkeypatch.setattr(type(agent), "community", property(lambda self: stand_in))
     return agent
 
 
@@ -440,6 +445,7 @@ def test_postscanmail_reads_its_key_from_the_vault(monkeypatch):
     agent = _agent_with(monkeypatch, store, {})
     with agent.postscanmail() as client:
         assert client._key == VALUE
+        assert client._user_agent == "jason (Oakview Owners Association; read-only mail sync)"
 
 
 def test_zoom_falls_back_to_the_env_record(monkeypatch):

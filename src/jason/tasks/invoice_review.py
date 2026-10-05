@@ -221,8 +221,15 @@ def _text(data_dir: Path, path: Path, digest: str) -> str:
     return text
 
 
-def read_documents(data_dir: Path, snap: dict[str, Any], roots: dict, formats: tuple[InvoiceFormat, ...]) -> dict[int, Document]:
-    """Each attachment read once: its content hash, its kind, and the invoice or utility bill it holds."""
+def _name_pattern(community: Any) -> str:
+    """The association's name word as letters print it (``Community.name_pattern()``); none without a specification."""
+    return str(getattr(community, "name_pattern", str)() or "")
+
+
+def read_documents(data_dir: Path, snap: dict[str, Any], roots: dict, formats: tuple[InvoiceFormat, ...],
+                   name_pattern: str = "") -> dict[int, Document]:
+    """Each attachment read once: its content hash, its kind, and the invoice or utility bill it holds.
+    ``name_pattern`` is the association's name word (``Community.name_pattern()``), for a layout that prints it."""
     portal = {pdf.name: pdf for _u, _a, pdf in bill_files(roots)}
     vendor_names = tuple(v for v in snap["vendors"].values() if v)
     engine = _ocr_engine()
@@ -256,7 +263,7 @@ def read_documents(data_dir: Path, snap: dict[str, Any], roots: dict, formats: t
                 else:
                     kind, _why = classify_text(text)
                     doc.kind = kind.value if kind else "unclassified"
-                    doc.invoice = read_invoice(text, vendors=vendor_names, formats=formats)
+                    doc.invoice = read_invoice(text, vendors=vendor_names, formats=formats, name_pattern=name_pattern)
             found[ident] = doc
     return found
 
@@ -426,7 +433,7 @@ def review(data_dir: Path, community: Any, roots: dict, *, formats: tuple[Invoic
     if not source.is_file():
         return {"found": False, "note": "no transactions on disk; run jason invoices --fetch"}
     snap = json.loads(source.read_text(encoding="utf-8"))
-    documents = read_documents(data_dir, snap, roots, formats or INVOICE_FORMATS)
+    documents = read_documents(data_dir, snap, roots, formats or INVOICE_FORMATS, _name_pattern(community))
     pays = payments(snap, documents)
     returned = {m.group(1): p for p in pays for m in [RETURNED.search(p.description)] if m}
     cancelled = {p.key: returned[pid] for p in pays for pid in re.findall(r"Online Payment\s+(\d+)", p.description)

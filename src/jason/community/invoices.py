@@ -94,7 +94,11 @@ def readable(text: str) -> bool:
 class InvoiceFormat:
     """One vendor's layout: phrases that identify it (all must appear) and patterns for its fields.
 
-    Each pattern has one group. ``total`` is the amount the vendor asks to be paid.
+    Each pattern has one group. ``total`` is the amount the vendor asks to be paid. A layout that prints the
+    association's name as the vendor writes it ("<the association> Condos") sets ``names_association`` to the words
+    that follow the name ("Condos"): it then also needs the association's name word (``Community.name_pattern()``,
+    given to `matches`) right before them. The name is the profile's fact and not the row's. With no name pattern such
+    a row matches nothing.
     """
 
     vendor: str
@@ -103,10 +107,15 @@ class InvoiceFormat:
     invoice_date: str = ""
     due_date: str = ""
     total: str = ""
+    names_association: str = ""
 
-    def matches(self, text: str) -> bool:
+    def matches(self, text: str, name_pattern: str = "") -> bool:
         folded = text.casefold()
-        return all(p.casefold() in folded for p in self.phrases)
+        if not all(p.casefold() in folded for p in self.phrases):
+            return False
+        if not self.names_association:
+            return True
+        return bool(name_pattern and re.search(rf"(?:{name_pattern})\s+{re.escape(self.names_association)}", text, re.I))
 
 
 @dataclass(frozen=True)
@@ -151,15 +160,17 @@ def _labeled_amount(text: str) -> int | None:
     return None
 
 
-def read_invoice(text: str, *, vendors: tuple[str, ...] = (), formats: tuple[InvoiceFormat, ...] = ()) -> Invoice:
+def read_invoice(text: str, *, vendors: tuple[str, ...] = (), formats: tuple[InvoiceFormat, ...] = (),
+                 name_pattern: str = "") -> Invoice:
     """An invoice's fields from its text: a vendor format when one matches, the general labels for the rest.
 
     ``vendors`` are names to look for in the text (the association's vendor directory); the first one found,
-    longest names first, is the vendor.
+    longest names first, is the vendor. ``name_pattern`` is the association's name word (``Community.name_pattern()``),
+    for a format that prints it (``InvoiceFormat.names_association``).
     """
     text = re.sub(r"(\d) ,", r"\1,", text)
     amounts = money_values(text)
-    fmt = next((f for f in formats if f.matches(text)), None)
+    fmt = next((f for f in formats if f.matches(text, name_pattern)), None)
     number = invoice_date = due = ""
     total = None
     vendor = ""

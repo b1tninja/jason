@@ -106,9 +106,14 @@ def loose_date(raw: str) -> date | None:
     return parse_date(f"{m[2]} {m[1]}, {m[3]}") if m else None
 
 
-def _format_for(text: str, formats: tuple[InvoiceFormat, ...]) -> InvoiceFormat | None:
+def _format_for(text: str, formats: tuple[InvoiceFormat, ...], name_pattern: str = "") -> InvoiceFormat | None:
     text = re.sub(r"(\d) ,", r"\1,", text)
-    return next((f for f in formats if f.matches(text)), None)
+    return next((f for f in formats if f.matches(text, name_pattern)), None)
+
+
+def _name_pattern(context: ModelContext) -> str:
+    """The association's name word as letters print it (``Community.name_pattern()``), for a layout that prints it."""
+    return str(getattr(context.community, "name_pattern", str)() or "")
 
 
 def _format_date(pattern: str, text: str) -> date | None:
@@ -279,10 +284,10 @@ def read_record(text: str, context: ModelContext, formats: tuple[InvoiceFormat, 
     """An invoice's record, or None when the text is not a readable invoice, receipt, or bill."""
     if not text or len(text.strip()) < 40 or not readable(text):
         return None
-    fmt = _format_for(text, formats)
+    fmt = _format_for(text, formats, _name_pattern(context))
     if fmt is None and not _CUE.search(text):
         return None
-    inv = read_invoice(text, vendors=vendor_names(context), formats=formats)
+    inv = read_invoice(text, vendors=vendor_names(context), formats=formats, name_pattern=_name_pattern(context))
     if not inv.number and inv.total_cents is None and not inv.amounts:
         return None
     r = InvoiceRecord(vendor=inv.vendor, number=inv.number, invoice_date=inv.invoice_date, due_date=inv.due_date,

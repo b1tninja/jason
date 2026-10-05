@@ -17,14 +17,22 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from jason.community.base import Street, alternation, street_words
+from jason.community.base import NEVER, Street, alternation, street_words
 from jason.community.consideration import DeedPrice, deed_price
 from jason.community.recorder import document_numbers
 from jason.community.reports import PlanBlock, parent_parcel, plan_block, plan_unit
 
-_APN = re.compile(r"201[-\s]?1170[-\s]?(\d{3})[-\s]?(\d{4})")
 _UNIT = re.compile(r"\bUNIT\s+(?:NO\.?\s*)?(\d{1,3})\b", re.IGNORECASE)
 _TEXT = frozenset({".md", ".txt"})
+
+
+def _apn(parcel_prefix: str) -> re.Pattern[str]:
+    """A parcel number as a deed's header prints it: the association's map book and page
+    (``Community.parcel_prefix()``, a dash or a space allowed after the book and after the page), then the block and the
+    parcel, each captured. With no prefix, no parcel number is read."""
+    if len(parcel_prefix) != 7 or not parcel_prefix.isdigit():
+        return re.compile(NEVER)
+    return re.compile(rf"{parcel_prefix[:3]}[-\s]?{parcel_prefix[3:]}[-\s]?(\d{{3}})[-\s]?(\d{{4}})")
 
 
 def _address(streets: tuple[Street, ...]) -> re.Pattern[str]:
@@ -64,11 +72,13 @@ def scan_folders(root: Path) -> tuple[tuple[str, Path], ...]:
     )
 
 
-def scan_index(root: Path, streets: tuple[Street, ...] = ()) -> dict[str, DeedScan]:
+def scan_index(root: Path, streets: tuple[Street, ...] = (), *, parcel_prefix: str = "") -> dict[str, DeedScan]:
     """Every extract on disk, by document number. The first file for a number wins.
 
     ``streets`` are the association's (``Community.streets()``): an address
-    is read only on one of them. ``data/deed-prices.csv`` holds figures a
+    is read only on one of them. ``parcel_prefix`` is its map book and page
+    (``Community.parcel_prefix()``): a parcel number is read only under it.
+    ``data/deed-prices.csv`` holds figures a
     person read off a scan whose text layer garbled the tax line. Such a row
     replaces the price the extract computed, and its note travels with the
     scan.
@@ -83,7 +93,7 @@ def scan_index(root: Path, streets: tuple[Street, ...] = ()) -> dict[str, DeedSc
             for number in document_numbers(path.name):
                 if number in found:
                     continue
-                found[number] = read_scan(number, path, source, streets=streets)
+                found[number] = read_scan(number, path, source, streets=streets, parcel_prefix=parcel_prefix)
     for number, price in hand_read_prices(root / "deed-prices.csv").items():
         scan = found.get(number)
         if scan is None:
@@ -126,14 +136,15 @@ def _cents(value: object) -> int | None:
     return int(text) if text.isdigit() else None
 
 
-def read_scan(number: str, path: Path, source: str = "", *, streets: tuple[Street, ...] = ()) -> DeedScan:
-    """Read one extract. An address is read only on one of ``streets`` (``Community.streets()``)."""
+def read_scan(number: str, path: Path, source: str = "", *, streets: tuple[Street, ...] = (), parcel_prefix: str = "") -> DeedScan:
+    """Read one extract. An address is read only on one of ``streets`` (``Community.streets()``), and a parcel number
+    only under ``parcel_prefix``, the association's map book and page (``Community.parcel_prefix()``)."""
     text = path.read_text(encoding="utf-8", errors="replace")
     flat = " ".join(text.split())
     units: list[str] = []
     parents: list[str] = []
-    for block, sub in _APN.findall(flat):
-        digits = f"2011170{block}{sub}"
+    for block, sub in _apn(parcel_prefix).findall(flat):
+        digits = f"{parcel_prefix}{block}{sub}"
         target = parents if parent_parcel(digits) else units
         if digits not in target:
             target.append(digits)
