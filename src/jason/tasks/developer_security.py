@@ -63,7 +63,7 @@ def _instruments(data_dir: Path, community: Any) -> list[tuple[str, DocumentKind
             continue
         seen.add(key)
         kind = community.classify_document(entry["name"], None, "")
-        pieces = split_instruments(text) if kind is None or len(text) > 60000 else []
+        pieces = split_instruments(text, community) if kind is None or len(text) > 60000 else []
         if len(pieces) > 1:
             found.extend((f"{entry['name']} #{n + 1}", k, body) for n, (k, body) in enumerate(pieces))
         elif kind is not None:

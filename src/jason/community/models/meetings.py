@@ -399,8 +399,13 @@ _NUMBER = re.compile(r"^\s*(\d{1,2})\.\s*(.*)$")
 _LOWER_ROMAN = re.compile(r"^\s*([ivx]{1,4})\.\s*(.*)$")
 _LETTER = re.compile(r"^\s*([a-hA-H])\.\s*(.*)$")
 _BULLET = re.compile(r"^\s*[●○•◦▪■]\s*(.*)$")
-_END = re.compile(r"^\s*(Quick recap|Meeting summary|Summary|Next steps|Decorum Rules|Appendix|Bylaws\b.*|Meeting assets for\b.*|"
-                  r"Mystique Community Association - \d{4} Meeting Calendar)\s*$", re.I)
+def _end(context: ModelContext | None = None) -> re.Pattern[str]:
+    """The line where an agenda's items stop: the Zoom summary, the decorum rules, an appendix, or the association's
+    meeting calendar appended under its name (``Community.name``, from ``context``; with none, no calendar line ends
+    the items)."""
+    own = str(getattr(getattr(context, "community", None), "name", "") or "")
+    return re.compile(r"^\s*(Quick recap|Meeting summary|Summary|Next steps|Decorum Rules|Appendix|Bylaws\b.*|Meeting assets for\b.*|"
+                      rf"{name_regex(own)} - \d{{4}} Meeting Calendar)\s*$", re.I)
 
 
 def _clean_title(title: str) -> str:
@@ -423,12 +428,13 @@ class _Node:
         return AgendaItem(self.number, self.title, tuple(c.freeze() for c in self.children), notes, tuple(self.attachments))
 
 
-def parse_items(text: str) -> tuple[AgendaItem, ...]:
+def parse_items(text: str, context: ModelContext | None = None) -> tuple[AgendaItem, ...]:
     """The agenda's items, with sub-items, the notes under each, and linked files, from the template's numbering.
 
     The board's template numbers items I., II., ... with i./ii. or A./B. sub-items; the manager's numbers them 1., 2., ...
-    with a./b. sub-items. Bulleted lines stay in the notes. Parsing stops at the Zoom summary, the decorum rules, or an
-    appendix."""
+    with a./b. sub-items. Bulleted lines stay in the notes. Parsing stops at the Zoom summary, the decorum rules, an
+    appendix, or the association's meeting calendar (`_end`, which takes the association's name from ``context``)."""
+    end = _end(context)
     lines = strip_furniture(text).splitlines()
     roman_top = any(_ROMAN.match(l) and _ROMAN.match(l).group(1) in ("I", "II") for l in lines)
     top_re = _ROMAN if roman_top else _NUMBER
@@ -455,7 +461,7 @@ def parse_items(text: str) -> tuple[AgendaItem, ...]:
                 pending.title = _clean_title(line)
                 pending = None
                 continue
-        if started and _END.match(line):
+        if started and end.match(line):
             break
         m = top_re.match(line)
         if m and not roman_top and not started and m.group(1) != "1":
@@ -776,7 +782,7 @@ class AgendaModel(DocumentModel):
         kind, body, title = meeting_title(t)
         if not title and not re.search(r"\bAgenda\b", t[:3000], re.I):
             return None
-        items = parse_items(t)
+        items = parse_items(t, context)
         if not title and not items:
             return None
         h = meeting_header(t, context.community)
@@ -1166,7 +1172,7 @@ class MinutesModel(DocumentModel):
         r = Minutes(association=h.association, meeting_type=h.meeting_type, body=h.body, meeting_date=h.meeting_date,
                     meeting_time=h.meeting_time, teleconference=h.teleconference, physical_location=h.physical_location,
                     draft=h.draft or bool(re.search(r"^\s*DRAFT\s*$", t, re.M)))
-        r.items = parse_items(t)
+        r.items = parse_items(t, context)
         flat = squash(t)
         r.approved_on = next(iter(dates_in(first(r"^\s*(?:Minutes )?Approved(?: by the Board)?(?: on)?:?\s*([^\n]{6,24})", t, flags=re.M))), None)
         # "at 6:14pm", or a hand-typed "adjourned at 8:15" with no am or pm.
@@ -1409,7 +1415,7 @@ class ExecutiveSessionModel(DocumentModel):
         if not re.search(r"Executive Session", t[:1500], re.I):
             return None
         h = meeting_header(t, context.community)
-        items = parse_items(t)
+        items = parse_items(t, context)
         r = ExecutiveSession(association=h.association, meeting_date=h.meeting_date, meeting_time=h.meeting_time,
                              teleconference=h.teleconference, draft=h.draft, topics=items)
         m = re.search(r"(Regular|Special|Annual) Meeting of the Board", t, re.I)

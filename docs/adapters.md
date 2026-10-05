@@ -40,7 +40,7 @@ What keeps a declaration honest:
 - **It is narrow.** A row allows one vendor in one module. It does not allow the association's name, a street, or another vendor, and it does not allow the vendor anywhere else.
 - **It is a reader of a layout.** Before adding a row, ask what the module reads. If it reads a kind of document from any sender and only wants to know who sent it, it is a general reader: use the sender directory. If it reads the fields of one vendor's printed layout, it is an adapter.
 
-A baseline entry is not a declaration. `tests/fixtures/code_boundary.json` and `tests/fixtures/docs_boundary.json` hold what was there before the check; they only shrink.
+A baseline entry is not a declaration. `tests/fixtures/code_boundary.json` and `tests/fixtures/docs_boundary.json` hold what was there before the check; they only shrink. Both are empty since October 5, 2026, and `tests/test_profile.py` keeps the code baseline so.
 
 ## The adapters
 
@@ -114,9 +114,8 @@ What the wide reading finds on October 4, 2026:
   - A vendor's name for the property in one `InvoiceFormat` row.
   - Pointers into the profile in `community/lessons.py` and `community/procedures.py`.
 
-Neither reading sees a plain string. Known on the same day:
+Neither reading sees a plain string. Known on the same day (the obligee check in `src/jason/community/models/developer_security.py`, which compared against the name word, now asks `Community.name_pattern()` and `Community.name`):
 
-- `src/jason/community/models/developer_security.py`: the name word in a check's comparison.
 - `src/jason/postscanmail/client.py` and `src/jason/zoom/client.py`: the association's name in the user agent each sends.
 - `src/jason/tasks/developer_security.py`: a note that names an escrow holder.
 - `src/jason/community/models/insurance_claims.py`: two program contractors by name in a pattern. They are in no profile, so they are no term yet.

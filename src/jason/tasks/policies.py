@@ -45,9 +45,16 @@ ROLES: tuple[tuple[str, str], ...] = (
     ("declarations", r"declarations?|dec page|policy\s+\w+\s+\w+\s+\d{2}-\d{2}|flood policy|\bFLD\b|binder|\bpolicy\b|TRIA|evidence - "),
 )
 # A file carrying a number that is not the policy's own paper: a lawsuit's demand, a lender's questionnaire, a resale
-# packet, the books, the minutes, the sheet itself.
-NOT_POLICY = re.compile(r"demand|questionnaire|resale|statements-|treasurer|minutes|agenda|budget|financial (?:statement|review)|"
-                        r"REVIEW - MYSTIQUE|HOA Demand|Vendors,\s+Utilities|Dog Attack|Complaints|Case Summary|Shared with me", re.I)
+# packet, the books, the minutes, the sheet itself, a complaint and a case summary, Drive's "Shared with me".
+NOT_POLICY = (r"demand|questionnaire|resale|statements-|treasurer|minutes|agenda|budget|financial (?:statement|review)|"
+              r"Complaints|Case Summary|Shared with me")
+
+
+def not_policy(community: Any) -> re.Pattern[str]:
+    """The names passed over: the kinds any association has (`NOT_POLICY`) and the association's own folders and files
+    that carry a policy number without being a policy's paper (``Community.not_policy_names()``)."""
+    own = getattr(community, "not_policy_names", tuple)() if community is not None else ()
+    return re.compile("|".join((NOT_POLICY, *(p for p in own if p))), re.I)
 
 
 @dataclass
@@ -162,9 +169,12 @@ def find(drive: Any, community: Any, sheet: list[SheetRow], files: dict[str, dic
     return out
 
 
-def fetch(drive: Any, data_dir: Path, found: dict[str, dict[str, Any]], *, log: Callable[[str], None] | None = None) -> dict[str, Any]:
-    """Download each policy's own papers (not a lawsuit's, a lender's, or the books') into ``data/insurance/documents``,
-    one copy per content, and index them by policy."""
+def fetch(drive: Any, data_dir: Path, found: dict[str, dict[str, Any]], *, community: Any = None,
+          log: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """Download each policy's own papers (not a lawsuit's, a lender's, or the books', nor the association's own files
+    ``community.not_policy_names()`` names) into ``data/insurance/documents``, one copy per content, and index them by
+    policy."""
+    passed_over = not_policy(community)
     folder = Path(data_dir) / ROOT / "documents"
     folder.mkdir(parents=True, exist_ok=True)
     index_path = Path(data_dir) / ROOT / "documents.json"
@@ -174,7 +184,7 @@ def fetch(drive: Any, data_dir: Path, found: dict[str, dict[str, Any]], *, log: 
     for key, entry in found.items():
         for fid, h in entry["files"].items():
             mime = h.get("mimeType") or ""
-            if NOT_POLICY.search(h.get("path") or h.get("name") or ""):
+            if passed_over.search(h.get("path") or h.get("name") or ""):
                 continue
             if not (mime.endswith("pdf") or mime == "application/vnd.google-apps.document"):
                 continue
@@ -454,9 +464,12 @@ def page(policy: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def overview(policies: list[dict[str, Any]], built_at: str) -> str:
-    """Every policy on one page: the coverage summary a member or lender asks for, with the findings."""
-    lines = ["# Mystique insurance: every policy", "", f"Read {built_at[:10]} from the declarations, certificates, and the policy sheet.", "",
+def overview(policies: list[dict[str, Any]], built_at: str, *, community: Any = None) -> str:
+    """Every policy on one page: the coverage summary a member or lender asks for, with the findings, titled with the
+    association's short name (``Community.short_name``)."""
+    whose = str(getattr(community, "short_name", "") or "")
+    title = f"{whose} insurance: every policy" if whose else "Insurance: every policy"
+    lines = [f"# {title}", "", f"Read {built_at[:10]} from the declarations, certificates, and the policy sheet.", "",
              "| Policy | Carrier | Number | Term in force ends | Latest declarations | Premium | Deductible | Limits |", "|---|---|---|---|---|---|---|---|"]
     for p in policies:
         t = p["terms"][-1] if p["terms"] else None
@@ -517,7 +530,7 @@ def run(data_dir: Path, community: Any, *, sheet: list[SheetRow] | None = None, 
     pages.mkdir(parents=True, exist_ok=True)
     for p in policies:
         (pages / f"{p['key']}.md").write_text(page(p), encoding="utf-8")
-    (pages / "overview.md").write_text(overview(policies, built), encoding="utf-8")
+    (pages / "overview.md").write_text(overview(policies, built, community=community), encoding="utf-8")
     report = {"found": True, "builtAt": built, "documents": len(docs), "policies": policies,
               "unread": [d["name"] for d in docs if not d["model"] and d["role"] not in ("claim", "invoice")]}
     (Path(data_dir) / "reports" / REPORT).write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")

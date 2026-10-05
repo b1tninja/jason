@@ -2,6 +2,7 @@
 
 import sys
 import textwrap
+from datetime import date
 
 import pytest
 
@@ -156,17 +157,14 @@ def test_general_code_names_no_new_instance_facts():
     assert not drift.cleared, f"cleared from the code; update the baseline: {drift.cleared}"
 
 
-def test_the_cleared_modules_stay_cleared():
-    """The modules whose street and name patterns moved into the profile (2026-10-04) are not in the baseline."""
+def test_the_code_baseline_is_empty():
+    """The modules whose street and name patterns moved into the profile on 2026-10-04 left the baseline then, and the
+    eleven that still named the association's name, its streets, its index words, its Workspace's name, and its Drive
+    folders left it on 2026-10-05: the ratchet holds nothing, and it only shrinks, so it never gains an entry."""
     import json
 
-    baseline = json.loads(code_baseline_path().read_text(encoding="utf-8"))
-    cleared = {"src/jason/community/incidents.py", "src/jason/community/models/invoices.py",
-               "src/jason/community/models/insurance_claims.py", "src/jason/community/models/correspondence.py",
-               "src/jason/community/sources.py", "src/jason/postscanmail/models.py", "src/jason/tasks/mail.py",
-               "src/jason/tasks/mail_links.py", "src/jason/tasks/cross_checks.py", "src/jason/tasks/drive_labels.py",
-               "src/jason/community/models/legal_letters.py", "src/jason/community/models/legal_liens.py"}
-    assert not cleared & set(baseline)
+    assert json.loads(code_baseline_path().read_text(encoding="utf-8")) == {}
+    assert scan_code(repo_root(), instance_terms(community())) == {}
 
 
 def test_general_code_never_imports_the_profile():
@@ -499,6 +497,85 @@ def test_a_profile_without_streets_or_a_name_pattern_reads_none(small_profile):
     # The default profile reads the same letter.
     mine = profiles.load_profile("mystique")
     assert letter_facts(letter, mine.streets()).addresses == ("3021 ENCHANTED WALK",)
+
+
+def test_a_profile_without_a_short_name_index_words_print_names_or_file_exclusions_reads_none(small_profile, tmp_path):
+    """The facts the eleven modules cleared on 2026-10-05 read through ``Community``: a profile that sets none gets
+    an empty answer and a miss, never a crash; the default profile reads as before."""
+    import re
+
+    from jason.community.document_models import ModelContext
+    from jason.community.index_cache import _label_project_parties
+    from jason.community.models.developer_security import _names_association, split_instruments
+    from jason.community.models.governing_rules import adoption, fine_schedule
+    from jason.community.models.meetings import parse_items
+    from jason.community.recorder import FiledInstrument
+    from jason.community.scans import read_scan
+    from jason.community.symbols import DocumentKind
+    from jason.tasks.legal_hold import mail_pdf
+    from jason.tasks.policies import NOT_POLICY, not_policy, overview
+
+    small, mine = community(), profiles.load_profile("mystique")
+    assert small.short_name == small.name and mine.short_name and mine.short_name != mine.name
+    assert small.gmail_print_names() == () and small.not_policy_names() == ()
+    assert small.index_project() == "" and small.index_association() == ""
+    context = ModelContext(community=small)
+
+    class Named:
+        name = "Small Community Association"
+
+        def name_pattern(self):
+            return r"sma[l1]l"
+
+    named = ModelContext(community=Named())
+    # A deed's address is read only on the profile's streets.
+    deed = tmp_path / "GD 200001010001.pdf.md"
+    deed.write_text("GRANT DEED mail to 3021 Enchanted Walk UNIT 5", encoding="utf-8")
+    assert read_scan("200001010001", deed, streets=small.streets()).addresses == ()
+    assert read_scan("200001010001", deed, streets=mine.streets()).addresses == ("3021 ENCHANTED",)
+    # A printed email is known by the Workspace names the profile lists.
+    assert mail_pdf(small.gmail_print_names()).match("Small Community Association Mail - Re_ roof.pdf") is None
+    printed = mail_pdf(("Small Community Association", "Small Community Organization"))
+    assert printed.match("Small Community Organization Mail - Re_ roof.pdf").group(1) == "Re_ roof"
+    # Only the kinds any association has are passed over; the profile adds its own folders.
+    assert not_policy(small).pattern == NOT_POLICY and not_policy(None).search("HOA Demand 2026.pdf")
+    assert mine.not_policy_names() and all(p in not_policy(mine).pattern for p in mine.not_policy_names())
+    assert overview([], "2026-10-05T00:00:00", community=small).startswith(f"# {small.name} insurance: every policy")
+    assert overview([], "2026-10-05T00:00:00").startswith("# Insurance: every policy")
+    # The association's meeting calendar ends an agenda's items only under its name.
+    agenda = "I. Call to order\nII. Minutes\nSmall Community Association - 2026 Meeting Calendar\nIII. Not an item\n"
+    assert [i.title for i in parse_items(agenda, context)] == ["Call to order", "Minutes"]
+    assert [i.title for i in parse_items(agenda)] == ["Call to order", "Minutes", "Not an item"]
+    # A signature line is blank before the name word only where the profile gives one; a title always.
+    assert adoption("Adopted.\n____________________ Small", context).signature_blank is False
+    assert adoption("Adopted.\n____________________ Small", named).signature_blank is True
+    assert adoption("Adopted.\n____________________ Secretary", context).signature_blank is True
+    schedule = "Fine Schedule\nSMALL COMMUNITY ASSOCIATION\nLittering $50\n"
+    assert [r.label for r in fine_schedule(schedule, context)] == [r.label for r in fine_schedule(schedule, named)] == ["Littering"]
+    # An obligee is the association's by the name word or the full name; with neither it cannot be told.
+    assert _names_association("SMALL COMMUNITY ASSOCIATION", small) is True
+    assert _names_association("Elm Grove Owners Association", small) is False
+    assert _names_association("Anyone", object()) is None
+    # A subsidy agreement's title leads with the name word where the profile gives one.
+    production = "x " * 300 + "SMALL OPERATING SUBSIDY AGREEMENT - PHASE 1 Parties to Agreement: the Association and Example Homes."
+    plain, lettered = split_instruments(production), split_instruments(production, Named())
+    assert [k for k, _ in plain] == [k for k, _ in lettered] == [DocumentKind.SUBSIDY_AGREEMENT]
+    assert lettered[0][1][200:].startswith("SMALL OPERATING") and plain[0][1][200:].startswith("OPERATING")
+    # The index cache labels a party by the project's word; with none, no party is the project's.
+    item = FiledInstrument("200001010001", date(2020, 1, 1), "fee", ("BUILDERS AT SMALL LLC",), ("SMALL COMMUNITY ASSN",), (), "685", "GRANT DEED")
+
+    class Cache:
+        notes: list[str] = []
+
+        def note(self, number, text):
+            self.notes.append(text)
+
+    cache = Cache()
+    _label_project_parties(cache, item, project="", association="", developers=())
+    assert cache.notes == []
+    _label_project_parties(cache, item, project="SMALL", association="SMALL COMMUNITY", developers=())
+    assert cache.notes == ["other Small party BUILDERS AT SMALL LLC", "association party SMALL COMMUNITY ASSN"]
+    assert re.search(mine.name_pattern(), mine.name, re.I)
 
 
 def test_a_profile_without_systems_is_asked_which_it_has(small_profile):

@@ -523,13 +523,15 @@ class Jason:
         self,
         *,
         statuses: tuple[str, ...] = ("pending",),
-        title: str = "Mystique open requests",
+        title: str = "",
     ) -> RequestSheet:
         """Create a new spreadsheet of open requests, one tab per kind.
 
         Vendor rows stay together on each tab. Photos are resized copies
-        stored in Drive and shown with an IMAGE formula.
+        stored in Drive and shown with an IMAGE formula. ``title`` defaults
+        to "<the association's short name> open requests".
         """
+        title = title or f"{self.community.short_name} open requests"
         root = self.settings.payhoa_catalog.parent
         rows = self.catalog.search_requests(
             self.org_id, statuses=statuses, limit=None

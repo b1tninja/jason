@@ -89,11 +89,13 @@ The coupling was surveyed on October 2, 2026. jason hardcodes no Drive ids or Pa
    - jason keeps the record types and takes the members from the profile, for example `community.streets()` and `community.buildings()`.
    - About 12 places name a member directly. They become rule rows.
    - `Building(int(x))` currently caps an association at eight buildings.
-4. **Literals become profile data.**
-   - About 65 places in about 30 files hold literals:
-     - the association's name in regexes and default arguments (`index_cache`, `sources`, `models/*`);
-     - the street pattern in `incidents`, `scans`, and `models/invoices`;
-     - the county map book and page;
+4. **Literals become profile data (started).**
+   - Done (October 4 and 5, 2026; `tests/fixtures/code_boundary.json` is empty):
+     - the association's name in regexes and default arguments (`index_cache`, `sources`, `models/*`), read from `community.name`, `community.name_pattern()`, `community.short_name`, and `community.index_project()`;
+     - the street pattern in `incidents`, `scans`, and `models/invoices`, read from `community.streets()`;
+     - the Workspace's name on a printed email (`community.gmail_print_names()`) and the Drive names `jason policies` passes over (`community.not_policy_names()`).
+   - Still to do, in plain strings and tables the check does not read ([adapters.md](adapters.md), "What the check does not see"):
+     - the county map book and page (the parcel-number prefix in `scans`, `reports`, `unit_charts`, and `models/legal_shared`);
      - the city and ZIP line;
      - the maintenance request groups in `request_sheet`;
      - the prose in `board_packet`.

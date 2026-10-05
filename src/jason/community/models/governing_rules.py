@@ -51,6 +51,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from jason.community.base import NEVER
 from jason.community.document_models import DocumentModel, Finding, ModelContext, Severity, date_after, dates_in, register, squash
 from jason.community.reviews import RECORDS
 from jason.community.symbols import DocumentKind
@@ -262,16 +263,20 @@ class ElectionRulesRecord:
 
 # Shared readers.
 
-def adoption(text: str) -> Adoption:
+def adoption(text: str, context: ModelContext | None = None) -> Adoption:
+    """When and whether the document was adopted. A signature line is blank when a rule of underscores precedes an
+    officer's title, the board, or the association's name word as letters print it (``Community.name_pattern``, from
+    ``context``); with no pattern, only the titles."""
     flat = squash(text)
     effective = date_after(r"EFFECTIVE\s*:", text, window=40) or date_after(r"\beffective\s+(?:on|as\s+of)\s+", flat, window=30)
+    word = getattr(getattr(context, "community", None), "name_pattern", str)() or NEVER
     return Adoption(
         adopted=READER.read_adopted(flat),
         effective=effective,
         effective_text=READER.read_effective(flat),
         adoption_blank=bool(re.search(r"\badopted\s*_{3,}|came\s+into\s+effect\s+on\s+the\s*_{2,}|effective\s*:?\s*_{3,}", flat, re.I))
         or READER.read_unsigned(text),
-        signature_blank=bool(re.search(r"_{10,}\s*(?:Secretary|President|Board\s+of\s+Directors|Mystique)", flat)),
+        signature_blank=bool(re.search(rf"_{{10,}}\s*(?:Secretary|President|Board\s+of\s+Directors|(?i:{word}))", flat)),
     )
 
 
@@ -286,8 +291,10 @@ _VALUE_START = re.compile(r"\$\s?\d|\bWarning\b|\bNo\s+Cost\b|\d+(?:\.\d+)?\s?%|
 _PENALTY_LABEL = re.compile(r"violation|fine\b|alteration|littering|registration|continuing", re.I)
 
 
-def fine_schedule(text: str) -> tuple[FineRow, ...]:
-    """The rows under a "Fine Schedule" heading, label and value, with a value on the label's line or the next one."""
+def fine_schedule(text: str, context: ModelContext | None = None) -> tuple[FineRow, ...]:
+    """The rows under a "Fine Schedule" heading, label and value, with a value on the label's line or the next one. A
+    page header that leads with the association's name word (``Community.name_pattern``, from ``context``) is not a
+    row."""
     start = _FINE_START.search(text)
     if not start:
         return ()
@@ -295,11 +302,13 @@ def fine_schedule(text: str) -> tuple[FineRow, ...]:
     end = _FINE_END.search(block)
     block = block[: end.start()] if end else block
     lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+    word = getattr(getattr(context, "community", None), "name_pattern", str)() or NEVER
+    header = re.compile(rf"^(?:To\s+insure|following|(?:{word})|ENFORCEMENT)", re.I)
     rows: list[FineRow] = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        if re.match(r"^(?:To\s+insure|following|MYSTIQUE|ENFORCEMENT)", line, re.I) or len(line) > 120:
+        if header.match(line) or len(line) > 120:
             i += 1
             continue
         value_at = _VALUE_START.search(line)
@@ -613,13 +622,13 @@ class OperatingRulesModel(DocumentModel):
         head = " ".join(" ".join(ln for ln in text[:1500].splitlines() if not ln.startswith(("#", "- "))).split())
         hit = re.search(r"([A-Z][A-Z' ]{3,60}(?:OWNER.S\s+MANUAL\s*&?\s*RULES|RULES\s+AND\s+REGULATIONS|RULES))", head)
         r.title = hit.group(1).strip() if hit else "Rules"
-        r.adoption = adoption(text)
+        r.adoption = adoption(text, context)
         r.effective = r.adoption.effective
         hit = re.search(r"(?:provided|authoriz\w*)\s+by\s*the\s*Declaration[^.]{0,120}?\bSection\s+(\d+(?:\.\d+)+)", flat, re.I)
         r.authority = f"Section {hit.group(1)}" if hit else ""
         r.rules = tuple(dict((c, RuleSection(c, t.strip())) for c, t in codes).values())
         r.subjects = subjects_of(text)
-        r.fines = fine_schedule(text)
+        r.fines = fine_schedule(text, context)
         r.notice_described = bool(re.search(r"28[\s-]*day\s+notice|twenty-eight\s+\(28\)\s+days", flat, re.I))
         r.reversal_described = bool(re.search(r"petition\s+to\s+reverse|reverse\s+a\s+rule\s+change", flat, re.I))
         includes, dated = [], []
@@ -750,13 +759,13 @@ class PolicyModel(DocumentModel):
         r = PolicyRecord(title=title)
         head = " ".join(text[:2500].split())
         r.subject = next((s for s, p in _POLICY_SUBJECTS if re.search(p, head, re.I)), PolicySubject.OTHER)
-        r.adoption = adoption(text)
+        r.adoption = adoption(text, context)
         r.adopted, r.effective = r.adoption.adopted, r.adoption.effective
         r.supersedes_prior = bool(re.search(r"shall\s+supersede\s+any\s+(?:other|prior)", flat, re.I))
         # An ethics policy governs directors and committee members; its "disciplinary action" is theirs, not a member's,
         # and none of the 4355(a) subjects is in it.
         r.subjects = () if r.subject is PolicySubject.ETHICS else subjects_of(text)
-        r.fines = fine_schedule(text)
+        r.fines = fine_schedule(text, context)
         r.declaration_sections = tuple(dict.fromkeys(re.findall(r"CC&Rs\s*§\s*(\d+(?:\.\d+)*)", flat)))
         if r.subject in (PolicySubject.ENFORCEMENT, PolicySubject.FINE_SCHEDULE):
             r.hearing = hearing_terms(text)
@@ -816,7 +825,7 @@ class ElectionRulesModel(DocumentModel):
             return None
         flat = squash(text)
         r = ElectionRulesRecord(title=title)
-        r.adoption = adoption(text)
+        r.adoption = adoption(text, context)
         cert = re.search(r"certify\s+that\s+these\s+Election\s+Rules\s+were\s+duly\s+adopted[^.]{0,200}", flat, re.I)
         r.certificate = bool(cert)
         if cert:

@@ -54,6 +54,19 @@ def _spec_master(context: ModelContext):
         return None
 
 
+def _named_insured(decl: str, context: ModelContext) -> str:
+    """The association's name (``Community.name``) where the declarations print it, in the capitals the page uses. The
+    page wraps the name and the text layer can give its second line first, so the name's leading words alone name it
+    ("OAK RIDGE COMMUNITY" for Oak Ridge Community Association). Empty when the specification gives no name or the page
+    names another insured."""
+    own = str(getattr(context.community, "name", "") or "")
+    words = own.split()
+    if len(words) > 1 and words[-1].casefold() == "association":
+        words = words[:-1]
+    found = re.search(r"\s+".join(re.escape(w) for w in words), decl, re.I) if words else None
+    return own.upper() if found else ""
+
+
 def _mailing(text: str, context: ModelContext) -> str:
     """The named insured's mailing address among the page's addresses (``contracts_insurance.mailing_address``)."""
     from jason.community.models.contracts_insurance import association_mail_words, mailing_address
@@ -286,7 +299,7 @@ class CrimeDeclarationsModel(DocumentModel):
         amounts = [cents("$" + a) for a in re.findall(r"\$\s*([\d,]+)", run.group(1))] if run else []
         pairs = list(zip(amounts[0::2], amounts[1::2]))
         r.agreements = tuple(Agreement(name, limit, deductible) for name, (limit, deductible) in zip(_AGREEMENTS, pairs))
-        r.named_insured = "MYSTIQUE COMMUNITY ASSOCIATION" if re.search(r"MYSTIQUE COMMUNITY", decl) else ""
+        r.named_insured = _named_insured(decl, context)
         r.mailing_address = _mailing(text, context)
         return r
 

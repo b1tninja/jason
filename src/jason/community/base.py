@@ -775,6 +775,12 @@ class Community(ABC):
         return ""
 
     @property
+    def short_name(self) -> str:
+        """The association's name as people say it ("Oak Ridge" for Oak Ridge Homeowners Association): the title of a
+        sheet or a page jason makes for it. The full name until the specification sets a shorter one."""
+        return self.name
+
+    @property
     def region(self) -> str:
         """Where the association's public records are kept, as ``"<state>/<county>"`` (``"ca/<county>"``): which county
         recorder, assessor, and tax collector jason reads (phase 6 of docs/profiles.md). Empty until set."""
@@ -990,6 +996,12 @@ class Community(ABC):
         """The association's own email domains. Empty until set."""
         return ()
 
+    def gmail_print_names(self) -> tuple[str, ...]:
+        """The names Gmail prints at the head of a message printed to PDF ("<name> Mail - <subject>"): the Google
+        Workspace organization's name, and each earlier one such a file still carries. Empty until set, and then no
+        file is known as a printed email by its name."""
+        return ()
+
     def google_groups(self) -> tuple:
         """The association's Google Groups (``GoogleGroup``): address, name, and what mail to it is for. Empty until set."""
         return ()
@@ -1074,6 +1086,13 @@ class Community(ABC):
     def coverages_not_carried(self) -> tuple[str, ...]:
         """Kinds of insurance the association does not carry and says so in its notices ("earthquake"). Empty until
         set: a notice then says nothing about coverage the records do not list."""
+        return ()
+
+    def not_policy_names(self) -> tuple[str, ...]:
+        """Patterns for the names of the association's own files and folders that carry a policy number but are not
+        a policy's paper (a lawsuit's folder, counsel's review of the coverage). ``jason policies`` passes them over,
+        after the kinds any association has (a demand, a questionnaire, a resale packet, the books, the minutes).
+        Empty until set."""
         return ()
 
     def drive_home(self):

@@ -864,8 +864,8 @@ def cache_party_search(
     cache: IndexCache,
     query: str,
     *,
-    project: str = "MYSTIQUE",
-    association: str = "MYSTIQUE COMMUNITY",
+    project: str = "",
+    association: str = "",
     developers: tuple[Developer, ...] = (),
     after: date | None = None,
     before: date | None = None,
@@ -880,8 +880,10 @@ def cache_party_search(
     ``query`` is sent as LastName. A result count over ``limit`` is narrowed
     under each filing in ``filings``. A filing that is still wide is noted and
     not walked. Every other row is detailed and cached, including parties that
-    would fail ``name_keeps``. Mystique-named parties are labeled association,
-    phase, developer, or other.
+    would fail ``name_keeps``. Parties that carry the project's word
+    (``project``, ``Community.index_project()``; ``association`` is
+    ``Community.index_association()``) are labeled association, phase,
+    developer, or other; with no project word, none is labeled.
     """
     query = " ".join(query.upper().split())
     if not query:
@@ -960,9 +962,9 @@ def cache_community_names(
     recorder: SacramentoCountyRecorder,
     cache: IndexCache,
     *,
-    names: tuple[str, ...] = ("MYSTIQUE", "MYSTIQUE COMMUNITY"),
-    project: str = "MYSTIQUE",
-    association: str = "MYSTIQUE COMMUNITY",
+    names: tuple[str, ...] = (),
+    project: str = "",
+    association: str = "",
     developers: tuple[Developer, ...] = (),
     session=None,
     fetch=None,
@@ -970,16 +972,17 @@ def cache_community_names(
 ) -> tuple[NameCacheResult, ...]:
     """Cache every instrument indexed under the project and association words.
 
-    No date floor: the declaration may predate the first unit sale. A wide
-    name is narrowed under community filings. Association deeds are labeled
-    and do not advance a buyer walk.
+    ``names`` are the leading names searched; by default the project and
+    association words themselves. No date floor: the declaration may predate
+    the first unit sale. A wide name is narrowed under community filings.
+    Association deeds are labeled and do not advance a buyer walk.
     """
     session = session or recorder.open_session(fetch=fetch)
     if session is None:
         return ()
     before = cache.count()
     found: list[NameCacheResult] = []
-    for name in names:
+    for name in names or tuple(dict.fromkeys(n for n in (project, association) if n)):
         result = cache_party_search(
             recorder,
             cache,
@@ -1003,8 +1006,8 @@ def cache_known_parties(
     cache: IndexCache,
     names: tuple[str, ...],
     *,
-    project: str = "MYSTIQUE",
-    association: str = "MYSTIQUE COMMUNITY",
+    project: str = "",
+    association: str = "",
     developers: tuple[Developer, ...] = (),
     after: date | None = None,
     session=None,
@@ -1058,8 +1061,8 @@ def cache_cited_numbers(
     cache: IndexCache,
     *,
     developers: tuple[Developer, ...] = (),
-    project: str = "MYSTIQUE",
-    association: str = "MYSTIQUE COMMUNITY",
+    project: str = "",
+    association: str = "",
     session=None,
     fetch=None,
     note=None,
@@ -1088,7 +1091,7 @@ def cache_cited_numbers(
         if not item.kind:
             item = _shape_kind(item, developers)
         cache.put(item)
-        _label_mystique_parties(cache, item, project=project, association=association, developers=developers)
+        _label_project_parties(cache, item, project=project, association=association, developers=developers)
         loaded.append(item.number)
     return tuple(loaded)
 
@@ -1112,7 +1115,7 @@ def _store_rows(
         existing = cache.get(row.number)
         if existing is not None and existing.filing_code:
             numbers.append(row.number)
-            _label_mystique_parties(cache, existing, project=project, association=association, developers=developers)
+            _label_project_parties(cache, existing, project=project, association=association, developers=developers)
             continue
         detail = None
         if row.internal_id:
@@ -1121,12 +1124,12 @@ def _store_rows(
         if not item.kind:
             item = _shape_kind(item, developers)
         cache.put(item)
-        _label_mystique_parties(cache, item, project=project, association=association, developers=developers)
+        _label_project_parties(cache, item, project=project, association=association, developers=developers)
         numbers.append(item.number)
     return tuple(numbers)
 
 
-def _label_mystique_parties(
+def _label_project_parties(
     cache: IndexCache,
     item: FiledInstrument,
     *,
@@ -1134,8 +1137,13 @@ def _label_mystique_parties(
     association: str,
     developers: tuple[Developer, ...],
 ) -> None:
+    """Note each party that carries the project's word (leading it, or anywhere in it: a developer named "at" the
+    project) with its role. With no project word, no party is one of the project's: nothing is noted."""
+    project_key = party_key(project)
+    if not project_key:
+        return
     for party in (*item.grantors, *item.grantees):
-        if not name_covers(project, party) and "MYSTIQUE" not in party_key(party):
+        if not name_covers(project, party) and project_key not in party_key(party):
             continue
         role = party_role(party, project=project, association=association, developers=developers)
         if role is IndexRole.ASSOCIATION:
@@ -1147,4 +1155,4 @@ def _label_mystique_parties(
         elif role is IndexRole.PROJECT:
             cache.note(item.number, f"project party {party}")
         else:
-            cache.note(item.number, f"other Mystique party {party}")
+            cache.note(item.number, f"other {project_key.title()} party {party}")

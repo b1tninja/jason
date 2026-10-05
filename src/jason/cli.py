@@ -1214,7 +1214,7 @@ def cmd_policies(args: argparse.Namespace) -> int:
             drive = agent.drive(interactive=False)
             sheet = read_sheet(drive.sheets(), active().insurance_workbook_id())
             found = find(drive, active(), sheet, {f["id"]: f for f in load_files(data_dir)})
-            print(f"fetched {fetch(drive, data_dir, found, log=print)}")
+            print(f"fetched {fetch(drive, data_dir, found, community=active(), log=print)}")
     report = load(data_dir) if args.stored else run(data_dir, active(), sheet=sheet)
     if args.json:
         print(json.dumps(report, indent=2, default=str))
@@ -3590,8 +3590,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     request_sheet.add_argument(
         "--title",
-        default="Mystique open requests",
-        help="Title of the new spreadsheet",
+        default="",
+        help="Title of the new spreadsheet (default: '<the association's short name> open requests')",
     )
     request_sheet.add_argument(
         "--spreadsheet",

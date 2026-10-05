@@ -35,3 +35,7 @@ NAME_PATTERN = r"m?y?st[il1]?que|mystique"
 
 # The association's own email domain (Google Workspace): its board members' and groups' addresses, never a counterparty.
 EMAIL_DOMAINS: tuple[str, ...] = ("mystiquecommunity.com",)
+
+# What Gmail prints at the head of a message printed to PDF ("<name> Mail - <subject>"): the Workspace organization's
+# name, and the one it had before it was renamed (files printed then still carry it).
+GMAIL_PRINT_NAMES: tuple[str, ...] = ("Mystique Community Association", "Mystique Community Organization")

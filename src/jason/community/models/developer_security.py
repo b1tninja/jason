@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 
-from jason.community.base import alternation, name_regex
+from jason.community.base import NEVER, alternation, name_regex
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -219,8 +219,19 @@ def _named(text: str, context: ModelContext, *kinds: SourceKind, skip: str = "")
     return found.name if found else ""
 
 
+def _names_association(name: str, community) -> bool | None:
+    """Whether ``name`` is the association's: it carries the name word as letters print it (``Community.name_pattern``)
+    or the full name (``Community.name``). None when the specification gives neither: it cannot be told."""
+    word = getattr(community, "name_pattern", str)() if community is not None else ""
+    own = str(getattr(community, "name", "") or "")
+    if not word and not own:
+        return None
+    patterns = [p for p in (word, name_regex(own) if own else "") if p]
+    return any(re.search(p, name, re.I) for p in patterns)
+
+
 def _obligee_check(name: str, context: ModelContext, what: str) -> list[Finding]:
-    if name and "mystique" not in name.lower():
+    if name and _names_association(name, context.community) is False:
         return [Finding("not-the-association", f"the {what} names {name!r}, not the association", Severity.PROBLEM, "10 CCR 2792.23(a)(10)")]
     return []
 
@@ -470,24 +481,30 @@ class BondReleaseModel(DocumentModel):
 
 
 # A compiled production ("Watt - Response to demand for production of documents 2792.23") holds many instruments.
-_STARTS = re.compile(
-    r"(?:STATE OF CALIFORNIA\s+)?(?:DEPARTMENT OF REAL ESTATE\s+)?SURETY BOND\s*\(\s*REG|"
-    r"(?:ASSESSMENT|SUBSIDY|COMPLETION) SECURITY\s*AGREEMENT\s+AND|"
-    r"(?:FIRST AMENDED\s+)?(?:MYSTIQUE\s+)?(?:OPERATING\s+)?SUBSIDY AGREEMENT\s*-?\s*PHASE", re.I)
+def _starts(community=None) -> re.Pattern[str]:
+    """Where an instrument's title begins. A subsidy agreement's title may lead with the project's name word as letters
+    print it (``Community.name_pattern``, "OAK RIDGE SUBSIDY AGREEMENT - PHASE 3"); with none set, the title alone."""
+    word = getattr(community, "name_pattern", str)() if community is not None else ""
+    return re.compile(
+        r"(?:STATE OF CALIFORNIA\s+)?(?:DEPARTMENT OF REAL ESTATE\s+)?SURETY BOND\s*\(\s*REG|"
+        r"(?:ASSESSMENT|SUBSIDY|COMPLETION) SECURITY\s*AGREEMENT\s+AND|"
+        rf"(?:FIRST AMENDED\s+)?(?:(?:{word or NEVER})\s+)?(?:OPERATING\s+)?SUBSIDY AGREEMENT\s*-?\s*PHASE", re.I)
 
 
-def split_instruments(text: str) -> list[tuple[DocumentKind, str]]:
-    """Each instrument in a compiled production, with the kind its heading names, in order."""
+def split_instruments(text: str, community=None) -> list[tuple[DocumentKind, str]]:
+    """Each instrument in a compiled production, with the kind its heading names, in order. ``community`` lends the
+    project's name word a subsidy agreement's title may lead with."""
     flat = _clean(text)
+    starts_re = _starts(community)
     # A form's title repeats at the head of its later pages; an instrument starts where the title is followed by the parties'
     # block (an agreement) or by the bond's recital (a bond), or at a subsidy agreement's own title.
     starts = []
-    titled = [m.start() for m in _STARTS.finditer(flat)]
+    titled = [m.start() for m in starts_re.finditer(flat)]
     for m in re.finditer(r"KNOW ALL MEN BY THESE PRESENTS", flat):
         # A bond whose title OCR lost; a power of attorney opens the same way but names no principal.
         if re.search(r"as\s+P\S*ipal", flat[m.start(): m.start() + 500]) and not any(0 <= m.start() - s <= 600 for s in titled):
             starts.append(m.start())
-    for m in _STARTS.finditer(flat):
+    for m in starts_re.finditer(flat):
         after = flat[m.start(): m.start() + 400]
         if re.search(r"SECURITY\s*AGREEMENT", m.group(0), re.I) and not re.search(r"AME OF O\S*\s*ASSOC|OWNERS\s*ASSOC", after, re.I):
             continue

@@ -58,6 +58,10 @@ class Mystique(Community):
         return "MYSTIQUE COMMUNITY ASSOCIATION"
 
     @property
+    def short_name(self) -> str:
+        return "Mystique"
+
+    @property
     def slug(self) -> str:
         return "mystique"
 
@@ -187,6 +191,12 @@ class Mystique(Community):
 
         return EMAIL_DOMAINS
 
+    def gmail_print_names(self) -> tuple[str, ...]:
+        """The Workspace's name as Gmail prints it on a message printed to PDF, and its earlier one (mail.py)."""
+        from .mail import GMAIL_PRINT_NAMES
+
+        return GMAIL_PRINT_NAMES
+
     def google_groups(self):
         """The association's Google Groups and what mail to each is for (groups.py)."""
         from .groups import GROUPS
@@ -250,6 +260,12 @@ class Mystique(Community):
     def coverages_not_carried(self):
         """The association carries no earthquake insurance (the insurance sheet and every notice since 2025)."""
         return ("earthquake",)
+
+    def not_policy_names(self):
+        """Drive names that carry a policy number but are not a policy's paper (insurance.py)."""
+        from .insurance import NOT_POLICY_NAMES
+
+        return NOT_POLICY_NAMES
 
     def citations(self):
         """The bylaws, enforcement policy, and declaration sections the notices cite (templates.CITATIONS)."""

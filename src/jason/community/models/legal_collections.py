@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
 
+from jason.community.base import name_regex
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -87,8 +88,13 @@ _ELEMENT_AUTHORITY = {
 _WARNING = "IF YOUR SEPARATE INTEREST IS PLACED IN FORECLOSURE BECAUSE YOU ARE BEHIND IN YOUR ASSESSMENTS, IT MAY BE SOLD WITHOUT COURT ACTION"
 # The letters reprint 5660 and 5720 after the notice; the reprint must not count as the notice's own words.
 _REPRINT = re.compile(r"§\s*5660\.?\s*\n?\s*At least 30 days prior", re.I)
-_STATUTE_BLOCK = re.compile(r"(?:California Civil Code\s*)?§\s*5660\.?\s*At least 30 days prior.*?(?=MYSTIQUE COMMUNITY ASSOCIATION\s+ASSESSMENT COLLECTION POLICY|\Z)",
-                            re.I | re.S)
+
+
+def _statute_block(own: str) -> re.Pattern[str]:
+    """The reprint of 5660 after the notice, up to the enclosed collection policy's heading, which the association's
+    name leads (``own``, ``Community.name``); with no name, up to the end."""
+    return re.compile(rf"(?:California Civil Code\s*)?§\s*5660\.?\s*At least 30 days prior.*?(?={name_regex(own)}\s+ASSESSMENT COLLECTION POLICY|\Z)",
+                      re.I | re.S)
 
 
 class SenderKind(Enum):
@@ -140,9 +146,9 @@ class PreLienNotice:
         return tuple(e for e in PreLienElement if e not in self.elements)
 
 
-def _notice_body(text: str) -> str:
+def _notice_body(text: str, context: ModelContext) -> str:
     """The letter without the reprinted statute."""
-    return _STATUTE_BLOCK.sub("\n", text)
+    return _statute_block(_own_name(context)).sub("\n", text)
 
 
 def _elements(body: str, flat: str, itemized: bool) -> tuple[PreLienElement, ...]:
@@ -193,6 +199,12 @@ def _percent(pattern: str, text: str) -> float | None:
         return None
 
 
+def _own_name(context: ModelContext) -> str:
+    """The association's name as the specification gives it (``Community.name``); empty without one, and then no
+    letter is read as the association's own."""
+    return str(getattr(context.community, "name", "") or "")
+
+
 notice_former_sections = cites_former("pre-lien-former-sections", PreLienNotice)
 
 
@@ -207,7 +219,7 @@ class PreLienNoticeModel(DocumentModel):
         if not re.search(r"notice of default and demand for payment|pre-lien notice|civ\.?\s*§+\s*5660|notice of intent to (?:record|lien)",
                          text or "", re.I):
             return None
-        body = _notice_body(text)
+        body = _notice_body(text, context)
         flat = squash(body)
         r = PreLienNotice()
         r.statute_reprinted = bool(_REPRINT.search(text))
@@ -220,10 +232,11 @@ class PreLienNoticeModel(DocumentModel):
         # A law firm the sender directory lists, named in the letter's head, sent it, unless the head is the board's own
         # letterhead (a short letter's enclosed ledger can name the firm that printed it within the same span).
         firm = sender_name(head, context.community, SourceKind.LAW_FIRM)
-        if firm and not re.search(r"MYSTIQUE COMMUNITY ASSOCIATION\s*\n\s*Board of Directors", head, re.I):
+        own = _own_name(context)
+        if firm and not (own and re.search(rf"{name_regex(own)}\s*\n\s*Board of Directors", head, re.I)):
             r.sender, r.sender_kind = firm, SenderKind.ATTORNEY
         else:
-            r.sender, r.sender_kind = "Mystique Community Association", SenderKind.ASSOCIATION
+            r.sender, r.sender_kind = own, SenderKind.ASSOCIATION
         r.manager = manager_name(head, context.community)
         # The line under the ledger's title names who printed it: the collections firm or the manager.
         r.ledger_by = sender_name(first(r"Account Transaction Report\s*\n\s*([^\n]+)", text), context.community,
@@ -350,7 +363,8 @@ class ReimbursementNoticeModel(DocumentModel):
         r = ReimbursementNotice()
         dated = dates_in(first(r"Reimbursement Assessment\s*-\s*(\w+ \d{1,2}, \d{4})", text)) or dates_in(text[:3000])
         r.notice_date = dated[0] if dated else None
-        r.sender = "Mystique Community Association Board of Directors" if re.search(r"Board of Directors", text) else "Mystique Community Association"
+        own = _own_name(context)
+        r.sender = f"{own} Board of Directors".strip() if re.search(r"Board of Directors", text) else own
         r.property_address = site_address(text[:800])
         r.building = building_of(context, r.property_address)
         r.names_owner = bool(re.search(r"\bDear\s+(?!(?:member|homeowner|owner)\b)[A-Z]", text))
@@ -416,7 +430,8 @@ class OwnerStatementModel(DocumentModel):
         r.building = building_of(context, r.property_address)
         r.names_owner = bool(re.search(r"\n[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)+\n\d{4} [A-Z]", text[:600]))
         r.remit_to = first(r"return with remittance slip[^\n]*\n(?:[^\n]*\n){0,8}?(PO Box [^\n]+\n[^\n]+)", text)
-        r.association_address = first(r"^Mystique Community Association\n([^\n]+\n(?:PMB [^\n]+\n)?[^\n]+)", text, flags=re.M)
+        own = _own_name(context)
+        r.association_address = first(rf"^{name_regex(own)}\n([^\n]+\n(?:PMB [^\n]+\n)?[^\n]+)", text, flags=re.M | re.I) if own else ""
         charges: list[Charge] = []
         keys: list[tuple] = []
         start = 0

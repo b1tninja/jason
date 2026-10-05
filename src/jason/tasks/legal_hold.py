@@ -135,7 +135,12 @@ def scope(data_dir: Path, community: Any, spec: LegalHoldSpec) -> dict[str, Any]
     return {"builtAt": _now(), "items": items, "counts": counts, "driveIds": drive_ids}
 
 
-MAIL_PDF = re.compile(r"^Mystique Community (?:Association|Organization) Mail - (.+?)(?:\.pdf)?$", re.I)
+def mail_pdf(names: tuple[str, ...]) -> re.Pattern[str]:
+    """The name of an email printed to PDF, with its subject captured: "<name> Mail - <subject>.pdf", where the name is
+    one the association's Workspace has had (``Community.gmail_print_names()``). With none, no file name matches."""
+    from jason.community.base import alternation
+
+    return re.compile(rf"^(?:{alternation(names)}) Mail - (.+?)(?:\.pdf)?$", re.I)
 
 
 def _annotate(data_dir: Path, community: Any, items: list[dict[str, Any]], corr: dict[str, Any]) -> None:
@@ -150,6 +155,7 @@ def _annotate(data_dir: Path, community: Any, items: list[dict[str, Any]], corr:
 
     parties, rules = tuple(hook("privilege_parties", ())), tuple(hook("privilege_name_rules", ()))
     communication_names, sensitive_names = hook("privilege_names", ("", ()))
+    printed = mail_pdf(tuple(hook("gmail_print_names", ())))
     messages = {m["messageId"]: m for m in corr.get("messages", [])}
     by_subject: dict[str, set[str]] = {}
     for m in messages.values():
@@ -162,7 +168,7 @@ def _annotate(data_dir: Path, community: Any, items: list[dict[str, Any]], corr:
         if i["where"] == "Drive":
             for mid in saved.get(i["ref"], []):
                 domains.update((messages.get(mid) or {}).get("domains") or [])
-            m = MAIL_PDF.match(i["name"])
+            m = printed.match(i["name"])
             if m:                                   # an email printed to PDF: its subject finds the thread
                 subject = re.sub(r"^(?:re|fwd?|fw)[_:]\s*", "", m.group(1).replace("_", ":"), flags=re.I).casefold()
                 for key, doms in by_subject.items():

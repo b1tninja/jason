@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import Enum
 
+from jason.community.base import name_regex
 from jason.community.document_models import (
     DocumentModel,
     Finding,
@@ -215,7 +216,8 @@ class FormModel(DocumentModel):
         r = Form(form_type=form_type)
         r.title = first(dict(_FORM_TYPES).get(form_type, r"^([^\n]{5,80})"), text, 0) if form_type is not FormType.OTHER else first(r"^\s*([^\n]{5,80})", text)
         r.title = r.title.title() if r.title.isupper() else r.title
-        r.issuer = "Sacramento County Assessor" if re.search(r"COUNTY ASSESSOR", text) else "Mystique Community Association"
+        own = str(getattr(context.community, "name", "") or "")
+        r.issuer = "Sacramento County Assessor" if re.search(r"COUNTY ASSESSOR", text) else own
         underscores = len(re.findall(r"_{10,}", text))
         contact = bool(re.search(r"[\w.]+@[\w.]+\.\w{2,}|\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}-\d{3}-\d{4}\b", text))
         if form_type is FormType.ASSESSOR_ADDRESS_CHANGE:
@@ -230,7 +232,7 @@ class FormModel(DocumentModel):
             r.effective = next(iter(dates_in(re.sub(r"\s*/\s*", "/", m.group(1)))), None) if m else None
             r.signed = next(iter(dates_in(re.sub(r"\s*/\s*", "/", flat[flat.find("Property Owner or Agent"):][:200]) if "Property Owner or Agent" in flat else "")), None)
             # The association's own filing carries its officer's contact, not a member's.
-            r.carries_personal_data = contact and not re.search(r"Property Owner:[^\n]*\n(?:[^\n]*\n){0,2}\s*MYSTIQUE COMMUNITY ASSOCIATION", cleaned)
+            r.carries_personal_data = contact and not (own and re.search(rf"Property Owner:[^\n]*\n(?:[^\n]*\n){{0,2}}\s*(?i:{name_regex(own)})", cleaned))
         elif form_type is FormType.RESIDENT_REGISTRATION:
             r.filled = underscores < 3
             r.carries_personal_data = r.filled
@@ -247,7 +249,7 @@ class FormModel(DocumentModel):
         r.statutes = tuple(dict.fromkeys(f"CVC {s}" for s in re.findall(r"(?:Vehicle Code|CVC)\s*§\s*(\d{5})", flat)))
         r.signature_lines = len(re.findall(r"\bSignature\b", text, re.I))
         if form_type is FormType.SPECIAL_MEETING_PETITION:
-            r.purpose = first(r"Purpose of meeting\s*\n(?:[^\n]*\n)*?([A-Z][^\n]{3,80})\s*\n\s*Mystique Community Association", text) or \
+            r.purpose = (first(rf"Purpose of meeting\s*\n(?:[^\n]*\n)*?([A-Z][^\n]{{3,80}})\s*\n\s*(?i:{name_regex(own)})", text) if own else "") or \
                 first(r"\n([A-Z][a-z]+(?: [a-z]+)* [A-Z]?[a-z]+ Change)\s*\n", text)
             pct = first(r"at least [\w ]+ percent \((\d+(?:\.\d+)?)%\)", flat) or first(r"(\d+(?:\.\d+)?)% of total voting power", flat)
             r.threshold_percent = float(pct) if pct else None

@@ -15,6 +15,10 @@ catalog = InsuranceRegistry()
 FLOOD_ZONE = ("A99: a high-risk Special Flood Hazard Area protected by levees still being completed. Most mortgage "
               "lenders require flood insurance there.")
 
+# Drive names that carry a policy number but are not a policy's paper: counsel's insurance review, the vendors and
+# utilities folder, and the dog attack matter's folder. ``jason policies`` passes these over (Community.not_policy_names).
+NOT_POLICY_NAMES: tuple[str, ...] = (r"REVIEW - MYSTIQUE", r"Vendors,\s+Utilities", r"Dog Attack")
+
 
 # The board's policy sheet (September 29, 2026) lists N030PK2940-00, G74805796, and 4124011561232Y. The carriers'
 # own letters show the number each term carried; the sheet's are earlier terms and stay as prior numbers.

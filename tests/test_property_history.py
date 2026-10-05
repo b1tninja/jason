@@ -9,6 +9,7 @@ from jason.community.scans import placement, read_scan, scan_index
 from jason.community.symbols import Building
 from jason.community.tax import TaxBill
 from jason.tasks.property_history import format_requests, property_tabs
+from mystique.buildings import STREETS
 from mystique.developers import DEVELOPERS
 
 APN = "20111700170008"
@@ -69,7 +70,7 @@ def _scans(tmp_path: Path):
         "Eugen S Redwood hereby GRANTS to Dunc Vale Plover UNIT 89",
         encoding="utf-8",
     )
-    return scan_index(tmp_path)
+    return scan_index(tmp_path, STREETS)
 
 
 def test_a_scan_prints_the_parcel_the_unit_the_address_and_the_price(tmp_path: Path):

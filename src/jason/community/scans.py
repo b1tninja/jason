@@ -17,17 +17,21 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from jason.community.base import Street, alternation, street_words
 from jason.community.consideration import DeedPrice, deed_price
 from jason.community.recorder import document_numbers
 from jason.community.reports import PlanBlock, parent_parcel, plan_block, plan_unit
 
 _APN = re.compile(r"201[-\s]?1170[-\s]?(\d{3})[-\s]?(\d{4})")
 _UNIT = re.compile(r"\bUNIT\s+(?:NO\.?\s*)?(\d{1,3})\b", re.IGNORECASE)
-_ADDRESS = re.compile(
-    r"\b(\d{4})\s+(WHIMSICAL|ENCHANTED|MAGICAL|MESMERIZING|MACON)\b",
-    re.IGNORECASE,
-)
 _TEXT = frozenset({".md", ".txt"})
+
+
+def _address(streets: tuple[Street, ...]) -> re.Pattern[str]:
+    """A unit's address as a deed prints it: a number, then the first word of one of the association's streets
+    (``Community.streets()``). With no streets, no address is read."""
+    return re.compile(rf"\b(\d{{4}})\s+({alternation(street_words(streets))})\b", re.IGNORECASE)
+
 
 PARCEL = "parcel number"
 UNIT = "plan unit"
@@ -60,12 +64,14 @@ def scan_folders(root: Path) -> tuple[tuple[str, Path], ...]:
     )
 
 
-def scan_index(root: Path) -> dict[str, DeedScan]:
+def scan_index(root: Path, streets: tuple[Street, ...] = ()) -> dict[str, DeedScan]:
     """Every extract on disk, by document number. The first file for a number wins.
 
-    ``data/deed-prices.csv`` holds figures a person read off a scan whose
-    text layer garbled the tax line. Such a row replaces the price the
-    extract computed, and its note travels with the scan.
+    ``streets`` are the association's (``Community.streets()``): an address
+    is read only on one of them. ``data/deed-prices.csv`` holds figures a
+    person read off a scan whose text layer garbled the tax line. Such a row
+    replaces the price the extract computed, and its note travels with the
+    scan.
     """
     found: dict[str, DeedScan] = {}
     for source, folder in scan_folders(root):
@@ -77,7 +83,7 @@ def scan_index(root: Path) -> dict[str, DeedScan]:
             for number in document_numbers(path.name):
                 if number in found:
                     continue
-                found[number] = read_scan(number, path, source)
+                found[number] = read_scan(number, path, source, streets=streets)
     for number, price in hand_read_prices(root / "deed-prices.csv").items():
         scan = found.get(number)
         if scan is None:
@@ -120,8 +126,8 @@ def _cents(value: object) -> int | None:
     return int(text) if text.isdigit() else None
 
 
-def read_scan(number: str, path: Path, source: str = "") -> DeedScan:
-    """Read one extract."""
+def read_scan(number: str, path: Path, source: str = "", *, streets: tuple[Street, ...] = ()) -> DeedScan:
+    """Read one extract. An address is read only on one of ``streets`` (``Community.streets()``)."""
     text = path.read_text(encoding="utf-8", errors="replace")
     flat = " ".join(text.split())
     units: list[str] = []
@@ -132,7 +138,7 @@ def read_scan(number: str, path: Path, source: str = "") -> DeedScan:
         if digits not in target:
             target.append(digits)
     plan_units = tuple(dict.fromkeys(int(item) for item in _UNIT.findall(flat)))
-    addresses = tuple(dict.fromkeys(f"{num} {street.upper()}" for num, street in _ADDRESS.findall(flat)))
+    addresses = tuple(dict.fromkeys(f"{num} {street.upper()}" for num, street in _address(streets).findall(flat)))
     return DeedScan(number, path, source, tuple(units), tuple(parents), plan_units, addresses, deed_price(text))
 
 
