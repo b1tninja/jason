@@ -8,4 +8,5 @@ This folder is the `mystique` profile's own documentation: this association's se
 - [manual.md](manual.md): the Owner's Manual and Rules taken apart: its parts, the classification and its questions, the books, the official rules and their adoption history, the generated manual, and what the board decides.
 - [living.md](living.md): the living CC&Rs' readings: the OCR re-read trial and its numbers.
 - [improvement-requests.md](improvement-requests.md): home improvement requests mapped to the association's provisions, its forms, the clocks against the meeting schedule, and the gaps where a written policy is needed.
+- [mold-program.md](mold-program.md): the declaration's mold inspection and prevention program: the requirement step by step, the adoption on record, the inspections done against the quarterly clock, the owners' part, proposed obligations, and the program's outline for the board.
 - [maintenance-manual.md](maintenance-manual.md): the declaration's inspection and maintenance manual: the requirement, what the records hold, the review by component, proposed obligations, and the manual's outline for the board.
