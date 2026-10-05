@@ -37,6 +37,7 @@ It plans every write to PayHOA, Google, and the mail as a dry run. The console p
 | [redesign-review.md](redesign-review.md) | The design project's twelve redesign "rethinks", each kept, corrected, or held against the law, the roster, and the approvals engine, and the order to build them |
 | [handoff-unit-records.md](handoff-unit-records.md) | The design pass on the paint palette, community facts, the unit manual, and the loss packet: the components, their states, data shapes, sample data, what the design must keep, and the decisions open |
 | [handoff-discovery.md](handoff-discovery.md) | The design pass on finding the association, locating its documents, the key documents, and the instrument graph: the four components, their states and sample data, what the design must keep, and the decisions open |
+| [handoff-title-processes.md](handoff-title-processes.md) | The design pass on a parcel's title history and its document processes (the strand and the braid, closings and their seats, gaps, tenures, loan lifecycles) and on tying a founding document to its association: the components, their states, data shapes, sample data, what the design must keep, and the decisions open |
 | [mvp.md](mvp.md) | What is built, the first build from here with its acceptance criteria, moving `--yes` onto approvals, the prototype library, and the open decisions |
 
 ## Principles
