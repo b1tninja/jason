@@ -125,6 +125,8 @@ when the step's provisions or guideline are missing. A pure function over inputs
 | `POST /api/write/loss-packet/confirm` | `packet_confirm` | the packet store, with `by`, `step`, `note` |
 | `GET /api/loss-packet/export?unit=&incident=` | `packet_export` | a PDF built from the same payload, a read |
 
+**Built (October 4, 2026):** the three reads (`/api/facts`, `/api/unit-record`, `/api/loss-packet`; `jason.tasks.unit_records_view`) and the three writes (`/api/write/unit-record/entry`, `/api/write/unit-record/visibility`, `/api/write/loss-packet/confirm`; `jason.tasks.unit_records_write`). A write names the signed-in person, or the `by` the request gives when no one is signed in; each goes to `units/<unit>/` under the store lock. **Not built:** the facts register write, the packet's PDF export, and a unit-to-plan lookup (the record view takes `plan`).
+
 A unit's URL carries its PayHOA unit id only; a search by owner or address is a POST. A payload carries `DocRef`s, never a path
 or contents. A loader returns `{found: false, note}` when a store is missing.
 

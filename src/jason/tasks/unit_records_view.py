@@ -99,8 +99,10 @@ def _entries(root: Path, unit: str, *, owner: bool) -> tuple[list[ImprovementEnt
     held = 0
     for row in raw if isinstance(raw, list) else []:
         try:
+            known = {f.name for f in fields(ImprovementEntry)}  # a stored row may carry more (a visibility history)
             entry = ImprovementEntry(
-                **{**row, "kind": ComponentKind(row["kind"]), "status": ComponentStatus(row.get("status", "upgrade")),
+                **{**{k: v for k, v in row.items() if k in known}, "kind": ComponentKind(row["kind"]),
+                   "status": ComponentStatus(row.get("status", "upgrade")),
                    "photos": tuple(row.get("photos") or ()), "docs": tuple(row.get("docs") or ())})
         except (KeyError, TypeError, ValueError):
             continue

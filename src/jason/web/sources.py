@@ -960,6 +960,8 @@ EXTRA_LOADERS: dict[str, str] = {
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
+    "unit-record": "jason.web.extra.unit_records:write_unit_record",  # an owner's entry, its visibility (jason's own store)
+    "loss-packet": "jason.web.extra.unit_records:write_loss_packet",  # a person's confirmation of one step
     "delinquency": "jason.web.extra.delinquency:write",
     "minutes-review": "jason.web.extra.minutes_review:write",
     "insurance-renewals": "jason.web.extra.insurance_renewals:write",
