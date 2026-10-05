@@ -79,6 +79,9 @@ def directory_for(county: str) -> Any | None:
     try:
         from asspy import County
 
+        from jason.asspy_home import apply
+
+        apply()                                   # ASSPY_HOME from the environment or jason's .env, before asspy reads it
         place = County(county_key(county).replace("-", "_"))
     except Exception:  # noqa: BLE001 - a county asspy does not know has no directory
         return None

@@ -22,6 +22,10 @@ __all__ = ("PlacerIndex", "Searched", "open_cache", "placer_index")
 
 def open_cache(path: str | Path | None = None) -> IndexCache:
     """Placer's index cache: ``path``, else asspy's ``counties/placer/index.db``."""
+    if path is None:
+        from jason.asspy_home import apply
+
+        apply()                                   # ASSPY_HOME from the environment or jason's .env, before asspy reads it
     return IndexCache(Path(path) if path is not None else County("placer").db_path, county="placer")
 
 
