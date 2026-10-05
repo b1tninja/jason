@@ -23,9 +23,14 @@ agenda numbers its items 1-7 with consent, review, action, and discussion sectio
 in its header, a sender of kind ``MANAGER`` in the specification (``sources.manager_in``).
 
 An agenda's text does not say when it went out; PayHOA's communications log (``data/payhoa/communications.json``) gives
-the day its notice email did, which the agenda check sets beside the four days 4920(a) requires, or the governing
+the day its notice email did, which the records lens sets beside the four days 4920(a) requires, or the governing
 documents' longer period where the specification records one (4920(b)(3), ``notice_need``). A Zoom AI summary retells
 the call: it is never expected to hold a roll call or an attendance list, so it gets one finding for what it lacks.
+
+What a reading says against another document or store is the records lens's (``jason.community.reviews.RECORDS``):
+the notice email in the communications log, the minutes and agendas on file for the same meeting, and the next open
+meeting's minutes. Each such check's facts function here (``notice_log``, ``minutes_on_file``, ``next_open_minutes``,
+``agenda_on_file``) is the only place the library or the log is read; the reader's own ``check`` reads neither.
 
 A reading is evidence. A finding is a lead for a person: the agenda in the library may not be the version posted, and a
 Zoom summary is not a roll call.

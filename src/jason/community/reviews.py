@@ -506,7 +506,7 @@ def lens_findings(row: Mapping[str, Any], lens: str) -> list[dict[str, Any]]:
 
 AS_OF = Lens("as-of", "As of a date: which terms have ended, which deadlines have passed, and what is due next?", needs_as_of=True)
 
-# The reading against the association's other records. Four of its checks also need the date (minutes not on file once
+# The reading against the association's other records. Three of its checks also need the date (minutes not on file once
 # they are due, a site visit coming due), so its reviews are kept by date like the as-of lens's; a check that needs no
 # date says so (``dated=False``).
 RECORDS = Lens("records", "Against the association's other records: what do the other documents and stores on file say of this one?",

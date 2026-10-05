@@ -106,6 +106,7 @@ def reread(data_dir: Path, community: Any) -> int:
     body = json.loads(store.read_text(encoding="utf-8"))
     n = 0
     reviews = []
+    stored = document_reviews.known(data_dir, today)   # a review whose key and inputs are unchanged is not made again
     for r in body.get("readings", []):
         if r.get("source") != "Drive" or r.get("kind") != DocumentKind.MINUTES.value:
             continue
@@ -113,7 +114,10 @@ def reread(data_dir: Path, community: Any) -> int:
         text = kept.read_text(encoding="utf-8", errors="ignore") if kept.is_file() else ""
         if not text.strip():
             continue
-        reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, today, r.get("name") or "", r.get("period") or ""))
+        sha = provenance(text, today)["textSha"]
+        known = {lens: review for lens, review in stored.get(str(r["id"]), {}).items() if review.text_sha == sha}
+        reading = read(DocumentKind.MINUTES, text, ModelContext(community, data_dir, today, r.get("name") or "", r.get("period") or "",
+                                                                known=known))
         if reading is not None:
             r.update(reading.as_dict())
             r.update(provenance(text, today))

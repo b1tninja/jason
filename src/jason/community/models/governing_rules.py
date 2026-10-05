@@ -55,7 +55,7 @@ from jason.community.document_models import DocumentModel, Finding, ModelContext
 from jason.community.reviews import RECORDS
 from jason.community.symbols import DocumentKind
 
-from .governing_shared import READER, ExplainsMissing, cites_repealed, number_word, repealed_sections
+from .governing_shared import READER, cites_repealed, number_word, repealed_sections
 from .legal_shared import DELINQUENT_AFTER_DAYS, INTEREST_AFTER_DAYS, INTEREST_CAP_PERCENT, LATE_CHARGE_PERCENT, PRE_LIEN_DAYS, RELEASE_DAYS
 
 PENALTY_CAP_CENTS = 10_000  # CIV 5850(c)(2)
@@ -564,12 +564,6 @@ def leads_clause(total: int, hits: list[str]) -> str:
     return f"; none of the library's {total} minutes mentions adopting it"
 
 
-def adoption_leads(context: ModelContext, title: str) -> str:
-    """What the library's minutes say about adopting this document, as a clause to append to a finding (empty without a
-    library)."""
-    return leads_clause(*adopting_minutes(context, title))
-
-
 def _title(text: str, pattern: str) -> str:
     for line in text.splitlines()[:40]:
         clean = line.strip()
@@ -670,6 +664,35 @@ def adoption_note(adoption_: Adoption, *, certificate: bool = False, year: int |
     return f"no adoption date is printed in the text: {why}"
 
 
+def minutes_adopting_undated(r, records) -> dict[str, Any] | None:
+    """From the library's minutes: how many are on file, and the names of those that mention adopting or approving the
+    document. None for a document whose adoption date was read."""
+    if r.adopted is not None:
+        return None
+    total, hits = adopting_minutes(records, r.title)
+    return {"minutes": total, "mention": hits}
+
+
+def lens_states_adoption(reading):
+    """Drop a reading's own bare ``missing-adopted`` finding. The records lens's check stands in its place and says the
+    same with what the text prints where the date would be and what the minutes on file say of adopting the document.
+    ``adopted`` stays among the reading's missing fields."""
+    if reading is not None:
+        reading.findings = tuple(f for f in reading.findings if f.lens or f.code != "missing-adopted")
+    return reading
+
+
+@RECORDS.check("policy-adoption", PolicyRecord, fields=("title", "adopted", "adoption", "subjects"), facts=minutes_adopting_undated,
+               dated=False)
+def policy_adoption(r, _as_of, minutes: dict[str, Any] | None) -> list[Finding]:
+    """A policy whose adoption date is not in its text: what the text prints in its place, and what the minutes on file
+    say of adopting it. This is the reading's ``missing-adopted`` finding (``lens_states_adoption``)."""
+    if minutes is None:
+        return []
+    return [Finding("missing-adopted", f"{adoption_note(r.adoption)}{leads_clause(minutes['minutes'], minutes['mention'])}",
+                    Severity.CHECK, "CIV 4360(b)" if r.subjects else "")]
+
+
 def compilations_dating(r, records) -> list[list[Any]] | None:
     """From the library's compilations (the operating rules on file): each one that prints this policy's title with an
     effective date beside it, as its name and that date. None for a policy that prints a date of its own."""
@@ -710,15 +733,14 @@ def policy_statements(r, _as_of, statements: list[str] | None) -> list[Finding]:
 policy_repealed = cites_repealed("policy-repealed-sections", PolicyRecord)
 
 
-class PolicyModel(ExplainsMissing, DocumentModel):
+class PolicyModel(DocumentModel):
     kinds = (DocumentKind.POLICY, DocumentKind.OPERATING_RULES)
     name = "board-policy"
     required = ("title", "adopted")
-    lens_checks = (policy_compiled_date, policy_statements, policy_repealed)
+    lens_checks = (policy_adoption, policy_compiled_date, policy_statements, policy_repealed)
 
-    def missing_notes(self, r: PolicyRecord, context: ModelContext) -> dict[str, tuple[str, str]]:
-        note = f"{adoption_note(r.adoption)}{adoption_leads(context, r.title)}"
-        return {"adopted": (note, "CIV 4360(b)" if r.subjects else "")}
+    def read(self, text: str, context: ModelContext, kind: DocumentKind | None = None):
+        return lens_states_adoption(super().read(text, context, kind))
 
     def parse(self, text: str, context: ModelContext) -> PolicyRecord | None:
         title = _title(text, r"\bPOLICY\b|\bPOLICIES\b|FINE\s+SCHEDULE|RESOLUTION|RULES?\b|PROCEDURES?\b")
@@ -744,7 +766,7 @@ class PolicyModel(ExplainsMissing, DocumentModel):
         return r
 
     def check(self, r: PolicyRecord, context: ModelContext) -> list[Finding]:
-        found: list[Finding] = []
+        found: list[Finding] = [policy_adoption]   # the records lens's place: no adoption date, and what the minutes on file say
         if r.adoption.adoption_blank:
             found.append(Finding("adoption-date-blank", "the adoption date is a blank line: an unadopted draft or an unsigned copy",
                                  Severity.CHECK))
@@ -767,14 +789,26 @@ class PolicyModel(ExplainsMissing, DocumentModel):
 
 # Election rules.
 
-class ElectionRulesModel(ExplainsMissing, DocumentModel):
+@RECORDS.check("election-rules-adoption", ElectionRulesRecord, fields=("title", "adopted", "adoption", "certificate", "certificate_year"),
+               facts=minutes_adopting_undated, dated=False)
+def election_rules_adoption(r, _as_of, minutes: dict[str, Any] | None) -> list[Finding]:
+    """Election rules whose adoption date is not in their text: what the text prints in its place, and what the minutes
+    on file say of adopting them. This is the reading's ``missing-adopted`` finding (``lens_states_adoption``)."""
+    if minutes is None:
+        return []
+    note = adoption_note(r.adoption, certificate=r.certificate, year=r.certificate_year)
+    return [Finding("missing-adopted", f"{note}{leads_clause(minutes['minutes'], minutes['mention'])}", Severity.CHECK,
+                    "CIV 5105(a), 4360(b)")]
+
+
+class ElectionRulesModel(DocumentModel):
     kinds = (DocumentKind.ELECTION_RULES, DocumentKind.OPERATING_RULES, DocumentKind.POLICY)
     name = "election-rules"
     required = ("title", "adopted")
+    lens_checks = (election_rules_adoption,)
 
-    def missing_notes(self, r: ElectionRulesRecord, context: ModelContext) -> dict[str, tuple[str, str]]:
-        note = adoption_note(r.adoption, certificate=r.certificate, year=r.certificate_year)
-        return {"adopted": (f"{note}{adoption_leads(context, r.title)}", "CIV 5105(a), 4360(b)")}
+    def read(self, text: str, context: ModelContext, kind: DocumentKind | None = None):
+        return lens_states_adoption(super().read(text, context, kind))
 
     def parse(self, text: str, context: ModelContext) -> ElectionRulesRecord | None:
         title = _title(text, r"ELECTION\s+(?:RULES|PROCEDURES|POLICY)|VOTING\s+RULES")
@@ -817,7 +851,7 @@ class ElectionRulesModel(ExplainsMissing, DocumentModel):
         return r
 
     def check(self, r: ElectionRulesRecord, context: ModelContext) -> list[Finding]:
-        found: list[Finding] = []
+        found: list[Finding] = [election_rules_adoption]   # the records lens's place: no adoption date, and what the minutes say
         for element in r.missing_elements:
             found.append(Finding("election-rule-element-not-found", f"the text does not address {element.value} in the usual words",
                                  Severity.CHECK, f"CIV {element.value.split(' ')[0]}"))

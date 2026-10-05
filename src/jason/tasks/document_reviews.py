@@ -11,6 +11,9 @@ disk and makes them again without reading any document:
   document and never changes ``readings.json``.
 - A review is made again only when its key changes: the document, the text's digest, the lens's version, or the date
   (or, with those the same, the fields or the facts it read). Otherwise the stored one stands.
+- The records lens's reviews are kept beside the as-of lens's (``data/reviews/documents/records/<as-of>.json``), under
+  the same lock. Its facts come from the association's other records as they are on disk when the review is made, so
+  ``review_stored`` with that lens makes again exactly the reviews whose other records changed since.
 
 A review is a lead for a person, like the reading it rests on.
 """
@@ -107,6 +110,7 @@ def _reviewed(rows: Iterable[dict[str, Any]], lens: Lens, as_of: date, community
     """Each stored row the lens was joined into, with the lens's review of its stored fields as of ``as_of`` and the
     checks the row names that the lens no longer has. A lens that gathers reads the association's other records under
     ``data_dir`` as they stand now, through its facts functions; the document itself is not read."""
+    lens.version   # loads the readers, which register the lens's checks: without them the first row would name checks the lens lacks
     for row in rows:
         stamp = (row.get("lenses") or {}).get(lens.key)
         if not stamp or not isinstance(row.get("fields"), dict):
