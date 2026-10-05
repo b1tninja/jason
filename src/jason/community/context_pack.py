@@ -54,6 +54,24 @@ every file a tier would cut, the tier ranks the index's passages instead of cutt
 - F and D read no passages.
 - C reads only the index: a collection is an index scope, so there are no folders to cut in its place.
 
+**As of a day.** ``assemble(as_of=day)`` builds the pack for the day a matter turns on (docs/manager-review.md, "As of
+a day"). S and G are then recited through ``law_readings.recite``:
+
+- S gives each section's words in force that day where the disk shows them (``law_as_of``): an earlier version with
+  its range and the act that made it, the current words where a record places them in force by then, or the version
+  two prints' own words pick. Otherwise it gives the words on the shelf now under "Not shown to be in force", with
+  what would bring the earlier words. The search itself is over the law as it stands now.
+- G keeps each passage as its file reads now and names the section it falls in from the passage's heading
+  (``governing_as_of``). For a document kept as amended the section's words on that day are given under a passage
+  that is not them; a document kept only as it reads now, and a passage no section is named for, are labeled not
+  shown to be in force.
+- Each stored reading (``Community.law_readings()``) is listed under the words it reads, labeled with whose it is,
+  its standing, and its date; a stale one apart, not applied; one dated after the day apart. A reading is held in
+  ``Source.provision``, never in a source's text, so a quote of one does not check as the provision's words.
+- R, C, and F are as they are now.
+
+Without a day the page is byte for byte what it was, and a law source carries only its provision's digest.
+
 A tier is cut from the folders (R: read from the library) as before when the index is missing, lacks one of the
 tier's files, or holds one older than the file on disk (``index_covers``): a stale index never answers for a file that
 changed. For R the files are those the library reader would read (and, across a kind, every file of the kind the

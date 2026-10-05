@@ -200,7 +200,9 @@ With `as_of`:
 - **Where the disk does not show it,** the words on the shelf now are recited under "Not shown to be in force on DAY:", with what is missing. `Recital.in_force` is false. Nothing is guessed.
 - **A governing document's section** is its words on that day when the document is kept as amended, as before.
 
-`recite` returns a `Recital`. `Recital.lines()` is the text, and `as_dict()` the same as data (`inForce`: whether shown, how decided, the basis, and the deciding words).
+`recite` returns a `Recital`. `Recital.lines()` is the text, and `as_dict()` the same as data (`inForce`: whether shown, how decided, the basis, and the deciding words). `about_lines()` is the part printed above the words (source, digest, the in-force label), and `reading_lines()` the readings printed under them.
+
+**A review calls it.** A context pack built as of a day (`jason review --as-of DATE`; [manager-review.md](manager-review.md), "As of a day") recites each law source, and the section each governing passage falls in, through `recite`. The label and digest go above the words, the readings under them, and the stored review records the digest, whether the words were shown in force, and each reading's key, standing, and state.
 
 ## Checking an answer's quotations
 

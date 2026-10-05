@@ -20,7 +20,7 @@ templates. A test (`test_task_prompts_name_no_sections_and_no_figures`) keeps se
 | The association | `Community.prompt_context()` | Read from the specification: name, units, buildings, the board's group address, the mailing address. The one stated fact is how it is managed (`MANAGEMENT` in `mystique/prompts.py`). |
 | Task prompt | `mystique/prompts.py` `TASK_PROMPTS` | One row per kind of task, holding:<br>• purpose and audience;<br>• **topics**: what it turns on, in plain words;<br>• **documents**: the kinds of governing documents and records to read;<br>• **facts**: the jason tools that hold them;<br>• **considerations**: the questions an experienced manager asks, with no answers;<br>• guidance: the task's own cautions;<br>• subjects: patterns that tie a PayHOA template to the task. |
 | Context pack (the RAG) | `jason.community.context_pack` | The questions are the topics plus **the matter**: the question asked, or the subject and opening of the text under review. The pack has five kinds of source, and a sixth when a collection is named ([Collections](#collections)):<br>• **S, the law:** sections of the law on hand (`data/authorities`), ranked for each question, fused by reciprocal rank so every topic counts, and drawn first from the leading articles (a manager reads around the section that led there). The statutes a retrieved document cites come too. A pre-2014 number is a gap.<br>• **G, the governing documents:** passages of the kinds the task names, each with its tier; copies of one passage are folded.<br>• **R, the records:** the best passages of the latest library files of each other kind named (inspection reports, agendas, insurance policies).<br>• **F:** jason's tools.<br>• **D1:** the text under review.<br>The law on hand is also listed by chapter, so a reader can see what was available and say when expected law is missing. |
-| Check | `prompts.verify` | A quote counts only when it is found in the source it cites. Every source a consideration names must exist. |
+| Check | `prompts.verify` | A quote counts only when it is found in the source it cites. Every source a consideration names must exist. A quote of a reading attached to a source is refused, and says why ([The quote check and readings](#the-quote-check-and-readings)). |
 
 ## Commands
 
@@ -29,6 +29,7 @@ jason review --list
 jason review --subject "Trash cans left out" --draft FILE          # the pack: data/briefs/<task>.md
 jason review --subject "Trash cans left out" --draft FILE --run    # and the local model's review, quotes checked
 jason review question --ask "Who pays the master deductible after a leak from a unit?"
+jason review hearing-notice --draft FILE --as-of 2022-03-01        # the law and the documents as of the letter's day
 ```
 
 The pack page is useful on its own: it holds the base prompt, the task prompt, and the sources. A person, Claude,
@@ -105,6 +106,71 @@ index does not hold ("the passage index lacks 3 of the 9 files ...").
 **Without a collection the pack is what it was.** A test holds it to a page written before collections existed
 (`tests/fixtures/context_pack/no_collection.md`).
 
+## As of a day
+
+A review of an older letter turns on the law and the documents as they stood on the letter's day ([AGENTS.md](../AGENTS.md),
+"Recite the version that governs"). `--as-of DATE` (`assemble(as_of=)`, `manager_context(as_of=)`) builds the pack for
+that day. Each law source and each governing source is then recited through `law_readings.recite`
+([law-readings.md](law-readings.md)). Without a day the pack is today's, byte for byte what it was before: a test holds
+it to a page written before the change (`tests/fixtures/context_pack/law_no_as_of.md`).
+
+**S, the law.** The sections are found as before, by searching the law as it stands now. Each is then recited as of
+the day. Above its words the source says what they are:
+
+| The disk shows | The source gives | Its label |
+|---|---|---|
+| an earlier version whose recorded range holds the day | those earlier words | "In force on DAY: from A until B; made by ACT; ended by ACT", and a caveat that they are not the words on the shelf now |
+| a record that places the current words in force by the day | the current words | "In force on DAY: from A; made by ACT" |
+| two versions printed under one number, and their own words say which operates | that version | "In force on DAY", with each deciding sentence quoted |
+| nothing that decides it | the words on the shelf now, every version when the shelf prints several | "Not shown to be in force on DAY", with what is held and what would bring the earlier words (`jason law-history --versions`) |
+
+- Every label carries the source line and the digest of the words.
+- Today's words are never given silently for an earlier day. The gaps count the law sources not shown in force.
+- A section printed in two versions is one source, not two.
+- jason's `- History:` note is printed above the words, marked as jason's. It is not part of them.
+
+**G, the governing documents.** The tier ranks passages, not sections, and a passage is its file's words as the file
+reads now. With a day, jason names the section a passage falls in and recites that:
+
+- **Naming the section.** A passage the index cut on its sections carries the section's path in its heading. The
+  document is the one whose outline matches the passage's file. Each number the heading names is tried, innermost
+  first, and counts only when the document has that section and its words overlap the passage's.
+- **A document kept as amended** (`Community.living_documents()`). Where the passage is the section's words on that
+  day, the passage is labeled in force. Where it is not, the section's words on that day are given under the passage
+  with their digest, and those are the words to recite.
+- **A document kept only as it reads now.** The passage is labeled "Not shown to be in force on DAY": its words may
+  differ from the words of that day. The section's digest now is recorded.
+- **No section named.** The same label, with why: the passage was cut by words, no outline matches its file, or its
+  heading names no numbered section. Nothing is looked up for it.
+
+**Readings.** Each stored reading (`Community.law_readings()`) of a provision is listed under the provision's words:
+
+- a current one, labeled with whose it is, its standing (plain, a reading, or two readings remain), and its date;
+- a stale, missing, or misquoted one apart, as not applied;
+- one dated after the day apart, as no reading on that day.
+
+A reading is never part of a source's text. A governing passage also lists the readings of each section around its
+own that the heading names. A reading reaches a governing passage only through a section named for it.
+
+**The task's prompt** gains four lines (`prompts.as_of_lines`), general for any association: recite the words as the
+source gives them for the day; where a source says they are not shown to be in force, say so and do not rely on them
+as the law of that day; a reading is a reading, labeled with whose it is, never the provision's words; where two
+readings remain, the board asks counsel. The base prompt is unchanged.
+
+**What is not covered:**
+
+- **The search is today's.** A section repealed or renumbered between the day and now is not found, so it is not
+  among the sources. The prompt says so.
+- **R, C, and F are as they are now.** The records, a collection's material, and jason's facts are not filtered or
+  recited by date.
+- **A governing passage with no section named** gets no as-of words and no reading.
+- **A document not kept as amended** has no words for an earlier day. Keeping it as amended (a `LivingDocument`
+  row) is what would give them.
+- **A day before a kept document existed** is not detected: the base text is given.
+- **The quote check accepts a near match.** `prompts.verify` passes a quote that is nine tenths the source's words, so
+  a quote of today's words can pass against a source that gives an earlier version differing by a word.
+  `jason verify-quotes` is strict, but it checks against the shelf now and does not read the history.
+
 ## Reviews are kept
 
 `data/briefs/<name>.md` and `.review.json` are the latest pack and review, written over each time. Every pack written
@@ -114,15 +180,40 @@ store lock.
 - **The digest** is over the question, the draft, the collection's key, and each source's id with a digest of its
   words. The same pack is the same record. A pack whose sources changed is a new record, so a change in the law or a
   document shows as two reviews to compare.
+- **With a day, the digest also covers the day and what each source recites:** the provision's digest, whether it was
+  shown in force, and each reading's key, standing, whose it is, and state. So the same question as of two days is
+  two reviews, and so is the same day after a statute or a reading changed. A pack with no day keeps the digest it
+  always had.
 - **The record** holds the as-of date, the task and its audience, the collection, each source (id, tier, standing,
   file, section, and a digest of its passage, never the words), the gaps, and `runs`: each model answer for that pack,
   with its model and how its quotes checked. A second run is added beside the first.
+- **The as-of date** is the day a person named (`asOfNamed`), else the day the record was first kept.
+- **A law source's row carries `provision`:** the citation and the digest of the provision's words, the digest
+  `jason readings` prints. With a day it also says whether the words were shown in force and how (`shown`,
+  `decided`), and lists the readings attached. A governing source's row carries the same for its section. The
+  record never holds what a reading says.
 - **A review of a confidential collection is confidential,** and its record says so. `review_store.history` leaves
   such records out unless asked.
 
 ```bash
-jason review --history question      # date, collection, digest, and whether the answer's quotes were found
+jason review --history question      # the as-of date, collection, digest, and whether the answer's quotes were found
 ```
+
+A review with a named day ends its line with "as of DAY (named; written DAY)", the law sources not shown in force
+that day, and the readings attached.
+
+## The quote check and readings
+
+`--run` checks every quote against the words of the source it cites (`prompts.verify`).
+
+- **The recited words check.** A source's text is the provision's words for the day, and for a governing passage the
+  section's words given under it. A quote of either is found.
+- **A reading quoted as the rule is flagged.** A reading is not in any source's text, so a quote of one is not
+  found. With the pack's readings in hand (`ContextPack.reading_texts`), the reason says so: "a reading attached to
+  the source, not the provision's words". The report marks it.
+- **`jason verify-quotes` does not know readings.** It checks an answer against the passage index and the shelf.
+  A reading is profile data and is in neither, so a quoted reading is "not found" there, with no word that it is a
+  reading.
 
 ## What the runs showed (October 1, 2026)
 

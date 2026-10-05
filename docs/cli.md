@@ -1381,7 +1381,8 @@ A community manager's review of a task: the law, the documents, the facts (never
 | `--kind` | KIND | an ad hoc collection: this document kind (repeat) |
 | `--folder` | FOLDER | an ad hoc collection: under this data folder (repeat) |
 | `--confidential` |  | with --catalog: include that catalog's files held back unless asked (board tasks only) |
-| `--history` |  | list the reviews kept for the task under data/reviews: date, collection, digest, and whether the answer's quotes were found (reads only) |
+| `--as-of` | DATE | the day the matter turns on (YYYY-MM-DD): each law source gives the words in force that day where the disk shows them, else the words on the shelf now labeled not shown to be in force; a governing passage's section is recited as of the day; each stored reading is attached, labeled as a reading |
+| `--history` |  | list the reviews kept for the task under data/reviews: the as-of date, collection, digest, and whether the answer's quotes were found (reads only) |
 
 ### `jason statute-align`
 

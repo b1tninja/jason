@@ -11,6 +11,10 @@ Markdown report beside it. A review is a draft for the board, never a decision.
 
 Those two files are the latest pack and review, written over each time. ``review_store`` keeps each pack that differed
 (and each run) under ``data/reviews``, so reviews of one draft under two collections sit side by side.
+
+``build(as_of=day)`` builds the pack for the day the matter turns on: the law's and the documents' words in force that
+day where the disk shows them, labeled where it does not, with each stored reading attached as a reading. ``run``
+then refuses a quote of a reading given as a source's words, and says so.
 """
 
 from __future__ import annotations
