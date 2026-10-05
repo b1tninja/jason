@@ -1157,6 +1157,15 @@ class Community(ABC):
         set, so a rule that turns on a system is undetermined, with the question of which systems there are."""
         return ()
 
+    def elevated_elements_inspections(self) -> tuple:
+        """Each building's inspection of exterior elevated elements under Civil Code 5551
+        (``jason.community.elevated_inspections.ElevatedElementsInspection``): its attached units ((l)), whether the
+        association maintains or repairs elevated elements in it, the last inspection with its licensed professional
+        and report, and the permit application and certificate of occupancy dates (k) turns on. The rows are private
+        facts (the inspector is a person, the report a file). Empty until set, so each building's answer is a
+        question for a person, never a date jason guesses."""
+        return ()
+
     def bank_accounts(self) -> tuple[BankAccount, ...]:
         """The association's bank accounts by statement suffix. Empty until the specification sets them."""
         return ()

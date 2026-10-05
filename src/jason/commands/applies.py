@@ -10,7 +10,9 @@ A person's answers in the intake queue (``data/intake/asks.json``) are read as f
 that disagrees with the specification leaves the row undetermined with both named.
 
 ``--system KEY`` shows one system, ``--all`` adds the obligations asked of the association as a whole, and ``--json``
-prints the same as JSON. ``--questions`` lists the questions the undetermined answers raise, one a subject and fact,
+prints the same as JSON. After the systems, each building's exterior elevated elements record (Civil Code 5551;
+``Community.elevated_elements_inspections()``, ``jason.community.elevated_inspections``): whether the section reaches
+the building, what (k) and (l) say of it, its last inspection, and its next due day or the question in its place. ``--questions`` lists the questions the undetermined answers raise, one a subject and fact,
 each with the rows it would decide, the kinds of record that would settle it, and its state in the queue.
 
 The questions also cover the association's standing facts that the notice catalog turns on (whether an election rule
@@ -37,6 +39,7 @@ from jason.commands._shared import data_dir as _data_dir
 
 def cmd_applies(args: argparse.Namespace) -> int:
     from jason.community import community
+    from jason.community import elevated_inspections as elevated
     from jason.community.applicability_asks import question_lines, questions
     from jason.community.life_safety import applicability_lines
     from jason.tasks import applicability_asks as asks_task
@@ -81,7 +84,11 @@ def cmd_applies(args: argparse.Namespace) -> int:
             return 2
         result = result.of(system)
     if args.json:
-        print(json.dumps({"community": active.name, "asOf": day.isoformat(), **result.as_dict()}, indent=1))
+        out = {"community": active.name, "asOf": day.isoformat(), **result.as_dict()}
+        if not args.system:
+            base = elevated.base_facts(active)
+            out["buildings"] = [r.as_dict(base) for r in elevated.records(active)]
+        print(json.dumps(out, indent=1))
         return 0
     print(f"{active.name}: what applies to each life safety system, as of {day.isoformat()}")
     print("Each answer rests on the facts the specification states, shown with where each comes from. An undetermined")
@@ -90,6 +97,12 @@ def cmd_applies(args: argparse.Namespace) -> int:
     print()
     for line in applicability_lines(result, association=args.all):
         print(line)
+    if not args.system:
+        # Each building's Civil Code 5551 record: (k) and (l) are about one building each, so they are answered here,
+        # beside the obligation row asked of the association as a whole.
+        print()
+        for line in elevated.building_lines(active, day):
+            print(line)
     return 0
 
 

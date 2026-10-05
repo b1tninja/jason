@@ -345,6 +345,12 @@ class Mystique(Community):
 
         return SYSTEMS
 
+    def elevated_elements_inspections(self):
+        """Each building's Civil Code 5551 record, from the private facts (elevated_elements.py)."""
+        from .elevated_elements import inspections
+
+        return inspections()
+
     def mail_addresses(self):
         """Where letters to the association are addressed, and which address is current (mail.py)."""
         from .mail import MAIL_ADDRESSES

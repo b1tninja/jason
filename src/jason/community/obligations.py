@@ -28,6 +28,7 @@ class Standing(Enum):
     OVERDUE = "overdue"
     UNTRACKED = "no store shows it"
     LISTED = "payments listed, not judged"
+    UNKNOWN = "date not on record"       # a per-record deadline whose counting date a person has yet to enter
 
 
 @dataclass(frozen=True)

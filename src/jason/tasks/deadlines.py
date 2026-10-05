@@ -179,10 +179,20 @@ def calendar(data_dir: Path, community: Any, *, today: date | None = None) -> di
                          "standing": (Standing.OVERDUE if left < 0 else Standing.DUE_SOON if left <= SOON_DAYS else Standing.UPCOMING).value,
                          "lastDone": due["lastSiteVisitStudy"], "history": []})
     except Exception as exc:
-        rows.append({"name": "Reserve study", "authority": "Civil Code 5550", "rule": "", "note": f"not read: {exc}", "next": None,
+        rows.append({"name": "Reserve study", "authority": "Civil Code 5550", "rule": "", "next": None, "note": f"not read: {exc}",
                      "daysLeft": None, "standing": Standing.UNTRACKED.value, "lastDone": None, "history": []})
-    order = {Standing.OVERDUE.value: 0, Standing.DUE_SOON.value: 1, Standing.UPCOMING.value: 2, Standing.UNTRACKED.value: 3,
-             Standing.LISTED.value: 4, Standing.DONE.value: 5}
+    # Each building's exterior elevated elements inspection (Civil Code 5551(k), (l)), beside the association's own
+    # row: the next due day under the section's cycle, or "date not on record" with the question in its note.
+    try:
+        from jason.community.elevated_inspections import calendar_rows
+
+        rows += calendar_rows(community, day, soon_days=SOON_DAYS)
+    except Exception as exc:
+        rows.append({"name": "Exterior elevated elements inspection, by building", "authority": "Civil Code 5551", "rule": "",
+                     "note": f"not read: {exc}", "next": None, "daysLeft": None, "standing": Standing.UNTRACKED.value,
+                     "lastDone": None, "history": []})
+    order = {Standing.OVERDUE.value: 0, Standing.DUE_SOON.value: 1, Standing.UPCOMING.value: 2, Standing.UNKNOWN.value: 3,
+             Standing.UNTRACKED.value: 4, Standing.LISTED.value: 5, Standing.DONE.value: 6}
     rows.sort(key=lambda r: (order.get(r["standing"], 5), r["next"] or "9999"))
     late = [{"name": r["name"], **h} for r in rows for h in r.get("history", []) if isinstance(h, dict) and h.get("standing") in
             (Standing.LATE.value, Standing.MISSED.value)]
@@ -198,6 +208,9 @@ def calendar(data_dir: Path, community: Any, *, today: date | None = None) -> di
             "report, or a notice is the record.",
             "A year before PayHOA's first transaction is not judged.",
             "A deadline no store shows (the budget report, the reviewed statement) is listed so a person can check it.",
+            "A building's elevated elements row with the standing \"date not on record\" waits on a person: the date "
+            "it counts from is entered from the report, the permit application, or the certificate of occupancy, "
+            "never guessed.",
         ],
     }
 
