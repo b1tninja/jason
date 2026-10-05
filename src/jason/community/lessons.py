@@ -1812,6 +1812,15 @@ LESSONS: tuple[Lesson, ...] = (
            "GET /api/community flags the signer default: true. Still to do: an empty default on Identity.signer, with "
            "the templates falling back to the general wording.",
            Status.OPEN, guards=("tests/test_web_community.py (the signer default is flagged)",)),
+    Lesson("board-packet-p1-path", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "jason.web.access.PATH_RULES places board/packet* at P1, so the directors' confidential packet "
+           "(packet-<date>.md, privileged and mediation material) has the same file level as the members' copy "
+           "(packet-<date>-members.md).",
+           "The path rule was written before a members' copy existed; P1 is anyone on the roster.",
+           "Nothing is exposed yet (the roster is officers and managers). Still to do before owner sign-in: the "
+           "directors' packet at the level its header claims (for the directors and counsel), and the members' copy "
+           "its own path rule. Which level reaches every director, and only them, is a decision for a person.",
+           Status.OPEN),
     Lesson("executive-title-in-console-agenda", date(2026, 10, 4), (Area.GOVERNING,),
            "board_items.agenda(), which the console's meeting page renders, prints executive items by their title and "
            "ask; the meeting and plan loaders also listed every executive item's title, ask, and id to anyone.",
