@@ -91,7 +91,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 
 ### Document models
 
-- [document-models/README.md](document-models/README.md): the framework; a typed record and findings per document kind, the reviews a lens makes of a reading (the as-of lens, the review store), and the coverage.
+- [document-models/README.md](document-models/README.md): the framework; a typed record and findings per document kind, the reviews a lens makes of a reading (the as-of lens, the records lens, the review store), and the coverage.
 - [document-models/contracts.md](document-models/contracts.md): insurance policies, certificates, contracts, proposals, leases, and settlements.
 - [document-models/correspondence.md](document-models/correspondence.md): letters that are not legal, bills, statements, or meeting records.
 - [document-models/elevated-elements.md](document-models/elevated-elements.md): the SB 326 exterior elevated elements report (Civil Code 5551).

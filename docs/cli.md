@@ -414,6 +414,7 @@ Read the library with the document models: typed records and findings per kind (
 | `--show` |  | Print the stored readings (with --kind, one kind) instead of reading again |
 | `--basis` |  | From the stored readings: per reader and finding code, what the check read (text, profile, store, today, law), so which findings are ingestion and which are reviews; reads nothing again |
 | `--as-of` | DATE | From the stored readings' fields: make the as-of lens's findings again for DATE (YYYY-MM-DD: terms ended, deadlines passed, what is due next), save them under data/reviews/documents, and print what changed since the rows were stored; reads no document and leaves the stored readings as they are |
+| `--lens` | KEY | With --as-of: the lens to make again. as-of (the default) reads the stored fields and the date; records sets them against the association's other records as they are on disk now (the library, the ledger, the logs) and is made again only for a reading whose other records changed |
 | `--ask` |  | Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's |
 | `--filed` |  | Read the documents filed to Drive from email (jason gmail --file-vendor) instead of the library: each filing's local copy, its words from the text layer or local OCR, stored as a reading under drive-<file id>; --kind names the kind (default inspection_report) |
 | `--vision` |  | With --filed: read a scan with the local vision model (preflight and the GPU lock first) |

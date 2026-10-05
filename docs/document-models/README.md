@@ -5,7 +5,7 @@ A `DocumentKind` says what a file is. A document model says what is in it. Each 
 ## Framework
 
 - `jason.community.document_models` holds the pieces:
-  - `DocumentModel`: set `kind` or `kinds`, `name`, and `required`, then implement `parse` and `check`; a reader whose record has findings that depend on the date lists the lens checks in `lens_checks`, and one whose record has a field from another store fills it in `enrich` (both below);
+  - `DocumentModel`: set `kind` or `kinds`, `name`, and `required`, then implement `parse` and `check`; a reader whose record has findings that depend on the date, or on another document or store, lists the lens checks in `lens_checks` (below);
   - `Finding` and `Severity`: `info` is worth knowing; `check` means a person should look, because the text cannot show it; `problem` means the text shows a shortfall;
   - `ModelContext`, the `register`/`read` registry, and the shared text helpers.
 - `jason.community.models` is the package of model modules. Each module registers its models when the package is imported, and a new module needs no entry anywhere else. A kind may have several models, most specific first: a vendor's invoice layout comes before the general invoice. A model that does not recognize a text returns `None`, and a miss stays a miss.
@@ -33,20 +33,27 @@ Each pass reads `readings.json`, changes its own rows, and writes it back under 
 
 ## A reading and its reviews
 
-This is step 2 of [ingestion-and-review.md](../ingestion-and-review.md): the review store and the first lens. A reading says what the document says. What depends on the date is a **review**, made by a lens from the reading's stored fields.
+This is step 2 of [ingestion-and-review.md](../ingestion-and-review.md): the review store and the first two lenses. A reading says what the document says. What depends on the date, or on another document or store, is a **review**, made by a lens from the reading's stored fields.
 
-**What a consumer sees has not changed.** `DocumentModel.read` joins the lens's findings to the reading's own, as of the context's date, in the order they always had. `ModelReading.findings`, `as_dict`, and the rows in `data/documents/readings.json` show the same findings and fields as before. The new keys only say which part is which.
+**What a consumer sees has not changed.** `DocumentModel.read` joins each lens's findings to the reading's own, as of the context's date, in the order they always had. `ModelReading.findings`, `as_dict`, and the rows in `data/documents/readings.json` show the same findings and fields as before. The new keys only say which part is which.
 
 **The parts of a reader:**
 
 | Step | What it may read | What it gives |
 |---|---|---|
 | `parse` | the text (and, for now, the specification) | the record's fields |
-| `enrich` | another store | the fields named in `enriched`, filled after the parse |
-| `check` | the record, the specification, other stores | the reading's own findings, and a slot for each lens check |
-| a lens check | the fields it names, the as-of date, and the facts it names | findings, and fields derived as of the date |
+| `check` | the record and the specification | the reading's own findings, and a slot for each lens check |
+| a facts function | the specification; for the records lens, the other documents and stores on disk | plain data: a figure from the specification, another reading's fields, a ledger total, a log row |
+| a lens check | the fields it names, the as-of date where it needs one, and its facts | findings, and fields derived from the date or the other records |
 
-**A lens** (`jason.community.reviews.Lens`) is a record: its key, the question it asks, whether it needs an as-of date, its checks, the kinds it applies to (from the readers that list its checks), what it reads, and its version. The version is a hash of the lens module's source and of every module that registers one of its checks.
+`enrich` is still a step a reader may define, for a field looked up in another store after the parse. No reader uses it now: the agenda's notice fields, the one case, are the records lens's (below).
+
+**A lens** (`jason.community.reviews.Lens`) is a record: its key, the question it asks, whether it needs an as-of date, whether its facts are gathered from the association's other records (`gathers`), its checks, the kinds it applies to (from the readers that list its checks), what it reads, and its version. The version is a hash of the lens module's source and of every module that registers one of its checks.
+
+| Lens | Key | The question | Its facts come from |
+|---|---|---|---|
+| `AS_OF` | `as-of` | which terms have ended, which deadlines have passed, what is due next | the specification |
+| `RECORDS` | `records` | what the other documents and stores on file say of this one | the library, the ledger, the logs, the law history on disk, and the specification |
 
 **A lens check** is a row, registered beside the record it reviews:
 
@@ -57,10 +64,27 @@ def lease_term(r, as_of, _facts=None) -> list[Finding]: ...
 
 - **It sees only what it names.** The check is given the named fields, rebuilt from their stored (JSON) form by the record's type hints, and the date. It is given the same thing at the reading and from a stored row, so it finds the same thing either way.
 - **The specification comes in as facts.** A check that needs the specification names a function `(fields, community) -> facts`. It gets the facts, never the specification. The facts have a digest, so a changed fact makes the review again.
-- **It reads no store.** A check that needs another document or store is not an as-of check (below).
-- **It may derive a field.** A check returns `Reviewed(findings, fields)` to fill a field as of the date. The reader's `parse` leaves that field empty.
+- **It reads no store.** A check that needs another document or store belongs to the records lens, and even there only its facts function reads one (below).
+- **It may derive a field.** A check returns `Reviewed(findings, fields)` to fill a field as of the date, or from the other records. The reader's `parse` leaves that field empty.
 
-**A slot keeps the order.** A reader lists its checks in `lens_checks`. Its `check` returns a lens check among its findings where that check's findings go, and `read` fills the slot. A check with no slot goes last. A slot the reader does not list is an error.
+**A records-lens check** is the same kind of row. Its facts function is given a `Records` handle in place of the specification:
+
+```python
+def account_reconciliation(s, records) -> dict | None: ...   # reads data/payhoa/reconciliations.json
+
+@RECORDS.check("statement-reconciliation", BankStatement, fields=("account_last4", "period_end", ...),
+               facts=account_reconciliation, dated=False)
+def statement_reconciliation(s, _as_of, stored) -> list[Finding]: ...
+```
+
+- **The facts function is the only place another document or store is read.** The handle gives it the specification, the data directory, and the name of the file under review, so a lookup can leave the file itself out. It gives no date.
+- **It returns plain data,** and as little as the check needs: the reconciliation for the statement's account and period, not the whole file. A change elsewhere in the store then leaves the review alone.
+- **The check opens nothing.** It is a function of its fields, the date where it needs one, and the facts.
+- **A check says what its facts read** (`reads`: a store, the specification, or both). A facts function that reads a part its check does not name is an error.
+- **A check says whether it needs the date** (`dated`). One that does not is given none, and its findings do not say they rest on the date.
+- **With no data directory the facts are empty,** and the check finds what the reader's own check found before with none: nothing, or the finding without the other record's clause.
+
+**A slot keeps the order.** A reader lists its checks in `lens_checks`. Its `check` returns a lens check among its findings where that check's findings go, and `read` fills the slot. A check with no slot goes last. A slot the reader does not list is an error. A caller that runs a reader's `check` by itself gets the slots among the findings and passes over them.
 
 **A review** (`reviews.Review`) is one lens applied to one document's stored fields:
 
@@ -71,21 +95,25 @@ def lease_term(r, as_of, _facts=None) -> list[Finding]: ...
 | What it found | each check's findings, each with its basis and the lens's key, and the derived fields |
 | Who made it | `producedBy`: `rule` for a check function |
 
-**A review is made again only when its key changes.** With the same key, and the same fields and facts, the stored review stands and no check runs. `jason models` hands each reading the reviews already stored for its document, text, and date.
+**A review is made again only when its key changes.** With the same key, and the same fields and facts, the stored review stands and no check runs. `jason models` hands each reading the reviews already stored for its document, text, and date, and so does the Drive minutes' reread.
+- **For the records lens the facts are the trigger.** They are gathered every time, because their digest is how a changed record is noticed. The review is made again exactly when that digest changes: one set of minutes removed from the library makes again the reviews that rested on it and no others.
+- **Its reviews are kept by date too.** Three of its checks need the date (`agenda-notice`, `agenda-minutes`, `study-schedule`), so a review's key carries one.
 
-**The store** (`jason.tasks.document_reviews`) is `data/reviews/documents/<lens>/<as-of>.json`: one lens's reviews as of one date, by document id, written under the store lock. An earlier date's file is kept. `data/reviews/<task>/` belongs to the manager-review packs.
+**The store** (`jason.tasks.document_reviews`) is `data/reviews/documents/<lens>/<as-of>.json`: one lens's reviews as of one date, by document id, written under the store lock. The records lens's file stands beside the as-of lens's. An earlier date's file is kept. `data/reviews/<task>/` belongs to the manager-review packs.
 
 **`jason models --as-of DATE`** makes the as-of lens's reviews again from the stored rows' fields, saves them, and prints what changed since the rows were stored: findings that appear, vanish, or are reworded, and derived fields that moved.
 - It reads no document and leaves `readings.json` as it is.
 - Only the lens's findings move. A reading's own findings stand as of the date the document was read.
-- `document_reviews.joined_rows` gives the stored rows as they stand under the lens as of a date, for a caller that wants them.
+- **`--lens records`** makes the records lens's reviews instead. It sets the stored fields against the other records as they are on disk now, so it shows what changed in them since the documents were read: minutes that have since been filed, a reconciliation since made. "Not on file" means the library does not hold it.
+- `document_reviews.joined_rows` gives the stored rows as they stand under one lens as of a date, for a caller that wants them. `reviews.join` places every lens's findings, so one lens made again leaves the other's where they were.
 
 **What a row says of the join:**
 
 | Key | What it holds |
 |---|---|
-| `lens`, on a finding | the lens that made it; a reading's own finding has none |
-| `lenses` | per lens: its `version`, its `asOf` date, `slots` (per check, how many of the row's other findings stand before it), and `fields` (the fields it derived) |
+| `lens` and `check`, on a finding | the lens and the check that made it; a reading's own finding has neither |
+| `lenses` | per lens: its `version`, its `asOf` date, `slots` (per check, how many of the row's own findings stand before it), `order` (each slot's turn among all the row's slots, on a row with more than one lens), and `fields` (the fields it derived) |
+| `checkBasis` | what the reader's own `check` read: the specification, a store, the date |
 | `enriched` | the `fields` an enrichment may fill, and the `basis` of what it read |
 
 `document_models.parts(row)` takes a row apart along those lines: ingestion (the parsed fields and the text-only findings), the enriched fields, each lens's part, and the findings a reader's own check still makes from elsewhere.
@@ -112,14 +140,42 @@ def lease_term(r, as_of, _facts=None) -> list[Finding]: ...
 | `flood-renewal-due` | flood-premium-notice | `flood-renewal-due` | |
 | `tax-deadline` | tax-return | `tax-deadline` | |
 
-**Two fields moved out of `parse`:**
-- **A contract's `current_term_end`** is derived by `contract-term`. The contract reader's parse gives the same record on any day.
-- **An agenda's `notice_sent` and `notice_subject`** are filled by `AgendaModel.enrich` from the communications log. The agenda reader's parse reads no store.
+**The records lens** (`reviews.RECORDS`, key `records`) sets the stored fields beside the association's other records. Each check's facts function, in the reader's module, names what it reads:
 
-**Not moved: checks that need another document or store.** They are reviews of a collection, the next lens. Until then they stay in the readers' own checks and stand as of the date the document was read.
-- **Date and store together:** an agenda's `no-minutes-on-file`, and whether its `posting-date-not-shown` says the log has no notice; a reserve study's `next-site-visit` and `no-current-study`.
-- **Another document or store:** an agenda's `prior-minutes-not-on-file`; the minutes' `agenda-on-file`, `no-agenda-on-file`, `not-on-agenda`, and `executive-session-not-noted`; a resolution's `on-agenda`; election results' `results-in-minutes`; a bank statement's `reconciled`; a tax bill's `paid-per-county`; a treasurer's report's `ledger-changed-since`; a budget's `reserve-transfer-vs-study`; a policy page's `premium-change`, `limit-reduced`, `deductible-raised`, and `overlapping-flood-policy`; a certificate's `no-policy-file-for-term` and `flood-line-differs`; a reserve study's `superseded`; a governing document's `cites-repealed-sections`.
+| Check | Reading | Findings | Facts, and where they come from |
+|---|---|---|---|
+| `agenda-notice` | agenda | `notice-sent-late`, `members-notice`, `posting-date-not-shown`; derives `notice_sent` and `notice_subject` | the notice emails for the meeting and the day the log starts (the communications log); the days of notice the meeting needs (the specification). Needs the date |
+| `agenda-minutes` | agenda | `no-minutes-on-file`, `prior-minutes-not-on-file` | the minutes on file for the meeting, and for each date of minutes it lists for approval (the library). Needs the date |
+| `minutes-executive-noted` | minutes | `executive-session-not-noted` | the next open meeting's minutes, and whether they note an executive session (the library) |
+| `minutes-agenda` | minutes | `agenda-on-file`, `no-agenda-on-file`, `not-on-agenda` | the meeting's agenda on file and its item titles (the library) |
+| `resolution-agenda` | resolution | `on-agenda`, `not-on-agenda`, `no-agenda-on-file` | the adopting meeting's agenda and its items (the library) |
+| `results-in-minutes` | election results | `results-in-minutes`, `results-not-in-minutes`, `results-minutes-not-on-file` | the board's next meeting after the election, its minutes, and whether they speak of the election (the library) |
+| `statement-reconciliation` | bank statement | `reconciled`, `no-reconciliation`, `reconciliation-ending-differs`, `reconciliation-beginning-differs` | the reconciliation of the account for the period, and the end of the account's first (the stored reconciliations) |
+| `bills-per-county` | secured tax bill | `paid-per-county`, `unpaid-per-county`, `direct-differs-from-county`, `not-in-tax-store` | the tax office's figures for each bill (the stored tax catalog) |
+| `ledger-since` | treasurer's report | `ledger-changed-since` | the balance sheet for the report's month, for the bank accounts the report prints (the stored balance sheets) |
+| `budget-reserve-plan`, `packet-reserve-plan` | budget; the budget an annual packet carries | `reserve-transfer-vs-study`, `reserve-transfer-matches-study` | the newest study that plans the budget's year, and its contribution (the reserve studies on disk) |
+| `study-schedule` | reserve study | `superseded`, `next-site-visit`, `no-current-study` | each study on disk: its fiscal year, date, preparer, and level. Needs the date |
+| `flood-other-terms` | flood declarations | `overlapping-flood-policy`, `limit-reduced`, `deductible-raised`, `premium-change` | the building's other declarations pages (the library, each parsed with no checks) |
+| `certificate-flood-lines` | certificate of insurance | `no-policy-file-for-term`, `flood-line-differs` | the declarations on file under each flood line's number (the library) |
+| `rules-adoption` | operating rules | `no-adoption-date` | how many minutes are on file, and which mention adopting the rules (the library) |
+| `policy-adoption`, `election-rules-adoption` | policy; election rules | `missing-adopted` | the same, for a document whose adoption date was not read |
+| `policy-compiled-date` | policy | `effective-date-in-compilation` | the compilations on file that print an effective date for the policy (the library) |
+| `policy-statements` | policy | `annual-policy-statement`, `in-annual-policy-statement` | the annual policy statements on file that carry the policy (the library) |
+| `…-repealed-sections` (four records) | bylaws, declaration, operating rules, policy | `cites-repealed-sections` | where the law history on disk places each former section cited |
+| `…-former-sections` (two records) | legal letter, pre-lien notice | `cites-former-sections` | the same |
+
+- **A finding whose words carry the other record's lead is the lens's whole.** `no-adoption-date`, `annual-policy-statement`, and a policy's `missing-adopted` exist because of the text; their last clause says what the minutes or the statements on file show. The lens makes the finding, so the clause follows the library.
+- **`missing-adopted` is the one finding of a missing field a lens makes.** The policy and election rules readers drop their own bare one (`lens_states_adoption`), and the check stands first among their findings, where it was. `adopted` stays among the reading's missing fields.
+- **A citation of a former section is set against the law, not a record of the association.** It is here because its facts are read from disk. A lens for the law as of a document's date, when there is one, takes it.
+
+**Three fields moved out of `parse`:**
+- **A contract's `current_term_end`** is derived by `contract-term`. The contract reader's parse gives the same record on any day.
+- **An agenda's `notice_sent` and `notice_subject`** are derived by `agenda-notice` from the communications log. The agenda reader's parse reads no store, and the fields follow the log when the lens is made again.
+
+**Not moved:**
+- **Checks with no file in the library to prove them on:** the crime policy's `crime-limit-vs-5806` and `funds-transfer-fraud-limit` (the reserve balance from the ledger and the monthly assessment from the stored readings), and a claim payment's `deposited` and `not-deposited` (the ledger).
 - **Fields still read from context at `parse`:** many readers fill a field from the specification (a client's name, a building), and the invoice reader reads the vendor directory to recognize a vendor. `jason models --basis` lists them.
+- **Other sessions' readers** (contract terms, licenses, the kind readers) are untouched.
 
 ## What a reading records about its own making
 
@@ -133,7 +189,8 @@ This is the inventory, step 1 of [ingestion-and-review.md](../ingestion-and-revi
 | `asOf` | the date the reader used as today |
 | `version` | the reader's version (below) |
 | `fieldsBasis` | what `parse` read to fill the fields |
-| `basis`, on each finding | what the call that produced the finding read; on a lens's finding, what the lens declares it reads |
+| `checkBasis` | what the reader's own `check` read |
+| `basis`, on each finding | what the call that produced the finding read; on a lens's finding, what its check declares its facts read, and the date when the check needs it |
 
 A row stored before these keys has none of them. Every reader of the store treats them as optional.
 
@@ -163,6 +220,7 @@ A finding whose basis is `text` alone is ingestion. Any other is a review.
 `jason models --basis` prints the inventory from the stored rows and reads nothing again:
 - per reader and finding code: the count, how many read the text only, the basis, and the class (ingestion, lens, review, or not observed). `lens` is a review a lens made; `review` is one a reader's own check still makes;
 - how many of the reviews each lens made, and how many are left in the readers;
+- how many readers' own `check` read the specification, a store, or the date (from each row's `checkBasis`);
 - the readers whose fields depend on the profile, a store, or today at `parse`, the fields an enrichment fills, and the fields a lens derives.
 
 Run `jason models` first when the rows are older than these keys.

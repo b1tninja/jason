@@ -23,13 +23,15 @@ and on each finding ``basis`` (what the call that produced it read). A row writt
 them, and every reader of the store treats them as optional. ``basis`` reports, from the stored rows alone, which
 findings are ingestion (the text only) and which are reviews.
 
-**A row is a joined view** (docs/ingestion-and-review.md, step 2). What depends on the date is made by the as-of lens
-(``jason.community.reviews``) and joined into the row, so the row shows what it always did. The row says which part is
-which: a finding from a lens carries ``lens``; ``lenses`` gives, per lens, its version, its as-of date, where each
-check's findings go among the others (``slots``), and the fields it derived; ``enriched`` names the fields looked up in
-another store after the parse and what that read. ``parts`` takes a row apart along those lines. ``run`` also saves each
-lens's review apart from the row (``jason.tasks.document_reviews``), and ``jason models --as-of DATE`` makes them again
-from the stored fields without reading a document.
+**A row is a joined view** (docs/ingestion-and-review.md, step 2). What depends on the date is made by the as-of lens,
+and what depends on another document or store by the records lens (``jason.community.reviews``); both are joined into
+the row, so the row shows what it always did. The row says which part is which: a finding from a lens carries ``lens``
+and ``check``; ``lenses`` gives, per lens, its version, its as-of date, where each check's findings go among the row's
+own (``slots``, and ``order`` where two lenses share a row), and the fields it derived; ``checkBasis`` is what the
+reader's own check read; ``enriched`` names the fields looked up in another store after the parse and what that read.
+``parts`` takes a row apart along those lines. ``run`` also saves each lens's review apart from the row
+(``jason.tasks.document_reviews``), and ``jason models --as-of DATE`` (with ``--lens records`` for the second) makes
+them again from the stored fields without reading a document.
 """
 
 from __future__ import annotations
@@ -385,7 +387,7 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
             continue
         row = readers.setdefault(r["model"], {"reader": r["model"], "kinds": set(), "versions": set(), "readings": 0, "observed": 0,
                                               "fields": Counter(), "codes": {}, "enriched": Counter(), "enrichedFields": set(),
-                                              "lensFields": set()})
+                                              "lensFields": set(), "check": Counter(), "checked": 0})
         row["kinds"].add(r.get("kind") or "")
         row["readings"] += 1
         if r.get("version"):
@@ -396,6 +398,9 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
         if fields:
             row["observed"] += 1
             row["fields"].update(b for b in fields if b in _CONTEXT)
+        if r.get("checkBasis") is not None:
+            row["checked"] += 1
+            row["check"].update(b for b in r["checkBasis"] if b in _CONTEXT)
         enriched = r.get("enriched") or {}
         row["enrichedFields"].update(enriched.get("fields") or ())
         row["enriched"].update(b for b in enriched.get("basis") or () if b in _CONTEXT)
@@ -440,6 +445,8 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
                     "observed": row["observed"], "fields": {b: row["fields"][b] for b in _CONTEXT if row["fields"][b]},
                     "enriched": {"fields": sorted(row["enrichedFields"]), **{b: row["enriched"][b] for b in _CONTEXT if row["enriched"][b]}},
                     "lensFields": sorted(row["lensFields"]),
+                    # What the reader's own check read, in how many of the readings that recorded it.
+                    "check": {"readings": row["checked"], **{b: row["check"][b] for b in _CONTEXT if row["check"][b]}},
                     **{k: summed[k] for k in ("findings", "ingestion", "review", "unobserved", "ingestionThroughFields", "lens")}, "codes": codes})
     caveats = list(BASIS_CAVEATS)
     stale = totals["readings"] - totals["observed"]
@@ -449,6 +456,9 @@ def basis_report(readings: list[dict[str, Any]], *, kind: str = "") -> dict[str,
             "totals": {k: totals[k] for k in ("findings", "ingestion", "review", "unobserved", "ingestionThroughFields")},
             # Of the reviews: how many each lens made. The rest are still made inside a reader's own check.
             "byLens": dict(sorted(by_lens.items())), "reviewInReaders": totals["review"] - totals["lens"],
+            # How many readers' own check read each part of the context, of the readers whose rows record what it read.
+            "checkReads": {"readers": sum(1 for r in out if r["check"]["readings"]),
+                           **{b: sum(1 for r in out if r["check"].get(b)) for b in _CONTEXT}},
             "byBasis": dict(sorted(by_basis.items(), key=lambda kv: (-kv[1], kv[0]))),
             "fieldsFromContext": [{"reader": r["reader"], "readings": r["observed"], **r["fields"]} for r in out if r["fields"]],
             "fieldsEnriched": [{"reader": r["reader"], **r["enriched"]} for r in out if r["enriched"]["fields"]],
@@ -484,6 +494,10 @@ def basis_lines(result: dict[str, Any]) -> list[str]:
            f"{t['findings']} findings: {t['ingestion']} ingestion (the text only), {t['review']} review{split}, {t['unobserved']} not observed"]
     if t["ingestionThroughFields"]:
         out.append(f"  {t['ingestionThroughFields']} of the ingestion findings are on readings whose fields read the profile, a store, or today")
+    reads = result.get("checkReads") or {}
+    if reads.get("readers"):
+        out.append(f"  readers whose own check read: the specification {reads['profile']}, a store {reads['store']}, today {reads['today']} "
+                   f"(of {reads['readers']} readers whose rows record it)")
     if result["byBasis"]:
         out.append("  by basis: " + "; ".join(f"{basis} {n}" for basis, n in result["byBasis"].items()))
     if result["asOf"]:

@@ -2843,6 +2843,7 @@ def cmd_models(args: argparse.Namespace) -> int:
     if args.as_of:
         from datetime import date
 
+        from jason.community.reviews import LENSES
         from jason.tasks.document_reviews import review_lines, review_stored
 
         try:
@@ -2850,7 +2851,10 @@ def cmd_models(args: argparse.Namespace) -> int:
         except ValueError:
             print("--as-of needs a date as YYYY-MM-DD")
             return 2
-        result = review_stored(data_dir, active(), as_of, kind=args.kind, include_confidential=args.confidential)
+        if args.lens not in LENSES:
+            print(f"--lens is one of: {', '.join(LENSES)}")
+            return 2
+        result = review_stored(data_dir, active(), as_of, lens=LENSES[args.lens], kind=args.kind, include_confidential=args.confidential)
         print(json.dumps(result, indent=2, default=str) if args.json else "\n".join(review_lines(result)))
         return 0 if result["found"] else 1
     if args.ask:
@@ -4233,6 +4237,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="From the stored readings' fields: make the as-of lens's findings again for DATE (YYYY-MM-DD: terms ended, "
                              "deadlines passed, what is due next), save them under data/reviews/documents, and print what changed since "
                              "the rows were stored; reads no document and leaves the stored readings as they are")
+    models.add_argument("--lens", default="as-of", metavar="KEY",
+                        help="With --as-of: the lens to make again. as-of (the default) reads the stored fields and the date; records "
+                             "sets them against the association's other records as they are on disk now (the library, the ledger, "
+                             "the logs) and is made again only for a reading whose other records changed")
     models.add_argument("--ask", action="store_true",
                         help="Ask the local model --kind's question set about each file and set its grounded answers beside the rule reader's")
     models.add_argument("--filed", action="store_true",
