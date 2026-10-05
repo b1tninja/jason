@@ -115,6 +115,33 @@ Gaps are brought to the **administrator**, who is the person that can develop a 
 
 The same list is the **coverage report** the project can read the other way: the citations the association's procedures, notice catalog, and documents' duties name that no handler serves (`jason handlers --coverage`) is a map of what jason does not yet do, ranked by how often arrivals of that kind have come in.
 
+## Recognition is the crux
+
+With the handler fixed by the campaign, the whole problem is one function: **given a message or an attachment, is it a response to a form we sent, and which copy?** `recognize(message, attachments) -> Recognition` is the first thing built and the thing most worth testing, because every later step trusts it.
+
+A sent copy carries its reference in several places by design (`fillable.stamp_reference`, `delivery_engines`, `owner_send`), so there are many chances to read it. In order of cost, and so of how early they are tried:
+
+| Rung | Signal | Where the copy put it | Cost |
+|---|---|---|---|
+| 1 | `[Ref NP27E-…]` in the **subject** (a reply keeps it) or a quoted body | the email's subject (`subject_for(reference, unit)`) and message | headers only |
+| 2 | the same in an attachment's **text layer** | the PDF's printed "Ref" at each page's top right | one download; no OCR |
+| 3 | the hidden `reference` **field** of a returned fillable PDF | `fillable.REFERENCE_FIELD` | one download; no OCR |
+| 4 | the **bar mark** and printed Ref on a scan or photo | the bars at the top left (`form_marks`) and the printed marker, read after OCR | one download; OCR |
+| 5 | the **form by layout** and printed title, when no marker survives | `form_reader.identify_form` | one download; OCR; once, cached |
+| 6 | the **cited authority** and title in the text (`CIV 4041`) | the form's own header | free once the text is read |
+| 7 | **who sent it**: an owner who was sent a copy and has not answered, with a PDF or image, in the window | the sent-copy catalog and the ledger | free |
+
+Rungs 1 to 4 end in the catalog (`form_references.lookup`) and so in a copy, owner, unit, and cycle: **recognized**. Rungs 5 and 6 give a form and a process but no copy: a **candidate**, which a person attaches to a campaign. Rung 7 alone is never enough; it only decides which attachments are worth the download. Nothing recognized or unrecognized is ever final: the result keeps the rung that decided it, and a person's correction is recorded.
+
+The result has three outcomes, and the third is as important as the first two:
+- **Recognized:** a copy of a form we sent, with the owner and unit as sent.
+- **Candidate:** looks like one of our forms; a person decides.
+- **Not ours:** an invoice, the governing documents, an unrelated PDF, a form from another party. It leaves this path and is triaged as any other message.
+
+**It is measured, not trusted.** The corpus is built with the tools that exist (`form_scans.simulate` and `jason form-fuzz`: scans at several resolutions, turns, blur, JPEG, and phone-like skew), with the negatives a mailbox really holds (invoices, certificates, minutes, other forms, blank pages). A test fixes the floor: every simulated return that keeps its marker is recognized, none of the negatives is, and a marker one character off is repaired only to the one sent marker it is near. In production a person's corrections feed a scorecard of misses and false hits per rung, so a rung that misleads is seen and its rule changed (never silently learned).
+
+**The cost is bounded.** Rung 1 reads headers for every message. A download happens only for a message from outside the association's domains that carries a PDF or image and passes rung 7, once, size-capped, and never for an arrival that rungs 1 to 3 already settled.
+
 ## The sent-copy catalog: the reference is already known
 
 Every copy jason sends is recorded when it goes: `data/forms/references.json`, written by `jason.tasks.form_references.record` (ids and hashes, never an address). Each entry is the copy's marker with its form, year, channel, unit, membership, when it was first and last sent, the file, and the fingerprints of what was filled in. At the time of writing it holds a marker for every emailed owner copy. A mailed letter's marker names the campaign only (every copy is the same), so the unit comes from the address written on the page.
