@@ -114,6 +114,13 @@
     "FilingPlan": {
       "cardMode": "column",
       "viewport": "1000x1400"
+    },
+    "PaletteMatrix": {
+      "cardMode": "column",
+      "viewport": "1000x1100"
+    },
+    "ColorDetail": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md",

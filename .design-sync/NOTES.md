@@ -114,7 +114,18 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - Windows: `.ds-sync/node_modules/playwright` is 1.63.0 (pins chromium-1243, in `%LOCALAPPDATA%\ms-playwright`). The
   `.ds-sync` scripts are copied from the bundled skill, not committed.
 
-- **Glyphs through the status components (built 2026-10-04, not yet synced).** `Pill`, `DueDate`, `Timeline`, `AuditLog`,
+- **Re-sync 2026-10-04 (night): the paint cards.** The project already held the glyph and role work (another session's
+  upload carried it; the two "not yet synced" bullets below were stale). This run authored previews for `Swatch`,
+  `PaletteMatrix`, `ColorDetail` and `SourcedDate` from the paint fixture's shapes (inline, since a preview imports only
+  from `jason-ui`), graded all good, and added `cfg.overrides` column cards for `PaletteMatrix` (1000x1100) and
+  `ColorDetail`. `PaletteMatrix`'s `scheme` is `number | null` (null = all), and its `today` is a `Date`, not a string.
+  Still floor cards: `CitationChip` (`[RENDER_THIN]`, known). `[GRID_OVERFLOW] HostPanel (Sheet)` still stands: its card is
+  column mode and the sheet is fixed/portal; the tool wants `single` with a `primaryStory`, which would hide the tabs, so
+  it was left as a known warn. `ConsoleShell`'s preview has no role-strip cell yet.
+- **A config edit asked for by another session was refused by the auto-mode classifier** (self-modification, from a peer
+  message). The guidelines for `handoff-title-processes.md` and `handoff-discovery.md` are not in `guidelinesGlob`; the
+  user has to approve that edit. (`handoff-contracts.md` was added by its own session after this upload.)
+- **Glyphs through the status components (built 2026-10-04, synced).** `Pill`, `DueDate`, `Timeline`, `AuditLog`,
   `Findings`, `Caveats`, `EmptyState`, `DataTable` (a `money` kind and a `glyph` column) and `Badge` (an explicit `glyph`)
   now carry glyphs. The driver keys a component on its `.d.ts`, `.prompt.md` and preview, so it called only `HostPanel`
   changed and would NOT re-grade these although they render differently: capture them with
@@ -123,7 +134,7 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   phone-sheet work, which would otherwise ship half-built (and `[GRID_OVERFLOW] HostPanel (Sheet)` wants a
   `cfg.overrides.HostPanel` entry).
 
-- **Roles on `ConsoleShell` (built 2026-10-04, not yet synced).** `ConsoleShell` takes `role`, `moves`, `landing`; a
+- **Roles on `ConsoleShell` (built 2026-10-04, synced).** `ConsoleShell` takes `role`, `moves`, `landing`; a
   `ConsoleScreen` takes `roles` and `glyph`; `ScreenHeader` takes `glyph`; `DOCK_DRAWERS` carry a glyph (the pills show it).
   `DEFAULT_LANDING`, `landingScreen`, `Role`, `Move` are exported. The role class comes from the server (`roleClass` in
   `/api/session`). `ConsoleShell` and `DockToolbar` previews will need their prop sets looked at again before upload; the
