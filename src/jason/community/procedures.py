@@ -488,6 +488,12 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Record each occurrence done, with who did it and the evidence.",
                  command="jason schedule-evidence --record KEY DUE --by NAME (or jason schedule --done KEY DUE --by NAME "
                          "--evidence TEXT)", person=True),
+            Step("For a life safety inspection overdue or with no record, ask its servicer for the reports it holds and "
+                 "a proposal; read the vendor's waiting mail and the agreement on file first.",
+                 command="jason inspections; jason draft --proposal-request SYSTEM [--to ADDRESS --yes]",
+                 check="a report the vendor sends may close an item with no proposal; the draft is saved, never sent; "
+                       "accepting a proposal is the board's decision",
+                 refs=("docs/fire-protection.md (Asking the servicer)",), person=True),
             Step("Put the schedule where people see it: each dated occurrence on the board calendar, each open one on "
                  "its role's Google Tasks list; a task checked off there is recorded done. Read the dry run, then write.",
                  command="jason schedule --tasks --calendar; jason schedule --tasks --calendar --yes",

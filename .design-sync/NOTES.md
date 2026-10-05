@@ -166,6 +166,13 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   files. Any `removed` or `deletePaths` you did not expect means the build read a half-written `ui/dist-lib/`:
   rebuild the library, re-run the driver, and upload only a verdict whose `[DTS] parsed` count and `components:`
   match the last sync. Another run the same day lost one card mid-capture the same way; a re-run was clean.
+- **One sync at a time.** Several sessions sync this project from the same checkout, sharing `ds-bundle/`,
+  `.ds-sync/`, and `.design-sync/.cache/remote-sync.json`. Before a run, check `ds-bundle/` and
+  `.ds-sync/package-build.mjs` mtimes and the peer sessions; if another sync is mid-run, wait for it to upload, then
+  fetch the fresh anchor. On 2026-10-04 (night) a guidelines-only sync waited on the paint session's; the anchor it
+  then saved was that session's `ds-bundle/_ds_sync.json`, checked equal to the project's (bundleSha12, auxSha,
+  scriptsSha, styleSha, hash counts). The verdict read `upload.aux` only, and the upload was the 21 aux files
+  (`guidelines/**`, `README.md`) inside the full-write plan, fenced, then the anchor last.
 - The seal's word scales with the disc (no pixel floor) and sits at its centre: the 2026-10-04 capture showed long
   words clipped at the old 5em size. Check a Seal sheet's longest words (approval, confirmed) after any change to
   its CSS.

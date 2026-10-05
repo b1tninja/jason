@@ -1481,11 +1481,12 @@ Who deleted, moved, renamed, or re-shared Drive items, from the Drive Activity A
 
 ### `jason draft`
 
-Save a hearing or meeting notice as a Gmail draft (never sends)
+Save a hearing or meeting notice, or a vendor proposal request, as a Gmail draft (never sends)
 
 | Option | Value | Help |
 |---|---|---|
 | `--hearing` | ADDRESS | the saved hearing for this unit address |
+| `--proposal-request` | SYSTEM | ask a life safety system's servicer for a proposal and its reports, from jason inspections (the system's key; without --to, a preview with suggested addresses) |
 | `--meeting-notice` | DATE | the agenda data/board/agenda-DATE.md |
 | `--list` |  | list the mailbox's drafts |
 | `--show` | DRAFT_ID | print a saved draft |
@@ -1495,6 +1496,8 @@ Save a hearing or meeting notice as a Gmail draft (never sends)
 | `--body-file` | BODY_FILE | with --edit: the new text from a file |
 | `--to` | EMAIL | recipient, given by the person |
 | `--pdf` |  | attach the notice Doc as PDF instead of linking it |
+| `--signer` | SIGNER | with --proposal-request: the closing (default: the board) |
+| `--horizon` | DAYS | with --proposal-request: also ask about obligations due within this many days (default 120) |
 | `--yes` |  | create the draft (default: dry run) |
 
 ### `jason photos`

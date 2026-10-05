@@ -49,6 +49,15 @@ def cmd_inspections(args: argparse.Namespace) -> int:
     print()
     for line in task.lines(records):
         print(line)
+    from jason.tasks.proposal_request import offers
+
+    asks = offers(records)
+    if asks:
+        print()
+        print("Ask the servicer for a proposal and the reports it holds (a Gmail draft a person reviews and sends):")
+        for key, n in asks:
+            print(f"  jason draft --proposal-request {key}   ({n} item{'s' if n != 1 else ''} overdue, unrecorded, "
+                  "not on file, or due soon)")
     return 0
 
 

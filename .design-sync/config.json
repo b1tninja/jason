@@ -141,6 +141,7 @@
     "../docs/console/handoff-held-setup-roster.md",
     "../docs/console/handoff-unit-records.md",
     "../docs/console/handoff-contracts.md",
+    "../docs/console/handoff-draft-from-item.md",
     "../docs/paint-ui-design.md",
     "../docs/paint-design.md",
     "../docs/unit-records-design.md",

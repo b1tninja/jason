@@ -102,7 +102,7 @@ Under 720 px, the cards stack, the schedule becomes a list of name, status, and 
 | Record what cleared it | Links a clearing record (a `DocRef` the person picks) and the date | jason's store, with `by` | `jason life-safety --cleared <id> --record <ref> --by <name>` |
 | Record that the insurer was told | Records the date and the record (the email or letter to the agent) | jason's store, with `by` | `jason life-safety --insurer-told <id> --record <ref> --by <name>` |
 | Draft the entry notice | Opens a notice of entry for the units an inspection needs, from the notice template | a draft only; a person sends it | `jason notices` (the template) |
-| Draft a request to the vendor | Drafts an email asking for missing reports, the report to the fire authority, or a schedule | a Gmail draft only; a person sends it | `jason drafts` |
+| Draft a request to the vendor | Offered on a system card with an obligation overdue, with no record, or with a period not on file. It drafts an email asking the servicer for the reports it holds after the last on file, and a proposal for the items. Before the person picks the recipient from the suggested addresses, the action shows the vendor's waiting mail and the agreement on file | a Gmail draft only; a person sends it | `jason draft --proposal-request <system> --to <address> --yes` |
 | Open the board item | Goes to `#/actions` for the item | nothing | `jason board` |
 
 No control books a vendor, accepts a proposal, pays an invoice, tells the insurer, or sends anything. Each is a person's act, recorded here after it happens.

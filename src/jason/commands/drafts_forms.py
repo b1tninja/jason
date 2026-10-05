@@ -36,6 +36,8 @@ def cmd_draft(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> 
         return 0
     if args.show or args.edit:
         return _show_or_edit(args, agent_factory)
+    if args.proposal_request:
+        return _proposal_request(args, agent_factory, data_dir)
     if not args.to:
         print("--to is required: the recipient's address, given by the person", file=sys.stderr)
         return 2
@@ -66,6 +68,45 @@ def cmd_draft(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> 
         return 2
     for line in plan.lines():
         print(line)
+    if not args.yes:
+        print("Dry run: add --yes to save this as a Gmail draft (it is not sent).")
+        return 0
+    with agent_factory(args) as agent:
+        created = save(plan, GmailDrafts.on(agent.drive()))
+    print(f"Gmail draft {created.get('id')} created; review and send it from Gmail.")
+    return 0
+
+
+def _proposal_request(args: argparse.Namespace, agent_factory: Callable[[Any], Any], data_dir: Path) -> int:
+    """A request for a proposal (and the reports on hand) to the servicer of one life safety system, drafted from
+    ``jason inspections``. Without ``--to`` it previews the email and suggests addresses; the person chooses."""
+    from jason.community import community as active
+    from jason.google.gmail_drafts import GmailDrafts
+    from jason.tasks import proposal_request as pr
+    from jason.tasks.contacts import directory
+    from jason.tasks.drafts import save
+    from jason.tasks.inspections import review
+
+    community = active()
+    records = review(data_dir, community)
+    request = pr.request_for(records, args.proposal_request, horizon=args.horizon)
+    if request is None:
+        keys = ", ".join(s.system.key for s in records.systems) or "none listed"
+        print(f"no system {args.proposal_request!r}; the systems are: {keys}", file=sys.stderr)
+        return 2
+    plan = pr.draft(request, args.to or "(choose with --to)", signer=args.signer or "",
+                    waiting=pr.waiting_threads(data_dir, community, request.servicer),
+                    agreements=pr.agreements_on_file(data_dir, request.servicer))
+    for line in plan.lines():
+        print(line)
+    suggested = pr.recipients(directory(data_dir, community), request.servicer)
+    if suggested:
+        print(f"Addresses for {request.servicer}:")
+        for r in suggested:
+            print(f"  {r.address}" + (f" ({r.name})" if r.name else "") + f": {r.why}")
+    if not args.to:
+        print("Preview only: give --to ADDRESS (the person's choice), then --yes to save it as a Gmail draft.")
+        return 0
     if not args.yes:
         print("Dry run: add --yes to save this as a Gmail draft (it is not sent).")
         return 0
@@ -374,10 +415,14 @@ def _show_or_edit(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
 
 
 def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callable[[Any], Any]) -> None:
-    draft = sub.add_parser("draft", help="Save a hearing or meeting notice as a Gmail draft (never sends)")
+    draft = sub.add_parser("draft", help="Save a hearing or meeting notice, or a vendor proposal request, as a Gmail "
+                                         "draft (never sends)")
     add_common(draft)
     which = draft.add_mutually_exclusive_group()
     which.add_argument("--hearing", metavar="ADDRESS", help="the saved hearing for this unit address")
+    which.add_argument("--proposal-request", metavar="SYSTEM",
+                       help="ask a life safety system's servicer for a proposal and its reports, from jason inspections "
+                            "(the system's key; without --to, a preview with suggested addresses)")
     which.add_argument("--meeting-notice", metavar="DATE", help="the agenda data/board/agenda-DATE.md")
     which.add_argument("--list", action="store_true", help="list the mailbox's drafts")
     which.add_argument("--show", metavar="DRAFT_ID", help="print a saved draft")
@@ -388,6 +433,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     draft.add_argument("--body-file", help="with --edit: the new text from a file")
     draft.add_argument("--to", metavar="EMAIL", help="recipient, given by the person")
     draft.add_argument("--pdf", action="store_true", help="attach the notice Doc as PDF instead of linking it")
+    draft.add_argument("--signer", default="", help="with --proposal-request: the closing (default: the board)")
+    draft.add_argument("--horizon", type=int, default=120, metavar="DAYS",
+                       help="with --proposal-request: also ask about obligations due within this many days (default 120)")
     draft.add_argument("--yes", action="store_true", help="create the draft (default: dry run)")
     draft.set_defaults(func=lambda a: cmd_draft(a, agent_factory))
 
