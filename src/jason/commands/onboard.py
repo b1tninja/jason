@@ -307,9 +307,11 @@ def _checklist(args: argparse.Namespace, group: Any) -> int:
     from jason.community.onboarding import Status, by_group, counts, report_dicts
     from jason.tasks.onboarding import run, write_report
 
+    from jason.vault.keeper import vault_names
+
     settings, data_dir = _data_dir(args)
     the = community()
-    results = run(the, data_dir, settings=settings)
+    results = run(the, data_dir, settings=settings, vault=vault_names(settings))   # names only, never prompting
     if group is not None:
         results = tuple(r for r in results if r.item.group is group)
     if args.status:

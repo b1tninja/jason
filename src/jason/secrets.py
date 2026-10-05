@@ -255,6 +255,86 @@ def credentials_from_record(
     return LoginCredentials(login=login, password=password, totp_code=totp_code)
 
 
+STANDARD_LOGIN_FIELDS = ("login", "password", "url", "oneTimeCode")
+
+
+def login_from_secret(secret: Any, *, require_totp: bool = False) -> LoginCredentials:
+    """A vault secret's (``jason.vault.Secret``) login, password, and a fresh TOTP code from its ``oneTimeCode`` seed:
+    the same checks as ``credentials_from_record``."""
+    login, password, totp_uri = secret.first("login"), secret.first("password"), secret.first("oneTimeCode")
+    if not login or not password:
+        raise ValueError("Record missing login or password")
+    totp_code: str | None = None
+    if totp_uri:
+        totp_code = totp_code_from_uri(totp_uri)
+    elif require_totp:
+        raise ValueError("Record missing oneTimeCode (TOTP)")
+    return LoginCredentials(login=login, password=password, totp_code=totp_code)
+
+
+def idoxs_from_secret(secret: Any) -> IdoxsCredentials:
+    """i-doxs credentials from a vault secret: the login and password, and every other field as a security answer
+    (its label a word of the portal's question)."""
+    creds = login_from_secret(secret)
+    answers = {k: v for k, v in secret.items() if k and v and k not in STANDARD_LOGIN_FIELDS}
+    return IdoxsCredentials(username=creds.login, password=creds.password, security_answers=answers)
+
+
+def resolve_credential(
+    integration: str,
+    name: str,
+    *,
+    settings: Settings,
+    session: VaultSession | None = None,
+    record_uid: str = "",
+    username: str | None = None,
+    password: str | None = None,
+    totp_code: str | None = None,
+    config: str | Path | None = None,
+    interactive: bool = False,
+    community: str = "",
+):
+    """The active community's credential (``jason.vault.resolver.credential``): its vault path first, else the Keeper
+    record its ``.env`` key names (``record_uid`` overrides that key). Opens and closes its own Keeper session unless
+    one is given; ``interactive=False`` fails fast with ``KeeperAuthRequired``. Raises ``CredentialMissing`` when
+    neither holds it."""
+    from jason.vault.keeper import KeeperStore
+    from jason.vault.resolver import credential, legacy_key, record_uids_of
+
+    uids = record_uids_of(settings)
+    if record_uid:
+        uids[legacy_key(integration, name)] = record_uid
+    if not community:
+        from jason.community.profile import profile_name
+
+        community = profile_name()
+    def read(store: Any):
+        return credential(community, integration, name, store=store, record_uids=uids,
+                          load_record=getattr(store, "load_by_uid", None))
+
+    if session is not None:
+        return read(KeeperStore.from_session(session))
+    with VaultSession(
+        username=username or getattr(settings, "keeper_username", "") or None,
+        password=password or getattr(settings, "keeper_password", "") or None,
+        totp_code=totp_code,
+        config=config or getattr(settings, "keeper_config", None),
+        interactive=interactive,
+    ) as own:
+        return read(KeeperStore.from_session(own))
+
+
+def _missing(error: type[Exception], words: str, integration: str, name: str, community: str = "") -> Exception:
+    """A caller's own error for a credential in neither place, naming the vault path too."""
+    from jason.vault.resolver import credential_path
+
+    if not community:
+        from jason.community.profile import profile_name
+
+        community = profile_name()
+    return error(f"{words} (and the vault holds nothing at {credential_path(community, integration, name)})")
+
+
 def _persist_user_password(
     storage: Any, username: str, password: str, server: str | None
 ) -> None:
@@ -667,12 +747,20 @@ def get_payhoa_credentials(
     interactive: bool = False,
     settings: Settings | None = None,
 ) -> PayhoaCredentials:
-    """Load PayHOA email, password, and a fresh TOTP code from the vault."""
+    """Load PayHOA email, password, and a fresh TOTP code: with ``settings``, from the vault path ``payhoa/login``,
+    else the Keeper record ``payhoa_record_uid`` names; without, from the record ``record_uid``."""
     if settings is not None:
-        record_uid = settings.payhoa_record_uid
-        username = username or settings.keeper_username or None
-        password = password or settings.keeper_password or None
-        config = config or settings.keeper_config
+        from jason.vault.resolver import CredentialMissing
+
+        try:
+            secret = resolve_credential("payhoa", "login", settings=settings, username=username, password=password,
+                                        totp_code=totp_code, config=config, interactive=interactive)
+        except CredentialMissing:
+            raise _missing(ValueError, "payhoa_record_uid is not set; put the PayHOA login's Keeper record UID in "
+                                       ".env", "payhoa", "login") from None
+        found = login_from_secret(secret, require_totp=True)
+        assert found.totp_code is not None
+        return PayhoaCredentials(email=found.login, password=found.password, totp_code=found.totp_code)
     if not record_uid:
         raise ValueError("payhoa_record_uid is not set; put the PayHOA login's Keeper record UID in .env")
     creds = get_login_credentials(
@@ -702,12 +790,18 @@ def get_accela_credentials(
     interactive: bool = False,
     settings: Settings | None = None,
 ) -> LoginCredentials:
-    """Load Sacramento Citizen Access login and password from Keeper."""
+    """Load Sacramento Citizen Access login and password: with ``settings``, from the vault path ``accela/login``, else
+    the Keeper record ``accela_record_uid`` (or ``record_uid``) names."""
     if settings is not None:
-        record_uid = record_uid or settings.accela_record_uid
-        username = username or settings.keeper_username or None
-        password = password or settings.keeper_password or None
-        config = config or settings.keeper_config
+        from jason.vault.resolver import CredentialMissing
+
+        try:
+            secret = resolve_credential("accela", "login", settings=settings, record_uid=record_uid or "",
+                                        username=username, password=password, totp_code=totp_code, config=config,
+                                        interactive=interactive)
+        except CredentialMissing:
+            raise _missing(LookupError, "accela_record_uid is not set", "accela", "login") from None
+        return login_from_secret(secret)
     if not record_uid:
         raise LookupError("accela_record_uid is not set")
     return get_login_credentials(
@@ -726,17 +820,15 @@ def get_vendor_credentials(
     settings: Settings,
     interactive: bool = False,
 ) -> LoginCredentials:
-    """A vendor portal's login from the Keeper record set as ``<key>_record_uid``."""
-    record_uid = settings.record_uid(key)
-    if not record_uid:
-        raise LookupError(f"{key}_record_uid is not set in .env")
-    return get_login_credentials(
-        record_uid,
-        username=settings.keeper_username or None,
-        password=settings.keeper_password or None,
-        config=settings.keeper_config,
-        interactive=interactive,
-    )
+    """A vendor portal's login from the vault path ``vendor-portal/<key>``, else the Keeper record set as
+    ``<key>_record_uid``."""
+    from jason.vault.resolver import VENDOR_PORTAL, CredentialMissing, portal_name
+
+    try:
+        secret = resolve_credential(VENDOR_PORTAL, portal_name(key), settings=settings, interactive=interactive)
+    except CredentialMissing:
+        raise _missing(LookupError, f"{key}_record_uid is not set in .env", VENDOR_PORTAL, portal_name(key)) from None
+    return login_from_secret(secret)
 
 
 def get_idoxs_credentials(
@@ -749,9 +841,21 @@ def get_idoxs_credentials(
     interactive: bool = False,
     settings: Settings | None = None,
 ) -> IdoxsCredentials:
-    """Load City of Sacramento i-doxs portal credentials from Keeper."""
+    """Load City of Sacramento i-doxs portal credentials: with ``settings``, from the vault path ``idoxs/login``, else
+    the Keeper record ``idoxs_record_uid`` (or ``record_uid``) names."""
     from jason.config import DEFAULT_IDOXS_RECORD_UID
 
+    if settings is not None:
+        from jason.vault.resolver import CredentialMissing
+
+        try:
+            secret = resolve_credential("idoxs", "login", settings=settings,
+                                        record_uid=record_uid or DEFAULT_IDOXS_RECORD_UID, username=username,
+                                        password=password, totp_code=totp_code, config=config, interactive=interactive)
+        except CredentialMissing:
+            raise _missing(ValueError, "idoxs_record_uid is not set; put the i-doxs login's Keeper record UID in .env",
+                           "idoxs", "login") from None
+        return idoxs_from_secret(secret)
     if settings is not None:
         record_uid = record_uid or settings.idoxs_record_uid
         username = username or settings.keeper_username or None

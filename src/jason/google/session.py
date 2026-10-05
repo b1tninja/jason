@@ -1,4 +1,10 @@
-"""Open a Google client from the Keeper OAuth record and the local refresh token."""
+"""Open a Google client from the OAuth client in the vault and the local refresh token.
+
+The client is the community's vault entry ``google-workspace/oauth-client`` (``client_id`` and ``client_secret``
+fields), else the Keeper record ``google_oauth_record_uid`` names (``jason.vault.resolver``; the fallback is logged as
+deprecated). The token files stay where ``google_oauth_token_file`` puts them, one set for the installation: storing a
+token per community and account in the vault is build step 3 (docs/integrations-design.md).
+"""
 
 from __future__ import annotations
 
@@ -11,7 +17,31 @@ import httpx
 from jason.google.auth import authorize_in_browser, token_has_scopes
 from jason.google.drive import GoogleDrive
 from jason.google.errors import GoogleAuthRequired, GoogleError
-from jason.secrets import extract_custom_fields
+
+INTEGRATION, CLIENT = "google-workspace", "oauth-client"
+
+
+def oauth_client(settings: Any, vault: Any, *, store: Any = None, community: str = "") -> tuple[str, str]:
+    """The OAuth client's id and secret: the vault path first (``store``; a ``VaultSession`` given as ``vault``
+    supplies one when ``store`` is not), else the Keeper record ``google_oauth_record_uid`` names."""
+    from jason.secrets import VaultSession
+    from jason.vault.keeper import KeeperStore, record_fields
+    from jason.vault.resolver import CredentialMissing, credential, credential_path, record_uids_of
+
+    if not community:
+        from jason.community.profile import profile_name
+
+        community = profile_name()
+    if store is None and isinstance(vault, VaultSession):
+        store = KeeperStore.from_session(vault)
+    uids = record_uids_of(settings)
+    try:
+        secret = credential(community, INTEGRATION, CLIENT, store=store, record_uids=uids,
+                            load_record=lambda uid: record_fields(vault.load_record(uid)))
+    except CredentialMissing:
+        raise GoogleError(f"google_oauth_record_uid is not set (and the vault holds nothing at "
+                          f"{credential_path(community, INTEGRATION, CLIENT)})") from None
+    return _field(secret, "client_id"), _field(secret, "client_secret")
 
 
 def open_drive(
@@ -21,6 +51,7 @@ def open_drive(
     interactive: bool = False,
     authorize: Any = None,
     http: httpx.Client | None = None,
+    store: Any = None,
 ) -> GoogleDrive:
     """Build a Drive client.
 
@@ -28,12 +59,7 @@ def open_drive(
     opens a browser only when ``interactive`` is true.
     """
     sign_in = authorize or authorize_in_browser
-    record_uid = getattr(settings, "google_oauth_record_uid", "") or ""
-    if not record_uid:
-        raise GoogleError("google_oauth_record_uid is not set")
-    custom = extract_custom_fields(vault.load_record(record_uid))
-    client_id = _field(custom, "client_id")
-    client_secret = _field(custom, "client_secret")
+    client_id, client_secret = oauth_client(settings, vault, store=store)
     token_path = Path(settings.google_oauth_token_file)
     saved: dict[str, Any] = {}
     refresh = ""
@@ -62,18 +88,14 @@ def open_drive(
 
 
 def open_scoped(settings: Any, vault: Any, factory: Any, scopes: tuple[str, ...], token_name: str, *,
-                interactive: bool = False, authorize: Any = None, http: httpx.Client | None = None):
+                interactive: bool = False, authorize: Any = None, http: httpx.Client | None = None, store: Any = None):
     """A Google client (``factory.from_refresh_token``) on the same OAuth client as Drive, with a token of its own
     beside Drive's (``token_name``), so granting a new API never asks Drive to consent again. A missing token, or one
     without the scopes, needs a person's consent in a browser (``interactive``)."""
     from functools import partial
 
     sign_in = partial(authorize or authorize_in_browser, scopes=scopes)
-    record_uid = getattr(settings, "google_oauth_record_uid", "") or ""
-    if not record_uid:
-        raise GoogleError("google_oauth_record_uid is not set")
-    custom = extract_custom_fields(vault.load_record(record_uid))
-    client_id, client_secret = _field(custom, "client_id"), _field(custom, "client_secret")
+    client_id, client_secret = oauth_client(settings, vault, store=store)
     token_path = Path(settings.google_oauth_token_file).with_name(token_name)
     saved = json.loads(token_path.read_text(encoding="utf-8")) if token_path.is_file() else {}
     refresh = str(saved.get("refresh_token") or "")
@@ -120,8 +142,8 @@ def _sign_in(
     return sign_in(client_id, client_secret, token_path)
 
 
-def _field(custom: dict[str, str], label: str) -> str:
+def _field(custom: Any, label: str) -> str:
     for key, value in custom.items():
-        if key.lower() == label:
+        if key.lower() == label and value:
             return value
     raise GoogleError(f"Keeper OAuth record is missing {label}")

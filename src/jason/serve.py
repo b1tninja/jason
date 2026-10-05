@@ -4,11 +4,12 @@ The parts (docs/scheduler-daemon-design.md):
 - **web**: jason-web under waitress, serving the active profile;
 - **worker**: the job lanes (``jason.jobs.work``), one worker per community, each behind its own guard
   (``jobs-worker-<profile>``), so a second community's worker runs beside the first;
-- **scheduler**: not built yet; ``--no-scheduler`` is accepted and does nothing.
+- **scheduler**: one thread per community (``jason.scheduler.run``), adding each due source to that community's queue;
+  ``--no-scheduler`` turns it off.
 
 While it runs, each community's heartbeat (``<profile data>/jobs/heartbeat.json``) is written every ``BEAT_SECONDS``
-and whenever a lane takes or finishes a job: the process, the host, when it started, the last beat, which parts run, and
-each lane's running job. ``jason daemon status`` reads it with no network: a beat older than ``STALE_AFTER`` is stale
+and whenever a lane takes or finishes a job: the process, the host, when it started, the last beat, which parts run,
+each lane's running job, and the scheduler's next runs. ``jason daemon status`` reads it with no network: a beat older than ``STALE_AFTER`` is stale
 (the process stopped without saying so, or hangs).
 
 ``jason daemon stop`` never kills a process. It writes a drain request (``<profile data>/jobs/drain.json``) that the
@@ -197,11 +198,23 @@ def status_lines(rows: list[dict[str, Any]]) -> list[str]:
             worker = ("worker off" if not r.get("worker") else f"worker refused: {r['refused']}" if r.get("refused")
                       else f"worker failed: {r['failed']}" if r.get("failed")
                       else "worker on" if r.get("workerRunning") else "worker ended")
-            parts = [f"web {web['host']}:{web['port']}" if web else "web off", worker, "scheduler not built"]
+            scheduler = ("scheduler off" if not r.get("scheduler")
+                         else f"scheduler failed: {r['schedulerFailed']}" if r.get("schedulerFailed")
+                         else f"scheduler on ({r['schedulerZone']})" if r.get("schedulerRunning") and r.get("schedulerZone")
+                         else "scheduler on" if r.get("schedulerRunning") else "scheduler ended")
+            parts = [f"web {web['host']}:{web['port']}" if web else "web off", worker, scheduler]
             out.append("  " + "; ".join(parts))
             if r["state"] in ("running", "draining", "stale"):
                 for lane, job in (r.get("lanes") or {}).items():
                     out.append(f"  {lane:<7} " + (f"job {job['id']} since {job['since']}: {job['command']}" if job else "idle"))
+                if r.get("scheduler") and r.get("schedulerRunning"):
+                    if r.get("schedulerError"):
+                        out.append(f"  scheduler's last tick failed: {r['schedulerError']}")
+                    upcoming = r.get("schedules") or []
+                    for s in upcoming:
+                        out.append(f"  next    {s.get('at', '?')} {s.get('source', '?')}: {s.get('command', '')}")
+                    if not upcoming:
+                        out.append("  next    none: no schedule is adopted or due (jason cadence)")
         if r.get("drain"):
             out.append(f"  drain requested {r['drain'].get('requested', '?')}" + (f" by {r['drain']['by']}" if r['drain'].get("by") else ""))
         if r.get("workerLock"):
@@ -221,6 +234,9 @@ class _Community:
     draining: bool = False
     refused: str = ""
     failed: str = ""
+    sched: dict[str, Any] = field(default_factory=dict)
+    sched_thread: threading.Thread | None = None
+    sched_failed: str = ""
 
     def state(self) -> str:
         """The process's word for this community until it ends (then ``stopped``)."""
@@ -229,17 +245,25 @@ class _Community:
     def worker_running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
+    def scheduler_running(self) -> bool:
+        return self.sched_thread is not None and self.sched_thread.is_alive()
+
+    def alive(self) -> bool:
+        return self.worker_running() or self.scheduler_running()
+
 
 def run(profiles: dict[str, Path], *, web: WebServer | None = None, work: Work | None = None,
-        web_info: dict[str, Any] | None = None, beat: float = BEAT_SECONDS, tick: float = 0.5,
-        log: Callable[[str], None] = print, stop: threading.Event | None = None) -> dict[str, Any]:
+        schedule: Work | None = None, web_info: dict[str, Any] | None = None, beat: float = BEAT_SECONDS,
+        tick: float = 0.5, log: Callable[[str], None] = print, stop: threading.Event | None = None) -> dict[str, Any]:
     """Run the parts until every community is drained, Ctrl-C, ``stop``, or no part is left running.
 
     ``profiles`` maps each community to its data folder; ``web`` is the bound web server (it serves the active
     profile), None for ``--no-web``; ``work(profile, data_dir, stop, lanes)`` runs one community's worker until its
-    ``stop`` is set, None for ``--no-worker``. Returns, per community, how it ended."""
-    if web is None and work is None:
-        raise ServeRefused("nothing to run: --no-web and --no-worker together")
+    ``stop`` is set, None for ``--no-worker``; ``schedule(profile, data_dir, stop, state)`` runs one community's
+    scheduler (``jason.scheduler.run``) the same way, None for ``--no-scheduler``. Returns, per community, how it
+    ended."""
+    if web is None and work is None and schedule is None:
+        raise ServeRefused("nothing to run: --no-web, --no-worker, and --no-scheduler together")
     stop = stop or threading.Event()
     started = _now()
     host, pid = socket.gethostname(), os.getpid()
@@ -259,6 +283,13 @@ def run(profiles: dict[str, Path], *, web: WebServer | None = None, work: Work |
             c.failed = f"{type(exc).__name__}: {exc}"
             log(f"[{c.name}] worker failed: {c.failed}")
 
+    def scheduler(c: _Community) -> None:
+        try:
+            schedule(c.name, c.data_dir, c.stop, c.sched)  # type: ignore[misc]
+        except Exception as exc:  # noqa: BLE001 - one community's scheduler failing leaves the rest running
+            c.sched_failed = f"{type(exc).__name__}: {exc}"
+            log(f"[{c.name}] scheduler failed: {c.sched_failed}")
+
     web_error: list[str] = []
 
     def serve_web() -> None:
@@ -271,8 +302,11 @@ def run(profiles: dict[str, Path], *, web: WebServer | None = None, work: Work |
     def record(c: _Community) -> dict[str, Any]:
         return {"profile": c.name, "pid": pid, "host": host, "started": started, "state": c.state(),
                 "web": web_info if web is not None else None, "worker": work is not None,
-                "workerRunning": c.worker_running(), "scheduler": False, "lanes": dict(c.lanes),
-                "refused": c.refused, "failed": c.failed}
+                "workerRunning": c.worker_running(), "scheduler": schedule is not None,
+                "schedulerRunning": c.scheduler_running(), "schedulerZone": c.sched.get("zone", ""),
+                "schedules": list(c.sched.get("next") or []), "schedulerTick": c.sched.get("tick", ""),
+                "schedulerError": c.sched.get("error", ""), "schedulerFailed": c.sched_failed,
+                "lanes": dict(c.lanes), "refused": c.refused, "failed": c.failed}
 
     def beat_all(force: bool, last: dict[str, str]) -> None:
         for c in parts.values():
@@ -287,6 +321,10 @@ def run(profiles: dict[str, Path], *, web: WebServer | None = None, work: Work |
         for c in parts.values():
             c.thread = threading.Thread(target=worker, args=(c,), name=f"jason-worker-{c.name}", daemon=True)
             c.thread.start()
+    if schedule is not None:
+        for c in parts.values():
+            c.sched_thread = threading.Thread(target=scheduler, args=(c,), name=f"jason-scheduler-{c.name}", daemon=True)
+            c.sched_thread.start()
     if web_thread is not None:
         web_thread.start()
         log(f"web on http://{(web_info or {}).get('host', '?')}:{(web_info or {}).get('port', '?')}")
@@ -300,7 +338,7 @@ def run(profiles: dict[str, Path], *, web: WebServer | None = None, work: Work |
                     c.draining = True
                     c.stop.set()
                     log(f"[{c.name}] drain requested: the lanes finish their running jobs and stop")
-            workers_alive = any(c.thread is not None and c.thread.is_alive() for c in parts.values())
+            workers_alive = any(c.alive() for c in parts.values())
             web_alive = web_thread is not None and web_thread.is_alive()
             if all(c.draining for c in parts.values()) and not workers_alive:
                 log("every community is drained")
@@ -318,9 +356,10 @@ def run(profiles: dict[str, Path], *, web: WebServer | None = None, work: Work |
         for c in parts.values():
             c.stop.set()
         for c in parts.values():
-            while c.thread is not None and c.thread.is_alive():
+            while c.alive():
+                thread = c.thread if c.worker_running() else c.sched_thread
                 try:
-                    c.thread.join(timeout=1)
+                    thread.join(timeout=1)  # type: ignore[union-attr]
                 except KeyboardInterrupt:
                     log("still waiting for the running jobs (each job's own process got the Ctrl-C too)")
                 beat_all(False, last)

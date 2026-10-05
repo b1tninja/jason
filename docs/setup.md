@@ -39,7 +39,7 @@ Optional settings:
 
 Other services keep their own Keeper records, named in `.env`:
 - `postscanmail_record_uid` (the mailbox);
-- `zoom_record_uid` (a Server-to-Server OAuth app; `jason zoom --store-app` creates it);
+- `zoom_record_uid` (a Server-to-Server OAuth app; `jason zoom --store-app` now puts it at the vault path `zoom/app` instead, and no key is needed);
 - `accela_record_uid` (the City's permit portal);
 - one `<key>_record_uid` per vendor portal (for example `proactive_record_uid`).
 
@@ -61,7 +61,7 @@ Credentials are moving from `.env` record UIDs to vault paths, `jason/<scope>/<c
 - `jason vault status` shows the backend, whether it answers, and which `.env` keys are still read. It never prompts.
 - `jason vault migrate` shows the plan. `jason vault migrate --yes`, run in a terminal, copies each record to its path and never overwrites one.
 
-Check the new records in Keeper, then remove the moved `*_record_uid` keys from `.env`. Until then, jason reads the `.env` record and logs the key as deprecated.
+Check the new records in Keeper, then remove the moved `*_record_uid` keys from `.env`. Until then, jason reads the `.env` record and logs the key as deprecated. Every login jason reads (PayHOA, SMUD, i-doxs, Accela, PostScanMail, Zoom, the vendor portals, the Google client, and the console's sign-in clients) tries its vault path first. `jason integrations list` and `jason onboard` count an entry at the path as set; when Keeper wants a sign-in they test `.env` alone and say so.
 
 ## Google Workspace
 
@@ -80,7 +80,7 @@ In the [Google Cloud Console](https://console.cloud.google.com/), select or crea
 ### 3. Store the client in Keeper
 
 1. Create a **Login** record titled `jason Google OAuth`. Add custom fields labeled exactly `client_id` and `client_secret` (hidden), and paste the values. Delete the downloaded JSON; never commit it or paste it into `.env`.
-2. Put the record UID in `.env` as `google_oauth_record_uid`.
+2. Put the record UID in `.env` as `google_oauth_record_uid`. Or title the record with its vault path, `jason/community/<profile>/google-workspace/oauth-client`, in the Keeper folder `jason`, and no `.env` key is needed ([The vault](#the-vault)).
 
 Do not use Keeper's JSON import on the Google download: it expects Keeper's record schema.
 
@@ -125,7 +125,7 @@ jason-web offers one button for each client: first the community's, then the ins
      jason sign-in --import-client client_secret_XXXX.json --yes --delete-file
      ```
 
-     This puts the client ID and secret in a new Keeper login record, and records it in the community's `sign_in.json`. The secret goes from the file to Keeper and is never printed. Without `--yes`, it says what it would do. `--for jason` records the client as the installation's instead. `--domain` restricts it to one or more domains (default: the community's email domains). `--label` names its button.
+     This puts the client ID and secret in the vault at `signin/oauth-client/<key>` (a Keeper record titled with that path; it never overwrites one), and records that path in the community's `sign_in.json`. The secret goes from the file to the vault and is never printed. A row of the older form, naming a `record_uid`, still works. Without `--yes`, it says what it would do. `--for jason` records the client as the installation's instead. `--domain` restricts it to one or more domains (default: the community's email domains). `--label` names its button.
    - **Nothing to set up.** jason-web falls back to jason's own Desktop client from step 3. Google lets a Desktop client return to any loopback address and port with nothing registered. Google's guide is silent on a path after the port, but it accepted `http://127.0.0.1:8080/auth/google/callback` when this was first tried (October 2026).
 
    With the consent screen's user type **Internal** (step 2), only accounts in that Workspace organization can sign in with its client at all. If the Cloud project is not in the organization, the user type can only be **External**. Keep the app in **Testing** and list the people's addresses as test users (at most 100). `openid`, `email`, and `profile` are not sensitive scopes, so no verification is needed. jason-web reads Keeper without a prompt, so `jason login` must have been run once ([Keeper login](#keeper-login)). A new redirect URI can take from five minutes to a few hours to take effect.

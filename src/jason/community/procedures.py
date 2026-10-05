@@ -627,6 +627,22 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason onboard --request [SOURCE]", lessons=("outgoing-manager-only-items",), person=True),
             Step("Put people, account numbers, and figures in data/spec/<name>.json or the profile's notes; put codes and "
                  "passwords in Keeper, never in a Doc.", person=True),
+            Step("Connect the community's integrations: each credential under its vault path (move the .env records "
+                 "with the plan first), then each read checked by a person at a console.",
+                 command="jason vault status; jason vault migrate (then --yes); jason integrations list; "
+                         "jason integrations check KEY --live --by NAME",
+                 check="every credential shows set, never its value; an integration counts as connected only after its "
+                       "read succeeds; nothing is checked live by an agent",
+                 refs=("docs/integrations-design.md", "docs/setup.md (The vault)"),
+                 lessons=("credential-readers-env-only", "nul-is-a-tty"), person=True),
+            Step("Adopt the schedules the administrator or the board chose, then run jason as a service.",
+                 command="jason cadence; jason cadence --restore SOURCE --by NAME (or --every/--cron); "
+                         "jason serve --install-task (then --yes); jason daemon status",
+                 check="no source runs until adopted; none faster than its floor; no write is scheduled; the heartbeat "
+                       "is fresh and lists the next runs",
+                 refs=("docs/scheduler-daemon-design.md", "docs/jobs.md (Scheduling)"),
+                 lessons=("scheduled-defaults-need-adoption", "worker-guard-per-machine",
+                          "keeper-login-does-not-clear-sign-in-pause"), person=True),
             Step("Write the profile's Community subclass with the facts the board supplies; pin the library folders and "
                  "Drive roots to the 5200 records; map each governing document into its book.",
                  refs=("docs/profiles.md", "docs/record-addresses.md")),

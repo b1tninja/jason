@@ -1926,10 +1926,62 @@ LESSONS: tuple[Lesson, ...] = (
            "The credential dataclasses (LoginCredentials, PayhoaCredentials, IdoxsCredentials, ZoomCredentials) showed "
            "passwords, one-time codes, and client secrets in their default repr, so a traceback or a debug log could "
            "carry them.", "Dataclasses print every field unless told not to, and no check looked for secret fields.",
-           "The secret fields have repr=False, and the vault's Secret shows only its field names and cannot be pickled.",
-           Status.FIXED, guards=("tests/test_vault.py::test_credential_records_hide_their_secrets_in_repr",),
-           docs=("docs/integrations-design.md (The vault)",),
-           notes=("Still open: a test that finds any new dataclass with a secret-named field lacking repr=False.",)),
+           "The secret fields have repr=False, and the vault's Secret shows only its field names and cannot be pickled. "
+           "A scan of every dataclass then found four more (Settings.keeper_password, the sign-in Client's secret, and "
+           "two bill-view tokens), now hidden too.",
+           Status.FIXED, guards=("tests/test_vault.py::test_credential_records_hide_their_secrets_in_repr",
+                                 "tests/test_secret_fields.py"),
+           docs=("docs/integrations-design.md (The vault)",)),
+    Lesson("registry-reads-had-no-lane", date(2026, 10, 5), (Area.ONBOARDING,),
+           "The integrations' refresh commands sync-catalog, meetings --sync, utilities --payments, schedule "
+           "--read-google, and sync-tax fell to the local job lane, so scheduled reads were not kept on their "
+           "account's lane.", "jobs.job_class knew only the commands people had queued by hand.",
+           "Those commands are classed in their account's lane (PayHOA, Google, county).",
+           Status.FIXED, guards=("tests/test_scheduler.py::test_each_registry_read_takes_its_accounts_lane",),
+           docs=("docs/jobs.md",)),
+    Lesson("scheduled-defaults-need-adoption", date(2026, 10, 5), (Area.ONBOARDING,),
+           "The registry's cadences are proposed defaults, but a scheduler that ran them at once would start reading "
+           "Gmail every ten minutes and PayHOA nightly the first time jason serve booted.",
+           "Which cadences a community runs is the administrator's or the board's choice (open decision 2).",
+           "The scheduler runs a source only after a person adopts it: jason cadence --restore SOURCE|--restore-all, or "
+           "--every/--cron, recorded with who and when.",
+           Status.DECISION, guards=("tests/test_scheduler.py",), docs=("docs/scheduler-daemon-design.md",)),
+    Lesson("retry-after-not-printed", date(2026, 10, 5), (Area.ONBOARDING,),
+           "The scheduler honours a Retry-After line in a job's output, but no client prints one.",
+           "The shared backoff helper the design names is not built.",
+           "The backoff helper prints Retry-After when it gives up.", Status.OPEN,
+           docs=("docs/scheduler-daemon-design.md",)),
+    Lesson("keeper-login-does-not-clear-sign-in-pause", date(2026, 10, 5), (Area.ONBOARDING,),
+           "A sign-in pause clears only on a later successful jason integrations check --live or jason cadence "
+           "--resume; a bare jason login leaves the Keeper-based sources paused.",
+           "jason login records no check.", "Decide whether jason login records a check that clears the pause.",
+           Status.OPEN, docs=("docs/scheduler-daemon-design.md",)),
+    Lesson("calendar-and-tasks-share-a-command", date(2026, 10, 5), (Area.ONBOARDING,),
+           "The calendar and tasks sources both run schedule --read-google, so they share one job and Tasks runs at "
+           "Calendar's cadence, not its own.", "One command reads both.",
+           "Give each its own command or flag.", Status.OPEN, docs=("docs/integrations-design.md",)),
+    Lesson("scheduler-log-unrotated", date(2026, 10, 5), (Area.ONBOARDING,),
+           "<data>/jobs/scheduler.jsonl grows without bound.", "The rotating serve log is not built yet "
+           "(serve-logs-nowhere-under-task-scheduler).", "Rotate it with the serve log.", Status.OPEN,
+           docs=("docs/scheduler-daemon-design.md",)),
+    Lesson("a-test-could-sign-in-to-keeper", date(2026, 10, 5), (Area.REPOSITORY,),
+           "Any test that reached VaultSession.open on a machine with a real Keeper config could try a network login.",
+           "Nothing stopped a test from using the person's own Keeper device token.",
+           "An autouse fixture makes login_to_vault raise KeeperAuthRequired; a test that fakes Keeper sets its own.",
+           Status.FIXED, guards=("tests/conftest.py (_no_keeper_login)",)),
+    Lesson("credential-readers-env-only", date(2026, 10, 5), (Area.ONBOARDING,),
+           "Every credential reader (PayHOA, the utilities, Accela, the vendor portals, Zoom, PostScanMail, the Google "
+           "client, console sign-in) read a Keeper record UID from .env, one set per installation.",
+           "Credentials were wired for one association before communities had vault paths.",
+           "Each reads the community's vault path first and falls back to the .env record with a deprecation note; "
+           "jason sign-in --import-client and jason zoom --store-app write the vault path, create-only; integrations "
+           "and onboarding count a vault-only credential as set.",
+           Status.FIXED, guards=("tests/test_vault.py (each caller: vault, then .env, then the old error)",
+                                 "tests/test_web_signin.py"),
+           docs=("docs/integrations-design.md (build step 2)",),
+           notes=("Still open: Google tokens per community and account (build step 3); the .env sign-in fallback is "
+                  "offered only while its .env key is set; jason onboard's session view and the onboarding MCP tools "
+                  "still test .env alone.",)),
     Lesson("worker-guard-per-machine", date(2026, 10, 5), (Area.ONBOARDING,),
            "The job worker's single-instance guard carried no community, so a second community could not run a worker; "
            "and once guards were per community, two communities' model jobs could load on the card at once.",

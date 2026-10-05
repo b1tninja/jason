@@ -470,15 +470,23 @@ def cmd_permits(args: argparse.Namespace) -> int:
 
 
 def _sign_in_citizen_access(client) -> None:
-    """Use the Keeper Citizen Access record when one is configured."""
+    """Use the Citizen Access login when one is configured: the vault's ``accela/login``, else the Keeper record
+    ``accela_record_uid``. With neither (or no ``.env`` record and a vault that wants a sign-in), stay anonymous."""
     from jason.community.accela import AccelaError
     from jason.config import Settings
-    from jason.secrets import get_accela_credentials
+    from jason.secrets import KeeperAuthRequired, login_from_secret, resolve_credential
+    from jason.vault.resolver import CredentialMissing
 
     settings = Settings.load()
-    if not settings.accela_record_uid:
+    try:
+        secret = resolve_credential("accela", "login", settings=settings, interactive=False)
+    except CredentialMissing:
         return
-    creds = get_accela_credentials(settings=settings, interactive=False)
+    except KeeperAuthRequired:
+        if settings.accela_record_uid:
+            raise
+        return
+    creds = login_from_secret(secret)
     if not client.sign_in(creds.login, creds.password):
         raise AccelaError("Citizen Access rejected the Keeper login")
     print("Signed in to Citizen Access")
@@ -1304,10 +1312,13 @@ def cmd_vendors(args: argparse.Namespace) -> int:
         print(f"no vendor portal {args.key!r} in mystique/vendors.py")
         return 1
     if args.sync:
+        from jason.vault.resolver import VENDOR_PORTAL, portal_name
+
         with _agent(args) as agent:
             for portal in portals:
-                if not settings.record_uid(portal.key):
-                    print(f"{portal.key}: {portal.key}_record_uid is not set in .env; skipped")
+                if not agent.credential_configured(VENDOR_PORTAL, portal_name(portal.key)):
+                    print(f"{portal.key}: neither {portal.key}_record_uid in .env nor vendor-portal/"
+                          f"{portal_name(portal.key)} in the vault; skipped")
                     continue
                 print(agent.sync_vendor_portal(portal.key, full=args.full, log=print).summary())
     out: list = []
@@ -1388,9 +1399,16 @@ def cmd_zoom(args: argparse.Namespace) -> int:
         if not (args.account_id and args.client_id):
             print("--store-app needs --account-id and --client-id")
             return 2
+        from jason.vault.store import VersionConflict
+
         with _agent(args) as agent:
-            uid = agent.store_zoom_app(args.account_id, args.client_id)
-        print(f"created Keeper record {uid}; set zoom_record_uid = \"{uid}\" in .env and put the client secret in its password field")
+            try:
+                path = agent.store_zoom_app(args.account_id, args.client_id, by=getattr(args, "by", "") or "")
+            except VersionConflict as exc:
+                print(f"the vault already holds {exc.path}; change it in Keeper (the record titled with that path)")
+                return 2
+        print(f"stored the Zoom app at {path} (a Keeper record titled with that path, in the folder \"jason\"); put "
+              "the app's client secret in its password field. jason reads it there; zoom_record_uid is no longer needed")
         return 0
     if args.meeting:
         print(json.dumps(meeting_text(data_dir, args.meeting, include_confidential=args.confidential), indent=2, default=str))
@@ -3898,7 +3916,8 @@ def build_parser() -> argparse.ArgumentParser:
     zoom.add_argument("--meeting", default="", help="Print one meeting (UUID, folder, date, or meeting id): summary and transcript")
     zoom.add_argument("--confidential", action="store_true", help="With --meeting, include an executive session's or hearing's text")
     zoom.add_argument("--store-app", action="store_true",
-                      help="Create the Keeper record for the Zoom app (with --account-id, --client-id); the secret is filled in Keeper")
+                      help="Put the Zoom app at the community's vault path zoom/app (with --account-id, --client-id; "
+                           "create only); the secret is filled in Keeper")
     zoom.add_argument("--account-id", default="", help="With --store-app: the app's account id")
     zoom.add_argument("--client-id", default="", help="With --store-app: the app's client id")
     zoom.add_argument("--create-board-meeting", action="store_true",

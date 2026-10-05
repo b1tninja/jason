@@ -10,7 +10,7 @@ The association holds its meetings on Zoom. The account's history holds the asso
    - list user recordings, and the recording content (for downloads);
    - list meeting summaries, and meeting summary;
    - write meeting (only for `jason hearing --create`).
-3. Run `jason zoom --store-app --account-id A --client-id C`. It creates a Keeper login record with `account_id` and `client_id` as custom fields and prints its UID; set `zoom_record_uid` in `.env`. Put the client secret in the record's password field in Keeper. A `client_secret` custom field also works, and wins.
+3. Run `jason zoom --store-app --account-id A --client-id C`. It puts the app at the community's vault path `zoom/app` (a Keeper login record titled with that path, in the folder `jason`, with `account_id` and `client_id` as fields) and prints the path; no `.env` key is needed. It never overwrites an entry already there. Put the client secret in the record's password field in Keeper. A `client_secret` field also works, and wins. A `zoom_record_uid` set in `.env` is still read when the path is empty.
 
 A call the app has no scope for fails with its HTTP status and asks whether the scope is set. Participants need a paid plan; without one, the sync leaves them out.
 

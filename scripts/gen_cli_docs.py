@@ -201,6 +201,7 @@ GROUPS: dict[str, str] = {
     "serve": "Setup & maintenance",
     "daemon": "Setup & maintenance",
     "integrations": "Setup & maintenance",
+    "cadence": "Setup & maintenance",
 }
 
 # Options most commands take; listed once in the intro instead of per command.

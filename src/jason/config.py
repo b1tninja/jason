@@ -237,7 +237,7 @@ class Settings:
     # the operator's own PayHOA membership and unit: a test sent to "me" (kept out of code and fixtures)
     payhoa_my_membership_id: int | None = None
     payhoa_my_unit_id: int | None = None
-    keeper_password: str = ""
+    keeper_password: str = field(default="", repr=False)
     keeper_config: Path = Path(DEFAULT_KEEPER_CONFIG)
     payhoa_org_id: int = field(default_factory=_default_payhoa_org_id)
     smud_db: Path = _in_data("smud.db")

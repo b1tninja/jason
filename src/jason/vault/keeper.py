@@ -272,4 +272,20 @@ class KeeperStore:
         return VaultEntry(path, True, entry.revision, changed, "")
 
 
-__all__ = ["FOLDER", "KeeperAdapter", "KeeperEntry", "KeeperStore", "SdkKeeperAdapter", "record_fields"]
+def vault_names(settings: Any, *, prefix: str = "jason/"):
+    """The vault's paths (names only) for a reading that must never prompt: none, with why, when Keeper's login is
+    not on this machine, when Keeper wants a sign-in, or when it does not answer (``resolver.VaultNames``)."""
+    from jason.vault.resolver import VaultNames, list_names
+
+    try:
+        from jason.secrets import VaultSession, keeper_config_path
+
+        if settings is None or not keeper_config_path(getattr(settings, "keeper_config", None)).is_file():
+            return VaultNames(None, "the vault's login is not on this machine")
+        with VaultSession.from_settings(settings, interactive=False) as session:
+            return list_names(KeeperStore.from_session(session), prefix)
+    except Exception as exc:  # noqa: BLE001 - a vault that does not answer is reported, not raised
+        return VaultNames(None, type(exc).__name__)
+
+
+__all__ = ["FOLDER", "KeeperAdapter", "KeeperEntry", "KeeperStore", "SdkKeeperAdapter", "record_fields", "vault_names"]

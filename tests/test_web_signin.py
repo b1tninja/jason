@@ -240,12 +240,21 @@ def test_default_providers_order_community_then_installation_then_env(monkeypatc
         def email_domains(self):
             return ("example.org",)
 
-    monkeypatch.setattr(signin, "keeper_client", lambda uid: (lambda: Client(uid, "s")))
+    paths = {}
+
+    def loader(uid, path="", source=""):
+        paths[uid] = path
+        return lambda: Client(uid, "s")
+
+    monkeypatch.setattr(signin, "keeper_client", loader)
+    monkeypatch.setattr("jason.community.profile.profile_name", lambda: "oakview")
     monkeypatch.setattr("jason.access.installation_sign_in", lambda root=None: (SignInProvider("mgmt", "R2", domains=("mgmt.example",)),))
     monkeypatch.setattr("jason.community.community", lambda: C((SignInProvider("google", "R1"),)))
     got = signin.default_providers()
     assert [(p.key, p.source, p.domains, p.load().client_id) for p in got] == [
         ("google", "community", ("example.org",), "R1"), ("mgmt", "jason", ("mgmt.example",), "R2")]
+    assert paths == {"R1": "jason/community/oakview/signin/oauth-client/google",          # the vault path first
+                     "R2": "jason/instance/instance/signin/oauth-client/mgmt"}
     monkeypatch.setattr("jason.access.installation_sign_in", lambda root=None: ())
     monkeypatch.setattr("jason.community.community", lambda: C(()))
 
@@ -255,6 +264,7 @@ def test_default_providers_order_community_then_installation_then_env(monkeypatc
     monkeypatch.setattr(signin, "_settings", lambda: S())
     got = signin.default_providers()
     assert [(p.key, p.source, p.load().client_id) for p in got] == [("google", signin.DESKTOP_KEY, "D")]
+    assert paths["D"] == "jason/community/oakview/google-workspace/oauth-client"
 
 
 # --- writes ------------------------------------------------------------------------------------------------------
@@ -375,10 +385,16 @@ def test_access_files_read_and_write(tmp_path):
     assert managers(tmp_path)[0].manages("anything")
     assert providers_from([{"record_uid": "R", "provider": "facebook"}, {"record_uid": ""}, {"record_uid": "R2"}]) == (
         SignInProvider("google-3", "R2"),)
+    vault = "jason/community/oakview/signin/oauth-client/google"
+    assert providers_from([{"key": "google", "vault": vault}]) == (SignInProvider("google", "", vault=vault),)
     path = tmp_path / "sign_in.json"
     write_sign_in(path, SignInProvider("google", "R1", IdentityProvider.GOOGLE, ("x.example",), "Board"))
     write_sign_in(path, SignInProvider("google", "R9"))                                   # same key: replaced
     assert json.loads(path.read_text(encoding="utf-8")) == [{"key": "google", "provider": "google", "record_uid": "R9"}]
+    write_sign_in(path, SignInProvider("google", "", vault=vault))                         # the vault form
+    assert json.loads(path.read_text(encoding="utf-8")) == [{"key": "google", "provider": "google", "vault": vault}]
+    with pytest.raises(ValueError, match="neither"):
+        write_sign_in(path, SignInProvider("google", ""))
 
 
 # --- the admin view (--dev) --------------------------------------------------------------------------------------
@@ -448,19 +464,27 @@ def test_import_client_says_what_it_would_do_without_yes(tmp_path, capsys, monke
     assert not (tmp_path / "community-sign_in.json").exists()
 
 
-def test_import_client_stores_in_keeper_records_it_and_never_prints_the_secret(tmp_path, capsys, monkeypatch):
+def _vault_agent(monkeypatch, store):
+    """A real ``Jason`` whose vault is ``store`` (a MemoryStore): nothing reaches Keeper."""
+    from jason.agent import Jason
+    from jason.config import Settings
+
+    settings = Settings(keeper_username="", payhoa_record_uid="", smud_record_uid="", idoxs_record_uid="",
+                        payhoa_org_id=1, smud_category_id=None, idoxs_category_id=None)
+    agent = Jason(settings=settings)
+    monkeypatch.setattr(agent, "vault_store", lambda: store)
+    return agent
+
+
+def test_import_client_stores_in_the_vault_records_its_path_and_never_prints_the_secret(tmp_path, capsys, monkeypatch,
+                                                                                        memory_vault):
     from jason.commands import sign_in as cmd
 
-    stored = {}
-
-    class Agent:
-        def store_google_client(self, client_id, client_secret, *, title, project_id="", notes=""):
-            stored.update(client_id=client_id, client_secret=client_secret, title=title, project_id=project_id)
-            return "UID-1"
+    agent = _vault_agent(monkeypatch, memory_vault)
 
     @contextmanager
     def factory(args):
-        yield Agent()
+        yield agent
 
     monkeypatch.setattr(cmd, "_target", lambda where: tmp_path / f"{where}-sign_in.json")
     path = _download(tmp_path)
@@ -468,13 +492,58 @@ def test_import_client_stores_in_keeper_records_it_and_never_prints_the_secret(t
                  delete_file=True, yes=True)
     assert cmd.cmd_sign_in(args, factory) == 0
     out = capsys.readouterr().out
-    assert SECRET not in out and "UID-1" in out
-    assert stored == {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": SECRET,
-                      "title": "jason Google sign-in (jason)", "project_id": "proj-1"}
+    where = "jason/instance/instance/signin/oauth-client/jason-google"
+    assert SECRET not in out and where in out and "_record_uid" not in out
+    stored = memory_vault.get(where)
+    assert (stored["client_id"], stored["login"], stored["password"], stored["project_id"]) == (
+        "123-abc.apps.googleusercontent.com", "123-abc.apps.googleusercontent.com", SECRET, "proj-1")
     assert json.loads((tmp_path / "jason-sign_in.json").read_text(encoding="utf-8")) == [
-        {"key": "jason-google", "provider": "google", "record_uid": "UID-1", "domains": ["mgmt.example"],
+        {"key": "jason-google", "provider": "google", "vault": where, "domains": ["mgmt.example"],
          "label": "Management company"}]
     assert not path.exists()                                                          # --delete-file
+    # Create only: a second import to the same path leaves the vault and the file as they are.
+    again = _download(tmp_path)
+    assert cmd.cmd_sign_in(_args(import_client=str(again), for_="jason", yes=True), factory) == 2
+    out = capsys.readouterr().out
+    assert "already holds" in out and SECRET not in out and again.exists()
+    assert memory_vault.describe(where).version == 1
+
+
+def test_a_sign_in_client_reads_its_vault_path_first_then_the_old_record(monkeypatch, memory_vault):
+    import jason.secrets as secrets
+    from jason.vault.keeper import KeeperStore
+
+    where = "jason/community/oakview/signin/oauth-client/google"
+    loaded = []
+
+    class Session:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return None
+
+    class Store:
+        def get(self, path):
+            return memory_vault.get(path)
+
+        def load_by_uid(self, uid):
+            loaded.append(uid)
+            return {"login": "old-client", "password": "old-made-up"}
+
+    monkeypatch.setattr(secrets.VaultSession, "from_settings", classmethod(lambda cls, s, interactive=False: Session()))
+    monkeypatch.setattr(KeeperStore, "from_session", classmethod(lambda cls, session, folder="jason": Store()))
+    monkeypatch.setattr(signin, "_settings", lambda: None)
+    assert signin.keeper_client("R1", where)().client_id == "old-client" and loaded == ["R1"]   # not moved yet
+    memory_vault.put(where, {"client_id": "new-client", "client_secret": SECRET})
+    client = signin.keeper_client("R1", where)()
+    assert (client.client_id, client.client_secret, loaded) == ("new-client", SECRET, ["R1"])   # the vault first
+    assert SECRET not in repr(client)
+    with pytest.raises(Refused, match="no sign-in client"):
+        signin.keeper_client("", "jason/community/oakview/signin/oauth-client/other")()
 
 
 def test_import_client_refuses_a_file_that_is_not_a_client(tmp_path):

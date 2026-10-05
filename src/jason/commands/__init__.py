@@ -74,6 +74,7 @@ MODULES: tuple[str, ...] = (
     "storage",
     "serve",
     "integrations",
+    "cadence",
 )
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
@@ -23,7 +23,7 @@ class IdoxsBillMatch:
     bill_date: date
     amount_cents: int
     pdf_path: Path | None
-    view_bill_token: str = ""
+    view_bill_token: str = field(default="", repr=False)   # the portal session's handle on the bill: never shown
     list_control: str = ""
     pdf_url: str = ""
 

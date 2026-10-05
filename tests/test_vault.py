@@ -467,3 +467,307 @@ def test_a_missing_credential_is_a_value_error_for_the_callers(monkeypatch):
         agent.postscanmail()
     with pytest.raises(ValueError, match="zoom_record_uid"):
         agent.zoom()
+
+
+# ----- every reader through the resolver: the vault path first, then .env, then the caller's own error -----
+
+SEED = "JBSWY3DPEHPK3PXP"                       # a made-up TOTP seed
+LOGIN = {"login": "someone@example.org", "password": VALUE, "oneTimeCode": SEED}
+PORTAL = "exampleportal"
+
+
+class _Client:
+    """Stands in for a portal client: keeps what it was given; no network."""
+
+    def __init__(self, *args, **kwargs):
+        self.args, self.kwargs, self.signed, self.is_authenticated = args, kwargs, None, True
+
+    def login(self, *args, **kwargs):
+        self.signed = (args, kwargs)
+        return True
+
+    def sign_in(self, *args):
+        self.signed = (args, {})
+        return True
+
+    def login_accounts(self):
+        return None
+
+    def close(self):
+        return None
+
+
+class _Profile:
+    def vendor_portals(self):
+        from types import SimpleNamespace
+
+        from jason.community.symbols import PortalPlatform
+
+        return (SimpleNamespace(key=PORTAL, platform=PortalPlatform.FIELDPORTALS, account="made-up-account",
+                                payhoa_words=(), reports=()),)
+
+
+def _switched(monkeypatch, store, uids):
+    from jason.agent import Jason
+
+    agent = _agent_with(monkeypatch, store, uids)
+    monkeypatch.setattr(Jason, "community", property(lambda self: _Profile()))
+    for target in ("jason.agent.PayhoaClient", "jason.agent.SmudClient", "jason.agent.IdoxsClient",
+                   "jason.fieldportals.client.FieldPortals", "jason.community.accela.SacramentoCitizenAccess"):
+        monkeypatch.setattr(target, _Client)
+    return agent
+
+
+def _given(client):
+    return tuple((client.signed[0] if client.signed and client.signed[0] else client.args)[:2])
+
+
+CALLERS = [   # method, integration, name, its .env key, and the caller's error when neither holds it
+    ("payhoa", "payhoa", "login", "payhoa_record_uid", ValueError, "payhoa_record_uid is not set"),
+    ("payhoa_test", "payhoa", "test-login", "payhoa_test_record_uid", ValueError, "payhoa_test_record_uid is not set"),
+    ("smud", "smud", "login", "smud_record_uid", ValueError, "smud_record_uid is not set in .env"),
+    ("idoxs", "idoxs", "login", "idoxs_record_uid", ValueError, "idoxs_record_uid is not set in .env"),
+    ("vendor_portal", "vendor-portal", PORTAL, f"{PORTAL}_record_uid", LookupError,
+     f"{PORTAL}_record_uid is not set in .env"),
+    ("citizen_access", "accela", "login", "accela_record_uid", LookupError, "accela_record_uid is not set"),
+]
+
+
+def _call(agent, method):
+    return getattr(agent, method)(PORTAL) if method == "vendor_portal" else getattr(agent, method)()
+
+
+@pytest.mark.parametrize("method, integration, name, env_key, error, words", CALLERS)
+def test_each_reader_takes_the_vault_path_first(monkeypatch, memory_vault, method, integration, name, env_key, error,
+                                                words):
+    memory_vault.put(f"jason/community/oakview/{integration}/{name}", {**LOGIN, "pet": "made-up-answer"})
+    agent = _switched(monkeypatch, memory_vault, {env_key: "FAKEUID"})     # .env names a record too: the vault wins
+    client = _call(agent, method)
+    assert _given(client) == ("someone@example.org", VALUE)
+    if method == "payhoa":
+        assert client.signed[1]["totp_code"].isdigit()                     # a fresh code from the seed
+    if method == "idoxs":
+        assert client.kwargs["security_answers"] == {"pet": "made-up-answer"}
+
+
+@pytest.mark.parametrize("method, integration, name, env_key, error, words", CALLERS)
+def test_each_reader_falls_back_to_the_env_record_and_logs_only_the_key(monkeypatch, caplog, method, integration,
+                                                                        name, env_key, error, words):
+    from jason.vault import resolver
+
+    resolver._noted.discard(env_key)
+    store = KeeperStore(FakeKeeper(outside={"FAKEUID": LOGIN}))
+    agent = _switched(monkeypatch, store, {env_key: "FAKEUID"})
+    with caplog.at_level(logging.WARNING, logger="jason.vault"):
+        assert _given(_call(agent, method)) == ("someone@example.org", VALUE)
+    assert env_key in caplog.text and f"jason/community/oakview/{integration}/{name}" in caplog.text
+    assert VALUE not in caplog.text and "FAKEUID" not in caplog.text and SEED not in caplog.text
+
+
+@pytest.mark.parametrize("method, integration, name, env_key, error, words", CALLERS)
+def test_each_reader_keeps_its_error_when_neither_holds_it(monkeypatch, memory_vault, method, integration, name,
+                                                           env_key, error, words):
+    agent = _switched(monkeypatch, memory_vault, {})
+    with pytest.raises(error, match=words) as missed:
+        _call(agent, method)
+    assert f"jason/community/oakview/{integration}/{name}" in str(missed.value)
+
+
+def test_a_portal_with_only_a_vault_entry_is_a_bill_source(monkeypatch, memory_vault):
+    agent = _switched(monkeypatch, memory_vault, {})
+    agent._bills, agent._idoxs_bills = object(), object()          # the bill stores are not opened
+    assert [s.name for s in agent.bill_source_registry().sources] == ["smud", "idoxs"]
+    memory_vault.put(f"jason/community/oakview/vendor-portal/{PORTAL}", LOGIN)
+    assert [s.name for s in agent.bill_source_registry().sources] == ["smud", "idoxs", PORTAL]
+
+    class Refuses:                                                  # a .env record UID answers without the vault
+        def describe(self, path):
+            raise AssertionError("the vault is not asked")
+
+    other = _switched(monkeypatch, Refuses(), {f"{PORTAL}_record_uid": "FAKEUID"})
+    assert other.credential_configured("vendor-portal", PORTAL)
+
+
+def _settings_for(uids=None, **named):
+    from jason.config import Settings
+
+    base = {"keeper_username": "", "payhoa_record_uid": "", "smud_record_uid": "", "idoxs_record_uid": "",
+            "payhoa_org_id": 1, "smud_category_id": None, "idoxs_category_id": None, "record_uids": uids or {}}
+    base.update(named)
+    return Settings(**base)
+
+
+def _keeper_is(monkeypatch, store):
+    monkeypatch.setattr(KeeperStore, "from_session", classmethod(lambda cls, session, folder="jason": store))
+    monkeypatch.setattr("jason.community.profile.profile_name", lambda: "oakview")
+
+
+def test_the_settings_readers_take_the_vault_path_first(monkeypatch, memory_vault):
+    """``get_*_credentials(settings=...)`` (``payhoa_session``, scripts): the vault first, then .env, then the old error."""
+    from jason import secrets
+
+    _keeper_is(monkeypatch, memory_vault)
+    for integration, name in (("payhoa", "login"), ("accela", "login"), ("idoxs", "login"),
+                              ("vendor-portal", PORTAL)):
+        memory_vault.put(f"jason/community/oakview/{integration}/{name}", {**LOGIN, "pet": "made-up-answer"})
+    s = _settings_for()
+    payhoa = secrets.get_payhoa_credentials(settings=s)
+    assert (payhoa.email, payhoa.password) == ("someone@example.org", VALUE) and payhoa.totp_code.isdigit()
+    assert secrets.get_accela_credentials(settings=s).password == VALUE
+    assert secrets.get_vendor_credentials(PORTAL, settings=s).password == VALUE
+    idoxs = secrets.get_idoxs_credentials(settings=s)
+    assert idoxs.security_answers == {"pet": "made-up-answer"}
+    for creds in (payhoa, idoxs, secrets.get_accela_credentials(settings=s)):
+        assert VALUE not in repr(creds) and SEED not in repr(creds)
+
+
+def test_the_settings_readers_fall_back_and_keep_their_errors(monkeypatch):
+    from jason import secrets
+
+    _keeper_is(monkeypatch, KeeperStore(FakeKeeper(outside={"FAKEUID": LOGIN})))
+    s = _settings_for(payhoa_record_uid="FAKEUID")                      # a named attribute is a .env key too
+    assert secrets.get_payhoa_credentials(settings=s).email == "someone@example.org"
+    assert secrets.get_vendor_credentials(PORTAL, settings=_settings_for({f"{PORTAL}_record_uid": "FAKEUID"})).login \
+        == "someone@example.org"
+    _keeper_is(monkeypatch, MemoryStore())
+    empty = _settings_for()
+    with pytest.raises(ValueError, match="payhoa_record_uid is not set"):
+        secrets.get_payhoa_credentials(settings=empty)
+    with pytest.raises(LookupError, match="accela_record_uid is not set"):
+        secrets.get_accela_credentials(settings=empty)
+    with pytest.raises(LookupError, match=f"{PORTAL}_record_uid is not set in .env"):
+        secrets.get_vendor_credentials(PORTAL, settings=empty)
+    with pytest.raises(ValueError, match="idoxs_record_uid is not set"):
+        secrets.get_idoxs_credentials(settings=empty)
+
+
+def test_the_google_client_comes_from_the_vault_first(monkeypatch, memory_vault):
+    from types import SimpleNamespace
+
+    from jason.google.errors import GoogleError
+    from jason.google.session import oauth_client
+
+    monkeypatch.setattr("jason.community.profile.profile_name", lambda: "oakview")
+    record = SimpleNamespace(custom=[{"label": "client_id", "value": ["old-id"]},
+                                     {"label": "client_secret", "value": ["old-made-up"]}])
+    old = SimpleNamespace(load_record=lambda uid: record)
+    settings = SimpleNamespace(google_oauth_record_uid="FAKEUID")
+    assert oauth_client(settings, old, store=memory_vault) == ("old-id", "old-made-up")          # not moved yet
+    memory_vault.put("jason/community/oakview/google-workspace/oauth-client",
+                     {"client_id": "new-id", "client_secret": VALUE})
+    assert oauth_client(settings, old, store=memory_vault) == ("new-id", VALUE)
+    assert oauth_client(SimpleNamespace(), old, store=memory_vault) == ("new-id", VALUE)        # no .env key at all
+    with pytest.raises(GoogleError, match="google_oauth_record_uid is not set") as missed:
+        oauth_client(SimpleNamespace(), old, store=MemoryStore())
+    assert "jason/community/oakview/google-workspace/oauth-client" in str(missed.value)
+
+
+def test_store_zoom_app_writes_the_vault_path_create_only(monkeypatch, memory_vault, tmp_path, capsys):
+    import jason.cli as cli
+
+    agent = _agent_with(monkeypatch, memory_vault, {})
+    path = agent.store_zoom_app("made-up-account", "made-up-client", by="A. Admin")
+    assert path == "jason/community/oakview/zoom/app"
+    stored = memory_vault.get(path)
+    assert (stored["account_id"], stored["client_id"], "password" in stored) == ("made-up-account", "made-up-client",
+                                                                                 False)
+    assert memory_vault.describe(path).by == "A. Admin"
+    with pytest.raises(VersionConflict):
+        agent.store_zoom_app("another", "another")
+
+    class _Ctx:
+        def __enter__(self):
+            return agent
+
+        def __exit__(self, *a):
+            return None
+
+    monkeypatch.setattr(cli, "_agent", lambda args: _Ctx())
+    monkeypatch.setattr("jason.config.Settings.load",
+                        classmethod(lambda cls, path=None: _settings_for(payhoa_catalog=tmp_path / "payhoa.db")))
+    args = argparse.Namespace(env=None, store_app=True, account_id="made-up-account", client_id="made-up-client",
+                              by="")
+    assert cli.cmd_zoom(args) == 2                                    # the path is set: left alone
+    assert "already holds jason/community/oakview/zoom/app" in capsys.readouterr().out
+    memory_vault.delete(path)
+    assert cli.cmd_zoom(args) == 0
+    out = capsys.readouterr().out
+    assert "jason/community/oakview/zoom/app" in out and "set zoom_record_uid" not in out
+    assert "created Keeper record" not in out and "made-up-account" not in out
+
+
+def test_connections_count_a_credential_held_only_in_the_vault(tmp_path):
+    from types import SimpleNamespace
+
+    from jason.integrations import connections as cn
+    from jason.integrations.registry import ConnectionState, integration
+    from jason.vault.resolver import VaultNames
+
+    kc = tmp_path / "keeper-config.json"
+    kc.write_text("{}", encoding="utf-8")
+    settings = SimpleNamespace(keeper_config=kc, record_uid=lambda name: "")       # .env names nothing
+    zoom, payhoa = integration("zoom"), integration("payhoa")
+    held = VaultNames(frozenset({"jason/community/oakview/zoom/app"}))
+    assert not cn.state_of(zoom, community="oakview", settings=settings).configured   # no vault asked: as before
+    reading = cn.state_of(zoom, community="oakview", settings=settings, vault=held)
+    assert reading.configured and "jason/community/oakview/zoom/app" in reading.why
+    assert not cn.state_of(payhoa, community="oakview", settings=settings, vault=held).configured
+    unanswered = cn.state_of(zoom, community="oakview", settings=settings, vault=VaultNames(None, "KeeperAuthRequired"))
+    assert unanswered.state is ConnectionState.NOT_SET_UP and "could not be asked (KeeperAuthRequired)" in unanswered.why
+    portals = cn.probe(integration("vendor-portals"), settings, lambda: _Profile(),
+                       cn.VaultAsked("oakview", VaultNames(frozenset({f"jason/community/oakview/vendor-portal/{PORTAL}"}))))
+    assert portals.configured
+
+
+def test_vault_names_never_prompts(tmp_path):
+    from types import SimpleNamespace
+
+    from jason.vault.keeper import vault_names
+
+    assert vault_names(SimpleNamespace(keeper_config=tmp_path / "none.json")).problem == \
+        "the vault's login is not on this machine"
+    kc = tmp_path / "keeper-config.json"
+    kc.write_text("{}", encoding="utf-8")
+    asked = vault_names(SimpleNamespace(keeper_config=kc, keeper_username="", keeper_password=""))
+    assert not asked.answered and asked.problem == "KeeperAuthRequired"        # conftest: Keeper wants a sign-in
+
+
+def test_onboarding_counts_a_setting_moved_to_the_vault():
+    from types import SimpleNamespace
+
+    from jason.community.onboarding import Context, Setting
+    from jason.vault.resolver import VaultNames
+
+    settings = SimpleNamespace(payhoa_record_uid="", record_uid=lambda name: "")
+    ctx = lambda vault: Context(community=None, settings=settings, profile="oakview", vault=vault)   # noqa: E731
+    assert not Setting("payhoa_record_uid").run(ctx(None)).passed
+    found = Setting("payhoa_record_uid").run(ctx(VaultNames(frozenset({PATH}))))
+    assert found.passed and PATH in found.evidence
+    missed = Setting("payhoa_record_uid").run(ctx(VaultNames(None, "KeeperAuthRequired")))
+    assert not missed.passed and "could not be asked" in missed.evidence
+
+
+def test_citizen_access_sign_in_reads_the_vault_and_stays_anonymous_without_one(monkeypatch, memory_vault, capsys):
+    import jason.cli as cli
+    from jason import secrets
+
+    _keeper_is(monkeypatch, memory_vault)
+    monkeypatch.setattr("jason.config.Settings.load", classmethod(lambda cls, path=None: _settings_for()))
+    client = _Client()
+    cli._sign_in_citizen_access(client)
+    assert client.signed is None                                            # neither: anonymous, as before
+    memory_vault.put("jason/community/oakview/accela/login", LOGIN)
+    cli._sign_in_citizen_access(client)
+    assert _given(client) == ("someone@example.org", VALUE) and VALUE not in capsys.readouterr().out
+
+    def no_keeper(*a, **k):
+        raise secrets.KeeperAuthRequired("sign in")
+
+    monkeypatch.setattr(secrets, "resolve_credential", no_keeper)
+    quiet = _Client()
+    cli._sign_in_citizen_access(quiet)                                      # no .env record: anonymous
+    assert quiet.signed is None
+    monkeypatch.setattr("jason.config.Settings.load",
+                        classmethod(lambda cls, path=None: _settings_for(accela_record_uid="FAKEUID")))
+    with pytest.raises(secrets.KeeperAuthRequired):
+        cli._sign_in_citizen_access(_Client())                             # an .env record: fail fast as before

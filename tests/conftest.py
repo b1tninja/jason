@@ -24,6 +24,18 @@ except Exception as exc:  # noqa: BLE001 - a JASON_TEMP_DIR that cannot be used 
 os.environ["JASON_CONFIG"] = str(Path(__file__).parent / "fixtures" / "no-user-config.env")
 
 
+@pytest.fixture(autouse=True)
+def _no_keeper_login(monkeypatch):
+    """A test never signs in to Keeper: a session it opens wants a sign-in (``KeeperAuthRequired``), as a machine with
+    no Keeper login would. A test that fakes Keeper sets its own ``login_to_vault``."""
+    import jason.secrets as secrets
+
+    def refuse(**kwargs):
+        raise secrets.KeeperAuthRequired("the tests never sign in to Keeper")
+
+    monkeypatch.setattr(secrets, "login_to_vault", refuse)
+
+
 @pytest.fixture
 def memory_vault():
     """An empty in-memory credential vault (``jason.vault.MemoryStore``): a test never reaches Keeper."""

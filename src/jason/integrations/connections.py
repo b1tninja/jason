@@ -8,8 +8,10 @@ active profile, ``default_data_dir(key)`` for another; the installation's at ``<
 the store lock (``jason.locks``).
 
 ``state_of`` derives today's state from what exists now, since nothing writes the rows yet but a check:
-- a credential configured: a Keeper record UID set in the settings, a sign-in client named, a folder there. Only whether;
-  a value is never read, kept, or printed (a token file is looked at for being there, never opened);
+- a credential configured: a Keeper record UID set in the settings, a sign-in client named, a folder there, or (when the
+  caller passes the vault's names) an entry at the credential's vault path. Only whether; a value is never read, kept,
+  or printed (a token file is looked at for being there, never opened). The vault is listed without prompting; when it
+  does not answer, the ``.env`` test stands alone and the reading says so;
 - the vault's login on this machine (Keeper's persistent config) for every credential the vault holds;
 - the Status screen's reading of each of its sources (``jason.web.extra.status``): a failed job or refresh, a sign-in
   failure, a last read;
@@ -222,75 +224,125 @@ def _keeper_login(settings: Any) -> bool:
     return bool(path) and Path(path).is_file()
 
 
-def _vault_probe(settings: Any, names: tuple[str, ...], what: str) -> Probe:
-    """A credential kept as Keeper records named ``<name>_record_uid``: configured when any is set."""
-    set_ = [n for n in names if _record_set(settings, n)]
+@dataclass(frozen=True)
+class VaultAsked:
+    """What a probe knows of the vault: the community's key and the vault's names (``resolver.VaultNames``), or
+    ``names`` None when the vault was not asked at all (the ``.env`` test alone, said nowhere)."""
+
+    community: str = ""
+    names: Any = None
+
+    def path(self, name: str, portal_keys: Iterable[str] = ()) -> str:
+        """The vault path of the credential ``<name>_record_uid`` names (``resolver.legacy_record``), or ""."""
+        from jason.vault.resolver import legacy_record
+
+        row = legacy_record(f"{name}_record_uid", portal_keys)
+        return row.path(self.community) if row is not None and self.community else ""
+
+    def holds(self, path: str) -> bool:
+        return bool(path) and self.names is not None and self.names.has(path)
+
+    def under(self, prefix: str) -> bool:
+        return self.names is not None and bool(self.names.under(prefix))
+
+    def caveat(self) -> str:
+        """Why only ``.env`` was tested, when the vault was asked and did not answer; "" otherwise."""
+        if self.names is None or self.names.answered:
+            return ""
+        return f"; the vault could not be asked ({self.names.problem}), so only .env was tested"
+
+
+def _vault_probe(settings: Any, names: tuple[str, ...], what: str, vault: VaultAsked | None = None,
+                 portal_keys: Iterable[str] = ()) -> Probe:
+    """A credential kept at its vault path, or as a Keeper record named ``<name>_record_uid``: configured when any
+    is set in either place (names only)."""
+    vault = vault or VaultAsked()
+    portals = tuple(portal_keys)
+    in_vault = [n for n in names if vault.holds(vault.path(n, portals))]
+    set_ = [n for n in names if n in in_vault or _record_set(settings, n)]
     if not set_:
-        return Probe(False, why=f"no {what} is named in the settings")
+        return Probe(False, why=f"no {what} is named in the settings or held in the vault{vault.caveat()}")
     account = ", ".join(set_) if len(names) > 1 else ""
-    why = f"{len(set_)} of {len(names)} set" if len(names) > 1 else f"the {what} is named in the settings"
-    return Probe(True, _keeper_login(settings), account, why)
+    if len(names) > 1:
+        why = f"{len(set_)} of {len(names)} set"
+    elif in_vault:
+        why = f"the vault holds the {what} ({vault.path(names[0], portals)})"
+    else:
+        why = f"the {what} is named in the settings"
+    return Probe(True, _keeper_login(settings), account, why + vault.caveat())
 
 
-def _google(settings: Any, community: Any) -> Probe:
-    client = _record_set(settings, "google_oauth") or bool(
+def _google(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
+    vault = vault or VaultAsked()
+    in_vault = vault.holds(vault.path("google_oauth"))
+    via_vault = in_vault or _record_set(settings, "google_oauth")
+    client = via_vault or bool(
         getattr(settings, "google_oauth_client_file", None) and Path(settings.google_oauth_client_file).is_file())
     if not client:
-        return Probe(False, why="no OAuth client is named in the settings")
+        return Probe(False, why="no OAuth client is named in the settings or held in the vault" + vault.caveat())
     token = getattr(settings, "google_oauth_token_file", None)
     has_token = bool(token) and Path(token).is_file()
-    via_vault = _record_set(settings, "google_oauth")
-    return Probe(True, _keeper_login(settings) if via_vault else None, why="the OAuth client is named in the settings",
+    why = "the vault holds the OAuth client" if in_vault else "the OAuth client is named in the settings"
+    return Probe(True, _keeper_login(settings) if via_vault else None, why=why + vault.caveat(),
                  google_token=has_token)
 
 
-def _sign_in(settings: Any, community: Any) -> Probe:
+def _sign_in(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
+    from jason.vault.paths import ROOT
+
+    vault = vault or VaultAsked()
     try:
         clients = tuple(community().sign_in()) if community is not None else ()
     except Exception:  # noqa: BLE001 - a profile that cannot load: not set up, with why
         return Probe(False, why="the profile's sign-in clients could not be read")
-    if not clients and not _record_set(settings, "google_signin"):
-        return Probe(False, why="no sign-in client is named for the community")
+    held = vault.community and vault.under(f"{ROOT}/community/{vault.community}/signin/")
+    if not clients and not held and not _record_set(settings, "google_signin") \
+            and not vault.holds(vault.path("google_signin")):
+        return Probe(False, why="no sign-in client is named for the community" + vault.caveat())
     return Probe(True, _keeper_login(settings), ", ".join(c.key for c in clients),
-                 f"{len(clients) or 1} sign-in client(s) named")
+                 f"{len(clients) or 1} sign-in client(s) named" + vault.caveat())
 
 
-def _instance_sign_in(settings: Any, community: Any) -> Probe:
+def _instance_sign_in(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
+    from jason.vault.paths import INSTANCE as VAULT_INSTANCE, ROOT
+
+    vault = vault or VaultAsked()
     try:
         from jason.access import installation_sign_in
 
         clients = installation_sign_in()
     except Exception:  # noqa: BLE001
         clients = ()
-    if not clients:
-        return Probe(False, why="no installation sign-in client is named (data/access/sign_in.json)")
-    return Probe(True, _keeper_login(settings), ", ".join(c.key for c in clients), f"{len(clients)} client(s) named")
+    if not clients and not vault.under(f"{ROOT}/instance/{VAULT_INSTANCE}/signin/"):
+        return Probe(False, why="no installation sign-in client is named (data/access/sign_in.json)" + vault.caveat())
+    return Probe(True, _keeper_login(settings), ", ".join(c.key for c in clients),
+                 f"{len(clients) or 1} client(s) named" + vault.caveat())
 
 
-def _portals(settings: Any, community: Any) -> Probe:
+def _portals(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
     try:
         keys = tuple(p.key for p in community().vendor_portals()) if community is not None else ()
     except Exception:  # noqa: BLE001
         return Probe(False, why="the profile's portal rows could not be read")
     if not keys:
         return Probe(False, why="the profile names no vendor portal")
-    return _vault_probe(settings, keys, "portal login")
+    return _vault_probe(settings, keys, "portal login", vault, keys)
 
 
-def _vault(settings: Any, community: Any) -> Probe:
+def _vault(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
     if _keeper_login(settings):
         return Probe(True, True, why="the vault's login is on this machine")
     return Probe(True, False, why="the vault's login is not on this machine")
 
 
-def _law_library(settings: Any, community: Any) -> Probe:
+def _law_library(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
     home = getattr(settings, "lawlibrary_home", None)
     if home and Path(home).is_dir():
         return Probe(True, why="the lawlibrary checkout is there")
     return Probe(False, why="no lawlibrary checkout at lawlibrary_home")
 
 
-def _bedrock(settings: Any, community: Any) -> Probe:
+def _bedrock(settings: Any, community: Any, vault: VaultAsked | None = None) -> Probe:
     aws = Path.home() / ".aws"
     if any(os.environ.get(k) for k in ("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")) \
             or (aws / "credentials").is_file() or (aws / "config").is_file():
@@ -301,11 +353,11 @@ def _bedrock(settings: Any, community: Any) -> Probe:
 PROBES = {
     "google-workspace": _google,
     "sign-in": _sign_in,
-    "payhoa": lambda s, c: _vault_probe(s, ("payhoa",), "PayHOA login record"),
-    "zoom": lambda s, c: _vault_probe(s, ("zoom",), "Zoom app record"),
-    "postscanmail": lambda s, c: _vault_probe(s, ("postscanmail",), "API key record"),
-    "utilities": lambda s, c: _vault_probe(s, ("smud", "idoxs"), "utility login"),
-    "accela": lambda s, c: _vault_probe(s, ("accela",), "portal login record"),
+    "payhoa": lambda s, c, v=None: _vault_probe(s, ("payhoa",), "PayHOA login record", v),
+    "zoom": lambda s, c, v=None: _vault_probe(s, ("zoom",), "Zoom app record", v),
+    "postscanmail": lambda s, c, v=None: _vault_probe(s, ("postscanmail",), "API key record", v),
+    "utilities": lambda s, c, v=None: _vault_probe(s, ("smud", "idoxs"), "utility login", v),
+    "accela": lambda s, c, v=None: _vault_probe(s, ("accela",), "portal login record", v),
     "vendor-portals": _portals,
     "vault": _vault,
     "instance-sign-in": _instance_sign_in,
@@ -314,10 +366,11 @@ PROBES = {
 }
 
 
-def probe(integ: Integration, settings: Any = None, community: Any = None) -> Probe:
-    """What the settings and the disk say of the integration's credential; one with none to configure is configured."""
+def probe(integ: Integration, settings: Any = None, community: Any = None, vault: VaultAsked | None = None) -> Probe:
+    """What the settings, the disk, and (with ``vault``) the vault's names say of the integration's credential; one
+    with none to configure is configured."""
     fn = PROBES.get(integ.key)
-    return fn(settings, community) if fn is not None else Probe(True, why="nothing to configure")
+    return fn(settings, community, vault) if fn is not None else Probe(True, why="nothing to configure")
 
 
 # --- the state ---------------------------------------------------------------------------------------------------------
@@ -342,16 +395,18 @@ def _later(a: str, b: str) -> bool:
 
 
 def state_of(integ: Integration, *, community: str, settings: Any = None, rows: Iterable[dict[str, Any]] = (),
-             connection: Connection | None = None, profile: Any = None) -> Reading:
+             connection: Connection | None = None, profile: Any = None, vault: Any = None) -> Reading:
     """The integration's state from what exists now. ``rows`` are the Status screen's rows for its sources
     (``status.source_rows``); ``profile`` is the active ``Community`` getter (``jason.community.community``), asked
-    only by the integrations whose instances are profile rows."""
+    only by the integrations whose instances are profile rows. ``vault`` is the vault's names
+    (``resolver.VaultNames``, from ``jason.vault.keeper.vault_names``, which never prompts): a credential at its vault
+    path counts as set too; a vault that did not answer leaves the ``.env`` test, and the reading says so."""
     from jason.web.extra import status as st
 
     conn = connection or new_connection(integ, community)
     keys = {c.source_key for c in integ.sources}
     mine = tuple(r for r in rows if r.get("key") in keys)
-    found = probe(integ, settings, profile)
+    found = probe(integ, settings, profile, VaultAsked(community, vault) if vault is not None else None)
     account = conn.account or found.account
 
     def reading(state: ConnectionState, why: str) -> Reading:
@@ -388,15 +443,16 @@ def state_of(integ: Integration, *, community: str, settings: Any = None, rows: 
 
 
 def readings(community: str, *, scope: Scope, settings: Any = None, root: Path | None = None,
-             now: datetime | None = None, path: Path | None = None, profile: Any = None) -> list[Reading]:
+             now: datetime | None = None, path: Path | None = None, profile: Any = None,
+             vault: Any = None) -> list[Reading]:
     """Every ``scope`` integration's reading for ``community``: its stored row, the Status rows of its sources read
-    from the data folder ``root`` (disk only), and what the settings say."""
+    from the data folder ``root`` (disk only), what the settings say, and, given ``vault``, the vault's names."""
     from jason.web.extra import status as st
 
     stored = load(community, path)
     rows = st.source_rows(Path(root), settings=settings, now=now) if root is not None else []
     return [state_of(i, community=community, settings=settings, rows=rows, connection=stored.get(i.key),
-                     profile=profile)
+                     profile=profile, vault=vault)
             for i in REGISTRY if i.scope is scope]
 
 
@@ -409,6 +465,6 @@ def below_floor(integ: Integration, override: ScheduleOverride) -> bool:
     return every is not None and floor is not None and every < floor
 
 
-__all__ = ["FILE", "INSTANCE", "Connection", "PROBES", "Probe", "Reading", "ScheduleOverride", "below_floor",
+__all__ = ["FILE", "INSTANCE", "Connection", "PROBES", "Probe", "Reading", "ScheduleOverride", "VaultAsked", "below_floor",
            "default_vault_path", "load", "new_connection", "probe", "readings", "record_check", "save", "state_of",
            "store_path", "vault_path"]

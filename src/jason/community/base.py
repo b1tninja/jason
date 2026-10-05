@@ -744,15 +744,18 @@ class IdentityProvider(Enum):
 
 @dataclass(frozen=True)
 class SignInProvider:
-    """One way to sign in to the console for this community: the identity provider, the Keeper record holding its
-    OAuth client (``client_id``, ``client_secret``), and the email domains whose accounts it accepts (empty: the
-    community's ``email_domains``). ``key`` names it when there is more than one; ``label`` is the button's words."""
+    """One way to sign in to the console for this community: the identity provider, where its OAuth client
+    (``client_id``, ``client_secret``) is kept, and the email domains whose accounts it accepts (empty: the
+    community's ``email_domains``). ``key`` names it when there is more than one; ``label`` is the button's words.
+    The client is read from the vault path ``vault`` (empty: ``signin/oauth-client/<key>``), else from the Keeper record
+    ``record_uid`` (the older form)."""
 
     key: str
     record_uid: str
     provider: IdentityProvider = IdentityProvider.GOOGLE
     domains: tuple[str, ...] = ()
     label: str = ""
+    vault: str = ""
 
 
 @dataclass(frozen=True)

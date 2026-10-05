@@ -139,6 +139,7 @@ class Context:
     settings: Any = None
     profile: str = ""                        # the active profile's name: its private facts file (``Fact``)
     asks: tuple[Any, ...] = ()               # the intake questions (``Settled``)
+    vault: Any = None                        # the vault's names (``resolver.VaultNames``), or None: not asked (``Setting``)
 
 
 @dataclass(frozen=True)
@@ -250,7 +251,9 @@ class Private:
 
 @dataclass(frozen=True)
 class Setting:
-    """A setting is set (a Keeper record UID or a token file). Only whether it is set is reported."""
+    """A setting is set (a Keeper record UID or a token file). Only whether it is set is reported. A ``*_record_uid``
+    setting is also set when the vault holds the credential at the path that key moves to (``jason vault migrate``),
+    when the context carries the vault's names."""
 
     name: str
 
@@ -261,7 +264,18 @@ class Setting:
             value = getattr(settings, self.name, "") or ""
             if not value and self.name.endswith("_record_uid") and hasattr(settings, "record_uid"):
                 value = settings.record_uid(self.name[: -len("_record_uid")])
-        return Finding(bool(str(value).strip()), f"setting {self.name}: {'set' if value else 'not set'}")
+        if str(value).strip():
+            return Finding(True, f"setting {self.name}: set")
+        if self.name.endswith("_record_uid") and ctx.vault is not None:
+            from jason.vault.resolver import legacy_record
+
+            row = legacy_record(self.name)
+            path = row.path(ctx.profile) if row is not None and ctx.profile else ""
+            if path and ctx.vault.has(path):
+                return Finding(True, f"setting {self.name}: in the vault at {path}")
+            if not ctx.vault.answered:
+                return Finding(False, f"setting {self.name}: not set (the vault could not be asked: {ctx.vault.problem})")
+        return Finding(False, f"setting {self.name}: not set")
 
 
 FACTS = "facts"                              # the key in ``data/spec/<profile>.json`` that holds answered facts

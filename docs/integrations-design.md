@@ -12,7 +12,7 @@ Every credential is the installation's. `.env` names a Keeper record per service
 | Google Workspace | OAuth **Desktop** client and a refresh token; Tasks, Vault, Photos each their own token | client in Keeper `google_oauth_record_uid`; tokens in `secrets/*.json` | installation |
 | Console sign-in | OAuth Web client (OpenID Connect, PKCE) | Keeper records named in `data/spec/<profile>/sign_in.json` and `data/access/sign_in.json` | **per community** and per installation |
 | PayHOA | username, password, a TOTP seed | Keeper `payhoa_record_uid`; org id from the profile | installation (org id per community) |
-| Zoom | Server-to-Server OAuth (account id, client id, secret) | Keeper `zoom_record_uid` (`jason zoom --store-app`) | installation |
+| Zoom | Server-to-Server OAuth (account id, client id, secret) | Keeper `zoom_record_uid` (`jason zoom --store-app` now writes the vault path `zoom/app`) | installation |
 | PostScanMail | API key | Keeper `postscanmail_record_uid` (a stray `PostScan_Mail_API_Key.json` also sits, git-ignored, in the checkout: move it to Keeper and delete it) | installation |
 | SMUD, the City's utility billing (i-doxs), Accela, the signed-in vendor portals | username and password (i-doxs adds security questions) | a Keeper record each | installation |
 | County sources, public vendor portals, the law library, local models | none | — | installation cache, per-community stores |
@@ -192,11 +192,14 @@ Each integration declares its limits, a default cadence, a **floor** (the fastes
    - **`jason integrations list` and `check`**: `check --live` asks a person at a terminal and runs one small read (Google, PayHOA, Zoom, the local models), and records the result on the connection.
    - **Not yet:** a Status row for calendar, tasks, `idoxs`, and the vendor portals. The vendor portals' store keeps no last-read stamp.
 2. The `SecretStore` interface with the Keeper backend, vault paths, and `jason vault migrate`. Per-community lookups for Google, Zoom, PayHOA, and the portals.
-   **Built 2026-10-05** (`src/jason/vault/`), except the per-community lookups:
+   **Built 2026-10-05** (`src/jason/vault/`), with every credential reader on the vault path (the Google tokens wait for step 3):
    - **The mapping:** a vault path is a Keeper record whose title is the path, in a folder named `jason` at the top of the vault (user or shared folder; subfolders count). A record outside that folder is never read as an entry. Two records with one title are an error. `login`, `password`, `url`, and `oneTimeCode` are the record's typed fields; any other field is a masked custom field with its name as the label. The version is the record's Keeper revision.
    - **The fallback:** `credential(community, integration, name)` reads the path first, then the record its `.env` key names (`resolver.LEGACY`; a portal's `<key>_record_uid` by the profile's portal rows), logging the key as deprecated.
-   - **Switched so far:** PostScanMail (`postscanmail/api-key`) and Zoom (`zoom/app`). PayHOA, SMUD, i-doxs, Accela, the vendor portals, the Google client, and console sign-in still read their `.env` record UID.
-   - **Tests:** `MemoryStore` and a fake Keeper.
+   - **Switched (every reader):** PayHOA (`payhoa/login`, `payhoa/test-login`), SMUD and i-doxs (`smud/login`, `idoxs/login`), Accela (`accela/login`), PostScanMail (`postscanmail/api-key`), Zoom (`zoom/app`), the vendor portals (`vendor-portal/<key>`; a bill source counts one by `.env` or `describe`, never a value), and the Google client (`google-workspace/oauth-client`), through `Jason.credential` or, without an agent, `secrets.resolve_credential` (the `get_*_credentials` helpers, `payhoa_session`). A miss in both raises the caller's old error, naming the path too.
+   - **Console sign-in:** each client reads `signin/oauth-client/<key>` (community or instance) first, then its row's `record_uid`; the `.env` fallback reads the path its key migrates to. `jason sign-in --import-client` and `jason zoom --store-app` write the vault path (create only) and print it; a `sign_in.json` row names it as `vault`.
+   - **"Credential set":** `jason integrations list`/`check` and `jason onboard` also count an entry at the path, from the vault's names listed without a prompt (`vault.keeper.vault_names`); when Keeper wants a sign-in, the `.env` test stands and the reading says so.
+   - **Left on `.env`:** the Google token files (one set for the installation, `google_oauth_token_file`; a token per community and account in the vault is build step 3); the `.env` sign-in fallback is offered only while its key is set (after `vault migrate`, add a `sign_in.json` row naming the path); `jason onboard`'s session and the MCP onboarding tools test `.env` only.
+   - **Tests:** `MemoryStore` and a fake Keeper; no test signs in to Keeper (`conftest`).
 3. Google Workspace as a Web client per community, with the browser sign-in from the console and tokens by account.
 4. The console's dialogs ([handoff](console/handoff-instance-and-integrations.md)), each over `jason integrations`.
 5. Later, with containerization: the backend swap (SSM or Secrets Manager; OpenBao off AWS).

@@ -12,7 +12,7 @@ from xml.etree import ElementTree
 
 import pytest
 
-from jason import batches, jobs, serve
+from jason import batches, jobs, scheduler, serve
 from jason.locks import Resource, ResourceBusy, account, hold, holders
 
 
@@ -166,6 +166,13 @@ def served(tmp_path, monkeypatch):
         stop.wait(10)
         return {}
     monkeypatch.setattr(jobs, "work", work)
+    state.scheduled = []
+
+    def schedule(profile, data_dir, stop, sched, **kw):
+        state.scheduled.append(profile)
+        sched.update(zone="America/Los_Angeles", next=[])
+        stop.wait(10)
+    monkeypatch.setattr(scheduler, "run", schedule)
 
     def run(*argv):
         from jason.cli import build_parser
@@ -188,6 +195,11 @@ def test_serve_runs_web_and_worker_by_default(served, tmp_path):
 def test_serve_flags_skip_parts_and_carry_jason_webs(served, tmp_path):
     assert served.run("--no-web", "--no-scheduler") == 0
     assert served.servers == [] and served.worked == ["mystique"]
+    assert serve.read_heartbeat(tmp_path / "mystique")["scheduler"] is False      # --no-scheduler: none ran
+    assert served.scheduled == []
+    served.worked.clear()
+    assert served.run("--no-web") == 0
+    assert served.scheduled == ["mystique"] and serve.read_heartbeat(tmp_path / "mystique")["scheduler"] is True
     served.worked.clear()
     assert served.run("--no-worker", "--host", "0.0.0.0", "--port", "9000") == 0
     assert served.worked == [] and [(s.host, s.port) for s in served.servers] == [("0.0.0.0", 9000)]
@@ -196,7 +208,7 @@ def test_serve_flags_skip_parts_and_carry_jason_webs(served, tmp_path):
     assert served.run("--all", "--no-web") == 0
     assert sorted(served.worked) == ["mystique", "other"]
     assert serve.read_heartbeat(tmp_path / "other")["state"] == "stopped"
-    assert served.run("--no-web", "--no-worker") == 2
+    assert served.run("--no-web", "--no-worker", "--no-scheduler") == 2
     served.worked.clear()
     assert served.run("--profile", "other", "--no-web") == 0 and served.worked == ["other"]
 

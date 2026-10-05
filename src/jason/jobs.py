@@ -17,8 +17,8 @@ The rules the queue keeps:
 
 The worker does not hold the GPU lock itself (the job's own model requests take it, and holding it would block them);
 one worker per community with one queue per resource, and the machine's GPU lane lock (``GPU_LANE``) across
-communities, keep two GPU jobs from running at once. Scheduling stays with Windows: a
-scheduled task only adds a job (``jason jobs add -- gmail --sync``), and the worker runs it.
+communities, keep two GPU jobs from running at once. Scheduling is ``jason.scheduler``'s (in ``jason serve``): it
+only adds a job, as ``jason jobs add -- gmail --sync`` does, and the worker runs it.
 """
 
 from __future__ import annotations
@@ -102,7 +102,8 @@ _CLASS_OF_COMMAND: dict[str, JobClass] = {
     "vault": JobClass.GOOGLE, "photos": JobClass.GOOGLE, "forms": JobClass.GOOGLE, "drafts": JobClass.GOOGLE,
     "labels": JobClass.GOOGLE, "drive-activity": JobClass.GOOGLE, "meetings": JobClass.GOOGLE,
     "books": JobClass.PAYHOA, "budget": JobClass.PAYHOA, "reconcile": JobClass.PAYHOA, "invoices": JobClass.PAYHOA,
-    "sync-bills": JobClass.PAYHOA, "catalog": JobClass.PAYHOA, "request-links": JobClass.PAYHOA, "ledger": JobClass.PAYHOA,
+    "sync-bills": JobClass.PAYHOA, "catalog": JobClass.PAYHOA, "sync-catalog": JobClass.PAYHOA,
+    "sync-tax": JobClass.COUNTY, "request-links": JobClass.PAYHOA, "ledger": JobClass.PAYHOA,
     "models": JobClass.GPU, "classify": JobClass.GPU, "read-documents": JobClass.GPU,
 }
 
@@ -121,6 +122,11 @@ def job_class(argv: list[str]) -> JobClass:
         return JobClass.GOOGLE
     if argv[0] == "onboard" and any(a in ("--locate", "--lookup") for a in argv[1:]):
         return JobClass.COUNTY
+    # The integrations' refresh commands (jason.integrations.registry), so a scheduled read takes its account's lane.
+    if argv[0] == "schedule" and "--read-google" in argv[1:]:
+        return JobClass.GOOGLE
+    if (argv[0] == "meetings" and "--sync" in argv[1:]) or (argv[0] == "utilities" and "--payments" in argv[1:]):
+        return JobClass.PAYHOA         # meetings --sync reads PayHOA's notices (and Zoom); utilities --payments, PayHOA
     return _CLASS_OF_COMMAND.get(argv[0], JobClass.LOCAL)
 
 

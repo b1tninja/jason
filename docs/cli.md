@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-166 commands, by area:
+167 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
@@ -18,7 +18,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (4)
-- [Setup & maintenance](#setup--maintenance) (11)
+- [Setup & maintenance](#setup--maintenance) (12)
 - [Other](#other) (14)
 
 ## PayHOA & finance
@@ -1571,7 +1571,7 @@ Sync the Zoom account's meetings, transcripts, and AI summaries; list them with 
 | `--limit` | LIMIT | Meetings to list, newest first |
 | `--meeting` | MEETING | Print one meeting (UUID, folder, date, or meeting id): summary and transcript |
 | `--confidential` |  | With --meeting, include an executive session's or hearing's text |
-| `--store-app` |  | Create the Keeper record for the Zoom app (with --account-id, --client-id); the secret is filled in Keeper |
+| `--store-app` |  | Put the Zoom app at the community's vault path zoom/app (with --account-id, --client-id; create only); the secret is filled in Keeper |
 | `--account-id` | ACCOUNT_ID | With --store-app: the app's account id |
 | `--client-id` | CLIENT_ID | With --store-app: the app's client id |
 | `--create-board-meeting` |  | Schedule the board meeting on Zoom under the profile's board meeting policy (needs --yes); the join link and dial-in go to the notice |
@@ -2030,7 +2030,7 @@ Where jason writes: each place's path, drive, free space, and size; --check flag
 
 ### `jason serve`
 
-Run jason-web and the job worker in one process, for one community or --all; --install-task sets it to start at boot
+Run jason-web, the job worker, and the scheduler in one process, for one community or --all; --install-task sets it to start at boot
 
 | Option | Value | Help |
 |---|---|---|
@@ -2038,7 +2038,7 @@ Run jason-web and the job worker in one process, for one community or --all; --i
 | `--all` |  | one worker per profile, each behind its own guard; the web serves the active profile |
 | `--no-web` |  | run no web server |
 | `--no-worker` |  | run no worker |
-| `--no-scheduler` |  | reserved for the scheduler to come; does nothing yet |
+| `--no-scheduler` |  | run no scheduler (jason cadence); the queue still runs the jobs a person adds |
 | `--host` | HOST |  |
 | `--port` | PORT |  |
 | `--dist` | DIST | built UI folder (default ui/dist) |
@@ -2085,6 +2085,26 @@ one integration's reading from disk; --live runs its read through the service
 | `--community` | C | the community (default the active profile) |
 | `--live` |  | also read through the service (a person at a terminal); the outcome is recorded |
 | `--by` | NAME | with --live: who ran it, recorded on a first connection |
+
+### `jason cadence`
+
+Each source's schedule in jason serve's scheduler: list; change one (never faster than its floor), restore or adopt the default, pause, resume, or run now; recorded with who and when
+
+| Option | Value | Help |
+|---|---|---|
+| `source` | optional (?) | with --every or --cron: the source to change |
+| `--community` | C | the community (default the active profile) |
+| `--json` |  | print JSON |
+| `--every` | SPAN | run every SPAN (10m, 2h, 1d); refused faster than the floor |
+| `--cron` | CRON | a five-field cron ("0 2 * * *") in the community's time zone |
+| `--window` | HH-HH | with --every or --cron: the hours it runs (07-22), or all |
+| `--restore` | SOURCE | back to the registry's default, adopted (with --by) |
+| `--restore-all` |  | every source back to its default, adopted (with --by) |
+| `--pause` | SOURCE | pause one source (with --why and --by) |
+| `--resume` | SOURCE | clear a pause, its failures, and its backoff (with --by) |
+| `--run-now` | SOURCE | add its command to the queue once, now |
+| `--why` | WHY | with --pause: why |
+| `--by` | NAME | who makes the change (recorded with when) |
 
 ## Other
 
@@ -2168,7 +2188,7 @@ Which inspection periods of each life safety system have a report on file, which
 
 ### `jason sign-in`
 
-How people sign in to the console (jason-web); put a Google client in Keeper
+How people sign in to the console (jason-web); put a Google client in the vault
 
 | Option | Value | Help |
 |---|---|---|
@@ -2177,9 +2197,9 @@ How people sign in to the console (jason-web); put a Google client in Keeper
 | `--key` | KEY | its name when there is more than one (default google, or jason-google) |
 | `--label` | LABEL | the button's words when there is more than one, e.g. "Management company" |
 | `--domain` | DOMAIN | an email domain whose accounts it accepts (repeat; default: the community's email domains) |
-| `--title` | TITLE | the Keeper record's title |
-| `--delete-file` |  | delete the downloaded file once Keeper has the client |
-| `--yes` |  | put it in Keeper and record it (without: say what it would do) |
+| `--title` | TITLE | no longer used: the vault entry's Keeper record is titled with its vault path |
+| `--delete-file` |  | delete the downloaded file once the vault has the client |
+| `--yes` |  | put it in the vault and record it (without: say what it would do) |
 
 ### `jason paint`
 

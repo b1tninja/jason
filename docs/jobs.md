@@ -12,9 +12,9 @@ Everything after `--` is the jason command, without the word "jason". The queue 
 - **gpu:** a local model, such as `outlines --model`, `models`, or anything with `--model`, `--extractor`, `--ocr`,
   `--reader`, or `--terms-model`. A command that names a model off this machine (`--model bedrock`,
   `--terms-model bedrock`) is local: it waits on the network, not the card;
-- **google:** the association's Google account, such as `gmail`, `drive`, `calendar`, `templates`, `board --sheet`, or `outlines --fetch`;
-- **payhoa:** the PayHOA session, such as `books`, `budget`, `reconcile`, or `invoices`;
-- **county:** a county's public index, such as `onboard --locate` or `onboard --lookup` (the console's "locate" button queues the first). A locate runs dozens of searches, so it keeps its own lane and never holds up the local jobs;
+- **google:** the association's Google account, such as `gmail`, `drive`, `calendar`, `templates`, `board --sheet`, `schedule --read-google`, or `outlines --fetch`;
+- **payhoa:** the PayHOA session, such as `books`, `budget`, `reconcile`, `invoices`, `sync-catalog`, `meetings --sync`, or `utilities --payments`;
+- **county:** a county's public index, such as `onboard --locate`, `onboard --lookup`, or `sync-tax` (the console's "locate" button queues the first). A locate runs dozens of searches, so it keeps its own lane and never holds up the local jobs;
 - **local:** everything else.
 
 **Rules the queue keeps:**
@@ -69,12 +69,12 @@ The table is `data/jobs.db` (SQLite). It records, for each job:
 
 **Running the worker at boot:** `jason serve` runs jason-web and the worker in one process (`--profile P` or `--all`, `--no-web`, `--no-worker`). `jason serve --install-task` prints the Task Scheduler entry that starts it at boot (restart on failure, no time limit); with `--yes`, from a terminal run as administrator, it creates it. `jason daemon status` reads each community's heartbeat (`<data>/jobs/heartbeat.json`); `jason daemon stop` asks the process to drain and stop. See [scheduler-daemon-design.md](scheduler-daemon-design.md).
 
-Scheduling the jobs themselves stays with Windows until the scheduler is built. A scheduled task only adds a job; the worker runs it. Setting up the tasks is a person's step. For example, in a terminal:
+**Scheduling the jobs:** `jason serve`'s scheduler (`jason.scheduler`) adds each source's refresh to the queue on its cadence, as an ordinary job; the worker runs it.
+- **The schedules** are a `schedules` table in the community's `jobs.db`, one row per source the integrations registry declares (`jason integrations list` shows them), seeded with the registry's default cadence, window, and floor.
+- **A person adopts each one first:** `jason cadence --restore SOURCE --by NAME` (or `--restore-all`) adopts the default; `jason cadence SOURCE --every 30m --by NAME` (or `--cron "0 2 * * *"`, `--window 07-22`) adopts a change, refused faster than the floor. `jason cadence` lists them; `--pause SOURCE --why TEXT --by NAME`, `--resume`, and `--run-now` do what they say. Each change keeps who and when.
+- **One at a time:** a source whose job (or a person's job for the same command) is queued or running is not added again; a run missed while jason was down is one catch-up run.
+- **Failures back off** (five minutes, or the floor, doubled each time, to a day; longer when the job printed a `Retry-After`). A sign-in failure pauses the integration's sources until a person signs in (`jason integrations check KEY --live`) or runs `jason cadence --resume`; nothing retries it on a timer.
+- **The scheduler never schedules a write** (a command with `--yes`). Approving a schedule of writes is the board's decision, not jason's; until then a write is queued by a person with `--confirm`.
+- `jason serve --no-scheduler` turns it off. The decisions are logged in `<data>/jobs/scheduler.jsonl`; `jason daemon status` shows the next five runs.
 
-```bash
-schtasks /Create /SC DAILY /ST 02:00 /TN "jason gmail sync" /TR "D:\code\jason\.venv\Scripts\jason.exe jobs add -- gmail --sync"
-```
-
-The older `schtasks /Create /SC ONLOGON /TN "jason worker" ...` entry is replaced by `jason serve --install-task`; remove it so the two do not race for the worker's guard.
-
-A write that should run on a schedule needs its approval recorded at the time it is scheduled (`--confirm`). Approving a whole schedule of writes is the board's decision, not jason's.
+The older `schtasks` entries are replaced: `jason serve --install-task` replaces `schtasks /Create /SC ONLOGON /TN "jason worker" ...` (remove it so the two do not race for the worker's guard), and the scheduler replaces a daily `jobs add` task such as "jason gmail sync" (remove it once its source is adopted).

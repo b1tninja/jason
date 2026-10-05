@@ -2,8 +2,8 @@
 
 - ``jason serve [--profile P | --all] [--no-web] [--no-worker] [--no-scheduler]`` with jason-web's flags (``--host``,
   ``--port``, ``--dist``, ``--allow-apply``, ``--require-sign-in``, ``--dev``) and the worker's (``--poll``,
-  ``--keep-models``). Ctrl-C drains the lanes as ``jason worker`` does. ``--no-scheduler`` is reserved for the
-  scheduler to come and does nothing yet.
+  ``--keep-models``). Ctrl-C drains the lanes as ``jason worker`` does. The scheduler (``jason.scheduler``) adds each
+  community's adopted, due sources to its queue; ``--no-scheduler`` turns it off (``jason cadence`` sets the cadences).
 - ``jason serve --install-task [--yes]`` prints, or with ``--yes`` registers through ``schtasks``, the Task Scheduler
   entry that runs ``jason serve`` at startup; ``--uninstall-task [--yes]`` removes it.
 - ``jason daemon status`` reads each community's heartbeat (no network); ``jason daemon stop [--profile P]`` writes a
@@ -98,8 +98,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     if args.install_task or args.uninstall_task:
         return _task(args)
-    if args.no_web and args.no_worker:
-        print("Error: nothing to run: --no-web and --no-worker together", file=sys.stderr)
+    if args.no_web and args.no_worker and args.no_scheduler:
+        print("Error: nothing to run: --no-web, --no-worker, and --no-scheduler together", file=sys.stderr)
         return 2
     names = _names(args)
     if args.profile:
@@ -129,9 +129,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
                          profile=profile, stop=stop, current=lanes,
                          log=lambda line: print(f"[{profile}] {line}", flush=True))
 
-    if args.no_scheduler:
-        print("jason serve: --no-scheduler: the scheduler is not built yet; nothing to turn off", file=sys.stderr)
-    ended = serve.run(dirs, web=web, work=None if args.no_worker else work, web_info=info,
+    def schedule(profile: str, data_dir: Path, stop: Any, state: dict[str, Any]) -> Any:
+        from jason import scheduler
+
+        return scheduler.run(profile, data_dir, stop, state,
+                             log=lambda line: print(f"[{profile}] scheduler: {line}", flush=True))
+
+    ended = serve.run(dirs, web=web, work=None if args.no_worker else work,
+                      schedule=None if args.no_scheduler else schedule, web_info=info,
                       log=lambda line: print(f"jason serve: {line}", flush=True))
     bad = {k: v for k, v in ended.items() if v.get("refused") or v.get("failed")}
     return 1 if bad else 0
@@ -162,8 +167,8 @@ def cmd_daemon(args: argparse.Namespace) -> int:
 def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callable[[Any], Any]) -> None:
     from jason.web.flags import add_arguments as add_web_arguments
 
-    p = sub.add_parser("serve", help="Run jason-web and the job worker in one process, for one community or --all; "
-                                     "--install-task sets it to start at boot")
+    p = sub.add_parser("serve", help="Run jason-web, the job worker, and the scheduler in one process, for one community "
+                                     "or --all; --install-task sets it to start at boot")
     add_common(p)
     which = p.add_mutually_exclusive_group()
     which.add_argument("--profile", default="", help="the community to serve (default the active profile)")
@@ -171,7 +176,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                                                           "serves the active profile")
     p.add_argument("--no-web", action="store_true", help="run no web server")
     p.add_argument("--no-worker", action="store_true", help="run no worker")
-    p.add_argument("--no-scheduler", action="store_true", help="reserved for the scheduler to come; does nothing yet")
+    p.add_argument("--no-scheduler", action="store_true",
+                   help="run no scheduler (jason cadence); the queue still runs the jobs a person adds")
     add_web_arguments(p)
     p.add_argument("--poll", type=float, default=20.0, help="seconds between the worker's looks at the queue")
     p.add_argument("--keep-models", action="store_true", help="leave models loaded after GPU jobs (as jason worker)")

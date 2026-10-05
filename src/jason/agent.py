@@ -22,7 +22,7 @@ from jason.payhoa_tx import (
     list_normalized_transactions,
     probe_transactions,
 )
-from jason.secrets import LoginCredentials, VaultSession, get_idoxs_credentials
+from jason.secrets import LoginCredentials, VaultSession, idoxs_from_secret, login_from_secret
 from jason.smud_data import BillMatch, SmudBillStore
 from jason.sources import (
     BillSourceRegistry,
@@ -126,11 +126,33 @@ class Jason:
         (``jason.vault.resolver``; the fallback logs the key as deprecated). Fails fast with ``KeeperAuthRequired``
         when not interactive."""
         from jason.community.profile import profile_name
-        from jason.vault.resolver import credential
+        from jason.vault.resolver import credential, record_uids_of
 
         store = self.vault_store()
-        return credential(profile_name(), integration, name, store=store, record_uids=self.settings.record_uids,
-                          load_record=store.load_by_uid)
+        return credential(profile_name(), integration, name, store=store, record_uids=record_uids_of(self.settings),
+                          load_record=getattr(store, "load_by_uid", None))   # a store with no UID records: no fallback
+
+    def _secret(self, integration: str, name: str, error: type[Exception], words: str):
+        """``credential``, with the caller's own error when neither the vault nor ``.env`` holds it."""
+        from jason.community.profile import profile_name
+        from jason.vault.resolver import CredentialMissing, credential_path
+
+        try:
+            return self.credential(integration, name)
+        except CredentialMissing:
+            path = credential_path(profile_name(), integration, name)
+            raise error(f"{words} (and the vault holds nothing at {path})") from None
+
+    def credential_configured(self, integration: str, name: str) -> bool:
+        """Whether the credential is configured: its ``.env`` record UID is set (no Keeper call), else the vault
+        describes its path as set. Only whether; never a value or a UID."""
+        from jason.community.profile import profile_name
+        from jason.vault.resolver import credential_path, legacy_key, record_uids_of
+
+        env_key = legacy_key(integration, name)
+        if env_key and record_uids_of(self.settings).get(env_key):
+            return True
+        return self.vault_store().describe(credential_path(profile_name(), integration, name)).is_set
 
     def credentials(
         self, record_uid: str, *, require_totp: bool = False
@@ -140,10 +162,13 @@ class Jason:
         )
 
     def payhoa(self, *, site_id: int = 2) -> PayhoaClient:
+        """PayHOA as the association's manager login: the vault path ``payhoa/login``, else ``payhoa_record_uid``."""
         if self._payhoa is not None and self._payhoa.is_authenticated:
             return self._payhoa
-        creds = self.credentials(
-            self.settings.payhoa_record_uid, require_totp=True
+        creds = login_from_secret(
+            self._secret("payhoa", "login", ValueError,
+                         "payhoa_record_uid is not set; put the PayHOA login's Keeper record UID in .env"),
+            require_totp=True,
         )
         assert creds.totp_code is not None
         client = PayhoaClient(site_id=site_id)
@@ -152,11 +177,10 @@ class Jason:
         return client
 
     def payhoa_test(self, *, site_id: int = 2) -> PayhoaClient:
-        """PayHOA as the unprivileged test owner (``payhoa_test_record_uid``): for trying a form from an owner's side.
-        Its answers are never an owner's (``payhoa_test_membership_ids``)."""
-        if not self.settings.payhoa_test_record_uid:
-            raise ValueError("payhoa_test_record_uid is not set in .env")
-        creds = self.credentials(self.settings.payhoa_test_record_uid)
+        """PayHOA as the unprivileged test owner (``payhoa/test-login``, else ``payhoa_test_record_uid``): for trying a
+        form from an owner's side. Its answers are never an owner's (``payhoa_test_membership_ids``)."""
+        creds = login_from_secret(
+            self._secret("payhoa", "test-login", ValueError, "payhoa_test_record_uid is not set in .env"))
         client = PayhoaClient(site_id=site_id)
         client.login(creds.login, creds.password, totp_code=creds.totp_code)
         return client
@@ -164,9 +188,7 @@ class Jason:
     def smud(self) -> SmudClient:
         if self._smud is not None:
             return self._smud
-        if not self.settings.smud_record_uid:
-            raise ValueError("smud_record_uid is not set in .env")
-        creds = self.credentials(self.settings.smud_record_uid)
+        creds = login_from_secret(self._secret("smud", "login", ValueError, "smud_record_uid is not set in .env"))
         client = SmudClient(creds.login, creds.password)
         # Multi-account portals: authenticate without selecting; callers use
         # select_account(account_number) per bill.
@@ -177,12 +199,8 @@ class Jason:
     def idoxs(self) -> IdoxsClient:
         if self._idoxs is not None and self._idoxs.is_authenticated:
             return self._idoxs
-        if not self.settings.idoxs_record_uid:
-            raise ValueError("idoxs_record_uid is not set in .env")
-        creds = get_idoxs_credentials(
-            settings=self.settings,
-            interactive=self._interactive,
-        )
+        creds = idoxs_from_secret(
+            self._secret("idoxs", "login", ValueError, "idoxs_record_uid is not set in .env"))
         client = IdoxsClient(
             creds.username,
             creds.password,
@@ -195,7 +213,8 @@ class Jason:
     def drive(self, *, interactive: bool = False) -> GoogleDrive:
         """Google Drive client. Listing and download live in jason.google.
 
-        ``interactive`` defaults to false. A missing token then raises
+        The OAuth client is the vault's ``google-workspace/oauth-client``, else the Keeper record
+        ``google_oauth_record_uid`` names. ``interactive`` defaults to false. A missing token then raises
         ``GoogleAuthRequired`` instead of opening a browser.
         """
         if self._drive is None:
@@ -203,6 +222,7 @@ class Jason:
                 self.settings,
                 self._vault_session(),
                 interactive=interactive,
+                store=self.vault_store(),
             )
         return self._drive
 
@@ -210,19 +230,22 @@ class Jason:
         """Google Photos (Picker, and jason's own albums) on its own token; a first consent needs --interactive."""
         from jason.google.session import open_photos
 
-        return open_photos(self.settings, self._vault_session(), interactive=self._interactive)
+        return open_photos(self.settings, self._vault_session(), interactive=self._interactive,
+                           store=self.vault_store())
 
     def google_vault(self):
         """Google Vault (matters, legal holds) on its own token; a first consent needs --interactive."""
         from jason.google.session import open_vault
 
-        return open_vault(self.settings, self._vault_session(), interactive=self._interactive)
+        return open_vault(self.settings, self._vault_session(), interactive=self._interactive,
+                          store=self.vault_store())
 
     def google_tasks(self):
         """Google Tasks on its own token; a first consent needs --interactive."""
         from jason.google.session import open_tasks
 
-        return open_tasks(self.settings, self._vault_session(), interactive=self._interactive)
+        return open_tasks(self.settings, self._vault_session(), interactive=self._interactive,
+                          store=self.vault_store())
 
     def docs(self, *, interactive: bool = False) -> GoogleDocs:
         """Docs client on the Drive sign-in. Edits use documents.batchUpdate."""
@@ -958,8 +981,10 @@ class Jason:
         )
 
     def bill_source_registry(self) -> BillSourceRegistry:
-        """SMUD, then i-doxs, then each vendor portal with a Keeper record (order matters for exclusive routing)."""
+        """SMUD, then i-doxs, then each vendor portal with a credential (its ``.env`` record UID, else its vault path;
+        only whether it is set), in that order (order matters for exclusive routing)."""
         from jason.sources.fieldportals import VendorPortalBillSource
+        from jason.vault.resolver import VENDOR_PORTAL, portal_name
 
         sources: list[Any] = [
             SmudBillSource(
@@ -974,16 +999,18 @@ class Jason:
             ),
         ]
         for portal in self.community.vendor_portals():
-            if self.settings.record_uid(portal.key) and portal.platform.name == "FIELDPORTALS":
+            if portal.platform.name == "FIELDPORTALS" and self.credential_configured(VENDOR_PORTAL,
+                                                                                     portal_name(portal.key)):
                 sources.append(VendorPortalBillSource(portal, self.settings.payhoa_catalog.parent))
         return BillSourceRegistry(sources)
 
     def vendor_portal(self, key: str):
-        """A signed-in client for the vendor portal ``key`` (``mystique/vendors.py``), from its Keeper record."""
+        """A signed-in client for the vendor portal ``key`` (``mystique/vendors.py``), from the vault's
+        ``vendor-portal/<key>``, else the Keeper record ``<key>_record_uid`` names."""
         from jason.community.symbols import PortalPlatform
         from jason.fieldportals.client import FieldPortals
-        from jason.secrets import get_vendor_credentials
         from jason.signalservice.client import SignalService
+        from jason.vault.resolver import VENDOR_PORTAL, portal_name
 
         if key in self._portals:
             return self._portals[key]
@@ -992,19 +1019,19 @@ class Jason:
             raise LookupError(f"no vendor portal {key!r} in the specification")
         if portal.platform not in (PortalPlatform.FIELDPORTALS, PortalPlatform.SIGNAL_SERVICE):
             raise LookupError(f"no client for {portal.platform}")
-        creds = get_vendor_credentials(key, settings=self.settings, interactive=self._interactive)
+        creds = login_from_secret(
+            self._secret(VENDOR_PORTAL, portal_name(key), LookupError, f"{key}_record_uid is not set in .env"))
         client = FieldPortals(portal.account) if portal.platform is PortalPlatform.FIELDPORTALS else SignalService(portal.account)
         client.login(creds.login, creds.password)
         self._portals[key] = client
         return client
 
     def citizen_access(self):
-        """Sacramento Citizen Access (Accela), signed in with the Keeper record ``accela_record_uid``. Read-only: it
-        pays no fee and schedules no inspection."""
+        """Sacramento Citizen Access (Accela), signed in with the vault's ``accela/login``, else the Keeper record
+        ``accela_record_uid``. Read-only: it pays no fee and schedules no inspection."""
         from jason.community.accela import AccelaError, SacramentoCitizenAccess
-        from jason.secrets import get_accela_credentials
 
-        creds = get_accela_credentials(settings=self.settings, interactive=self._interactive)
+        creds = login_from_secret(self._secret("accela", "login", LookupError, "accela_record_uid is not set"))
         client = SacramentoCitizenAccess()
         if not client.sign_in(creds.login, creds.password):
             raise AccelaError("Citizen Access refused the Keeper login")
@@ -1044,31 +1071,28 @@ class Jason:
         fields = {"client_secret": secret.get("password", ""), **{k: v for k, v in secret.items() if k != "password"}}
         return Zoom(ZoomCredentials.from_fields({k: v for k, v in fields.items() if v}))
 
-    def store_zoom_app(self, account_id: str, client_id: str, client_secret: str = "") -> str:
-        """Put the Zoom Server-to-Server OAuth app in a new Keeper login record and return its UID: the account id and
-        client id as custom fields, the client secret (empty until a person fills it) in the password field."""
-        return self._vault_session().create_login_record(
-            "Zoom Server-to-Server OAuth app (jason)",
-            password=client_secret,
-            login=client_id,
-            url="https://marketplace.zoom.us/user/build",
-            custom={"account_id": account_id, "client_id": client_id},
-            notes="The association's Zoom app for jason (docs/zoom.md). Put the app's client secret in the password field. "
-                  "Jason reads it as zoom_record_uid.",
-        )
+    def store_zoom_app(self, account_id: str, client_id: str, client_secret: str = "", *, by: str = "") -> str:
+        """Put the Zoom Server-to-Server OAuth app at the community's vault path ``zoom/app`` and return the path:
+        the account id and client id as fields, the client secret (empty until a person fills it in Keeper) in the
+        password field. Create only: an entry already there raises ``VersionConflict``."""
+        from jason.community.profile import profile_name
+        from jason.vault.resolver import credential_path
 
-    def store_google_client(self, client_id: str, client_secret: str, *, title: str, project_id: str = "",
-                            notes: str = "") -> str:
-        """Put a Google OAuth client in a new Keeper login record and return its UID: the client id as the login and as
-        the custom field ``client_id``, the secret in the password field (``jason sign-in --import-client``)."""
-        return self._vault_session().create_login_record(
-            title,
-            password=client_secret,
-            login=client_id,
-            url=f"https://console.cloud.google.com/auth/clients?project={project_id}" if project_id else "",
-            custom={"client_id": client_id, **({"project_id": project_id} if project_id else {})},
-            notes=notes,
-        )
+        path = credential_path(profile_name(), "zoom", "app")
+        self.vault_store().put(path, {"login": client_id, "password": client_secret,
+                                      "url": "https://marketplace.zoom.us/user/build",
+                                      "account_id": account_id, "client_id": client_id}, if_version=0, by=by)
+        return path
+
+    def store_google_client(self, client_id: str, client_secret: str, *, path: str, project_id: str = "",
+                            by: str = "") -> str:
+        """Put a Google OAuth client at the vault path ``path`` and return it: the client id as the login and as the
+        field ``client_id``, the secret in the password field (``jason sign-in --import-client``). Create only: an
+        entry already there raises ``VersionConflict``."""
+        url = f"https://console.cloud.google.com/auth/clients?project={project_id}" if project_id else ""
+        self.vault_store().put(path, {"login": client_id, "password": client_secret, "url": url,
+                                      "client_id": client_id, "project_id": project_id}, if_version=0, by=by)
+        return path
 
     def sync_zoom(self, *, full: bool = False, since=None, media: bool = False, log: Any = None) -> dict[str, int]:
         """Sync the Zoom account's meetings, transcripts, chats, and AI Companion summaries to ``data/zoom``."""

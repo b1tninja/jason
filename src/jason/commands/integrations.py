@@ -2,7 +2,9 @@
 
 - ``list [--community C | --instance] [--json]``: each integration of the community (the active profile by default)
   or of the installation: its scope, state and why, account, where its credential goes in the vault and whether it is
-  set, its capabilities on and off, its last check, and its sources' cadences with their last read. From disk only.
+  set, its capabilities on and off, its last check, and its sources' cadences with their last read. From disk, and the
+  vault's entry names (listed without a prompt: a credential at its vault path counts as set; a vault that wants a
+  sign-in leaves the ``.env`` test, and the reading says so).
 - ``check KEY [--community C] [--live] [--by NAME]``: the same reading for one integration; with ``--live``, a person
   at a terminal also runs its read through the service (``jason.integrations.checks``) and the outcome is recorded on
   the connection (``integrations.json``, under the store lock).
@@ -17,7 +19,16 @@ import json
 import sys
 from typing import Any, Callable
 
-NO_VALUE = "From disk; a credential shows only as set or not set, never its value."
+NO_VALUE = ("From disk and the vault's entry names (asked without a prompt); a credential shows only as set or not set, "
+            "never its value.")
+
+
+def _vault(settings: Any) -> Any:
+    """The vault's names for "credential set" (``jason.vault.keeper.vault_names``): never prompts; a vault that does
+    not answer leaves the ``.env`` test, and each reading says so."""
+    from jason.vault.keeper import vault_names
+
+    return vault_names(settings)
 
 
 def at_terminal() -> bool:
@@ -136,8 +147,9 @@ def cmd_list(args: argparse.Namespace) -> int:
     key = _community_key(args, instance=instance)
     root, path = _paths(args, key)
     scope = Scope.INSTANCE if instance else Scope.COMMUNITY
-    rows = [_row(r) for r in readings(key, scope=scope, settings=_settings(args), root=root, path=path,
-                                     profile=_profile())]
+    settings = _settings(args)
+    rows = [_row(r) for r in readings(key, scope=scope, settings=settings, root=root, path=path,
+                                     profile=_profile(), vault=_vault(settings))]
     if args.json:
         print(json.dumps({"community": key, "scope": scope.value, "integrations": rows}, indent=1))
     else:
@@ -160,7 +172,7 @@ def cmd_check(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> 
     root, path = _paths(args, key)
     settings = _settings(args)
     [reading] = [r for r in readings(key, scope=integ.scope, settings=settings, root=root, path=path,
-                                     profile=_profile()) if r.integration.key == integ.key]
+                                     profile=_profile(), vault=_vault(settings)) if r.integration.key == integ.key]
     row = _row(reading)
     if not args.live:
         print("\n".join(_lines([row], f"{integ.name} for {key}, from disk:")).rstrip())

@@ -14,7 +14,9 @@ let in only when all of these hold (Google's guidance: docs/setup.md "Console si
 **Providers.** A community sets up its own Google Sign-In (``Community.sign_in``: one or more clients, each with its
 own domains); the installation may add its own (``jason.access.installation_sign_in``: a management company's
 Workspace, for admins and managers). With neither, the .env client: ``google_signin_record_uid``, else jason's own
-Desktop client (``google_oauth_record_uid``). The console shows one button a provider.
+Desktop client (``google_oauth_record_uid``). The console shows one button a provider. Each client is read from its
+vault path first (``client_path``: ``signin/oauth-client/<key>``, or the path an .env key migrates to), then from the
+Keeper record its row or .env key names.
 
 The signed-in person is kept in Flask's signed session cookie (``jason_session``: HttpOnly, SameSite=Lax), signed
 with a key made when the app starts, so a restart signs everyone out, and it lasts at most ``LIFETIME``. No Google
@@ -73,7 +75,7 @@ class Client:
     """An OAuth client: its id and secret, read from Keeper."""
 
     client_id: str
-    client_secret: str
+    client_secret: str = field(repr=False)
 
 
 @dataclass
@@ -179,18 +181,49 @@ def client_record(settings: Any) -> tuple[str, str]:
     return (desktop, DESKTOP_KEY) if desktop else ("", "")
 
 
-def keeper_client(record_uid: str) -> Callable[[], Client]:
-    """A loader for the Google client in a Keeper record: ``client_id`` and ``client_secret`` as custom fields, or the
-    id as the login and the secret as the password (as ``jason sign-in --import-client`` stores them). Read without a
-    prompt; a missing Keeper login raises KeeperAuthRequired."""
+def client_path(owner: str, key: str) -> str:
+    """The vault path of a sign-in client: ``jason/<scope>/<community or instance>/signin/oauth-client/<key>`` (the
+    key lower case, other characters as ``-``); "" for a key that cannot be a path segment."""
+    import re
+
+    from jason.vault.paths import InvalidVaultPath, vault_path
+
+    slug = re.sub(r"[^a-z0-9._@+-]+", "-", key.strip().lower()).strip("-._@+")
+    try:
+        return vault_path(owner, "signin", f"oauth-client/{slug}") if slug else ""
+    except InvalidVaultPath:
+        return ""
+
+
+def _env_path(env_key: str) -> str:
+    """The vault path an .env sign-in key's record moves to (``jason vault migrate``)."""
+    from jason.community.profile import profile_name
+    from jason.vault.resolver import legacy_record
+
+    row = legacy_record(env_key)
+    return row.path(profile_name()) if row is not None else ""
+
+
+def keeper_client(record_uid: str, path: str = "", source: str = "") -> Callable[[], Client]:
+    """A loader for a Google client: the vault entry at ``path`` first, else the Keeper record ``record_uid`` (logged
+    as deprecated, naming ``source``). ``client_id`` and ``client_secret`` as fields, or the id as the login and the
+    secret as the password (as ``jason sign-in --import-client`` stores them). Read without a prompt; a missing Keeper
+    login raises KeeperAuthRequired."""
 
     def load() -> Client:
-        from jason.secrets import VaultSession, _field_value, extract_custom_fields
+        from jason.secrets import VaultSession
+        from jason.vault.keeper import KeeperStore
+        from jason.vault.resolver import read_secret
 
-        record = VaultSession.from_settings(_settings(), interactive=False).load_record(record_uid)
-        custom = extract_custom_fields(record)
-        cid = str(custom.get("client_id") or _field_value(record, "login") or "").strip()
-        secret = str(custom.get("client_secret") or _field_value(record, "password") or "").strip()
+        with VaultSession.from_settings(_settings(), interactive=False) as session:
+            store = KeeperStore.from_session(session)
+            found = read_secret(path, store=store if path else None, record_uid=record_uid,
+                                load_record=getattr(store, "load_by_uid", None), source=source or "a sign-in client's record UID")
+        if found is None:
+            raise Refused(f"no sign-in client at {path or 'its vault path'}" + (" or its Keeper record" if record_uid
+                                                                               else ""))
+        cid = (found.first("client_id") or found.first("login")).strip()
+        secret = (found.first("client_secret") or found.first("password")).strip()
         if not cid or not secret:
             raise Refused("the sign-in Keeper record needs the client id (client_id, or the login) and the secret "
                           "(client_secret, or the password)")
@@ -199,20 +232,28 @@ def keeper_client(record_uid: str) -> Callable[[], Client]:
 
 
 def default_providers() -> tuple[Provider, ...]:
-    """The community's providers, then the installation's; with neither, the .env client."""
+    """The community's providers, then the installation's; with neither, the .env client. Each reads its vault path
+    first (the row's ``vault``, else ``client_path``), then the Keeper record its row or .env key names."""
     from jason.access import installation_sign_in
     from jason.community import community
+    from jason.community.profile import profile_name
+    from jason.vault.paths import INSTANCE
 
     c = community()
     own_domains = tuple(d.strip().lower() for d in c.email_domains() if d.strip())
-    out = [Provider(p.key, p.label, "community", p.domains or own_domains, keeper_client(p.record_uid))
+    key = profile_name()
+    out = [Provider(p.key, p.label, "community", p.domains or own_domains,
+                    keeper_client(p.record_uid, getattr(p, "vault", "") or client_path(key, p.key),
+                                  f"sign_in.json ({p.key})"))
            for p in c.sign_in()]
-    out += [Provider(p.key, p.label, "jason", p.domains, keeper_client(p.record_uid)) for p in installation_sign_in()
-            if p.key not in {q.key for q in out}]
+    out += [Provider(p.key, p.label, "jason", p.domains,
+                     keeper_client(p.record_uid, getattr(p, "vault", "") or client_path(INSTANCE, p.key),
+                                   f"data/access/sign_in.json ({p.key})"))
+            for p in installation_sign_in() if p.key not in {q.key for q in out}]
     if not out:
-        uid, key = client_record(_settings())
+        uid, env_key = client_record(_settings())
         if uid:
-            out.append(Provider("google", "", key, own_domains, keeper_client(uid)))
+            out.append(Provider("google", "", env_key, own_domains, keeper_client(uid, _env_path(env_key), env_key)))
     return tuple(out)
 
 
@@ -597,6 +638,6 @@ def session_info() -> dict[str, Any]:
 
 __all__ = ["ACT_AS", "Account", "Acting", "CALLBACK", "Client", "Person", "Provider", "RECORD_KEY", "Refused", "SCOPES",
            "SIGN_OUT", "START", "SignIn", "VIA", "account_for", "acting_as", "claims_of", "client_record",
-           "current_account", "default_sign_in", "install", "keeper_client", "role_class", "role_of_session", "roster_of",
+           "client_path", "current_account", "default_sign_in", "install", "keeper_client", "role_class", "role_of_session", "roster_of",
            "session_info",
            "signed_in_name"]

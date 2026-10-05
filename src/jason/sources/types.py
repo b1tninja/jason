@@ -49,7 +49,7 @@ class ResolvedBill:
     bill_date: date
     amount_cents: int
     pdf_path: Path | None = None
-    view_bill_token: str = ""
+    view_bill_token: str = field(default="", repr=False)   # the portal session's handle on the bill: never shown
     pdf_url: str = ""
 
     @property

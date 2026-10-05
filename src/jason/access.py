@@ -112,23 +112,26 @@ def community_officers() -> tuple[Officer, ...]:
 
 
 def providers_from(rows: Any) -> tuple[SignInProvider, ...]:
-    """``sign_in.json`` rows as ``SignInProvider`` records; a row with an unknown provider or no record is skipped."""
+    """``sign_in.json`` rows as ``SignInProvider`` records; a row with an unknown provider, or with neither a vault
+    path (``vault``) nor a Keeper record (``record_uid``), is skipped."""
     out = []
     for i, row in enumerate(rows if isinstance(rows, list) else []):
         if not isinstance(row, dict):
             continue
         uid = str(row.get("record_uid", "") or "").strip()
+        vault = str(row.get("vault", "") or "").strip()
         try:
             kind = IdentityProvider(str(row.get("provider", "google") or "google").strip().lower())
         except ValueError:
             continue
-        if not uid:
+        if not uid and not vault:
             continue
         domains = row.get("domains", [])
         out.append(SignInProvider(key=str(row.get("key", "") or f"{kind.value}-{i + 1}").strip(), record_uid=uid,
                                   provider=kind, label=str(row.get("label", "") or "").strip(),
                                   domains=tuple(str(d).strip().lower() for d in (domains if isinstance(domains, list) else [domains])
-                                                if str(d).strip())))
+                                                if str(d).strip()),
+                                  vault=vault))
     return tuple(out)
 
 
@@ -137,10 +140,17 @@ def installation_sign_in(root: Path | None = None) -> tuple[SignInProvider, ...]
 
 
 def write_sign_in(path: Path, provider: SignInProvider) -> Path:
-    """Add or replace (by ``key``) one provider in a ``sign_in.json``; the file is private and never checked in."""
+    """Add or replace (by ``key``) one provider in a ``sign_in.json``; the file is private and never checked in. A row
+    names its vault path (``vault``), or the Keeper record (``record_uid``) of the older form."""
+    if not provider.record_uid and not provider.vault:
+        raise ValueError(f"sign-in client {provider.key!r} names neither a vault path nor a Keeper record")
     rows = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
     rows = [r for r in rows if isinstance(r, dict) and r.get("key") != provider.key]
-    row: dict[str, Any] = {"key": provider.key, "provider": provider.provider.value, "record_uid": provider.record_uid}
+    row: dict[str, Any] = {"key": provider.key, "provider": provider.provider.value}
+    if provider.vault:
+        row["vault"] = provider.vault
+    if provider.record_uid:
+        row["record_uid"] = provider.record_uid
     if provider.domains:
         row["domains"] = list(provider.domains)
     if provider.label:

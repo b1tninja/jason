@@ -1,6 +1,6 @@
 # jason as a service: the scheduler, the daemon, and their commands
 
-Status: design (2026-10-05). Build steps 1 and 3 are built (`jason.jobs`, `jason.locks.account`, `jason.serve`, `jason serve`, `jason daemon`); the scheduler (step 2), incremental reads (4), and leases (5) are not. It pairs with [integrations-design.md](integrations-design.md), which says what each integration is and how often it may be read, and with [console/handoff-instance-and-integrations.md](console/handoff-instance-and-integrations.md), the screens.
+Status: design (2026-10-05). Build steps 1, 2, and 3 are built (`jason.jobs`, `jason.locks.account`, `jason.scheduler`, `jason.serve`, `jason serve`, `jason daemon`, `jason cadence`); incremental reads (4) and leases (5) are not. It pairs with [integrations-design.md](integrations-design.md), which says what each integration is and how often it may be read, and with [console/handoff-instance-and-integrations.md](console/handoff-instance-and-integrations.md), the screens.
 
 ## Why
 
@@ -44,7 +44,7 @@ A `schedules` table in each community's `jobs.db`:
 
 **Rules:**
 - **One run at a time.** A schedule whose last job is still queued or running is not added again (coalesce).
-- **Reads only, by default.** A schedule that writes (a command with `--yes`) needs `confirmed_by`, a person's name, exactly as `jobs add --confirm NAME` does today; whether the board allows any scheduled write is its decision ([jobs.md](jobs.md)).
+- **Reads only, by default.** A schedule that writes (a command with `--yes`) needs `confirmed_by`, a person's name, exactly as `jobs add --confirm NAME` does today; whether the board allows any scheduled write is its decision ([jobs.md](jobs.md)). As built, the scheduler schedules no write at all until the board decides (open decision 1), so the table has no `confirmed_by` yet.
 - **Defaults from the integration.** Each integration declares a default cadence and a `stale_after` (about two to three times the cadence); see [integrations-design.md](integrations-design.md#defaults-from-rate-limits). That `stale_after` is what the Status screen has been missing: today no source declares one, so Status shows ages only (lesson `sources-declare-no-freshness`).
 - **An admin changes a cadence; jason never tightens one past the integration's floor.** A schedule faster than the floor the integration declares (from its published or polite rate) is refused with the reason.
 - **Paused on sign-in failure.** A job that fails with `KeeperAuthRequired`, `GoogleAuthRequired`, a 401, or an auth 403 pauses its integration's schedules and turns its Status row to "not signed in"; they resume when a person signs in again. Nothing retries a sign-in failure on a timer.
@@ -86,11 +86,11 @@ The existing pacers stay: Gmail's (15 down to 1 request a second), Drive's revis
 | `jason serve --install-task [--yes]` | prints, or with `--yes` creates, the Task Scheduler entry; `--uninstall-task` removes it |
 | `jason daemon status` | the process, each profile's lease and heartbeat, each lane's current job, the next five due schedules |
 | `jason daemon stop [--profile P]` | marks the lease to drain: lanes finish their current job and stop, as Ctrl-C does today |
-| `jason cadence list [--profile P]` | each schedule: its source, cadence, window, next run, last job, and where the cadence came from |
-| `jason cadence set KEY --every 15m \| --cron "0 2 * * *" [--window 07-22] --by NAME` | changes one, logged; refused faster than the integration's floor |
-| `jason cadence pause KEY` / `resume KEY` | |
-| `jason cadence run KEY` | adds it to the queue now |
-| `jason cadence defaults [--yes]` | shows, or with `--yes` writes, the integration defaults for every connected integration |
+| `jason cadence [--community C] [--json]` | each schedule: its source, cadence, window, floor, where the cadence came from, next run, last job, and a pause or why it is not scheduled |
+| `jason cadence KEY --every 15m \| --cron "0 2 * * *" [--window 07-22\|all] --by NAME` | changes one and adopts it, logged; refused faster than the integration's floor, with the reason |
+| `jason cadence --restore KEY \| --restore-all --by NAME` | the registry's default, adopted (a seeded default runs only once adopted) |
+| `jason cadence --pause KEY --why TEXT --by NAME` / `--resume KEY --by NAME` | a resume also clears a sign-in pause on the integration's sources, the failures, and the backoff |
+| `jason cadence --run-now KEY` | adds it to the queue now |
 
 Logs: `data/<profile>/jobs/logs/<id>.log` (exists), `data/<profile>/serve.log` (rotating), and the scheduler's decisions as JSON lines. Health: `GET /api/health` (no sign-in: alive, lease age, lane heartbeats) and the Status screen (next run per source).
 
@@ -101,8 +101,17 @@ Logs: `data/<profile>/jobs/logs/<id>.log` (exists), `data/<profile>/serve.log` (
    - `PAYHOA` is held as `payhoa-<profile>` (`locks.account()`) by a batch run and an approval's apply (also `GOOGLE` for a Google kind); a batch no longer has a lock of its own, so two batches of one community no longer run at once.
    - Model jobs stay one at a time across communities (the `jobs-gpu-lane` lock); a GPU job that finds it taken waits without spending an attempt.
    - `GOOGLE` is still held by no Google sync. Candidates, not yet added: `gmail --sync`, `drive --sync`, `templates`, `board --sheet`/`--tasks`, `forms`, `calendar`, and the Vault holds; each holds it only where it writes, since the worker's lane already keeps one community's Google jobs apart.
-2. `schedules` and the scheduler thread inside `jason worker`, with `jason cadence`.
-3. **Built, without the scheduler.** `jason serve` (web and worker in one process; `--no-scheduler` is accepted and does nothing yet) and `--install-task`.
+2. **Built.** `schedules` and the scheduler, with `jason cadence` (`jason.scheduler`).
+   - The table is in each community's `jobs.db`, seeded from the registry's cadences; a registry change updates each row's defaults, and a row on its default, and keeps an administrator's change. A row the registry drops is retired. Each change carries who and when; every decision is a JSON line in `<data>/jobs/scheduler.jsonl`.
+   - **Adopted first.** The cadences are defaults for the board or the administrator to adopt (open decision 2), so a seeded row runs only once a person adopts it (`--restore`, `--restore-all`, or a change).
+   - The scheduler is one thread per community in `jason serve` (`--no-scheduler` turns it off; `--no-web --no-worker` runs it alone). It wakes every 30 to 60 seconds and adds each due source as an ordinary job (`jobs.add`: the same lanes and locks), coalesced with any queued or running job for the same command. `every` runs at its gap in the window and at `outside` beyond it (or waits for the window); a `cron` runs at its times in the window. Never sooner than the floor after the last run; jitter up to a tenth of the gap, at most five minutes.
+   - **Misfire:** a run missed during downtime is one catch-up run (`run-once`), or none (`skip`).
+   - **Backoff:** after a failure, five minutes (or the floor) doubled each time, to a day; or the job's `Retry-After: VALUE` line (seconds, HTTP date, or ISO 8601), whichever is later. A success clears it.
+   - **Sign-in:** a job that fails for want of a sign-in (`KeeperAuthRequired`, `GoogleAuthRequired`, a 401), or a connection whose check says it needs sign-in, pauses every source of its integration. No timer resumes it: a person's successful `jason integrations check KEY --live`, or `jason cadence --resume`.
+   - A command that writes (`--yes`) is never scheduled; a `manual` source is shown and never scheduled.
+   - The heartbeat carries the scheduler's zone, last tick, and next five runs; `jason daemon status` prints them.
+   - **Not yet:** no client prints `Retry-After` for the scheduler to read (the shared backoff helper above), and a Keeper `jason login` clears a sign-in pause only through a check.
+3. **Built.** `jason serve` (web, worker, and, since step 2, the scheduler in one process) and `--install-task`.
    - The heartbeat is `<profile data>/jobs/heartbeat.json`, written every 30 seconds and when a lane takes or finishes a job; `jason daemon status` calls one older than 90 seconds stale.
    - `jason daemon stop` writes `<profile data>/jobs/drain.json`; the process drains that community and ends when every community it serves is drained. A request from before the process started is cleared at start.
    - The task is "At startup" (a minute after boot), runs as the person with no password stored (S4U), restarts every minute on failure, and has no time limit. Creating it needs a terminal run as administrator. Task Scheduler restarts a task that fails; a process that hangs is not restarted, only shown stale.

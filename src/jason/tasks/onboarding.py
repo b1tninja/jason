@@ -59,10 +59,11 @@ def counter(root: Path):
 
 
 def load_context(community: Any, data_dir: Path, *, settings: Any = None, asks: tuple = (),
-                 profile: str = "") -> Context:
+                 profile: str = "", vault: Any = None) -> Context:
     """The checks' context. The records inventory is read with the county index's governing instruments where the index
     cache is on disk, so ``Verified`` can match each recorded copy; ``asks`` are the intake questions ``Settled``
-    reads; ``profile`` names the private facts file ``Fact`` reads (the active profile by default)."""
+    reads; ``profile`` names the private facts file ``Fact`` reads (the active profile by default); ``vault`` is the
+    vault's names (``jason.vault.keeper.vault_names``), so a ``Setting`` whose credential moved to the vault is set."""
     from jason.community.private import facts
 
     library: tuple[dict[str, Any], ...] = ()
@@ -96,13 +97,13 @@ def load_context(community: Any, data_dir: Path, *, settings: Any = None, asks: 
             profile = ""
     return Context(community=community, library=library, holdings=holdings, count=counter(data_dir),
                    private=lambda name: facts(name, profile=profile), settings=settings, profile=profile,
-                   asks=tuple(asks))
+                   asks=tuple(asks), vault=vault)
 
 
-def run(community: Any, data_dir: Path, *, settings: Any = None) -> tuple[ItemResult, ...]:
+def run(community: Any, data_dir: Path, *, settings: Any = None, vault: Any = None) -> tuple[ItemResult, ...]:
     from jason.community import intake
 
-    return check(load_context(community, data_dir, settings=settings, asks=tuple(intake.load(data_dir))))
+    return check(load_context(community, data_dir, settings=settings, asks=tuple(intake.load(data_dir)), vault=vault))
 
 
 def write_report(results: tuple[ItemResult, ...], data_dir: Path, *, title: str, today: date | None = None) -> Path:
