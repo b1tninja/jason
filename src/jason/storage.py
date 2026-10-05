@@ -45,6 +45,7 @@ class Place:
     size: int | None = None     # bytes jason keeps there; None when not measured
     note: str = ""
     exists: bool = True
+    tiny: bool = False          # a few bytes (a lock, a token path): never what fills a drive
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -111,6 +112,37 @@ def _asspy_home() -> Path | None:
         return None
 
 
+def _asspy_config() -> Path | None:
+    try:
+        from asspy.paths import config_path
+
+        return config_path()
+    except Exception:  # noqa: BLE001 - asspy not installed, or too old to have a user config
+        return None
+
+
+def _lawlibrary_paths(home: Path) -> tuple[Path | None, Path | None]:
+    """lawlibrary's archive folder and user config file, asked of the checkout itself (its ``core`` module), so the answer
+    is the one lawlibrary uses: its environment, its .env, its user config, then its platform default. (None, None) when
+    the checkout is not there, or does not answer."""
+    import subprocess
+    import sys
+
+    if not (home / "core.py").is_file():
+        return None, None
+    venv = home / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    python = str(venv) if venv.is_file() else sys.executable
+    try:
+        done = subprocess.run([python, "-c", "import core; print(core.data_dir()); print(core.config_path())"],
+                              capture_output=True, text=True, encoding="utf-8", cwd=str(home), timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    found = (done.stdout or "").strip().splitlines()
+    if done.returncode != 0 or len(found) < 2:
+        return None, None            # an older lawlibrary with no user config: nothing to report
+    return Path(found[-2]), Path(found[-1])
+
+
 def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = True,
            free: Callable[[Path], int | None] | None = None, min_free_gb: float = DEFAULT_MIN_FREE_GB) -> dict[str, Any]:
     """Every place jason keeps something, the temp setting, and the problems found, as a dict (``lines`` prints it)."""
@@ -120,9 +152,10 @@ def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = 
     free_of = free or free_bytes
     data_dir = Path(data_dir)
 
-    def place(name: str, path: Path, *, measure: bool = False, note: str = "") -> Place:
+    def place(name: str, path: Path, *, measure: bool = False, note: str = "", tiny: bool = False) -> Place:
         return Place(name=name, path=str(path), drive=drive_of(path), free=free_of(path),
-                     size=folder_size(path) if measure and sizes and path.exists() else None, note=note, exists=path.exists())
+                     size=folder_size(path) if measure and sizes and path.exists() else None, note=note, exists=path.exists(),
+                     tiny=tiny)
 
     # The temp folder: the one JASON_TEMP_DIR names, else the system's.
     setting = config.temp_dir_setting(env_file)
@@ -149,21 +182,33 @@ def report(data_dir: Path, *, env_file: str | Path | None = None, sizes: bool = 
     places.append(place("Ollama models (OLLAMA_MODELS)", _env_path("OLLAMA_MODELS", Path.home() / ".ollama" / "models"), measure=True))
     hf = _env_path("HF_HOME", Path(os.environ.get("HF_HUB_CACHE") or Path.home() / ".cache" / "huggingface"))
     places.append(place("Hugging Face cache (HF_HOME)", hf, measure=True))
-    places.append(place("locks", lock_dir(), note="held while a model or a store is in use"))
+    places.append(place("locks", lock_dir(), note="held while a model or a store is in use", tiny=True))
+    lawlibrary_config: Path | None = None
     try:
         from jason.config import Settings
 
         settings = Settings.load(env_file)
         token = Path(settings.google_oauth_token_file).resolve()
-        places.append(place("Google token", token, note="path and drive only"))
-        places.append(place("Keeper config", Path(settings.keeper_config), note="path and drive only"))
-    except Exception:  # noqa: BLE001 - settings that cannot be read leave these two out
+        places.append(place("Google token", token, note="path and drive only", tiny=True))
+        places.append(place("Keeper config", Path(settings.keeper_config), note="path and drive only", tiny=True))
+        archive, lawlibrary_config = _lawlibrary_paths(Path(settings.lawlibrary_home))
+        if archive is not None:
+            places.append(place("lawlibrary archive (LAWLIBRARY_DATA)", archive, measure=True))
+    except Exception:  # noqa: BLE001 - settings that cannot be read leave these out
         pass
+
+    # The user config files: where each program reads the machine's settings, named in the home folder so a terminal,
+    # an agent's shell, and a scheduled task find the same file from any working directory. Path and whether it is there.
+    configs = [{"name": "jason", "path": str(config.user_config_path()), "exists": config.user_config_path().is_file()}]
+    for name, path in (("asspy", _asspy_config()), ("lawlibrary", lawlibrary_config)):
+        if path is not None:
+            configs.append({"name": name, "path": str(path), "exists": path.is_file()})
 
     out: dict[str, Any] = {
         "places": [p.as_dict() for p in places],
         "temp": {"configured": bool(setting), "setting": setting, "path": temp.path, "systemTemp": str(system),
                  "systemTempDrive": drive_of(system), "systemTempFree": free_of(system), "error": temp_error},
+        "configs": configs,
         "minFreeGb": min_free_gb,
     }
     out["problems"] = problems(out, free_of(data_dir), drive_of(data_dir), min_free_gb)
@@ -179,7 +224,7 @@ def problems(rep: dict[str, Any], data_free: int | None, data_drive: str, min_fr
         found.append(temp["error"])
     low: dict[str, tuple[int, list[str]]] = {}
     for p in rep["places"]:
-        if p["free"] is not None and p["free"] < floor:
+        if p["free"] is not None and p["free"] < floor and not p.get("tiny"):
             low.setdefault(p["drive"], (p["free"], []))[1].append(p["name"].strip())
     for drive, (avail, names) in low.items():
         found.append(f"{drive} has {avail / GB:.1f} GB free, under {min_free_gb:g} GB, and jason keeps {', '.join(names)} there")
@@ -209,6 +254,10 @@ def lines(rep: dict[str, Any]) -> list[str]:
         gone = "" if p["exists"] else "  (not there yet)"
         note = f"  [{p['note']}]" if p["note"] else ""
         out.append(f"{p['name']}\n    {p['path']}   {p['drive']}  {free}{size}{gone}{note}")
+    out.append("")
+    out.append("user config (machine settings, read from any working directory):")
+    for c in rep.get("configs", []):
+        out.append(f"    {c['name']:<11} {c['path']}" + ("" if c["exists"] else "   (not there yet: name the folders in it)"))
     out.append("")
     out += [f"! {m}" for m in rep["problems"]] or [f"every place has at least {rep['minFreeGb']:g} GB free"]
     return out

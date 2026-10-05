@@ -163,6 +163,27 @@ def test_a_place_on_a_low_drive_is_flagged(clean_temp, monkeypatch, tmp_path):
     assert any(p["name"].strip() == "data directory" and p["drive"] == drive for p in rep["places"])
 
 
+def test_a_few_bytes_of_lock_is_not_what_fills_a_drive(clean_temp, monkeypatch, tmp_path):
+    monkeypatch.setenv("JASON_TEMP_DIR", str(tmp_path / "tmp"))
+    drive = storage.drive_of(tmp_path)
+    rep = _report(tmp_path, {drive: 3 * GB})
+    flagged = " ".join(line for line in rep["problems"] if f"{drive} has 3.0 GB free" in line)
+    assert "data directory" in flagged and "locks" not in flagged
+    assert any(p["name"] == "locks" and p["tiny"] for p in rep["places"])
+
+
+def test_the_user_config_files_are_listed_by_path(clean_temp, monkeypatch, tmp_path):
+    monkeypatch.setenv("JASON_TEMP_DIR", str(tmp_path / "tmp"))
+    named = tmp_path / "jason-user.env"
+    named.write_text("JASON_TEMP_DIR=%s\n" % (tmp_path / "tmp").as_posix(), encoding="utf-8")
+    monkeypatch.setenv("JASON_CONFIG", str(named))
+    rep = _report(tmp_path, {})
+    jason_config = next(c for c in rep["configs"] if c["name"] == "jason")
+    assert jason_config == {"name": "jason", "path": str(named), "exists": True}
+    text = "\n".join(storage.lines(rep))
+    assert "user config" in text and str(named) in text
+
+
 def test_roomy_drives_are_no_problem(clean_temp, monkeypatch, tmp_path):
     monkeypatch.setenv("JASON_TEMP_DIR", str(tmp_path / "tmp"))
     rep = _report(tmp_path, {})

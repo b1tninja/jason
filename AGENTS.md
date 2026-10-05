@@ -105,6 +105,7 @@ Copy `.env.example` → `.env` and fill Keeper record UIDs (never commit `.env`)
 - Do not invent CC&R quotes from file names; quote document body text only when you have the file.
 - A request that runs a local model holds the GPU lock, and a store jason reads, changes, and writes back holds its store lock (`jason.locks`). A model job runs `jason.local_ai.preflight` first and fails fast on the CPU or short of commit. `jason local-ai` reports the stack; see [docs/document-tools.md](docs/document-tools.md).
 - Scratch, temp, and rebuilt-index artifacts go to the drive `JASON_TEMP_DIR` names (`jason.config.apply_temp_dir`, called when a program starts, never at import), never to the system drive when it is nearly full. `jason storage --check` says where jason writes and which drive is short. A new temp file uses `tempfile` or the environment's TEMP, never a path of its own.
+- The machine's settings (scratch, caches, and data folders) live in each program's user config in the home folder: `~/.jason/.env` (`jason.config.user_config_path`), `~/.asspy/.env`, `~/.lawlibrary/.env`. Order per setting: process environment, the project's `.env`, the user config, the default. A path setting is never relative to the working directory (`config._anchored`), and a new one is read through `config._env_value` or `Settings`, so the user config applies. Tests read no user config.
 - Drive text watermarks (e.g. diagonal DRAFT) **cannot** be removed via the Docs API; remove them in the Docs editor before export.
 - Do not commit HARs, `.env`, or `secrets/google-token.json`.
 

@@ -1623,15 +1623,25 @@ LESSONS: tuple[Lesson, ...] = (
            "Python's tempfile, SQLite's sort spill (on Windows it follows TEMP and TMP, and ignores SQLITE_TMPDIR), "
            "OCR page images, pytest's tmp_path, and child processes all follow the OS temp folder, and nothing named "
            "where scratch goes. asspy reads only the process environment, so ASSPY_HOME written in .env moved nothing. "
-           "A plain index build does not spill (measured: 0 bytes), so the large copies were made by hand.",
+           "A plain index build does not spill (measured: 0 bytes), so the large copies were made by hand. Settings "
+           "by environment variable or a relative path also differ by launcher and working directory, and a program "
+           "started from an application sees its own AppData: asspy's default home, resolved from an agent's shell, "
+           "was a different folder from the one a terminal sees.",
            "JASON_TEMP_DIR (environment or .env) is applied when a command, jason-mcp, jason-web, the worker, a script, "
            "or pytest starts, and fails fast on a missing drive; jason.asspy_home.apply reads ASSPY_HOME from .env before "
            "asspy is asked for a county's file; jason storage lists each place with its drive, free space, and size, and "
            "--check flags a low drive and scratch on it; docs/scratch.md says where scratch goes and that a confidential "
-           "copy stays on the data drive and is removed when the check ends. Still a person's: TEMP and TMP at user "
-           "level, PIP_CACHE_DIR, and the sibling packages' own defaults (asspy's home, lawlibrary's fallback).",
+           "copy stays on the data drive and is removed when the check ends. Each of jason, asspy, and lawlibrary now "
+           "reads its own user config from the home folder (~/.jason/.env, ~/.asspy/.env, ~/.lawlibrary/.env), outside "
+           "AppData and the same from any working directory; the environment wins, then a project's .env, then the "
+           "user config; jason's relative path settings are taken from the checkout, not the working directory; and "
+           "jason storage lists the files and where lawlibrary's archive resolves. Still a person's: TEMP and TMP at "
+           "user level and PIP_CACHE_DIR.",
            Status.FIXED, guards=("config.apply_temp_dir",
                                  "asspy_home.apply",
+                                 "config.user_config_path and config.env_file_values (tests/test_user_config.py: the "
+                                 "user config is found from any working directory and under the project's .env)",
+                                 "asspy.paths.configured and lawlibrary core.config_path (their tests)",
                                  "tests/test_storage.py: the setting moves tempfile, the environment, a child "
                                  "process, and pytest's tmp_path; a low drive and scratch on it are flagged",
                                  "tests/test_asspy_home.py: .env names the home and the environment wins"),

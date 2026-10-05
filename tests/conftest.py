@@ -19,6 +19,10 @@ try:
 except Exception as exc:  # noqa: BLE001 - a JASON_TEMP_DIR that cannot be used stops the run, never falls back to C:
     pytest.exit(f"JASON_TEMP_DIR: {exc}", returncode=2)
 
+# Past this point a test reads no one's user config (~/.jason/.env): the machine's settings, such as where scratch goes,
+# were applied above, and the tests set what they need themselves. A file that does not exist, so no test finds one.
+os.environ["JASON_CONFIG"] = str(Path(__file__).parent / "fixtures" / "no-user-config.env")
+
 
 @pytest.fixture(autouse=True)
 def _no_ollama_ocr(monkeypatch):

@@ -69,14 +69,9 @@ def profile_name() -> str:
 
 def _env_file_value(key: str) -> str:
     try:
-        from dotenv import dotenv_values
+        from jason.config import env_file_values
 
-        from jason.config import resolve_env_path
-
-        path = resolve_env_path(None)
-        if not path.is_file():
-            return ""
-        values = dotenv_values(path)
+        values = env_file_values(None)
     except Exception:
         return ""
     for k, v in values.items():

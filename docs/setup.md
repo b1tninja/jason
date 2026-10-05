@@ -202,20 +202,32 @@ jason's local models run on Ollama (`qwen3.6:27b` for OCR, classification, and e
 
 A rebuilt index, OCR page images, a model's files, and the county caches are large, and the system drive is often the small one. `jason storage` lists each place jason reads or writes: its path, drive, the drive's free space, and the size of what jason keeps there. `jason storage --check` exits 1 and says why when a drive is short of room (`--min-free-gb`, default 20), when scratch would land on the small drive, or when `JASON_TEMP_DIR` cannot be used.
 
-Put scratch on a roomy drive with one setting in `.env` (or the environment):
+**Name the folders once, in the user config.** Each of jason, asspy, and lawlibrary reads its own settings file from the home folder, outside `AppData`, so a terminal, an agent's shell, the worker, and a scheduled task all find the same file wherever they start (a program's `AppData` view can differ from another's, and a relative path depends on the working directory):
+
+| Program | User config | Names | Another file |
+|---|---|---|---|
+| jason | `~/.jason/.env` | `JASON_TEMP_DIR`, `JASON_DATA_DIR`, `LAWLIBRARY_HOME`, and any setting a project's `.env` takes | `JASON_CONFIG` |
+| asspy | `~/.asspy/.env` | `ASSPY_HOME` (county caches, tax rolls, samples) | `ASSPY_CONFIG` |
+| lawlibrary | `~/.lawlibrary/.env` | `LAWLIBRARY_DATA` (the publication archive) | `LAWLIBRARY_CONFIG` |
+
+For each setting the process environment wins, then the project's own `.env` (a checkout's, or the one `JASON_ENV` names), then the user config, then the built-in default. Write paths with forward slashes (`D:/scratch/jason/tmp`): a backslash path in double quotes is read as an escape. The tests read no user config. `jason storage` lists each file and whether it is there, and shows where each setting resolves.
 
 ```
-JASON_TEMP_DIR=D:\scratch\jason\tmp
+# ~/.jason/.env
+JASON_TEMP_DIR=D:/scratch/jason/tmp
+LAWLIBRARY_HOME=D:/code/lawlibrary
 ```
 
-A relative value is taken from the folder that holds the data directory. Unset, nothing changes. When it is set, each jason command, `jason-mcp`, `jason-web`, the worker and every job it starts, and the scripts in `scripts/` create the folder and point Python's `tempfile`, `TEMP`, `TMP`, `TMPDIR`, `SQLITE_TMPDIR`, and `PYTEST_DEBUG_TEMPROOT` at it, so every program jason starts (pymupdf, Tesseract, SQLite's sorts during `jason index --build`) uses it too. The tests put `tmp_path` there as well. Importing `jason` does nothing; the setting is applied when a program starts. A drive that is missing or a folder that cannot be written stops the run with a message, and jason does not fall back to the system temp folder.
+A relative path in the settings (`LAWLIBRARY_HOME`, the Google token file) is taken from the jason checkout, never from the working directory.
+
+Put scratch on a roomy drive with `JASON_TEMP_DIR`. A relative value is taken from the folder that holds the data directory. Unset, nothing changes. When it is set, each jason command, `jason-mcp`, `jason-web`, the worker and every job it starts, and the scripts in `scripts/` create the folder and point Python's `tempfile`, `TEMP`, `TMP`, `TMPDIR`, `SQLITE_TMPDIR`, and `PYTEST_DEBUG_TEMPROOT` at it, so every program jason starts (pymupdf, Tesseract, SQLite's sorts during `jason index --build`) uses it too. The tests put `tmp_path` there as well. Importing `jason` does nothing; the setting is applied when a program starts. A drive that is missing or a folder that cannot be written stops the run with a message, and jason does not fall back to the system temp folder.
 
 What it cannot move, and what you may choose to run yourself (jason never changes a system or user setting):
 
 - **Other programs' temp files**, and Windows itself, use the user's `TEMP` and `TMP`. To move them: `setx TEMP D:\temp` and `setx TMP D:\temp` (new programs only; make the folder first).
 - **A coding agent's own scratch folder** is the agent's setting, not jason's; it is usually under the user's `TEMP`, so the `setx` lines above would move it, and a session started before them still uses the old one.
 - **pip's cache**: `pip config set global.cache-dir D:\pip-cache`.
-- **Folders jason reads that have their own settings**: `ASSPY_HOME` (the county index cache; Windows default `%LOCALAPPDATA%\asspy`), `OLLAMA_MODELS`, `HF_HOME`, and `JASON_LOCK_DIR` (small). `jason storage` shows where each is.
+- **Folders jason reads that have their own settings**: `ASSPY_HOME` (the county index cache; Windows default `%LOCALAPPDATA%\asspy`; name it in `~/.asspy/.env`), `LAWLIBRARY_DATA` (name it in `~/.lawlibrary/.env`), `OLLAMA_MODELS`, `HF_HOME`, and `JASON_LOCK_DIR` (small). `jason storage` shows where each is.
 
 ## Using jason from Python
 

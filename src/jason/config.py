@@ -55,18 +55,39 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def user_config_path() -> Path:
+    """jason's user config: ``JASON_CONFIG`` when set, else ``~/.jason/.env``. It need not exist. It sits in the home
+    folder, outside AppData, so a terminal, an agent's shell, the worker, and a scheduled task all read the same file
+    whatever their working directory; a program's AppData view can differ from another's. It holds the settings of the
+    machine (where scratch, caches, and data live); a project's own .env, nearer, overrides it."""
+    named = os.environ.get("JASON_CONFIG", "").strip()
+    return Path(named).expanduser() if named else Path.home() / ".jason" / ".env"
+
+
+def env_file_values(env_file: str | Path | None = None) -> dict[str, str | None]:
+    """The settings the .env files give: the user config (``user_config_path``) as the base and the project's .env
+    (``resolve_env_path``) over it, each key as written. An unreadable file gives nothing."""
+    values: dict[str, str | None] = {}
+    try:
+        from dotenv import dotenv_values
+    except Exception:  # noqa: BLE001 - no dotenv: no files
+        return values
+    for path in (user_config_path(), resolve_env_path(env_file)):
+        try:
+            if path.is_file():
+                values.update(dotenv_values(path))
+        except Exception:  # noqa: BLE001 - an unreadable .env sets nothing
+            continue
+    return values
+
+
 def _env_value(key: str, env_file: str | Path | None = None) -> str:
-    """``key`` from the environment, else from .env (``resolve_env_path``), else ""."""
+    """``key`` from the environment, else from the project's .env (``resolve_env_path``), else from the user config
+    (``user_config_path``), else ""."""
     value = os.environ.get(key, "").strip()
     if value:
         return _strip_quotes(value)
-    try:
-        from dotenv import dotenv_values
-
-        path = resolve_env_path(env_file)
-        values = dotenv_values(path) if path.is_file() else {}
-    except Exception:  # noqa: BLE001 - an unreadable .env sets nothing
-        return ""
+    values = env_file_values(env_file)
     for k, v in values.items():
         if k.upper() == key and v:
             return _strip_quotes(str(v))
@@ -153,6 +174,14 @@ def _record_uids(values: dict[str, str | None]) -> dict[str, str]:
     found = {k.lower(): _strip_quotes(v) for k, v in os.environ.items() if k.lower().endswith("_record_uid") and v}
     found.update({k.lower(): _strip_quotes(str(v)) for k, v in values.items() if k.lower().endswith("_record_uid") and v})
     return found
+
+
+def _anchored(value: str | Path) -> Path:
+    """A path setting as an absolute path: a relative one is taken from this checkout's folder, never from the working
+    directory, so a command finds the same file wherever it is started (name an absolute path in the user config to put
+    it on another drive)."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (Path(__file__).resolve().parents[2] / path).resolve()
 
 
 def resolve_env_path(path: str | Path | None = None) -> Path:
@@ -242,12 +271,8 @@ class Settings:
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Settings:
-        from dotenv import dotenv_values
-
         env_path = resolve_env_path(path)
-        values: dict[str, str | None] = {}
-        if env_path.is_file():
-            values = dict(dotenv_values(env_path))
+        values = env_file_values(path)
 
         keeper_username = _get(
             values, "keeper_username", "KEEPER_USERNAME", default=""
@@ -413,13 +438,9 @@ class Settings:
                 Path(google_client_raw) if google_client_raw else None
             ),
             google_notebook_url=google_notebook_url,
-            google_oauth_token_file=(
-                Path(google_token_raw)
-                if google_token_raw
-                else Path("secrets/google-token.json")
-            ),
+            google_oauth_token_file=_anchored(google_token_raw or "secrets/google-token.json"),
             google_sheets_spreadsheet_id=google_sheets_spreadsheet_id,
-            lawlibrary_home=Path(lawlibrary_home),
+            lawlibrary_home=_anchored(lawlibrary_home),
             temp_dir=_get(values, "jason_temp_dir", "JASON_TEMP_DIR", default="") or _env_value("JASON_TEMP_DIR", env_path),
             env_path=env_path if env_path.is_file() else None,
             record_uids=_record_uids(values),
