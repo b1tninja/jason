@@ -10,8 +10,14 @@ source it cites (``data/briefs/<task>.review.md``). A review is a draft for the 
 case's file, by the case's key or its catalog's name). ``--catalog``, ``--kind``, and ``--folder`` name an ad hoc one
 from the passage index's columns. A confidential collection goes only into a board task's pack.
 
+``--as-of DATE`` builds the pack as of the day the matter turns on (``context_pack.assemble``): the law's words in
+force that day where the disk shows them, else the words on the shelf now under "Not shown to be in force"; the
+section a governing passage falls in, recited as of the day; and each stored reading under the words it reads,
+labeled as a reading and whose. Without it the pack is what it was.
+
 Every pack written is also kept under ``data/reviews/<task>/<collection>/<digest>.json`` (``review_store``), so a
-later review does not write over an earlier one. ``jason review --history TASK`` lists them.
+later review does not write over an earlier one, and the same question as of two days is two reviews.
+``jason review --history TASK`` lists them, each with its as-of date.
 """
 
 from __future__ import annotations
@@ -66,7 +72,48 @@ def history_lines(data_dir: Path, task: str) -> list[str]:
             answer = (f"{'verified' if row['verified'] else 'NOT verified'}: {row['grounded']} quotes found, "
                       f"{row['ungrounded']} not found ({row['model'] or 'model not recorded'}; {row['runs']} runs)")
         mark = " (confidential)" if row["confidential"] else ""
-        lines.append(f"{row['asOf']}  {row['collection']}{mark}  {row['digest']}  {row['sources']} sources  {answer}")
+        line = f"{row['asOf']}  {row['collection']}{mark}  {row['digest']}  {row['sources']} sources  {answer}"
+        if row.get("asOfNamed"):
+            # The first column is then the day a person named, not the day the review was written.
+            line += (f"  as of {row['asOf']} (named; written {row['written'] or 'on a day not recorded'}): {row['law']} law "
+                     f"sources, {row['notShown']} not shown in force that day; {row['readings']} readings attached")
+        lines.append(line)
+    return lines
+
+
+def as_of_lines(pack: Any) -> list[str]:
+    """What a pack built as of a day showed, for the terminal: each law source's label, the governing sources by how
+    they stand that day, and the readings attached. Nothing for a pack with no day."""
+    if pack.as_of is None:
+        return []
+    day = pack.as_of.isoformat()
+    lines = []
+    law = [s for s in pack.sources if s.id.startswith("S") and s.provision is not None]
+    shown = [s for s in law if s.provision.shown]
+    earlier = sum(1 for s in shown if s.provision.decided == "prior")
+    lines.append(f"as of {day}: {len(law)} law sources: {len(shown)} shown in force that day ({earlier} from an earlier "
+                 f"version), {len(law) - len(shown)} not shown (the words on the shelf now, labeled)")
+    lines += [f"  {s.id} {s.title}: {s.provision.decided or 'not asked'}; digest {s.provision.digest[:12]}" for s in law]
+    governing = [s for s in pack.sources if s.id.startswith("G") and s.provision is not None]
+    if governing:
+        by: dict[str, int] = {}
+        for s in governing:
+            by[s.provision.decided] = by.get(s.provision.decided, 0) + 1
+        words = {"as_amended": "in force (the passage is the section as amended to that day)",
+                 "as_amended_below": "in force by the section's words given under the passage",
+                 "not_kept": "not shown (the document is not kept as amended)",
+                 "unnamed": "not shown (no section named for the passage)"}
+        lines.append(f"as of {day}: {len(governing)} governing sources: "
+                     + "; ".join(f"{n} {words.get(k, k)}" for k, n in by.items()))
+    attached = [r for s in pack.sources if s.provision is not None for r in s.provision.readings]
+    if attached:
+        by_state: dict[str, int] = {}
+        for r in attached:
+            by_state[r.state] = by_state.get(r.state, 0) + 1
+        lines.append("readings listed under the words: " + ", ".join(f"{n} {state}" for state, n in by_state.items())
+                     + " (only a current one is a reading on that day; each is labeled with whose it is)")
+    else:
+        lines.append("no stored reading reads these provisions: the words stand alone")
     return lines
 
 
@@ -125,8 +172,18 @@ def cmd_review(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    as_of = None
+    if args.as_of:
+        from datetime import date
+
+        try:
+            as_of = date.fromisoformat(args.as_of)
+        except ValueError:
+            print(f"--as-of takes a day as YYYY-MM-DD, not {args.as_of!r}", file=sys.stderr)
+            return 2
     draft = plain(Path(args.draft).read_text(encoding="utf-8")) if args.draft else ""
-    pack = build(community, task, data_dir, ask=args.ask or "", draft=draft, mode=args.mode, k=args.k, collection=collection)
+    pack = build(community, task, data_dir, ask=args.ask or "", draft=draft, mode=args.mode, k=args.k, collection=collection,
+                 as_of=as_of)
     path = save_pack(pack, brief_path(data_dir, task, args.name or ""))
     tiers: dict[str, int] = {}
     for source in pack.sources:
@@ -136,6 +193,8 @@ def cmd_review(args: argparse.Namespace) -> int:
     if collection is not None:
         print(f"collection: {collection.key} ({collection.kind.value}{', confidential' if collection.confidential else ''}): "
               + (collection.label if pack.collection_included else "refused for this task's audience"))
+    for line in as_of_lines(pack):
+        print(line)
     for gap in pack.gaps:
         print(f"gap: {gap}")
     print(f"context pack: {path}")
@@ -177,7 +236,11 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--folder", action="append", default=[], help="an ad hoc collection: under this data folder (repeat)")
     p.add_argument("--confidential", action="store_true",
                    help="with --catalog: include that catalog's files held back unless asked (board tasks only)")
+    p.add_argument("--as-of", dest="as_of", metavar="DATE",
+                   help="the day the matter turns on (YYYY-MM-DD): each law source gives the words in force that day where "
+                        "the disk shows them, else the words on the shelf now labeled not shown to be in force; a governing "
+                        "passage's section is recited as of the day; each stored reading is attached, labeled as a reading")
     p.add_argument("--history", action="store_true",
-                   help="list the reviews kept for the task under data/reviews: date, collection, digest, and whether "
-                        "the answer's quotes were found (reads only)")
+                   help="list the reviews kept for the task under data/reviews: the as-of date, collection, digest, and "
+                        "whether the answer's quotes were found (reads only)")
     p.set_defaults(func=cmd_review)

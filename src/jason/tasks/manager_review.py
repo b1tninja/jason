@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,14 +28,16 @@ BRIEFS = "briefs"
 
 
 def build(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "", draft: str = "", mode: str = "hybrid",
-          k: int = 4, collection: Any = None) -> ContextPack:
+          k: int = 4, collection: Any = None, as_of: date | None = None) -> ContextPack:
     """The pack. A task's topics are paraphrases of what the documents say, so the default is hybrid retrieval (the
     keyword ranking fused with the local embedder); without the embedder it falls back to keyword and says so.
-    ``collection`` (``document_collections.Collection``) adds its material as its own tier."""
+    ``collection`` (``document_collections.Collection``) adds its material as its own tier. ``as_of`` is the day the
+    matter turns on: the law and the governing documents are recited as of it, and the stored readings attached
+    (``context_pack.assemble``); None is today, and the pack is what it was."""
     from jason.community.retrieval import EmbeddingUnavailable
 
     try:
-        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k, collection=collection)
+        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k, collection=collection, as_of=as_of)
     except EmbeddingUnavailable as exc:
         if mode == "keyword":
             raise
@@ -45,10 +48,10 @@ def build(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "", dr
         from jason.local_ai import unload
 
         unload(DEFAULT_MODEL)
-        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k, collection=collection)
+        return assemble(community, task, data_dir, ask=ask, draft=draft, mode=mode, k=k, collection=collection, as_of=as_of)
     except (EmbeddingUnavailable, OSError) as exc:
         first = exc
-    pack = assemble(community, task, data_dir, ask=ask, draft=draft, mode="keyword", k=k, collection=collection)
+    pack = assemble(community, task, data_dir, ask=ask, draft=draft, mode="keyword", k=k, collection=collection, as_of=as_of)
     pack.gaps.append(f"retrieval fell back to keyword: {first}")
     return pack
 
@@ -88,25 +91,37 @@ def run(pack: ContextPack, *, model: str = "", post: Callable[[str, dict[str, An
     poster = post or (lambda url, body: _post(url, body, timeout))
     answer = poster(f"{OLLAMA_URL}/api/chat", payload)
     content = (answer.get("message") or {}).get("content", "") if isinstance(answer, dict) else ""
-    return verify(parse_answer(content), pack.texts())
+    # A quote of a reading attached to a source, given as the source's words, is not grounded, and says why.
+    return verify(parse_answer(content), pack.texts(), pack.reading_texts())
 
 
 def report(pack: ContextPack, checked: Checked) -> str:
-    """The review as Markdown: issues with their rules and facts, each quote marked when it was not found."""
-    bad = {(u["source"], u["quote"]) for u in checked.ungrounded}
+    """The review as Markdown: issues with their rules and facts, each quote marked when it was not found, or when it
+    quotes a reading attached to the source as the provision's words."""
+    from jason.community.prompts import READING_QUOTED
+
+    bad = {(u["source"], u["quote"]): u.get("why", "") for u in checked.ungrounded}
     titles = {s.id: s.title for s in pack.sources}
     a = checked.answer
-    lines = [f"# Review: {pack.task.kind.value}", "",
-             f"Quotes checked: {checked.grounded} found in their sources, {len(checked.ungrounded)} not found.", ""]
+
+    def mark(item: dict[str, Any]) -> str:
+        why = bad.get((item.get("source"), item.get("quote")))
+        if why is None:
+            return ""
+        return f" **({why})**" if why == READING_QUOTED else " **(quote not found)**"
+
+    lines = [f"# Review: {pack.task.kind.value}", ""]
+    if pack.as_of is not None:
+        lines += [f"As of {pack.as_of.isoformat()}: each law and governing source says whether its words are shown to be "
+                  "in force that day.", ""]
+    lines += [f"Quotes checked: {checked.grounded} found in their sources, {len(checked.ungrounded)} not found.", ""]
     for issue in a.get("issues") or []:
         lines += [f"## {issue.get('issue')}", ""]
         for item in issue.get("rules") or []:
-            mark = " **(quote not found)**" if (item.get("source"), item.get("quote")) in bad else ""
             lines.append(f"- Rule [{item.get('source')}: {titles.get(item.get('source'), '?')}] ({item.get('force')}): "
-                         f"\"{item.get('quote')}\"{mark}")
+                         f"\"{item.get('quote')}\"{mark(item)}")
         for item in issue.get("facts") or []:
-            mark = " **(quote not found)**" if (item.get("source"), item.get("quote")) in bad else ""
-            lines.append(f"- Fact [{item.get('source')}]: \"{item.get('quote')}\"{mark}")
+            lines.append(f"- Fact [{item.get('source')}]: \"{item.get('quote')}\"{mark(item)}")
         lines += ["", f"Application: {issue.get('application')}", "", f"Conclusion: {issue.get('conclusion')}", ""]
     if a.get("considerations"):
         lines += ["## Considerations", "", "| Consideration | Sources | Status | Note |", "|---|---|---|---|"]

@@ -5,11 +5,19 @@ that differed, so the same draft reviewed under two collections, or again after 
 two records that can be compared (docs/ingestion-and-review.md, "A review").
 
 - **The key.** ``review_digest``: a SHA-256 over the question, the draft, the collection's key, and each source's id
-  with a digest of its text. The same pack gives the same record; a pack whose sources changed gives a new one.
-- **The record.** The task, its audience, the collection, the as-of date, the question, each source (id, tier,
-  standing, file, section, and a digest of its passage: the words stay in their own stores), the pack's gaps, and
-  ``runs``: each model answer for that pack with its model and how its quotes checked (``prompts.verify``). A pack
-  written without ``--run`` has no runs; a second run is appended, never written over the first.
+  with a digest of its text. The same pack gives the same record; a pack whose sources changed gives a new one. A
+  pack built as of a day (``jason review --as-of``) adds the day and what each source recites, so the same question
+  as of two days gives two records, and so does a changed statute or a changed reading.
+- **The record.** The task, its audience, the collection, the as-of date (``asOfNamed`` when a person named it; else
+  the day the record was first kept), the question, each source (id, tier, standing, file, section, and a digest
+  of its passage: the words stay in their own stores), the pack's gaps, and ``runs``: each model answer for that
+  pack with its model and how its quotes checked (``prompts.verify``). A pack written without ``--run`` has no
+  runs; a second run is appended, never written over the first.
+- **What a source recites.** A law source's row carries ``provision``: the citation and the digest of the provision's
+  words (``law_text.words_digest``, the digest ``jason readings`` prints). In a pack built as of a day it also says
+  whether the words were shown in force that day and how (``shown``, ``decided``), and lists each reading attached
+  with its key, standing, whose it is, its date, and its state (current, stale, missing, misquoted, or later). A
+  governing source's row carries the same for the section its passage falls in. Never what a reading says.
 - **Confidentiality.** A review of a confidential collection is itself confidential and the record says so.
   ``history`` leaves such records out unless asked, so a tool built on it holds them back by default.
 - **The lock.** A record is read, changed, and written back under the store lock (``Resource.STORE``, "reviews").
@@ -33,7 +41,7 @@ from jason.community.prompts import Checked
 
 REVIEWS = "reviews"
 NO_COLLECTION = "none"
-SCHEMA = 1
+SCHEMA = 2                     # 2: asOfNamed, firstWritten, and each source's ``provision``; a schema 1 record reads the same
 DIGEST_CHARS = 16              # of the digest, in the record's file name
 CONFIDENTIAL_WHY = ("a review of a confidential collection is confidential: for directors and counsel, never an owner, "
                     "the newsletter, or an open meeting")
@@ -50,20 +58,51 @@ def collection_key(pack: ContextPack) -> str:
     return pack.collection.key if pack.collection is not None else NO_COLLECTION
 
 
+def provision_row(source: Any) -> dict[str, Any] | None:
+    """What a source recites, as the record keeps it (``context_pack.Recitation``): the provision and the digest of
+    its words; for a pack built as of a day, whether the source's words were shown in force that day and how, and
+    each reading listed under them with its standing, whose it is, and whether it was current. None for a source
+    that recites no provision. Never the words, and never what a reading says."""
+    p = getattr(source, "provision", None)
+    if p is None:
+        return None
+    row: dict[str, Any] = {"citation": p.citation, "digest": p.digest}
+    if p.as_of is not None:
+        row.update({"shown": bool(p.shown), "decided": p.decided, "otherVersions": list(p.others),
+                    "readings": [{"key": r.key, "standing": r.standing, "whose": r.whose, "dated": r.dated,
+                                  "state": r.state, "provision": r.provision} for r in p.readings]})
+    return row
+
+
 def source_rows(pack: ContextPack) -> list[dict[str, Any]]:
-    """Each source as the record keeps it: what it is and a digest of its words, never the words."""
+    """Each source as the record keeps it: what it is and a digest of its words, never the words. A law source, and
+    in a pack built as of a day a governing source, also carries what it recites (``provision_row``)."""
     def standing(source: Any) -> str:
         found = source.standing or _STANDING.get(source.id[0])
         return found.value if found else ""
 
-    return [{"id": s.id, "tier": int(s.tier), "standing": standing(s), "file": s.file or s.title,
-             "section": s.section or s.place, "digest": text_digest(s.text)} for s in pack.sources]
+    rows = []
+    for s in pack.sources:
+        row = {"id": s.id, "tier": int(s.tier), "standing": standing(s), "file": s.file or s.title,
+               "section": s.section or s.place, "digest": text_digest(s.text)}
+        recited = provision_row(s)
+        if recited is not None:
+            row["provision"] = recited
+        rows.append(row)
+    return rows
 
 
 def review_digest(pack: ContextPack) -> str:
-    """What makes this pack this pack: the question, the draft, the collection, and each source's id and words."""
-    identity = [pack.ask, pack.draft, collection_key(pack), [[s.id, text_digest(s.text)] for s in pack.sources]]
-    return hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode("utf-8")).hexdigest()
+    """What makes this pack this pack: the question, the draft, the collection, and each source's id and words. A
+    pack built as of a day adds the day and what each source recites (the provision's digest, whether it was shown
+    in force, and each reading's key, standing, and state), so the same question as of two days, a changed statute,
+    and a changed or newly stale reading are each a new review. A pack with no day has the digest it always had."""
+    identity: list[Any] = [pack.ask, pack.draft, collection_key(pack), [[s.id, text_digest(s.text)] for s in pack.sources]]
+    as_of = getattr(pack, "as_of", None)
+    if as_of is not None:
+        identity.append({"asOf": as_of.isoformat(),
+                         "provisions": [[s.id, provision_row(s)] for s in pack.sources if provision_row(s) is not None]})
+    return hashlib.sha256(json.dumps(identity, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def _safe(part: str) -> str:
@@ -86,13 +125,17 @@ def _read(path: Path) -> dict[str, Any]:
 def store(pack: ContextPack, data_dir: Path, *, checked: Checked | None = None, model: str = "",
           as_of: date | None = None) -> Path:
     """Keep this pack's record, and with ``checked`` add the model's answer to its runs. A record already there for the
-    same digest keeps its as-of date and its earlier runs."""
+    same digest keeps its as-of date and its earlier runs.
+
+    The record's as-of date is the day the pack was built for (``ContextPack.as_of``), and ``asOfNamed`` is true.
+    For a pack with no day it is the day the record was first kept (``as_of`` here, else today), as before."""
     from jason.locks import Resource, hold
 
     path = review_path(data_dir, pack)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     collection = pack.collection
     confidential = bool(collection is not None and collection.confidential)
+    named = getattr(pack, "as_of", None)
     with hold(Resource.STORE, REVIEWS, purpose=f"keep a review of {pack.task.kind.slug}"):
         before = _read(path)
         record: dict[str, Any] = {
@@ -102,7 +145,9 @@ def store(pack: ContextPack, data_dir: Path, *, checked: Checked | None = None, 
             "collectionTitle": collection.title if collection is not None else "",
             "collectionIncluded": bool(pack.collection_included),
             "confidential": confidential, "confidentialWhy": CONFIDENTIAL_WHY if confidential else "",
-            "digest": review_digest(pack), "asOf": before.get("asOf") or (as_of or date.today()).isoformat(),
+            "digest": review_digest(pack),
+            "asOf": named.isoformat() if named is not None else before.get("asOf") or (as_of or date.today()).isoformat(),
+            "asOfNamed": named is not None, "firstWritten": before.get("firstWritten") or before.get("lastWritten") or now,
             "lastWritten": now, "ask": pack.ask, "draftDigest": text_digest(pack.draft) if pack.draft else "",
             "sources": source_rows(pack), "gaps": list(pack.gaps), "runs": list(before.get("runs") or []),
         }
@@ -128,7 +173,14 @@ def history(data_dir: Path, task: str, *, include_confidential: bool = False) ->
             continue
         runs = record.get("runs") or []
         last = runs[-1] if runs else None
+        law = [s["provision"] for s in record.get("sources") or [] if str(s.get("id", "")).startswith("S") and s.get("provision")]
+        recited = [s["provision"] for s in record.get("sources") or [] if s.get("provision")]
         rows.append({
+            # Whether a person named the day (the law recited as of it), with what the pack then showed: the law
+            # sources, those not shown in force that day, and the readings attached as current.
+            "asOfNamed": bool(record.get("asOfNamed")), "written": str(record.get("firstWritten") or record.get("lastWritten") or "")[:10],
+            "law": len(law), "notShown": sum(1 for p in law if p.get("shown") is False),
+            "readings": sum(1 for p in recited for r in p.get("readings") or [] if r.get("state") == "current"),
             "asOf": record.get("asOf", ""), "collection": record.get("collection", NO_COLLECTION),
             "digest": str(record.get("digest", ""))[:DIGEST_CHARS], "confidential": bool(record.get("confidential")),
             "collectionIncluded": bool(record.get("collectionIncluded")), "ask": record.get("ask", ""),
@@ -144,5 +196,5 @@ def history(data_dir: Path, task: str, *, include_confidential: bool = False) ->
     return rows
 
 
-__all__ = ["CONFIDENTIAL_WHY", "NO_COLLECTION", "REVIEWS", "collection_key", "history", "review_digest", "review_path",
-           "source_rows", "store", "text_digest"]
+__all__ = ["CONFIDENTIAL_WHY", "NO_COLLECTION", "REVIEWS", "collection_key", "history", "provision_row", "review_digest",
+           "review_path", "source_rows", "store", "text_digest"]

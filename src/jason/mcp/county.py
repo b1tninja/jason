@@ -513,7 +513,7 @@ def passage_search(query: str, k: int = 8, data_dir: Path | None = None, mode: s
 
 
 def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str = "", data_dir: Path | None = None,
-                    collection: str = "") -> dict[str, Any]:
+                    collection: str = "", as_of: str = "") -> dict[str, Any]:
     """A professional community manager's context pack for a task: the base prompt (the order of authority under Civil
     Code 4205, working out what governs, the text over memory, the method, the privacy rules), the task's prompt (purpose,
     the topics it turns on, the kinds of documents to read, a manager's considerations; no section numbers or figures), and
@@ -529,7 +529,20 @@ def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str
     nor the law: cite one for what its document says, never as a rule or a finding. The case's record in the
     specification (its events and duties) comes with them as a fact source. CONFIDENTIAL: a case's collection goes only
     into a board task's pack and is for directors and counsel; for any other audience the pack refuses it and says so
-    in its gaps. Nothing is written to disk here."""
+    in its gaps.
+
+    ``as_of`` (YYYY-MM-DD) is the day the matter turns on, such as the day a letter was sent. Each law source then
+    gives the words in force that day where jason's disk shows them (with the range and the act that made them), and
+    otherwise the words on the shelf now under "Not shown to be in force": say so in the answer and do not rely on
+    those as the law of that day. A governing passage says whether its words are shown in force that day; for a
+    document kept as amended the section's words on that day are given under it. Each stored reading of a provision
+    is listed under its words, labeled with whose it is, its standing, and its date: a reading is never the
+    provision's words, a stale one is not applied, and where two readings remain the board asks counsel. The law is
+    found by searching it as it stands now, so a section repealed since is not among the sources; the records and
+    jason's facts are as they are now. Without ``as_of`` the pack is today's, with no reading attached.
+
+    Nothing is written to disk here, except that reciting a section of a document kept as amended may refresh its
+    versions cache (data/section-refs), as cite_document does."""
     from jason.community import community as active
     from jason.community.prompts import TaskKind
     from jason.tasks.manager_review import build
@@ -541,16 +554,44 @@ def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str
     chosen = community.task_for_subject(subject) if subject else community.task_prompt(TaskKind.from_slug(task))
     if chosen is None:
         return {"found": False, "subject": subject, "note": "no task's subjects match; name the task"}
+    day = None
+    if as_of.strip():
+        from datetime import date
+
+        try:
+            day = date.fromisoformat(as_of.strip())
+        except ValueError:
+            return {"found": False, "asOf": as_of, "note": "as_of is a day as YYYY-MM-DD"}
+
+    def dated(result: dict[str, Any], pack: Any) -> dict[str, Any]:
+        """With a day: the day, each law source's standing that day, and the caveats that go with it."""
+        if day is None:
+            return result
+        result["asOf"] = day.isoformat()
+        result["law"] = [{"id": s.id, "citation": s.title, "digest": s.provision.digest, "shownInForce": bool(s.provision.shown),
+                          "decided": s.provision.decided,
+                          "readings": [{"key": r.key, "standing": r.standing, "whose": r.whose, "state": r.state}
+                                       for r in s.provision.readings]}
+                         for s in pack.sources if s.id.startswith("S") and s.provision is not None]
+        result["caveats"] = [*result.get("caveats", []),
+                             f"As of {day.isoformat()}: a source labeled not shown to be in force gives the words jason "
+                             "holds now. Say so, and do not rely on them as the law or the rule of that day.",
+                             "A reading listed under a source is a reading, labeled with whose it is: never the provision's "
+                             "words. A stale one is not applied; where two readings remain, the board asks counsel.",
+                             "The law was searched as it stands now: a section repealed since that day is not among the "
+                             "sources. The records and jason's facts are as they are now."]
+        return result
+
     if not collection.strip():
-        pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft)
-        return {"task": chosen.kind.slug, "sources": len(pack.sources), "gaps": pack.gaps, "pack": pack.markdown()}
+        pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft, as_of=day)
+        return dated({"task": chosen.kind.slug, "sources": len(pack.sources), "gaps": pack.gaps, "pack": pack.markdown()}, pack)
     from jason.community.document_collections import collection as find_collection
 
     found = find_collection(community, collection)
     if found is None:
         return {"found": False, "collection": collection,
                 "note": "no collection by that key: a legal case's key or its catalog (case-<key>) names one"}
-    pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft, collection=found)
+    pack = build(community, chosen, _data_dir(data_dir), ask=ask, draft=draft, collection=found, as_of=day)
     result: dict[str, Any] = {"task": chosen.kind.slug, "sources": len(pack.sources), "gaps": pack.gaps, "pack": pack.markdown(),
                               "collection": found.key, "collectionIncluded": pack.collection_included,
                               "confidential": bool(found.confidential and pack.collection_included)}
@@ -559,7 +600,7 @@ def manager_context(task: str = "", subject: str = "", ask: str = "", draft: str
                              "counsel: never an owner, the newsletter, or an open meeting.",
                              "A C source is what a document in the collection says: its author's statement, not a "
                              "finding, not the association's record, and never a rule."]
-    return result
+    return dated(result, pack)
 
 
 def extraction_scorecard(extractor: str = "regex", model: str = "", data_dir: Path | None = None) -> dict[str, Any]:
