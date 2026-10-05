@@ -27,6 +27,10 @@ One page per screen of the earlier spec, now read against the console that exist
 | [status.md](status.md) | `#/status` (`StatusView`) | Built, read-only, administrator only: sources, sign-ins, gates, failures | 2 |
 | What applies (proposed; [../handoff-applicability-questions.md](../handoff-applicability-questions.md)) | none (its parts are in the dock's Deadlines, [life-safety.md](life-safety.md), [notices.md](notices.md), and the onboarding session) | Proposed whole, `#/applies` | 3 |
 | Confirmations (proposed; [../handoff-confirmations-queue.md](../handoff-confirmations-queue.md)) | none (its parts are in `jason readings`, `jason lessons --open`, and the draft gold file) | Proposed whole, `#/confirmations` | 2 |
+| Context-pack workbench (proposed; [../handoff-context-pack-workbench.md](../handoff-context-pack-workbench.md)) | none (its parts are `jason index --search`, the MCP `document_search`, and `jason review`) | Proposed whole, `#/workbench` | 3 |
+| Collection workspace (proposed; [../handoff-collection-workspace.md](../handoff-collection-workspace.md)) | none (its parts are `jason collection`, `jason review --collection`, and the `legal_cases` and `case_file` tools) | Proposed whole, `#/collections` | 3 |
+| Law as of a day and the quote check (proposed; [../handoff-as-of-and-quote-check.md](../handoff-as-of-and-quote-check.md)) | none (its parts are `jason cite`, `jason verify-quotes --as-of`, and the `law_in_force` tool) | Components shared across screens, and `#/documents/check` | 2 |
+| The machine (proposed; [../handoff-storage-and-settings.md](../handoff-storage-and-settings.md)) | extends [status.md](status.md) (`#/status`) | Proposed band, `#/instance/machine` | 2 |
 
 Screens built with no spec here: the meeting room, decisions, and agenda (from the design handoff), insurance and renewals (`ConsoleInsurance`; their documents are in [mail.md](mail.md)), canvases and templates (their documents are in [requests-and-links.md](requests-and-links.md)), registers, legal, and the community profile page ([web-ui.md](../../web-ui.md#views-uisrcviews-hash-routes)).
 
