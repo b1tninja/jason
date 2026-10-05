@@ -86,6 +86,13 @@ EMAIL_FILING = EmailFiling(
         FilingRule(DocumentKind.PROPOSAL, ("Proposals / Estimates", "{year}")),
         FilingRule(DocumentKind.INVOICE, ("Financials", "{year}", "Invoices", "{vendor}")),
         FilingRule(DocumentKind.RESERVE_STUDY, ("Financials", "{year}")),
+        # A utility's bill is paid like an invoice and is filed like one, by fiscal year and vendor (Civil Code 5210(a)(1)
+        # makes the current and two previous fiscal years inspectable).
+        FilingRule(DocumentKind.UTILITY_BILL, ("Financials", "{year}", "Invoices", "{vendor}")),
+        # The preparer's package of a year's returns arrives the year after, so a year folder would file it a year late:
+        # one folder, the tax year in each file's name. The returns are CIV 5200(a)(6) records.
+        FilingRule(DocumentKind.TAX_RETURN, ("Financials", "Tax Returns")),
+        FilingRule(DocumentKind.SECURITY_REPORT, ("Reports", "Security Patrol")),
         FilingRule(DocumentKind.EVIDENCE_OF_INSURANCE, ("Vendors", "{vendor}")),
         FilingRule(DocumentKind.FORM, ("Vendors", "{vendor}")),
         # The inspector of elections' materials are election records (Civil Code 5200(c)), not the vendor's file.
