@@ -27,7 +27,7 @@ outline on disk) or one of its records.
 | `.through(end)` | `.through("6.4")` | a span: an outline, never concatenated words |
 | `.session(year)` | `.as_of(day)`, or `key#n@YYYY-MM-DD` | the living text in force on a day; a document not kept as amended is a miss for a date |
 | `str()`, `reference()` | `str()` | the document's own style: `CitableDocument.cite_as` (else its title), "Section 6.2(a)", "Article 6" for a top-level section the document heads ARTICLE, a lettered rule's own label ("Handbook R-3(a)") |
-| `.text` | `.text` | the stored words: a section's with its subsections', as amended; a statute's, from `data/authorities` |
+| `.text` | `.text` | the stored words: a section's with its subsections', as amended; a statute's, from `data/authorities`. A statute section the publication prints in two versions under one number is the version in force today, and `version.note` says which it is and quotes the words that decide it; where the disk does not decide, every version is recited under its label ([law-readings.md](law-readings.md#two-versions-under-one-number)) |
 | (none) | `.version`, `.in_force`, `.history` | who set the words and since when; the instruments that changed them, with dates and standing; an instrument not in force is listed as not applied, never merged into the text |
 | `.subdivisions`, `.sentences`, `.words()`, `.containing(phrase)` | the same | sentences by the duty reader's splitter (`jason.community.deontic.sentences`) |
 | `.refs`, `.hops(n)`, `.same()`, `.only(*codes)` | the same; `.only("statute", "section", "resolution", "instrument")` | `hops(None)` follows until a target repeats |
@@ -54,6 +54,7 @@ pins it).
 | `Doc. No. 209901010001`, `209901010001`, `Book 20990101, Page 1` | a recorded instrument |
 | `minutes 2099-01-01`, `minutes of the meeting of 2099-01-01` | a meeting's minutes |
 | `CIV 4920(a)`, `Civil Code § 4920(b)(1)`, `Section 4920 of the Civil Code`, `10 CCR 2792.23` | a statute; a subdivision is split from the section's words |
+| `CIV 2924f`, `Civil Code section 2924f`, `CIV 2924f(a)`, `SHC 5898.16` | a section whose number ends in a letter is its own section, and (a) is its subdivision; any code lawlibrary holds, by its abbreviation ([law-readings.md](law-readings.md#a-number-that-ends-in-a-letter)) |
 | `CIV 4000-6150` | a span of the law: the exported pages that cover it |
 | `Section 5200` | a bare four-digit section is the Civil Code, as the references grammar reads it |
 | `record:minutes` | a 5200 record kind |
@@ -73,7 +74,7 @@ exception.
 | `not_in_document`, `parent_only`, `ambiguous` | no such section; the section is there but not the subsection; several sections numbered the same |
 | `removed` | an amendment removed it: cite it as of an earlier day |
 | `not_kept_as_amended` | a date asked of a document with no history |
-| `statute_not_on_disk`, `label_not_found`, `edition_not_held`, `prior_numbering` | not exported (lawlibrary's `cite` reads it); the subdivision is not in the stored words; a statute asked as of a day, and the disk does not show the words in force that day (`jason law-history --versions` keeps the earlier versions; [law-readings.md](law-readings.md#the-words-in-force-on-a-day)); a Davis-Stirling number from before 2014 (`jason law-history`), unless a day is given and its words of that day are held |
+| `statute_not_on_disk`, `label_not_found`, `edition_not_held`, `prior_numbering` | not exported (lawlibrary's `cite` reads it), with `suggest` when a lettered number the shelf does not list may be a subdivision of one it does ("CIV 5855a" offers "CIV 5855(a)"); the subdivision is not in the stored words; a statute asked as of a day, and the disk does not show the words in force that day (`jason law-history --versions` keeps the earlier versions; [law-readings.md](law-readings.md#the-words-in-force-on-a-day)); a Davis-Stirling number from before 2014 (`jason law-history`), unless a day is given and its words of that day are held |
 | `statute_not_in_library`, `library_unavailable`, `library_failed` | the read-through asked lawlibrary and it does not hold the section; no checkout at `lawlibrary_home`; its worker failed |
 | `no_resolution_prints_it`, `printed_by_several` | no resolution Doc prints the number; several do |
 | `unknown_instrument`, `no_minutes`, `unknown_record` | not a governing instrument, library file, or indexed instrument; no minutes for the day; not a 5200 kind |

@@ -286,6 +286,9 @@ def _statute_text(citation: str, data_dir: Path, as_of: date | None) -> Provisio
         caveats.append(f"the shelf holds {len(held)} versions of {citation} under the one number; each is recited with "
                        "its digest, in the publication's order, which is not the order they operate in. Say the day "
                        "asked about (--as-of) and jason picks by the versions' own operative words, where they state them")
+        today = law_text.quoted(citation, data_dir)
+        if today.text is not None:
+            caveats.append(today.note)        # which of them is in force today, and the words that decide it
     others = tuple(ProvisionText(citation, True, t.words, t.digest, t.source, t.note) for t in held[1:])
     return ProvisionText(citation, True, found.words, found.digest, found.source, found.note, tuple(caveats), others=others)
 

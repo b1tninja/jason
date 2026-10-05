@@ -23,14 +23,14 @@ QUESTION: How many days before the hearing is the notice given?
 (b) The member may speak at the hearing before the fine is imposed.
 
 ### [S2] CIV 9904 (CIV 9901-9910: Chapter 1. Made Up)
-*Tier 2: California statute — found for the task's topics*
+*Tier 2: California statute — found for the task's topics; version 1 of 2 the publication prints under CIV 9904 (digest 80b6a366d03e); the disk does not show which version is in force on TODAY: the words on the shelf now (digest 80b6a366d03e) cannot be the words of TODAY: the credit line names Stats. 2090 ("(Added by Stats. 2090, Ch. 4, Sec. 1.)")*
 
 (Added by Stats. 2090, Ch. 4, Sec. 1.)
 
 (a) A notice of the fine is mailed to the member after the hearing.
 
 ### [S3] CIV 9904 (CIV 9901-9910: Chapter 1. Made Up)
-*Tier 2: California statute — found for the task's topics*
+*Tier 2: California statute — found for the task's topics; version 2 of 2 the publication prints under CIV 9904 (digest f061d4324d33); the disk does not show which version is in force on TODAY: the words on the shelf now (digest f061d4324d33) cannot be the words of TODAY: the credit line names Stats. 2090 ("(Added by Stats. 2090, Ch. 5, Sec. 1.)")*
 
 (Added by Stats. 2090, Ch. 5, Sec. 1.)
 
@@ -46,7 +46,7 @@ QUESTION: How many days before the hearing is the notice given?
 (b) The notice is given fourteen days before the hearing.
 
 ### [S5] CIV 9902 (CIV 9901-9910: Chapter 1. Made Up)
-*Tier 2: California statute — found for the task's topics*
+*Tier 2: California statute — found for the task's topics; version 1 of 2 the publication prints under CIV 9902 (digest 4affa8ae35a5); the disk does not show which version is in force on TODAY: the words on the shelf now (digest 4affa8ae35a5) came into force on 2099-01-01, after TODAY: "This section shall be operative January 1, 2099."*
 
 (Repealed (in Sec. 3) and added by Stats. 2090, Ch. 3, Sec. 4.)
 
@@ -55,7 +55,7 @@ QUESTION: How many days before the hearing is the notice given?
 (b) This section shall be operative January 1, 2099.
 
 ### [S6] CIV 9902 (CIV 9901-9910: Chapter 1. Made Up)
-*Tier 2: California statute — found for the task's topics*
+*Tier 2: California statute — found for the task's topics; version 2 of 2 the publication prints under CIV 9902 (digest 6cc85e1f177d); the disk does not show which version is in force on TODAY: the words on the shelf now (digest 6cc85e1f177d) cannot be the words of TODAY: the credit line names Stats. 2090 ("(Amended by Stats. 2090, Ch. 3, Sec. 3.)")*
 
 (Amended by Stats. 2090, Ch. 3, Sec. 3.)
 
@@ -119,12 +119,12 @@ A letter giving an Owner notice of the hearing on a fine.
 
 (b) The member may speak at the hearing before the fine is imposed.
 
-[S2] tier 2 (California statute): CIV 9904 — found for the task's topics
+[S2] tier 2 (California statute): CIV 9904 — found for the task's topics; version 1 of 2 the publication prints under CIV 9904 (digest 80b6a366d03e); the disk does not show which version is in force on TODAY: the words on the shelf now (digest 80b6a366d03e) cannot be the words of TODAY: the credit line names Stats. 2090 ("(Added by Stats. 2090, Ch. 4, Sec. 1.)")
 (Added by Stats. 2090, Ch. 4, Sec. 1.)
 
 (a) A notice of the fine is mailed to the member after the hearing.
 
-[S3] tier 2 (California statute): CIV 9904 — found for the task's topics
+[S3] tier 2 (California statute): CIV 9904 — found for the task's topics; version 2 of 2 the publication prints under CIV 9904 (digest f061d4324d33); the disk does not show which version is in force on TODAY: the words on the shelf now (digest f061d4324d33) cannot be the words of TODAY: the credit line names Stats. 2090 ("(Added by Stats. 2090, Ch. 5, Sec. 1.)")
 (Added by Stats. 2090, Ch. 5, Sec. 1.)
 
 (a) A notice of the fine is delivered to the member after the hearing.
@@ -136,14 +136,14 @@ A letter giving an Owner notice of the hearing on a fine.
 
 (b) The notice is given fourteen days before the hearing.
 
-[S5] tier 2 (California statute): CIV 9902 — found for the task's topics
+[S5] tier 2 (California statute): CIV 9902 — found for the task's topics; version 1 of 2 the publication prints under CIV 9902 (digest 4affa8ae35a5); the disk does not show which version is in force on TODAY: the words on the shelf now (digest 4affa8ae35a5) came into force on 2099-01-01, after TODAY: "This section shall be operative January 1, 2099."
 (Repealed (in Sec. 3) and added by Stats. 2090, Ch. 3, Sec. 4.)
 
 (a) The hearing is held in an open session.
 
 (b) This section shall be operative January 1, 2099.
 
-[S6] tier 2 (California statute): CIV 9902 — found for the task's topics
+[S6] tier 2 (California statute): CIV 9902 — found for the task's topics; version 2 of 2 the publication prints under CIV 9902 (digest 6cc85e1f177d); the disk does not show which version is in force on TODAY: the words on the shelf now (digest 6cc85e1f177d) cannot be the words of TODAY: the credit line names Stats. 2090 ("(Amended by Stats. 2090, Ch. 3, Sec. 3.)")
 (Amended by Stats. 2090, Ch. 3, Sec. 3.)
 
 (a) The hearing is held in a closed session.

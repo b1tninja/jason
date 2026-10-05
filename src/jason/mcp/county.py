@@ -818,7 +818,12 @@ def authorities(citation: str = "", data_dir: Path | None = None) -> dict[str, A
 
     With a citation such as "CIV 5200" the section's text, its heading, the session it comes from, and why Jason
     holds it. Without one, the exported pages and the pointers (Title 10 regulations, federal law, DRE publications)
-    that must be read at their source. These pages are the authority; records.md and duties.md only summarize them."""
+    that must be read at their source. These pages are the authority; records.md and duties.md only summarize them.
+    A section whose number ends in a letter ("CIV 2924f") is its own section. A section the publication prints in two
+    versions under one number comes back as the version in force today: `version` says which it is and quotes the
+    words that decide it, so repeat it with the words; where the disk does not decide, `undecided` is true and `text`
+    is every version, each under a "[jason: ...]" label. `suggest` on a miss offers the subdivision a lettered number
+    may have been written for; it is not quoted."""
     from jason.community.authorities import pointers
     from jason.tasks.export_authorities import authority_pages, authority_text, read_manifest
 

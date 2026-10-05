@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from jason.community.duties import DUTIES
+from jason.community.references import SECTION_NUMBER
 
 # The codes lawlibrary's California shelf holds, by the abbreviation the Legislature prints.
 LAWLIBRARY_CODES = frozenset({
@@ -115,8 +116,8 @@ class Publication:
 
 
 _GROUP = re.compile(r"^\s*(?P<code>Title\s+\d+\s+sections?|[A-Z]{2,5})\s+(?P<rest>.+)$")
-_SPAN = re.compile(r"^(?P<start>\d+(?:\.\d+)*)\s*(?:to|-|–)\s*(?P<end>\d+(?:\.\d+)*)$")
-_ONE = re.compile(r"^(?P<one>\d+(?:\.\d+)*)$")
+_SPAN = re.compile(rf"^(?P<start>{SECTION_NUMBER})\s*(?:to|-|–)\s*(?P<end>{SECTION_NUMBER})$")
+_ONE = re.compile(rf"^(?P<one>{SECTION_NUMBER})$")
 
 
 def parse_statutes(text: str, why: str, basis: Basis) -> tuple[Authority, ...]:
@@ -278,12 +279,24 @@ def pointers() -> tuple[Authority, ...]:
     return tuple(item for item in authorities() if not item.exportable)
 
 
+_PART = re.compile(r"^(\d+)([a-z]*)$")
+
+
 def number_key(value: str) -> tuple[float, ...]:
-    """A dotted section number as a comparable tuple; a non-number sorts first."""
-    try:
-        return tuple(float(part) for part in str(value).split("."))
-    except ValueError:
-        return (-1.0,)
+    """A section number as a comparable tuple, in the order the codes print them; a non-number sorts first.
+
+    A dotted number compares part by part (2924.9 before 2924.10). A number that ends in a letter comes after the
+    bare number and before its dotted ones, as the publication prints them: 2924, 2924a, 2924b, ..., 2924p, 2924.1."""
+    key: list[float] = []
+    for part in str(value).strip().lower().split("."):
+        m = _PART.match(part)
+        if not m:
+            return (-1.0,)
+        key.append(float(m.group(1)))
+        if m.group(2):
+            # Below every dotted part (a section number's dotted parts are whole numbers, 1 or more), in letter order.
+            key.append(sum((ord(c) - 96) / 100 ** (i + 1) for i, c in enumerate(m.group(2))))
+    return tuple(key)
 
 
 def section_in(authority: Authority, number: str) -> bool:

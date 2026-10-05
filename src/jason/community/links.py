@@ -15,6 +15,7 @@ import re
 from urllib.parse import quote
 
 from jason.community.authorities import LEGINFO_SECTION
+from jason.community.references import LETTER     # "Civil Code 2924f" links to 2924f, never to 2924
 
 # The code names the documents write, to the Legislature's abbreviations.
 CODE_NAMES = {
@@ -25,7 +26,7 @@ CODE_NAMES = {
 _NAMES = "|".join(sorted((re.escape(n) for n in CODE_NAMES), key=len, reverse=True))
 _ABBREVIATIONS = "|".join(sorted(set(CODE_NAMES.values()), key=len, reverse=True))
 CITATION = re.compile(
-    rf"(?P<cite>(?:(?P<name>{_NAMES})|\b(?P<abbr>{_ABBREVIATIONS}))\s+(?:§§?\s*)?(?P<section>\d{{2,5}}(?:\.\d+)?)"
+    rf"(?P<cite>(?:(?P<name>{_NAMES})|\b(?P<abbr>{_ABBREVIATIONS}))\s+(?:§§?\s*)?(?P<section>\d{{2,5}}(?:\.\d+)?{LETTER})"
     rf"(?P<sub>(?:\([a-zA-Z0-9]{{1,4}}\))*))")
 URL = re.compile(r"(?<![\"'=/\w])(?P<url>https?://[^\s<>\"']+?)(?=[.,;:!?)]*(?:\s|$|<))")
 EMAIL = re.compile(r"(?<![\w.:/@-])(?P<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?![\w@])")

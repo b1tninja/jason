@@ -210,6 +210,9 @@ class LawSection:
     text: str
     file: str = ""
     start_word: int = 0        # where the section starts in its page, in words (to read an index passage as its section)
+    # For a section the publication prints in two versions under one number: which version this is, and whether it is
+    # the one in force today, with why (``law_text.Quoted.label``). "" for a section printed once.
+    version: str = ""
 
 
 @dataclass
@@ -363,11 +366,13 @@ def _questions(task: TaskPrompt, ask: str, draft: str = "") -> list[str]:
 # --- the law ---------------------------------------------------------------------------------------------------------
 
 def law_corpus(data_dir: Path) -> list[LawSection]:
-    """Every section of the law on hand, whole, with its chapter: the pages ``jason export-authorities`` wrote."""
-    from jason.tasks.export_authorities import authority_pages
+    """Every section of the law on hand, whole, with its chapter: the pages ``jason export-authorities`` wrote, then
+    those a reader's miss brought down. A section whose number ends in a letter is its own section, and one printed
+    in two versions under one number is two sections, each labeled (``LawSection.version``)."""
+    from jason.tasks.export_authorities import authority_pages, on_demand_pages
 
     sections: list[LawSection] = []
-    for page in authority_pages(data_dir):
+    for page in (*authority_pages(data_dir), *on_demand_pages(data_dir)):
         path = data_dir / page.file
         if not path.is_file():
             continue
@@ -379,7 +384,21 @@ def law_corpus(data_dir: Path) -> list[LawSection]:
             head, _, body = block.partition("\n")
             sections.append(LawSection(head.strip(), chapter, body.strip(), page.file, offset))
             offset += len(("## " + block).split())
-    return sections
+    return _versions_labeled(sections, data_dir)
+
+
+def _versions_labeled(sections: list[LawSection], data_dir: Path) -> list[LawSection]:
+    """A section printed in two versions under one number stays two sections, each saying which version it is and
+    whether it is the one in force today, by the versions' own words (``law_text.quoted``)."""
+    from collections import Counter
+    from dataclasses import replace
+
+    from jason.community import law_text
+
+    twice = {citation for citation, n in Counter(s.citation for s in sections).items() if n > 1}
+    labels = {citation: law_text.quoted(citation, data_dir).labels() for citation in twice}
+    return [replace(s, version=labels[s.citation].get(law_text.words_digest(s.text), "")) if s.citation in twice else s
+            for s in sections]
 
 
 def law_shelf(sections: Sequence[LawSection]) -> list[str]:
@@ -504,9 +523,10 @@ def index_law_ranking(sections: Sequence[LawSection], data_dir: Path, *, mode: s
         if not indexes:
             return None
         labels = {label.strip() for label in passage.heading.split(" > ")[1:]}
-        for i in indexes:
-            if sections[i].citation in labels:
-                return i
+        named = [i for i in indexes if sections[i].citation in labels]
+        if named:
+            # Two versions printed under one number share the heading: the passage is of the one it starts in.
+            return next((i for i in reversed(named) if sections[i].start_word <= passage.start_word), named[0])
         found = None
         for i in indexes:
             if sections[i].start_word <= passage.start_word:
@@ -1176,7 +1196,14 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
 
     sections = list(law) if law is not None else law_corpus(data_dir)
     pack.shelf = law_shelf(sections)
-    by_citation = {s.citation: s for s in sections}
+    # Every version printed under a number, none dropped; a section two pages hold with the same words is one.
+    by_citation: dict[str, list[LawSection]] = {}
+    for s in sections:
+        if all(s.text != held.text for held in by_citation.setdefault(s.citation, [])):
+            by_citation[s.citation].append(s)
+
+    def absent(s: LawSection) -> bool:
+        return all(s.citation != have.citation or s.text != have.text for have, _ in chosen)
     if not sections:
         pack.gaps.append("no law on hand; run jason export-authorities")
     pages = list(dict.fromkeys(s.file for s in sections))
@@ -1201,15 +1228,11 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
     if follow_citations:
         cited = set(cited_statutes([text for _, _, text, _, _ in governing])[0])
         current, prior = cited_statutes([text for _, _, text, _, _ in governing] + ([draft] if draft else []))
-        have = {s.citation for s, _ in chosen}
         for citation in current:
-            if citation in have:
-                continue
-            if citation in by_citation:
-                chosen.append((by_citation[citation], 0.0))
-                have.add(citation)
-            else:
+            if citation not in by_citation:
                 pack.gaps.append(f"{citation} is cited by a source but is not in the law on hand")
+            # A cited section comes whole: every version printed under its number, never one of two.
+            chosen += [(s, 0.0) for s in by_citation.get(citation, ()) if absent(s)]
         pack.gaps += [f"{c} is a former Davis-Stirling number cited by a source; find the section in force" for c in prior]
     from jason.community.law_text import words_digest
 
@@ -1217,6 +1240,10 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
         # One source a section: two versions under one number are recited together, by their own words.
         seen: set[str] = set()
         chosen = [(s, score) for s, score in chosen if not (s.citation in seen or seen.add(s.citation))]
+    else:
+        for found, _ in list(chosen):
+            # A version the topics reached brings the other printed under its number: the pack shows both, each labeled.
+            chosen += [(s, 0.0) for s in (by_citation[found.citation] if found.version else ()) if absent(s)]
     for n, (section, score) in enumerate(chosen, 1):
         note = "found for the task's topics" if score else ""
         if section.citation in cited:
@@ -1225,6 +1252,8 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
         if as_of is not None:
             words, status, recited = law_as_of(section, data_dir, as_of, readings, community=community)
             note = (note + "; " if note else "") + status
+        elif section.version:
+            note = (note + "; " if note else "") + section.version
         pack.sources.append(Source(f"S{n}", tier_of_citation(section.citation), section.citation,
                                    _trim(words, STATUTE_CHARS), section.chapter, score, note,
                                    standing=Standing.AUTHORITY, file=section.file, section=section.citation,

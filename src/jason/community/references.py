@@ -7,7 +7,8 @@ each to the section of the source it sits in (``DocumentOutline.section_at``). A
 same way every time, so references from different documents meet in one graph:
 
 - a statute: ``CIV 4926(a)(3)``, ``CORP 7341``, ``10 CCR 2792.23`` (a pre-2014 Davis-Stirling number, 1350 to 1378,
-  keeps its old number and is marked ``prior``);
+  keeps its old number and is marked ``prior``); a section whose number ends in a letter keeps it (``CIV 2924f``, and
+  ``CIV 2924f(a)`` for its subdivision);
 - a section of a known document: ``bylaws#7.2``, ``ccrs#6.5(b)``, or the source's own ``#1.3(d)(ii)``;
 - a known document as a whole: ``enforcement-policy``;
 - a resolution by the number it prints: ``resolution:20230130-1``;
@@ -89,14 +90,31 @@ CODES: tuple[tuple[str, str], ...] = (
 _CODE_ALT = "|".join(f"(?:{p})" for p, _ in CODES)
 _CODE_NAME = re.compile(_CODE_ALT, re.I)
 _SUB = r"(?:\s?\([a-zA-Z0-9]{1,4}\))*"
-_STAT_NUM = rf"\d{{3,5}}(?:\.\d+)*{_SUB}"          # building and fire codes go deeper: "308.1.4"
+# The letter some statute sections end in ("2924a", "1102.6a"): part of the number only when it is written against the
+# digits and the number ends there. "5855(a)" is section 5855, subdivision (a); "5855 and" is section 5855.
+LETTER = r"(?:[a-z](?![A-Za-z0-9]))?"
+# A statute's section number as the codes print it: dotted, with the letter. The one pattern every reader shares.
+SECTION_NUMBER = rf"\d+(?:\.\d+)*{LETTER}"
+# The codes by the abbreviation the Legislature prints, as jason's own records write a citation ("CIV 5855",
+# "SHC 5898.16"): every code lawlibrary's California shelf holds (``authorities.LAWLIBRARY_CODES``; a test keeps the
+# two the same).
+ABBREVIATIONS = frozenset({
+    "BPC", "CCP", "CIV", "COM", "CONS", "CORP", "EDC", "ELEC", "EVID", "FAC", "FAM", "FGC", "FIN", "GOV", "HNC", "HSC",
+    "INS", "LAB", "MVC", "PCC", "PEN", "PRC", "PROB", "PUC", "RTC", "SHC", "UIC", "VEH", "WAT", "WIC",
+})
+_ABBR = "|".join(sorted(ABBREVIATIONS, key=len, reverse=True))
+_STAT_NUM = rf"\d{{3,5}}(?:\.\d+)*{LETTER}{_SUB}"   # building and fire codes go deeper: "308.1.4"
 _SEP = r"\s*(?:,\s*(?:and|or)\b|,|;|and|or|through|to|-|–)\s*"
 _STATUTE = re.compile(rf"\b(?P<code>{_CODE_ALT})\s*(?:[Ss]ections?|§§?|[Ss]ec(?:s)?\.)?\s*"
                       rf"(?P<nums>{_STAT_NUM}(?:(?:{_SEP})(?:{_STAT_NUM}|{_SUB[:-1]}+))*)")
-_JASON_STYLE = re.compile(rf"\b(?P<code>CIV|CORP|HSC|GOV|EVID|BPC|CCP|VEH)\s+(?P<nums>{_STAT_NUM}(?:(?:,\s*)(?:{_STAT_NUM}|\([a-z0-9]+\)))*)")
+_JASON_STYLE = re.compile(rf"\b(?P<code>{_ABBR})\s+(?P<nums>{_STAT_NUM}(?:(?:,\s*)(?:{_STAT_NUM}|\([a-z0-9]+\)))*)")
+# One citation in jason's style inside a longer string ("CIV 5515(d)" in an item's authority line).
+STATUTE_IN_TEXT = re.compile(rf"\b(?P<code>{_ABBR})\s+(?P<number>\d{{3,5}}(?:\.\d+)*{LETTER})(?P<subs>(?:\s*\([a-z0-9]+\))*)")
 _REG = re.compile(r"\b(?:Title\s+)?(?P<title>\d{1,2})\s+(?:C\.?C\.?R\.?|Cal(?:ifornia)?\.?\s*Code\s+(?:of\s+)?Reg(?:ulations|s)?\.?)\s*"
                   r"(?:§|[Ss]ections?)?\s*(?P<num>\d{3,5}(?:\.\d+)?)")
-_SEC_NUM = rf"\d+(?:\.\d+)*{_SUB}"
+# A document's section, or a statute's named by the word "Section": a lettered number only with three digits or more
+# ("Section 2924f of the Civil Code"), so a document's "Section 3a" reads as it always has.
+_SEC_NUM = rf"(?:\d{{3,6}}(?:\.\d+)*[a-z](?![A-Za-z0-9])|\d+(?:\.\d+)*){_SUB}"
 # "§" is not a word character, so the start is "not after a letter or digit", not \b ("CC&Rs §§ 2.5, 10.6").
 _SECTION = re.compile(rf"(?<![\w§])(?P<word>[Ss]ections?|[Ss]ubsections?|§§?|[Aa]rticles?|[Pp]aragraphs?)\s*"
                       rf"(?P<nums>{_SEC_NUM}(?:(?:{_SEP})(?:{_SEC_NUM}|{_SUB[:-1]}+))*)"
@@ -127,10 +145,10 @@ def _code_of(name: str) -> str:
 
 
 def _split_numbers(nums: str) -> list[str]:
-    """"5850(c), (d)" -> ["5850(c)", "5850(d)"]; "5855(d), 5910" -> ["5855(d)", "5910"]."""
+    """"5850(c), (d)" -> ["5850(c)", "5850(d)"]; "5855(d), 5910" -> ["5855(d)", "5910"]; "2924b, 2924c" stay lettered."""
     out: list[str] = []
     base = ""
-    for number, subs in re.findall(r"(\d+(?:\.\d+)*)?((?:\s?\([a-zA-Z0-9]{1,4}\))*)", nums):
+    for number, subs in re.findall(rf"({SECTION_NUMBER})?((?:\s?\([a-zA-Z0-9]{{1,4}}\))*)", nums):
         subs = re.sub(r"\s+", "", subs)
         if number:
             base = number
@@ -284,7 +302,7 @@ def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference
         end = tail_end if m.group("doc") else nums_end
         for number in _split_numbers(m.group("nums")):
             # A number whose whole part has four or more digits (5855, 1367.1, 12956.2) is a statute, never a section here.
-            bare = re.fullmatch(r"(\d{4,6})((?:\.\d+)?(?:\([a-z0-9]+\))*)", number)
+            bare = re.fullmatch(r"(\d{4,6})((?:\.\d+)?[a-z]?(?:\([a-z0-9]+\))*)", number)
             if code:
                 add(TargetKind.STATUTE, f"{code} {number}", begin, end, _is_prior_davis_stirling(code, number))
             elif not key and bare and 1350 <= int(bare.group(1)) <= 6200:
@@ -388,9 +406,76 @@ def _antecedent(text: str, at: int, spans: list[tuple[int, int, str]], labels: s
 
 
 def statute_key(target: str) -> tuple[str, str]:
-    """"CIV 4926(a)(3)" -> ("CIV 4926", "(a)(3)")."""
-    m = re.match(r"^(.*?\d+(?:\.\d+)?)((?:\([^)]*\))*)$", target)
+    """"CIV 4926(a)(3)" -> ("CIV 4926", "(a)(3)"); "CIV 2924f(a)" -> ("CIV 2924f", "(a)"): the letter a section's
+    number ends in is part of the section, a parenthesized label is a subdivision."""
+    m = re.match(r"^(.*?\d+(?:\.\d+)?[a-z]?)((?:\([^)]*\))*)$", target)
     return (m.group(1), m.group(2)) if m else (target, "")
+
+
+@dataclass(frozen=True)
+class StatuteCitation:
+    """One statute citation, read: the code as the Legislature abbreviates it, the section's number as the code
+    prints it, and any subdivisions."""
+
+    code: str                    # "CIV", "SHC", "10 CCR"
+    number: str                  # "5855", "2924.12", "2924f"
+    subdivisions: str = ""       # "(a)(1)"
+
+    @property
+    def base(self) -> str:
+        """The section, as the shelf heads it: "CIV 2924f"."""
+        return f"{self.code} {self.number}"
+
+    @property
+    def letter(self) -> str:
+        """The letter the number ends in ("f" for 2924f), or ""."""
+        return self.number[-1] if self.number[-1:].isalpha() else ""
+
+    def __str__(self) -> str:
+        return self.base + self.subdivisions
+
+
+_REGULATIONS = r"C\.?C\.?R\.?|Cal(?:ifornia)?\.?\s*Code\s+(?:of\s+)?Reg(?:ulation)?s?\.?"
+_ONE_CITATION = re.compile(
+    rf"^\s*(?:(?:Title\s+)?(?P<title>\d{{1,2}})[\s-]+)?(?P<code>{_REGULATIONS}|{_CODE_ALT}|[A-Za-z]{{2,5}}\.?)[\s,-]*"
+    rf"(?:(?:sections?|secs?\.?|§§?)\s*)?(?P<number>\d+(?:\.\d+)*[a-z]?)\s*(?P<subs>(?:\s?\([^()]*\))*)\s*$", re.I)
+
+
+def statute_citation(text: str) -> StatuteCitation | None:
+    """A whole string read as one statute citation, however it is written: "CIV 2924f", "civ-5855", "CIV 5855(a)",
+    "Civil Code section 2924f", "Civ. Code, § 2924.12", "SHC 5898.16", "10 CCR 2792.23", "10-CCR-2792.23". None when
+    the text is not a code and a section number.
+
+    The number is read as written. A letter written against the digits is part of the number ("2924a" is the section
+    after 2924); a letter in parentheses is a subdivision ("5855(a)"). Whether a lettered number is a section at all
+    is for the shelf to say (``subdivision_reading``)."""
+    m = _ONE_CITATION.match(text or "")
+    if not m:
+        return None
+    name = " ".join(m.group("code").split())
+    if m.group("title"):
+        code = f"{m.group('title')} " + ("CCR" if re.fullmatch(_REGULATIONS, name, re.I) else name.rstrip(".").upper())
+    else:
+        code = _code_of(name) or (name.rstrip(".").upper() if re.fullmatch(r"[A-Za-z]{2,5}\.?", name) else "")
+    if not code:
+        return None
+    return StatuteCitation(code, m.group("number").lower(), re.sub(r"\s+", "", m.group("subs") or ""))
+
+
+def subdivision_reading(citation: StatuteCitation, listed: Iterable[str]) -> StatuteCitation | None:
+    """What a lettered number may have been written for, read against the sections a shelf lists for the code.
+
+    "CIV 2924a" where the shelf lists 2924a is that section, and nothing else is offered (None). "CIV 5855a" where the
+    shelf lists 5855 and no 5855a is ambiguous as written: the shelf holds no such section, and the letter may be the
+    subdivision. Then the citation it would be, "CIV 5855(a)", is returned for a reader to offer; a reader never
+    quotes one section's words under another's number. None too when the shelf lists neither."""
+    letter = citation.letter
+    if not letter:
+        return None
+    listed = set(listed)
+    if citation.number in listed or citation.number[:-1] not in listed:
+        return None
+    return StatuteCitation(citation.code, citation.number[:-1], f"({letter})" + citation.subdivisions)
 
 
 def section_target(target: str) -> tuple[str, str]:
@@ -412,4 +497,6 @@ def ancestors(number: str) -> Iterable[str]:
         yield n
 
 
-__all__ = ["TargetKind", "RefRelation", "Reference", "extract", "statute_key", "section_target", "ancestors", "alias_pattern", "CODES"]
+__all__ = ["TargetKind", "RefRelation", "Reference", "extract", "statute_key", "section_target", "ancestors", "alias_pattern", "CODES",
+           "ABBREVIATIONS", "LETTER", "SECTION_NUMBER", "STATUTE_IN_TEXT", "StatuteCitation", "statute_citation",
+           "subdivision_reading"]

@@ -14,9 +14,15 @@ jason's record of its own shelf; the Act's amendment history from lawlibrary is 
 (``jason.community.succession``), a different file.
 
 A page may hold one section more than once: the Legislature's publication prints two versions of some sections, each
-under the same number. ``versions`` gives every one; ``law_text`` and ``section_digest`` give the first. The first is
-not always the one in force: the order is the publication's. ``authority_text`` quotes the one in force today where
-the versions' own words say which.
+under the same number. ``versions`` gives every one. The publication's order is not the order they operate in, so a
+reader never quotes "the first": ``quoted`` says which version is in force on a day by the versions' own operative
+words, quoting them, or that nothing decides and every version is to be shown. ``authority_text``, ``jason cite``,
+the packets, and the context pack quote through it. ``law_text`` and ``section_digest`` with no digest and no day
+give the first print: a handle for a record to compare digests with, not a quotation of the law.
+
+A section's number may end in a letter ("CIV 2924a"): the letter is part of the number, and the section is its own
+heading on the page. A citation is read by the one grammar (``references.statute_citation``); the shelf's own section
+lists (``shelf_numbers``) say whether a lettered number is a section at all.
 
 **The words in force on a day.** The history folder also holds earlier versions of a section, each with the range it
 was in force where a record says it: ``jason law-history --versions`` reads them from the session publications
@@ -48,21 +54,18 @@ VERSIONS_FILE = "authorities/history/versions.json"
 MIN_DIGEST = 12
 
 _NOTE = re.compile(r"^- History:\s*(.*)$")
-# A code, a section number (dotted, with the letter some sections end in: "2924a"), and any subdivisions.
-_CITATION = re.compile(r"^\s*(?:(\d+)[\s-]+)?([A-Za-z]{2,5})[\s-]*(?:section\s+|§\s*)?(\d+(?:\.\d+)*[a-z]?)\s*((?:\([^)]*\))*)\s*$",
-                       re.IGNORECASE)
 _HEX = re.compile(r"^[0-9a-f]+$")
 
 
 def normal_citation(citation: str) -> tuple[str, str] | None:
     """A statute citation as the shelf's headings write it, with any subdivision apart: "civ-5855" and "CIV 5855(a)"
-    give ("CIV 5855", "") and ("CIV 5855", "(a)"); "10-CCR-2792.23" gives ("10 CCR 2792.23", ""). None when the text
-    is not a code and a section number."""
-    m = _CITATION.match(citation or "")
-    if not m:
-        return None
-    code = (m.group(1) + " " if m.group(1) else "") + m.group(2).upper()
-    return f"{code} {m.group(3).lower()}", m.group(4) or ""
+    give ("CIV 5855", "") and ("CIV 5855", "(a)"); "CIV 2924f" keeps its letter; "10-CCR-2792.23" gives
+    ("10 CCR 2792.23", ""). None when the text is not a code and a section number. Read by the one citation grammar
+    (``references.statute_citation``)."""
+    from jason.community.references import statute_citation
+
+    found = statute_citation(citation)
+    return (found.base, found.subdivisions) if found is not None else None
 
 
 def slug(citation: str) -> str:
@@ -199,6 +202,17 @@ def versions(citation: str, data_dir: Path) -> list[LawText]:
             if text.citation == found[0] and all(text.digest != other.digest for other in out):
                 out.append(text)
     return out
+
+
+def shelf_numbers(root: Path) -> dict[str, frozenset[str]]:
+    """Each code's section numbers as the shelf's own pages list them (the manifest's ``sections``; a page that lists
+    none is read for its headings). This list, not a page's span, says whether a number is a section the shelf
+    holds: "2924a" is one where a page lists it, and "5855a" is not where the page lists only 5855."""
+    out: dict[str, set[str]] = {}
+    for page in _pages(Path(root)):
+        numbers = list(page.sections) or [t.citation.rpartition(" ")[2] for t in page_sections(Path(root), page)]
+        out.setdefault(page.code, set()).update(str(n) for n in numbers)
+    return {code: frozenset(numbers) for code, numbers in out.items()}
 
 
 def history_dir(root: Path, citation: str) -> Path:
@@ -598,9 +612,118 @@ def in_force(citation: str, data_dir: Path, as_of: date) -> InForce:
     return InForce(base, as_of, Decided.NOT_SHOWN, None, basis, (), tuple(caveats), now, earlier)
 
 
+@dataclass(frozen=True)
+class Quoted:
+    """What a reader quotes of a section on a day, of the texts the shelf holds under its number, and why.
+
+    One text on the shelf is that text, with no note. Of several, ``text`` is the one in force on the day where the
+    disk decides it (``in_force``: the versions' own operative words, or a recorded range) and ``note`` says which it
+    is and why, with the deciding words. Where nothing decides, ``text`` is None: the reader shows every version,
+    each under its ``label``. Never the first by position."""
+
+    citation: str
+    day: date
+    held: tuple[LawText, ...] = ()       # every version on the shelf, in the publication's order
+    text: LawText | None = None          # the one to quote; None when the shelf holds none, or several and nothing decides
+    decided: Decided | None = None       # how it was picked among several; None when the shelf holds one or none
+    note: str = ""                       # which version is quoted and why, in a sentence; "" when the shelf holds one
+    quotes: tuple[str, ...] = ()         # the versions' own words that decide it
+    caveats: tuple[str, ...] = ()        # what else ``in_force`` said of the day
+    whys: tuple[tuple[str, str], ...] = ()   # each version's digest with why it is, or is not, the one in force
+
+    @property
+    def several(self) -> bool:
+        return len(self.held) > 1
+
+    @property
+    def undecided(self) -> bool:
+        """The shelf holds several versions and the disk does not show which is in force on the day."""
+        return self.several and self.text is None
+
+    def label(self, digest: str) -> str:
+        """One version's label, as jason's own words beside the law's: its place in the publication's order, its
+        digest, and whether it is the one in force on the day, with why. "" when the shelf holds one version."""
+        if not self.several:
+            return ""
+        place = next((n for n, v in enumerate(self.held, 1) if v.digest == digest), 0)
+        if not place:
+            return ""
+        day, why = self.day.isoformat(), dict(self.whys).get(digest, "")
+        head = (f"version {place} of {len(self.held)} the publication prints under {self.citation} "
+                f"(digest {digest[:MIN_DIGEST]})")
+        if self.text is None:
+            return f"{head}; the disk does not show which version is in force on {day}" + (f": {why}" if why else "")
+        if self.text.digest == digest:
+            return f"{head}; the one in force on {day}" + (f": {why}" if why else "")
+        return f"{head}; not in force on {day}" + (f": {why}" if why else "")
+
+    def labels(self) -> dict[str, str]:
+        """Each version's digest with its label; empty when the shelf holds one version."""
+        return {v.digest: self.label(v.digest) for v in self.held} if self.several else {}
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"asOf": self.day.isoformat(), "decided": self.decided.value if self.decided else "",
+                "digest": self.text.digest if self.text else "", "note": self.note, "quotes": list(self.quotes),
+                "caveats": list(self.caveats),
+                "versions": [{"digest": v.digest, "quoted": self.text is None or v.digest == self.text.digest,
+                              "label": self.label(v.digest)} for v in self.held]}
+
+
+def quoted(citation: str, data_dir: Path, day: date | None = None) -> Quoted:
+    """Which of the texts the shelf holds under a section's number a reader quotes on ``day`` (today unless given),
+    and why. Reads the disk only.
+
+    A section printed once is that print. Printed in several versions, it is the one ``in_force`` places in force on
+    the day, and the note quotes the words that decide it ("This section shall remain in effect only until January 1,
+    2031 ..." against "This section shall be operative January 1, 2031."). Where the disk does not decide, nothing is
+    picked and the reader shows every version: the publication's order is not the order they operate in."""
+    day = day or date.today()
+    found = normal_citation(citation)
+    if found is None:
+        return Quoted(citation, day)
+    base, iso = found[0], day.isoformat()
+    held = tuple(versions(base, Path(data_dir)))
+    if len(held) <= 1:
+        return Quoted(base, day, held, held[0] if held else None)
+    got = in_force(base, Path(data_dir), day)
+    picked = next((v for v in held if got.text is not None and v.digest == got.text.digest), None)
+    other = "the other version the shelf holds under the number"
+    whys: dict[str, str] = {}
+    rest: list[str] = []
+    for caveat in got.caveats:
+        about = next((v for v in held if f"(digest {v.digest[:MIN_DIGEST]})" in caveat), None)
+        if about is None or about.digest in whys or (picked is not None and about.digest == picked.digest):
+            rest.append(caveat)
+            continue
+        lead = f"{other} (digest {about.digest[:MIN_DIGEST]}) "
+        whys[about.digest] = "it " + caveat[len(lead):] if caveat.startswith(lead) else caveat
+    count = f"{base} is printed in {len(held)} versions under the one number"
+    if picked is None:
+        why = got.basis
+        if got.text is not None:
+            why = (f"an earlier version jason holds (digest {got.text.digest[:MIN_DIGEST]}) is recorded in force on {iso} "
+                   f"({got.basis}), and it is neither print on the shelf")
+        note = (f"{count}, and the disk does not show which is in force on {iso}: {why}. Every version is quoted, each "
+                "with its digest, in the publication's order, which is not the order they operate in")
+        return Quoted(base, day, held, None, Decided.NOT_SHOWN, note, (), tuple(rest), tuple(whys.items()))
+    own = own_operative(picked.words)
+    mine = tuple(q for q in (own.until_quote, own.start_quote) if q and q in got.quotes)
+    said = f"of the {len(held)} versions the shelf holds under the number, the versions' own words place this one in force on {iso}; "
+    basis = "by the versions' own words; " + got.basis[len(said):] if got.basis.startswith(said) else got.basis
+    whys[picked.digest] = basis + "".join(f"; its own words: \"{q}\"" for q in mine)
+    place = held.index(picked) + 1
+    note = (f"{count}. Version {place} in the publication's order (digest {picked.digest[:MIN_DIGEST]}) is the one "
+            f"in force on {iso}: {whys[picked.digest]}")
+    for n, v in enumerate(held, 1):
+        if v.digest != picked.digest and whys.get(v.digest):
+            note += f". Version {n} (digest {v.digest[:MIN_DIGEST]}): {whys[v.digest]}"
+    return Quoted(base, day, held, picked, got.decided, note, got.quotes, tuple(rest), tuple(whys.items()))
+
+
 def section_digest(citation: str, data_dir: Path) -> str | None:
-    """The digest of a section's words as they are on disk now (the first version, when the shelf holds two), or None
-    when the section is not on the shelf."""
+    """The digest of a section's words as they are on disk now, or None when the section is not on the shelf. Where
+    the shelf holds two versions this is the first print's: a handle to compare with, not the version in force
+    (``quoted`` says which that is)."""
     now = versions(citation, Path(data_dir))
     return now[0].digest if now else None
 
@@ -621,8 +744,8 @@ def changes(data_dir: Path, citation: str = "") -> list[dict[str, Any]]:
     return rows
 
 
-__all__ = ["CHANGES_FILE", "Decided", "HISTORY_DIR", "InForce", "LawText", "MIN_DIGEST", "OwnWords", "VERSIONS_FILE",
-           "changes", "credit_line", "header_fields", "history_dir", "history_texts", "in_force", "iso_day", "law_text",
-           "made_year", "normal_citation", "own_operative", "page_sections", "range_words", "same_digest",
-           "section_digest", "section_words", "shelf_sections", "slug", "source_line", "split_note", "split_page",
-           "version_ledger", "versions", "words_digest"]
+__all__ = ["CHANGES_FILE", "Decided", "HISTORY_DIR", "InForce", "LawText", "MIN_DIGEST", "OwnWords", "Quoted",
+           "VERSIONS_FILE", "changes", "credit_line", "header_fields", "history_dir", "history_texts", "in_force",
+           "iso_day", "law_text", "made_year", "normal_citation", "own_operative", "page_sections", "quoted",
+           "range_words", "same_digest", "section_digest", "section_words", "shelf_numbers", "shelf_sections", "slug",
+           "source_line", "split_note", "split_page", "version_ledger", "versions", "words_digest"]

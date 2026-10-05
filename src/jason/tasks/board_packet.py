@@ -26,21 +26,25 @@ from typing import Any, Callable
 from jason.community.board_items import PRIORITY_ORDER, BoardItem, ItemStatus, Session, agenda_session
 from jason.community.legal_cases import settled_lines
 
-_CITE = re.compile(r"\b(CIV|HSC|BPC|CCP|CORP|GOV)\s+(\d{3,5}(?:\.\d+)?)((?:\s*\([a-z0-9]+\))*)")
-
-
 def citations(authority: str) -> list[tuple[str, str]]:
-    """("CIV 5515", "(d)") pairs from an authority string ("CIV 5515(d), (e); 5510")."""
+    """("CIV 5515", "(d)") pairs from an authority string ("CIV 5515(d), (e); 5510"), read by the one citation
+    grammar (``references.STATUTE_IN_TEXT``): a section whose number ends in a letter keeps it ("CIV 2924f")."""
+    from jason.community.references import ABBREVIATIONS, SECTION_NUMBER, STATUTE_IN_TEXT, statute_citation
+
     found, code = [], ""
     for part in re.split(r"[;,]", authority or ""):
         part = part.strip()
-        m = _CITE.search(part)
-        if m:
-            code = m.group(1)
-            found.append((f"{m.group(1)} {m.group(2)}", m.group(3).replace(" ", "")))
+        whole = statute_citation(part)
+        m = STATUTE_IN_TEXT.search(part)
+        if whole is not None and (whole.code in ABBREVIATIONS or whole.code.endswith(" CCR")):
+            code = whole.code                    # the part is one citation: "Civil Code section 5515(d)", "10 CCR 2792.23"
+            found.append((whole.base, whole.subdivisions))
+        elif m:
+            code = m.group("code")
+            found.append((f"{code} {m.group('number')}", m.group("subs").replace(" ", "")))
         elif code:
-            bare = re.match(r"^(\d{3,5})((?:\([a-z0-9]+\))*)$", part)
-            if bare:
+            bare = re.match(rf"^({SECTION_NUMBER})((?:\([a-z0-9]+\))*)$", part)
+            if bare and re.match(r"\d{3,5}(?!\d)", part):
                 found.append((f"{code} {bare.group(1)}", bare.group(2)))
             elif re.match(r"^\([a-z0-9]+\)", part) and found:
                 last, sub = found[-1]
@@ -49,13 +53,25 @@ def citations(authority: str) -> list[tuple[str, str]]:
 
 
 def statute_excerpt(data_dir: Path, citation: str, subdivisions: str = "", *, limit: int = 1800) -> str:
-    """The section's words, trimmed to the cited top-level subdivisions ("(d)(e)") when given."""
-    from jason.tasks.export_authorities import authority_text
+    """The section's words, trimmed to the cited top-level subdivisions ("(d)(e)") when given.
+
+    A section the publication prints in two versions under one number is quoted as the version in force today,
+    followed by jason's note saying which it is and why (the versions' own operative words). Where the disk does not
+    decide, each version's words are given under its own label: never the first alone."""
+    from jason.tasks.export_authorities import authority_text, version_label
 
     found = authority_text(Path(data_dir), citation)
     if not found.get("found"):
         return ""
-    text = " ".join(str(found.get("text", "")).split())
+    if found.get("undecided"):
+        return " ".join(f"{version_label(row['label'])} {_excerpt(row.get('text', ''), subdivisions, limit)}"
+                        for row in found.get("versions") or [])
+    excerpt = _excerpt(str(found.get("text", "")), subdivisions, limit)
+    return excerpt + (f" {version_label(found['version'])}" if found.get("version") else "")
+
+
+def _excerpt(words: str, subdivisions: str, limit: int) -> str:
+    text = " ".join(words.split())
     # A subdivision starts the text or follows a sentence's end; "(b) of Section 5300" in a lead-in is a reference, not one.
     start = r"(?:^|(?<=[.:;]\s)|(?<=\)\s))"
     wanted = re.findall(r"\(([a-z])\)((?:\(\d+\))?)", subdivisions)

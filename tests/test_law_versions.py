@@ -308,10 +308,17 @@ def test_a_reader_quotes_the_version_in_force_today_not_the_one_printed_first(tm
     hit = authority_text(tmp_path, "CIV 9902", fetch=False)
     assert hit["found"] and "shall remain in effect only until January 1, 2099" in hit["text"]
     assert "shall be operative January 1, 2099" not in hit["text"]
-    # Where the versions' own words do not say, the first, as before; and a section printed once is that print.
-    page.write_text(page.read_text(encoding="utf-8").replace("shall be operative January 1, 2099", "is made up"), encoding="utf-8")
-    assert "Other made-up words." in authority_text(tmp_path, "CIV 9902", fetch=False)["text"]
-    assert "fourteen days" in authority_text(tmp_path, "CIV 9901", fetch=False)["text"]
+    assert "Version 2 in the publication's order" in hit["version"] and "shall remain in effect only until" in hit["version"]
+    # Where the versions' own words do not say, both are quoted, each labeled, never the first alone; and a section
+    # printed once is that print, with no note.
+    page.write_text(page.read_text(encoding="utf-8").replace("shall be operative January 1, 2099", "is made up")
+                    .replace("shall remain in effect only until January 1, 2099, and as of that date is repealed", "is made up too"),
+                    encoding="utf-8")
+    both = authority_text(tmp_path, "CIV 9902", fetch=False)
+    assert both["undecided"] and "Other made-up words." in both["text"] and "is made up too" in both["text"]
+    assert both["text"].count("[jason: version") == 2
+    once = authority_text(tmp_path, "CIV 9901", fetch=False)
+    assert "fourteen days" in once["text"] and "version" not in once
 
 
 def test_two_versions_whose_words_state_no_operative_day_are_both_shown(tmp_path: Path):

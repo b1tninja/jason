@@ -30,7 +30,7 @@ from enum import Enum
 from typing import Any, Iterable
 
 from jason.community.outlines import DocumentOutline, normalize_number
-from jason.community.references import CODES, TargetKind, alias_pattern, extract
+from jason.community.references import ABBREVIATIONS, CODES, LETTER, SECTION_NUMBER, TargetKind, alias_pattern, extract
 
 CAVEAT = ("Quoted from jason's copy of the association's documents; a document kept as amended is consolidated from "
           "the instruments' own words. It is not an official restatement: the recorded and adopted documents control.")
@@ -158,13 +158,14 @@ class Target:
 
 _LABEL = r"\(\s*[A-Za-z0-9]{1,5}\s*\)"
 _DOC_NUM = rf"(?:[A-Z]{{1,2}}-\d+(?:\.\d+)*|\d+(?:\.\d+)*)(?:\s?{_LABEL})*"
-_STAT_NUM = rf"\d+(?:\.\d+)*(?:\s?{_LABEL})*"
+# A statute's section number is the references grammar's: dotted, with the letter some sections end in ("2924f").
+_STAT_NUM = rf"{SECTION_NUMBER}(?:\s?{_LABEL})*"
 _WORD = r"(?:Sections?|Secs?\.?|§§?|Articles?|Arts?\.|Paragraphs?|Paras?\.|¶|Rules?|Subsections?|Subdivisions?)"
 _SIB = rf"(?:\s*(?:,\s*(?:and|or)?|\band\b|\bor\b|&)\s*(?:{_LABEL}|{_DOC_NUM}))+"
 _SPAN = rf"\s*(?:\bthrough\b|\bthru\b|\bto\b|–|—|-)\s*(?:{_WORD}\s*)?(?P<end>{_DOC_NUM})"
+_STAT_SIB = rf"(?:\s*(?:,\s*(?:and|or)?|\band\b|\bor\b|&)\s*(?:{_LABEL}|{_STAT_NUM}))+"
+_STAT_SPAN = rf"\s*(?:\bthrough\b|\bthru\b|\bto\b|–|—|-)\s*(?:{_WORD}\s*)?(?P<end>{_STAT_NUM})"
 _CODE_ALT = "|".join(f"(?:{pattern})" for pattern, _ in CODES)
-ABBREVIATIONS = frozenset({"CIV", "CORP", "HSC", "GOV", "EVID", "BPC", "CCP", "VEH", "PEN", "FAM", "PROB", "LAB", "RTC",
-                           "WAT", "PRC", "COM", "INS", "FIN", "UIC", "FAC", "EDC", "ELEC", "HNC"})
 _ABBR = "|".join(sorted(ABBREVIATIONS, key=len, reverse=True))
 _STATUTE_FIRST = re.compile(rf"^(?P<code>{_CODE_ALT}|\b(?:{_ABBR})\b)\s*,?\s*(?:{_WORD}\s*)?(?P<num>{_STAT_NUM})"
                             rf"(?P<rest>.*)$", re.I)
@@ -172,7 +173,7 @@ _STATUTE_LAST = re.compile(rf"^(?:{_WORD}\s*)(?P<num>{_STAT_NUM})(?P<rest>.*?)\s
                            rf"(?P<code>{_CODE_ALT})$", re.I)
 _REG = re.compile(r"^(?:Title\s+)?(?P<title>\d{1,2})\s+(?:C\.?C\.?R\.?|Cal(?:ifornia)?\.?\s*Code\s+(?:of\s+)?"
                   rf"Reg(?:ulation)?s?\.?)\s*(?:§\s*|[Ss]ections?\s*)?(?P<num>{_STAT_NUM})$", re.I)
-_BARE = re.compile(rf"^(?:{_WORD}\s*)?(?P<num>\d{{4}}(?:\.\d+)?(?:\s?{_LABEL})*)$", re.I)
+_BARE = re.compile(rf"^(?:{_WORD}\s*)?(?P<num>\d{{4}}(?:\.\d+)?{LETTER}(?:\s?{_LABEL})*)$", re.I)
 _RESOLUTION = re.compile(r"^(?:(?:Administrative|Special|Policy|Board)\s+)?Resolution\s*(?:No\.?\s*|Number\s*|#\s*)?"
                          r"(?P<num>[\w-]*\d[\w-]*)$", re.I)
 _INSTRUMENT = re.compile(r"^(?:(?:Recorder'?s?\s+)?(?:Doc(?:ument)?\.?|Instrument)\s*(?:No\.?|Number|#)?\s*)?"
@@ -194,26 +195,37 @@ def _code(name: str) -> str:
     return ""
 
 
-def _siblings(first: str, rest: str) -> tuple[str, ...]:
+def _siblings(first: str, rest: str, numbers: str = _DOC_NUM) -> tuple[str, ...]:
     """"6.2(a)" with ", (b) and (c)" -> 6.2(a), 6.2(b), 6.2(c); a whole number stands for itself."""
     out = [first]
     base = first[: first.rfind("(")] if "(" in first else first
-    for item in re.findall(rf"{_LABEL}|{_DOC_NUM}", rest):
+    for item in re.findall(rf"{_LABEL}|{numbers}", rest, re.I):
         item = normalize_number(item)
         out.append(base + item if item.startswith("(") else item)
     return tuple(dict.fromkeys(out))
 
 
+def statute_number(number: str) -> str:
+    """A statute's section number as the shelf heads it: spaces out, and the letter a number ends in lower case
+    ("2924F" is 2924f). A subdivision's label keeps its case: "(A)" is not "(a)"."""
+    number = normalize_number(number)
+    head, paren, labels = number.partition("(")
+    return head.lower() + paren + labels
+
+
 def _rest(unit: Unit, key: str, number: str, rest: str, *, article: bool, as_of: date | None,
           expression: str) -> Target | Miss:
-    number = normalize_number(number)
+    statute = unit is Unit.STATUTE
+    clean = statute_number if statute else normalize_number
+    number = clean(number)
     rest = rest.strip()
     if not rest:
         return Target(unit, key, number, article=article, as_of=as_of)
-    if m := re.fullmatch(_SPAN, rest, re.I):
-        return Target(unit, key, number, end=normalize_number(m.group("end")), article=article, as_of=as_of)
-    if re.fullmatch(_SIB, rest, re.I):
-        return Target(unit, key, number, siblings=_siblings(number, rest), article=article, as_of=as_of)
+    if m := re.fullmatch(_STAT_SPAN if statute else _SPAN, rest, re.I):
+        return Target(unit, key, number, end=clean(m.group("end")), article=article, as_of=as_of)
+    if re.fullmatch(_STAT_SIB if statute else _SIB, rest, re.I):
+        siblings = _siblings(number, rest, _STAT_NUM) if statute else _siblings(number, rest)
+        return Target(unit, key, number, siblings=siblings, article=article, as_of=as_of)
     if re.fullmatch(r"(?:,?\s*et\s+seq\.?|,?\s*(?:above|below|hereof|herein))", rest, re.I):
         return Target(unit, key, number, article=article, as_of=as_of)
     return Miss(Reason.UNPARSED, f"read {number}, then could not read {rest!r}", expression)

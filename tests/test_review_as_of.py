@@ -267,7 +267,10 @@ def _pack(world: tuple[Path, Community], **kw):
 
 def _told(pack) -> str:
     page = pack.markdown()
-    return page[page.index("## Task"):] + "\n=== sources_text ===\n" + pack.sources_text() + "\n"
+    told = page[page.index("## Task"):] + "\n=== sources_text ===\n" + pack.sources_text() + "\n"
+    # A section printed twice is labeled with the day it was asked about (today, with no as-of date): keep the page
+    # the same on any day.
+    return told.replace(date.today().isoformat(), "TODAY")
 
 
 def test_without_an_as_of_date_the_pack_is_what_it_was(world):

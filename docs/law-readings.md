@@ -43,21 +43,47 @@ Two files share a name. `data/authorities/changes.json` is jason's log of its ow
 | `history_texts(citation, data_dir)` | the words the history holds: those exports replaced, and the earlier versions, each with its range where one is recorded |
 | `version_ledger(data_dir, citation)` | what `jason law-history --versions` recorded for the section |
 | `own_operative(words)` | the operative days a section's own words state, each with its sentence |
+| `quoted(citation, data_dir, day=None)` | which of the versions under one number a reader quotes on a day (today unless given), and why |
+| `shelf_numbers(data_dir)` | each code's section numbers, as the shelf's pages list them |
 | `changes(data_dir, citation="")` | the shelf's change log |
 
 These read the disk only. A section that is not on the shelf is a miss; nothing is fetched.
+
+### A number that ends in a letter
+
+Some sections' numbers end in a letter: "CIV 2924a" is the section after 2924, not a part of it. The shelf holds sixteen (October 4, 2026).
+
+- **One grammar reads a citation:** `jason.community.references` (`statute_citation`, `SECTION_NUMBER`, `statute_key`, `extract`). `authority_text`, `law_text`, `jason cite`, the board packet, and the duty registry's citation strings all read through it. None keeps a pattern of its own.
+- **A letter written against the digits is part of the number.** "CIV 2924f", "Civil Code section 2924f", and "civ-2924f" are section 2924f.
+- **A letter in parentheses is a subdivision.** "CIV 5855(a)" is section 5855, subdivision (a). "CIV 2924f(a)" is section 2924f, subdivision (a).
+- **The order is the publication's:** 2924, 2924a, 2924b, ..., 2924p, 2924.1, 2924.3 (`authorities.number_key`). A page titled "CIV 2924-2924.26" covers the lettered sections.
+- **The shelf's own section list says whether a lettered number is a section.** "CIV 2924a" is listed, so it is quoted. "CIV 5855a" is not listed and 5855 is: it is a miss, and the miss offers the subdivision it may have been written for (`suggest`: "CIV 5855(a)"). jason never quotes one section's words under another's number.
+- **A document's own short number reads as before.** Only a number of three digits or more takes a letter after the word "Section".
 
 ### Two versions under one number
 
 The Legislature's publication prints some sections twice under one number: one version in effect until a day, the other operative from it. The shelf holds both, and the backfill lists them (six sections on October 4, 2026).
 
 - `versions` gives each, with its own digest, in the publication's order. That is not the order they operate in: for one of the six the version printed first is the one not yet operative.
-- `law_text` and `section_digest` give the first.
-- `authority_text` (and through it `jason cite`, the packets, and the notices) quotes the version in force today where the versions' own words say which; where they do not, the first.
-- `recite` with no day gives every version, with a caveat.
-- `recite` with a day picks by the versions' own words, where they state them, and quotes the sentences that decide it: "This section shall remain in effect only until January 1, 2031, and as of that date is repealed" against "This section shall be operative January 1, 2031". The other version is named in a caveat with its digest.
+- **No reader quotes "the first".** `quoted` says which version is in force on a day, and why, from `in_force`.
+  - **Decided:** the version the versions' own operative words (or a recorded range) place in force. Its note names it by its place in the publication's order and its digest, and quotes the words that decide it: "This section shall remain in effect only until January 1, 2031, and as of that date is repealed" against "This section shall be operative January 1, 2031". The other version is named with its digest and why it is not the one.
+  - **Not decided:** nothing is picked. The reader shows every version, each under its label.
+- **Each reader carries the note.**
+
+  | Reader | A decided section | Where the disk does not decide |
+  |---|---|---|
+  | `authority_text` (and the MCP tool `authorities`) | `text` is the version in force today; `version` is the note; `digest`, `decided`, `quotes`, and `versions` (each digest, and whether quoted) | `undecided` is true; `text` is every version, each under a `[jason: version 1 of 2 ...]` line; `versions` holds each text apart |
+  | `jason cite`, `cite_document` | the same words; the note is `version.note`, with `version.decidingWords` | every version, labeled; a subdivision is split from each version, never from the first alone |
+  | `jason cite CIV-2924f@2031-06-01` | the version in force that day (`in_force`), with the deciding words | the miss `edition_not_held` |
+  | the board packet (`statute_excerpt`) | the excerpt, then the note in a `[jason: ...]` bracket | each version's excerpt under its label |
+  | the context pack (`law_corpus`) | two `LawSection`s, each with `version`: which it is and whether it is in force today; both go into the pack, and each source's note says which it is | the same, each saying the disk does not show which is in force |
+  | `recite` with no day | every version, with a caveat, and the note saying which is in force today | every version, with the caveat |
+  | `recite` with a day | the version in force that day, the other named in a caveat with its digest | both, and nothing is picked |
+
+- **A label is jason's, never the law's.** It sits in a `[jason: ...]` bracket or a note field, apart from the words.
+- `law_text` and `section_digest` with no digest and no day give the first print. That is a handle for comparing digests, not a quotation.
 - Only a sentence whose subject is the section is read. "The amendments made to this section ... shall become operative on" speaks of an amendment and decides nothing.
-- Where the versions' own words state no day, both are recited and nothing is picked. jason never picks by position.
+- **A section two pages hold with the same words is one text.** It carries no note.
 
 ## The words in force on a day
 
@@ -268,6 +294,9 @@ jason verify-quotes - --sources hits.json --json    # the answer from standard i
 - **The digest is of the whole section.** A reading of one subdivision goes stale when another subdivision changes. That errs toward checking.
 - **A governing document's digest follows jason's copy,** which is not an official restatement. A corrected OCR slip changes the digest as an amendment does.
 - **Reciting decides nothing.** A reading is one party's view, labeled as one.
+- **Which version is in force is read from the words, not decided.** The note quotes the sentence that says it. A later act that the shelf's edition does not show could change the day.
+- **A lettered miss offers, and does not read.** `suggest` names the subdivision a number such as "5855a" may have been written for. The person asks again with the parentheses.
+- **Some readers take `text` whole.** The rule-change notice, the owner's-manual comparison, and the meeting notice's recital read `authority_text`'s `text`. For a section whose versions the disk does not decide between, that text is every version under jason's bracketed labels. The shelf holds no such section on October 4, 2026: all six state their days.
 - **A range is as good as the Legislature's notes.** `Until` is the next act the publications show; [The gap](#the-gap-october-4-2026) lists what they cannot.
 - **An earlier version's digest covers its credit line too,** as a shelf page's does. Two prints that differ only in the credit line have two digests and the same law.
 - **The publication's words are the source.** A session publication is the Legislature's own file, read with lawlibrary; it is not the chaptered act. Where the exact enacted text matters, counsel reads the Statutes.

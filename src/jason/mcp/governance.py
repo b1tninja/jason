@@ -434,6 +434,8 @@ def cite_document(expression: str, as_of: str = "", text: bool = True, data_dir:
     record, statute, miss), ``found``, the ``citation``, the stored words whole (``text``), the version in force
     (``inForce``), and ``history`` (the instruments that changed it; one not in force is flagged, never merged). A
     document, an article, a span, or siblings is an ``outline``, never concatenated words; a miss has its ``reason``.
+    A statute section printed in two versions under one number is the version in force today (or on ``as_of``), and
+    ``version.note`` says which it is and quotes the words that decide it: repeat the note with the words.
     Recite the words first, with the citation and the caveat; any reading of them is yours, labeled as one. The
     consolidated text is not an official restatement; the recorded instruments control."""
     from jason.tasks.cite import resolve

@@ -692,19 +692,40 @@ class Shelf:
         got = authority_text(self.data_dir, t.base, asked_by=caller())
         if not got.get("found"):
             detail = got.get("reason", "") + (f" ({got['detail']})" if got.get("detail") else "")
-            return _miss(_LIBRARY_MISS.get(str(got.get("miss") or ""), Reason.STATUTE_NOT_ON_DISK), detail, cite, pointer=pointer)
+            extra = {"suggest": got["suggest"]} if got.get("suggest") else {}
+            return _miss(_LIBRARY_MISS.get(str(got.get("miss") or ""), Reason.STATUTE_NOT_ON_DISK), detail, cite,
+                         pointer=pointer, **extra)
         words = got.get("text", "")
         version = {"source": got.get("page", ""), "session": got.get("session", ""), "heading": got.get("title", ""),
                    "official": True}
+        notes: list[str] = []
+        if got.get("version"):
+            # Printed in two versions under the one number: which is quoted and why, in the versions' own words, or
+            # that the disk does not decide and both are quoted. Never the first by position.
+            notes.append(got["version"])
+            version.update({k: got[k] for k in ("asOf", "decided", "digest", "undecided") if got.get(k)})
+            version["decidingWords"] = list(got.get("quotes") or [])
+            version["versions"] = [{k: row[k] for k in ("digest", "quoted", "label")} for row in got.get("versions") or []]
         if t.labels:
-            part = label_text(words, t.labels)
+            labels = "".join(f"({x})" for x in t.labels)
+            if got.get("undecided"):
+                # Each version's subdivision under its own label: the first one's is never quoted for both.
+                from jason.tasks.export_authorities import version_label
+
+                parts = [(row, label_text(row.get("text", ""), t.labels)) for row in got.get("versions") or []]
+                part = "\n\n".join(f"{version_label(row['label'])}\n\n{text or f'{labels} is not in this version.'}"
+                                   for row, text in parts) if any(text for _, text in parts) else ""
+            else:
+                part = label_text(words, t.labels)
             if not part:
                 return _miss(Reason.LABEL_NOT_FOUND, f"{t.base} is on disk; jason could not find "
-                             f"{''.join(f'({x})' for x in t.labels)} in its words", cite, pointer=pointer)
+                             f"{labels} in its words", cite, pointer=pointer)
             words = part
             version["official"] = False
-            version["note"] = ("the subdivision's words, split by jason from the exported section; the whole section "
-                               "is the official text")
+            notes.append("the subdivision's words, split by jason from the exported section; the whole section "
+                         "is the official text")
+        if notes:
+            version["note"] = "; ".join(notes)
         return State(Kind.STATUTE, True, citation=cite, title=got.get("title", ""), text=words, version=version,
                      extra={"pointer": pointer})
 
@@ -719,7 +740,12 @@ class Shelf:
                    "session": held.session, "publisher": held.source, "digest": held.digest, "official": not held.added,
                    "asOf": t.as_of.isoformat(), "inForce": dated.basis, "decided": dated.decided.value,
                    "current": held.current}
-        notes = list(dated.caveats)
+        # The section's own words that decide which version governed the day, quoted before the caveats (a caveat
+        # about the other version quotes that version's own sentence itself).
+        notes = [f"own words that decide it: \"{q}\"" for q in dated.quotes if not any(q in c for c in dated.caveats)]
+        notes += list(dated.caveats)
+        if dated.quotes:
+            version["decidingWords"] = list(dated.quotes)
         if t.labels:
             part = label_text(words, t.labels)
             if not part:

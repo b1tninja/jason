@@ -288,11 +288,10 @@ def on_demand_pages(root: Path) -> tuple[Page, ...]:
     return tuple(Page(**p) for p in read_manifest(root).get("on_demand") or [])
 
 
-_CITE = re.compile(r"^\s*(?:(\d+)\s+)?([A-Z]{2,5})\s*(?:section|§)?\s*(\d+(?:\.\d+)*)\s*$", re.IGNORECASE)
-
-
 def _on_shelf(root: Path, code: str, number: str) -> dict[str, Any] | None:
-    """The section's words from the curated pages, then the pages fetched on demand; None when no page holds them."""
+    """The section's words from the curated pages, then the pages fetched on demand; None when no page holds them.
+    A page's span says where to look ("CIV 2924-2924.26" covers 2924a, by ``number_key``'s order); the page's own
+    headings say whether the section is there."""
     for pages in (authority_pages(root), on_demand_pages(root)):
         for page in pages:
             if page.code != code or not section_in(Authority(code, page.start, page.end, "", Basis.DUTY), number):
@@ -303,7 +302,9 @@ def _on_shelf(root: Path, code: str, number: str) -> dict[str, Any] | None:
                       if head.strip() == f"{code} {number}"]
             if bodies:
                 hit = {"found": True, "citation": f"{code} {number}", "page": page.file, "title": page.title,
-                       "session": page.session, "why": page.why, "text": _in_force_today(root, f"{code} {number}", bodies)}
+                       "session": page.session, "why": page.why, "text": bodies[0].strip()}
+                if len(bodies) > 1:
+                    hit.update(_version_quoted(root, f"{code} {number}", bodies))
                 if page.fetched:
                     hit["fetched"] = page.fetched
                 return hit
@@ -311,36 +312,102 @@ def _on_shelf(root: Path, code: str, number: str) -> dict[str, Any] | None:
     return None
 
 
-def _in_force_today(root: Path, citation: str, bodies: list[str]) -> str:
-    """The body a reader quotes. A section the publication prints once is that print. Printed in two versions, it is
-    the one in force today where the versions' own operative words say which (``law_text.in_force``); the
-    publication's order is not the order they operate in. Where they do not say, the first, as before."""
-    if len(bodies) > 1:
-        from jason.community.law_text import in_force, words_digest
+def version_label(label: str) -> str:
+    """A version's label as it is set among the law's words: marked as jason's, never part of the words."""
+    return f"[jason: {label}]"
 
-        found = in_force(citation, root, date.today())
-        if found.text is not None:
-            for body in bodies:
-                if words_digest(body) == found.text.digest:
-                    return body.strip()
-    return bodies[0].strip()
+
+def _version_quoted(root: Path, citation: str, bodies: list[str]) -> dict[str, Any]:
+    """What a reader quotes of a section the publication prints more than once, and why (``law_text.quoted``).
+
+    The version in force today, where the versions' own operative words or a recorded range say which: ``text`` is
+    that version, and ``version`` says which it is and why, with the deciding words. Where the disk does not decide,
+    ``undecided`` is true and ``text`` is every version, each under jason's label, in the publication's order, which
+    is not the order they operate in. Never the first by position. Nothing is added for a section whose prints all
+    have the same words."""
+    from jason.community.law_text import quoted, words_digest
+
+    by_digest = {words_digest(body): body.strip() for body in bodies}
+    if len(by_digest) < 2:
+        return {}
+    which = quoted(citation, root)
+    picked = which.text.digest if which.text is not None and which.text.digest in by_digest else ""
+    labels = which.labels()
+    count = len(by_digest)
+    rows = [{"digest": digest, "quoted": not picked or digest == picked,
+             "label": labels.get(digest) or f"one of {count} versions the publication prints under {citation} "
+                                            f"(digest {digest[:12]})"} for digest in by_digest]
+    out: dict[str, Any] = {"asOf": which.day.isoformat(), "decided": which.decided.value if which.decided else "",
+                           "quotes": list(which.quotes), "versions": rows}
+    if picked:
+        out.update(text=by_digest[picked], digest=picked, version=which.note)
+        return out
+    for row in rows:
+        row["text"] = by_digest[row["digest"]]
+    out.update(undecided=True, text="\n\n".join(f"{version_label(row['label'])}\n\n{row['text']}" for row in rows),
+               version=which.note or f"{citation} is printed in {count} versions under the one number, and the disk does "
+                                     "not show which is in force today; every version is quoted, each with its digest")
+    return out
+
+
+def _spanned(root: Path, code: str, number: str) -> Page | None:
+    """A page of several sections whose span covers the number and whose own list does not have it: the publication
+    printed that span whole, so it prints no such section."""
+    for page in (*authority_pages(root), *on_demand_pages(root)):
+        if page.code == code and len(page.sections) > 1 and number not in page.sections \
+                and section_in(Authority(code, page.start, page.end, "", Basis.DUTY), number):
+            return page
+    return None
 
 
 def authority_text(root: Path, citation: str, *, fetch: bool = True, asked_by: str = "") -> dict[str, Any]:
     """The words of one section from the shelf, or a miss that names the pointer or the gap.
 
+    The citation is read by the one grammar (``references.statute_citation``): "CIV 5200", "civ-5200", "Civil Code
+    section 5200", and a section whose number ends in a letter, "CIV 2924f". A subdivision is not a section: say the
+    section, and split the subdivision from its words (``jason cite`` does).
+
+    A section the publication prints in two versions under one number comes back as the version in force today, with
+    ``version`` saying which it is and why (the versions' own operative words, quoted); where the disk does not
+    decide, as every version, each labeled, with ``undecided`` (``_version_quoted``). Never the first by position.
+
+    A lettered number the shelf does not list, where it lists the number without the letter ("CIV 5855a" beside
+    CIV 5855), is a miss that offers the subdivision it may have been written for (``suggest``: "CIV 5855(a)"). One
+    section's words are never quoted under another's number.
+
     A section of a code lawlibrary holds that no page has is asked of lawlibrary once (``statute_fetch.ensure``),
     written to the shelf in the export's format, and read from there; ``fetch=False`` or JASON_AUTHORITIES_FETCH=0
     reads the disk only. A miss names why: not in the library, the library unavailable, or its worker failed.
     """
-    match = _CITE.match(citation)
-    if not match:
+    from jason.community.references import statute_citation, subdivision_reading
+
+    cited = statute_citation(citation)
+    if cited is None or cited.subdivisions:
         return {"found": False, "citation": citation, "reason": "say a code and a section, such as CIV 5200"}
-    code = (match.group(1) + " " if match.group(1) else "") + match.group(2).upper()
-    number = match.group(3)
+    code, number = cited.code, cited.number
     hit = _on_shelf(root, code, number)
     if hit:
         return hit
+    if cited.letter:
+        from jason.community.law_text import shelf_numbers
+
+        meant = subdivision_reading(cited, shelf_numbers(root).get(code, ()))
+        page = _spanned(root, code, number)
+        if meant is not None:
+            where = (f"{page.citation} covers that number and does not list it" if page is not None
+                     else f"the shelf lists {meant.base} and no {cited.base}")
+            out = _missing(root, code, number, fetch=fetch and page is None, asked_by=asked_by)
+            if not out.get("found"):
+                out["suggest"] = str(meant)
+                out["reason"] = (f"{cited.base} is not a section on the shelf ({where}). If subdivision ({cited.letter}) "
+                                 f"of section {meant.number} is meant, write {meant}"
+                                 + (f". Otherwise: {out['reason']}" if page is None and out.get("reason") else ""))
+            return out
+    return _missing(root, code, number, fetch=fetch, asked_by=asked_by)
+
+
+def _missing(root: Path, code: str, number: str, *, fetch: bool, asked_by: str) -> dict[str, Any]:
+    """A section no page holds: the pointer that names its source, else the read-through, else the miss."""
     for pointer in read_manifest(root).get("pointers") or []:
         if pointer.get("citation", "").upper().startswith(code + " "):
             return {**pointer, "found": False, "citation": f"{code} {number}", "reason": "not exported; read the source"}

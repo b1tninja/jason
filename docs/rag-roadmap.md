@@ -151,7 +151,7 @@
 - **Mechanism.**
   - Put one citation parser, `CITATION_ALIASES` (R&T to RTC, Corp. Code to CORP, CC&R to ccrs) and a `LawCite` record in `jason.community` (references or authorities).
   - Build them on `references.extract` and `statute_key`, which already cover EVID and VEH and mark prior Davis-Stirling numbering.
-  - Retire `board_packet._CITE` and `export_authorities._CITE` in the same change.
+  - Retire `board_packet._CITE` and `export_authorities._CITE` in the same change. **Done, October 4, 2026**, with `law_text`'s own pattern: all three read through `references` (`statute_citation`, `STATUTE_IN_TEXT`, `SECTION_NUMBER`), which also reads a section whose number ends in a letter and every code lawlibrary holds ([law-readings.md](law-readings.md#a-number-that-ends-in-a-letter)). `CITATION_ALIASES`, `LawCite`, and `law_for` are still to do.
   - Move `statute_excerpt` into community as well.
   - Write `law_for(authority, reading)`.
     - It resolves statutes through `authority_text`, and Bylaws and annexation sections through `tasks.outlines.resolve` and `aliases_of`.
@@ -449,7 +449,7 @@ Aim for 10 to 15 files per kind. Seed the review from disagreements, leaving out
 
 **Law**
 - `statute_excerpt` lives in `tasks.board_packet`.
-- `board_packet._CITE` covers six codes. `references.extract` is the better base, and `tasks.outlines.resolve` already resolves section references.
+- `board_packet._CITE` covered six codes; it is retired (item 5). `references.extract` is the better base, and `tasks.outlines.resolve` already resolves section references.
 - `pointers()` returns four authorities and has no rows for 44 CFR 61.6 or the fire code.
 - 13 outlines have zero sections, including annexation phase 8 and both amendment outlines.
 - `CitableDocument` rows are in `mystique/outlines.py`, not `mystique/community.py`.
