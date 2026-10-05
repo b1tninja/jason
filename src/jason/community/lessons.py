@@ -1616,6 +1616,46 @@ LESSONS: tuple[Lesson, ...] = (
            "FIRST_STATS measure it. The stubs the context pack showed were library sources, which no gold set measures: "
            "decide after gold-records.json exists.",
            Status.DECISION, docs=("docs/document-tools.md (model trials)", "docs/rag-roadmap.md")),
+    Lesson("boundary-misses-plain-strings", date(2026, 10, 5), (Area.REPOSITORY,),
+           "With its baseline empty, the code boundary check still passed general modules whose tables and string "
+           "constants held one association's facts: board-item options, request groups, stop-word sets, user agents, "
+           "a vendor layout row, a parcel-number prefix.",
+           "The check read regular expressions, word lists, and default arguments, not a module's own tables or lone "
+           "string constants.",
+           "The check now reads module- and class-level tuples, lists, sets, dicts, and string constants (the literal "
+           "parts of an f-string too); Community gained eight methods with empty defaults (board_item_options, "
+           "request_groups, name_words, user_agent, developer_security_notes, program_contractors, parcel_prefix, "
+           "recordings_note); the baseline stays empty. Still unseen: strings inside function bodies, a class's lone "
+           "enum members in symbols.py (phase 3), docstrings, and comments.",
+           Status.FIXED, guards=("tests/test_profile.py: a made-up term in a table or constant is found; a second "
+                                 "profile gets the empty answer from each new method",
+                                 "boundary.scan_code"),
+           docs=("docs/adapters.md", "docs/profiles.md")),
+    Lesson("a-move-that-rewrites-changes-behavior", date(2026, 10, 5), (Area.REPOSITORY,),
+           "Moving a board-packet sentence into the profile, an agent rewrote it from a different source, and two "
+           "other moves reordered a scan and a caveat; only a before-and-after run on real data caught them, and a "
+           "first harness had failed the same way on both sides, proving nothing.",
+           "A move was treated as a chance to tidy the words; the harness raised on a read-only write instead of "
+           "swallowing it.",
+           "The rule: move the exact words into the profile as data; prove it by diffing the old code against a "
+           "base-commit export (not a checkout with other sessions' edits), with a harness that swallows writes. "
+           "Still to decide: where the proof harness lives as a guard (today it is scratch).",
+           Status.OPEN),
+    Lesson("intake-answer-overwrites-unseen", date(2026, 10, 5), (Area.ONBOARDING,),
+           "intake.answer replaces an earlier answer and clears its confirmation without checking that the person "
+           "saw the answer they replace, so two people answering one question can silently undo each other.",
+           "The write takes the new value only; it carries no echo of the answer it replaces.",
+           "Designed (docs/console/handoff-applicability-questions.md): a seen echo of answeredAt and a refusal when "
+           "it differs, with the line \"This replaces the answer of NAME\". Still to build in the writer.",
+           Status.OPEN, docs=("docs/console/handoff-applicability-questions.md",)),
+    Lesson("computed-answer-labeled-decided", date(2026, 10, 5), (Area.GOVERNING,),
+           "The terminal prints \"decided by\" before the facts a computed applies/does-not-apply answer turns on, "
+           "though nothing jason computes is labeled as decided (docs/console/content/style.md).",
+           "The word came from the evaluator's field name (deciding) and spread to eight modules' output.",
+           "The console says \"Turns on\" (the applicability handoff). Still open: the same word in the terminal "
+           "output of applicability, notice_catalog, notice_elements, commands/notices, life_safety, and "
+           "inspections, with their tests, changed together once the life-safety work is committed.",
+           Status.OPEN, docs=("docs/console/content/style.md",)),
     Lesson("program-adoption-needs-the-act", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A required program existed and had been adopted, but looked unadopted: the minutes that adopted it were in "
            "no index catalog, so no search or quote check could find the act. Elsewhere a revision report printed "

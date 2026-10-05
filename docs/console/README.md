@@ -27,7 +27,7 @@ It plans every write to PayHOA, Google, and the mail as a dry run. The console p
 | [components.md](components.md) | Each component the console needs, mapped to jason-ui's (built, being added, or still proposed), and the WCAG 2.2 AA duties |
 | [security-and-privacy.md](security-and-privacy.md) | Loopback, the write guard, apply behind `--allow-apply`, identity, roles, data levels, and no secrets |
 | [personas-and-jobs.md](personas-and-jobs.md) | Who uses the console, the jobs each does, and what each must never see or do |
-| [journeys.md](journeys.md) | Six walks across the screens, step by step |
+| [journeys.md](journeys.md) | Ten walks across the screens, step by step (adds: answering what jason could not tell; a director confirms a reading and the board adopts it; a required program found missing and adopted; an improvement request to the unit's record) |
 | [handoff-conversations-and-policies.md](handoff-conversations-and-policies.md) | The design pass on conversations, forwards as handoffs, response standards, and the policy catalog |
 | [handoff-admin-components.md](handoff-admin-components.md) | The administrator's components from what was built: each integration's reading, the credential line, capabilities and limits, the schedule rows and editor, pauses, the service's heartbeat and lanes, the vault and its migration plan, with the data shapes and every state |
 | [handoff-instance-and-integrations.md](handoff-instance-and-integrations.md) | The design pass on instance administration, each community's integrations, and their setup dialogs (Google Workspace, Zoom, PayHOA): the screens, the components, secrets in the console, schedules, the service |
