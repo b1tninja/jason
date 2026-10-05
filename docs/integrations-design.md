@@ -102,7 +102,7 @@ Rejected or not now: Vault Community (BSL license, no namespaces without Enterpr
 
 ### Google Workspace
 
-**Recommended: each community's own Cloud project, an Internal app with a Web client.** Google needs no verification for an Internal app, shows no unverified warning, and sets no 100-user cap; restricted scopes in an Internal app get no further review. One community's breach stays that community's. It is what `jason sign-in --import-client` already does for console sign-in. It costs the community's administrator about 30 minutes with the guide.
+**Decided (2026-10-05): each community's own Cloud project, an Internal app with a Web client.** Google needs no verification for an Internal app, shows no unverified warning, and sets no 100-user cap; restricted scopes in an Internal app get no further review. One community's breach stays that community's. It is what `jason sign-in --import-client` already does for console sign-in. It costs the community's administrator about 30 minutes with the guide.
 
 The alternatives, for later:
 - **One jason-owned External app, verified.** The best experience (the admin only consents), but `drive`, `drive.readonly`, `gmail.readonly`, and `gmail.compose` are restricted scopes, so it needs Google's verification and a **CASA security assessment every year** (about $540 at Tier 2, up to $4,500 at Tier 3, by third-party pricing), and one breach exposes every community. Worth it only at scale.
@@ -192,7 +192,7 @@ Each integration declares its limits, a default cadence, a **floor** (the fastes
 
 ## Open decisions
 
-1. Accept a Cloud project per community (recommended), or budget for one verified jason app and its yearly CASA?
+1. ~~A Cloud project per community, or one verified jason app?~~ Decided 2026-10-05: a Cloud project per community.
 2. Support Gmail-only communities (unverified External app, a warning screen, under 100 users)?
 3. The self-host VM: EC2 with an instance role (needed for SSM), or OpenBao?
 4. Keeper: the dev backend only, or the self-host backend through Keeper Secrets Manager (which ends the 30-day logout for a daemon)?
