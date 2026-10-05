@@ -530,6 +530,9 @@ Cite and recite the association's documents and records (Declaration 6.2(a), Res
 |---|---|---|
 | `expression` | optional (?) | what to cite: "Declaration 6.2(a)", "Section 6.2(a) of the Declaration", "Resolution 20990101-1", decl#6.2(a)@2099-01-01 |
 | `--as-of` | AS_OF | the words in force on this date (YYYY-MM-DD) |
+| `--in` | KEY | the document the citation is written in (a document key): a number with no document named ("Section 7.8", "Article 4", "R-3(e)", "this Declaration") is scoped from it. Where two documents fit and none is named, the answer names both |
+| `--on` | DAY | the day the citing text was written (YYYY-MM-DD): a document kept as amended is read in the version in force that day |
+| `--scan` | FILE | every citation of the association's documents in FILE (- for standard input), each resolved with --in and --on, counted by form |
 | `--refs` |  | follow what it cites |
 | `--hops` | HOPS | with --refs: how many hops (default 1); all follows until a target repeats |
 | `--same` |  | with --refs: stay inside this document |

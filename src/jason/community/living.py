@@ -474,8 +474,8 @@ class CurrentDocument:
         return self.applied[-1] if self.applied else None
 
     def provision(self, number: str) -> Provision | None:
-        wanted = normalize_number(number)
-        return next((p for p in self.provisions if p.number == wanted), None)
+        at = _index(self.provisions, normalize_number(number))
+        return self.provisions[at] if at is not None else None
 
     def text_of(self, number: str) -> str:
         """A section's words with its subsections', as one text."""
@@ -546,7 +546,15 @@ def _descends(number: str, ancestor: str) -> bool:
 
 
 def _index(provisions: list[Provision], number: str) -> int | None:
-    return next((k for k, p in enumerate(provisions) if p.number == number), None)
+    """The provision numbered ``number``; for a number a document prints twice, "R-3(i)~2" is the second."""
+    head, _, nth = number.partition("~")
+    want, seen = (int(nth) if nth.isdigit() else 1), 0
+    for k, p in enumerate(provisions):
+        if p.number == head:
+            seen += 1
+            if seen == want:
+                return k
+    return None
 
 
 def _subtree_end(provisions: list[Provision], at: int) -> int:

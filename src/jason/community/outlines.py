@@ -206,7 +206,10 @@ def outline_from_doc(doc: dict[str, Any], *, key: str, title: str = "", kind: st
         if relative_tokens and (heading or anchor):
             token = relative_tokens[0]
             head, _, rest = token.partition("(")
-            number = f"{anchor}({head})" + (f"({rest}" if rest else "") if anchor else token
+            # A list whose own first level numbers the sections ("18." with "a." under it): the token is already
+            # "18(a)", the anchor's own number, and hanging it from the anchor again would make "18(18)(a)".
+            number = token if not anchor or head == anchor else \
+                f"{anchor}({head})" + (f"({rest}" if rest else "")
         elif relative_tokens:
             continue                      # a numbered list in running text with no section to hang from
         if not number and not heading:
@@ -250,6 +253,18 @@ def outline_from_text(text: str, *, key: str, title: str = "", kind: str = "") -
         if m := _ARTICLE.match(s):
             number = _arabic(m.group(1))
             out.sections.append(Section(number, m.group(2) or s, 1, at))
+            base, letter = number, ""
+        elif m := re.match(r"^(?:Rule\s+)?([A-Z]{1,2}-\d+(?:\.\d+)*)[.):]?\s+(\S.{0,120})", s):
+            # A rules document's lettered rule ("R-3. Parking", "Rule R-3 Parking"): its own top-level section, so the
+            # "(e)" lines below it are "R-3(e)".
+            number = m.group(1)
+            out.sections.append(Section(number, m.group(2), 1 + number.count("."), at,
+                                        parent=number.rsplit(".", 1)[0] if "." in number else ""))
+            base, letter = number, ""
+        elif m := re.match(r"^Rules?\s+(\d+(?:\.\d+)*)[.):]?\s+(\S.{0,120})", s):
+            number = m.group(1)                       # "Rule 4.1 Noise": the word marks the number a rule's own
+            out.sections.append(Section(number, m.group(2), 1 + number.count("."), at,
+                                        parent=number.rsplit(".", 1)[0] if "." in number else ""))
             base, letter = number, ""
         elif m := re.match(r"^(\d+(?:\.\d+)+)\.?\s+(\S.{0,120})", s):
             number = m.group(1)

@@ -45,8 +45,11 @@ from jason.community.cite import (CAVEAT, STALE, Citing, Holder, Kind, Miss, Nod
                                   tree_lines)
 from jason.community.books import Book
 from jason.community.outlines import DocumentOutline, normalize_number
+from jason.community import scoping
 from jason.community.references import ancestors
 from jason.community.section_refs import TOKEN, SectionRefError, SectionText, citation_of
+from jason.tasks import rule_rows
+from jason.tasks.cite_scope import build_index, citing_of
 from jason.tasks.section_refs import DiskResolver, is_article
 
 MAX_NODES = 2000                   # a walk with no hop limit stops here
@@ -185,6 +188,7 @@ class Shelf:
         self._mentions: list[Mention] | None = None
         self._states: dict[str, State] = {}
         self._copies: dict[tuple[str, str], Any] = {}
+        self._index: scoping.Index | None = None
         self.unread: list[str] = []    # sources of mentions that could not be read
 
     # --- The Resolver protocol (jason.community.section_refs): the same reader the tokens use ----------------------
@@ -197,20 +201,104 @@ class Shelf:
 
     # --- Opening a citation ----------------------------------------------------------------------------------------
 
-    def __call__(self, expression: str) -> Citation:
+    def index(self) -> scoping.Index:
+        """The documents a citation may mean, for scoping (``jason.community.scoping``)."""
+        if self._index is None:
+            self._index = build_index(self)
+        return self._index
+
+    def citing(self, key: str = "", day: Any = None) -> scoping.Citing:
+        """The citing context for a document key ("" for text that is not one of the documents) and the day it was
+        written."""
+        return citing_of(self, key, day)
+
+    def __call__(self, expression: str, *, citing: scoping.Citing | str | None = None, day: Any = None) -> Citation:
+        """The citation ``expression`` names. ``citing`` is where it is written: a document's key (or a
+        ``scoping.Citing``), with ``day`` the date it was written. A number with no document named is scoped to the
+        document it means from where it is written; where two documents fit, the result is a miss that names both
+        (``ambiguous_document``), never a guess. ``Citation.scope`` says how a document was chosen."""
+        expression = str(expression or "")
+        if (row := rule_rows.parse(expression)) is not None:
+            return Citation(self, Target(Unit.ROW, row[0], row[1]), expression=expression,
+                            scope=scoping.Scoped(scoping.Standing.SCOPED, scoping.Form.ROW, row[0], None, (), "",
+                                                 number=row[1]))
+        context = citing if isinstance(citing, scoping.Citing) else self.citing(str(citing or ""), day)
         parsed = parse(expression, self.names(), self.books)
         if isinstance(parsed, Miss) and parsed.reason is Reason.UNKNOWN_DOCUMENT:
             # A common name written with other punctuation or case ("CC & R's 4.2", "BY-LAWS 7.2"): the canon.
             m = re.match(r"^(?:the\s+)?(?P<name>.+?)['’]?\s*,?\s*(?P<rest>(?:§+|Sections?|Secs?\.|Arts?\.|Articles?)?\s*"
-                         r"(?:[A-Z]{1,2}-)?\d.*)$", " ".join(str(expression or "").split()), re.I)
+                         r"(?:[A-Z]{1,2}-)?\d.*)$", " ".join(expression.split()), re.I)
             doc = self.books.named(m.group("name")) if m else ""
             if doc:
                 retry = parse(f"{doc} {m.group('rest')}", self.names(), self.books)
                 if not isinstance(retry, Miss):
                     parsed = retry
+        if isinstance(parsed, Target) and parsed.unit not in (Unit.SECTION, Unit.DOCUMENT):
+            return Citation(self, parsed, expression=expression)
+        found = self._scoped(expression, parsed, context)
+        if found is not None:
+            parsed, scope = found
+        else:
+            scope = (scoping.Scoped(scoping.Standing.SCOPED, scoping.Form.SECTION if parsed.number else scoping.Form.DOCUMENT,
+                                    parsed.key, scoping.Basis.NAMED, number=parsed.number)
+                     if isinstance(parsed, Target) else None)
         if isinstance(parsed, Miss):
-            return Citation(self, None, miss=parsed, expression=str(expression or ""))
-        return Citation(self, parsed, expression=str(expression or ""))
+            return Citation(self, None, miss=parsed, expression=expression, scope=scope)
+        return Citation(self, parsed, expression=expression, scope=scope)
+
+    def _scoped(self, expression: str, parsed: Target | Miss,
+                context: scoping.Citing) -> tuple[Target | Miss, scoping.Scoped] | None:
+        """Scope what ``expression`` reads as: the document it means, or every document that could be, or none. None
+        when it is not a citation of the association's own documents (a statute, a resolution, an address), or when it
+        is read as it always was (a document named by a name that is its own)."""
+        index = self.index()
+        clean = scoping.clean_expression(expression)
+        mention = scoping.read_expression(clean, index.scan_names, lettered=index.lettered_prefixes())
+        if mention is None:
+            return None
+        sc = scoping.scope(mention, context, index)
+        if sc.standing is scoping.Standing.UNKNOWN_DOCUMENT:
+            return (parsed, sc) if isinstance(parsed, Miss) else None
+        if sc.standing is scoping.Standing.NOT_ON_SHELF:
+            return Miss(Reason.NO_OUTLINE, sc.note, expression), sc
+        if sc.standing is scoping.Standing.AMBIGUOUS:
+            return Miss(Reason.AMBIGUOUS_DOCUMENT, self._ambiguity(mention, sc), expression), sc
+        if sc.standing is scoping.Standing.NO_SECTION:
+            return Miss(Reason.NOT_IN_DOCUMENT, self._ambiguity(mention, sc), expression), sc
+        if isinstance(parsed, Target) and parsed.key == sc.key and sc.basis is scoping.Basis.NAMED:
+            if context.day and self.resolver.living(sc.key) and not parsed.as_of:
+                return replace(parsed, as_of=context.day), sc
+            return parsed, sc
+        # Scoped to a document the written words did not name alone: read the expression for that document.
+        target = parse(scoping.rewrite(clean, mention, sc.key), self.names(), self.books)
+        if isinstance(target, Miss):
+            return target, sc
+        if context.day and not target.as_of and self.resolver.living(sc.key) and target.unit in (Unit.SECTION, Unit.DOCUMENT):
+            target = replace(target, as_of=context.day)      # the words as the citing document's day had them
+        return target, sc
+
+    def _ambiguity(self, mention: scoping.Mention, sc: scoping.Scoped) -> str:
+        """Each document considered, with the citation it would be and whether it has the section."""
+        number = sc.number or mention.number
+        rows, without = [], []
+        for c in sc.candidates:
+            try:
+                name = self.resolver.name(c.key)
+            except SectionRefError:
+                name = c.key
+            if c.has or sc.standing is scoping.Standing.NO_SECTION:
+                cited = citation_of(name, number, article=mention.article) if number else name
+                rows.append(f"{cited} ({c.key}{'' if c.has else ': has no such section'})")
+            else:
+                without.append(c.key)
+        lead = f"; the paragraph names {', '.join(sc.leads)} (a lead, not a pick)" if sc.leads else ""
+        what = "documents that could be meant: " if sc.standing is scoping.Standing.AMBIGUOUS else "documents considered: "
+        lacking = f"; without it: {', '.join(without)}" if without else ""
+        hint = ""
+        if mention.lettered and not any(c.has for c in sc.candidates):
+            letters = sorted({self.index().docs[c.key].lettered for c in sc.candidates if self.index().docs[c.key].lettered})
+            hint = ("; the rules documents here number their rules " + ", ".join(f"{x}-n" for x in letters)) if letters else ""
+        return f"{sc.note or 'which document is meant is not written'}; {what}" + "; ".join(rows) + lacking + lead + hint
 
     def doc(self, name: str) -> Citation:
         key = self.names().get(str(name or "").strip().lower(), "")
@@ -366,8 +454,19 @@ class Shelf:
             try:
                 self._states[t.id] = self._resolve(t)
             except SectionRefError as exc:
-                self._states[t.id] = _miss(_reason(exc), str(exc))
+                detail = str(exc)
+                if _reason(exc) is Reason.NOT_IN_DOCUMENT and t.unit is Unit.SECTION:
+                    detail += self._numbering_hint(t)
+                self._states[t.id] = _miss(_reason(exc), detail)
         return self._states[t.id]
+
+    def _numbering_hint(self, t: Target) -> str:
+        """How the document does number its sections, when the number asked is not that way ("Rule 2.1" of a document
+        that numbers its rules R-3(a)): so the miss says what to cite."""
+        info = self.index().docs.get(t.key)
+        if info is None or not info.lettered or re.match(r"[A-Z]{1,2}-", t.number):
+            return ""
+        return f"; {t.key} numbers its sections {info.lettered}-n (for example {info.lettered}-1)"
 
     def _resolve(self, t: Target) -> State:
         if t.unit is Unit.BOOK:
@@ -384,6 +483,8 @@ class Shelf:
             return self._section(t)
         if t.unit is Unit.DOCUMENT:
             return self._document(t)
+        if t.unit is Unit.ROW:
+            return self._row(t)
         if t.unit is Unit.STATUTE:
             return self._statute(t)
         if t.unit is Unit.RESOLUTION:
@@ -587,6 +688,67 @@ class Shelf:
                              for q in st.parts]}
         return State(Kind.SECTION, True, citation=st.citation, title=doc.title, text=st.words, version=version,
                      outline=t.key, numbers=(t.number,), links=self._links(t.key))
+
+    def _row(self, t: Target) -> State:
+        """One of jason's own rule rows (or a whole table of them), recited as data and labeled as jason's."""
+        r = rule_rows.recite(t.key, t.number, self.community)
+        if not r.found:
+            return _miss(Reason.NOT_IN_DOCUMENT if r.reason == "no_such_row" else Reason.UNKNOWN_RECORD, r.detail, r.citation)
+        extra = {k: v for k, v in rule_rows.as_dict(r).items() if k in ("row", "rows", "adoption", "table")}
+        return State(Kind.ROW, True, citation=r.citation, title=r.title, text=r.text,
+                     version={"source": f"{r.source}, as it is written now", "note": rule_rows.LABEL}, extra=extra)
+
+    def titled(self, t: Target) -> State | None:
+        """A section named by the words of its heading ("covenants#USE"), read as the one section whose title is those
+        words (an article's "ARTICLE 4" aside), or starts with them when they are several. Only when exactly one does;
+        two that fit are a miss, not a pick."""
+        if t.unit is not Unit.SECTION or t.end or t.siblings or not t.number or re.match(r"(?:[A-Z]{1,2}-)?\d", t.number):
+            return None
+        outline = self.outlines().get(t.key)
+        if outline is None:
+            return None
+        wanted = " ".join(t.number.casefold().replace("_", " ").split())
+        found = []
+        for s in outline.sections:
+            title = re.sub(r"^\s*(?:article\s+[ivxlc\d]+\s*[-–.:]?\s*)", "", " ".join(s.title.casefold().split()))
+            # The heading itself, or its first words when they are several ("MEETINGS" alone would fit "MEETINGS OF
+            # MEMBERS" and "MEETINGS OF DIRECTORS" alike: a miss, not a pick).
+            if s.number and (title == wanted or (len(wanted.split()) > 1 and title.startswith(wanted + " "))):
+                found.append(s)
+        if len(found) != 1:
+            return None
+        try:
+            state = self._section(replace(t, number=found[0].number, article=found[0].depth == 1))
+        except SectionRefError:
+            return None
+        state.version = {**state.version, "titled": {"from": t.number, "to": found[0].number,
+                                                     "note": f"named by its heading: {found[0].title}"}}
+        return state
+
+    def former(self, t: Target) -> State | None:
+        """A section number the document no longer (or not yet) has, found by its permanent id under the number it has
+        now: a former number is read as its successor, named as such. Only a citation asks this (``Citation.state``); the
+        checks of what cites a section (``treat``) keep a missing number missing, so ``jason cite --stale`` still lists
+        it. None when no id places it, or more than one does (a miss stays a miss)."""
+        base = self.state(t)
+        if base.found or base.reason not in (Reason.NOT_IN_DOCUMENT, Reason.PARENT_ONLY) or t.unit is not Unit.SECTION \
+                or t.end or t.siblings or not t.number:
+            return None
+        try:
+            found = self.locator.locate(t.key, t.number, day=t.as_of)
+        except Exception as err:  # a table that cannot be built leaves the miss as it was
+            self.unread.append(f"permanent ids of {t.key}: {err}")
+            return None
+        if found is None or found.ambiguous or found.removed or not found.number or found.number == t.number:
+            return None
+        try:
+            state = self._section(replace(t, number=found.number))
+        except SectionRefError:
+            return None
+        state.version = {**state.version, "renumbered": {"from": t.number, "to": found.number, "pid": found.pid,
+                                                         "note": f"{t.number} is a number this document had; a permanent "
+                                                                 f"id places it at {found.number} now"}}
+        return state
 
     def _outline_of(self, t: Target, doc: Any, parts: list[Any], cite: str, versions: Any) -> State:
         nodes = [{"number": q.number, "caption": q.caption, "depth": q.depth, "setBy": q.set_by,
@@ -1445,7 +1607,8 @@ class Citation:
     """A document or record, closed over by each unit call. Never raises on a miss: ``found`` and ``reason`` say."""
 
     def __init__(self, shelf: Shelf, target: Target | None, *, miss: Miss | None = None, expression: str = "",
-                 depth: int | None = 1, only: frozenset[Unit] | None = None, same: bool = False):
+                 depth: int | None = 1, only: frozenset[Unit] | None = None, same: bool = False,
+                 scope: scoping.Scoped | None = None):
         self.shelf = shelf
         self.target = target
         self.miss = miss
@@ -1453,9 +1616,10 @@ class Citation:
         self.depth = depth
         self.only_units = only
         self.same_book = same
+        self.scope = scope                 # how the document was chosen (``jason.community.scoping``), when it was read
 
     def _copy(self, target: Target | None = None, miss: Miss | None = None, **settings: Any) -> Citation:
-        base = {"depth": self.depth, "only": self.only_units, "same": self.same_book}
+        base = {"depth": self.depth, "only": self.only_units, "same": self.same_book, "scope": self.scope}
         base.update(settings)
         if miss is not None:
             return Citation(self.shelf, None, miss=miss, expression=self.expression, **base)
@@ -1536,7 +1700,10 @@ class Citation:
         if self.target is None:
             m = self.miss or Miss(Reason.EMPTY)
             return _miss(m.reason, m.detail)
-        return self.shelf.state(self.target)
+        st = self.shelf.state(self.target)
+        if not st.found and st.reason in (Reason.NOT_IN_DOCUMENT, Reason.PARENT_ONLY):
+            return self.shelf.titled(self.target) or self.shelf.former(self.target) or st
+        return st
 
     @property
     def kind(self) -> Kind:
@@ -1730,7 +1897,7 @@ class Citation:
             out["words"] = len(st.text.split())
         if st.text and self.in_force:
             out["inForce"] = self.in_force
-        if st.found and st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE):
+        if st.found and st.kind in (Kind.SECTION, Kind.RECORD, Kind.OUTLINE, Kind.ROW):
             out["caveat"] = _caveat(self.target)
         address = self.shelf.address(self.target)
         if address:
@@ -1742,6 +1909,8 @@ class Citation:
         if terms:
             out["terms"] = terms          # the definitions' own words, by address: recited, not read
         out["expression"], out["target"] = self.expression, self.id
+        if self.scope is not None:
+            out["scope"] = self.scope.as_dict()           # which document, and why: the basis, or the candidates
         if st.reason is not None:
             out["reason"] = st.reason.value
         if st.detail:
@@ -1841,6 +2010,8 @@ def _caveat(t: Target | None) -> str:
         from jason.tasks.notice_record import CAVEAT as NOTICE_CAVEAT
 
         return NOTICE_CAVEAT
+    if t is not None and t.unit is Unit.ROW:
+        return rule_rows.LABEL
     return CAVEAT
 
 
@@ -1851,13 +2022,17 @@ def cite(community: Any = None, data_dir: Path | None = None, *, log=None, priva
 
 def resolve(expression: str, *, as_of: str | date | None = None, text: bool = True, refs: bool = False,
             hops: int | None = 1, cited_by: bool = False, community: Any = None, data_dir: Path | None = None,
-            shelf: Shelf | None = None, private: bool = False) -> dict[str, Any]:
+            shelf: Shelf | None = None, private: bool = False, citing: str | None = None,
+            citing_day: str | date | None = None) -> dict[str, Any]:
     """What ``expression`` names, as lawlibrary's handoff answers ``cite``: ``{kind: section|outline|record|statute|
     history|miss, found, reason, citation, text, address, pid, ...}``. A span or a whole article is an outline, never
     concatenated words; a miss is an answer with its reason, never an exception. ``expression`` may be an address
-    (``jason://decl/6.2(a)``); a restricted book is read only with ``private``."""
+    (``jason://decl/6.2(a)``) or one of jason's own rule rows (``owner_responses.RULES: delivery``); a restricted book
+    is read only with ``private``. ``citing`` is the document the expression is written in (a key), ``citing_day`` the
+    day it was written: a citation with no document named is scoped from them (``scope`` in the answer says how, or
+    names every document that fits)."""
     shelf = shelf or Shelf(community, data_dir, private=private)
-    c = shelf(expression)
+    c = shelf(expression, citing=citing, day=citing_day)
     if as_of:
         c = c.as_of(as_of)
     c = c.hops(hops)

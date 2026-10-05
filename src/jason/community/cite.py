@@ -44,6 +44,7 @@ class Kind(Enum):
     RECORD = "record"            # a resolution, an instrument, minutes, a 5200 record kind
     STATUTE = "statute"          # a statute's words on disk, or an outline of a span
     HISTORY = "history"          # a section's timeline: each version, and the numbers it went by
+    ROW = "row"                  # one of jason's own rule rows, as data: not a rule of the association
     MISS = "miss"
 
 
@@ -59,6 +60,7 @@ class Unit(Enum):
     RECORD = "record"
     BOOK = "book"                # an item of a series book named by an address (jason://budget/2099)
     NOTICE = "notice"            # a notice given to members, by its delivery ledger's key; "proof" its proof
+    ROW = "row"                  # a row of one of jason's own tables ("owner_responses.RULES: delivery")
 
 
 class Reason(Enum):
@@ -71,6 +73,7 @@ class Reason(Enum):
     NOT_IN_DOCUMENT = "not_in_document"              # the document has no such section
     PARENT_ONLY = "parent_only"                      # the section is there, not the subsection
     AMBIGUOUS = "ambiguous"                          # the document numbers several sections the same
+    AMBIGUOUS_DOCUMENT = "ambiguous_document"        # no document named, and more than one has the section
     REMOVED = "removed"                              # an amendment removed it; cite it as of an earlier day
     NOT_KEPT_AS_AMENDED = "not_kept_as_amended"      # a date asked of a document with no history
     UNREADABLE = "unreadable"                        # a source could not be read
@@ -133,6 +136,8 @@ class Target:
             out = f"{self.key}/{self.number}" if self.number else self.key
         elif self.unit is Unit.NOTICE:
             out = f"notice:{self.key}" + (f"/{self.number}" if self.number else "")
+        elif self.unit is Unit.ROW:
+            out = f"row:{self.key}" + (f"/{self.number}" if self.number else "")
         else:
             out = f"{self.unit.value}:{self.key}"
         out += f"@{self.as_of.isoformat()}" if self.as_of else ""

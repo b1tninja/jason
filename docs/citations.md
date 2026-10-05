@@ -60,10 +60,23 @@ pins it).
 | `record:minutes` | a 5200 record kind |
 | `jason://decl/6.2(a)`, `jason://decl@2099-01-01/6.2(a)`, `jason://decl:2099-06-01/6.2(a)`, `jason://decl/history/6.2(a)`, `jason://res/20990101-1` | a record address ([record-addresses.md](record-addresses.md)) |
 | `CC & R's 6.2(a)`, `By-Laws 7.2` | a common name for a book, any case or punctuation (the canon) |
+| `Section 4.15 of the CC&Rs as amended`, `Article IV of the Bylaws` | a trailing "as amended" or "as restated" is dropped (the words read are the document as amended); an article's roman numeral is its number |
+| `Rule 2.1 of the Lot Rules`, `Rules R-3(e)`, `Owner's Manual R-3(e)` | a rules document's rule, by the number the document prints (a lettered "R-3(e)", or a dotted one) |
+| `Section 7.8`, `Article 4`, `R-3(e)`, `this Declaration`, `the Rules` | no document named: scoped from where it is written (`--in KEY`, `--on DAY`); where two documents fit, `ambiguous_document` ([rule-citations.md](rule-citations.md)) |
+| `lot-rules#R-3(i)~2`, `covenants#USE` | the second of two sections a document numbers alike; a section named by the words of its heading, when exactly one section's title is those words |
+| `owner_responses.RULES: delivery`, `owner_info.FOR_A_PERSON`, `Community.owner_information: EARLIER_ELECTIONS` | one of jason's own rule rows, as a plan item writes it: its words as data, labeled jason's row, never a rule of the association |
 
 The names are the profile's: each document's key, title, `cite_as`, and aliases, and each outline's key. A form
-jason does not read, a number with no document named, or an unknown name is a miss with its reason, never an
-exception.
+jason does not read, a number with no document named where no document can be told, or an unknown name is a miss with
+its reason, never an exception. A name that stands for several documents (a book's common name: "the Rules", where the
+rules are the manual's own and each rule document adopted apart) is scoped to the one that has the section, never to the
+first.
+
+**Which document.** A number is not a citation until a document is. `Shelf(...)(expression, citing=KEY, day=DAY)` (and
+`jason cite EXPRESSION --in KEY --on DAY`, and `cite_document`'s `citing` and `citing_day`) scope a number written with
+no document from the document it is written in, its date, and the kind of thing cited, and the answer's `scope` says
+how (`basis`) or names every document that fits. `jason cite --scan FILE` does it for every citation in a text and
+counts them by form. The rules, the states, and the measurements are in [rule-citations.md](rule-citations.md).
 
 ## Misses
 
@@ -71,7 +84,8 @@ exception.
 |---|---|
 | `empty`, `unparsed` | nothing asked; a form jason does not read, or a section with no document named |
 | `unknown_document`, `no_outline` | no document by that name; a known document with no outline on disk (`jason outlines`) |
-| `not_in_document`, `parent_only`, `ambiguous` | no such section; the section is there but not the subsection; several sections numbered the same |
+| `not_in_document`, `parent_only`, `ambiguous` | no such section (the detail says how a document numbers its sections when the number asked is another style: "numbers its sections B-n"); the section is there but not the subsection; several sections numbered the same in one document (the detail lists them by place: `R-3(i)~1`, `R-3(i)~2`) |
+| `ambiguous_document` | no document named, and more than one has the section: the answer's `scope.candidates` names each; a person picks ([rule-citations.md](rule-citations.md)) |
 | `removed` | an amendment removed it: cite it as of an earlier day |
 | `not_kept_as_amended` | a date asked of a document with no history |
 | `statute_not_on_disk`, `label_not_found`, `edition_not_held`, `prior_numbering` | not exported (lawlibrary's `cite` reads it), with `suggest` when a lettered number the shelf does not list may be a subdivision of one it does ("CIV 5855a" offers "CIV 5855(a)"); the subdivision is not in the stored words; a statute asked as of a day, and the disk does not show the words in force that day (`jason law-history --versions` keeps the earlier versions; [law-readings.md](law-readings.md#the-words-in-force-on-a-day)); a Davis-Stirling number from before 2014 (`jason law-history`), unless a day is given and its words of that day are held |
@@ -167,7 +181,8 @@ exported section and says so; the whole section is the official text.
   governing documents make (`references.json`) still key a section by its number, read from the current outlines.
 - Defined terms: built for the terms a profile keeps (`Community.defined_terms()`); a term defined outside a
   definitions article is not read.
-- Per-document citation forms beyond `cite_as` (a rules book's "Rule" word, its own self-reference words) are not yet
-  profile data.
+- Per-document citation forms beyond `cite_as` (a rules book's "Rule" word, its own self-reference words) are read by
+  one general grammar (`jason.community.scoping`), not yet profile data. What remains is in
+  [rule-citations.md](rule-citations.md#what-remains).
 - Deep links stop at the Doc, the working copy, and the library file; a scan's page and a heading's `headingId` are
   not kept by the outlines.

@@ -310,7 +310,13 @@ class DiskResolver:
 
     def provision(self, doc: CurrentDocument, key: str, number: str) -> Provision:
         """The one provision numbered ``number``; a miss names the nearest section that is there."""
-        found = [p for p in doc.provisions if p.number == number]
+        head, _, nth = number.partition("~")
+        found = [p for p in doc.provisions if p.number == head]
+        if nth.isdigit() and 1 <= int(nth) <= len(found):
+            return found[int(nth) - 1]             # "R-3(i)~2": the second section the document numbers R-3(i)
+        if nth.isdigit():
+            raise SectionRefError(f"{key} numbers {len(found)} section{'s' if len(found) != 1 else ''} {head}, not {nth}",
+                                  "not_in_document")
         if not found:
             from jason.community.references import ancestors
 
@@ -319,8 +325,9 @@ class DiskResolver:
             raise SectionRefError(f"{key} has no section {number}" + (f" (near: {', '.join(near)})" if near else ""),
                                   "parent_only" if parent else "not_in_document")
         if len(found) > 1:
-            raise SectionRefError(f"{key} numbers {len(found)} sections {number}: the reference is ambiguous",
-                                  "ambiguous")
+            ones = ", ".join(f"{number}~{k}" for k in range(1, len(found) + 1))
+            raise SectionRefError(f"{key} numbers {len(found)} sections {number}: the reference is ambiguous; cite the one "
+                                  f"meant by its place ({ones})", "ambiguous")
         return found[0]
 
     _provision = provision

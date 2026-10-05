@@ -426,7 +426,8 @@ def governance_digest(section: str = "", limit: int = 8, past: int = 30, private
 
 # --- Citations --------------------------------------------------------------------------------------------------------
 
-def cite_document(expression: str, as_of: str = "", text: bool = True, data_dir: Path | None = None) -> dict[str, Any]:
+def cite_document(expression: str, as_of: str = "", text: bool = True, citing: str = "", citing_day: str = "",
+                  data_dir: Path | None = None) -> dict[str, Any]:
     """Cite and recite one of the association's documents or records, the way a person or a document writes it:
     "Declaration § 6.2(a)", "Section 6.2(a) of the Declaration", "Bylaws Art. 6", "Rules R-3(e)",
     "Resolution 20990101-1", "Doc. No. 209901010001", "minutes 2099-01-01", "CIV 4920(a)", or a canonical
@@ -437,10 +438,21 @@ def cite_document(expression: str, as_of: str = "", text: bool = True, data_dir:
     A statute section printed in two versions under one number is the version in force today (or on ``as_of``), and
     ``version.note`` says which it is and quotes the words that decide it: repeat the note with the words.
     Recite the words first, with the citation and the caveat; any reading of them is yours, labeled as one. The
-    consolidated text is not an official restatement; the recorded instruments control."""
+    consolidated text is not an official restatement; the recorded instruments control.
+
+    A number written with no document ("Section 7.8", "Article 4", "R-3(e)", "this Declaration", "the Rules") is scoped:
+    ``citing`` is the document key the expression is written in (``document_references`` lists them), ``citing_day``
+    the day it was written (YYYY-MM-DD; a document kept as amended is read in the version in force then). The answer
+    carries ``scope``: the ``document`` chosen and its ``basis`` (named, self, citing, amends, only, form, book, part),
+    or, where two documents fit and none is named, ``reason`` ``ambiguous_document`` with the ``candidates`` each
+    document has: name them both and let a person pick, never choose one. A document named near the citation is a
+    ``lead``, not a pick. ``alsoPrintedIn`` lists other documents printing the same words. One of jason's own rule
+    rows ("owner_responses.RULES: delivery", "owner_info.FOR_A_PERSON") comes back with ``kind`` ``row``: its words and
+    condition as data, labeled jason's row, never the association's rule, and the ``adoption`` board item it rests on."""
     from jason.tasks.cite import resolve
 
-    return resolve(expression, as_of=as_of or None, text=bool(text), data_dir=_root(data_dir))
+    return resolve(expression, as_of=as_of or None, text=bool(text), data_dir=_root(data_dir), citing=citing or None,
+                   citing_day=citing_day or None)
 
 
 def law_in_force(citation: str, as_of: str = "", data_dir: Path | None = None) -> dict[str, Any]:

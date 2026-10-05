@@ -151,11 +151,28 @@ def cmd_cite(args: argparse.Namespace) -> int:
             by = ", ".join(f"{k} {v}" for k, v in sorted(r["by"].items(), key=lambda kv: -kv[1]))
             print(f"{r['total']:5}  {r['citation']}{'' if r['found'] else ' [missing]'}  ({by})")
         return 0
+    if args.scan:
+        from jason.tasks.cite_scope import read_text, tally
+
+        text = sys.stdin.read() if args.scan == "-" else Path(args.scan).read_text(encoding="utf-8", errors="replace")
+        rows = read_text(shelf, text, citing=args.in_doc or "", day=args.on)
+        if args.json:
+            print(json.dumps({"citations": rows, "byForm": tally(rows)}, indent=1))
+            return 0
+        print(f"{len(rows)} citations of the association's documents in {args.scan}"
+              + (f", written in {args.in_doc}" if args.in_doc else "") + (f" on {args.on}" if args.on else ""))
+        for form, counts in tally(rows).items():
+            print(f"  {form}: " + ", ".join(f"{n} {s}" for s, n in sorted(counts.items(), key=lambda kv: -kv[1])))
+        for r in rows:
+            if r["status"] != "resolved":
+                where = f" (fit: {', '.join(r['candidates'])})" if r["candidates"] else ""
+                print(f"  {r['offset']:7}  {' '.join(r['text'].split())[:60]}: {r['status']}{where}")
+        return 0
     if not args.expression:
         print("cite: name a section, a record, or a statute (jason cite \"Declaration 6.2(a)\"), or pass --survey, "
               "--stale, or --most-cited", file=sys.stderr)
         return 2
-    c = shelf(args.expression)
+    c = shelf(args.expression, citing=args.in_doc or None, day=args.on)
     if args.as_of:
         c = c.as_of(args.as_of)
     try:
@@ -197,6 +214,17 @@ def _print(c: Any, args: argparse.Namespace, tree_lines: Callable[..., list[str]
         print()
     if st.text and c.in_force:
         print(f"  {c.in_force}")
+    scope = c.scope
+    if scope is not None and scope.basis is not None and scope.basis.value != "named":
+        print(f"  document chosen: {scope.key} (read from {scope.basis.value}" + (f": {scope.note}" if scope.note else "") + ")")
+    if scope is not None and scope.also:
+        print("  also " + ("in the book: " if scope.basis is not None and scope.basis.value == "book" else "printed in: ")
+              + ", ".join(scope.also))
+    if scope is not None and not st.found and scope.candidates:
+        for cand in scope.candidates:
+            print(f"  considered: {cand.key}" + ("" if cand.has else " (no such section)"))
+        if scope.leads:
+            print(f"  the text names {', '.join(scope.leads)} nearby: a lead, not a pick")
     if st.version.get("note"):
         print(f"  note: {st.version['note']}")
     if c.address:
@@ -279,6 +307,14 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("expression", nargs="?", help="what to cite: \"Declaration 6.2(a)\", \"Section 6.2(a) of the "
                                                  "Declaration\", \"Resolution 20990101-1\", decl#6.2(a)@2099-01-01")
     p.add_argument("--as-of", help="the words in force on this date (YYYY-MM-DD)")
+    p.add_argument("--in", dest="in_doc", metavar="KEY",
+                   help="the document the citation is written in (a document key): a number with no document named "
+                        "(\"Section 7.8\", \"Article 4\", \"R-3(e)\", \"this Declaration\") is scoped from it. "
+                        "Where two documents fit and none is named, the answer names both")
+    p.add_argument("--on", metavar="DAY", help="the day the citing text was written (YYYY-MM-DD): a document kept as "
+                                               "amended is read in the version in force that day")
+    p.add_argument("--scan", metavar="FILE", help="every citation of the association's documents in FILE (- for "
+                                                  "standard input), each resolved with --in and --on, counted by form")
     p.add_argument("--refs", action="store_true", help="follow what it cites")
     p.add_argument("--hops", help="with --refs: how many hops (default 1); all follows until a target repeats")
     p.add_argument("--same", action="store_true", help="with --refs: stay inside this document")
