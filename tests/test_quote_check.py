@@ -304,3 +304,101 @@ def test_the_mcp_tool_and_the_command(data, monkeypatch, capsys):
 
 def told_note(root: Path) -> str:
     return f"no passage index at {pi.index_path(root)}: build it with jason index --build"
+
+
+# --- a statute's version: the words in force on a day, and the other versions held ------------------------------------
+
+OLD_NOTICE = NOTICE.replace("ten days", "fifteen days")
+
+
+def _history(data: Path) -> str:
+    """CIV 9901's earlier words (fifteen days) in the history with their range, and the ledger's day for the current
+    words. Returns the earlier version's digest."""
+    from datetime import date
+
+    old = law_text.words_digest(OLD_NOTICE)
+    folder = data / "authorities" / "history" / "CIV-9901"
+    folder.mkdir(parents=True)
+    (folder / f"{old}.md").write_text(
+        "# CIV 9901: an earlier version\n\n- Source: A made-up Legislature, 2091 to 2093 session publications\n"
+        "- Act: Stats. 2090, Ch. 1, Sec. 2\n- From: 2091-01-01\n- Until: 2095-06-30\n- Until by: Stats. 2095, Ch. 7\n\n"
+        f"## CIV 9901\n\n{OLD_NOTICE}\n", encoding="utf-8")
+    now = law_text.section_digest("CIV 9901", data)
+    (data / "authorities" / "history" / "versions.json").write_text(json.dumps({"sections": {"CIV 9901": {
+        "read": date.today().isoformat(), "editions": ["2091", "2093", "2095"], "printed": ["2091", "2093", "2095"],
+        "versions": [{"digest": old, "act": "Stats. 2090, Ch. 1, Sec. 2", "from": "2091-01-01", "until": "2095-06-30",
+                      "until_by": "Stats. 2095, Ch. 7", "editions": ["2091", "2093"], "newest": False},
+                     {"digest": now, "act": "Stats. 2095, Ch. 7", "from": "2095-06-30", "until": "", "editions": ["2095"],
+                      "newest": True}]}}}), encoding="utf-8")
+    return old
+
+
+def test_a_quotation_of_another_version_of_the_statute_is_named_not_confirmed(data):
+    from datetime import date
+
+    old, now = _history(data), law_text.section_digest("CIV 9901", data)
+    # Without a day: the words on the shelf now are checked; a quotation of the earlier words is named as theirs.
+    earlier = check(data, 'Civil Code 9901(b) says "The notice is given fifteen days before the hearing".')
+    (quote,) = earlier.quotes
+    assert quote.verdict is Verdict.OTHER_VERSION and quote.match is Match.EXACT and not earlier.clean
+    assert quote.note == (f"the words you quote are an earlier version of CIV 9901 (digest {old[:12]}, from 2091-01-01 until "
+                          f"2095-06-30; made by Stats. 2090, Ch. 1, Sec. 2; ended by Stats. 2095, Ch. 7), held in the history; "
+                          f"the version checked, the words on the shelf now (digest {now[:12]}), reads differently")
+    assert quote.compared_with.digest == old and quote.places == [] and earlier.counts["other version"] == 1
+    assert earlier.citations[0].quotes == [{"quote": 1, "inItsWords": "other version"}] and earlier.citations[0].in_force is None
+    lines = "\n".join(earlier.lines())
+    assert "1. OTHER VERSION:" in lines and "is in another version of it, not the one checked" in lines
+    assert earlier.as_dict()["asOf"] is None and earlier.as_dict()["quotes"][0]["verdict"] == "other version"
+    # The same quotation as of a day in the earlier version's range is found, and says which version it matched.
+    then = check(data, 'Civil Code 9901(b) says "The notice is given fifteen days before the hearing".', as_of=date(2092, 5, 1))
+    (found,) = then.quotes
+    assert found.verdict is Verdict.FOUND and then.clean and found.places[0].digest == old
+    assert found.places[0].note == (f"matches the version in force on 2092-05-01 (digest {old[:12]}, from 2091-01-01 until "
+                                    "2095-06-30; made by Stats. 2090, Ch. 1, Sec. 2; ended by Stats. 2095, Ch. 7)")
+    assert then.citations[0].in_force["shown"] and then.citations[0].in_force["decided"] == "prior"
+    assert then.citations[0].as_dict()["inForce"]["digest"] == old and then.as_dict()["asOf"] == "2092-05-01"
+    assert any(line.startswith("    checked against the version in force on 2092-05-01") for line in then.lines())
+    assert "as of 2092-05-01: a statute's quotation is checked against the version in force that day" in then.lines()[1]
+    # The current words quoted as of that day are a later version's: named, and not clean.
+    later = check(data, 'Civil Code 9901(b) says "The notice is given ten days before the hearing".', as_of=date(2092, 5, 1))
+    (wrong,) = later.quotes
+    assert wrong.verdict is Verdict.OTHER_VERSION and not later.clean
+    assert wrong.note.startswith(f"the words you quote are a later version of CIV 9901 (digest {now[:12]}, from 2095-06-30; "
+                                 "made by Stats. 2095, Ch. 7), on the shelf now; the version checked, the version in force on "
+                                 f"2092-05-01 (digest {old[:12]}")
+    # The words as quoted are in the index too (the law page): listed, and said not to be the version checked.
+    assert wrong.places and wrong.places[0].path == PAGE and any("none is the version checked" in w for w in wrong.warnings)
+    # A day the disk does not cover: the words on the shelf now are checked, and the citation says so.
+    dark = check(data, 'Civil Code 9901(b) says "The notice is given ten days before the hearing".', as_of=date(2089, 1, 1))
+    assert dark.quotes[0].verdict is Verdict.FOUND and dark.quotes[0].places[0].note == ""
+    assert not dark.citations[0].in_force["shown"] and dark.citations[0].in_force["decided"] == "not_shown"
+    assert any("the disk does not show which words of CIV 9901 were in force on 2089-01-01" in c for c in dark.citations[0].caveats)
+    # Documents are checked as before, day or no day; a near match of the version checked is still ALTERED.
+    doc = check(data, 'The rules say "Each unit may keep two pets, and a fish is not counted as a pet".', as_of=date(2092, 5, 1))
+    assert doc.quotes[0].verdict is Verdict.FOUND and doc.citations[0].kind == "document" and doc.citations[0].in_force is None
+    near = check(data, 'Civil Code 9901(b) says "The notice is given twelve days before the hearing".', as_of=date(2092, 5, 1))
+    assert near.quotes[0].verdict is Verdict.ALTERED and near.quotes[0].differences == [{"quoted": "twelve", "stored": "fifteen"}]
+
+
+def test_the_tool_and_the_command_take_a_day(data, monkeypatch, capsys):
+    import argparse
+
+    from jason.commands import verify_quotes as command
+    from jason.mcp import county
+
+    old = _history(data)
+    monkeypatch.setattr("jason.community.community", lambda: PROFILE)
+    answer = 'Civil Code 9901 says "The notice is given fifteen days before the hearing".'
+    assert county.verify_quotes(answer, data_dir=data)["counts"]["other version"] == 1
+    told = county.verify_quotes(answer, as_of="2092-05-01", data_dir=data)
+    assert told["counts"]["found"] == 1 and told["asOf"] == "2092-05-01" and told["citations"][0]["inForce"]["digest"] == old
+    assert county.verify_quotes(answer, as_of="May 1", data_dir=data) == {"available": True, "note": "as_of is a day as YYYY-MM-DD"}
+    file = data / "answer.txt"
+    file.write_text(answer, encoding="utf-8")
+    monkeypatch.setattr("jason.commands._shared.data_dir", lambda args=None: data)
+    args = argparse.Namespace(file=str(file), sources="", confidential=False, json=False, env=None, as_of="2092-05-01")
+    assert command.cmd_verify_quotes(args) == 0 and "FOUND (exact)" in capsys.readouterr().out
+    args.as_of = ""
+    assert command.cmd_verify_quotes(args) == 1 and "OTHER VERSION" in capsys.readouterr().out
+    args.as_of = "May 1"
+    assert command.cmd_verify_quotes(args) == 2 and "YYYY-MM-DD" in capsys.readouterr().err

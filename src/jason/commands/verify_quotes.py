@@ -12,6 +12,9 @@ An answer written from search hits (``jason index --search``, ``document_search`
 - ``--sources`` gives the hits the answer was written from (a file of them, or the text itself): file paths with
   passage numbers, citations, or the hits as JSON. A quotation found outside them is flagged.
 - ``--confidential`` names confidential files and shows their words; without it one is reported as held back.
+- ``--as-of DAY`` checks a statute's quotation against the version in force that day, where the disk shows it; a
+  quotation of another version is OTHER VERSION, named with its digest and range. Without it a statute's words are
+  the words on the shelf now.
 - ``--json`` prints the same as JSON.
 
 It exits 0 when every quotation checked is FOUND, 1 when one is not, and 2 when there is no index. It checks words,
@@ -45,8 +48,18 @@ def cmd_verify_quotes(args: argparse.Namespace) -> int:
     sources = args.sources or ""
     if sources and Path(sources).is_file():
         sources = Path(sources).read_text(encoding="utf-8-sig", errors="replace")
+    as_of = None
+    if getattr(args, "as_of", None):
+        from datetime import date
+
+        try:
+            as_of = date.fromisoformat(args.as_of)
+        except ValueError:
+            print(f"--as-of takes a day as YYYY-MM-DD, not {args.as_of!r}", file=sys.stderr)
+            return 2
     try:
-        report = quote_check.check(answer, data_dir(args), sources=sources, include_confidential=args.confidential)
+        report = quote_check.check(answer, data_dir(args), sources=sources, include_confidential=args.confidential,
+                                   as_of=as_of)
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -67,5 +80,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                         "citations (CIV 5855), or the hits as JSON; a file of them, or the text")
     p.add_argument("--confidential", action="store_true",
                    help="name confidential files and show their words (for directors and counsel)")
+    p.add_argument("--as-of", dest="as_of", metavar="DAY",
+                   help="check a statute's quotation against the version in force on this day (YYYY-MM-DD), where the "
+                        "disk shows it; a quotation of another version is OTHER VERSION, named")
     p.add_argument("--json", action="store_true", help="print JSON")
     p.set_defaults(func=cmd_verify_quotes)

@@ -812,7 +812,7 @@ class VersionOn:
                 "versions": [h.as_dict() for h in self.held]}
 
 
-def _place(version: LawText, picked: LawText | None, day: str) -> str:
+def place_of(version: LawText, picked: LawText | None, day: str) -> str:
     """Where a held version stands against the one in force on the day: earlier, later, in force, or "" where its
     recorded range does not say."""
     if picked is not None and version.digest == picked.digest:
@@ -866,7 +866,7 @@ def version_on(citation: str, data_dir: Path, day: date) -> VersionOn:
     got = in_force(base, root, day)
     picked = got.text
     held = tuple(Held(t.digest, t.current, t.start, t.floor, t.until, t.act, t.source, t.added,
-                      picked is not None and t.digest == picked.digest, _place(t, picked, day.isoformat()))
+                      picked is not None and t.digest == picked.digest, place_of(t, picked, day.isoformat()))
                  for t in every_version(base, root))
     caveats = [*got.caveats, NOT_RESTATEMENT]
     if picked is None:
@@ -914,6 +914,6 @@ def changes(data_dir: Path, citation: str = "") -> list[dict[str, Any]]:
 __all__ = ["CHANGES_FILE", "Decided", "HISTORY_DIR", "Held", "InForce", "LawText", "MIN_DIGEST", "NOT_RESTATEMENT",
            "OwnWords", "Quoted", "VERSIONS_FILE", "VersionOn", "changes", "credit_line", "every_version",
            "header_fields", "history_dir", "history_texts", "in_force", "iso_day", "law_text", "made_year",
-           "normal_citation", "own_operative", "page_sections", "quoted", "range_words", "same_digest",
+           "normal_citation", "own_operative", "page_sections", "place_of", "quoted", "range_words", "same_digest",
            "section_digest", "section_words", "shelf_numbers", "shelf_sections", "slug", "source_line", "split_note",
            "split_page", "version_ledger", "version_on", "versions", "words_digest"]

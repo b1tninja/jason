@@ -754,7 +754,7 @@ def document_search(question: str, catalog: str = "", standing: str = "", k: int
     return result
 
 
-def verify_quotes(answer: str, sources: str = "", include_confidential: bool = False,
+def verify_quotes(answer: str, sources: str = "", include_confidential: bool = False, as_of: str = "",
                   data_dir: Path | None = None) -> dict[str, Any]:
     """Check an answer's quotations and citations against jason's stored words, before the answer is given.
 
@@ -770,7 +770,16 @@ def verify_quotes(answer: str, sources: str = "", include_confidential: bool = F
       each difference marked [[so]]. Quote the stored words instead.
     - ``misattributed``: the answer attributes the quotation to one provision ("Civil Code 5855 says ...") and the
       words are stored only somewhere else, which ``places`` names.
+    - ``other version``: the answer attributes the quotation to a statute, and the words are those of another version
+      of the section (earlier or later) than the one checked. ``note`` names that version with its digest and range
+      and says the version checked reads differently. Not clean: quote the version checked, or say which version
+      you quote and why.
     - ``not found``: no stored text has the words or nearly the words. Do not give the quotation.
+
+    ``as_of`` (YYYY-MM-DD) checks a statute's quotation against the version in force on that day, where the disk
+    shows it (``law_in_force``); each statute citation then carries ``inForce`` (which version was checked, and how
+    it is known). Without it a statute's words are the words on the shelf now, and the earlier versions jason holds
+    are read only to name a quotation of one of them. Documents are checked the same way either way.
 
     ``citations`` lists each statute section and governing-document section the answer cites: whether jason holds it
     (``onShelf`` for a statute), the digest of its words, each version when the shelf holds two under one number, and
@@ -787,9 +796,15 @@ def verify_quotes(answer: str, sources: str = "", include_confidential: bool = F
     not checked. Repeat the caveats. Reads disk only."""
     from jason.community import quote_check
 
+    from datetime import date
+
     root = _data_dir(data_dir)
     try:
-        report = quote_check.check(answer, root, sources=sources, include_confidential=bool(include_confidential))
+        day = date.fromisoformat(as_of) if as_of else None
+    except ValueError:
+        return {"available": True, "note": "as_of is a day as YYYY-MM-DD"}
+    try:
+        report = quote_check.check(answer, root, sources=sources, include_confidential=bool(include_confidential), as_of=day)
     except FileNotFoundError as exc:
         return {"available": False, "note": str(exc)}
     return {"available": True, **report.as_dict()}

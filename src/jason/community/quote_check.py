@@ -14,7 +14,16 @@ read as quotations. Each quotation gets a verdict:
 - ``ALTERED``: no stored text has the words, and one has nearly those words. The stored words are shown beside the
   quoted ones with each difference marked ``[[so]]``.
 - ``MISATTRIBUTED``: the answer attributes the quotation to one provision, and the words are stored only somewhere else.
+- ``OTHER VERSION``: the answer attributes the quotation to a statute's section, and the words are those of another
+  version of that section (earlier or later) than the one checked: the version in force on the day asked
+  (``as_of``), or the words on the shelf now. The note says plainly which version the words are and that the one
+  checked reads differently. A miss stays a miss: the answer is not clean.
 - ``NOT FOUND``: no stored text has the words or nearly the words.
+
+**A statute's version.** A quotation attributed to a statute is checked against one version of the section: with
+``as_of``, the version in force on that day where the disk shows it (``law_text.version_on``; the version is named
+with its digest and range), else the words on the shelf now. The other versions jason holds, on the shelf and in
+the history (``jason law-history --versions``), are read only to say that a quotation is theirs.
 
 **Where** the words were found is part of the answer: the file, its section, the passage, and its standing
 (``passage_index.Standing``). Words found only in a page jason generated, or only on the reference shelf, are reported
@@ -44,6 +53,7 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -66,7 +76,9 @@ CAVEATS = (
     f"Only double quotation marks and block quotes are read as quotations, and one shorter than {MIN_WORDS} words is "
     "not checked. A paraphrase, a figure, or a date outside quotation marks is not checked at all.",
     "The stored words are jason's copies: a scan's OCR can misread, and a consolidated governing text is not an "
-    "official restatement. jason holds one edition of the law.",
+    "official restatement. A statute's quotation is checked against one version of the section: the version in force "
+    "on the day asked (as_of), where the disk shows it, else the words on the shelf now; the other versions jason "
+    "holds are read only to say that a quotation is theirs (OTHER VERSION).",
     "A quotation found only in a page (jason's own summary) or on the reference shelf is not the record or the law: "
     "quote the record or the law it points to.",
     "An attribution is read from where the citation sits: the one that introduces the quotation in its sentence, or "
@@ -78,6 +90,7 @@ class Verdict(Enum):
     FOUND = "found"
     ALTERED = "altered"
     MISATTRIBUTED = "misattributed"
+    OTHER_VERSION = "other version"      # a statute's words, of a version other than the one checked
     NOT_FOUND = "not found"
 
 
@@ -576,6 +589,7 @@ class CitationCheck:
     caveats: list[str] = field(default_factory=list)
     reason: str = ""
     quotes: list[dict[str, Any]] = field(default_factory=list)        # the quotations attributed to it
+    in_force: dict[str, Any] | None = None    # a statute checked as of a day: which version, and how it is known
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"citation": self.citation, "kind": self.kind, "at": self.offset, "checked": self.checked}
@@ -591,6 +605,8 @@ class CitationCheck:
                 out["page"] = self.page
             if len(self.versions) > 1:
                 out["versions"] = self.versions
+        if self.in_force is not None:
+            out["inForce"] = self.in_force
         elif self.reason:
             out["reason"] = self.reason
         if self.caveats:
@@ -608,6 +624,7 @@ class Report:
     passages: int                     # the passages searched
     seconds: float
     include_confidential: bool = False
+    as_of: date | None = None         # the day a statute's quotation was checked against the version in force
 
     @property
     def counts(self) -> dict[str, int]:
@@ -625,13 +642,16 @@ class Report:
                 "citations": [c.as_dict() for c in self.citations], "skipped": list(self.skipped),
                 **({"sources": self.sources} if self.sources else {}),
                 "includeConfidential": self.include_confidential, "passagesSearched": self.passages,
-                "seconds": self.seconds, "caveats": list(CAVEATS)}
+                "seconds": self.seconds, "asOf": self.as_of.isoformat() if self.as_of else None, "caveats": list(CAVEATS)}
 
     def lines(self) -> list[str]:
         counts = self.counts
         head = (f"{len(self.quotes)} quotation(s) checked against {self.passages} passages in {self.seconds:.2f} s: "
                 + ", ".join(f"{counts[v.value]} {v.value}" for v in Verdict if counts[v.value]))
         out = [head if self.quotes else f"no quotation of {MIN_WORDS} words or more to check"]
+        if self.as_of is not None:
+            out.append(f"as of {self.as_of.isoformat()}: a statute's quotation is checked against the version in force "
+                       "that day, where the disk shows it")
         if self.skipped:
             out.append(f"{len(self.skipped)} quotation(s) shorter than {MIN_WORDS} words not checked: "
                        + "; ".join(f'"{s}"' for s in self.skipped))
@@ -665,12 +685,15 @@ class Report:
                 state = ("not on the shelf" if c.kind == "statute" else "not found") + (f" ({c.reason})" if c.reason else "")
             told = "; ".join(f"quotation {r['quote']} {_IN_WORDS[r['inItsWords']]}" for r in c.quotes)
             out.append(f"- {c.citation}: {state}" + (f"; {told}" if told else ""))
+            if c.in_force is not None:
+                out.append(f"    checked against {c.in_force['label']}")
             out.extend(f"    {caveat}" for caveat in c.caveats)
         out += ["", *(f"- {c}" for c in CAVEATS)]
         return out
 
 
-_IN_WORDS = {True: "is in its words", False: "is not in its words", "altered": "is nearly its words (altered)"}
+_IN_WORDS = {True: "is in its words", False: "is not in its words", "altered": "is nearly its words (altered)",
+             "other version": "is in another version of it, not the one checked (other version)"}
 
 
 def _brief(text: str, limit: int = 160) -> str:
@@ -681,12 +704,25 @@ def _brief(text: str, limit: int = 160) -> str:
 # --- Provisions: a citation's stored words ------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Edition:
+    """Another version of a statute's section than the one a quotation is checked against: on the shelf or in the
+    history, with where it stands (earlier, later, or not said by its range) and how it is named in a verdict."""
+
+    digest: str
+    words: str
+    place: str                 # "earlier", "later", or ""
+    range: str                 # ``law_text.range_words``
+    current: bool              # on the shelf now
+    label: str                 # "an earlier version of CIV 9901 (digest ..., from ... until ...), held in the history"
+
+
 @dataclass
 class _Provision:
     id: str
     kind: str
     found: bool = False
-    texts: list[tuple[str, str]] = field(default_factory=list)       # (digest, words), each version
+    texts: list[tuple[str, str]] = field(default_factory=list)       # (digest, words), each version checked against
     source: str = ""
     page: str = ""
     standing: str = pi.Standing.AUTHORITY.value
@@ -694,15 +730,30 @@ class _Provision:
     reason: str = ""
     labels: tuple[str, ...] = ()
     checked: bool = True
+    editions: list[Edition] = field(default_factory=list)            # the other versions held: read to name, never to confirm
+    in_force: dict[str, Any] | None = None                           # as of a day: which version ``texts`` is, and how known
+    checked_label: str = ""                                          # "the version in force on DAY (...)" or "the words on the shelf now (...)"
+
+
+def _edition(v: Any, place: str, citation: str) -> Edition:
+    from jason.community.law_text import MIN_DIGEST, range_words
+
+    what = {"earlier": "an earlier", "later": "a later"}.get(place, "another")
+    where = "on the shelf now" if v.current else "held in the history"
+    label = f"{what} version of {citation} (digest {v.digest[:MIN_DIGEST]}, {range_words(v)}), {where}"
+    return Edition(v.digest, v.words, place, range_words(v), v.current, label)
 
 
 class _Provisions:
     """The words behind each citation, read once: a statute's section from the shelf, a governing document's section
-    through the citation resolver, a whole document from its outline. Disk only."""
+    through the citation resolver, a whole document from its outline. Disk only. With ``as_of`` a statute's section
+    is the version in force that day where the disk shows it (``law_text.version_on``), and the other versions held
+    are its editions."""
 
-    def __init__(self, data_dir: Path, community: Any) -> None:
+    def __init__(self, data_dir: Path, community: Any, as_of: date | None = None) -> None:
         self.data_dir = data_dir
         self.community = community
+        self.as_of = as_of
         self._shelf: Any = None
         self._held: dict[str, _Provision] = {}
 
@@ -746,14 +797,7 @@ class _Provisions:
             return _Provision(t.id, "document", True, [("", outline.text)], outline.title,
                               standing=pi.Standing.RECORD.value)
         if t.unit is Unit.STATUTE:
-            from jason.community import law_text
-
-            text = provision_text(t.base, self.data_dir, community=self.community)
-            if not text.found:
-                return _Provision(t.id, "statute", reason=text.reason, labels=t.labels)
-            held = law_text.law_text(t.base, self.data_dir)
-            return _Provision(t.id, "statute", True, [(v.digest, v.words) for v in text.versions], text.source,
-                              held.page if held else "", caveats=list(text.caveats), labels=t.labels)
+            return self._statute(t)
         try:
             text = provision_text(t.base, self.data_dir, community=self.community)
         except Exception as exc:                             # a document the profile cannot open is a miss, not a crash
@@ -762,6 +806,50 @@ class _Provisions:
             return _Provision(t.id, "section", reason=text.reason)
         return _Provision(t.id, "section", True, [(text.digest, text.words)], text.source,
                           standing=pi.Standing.RECORD.value, caveats=list(text.caveats))
+
+    def _statute(self, t: Target) -> _Provision:
+        """A statute's section: the version a quotation is checked against, and the other versions held as editions.
+        As of a day, the version in force that day where the disk shows it; else the words on the shelf now, every
+        version the shelf prints under the number."""
+        from jason.community import law_text
+        from jason.community.law_readings import provision_text
+        from jason.community.law_text import MIN_DIGEST
+
+        every = law_text.every_version(t.base, self.data_dir)
+        today = date.today().isoformat()
+        if self.as_of is not None:
+            got = law_text.version_on(t.base, self.data_dir, self.as_of)
+            day = self.as_of.isoformat()
+            if got.found:
+                places = {h.digest: h.place for h in got.held}
+                editions = [_edition(v, places.get(v.digest, ""), t.base) for v in every if v.digest != got.digest]
+                label = got.label()
+                return _Provision(t.id, "statute", True, [(got.digest, got.words)], got.text.source, got.text.page,
+                                  caveats=[c for c in got.caveats if c != law_text.NOT_RESTATEMENT], labels=t.labels,
+                                  editions=editions, checked_label=label,
+                                  in_force={"asOf": day, "shown": True, "decided": got.decided.value, "digest": got.digest,
+                                            "from": got.start, "until": got.until, "basis": got.basis, "label": label})
+            not_shown = {"asOf": day, "shown": False, "decided": got.decided.value, "digest": "", "from": "", "until": "",
+                         "basis": got.basis, "label": f"the words on the shelf now; {got.reason}"}
+        else:
+            not_shown = None
+        text = provision_text(t.base, self.data_dir, community=self.community)
+        if not text.found:
+            return _Provision(t.id, "statute", reason=text.reason, labels=t.labels, in_force=not_shown)
+        held = law_text.law_text(t.base, self.data_dir)
+        shelf = {v.digest for v in text.versions}
+        # Where another version stands against the words checked: against the shelf's one version by its recorded
+        # range, else by the day alone.
+        against = next((v for v in every if v.current), None) if len(shelf) == 1 else None
+        editions = [_edition(v, law_text.place_of(v, against, today), t.base) for v in every if v.digest not in shelf]
+        digests = ", ".join(v.digest[:MIN_DIGEST] for v in text.versions)
+        caveats = list(text.caveats)
+        if not_shown is not None:
+            caveats.insert(0, f"the disk does not show which words of {t.base} were in force on {not_shown['asOf']}: the "
+                              f"quotation is checked against the words on the shelf now ({not_shown['basis']})")
+        return _Provision(t.id, "statute", True, [(v.digest, v.words) for v in text.versions], text.source,
+                          held.page if held else "", caveats=caveats, labels=t.labels, editions=editions,
+                          in_force=not_shown, checked_label=f"the words on the shelf now (digest {digests})")
 
 
 # --- The caller's sources -----------------------------------------------------------------------------------------------
@@ -925,13 +1013,17 @@ def _attributions(answer: str, quotes: Sequence[Quotation], cited: Sequence[Loca
 
 
 def check(answer: str, data_dir: Path | str, *, sources: str | Sequence[Any] = "", include_confidential: bool = False,
-          community: Any = None) -> Report:
+          community: Any = None, as_of: date | None = None) -> Report:
     """Check every quotation and citation in ``answer`` against jason's stored words.
 
     ``sources`` are the hits the answer was written from, if the caller has them: file paths with passage numbers
     ("governing/ccrs.md#3"; one a line or separated by ";"), citations ("CIV 5855"), or ``document_search``'s hits as
     JSON. A quotation found outside them is flagged. ``include_confidential`` names confidential files and shows their
-    words; a case catalog's only when the sources name it. Raises ``FileNotFoundError`` without an index."""
+    words; a case catalog's only when the sources name it. ``as_of`` checks a quotation attributed to a statute
+    against the version in force on that day, where the disk shows it; a quotation of another version is
+    ``OTHER_VERSION``, named. Without a day a statute's words are the words on the shelf now, and the history is read
+    only to name a quotation of an earlier version. Documents are checked as before either way. Raises
+    ``FileNotFoundError`` without an index."""
     from jason.tasks.case_files import is_case_catalog
 
     started = time.monotonic()
@@ -942,7 +1034,7 @@ def check(answer: str, data_dir: Path | str, *, sources: str | Sequence[Any] = "
         from jason.community import community as active
 
         community = active()
-    provisions = _Provisions(data_dir, community)
+    provisions = _Provisions(data_dir, community, as_of)
     names = provisions.names()
     given = _read_sources(sources, index, provisions, names)
 
@@ -1019,13 +1111,24 @@ def check(answer: str, data_dir: Path | str, *, sources: str | Sequence[Any] = "
 
         # 1. In the provision the answer attributes it to.
         confirmed = False
+        other: list[tuple[_Provision, Edition, Match]] = []     # a statute's words of another version than the one checked
         for p in resolved:
             hits = in_provision(p, parts, folded_parts)
             told.setdefault(p.id, []).append({"quote": n + 1, "inItsWords": bool(hits)})
             for digest, match in hits:
                 confirmed = True
-                places.append(provision_place(p, digest, match, True if given.given and p in given.provisions else
-                                              (None if not given.given else False)))
+                place = provision_place(p, digest, match, True if given.given and p in given.provisions else
+                                        (None if not given.given else False))
+                if p.in_force is not None and p.in_force["shown"]:
+                    place.note = f"matches {p.checked_label}"
+                places.append(place)
+            if not hits:
+                for edition in p.editions:
+                    match = _match(parts, folded_parts, edition.words, fold(edition.words))
+                    if match is not None:
+                        other.append((p, edition, match))
+                        told[p.id][-1]["inItsWords"] = "other version"
+                        break
             if hits and len(p.texts) > 1:
                 held = ", ".join(d[:12] for d, _ in hits)
                 result.warnings.append(f"the shelf holds {len(p.texts)} versions of {p.id} under the one number; the "
@@ -1056,6 +1159,22 @@ def check(answer: str, data_dir: Path | str, *, sources: str | Sequence[Any] = "
         if not rows:
             for run in index.across(folded_parts):
                 places.append(row_place(run[0], Match.NORMALIZED, run=run))
+
+        if other and not confirmed:
+            # The words are the statute's, of a version other than the one checked: said plainly, and not clean.
+            p, edition, match = other[0]
+            result.verdict, result.match = Verdict.OTHER_VERSION, match
+            result.compared_with = provision_place(p, edition.digest, match, None)
+            result.compared_with.note = edition.label
+            result.note = f"the words you quote are {edition.label}; the version checked, {p.checked_label}, reads differently"
+            if places:
+                places.sort(key=lambda pl: (pl.withheld, not pl.citation, pl.in_sources is False,
+                                            _STANDING_ORDER.get(pl.standing, 9), pl.match is not Match.EXACT, pl.path))
+                result.places, result.more_places = places[:MAX_PLACES], max(0, len(places) - MAX_PLACES)
+                result.warnings.append("the words as quoted are also stored in the place(s) listed; none is the version "
+                                       "checked")
+            results.append(result)
+            continue
 
         if places:
             places.sort(key=lambda p: (p.withheld, not p.citation, p.in_sources is False,
@@ -1133,7 +1252,7 @@ def check(answer: str, data_dir: Path | str, *, sources: str | Sequence[Any] = "
 
     citations = _citations(cited, provisions, told)
     return Report(results, citations, skipped, given.as_dict(), len(index.rows), round(time.monotonic() - started, 3),
-                  include_confidential)
+                  include_confidential, as_of)
 
 
 def _note(result: QuoteCheck, text: str) -> None:
@@ -1190,7 +1309,7 @@ def _citations(cited: Sequence[Located], provisions: _Provisions, told: dict[str
             if p.id in out or (p.kind == "document" and p.id not in told):
                 continue
             row = CitationCheck(p.id, p.kind, found.offset, p.checked, p.found, source=p.source, page=p.page,
-                                caveats=list(p.caveats), reason=p.reason, quotes=told.get(p.id, []))
+                                caveats=list(p.caveats), reason=p.reason, quotes=told.get(p.id, []), in_force=p.in_force)
             if p.found and p.kind != "document":
                 row.digest = p.texts[0][0]
                 row.versions = [{"digest": digest} for digest, _ in p.texts]
@@ -1201,5 +1320,5 @@ def _citations(cited: Sequence[Located], provisions: _Provisions, told: dict[str
     return list(out.values())
 
 
-__all__ = ["Alignment", "CAVEATS", "CitationCheck", "MIN_WORDS", "Match", "NEAR", "Place", "QuoteCheck", "Quotation",
-           "Report", "Verdict", "WITHHELD", "align", "check", "fold", "fold_map", "quotations", "words"]
+__all__ = ["Alignment", "CAVEATS", "CitationCheck", "Edition", "MIN_WORDS", "Match", "NEAR", "Place", "QuoteCheck",
+           "Quotation", "Report", "Verdict", "WITHHELD", "align", "check", "fold", "fold_map", "quotations", "words"]

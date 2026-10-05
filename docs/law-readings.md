@@ -245,7 +245,10 @@ A search returns passages, and the client writes the answer. `jason.community.qu
 | `FOUND` | the words are in a stored text: `exact` (character for character) or `normalized` (the same after folding) |
 | `ALTERED` | no stored text has the words, and one has nearly those words; the stored words are shown beside the quoted ones, each difference marked `[[so]]` |
 | `MISATTRIBUTED` | the answer attributes the quotation to one section, and the words are stored only somewhere else |
+| `OTHER VERSION` | the answer attributes the quotation to a statute, and the words are those of another version of the section than the one checked: earlier or later, on the shelf or in the history. The note names that version with its digest and range ("the words you quote are an earlier version of CIV 5855 (digest ..., from 2014-01-01 until 2025-06-30) ...; the version checked, the version in force on 2026-01-01 (...), reads differently"). A miss stays a miss: the answer is not clean. |
 | `NOT FOUND` | no stored text has the words or nearly the words |
+
+**Which version of a statute is checked.** With a day (`check(as_of=)`, `jason verify-quotes --as-of DAY`, `verify_quotes(as_of=)`), a quotation attributed to a statute is checked against the version in force that day where the disk shows it (`law_text.version_on`), exact after the same folding, and a found quotation names the version it matched; each statute citation carries `inForce` (which version was checked, and how it is known). Where the disk does not show which words governed, the words on the shelf now are checked and the citation says so. Without a day the words on the shelf now are checked, as before, and the earlier versions the history holds are read only to name a quotation of one of them. A document's section is checked the same way either way.
 
 - **Folding** is the normalization `prompts.verify` uses (`questions._norm`: whitespace, quote marks, capitalization), with two additions: a hyphen between letters (a word broken at a line's end) and Markdown's emphasis marks are dropped.
 - **An ellipsis is allowed** when each part is found, in order, in one passage or section. Parts stored in separate places are `ALTERED`: the quotation joins them.
@@ -279,8 +282,9 @@ jason law-history --versions --since 2025              # and of those the Act's 
 jason law-history --versions --citation CIV-5855       # of one section (may be given more than once)
 jason law-history --versions --shelf                   # and of every section on the shelf
 jason law-history --add-version FILE --citation CIV-9901 --source "..." --by "..." --from DAY --until DAY
-jason verify-quotes answer.txt         # each quotation: found, altered, misattributed, or not found
+jason verify-quotes answer.txt         # each quotation: found, altered, misattributed, other version, or not found
 jason verify-quotes - --sources hits.json --json    # the answer from standard input, against the hits it was written from
+jason verify-quotes answer.txt --as-of 2022-03-01   # a statute's quotation against the version in force that day
 ```
 
 `jason readings` and `jason verify-quotes` only read. `--json` prints the same as data. `jason verify-quotes` exits 0 when every quotation checked is found, and 1 when one is not.
