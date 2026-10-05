@@ -18,6 +18,12 @@ the association. The answer is three groups, as ``jason.community.applicability`
 Two records that state different standards for one system are both kept (``also_stated``). Each is tested: where they
 give the same answer it stands, and where they do not the row is undetermined with both named. jason never picks one.
 
+**A building element is not a system here.** The inspection of exterior elevated elements (Civil Code 5551) is asked
+of the association, not of a system: its condition (``applicability.ELEVATED_ELEMENTS_INSPECTION``) tests three facts
+about the property, so ``applicable`` asks it once. The section puts the duty on "the board of an association of a
+condominium project", for a sample across the project and one report. A system record for the balconies would also
+make an association that has not listed them read as "reaches no listed system" where it should be a question.
+
 Pure: no network, no store.
 """
 
@@ -131,10 +137,23 @@ def row_name(row: Any) -> str:
     return str(getattr(row, "name", "") or getattr(row, "key", "") or row)
 
 
+# How a fact about the association's buildings is asked for. The intake questions use the same words
+# (``jason.community.applicability_asks.ASKS``).
+PROPERTY_ASKS: dict[Fact, str] = {
+    Fact.ELEVATED_ELEMENTS: "does it have exterior elevated elements for which the association has maintenance or "
+                            "repair responsibility (Civil Code 5551(a), (b)(1): balconies, decks, stairways, or "
+                            "walkways that extend beyond a building's exterior walls, with a walking surface more "
+                            "than six feet above ground level, supported in whole or in substantial part by wood "
+                            "or wood-based products)?",
+    Fact.ATTACHED_UNITS: "how many attached multifamily dwelling units does its largest building contain (Civil Code "
+                         "5551(l))?",
+}
+
 # How a missing fact is asked for, where the plain "what is ..." would not say who can answer it.
 _ASK: dict[Fact, str] = {
     Fact.INSTALLATION_STANDARD: "which standard was it installed under? The plans, the permit, or the installer's "
                                 "record says.",
+    **PROPERTY_ASKS,
 }
 
 
@@ -363,6 +382,7 @@ def applicability_lines(result: SystemApplicability, *, association: bool = Fals
 
 
 __all__ = [
-    "SUBJECT_FACTS", "StandardReading", "LifeSafetySystem", "system_facts", "row_name", "Finding", "Question",
+    "SUBJECT_FACTS", "PROPERTY_ASKS", "StandardReading", "LifeSafetySystem", "system_facts", "row_name", "Finding",
+    "Question",
     "SystemApplicability", "applicable", "applicability_lines",
 ]

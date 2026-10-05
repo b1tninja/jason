@@ -230,6 +230,18 @@ class DirectorQuorum(_Word):
     BELOW_20_PERCENT = "below_20_percent"      # 5115(b)(6)(B): the documents provide for a quorum lower than 20 percent
 
 
+class ElevatedElements(_Word):
+    """Whether the association has exterior elevated elements to inspect, in Civil Code 5551(b)(1)'s words: "exterior
+    elevated elements for which the association has maintenance or repair responsibility". The elements are those
+    5551(a)(2) and (3) define: the load-bearing components that extend beyond the building's exterior walls to carry
+    decks, balconies, stairways, walkways, and their railings, with a walking surface elevated more than six feet above
+    ground level, designed for human occupancy or use, and supported in whole or in substantial part by wood or
+    wood-based products, together with their waterproofing. A property fact, entered with the record that states it."""
+
+    ASSOCIATION_RESPONSIBLE = "association_responsible"   # at least one such element is the association's to maintain or repair
+    NONE = "none"                                         # there is no such element, or none is the association's
+
+
 _LABELS: dict[Enum, str] = {
     SystemKind.FIRE_SPRINKLER: "fire sprinkler system",
     SystemKind.STANDPIPE: "standpipe system",
@@ -291,6 +303,8 @@ _LABELS: dict[Enum, str] = {
     DirectorQuorum.NONE: "none",
     DirectorQuorum.AT_LEAST_20_PERCENT: "20 percent or more",
     DirectorQuorum.BELOW_20_PERCENT: "lower than 20 percent (5115(b)(6)(B))",
+    ElevatedElements.ASSOCIATION_RESPONSIBLE: "the association's responsibility (5551(b)(1))",
+    ElevatedElements.NONE: "none that is the association's responsibility",
 }
 
 # The water-based fire protection systems (the scope of NFPA 25 and of Title 19's chapter on them). A general group.
@@ -341,6 +355,8 @@ class Fact(Enum):
     BOARD_MEETING = "board_meeting"
     ACCLAMATION = "acclamation"
     DIRECTOR_QUORUM = "director_quorum"
+    ELEVATED_ELEMENTS = "elevated_elements"
+    ATTACHED_UNITS = "attached_units"    # the most attached multifamily dwelling units in one building
 
     @property
     def spec(self) -> FactSpec:
@@ -471,6 +487,11 @@ _SPECS: dict[Fact, FactSpec] = {
                                    "the governing documents' quorum for an election of directors",
                                    topic="whether the governing documents require a quorum for an election of "
                                          "directors, and whether it is lower than 20 percent", standing=True),
+    Fact.ELEVATED_ELEMENTS: FactSpec(Facet.PROPERTY, ElevatedElements,
+                                     "maintenance or repair of exterior elevated elements (5551(a))",
+                                     topic="whether the association has maintenance or repair responsibility for "
+                                           "exterior elevated elements (5551(a), (b)(1))"),
+    Fact.ATTACHED_UNITS: FactSpec(Facet.PROPERTY, int, "the most attached multifamily dwelling units in one building"),
 }
 assert set(_SPECS) == set(Fact)
 
@@ -1066,6 +1087,26 @@ HOME_IMPROVEMENT_CONTRACT: Condition = AllOf(Is(Fact.DOCUMENT_KIND, DocumentKind
                                             Is(Fact.HOME_IMPROVEMENT, HomeImprovement.YES))
 
 
+# Civil Code 5551's inspection of exterior elevated elements, in the section's own words. Three facts about the
+# property decide it, and each is asked of the association once, not of a system:
+# - (b)(1): "the board of an association of a condominium project shall cause a reasonably competent and diligent
+#   visual inspection";
+# - (b)(1): "of exterior elevated elements for which the association has maintenance or repair responsibility" (the
+#   elements as (a)(2) and (3) define them: ``ElevatedElements``);
+# - (l): "This section shall only apply to buildings containing three or more attached multifamily dwelling units."
+#   The duty exists when one building does, so the fact is the most such units in any one building; which buildings
+#   it reaches is the inspector's list ((c)).
+# Not encoded, because it changes when and not whether: (i), the first inspection by January 1, 2025 and every nine
+# years after; and (k), a building whose permit application was submitted on or after January 1, 2020 is inspected
+# within six years of its certificate of occupancy. A profile states the facts; where it does not, the row is
+# undetermined and each fact is a question (``jason applies --questions``). jason does not infer them from a report on
+# file or from the reserve study's components.
+ELEVATED_ELEMENTS_INSPECTION: Condition = AllOf(
+    Is(Fact.COMMON_INTEREST, CommonInterest.CONDOMINIUM),
+    Is(Fact.ELEVATED_ELEMENTS, ElevatedElements.ASSOCIATION_RESPONSIBLE),
+    AtLeast(Fact.ATTACHED_UNITS, 3))
+
+
 def filing_facts(sender: Any, kind: Any) -> Facts:
     """The facts a filing rule is asked about: the document's kind as the classifier gave it (none for an unclassified
     document, so a rule that names a kind does not take it), and the sender directory row's name and kind of source."""
@@ -1109,8 +1150,8 @@ def condition_from_dict(data: Mapping[str, Any]) -> Condition:
 __all__ = [
     "Facet", "SystemKind", "InstallationStandard", "Work", "PartyRole", "CommonInterest", "OccupancyClass",
     "SigningPlace", "HomeImprovement", "MeetingFormat", "RuleChangeKind", "ElectronicVoting", "ElectionKind",
-    "RuleScope", "BoardMeetingKind", "Acclamation", "DirectorQuorum",
-    "WATER_BASED_FIRE_PROTECTION", "HOME_IMPROVEMENT_CONTRACT", "filing_facts", "FactSpec", "Fact", "Source", "FactValue", "Facts",
+    "RuleScope", "BoardMeetingKind", "Acclamation", "DirectorQuorum", "ElevatedElements",
+    "ELEVATED_ELEMENTS_INSPECTION", "WATER_BASED_FIRE_PROTECTION", "HOME_IMPROVEMENT_CONTRACT", "filing_facts", "FactSpec", "Fact", "Source", "FactValue", "Facts",
     "profile_facts", "Answer", "Verdict", "Is", "In", "AtLeast", "Below", "InForce", "ALWAYS", "AllOf", "AnyOf",
     "Not", "Except", "Condition", "evaluate", "facts_tested", "Partition", "partition", "condition_from_dict",
 ]

@@ -51,7 +51,7 @@ from typing import Any, Iterable
 
 from jason.community.applicability import ALWAYS, Facet, Fact, Facts, FactValue, Source, evaluate
 from jason.community.intake import Ask, AskKind, AskStatus, ask_id, high_stakes
-from jason.community.life_safety import SUBJECT_FACTS, Finding, SystemApplicability, row_name
+from jason.community.life_safety import PROPERTY_ASKS, SUBJECT_FACTS, Finding, SystemApplicability, row_name
 
 SCOPE = ("applies:",)                        # the subjects these questions use, for ``intake.merge``
 ASSOCIATION = "applies:association"
@@ -62,9 +62,9 @@ _METHOD = "Community.life_safety_systems()"
 ASSOCIATION_FACETS: frozenset[Facet] = frozenset({Facet.PROPERTY, Facet.PLACE, Facet.EVENT})
 
 # Facts whose answer is read only with the record that states it named after a semicolon: a system's standard, and
-# the standing facts that an election rule, a bylaw, or the board's own decision settles.
+# the standing facts that an election rule, a bylaw, the declaration, or the board's own decision settles.
 NEEDS_RECORD: frozenset[Fact] = frozenset({Fact.INSTALLATION_STANDARD, Fact.ELECTRONIC_VOTING, Fact.ACCLAMATION,
-                                           Fact.DIRECTOR_QUORUM})
+                                           Fact.DIRECTOR_QUORUM, Fact.ELEVATED_ELEMENTS})
 
 # Facts whose answer a second person confirms before it is used. Empty by default.
 CONFIRMED: frozenset[Fact] = frozenset()
@@ -85,6 +85,7 @@ ASKS: dict[Fact, str] = {
                       "is the board's decision to record, not a reading of the documents.",
     Fact.DIRECTOR_QUORUM: "do the governing documents require a quorum for an election of directors, and is it lower "
                           "than 20 percent (Civil Code 5115(b)(6))?",
+    **PROPERTY_ASKS,
 }
 
 # The kinds of record that would settle each fact. Kinds only: which record an association holds is its own.
@@ -105,6 +106,9 @@ SETTLED_BY: dict[Fact, str] = {
     Fact.ELECTRONIC_VOTING: "the election operating rules",
     Fact.ACCLAMATION: "the election operating rules, or the board's resolution in its minutes",
     Fact.DIRECTOR_QUORUM: "the bylaws' quorum section, or the election operating rules",
+    Fact.ELEVATED_ELEMENTS: "the declaration's maintenance sections and the condominium plan; an inspector's report "
+                            "lists the elements",
+    Fact.ATTACHED_UNITS: "the condominium plan",
 }
 ANY_RECORD = "a record that states it"
 
@@ -166,8 +170,9 @@ class FactQuestion:
                     f"jason picks neither: the rows stay undetermined until the specification is corrected or the "
                     f"answer is given again.")
         if self.fact in NEEDS_RECORD:
-            record = (f" Answer with one of {', '.join(self.values())} and, after a semicolon, the record that "
-                      f"states it.")
+            values = self.values()
+            listed = " | ".join(values) if any("," in v for v in values) else ", ".join(values)   # a value may hold a comma
+            record = f" Answer with one of {listed} and, after a semicolon, the record that states it."
         else:
             record = " Name the record that states it after a semicolon, if one does."
         return f"{name}: {ASKS.get(self.fact, f'what is {self.fact.noun}?')}{record}"

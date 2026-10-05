@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from jason.community.applicability import Fact, Is, SystemKind
+from jason.community.applicability import ELEVATED_ELEMENTS_INSPECTION, Fact, Is, SystemKind
 from jason.community.fire_protection import FIRE_ALARM_SYSTEM, NFPA_25_SPRINKLERS
 from jason.community.obligations import Obligation
 
@@ -130,8 +130,13 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     # 1Qodo170LjfNzaxeSxb2b2Iv85z8k_1ES): all 24 elevated elements examined November 8, 2023, signed and stamped by the
     # architect November 17, 2023; the next inspection is due "Nine years from the date of this report". The $4,800
     # invoice for it was paid from reserves March 14, 2024; that payment is not the inspection's date.
+    # What 5551 reaches is the section's own condition (ELEVATED_ELEMENTS_INSPECTION): a condominium project, elevated
+    # elements the association maintains or repairs, and a building of three or more attached units. The profile does
+    # not state those three facts as data (applicability_facts()), so jason applies leaves the row undetermined and
+    # asks each one; the report on file is evidence for a person's answer, not a fact jason infers.
     Obligation("Exterior elevated elements (balconies) inspection", "Civil Code 5551: first by January 1, 2025, then every nine years",
                every_years=9, first_due=date(2025, 1, 1), done_on=date(2023, 11, 17), payee_words=("CALIFORNIA DECK INSPECTION",),
+               applies=ELEVATED_ELEMENTS_INSPECTION,
                note="Counted from the report's date (November 17, 2023); the report must be kept for two inspection cycles."),
     Obligation("Annual budget report and policy statement", "Civil Code 5300, 5310: 30 to 90 days before the fiscal year ends",
                month=12, day=1, window_days=60,
