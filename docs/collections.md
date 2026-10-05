@@ -1,11 +1,12 @@
-# Reading a collection: the chronology and the conflicts of fact
+# Reading a collection: the chronology, the conflicts of fact, and the summary page
 
-Two helpers for a careful reading of a set of documents. Each is a general lens ([ingestion-and-review.md](ingestion-and-review.md), "A lens"): it works on any slice of the passage index, and it names no association.
+Two helpers for a careful reading of a set of documents, and one page that gathers them. Each helper is a general lens ([ingestion-and-review.md](ingestion-and-review.md), "A lens"): it works on any slice of the passage index, and it names no association.
 
 - **Chronology:** what happened, in what order, according to which document.
 - **Conflicts of fact:** where two documents give different values for what looks like the same fact.
+- **The summary page:** for a named collection, one generated page: its files and how each was read, what is missing, the open questions, the conflicts, and the chronology ([The summary page](#the-summary-page)).
 
-Both are rule-based: no model and no network. Both state findings of fact only, and only as the law's practice allows them to be stated ([ingestion-and-review.md](ingestion-and-review.md), "Three questions"):
+All are rule-based: no model and no network. They state findings of fact only, and only as the law's practice allows them to be stated ([ingestion-and-review.md](ingestion-and-review.md), "Three questions"):
 - A finding rests on the record, and each is tied to its source: the file, the passage, the word position, and the document's own words.
 - Two records that disagree are both kept. jason picks neither.
 - What a document says is quoted. Nothing here finds that the thing happened, reads the law, or applies it.
@@ -24,6 +25,8 @@ A lens takes a `passage_index.Scope` and a title. The scope is the collection's 
 | `--write` | save the generated page under `data/collections/<slug>/`. Without it nothing is written. |
 
 `jason index --status` lists the catalogs.
+
+A collection's own generated pages (`data/collections/`) are left out of every such scope. A lens reads documents, never a page a lens wrote.
 
 ## The chronology
 
@@ -101,10 +104,45 @@ A false conflict wastes a careful reader's time, so the rules prefer missing one
 - `dated-statement-amount` takes only a sentence. A form's line or a table's row is the same words in every copy of the form, about a different parcel or month each time.
 - A sentence addressed to "you" is left out: a form letter says the same words to each recipient.
 
+## The summary page
+
+`jason collection KEY [--write] [--json]` (`jason.tasks.collection_pages`). `KEY` is a collection's key or its catalog (`case-24cv000123`); `jason collection` alone lists the collections. Naming a legal case opens its confidential files, as the other commands do.
+
+A collection is a named set of documents with what holds for all of them (`jason.community.document_collections`; [manager-review.md](manager-review.md), "Collections"). Its summary is one page, generated from the stores:
+
+| Section | What it holds | Read from |
+|---|---|---|
+| What this collection is | its title, kind, and key, and what its material is | the `Collection` record |
+| The specification's record of the matter | for a legal case: its forum, role, and status, then its events, then its duties | the `LegalCase` record, and nothing else |
+| Sources: the collection's files | each file with its kind, its standing, how its words were read, the pages no reader gave words for, and its dated statements | the passage index; a case's manifest and extracts (`case_files.inventory`) |
+| What is missing or unread | files with no text and why, text the index does not hold, image pages unread, files an OCR engine read, files with no dated statement, mentions of a month and a day with no year, what the conflict rules could not compare | the same, by rule |
+| Open questions | the facts the stores leave undetermined | below |
+| Conflicts of fact | every side with its source | `fact_conflicts` |
+| Chronology: what the documents say | the documents' own dates, apart from the dates at a head, in a header, or in a file's name, apart from the dates they speak about | `chronology` |
+
+- **Every statement names its source:** the file and the passage. Nothing on the page finds that an event happened. It says only that a document says so.
+- **The specification's entries stay in their own section.** They are confirmed by a person and are not quotes from a file, so they are never merged into the chronology.
+- **A held-back file is counted and never named.** Neither is an extract of one.
+- **The open questions** are found by rule, and jason answers none:
+  - a duty the specification's record does not show either way;
+  - an event the specification records on a day for which no statement was read in the files;
+  - each conflict of fact;
+  - a file whose own date was not read at its head;
+  - a date a document gives as "on or about".
+
+**Where it is kept.** `--write` saves `data/collections/<key>/summary.md` under the store lock. Without it nothing is written. The page is written whole each time and never edited: the same stores give the same bytes, apart from the line that carries the date.
+
+**How it is found.** `jason index --build` indexes each collection's pages in the collection's own catalog (`case-<key>` for a legal case), with the standing `page`, the generated flag, and the collection's confidentiality (`collection_pages.PagesSource`). A search that names the catalog returns the summary as a page hit, which every tool labels a summary and never the rule. A search that does not name a case's catalog never sees it.
+
+**It is companion material, never a member.** A collection's scope leaves `data/collections/` out (`Scope.not_folders`). So:
+- no lens reads the page back as a document, and a summary made after the page is indexed is the same page;
+- the collection's count of files is its documents;
+- a context pack never ranks the page with the evidence ([manager-review.md](manager-review.md), "Collections").
+
 ## The generated pages
 
-`--write` saves `data/collections/<slug>/chronology.md` or `conflicts.md`, under the store lock. Each page opens with:
-- **Generated:** by jason, by rule, from the documents listed under Sources.
+`jason chronology --write` and `jason fact-conflicts --write` save `data/collections/<slug>/chronology.md` or `conflicts.md`, under the store lock. `jason collection KEY --write` saves `data/collections/<key>/summary.md`. Each page opens with:
+- **Generated:** by jason, on a date, by rule, from the documents listed under Sources.
 - **Standing:** a summary, not the record.
 - **Confidential:** yes when any source is held back unless asked, or when the page carries the record of a confidential matter. Such a page is for directors and counsel.
 - **Scope:** the scope in a line.
@@ -122,6 +160,7 @@ Read-only, on one association's index, October 4, 2026.
 | The open library readings | 203 stored readings, 5 subjects compared, 1 conflict. Read, it was real: two policy numbers for one building and one term. |
 | The library with its held files | 29 stored-field conflicts in 8 subjects, not read. By their shown fields, 5 subjects are one report generated on two days. |
 | The text rules, every catalog | no conflict. Before `dated-statement-amount` took only sentences it reported one, and it was false: one bill's stub, printed for ten parcels. |
+| A legal case's summary page | one page of 8 sections in under a second: 137 dated statements from 18 of its 20 files with text, no conflict, and no stored reading to compare. Made twice, the page was the same. Not yet read by a person against the files. |
 
 So the stored-field rule has one conflict read and found real, and the text rules have none read on real documents. Their precision is tested on made-up text only (`tests/test_chronology.py`).
 
@@ -136,10 +175,13 @@ So the stored-field rule has one conflict read and found real, and the text rule
 - **No conflict listed is not a finding that the documents agree.**
 - **A passage cut from a file with no headings** has lost its line breaks in the index. The lenses read them back from the file. Where the file has changed since the build, a date line there is read as a sentence.
 - **Confidentiality carries over.** A page is as confidential as its strictest source.
+- **A file with no text gave the summary nothing.** The page lists it as not read. It does not say the file is silent.
+- **An open question is found by rule.** A question the rules do not look for is not listed, and "none was found" is not a finding that nothing is open.
 
 ## Not built
 
-- A `Collection` record that holds the scope, the title, and the context ([ingestion-and-review.md](ingestion-and-review.md), "A collection"). The lenses take a `Scope` and a title until it exists.
+- A summary page for an ad hoc scope. `jason collection` takes a named collection, and the only named collections are the legal cases with a case file. `jason chronology` and `jason fact-conflicts` still take scope flags.
+- The pages `jason chronology --write` and `jason fact-conflicts --write` save are not indexed. Only a named collection's folder is.
 - Stored reviews keyed by the lens version and the documents' digests. A page is made again each time.
 - A conflict between a document and a store (the ledger, the policy sheet). That is the "Money" lens.
 - A date with no year placed by its document's own date.

@@ -617,10 +617,12 @@ def inventory(data_dir: Path, case: Any) -> Inventory:
         if beside in on_disk:
             continue                                    # the text of a file listed above
         out.append(CaseFile(rel, FileState.TEXT, text=rel))
-    for row in manifest.get("files") or []:
+    # A held file is counted once: each one the listing flags, and each one on disk that the listing does not flag.
+    held = {rel for rel in held if not (rows.get(rel) or {}).get("heldBack")}
+    for n, row in enumerate(manifest.get("files") or []):
         local = row.get("local") or ""
         if row.get("heldBack"):
-            held.add(local or f"drive:{row.get('id') or row.get('path')}")
+            held.add(f"listing:{row.get('id') or n}")
         elif local in on_disk:
             continue
         elif row.get("error"):

@@ -53,26 +53,45 @@ kind is a legal case's file: its catalog in the passage index and its record in 
 
 ```bash
 jason review --collections                                     # each collection, with its files and passages in the index
+jason collection case-24cv000123 --write                       # its summary page: data/collections/<key>/summary.md
 jason review question --collection case-24cv000123 --ask "..." # the case file as its own tier
 jason review question --catalog library --kind minutes --ask "..."   # an ad hoc collection, from the index's columns
 ```
 
 | Part | What it is |
 |---|---|
-| Members | An index `Scope`: catalogs, kinds, folders. The collection is whatever the index holds under it today. |
+| Members | An index `Scope`: catalogs, kinds, folders. The collection is whatever the index holds under it today, less the pages jason generated for a collection (`data/collections/`). |
 | Context | What holds for the whole collection. For a legal case: its title, forum, role, and status, each event with its date, and each duty with whether the record shows it met, from the `LegalCase` record and nothing else. |
 | Label | What its material is, shown on every passage in place of a tier. For a legal case: "evidence gathered for this matter: neither the record nor the law". |
 | Confidential | The strictest of its members' and its matter's. A case's catalog is confidential in the index, so its collection is. |
+| Companion page | Its summary page, `data/collections/<key>/summary.md` (`jason collection KEY --write`; [collections.md](collections.md), "The summary page"). Generated, indexed in the collection's own catalog as a page, and never a member. |
 
-**In the pack.** A collection adds two things:
+**In the pack.** A collection adds three things:
 - **C, the collection's material:** the passages of its scope that best answer the task's questions (the same
   questions the other tiers use, fused by reciprocal rank). Near copies are folded. One file gives at most 2 passages
   and the pack takes at most 8 (`COLLECTION_PER_FILE`, `COLLECTION_PASSAGES`). They sit after the association's
   records and before the facts.
 - **The context lines,** as one more F source, titled "the specification's record of the matter".
+- **The summary page,** when the collection has one, as one more F source, labeled "jason's summary of the
+  collection: a summary, not the record" (`document_collections.companion_summary`). It carries the page's files,
+  what is missing or unread, the open questions, and the conflicts, cut at 16,000 characters
+  (`COLLECTION_SUMMARY_CHARS`). Three parts of the page are left out:
+  - the line with the date it was generated, which moves to the source's note, so the same page written again on
+    another day is the same source and the same kept review;
+  - the specification's record, which is already its own source;
+  - the chronology, which quotes the documents. The pack reads the documents' own passages instead.
+
+  A collection with no summary page has no such source. That is not a gap: nothing of the evidence is missing.
+
+**The summary is never a C source.** The page quotes every document, so a tier that ranked it would give it the
+places of the documents themselves. A collection's scope therefore leaves the generated pages out, and a test holds
+it: with the page written and indexed, the C sources are the ones the pack had before the page existed, and a scope
+that does not leave the pages out takes the page as evidence
+(`test_the_pack_carries_the_summary_once_labeled_and_the_evidence_is_what_it_was`).
 
 The task's prompt then tells the reader what a C source is: what a document in the collection says is its author's
-statement. It is not a finding, and it is never a rule.
+statement. It is not a finding, and it is never a rule. When the pack carries the summary, the prompt says what it
+is too: not a document of the collection, and never cited as the record or a rule.
 
 **Confidentiality.** A confidential collection goes only into a board task's pack. For any other audience the pack
 holds nothing from it, and a gap line says so: "the collection is confidential; this task's audience is all members".

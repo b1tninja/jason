@@ -42,6 +42,8 @@ from jason.community.passage_index import Scope
 SUMMARY_PAGE = "summary.md"
 # What a collection's summary page is, said wherever one is shown beside the documents.
 SUMMARY_LABEL = "jason's summary of the collection: a summary, not the record"
+# The summary page's section that quotes the documents by date. A pack leaves it out (``companion_summary``).
+CHRONOLOGY_SECTION = "Chronology: what the documents say"
 # Every generated collection page is left out of every collection's members.
 NOT_MEMBERS: tuple[str, ...] = (COLLECTIONS_DIR,)
 _GENERATED_ON = re.compile(r"^- Generated: by jason on (\d{4}-\d{2}-\d{2})")
@@ -104,7 +106,7 @@ class CompanionPage:
 
     file: str                   # under the data directory
     title: str
-    text: str                   # the page without its date line and without the context a pack carries apart
+    text: str                   # the page without its date line, the context a pack carries apart, and its chronology
     generated_on: str           # the day the page says jason generated it; "" when it does not say
     label: str = SUMMARY_LABEL
 
@@ -118,20 +120,25 @@ class CompanionPage:
 def companion_summary(collection: Collection, data_dir: Path | str) -> CompanionPage | None:
     """The collection's summary page on disk (``<pages_folder>/summary.md``) for a pack, or None when there is none.
 
-    Two parts are left out. The line that says when it was generated moves to the source's note, so the same page
+    Three parts are left out. The line that says when it was generated moves to the source's note, so the same page
     written again on another day is the same source (a kept review is keyed by its sources' words). The section that
-    repeats the collection's context is dropped: a pack carries those lines as their own source."""
+    repeats the collection's context is dropped: a pack carries those lines as their own source. The chronology is
+    replaced by a line that says so: it quotes the documents at length, and a pack reads the documents' own passages
+    (its C sources), never the summary's copy of them."""
     rel = f"{collection.pages_folder}/{SUMMARY_PAGE}"
     try:
         lines = (Path(data_dir) / rel).read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
-    apart = f"## {context_heading(collection)}"
+    apart, chronology = f"## {context_heading(collection)}", f"## {CHRONOLOGY_SECTION}"
     kept: list[str] = []
     generated_on, skipping = "", False
     for line in lines:
         if line.startswith("## "):
-            skipping = line.strip() == apart
+            skipping = line.strip() in (apart, chronology)
+            if line.strip() == chronology:
+                kept += [line, "", "Left out of this source: the page's chronology, which quotes the documents. Read "
+                                   "the documents' own passages for what they say.", ""]
         found = _GENERATED_ON.match(line)
         if found and not generated_on:
             generated_on = found.group(1)
@@ -232,6 +239,6 @@ def ad_hoc(*, catalogs: Iterable[str] = (), kinds: Iterable[Any] = (), folders: 
                       confidential=bool(held))
 
 
-__all__ = ["CONTEXT_TITLES", "Collection", "CollectionKind", "CompanionPage", "LABELS", "NOT_MEMBERS", "SUMMARY_LABEL",
+__all__ = ["CHRONOLOGY_SECTION", "CONTEXT_TITLES", "Collection", "CollectionKind", "CompanionPage", "LABELS", "NOT_MEMBERS", "SUMMARY_LABEL",
            "SUMMARY_PAGE", "ad_hoc", "case_context", "case_matter", "collection", "collections", "companion_summary", "context_heading",
            "duty_line", "of_case"]

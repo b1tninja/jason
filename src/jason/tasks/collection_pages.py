@@ -40,8 +40,8 @@ from typing import Any, Iterable, Sequence
 
 from jason.community import chronology as ch
 from jason.community import fact_conflicts as fc
-from jason.community.document_collections import (SUMMARY_LABEL, SUMMARY_PAGE, Collection, CollectionKind, case_matter,
-                                                  context_heading, duty_line)
+from jason.community.document_collections import (CHRONOLOGY_SECTION, SUMMARY_LABEL, SUMMARY_PAGE, Collection,
+                                                  CollectionKind, case_matter, context_heading, duty_line)
 from jason.community.passage_index import IndexFile, Standing
 
 WHAT = "What this collection is"
@@ -49,7 +49,7 @@ FILES = "Sources: the collection's files"
 MISSING = "What is missing or unread"
 QUESTIONS = "Open questions"
 CONFLICTS = "Conflicts of fact"
-CHRONOLOGY = "Chronology: what the documents say"
+CHRONOLOGY = CHRONOLOGY_SECTION
 OWN_DATES = "The documents' own dates"
 OTHER_DATES = "Dates at a document's head, in a header inside it, or in its file's name"
 ABOUT_DATES = "Dates the documents speak about"

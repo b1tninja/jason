@@ -121,10 +121,11 @@ RECORD_RECENCY_WEIGHT = 1.0
 RECORD_DENSE_FLOOR: float | None = None
 COLLECTION_PASSAGES = 8       # a collection's passages in one pack
 COLLECTION_PER_FILE = 2       # of those, from any one file
-# A collection's summary page (``document_collections.companion_summary``) is one F source, cut to this length. It is
-# never ranked with the collection's passages: a collection's scope leaves its generated pages out, since a page that
-# quotes every document would take the places of the documents themselves.
-COLLECTION_SUMMARY_CHARS = 6000
+# A collection's summary page (``document_collections.companion_summary``) is one F source, cut to this length: its
+# files, what is missing, its open questions, and its conflicts, without its chronology. It is never ranked with the
+# collection's passages: a collection's scope leaves its generated pages out, since a page that quotes every document
+# would take the places of the documents themselves. The length is not tuned: there is no gold set for the pack.
+COLLECTION_SUMMARY_CHARS = 16000
 # Where each kind of source sits among sources of one tier: a collection's material after the records, before the facts.
 _LETTER_ORDER = {"S": 0, "G": 1, "R": 2, "C": 3, "F": 4, "D": 5}
 
