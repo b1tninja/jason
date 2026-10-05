@@ -1220,13 +1220,15 @@ LESSONS: tuple[Lesson, ...] = (
            "from a store or today during parse.",
            "One call parsed and checked, and a row recorded no digest of its text, no reader version, and no as-of date.",
            "Each row now records textSha, version, asOf, fieldsBasis, and each finding's basis (jason models --basis). "
-           "The checks that need only the stored fields and a date are rows of the as-of lens "
-           "(jason.community.reviews), made from the stored fields and kept in data/reviews/documents (jason models "
-           "--as-of); a contract's parse reads no date and an agenda's reads no store. Still to do: the checks that "
-           "read another document or store, as a collection's lens, and the fields a parse fills from the profile.",
+           "The checks that need only the stored fields and a date are the as-of lens's, and the checks that read "
+           "another document or store are the records lens's (jason.community.reviews), each made from the stored "
+           "fields and kept in data/reviews/documents (jason models --as-of, --lens records); a records check's facts "
+           "are gathered by a named function whose digest is in the review's key. No reader's own check reads a store "
+           "or the date, a contract's parse reads no date, and an agenda's reads no store. Still to do: the fields a "
+           "parse fills from the profile, and two checks no library file exercises.",
            Status.OPEN,
-           guards=("tests/test_reviews.py: a contract is parsed the same on any day; an agenda's notice fields come "
-                   "from the log after the parse; the as-of lens is a record of rows",),
+           guards=("tests/test_reviews.py", "tests/test_records_lens.py: a review is made again when its facts change, "
+                   "and a row changes only with one"),
            docs=("docs/ingestion-and-review.md", "docs/document-models/README.md (What a reading records about its own making)")),
     Lesson("index-flag-per-file-not-per-catalog", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The retired catalog sync decided confidentiality a catalog or a row at a time: a library file with one copy "
@@ -1270,14 +1272,23 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_law_readings.py", "law_readings.status", "jason readings --stale"),
            docs=("docs/law-readings.md", "docs/ingestion-and-review.md")),
     Lesson("lettered-and-doubled-sections-misread", date(2026, 10, 4), (Area.GOVERNING,),
-           "authority_text cannot read a section whose number ends in a letter (sixteen on the shelf), and where the "
-           "publication prints two versions of a section under one number, every reader quotes the first with nothing "
-           "saying which is in force.",
-           "The citation pattern takes digits only, and a page was assumed to hold one text a section.",
-           "law_text and recite read lettered sections and show both versions with a caveat. Still to do: "
-           "authority_text and jason cite, and choosing the version in force on a date from the section's own "
-           "operative words.",
-           Status.OPEN, docs=("docs/law-readings.md",)),
+           "authority_text could not read a section whose number ends in a letter (sixteen on the shelf), free text "
+           "\"Civil Code section 2924f\" was read as section 2924, and where the publication prints two versions of a "
+           "section under one number every reader quoted the first, and the pack kept one of the two, with nothing "
+           "saying which.",
+           "Several modules each had a citation pattern that took digits only, and a page was assumed to hold one text "
+           "a section.",
+           "One citation grammar (references.statute_citation, SECTION_NUMBER) reads a number that ends in a letter for "
+           "every reader: authority_text, jason cite, the board packet, the context pack, the MCP tools, and the "
+           "statute links. number_key sorts as the publication prints, so a page's span covers its lettered sections. "
+           "The shelf's own section list says whether a lettered number is a section; one it does not list is a miss "
+           "that offers the subdivision it may mean, never another section's words. A section printed in two versions "
+           "is quoted as the version in force today with a note that quotes the deciding words (law_text.quoted), or "
+           "every version is shown, each labeled, where the disk does not decide. Never the first by position.",
+           Status.FIXED, guards=("tests/test_lettered_sections.py", "tests/test_law_versions.py: a reader quotes the "
+                                 "version in force today, not the one printed first", "references.statute_citation",
+                                 "law_text.quoted", "authorities.number_key"),
+           docs=("docs/law-readings.md", "docs/citations.md")),
     Lesson("case-file-searchable-only-by-transcripts", date(2026, 10, 4), (Area.DOCUMENTS,),
            "A legal case's fetched file was searchable only through its transcripts: the PDFs had no text beside them, "
            "so a review of the case could not cite a filing. The first extraction also showed that OCR makes thousands "
@@ -1401,13 +1412,18 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_applicability.py: a set read from a document is partial",),
            docs=("docs/applicability.md",)),
     Lesson("a-condition-kept-as-prose-cannot-be-asked", date(2026, 10, 4), (Area.GOVERNING,),
-           "Three notice elements carried \"only for ...\" as words, so no caller could state the event's facts and "
-           "every check left the condition to the reader.",
+           "Three notice elements carried \"only for ...\" as words, and fifteen catalog rows said when a notice is "
+           "required only in a note, so no caller could state the event's facts and every check left the condition to "
+           "the reader.",
            "The applicability module had no facet for a meeting or an event.",
-           "The event facet (how a meeting is held, an emergency rule change, electronic voting) and a condition on "
-           "each conditional element; with no facts the element is undetermined and names the fact (jason notice-check "
-           "--event). Conditions in NoticeRequirement.note are still prose.",
-           Status.FIXED, guards=("tests/test_notice_conditions.py", "notice_elements.Sign: a conditional element has "
+           "The event facet (how a meeting is held, the kind of board meeting, the kind of election, an emergency rule "
+           "change, electronic voting, acclamation, a quorum for electing directors) and a condition on each "
+           "conditional element and row, each written from the section's own words and checked against the shelf; with "
+           "no facts the row or element is undetermined and names the fact (jason notice-check --event, jason notices "
+           "--catalog --fact). The rows whose conditions need more than the language holds keep their prose "
+           "(docs/notices.md).",
+           Status.FIXED, guards=("tests/test_notice_conditions.py", "tests/test_notice_applies.py",
+                                 "tests/test_association_asks.py", "notice_elements.Sign: a conditional element has "
                                  "both its condition and its words"),
            docs=("docs/notices.md", "docs/applicability.md")),
     Lesson("answer-quotes-unchecked", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
@@ -1446,10 +1462,9 @@ LESSONS: tuple[Lesson, ...] = (
                    "found unless the module is its declared adapter; every adapter is listed and borne out; no general "
                    "reader names a law firm", "python -m jason.community.boundary"),
            docs=("docs/adapters.md",),
-           notes=("Not seen by the boundary (plain strings, tuples of patterns, patterns given to first()): "
-                  "models/insurance_claims.py _CARRIERS, models/developer_security.py, postscanmail/models.py, "
-                  "tasks/board_packet.py, tasks/request_sheet.py. Widening the sites to the model helpers' patterns adds "
-                  "ten pairs; to every string, ninety-one.",)),
+           notes=("The readers the boundary could not see are fixed (lesson pattern-given-to-a-helper-unseen). Still in "
+                  "general code: tasks/board_packet.py OPTIONS and tasks/request_sheet.py GROUPS, two tables of one "
+                  "association's facts.",)),
     Lesson("recital-gave-todays-words-for-an-earlier-day", date(2026, 10, 4), (Area.GOVERNING,),
            "A recital for an earlier day gave today's words: jason held one edition of each statute, so a review of an "
            "older letter recited words not then in force, with only a caveat.",
@@ -1470,6 +1485,88 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("law_text.in_force (Decided.OWN_WORDS)", "tests/test_law_versions.py",
                                  "tests/test_quote_check.py: a section held in two versions says so"),
            docs=("docs/law-readings.md",)),
+    Lesson("statute-text-readers-drop-the-version-note", date(2026, 10, 4), (Area.GOVERNING,),
+           "Five callers take a statute's words from authority_text without its note: for a section printed twice they "
+           "show the version in force and do not say that there is another, or why this one.",
+           "The note that names the version is a separate key the callers never read.",
+           "Still to do: rule_change.authority_status, manual.statute_words, the meeting notice's recital, "
+           "conflict_leads, and statute_passages print the note beside the words.",
+           Status.OPEN, docs=("docs/law-readings.md (Limits)",)),
+    Lesson("a-statutory-option-is-not-a-document-fact", date(2026, 10, 4), (Area.GOVERNING,),
+           "The acclamation notices were described as required \"only if the association may seat candidates by "
+           "acclamation\", which reads as a fact about the governing documents.",
+           "The section applies notwithstanding the documents and leaves the choice to the association; the row's "
+           "prose inserted a condition the words do not state.",
+           "The fact is the board's standing choice, asked as a question that says so and answered with the record of "
+           "the decision.",
+           Status.FIXED, guards=("tests/test_notice_applies.py", "applicability_asks.ASKS (acclamation)"),
+           docs=("docs/notices.md",)),
+    Lesson("generated-page-read-back-as-a-source", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A collection's generated summary, indexed in the collection's own catalog, would have been quoted by the "
+           "chronology as a document and ranked by a review as evidence.",
+           "A catalog was one scope for both the documents and what jason wrote about them.",
+           "A collection's scope leaves its pages out (Scope.not_folders), on every collection and on the lens "
+           "commands; a review carries the summary as one labeled source, without its chronology.",
+           Status.FIXED, guards=("tests/test_collection_pages.py: the page is indexed as a confidential generated page; "
+                                 "a lens named for the catalog does not read the page back; the pack carries the "
+                                 "summary once, labeled"),
+           docs=("docs/collections.md", "docs/applicability.md")),
+    Lesson("held-files-counted-by-local-name", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A count of a case's held-back files came out two short: two held files that share one local name were "
+           "counted once.",
+           "The count keyed on the name a file would have on disk, not on the listing's rows.",
+           "case_files.inventory counts each flagged listing row, plus each held file on disk the listing does not flag.",
+           Status.FIXED, guards=("tests/test_collection_pages.py: the inventory gives each file's state and counts the "
+                                 "held ones",)),
+    Lesson("near-match-quote-check-passes-another-version", date(2026, 10, 4), (Area.GOVERNING, Area.DOCUMENTS),
+           "The review's quote check accepts a quotation 0.9 alike, so \"fourteen days\" checks against a source that "
+           "says \"fifteen days\": an as-of review can cite today's words against an earlier version unnoticed.",
+           "The tolerance was set for OCR's misreadings and applies to the law's words too.",
+           "Still to do: check a law source's quotations with quote_check's exact matcher, and teach quote_check to "
+           "read the history for a dated citation and to say when the words are a stored reading.",
+           Status.OPEN, docs=("docs/manager-review.md (The quote check and readings)",)),
+    Lesson("reciting-writes-the-versions-cache", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "A read-only check that recited a section of a document kept as amended rebuilt and wrote that document's "
+           "versions cache under data/section-refs.",
+           "The reader builds the cache when its fingerprint differs, and the fingerprint includes the code's hash, "
+           "which differs between a worktree and the main checkout.",
+           "Still to do: a read-only resolver (build_versions(write=False)) for read-only callers such as the MCP tools "
+           "and checks.",
+           Status.OPEN, docs=("docs/manager-review.md",)),
+    Lesson("store-read-outside-check-hid-from-the-inventory", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "Two readers reworded a finding in their own read with a clause from the library's minutes. The basis "
+           "inventory watched check, so it reported no store read; removing one set of minutes changed four rows with "
+           "no review made again.",
+           "The inventory observed one call, and a reader's read can run after it.",
+           "The finding is the records lens's, and a row records what its check read. A move is proven by changing the "
+           "other record and showing that exactly the reviews resting on it are made again, not only by comparing the "
+           "same inputs.",
+           Status.FIXED, guards=("tests/test_records_lens.py: a review is made again when its facts change, and a row "
+                                 "changes only with one",),
+           docs=("docs/document-models/README.md",)),
+    Lesson("lens-checks-read-before-readers-loaded", date(2026, 10, 4), (Area.DOCUMENTS,),
+           "In a fresh process jason models --as-of reviewed its first row with no checks and reported that row's lens "
+           "findings as gone.",
+           "A lens's checks register when the reader modules import, and nothing imported them before the first row.",
+           "document_reviews loads the readers first. Still to do: a test, which needs a fresh process.",
+           Status.OPEN),
+    Lesson("pattern-given-to-a-helper-unseen", date(2026, 10, 4), (Area.REPOSITORY,),
+           "The boundary read a pattern only where it was given to re. Ten term-and-module pairs sat in patterns given "
+           "to a reader helper, and a table of carriers and three senders' words in the mail rules sat in module-level "
+           "tuples.",
+           "The scan listed the places a fact hides by how the code was written, not by what the string is used for.",
+           "pattern_parameters finds every function that hands a parameter to re as the pattern, or to another such "
+           "function; a module knows its own functions and the ones it imports by name. The wide reading (boundary "
+           "--wide) reports a module's own tables; it is not part of the check while two tables of one association's "
+           "facts remain. A reader takes a carrier from the insurance record and then the sender directory, a "
+           "subdivider from developers(), an opposing party from legal_cases(); one the profile lacks is a miss, listed "
+           "for a person.",
+           Status.FIXED, guards=("tests/test_profile.py: a fact in a pattern given to a helper is found; a fact in a "
+                                 "module's own collection is found by the wide reading; no general table names a "
+                                 "counterparty but the two that wait", "python -m jason.community.boundary"),
+           docs=("docs/adapters.md",),
+           notes=("Matching helper functions by name alone flags unrelated calls (a .get with a default); resolve by "
+                  "the module's own and imported names.",)),
     Lesson("anythingllm-retrieval-unmeasured", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The board asked AnythingLLM's workspaces for weeks while jason's own hybrid search was being measured "
            "on the gold questions. Measured on the same 140 questions, the shared workspace found the answer in its "

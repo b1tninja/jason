@@ -144,6 +144,7 @@ The rules for these pages:
 - **A page is a summary and says so.** It carries a header saying it is generated, and an answer that uses it points to the record it summarizes. A page is never quoted as the rule ("Only stored words").
 - **Pages are rebuilt, never edited.** Each is regenerated from the stores when they change.
 - **Private facts stay private.** A page that names owners or parties gets the confidential flag.
+- **A page is never a member of what it summarizes.** A collection's scope leaves its pages out, so no lens reads a page back as a document and no pack ranks one as evidence.
 
 ## 8. The stack
 
@@ -184,7 +185,11 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
    - `jason inspections` (`jason.tasks.inspections`) uses the three groups for completeness. For each system, the obligations that apply get periods and the records on file in each. Those that do not apply are listed with the deciding fact, so nothing is expected. The record-keeping provisions are `RecordRule` rows, recited from the shelf, and a provision the shelf does not print is said to be missing.
    - The questions are intake questions (`jason.community.applicability_asks`; `jason applies --questions`, `--file-questions`), one a subject and fact. A person's answer is a fact with source `answer`.
    - The notice catalog's conditional elements carry conditions over the event facet (`notice_elements.Sign.applies`), and filing rules are conditions (`FilingRule.condition`; `jason gmail --file-vendor --why`).
-   - Still to do: the elevated-elements rows; the conditions kept as prose in `NoticeRequirement.note`; association-level notice facts as questions.
+   - `NoticeRequirement.applies` (default: always) on fifteen catalog rows, each written from the section's words (`jason.community.notice_conditions`; the words are checked against the shelf). `notice_catalog.applicable(facts)` gives the three groups, and `jason notices --catalog --fact FACT=WORD` lists them. With no fact the catalog prints as before.
+   - The event facet gained the kind of election, the scope of a rule change, the kind of board meeting, election by acclamation, and the directors' election quorum. `Fact.standing` says where a fact comes from: the profile for a standing fact, the caller for one event's.
+   - The association's standing facts that the notice catalog turns on are questions under `applies:association` where the profile does not state them (`jason applies --questions`). An answer names its record.
+   - The elevated elements inspection (Civil Code 5551) is a condition over three property facts, asked once of the association.
+   - Still to do: the rows kept as prose (docs/notices.md, "Rows that keep their condition as prose"); a per-building record for 5551(k) and (l); the `notice_requirements` MCP tool.
 4. **The index.** First part built October 4, 2026: `jason.community.passage_index`, `jason index`. Its engine is SQLite with the vectors as blobs (no new dependency), ranked by `retrieval`'s own functions.
    - Built:
      - the records, insurance, authorities, and reference sources, 6,770 passages;
@@ -207,7 +212,7 @@ Today, two programs drive the one GPU: jason and AnythingLLM Desktop. jason's ca
      - Over the whole index, 0.86. The paraphrase questions lose most, probably to governing-document passages on the same subjects; that is unchecked.
      - Each statute file's first passage is metadata only (title, source, why jason holds it) and competes with the operative text. It is the next thing to fix and measure.
 5. **Context headers.** Measured October 4, 2026, and not kept for the law's pages. A line of the chapter path, why the page is held, and the standing and kind moved one question either way on each gold set (`data/retrieval/runs/2026-10-04-context-headers.json`). The index can carry a context line per file, and the publications use one for their title, since their text has no headings.
-6. **Companion pages,** starting with the fire and life safety subject, whose sources are gathered.
+6. **Companion pages.** Built first for a collection (`jason collection KEY`: its files and how each was read, what is missing or unread, the open questions, the conflicts of fact, and the chronology) and for the life safety records (`jason inspections --write`). The subject and vendor pages are still to do.
 7. **The contract reader's gate and term scopes.** In the contracts session's code, once it agrees to the interface.
 8. **Retiring AnythingLLM.** Done October 4, 2026.
    - **Snapshot first:** every workspace's document list was saved (`data/anythingllm/snapshots/20261004-125545.json`).

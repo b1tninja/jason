@@ -1,6 +1,6 @@
 # Ingestion and review
 
-**Status:** October 4, 2026. Built: step 1 (the inventory: `jason models --basis`, [document-models/README.md](document-models/README.md)), step 2's store and first lens (`jason models --as-of DATE`), step 3 for legal cases (`jason review --collection`, [manager-review.md](manager-review.md)), and step 4 (readings of the law as records: `jason readings`, [law-readings.md](law-readings.md)). The first general lenses (chronology, conflicts of fact, completeness) are built. The rest is proposed. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
+**Status:** October 4, 2026. Built: step 1 (the inventory: `jason models --basis`, [document-models/README.md](document-models/README.md)), step 2's store and its two lenses (`jason models --as-of DATE`, `--lens records`), step 3 for legal cases (`jason review --collection`, [manager-review.md](manager-review.md)), and step 4 (readings of the law as records: `jason readings`, [law-readings.md](law-readings.md)). The first general lenses (chronology, conflicts of fact, completeness) are built. The rest is proposed. It follows [applicability.md](applicability.md) (the search index, the "applies to" conditions) and the survey in "What jason does today" below.
 
 ## The idea
 
@@ -227,7 +227,12 @@ The same document can then be reviewed under two packs, and the two results are 
      - For the same date every stored row is the same as before. A year later every changed finding but one is the lens's; the one is an agenda's `no-minutes-on-file`, which needs the library and the date together.
      - A check is a function of the fields it names, the date, and facts it names from the specification, each with a digest. It reads no store.
      - `jason models --as-of` does not rewrite `readings.json`; consumers still read the view joined at reading time.
-   - Open: the checks that read another document or store (four of which also read the date), as a collection's lens; and the fields a parse fills from the profile.
+   - Built: the records lens (`reviews.RECORDS`), the reading against the association's other records.
+     - 27 checks over 19 readers. A check is a function of the fields it names, the date where it needs one, and facts that a named function gathers from the other documents and stores. That function is the only place a store is read, and its digest is in the review's key.
+     - On the library as of October 4, 2026: 982 findings, 243 from the records lens, 56 from the as-of lens, 38 from the text alone, 133 from the text and the law, 512 still made in the readers from the specification. No reader's check reads a store or the date.
+     - For the same date every stored row is the same as before. With one set of minutes removed, the 7 reviews that rested on it are made again and the other 416 stand. With one reconciliation row changed, 1 is made again.
+     - An agenda's notice fields are derived by this lens from the communications log.
+   - Open: the fields a parse fills from the profile; the crime policy's required limit and a claim payment's deposit, which no library file exercises; a lens for the law as of a document's date, to take the former-section citations.
 3. **Collections.**
    - `Collection` as a record. A legal case is the first: its index catalog and its record in the specification.
    - `assemble` takes a lens, a document digest, and a collection.
@@ -235,16 +240,21 @@ The same document can then be reviewed under two packs, and the two results are 
    - Built for legal cases (`document_collections`; the name `collections` was taken by assessment collections). The pack's C tier reads the collection's index scope, and the case's record in the specification is a fact source.
    - A manager review is kept under `data/reviews/<task>/<collection>/<digest>.json` (`review_store`), keyed by the question, the draft, the collection, and each source's text digest. `data/briefs` is still the latest copy.
    - The case file's PDFs are read once into `<name>.pdf.txt` (`case_files.extract_text`). The manifest records the method and the file's SHA-256. An OCR or vision reading is checked against the PDF before it is quoted.
-   - Open: `assemble` takes no lens or document digest yet. The review's digest has no as-of date or lens version. A collection has no summary page.
+   - Built: a collection's summary page (`jason collection KEY`, [collections.md](collections.md)): its files and how each was read, what is missing, the open questions, the conflicts, and the chronology. It is indexed in the collection's own catalog as a page and is never a member of the collection. A pack carries it as one labeled source, without its chronology.
+   - Open: `assemble` takes no lens or document digest yet. A summary for an ad hoc scope. The summary's open-question rules have not been read against a real case file by a person.
 4. **Readings of the law as records.**
    - A reading store keyed to each provision's text digest, filled first from what exists: the `Conflict` rows, the statutory terms, and the readings the docs already label.
    - The authorities' manifest gets a digest per section (docs/rag-roadmap.md, item 3), so a changed provision marks its readings stale.
    - A review recites the provision and attaches a reading only where one is stored.
    - Built. `law_text.section_digest` and the manifest's digests; replaced words kept under `data/authorities/history/<citation>/<digest>.md`; `law_readings.LawReading`, `status`, and `recite`; `Community.law_readings()`, empty by default.
    - The store is empty. Filling it is a person's work: each `Conflict` row, statutory term, and labeled reading in the docs is a candidate that a person confirms, with whose it is, before it becomes a row. jason converts none.
-   - On the shelf that day: 1,042 sections on 101 pages. Six sections are printed in two versions under one number.
+   - On the shelf that day: 1,042 headings on 101 pages, 1,034 distinct sections. Six sections are printed in two versions under one number, two are held by two pages with the same words, and sixteen have a number that ends in a letter. Every reader quotes all of them, and names which version it quotes and why (`law_text.quoted`; [law-readings.md](law-readings.md)).
    - The words in force on an earlier day: `recite(citation, data_dir, readings, as_of)` gives the version in force where the disk holds it (`jason law-history --versions`: 471 earlier versions from the 2011 to 2025 session publications), and otherwise the current words marked as not shown to be in force. A lens checks `Recital.in_force` before it judges a document against the law of its date.
-   - Open: a review does not yet call `recite`.
+   - Built: a pack as of a day (`jason review --as-of DATE`, `assemble(as_of=)`) recites each law source through `recite`: the words in force that day with their range and act, or the words on the shelf now under "Not shown to be in force". Each stored reading is listed under the words, labeled; a stale one apart.
+     - A governing passage is recited by the section its heading names. For a document kept as amended, the section's words on that day are given under a passage that is not them.
+     - The stored review records the day, each provision's digest, whether it was shown in force, and each reading's key, standing, and state. Its key covers them.
+     - Without a day the pack is unchanged.
+   - Open: the search is over the law as it stands now, so a section repealed since is not found. A document not kept as amended has no earlier words. The review's answer is not yet stored in three parts (facts, law, application). `prompts.verify` accepts a near match, so a quote of another version that differs by a word can pass, and `quote_check` reads neither the history nor the readings.
 5. **The general lenses,** one at a time, each measured on a small set of documents with known answers before it is relied on.
    - Built first: the chronology and the conflicts of fact, over any `Scope` and a title ([collections.md](collections.md)). They store nothing; a page is generated again each time.
    - Measured October 4, 2026: about 1,230 dated statements from 169 of 205 open library files. One stored-field conflict among 203 open readings, real when read. The text rules report none on real documents; the one they reported before they took only sentences was false (a bill's stub, printed for ten parcels).
@@ -256,7 +266,7 @@ The same document can then be reviewed under two packs, and the two results are 
 - **Other sessions' code.** The contract-terms reader, the license reader, and the kind readers are other sessions' work in progress. Their findings stay where they are until those sessions agree to the split.
 - **Fields that are not context-free.** A field filled from the profile or another store during `parse` is wrong to treat as ingestion until it moves.
 - **Findings that depend on today** change daily. They are keyed by as-of date or computed when read, never stored as if fixed.
-- **Checks across documents** are reviews of a collection, and need the collection in their key.
+- **Checks across documents** are the records lens's. The other records they rest on are in the review's key as a digest of the facts read. A collection's lens would add the collection's own key.
 - **Lens rows that hold an association's facts** belong in the profile.
 - **Confidentiality carries over.** A review is as confidential as its document and its collection.
 - **A review decides nothing.** It is a reading, labeled as one, with the words it relies on recited ([AGENTS.md](../AGENTS.md), "Recite the rule; label the reading").
