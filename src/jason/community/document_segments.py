@@ -1626,11 +1626,14 @@ def _stream(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
 
 
-def part_span(part: Part, text: str) -> tuple[int, int] | None:
+def part_span(part: Part, text: str, exhibits: Sequence[str] = ()) -> tuple[int, int] | None:
     """The part's characters in ``text`` (any text of the same document: the PDF's layer, an outline's, an OCR): from
     its anchor heading to its end anchor, found in the stream of letters and digits (spaces, punctuation, and case
     ignored). None where the anchor is not found: a miss, never a guess. A heading found more than once is taken at the
-    first place after the previous part's, so pass the text of the segment, not the whole file, where headings repeat."""
+    first place after the previous part's, so pass the text of the segment, not the whole file, where headings repeat.
+
+    ``exhibits`` are the headings (label and title) of the exhibits of the document: the part stops where one begins inside
+    it, since what follows is the exhibit's. An exhibit heading that is not found cuts nothing."""
     stream = _stream(text)
     if not stream:
         return None
@@ -1649,7 +1652,15 @@ def part_span(part: Part, text: str) -> tuple[int, int] | None:
     where = [i for i, ch in enumerate(text.lower()) if ch.isalnum() and ch in "abcdefghijklmnopqrstuvwxyz0123456789"]
     if end > len(where) or start >= len(where):
         return None
-    return where[start], (where[end - 1] + 1 if end > start else where[start])
+    first, last = where[start], (where[end - 1] + 1 if end > start else where[start])
+    for heading in exhibits:
+        folded = _stream(heading)
+        if len(folded) < 4:
+            continue
+        found = re.compile(r"(?m)^[ \t#*]*" + r"[\W_]*".join(re.escape(c) for c in folded), re.I).search(text, first + 1, last)
+        if found:
+            last = found.start()
+    return first, last
 
 
 def page_of(seg: Segmentation, snippet: str, texts: Sequence[str]) -> int | None:

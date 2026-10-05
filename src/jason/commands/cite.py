@@ -54,7 +54,7 @@ def cmd_cite(args: argparse.Namespace) -> int:
     from jason.community.cite import tree_lines
     from jason.tasks.cite import Shelf, markdown
 
-    shelf = Shelf(community(), _data_dir(args), private=args.private)
+    shelf = Shelf(community(), _data_dir(args), private=args.private, segments=not getattr(args, "no_segments", False))
     if args.html is not None:
         from jason.tasks.reader import write
 
@@ -157,10 +157,12 @@ def cmd_cite(args: argparse.Namespace) -> int:
         text = sys.stdin.read() if args.scan == "-" else Path(args.scan).read_text(encoding="utf-8", errors="replace")
         rows = read_text(shelf, text, citing=args.in_doc or "", day=args.on)
         if args.json:
-            print(json.dumps({"citations": rows, "byForm": tally(rows)}, indent=1))
+            print(json.dumps({"citations": rows, "byForm": tally(rows), "segments": list(shelf.index().segment_notes)}, indent=1))
             return 0
         print(f"{len(rows)} citations of the association's documents in {args.scan}"
               + (f", written in {args.in_doc}" if args.in_doc else "") + (f" on {args.on}" if args.on else ""))
+        for note in shelf.index().segment_notes:
+            print(f"  {note}")
         for form, counts in tally(rows).items():
             print(f"  {form}: " + ", ".join(f"{n} {s}" for s, n in sorted(counts.items(), key=lambda kv: -kv[1])))
         for r in rows:
@@ -217,6 +219,8 @@ def _print(c: Any, args: argparse.Namespace, tree_lines: Callable[..., list[str]
     scope = c.scope
     if scope is not None and scope.basis is not None and scope.basis.value != "named":
         print(f"  document chosen: {scope.key} (read from {scope.basis.value}" + (f": {scope.note}" if scope.note else "") + ")")
+        if scope.path:
+            print(f"  nested: {' > '.join(scope.path)}" + (f" (a part from the {scope.source})" if scope.source else ""))
     if scope is not None and scope.also:
         print("  also " + ("in the book: " if scope.basis is not None and scope.basis.value == "book" else "printed in: ")
               + ", ".join(scope.also))
@@ -315,6 +319,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                                                "amended is read in the version in force that day")
     p.add_argument("--scan", metavar="FILE", help="every citation of the association's documents in FILE (- for "
                                                   "standard input), each resolved with --in and --on, counted by form")
+    p.add_argument("--no-segments", action="store_true",
+                   help="scope without the stored segmentations' parts and exhibits (data/library/segments): only the "
+                        "owner's manual classification supplies parts")
     p.add_argument("--refs", action="store_true", help="follow what it cites")
     p.add_argument("--hops", help="with --refs: how many hops (default 1); all follows until a target repeats")
     p.add_argument("--same", action="store_true", help="with --refs: stay inside this document")

@@ -170,7 +170,7 @@ class Shelf:
     """The association's documents and records on disk, opened for citing. Also a ``Resolver``."""
 
     def __init__(self, community: Any = None, data_dir: Path | None = None, *, log=None, repo: Path | None = None,
-                 private: bool = False):
+                 private: bool = False, segments: bool = True):
         from jason.community.books import Books
 
         self.resolver = DiskResolver(data_dir, community, log=log)
@@ -178,6 +178,7 @@ class Shelf:
         self.data_dir = self.resolver.data_dir
         self.repo = repo
         self.private = private
+        self.segments = segments          # citation scoping reads the stored segmentations' parts and exhibits
         self.books = Books.of(self.community)
         self._locator: Any = None
         self._register: dict[str, list[dict[str, Any]]] | None = None

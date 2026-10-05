@@ -124,8 +124,8 @@ records that cite them.
 
 ## Parts: the interface scoping expects
 
-A rule is often a **part** of a document: the rules inside an owner's manual, a policy bound into it, one document in a
-scanned PDF that holds several. `scoping.Part` is the record scoping reads:
+A rule is often a **part** of a document: the rules inside an owner's manual, a policy bound into it, an exhibit of an
+instrument, one document in a scanned PDF that holds several. `scoping.Part` is the record scoping reads:
 
 | Field | Meaning |
 |---|---|
@@ -136,13 +136,57 @@ scanned PDF that holds several. `scoping.Part` is the record scoping reads:
 | `label` | what a person calls it ("the Lot Rules") |
 | `aliases` | the other names it goes by |
 
-`Index.parts` holds them; `Index.part_of(document, number)` says which part a section falls in. Today the owner's manual's
-rows (`Community.owners_manual()`, `jason.community.manual`) supply them (`jason.tasks.cite_scope.manual_parts`): each row's
-anchor and the book its target names. When document segmentation lands, a segment of a document that is a part
-(`document_segments.Part`) needs only these fields to be wired in: anything with them is a `Part`, and its names then join
-the index's names, so "the Lot Rules" scopes a citation to the part, and `has` is asked of the part's own sections. Until
-then, a part's name does not name a document; the book's common name and the rules' own numbers do the scoping, and the
-`part` basis is the one place a part changes an answer.
+`Index.parts` holds them; `Index.part_of(document, number)` says which part a section falls in. Two sources fill them,
+and each part says which (`Part.source`):
+
+- **`classification`**: the owner's manual's rows (`Community.owners_manual()`, `jason.community.manual`;
+  `jason.tasks.cite_scope.manual_parts`): each row's anchor and the book its target names. A classification part
+  names no document: the book's common name and the rules' own numbers do the scoping, and the `part` basis is the one place
+  such a part changes an answer.
+- **`segments`**: the parts and labeled exhibits of a stored segmentation ([document-segmentation.md](document-segmentation.md);
+  `jason.tasks.cite_scope.segment_parts`). These carry more: `numbers` (the outline sections that sit inside the part),
+  `path` (the names from the document down to the part), `ref` (its address in the file, `library:ID#seg=s1/s1.1`), `pages`,
+  and `kind`.
+
+### The stored readings that are used
+
+`cite_scope.segment_readings` takes a stored reading (`data/library/segments/<id>.json`) only when all of these hold; each
+reading left out says why (`jason cite --scan` prints a line for each, and `--json` carries them as `segments`):
+
+| Reading | Used | Why not |
+|---|---|---|
+| the file is in the library (`library.db`) and on disk | yes | "the file is not in the library, so its bytes and its document cannot be checked", "not on disk" |
+| its bytes are those it was read from | yes | "stale: the file's bytes changed since it was read" (`segments.stale`) |
+| the file holds one top-level document | yes | "the file holds N documents, and none is known to be the outline's" |
+| the file is one outline's document | yes | "no outline's words are the file's", "the file's words fit more than one outline", "too short to match" |
+
+The last row is `bind_outline`: an outline read from the file (`DocumentOutline.library`) is bound by its path; otherwise
+twenty short windows of the file's text (`data/library/text/<id>.txt`) are looked for in each outline's words, and an outline
+is the file's when at least half are found, the texts are of like length, and no other outline comes within 0.3. A miss is a
+miss: never the nearest outline. `jason cite --no-segments` (`Shelf(segments=False)`) scopes without them.
+
+### What a part's name does
+
+A name a stored part or exhibit goes by ("Exhibit A", "Ex. A", a part's title of two words or more) joins the scanner's names,
+unless a document or a book already goes by it: an existing name always wins, so a citation that resolved before resolves
+the same. The name then scopes (`scoping._scope_part`, basis `segment`):
+
+- **One document holds it**: the result is that document, with `scope.path` the way down (`document, exhibit, part`:
+  `instrument > Exhibit B > Schedule 1`), `scope.part` the part's book or title, and `scope.source` `segments`. The target
+  is the document; the path says which part of it.
+- **Two documents hold it** ("Exhibit A" in two instruments): `ambiguous_document`, naming both with each one's path. A text
+  written in one of them means that one's own, as a bare section does (the note says so). The same label at two depths of one
+  document stays ambiguous, since nothing says which.
+- **With a section number** ("Section 7.3 of the Community Regulations"): the part's own `numbers` decide. The section must be
+  one of them and the document must have it; a section the document has but the part does not is `not_in_document`, and the
+  miss says so. An exhibit (or a part inside one) has no outline, so "Section 3 of Exhibit A" is a miss that says its sections
+  are not an outline on the shelf: the document's own section 3 is never read in its place.
+- **A part stops at an exhibit**: a part's `numbers` are the sections between its heading and the next part or the first
+  exhibit heading found at the start of a line inside it (`part_span(..., exhibits=)`); a heading that is not found cuts
+  nothing and a part whose heading is not found has no numbers.
+
+Where a stored reading gives a document parts with sections, those parts **replace** the manual classification's for that
+document (`Index.part_of` returns the segment part); where it gives only names, or none is stored, the classification stays.
 
 ## jason's own rule rows
 
@@ -240,9 +284,13 @@ them: `parent_only`, not a defect).
 
 ## What remains
 
-- **Parts from segmentation.** A part's name does not yet name a part: only the owner's manual's rows supply parts, and only
-  for the `part` basis. Segmentation (document parts, page ranges) fills `Part`; then a part's label and aliases join the
-  index's names and `has` is asked of the part.
+- **Parts from segmentation, measured on little.** The wiring is built and tested on made-up files. How much it helps on the
+  archive depends on stored readings of the rule documents' PDFs, which are few (a profile's page says how many); and a
+  part found only by name is a document-level answer: a section of an exhibit is a miss until the exhibit has an outline.
+  `Part.outline` (the outline sections a part holds) is filled from a heading match (`numbers`), not yet from the manual's
+  own locators.
+- **Several documents in one file.** A file whose reading holds more than one top-level document is left out: nothing says
+  which of them an outline's text is. Reading the outline per segment (page range) is what would use it.
 - **Title-numbered sections.** A section known only by its heading (an unnumbered policy, a fine schedule) is addressed by
   words, or not at all; an outline that numbers it is the fix, and the address of its sections belongs to the document's
   own numbering.

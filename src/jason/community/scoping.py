@@ -391,7 +391,14 @@ class Part:
     ``document`` is the outline's key; ``anchor`` the outline section the part starts at (its number, or its title when
     it has none) and ``through`` the last one (empty: the anchor and what is under it); ``book`` the address key the
     part is cited by ("rules.parking"); ``label`` the name a person gives it ("Lot Rules"); ``aliases`` the other
-    names it goes by. A part is cited by the numbers its document prints."""
+    names it goes by. A part is cited by the numbers its document prints.
+
+    Where the part comes from is ``source``: ``"classification"`` (the owner's manual's rows) or ``"segments"`` (a stored
+    segmentation of the file, ``document_segments``). A segment part also carries ``numbers`` (the outline sections that
+    sit inside it, so a section number is checked against the part and never against the whole document), ``path`` (the
+    names from the document down to the part: an exhibit's label, then a part's title inside it), ``ref`` (its address in
+    the file, ``library:ID#seg=s1/s1.1``) and ``pages``. A part inside an exhibit inside a document is the document's
+    ``document``, with the exhibit's label in front of its own title in ``path``."""
 
     document: str
     anchor: str
@@ -399,6 +406,12 @@ class Part:
     label: str = ""
     aliases: tuple[str, ...] = ()
     through: str = ""
+    source: str = "classification"
+    path: tuple[str, ...] = ()
+    numbers: tuple[str, ...] = ()
+    ref: str = ""
+    pages: tuple[int, int] = (0, 0)
+    kind: str = ""
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -422,6 +435,7 @@ class Index:
     parts: tuple[Part, ...] = ()
     scan_names: dict[str, str] = field(default_factory=dict)     # the names a person writes (not an address key)
     address_keys: frozenset[str] = frozenset()                   # the keys an address names a document by ("ccrs", "rules")
+    segment_notes: tuple[str, ...] = ()                          # what a stored segmentation was and was not used for, and why
 
     def key_of(self, name: str) -> str:
         return self.names.get(_norm_name(name), "")
@@ -432,14 +446,28 @@ class Index:
     def lettered_prefixes(self) -> frozenset[str]:
         return frozenset(d.lettered for d in self.docs.values() if d.lettered)
 
+    def parts_named(self, name: str) -> tuple[Part, ...]:
+        """The segment parts a name belongs to ("Exhibit A", "Ex. A"). The manual's classification rows name no document,
+        so only a stored segmentation's parts are found here."""
+        wanted = _norm_name(name)
+        return tuple(p for p in self.parts if p.source == "segments" and wanted in {_norm_name(n) for n in p.names})
+
     def part_of(self, document: str, number: str) -> Part | None:
-        """The part of ``document`` a section falls in: the part whose anchor is the section or encloses it."""
+        """The part of ``document`` a section falls in: the part whose anchor is the section or encloses it (a segment
+        part: the part that holds the section among its ``numbers``)."""
         best: Part | None = None
         for p in self.parts:
-            if p.document != document or not p.anchor:
+            if p.document != document:
+                continue
+            if p.source == "segments":
+                holds = bool(p.numbers) and len(p.path) <= 1 and (number in p.numbers or any(a in p.numbers for a in ancestors(number)))
+                if holds and (best is None or best.source != "segments" or len(p.numbers) < len(best.numbers)):
+                    best = p
+                continue
+            if not p.anchor:
                 continue
             inside = number == p.anchor or number.startswith(p.anchor + "(") or number.startswith(p.anchor + ".")
-            if inside and (best is None or len(p.anchor) > len(best.anchor)):
+            if inside and (best is None or (best.source != "segments" and len(p.anchor) > len(best.anchor))):
                 best = p
         return best
 
@@ -456,6 +484,7 @@ class Basis(Enum):
     FORM = "form"
     BOOK = "book"
     PART = "part"
+    SEGMENT = "segment"                    # a name a stored segmentation gives a part or an exhibit
 
 
 class Standing(Enum):
@@ -491,6 +520,8 @@ class Scoped:
     also: tuple[str, ...] = ()             # other documents that print the section's words (a reprint)
     part: str = ""                         # the part of the document the section is in ("rules.parking")
     number: str = ""
+    path: tuple[str, ...] = ()             # document, then the exhibit or part names it is nested through
+    source: str = ""                       # where a part came from: "segments"
 
     @property
     def scoped(self) -> bool:
@@ -508,7 +539,7 @@ class Scoped:
             out["candidates"] = [c.as_dict() for c in self.candidates]
         for name, value in (("note", self.note), ("leads", list(self.leads)),
                             ("alsoInBook" if self.basis is Basis.BOOK else "alsoPrintedIn", list(self.also)),
-                            ("part", self.part)):
+                            ("part", self.part), ("path", list(self.path)), ("partSource", self.source)):
             if value:
                 out[name] = value
         return out
@@ -551,6 +582,54 @@ def _part_book(index: Index, key: str, number: str) -> str:
     return part.book if part else ""
 
 
+def _scope_part(m: Mention, citing: Citing, index: Index) -> Scoped | None:
+    """A name that no document goes by, but a part or an exhibit of a stored segmentation does ("Exhibit A", "Ex. A"). The
+    answer is the document the part is in, with ``path`` the way down to it (document, exhibit, part) and ``part`` its
+    book or title. The same name in two documents is ambiguous and names both, unless the text is written in one of them
+    (it means that document's own). A section number is the part's only where the part's sections are an outline's
+    (``Part.numbers``); an exhibit with no outline has no section to find, and a miss says so instead of reading the
+    document's section of that number."""
+    hits = list(index.parts_named(m.name))
+    if not hits:
+        return None
+    day = citing.day
+    leads = tuple(k for k in m.context if k in index.docs)
+    note = ""
+    own = [p for p in hits if citing.key and p.document == citing.key]
+    if own:
+        hits, note = own, f"{m.name} written in {citing.key}, which holds it"
+    number = m.number
+
+    def holds(p: Part) -> bool:
+        if not number:
+            return True
+        inside = bool(p.numbers) and (number in p.numbers or any(a in p.numbers for a in ancestors(number)))
+        return inside and index.has(p.document, number, day)
+
+    seen: dict[tuple[str, tuple[str, ...]], Part] = {}
+    for p in hits:
+        seen.setdefault((p.document, p.path), p)
+    cands = tuple(Candidate(p.document, holds(p), " > ".join(p.path)) for p in seen.values())
+    good = [p for p in seen.values() if holds(p)]
+    if len(good) == 1:
+        p = good[0]
+        way = " > ".join((p.document, *p.path))
+        return Scoped(Standing.SCOPED, m.form, p.document, Basis.SEGMENT, cands,
+                      note or f"{m.name} is a part of a document, by its stored segmentation: {way}", leads, number=number,
+                      part=p.book or p.label, path=(p.document, *p.path), source=p.source)
+    if not good:
+        docs = ", ".join(sorted({p.document for p in seen.values()}))
+        if not number:
+            return Scoped(Standing.NO_SECTION, m.form, "", None, cands, note, leads)
+        why = ("; the part's own sections are not an outline on the shelf, so " + number + " is not read from the document's"
+               if not any(p.numbers for p in seen.values()) else "")
+        return Scoped(Standing.NO_SECTION, m.form, "", None, cands,
+                      (note or f"{m.name} is a part of {docs}, which has no {number} in it") + why, leads, number=number)
+    return Scoped(Standing.AMBIGUOUS, m.form, "", None, cands,
+                  note or f"{m.name} is a part of more than one document: " + ", ".join(sorted({p.document for p in good})),
+                  leads, number=number)
+
+
 def _rules_pool(index: Index) -> list[str]:
     """The documents that are rules: those in a rules book (the operating rules, the election rules, the discipline and
     collection policies, the architectural procedure) and any that numbers its sections with a letter."""
@@ -590,6 +669,8 @@ def scope(m: Mention, citing: Citing | None, index: Index) -> Scoped:
                               "a common name for a book of several documents: " + ", ".join(group), also=tuple(
                                   k for k in group if k != main))
             return _pick(m, group, index, citing, Basis.BOOK, "the name covers several documents")
+        if not key and not group and not m.demonstrative and (found := _scope_part(m, citing, index)) is not None:
+            return found
         if not key and m.demonstrative and citing.key and citing.key in index.docs:
             # "this Policy", "these Rules": whatever the noun, the document it is written in.
             return Scoped(Standing.SCOPED, form, citing.key, Basis.SELF, (Candidate(citing.key, True),),

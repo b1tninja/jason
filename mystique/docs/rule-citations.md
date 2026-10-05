@@ -33,6 +33,25 @@ the same words, the section means the document adopted apart (the `part` basis) 
 parking rules, with the manual as `alsoPrintedIn`. `B-12` itself is printed with other words in the two, so a bare "B-12" is
 ambiguous and names both.
 
+### Parts from stored segmentations (October 5, 2026)
+
+Counts only. The archive holds no stored segmentation of a rule document (`data/library/segments` is empty), and 20 of the 22
+rule and policy files in the library are not mirrored on this machine as PDFs, so citation scoping and rule authority run
+on the manual's classification alone. Measured two ways:
+
+- **The 19 rule-document texts** (6 outlines and 13 library extracts; 512 citations): `jason cite --scan` with and without
+  segments gives 512 unchanged, none improved, none worse. The two readings made from the PDFs that are on disk (4 and 3
+  pages, no parts or exhibits) are left out ("the file's text is too short to match to an outline" and "no outline's words are
+  the file's").
+- **A rendering of the 6 outlines' text as PDFs, read by the segmenter** (a stand-in, not a scan): all 6 bind to their own
+  outline; the manual's reading finds 2 parts and no exhibits, the others none. Scoping: 194 citations before and after, 194
+  unchanged, none worse, none to another document, 1 new whole-document mention that resolves through a part's title. Rule
+  authority: the manual's 83 candidates, 14 grants, and 176 rules on file (40 policy, 136 rule) are the same with the parts
+  merged; 15 pieces of the merged parts come from the segmentation, where it and the classification both read a rule.
+
+How much stored readings of the real scans change is not measured: it needs the rule documents' PDFs read once
+(`jason segments ID`).
+
 ## Numbers printed twice
 
 | Document | Number | Why | Cite by place |

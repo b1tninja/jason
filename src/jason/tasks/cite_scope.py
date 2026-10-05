@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from jason.community.books import CANON, Book, Role
@@ -79,6 +81,169 @@ def manual_parts(community: Any) -> tuple[Part, ...]:
     return tuple(out)
 
 
+# --- The parts a stored segmentation gives ---------------------------------------------------------------------------------
+
+
+@dataclass
+class SegmentParts:
+    """What the stored segmentations gave citation scoping: the ``Part`` rows, the names they add, the documents whose
+    classification parts they replace, and a line for each reading used or left out (with the reason)."""
+
+    parts: list[Part] = field(default_factory=list)
+    names: dict[str, str] = field(default_factory=dict)           # lowercase name -> the document key
+    replaced: set[str] = field(default_factory=set)               # documents whose manual-classification parts are replaced
+    notes: list[str] = field(default_factory=list)
+    skipped: list[tuple[str, str]] = field(default_factory=list)  # (reading id, why)
+
+
+def _fold(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def bind_outline(text: str, outlines: dict[str, DocumentOutline], *, windows: int = 20, width: int = 24) -> tuple[str, str]:
+    """Which outline's document a file's text is: (key, why). Twenty short windows of the file's words, spread over it, are
+    looked for in each outline's words (spacing, case, and punctuation ignored). An outline holds the file when at least
+    half are found, the two texts are of like length, and no other outline comes within 0.3 of it. Else ("", why): a
+    miss, never the nearest. An outline read from the file itself (``DocumentOutline.library``) is bound by its path
+    instead (``segment_parts``)."""
+    stream = _fold(text)
+    if len(stream) < windows * width * 2:
+        return "", "the file's text is too short to match to an outline"
+    step = (len(stream) - width) // windows
+    probes = [stream[i * step:i * step + width] for i in range(windows)]
+    scored = []
+    for key, o in outlines.items():
+        body = _fold(o.text)
+        if not body or not 0.5 <= len(body) / len(stream) <= 2.0:
+            continue
+        scored.append((sum(1 for q in probes if q in body) / windows, key))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] < 0.5:
+        return "", "no outline's words are the file's"
+    if len(scored) > 1 and scored[1][0] > scored[0][0] - 0.3:
+        return "", f"the file's words fit more than one outline ({scored[0][1]}, {scored[1][1]})"
+    return scored[0][1], f"{scored[0][0]:.0%} of the file's sampled words are the outline's"
+
+
+def _bound(shelf: Any, seg: Any, row: dict[str, Any]) -> tuple[str, str]:
+    outlines = shelf.outlines()
+    by_path = [k for k, o in outlines.items() if o.library and o.library == row.get("path")]
+    if len(by_path) == 1:
+        return by_path[0], "the outline was read from this file"
+    from jason.tasks import library as lib
+
+    return bind_outline(lib.text_for(Path(shelf.data_dir), seg.id), outlines)
+
+
+def _span_numbers(part: Any, outline: DocumentOutline, exhibits: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """The outline's section numbers that start inside the part's words, found by its heading (``part_span``): none where
+    the heading is not in the outline's text. The part stops where an exhibit's heading (its label and title, ``exhibits``)
+    begins inside it: what follows is the exhibit's, and an exhibit's sections are not the document's."""
+    from jason.community.document_segments import part_span
+
+    span = part_span(part, outline.text, exhibits)
+    if span is None:
+        return ()
+    start, end = span
+    return tuple(dict.fromkeys(s.number for s in outline.sections if s.number and start <= s.start < end))
+
+
+@dataclass
+class Readings:
+    """The stored segmentations that may be used, each with the outline's key it is the document of, and why the others
+    may not."""
+
+    readings: list[tuple[str, Any]] = field(default_factory=list)      # (outline key, Segmentation)
+    notes: list[str] = field(default_factory=list)
+    skipped: list[tuple[str, str]] = field(default_factory=list)       # (reading id, why)
+
+
+def segment_readings(shelf: Any) -> Readings:
+    """The stored segmentations (``data/library/segments``) that are of a file in the library, on disk, whose bytes are
+    those the reading was made of (a stale one is left out, with the reason), that holds one top-level document, and that
+    is the words of one outline (``bind_outline``). Each other reading is left out and says why: a miss is not a guess."""
+    from jason.approvals.evidence import library_row
+    from jason.tasks import segments as task
+
+    out = Readings()
+    data_dir = Path(shelf.data_dir)
+    try:
+        stored = sorted(task.stored(data_dir), key=lambda r: r.id)
+    except Exception:  # noqa: BLE001 - an unreadable store is no readings
+        return out
+
+    def skip(seg: Any, why: str) -> None:
+        out.skipped.append((seg.id, why))
+        out.notes.append(f"segmentation {seg.id} not used: {why}")
+
+    for seg in stored:
+        row = library_row(data_dir, seg.id)
+        if row is None:
+            skip(seg, "the file is not in the library, so its bytes and its document cannot be checked")
+            continue
+        pdf = data_dir / "library" / "files" / str(row.get("path") or "")
+        if not pdf.is_file():
+            skip(seg, "the file is not on disk")
+            continue
+        if task.stale(seg, pdf):
+            skip(seg, "stale: the file's bytes changed since it was read")
+            continue
+        tops = seg.top()
+        if len(tops) != 1:
+            skip(seg, f"the file holds {len(tops)} documents, and none is known to be the outline's")
+            continue
+        key, how = _bound(shelf, seg, row)
+        if not key:
+            skip(seg, how)
+            continue
+        out.readings.append((key, seg))
+        out.notes.append(f"segmentation {seg.id} is the document {key} ({how})")
+    return out
+
+
+def segment_parts(shelf: Any) -> SegmentParts:
+    """The parts the stored segmentations give (``segment_readings``), as ``Part`` rows with ``source`` "segments". A part
+    inside the document has its own section numbers (``numbers``); an exhibit, or a part inside one, has a name and a path
+    and no numbers, since its sections are not an outline."""
+    from jason.community.document_segments import address
+
+    out = SegmentParts()
+    found = segment_readings(shelf)
+    out.notes, out.skipped = list(found.notes), list(found.skipped)
+    for key, seg in found.readings:
+        outline = shelf.outlines()[key]
+        before = len(out.parts)
+
+        def nested(segment_key: str, seg: Any = seg) -> tuple[str, ...]:
+            names = []
+            for k in seg.path(segment_key)[1:]:
+                held = seg.segment(k)
+                names.append((held.label or held.title or held.key) if held else k)
+            return tuple(names)
+
+        exhibits = tuple(f"{c.label} {c.title}" for c in seg.segments if c.role == "exhibit" and c.label)
+        for part in seg.parts:
+            way = nested(part.segment) if part.segment else ()
+            numbers = _span_numbers(part, outline, exhibits) if not way else ()
+            out.parts.append(Part(key, part.anchor, part.book, part.title, part.aliases, part.through, "segments",
+                                  (*way, part.title), numbers, address(seg.id, part=part.key), part.pages, part.kind.value))
+            if len((part.title or "").split()) >= 2:
+                for name in (part.title, *part.aliases):
+                    out.names.setdefault(name.lower(), key)
+            if numbers:
+                out.replaced.add(key)
+        for child in seg.segments:
+            if child.role != "exhibit" or not child.label:
+                continue
+            out.parts.append(Part(key, child.label, "", child.label, child.aliases, "", "segments", nested(child.key), (),
+                                  address(seg.id, segment=child.key), child.pages, "exhibit"))
+            for name in (child.label, *child.aliases):
+                out.names.setdefault(name.lower(), key)
+        out.notes.append(f"segmentation {seg.id} gave {key} {len(out.parts) - before} parts and exhibits"
+                         + ("; its sections replace the manual classification's" if key in out.replaced else ""))
+    return out
+
+
 def build_index(shelf: Any) -> Index:
     """The ``Index`` of a ``Shelf``'s documents."""
     community = shelf.community
@@ -133,7 +298,13 @@ def build_index(shelf: Any) -> Index:
         return _label_free(current.text_of(number)) if current is not None else ""
 
     index.has, index.words = has, words
-    index.parts = manual_parts(community)
+    manual = manual_parts(community)
+    found = segment_parts(shelf) if getattr(shelf, "segments", True) else SegmentParts()
+    index.parts = tuple(p for p in manual if p.document not in found.replaced) + tuple(found.parts)
+    for name, key in found.names.items():
+        if _norm_name(name) not in index.names and _norm_name(name) not in index.groups:
+            index.scan_names.setdefault(name, key)
+    index.segment_notes = tuple(found.notes)
     return index
 
 
@@ -175,6 +346,7 @@ def read_text(shelf: Any, text: str, *, citing: str = "", day: date | str | None
                      "reason": st.reason.value if st.reason else "", "document": c.target.key if c.target else "",
                      "citation": st.citation, "status": status_of(st.found, st.reason.value if st.reason else ""),
                      "basis": scope.basis.value if scope is not None and scope.basis is not None else "",
+                     "path": list(scope.path) if scope is not None else [],
                      "candidates": [x.key for x in scope.candidates if x.has] if scope is not None and not st.found else [],
                      "detail": st.detail if not st.found else ""})
     return rows

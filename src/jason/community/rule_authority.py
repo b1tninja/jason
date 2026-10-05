@@ -40,7 +40,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Callable, Iterable, Sequence
 from urllib.parse import urlparse
@@ -48,6 +48,7 @@ from urllib.parse import urlparse
 from jason.community.deontic import (
     Bearer, DocumentDuty, DutyKind, _descends, find_bearer, read_outline, sentences,
 )
+from jason.community.document_segments import part_span
 from jason.community.outlines import DocumentOutline
 from jason.community.reference_model import LOCAL_HOSTS, find_quote, passages
 
@@ -376,6 +377,8 @@ class Candidate:
     duties: tuple[str, ...] = ()     # ids of the duty readings in the sentence
     part: str = ""                   # the part of the document it sits in ("rules", "guidance", ...), when parts are known
     items: tuple[str, ...] = ()      # the list a lead-in opens ("the following subjects:"), item by item
+    part_source: str = ""            # where the part comes from: "segments" or "classification" ("" when no parts are known)
+    part_contested: str = ""         # the other reading's kind for the part, where the two disagree it is a rule
 
     @property
     def id(self) -> str:
@@ -445,6 +448,8 @@ class RuleAuthority:
     part: str = ""
     review: Review = Review.UNREVIEWED
     note: str = ""
+    part_source: str = ""            # where the part came from: "segments" (a stored segmentation) or "classification"
+    part_contested: str = ""         # the other reading's kind for the part, where the two disagree it is a rule
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "source": self.source, "section": self.section, "title": self.title,
@@ -453,7 +458,7 @@ class RuleAuthority:
                 "conditions": [_cond_dict(c) for c in self.conditions],
                 "procedure": self.procedure, "words": self.words, "sentence": self.sentence, "tier": self.tier.value,
                 "readers": list(self.readers), "consistency": self.consistency, "related": list(self.related),
-                "part": self.part, "review": self.review.value, "note": self.note}
+                "part": self.part, "partSource": self.part_source, "partContested": self.part_contested, "review": self.review.value, "note": self.note}
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> RuleAuthority:
@@ -465,7 +470,8 @@ class RuleAuthority:
                    procedure=raw.get("procedure", ""), words=raw.get("words", ""), sentence=raw.get("sentence", ""),
                    tier=Tier(raw["tier"]), readers=tuple(raw.get("readers") or ()), consistency=raw.get("consistency"),
                    related=tuple(raw.get("related") or ()), part=raw.get("part", ""),
-                   review=Review(raw.get("review", "unreviewed")), note=raw.get("note", ""))
+                   review=Review(raw.get("review", "unreviewed")), note=raw.get("note", ""),
+                   part_source=raw.get("partSource", ""), part_contested=raw.get("partContested", ""))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -483,17 +489,110 @@ class RulePart:
     kind: str
     book: str = ""
     label: str = ""
+    origin: str = "classification"   # where the part comes from: "classification" (the manual's rows) or "segments"
+    contested: str = ""              # the other reading's kind, where the two disagree whether it is a rule (``merge_parts``)
 
 
 def parts_from_manual(source: str, classification: Any) -> list[RulePart]:
     """The parts of a manual-type document from ``jason.community.manual.classify``: each segment with its kind.
-    A document-segmentation reader's parts would be mapped to ``RulePart`` here and nowhere else."""
+    A stored segmentation's parts are ``parts_from_segments``."""
     out = []
     for seg in getattr(classification, "segments", ()) or ():
         if seg.end <= seg.start:
             continue
         out.append(RulePart(source, seg.start, seg.end, seg.kind.value, seg.target.book, seg.old))
     return out
+
+
+SEGMENT_KINDS = {"rules": "rule", "policy": "policy", "procedure": "policy"}
+RULE_PART_KINDS = ("rule", "policy")
+
+
+def parts_from_segments(source: str, parts: Iterable[Any], text: str, *, exhibits: Iterable[Any] = ()) -> list[RulePart]:
+    """The parts of a document from a stored segmentation (``document_segments``): each part is found in ``text`` (the
+    outline's) by its heading (``part_span``) and kept with its kind (a rules part is "rule", a policy or procedure
+    "policy", anything else its own word: "guidance", "form", "cover"), and each exhibit, from its heading to the next
+    exhibit or part, as "exhibit": a grant stated in an exhibit counts as the exhibit's and a rule there is not a rule on
+    file. A part whose heading is not in ``text`` is left out, never placed by guess. Each part's ``origin`` is "segments".
+    ``merge_parts`` sets them beside the manual classification's."""
+    heads = [f"{e.label} {e.title}".strip() for e in exhibits if getattr(e, "label", "")]
+    found: list[RulePart] = []
+    for part in parts:
+        if getattr(part, "segment", "") and part.segment.count(".") > 0:
+            continue                     # a part inside an exhibit is the exhibit's
+        span = part_span(part, text, heads)
+        if span is None or span[1] <= span[0]:
+            continue
+        found.append(RulePart(source, span[0], span[1], SEGMENT_KINDS.get(part.kind.value, part.kind.value), part.book,
+                              part.title, "segments"))
+    found.sort(key=lambda p: p.start)
+    trimmed: list[RulePart] = []
+    for k, p in enumerate(found):
+        later = [q.start for q in found[k + 1:] if q.start > p.start]
+        trimmed.append(replace(p, end=min([p.end, *later])))
+    found = trimmed
+    marks = []
+    for e in exhibits:
+        if not getattr(e, "label", ""):
+            continue
+        at = _find_heading(text, f"{e.label} {e.title}".strip())
+        if at is not None:
+            marks.append((at, e))
+    marks.sort(key=lambda m: m[0])
+    for k, (at, e) in enumerate(marks):
+        later = [p.start for p in found if p.start > at] + [m[0] for m in marks[k + 1:]] + [len(text)]
+        found.append(RulePart(source, at, min(later), "exhibit", "", e.label, "segments"))
+    return sorted(found, key=lambda p: p.start)
+
+
+def merge_parts(segmented: Sequence[RulePart], classified: Sequence[RulePart], text: str) -> list[RulePart]:
+    """One document's parts from both readings, the stored segmentation's and the manual classification's.
+
+    - Text only one of them covers keeps that reading's part.
+    - Where both cover it and agree on the kind (a rule part, a policy part), or both read it as something that is not
+      a rule or a policy (guidance, a copy, an exhibit, a form), the segmentation's part is kept: it is the preferred
+      reading, so the part says "segments".
+    - Where they **disagree** (one reads a rule where the other reads a policy, or reads a rule where the other reads
+      guidance), the classification's part is kept and the segmentation's kind is written on it
+      (``RulePart.contested``). A reading that would count a stretch as rules the other does not is a question for a
+      person, never a way to enlarge the rules on file; the counts of a document the classification covers do not change.
+    A stretch with no letter or digit (the line break between two parts) goes with the part before it."""
+    cuts = sorted({0, len(text), *(p.start for p in [*segmented, *classified]), *(p.end for p in [*segmented, *classified])})
+    pieces: list[RulePart] = []
+    for a, b in zip(cuts, cuts[1:]):
+        if b <= a:
+            continue
+        s = next((p for p in segmented if p.start <= a and b <= p.end), None)
+        c = next((p for p in classified if p.start <= a and b <= p.end), None)
+        if s is None and c is None:
+            continue
+        if s is not None and c is not None:
+            if s.kind == c.kind or (s.kind not in RULE_PART_KINDS and c.kind not in RULE_PART_KINDS):
+                chosen = s
+            else:
+                chosen = replace(c, contested=s.kind)
+        else:
+            chosen = s or c
+        if pieces and pieces[-1].end == a and _same_part(pieces[-1], chosen):
+            pieces[-1] = replace(pieces[-1], end=b)
+        elif pieces and pieces[-1].end == a and not any(ch.isalnum() for ch in text[a:b]):
+            pieces[-1] = replace(pieces[-1], end=b)
+        else:
+            pieces.append(replace(chosen, start=a, end=b))
+    return pieces
+
+
+def _same_part(a: RulePart, b: RulePart) -> bool:
+    return (a.source, a.kind, a.book, a.label, a.origin, a.contested) == (b.source, b.kind, b.book, b.label, b.origin, b.contested)
+
+
+def _find_heading(text: str, heading: str) -> int | None:
+    """Where a heading begins a line of ``text`` (an exhibit's label and title): a mention in a sentence is not it."""
+    folded = re.sub(r"[^a-z0-9]+", "", heading.lower())
+    if len(folded) < 4:
+        return None
+    found = re.search(r"(?m)^[ \t#*]*" + r"[\W_]*".join(re.escape(c) for c in folded), text, re.I)
+    return found.start() if found else None
 
 
 def part_at(parts: Sequence[RulePart], source: str, start: int) -> RulePart | None:
@@ -575,7 +674,8 @@ def candidates(outline: DocumentOutline, duties: Iterable[DocumentDuty] | None =
                 if items:
                     context += "\nThe list that follows:\n" + "\n".join("- " + i[:200] for i in items)
             out.append(Candidate(outline.key, p.section, p.title, p.start + s, p.start + e, sent, context,
-                                 tuple(dict.fromkeys(why)), tuple(d.id for d in mine), part.kind if part else "", items))
+                                 tuple(dict.fromkeys(why)), tuple(d.id for d in mine), part.kind if part else "", items,
+                                 part.origin if part else "", part.contested if part else ""))
     return out
 
 
@@ -947,7 +1047,8 @@ def combine(c: Candidate, rules: Reading, model: Reading | None) -> RuleAuthorit
     procedure = lead.procedure or next((r.procedure for r in chosen if r.procedure), "")
     return RuleAuthority(c.id, c.source, c.section, c.title, answer, holder, tuple(subjects), others, tuple(seen.values()),
                          procedure, words, _clean(c.text), tier, tuple(r.reader for r in chosen),
-                         model.consistency if model is not None else None, (), c.part)
+                         model.consistency if model is not None else None, (), c.part, part_source=c.part_source,
+                         part_contested=c.part_contested)
 
 
 def link(rows: list[RuleAuthority]) -> list[RuleAuthority]:
@@ -1024,6 +1125,7 @@ class RuleOnFile:
     subjects: tuple[Subject, ...]
     words: str                       # the section's first norm sentence
     kind: str = "rule"               # "rule" or "policy" (a policy bound in, or a separate policy document)
+    part_source: str = ""            # where the part came from, when the document has parts: "segments" or "classification"
 
 
 RULE_KINDS = ("operating_rules", "election_rules", "policy")
@@ -1057,7 +1159,8 @@ def rules_on_file(outlines: Iterable[DocumentOutline], *, duties: dict[str, list
                 continue
             subs = subjects_of(f"{p.title} " + " ".join(d.quote for d in norms[:2]))
             out.append(RuleOnFile(outline.key, p.section, p.title, subs, _clean(norms[0].quote)[:300],
-                                  part.kind if part else ("policy" if outline.kind == "policy" else "rule")))
+                                  part.kind if part else ("policy" if outline.kind == "policy" else "rule"),
+                                  part.origin if part else ""))
     return out
 
 

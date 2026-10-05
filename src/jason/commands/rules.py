@@ -119,7 +119,7 @@ def _measure(args: argparse.Namespace, data_dir: Path, items: list[dict[str, Any
     cache = ra.load_answers(data_dir)
     model = _model(args) if args.model is not None else None
     try:
-        found = ra.find(outlines, model=model, duties=duties, parts=task.manual_parts(data_dir, active), samples=args.samples,
+        found = ra.find(outlines, model=model, duties=duties, parts=task.rule_parts(data_dir, active, outlines), samples=args.samples,
                         cache=cache, cached_model=_model_name(args), log=lambda line: print(line, file=sys.stderr))
     except ModelUnavailable as exc:
         print(f"the local model is not available: {exc}", file=sys.stderr)
