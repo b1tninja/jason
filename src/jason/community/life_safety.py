@@ -140,6 +140,7 @@ def row_name(row: Any) -> str:
 # How a fact about the association's buildings is asked for. The intake questions use the same words
 # (``jason.community.applicability_asks.ASKS``).
 PROPERTY_ASKS: dict[Fact, str] = {
+    Fact.COMMON_INTEREST: "what kind of common interest development is it?",
     Fact.ELEVATED_ELEMENTS: "does it have exterior elevated elements for which the association has maintenance or "
                             "repair responsibility (Civil Code 5551(a), (b)(1): balconies, decks, stairways, or "
                             "walkways that extend beyond a building's exterior walls, with a walking surface more "

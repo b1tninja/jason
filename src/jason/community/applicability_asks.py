@@ -76,7 +76,6 @@ ASKS: dict[Fact, str] = {
     Fact.VENDOR_WORK: "which kinds of work does the vendor do on it (inspection, testing, maintenance, repair, "
                       "installation, design, monitoring)?",
     Fact.LICENSE_CLASS: "which license classes does the vendor hold?",
-    Fact.COMMON_INTEREST: "what kind of common interest development is it?",
     Fact.HOME_IMPROVEMENT: "is the work a home improvement (Business and Professions Code 7151 and 7151.2)?",
     Fact.ELECTRONIC_VOTING: "does an election operating rule allow electronic secret ballots, and do members opt "
                             "out or opt in (Civil Code 5105(i))?",
