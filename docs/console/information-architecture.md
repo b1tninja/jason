@@ -10,21 +10,21 @@ Detail lives elsewhere:
 
 ## The navigation as built
 
-A grouped left nav; under 720 px a "Go to" select. The header carries the community's wordmark (`GET /api/theme`), "Signed in as" (a sample pick over the profile's officers, not an account), the dock toolbar, and the Board / Owner view switch. Addresses are hash routes, `#/<id>`, with `?view=owner` for the owner view, so a shared link lands on the same screen for the same audience.
+A grouped left nav; under 720 px a "Go to" select. The header carries the community's wordmark (`GET /api/theme`), "Signed in as" (the Google account when someone has signed in, with Sign out; else a sample pick over the profile's officers, which is a name and not an account), the dock toolbar, and the Board / Owner view switch. A role class from the signed-in person's offices (officer, manager, administrator) filters the nav (`roles` on a screen: Decisions is for officers and administrators; Status only for one of jason's admins) and picks the landing screen (`DEFAULT_LANDING`). Addresses are hash routes, `#/<id>`, with `?view=owner` for the owner view, so a shared link lands on the same screen for the same audience.
 
-The design project names each screen as a component (`ConsoleDigest`, `ConsoleApprovals`, ...). The table gives both names.
+The design project names each screen as a component (`ConsoleDigest`, `ConsoleApprovals`, ...). Those are names in the design project: jason-ui exports no component of that name, and the screens are the views in `ui/src/views/`. The table gives both names.
 
 | Group | Screen (nav label) | Route | Design name | Owner view | Reads |
 |---|---|---|---|---|---|
 | Overview | Board digest ("Overview" for owners) | `#/digest` | `ConsoleDigest` | yes: the member digest | `/api/board-digest`; the owner view `/api/owner-digest` |
-| Overview | Approvals (with the pending count) | `#/approvals` | `ConsoleApprovals` | no | `/api/approvals`; the engine's routes being added |
+| Overview | Approvals (with the pending count) | `#/approvals` | `ConsoleApprovals` | no | `/api/approvals` (the letters, and the engine's plans beside them); one plan `/api/approvals/<id>` and `/api/approvals/audit`; the steps `POST /api/approvals/<id>/<decide, submit, confirm, decline, withdraw, check, apply>` |
 | Overview | Duties by cadence | `#/duties` | `ConsoleDuties` | no | `/api/duties` |
 | Overview | Inbox | `#/inbox` | — | no | `/api/open-items` |
-| Overview | Mail triage, Drafts, Leads, Jobs | `#/mail-triage`, `#/drafts`, `#/leads`, `#/jobs` | — | no | `/api/mail-triage`, `/api/request-links?drafts=1`, `/api/leads`, `/api/jobs` |
-| Overview | Communities, Onboarding | `#/communities`, `#/onboarding` | — | no | `/api/communities`, `/api/onboarding` |
+| Overview | Mail triage, Drafts, Leads, Jobs | `#/mail-triage`, `#/drafts`, `#/leads`, `#/jobs` | — | no | `/api/mail-triage`, `/api/request-links` (`?unit=`; the loader also takes `?drafts=1`, which the view does not send), `/api/leads`, `/api/jobs` |
+| Overview | Communities, Onboarding | `#/communities`, `#/onboarding` | — | no | `/api/communities`, `/api/onboarding`; the Setup tab `/api/onboarding-session`; Find the association `/api/associations`, `/api/documents-located`; Key documents `/api/key-documents`; Recorded instruments `/api/instrument-graph` |
 | Overview | Status | `#/status` | — | no | `/api/status`, `/api/health` (an admin only; [screens/status.md](screens/status.md)) |
 | Governance | Board action items | `#/actions` (alias `board`) | `ConsoleActions` | no | `/api/board-items` |
-| Governance | Decisions | `#/decisions` | `ConsoleDecisions` | no | `/api/decisions` |
+| Governance | Decisions | `#/decisions` | `ConsoleDecisions` | no | `/api/decisions`, `/api/agenda-plan` |
 | Governance | Plan a meeting | `#/agenda` | `ConsoleAgenda` | no | `/api/agenda-plan` |
 | Governance | Meeting room ("Live meeting" for owners) | `#/room` | `ConsoleMeetingRoom` | yes: the stage alone | `/api/meeting-room` |
 | Governance | Meetings and minutes | `#/meetings` | `ConsoleMeetings` | yes: open-session notices, agendas, minutes | `/api/meetings` |
@@ -37,10 +37,10 @@ The design project names each screen as a component (`ConsoleDigest`, `ConsoleAp
 | Money | Reserve findings | `#/reserve-findings` | — | no | `/api/reserve-findings` |
 | Money | Liens and delinquency | `#/liens` (alias `delinquency`) | `ConsoleLiens` | no | `/api/delinquency` |
 | Money | Books checks, Title watch | `#/books`, `#/title` | — | no | `/api/utility-payments`, `/api/ledger-validation`, `/api/title-watch` |
-| Records | Records (CIV 5200) | `#/records` | `ConsoleRecords` | no (an owner link lands on Records requests) | `/api/association-records`, `/api/records-inventory` |
+| Records | Records (CIV 5200) | `#/records` | `ConsoleRecords` | no (an owner link lands on Records requests) | `/api/association-records`, `/api/records-inventory`, `/api/governing-documents` |
 | Records | Records requests ("Records" for owners: the request form) | `#/records-requests` | — | yes: the form and the record kinds | `/api/records-requests` |
 | Records | Insurance | `#/insurance` | `ConsoleInsurance` | yes: the insurance summary | `/api/insurance` |
-| Records | Insurance renewals, Legal, Document ingestion | `#/renewals`, `#/legal`, `#/ingestion` | — | no | `/api/insurance-renewals`, `/api/legal-cases`, `/api/library-status` |
+| Records | Insurance renewals, Legal, Document ingestion | `#/renewals`, `#/legal`, `#/ingestion` | — | no | `/api/insurance-renewals`, `/api/legal-cases` and `/api/audit-chains`, `/api/library-status` and `/api/document-readings` |
 | Records | Owner page | `#/owner-page` | the community profile page | yes | `/api/community-profile` |
 | (header) | The dock: Deadlines, Tasks, Scratchpad, Ask | a drawer, not a route | the dock | no | `/api/dock?part=` |
 
@@ -51,13 +51,13 @@ In the owner view every read carries `view=owner`, and the server answers it fro
 | Spec screen | In the console | What the spec adds | Spec |
 |---|---|---|---|
 | Today | `#/digest`, with the dock's Deadlines and `#/inbox` | The governance digest's sections (`attention.digest`) beside the board digest; the approvals waiting on a person; the next questions; running work | [today.md](screens/today.md) |
-| Approvals | `#/approvals` (letters, built) | The engine's plans: review by item, held and for-a-person sections, decide and sign, second person, re-plan check, apply behind the flag, audit | [approvals.md](screens/approvals.md) |
+| Approvals | `#/approvals` (letters, and the engine's plans: built) | The engine's plans: review by item, held and for-a-person sections, decide and sign, second person, re-plan check, apply behind the flag, audit. Not yet wired: the item rule's recitation, the kind's risk and reversibility in the header, and plans in the nav count ([approvals.md](screens/approvals.md)) | [approvals.md](screens/approvals.md) |
 | Meetings & minutes | `#/meetings`, `#/meeting`, `#/agenda`, `#/room`, `#/minutes-review`, `#/decisions`, `#/hearings` | The meeting watch's clocks (4920 notice, 4950(a) minutes) read forward, recording a posting, the minutes draft's checks beside the draft, and the record stages | [meetings-and-minutes.md](screens/meetings-and-minutes.md) |
 | Schedule & duties | `#/duties`, `#/disclosures`, the dock's Deadlines and Tasks | The schedule's occurrences by role with "record done", the assignments, coverage, and people's own tasks | [schedule-and-duties.md](screens/schedule-and-duties.md) |
 | Records & library | `#/records`, `#/ingestion`, `#/leads`, `#/records-requests` | Library search, an ingest's report and its apply, and a document's revisions | [records-and-library.md](screens/records-and-library.md) |
 | Finance | `#/payments`, `#/reserves`, `#/liens`, `#/books`, `#/title` | Bank balances by last four, the reserve study, and the ledger's reports | [finance.md](screens/finance.md) |
 | Requests | partly: `#/inbox` (requests pending), `#/drafts` (emailed requests PayHOA lacks), `#/records-requests` (records requests) | Every member request with its clock and standing (`jason respond`), one request's page, and the acknowledgment draft | [requests.md](screens/requests.md) |
-| Onboarding | partly: `#/communities`, `#/onboarding` (accounts, facts, the request list, gaps) | The onboarding session: stage gates, the next questions ranked by what each unblocks, signed answers, and the second person on a high-stakes answer | [onboarding.md](screens/onboarding.md) |
+| Onboarding | `#/communities`, `#/onboarding` (accounts, facts, the request list, gaps; and the Setup tab: the session, built) | The onboarding session: stage gates, the next questions ranked by what each unblocks, signed answers, and the second person on a high-stakes answer. Built, except the proposals list (the patch files under `data/onboarding/proposals/`), which the tab does not show | [onboarding.md](screens/onboarding.md) |
 | Members & units | none (`#/owner-info` holds the cycle's planned writes only) | Proposed whole | [members-and-units.md](screens/members-and-units.md) |
 | Notices | none | Proposed whole | [notices.md](screens/notices.md) |
 | Governing documents | none | Proposed whole: the reader and the cite box | [governing-documents.md](screens/governing-documents.md) |
@@ -70,7 +70,7 @@ A new screen is a row in `SCREENS` and a loader in `jason.web.sources` (or a mod
 | Screen | Group, route | Loader to add | Wraps |
 |---|---|---|---|
 | Requests | Overview, `#/requests` | `member-requests` (`?open=1`, `?id=`) | `jason.api.member_requests`, `response_sources`, `acknowledgment_draft` |
-| Members and units | Governance, `#/members` (`?unit=` a PayHOA unit id only) | `members`, `unit` | `owner_info.ledger` and `summary` from the stored catalog; `party_brief`, `unit_brief`, `parcel_liens`, `new_owners` |
+| Members and units | Governance, `#/members` (`?unit=` a PayHOA unit id only) | `members`, `unit` (not built; the unit record's own loaders, `unit-record` and `loss-packet`, are built and wait for this screen) | `owner_info.ledger` and `summary` from the stored catalog; `party_brief`, `unit_brief`, `parcel_liens`, `new_owners` |
 | Notices | Governance, `#/notices` (`?key=`) | `notices`, `notice` | `notice_ledger.notices`, `notice_record.build`, `jason.api.notice_requirements`, `notice_delivery` |
 | Governing documents | Records, `#/documents` (`?q=`, `?address=`) | `cite`, `record` | `jason.api.cite_document`, `read_record`, `section_refs`, `living_document`, `document_conflicts` |
 | What applies | Governance, `#/applies` (`?subject=association\|system:<key>\|building:<key>`, `?as_of=`, `?fact=FACT=WORD`) | `applies`, `applies-questions`, `notice-catalog`; writes through the built `intake` writer, a proposed `applies` writer (file the questions), and a proposed `applies/to-board` writer (take a board's fact to its agenda) | `jason.tasks.applicability_asks.evaluate`, `applicability_asks.questions`/`standing`, `elevated_inspections.records`, `notice_catalog.applicable`/`about`, `jason.api.answer_intake_question`, `onboarding_confirm` |
@@ -81,7 +81,7 @@ A new screen is a row in `SCREENS` and a loader in `jason.web.sources` (or a mod
 | The machine | Administration, `#/instance/machine` (a band beside `#/status`) | the loaders [handoff-storage-and-settings.md](handoff-storage-and-settings.md#where-it-goes) names | `storage.report`, `config.user_config_path`, `locks.holders`, `local_ai`, `jason index --status` |
 | Programs | Governance, `#/programs` (`/<key>`; `?source=`, `?as_of=`, `?view=gaps\|detected\|references`) | the loaders [handoff-programs.md](handoff-programs.md#where-it-goes) names; writes `programs/mandate`, `programs/bind`, `programs/adopted`, `programs/verdict`, `programs/draft`, `programs/propose` | `program_catalog`, `program_detect`, `program_resolver`, `reviews` (the programs lens), `law_readings.recite`, `document_collections`, `obligations` |
 | Home improvement requests | Overview, a band of `#/requests` (`?kind=architectural`; `?id=` with tabs Application, Review, Board, Decision, Work, Record); an Improvements tab of `#/members?unit=`; the owner view `#/unit?view=owner&unit=ID` | `improvement-requests`, `improvement-request`, `improvement-policies`, `unit-home`, `improvement-schedule`, `improvement-findings`; the loss packet gains `changes[]`; writes under `improvement/*` (each takes `by`) | `jason.api.member_requests`, `applicability.evaluate`, `decisions`, `tasks.board_items.propose`, `unit_records_view`, `notice_elements` |
-| Onboarding session | a band of `#/onboarding` | `onboarding-session`, `next-questions` | `jason.api.onboarding_status`, `next_questions`, `intake_questions`; writes through `answer_intake_question` and `onboarding_confirm` (both take `by`) |
+| Onboarding session (built: the Setup tab of `#/onboarding`) | a tab of `#/onboarding` | `onboarding-session` (built; its `next` field is the ranked questions, so there is no separate `next-questions` loader to add) | `jason.api.onboarding_status`, `next_questions`, `intake_questions`; the built writer `POST /api/write/intake/<id>` queues `answer_intake_question` and `onboarding_confirm` (both take `by`) |
 | The governance digest | a band of `#/digest` | `governance-digest` (`?section=`) | `jason.api.governance_digest` |
 | The meeting watch | a band of `#/meetings` | `meeting-watch` | `meeting_watch.watch`, `record_stages.histories` |
 | The schedule | a band of `#/duties` | `schedule` (`?role=`, `?days=`) | `jason.api.schedule_agenda`, `schedule_assignments` |

@@ -42,9 +42,9 @@ interface DocRef {
 - **The server decides the level.** The client never infers it from a path.
 
 **Server helpers**, in `jason.approvals.docref`, so every loader builds references the same way:
-- `doc_ref(address, *, name=None, document=None) -> dict`: a light resolve. It reads only the copy's metadata, never the document.
-- `file_ref(rel_path)`, `drive_ref(id)`, `library_ref(id)`, `submission_ref(n)`, `citation_ref(expr)`, and `gmail_ref(id)` once Gmail lands.
-- `refs_from_strings(strings)` maps the free-text evidence strings older stores hold (`"library: …"`, `"Drive: name"`, `"data/…"`, `"jason …"`) to references. A command stays a command; an unknown string stays text, never a guess.
+- `doc_ref(address, *, name=None, document=None, data_dir=None) -> dict`: a light resolve. It reads only the copy's metadata, never the document. A `board-item:ID` address is a reference too (P1; an executive-session item is P3 and named by its subject).
+- `file_ref(rel_path)`, `drive_ref(id)`, `library_ref(id)`, `submission_ref(n)`, `citation_ref(expr)` (each also takes `name=`, and all but `citation_ref` a `data_dir=`), and `gmail_ref(id)` once Gmail lands (not built).
+- `refs_from_strings(strings)` (one string: `ref_from_string`) maps the free-text evidence strings older stores hold (`"library: …"`, `"Drive: name"`, `"data/…"`, `"jason …"`) to references. A command stays a command; an unknown string stays text, never a guess.
 
 ## The component: `Doc`
 

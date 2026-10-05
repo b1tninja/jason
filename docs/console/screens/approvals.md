@@ -8,7 +8,13 @@ The model behind this screen is [approval-workflow.md](../approval-workflow.md):
 
 **Approvals** (`#/approvals`, `ConsoleApprovals`) is built for **letters**: every letter jason drafted, grouped by whose turn it is (`ApprovalsInbox`): with someone signed in, "Waiting on you" first (the letters awaiting a personal approver's approval that person may approve, or "Nothing is waiting on you."), then "Waiting on others" (each naming its approver), "Waiting on the board's vote" (every letter whose approver is the board, for everyone: a vote at a meeting (CIV 4910) on an item on the posted agenda (CIV 4930), which the president or the secretary records afterwards with the meeting's date), "Approved, not sent", and "Sent"; with no one signed in, "Awaiting approval", "Approved, not sent", and "Sent". The selected one opens below as a `DraftLetter`, and the nav counts the letters awaiting an approver. A board approval there is the vote recorded by the president or the secretary with the meeting's date.
 
-**What this spec adds:** the engine's **plans of writes** in the same inbox (`PlanApprovals`), and the review of one of them (`PlanReview`). The routes are `jason.web.approvals` ([web-ui.md](../../web-ui.md#approvals)) and the components are being added ([components.md](../components.md#approval)). The letters' part is unchanged.
+**What this spec adds:** the engine's **plans of writes** on the same screen (`PlanApprovals`), and the review of one of them (`PlanReview`). The routes are `jason.web.approvals` ([web-ui.md](../../web-ui.md#approvals)) and the components are built ([components.md](../components.md#approval)). The letters' part is unchanged.
+
+**As built, and what is still to do.** The plans are a "Plans of writes" table above the "Letters" groups, on one screen, not one interleaved list; a plan opens below its row as a `PlanReview`. Four things the layouts below show are not wired yet:
+- **The item's rule** shows as its citation ("Rule: Civil Code 4040(a)(2)"), with no "recite" disclosure: `PlanApprovals` passes `PlanReview` no `recitations`, and the `cite` loader that would feed them is not built ([governing-documents.md](governing-documents.md)).
+- **The header's risk and reversibility line** is not shown: the plan's answer carries no kind record (see Data, "The kind").
+- **The nav count** is the letters waiting on a person; it does not add the plans.
+- **"Open in PayHOA"** (Actions) has no control.
 
 ## Purpose and personas
 
@@ -26,8 +32,8 @@ A person reads a plan jason made, item by item, with each item's reason, rule, a
 |---|---|
 | The inbox | `GET /api/approvals`: the letters (`letters`, `groups`, `pending`, `people`) and the engine's approvals (`approvals[]` with id, kind, title, status, counts by class and decision, who asked, when; `approvalsOpen`; `approvalsCaveat`). `?status=`, `?kind=` filter the plans |
 | One plan | `GET /api/approvals/<id>`: the `Approval` as stored (`approval.schema.json`), with its items, decisions, signatures, `costCents`, `clock`, `summary`, `result`, and `notes` |
-| The kind | `jason.approvals.registry.get(kind)`: `title`, `cli`, `risk`, `approver`, `reversible`, `cost`, `clock`, `rule`, `max_age_hours`. Add to the plan's answer, or as `GET /api/approvals/kinds` |
-| An item's rule, recited | `jason.api.cite_document(item.rule)` where the rule is a citation; a rule row by its address. A loader to add (`cite`, shared with [governing-documents.md](governing-documents.md)) |
+| The kind | `jason.approvals.registry.get(kind)`: `title`, `cli`, `risk`, `approver`, `reversible`, `cost`, `clock`, `rule`, `max_age_hours`. Not in any answer yet: add it to the plan's answer, or as `GET /api/approvals/kinds` (the CLI has `jason approvals kinds`). `PlanPanel` needs `approver` (is a second person always needed) and `max_age_hours` from it: today it passes the component's defaults, one person and 24 hours |
+| An item's rule, recited | `jason.api.cite_document(item.rule)` where the rule is a citation; a rule row by its address. A loader to add (`cite`, shared with [governing-documents.md](governing-documents.md)); `PlanReview` takes the answers as `recitations`, keyed by the rule, and the view passes none yet |
 | The audit | `GET /api/approvals/audit?approval=<id>` (`?verify=1` for the chain) |
 | Whether apply is on | `GET /api/session`: `applyEnabled`, `liveChecks` |
 | Who is signing | "Signed in as" (`useSession`), over `people` |
@@ -113,24 +119,24 @@ After submit, the bar becomes: **Check** (re-read, write nothing), and either **
 | Apply | `POST /api/approvals/<id>/apply` (`by`, `confirm`: the fingerprint shown), only with `--allow-apply` | `applying`, then `applied` or `failed`; or `superseded` with nothing written | `jason approvals apply ID --yes --by NAME` |
 | Withdraw | `POST /api/approvals/<id>/withdraw` (`by`, `reason`) | `withdrawn` | `jason approvals withdraw ID --by NAME --reason TEXT` |
 | Recite | the rule's `Recitation` | None | `jason cite "EXPR"` |
-| Open in PayHOA (for a person) | a link to the owner in PayHOA's own interface | None | `jason party` |
+| Open in PayHOA (for a person) (proposed, not built) | a link to the owner in PayHOA's own interface | None | `jason party` |
 
 **Submit copy.** The button says what will be signed: "Approve 5 of 8 changes as Jane Example". With every approvable item approved: "Approve all 8 changes as Jane Example". With some undecided, the button is unavailable and says why beside it: "Decide 2 more changes to submit." ([style.md](../content/style.md#confirmations-and-approvals))
 
-**Apply copy.** For a reversible kind: "Apply 8 changes now". For a kind whose `reversible` says no for any part, the `Confirm` restates what cannot be undone and asks the person to type the count: "This marks 1 request complete and emails the owner the board's comment. An email cannot be recalled. Type 1 to apply." ([patterns.md](../content/patterns.md#undo-and-no-undo))
+**Apply copy.** For a reversible kind: "Apply 8 changes now" (built, through `Confirm`, naming the signer and the fingerprint's first 12 hex). For a kind whose `reversible` says no for any part, the `Confirm` restates what cannot be undone and asks the person to type the count: "This marks 1 request complete and emails the owner the board's comment. An email cannot be recalled. Type 1 to apply." ([patterns.md](../content/patterns.md#undo-and-no-undo)). The type-the-count step is proposed: the built `Confirm` does not ask for it, and needs the kind's `reversible` (see Data) to know when to.
 
 ## States
 
 | State | What shows |
 |---|---|
-| No plans | "No plans are waiting." with the command that makes one |
+| No plans | "No plan of writes on disk." with the command that makes one (`jason approvals plan owner-info-tags --by NAME`) |
 | Planned, nothing to write | "Nothing to write. Every owner's tags already match their answers." Held and for-a-person sections still show |
 | In review | As drawn |
-| Plan too old | "This plan was read 26 hours ago, longer than the 24 this kind allows. Plan again to apply." (`ChangedBanner`). Decisions stay; apply would refuse |
+| Plan too old | "This plan was read 26 hours ago. That is longer than the 24 hours this kind allows before apply." (`ChangedBanner`). Decisions stay, but the engine refuses an apply on a plan older than its kind allows ("plan again", `engine.problems`), so the banner should say to plan again. The built banner says "Decisions stand; apply reads live again first, or re-plan now", which the engine does not do (a defect in the banner, not in this spec) |
 | Changed since review | `ChangedBanner` first, with what changed and the new approval. `ApproveBar` is blocked |
 | Waiting on a second person | `SecondConfirm` for anyone but the first signer and the requester; for them: "Waiting on a second person. You signed this plan, so you cannot confirm it." |
 | Approved, apply off | The terminal command, and "Apply is off in this console: a person applies from a terminal, or starts jason-web with --allow-apply." |
-| A live read needs a person | "jason could not sign in to PayHOA: no Keeper session. Run `jason login` in a terminal." Nothing was written |
+| A live read needs a person | The server answers 503 with the sign-in's own message, then "run `jason login` in a terminal; jason-web never asks for a credential" (`KeeperAuthRequired` for PayHOA, `GoogleAuthRequired` for Google). Nothing was written |
 | Applying | Busy, then `ApplyResult` |
 | Applied | `ApplyResult`: applied, and what was not, each in a disclosure. Not applied says why: rejected, held for the board, for a person |
 | Failed | `ApplyResult` with failures open. An uncertain item: "The request went out and no answer came back. The next plan's live read will show whether it was written. Do not apply again until then." |
@@ -150,11 +156,11 @@ After submit, the bar becomes: **Check** (re-read, write nothing), and either **
 2. Every item renders in exactly one section by its class. Held, for-a-person, confirm, and informational items have no checkbox and no decision control, and the server refuses a decision on one (400, in the engine's words).
 3. "Approve all approvable" sets only approvable items. A test with a held item checks it stays undecided.
 4. The submit button's label always states the approved count, the approvable total, and the signer's name, and changes as decisions change.
-5. A rejection or a hold without a reason is refused with "Give a reason of a few words for rejecting this change." (or "…for holding this change for the board.").
+5. A rejection or a hold without a reason is refused with "Give a reason of a few words for rejecting these changes." (or "…for holding these changes for the board.").
 6. The second-person form refuses the first signer's and the requester's names, compared casefold and trimmed, on the server.
 7. Without `--allow-apply`, no Apply button renders and the command does; a forced POST is refused and writes nothing.
 8. With it, an apply whose echoed fingerprint differs from the approval's writes nothing (409); a re-plan that differs supersedes the approval, writes nothing, and the new approval shows the changed items and earlier decisions as hints only.
 9. After apply, `ApplyResult`'s counts match the audit log's `item.applied`, `item.failed`, `item.uncertain`, `item.blocked`, and `item.not_applied` events.
-10. Each item's rule opens its recitation (words, citation, version in force, caveat) before any reading.
+10. Each item's rule opens its recitation (words, citation, version in force, caveat) before any reading. Not met yet: the rule shows as its citation (see the note at the top).
 11. The sticky `ApproveBar` never covers the focused element: a keyboard walk through 30 rows keeps each focused row visible.
 12. Item checkboxes and decision buttons are at least 24 by 24 CSS pixels, or spaced to pass WCAG 2.5.8.

@@ -45,7 +45,7 @@ One question: what needs a person now? The approvals waiting, the clocks running
 |---|---|---|
 | Waiting on a person | Letters: `pending` and the `requested` group. Engine: `approvals` with `status` in planned, in review, approved, partially approved, and whether each needs a second signature | `GET /api/approvals` (existing) |
 | Needs attention | `jason.api.governance_digest(limit=8, private=True)` → `attention.digest(...).as_dict()`: `totals` by urgency, `unavailable`, and `sections[]` (`key`, `title`, `command`, `available`, `error`, `summary`, `counts`, `notes`, `items[]` with `urgency`, `text`, `due`, `command`, `more`), and the `caveat` | `governance-digest` (to add; `?section=`) |
-| Next questions | `jason.api.next_questions(limit=5)`: `questions[]` with `id`, `kind`, `question`, `priority`, `unblocks`, `highStakes` | `next-questions` (to add) |
+| Next questions | `jason.api.next_questions(limit=5)`: `questions[]` with `id`, `kind`, `question`, `priority`, `unblocks`, `highStakes` | no new loader: `GET /api/onboarding-session?limit=5` (built) answers them in `next`, with the gates and the second person's queue |
 | Lock holders | `jason.locks.holders()` | add to `/api/health` |
 
 **Section order** is the digest's own (`Digest.ordered`): sections with something urgent first, quiet ones next, unavailable ones last. Within a section, `Item.key`: urgency, then a statute's clock before the documents' before a policy's, then the due day.

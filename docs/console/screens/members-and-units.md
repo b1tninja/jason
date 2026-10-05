@@ -41,7 +41,7 @@ Who owns each unit, how notices reach each owner, and where each owner stands in
 | Where the two differ | The response policy's findings for the unit's latest answer: `owner_responses.triage(context)`, rule `occupancy-vs-tag`, `Outcome.BOARD`, with its `board_item`. Read live, as a job | P1 |
 | Requests | `api.member_requests(open_only=False)` filtered to the unit: `kind`, `received`, `due`, `standing`, `next` | P1 |
 | Violations | `party_brief(query)`'s violations, from `data/payhoa.db` as last synced | P1; the detail of a disciplinary matter is P3 |
-| Balance | `association_collections()`'s row for the unit (`standing`: `RELEASE_DUE`, `LIEN_SECURES_DEBT`, `OWED_NO_LIEN`, `CREDIT`; `past_due_cents`), and `party_brief`'s PayHOA balance | See [privacy](#privacy) |
+| Balance | `association_collections()`'s row for the unit (`standing`: `RELEASE_DUE`, `LIEN_SECURES_DEBT`, `OWED_NO_LIEN`, `CREDIT`; `pastDueCents` and `balanceCents`), and `party_brief`'s PayHOA balance | See [privacy](#privacy) |
 
 A unit's URL carries its PayHOA unit id only. Finding a unit by owner name or address is a POST search, and its results page has no query string.
 

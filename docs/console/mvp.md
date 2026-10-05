@@ -15,11 +15,25 @@ The console is jason-ui served by jason-web ([architecture.md](architecture.md))
 | The CLI's `--yes` in the audit log | `jason owner-info --apply --payhoa --yes [--by NAME]` → `audit.record_cli` | One line a write and a completion, then `cli.applied` |
 | The prerequisites the earlier spec listed | one live read (`owner_info_apply.ReadOnce`), a result for each write (`execute_each`), unapplied writes stay pending, stable ids and bases, a rule on each write, `community()` in the adapter, `--by` on the CLI, `jason approvals` registered | Lessons `plan-reads-once`, `apply-loses-partial-results`, `complete-only-after-writes` (fixed) |
 
-**Being added now:** the write guard (`jason.web.guard`) and the approvals routes (`jason.web.approvals`, with `--allow-apply`), and the jason-ui plan review (`PlanReview`, listed by the `PlanApprovals` view in `#/approvals`, with `WriteRow`, `HeldNote`, `ChangedBanner`, `ApproveBar`, `SecondConfirm`, `CostLine`, `ApplyResult`, `AuditLog`) and for the later screens (`Recitation`, `ReadingLabel`, `QuestionCard`, `StageSteps`).
+**Also built since this page was first written:**
+- the write guard (`jason.web.guard`);
+- the approvals routes (`jason.web.approvals`, with `--allow-apply`), covered by `tests/test_web_approvals.py`;
+- the jason-ui plan review (`PlanReview`, listed by the `PlanApprovals` view in `#/approvals`, with `WriteRow`, `HeldNote`, `ChangedBanner`, `ApproveBar`, `SecondConfirm`, `CostLine`, `ApplyResult`, `AuditLog`);
+- the components for the later screens (`Recitation`, `ReadingLabel`, `QuestionCard`, `StageSteps`), with the onboarding session in the Setup tab of `#/onboarding`;
+- Sign in with Google (`jason.web.signin`), the private view, the owner view's loaders, and the role class.
+
+**What the criteria below still find missing** (judged on the committed code):
+- **The nav count** is the letters waiting on a person (`/api/approvals`'s `pending`, or the dock's `approvals` when someone is signed in). It does not add the plans waiting on a person.
+- **The plan header** shows who asked, the read time, the fingerprint, who signed, the clock, and the cost. It does not show the kind's risk or reversibility: `GET /api/approvals/<id>` answers the approval alone, with no `kind` record.
+- **An item's rule** shows as its citation ("Rule: …") and opens no `Recitation`: `PlanPanel` passes `PlanReview` no `recitations`, and the `cite` loader it would read does not exist ([screens/approvals.md](screens/approvals.md)).
+- **Two people and plan age** read defaults: `PlanPanel` passes `twoPerson` from a field the answer does not carry, and `maxAgeHours` is the component's default of 24, not the kind's `max_age_hours`. The kind built today is one-person with 24 hours, so nothing is wrong yet; the first two-person kind would show no second-person step.
+- **A plan older than its kind allows** is refused by the engine ("plan again", `engine.problems`), but the banner says "Decisions stand; apply reads live again first, or re-plan now". The words are corrected in the UI, not here.
+- **A person's hold** shows "held for the board by NAME" with the reason, but not the `jason board` command that proposes its board item.
+- **"No GET changes `data/approvals/`"** has no test that walks every GET route; `tests/test_web_approvals.py` checks that a GET to `check` is 405.
 
 ## The first build: engine approvals in `#/approvals`
 
-The `owner-info-tags` kind, end to end in the browser, beside the letters. Every criterion is a test, or a check a person makes once.
+The `owner-info-tags` kind, end to end in the browser, beside the letters. Every criterion is a test, or a check a person makes once. Most are built and tested (`tests/test_web_approvals.py`, `tests/test_approvals.py`, `ui/src/components/plans.test.tsx`, `ui/src/views/planapprovals.test.tsx`); the boxes stay open until a person has made the once-only checks, and the list above names what the committed code does not yet meet.
 
 ### The server
 
@@ -32,7 +46,7 @@ The `owner-info-tags` kind, end to end in the browser, beside the letters. Every
 
 ### The screen
 
-- [ ] `#/approvals` lists letters and engine approvals in one inbox, each row saying which it is. The nav count is the letters awaiting approval plus the plans waiting on a person.
+- [ ] `#/approvals` lists letters and engine approvals in one inbox, each row saying which it is. The nav count is the letters awaiting approval plus the plans waiting on a person. (As built, one screen holds two sections: "Plans of writes", a table, above "Letters", the grouped inbox; and the nav count is the letters alone.)
 - [ ] One approval shows its header: the kind's title, status, requested by, the read time, the fingerprint's first 12 hex, the clock (`summary.deadlines` for the cycle), the cost (`CostLine`: "No cost" for tag changes), and reversibility from the kind.
 - [ ] Items are grouped by owner (`group`). Each `WriteRow` shows the change before → after, why, the rule (opening its `Recitation` where `cite_document` resolves it), and the evidence.
 - [ ] Held for the board, for a person, confirm with the owner, and what follows are in their own sections, with `HeldNote` on the held. **None has a checkbox**, and the server refuses a decision on one.
@@ -64,7 +78,7 @@ The `owner-info-tags` kind, end to end in the browser, beside the letters. Every
 
 | Phase | What ships | Writes it adds |
 |---|---|---|
-| **2. The governance screens** | The screens with no counterpart, read-only first: Requests, Notices, Governing documents (with `Recitation`, `ReadingLabel`, and a cite box), the onboarding session (`StageSteps`, `QuestionCard`), and the bands the specs add to existing screens ([information-architecture.md](information-architecture.md#where-the-proposed-screens-go)) | `data/` records a person signs: an intake answer and its second person (`answer_intake_question`, `onboarding_confirm`), a duty done (`record_completion`), a posting recorded |
+| **2. The governance screens** | The screens with no counterpart, read-only first: Requests, Notices, Governing documents (with `Recitation` and `ReadingLabel`, both built, and a cite box), and the bands the specs add to existing screens ([information-architecture.md](information-architecture.md#where-the-proposed-screens-go)). The onboarding session (`StageSteps`, `QuestionCard`) is built, in the Setup tab of `#/onboarding` | `data/` records a person signs: an intake answer and its second person (`answer_intake_question`, `onboarding_confirm`), a duty done (`record_completion`), a posting recorded |
 | **3. More kinds** | Registry rows with planners and appliers: Gmail drafts, calendar, Tasks, private Docs (a letter's Doc after its words are approved), PayHOA form updates, `delivery --audit --apply` | Each kind's own write, behind its row and `--allow-apply` |
 | **4. Money and members** | Mailroom sends, owner email and mail batches, publishing forms, Vault holds: the two-person kinds. Members and units, once P2 masking exists | Postage, notices to members, legal holds |
 | **5. Sign-in** | A credential for each officer (built: Sign in with Google, `jason.web.signin`; [setup.md](../setup.md#5-console-sign-in-jason-web)), roles enforced at each loader, the private view | The same writes, with authenticated names; apply without a server-wide flag, if the board so decides |
@@ -85,7 +99,7 @@ The ungated writes come first, given a dry run, `--yes`, and then a registry row
 
 ## The HTML prototype library
 
-`src/jason/console/ui/` is a static HTML and CSS component library (tokens, base styles, 30 components, previews, and four sample screens), uncommitted. It was written for the withdrawn server-rendered plan, and its ideas are being ported into jason-ui (the components marked being added in [components.md](components.md)).
+`src/jason/console/ui/` is a static HTML and CSS component library (tokens, base styles, 30 components, previews, and four sample screens), uncommitted: it exists only in the working tree of the main checkout, and a commit of this repository has no `src/jason/console/`. It was written for the withdrawn server-rendered plan, and its ideas are ported into jason-ui where [components.md](components.md) maps them (the components it once marked being added are built).
 
 **Recommendation: keep it as a design reference outside the package until the port is done, then drop it.**
 
@@ -95,7 +109,7 @@ The ungated writes come first, given a dry run, `--yes`, and then a registry row
    - the `held` role color, as a jason-ui token for `HeldNote`;
    - the four sample screens (`approvals.html`, `approvals-changed.html`, `today.html`, `reader.html`) as design-sync previews of the composed screens;
    - the accessibility notes: the approve bar's reserved height, write rows that become cards under 760 px, row checkboxes in a label that fills the cell;
-   - `masked-field`, `private-switch`, and `job-status`, which it lists as still to build, stay in [components.md](components.md#still-proposed).
+   - `masked-field` and `job-status`, which it lists as still to build, stay in [components.md](components.md#still-proposed). `private-switch` is built since, as `PrivateSwitch` (with `PrivateBand` and `PrivateAsk`).
 3. **Drop it** once each jason-ui counterpart has a design-sync preview and the contrast table exists. Its `@dsCard` markers are for a design system that would duplicate jason-ui's; it should not be published as one.
 
 Two design systems for one console would drift. jason-ui is the one that ships, so it is the one the design project syncs.

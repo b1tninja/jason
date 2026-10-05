@@ -70,7 +70,7 @@ A file's drawer (from a row anywhere a `Doc` appears) shows `ClassificationTrace
 
 ## Components
 
-`KindShelf`, `KindTile`, `KindPage`, `KindBadge`, `ClassificationTrace`, `MethodMix`, `FacetBar`, `SampleStrip`, `ReadingFields`, `KindGap`, `KindCorrection`, `CoverageNote` ([../handoff-document-kinds.md](../handoff-document-kinds.md)); `DocList` and `Doc` for files, `Findings` for the unclassified, `Caveats` for the library's age and the model's limits, `Command` for the CLI, `Confirm` for a proposal, `ReadingLabel` for a model's answer.
+`KindShelf`, `KindTile`, `KindPage`, `KindBadge`, `ClassificationTrace`, `MethodMix`, `FacetBar`, `SampleStrip`, `ReadingFields`, `KindGap`, `KindCorrection`, `CoverageNote` (proposed, none in jason-ui or [components.md](../components.md#still-proposed); specified in [../handoff-document-kinds.md](../handoff-document-kinds.md)); `DocList` and `Doc` for files, `Findings` for the unclassified, `Caveats` for the library's age and the model's limits, `Command` for the CLI, `Confirm` for a proposal, `ReadingLabel` for a model's answer.
 
 ## Actions
 

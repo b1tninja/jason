@@ -84,7 +84,7 @@ The Records group already shows the records' standing:
 ## Privacy
 
 - File names can name owners. Search results show names to the board view only.
-- A confidential file is held back and counted (`include_confidential=False`, the default). Showing it is a deliberate request (`?confidential=1`), and, once the private view exists, opened there and logged.
+- A confidential file is held back and counted (`include_confidential=False`, the default). Showing it is a deliberate request (`?confidential=1`), and the server lists those rows only while the person's private view is open (built, [security-and-privacy.md](../security-and-privacy.md#built-the-private-view)); otherwise the answer says how many it held back (`heldBack`).
 - Restricted 5200 records (the membership list, executive-session minutes, ballots) are listed by kind only.
 - The liens the association placed are delinquency detail beyond the unit (P3): the loader lists them only while the person's private view is open, and otherwise sends their count alone.
 - The owner view has no library and no records inventory: some records are withheld (CIV 5215). Its records screen is the request form, and its loader sends the record kinds alone ([security-and-privacy.md](../security-and-privacy.md#roles)).

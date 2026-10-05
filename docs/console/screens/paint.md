@@ -1,10 +1,10 @@
 # Paint
 
-A new screen, `#/paint`, a tab under Records · phase 3 · CLI: `jason paint` (built), `jason paint --page`, `jason paint --to-doc` · MCP: `paint_colors`, `paint_check`, `paint_match` (to add)
+A new screen, `#/paint`, a tab under Records · phase 3 · CLI: `jason paint` (built), `jason paint --page`, `jason paint --to-doc` · MCP: `paint_colors`, `paint_check`, `paint_match` (built, in `jason.mcp.paint`, served by the governance profile)
 
 ## In the console
 
-None. `jason paint` prints the schedule, checks it against the maker's catalog, writes a swatch page and a Google Doc. The records and the catalog reader are built ([../../paint.md](../../paint.md)); the screen is the matrix of [../handoff-unit-records.md](../handoff-unit-records.md) over them.
+No screen: `#/paint` is not a route in `SCREENS`. `jason paint` prints the schedule, checks it against the maker's catalog, writes a swatch page and a Google Doc. The records and the catalog reader are built ([../../paint.md](../../paint.md)), and so are the loaders `GET /api/paint` (the schedule against the catalog copy on disk, with the reserve dates; `jason.web.extra.paint`) and `GET /api/paint/color?code=` (one color's coordinating and similar colors), and the components `PaletteMatrix`, `Swatch`, `ColorDetail`, and `SourcedDate` (props only, with previews and tests). What is missing is the view that fetches the loader, composes the components, and has a route. The screen is the matrix of [../handoff-unit-records.md](../handoff-unit-records.md) over them.
 
 ## Purpose and personas
 
@@ -27,7 +27,7 @@ What each color is for (door, trim, field, fascia), what the maker calls it now,
 | Recorded last-painted dates | `incident_history(work="improvement")` events whose element is paint, placed on a building (a person confirms before it is cited); each is a `DocRef` | P1 |
 | Built and first conveyance | `unit_characteristics()` (assessor year built, by parcel) rolled to buildings through the parcel-to-building bridge; the first conveyance from the audited chains. Both are **needs input** until those exist | P1 |
 | The Doc of the palette | `data/paint/doc.json` (the Doc's id) as a `drive_ref` | P0 |
-| Interior colors reported by owners | the interior register (`unit_record.InteriorReport`), by plan | P1; the reporter is never shown to others |
+| Interior colors reported by owners | `Community.interior_reports()` (built, empty until a register supplies them), by plan. The component, `InteriorColorRegister`, is not built | P1; the reporter is never shown to others |
 
 The catalog is fetched only by a person's refresh (`jason paint --refresh`, or the screen's button as a job); nothing on load calls Sherwin-Williams, Google, or PayHOA.
 
@@ -62,7 +62,7 @@ A swatch opens `ColorDetail`. A renamed color shows the printed name beside the 
 
 ## Components
 
-`PaletteMatrix`, `Swatch`, `ColorDetail`, `SourcedDate`, `InteriorColorRegister`, `DocList` for the palette's documents, `Findings` for the check, `Caveats` for the catalog's copy, `Command` for the CLI, `Confirm` for the two writes.
+`PaletteMatrix`, `Swatch`, `ColorDetail`, `SourcedDate` (built), `InteriorColorRegister` (proposed, not built), `DocList` for the palette's documents, `Findings` for the check, `Caveats` for the catalog's copy, `Command` for the CLI, `Confirm` for the two writes.
 
 ## Actions
 

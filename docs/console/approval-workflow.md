@@ -5,7 +5,7 @@ This is the core of the console. jason plans a write outside itself. A named per
 **Status: built.** The engine is `jason.approvals` (`src/jason/approvals/`), with one action kind, `owner-info-tags`. Its doors:
 - **the CLI**, `jason approvals` (built);
 - **`jason-mcp`**, `approvals_list` and `approval_show`, read only (built);
-- **jason-web**, the `/api/approvals*` routes (`jason.web.approvals`) and `PlanReview` in jason-ui's `#/approvals` (being added; [web-ui.md](../web-ui.md#approvals)). Apply there is off unless the server is started with `--allow-apply` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web)).
+- **jason-web**, the `/api/approvals*` routes (`jason.web.approvals`) and `PlanReview` in jason-ui's `#/approvals` (built; [web-ui.md](../web-ui.md#approvals)). Apply there is off unless the server is started with `--allow-apply` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web)).
 
 This page is the engine's contract:
 - **Names are binding.** The record and field names, the states, and the transitions below are the names the engine uses: `Approval`, `PlanItem`, `Change`, `DecisionRecord`, `Signature`, `ApprovalStatus`, `ItemClass`, `Decision`, `Result`, `ActionKind`, `Approver`, `Risk`.
@@ -202,6 +202,8 @@ class Change:                                  # what the item changes, for the 
 class Evidence:
     label: str                                 # "PayHOA request 1234", "Civil Code 4040(a)(2)"
     address: str = ""                          # a citation jason cite resolves, a command, or a record's address
+    read_at: str = ""                          # when the plan read the record (UTC, ISO 8601); "" for none
+    digest: str = ""                           # sha256 of what was read (a request: its status and answers)
 
 
 @dataclass
@@ -383,12 +385,12 @@ The table is `model.TRANSITIONS`; `model.transition` is the only way a status ch
   - It needs a reason, as a rejection does.
   - The item is not written.
   - Unlike the planner's `HELD_FOR_BOARD` class, a person's hold is a decision, and is logged as one.
-  - Where it goes next is [section 12](#12-the-board-decides-by-vote): a board item, then the meeting's agenda. **As built, the engine records the hold and its reason only**; proposing the board item on submit (`tasks.board_items.propose`, signed by the person) is still to build, and until it is, the screen shows the `jason board` command that proposes it.
+  - Where it goes next is [section 12](#12-the-board-decides-by-vote): a board item, then the meeting's agenda. **As built, the engine records the hold and its reason only**; proposing the board item on submit (`tasks.board_items.propose`, signed by the person) is still to build. The screen is meant to show the `jason board` command that proposes it until then; `HeldNote` does not show it yet. (`tasks.board_items.propose` takes the board's found items, not a person's hold, so it needs a new entry point.)
 - **Groups.** Items are grouped by target, such as a member, or a unit and its members. One person's changes read together.
   - A group can be approved or rejected at once.
   - A dependent item (a request completion) sits in its target's group, and shows which writes it waits on.
 - **What follows a rejection.** A rejected write leaves its request open. Approving a completion whose writes are not all approved is refused ("waits on …: approve those first"), and rejecting or holding a write makes an approved completion that waits on it undecided again. At apply, a completion whose writes did not all apply is `Result.BLOCKED`.
-- **Items for a person** come with the task they need: "enter the mailing address in PayHOA" for that owner. They link to the owner in PayHOA's own interface (the `jason party` link). There is no checkbox, because jason does not do them.
+- **Items for a person** come with the task they need: "enter the mailing address in PayHOA" for that owner. There is no checkbox, because jason does not do them. A link to the owner in PayHOA's own interface is proposed, not built: `WriteRow` shows the task and its evidence chips, with no PayHOA link, and `jason party` is the terminal command that shows the owner.
 
 ## 6. Re-plan before apply
 
@@ -445,9 +447,9 @@ A **two-person (2P) kind** needs two signatures on the same fingerprint.
 - a change to which words are in force: `living --use-reread`, and the high-stakes intake kinds.
 
 **The limits, stated plainly**
-- Until sign-in exists, a name is self-asserted: a `--by` in the terminal, or the "Signed in as" pick in jason-web. The rule then guards against mistakes, not against a determined person.
+- Without a sign-in, a name is self-asserted: a `--by` in the terminal, or the "Signed in as" pick in jason-web. The rule then guards against mistakes, not against a determined person.
 - The log records the operating-system user beside each name (`os_user`), so a misuse leaves a trace ([security-and-privacy.md](security-and-privacy.md#identity)).
-- Sign-in for each person, a later phase, makes the names authenticated.
+- Sign in with Google is built (`jason.web.signin`). While someone is signed in, the console takes the name from the sign-in and records `via: console:google`; with `jason-web --require-sign-in` it refuses every write until someone is. The terminal's `--by` stays free text until the CLI has a sign-in of its own.
 
 ## 8. The action-kind registry
 
@@ -571,7 +573,7 @@ Empty fields are left out of a line.
 - `approval.applied`, `approval.failed`, `approval.superseded`, `approval.withdrawn`;
 - `cli.applied`: a `--yes` from the CLI, with a fingerprint of what it wrote.
 
-Proposed with the data levels, not built: `reveal` (a masked field shown, by its kind and never its value) and `private_view.on` / `.off` ([security-and-privacy.md](security-and-privacy.md#data-levels)). The earlier spec's session and token events went with the withdrawn token sign-in.
+Proposed with the data levels, not built: `reveal` (a masked field shown, by its kind and never its value). The private view is built, but it logs to `access/private.jsonl` (opened, closed, expired) and `access/served.jsonl`, not to this log, so there is no `private_view.on` or `.off` event here ([security-and-privacy.md](security-and-privacy.md#built-the-private-view)). The earlier spec's session and token events went with the withdrawn token sign-in.
 
 **Rules**
 - **Append only.** No code path rewrites or deletes a line. Every line carries the hash of the line before it, so an edit breaks the chain. `jason approvals audit --verify` walks the chain and names the first break. This makes tampering detectable, not impossible. Copying the log off the machine with the backups is the board's choice.
@@ -605,20 +607,21 @@ An approval or an item can be named by a unique prefix (at least 6 characters fo
 
 `jason-mcp` stays a reader of disk that never calls PayHOA, Google, or Keeper (AGENTS.md). The `governance` profile serves three read-only tools:
 - `approvals_list(status, kind)`: each approval's id, kind, status, counts by class, how many approved, and who asked;
-- `approval_show(id)`: one approval as stored, with its audit entries;
+- `approval_show(approval_id)`: one approval as stored, with its audit entries (a unique prefix of the id will do);
 - `evidence(address, approval_id)`: one evidence address opened from disk ([Evidence you can open](#evidence-you-can-open)).
 
 An assistant can explain a plan to a person, cite its rules, and say what is held for the board.
 
 **No MCP tool decides, submits, confirms, or applies.** An approval is a person's act at the console or in the terminal. It is never an assistant's tool call, even one a person asked for in chat. A model can read text in a document that tells it to approve something, so this is the one write `jason-mcp` must not have.
 
-### jason-web (being added)
+### jason-web (built)
 
 `jason.web.approvals` calls the same engine functions with `via: "console"`, and the name from "Signed in as" as `by` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web) has the route table):
 - reads: `GET /api/approvals` (the letters inbox as before, with the engine's approvals beside it), `GET /api/approvals/<id>`, `GET /api/approvals/audit`, and `GET /api/evidence?address=...&approval=...` (disk only; a miss is 200 with `found: false`);
 - `POST /api/approvals/<id>/check`: `engine.check`, a live read that writes nothing, behind the write guard's token header;
 - `POST /api/evidence/refresh`: one piece of evidence read again live for the person and kept in jason's cache, never written to PayHOA ([Evidence you can open](#evidence-you-can-open)), behind the same header;
 - `POST /api/evidence/refresh-all`: every refreshable piece of one plan's evidence read again on one sign-in, the same way, behind the same header;
+- `POST /api/evidence/refresh-many`: the same for a list of addresses that belong to no plan (a screen's Drive files, up to `evidence.MAX_MANY`, 100), on one sign-in;
 - `POST /api/evidence/view`: one document behind a piece of evidence shown unmasked for the named person and logged, behind the same header; a file comes back as a ten-minute link, `GET /api/evidence/document/<token>` ([Evidence you can open](#evidence-you-can-open));
 - a person's acts: `POST /api/approvals/<id>/decide`, `/submit`, `/confirm`, `/decline`, `/withdraw`. A stored approval's items never change (a re-plan is a new approval), so these act on its id, and a superseded or withdrawn approval refuses them by its status;
 - `POST /api/approvals/<id>/apply`, only when the server was started with `--allow-apply`, with the token in its header and the fingerprint the person reviewed echoed back (`confirm`). Without the flag it is refused, and the page shows `jason approvals apply ID --yes --by NAME`.
@@ -642,7 +645,7 @@ jason asks a person's approval for two different things, and the console keeps b
 | By item | No: the letter is one thing | Yes: each item is decided |
 | What goes out | Nothing. The approved stage shows the command (`jason letter … --yes`, `jason mailroom --send --yes`); a person runs it and records where the send was logged (`sentRef`) | Only the approved items, at apply, after a re-plan matches |
 | The trail | The letter's own `log`, every line naming its person | The audit log, hash-chained |
-| The component | `DraftLetter`, `ApprovalsInbox` | `PlanReview`, listed by `PlanApprovals`, with `WriteRow`, `HeldNote`, `ApproveBar`, `SecondConfirm`, `ChangedBanner`, `CostLine`, `ApplyResult`, `AuditLog` (being added) |
+| The component | `DraftLetter`, `ApprovalsInbox` | `PlanReview`, listed by `PlanApprovals`, with `WriteRow`, `HeldNote`, `ApproveBar`, `SecondConfirm`, `ChangedBanner`, `CostLine`, `ApplyResult`, `AuditLog` (built) |
 
 **One inbox.** `#/approvals` lists both kinds, the letters in `ApprovalsInbox` and the plans in `PlanApprovals`, each row saying which it is. The nav count today is the letters awaiting approval (`pending`); it should be the sum of those and the plans waiting on a person (a decision, a submission, or a second signature: `approvalsOpen` less the approved ones not waiting on a second person).
 
@@ -655,7 +658,7 @@ jason asks a person's approval for two different things, and the console keeps b
 From the design handoff, and the letters' store already keeps it: **board approvals are votes at a meeting, recorded by an officer. No one clicks "approve" for the board.**
 
 - **No board approver in the engine.** `Approver` has no board value. An item that needs the board is `HELD_FOR_BOARD` (the planner's finding) or `Decision.HELD` (a person's hold), and neither is ever approvable.
-- **Held items go to the meeting's agenda.** The path for a held item is the board loop: a board item (`tasks.board_items`, with the reason and the item's evidence), a place on a noticed agenda (`#/agenda`, CIV 4920 and 4930), a motion and a roll call by name at the meeting (`#/room`, `RollCall`), and the decision recorded by the secretary or the president (`data/board/decisions.json`). `HeldNote` says this, and links the board item and its meeting when there is one.
+- **Held items go to the meeting's agenda.** The path for a held item is the board loop: a board item (`tasks.board_items`, with the reason and the item's evidence), a place on a noticed agenda (`#/agenda`, CIV 4920 and 4930), a motion and a roll call by name at the meeting (`#/room`, `RollCall`), and the decision recorded by the secretary or the president (`data/board/decisions.json`). `HeldNote` says this, and names the board item (a link when the caller passes `boardHref`; `PlanApprovals` does not yet, so the id shows as a chip, and no meeting is named).
 - **The decision comes back as a rule, not a click.** Once the board decides, the decision becomes a rule row in the specification (AGENTS.md: "a new decision is a new rule row"). Items of that kind are then classed approvable by the planner, and a person approves them under the rule, which each item recites. An approval never cites a vote as its authority directly.
 - **A letter the board approves** is approved by the officer who records the vote, with the meeting's date (`tasks.approvals.step(..., meeting=...)`); a board approval without a meeting date is refused.
 - **Polls are member input, not votes.** A poll in the meeting room informs; a director's vote is a roll call by name.

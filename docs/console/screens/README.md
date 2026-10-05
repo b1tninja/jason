@@ -5,18 +5,18 @@ One page per screen of the earlier spec, now read against the console that exist
 | Spec | In the console | Status | Phase |
 |---|---|---|---|
 | [today.md](today.md) | `#/digest` (`ConsoleDigest`), the dock, `#/inbox` | Adds bands to a built screen | 2 |
-| [approvals.md](approvals.md) | `#/approvals` (`ConsoleApprovals`): letters built | Adds the engine's plan review (being built) | 1 |
+| [approvals.md](approvals.md) | `#/approvals` (`ConsoleApprovals`): letters, and the engine's plan review (`PlanApprovals`, `PlanReview`), built | The plan review is built; what it still lacks (the rule's recitation, the kind's risk, plans in the nav count) is listed in the spec | 1 |
 | [meetings-and-minutes.md](meetings-and-minutes.md) | `#/meetings`, `#/meeting`, `#/agenda`, `#/room`, `#/minutes-review`, `#/decisions`, `#/hearings` | Adds the meeting watch, postings, the draft's checks, and record stages | 2 |
 | [schedule-and-duties.md](schedule-and-duties.md) | `#/duties` (`ConsoleDuties`), `#/disclosures` (`ConsoleDisclosures`), the dock | Adds the schedule by role, "record done", and coverage | 2 |
 | [records-and-library.md](records-and-library.md) | `#/records` (`ConsoleRecords`), `#/ingestion`, `#/leads`, `#/records-requests` | Adds library search, an ingest's report and apply, and revisions | 2 |
 | [finance.md](finance.md) | `#/payments` (`ConsolePayments`), `#/reserves` (`ConsoleReserves`), `#/liens` (`ConsoleLiens`), `#/books`, `#/title` | Adds bank balances, the reserve study, and the ledger's reports | 2 |
 | [requests.md](requests.md) | partly `#/inbox`, `#/drafts`, `#/records-requests` | A new screen, `#/requests` | 2 |
 | [onboarding.md](onboarding.md) | partly `#/communities`, `#/onboarding` | A new band of `#/onboarding`: the session | 2 |
-| [paint.md](paint.md) | none | Proposed whole, `#/paint` | 3 |
+| [paint.md](paint.md) | no screen; the loaders `paint` and `paint-color` and the components `PaletteMatrix`, `Swatch`, `ColorDetail`, `SourcedDate` are built | The screen is proposed, `#/paint` | 3 |
 | [life-safety.md](life-safety.md) | none (its parts are in the dock, `#/actions`, `#/insurance`) | Proposed whole, `#/life-safety` | 3 |
-| [community-facts.md](community-facts.md) | none | Proposed whole, `#/facts` | 3 |
+| [community-facts.md](community-facts.md) | no screen; the loader `facts` and `Community.facts()` are built | The screen is proposed, `#/facts` | 3 |
 | [document-kinds.md](document-kinds.md) | part (`#/ingestion` counts kinds and methods) | Proposed whole, `#/ingestion/kinds` | 3 |
-| [unit-record.md](unit-record.md) | none | Proposed whole, a tab of `#/members` and `#/loss-packet` | 4 |
+| [unit-record.md](unit-record.md) | no screen; the loaders `unit-record` and `loss-packet`, their writers, and the `Community` methods behind them are built | The screen is proposed, a tab of `#/members` and `#/loss-packet` | 4 |
 | [members-and-units.md](members-and-units.md) | none | Proposed whole, `#/members` | 4 (needs P2 masking) |
 | [notices.md](notices.md) | none | Proposed whole, `#/notices` | 2 |
 | [governing-documents.md](governing-documents.md) | none | Proposed whole, `#/documents` | 2 |
@@ -62,11 +62,11 @@ These come from the principles in [README.md](../README.md#principles). They are
 - **Every section shows its freshness and its command** where the loader gives a sync time: when its store was last synced, and a `Command` that refreshes it.
 - **Reads are from disk; live reads are a person's action.** A screen never calls PayHOA, Google, or Zoom on load. A live read (a check, a sync) is a button behind the write guard, or a command.
 - **The owner view.** A new screen starts board-only (`owner: false` in `SCREENS`). An owner version is its own decision, and it needs an owner loader (`OWNER_SOURCES` in `jason.web.extra.owner_view`) and its sources in `ui/src/ownerScreens.json`: in the owner view the server answers no other source.
-- **Restricted material.** Until the private view exists ([security-and-privacy.md](../security-and-privacy.md#data-levels)), a screen that would show P2 or P3 values lists the item by name or date only, with the command that shows it in a terminal.
+- **Restricted material.** P3 opens only in the private view, which is built ([security-and-privacy.md](../security-and-privacy.md#built-the-private-view)): a loader holds P3 rows back on the server outside it and counts them. P2 masking by field is not built ([data levels](../security-and-privacy.md#data-levels)), so a screen that would show P2 values lists the item by name or date only, with the command that shows it in a terminal, until it is.
 
 ## Roles, in short
 
-Today there are no roles in the console, only the Board / Owner view and the officers in "Signed in as" ([security-and-privacy.md](../security-and-privacy.md#roles)). The specs' privacy sections use the proposed roles, so that the loaders can enforce them once sign-in exists:
+The console has a role class (officer, manager, administrator) that filters the nav and picks the landing screen, the Board / Owner view, and Google sign-in. The server enforces data levels by office (`SEE_RULES`) and refuses `#/status` and `#/people` by who is asking, but it enforces no screen-level role, and the roles below (reviewer, counsel) are not built ([security-and-privacy.md](../security-and-privacy.md#roles)). The specs' privacy sections use the proposed roles, so that the loaders can enforce them once they exist:
 
 | Short | Role | Typical person |
 |---|---|---|

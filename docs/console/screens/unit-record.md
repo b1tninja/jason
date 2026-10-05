@@ -4,7 +4,7 @@ A tab on a unit's page in Members and units (`#/members?unit=`, a PayHOA unit id
 
 ## In the console
 
-None. Today a loss is reconstructed by hand from listings, invoices, the declaration, and the policy. [../../unit-records-design.md](../../unit-records-design.md) proposes the record and the packet; this spec is the screen for both. The unit's page ([members-and-units.md](members-and-units.md)) is where the tab sits.
+No screen, though the loaders and writers are built: `GET /api/unit-record?unit=&plan=`, `GET /api/loss-packet?unit=&incident=&address=`, `POST /api/write/unit-record/<key>` (an owner's entry and its visibility), and `POST /api/write/loss-packet/<key>` (a person's confirmation of one step), all in `jason.web.extra.unit_records` over `jason.tasks.unit_records_view` and `unit_records_write`, with the `Community` methods named below. No view or component draws them. Today a loss is reconstructed by hand from listings, invoices, the declaration, and the policy. [../../unit-records-design.md](../../unit-records-design.md) proposes the record and the packet; this spec is the screen for both. The unit's page ([members-and-units.md](members-and-units.md)) is where the tab sits.
 
 ## Purpose and personas
 
@@ -23,23 +23,23 @@ What is in this unit, which items are original and which were changed, and, when
 | Part | Source | Level |
 |---|---|---|
 | The unit's plan | `unit_characteristics(apn)`: the plan the assessor's measures match (or empty) | P1 |
-| The original specification by plan | `Community.original_specs()` (to add): rows `(plan, component, value, source address, status)`; empty until the developer's papers are read | P0 |
+| The original specification by plan | `Community.original_specs()` (built, empty by default): rows `(plan, component, value, source address, status)`; empty until the developer's papers are read | P0 |
 | The effective record | `unit_record.effective(plan, specs, entries)` (pure): the unit's entry if any, else the plan's default, else unknown; each row with status, sources, and verification date | P1 |
-| The owner's entries | `data/<profile>/units/<unit>/entries.json` (to add), under a store lock; each entry carries its own visibility | P2; never listed across units |
+| The owner's entries | `data/<profile>/units/<unit>/entries.json` (built: `jason.tasks.unit_records_write`), under a store lock; each entry carries its own visibility | P2; never listed across units |
 | An entry's approval | the architectural review record for the unit (the association's own), attached as a `DocRef` when found | P1 |
-| The coverage columns | `Community.unit_coverage()` (to add): what the declaration's insurance section lists and what the policy's unit endorsement lists, by component kind, each with its citation; `unit_record.coverage(kind, status)` (pure) gives where the record points | P1 |
+| The coverage columns | `Community.unit_coverage()` (built, None by default): what the declaration's insurance section lists and what the policy's unit endorsement lists, by component kind, each with its citation; `unit_record.coverage(kind, status)` (pure) gives where the record points | P1 |
 | Open questions | `Community.open_questions()` | P1 |
 
 **The loss packet**
 
 | Part | Source | Level |
 |---|---|---|
-| The ladder: five steps (the item, the origin of the cause, an insured casualty, negligence, the deductible), each with its provisions | `Community.loss_ladder()` (to add): step number, question, citations; `cite_document` recites each provision whole | P1 |
+| The ladder: five steps (the item, the origin of the cause, an insured casualty, negligence, the deductible), each with its provisions | `Community.loss_ladder()` (built, empty by default): step number, question, citations; `cite_document` recites each provision whole | P1 |
 | The policy: deductible, valuation, forms, the unit endorsement's words | `insurance_policies("master")` and the declarations text (a `Recitation` from the library file) | P1 |
 | The incident, if one: its cause, elements, building, dates | `incident_history(address=…)` for the unit and its building; the claim files only as counts (a claim's letters are confidential and stay held back) | P2 |
 | Prior incidents at the unit and building | `incident_history`, counts | P2 |
-| The deductible guidelines | `Community.deductible_policy()` (to add): a rule row adopted by the board, else None, which shows the gap | P1 |
-| A person's confirmation of each step | `data/<profile>/units/<unit>/packets/<id>.json` (to add): `confirmedBy`, `confirmedAt`, a note | P2 |
+| The deductible guidelines | `Community.deductible_policy()` (built, None by default): a rule row adopted by the board, else None, which shows the gap | P1 |
+| A person's confirmation of each step | `data/<profile>/units/<unit>/packets/<id>.json` (built: `jason.tasks.unit_records_write`): per step `shows` (what the person says the record shows), `confirmed_by`, `confirmed_at`, and a note | P2 |
 
 The packet reads; it decides nothing. A step's answer is a person's, written down with their name.
 
@@ -82,7 +82,7 @@ The packet never states a conclusion about coverage, fault, or who pays. Each st
 
 ## Components
 
-`EffectiveRecord`, `CoverageCell`, `OpenQuestion`, `ImprovementForm`, `UnitManual`, `LossPacket`, `SourcedDate`, `Doc`/`DocList`, `Recitation`, `ReadingLabel`, `HeldNote`, `Timeline`, `StageSteps`, `Confirm`, `Command`, `Money`.
+`EffectiveRecord`, `CoverageCell`, `OpenQuestion`, `ImprovementForm`, `UnitManual`, and `LossPacket` are proposed, not in jason-ui or [components.md](../components.md#still-proposed): they are specified in [../handoff-unit-records.md](../handoff-unit-records.md). Built, and used here: `SourcedDate`, `Doc`/`DocList`, `Recitation`, `ReadingLabel`, `HeldNote`, `Timeline`, `StageSteps`, `Confirm`, `Command`, `Money`.
 
 ## Actions
 

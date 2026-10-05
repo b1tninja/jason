@@ -4,7 +4,7 @@ How the console is built. The console is two pieces that already exist, plus the
 
 - **jason-ui** (`ui/`): a React 18 library and single-page app (Vite, TypeScript). Its components are also the design system: the library build exposes them as `window.JasonUI` to the claude.ai design project ([.design-sync/](../../.design-sync/conventions.md)).
 - **jason-web** (`src/jason/web/`): a Flask app under waitress that serves the built UI and the `/api/*` loaders over the stores on disk.
-- **The approvals engine** (`src/jason/approvals/`): plans of writes outside jason, decided item by item, re-planned and fingerprinted before apply, with a hash-chained audit log. Its spec is [approval-workflow.md](approval-workflow.md). jason-web reaches it through the `/api/approvals*` routes (`jason.web.approvals`, being added), behind the write guard (`jason.web.guard`).
+- **The approvals engine** (`src/jason/approvals/`): plans of writes outside jason, decided item by item, re-planned and fingerprinted before apply, with a hash-chained audit log. Its spec is [approval-workflow.md](approval-workflow.md). jason-web reaches it through the `/api/approvals*` routes (`jason.web.approvals`, built), behind the write guard (`jason.web.guard`).
 
 How to run it, the API (including [the approvals routes](../web-ui.md#approvals) and [the write guard](../web-ui.md#the-write-guard)), and every view are in [web-ui.md](../web-ui.md). What each screen decides, and the component behind each task, is in [web-ui-decisions.md](../web-ui-decisions.md). This page records the shape, what was decided and where, and what the console adds on top.
 
@@ -20,13 +20,13 @@ How to run it, the API (including [the approvals routes](../web-ui.md#approvals)
 | Apply off by default | `jason-web --allow-apply` | The one write outside jason the console can make. Without the flag, `POST /api/approvals/<id>/apply` is refused and the page shows the terminal command |
 | Reads are the MCP tools' | `jason.web.sources.default_loaders` | Each `GET /api/<source>` wraps a read-only `jason.mcp` tool or a task reader. Nothing on load calls PayHOA, Google, Zoom, or Keeper |
 | Writes are jason's own stores | [web-ui.md](../web-ui.md#api) | Each write records a person's act (`by`) in a store under `data/`. None acts outward. A writer set to `None` in `create_app` answers 405 "writes are off", and `/api/health` lists the writes that are on |
-| The console screens and the dock | the design handoff of 2026-10-03 ([web-ui-decisions.md](../web-ui-decisions.md#built-the-console-approvals-decisions-agenda-meeting-room-the-dock)) | `ConsoleShell` with four nav groups, the Board / Owner view, a sample "Signed in as" picker over the profile's officers, the dock |
+| The console screens and the dock | the design handoff of 2026-10-03 ([web-ui-decisions.md](../web-ui-decisions.md#built-the-console-approvals-decisions-agenda-meeting-room-the-dock)) | `ConsoleShell` with four nav groups, the Board / Owner view, the dock, and "Signed in as": the signed-in Google account when there is one (`jason.web.signin`), else a sample picker over the profile's officers. A role class (officer, manager, administrator, from the offices the roster gives a person) filters the nav and picks the landing screen |
 | The handoff's rules | the same | Nothing is sent, posted, recorded, or filed without approval, and every write is a `Confirm` that spells out what changes. A board approval is a vote at a meeting that an officer records. Polls are member input; director votes are a roll call by name. Executive session stays out of open recordings, transcripts, and minutes. jason never recommends on a decision brief |
 | The design system | `.design-sync/config.json` | jason-ui is the design system's source, as `window.JasonUI`. A component changed in `ui/src/components` is re-synced to the design project ([.design-sync/NOTES.md](../../.design-sync/NOTES.md)) |
 | Approvals as a plan, then apply | `jason.approvals`, [approval-workflow.md](approval-workflow.md) | Built, with `jason approvals` in the CLI and read-only tools in `jason-mcp` |
 | Approvals stored as JSON | `jason.approvals.store` | One file per approval in `data/approvals/`, with `audit.jsonl` beside it. The earlier SQLite plan is open as a decision only until a person confirms it ([mvp.md](mvp.md#open-decisions)) |
 
-The plan this page used to describe (Starlette and uvicorn, Jinja2 templates, `jason serve` on port 8770, a token sign-in, and HTML forms posting to server-rendered pages) is withdrawn. Nothing was built from it.
+The plan this page used to describe (Starlette and uvicorn, Jinja2 templates, `jason serve` on port 8770, a token sign-in, and HTML forms posting to server-rendered pages) is withdrawn. Nothing was built from it. (A `jason serve` command exists today, but it is not that plan's: it runs jason-web beside the job worker and the scheduler (`--no-web`, `--no-worker`, `--no-scheduler`), and takes jason-web's own flags, `--host`, `--port`, `--dist`, `--allow-apply`, `--require-sign-in`, and `--dev`.)
 
 ## The pieces
 
@@ -35,17 +35,22 @@ ui/                                  jason-ui
   src/components/                    the library: one export per component (index.ts); also window.JasonUI
   src/views/                         one view per screen, by hash route (#/approvals, #/meetings, ...)
   src/App.tsx                        SCREENS: every screen, its nav group, and whether the owner view shows it
-  src/lib/                           useApi, useHash, session (the sample sign-in), theme, format
+  src/lib/                           useApi, useHash, session (Google sign-in or the sample pick), roles, theme, format
   vite.lib.config.ts                 the library build for the design system (npm run build:lib -> ui/dist-lib)
 
 src/jason/web/                       jason-web
   app.py                             create_app(): the routes, the write switches, the bundle
+  guard.py                           the write guard: Host, Origin, token
+  signin.py  access.py               Google sign-in and the roster; data levels, the private view, the owner view's hold-back
+  approvals.py                       the /api/approvals* and /api/evidence* routes
+  drive.py  previews.py              GET /api/drive/thumb/<id>, GET /api/thumb?path=
   sources.py                         default_loaders(): GET /api/<source>; the core writers
   extra/                             one module per console store: a loader and write(key, body),
                                      registered in sources.EXTRA_LOADERS / EXTRA_WRITERS
 
 src/jason/approvals/                 the engine
   model.py  registry.py  store.py  audit.py  engine.py  kinds/owner_info.py  schemas/
+  docref.py  evidence.py  evidence_documents.py   document references, evidence addresses, the documents behind them
 
 src/jason/tasks/approvals.py         the letters jason drafted and their stages (data/approvals/letters.json)
 src/jason/commands/approvals.py      jason approvals
@@ -108,7 +113,7 @@ Waitress serves requests on worker threads, so a long engine call (a plan's live
 
 ## Testing
 
-- **Server.** `pytest tests/test_web.py`: each loader with a missing store and with a fixture store; each write refused without `by`; the write switches off (405). The guard and the engine routes add: a write with a foreign `Host` (421), a foreign or missing `Origin`, or no token (403) refused before its handler; a decision on a held item refused (400); apply refused without `--allow-apply`; an apply whose echoed fingerprint is not the approval's refused with nothing written (409); and no GET that changes `data/approvals/`.
+- **Server.** `pytest tests/test_web.py`: each loader with a missing store and with a fixture store; each write refused without `by`; the write switches off (405). The guard and the engine routes add: a write with a foreign `Host` (421), a foreign or missing `Origin`, or no token (403) refused before its handler; a decision on a held item refused (400); apply refused without `--allow-apply`; an apply whose echoed fingerprint is not the approval's refused with nothing written (409); and a GET to `check` or `apply` refused (405). The approvals routes are in `tests/test_web_approvals.py`, the guard and the sign-in in `tests/test_web_signin.py`. A test that walks every GET route and finds `data/approvals/` unchanged is still to write.
 - **Engine.** `pytest tests/test_approvals.py`: the end-to-end plan, decide, submit, change the fake client, apply refused and superseded, re-plan, apply, audit chain verified.
 - **Components.** `npm test` in `ui/` (Vitest and Testing Library). A new component ships with a test and a design-sync preview (`.design-sync/previews/<Name>.tsx`).
 - **The boundary.** `tests/test_profile.py` checks that no general doc, `docs/console/` included, names a profile's facts. Samples in previews and tests use plainly fake values.

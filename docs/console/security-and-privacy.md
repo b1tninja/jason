@@ -136,16 +136,20 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
   - The evidence routes (`POST /api/evidence/view`, `/refresh`, `/refresh-all`, and a view's link) take the name from the sign-in, never the body. A view's link is bound to the sign-in that opened it.
 - **Each serve is logged** in `access/served.jsonl` (below), before the bytes go out.
 
-**Proposed.** Screen-level access by role, enforced on the server at each loader and write (hiding a button is not a check):
+**Built: the role class.** The console derives one of three classes from a person's offices (`jason.web.signin.role_class`, in `GET /api/session` as `roleClass`): an **officer** holds a board office, a **manager** holds the manager's office and no board office, an **administrator** is one of jason's admins who holds no office. An admin who holds an office is that office's class. The class filters the nav and picks the landing screen (`roles` on a screen in `ui/src/App.tsx`: Decisions is for officers and administrators), and the role strip shows each class's moves. It is a view, not a check: the server refuses by office only where a loader says so (`GET /api/status` for an admin as themselves, `GET /api/people` for anyone off the roster) and by data level (above).
 
-| Role | Screens | Can sign | Data levels |
+**Proposed.** Screen-level access by role, enforced on the server at each loader and write (hiding a button is not a check). The Screens and Can sign columns are proposed. The data levels in the last column are the built `SEE_RULES` above, which are what the server enforces today:
+
+| Role | Screens | Can sign | Data levels, as built |
 |---|---|---|---|
-| manager | All | First signature; one-person kinds | P0 to P2, with P2 revealed on request. P3 in the private view |
-| director (president, vice president included) | All but connections | First or second signature | P0 and P1. P2 on an item they are deciding. P3 executive session in the private view |
-| secretary | Overview, Governance, Records | Second signature; records the board's vote | P0 and P1. P3 executive-session minutes in the private view |
-| treasurer | Overview, Money | Second signature on money kinds | P0 and P1. Account numbers by last four only |
-| reviewer | Approvals waiting on a second person, and their evidence | Second signature only | As the approval shows |
-| counsel | Governing documents, conflicts, notices' requirements and proof, granted matters | None | P0, plus granted P3 matter files |
+| manager | All | First signature; one-person kinds | P0 to P2. P3 in the private view |
+| director (president, vice president included) | All but connections | First or second signature | P0 to P2. P3 (executive session) in the private view |
+| secretary | Overview, Governance, Records | Second signature; records the board's vote | P0 to P2. P3 (executive-session minutes) in the private view |
+| treasurer | Overview, Money | Second signature on money kinds | P0 to P2, no private view. Account numbers by last four only |
+| reviewer | Approvals waiting on a second person, and their evidence | Second signature only | None as an office: the roster gives anyone P0 and P1 |
+| counsel | Governing documents, conflicts, notices' requirements and proof, granted matters | None | None as an office: P0 and P1 as anyone on the roster; granted P3 matter files are not built |
+
+`SEE_RULES` opens P2 outright to those offices: what is proposed is masking each P2 field by the server with a logged reveal (`MaskedField`), so that a screen such as Members and units can show an owner without an email or a phone number ([Data levels](#data-levels), below). The screen specs' privacy tables (for example [Members and units](screens/members-and-units.md#privacy)) are written for that masking: they say what a role would see once it exists, and are narrower than the built levels.
 
 `OfficerRole` has no reviewer or counsel. Whether they become officer roles, or a separate grant in the profile, is open ([mvp.md](mvp.md#open-decisions)).
 
@@ -181,7 +185,7 @@ A folder's row in `access.PATH_RULES` gives most files their level. Some files t
 - **Mail that holds a credential is P4: never served.** The mail sort flags a letter that carries a credential (`jason.tasks.mail.carries_credential`: a PIN mailer, an online access code, a password) in `mail/items.json`. Every file of that letter (`mail/<id>/*`: the scan, the envelope, its text) is P4. `/api/file`, `/api/thumb`, and the evidence's views refuse it, private view or not. The mail loaders (mail triage, the Inbox's letters, insurance notices and claims) carry no reference to it; the row says "Held: this letter holds a credential; it opens in no screen" instead.
 - **Another association's mail is P3.** A letter the sort marks `misdirected` (it names another association and never this one) is someone else's record: P3, in the private view only. While `mail/items.json` cannot be read, every letter is P3.
 - **A hearing's notice Doc is P3 wherever Drive keeps it.** A saved hearing (`zoom/hearings.json`) names the Doc made from the template (`noticeDoc`). That Drive id is P3 by `drive_copies.level_of`, whatever folder or path rule the holdings place it under: in the evidence's level, the copy (`drive/copies/<id>.*`), the thumbnail, and the view. Its copy's documents are held back outside the private view. While the hearings cannot be read, no Drive file is P0 (a P0 file is P2 until they can).
-- **A board call that ran into executive session is P3 for its record of what was said.** A meeting folder the Zoom index lists as an open meeting is P1, but its transcript, audio, video, chat, and summary are P3 when the meeting's own record shows an executive session or a hearing: the words that say so in its transcript or summary (`zoom.confidential_mentions`), or an adjournment its transcript shows by the profile's patterns (`zoom.executive_break`). The catalog reads the same signal. When the signal cannot be read (a file or the profile), those files are P2, never P1, so "Show the document" comes before any view. Its attendance (`participants.json`) stays P1.
+- **A board call that ran into executive session is P3 for its record of what was said.** A meeting folder the Zoom index lists as an open meeting is P1, but its transcript, audio, video, chat, and summary are P3 when the meeting's own record shows an executive session or a hearing: the words that say so in its transcript or summary (`jason.tasks.zoom.confidential_mentions`), or an adjournment its transcript shows by the profile's patterns (`Community.executive_break_patterns`, read by `jason.zoom.models.find_executive_break`). The catalog reads the same signal. When the signal cannot be read (a file or the profile), those files are P2, never P1, so "Show the document" comes before any view. Its attendance (`participants.json`) stays P1.
 - **PayHOA attachments are P2.** `payhoa/attachments/*` holds the bills and receipts `jason utilities --payments --fetch` downloads.
 
 **Proposed.** P2 masking for each field, with a logged reveal (`MaskedField`), server-side. **Masking is the server's job**: a masked value never reaches the browser, and hiding it with CSS is not masking. Until it exists, a screen that would show P2 values (Members and units, a notice's member rows) is not built.
@@ -203,9 +207,9 @@ A table downloaded as CSV has the columns shown. P2 is masked unless revealed; P
 The earlier spec required no CDN, web font, or remote frame. jason-ui made three exceptions, each on first use:
 - `Markdown` loads Mermaid from a CDN the first time a page has a diagram (`setMermaidUrl` overrides it);
 - `GET /api/theme` may give the profile's font stylesheet URL;
-- `Embed` frames Google Docs, Sheets, Slides, Forms, Drive, Calendar, and a Zoom recording, for a viewer already allowed to see them.
+- `Embed` frames the association's public calendar, a published chart or Google file, a Zoom recording's share page, and a map, each on its kind's hosts (`EMBED_HOSTS`), sandboxed, with no referrer, and loaded on a person's click unless the screen's subject is the frame ([requests-and-links.md](screens/requests-and-links.md#embed)). A private Google file (a Doc, Sheet, Slides, Form, or Drive file with no published address) is a `Doc` card on jason's copy with "Open in Google", never a frame.
 
-None of them sends member data: they load a library, a font, or a file the viewer's own Google session opens. A Content-Security-Policy for the bundle would name exactly these origins and nothing else. Whether to self-host Mermaid and the font is open ([mvp.md](mvp.md#open-decisions)).
+None of them sends member data: they load a library, a font, or a public frame. A Content-Security-Policy for the bundle would name exactly these origins and nothing else. Whether to self-host Mermaid and the font is open ([mvp.md](mvp.md#open-decisions)).
 
 ## Secrets
 

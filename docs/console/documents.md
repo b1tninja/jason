@@ -106,7 +106,7 @@ A modal `<dialog>` (`showModal()`), about 92vw by 90vh. Width is capped for read
 
 ### PayHOA request submission
 
-**Status:** built; the rendering rules below are in progress.
+**Status:** built, with the rendering rules below (`jason.approvals.evidence_documents`: sections from `hr`, grouped choices, "same as" pairs, "None chosen", "both given", "Certified", file names, help text, and required).
 
 **Where it comes from.**
 - **Truth:** PayHOA.
@@ -177,7 +177,7 @@ A modal `<dialog>` (`showModal()`), about 92vw by 90vh. Width is capped for read
 - **Truth:** the statute's text exported from lawlibrary (`jason export-authorities`), and the recorded or adopted instrument for the association's documents.
 - **What a citation offers:**
   - its whole section as text;
-  - where `jason cite` links one, the library file (`library:<id>`), its extracted text (`library-text:<id>`), and a Drive file's copy on disk (`drive:<id>`).
+  - where `jason cite` links one, the library file (`library:<id>`), its extracted text (the `text` document `library-text:<id>` of that `library:<id>` address, not an address of its own), and a Drive file's copy on disk (`drive:<id>`).
 - **Level and caveats:** P0, unless a library row is confidential. It always carries the caveat that jason's text is not an official restatement, and the version in force.
 - **Proposed:** link the static reader (`jason cite --html`, `data/reader/`) as the original for a `jason://` address, so a person can walk to the neighbouring sections.
 
@@ -307,7 +307,7 @@ What the 2026-10-04 research found:
 
 ### Scanned mail, Mailroom letters, drafts, minutes, transcripts
 
-**Status:** proposed for each.
+**Status:** part built. The `file:<path>` resolver already serves a file under `data/` that `access.PATH_RULES` places, shown as a `pdf`, `image`, `text`, or `audio` document. Loaders now return such references for scanned mail (`jason.tasks.mail.scan_ref`), the minutes draft, the filled minutes and the Zoom transcript (`jason.web.extra.minutes_review`), a meeting's files and recording (`jason.web.extra.meeting_docs`), and a payment's attachments. No loader returns a reference for a Mailroom letter as mailed or for a draft under `drafts/`, so those two rows stay proposed.
 
 | Kind | Copy | Renders | Level |
 |---|---|---|---|
@@ -350,7 +350,7 @@ These were found while writing this page. Each is a lead for the build order bel
 | ~~`Embed` frames any ref~~ **Closed** | No host allowlist, no `sandbox`, no `referrerpolicy`; a private Google file frames blank for many browsers | Done: see [The Embed component](#the-embed-component) |
 | ~~`MeetingStage` packet frames~~ **Closed** | A bare iframe, no fallback, no sandbox | Done: for the board and the host, a packet file on the stage is jason's copy, opened as one logged view (`POST /api/evidence/view`) and shown by `DocumentViewer` inline from its document link; with no copy, its `DocumentPreview` card (Read from Drive, Open in Google). Members (`audience=owner`, not signed in) see only a card: "The host is showing <name>; members receive the packet with the agenda". Nothing marks a packet file for members, so none is shown to them (a decision for the board). The stage never frames Google |
 | Registers carry no Sheet link | A person can't reach the source | Return the spreadsheet's `webViewLink` with the snapshot |
-| A file answer shows ids | "9,9" instead of names | In progress (the submission rules above) |
+| ~~A file answer shows ids~~ **Closed** | "9,9" instead of names | Done: a file question shows its uploads by name (the submission rules above) |
 
 ## The Embed component
 
@@ -371,7 +371,7 @@ Photos, PDFs, and recordings under data/ render as `Doc` on `file:<path>`: a pho
 
 ## Build order
 
-1. **Submission rendering** (in progress): sections, grouped choices, same-as pairs, file names, help, and required.
+1. **Submission rendering** (built): sections, grouped choices, same-as pairs, file names, help, and required.
 2. **Close the serving gaps:** `/api/file` callers to the document service; the library's confidential flag to the private view (built: the switch, the band, and the evidence's confidential documents).
 3. **The viewer's header actions:** Open the original, ↻ inside the viewer, and the held-back count.
 4. **Drive copies** (built, but the `table` renderer): the `drive:` resolver row with its export refresher, thumbnails, and the Doc, Sheet, and Slides renderers (pdf and markdown built; a Sheet's CSV opens as text until the `table` renderer). `DrivePreview` shows a file as jason's copy on the Templates screen. Built since: the `file:` resolver row and `GET /api/thumb?path=` for recorded copies on disk; `DocumentPreview` (a Drive file, a file on disk, or both, labelled) on the Records screen's governing documents, the agenda wizard's and the meeting view's packet files, and the meeting stage's packet cell. Drafts are next, then the `Doc` component that absorbs these ([doc-component.md](doc-component.md)).

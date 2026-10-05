@@ -1,16 +1,16 @@
 # Onboarding
 
-A band added to `#/onboarding`: the onboarding session · phase 2 · CLI: `jason onboard`, `jason onboard --questions`, `jason intake`
+A tab of `#/onboarding`: the onboarding session (built) · phase 2 · CLI: `jason onboard`, `jason onboard --questions`, `jason intake`
 
 ## In the console
 
 **Communities** (`#/communities`) and **Onboarding** (`#/onboarding`) are built from [onboarding-ux.md](../../onboarding-ux.md): the portal of every profile with the active one's progress; and, for the active community, its accounts (set or not, never a value), its facts by duty, the request list a manager sends with the stores' own reading beside each item, its letter, and the gaps. A person records what they did about each item (`POST /api/onboarding/<key>`).
 
-**What this spec adds** is the **onboarding session** (`jason onboard`), as a band of `#/onboarding`: the stage gates in order, the open questions ranked by what each answer unblocks, a signed answer to each, and a second person on a high-stakes answer. The request list says what to ask for; the session says what is still unanswered and what each answer unlocks. The loaders to add are `onboarding-session` (over `jason.api.onboarding_status`) and `next-questions`; the writes are `answer_intake_question` and `onboarding_confirm`, both of which already take `by`. The components are being added: `StageSteps` and `QuestionCard`.
+**What this spec adds** is the **onboarding session** (`jason onboard`), as a tab of `#/onboarding` (this spec's "band"): the stage gates in order, the open questions ranked by what each answer unblocks, a signed answer to each, and a second person on a high-stakes answer. The request list says what to ask for; the session says what is still unanswered and what each answer unlocks. **It is built**, as the **Setup** tab of `#/onboarding` (`ui/src/views/OnboardingSetup.tsx`): the loader is `GET /api/onboarding-session` (over `jason.api.onboarding_status`; `?limit=`, `?group=`, `?stage=`, `?kinds=`), whose `next` field is the ranked questions, so there is no separate `next-questions` loader. The write is `POST /api/write/intake/<id>` with `{answer, by}`, or `{confirm: true, by}` for the second person, which queues `answer_intake_question` and `onboarding_confirm` for a signed-in roster person (both take `by`); it writes only `data/intake/asks.json`. The components are `StageSteps`, `QuestionCard`, and `SecondConfirm`, built. The tab does not show the proposals band (the patch files under `data/onboarding/proposals/`); the layouts below show the whole design.
 
 ## Finding the association and its documents
 
-The first tab of `#/onboarding`, **Find the association**, comes before the document questions. Onboarding a community starts with choosing the association from the county's directory, then locating its recorded documents (declaration, amendments, annexations, condominium plans, maps, bylaws, common-area deeds, litigation, the statement) and asking the board about each: "Which is your declaration? Do you hold a copy of each?" It is built from `AssociationPicker` and `DocumentLocator` (`ui/src/components`), composed by `FindAssociation` in `OnboardingView.tsx`.
+A tab of `#/onboarding`, **Find the association** (after **Setup**), comes before the document questions. Onboarding a community starts with choosing the association from the county's directory, then locating its recorded documents (declaration, amendments, annexations, condominium plans, maps, bylaws, common-area deeds, litigation, the statement) and asking the board about each: "Which is your declaration? Do you hold a copy of each?" It is built from `AssociationPicker` and `DocumentLocator` (`ui/src/components`), composed by `FindAssociation` in `OnboardingView.tsx`.
 
 ### Data
 
@@ -80,7 +80,7 @@ The first tab of `#/onboarding`, **Find the association**, comes before the docu
 
 ### The answers
 
-The located items are not answered here. Each becomes a FACT question in the onboarding session (subject `fact:lookup:located-ITEM`, from `onboarding_session.lead_asks`), answered with `QuestionCard` and a name, and confirmed by a second person when it has stakes. Each group names its question's subject, and links to it when the view passes `questionHref`. Until the session band is in the console, the third card shows `jason onboard --questions`.
+The located items are not answered here. Each becomes a FACT question in the onboarding session (subject `fact:lookup:located-ITEM`, from `onboarding_session.lead_asks`), answered with `QuestionCard` and a name, and confirmed by a second person when it has stakes. Each group names its question's subject, and links to it when the view passes `questionHref`. The session is built (the Setup tab), but `FindAssociation` passes no `questionHref` yet, so the third card still shows `jason onboard --questions`.
 
 **The board's list** is the same data as a printable checklist: for each document, "We hold a copy" and "Order a copy" boxes to mark on paper. **Print the board's list** prints only the list. The page records no mark.
 

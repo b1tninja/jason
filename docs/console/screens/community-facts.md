@@ -4,7 +4,7 @@ A new screen, `#/facts`, in Records · phase 3 · CLI: `jason facts` (to add) ·
 
 ## In the console
 
-None. The owner's manual, the FAQ topics, and the questions owners ask are scattered: the topic report (`thread_topics`) counts them, the governing documents hold the rules, and the library holds the manuals. This screen is the **assumed defaults** of [../../unit-records-design.md](../../unit-records-design.md) as a page: what the association says is true of every unit unless a unit's record says otherwise, with its source.
+No screen, though the loader is built: `GET /api/facts` (`?topic=`, `?q=`, `?scope=`, `?status=`; `jason.web.extra.unit_records.facts` over `jason.tasks.unit_records_view.facts_view`), over `Community.facts()` and `jason.community.facts` (`Fact`, `FactStatus`, `FactScope`). The owner's manual, the FAQ topics, and the questions owners ask are scattered: the topic report (`thread_topics`) counts them, the governing documents hold the rules, and the library holds the manuals. This screen is the **assumed defaults** of [../../unit-records-design.md](../../unit-records-design.md) as a page: what the association says is true of every unit unless a unit's record says otherwise, with its source.
 
 ## Purpose and personas
 
@@ -19,12 +19,12 @@ One place for the answers owners keep asking and the documents behind them: what
 
 | Part | Source | Level |
 |---|---|---|
-| The facts | `Community.facts()` (to add): `Fact` rows from the specification, merged with the facts register's rows (`registers.py`, the board's columns: status, sources, notes) | P0 |
+| The facts | `Community.facts()` (built, empty by default): `Fact` rows from the specification. The merge with the facts register's rows (`registers.py`, the board's columns: status, sources, notes) is proposed: `facts_view` reads `Community.facts()` alone | P0 |
 | A fact's rule words | `cite_document(expression)` (`jason.mcp.governance`): the operative words whole, the version in force, the caveat. A fact that rests on a provision stores the expression, never the words | P0 |
 | A fact's documents | the library and Drive, by address (`DocRef` through `jason.approvals.docref`) | P0 for public documents; per file level otherwise |
 | The questions most asked | `thread_topics()`: topics with three or more units in a year (the FAQ candidates), and each fact's `answers` (the questions it settles) | P1 |
 | Coverage by plan | computed: for each plan, facts documented, reported, and assumed, from the facts' scope | P1 |
-| Open questions | `Community.open_questions()` (to add): the question, with whom (agent, counsel, board), asked and answered dates, the answer's source | P1 |
+| Open questions | `Community.open_questions()` (built, empty by default): the question, with whom (agent, counsel, board), asked and answered dates, the answer's source | P1 |
 
 A fact never copies a provision's words into its statement. A statement that restates a rule is replaced by a recitation of it, then a reading labeled as the board's or jason's.
 
@@ -51,7 +51,7 @@ A fact never copies a provision's words into its statement. A statement that res
 
 ## Components
 
-`FactList`, `FactCard`, `FactStatus`, `DocRepository`, `Doc`/`DocList`, `Recitation` and `ReadingLabel` inside a card, `OpenQuestion`, `SearchBox`, `Tabs`, `Stat`, `Command`, `Confirm`.
+`FactList`, `FactCard`, `FactStatus`, `DocRepository`, and `OpenQuestion` are proposed, not in jason-ui or [components.md](../components.md#still-proposed): they are specified in [../handoff-unit-records.md](../handoff-unit-records.md). Built, and used here: `Doc`/`DocList`, `Recitation` and `ReadingLabel` inside a card, `SearchBox`, `Tabs`, `Stat`, `Command`, `Confirm`.
 
 ## Actions
 

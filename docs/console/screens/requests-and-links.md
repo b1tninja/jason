@@ -46,7 +46,7 @@ Plain web links (a canvas's Links card, the Drafts' "Open in Gmail" links) stay 
 | `pdf` under data/ | `Doc` card on `file:<path>` |
 | `image` or `audio` at an https URL | Loads on a click, with no referrer |
 | `image` or `audio` as `blob:` or `data:` | Shown at once: nothing outside |
-| `audio` under data/ | The browser's player, signed in, until the evidence's `file:` row shows audio |
+| `audio` under data/ | `Doc` inline on `file:<path>` (kind `audio`): the viewer's player, from a logged view's short-lived link |
 | `calendar` | A frame on `calendar.google.com` (`/calendar/embed`) |
 | `chart` (published) | A frame on `docs.google.com` (`/spreadsheets/d/e/…/pubchart`) |
 | A published Google file (`/d/e/…/pub`, `pubhtml`, `embed`, `viewform`) | A frame on `docs.google.com` |
