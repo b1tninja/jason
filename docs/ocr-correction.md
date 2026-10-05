@@ -323,6 +323,11 @@ and its calibration is poor (certified copy: p >= 0.95 right 22 of 36; 0.8 to 0.
   - The `.txt` is never rewritten: a reading is evidence.
   - A file near the top is one to read again with the Tesseract tool or the vision model.
 
+- **`jason preflight FILE|FOLDER`** ([pdf-preflight.md](pdf-preflight.md)) comes before all of the above for a box of scans.
+  - It says which pages are blank (kept in the original, never dropped), which scanner text layers read as English and which to read again, and writes a cleaned page image of each page beside the library (`--render`, never in place of the original).
+  - `--ocr` reads that rendition with `ocr.TesseractCli` and keeps each word's box and confidence in `ocr.words.json`, a second detector for the word layer here. The rendition's page images are gray, so the vision model's crops can come from them.
+  - The cleaning (`auto`) changes only a page with a measured defect (shading, dust, a tilt over one degree), so on a clean page the reading is the one measured above. Binarizing (Otsu, Sauvola) made the reading worse on every clean set measured.
+
 The language model never learns from the document it reads, nor from that document's working copy (`tasks.ocr_correct.lexicon_for(..., exclude=(key,))`): the copy is a second reader, and a reader that learned from it would only agree with it.
 
 ## What the prompts say

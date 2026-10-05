@@ -168,6 +168,20 @@ class TesseractCli:
                                   timeout=self.timeout, env=env, check=False)
         return parse_tsv(done.stdout.decode("utf-8", errors="replace"), number)
 
+    def image_words(self, image: Path, number: int = 0) -> list[TesseractWord]:
+        """One image file's words, read as a page at ``dpi``: a cleaned rendition's page
+        (``jason.community.pdf_preflight``), which has no PDF page to draw."""
+        import os
+        import subprocess
+
+        env = dict(os.environ)
+        tessdata = PyMuPdfTesseract.tessdata()
+        if tessdata:
+            env["TESSDATA_PREFIX"] = tessdata
+        done = subprocess.run([self.exe(), str(image), "stdout", "-l", self.language, "--dpi", str(self.dpi), "tsv"],
+                              capture_output=True, timeout=self.timeout, env=env, check=False)
+        return parse_tsv(done.stdout.decode("utf-8", errors="replace"), number)
+
     def words(self, path: Path, *, pages: tuple[int, ...] = ()) -> list[TesseractWord]:
         import pymupdf
 
@@ -179,8 +193,14 @@ class TesseractCli:
 
     def text_of(self, path: Path) -> str:
         """The pages' text: a line per Tesseract line, a blank line between its blocks, pages apart."""
+        return self.words_text(self.words(path))
+
+    @staticmethod
+    def words_text(words: list[TesseractWord]) -> str:
+        """Words as text, the shape ``text_of`` gives: a line per Tesseract line, a blank line between its blocks, pages
+        apart."""
         pages: dict[int, list[TesseractWord]] = {}
-        for w in self.words(path):
+        for w in words:
             pages.setdefault(w.page, []).append(w)
         out = []
         for number in sorted(pages):

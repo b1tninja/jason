@@ -665,6 +665,27 @@ Take a folder, zip, Drive folder, or files into the library: inventory, dedup, r
 | `--gate` |  | print what the last ingest says for the onboarding session's ingest stage (read-only) |
 | `--json` |  | print the run as JSON |
 
+### `jason preflight`
+
+Inspect scanned PDFs before OCR: blank and near-blank pages, rotation, skew, resolution, text-layer quality, attachments and images; --render writes a cleaned copy beside the library
+
+| Option | Value | Help |
+|---|---|---|
+| `source` | one or more | a PDF, or a folder of PDFs |
+| `--json` |  | print the facts as JSON |
+| `--no-osd` |  | do not ask Tesseract for each page's orientation |
+| `--no-media` |  | do not list attachments, images, forms, and actions |
+| `--no-text-quality` |  | do not score the text layer (needs the corpus on disk) |
+| `--limit` | SHARE | the suspect share over which a page is read again (default 0.03) |
+| `--jobs` | JOBS | files read at once |
+| `--render` |  | write the cleaned page images to the renditions store |
+| `--pdf` |  | with --render: also a clean.pdf of those images |
+| `--variant` | VARIANT | the cleaning: auto (default), scanned, smooth, flatten, despeckle, deskew, stretch, clahe, otsu, sauvola |
+| `--native` |  | with --render: take a scan's own raster at its true resolution instead of drawing the page |
+| `--ocr` |  | with --render: read the rendition with Tesseract's tool |
+| `--extract` |  | save attachments and photographs to the rendition's media folder |
+| `--store` | DIR | the renditions store (default: <data>/library/renditions) |
+
 ### `jason contract-terms`
 
 Read a contract's terms: duties, deadlines, money, notice windows, dispute resolution, and what the counterparty must produce (grammar, and a model with --model ollama\|bedrock)

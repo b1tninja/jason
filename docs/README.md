@@ -74,6 +74,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [embedded-references.md](embedded-references.md): `{QUOTE:key#n}` and `{CITE:key#n}` in place of copied governing-document passages; finding the copies (current, stale, draft) and who may change them; the compiled guide agents read.
 - [document-duties.md](document-duties.md): the duties, prohibitions, permissions, rights, and conditions the governing documents state, read by a phrase grammar and a local model, measured, and reviewed by a person.
 - [ocr-correction.md](ocr-correction.md): reading OCR into words: the English prior (Gov. Code 27293), the text rules, local models and word crops as second readers, agreement as confidence, and the measurements.
+- [pdf-preflight.md](pdf-preflight.md): the check of scanned PDFs before OCR (`jason preflight`): blank and near-blank pages, rotation, skew, resolution, the text layer's quality, attachments and images, and a cleaned rendition measured against the alternatives.
 - [document-tools.md](document-tools.md): the open-source tools for the scans (Ollama, OCR engines; AnythingLLM until October 4, 2026) and how each joins jason.
 - [letters.md](letters.md): the letter templates in Drive, their `{VARIABLE}` tokens, and filling a copy.
 - [packets.md](packets.md): several documents (the annual disclosures) assembled into one PDF.
