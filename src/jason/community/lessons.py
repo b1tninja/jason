@@ -1479,7 +1479,10 @@ LESSONS: tuple[Lesson, ...] = (
            "Nothing in code yet. Edits are re-checked before testing, commits stage only their own hunks, and a "
            "commit is tested in a worktree at HEAD (lesson commit-swept-another-sessions-hunk).",
            Status.OPEN,
-           notes=("Wanted: gen_cli_docs.py honoring --help and a --check mode; each session in its own worktree.",)),
+           notes=("Wanted: gen_cli_docs.py honoring --help and a --check mode; each session in its own worktree.",
+                  "The index is shared too: on 2026-10-04 another session's commit (ad36baa, paint and glyphs) took "
+                  "this session's staged board-items fix with it. Stage and commit in one command, or commit from a "
+                  "temporary index (GIT_INDEX_FILE) so another session's commit cannot sweep staged hunks.")),
     Lesson("marks-mixed-who-acted", date(2026, 10, 4), (Area.DOCUMENTS,),
            "The Decisions screen showed every recorded outcome as a green badge, denied included, and the design's "
            "glyph sheet mapped filed, a word for what jason did, to the stamp that marks a person's decision, with "
