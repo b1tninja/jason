@@ -87,11 +87,11 @@ Each comes from [AGENTS.md](../../AGENTS.md), how jason works, and the design ha
 | Phase | What ships | Writes it can make |
 |---|---|---|
 | **Built** | The console screens and the dock ([web-ui.md](../web-ui.md)); letters through their stages; the board loop; the approvals engine with `jason approvals` and read-only MCP tools | jason's own stores, each a person's act with `by`. Everything outward from the terminal |
-| **1. Engine approvals in the browser** (now; [mvp.md](mvp.md#the-first-build-engine-approvals-in-approvals)) | The write guard, the `/api/approvals*` routes, and the plan review in `#/approvals` for `owner-info-tags` | Decisions and signatures. PayHOA member and unit tags, and the requests they complete, only with `--allow-apply` |
+| **1. Engine approvals in the browser** (built, with the gaps listed in mvp.md; [mvp.md](mvp.md#the-first-build-engine-approvals-in-approvals)) | The write guard, the `/api/approvals*` routes, and the plan review in `#/approvals` for `owner-info-tags` | Decisions and signatures. PayHOA member and unit tags, and the requests they complete, only with `--allow-apply` |
 | **2. The governance screens** | Requests, Notices, Governing documents, the onboarding session, and the bands the screen specs add to existing screens | `data/` records a person signs: intake answers and their second person, a duty done, a posting recorded |
 | **3. More kinds** | Gmail drafts, calendar, Tasks, private Docs, PayHOA form updates, delivery tags | Each kind's own write, behind its registry row |
 | **4. Money and members** | Mailroom sends, owner email and mail batches, publishing forms, Vault holds (two people); Members and units with P2 masking | Postage, notices to members, legal holds |
-| **5. Sign-in** | A credential for each officer (built: Sign in with Google), roles enforced on the server, the private view | The same writes, with authenticated names |
+| **5. Sign-in** | A credential for each officer (built: Sign in with Google), roles enforced on the server (built in part: a role class and data levels; screens and signing still proposed), the private view | The same writes, with authenticated names |
 
 Out of scope at every phase:
 - anything jason may not do from the CLI: approving, denying, or assigning a member's request; sending to a collection agency; deleting a live PayHOA form; editing an owner's submission; mailing on jason's own initiative;
