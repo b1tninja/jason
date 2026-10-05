@@ -119,6 +119,17 @@ PROCEDURES: tuple[Procedure, ...] = (
                        "within 30 days; a posting jason cannot see is recorded (jason schedule --done KEY DUE --by "
                        "NAME --evidence TEXT); a notice day already passed means a later meeting day noticed in time",
                  refs=("docs/schedule.md (The watch)", "docs/attention.md"), lessons=("meeting-clocks-read-forward",)),
+            Step("Say what kind of meeting it is and how it is held, and list the notices the law requires for that "
+                 "meeting: the rows that apply, those that do not with the fact that decided each, and those left "
+                 "undetermined with the fact still missing.",
+                 command="jason notices --catalog --fact board_meeting=ordinary --fact meeting_format=in_person "
+                         "(executive_session_only, emergency; entirely_by_teleconference)",
+                 check="the ordinary meeting's row applies and its executive-session and emergency rows do not; a "
+                       "meeting held only in executive session takes its own shorter clock; a meeting held entirely "
+                       "by teleconference adds the teleconference row's elements; an undetermined row is a fact not "
+                       "yet said, never a notice not required",
+                 refs=("docs/notices.md (When a row is required)", "docs/applicability.md"),
+                 lessons=("a-condition-kept-as-prose-cannot-be-asked", "teleconference-reminder-paraphrased")),
             Step("Within days of a meeting, draft its minutes from the Zoom transcript, and read jason's checks before "
                  "anything else: the quorum counted from the attendance, a motion acted on without one, and lines "
                  "naming a subject the open minutes give only in general terms.",
@@ -224,6 +235,100 @@ PROCEDURES: tuple[Procedure, ...] = (
                           "broadcast-kept-is-handed-not-sent")),
         ),
         refs=("docs/batches.md (Delivery and follow-ups)", "docs/notices.md", "Civil Code 4040, 4041(e), 4045, 4050"),
+    ),
+    Procedure(
+        "election", "An election: of directors, a recall, or a member vote",
+        "When the board sets an election's date, before its first notice; again before each notice goes out.",
+        (Area.GOVERNING, Area.EMAIL, Area.MAILROOM),
+        "Know which notices the law requires for this election and which it does not, send each on its clock with "
+        "every required element, and record the seats it fills.",
+        (
+            Step("Say what kind of election it is, and list the notices the law requires for it: the rows that apply, "
+                 "those that do not with the fact that decided each, and those left undetermined with the fact still "
+                 "missing. A row left undetermined is never read as a notice not required.",
+                 command="jason notices --catalog --fact election=directors (recall, assessment, amendment, "
+                         "exclusive_use, other)",
+                 check="the nomination and pre-ballot rows apply to an election of directors or a recall and to no "
+                       "other kind; the acclamation, electronic-ballot, and reconvened-meeting rows wait on the "
+                       "association's standing facts where the specification does not state them",
+                 refs=("docs/notices.md (When a row is required)", "docs/applicability.md"),
+                 lessons=("a-condition-kept-as-prose-cannot-be-asked",)),
+            Step("Answer the standing facts those rows wait on, each with the record that settles it: whether an "
+                 "election rule allows electronic secret ballots and lets members opt out, whether the governing "
+                 "documents require a quorum for an election of directors and how large, and whether the board keeps "
+                 "seating by acclamation available (its decision, written down once).",
+                 command="jason applies --questions; jason applies --file-questions; jason intake --answer ID TEXT "
+                         "--by NAME",
+                 check="each answer names its section or minute; the catalog run again leaves no election row "
+                       "undetermined", refs=("docs/intake.md",), person=True),
+            Step("Read each notice's requirement with the election's facts: its recipients, method, clock with the "
+                 "documents' stricter period, and the conditional elements it carries for this kind of election.",
+                 command="jason notices REQUIREMENT --catalog --fact election=directors",
+                 check="the last day to send each; the elements marked for this election only",
+                 refs=("procedure notice-delivery",)),
+            Step("Check each notice's text for its required elements before it goes out, with the election's facts.",
+                 command="jason notice-check FILE --requirement KEY --event election=directors",
+                 check="no required element missing; a conditional element is judged by the facts said, not skipped",
+                 refs=("docs/notices.md",)),
+            Step("Deliver each notice under its requirement's key and date, and read its delivery and the follow-ups "
+                 "owed.", command="jason notices KEY --sync", refs=("procedure notice-delivery",),
+                 lessons=("notice-key-names-requirement", "notice-file-is-not-delivery")),
+            Step("After the inspector of elections reports, record the seats filled and their terms, with the report or "
+                 "the minutes in hand; a second person confirms.",
+                 command="jason onboard --questions --group elections; jason onboard --answer ID TEXT --by NAME; "
+                         "jason onboard --confirm ID --by NAME; jason onboard --apply",
+                 refs=("procedure onboard",), lessons=("board-roster-change-unrecorded",), person=True),
+        ),
+        refs=("docs/notices.md", "Civil Code 5100 to 5145"),
+    ),
+    Procedure(
+        "rule-change", "A change to an operating rule (Civil Code 4340 to 4365)",
+        "When the board proposes to adopt, amend, or repeal an operating rule, before the member notice; again "
+        "after the decision.",
+        (Area.GOVERNING,),
+        "Know whether the change is one the members must be noticed of, give the notice with the text of the change "
+        "first, decide only after the notice period, and notice the adoption on its clock.",
+        (
+            Step("Say the change's facts, and list the notices the law requires for it: whether the rule is on a "
+                 "subject Civil Code 4355(a) lists (or the change is a board action 4355(b) lists), and whether it is "
+                 "an emergency rule change under 4360(d). The rows that apply, those that do not with the deciding "
+                 "fact, and those left undetermined with the fact still missing; an undetermined row is never read as "
+                 "a notice not required.",
+                 command="jason notices --catalog --fact rule_scope=listed_subject (not_reached) --fact "
+                         "rule_change=noticed (emergency)",
+                 check="for a listed subject the proposed-change and adoption rows apply, and the proposed-change row "
+                       "falls away only for an emergency rule change; whether the subject is one 4355(a) lists is a "
+                       "reading, labeled as the board's, and where two readings remain the board asks counsel",
+                 refs=("docs/notices.md (When a row is required)", "docs/applicability.md",
+                       "AGENTS.md (Where the law is silent, write it down)"),
+                 lessons=("a-condition-kept-as-prose-cannot-be-asked",)),
+            Step("Draft the course: the member notice of the proposed change, the agenda item for the decision "
+                 "meeting, and the notice of adoption, each reciting the sections as they stand and the proposed text "
+                 "as its own version.",
+                 command="jason rule-change CHANGE --notice-date DATE; jason rule-change --list",
+                 check="the notice carries the text of the proposed rule change first, then its purpose and effect "
+                       "(4360(a)); the decision meeting is at least 28 days after the notice; a rule change is never "
+                       "a vote by the members unless the documents say so",
+                 refs=("docs/notices.md", "AGENTS.md (Recite the rule; label the reading)")),
+            Step("Preview the member notice as a Gmail draft, and keep its text as sent; a person addresses and "
+                 "sends it.", command="jason rule-change CHANGE --draft-email; then --yes --by NAME",
+                 check="the draft has no recipients until a person adds them; the text, subject, and the sections "
+                       "it recites are kept in data/notices/KEY/", lessons=("notice-text-not-kept",), person=True),
+            Step("Check the notice's text for its required elements with the change's facts.",
+                 command="jason notice-check FILE --requirement rule-change-proposed --event rule_scope=listed_subject",
+                 check="the text, the purpose and effect, and the comment deadline are each present"),
+            Step("Deliver each notice under its requirement's key and date, and read its delivery and the follow-ups "
+                 "owed.", command="jason notices KEY --sync", refs=("procedure notice-delivery",),
+                 lessons=("notice-key-names-requirement", "notice-file-is-not-delivery")),
+            Step("Read the change's stages: the 28-day notice delivered before the decision, the decision in the "
+                 "minutes, and the notice of adoption delivered within 15 days after.",
+                 command="jason record-stages --change KEY",
+                 check="a clock is met by a delivery, not a file; the minutes state the decision in words",
+                 refs=("docs/record-stages.md",), lessons=("approval-item-is-not-approval",)),
+            Step("After adoption, carry the rule into the rules book and the owner's manual, and run their "
+                 "procedure.", refs=("procedure owners-manual", "procedure rule-history"), person=True),
+        ),
+        refs=("docs/notices.md", "Civil Code 4340 to 4365"),
     ),
     Procedure(
         "law-review", "The year's changes in the law against the written provisions",

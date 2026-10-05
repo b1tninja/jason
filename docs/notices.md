@@ -141,6 +141,8 @@ jason notices --catalog --required                                   # every con
 
 Rows about another kind of event (a rule change, when the facts said are an election's) are set aside and named, not answered.
 
+The standing procedures run it before an event's first notice: `jason sop election`, `jason sop rule-change`, and `jason sop board-packet` each have the step, with the facts to say and what to check, and an undetermined row is answered (`jason applies --questions`) rather than read as not required.
+
 **The facts.** Each is a closed set whose members are the statute's own distinctions.
 
 | Fact | Members | From | Who says it |
