@@ -149,8 +149,10 @@ def test_by_default_the_records_are_read_from_the_library(data, monkeypatch):
 def test_the_index_s_passages_are_cut_on_sections_so_a_file_with_headings_reads_differently(data):
     # Why the index is not the default: the library reader cuts 220-word windows, the index cuts on a file's headings.
     (data / "library" / "text" / "10.txt").write_text(
-        "SCOPE OF WORK\n\nThe contractor shall complete a roof inspection each spring.\n\n"
-        "PAYMENT TERMS\n\nThe fee for each inspection is due on the day of the inspection, before the report.\n", encoding="utf-8")
+        "SCOPE OF WORK\n\nThe contractor shall complete a roof inspection each spring, clear every drain and scupper, photograph "
+        "each seam and flashing, and give the board a written report of what it found within ten days.\n\n"
+        "PAYMENT TERMS\n\nThe fee for each inspection is due on the day of the inspection, before the report, and a late "
+        "payment bears interest at the rate the agreement names from the day it was due.\n", encoding="utf-8")
     _build(data)
     old = {text for _, _, title, text, _ in _records(_pack(data, FIRE, use_index=False)) if "Roof" in title}
     new = {text for _, _, title, text, _ in _records(_pack(data, FIRE, records_index=True)) if "Roof" in title}

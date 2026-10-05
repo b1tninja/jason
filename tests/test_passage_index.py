@@ -73,6 +73,29 @@ def test_build_cuts_each_file_once_and_only_again_when_it_changes(data):
     assert build(data, emb).removed == 1
 
 
+def test_a_changed_minimum_cuts_every_file_again(data, monkeypatch):
+    from jason.community import passage_sections
+
+    def stored() -> set[str]:
+        db = pi.connect(data)
+        try:
+            return {row[0] for row in db.execute("SELECT chunking FROM files")}
+        finally:
+            db.close()
+
+    emb = FakeEmbedder()
+    monkeypatch.setattr(passage_sections, "MIN_PASSAGE_WORDS", 25)
+    build(data, emb)
+    assert stored() == {"sections/min25"}
+    assert len([p for p in pi.load(data).passages if p.path.name == "ccrs.md"]) == 1     # two short sections, joined
+    assert build(data, emb).cut == 0
+    monkeypatch.setattr(passage_sections, "MIN_PASSAGE_WORDS", 30)
+    assert build(data, emb).cut == 3 and stored() == {"sections/min30"}       # the same bytes, another cut
+    monkeypatch.setattr(passage_sections, "MIN_PASSAGE_WORDS", 0)
+    assert build(data, emb).cut == 3 and stored() == {"sections"}             # the cut before, as it was stored
+    assert len([p for p in pi.load(data).passages if p.path.name == "ccrs.md"]) == 2
+
+
 def test_a_title_note_is_left_out(data):
     build(data, FakeEmbedder())
     paths = {str(p.path.name) for p in pi.load(data, pi.Scope(confidential=True)).passages}
@@ -181,7 +204,10 @@ def test_document_search_falls_back_to_keywords_without_the_embedder(data, monke
     assert found["available"] and found["mode"] == "exact" and "embedder" in found["note"] and found["hits"]
 
 
-def test_a_page_s_description_is_left_out_and_its_context_is_read_by_the_rankers(data):
+def test_a_page_s_description_is_left_out_and_its_context_is_read_by_the_rankers(data, monkeypatch):
+    from jason.community import passage_sections
+
+    monkeypatch.setattr(passage_sections, "MIN_PASSAGE_WORDS", 25)
     (data / "authorities" / "civ-5855.md").write_text(
         "# Civil Code 5850-5875\n\n- Source: a legislature\n- Path: Part 5 > Chapter 10. Dispute Resolution > Article 1. Discipline\n\n"
         "## CIV 5855\n\nThe board shall notify the member in writing of its decision within 15 days.\n", encoding="utf-8")
@@ -191,6 +217,8 @@ def test_a_page_s_description_is_left_out_and_its_context_is_read_by_the_rankers
     pi.build(data, sources=sources, embedder=emb, kind_of=lambda name: "")
     loaded = pi.load(data)
     assert all(not pi.is_front_matter(p.text) for p in loaded.passages) and loaded.passages
+    # The section is under the minimum, and the front matter is left out before short passages join: it rides on none.
+    assert not any("a legislature" in p.text for p in loaded.passages)
     passage = loaded.passages[0]
     assert passage.context.startswith("Part 5 > Chapter 10") and "Dispute Resolution" in passage.ranked
     assert "Dispute Resolution" not in passage.text                       # the words shown stay the document's own

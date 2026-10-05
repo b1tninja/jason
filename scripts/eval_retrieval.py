@@ -10,6 +10,8 @@
     python scripts/eval_retrieval.py --chunking windows --no-copies --compare RUN.json --no-answer
                                                      # the old passages, against an earlier run question by question,
                                                      # and whether a score threshold flags the questions with no answer
+    python scripts/eval_retrieval.py --min-words 25 --compare RUN.json
+                                                     # the section cut with short passages joined to a neighbour
 
 Prints recall@5 and MRR@10 per method, by kind (and by family with ``--by-family``), the misses, the embedding time,
 and the vector cache's size. A gold file's ``unanswerable`` questions (an answer that spans passages, or none in the
@@ -68,6 +70,7 @@ def first_ranks(questions: Sequence[dict], methods: dict[str, Method]) -> tuple[
         spent = 0.0
         crowded = 0
         through_also = 0
+        short = 0
         for q in questions:
             started = time.monotonic()
             hits = tuple(method(q["q"]))
@@ -76,17 +79,19 @@ def first_ranks(questions: Sequence[dict], methods: dict[str, Method]) -> tuple[
             detail.setdefault(q["id"], {})[name] = first
             if first and not relevant(hits[first - 1], q, also=False):
                 through_also += 1
+            short += sum(1 for h in hits[:5] if len(h.passage.text.split()) < SHORT_WORDS)
             cache: dict = {}
             top = hits[:10]
             crowded += sum(1 for i, h in enumerate(top)
                            if any(retrieval.near_copies(e.passage, h.passage, cache=cache) for e in top[:i]))
         seconds[name] = spent / len(questions) if questions else 0.0
         FIRST_STATS[name] = {"copies in top 10": round(crowded / len(questions), 2) if questions else 0.0,
-                             "credited through also": through_also}
+                             "credited through also": through_also, "short in top 5": short}
     return detail, seconds
 
 
-FIRST_STATS: dict[str, dict[str, float]] = {}       # the last first_ranks call's crowding and "also" credits
+SHORT_WORDS = 20                                    # a passage with fewer words is counted as short (a stub, or a short section)
+FIRST_STATS: dict[str, dict[str, float]] = {}       # the last first_ranks call's crowding, "also" credits, and short passages
 
 
 def table(questions: Sequence[dict], detail: dict[str, dict[str, int]], methods: Sequence[str],
@@ -271,6 +276,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", default="", help="write the per-question results here")
     parser.add_argument("--chunking", choices=("windows", "sections"), default=retrieval.CHUNKING,
                         help=f"cut passages as fixed windows or on the documents' sections (default {retrieval.CHUNKING})")
+    parser.add_argument("--min-words", type=int, default=None, metavar="N",
+                        help="with --chunking sections, join a passage under N words to a neighbour (0: the cut "
+                             "before; default: passage_sections.MIN_PASSAGE_WORDS); not with --index, which ranks "
+                             "the passages as the index cut them")
     parser.add_argument("--copies", action=argparse.BooleanOptionalAction, default=retrieval.COLLAPSE_COPIES,
                         help="fold near copies before each method's top 10 (default: retrieval.COLLAPSE_COPIES)")
     parser.add_argument("--compare", default="", help="an earlier run's --json: list the questions won and lost")
@@ -309,7 +318,8 @@ def main(argv: list[str] | None = None) -> int:
                 if embedder is not None and not isinstance(embedder, passage_index.StoredEmbedder):
                     embedder = passage_index.StoredEmbedder(loaded.vectors, embedder)
             else:
-                corpora[folders] = corpus(*(data / f for f in folders), chunking=args.chunking, outlines=data / "outlines")
+                corpora[folders] = corpus(*(data / f for f in folders), chunking=args.chunking, outlines=data / "outlines",
+                                          min_words=args.min_words)
             timings["corpus cut s"] = round(time.monotonic() - started, 1)
         items = corpora[folders]
         questions = gold["questions"]
@@ -343,9 +353,10 @@ def main(argv: list[str] | None = None) -> int:
             for uid, row in unans.items():
                 print(f"  {uid:28} " + "; ".join(f"{m} {v}" for m, v in row.items()))
         stats = {name: dict(row) for name, row in FIRST_STATS.items()}
-        print("near copies in the top 10 (average), and questions credited only through a folded copy:")
+        print("near copies in the top 10 (average), questions credited only through a folded copy, and passages under "
+              f"{SHORT_WORDS} words among the top 5 of all the questions:")
         for name, row in stats.items():
-            print(f"  {name:18} {row['copies in top 10']:5.2f}  {row['credited through also']}")
+            print(f"  {name:18} {row['copies in top 10']:5.2f}  {row['credited through also']}  {row['short in top 5']}")
         absent_items = [u for u in gold.get("unanswerable") or [] if u.get("reason") == "absent"]
         noanswer = {}
         if args.no_answer and absent_items:
@@ -358,7 +369,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {feature:10} {json.dumps(row)}")
         runs.append({"gold": str(path), "rows": rows, "kinds": kinds, "families": families, "detail": detail,
                      "seconds": seconds, "unanswerable": unans, "stats": stats, "no_answer": noanswer,
-                     "settings": {"chunking": args.chunking, "copies": args.copies, "passages": len(items)}})
+                     "settings": {"chunking": args.chunking, "copies": args.copies, "passages": len(items),
+                                  "min words": args.min_words}})
         questions_by_gold[path.name] = questions
         prefix = path.stem + ":" if len(paths) > 1 else ""
         pooled_questions += [{**q, "id": prefix + q["id"]} for q in questions]

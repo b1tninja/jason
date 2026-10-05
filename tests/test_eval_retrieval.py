@@ -41,6 +41,8 @@ def test_first_ranks_and_tables_by_kind_and_family():
     detail, seconds = ev.first_ranks(QUESTIONS, methods)
     assert detail == {"guest": {"a": 1, "b": 0}, "trash": {"a": 2, "b": 2}, "term": {"a": 3, "b": 1}}
     assert set(seconds) == {"a", "b"}
+    # Every passage here is under SHORT_WORDS words: each one in a top 5 is counted, over all the questions.
+    assert ev.FIRST_STATS["a"]["short in top 5"] == 9 and ev.FIRST_STATS["b"]["short in top 5"] == 6
     whole = ev.table(QUESTIONS, detail, ["a", "b"])["all"]
     assert whole["a"]["recall@5"] == 1.0 and round(whole["a"]["mrr@10"], 3) == round((1 + 1 / 2 + 1 / 3) / 3, 3)
     assert round(whole["b"]["recall@5"], 3) == round(2 / 3, 3)

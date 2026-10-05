@@ -239,13 +239,15 @@ def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: r
     confidential flag: a file one source gives openly is still held back when another store holds the same file as
     confidential. The caller holds the store lock (``Resource.STORE``, ``retrieval-index``); the embedder holds the GPU
     lock per request."""
-    from jason.community.passage_sections import OutlineIndex, section_passages
+    from jason.community.passage_sections import OutlineIndex, cut_signature, section_passages
     from jason.community.passages import passages_of
 
     data_dir = Path(data_dir)
     started = time.monotonic()
     report = BuildReport()
     outlines = OutlineIndex.load(data_dir / "outlines") if chunking == "sections" else None
+    # How this build cuts ("sections/min25"): a file cut another way (an older minimum, or none) is cut again.
+    signature = cut_signature(chunking)
     db = connect(data_dir)
     try:
         seen: set[str] = set()
@@ -260,7 +262,7 @@ def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: r
                 seen.add(rel)
                 report.files += 1
                 sha = _sha(path)
-                cutting = f"{chunking}+front" if entry.front_matter else chunking
+                cutting = f"{signature}+front" if entry.front_matter else signature
                 kind = kind_of(path.name) if entry.kind is None else entry.kind
                 confidential = int(bool(entry.confidential or (held is not None and held(path))))
                 row = db.execute("SELECT sha256, chunking, catalog, standing, context, kind, confidential, generated "
@@ -270,9 +272,13 @@ def build(data_dir: Path | str, *, sources: Sequence[Any] = SOURCES, embedder: r
                         db.execute("UPDATE files SET kind = ?, confidential = ?, generated = ? WHERE path = ?",
                                    (kind, confidential, int(entry.generated), rel))
                     continue
-                cut = section_passages(path, outlines=outlines) if outlines is not None else passages_of(path)
-                if entry.front_matter:
-                    cut = tuple(p for p in cut if not is_front_matter(p.text))
+                if outlines is not None:
+                    # The front matter is left out before short passages join, so its lines never ride on a section.
+                    cut = section_passages(path, outlines=outlines, skip=is_front_matter if entry.front_matter else None)
+                else:
+                    cut = passages_of(path)
+                    if entry.front_matter:
+                        cut = tuple(p for p in cut if not is_front_matter(p.text))
                 db.execute("DELETE FROM files WHERE path = ?", (rel,))
                 db.execute("INSERT INTO files (path, catalog, standing, kind, confidential, generated, sha256, chunking, "
                            "indexed_at, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

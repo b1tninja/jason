@@ -12,7 +12,7 @@ import pytest
 
 from jason.community import passage_index as pi
 from jason.community import retrieval
-from jason.community.context_pack import CORPUS, assemble, index_covers, law_corpus
+from jason.community.context_pack import CORPUS, assemble, index_covers, index_law_ranking, law_corpus
 from jason.community.prompts import Audience, TaskKind, TaskPrompt
 from jason.community.symbols import DocumentKind
 
@@ -141,6 +141,32 @@ def test_the_pack_reads_the_index_s_passages(data, monkeypatch):
     law = [scope for scope in scopes if scope.standings]
     assert law and all(scope.folders == ("authorities/CIV",) and not scope.confidential for scope in law)
     assert any(GOVERNING in scope.folders for scope in scopes if not scope.standings)
+
+
+def test_short_law_sections_joined_in_one_passage_are_each_found_by_their_label(data, monkeypatch):
+    # Two sections under the minimum share one passage; its heading carries each one's label, and it answers for both.
+    from jason.community import passage_sections
+
+    monkeypatch.setattr(passage_sections, "MIN_PASSAGE_WORDS", 25)
+    manifest = data / "authorities" / "manifest.json"
+    pages = json.loads(manifest.read_text(encoding="utf-8"))["pages"]
+    pages.append(_page(data, "authorities/CIV/CIV-4200-4205.md", "CIV 4200-4205", "Names", {
+        "CIV 4200": "The declaration shall name the association.",
+        "CIV 4205": "The articles shall name the managing agent of the association.",
+    }))
+    manifest.write_text(json.dumps({"pages": pages}), encoding="utf-8")
+    _build(data)
+    joined = [p for p in pi.load(data).passages if "managing agent" in p.text]
+    assert len(joined) == 1 and "The declaration shall name" in joined[0].text
+    assert joined[0].heading.split(" > ")[1:] == ["CIV 4200", "CIV 4205"]
+    sections = law_corpus(data)
+    found = index_law_ranking(sections, data, mode="keyword")("the managing agent named in the articles", 2)
+    assert [sections[i].citation for i in found] == ["CIV 4200", "CIV 4205"]
+    # A long section is still one passage a piece, each read as its section by the label in its heading.
+    last = [p for p in pi.load(data).passages if "before a fine" in p.text]
+    assert last and last[0].heading.split(" > ")[1:] == ["CIV 5855"]
+    first = index_law_ranking(sections, data, mode="keyword")("notified of the hearing before a fine", 1)
+    assert [sections[i].citation for i in first] == ["CIV 5855"]
 
 
 def test_a_member_s_pack_never_sees_a_confidential_row_and_the_board_s_does(data):

@@ -507,7 +507,9 @@ def index_law_ranking(sections: Sequence[LawSection], data_dir: Path, *, mode: s
                       depth: int | None = None) -> Callable[[str, int], list[int]]:
     """``rank_sections`` for ``law_sources`` from the index: the law pages' passages ranked for the question, each read
     as the section it falls in (by its heading, else by where it starts), the first ``n`` sections in order. A passage
-    before a page's first section (its title and source lines) answers for no section."""
+    that holds more than one section (short sections joined, ``passage_sections``) carries each one's label in its
+    heading and answers for each, in the page's order. A passage before a page's first section (its title and source
+    lines) answers for no section."""
     from jason.community import passage_index, retrieval
 
     by_file: dict[str, list[int]] = {}
@@ -518,20 +520,25 @@ def index_law_ranking(sections: Sequence[LawSection], data_dir: Path, *, mode: s
     folders = tuple(sorted({rel.rsplit("/", 1)[0] for rel in by_file if "/" in rel}))
     scope = passage_index.Scope(standings=(passage_index.Standing.AUTHORITY,), folders=folders)
 
-    def section_of(passage: Passage) -> int | None:
+    def sections_of(passage: Passage) -> list[int]:
         indexes = by_file.get(_rel(passage.path, data_dir))
         if not indexes:
-            return None
+            return []
         labels = {label.strip() for label in passage.heading.split(" > ")[1:]}
         named = [i for i in indexes if sections[i].citation in labels]
         if named:
-            # Two versions printed under one number share the heading: the passage is of the one it starts in.
-            return next((i for i in reversed(named) if sections[i].start_word <= passage.start_word), named[0])
+            # A joined passage answers for each section it holds; two versions printed under one number share the
+            # heading, and the passage is of the one it starts in.
+            picked: list[int] = []
+            for citation in dict.fromkeys(sections[i].citation for i in named):
+                versions = [i for i in named if sections[i].citation == citation]
+                picked.append(next((i for i in reversed(versions) if sections[i].start_word <= passage.start_word), versions[0]))
+            return picked
         found = None
         for i in indexes:
             if sections[i].start_word <= passage.start_word:
                 found = i
-        return found
+        return [] if found is None else [found]
 
     def rank_sections(question: str, n: int) -> list[int]:
         # A section is several passages, so the ranking goes deep enough to reach n sections.
@@ -539,12 +546,12 @@ def index_law_ranking(sections: Sequence[LawSection], data_dir: Path, *, mode: s
                                     mode=mode, embedder=embedder)
         out: list[int] = []
         for h in hits:
-            i = section_of(h.hit.passage)
-            if i is not None and i not in out:
-                out.append(i)
-                if len(out) >= n:
-                    break
-        return out
+            for i in sections_of(h.hit.passage):
+                if i not in out:
+                    out.append(i)
+            if len(out) >= n:
+                break
+        return out[:n]
 
     return rank_sections
 

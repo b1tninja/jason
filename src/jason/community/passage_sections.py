@@ -16,11 +16,28 @@ definition, a fee table, or a form page shares its passage with unrelated words.
   rankers read the prefix with the words (``Passage.ranked``); ``Passage.text`` stays the document's own words, a slice
   of the extract, so a recitation is exact.
 - **The size.** A section is one passage up to ``MAX_WORDS``; a longer one splits on its paragraphs (then its lines,
-  then, for a paragraph with no breaks, word windows). A heading with no words of its own joins the section after it,
-  and runs of tiny sections (fewer than ``MIN_WORDS`` words) join each other; a short definition stays one passage.
+  then, for a paragraph with no breaks, word windows).
 - **Tables.** A Markdown table stays with its heading row: a table too long for one passage splits by rows, and each
   piece starts with the heading row.
 - **No structure.** A text with no headings at all is cut into the old windows (``passages.passages_of``).
+- **A minimum** (``MIN_PASSAGE_WORDS``, or ``min_words``; see the constant for what is in use and why). A passage
+  with a few words ranks well, because its few words match a question, and a heading or a section's last line says
+  nothing alone. With a minimum above 0, a passage under it joins a neighbour in the same file (``_join``):
+  - a heading with under three words of its own joins the passage after it, and its label joins that passage's
+    path (the last three, when a scan's shouted words make a run of them); the last one in a file has nothing
+    after it, so its words join the passage before and its label is dropped;
+  - any other short passage (a split section's last lines, a one-line definition, a list item) joins the neighbour
+    it shares more of its section path with, then the shorter neighbour, then the one before;
+  - the joined passage is a slice of the extract with every word in order, its path carries each section's label
+    (a law page's sections are still found by their labels, ``context_pack.index_law_ranking``), and it is never
+    longer than ``MAX_WORDS`` plus the minimum but for a heading's own line; a short passage with no neighbour
+    that has room stays as it is, and so does a file that is one short passage;
+  - a ``<<PAGE n>>`` line (a publication's text, one before each page) is a break with no label: the sections
+    above it end there, it leads the passage its page starts in, and it is not counted as words. A page with
+    under the minimum joins a neighbour like any short passage, so a mark is never a passage or a heading.
+- **The cut before.** With a minimum of 0 the cut is the one measured on October 2, 2026: a page mark is an
+  all-capital heading, a heading with no words joins the section after it and its label is dropped, and runs of
+  sections under ``MIN_WORDS`` words join each other.
 
 It is search, not extraction: a section's number in a heading is the outline's or the label reader's reading, and a
 miss stays a miss.
@@ -34,12 +51,21 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from jason.community.passages import PASSAGE_WORDS, Passage, passages_of
 
 MAX_WORDS = PASSAGE_WORDS       # a section longer than this splits on its paragraphs
-MIN_WORDS = 8                   # sections shorter than this join their neighbours
+MIN_WORDS = 8                   # the cut before: runs of sections shorter than this join each other
+# A passage with fewer words than this joins a neighbour; 0 is the cut before (see the module's notes). The index
+# stores it in each file's cut signature (``cut_signature``), so changing it re-cuts every file at the next build
+# (``jason index --build``), and every passage whose words or path changed is embedded again.
+# Off, measured October 4, 2026 on the three gold sets over the core catalogs (docs/document-tools.md, model trials):
+# 20 is the smallest minimum that leaves no passage under 20 words in a hybrid top 5 (44 slots in 39 of 190 questions
+# before), and it took pooled hybrid recall@5 from 0.863 to 0.874 but MRR@10 from 0.736 to 0.728, more than the one
+# question's worth allowed, as six answers that led fell to second place behind a passage a stub had sat above. Set
+# 20 to trade that for no stubs; 8 and 10 cost nothing measurable and remove only the headings and crumbs.
+MIN_PASSAGE_WORDS = 0
 CAPTION_WORDS = 10              # a caption in the path is cut to this many words
 PATH_LEVELS = 3                 # the innermost levels of the path kept in the prefix
 MIN_ALIGNED = 0.5               # an outline is placed on an extract only when this share of its words align
@@ -50,6 +76,18 @@ _TABLE_RULE = re.compile(r"^\|?[\s:|-]+\|[\s:|-]*$")
 _FURNITURE = re.compile(r"^(?:page\s+[\w.-]+|\d{1,4}|[ivxl]{1,6}|-\s*\d+\s*-)$", re.I)
 _LABEL = re.compile(r"^\s*(?:article\s+[\divxlc]+\b[.:\s-]*|section\s+\d+(?:\.\d+)*\.?|\d+(?:\.\d+)+\.?|\(\w{1,4}\)|[A-Z]-\d+\.?)\s*", re.I)
 _SENTENCE_END = re.compile(r"(?<=[a-z0-9)])\.(?:\s|$)")
+_PAGE_MARK = re.compile(r"^[ \t]*<<PAGE \d+>>[ \t]*$", re.M)        # a publication's text: one before each page
+
+
+def cut_signature(chunking: str = "sections", min_words: int | None = None) -> str:
+    """How a file was cut, as the index stores it: "sections/min25" for the section cut with its minimum, and the
+    bare name for the windows and for the cut before. A file whose stored signature differs is cut again."""
+    minimum = MIN_PASSAGE_WORDS if min_words is None else min_words
+    return f"{chunking}/min{minimum}" if chunking == "sections" and minimum > 0 else chunking
+
+
+def _sans_marks(text: str) -> str:
+    return _PAGE_MARK.sub("", text)
 
 
 @dataclass(frozen=True)
@@ -283,8 +321,10 @@ def _caps(line: str) -> bool:
     return sum(c.isupper() for c in letters) / len(letters) >= 0.85 and len(s.split()) <= 10 and not s.endswith((",", ";"))
 
 
-def heads_from_lines(text: str, body_start: int = 0) -> list[Head]:
-    """Markdown headings, and short all-capital lines that are not repeated page furniture."""
+def heads_from_lines(text: str, body_start: int = 0, *, page_marks: bool = False) -> list[Head]:
+    """Markdown headings, and short all-capital lines that are not repeated page furniture. A page mark is a break
+    with no label (source "mark"): the sections above it end there, as they did when it was a heading, and it names
+    nothing. With ``page_marks`` it is the all-capital heading the cut before took it for."""
     lines: list[tuple[int, str]] = []
     at = body_start
     for raw in text[body_start:].splitlines(keepends=True):
@@ -297,6 +337,9 @@ def heads_from_lines(text: str, body_start: int = 0) -> list[Head]:
             seen[key] = seen.get(key, 0) + 1
     out: list[Head] = []
     for start, line in lines:
+        if not page_marks and _PAGE_MARK.fullmatch(line):
+            out.append(Head(start, "", "", 1, "mark"))
+            continue
         if m := _MD_HEADING.match(line):
             out.append(Head(start, "", _caption(m.group(2)), len(m.group(1)), "markdown"))
         elif _caps(line) and seen.get(_norm_name(line), 0) < 3:
@@ -304,7 +347,8 @@ def heads_from_lines(text: str, body_start: int = 0) -> list[Head]:
     return out
 
 
-def heads_of(path: Path, text: str, *, outlines: OutlineIndex | None = None) -> tuple[str, int, list[Head]]:
+def heads_of(path: Path, text: str, *, outlines: OutlineIndex | None = None,
+             page_marks: bool = False) -> tuple[str, int, list[Head]]:
     """The document's title, where its body starts, and its headings in order (one a line; an outline's or a label's
     number wins over a bare caption on the same line)."""
     title, meta, body_start = export_header(text)
@@ -315,9 +359,9 @@ def heads_of(path: Path, text: str, *, outlines: OutlineIndex | None = None) -> 
     if not heads:
         outline = None                      # named alike but not the same text: neither its sections nor its title
         heads = heads_from_labels(text, body_start)
-    heads += heads_from_lines(text, body_start)
+    heads += heads_from_lines(text, body_start, page_marks=page_marks)
     by_line: dict[int, Head] = {}
-    rank = {"outline": 0, "labels": 1, "markdown": 2, "caps": 3}
+    rank = {"mark": -1, "outline": 0, "labels": 1, "markdown": 2, "caps": 3}
     for head in heads:
         if head.start < body_start:
             continue
@@ -341,18 +385,60 @@ def heads_of(path: Path, text: str, *, outlines: OutlineIndex | None = None) -> 
 # --- cutting --------------------------------------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(eq=False)
 class _Segment:
     start: int
     end: int
     path: tuple[str, ...]
+    before: tuple[tuple[str, ...], ...] = ()       # the paths of the headings with no words joined in front of it
 
 
 def _word_count(text: str) -> int:
     return len(text.split())
 
 
-def _segments(text: str, body_start: int, heads: Sequence[Head]) -> list[_Segment]:
+def _heading_only(own: str) -> bool:
+    """The cut before's reading of a heading with no words of its own: its line (six words at most after its label),
+    and under three words more."""
+    first, _, rest = own.strip().partition("\n")
+    return _word_count(rest) < 3 and _word_count(_LABEL.sub("", first, count=1)) <= 6
+
+
+def _heading_lines(text: str, heads: Sequence[Head]) -> frozenset[int]:
+    """Where the lines that are a heading and nothing more start: a Markdown or all-capital heading whatever its
+    length, and a numbered line of six words at most after its label ("7.4 Garage Doors", "(b) the Tenant;"). A
+    longer numbered line is its section's first words, and a page mark is no heading."""
+    found: set[int] = set()
+    for head in heads:
+        if head.source in ("markdown", "caps"):
+            found.add(head.start)
+        elif head.source != "mark":
+            end = text.find("\n", head.start)
+            line = text[head.start: len(text) if end < 0 else end]
+            if _word_count(_LABEL.sub("", line.strip(), count=1)) <= 6:
+                found.add(head.start)
+    return frozenset(found)
+
+
+def _own_words(text: str, start: int, end: int, heading_lines: frozenset[int]) -> tuple[int, int]:
+    """The heading lines in a slice, and its words on every other line (page marks aside)."""
+    at, lines, words = start, 0, 0
+    for raw in text[start:end].splitlines(keepends=True):
+        if at in heading_lines:
+            lines += 1
+        elif not _PAGE_MARK.fullmatch(raw.strip()):
+            words += _word_count(raw)
+        at += len(raw)
+    return lines, words
+
+
+def _segments(text: str, body_start: int, heads: Sequence[Head], *,
+              heading_lines: frozenset[int] | None = None) -> list[_Segment]:
+    """The text between one heading and the next, each with its path (a page mark starts one with no label of its
+    own, so a page's mark leads the page's words). With ``heading_lines`` it is the cut with a minimum: a heading
+    with under three words of its own keeps its label when it joins the section after it, and short sections are
+    joined later, passage by passage (``_join``). Without, the cut before."""
+    joined = heading_lines is not None
     stack: list[Head] = []
     segments: list[_Segment] = []
     if heads and heads[0].start > body_start and text[body_start: heads[0].start].strip():
@@ -366,17 +452,23 @@ def _segments(text: str, body_start: int, heads: Sequence[Head]) -> list[_Segmen
     # A heading with no words of its own (an article's title, a run of contents lines) joins the section after it.
     merged: list[_Segment] = []
     pending: int | None = None
+    held: list[tuple[str, ...]] = []
     for k, seg in enumerate(segments):
-        own = text[seg.start: seg.end]
-        first, _, rest = own.strip().partition("\n")
-        heading_only = _word_count(rest) < 3 and _word_count(_LABEL.sub("", first, count=1)) <= 6
-        if k + 1 < len(segments) and heading_only:
+        if joined:
+            bare = _own_words(text, seg.start, seg.end, heading_lines)[1] < 3
+        else:
+            bare = _heading_only(text[seg.start: seg.end])
+        if k + 1 < len(segments) and bare:
             pending = seg.start if pending is None else pending
+            held.append(seg.path)
             continue
         if pending is not None:
-            seg = _Segment(pending, seg.end, seg.path)
+            seg = _Segment(pending, seg.end, seg.path, tuple(held) if joined else ())
             pending = None
+            held = []
         merged.append(seg)
+    if joined:
+        return merged
     # Runs of tiny sections ("(a) the Owner;") join each other; the run keeps the path the members share.
     out: list[_Segment] = []
     for seg in merged:
@@ -496,26 +588,129 @@ def _pieces(text: str, seg: _Segment, max_words: int) -> list[tuple[int, int, st
     return out
 
 
+@dataclass
+class _Piece:
+    """A passage being cut: a slice of the text, the sections it holds, and whether it is only a heading."""
+
+    start: int
+    end: int
+    header: str                         # a table's heading row, put first
+    segs: tuple[_Segment, ...]          # the sections in it, in order
+    bare: bool = False                  # a heading with no words of its own, or only page marks
+    words: int = 0                      # its words, page marks aside
+
+    def text(self, body: str) -> str:
+        words = body[self.start: self.end].strip()
+        return f"{self.header}\n{words}" if self.header else words
+
+
+def _heading(title: str, segs: Sequence[_Segment]) -> str:
+    """The path a passage carries: the title, then each of its sections' labels (the innermost ``PATH_LEVELS`` of a
+    section's path, after the last ``PATH_LEVELS`` headings with no words joined in front of it), each label once."""
+    labels: list[str] = []
+    for n, seg in enumerate(segs):
+        shown = [label for label in seg.path if label.lower() != title.lower()][-PATH_LEVELS:]
+        lead = [p[-1] for p in seg.before if p and p[-1].lower() != title.lower() and p[-1] not in shown]
+        own = [*list(dict.fromkeys(lead))[-PATH_LEVELS:], *shown]
+        labels += own if n == 0 else [label for label in dict.fromkeys(own) if label not in labels]
+    return " > ".join([title, *labels]) if title else " > ".join(labels)
+
+
+def _shared(a: _Piece, b: _Piece) -> int:
+    """How much of their section path two neighbours share (``a`` before ``b``): more than any path when ``b`` goes
+    on in the section ``a`` ends in, else the labels their paths start with in common."""
+    last, first = a.segs[-1], b.segs[0]
+    if last is first:
+        return len(last.path) + 1
+    start = first.before[0] if first.before else first.path
+    n = 0
+    for x, y in zip(last.path, start):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def _join(pieces: Sequence[_Piece], body: str, min_words: int, max_words: int) -> list[_Piece]:
+    """The pieces with none under ``min_words`` that a neighbour has room for (the module's notes, "A minimum")."""
+    limit = max_words + min_words
+    items = list(pieces)
+
+    def joined(a: _Piece, b: _Piece, *, labels: bool = True) -> _Piece:
+        segs = tuple(dict.fromkeys((*a.segs, *b.segs))) if labels else a.segs
+        piece = _Piece(a.start, b.end, a.header, segs, a.bare and b.bare)
+        piece.words = _word_count(_sans_marks(piece.text(body)))
+        return piece
+
+    # First every heading goes with what follows it, so that no short passage before a heading takes the heading from
+    # its own words. The last one in the run has nothing after it: its words join the passage before, which it does
+    # not head, so that passage's path does not take its label.
+    i = 0
+    while i < len(items):
+        if not items[i].bare or len(items) == 1:
+            i += 1
+        elif i + 1 < len(items):
+            items[i: i + 2] = [joined(items[i], items[i + 1])]          # read again: a run of headings
+        else:
+            items[i - 1: i + 1] = [joined(items[i - 1], items[i], labels=False)]
+    i = 0
+    while i < len(items):
+        piece = items[i]
+        before = items[i - 1] if i else None
+        after = items[i + 1] if i + 1 < len(items) else None
+        target: _Piece | None = None
+        if piece.words < min_words:
+            room = [n for n in (before, after) if n is not None and n.words + piece.words <= limit]
+            if len(room) == 2:
+                back, forward = _shared(before, piece), _shared(piece, after)
+                if forward > back or (forward == back and after.words < before.words):
+                    room = [after]
+            target = room[0] if room else None
+        if target is None:
+            i += 1
+        elif target is before:
+            items[i - 1: i + 1] = [joined(before, piece)]      # the piece now at i is the one that followed
+        else:
+            items[i: i + 2] = [joined(piece, after)]           # read again: it may still be short
+    return items
+
+
 def section_passages(path: Path, text: str | None = None, *, outlines: OutlineIndex | None = None,
-                     max_words: int = MAX_WORDS) -> tuple[Passage, ...]:
-    """One extract cut on its sections (see the module's notes); the old windows when it has no headings."""
+                     max_words: int = MAX_WORDS, min_words: int | None = None,
+                     skip: Callable[[str], bool] | None = None) -> tuple[Passage, ...]:
+    """One extract cut on its sections (see the module's notes); the old windows when it has no headings.
+
+    ``min_words`` is the fewest words a passage may have before it joins a neighbour (``MIN_PASSAGE_WORDS`` when not
+    given; 0 is the cut before). ``skip`` names passages to leave out by their words (a page's front matter): one is
+    dropped before any joining, and nothing joins across it."""
     body = text if text is not None else path.read_text(encoding="utf-8", errors="ignore")
     body = body.replace("\r\n", "\n")
-    title, body_start, heads = heads_of(path, body, outlines=outlines)
+    minimum = MIN_PASSAGE_WORDS if min_words is None else min_words
+    joined = minimum > 0
+    title, body_start, heads = heads_of(path, body, outlines=outlines, page_marks=not joined)
     if not heads:
         return tuple(Passage(p.path, p.index, p.start_word, p.text, heading=title) for p in passages_of(path, body))
+    heading_lines = _heading_lines(body, heads) if joined else None
+    runs: list[list[_Piece]] = [[]]                 # the pieces in order, a new run after each one left out
+    for seg in _segments(body, body_start, heads, heading_lines=heading_lines):
+        for start, end, table_header in _pieces(body, seg, max_words):
+            if not body[start:end].strip():
+                continue
+            piece = _Piece(start, end, table_header, (seg,))
+            words = piece.text(body)
+            if skip is not None and skip(words):
+                runs.append([])
+                continue
+            if joined:
+                piece.words = _word_count(_sans_marks(words))
+                lines, own = _own_words(body, start, end, heading_lines)
+                piece.bare = piece.words == 0 or (lines > 0 and own < 3 and not table_header)
+            runs[-1].append(piece)
     found: list[Passage] = []
     word_at = _WordIndex(body)
-    for seg in _segments(body, body_start, heads):
-        path_labels = [label for label in seg.path if label.lower() != title.lower()][-PATH_LEVELS:]
-        heading = " > ".join([title, *path_labels]) if title else " > ".join(path_labels)
-        for start, end, table_header in _pieces(body, seg, max_words):
-            words = body[start:end].strip()
-            if not words:
-                continue
-            if table_header:
-                words = f"{table_header}\n{words}"
-            found.append(Passage(path, len(found), word_at(start), words, heading=heading))
+    for run in runs:
+        for piece in (_join(run, body, minimum, max_words) if joined else run):
+            found.append(Passage(path, len(found), word_at(piece.start), piece.text(body), heading=_heading(title, piece.segs)))
     return tuple(found)
 
 
@@ -530,4 +725,5 @@ class _WordIndex:
 
 
 __all__ = ["Head", "OutlineIndex", "align_offsets", "export_header", "heads_from_labels", "heads_from_lines",
-           "heads_from_outline", "heads_of", "section_passages", "MAX_WORDS", "MIN_WORDS"]
+           "heads_from_outline", "heads_of", "section_passages", "cut_signature", "MAX_WORDS", "MIN_PASSAGE_WORDS",
+           "MIN_WORDS"]

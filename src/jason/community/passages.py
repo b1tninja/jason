@@ -67,9 +67,10 @@ def passages_of(path: Path, text: str | None = None) -> tuple[Passage, ...]:
 
 
 def corpus(*folders: Path | str, suffixes: tuple[str, ...] = (".md", ".txt"), chunking: str = "windows",
-           outlines: Path | str | None = None) -> tuple[Passage, ...]:
+           outlines: Path | str | None = None, min_words: int | None = None) -> tuple[Passage, ...]:
     """Every extract's passages under ``folders``. ``chunking`` is "windows" (``passages_of``) or "sections"
-    (``passage_sections.section_passages``, which places the outlines in the folder ``outlines`` on the extracts)."""
+    (``passage_sections.section_passages``, which places the outlines in the folder ``outlines`` on the extracts and
+    joins a passage under ``min_words`` words to a neighbour; its own default when not given)."""
     if chunking not in ("windows", "sections"):
         raise ValueError(f"unknown chunking {chunking!r}: windows or sections")
     index = None
@@ -89,7 +90,7 @@ def corpus(*folders: Path | str, suffixes: tuple[str, ...] = (".md", ".txt"), ch
                 else:
                     from jason.community.passage_sections import section_passages
 
-                    found.extend(section_passages(path, outlines=index))
+                    found.extend(section_passages(path, outlines=index, min_words=min_words))
     return tuple(found)
 
 
