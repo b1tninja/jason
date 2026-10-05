@@ -531,6 +531,110 @@ def extract_text(data_dir: Path, case: Any, *, engines: Sequence[Any] | None = N
     return report
 
 
+# --- the inventory ----------------------------------------------------------------------------------------------------
+
+
+class FileState(Enum):
+    """What became of one file of a case's folder."""
+
+    TEXT = "text"                    # text as it was fetched (a caption transcript, a text file): read as it is
+    EXTRACTED = "extracted"          # a text extract beside it holds its words (``Extract`` says how they were read)
+    NO_EXTRACT = "no extract"        # on disk with no text yet: jason cases --extract-text
+    UNREADABLE = "unreadable"        # no reader gave words
+    LISTED = "listed"                # in the Drive folder and not taken: an image, a recording, an archive, a shortcut
+    NOT_ON_DISK = "not on disk"      # the manifest lists it to fetch and no copy is on disk
+    FAILED = "failed"                # the fetch gave an error
+
+
+@dataclass(frozen=True)
+class CaseFile:
+    """One file of a case's folder that is not held back, and where its words are."""
+
+    name: str                         # its path under files/; for a file not on disk, its path in the Drive folder
+    state: FileState
+    text: str = ""                    # the path under files/ of the text the index reads: the file itself, or its extract
+    extract: Extract | None = None
+    why: str = ""                     # why it has no text: the reader's reason, the fetch's error, or what it is
+
+    @property
+    def readable(self) -> bool:
+        return bool(self.text)
+
+
+@dataclass(frozen=True)
+class Inventory:
+    """Every file of a case's folder and what became of it. A held-back file is counted and never named."""
+
+    files: tuple[CaseFile, ...] = ()
+    held_back: int = 0
+    fetched: bool = False             # whether the folder has been fetched (a manifest or files on disk)
+
+
+def _listed_as(row: dict[str, Any]) -> str:
+    """What a file the fetch lists and does not take is, in a few words."""
+    if row.get("mimeType") == _SHORTCUT:
+        return "a shortcut to a file kept elsewhere"
+    suffix = Path(row.get("name") or "").suffix.lower()
+    plain = suffix if re.fullmatch(r"\.[a-z0-9]{1,5}", suffix) else ""
+    return f"a {plain} file the fetch does not take" if plain else "a type the fetch does not take"
+
+
+def inventory(data_dir: Path, case: Any) -> Inventory:
+    """The case's folder file by file: the text files, each other file with its extract (or why it has none), and
+    the files the Drive listing holds that are not on disk. The held-back files are a count: none is named, and
+    neither is an extract of one. Reads only."""
+    root = case_dir(data_dir, case)
+    files = root / "files"
+    manifest = _manifest(root)
+    rows = _rows_by_local(manifest)
+    known = extracts(data_dir, case)
+    by_text = {row.text: row for row in known.values() if row.readable}
+    on_disk = ({path.relative_to(files).as_posix(): path for path in sorted(files.rglob("*")) if path.is_file()}
+               if files.is_dir() else {})
+    held: set[str] = set()
+    out: list[CaseFile] = []
+    for rel, path in on_disk.items():
+        if path.suffix.lower() not in _TEXT:
+            row = known.get(rel)
+            beside = next((rel + suffix for suffix in _TEXT if rel + suffix in on_disk), "")
+            if _held_here(rel, case, rows):
+                held.add(rel)
+            elif row is not None and not row.readable:
+                out.append(CaseFile(rel, FileState.UNREADABLE, extract=row, why=row.reason or UNREADABLE))
+            elif row is not None:
+                out.append(CaseFile(rel, FileState.EXTRACTED, text=row.text, extract=row))
+            elif beside:
+                out.append(CaseFile(rel, FileState.EXTRACTED, text=beside, why="a text file beside it holds its words"))
+            else:
+                out.append(CaseFile(rel, FileState.NO_EXTRACT, why=NO_EXTRACT))
+            continue
+        row = by_text.get(rel)
+        beside = rel.rsplit(".", 1)[0]                  # "<name>.pdf" for "<name>.pdf.txt"
+        if any(_held_here(name, case, rows) for name in {rel, beside, row.source if row else rel}):
+            if beside not in on_disk:
+                held.add(beside if beside in rows else rel)      # counted once, as its file is in the listing
+            continue
+        if beside in on_disk:
+            continue                                    # the text of a file listed above
+        out.append(CaseFile(rel, FileState.TEXT, text=rel))
+    for row in manifest.get("files") or []:
+        local = row.get("local") or ""
+        if row.get("heldBack"):
+            held.add(local or f"drive:{row.get('id') or row.get('path')}")
+        elif local in on_disk:
+            continue
+        elif row.get("error"):
+            out.append(CaseFile(row.get("path") or local, FileState.FAILED, why=str(row["error"])))
+        elif row.get("action") == "listed":
+            out.append(CaseFile(row.get("path") or row.get("name") or "", FileState.LISTED, why=_listed_as(row)))
+        else:
+            out.append(CaseFile(row.get("path") or local, FileState.NOT_ON_DISK,
+                                why="listed to fetch and not on disk: jason cases --fetch-files"))
+    order = list(FileState)
+    out.sort(key=lambda f: (order.index(f.state), f.name))
+    return Inventory(tuple(out), len(held), bool(manifest) or bool(on_disk))
+
+
 # --- the index --------------------------------------------------------------------------------------------------------
 
 
@@ -609,6 +713,6 @@ def index_sources(cases: tuple) -> tuple:
     return tuple(CaseSource(case) for case in cases if getattr(case, "drive_folder", ""))
 
 
-__all__ = ["CASES_DIR", "CATALOG_PREFIX", "CaseSource", "EXTRACT_SUFFIX", "Extract", "ExtractReport", "ReadMethod",
-           "case_dir", "catalog_name", "extract_text", "extracts", "fetch", "index_sources", "is_case_catalog",
-           "is_held", "plan", "vision_reader"]
+__all__ = ["CASES_DIR", "CATALOG_PREFIX", "CaseFile", "CaseSource", "EXTRACT_SUFFIX", "Extract", "ExtractReport",
+           "FileState", "Inventory", "ReadMethod", "case_dir", "catalog_name", "extract_text", "extracts", "fetch",
+           "index_sources", "inventory", "is_case_catalog", "is_held", "plan", "vision_reader"]

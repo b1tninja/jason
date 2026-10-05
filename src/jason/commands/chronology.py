@@ -27,9 +27,11 @@ from typing import Any, Callable
 
 def scope_of(args: argparse.Namespace, data: Any):
     """The index scope the flags name. Held files open by catalog: a case's only when it is named; any other catalog's
-    only with ``--confidential`` (the document search's rule, ``jason.mcp.county``). Raises ``ValueError`` for an
-    unknown standing."""
+    only with ``--confidential`` (the document search's rule, ``jason.mcp.county``). A collection's generated pages
+    are left out, whatever is named: a lens reads documents, never a page a lens wrote
+    (``document_collections.NOT_MEMBERS``). Raises ``ValueError`` for an unknown standing."""
     from jason.community import passage_index as pi
+    from jason.community.document_collections import NOT_MEMBERS
     from jason.tasks.case_files import is_case_catalog
 
     catalogs = tuple(args.catalog)
@@ -37,7 +39,7 @@ def scope_of(args: argparse.Namespace, data: Any):
     held = tuple(c for c in (catalogs or (pi.catalogs(data) if args.confidential else ()))
                  if (c in catalogs if is_case_catalog(c) else args.confidential))
     return pi.Scope(catalogs=catalogs, standings=standings, kinds=tuple(args.kind), folders=tuple(args.folder),
-                    confidential_in=held)
+                    confidential_in=held, not_folders=NOT_MEMBERS)
 
 
 def title_of(args: argparse.Namespace) -> str:

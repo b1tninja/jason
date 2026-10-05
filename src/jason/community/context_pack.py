@@ -20,7 +20,9 @@ A task prompt names topics and kinds of documents, never a section or a figure. 
    silently left out. Without an index, or with nothing indexed under the scope, a gap line says so, and so does one
    for the files in the collection's folder that the index does not hold (a PDF with no text extract).
 5. **F, jason's records**: the MCP tools the task names, as JSON, trimmed. A collection's context lines (for a legal
-   case, its record in the specification) follow them as one more F source.
+   case, its record in the specification) follow them as one more F source, and then its summary page when it has
+   one (``jason collection KEY --write``): one source, labeled "jason's summary of the collection: a summary, not the
+   record". The summary is never a C source: a collection's scope leaves its generated pages out.
 6. **D1**: the text under review.
 
 The law on hand is also listed by chapter (``shelf``), so a reader can see what the pack could have drawn on and say
@@ -119,6 +121,10 @@ RECORD_RECENCY_WEIGHT = 1.0
 RECORD_DENSE_FLOOR: float | None = None
 COLLECTION_PASSAGES = 8       # a collection's passages in one pack
 COLLECTION_PER_FILE = 2       # of those, from any one file
+# A collection's summary page (``document_collections.companion_summary``) is one F source, cut to this length. It is
+# never ranked with the collection's passages: a collection's scope leaves its generated pages out, since a page that
+# quotes every document would take the places of the documents themselves.
+COLLECTION_SUMMARY_CHARS = 6000
 # Where each kind of source sits among sources of one tier: a collection's material after the records, before the facts.
 _LETTER_ORDER = {"S": 0, "G": 1, "R": 2, "C": 3, "F": 4, "D": 5}
 
@@ -176,11 +182,17 @@ class ContextPack:
         if self.collection is None or not ids:
             return ()
         span = ids[0] if len(ids) == 1 else f"{ids[0]} to {ids[-1]}"
-        return (f"COLLECTION: {self.collection.title} ({self.collection.kind.value}). Sources {span} are "
+        told = (f"COLLECTION: {self.collection.title} ({self.collection.kind.value}). Sources {span} are "
                 f"{self.collection.label}.",
                 "Cite a C source by its id for what its document says, and name the document. What a document in the "
                 "collection states is its author's statement: it is not a finding, not the association's record unless "
                 "its note says so, and never a rule.")
+        summary = [s for s in self.sources if s.id.startswith("F") and s.label]      # the collection's summary page
+        if not summary:
+            return told
+        return (*told, f"Source {summary[0].id} is {summary[0].label}. Use it to see what the collection holds and "
+                       "what is missing. It is not a document of the collection: what it quotes is its copy of a "
+                       "document's words, so say so and name the document, and never cite it as the record or a rule.")
 
     def task_prompt(self) -> str:
         """The task's prompt for this pack: the task's own text, and the collection's lines when it has sources."""
@@ -924,6 +936,16 @@ def assemble(community: Any, task: TaskPrompt, data_dir: Path, *, ask: str = "",
                                    _trim("\n".join(collection.context), STATUTE_CHARS), "the specification",
                                    note="what holds for the whole collection; not the documents' own words",
                                    standing=Standing.PAGE))
+    if pack.collection_included:
+        from jason.community.document_collections import companion_summary
+
+        summary = companion_summary(collection, data_dir)
+        if summary is not None:
+            # The collection's generated summary, once, as a labeled fact source: never a C source, never evidence.
+            number = sum(1 for s in pack.sources if s.id.startswith("F")) + 1
+            pack.sources.append(Source(f"F{number}", Tier.RECORD, summary.title,
+                                       _trim(summary.text, COLLECTION_SUMMARY_CHARS), summary.file, note=summary.note,
+                                       label=summary.label, standing=Standing.PAGE, file=summary.file))
     return pack
 
 

@@ -802,6 +802,26 @@ def sources_section(files: Sequence[SourceFile], noun: str) -> list[str]:
     return [*out, ""]
 
 
+def event_lines(e: Event, *, dated: bool = False) -> list[str]:
+    """One event as a generated page's lines: what kind of date it is and the rule that said so, the document and the
+    place, then the document's words. ``dated`` opens the line with the event's day, for a page that does not group
+    its events under a heading a day (a collection's summary page)."""
+    lead = f"{e.when}: " if dated else ""
+    label = f', "{e.label}" line' if e.label else ""
+    own = f"; the document's own date at its head: {e.document_day.isoformat()}" if (
+        e.document_day and e.role is DateRole.ABOUT) else ""
+    flags = ", ".join(part for part in (e.place.standing.value, e.place.kind.replace("_", " "),
+                                        "confidential" if e.place.confidential else "") if part)
+    if e.role is DateRole.NAME:
+        return [f"- {lead}{ROLE_WORDS[e.role]} (written \"{e.written}\"; rule {e.rule}). {e.place.document} [{flags}]. "
+                f"The name is:", f"  > {e.quote}", ""]
+    out = [f"- {lead}{ROLE_WORDS[e.role]}{label} (written \"{e.written}\"; rule {e.rule}). "
+           f"{e.place.document} [{flags}], {e.place.where}{own}. It says:", f"  > {e.quoted}"]
+    if e.also:
+        out.append("  - The same words are also in: " + "; ".join(f"{p.document}, {p.where}" for p in e.also))
+    return [*out, ""]
+
+
 @dataclass
 class Chronology:
     """The dated statements of a scope, in date order, with the specification's record kept apart."""
@@ -889,21 +909,7 @@ class Chronology:
             if e.when != day:
                 day = e.when
                 out += [f"### {day}", ""]
-            label = f', "{e.label}" line' if e.label else ""
-            own = f"; the document's own date at its head: {e.document_day.isoformat()}" if (
-                e.document_day and e.role is DateRole.ABOUT) else ""
-            flags = ", ".join(part for part in (e.place.standing.value, e.place.kind.replace("_", " "),
-                                                "confidential" if e.place.confidential else "") if part)
-            if e.role is DateRole.NAME:
-                out += [f"- {ROLE_WORDS[e.role]} (written \"{e.written}\"; rule {e.rule}). {e.place.document} [{flags}]. "
-                        f"The name is:", f"  > {e.quote}", ""]
-                continue
-            out.append(f"- {ROLE_WORDS[e.role]}{label} (written \"{e.written}\"; rule {e.rule}). "
-                       f"{e.place.document} [{flags}], {e.place.where}{own}. It says:")
-            out.append(f"  > {e.quoted}")
-            if e.also:
-                out.append("  - The same words are also in: " + "; ".join(f"{p.document}, {p.where}" for p in e.also))
-            out.append("")
+            out += event_lines(e)
         if self.recorded:
             out += ["## The specification's record", "",
                     "These entries are the specification's own chronology, confirmed by a person. They are kept apart "
@@ -975,6 +981,6 @@ def write_page(data_dir: Path | str, slug: str, name: str, text: str) -> Path:
 
 __all__ = ["ABOUT_LABELS", "CAVEATS", "CHRONOLOGY_PAGE", "COLLECTIONS_DIR", "Chronology", "DATE_SPAN", "DOCUMENT_LABELS",
            "MESSAGE_LABELS", "DateRole", "DateSpan", "Event", "FileLines", "Place", "Precision", "ROLE_WORDS", "RecordedEvent", "STANDING_ORDER",
-           "SourceFile", "chronology", "clause_at", "clauses", "date_spans", "describe_scope", "events_of", "fold",
+           "SourceFile", "chronology", "clause_at", "clauses", "date_spans", "describe_scope", "event_lines", "events_of", "fold",
            "name_spans", "page_header", "page_path", "partial_dates", "place_of", "quote_of", "read_date", "statement_at", "slug_of", "source_files", "sources_section",
            "squash", "write_page"]

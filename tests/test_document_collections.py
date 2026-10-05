@@ -180,7 +180,9 @@ def test_a_collection_is_found_by_its_case_key_or_its_catalog_name():
 def test_an_ad_hoc_collection_is_the_filters_a_person_names():
     found = ad_hoc(catalogs=("records",), kinds=(DocumentKind.MINUTES, "notice"), folders=("governing",))
     assert found.kind is CollectionKind.AD_HOC and not found.confidential
-    assert found.scope == pi.Scope(catalogs=("records",), kinds=("minutes", "notice"), folders=("governing",))
+    # The scope is the filters, less every collection's generated pages: a page is companion material, never a member.
+    assert found.scope == pi.Scope(catalogs=("records",), kinds=("minutes", "notice"), folders=("governing",),
+                                   not_folders=("collections",))
     assert found.key.startswith("ad-hoc-") and found.key == ad_hoc(catalogs=["records"], kinds=["minutes", "notice"], folders=["governing"]).key
     assert found.title == "catalogs records; kinds minutes, notice; folders governing" and not found.context
     assert ad_hoc(kinds=("minutes",), title="The minutes").title == "The minutes"

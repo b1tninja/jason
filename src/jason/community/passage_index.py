@@ -350,7 +350,9 @@ class Scope:
     """Which rows a search may rank. Every field empty means every row a person may see; ``confidential`` adds the
     files held back unless asked. ``confidential_in`` adds them for the catalogs it names and no other: a confidential
     catalog asked for by name (a legal case's) opens its own files, not another catalog's. ``paths`` names files one
-    by one, as the index names them; like every other field it narrows, and never opens a file held back."""
+    by one, as the index names them; like every other field it narrows, and never opens a file held back.
+    ``not_folders`` leaves out the files under those folders of the data directory: a collection's own generated
+    pages are never read back as its documents (``document_collections``)."""
 
     catalogs: tuple[str, ...] = ()
     standings: tuple[Standing, ...] = ()
@@ -360,6 +362,7 @@ class Scope:
     generated: bool | None = None          # None: both; False: only what jason did not write
     confidential_in: tuple[str, ...] = ()
     paths: tuple[str, ...] = ()            # these files only (their paths under the data directory)
+    not_folders: tuple[str, ...] = ()      # path prefixes under the data directory that are left out
 
     def where(self) -> tuple[str, list[Any]]:
         clauses: list[str] = []
@@ -378,6 +381,9 @@ class Scope:
         if self.folders:
             clauses.append("(" + " OR ".join("f.path LIKE ? ESCAPE '\\'" for _ in self.folders) + ")")
             args.extend(_like_prefix(f) for f in self.folders)
+        for folder in self.not_folders:
+            clauses.append("f.path NOT LIKE ? ESCAPE '\\'")
+            args.append(_like_prefix(folder))
         if not self.confidential and self.confidential_in:
             clauses.append(f"(f.confidential = 0 OR f.catalog IN ({', '.join('?' * len(self.confidential_in))}))")
             args.extend(self.confidential_in)

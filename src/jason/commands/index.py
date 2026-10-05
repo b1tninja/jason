@@ -24,16 +24,21 @@ from typing import Any, Callable
 def sources() -> tuple:
     """What a build takes: ``passage_index.SOURCES``, the agency publications' text by what each is
     (``export_authorities.PublicationSource``), each legal case's fetched file as its own confidential catalog
-    (``case_files.index_sources``, read from the active profile when the build runs), and the library, the mail,
+    (``case_files.index_sources``, read from the active profile when the build runs), each collection's generated
+    pages in the collection's own catalog (``collection_pages.index_sources``), and the library, the mail,
     jason's reports, and jason's documentation, each file with its own flags (``jason.tasks.index_sources``)."""
     from jason.community import community
     from jason.community import passage_index as pi
+    from jason.community.document_collections import collections
+    from jason.tasks import collection_pages
     from jason.tasks import index_sources as files
     from jason.tasks.case_files import index_sources
 
     from jason.tasks.export_authorities import PublicationSource
 
-    return (*pi.SOURCES, PublicationSource(), *index_sources(community().legal_cases()), *files.sources())
+    active = community()
+    return (*pi.SOURCES, PublicationSource(), *index_sources(active.legal_cases()),
+            *collection_pages.index_sources(collections(active)), *files.sources())
 
 
 LIBRARY_HOLDS = "the library holds a copy as confidential"

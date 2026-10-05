@@ -219,6 +219,23 @@ class FactConflict:
                 "confidential": self.confidential, "sides": [side.as_dict() for side in self.sides]}
 
 
+def conflict_lines(n: int, conflict: FactConflict, *, level: str = "##") -> list[str]:
+    """One conflict as a generated page's lines: the rule, then each value with every document that gives it, its
+    place, and its words. ``level`` is the heading's marks (a collection's summary page lists conflicts a level down)."""
+    out = [f"{level} {n}. {conflict.subject}: {conflict.what}", "",
+           f"- Rule: {conflict.rule.value} ({RULE_WORDS[conflict.rule]})."]
+    for side in conflict.sides:
+        out.append(f"- Value: {side.value}")
+        for s in side.statements:
+            flags = ", ".join(part for part in (s.place.standing.value, s.place.kind.replace("_", " "),
+                                                "confidential" if s.place.confidential else "") if part)
+            shown = "".join(f"; {k}: {v}" for k, v in s.shown)
+            out.append(f"  - {s.place.document} [{flags}], {s.place.where}{shown}. Read from: {s.basis}.")
+            if s.quote:
+                out.append(f"    > {s.quoted}")
+    return [*out, ""]
+
+
 @dataclass
 class ConflictReport:
     title: str
@@ -277,18 +294,7 @@ class ConflictReport:
         if not self.conflicts:
             out += ["No conflict was found by the rules. That is not a finding that the documents agree.", ""]
         for n, conflict in enumerate(self.conflicts, 1):
-            out += [f"## {n}. {conflict.subject}: {conflict.what}", "",
-                    f"- Rule: {conflict.rule.value} ({RULE_WORDS[conflict.rule]})."]
-            for side in conflict.sides:
-                out.append(f"- Value: {side.value}")
-                for s in side.statements:
-                    flags = ", ".join(part for part in (s.place.standing.value, s.place.kind.replace("_", " "),
-                                                        "confidential" if s.place.confidential else "") if part)
-                    shown = "".join(f"; {k}: {v}" for k, v in s.shown)
-                    out.append(f"  - {s.place.document} [{flags}], {s.place.where}{shown}. Read from: {s.basis}.")
-                    if s.quote:
-                        out.append(f"    > {s.quoted}")
-            out.append("")
+            out += conflict_lines(n, conflict)
         out += sources_section(self.files, "statements in a conflict")
         out += ["## Caveats", "", *[f"- {caveat}" for caveat in self.caveats], ""]
         return "\n".join(out)
@@ -702,5 +708,5 @@ def fact_conflicts(data_dir: Path | str, scope: Scope, title: str, *, rules: Seq
 
 
 __all__ = ["CAVEATS", "CONFLICTS_PAGE", "ConflictReport", "FIELD_RULES", "FactConflict", "FieldRule", "RULE_WORDS", "Rule",
-           "Side", "Statement", "ValueType", "fact_conflicts", "identifiers", "is_prose", "library_id", "locate", "money", "money_pattern",
+           "Side", "Statement", "ValueType", "conflict_lines", "fact_conflicts", "identifiers", "is_prose", "library_id", "locate", "money", "money_pattern",
            "masked_words", "same_text", "stored_readings"]
