@@ -4,7 +4,8 @@
   (``jason.web.extra.approvals``) with the engine's approvals beside it under ``approvals`` (``?status=``, ``?kind=``);
   ``?key=`` is still one letter. ``GET /api/approvals/<id>`` is the Approval JSON as the engine stores it
   (``approval.schema.json``); ``GET /api/approvals/audit`` the log (``?approval=``, ``?verify=1``);
-  ``GET /api/evidence?address=&approval=`` one evidence address opened from disk (``jason.approvals.evidence``).
+  ``GET /api/evidence?address=&approval=`` one evidence address opened from disk (``jason.approvals.evidence``); an
+  executive board item whole only in the private view, logged in ``access/served.jsonl``.
 - **Check.** ``POST /api/approvals/<id>/check`` re-plans live and compares, writing nothing (``engine.check``, the
   CLI's ``apply ID`` without ``--yes``). A POST, not a GET: it signs in to PayHOA and reads it, which a link, a
   prefetch, or another site's ``<img>`` must never set off, so it sits behind the write guard and the token header.
@@ -164,12 +165,32 @@ def evidence(args: Args) -> dict[str, Any]:
     """``GET /api/evidence?address=...&approval=...``: what jason holds on disk of an evidence address, with the
     commands that read it again. Nothing is read live; contact details are masked by the resolver and again here.
     While the person's private view is open (``jason.web.access.private_open``), restricted and confidential material
-    comes back too: a restricted book's words, confidential documents (marked P3), an executive item's notes."""
+    comes back too: a restricted book's words, confidential documents (marked P3), an executive item whole. An answer
+    that is itself P3 (an executive item whole) is logged in ``access/served.jsonl`` before it goes out; when the log
+    cannot be written it is answered as outside the private view."""
     from jason.approvals.evidence import resolve
     from jason.web.access import private_open
 
-    return _masked_evidence(resolve(args.get("address", ""), approval_id=args.get("approval", "").strip(),
-                                    private=private_open()))
+    address, approval = args.get("address", ""), args.get("approval", "").strip()
+    private = private_open()
+    out = resolve(address, approval_id=approval, private=private)
+    if private and out.get("level") == "P3" and not _served_p3(out["address"]):
+        out = resolve(address, approval_id=approval, private=False)
+    return _masked_evidence(out)
+
+
+def _served_p3(address: str) -> bool:
+    """Log a P3 evidence answer for the viewer on this request (``access/served.jsonl``); False when it cannot be."""
+    from jason.web.access import Level, check, served
+
+    try:
+        viewer, refused = check(Level.P3)
+        if refused is not None or viewer is None:
+            return False
+        served(viewer, Level.P3, address=address)
+        return True
+    except Exception:  # noqa: BLE001 - nothing P3 goes out unlogged
+        return False
 
 
 def _masked_evidence(out: dict[str, Any]) -> dict[str, Any]:

@@ -11,7 +11,8 @@ contents::
   size and modified time, a copy's record, whether a thumbnail is on disk, the level), never the document. ``kind`` is
   the kind of the address's first document (``pdf``, ``image``, ``text``, ``submission``, ...). Keys with no value are
   left out, as the TypeScript type's optional fields are.
-- ``file_ref``, ``drive_ref``, ``library_ref``, ``submission_ref``, and ``citation_ref`` build one kind each.
+- ``file_ref``, ``drive_ref``, ``library_ref``, ``submission_ref``, and ``citation_ref`` build one kind each. A board
+  item (``board-item:<id>``) in executive session is P3 and named by its 4935 subject, never its title.
 - ``refs_from_strings`` maps the free-text evidence strings older stores hold (a board item's ``evidence``) to
   references: ``library: <path>`` and ``library:<id>``, ``Drive: <name>`` (only when exactly one file in Drive's
   listing has that name), ``data/<path>`` (only a file on disk in a place ``jason.web.access`` names), and a citation
@@ -218,6 +219,25 @@ def _submission(root: Path, sid: int, name: str | None, document: str | None) ->
     return ref
 
 
+def _board_item(root: Path, address: str, key: str, name: str | None) -> dict[str, Any]:
+    """A board item (``board-item:<id>``). An executive-session item is P3 and named by its 4935 subject
+    (``jason.tasks.board_items.held_title``), never by its title or its id (a slug of the title), whatever name was
+    given: a reference carries no private view, and the evidence answers it whole only in one."""
+    from jason.community.board_items import Session, agenda_session
+    from jason.tasks.board_items import _encode, held_title, load, planned_executive_subjects
+
+    ref: dict[str, Any] = {"address": address, "name": name or f"Board item {key}", "kind": "text", "level": "P1",
+                           "source": "Board items"}
+    try:
+        item = next((i for i in load(root) if i.id == key), None)
+        if item is not None and agenda_session(item) is Session.EXECUTIVE:
+            title, _, _ = held_title(planned_executive_subjects(root, [_encode(item)]).get(item.id))
+            ref.update(name=f"Board item: {title}", level="P3")
+    except Exception:  # noqa: BLE001 - a store that cannot be read: the item may be executive, so it is held
+        ref.update(name="Board item", level="P3")
+    return ref
+
+
 def _citation_ref(expression: str, name: str | None, document: str | None) -> dict[str, Any]:
     statute = bool(_STATUTE.match(expression))
     return {"address": expression, "document": document or "section", "name": name or expression, "kind": "text",
@@ -251,8 +271,7 @@ def doc_ref(address: str, *, name: str | None = None, document: str | None = Non
     elif rule.kind is EvidenceKind.CITATION:
         ref = _citation_ref(address, given, document)
     elif rule.kind is EvidenceKind.BOARD_ITEM and found is not None:
-        ref = {"address": address, "name": given or f"Board item {found.group(1).strip()}", "kind": "text",
-               "level": "P1", "source": "Board items"}
+        ref = _board_item(root, address, found.group(1).strip(), given)
     else:
         ref = {"address": address, "name": given or address, "kind": "file", "level": "P2", "document": document}
     ref["name"] = _masked(ref["name"])

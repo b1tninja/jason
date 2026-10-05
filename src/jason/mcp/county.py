@@ -1488,14 +1488,27 @@ def legal_cases() -> dict[str, Any]:
             "caveats": ["Confidential: for directors and counsel.", "A duty 'not shown' may be met in records jason does not hold."]}
 
 
-def board_items(include_closed: bool = False, data_dir: Path | None = None) -> dict[str, Any]:
+def board_items(include_closed: bool = False, include_confidential: bool = False,
+                data_dir: Path | None = None) -> dict[str, Any]:
     """The board's running list of action items (`jason board`): each matter jason's reviews found that needs a board
     decision, with what the board is asked to do, the authority, the evidence, the priority, and the board's own status,
-    owner, meeting, and notes. Reads disk only. An item is a matter to decide, never the decision."""
-    from jason.tasks.board_items import _encode, load
+    owner, meeting, and notes. Reads disk only. An item is a matter to decide, never the decision. An executive-session
+    item (CIV 4935) is held back unless ``include_confidential``: a held row (``executive-<n>``, "An executive-session
+    matter" with its 4935 subject's general words when an agenda plan names one, and its status, priority, meeting, and
+    due date), never its title, ask, summary, notes, evidence, or id; ``executiveHeld`` counts them. Whole, it is for
+    directors and counsel only."""
+    from jason.tasks.board_items import EXECUTIVE_HELD_ASK, _encode, hold_executive, load
 
-    items = [i for i in load(_data_dir(data_dir)) if include_closed or i.status.value != "closed"]
-    return {"found": bool(items), "items": [_encode(i) for i in items]}
+    root = _data_dir(data_dir)
+    items = [i for i in load(root) if include_closed or i.status.value != "closed"]
+    rows = [_encode(i) for i in items]
+    if include_confidential:
+        return {"found": bool(items), "items": rows, "executiveHeld": 0}
+    rows, n = hold_executive(root, rows)
+    out: dict[str, Any] = {"found": bool(items), "items": rows, "executiveHeld": n}
+    if n:
+        out["executiveHeldNote"] = EXECUTIVE_HELD_ASK.format(n=n)
+    return out
 
 
 def cost_centers(data_dir: Path | None = None) -> dict[str, Any]:

@@ -127,12 +127,13 @@ def test_flag_parsing(value, expected):
 
 
 def test_board_items(county):
+    # The tool is asked for executive items whole; the loader holds them back itself outside the private view.
     sources.board_items({})
-    assert _one(county) == ("board_items", {"include_closed": False})
+    assert _one(county) == ("board_items", {"include_closed": False, "include_confidential": True})
     county.calls.clear()
     sources.board_items({"closed": "true"})
     _, kwargs = _one(county)
-    assert kwargs == {"include_closed": True} and kwargs["include_closed"] is True
+    assert kwargs == {"include_closed": True, "include_confidential": True} and kwargs["include_closed"] is True
 
 
 def test_board_digest(county):

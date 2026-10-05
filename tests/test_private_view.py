@@ -309,12 +309,20 @@ def test_an_executive_items_summary_and_notes_come_back_in_the_window(confidenti
     c = confidential.c
 
     def fields():
-        src = c.get("/api/evidence?address=board-item:example-plan").json["sources"][0]
-        return {f["name"]: f["value"] for f in src["fields"]}, src["note"]
+        got = c.get("/api/evidence?address=board-item:example-plan").json
+        src = got["sources"][0]
+        return {f["name"]: f["value"] for f in src["fields"]}, src["note"], got
 
-    held, note = fields()
+    held, note, got = fields()
     assert "Summary" not in held and "Notes" not in held and "held back" in note
+    # Labeled by its 4935 subject (none planned here), never its title; no line in the access log.
+    assert got["label"] == "Board item: An executive-session matter" and got["held"] is True and "level" not in got
+    assert "A payment plan" not in json.dumps(got) and held["Title"] == "An executive-session matter"
+    assert _served(confidential.data_dir / "letters") == []
     _open(c)
-    shown, note = fields()
+    shown, note, got = fields()
     assert shown["Summary"] == "Owner X owes." and shown["Notes"] == "Offered twelve months."
     assert note == "Executive session: shown in the private view."
+    assert got["label"] == "Board item example-plan: A payment plan" and got["level"] == "P3"
+    line = _served(confidential.data_dir / "letters")[-1]
+    assert (line["address"], line["level"], line["private"]) == ("board-item:example-plan", "P3", True)

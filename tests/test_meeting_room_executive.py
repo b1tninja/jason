@@ -318,7 +318,7 @@ def meeting_web(tmp_path, monkeypatch):
     saved = {k: sys.modules.get(k) for k in ("jason.mcp", "jason.mcp.county")}
     county = types.ModuleType("jason.mcp.county")
     county._data_dir = lambda _=None: tmp_path
-    county.board_items = lambda include_closed=False, data_dir=None: {
+    county.board_items = lambda include_closed=False, include_confidential=False, data_dir=None: {
         "found": True, "items": [_encode(i) for i in load(tmp_path) if include_closed or i.status.value != "closed"]}
     pkg = types.ModuleType("jason.mcp")
     pkg.__path__ = []
@@ -423,6 +423,68 @@ def test_a_held_board_item_with_no_planned_subject_says_only_executive_session(m
                                           "An executive-session matter"]
     assert "Z. Party" not in json.dumps(out) and out["executiveHeld"] == 2
     assert any(r["title"] == "Suit by made-up Z. Party" for r in meeting_web.sources.board_items({}, private=True)["items"])
+
+
+# -- jason-mcp's board_items and the evidence resolver: the same held row outside the private view ------------------------
+
+def _two_items(root):
+    """One executive item (the plan names its 4935 subject) and one open item, made up."""
+    from jason.community.board_items import BoardItem, ItemCategory, ItemStatus
+    from jason.tasks import agenda_plan
+    from jason.tasks.board_items import save
+
+    save(root, [BoardItem("sample-payment-plan", EXEC_TITLE, "Owner Q. Sample owes.", EXEC_ASK, ItemCategory.COLLECTIONS,
+                          status=ItemStatus.PROPOSED, notes="Offered twelve months.", authority="CIV 5665",
+                          evidence=("Q. Sample's ledger, made up",)),
+                BoardItem("repaint", "Repaint the carports", "Peeling.", "Approve the bid.", ItemCategory.MAINTENANCE,
+                          status=ItemStatus.PROPOSED)])
+    agenda_plan.update(root, DAY, {"items": {"sample-payment-plan": {"subject": "assessment_payment"}}}, by="S. Clerk")
+
+
+SECRETS = (EXEC_TITLE, "Q. Sample", EXEC_ASK, "sample-payment-plan", "Offered twelve months", "CIV 5665")
+
+
+def test_the_mcp_board_items_tool_holds_an_executive_item_back_unless_asked(tmp_path):
+    from jason.mcp.county import board_items
+
+    _two_items(tmp_path)
+    out = board_items(data_dir=tmp_path)
+    assert all(s not in json.dumps(out) for s in SECRETS), "an executive item's title, ask, notes, evidence, or id"
+    held = next(r for r in out["items"] if r.get("held"))
+    assert held["id"] == "executive-1" and held["subject"] == "assessment_payment"
+    assert held["title"] == "An executive-session matter: a member's payment of assessments"
+    assert (held["status"], held["priority"], held["session"]) == ("proposed", "normal", "executive session")
+    assert out["executiveHeld"] == 1 and "include_confidential" in out["executiveHeldNote"]
+    assert any(r["title"] == "Repaint the carports" for r in out["items"])                         # open as it is
+    whole = board_items(include_confidential=True, data_dir=tmp_path)
+    row = next(r for r in whole["items"] if r["id"] == "sample-payment-plan")
+    assert row["title"] == EXEC_TITLE and row["ask"] == EXEC_ASK and whole["executiveHeld"] == 0
+    assert "executiveHeldNote" not in whole
+    assert "executiveHeldNote" not in board_items(data_dir=tmp_path / "empty")                    # nothing held, no note
+
+
+def test_the_evidence_labels_an_executive_item_by_its_subject_outside_the_private_view(tmp_path):
+    from jason.approvals.docref import doc_ref
+    from jason.approvals.evidence import resolve
+
+    _two_items(tmp_path)
+    out = resolve("board-item:sample-payment-plan", data_dir=tmp_path)
+    assert out["found"] is True and out["held"] is True and "level" not in out
+    assert out["label"] == "Board item: An executive-session matter: a member's payment of assessments"
+    fields = {f["name"]: f["value"] for f in out["sources"][0]["fields"]}
+    assert {"Title", "Status", "Priority", "Session"} <= set(fields) <= {"Title", "Status", "Priority", "Session", "Due",
+                                                                         "Meeting"}
+    text = json.dumps({k: v for k, v in out.items() if k != "address"})                    # the caller's own address aside
+    assert all(s not in text for s in SECRETS)
+    whole = resolve("board-item:sample-payment-plan", data_dir=tmp_path, private=True)
+    assert whole["label"] == f"Board item sample-payment-plan: {EXEC_TITLE}" and whole["level"] == "P3"
+    assert "held" not in whole and EXEC_ASK in json.dumps(whole)
+    assert resolve("board-item:repaint", data_dir=tmp_path)["label"] == "Board item repaint: Repaint the carports"
+    # The light reference names it by its subject too, at P3, whatever name it was given.
+    ref = doc_ref("board-item:sample-payment-plan", name=EXEC_TITLE, data_dir=tmp_path)
+    assert ref["name"] == "Board item: An executive-session matter: a member's payment of assessments"
+    assert ref["level"] == "P3"
+    assert doc_ref("board-item:repaint", data_dir=tmp_path)["level"] == "P1"
 
 
 def test_a_room_kept_apart_counts_nothing_inside_its_windows(tmp_path):

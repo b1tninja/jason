@@ -15,7 +15,8 @@ live system.
   with a catalog synced later (status), where they can be compared; null when none can.
 - **A citation.** ``jason.tasks.cite.resolve``: the words recited from disk (``jason export-authorities`` for the
   statutes), never paraphrased.
-- **A board item.** ``data/board/items.json``; an executive-session item's summary and notes are held back.
+- **A board item.** ``data/board/items.json``. An executive-session item is labeled by its 4935 subject and where it
+  stands (``held``); its title, ask, summary, notes, and evidence only in the private view.
 - **A Drive file** (``drive:<id>``). jason's copy (``jason.tasks.drive_copies``: ``drive/copies/<id>.*``, exported on a
   person's click) as "Copy from Drive", and Drive's listing (``drive/files.json``, ``jason drive --sync``) as "Drive
   catalog". ``changed`` is true when the catalog's ``modified`` is newer than the copy's ``modifiedTime`` ("Changed in
@@ -31,8 +32,9 @@ live system.
 
 **The private view.** ``resolve(..., private=True)`` is what jason-web asks while a person's private view is open
 (``jason.web.access``): a restricted book is recited (``jason cite --private``), a citation's confidential documents
-are listed (marked ``level: "P3"``), and an executive-session item's summary and notes are shown. Everything else
-(jason-mcp, the CLI) asks without it.
+are listed (marked ``level: "P3"``), and an executive-session item is answered whole (the answer's ``level`` is P3,
+and jason-web logs it in ``access/served.jsonl`` before it goes out). Everything else (jason-mcp, the CLI) asks
+without it.
 - **A command.** Found, with no copy: the command is what produced the evidence, and running it is the refresh.
 
 Which reader answers is the first rule row whose matcher takes the address (``RULES``; the order is part of the rule).
@@ -584,8 +586,12 @@ def read_citation(ask: Ask) -> dict[str, Any]:
 
 
 def read_board_item(ask: Ask) -> dict[str, Any]:
+    """A board item from ``board/items.json``. An executive-session item (CIV 4935(e)) is whole only in the private
+    view, where the answer says ``level: "P3"`` (jason-web logs it before it goes out). Otherwise it is labeled by its
+    4935 subject's general words (``jason.tasks.board_items.held_title``; "An executive-session matter" when no agenda
+    plan names one) and ``held``: where it stands, never its title, ask, summary, authority, notes, evidence, or id."""
     from jason.community.board_items import Session, agenda_session
-    from jason.tasks.board_items import STORE, load
+    from jason.tasks.board_items import STORE, _encode, held_title, load, planned_executive_subjects
 
     key = ask.match.group(1).strip() if ask.match else ""
     path = ask.root / STORE
@@ -603,19 +609,30 @@ def read_board_item(ask: Ask) -> dict[str, Any]:
         return out
     executive = agenda_session(item) is Session.EXECUTIVE
     held = executive and not ask.private
-    rows = [("Title", item.title), ("Ask", item.ask), ("Status", item.status.value),
-            ("Priority", item.priority.value), ("Category", item.category.value), ("Authority", item.authority),
-            ("Session", agenda_session(item).value), ("Due", item.due.isoformat() if item.due else ""),
-            ("Meeting", item.meeting), ("Owner", item.owner),
-            ("Summary", "" if held else item.summary), ("Notes", "" if held else item.notes),
-            ("Evidence", "; ".join(item.evidence))]
+    status = [("Status", item.status.value), ("Priority", item.priority.value),
+              ("Session", agenda_session(item).value), ("Due", item.due.isoformat() if item.due else ""),
+              ("Meeting", item.meeting)]
+    if held:
+        title, _, _ = held_title(planned_executive_subjects(ask.root, [_encode(item)]).get(item.id))
+        rows = [("Title", title)] + status
+    else:
+        rows = ([("Title", item.title), ("Ask", item.ask)] + status[:2] + [("Category", item.category.value),
+                ("Authority", item.authority)] + status[2:] + [("Owner", item.owner), ("Summary", item.summary),
+                ("Notes", item.notes), ("Evidence", "; ".join(item.evidence))])
     out["sources"].append(source(SourceName.BOARD_ITEMS, read_at=_mtime(path),
                                  fields=[mask_field(n, v) for n, v in rows if v],
                                  caveat="The board's running list; the board owns its status, owner, meeting, and "
                                         "notes. An item is a matter to decide, never the decision.",
-                                 note=("Executive session: its summary and notes are held back." if held else
+                                 note=("Executive session (Civil Code 4935(e)): only its subject and where it stands; "
+                                       "its title, ask, summary, notes, and evidence are held back. Open the private "
+                                       "view to see them." if held else
                                        "Executive session: shown in the private view." if executive else "")))
-    out.update(label=f"Board item {key}: {item.title}", found=True)
+    if held:
+        out.update(label=f"Board item: {title}", found=True, held=True)
+    else:
+        out.update(label=f"Board item {key}: {item.title}", found=True)
+        if executive:
+            out["level"] = "P3"
     return out
 
 
@@ -995,13 +1012,19 @@ def resolve(address: str, *, approval_id: str = "", data_dir: Path | None = None
         caveats.append(MASKED_CAVEAT)
     caveats.append(DISK_ONLY)
     note = " ".join(n for n in [got.get("note", "")] + [n[:1].upper() + n[1:] + "." for n in notes] if n)
-    label = evidence.label if evidence is not None and evidence.label else got.get("label") or address
+    # A held record's own label stands: an approval's label for it may name what is held (an executive item's title).
+    held = bool(got.get("held"))
+    label = (evidence.label if evidence is not None and evidence.label and not held else got.get("label") or address)
     out = {"found": bool(got.get("found")), "address": address, "label": label, "kind": rule.kind.value,
            "sources": got.get("sources") or [], "changed": got.get("changed"),
            "changedNote": got.get("changedNote", ""), "link": got.get("link", ""), "refresh": refresh,
            "refreshable": rule.refresher.as_dict() if rule.refresher is not None else None,
            "documents": list(got.get("documents") or ()),
            "caveats": list(dict.fromkeys(caveats)), "note": note}
+    if held:
+        out["held"] = True
+    if got.get("level"):                       # the answer itself is at this level (an executive item shown whole: P3)
+        out["level"] = got["level"]
     return _scrub(out)
 
 

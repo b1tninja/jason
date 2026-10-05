@@ -1845,14 +1845,37 @@ LESSONS: tuple[Lesson, ...] = (
            "sources.board_items answers an executive item whole only in the private view, logged; otherwise a held "
            "row (executive-<n>, its 4935 subject's general words from the agenda plan, else \"An executive-session "
            "matter\", and its status, priority, meeting, and due date). set_board_item answers an executive item as "
-           "missing (404) outside the private view. The screen shows a held row with no details and no board fields.",
+           "missing (404) outside the private view. The screen shows a held row with no details and no board fields. "
+           "The held row is one helper for every path (jason.tasks.board_items.hold_executive): the stdio MCP tool "
+           "board_items holds executive items back unless include_confidential; the evidence for board-item:<id> is "
+           "labeled by its 4935 subject and held outside the private view, whole inside it with level P3 and a line in "
+           "access/served.jsonl; a DocRef to one is P3 and named by its subject.",
            Status.FIXED, guards=("tests/test_meeting_room_executive.py::test_the_board_items_listing_holds_an_executive_"
                                  "item_back_outside_the_private_view",
                                  "tests/test_meeting_room_executive.py::test_a_held_board_item_with_no_planned_subject_"
-                                 "says_only_executive_session", "ui/src/views/views.test.tsx (the held executive item)"),
-           docs=("docs/console/screens/board-items.md", "docs/web-ui.md"),
-           notes=("Not yet: the evidence resolver's board-item:<id> label still names an executive item's title (a "
-                  "caller must know the id), and the stdio MCP tool board_items lists items whole.",)),
+                                 "says_only_executive_session", "ui/src/views/views.test.tsx (the held executive item)",
+                                 "tests/test_meeting_room_executive.py::test_the_mcp_board_items_tool_holds_an_executive_"
+                                 "item_back_unless_asked",
+                                 "tests/test_meeting_room_executive.py::test_the_evidence_labels_an_executive_item_by_its_"
+                                 "subject_outside_the_private_view",
+                                 "tests/test_private_view.py::test_an_executive_items_summary_and_notes_come_back_in_the_"
+                                 "window"),
+           docs=("docs/console/screens/board-items.md", "docs/web-ui.md", "docs/mcp.md",
+                 "docs/console/security-and-privacy.md"),
+           notes=("Still outside this fix: the board-item:<id> address carries the id the caller gave, and an "
+                  "approval's own stored evidence label for an executive item may name its title (approval_show).",)),
+    Lesson("backflow-letter-goes-whole-to-the-tester", date(2026, 10, 4), (Area.DOCUMENTS, Area.ONBOARDING),
+           "A water supplier's annual backflow letter lists each assembly with its ID and due date, and the supplier mails one "
+           "letter an assembly; the association forwarded one of them to its tester. A county notice of non-compliance "
+           "followed a test that the county had no report of; a failed assembly was repaired 44 days after its test, past the "
+           "15 the notice gives, and the repair notice was postmarked nine days after its date.",
+           "The tester needs the IDs to file in the program's portal, nothing confirms the filing, and the notice's clock runs "
+           "from a date the mail may not match.",
+           "Forward every page of every letter the day it arrives; ask for the portal's receipt and each tag number after the "
+           "test; read a repair notice's date against its postmark; check the tester against the program's lists each year "
+           "(docs/cross-connection-control.md). A person does these: jason files no report and calls no tester.",
+           Status.OPEN,
+           docs=("docs/cross-connection-control.md",)),
     Lesson("kinds-in-other-stores-were-gaps", date(2026, 10, 4), (Area.DOCUMENTS, Area.ONBOARDING),
            "The shelf of document kinds showed seventeen kinds with no files, among them tax returns, utility bills, a "
            "title company's resale demand, and security reports, although a search of Gmail and the Drive found all four: "

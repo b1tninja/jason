@@ -74,6 +74,95 @@ def save(data_dir: Path, items: list[BoardItem]) -> Path:
     return path
 
 
+# --- an executive item held back (CIV 4935(e)) --------------------------------------------------------------------------
+# Outside the private view (jason-web) or without ``include_confidential`` (jason-mcp), an executive-session item is a
+# held row: where it stands, never what it is. Its id is a slug of its title, so it is held too.
+
+EXECUTIVE_HELD_TITLE = "An executive-session matter"
+EXECUTIVE_HELD_NOTE = ("{n} executive-session item(s) listed by their Civil Code 4935 subject only (4935(e)); open the "
+                       "private view to see their titles.")
+EXECUTIVE_HELD_ASK = ("{n} executive-session item(s) listed by their Civil Code 4935 subject only (4935(e)); ask with "
+                      "include_confidential to list them whole, for directors and counsel only.")
+_HELD_KEEPS = ("agendaSession", "priority", "status", "meeting", "due", "opened")
+
+
+def executive_row(row: dict[str, Any]) -> bool:
+    """Whether a board item's row goes to executive session (``agenda_session``); a row that cannot be read is held."""
+    try:
+        return agenda_session(_decode(row)) is Session.EXECUTIVE
+    except Exception:  # noqa: BLE001 - anything unclear keeps the row held
+        return True
+
+
+def planned_executive_subjects(data_dir: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The 4935 subject the agenda plans give each item, by id: the plan of the meeting the item names, else the latest
+    plan on disk that gives it one; none when no plan does."""
+    from jason.tasks.board_packet import _planned_subjects
+
+    days: list[date] = []
+    for p in sorted((Path(data_dir) / "meetings").glob("plan-*.json"), reverse=True):
+        try:
+            days.append(date.fromisoformat(p.stem.removeprefix("plan-")))
+        except ValueError:
+            continue
+    plans: dict[date, dict[str, Any]] = {}
+    out: dict[str, Any] = {}
+    for r in rows:
+        try:
+            own = [date.fromisoformat(str(r.get("meeting") or "").strip())]
+        except ValueError:
+            own = []
+        for d in own + days:
+            if d not in plans:
+                plans[d] = _planned_subjects(data_dir, d)
+            if plans[d].get(r["id"]):
+                out[r["id"]] = plans[d][r["id"]]
+                break
+    return out
+
+
+def held_title(subject: Any = None) -> tuple[str, Any, str]:
+    """An executive item's title outside the private view: ``"An executive-session matter"``, with its 4935 subject's
+    general words when it has one; also the subject (or None) and those words."""
+    from jason.community.models.meetings import EXECUTIVE_GENERAL_TERMS, executive_subject
+
+    s = executive_subject(subject)
+    general = EXECUTIVE_GENERAL_TERMS[s][0] if s is not None else ""
+    return (f"{EXECUTIVE_HELD_TITLE}: {general}" if general else EXECUTIVE_HELD_TITLE), s, general
+
+
+def held_executive_row(n: int, row: dict[str, Any], subject: Any = None) -> dict[str, Any]:
+    """An executive item's row held back: ``executive-<n>``, its 4935 subject (the agenda plan's, or "") with the
+    statute's general words, and where it stands; never its title, ask, summary, evidence, notes, or id."""
+    title, s, general = held_title(subject)
+    out: dict[str, Any] = {"id": f"executive-{n}", "title": title,
+                           "summary": "", "ask": "", "category": "", "authority": "", "evidence": [], "evidenceRefs": [],
+                           "session": "executive session", "special_notice": "", "owner": "", "notes": "", "source": "",
+                           "history": [], "held": True, "subject": s.value if s is not None else "", "general": general}
+    out.update({k: row.get(k) for k in _HELD_KEEPS if k in row})
+    return out
+
+
+def hold_executive(data_dir: Path, rows: list[dict[str, Any]],
+                   shown: Any = None) -> tuple[list[dict[str, Any]], int]:
+    """``rows`` (``_encode``'d items) with each executive item held back (``held_executive_row``, numbered in order, its
+    subject from the agenda plans), and how many were held. ``shown`` maps each row that stays whole (default: as is)."""
+    executive = {r["id"] for r in rows if executive_row(r)}
+    keep = shown or (lambda r: r)
+    if not executive:
+        return [keep(r) for r in rows], 0
+    subjects = planned_executive_subjects(data_dir, [r for r in rows if r["id"] in executive])
+    out: list[dict[str, Any]] = []
+    n = 0
+    for r in rows:
+        if r["id"] in executive:
+            n += 1
+            out.append(held_executive_row(n, {**r, "agendaSession": "executive session"}, subjects.get(r["id"])))
+        else:
+            out.append(keep(r))
+    return out, n
+
+
 def sheet_title(community: Any = None) -> str:
     """The title of the board's action items Sheet and Google Tasks list: the profile's ``board_items_title()``, else
     "<association> Board Action Items" from its name. The active profile is read when ``community`` is not given."""
