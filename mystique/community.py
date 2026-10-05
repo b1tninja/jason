@@ -587,6 +587,12 @@ class Mystique(Community):
 
         return officers()
 
+    def document_approvers(self):
+        """Who approves each draft jason writes for a person to post or send (officers.py)."""
+        from .officers import DOCUMENT_APPROVERS
+
+        return DOCUMENT_APPROVERS
+
     def sign_in(self):
         """The community's console sign-in clients, from the private facts (officers.py, sign_in.json)."""
         from .officers import sign_in

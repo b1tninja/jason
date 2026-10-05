@@ -29,7 +29,12 @@ The design agent's fourth cut (2026-10-04, evening) answers [handoff-reconciliat
 
 1. **Subsidiary motions in the meeting room:** table, continue, and refer as motions with a roll call; withdraw as a logged act.
 2. **`GET /api/status`** for the administrator's landing.
-3. **The members' copy of the packet** through Approvals.
-4. **Setup's screen** read against the template's grouping, now that the routes exist.
+3. **The members' copy of the packet** through Approvals. Done: `jason board --packet --audience members [--by NAME]` ([board-agenda.md](../board-agenda.md#the-board-packet)); the approver is the specification's (`Community.document_approvers`).
+4. **Setup's screen** read against the template's grouping, now that the routes exist. *Done* ([onboarding-ux.md](../onboarding-ux.md#setting-up-in-the-console)): the gates with what holds the current one, the checklist by group, each item's status, seals, and next step, standing questions, first-run empty states; the loader adds each ask's `standing` and `clock`. Where the build differs from `ConsoleSetup`:
+   - **Groups and gates are the server's:** 15 groups, not the template's 28, and the gates START, INGEST, ESTABLISH, OPERATE, ADOPT, each over its own items, not over groups.
+   - **Every item behind a gate holds it,** not only the high-stakes missing ones: high-stakes items are listed first and marked.
+   - **No board questions to Matters:** no ask's answer goes to the board (`FactRecord` is the private facts, a profile change, or Keeper), and Matters is not built.
+   - **The answer's value is never shown,** and there is no Withdraw: an answer shows who gave it and when; dismissing is an answer.
+   - **The clock is the profile's words,** shown only where a `FactAsk` names one, never a date.
 
 Still behind a board decision: owner sign-in, and with it My account, the public facts page, and the owner unit manual.

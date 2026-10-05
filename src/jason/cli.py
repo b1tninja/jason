@@ -2590,6 +2590,38 @@ def _board_notice(args: argparse.Namespace, data_dir) -> int:
     return 1 if notice.misses else 0
 
 
+def _board_members_copy(args: argparse.Namespace, data_dir, meeting) -> int:
+    """``jason board --packet --audience members``: the members' copy of the packet, data/board/packet-<date>-members.md,
+    with what it leaves out listed by item. With ``--by NAME`` it goes to the approvals store and approval is requested
+    from the officer the specification names; without, only the draft is written. jason never posts or sends it."""
+    from jason.community import community as active
+    from jason.tasks.board_packet import members_copy, request_members_copy
+
+    if args.doc:
+        print("--doc writes the directors' confidential packet; the members' copy goes to its approver first "
+              "(--by NAME), and a person posts it once approved", file=sys.stderr)
+        return 2
+    community = active()
+    copy = members_copy(data_dir, community, meeting)
+    out = data_dir / "board" / f"packet-{meeting.isoformat()}-members.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(copy.lines), encoding="utf-8")
+    print(f"wrote {out} (the members' copy; a draft, nothing posted)")
+    print("\n".join(copy.withheld_lines()) or "- nothing left out")
+    who = f"{copy.approver} ({', '.join(copy.approver_names) or 'no one on the roster holds it'})" if copy.approver else ""
+    if not args.by:
+        print(f"approval not requested: add --by NAME to ask {copy.approver or 'its approver'}" +
+              ("" if copy.approver else " (the specification names none: Community.document_approvers)"))
+        return 0
+    try:
+        letter = request_members_copy(data_dir, community, copy, out, by=args.by)
+    except ValueError as exc:
+        print(f"approval not requested: {exc}", file=sys.stderr)
+        return 1
+    print(f"approvals {letter['key']}: {letter['stage']}, from {who}; a person posts it once approved (jason approvals inbox)")
+    return 0
+
+
 def cmd_board(args: argparse.Namespace) -> int:
     """The board's action items: list or change them, draft the next agenda and minutes, sync the board's Sheet."""
     import json
@@ -2639,6 +2671,8 @@ def cmd_board(args: argparse.Namespace) -> int:
 
         schedule = active().meeting_schedule()
         meeting = date.fromisoformat(args.date) if args.date else schedule.next_meeting(date.today(), monthly=True)
+        if args.audience == "members":
+            return _board_members_copy(args, data_dir, meeting)
         out = data_dir / "board" / f"packet-{meeting.isoformat()}.md"
         out.parent.mkdir(parents=True, exist_ok=True)
         lines = packet(data_dir, active(), meeting)
@@ -4174,6 +4208,13 @@ def build_parser() -> argparse.ArgumentParser:
     board.add_argument("--notes", default="")
     board.add_argument("--refresh-reports", action="store_true", help="with --packet: run each report the items name before building (otherwise each shows its last run: jason report --list)")
     board.add_argument("--packet", action="store_true", help="Write the board packet for the next meeting: each open-session item researched")
+    board.add_argument("--audience", choices=("directors", "members"), default="directors",
+                       help="With --packet: the directors' confidential packet (default), or the members' copy "
+                            "(packet-<date>-members.md: no draft motions, option briefs, privileged or executive material, or "
+                            "records above P1; what it leaves out is listed by item)")
+    board.add_argument("--by", default="", metavar="NAME",
+                       help="With --packet --audience members: the person asking; puts the copy in approvals and requests "
+                            "approval from the officer the specification names. Without it, only the draft is written")
     board.add_argument("--agenda", default="", help="Draft the next agenda from this agenda Google Doc id (read-only)")
     board.add_argument("--members", action="store_true",
                        help="Read the members PayHOA tags 'Board Member' (current and archived) into data/payhoa/board-members.json")

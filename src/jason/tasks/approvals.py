@@ -148,6 +148,22 @@ def draft(data_dir: Path, key: str, body: dict[str, Any], *, by: str, note: str 
     return letter
 
 
+def approver_for(community: Any, kind: Any) -> str:
+    """The approver the specification names for a kind of draft (``Community.document_approvers``, a ``DraftKind``),
+    or "" when it names none: a miss, never "the board" by default. ValueError for one not in ``APPROVERS``."""
+    rows = getattr(community, "document_approvers", lambda: ())() if community is not None else ()
+    found = next((r.approver for r in rows if r.kind is kind), "")
+    if found and found not in APPROVERS:
+        raise ValueError(f"the specification names {found!r} to approve {kind.value}; an approver is one of {', '.join(APPROVERS)}")
+    return found
+
+
+def approvers_named(community: Any, approver: str) -> tuple[str, ...]:
+    """The people on the roster who may record ``approver``'s approval (``Officer.can_approve``), in roster order."""
+    rows = getattr(community, "officers", lambda: ())() if community is not None else ()
+    return tuple(dict.fromkeys(o.name for o in rows if approver and o.can_approve(approver)))
+
+
 def _approval_check(letter: dict[str, Any], by: str, meeting: str | None) -> str:
     """Who may record the approval, and the log line. Raises ValueError when ``by`` may not."""
     from jason.community import community
@@ -219,4 +235,5 @@ def step(data_dir: Path, key: str, action: str, *, by: str, note: str = "", meet
     return letter
 
 
-__all__ = ["APPROVERS", "BOARD", "STAGES", "TRANSITIONS", "all", "draft", "get", "load", "pending_count", "step"]
+__all__ = ["APPROVERS", "BOARD", "STAGES", "TRANSITIONS", "all", "approver_for", "approvers_named", "draft", "get", "load",
+           "pending_count", "step"]

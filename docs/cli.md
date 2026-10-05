@@ -702,6 +702,8 @@ The board's action items; draft the next agenda and minutes from the last agenda
 | `--notes` | NOTES |  |
 | `--refresh-reports` |  | with --packet: run each report the items name before building (otherwise each shows its last run: jason report --list) |
 | `--packet` |  | Write the board packet for the next meeting: each open-session item researched |
+| `--audience` | {directors,members} | With --packet: the directors' confidential packet (default), or the members' copy (packet-<date>-members.md: no draft motions, option briefs, privileged or executive material, or records above P1; what it leaves out is listed by item) |
+| `--by` | NAME | With --packet --audience members: the person asking; puts the copy in approvals and requests approval from the officer the specification names. Without it, only the draft is written |
 | `--agenda` | AGENDA | Draft the next agenda from this agenda Google Doc id (read-only) |
 | `--members` |  | Read the members PayHOA tags 'Board Member' (current and archived) into data/payhoa/board-members.json |
 | `--minutes` | DATE | Draft the minutes of the board meeting on DATE from its Zoom record with the local model (open meeting only) |

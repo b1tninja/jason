@@ -23,7 +23,7 @@ jason's admins and the managers of a portfolio are the installation's, not the c
 
 from __future__ import annotations
 
-from jason.community.base import IdentityProvider, Officer, OfficerRole, SignInProvider, Term
+from jason.community.base import DocumentApprover, DraftKind, IdentityProvider, Officer, OfficerRole, SignInProvider, Term
 
 DEFAULT_APPROVES: dict[OfficerRole, tuple[str, ...]] = {
     OfficerRole.PRESIDENT: ("the president",),
@@ -33,6 +33,14 @@ DEFAULT_APPROVES: dict[OfficerRole, tuple[str, ...]] = {
     OfficerRole.VICE_PRESIDENT: (),
     OfficerRole.DIRECTOR: (),
 }
+
+# Who approves each draft jason writes for a person to post or send. The members' copy of the board packet goes to
+# the secretary, who keeps the board's records for members (schedule.py: minutes-available, records-requests).
+DOCUMENT_APPROVERS: tuple[DocumentApprover, ...] = (
+    DocumentApprover(DraftKind.MEMBERS_PACKET, "the secretary",
+                     source="proposed: the secretary keeps the board's records for members (schedule.py "
+                            "minutes-available, records-requests); the board adopts"),
+)
 
 
 def officers() -> tuple[Officer, ...]:
@@ -68,4 +76,4 @@ def sign_in() -> tuple[SignInProvider, ...]:
     return providers_from(facts("sign_in", []))
 
 
-__all__ = ["DEFAULT_APPROVES", "officers", "sign_in", "terms"]
+__all__ = ["DEFAULT_APPROVES", "DOCUMENT_APPROVERS", "officers", "sign_in", "terms"]

@@ -678,6 +678,24 @@ def offices_of(officers: Iterable[Officer], name: str) -> tuple[Officer, ...]:
     return tuple(o for o in officers if o.name == name)
 
 
+class DraftKind(Enum):
+    """A kind of document jason drafts for one officer's approval before a person posts or sends it. The value is the
+    approvals store's ``kind`` (``jason.tasks.approvals``); who approves each is ``Community.document_approvers``."""
+
+    MEMBERS_PACKET = "Meeting packet (members' copy)"
+
+
+@dataclass(frozen=True)
+class DocumentApprover:
+    """Who approves a kind of draft (``DraftKind``) before a person posts or sends it: ``approver`` is one of the
+    approvals store's approvers ("the secretary"), and ``source`` is what says so (a resolution, the minutes, a duty the
+    board assigned, or "proposed" until the board adopts it)."""
+
+    kind: DraftKind
+    approver: str
+    source: str = ""
+
+
 @dataclass(frozen=True)
 class VacancyProvision:
     """How the governing documents fill a vacant office: the provision (``source``, "Bylaws 1.2") and its words as
@@ -940,6 +958,11 @@ class Community(ABC):
     def officers(self) -> tuple[Officer, ...]:
         """The board's officers and the manager by role (``Officer``), names from the private facts; empty until set.
         A person who holds two offices is two rows (``offices_of``)."""
+        return ()
+
+    def document_approvers(self) -> tuple[DocumentApprover, ...]:
+        """Who approves each kind of draft jason writes for a person to post or send (``DocumentApprover``). Empty until
+        the specification names them: such a draft is then written, and its approval is never requested."""
         return ()
 
     def vacancy_provision(self, office: OfficerRole) -> VacancyProvision | None:
