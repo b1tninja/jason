@@ -59,13 +59,13 @@ It updates `%USERPROFILE%\.keeper\keeper-config.json` with the device token and 
 
 Credentials are moving from `.env` record UIDs to vault paths, `jason/<scope>/<community or "instance">/<integration>/<name>` ([integrations-design.md](integrations-design.md#the-vault)). In Keeper, an entry is a record titled with its path, in a folder named `jason` at the top of your vault.
 - `jason vault status` shows the backend, whether it answers, and which `.env` keys are still read. It never prompts.
-- `jason vault migrate` shows the plan. `jason vault migrate --yes`, run in a terminal, copies each record to its path and never overwrites one.
+- `jason vault migrate` shows the plan. `jason vault migrate --yes`, run in a terminal, copies each record to its path and never overwrites one. The plan and the copy also cover the Google refresh tokens (see Google Workspace below): each local `secrets/google-*token.json` goes to `google-workspace/token/<name>`, and `status` says where each would be read from.
 
 Check the new records in Keeper, then remove the moved `*_record_uid` keys from `.env`. Until then, jason reads the `.env` record and logs the key as deprecated. Every login jason reads (PayHOA, SMUD, i-doxs, Accela, PostScanMail, Zoom, the vendor portals, the Google client, and the console's sign-in clients) tries its vault path first. `jason integrations list` and `jason onboard` count an entry at the path as set; when Keeper wants a sign-in they test `.env` alone and say so.
 
 ## Google Workspace
 
-jason signs in as a Workspace user (SSO). The OAuth client's id and secret live in a Keeper record. The refresh token from the first browser sign-in is kept in `secrets/google-token.json`. Google Photos, Vault, and Tasks each keep their own token beside it, so adding one never asks the others to consent again. Which scopes are asked for is in `jason.google.scopes`.
+jason signs in as a Workspace user (SSO). The OAuth client's id and secret live in a Keeper record. The refresh token from a browser sign-in is saved in the vault (`jason/community/<profile>/google-workspace/token/drive`) and in `secrets/google-token.json`. A command reads the vault first and the file second, so a worktree or any working directory with no `secrets/` folder works once `jason vault migrate --yes` has copied the token (or after the next sign-in). Google Photos, Vault, and Tasks each keep their own token (`token/photos`, `token/vault`, `token/tasks`), so adding one never asks the others to consent again. Which scopes are asked for is in `jason.google.scopes`.
 
 ### 1. The Cloud project and APIs
 
@@ -92,7 +92,7 @@ Run any Google command once with `--interactive`, for example:
 jason drive --sync --interactive
 ```
 
-The first call with `--interactive` opens a browser at `http://127.0.0.1` for one sign-in and writes the refresh token. Later runs reuse it and never open a browser. A missing or rejected token raises `GoogleAuthRequired` at once in an unattended run. A new scope (a capability added later) asks for one more consent the same way. `jason photos --login --interactive` and `jason vault --interactive` do the same for their own tokens.
+The first call with `--interactive` opens a browser at `http://127.0.0.1` for one sign-in and saves the refresh token to the vault and the local file. Later runs reuse it and never open a browser. A missing or rejected token raises `GoogleAuthRequired` at once in an unattended run. A new scope (a capability added later) asks for one more consent the same way. `jason photos --login --interactive` and `jason vault --interactive` do the same for their own tokens.
 
 New Google Sites has no content API. The published site is a Drive file, so Drive can move or share it, but not edit its pages ([mystique-site.md](mystique-site.md)). The consumer NotebookLM at notebook.google.com has no API that jason can query.
 

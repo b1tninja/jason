@@ -1,15 +1,14 @@
-"""Open a Google client from the OAuth client in the vault and the local refresh token.
+"""Open a Google client from the OAuth client and the refresh token, both in the credential vault.
 
 The client is the community's vault entry ``google-workspace/oauth-client`` (``client_id`` and ``client_secret``
 fields), else the Keeper record ``google_oauth_record_uid`` names (``jason.vault.resolver``; the fallback is logged as
-deprecated). The token files stay where ``google_oauth_token_file`` puts them, one set for the installation: storing a
-token per community and account in the vault is build step 3 (docs/integrations-design.md).
+deprecated). The refresh token is read vault first (``google-workspace/token/<name>``), then the local file where
+``google_oauth_token_file`` puts it (``jason.google.tokens``), so a worktree or another working directory with no
+``secrets/`` folder still opens. A sign-in (``interactive`` only) saves to both.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -17,6 +16,8 @@ import httpx
 from jason.google.auth import authorize_in_browser, token_has_scopes
 from jason.google.drive import GoogleDrive
 from jason.google.errors import GoogleAuthRequired, GoogleError
+from jason.google.scopes import GOOGLE_SCOPES
+from jason.google.tokens import DRIVE, name_of_file, token_store
 
 INTEGRATION, CLIENT = "google-workspace", "oauth-client"
 
@@ -59,15 +60,13 @@ def open_drive(
     opens a browser only when ``interactive`` is true.
     """
     sign_in = authorize or authorize_in_browser
+    store = _vault_store(vault, store)
     client_id, client_secret = oauth_client(settings, vault, store=store)
-    token_path = Path(settings.google_oauth_token_file)
-    saved: dict[str, Any] = {}
-    refresh = ""
-    if token_path.is_file():
-        saved = json.loads(token_path.read_text(encoding="utf-8"))
-        refresh = str(saved.get("refresh_token") or "")
+    tokens = token_store(settings, store)
+    saved = tokens.load(DRIVE, GOOGLE_SCOPES) or {}
+    refresh = str(saved.get("refresh_token") or "")
     if not refresh or not token_has_scopes(saved):
-        refresh = _sign_in(sign_in, client_id, client_secret, token_path, interactive)
+        refresh = _sign_in(sign_in, client_id, client_secret, tokens, DRIVE, GOOGLE_SCOPES, interactive)
     try:
         return GoogleDrive.from_refresh_token(
             client_id=client_id,
@@ -78,7 +77,7 @@ def open_drive(
     except GoogleError as exc:
         if isinstance(exc, GoogleAuthRequired):
             raise
-        refresh = _sign_in(sign_in, client_id, client_secret, token_path, interactive)
+        refresh = _sign_in(sign_in, client_id, client_secret, tokens, DRIVE, GOOGLE_SCOPES, interactive)
         return GoogleDrive.from_refresh_token(
             client_id=client_id,
             client_secret=client_secret,
@@ -95,12 +94,14 @@ def open_scoped(settings: Any, vault: Any, factory: Any, scopes: tuple[str, ...]
     from functools import partial
 
     sign_in = partial(authorize or authorize_in_browser, scopes=scopes)
+    store = _vault_store(vault, store)
     client_id, client_secret = oauth_client(settings, vault, store=store)
-    token_path = Path(settings.google_oauth_token_file).with_name(token_name)
-    saved = json.loads(token_path.read_text(encoding="utf-8")) if token_path.is_file() else {}
+    tokens = token_store(settings, store)
+    name = name_of_file(token_name)
+    saved = tokens.load(name, scopes) or {}
     refresh = str(saved.get("refresh_token") or "")
     if not refresh or not token_has_scopes(saved, scopes):
-        refresh = _sign_in(sign_in, client_id, client_secret, token_path, interactive)
+        refresh = _sign_in(sign_in, client_id, client_secret, tokens, name, scopes, interactive)
     return factory.from_refresh_token(client_id=client_id, client_secret=client_secret, refresh_token=refresh, http=http)
 
 
@@ -132,14 +133,33 @@ def _sign_in(
     sign_in: Any,
     client_id: str,
     client_secret: str,
-    token_path: Path,
+    tokens: Any,
+    name: str,
+    scopes: tuple[str, ...],
     interactive: bool,
 ) -> str:
+    """A person's browser sign-in (``interactive`` only). The sign-in writes the local file; the token is then saved
+    again through ``tokens.save``, which writes the file and the vault."""
     if not interactive:
         raise GoogleAuthRequired(
             "Google sign-in needs a browser. Pass interactive=True."
         )
-    return sign_in(client_id, client_secret, token_path)
+    refresh = sign_in(client_id, client_secret, tokens.file.path_of(name))
+    written = tokens.file.load(name)
+    granted = list(written["scopes"]) if written and written["refresh_token"] == refresh and written["scopes"] \
+        else list(scopes)
+    tokens.save(name, refresh, granted)
+    return refresh
+
+
+def _vault_store(vault: Any, store: Any) -> Any:
+    """The ``SecretStore`` for the vault: the one given, else one over a ``VaultSession``, else None (the file alone)."""
+    from jason.secrets import VaultSession
+    from jason.vault.keeper import KeeperStore
+
+    if store is None and isinstance(vault, VaultSession):
+        return KeeperStore.from_session(vault)
+    return store
 
 
 def _field(custom: Any, label: str) -> str:

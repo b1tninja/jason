@@ -182,6 +182,16 @@ Each integration declares its limits, a default cadence, a **floor** (the fastes
 | `jason vault status` | the backend, whether it answers (never prompting), the paths per community, and the `.env` keys still read (names only) |
 | `jason vault migrate [--community C] [--yes]` | plans copying today's `.env`-named Keeper records under the new vault paths for the active community; `--yes`, from a person at a terminal, copies them (create only). `.env` then keeps only the vault's own login. Plain `jason vault` is still Google Vault's matters and holds |
 
+## Google tokens in the vault
+
+Built 2026-10-05 (`src/jason/google/tokens.py`). A refresh token is a credential, so the vault is its system of record; `secrets/*.json` is a per-checkout cache that a worktree or another working directory does not have.
+- **Path:** `jason/community/<profile>/google-workspace/token/<name>`, `<name>` one of `drive` (the Drive, Docs, Sheets, Gmail, Calendar, and Forms scopes), `tasks`, `vault`, `photos`. Fields: `refresh_token` and `scopes` (space separated). The path scheme allows `token/<account>` for a community that signs in with more than one Google account; no account label is used until one does.
+- **Interface:** `GoogleTokenStore` (`load(name)`, `save(name, refresh_token, scopes)`), a vault implementation, a file implementation, and `LayeredTokenStore` over both. `open_drive` and `open_scoped` use it.
+- **Read order:** the vault first, then the file. The vault is shared by every checkout and holds the last sign-in; the file is the fallback when the vault holds nothing at the path, and when the vault cannot be reached and the file has a token that covers the scopes (logged by error name only). A vault that cannot be reached with no usable file is the vault's own `KeeperAuthRequired`, never a silent miss. A token that lacks the current scopes asks for a sign-in only when `interactive`.
+- **Write order:** a sign-in (interactive only) saves to the file and the vault. An unreachable vault is logged, and the file still has it.
+- **Move:** `jason vault migrate` plans, and `--yes` (a person at a terminal) copies each local token file to its path, create only. The `google-token.before-scopes-*.json` backups are old tokens and are not copied.
+- **See:** `jason vault status` prints each name's source (vault, file, or missing), its scope count, and whether the scopes cover those asked now. Never a token.
+
 ## Build order
 
 1. The `Integration` registry in code and `Connection` rows in each community's data (`data/<profile>/integrations.json`), read by the Status screen.
@@ -192,15 +202,15 @@ Each integration declares its limits, a default cadence, a **floor** (the fastes
    - **`jason integrations list` and `check`**: `check --live` asks a person at a terminal and runs one small read (Google, PayHOA, Zoom, the local models), and records the result on the connection.
    - **Not yet:** a Status row for calendar, tasks, `idoxs`, and the vendor portals. The vendor portals' store keeps no last-read stamp.
 2. The `SecretStore` interface with the Keeper backend, vault paths, and `jason vault migrate`. Per-community lookups for Google, Zoom, PayHOA, and the portals.
-   **Built 2026-10-05** (`src/jason/vault/`), with every credential reader on the vault path (the Google tokens wait for step 3):
+   **Built 2026-10-05** (`src/jason/vault/`), with every credential reader on the vault path (the Google refresh tokens: [Google tokens in the vault](#google-tokens-in-the-vault), the first part of step 3):
    - **The mapping:** a vault path is a Keeper record whose title is the path, in a folder named `jason` at the top of the vault (user or shared folder; subfolders count). A record outside that folder is never read as an entry. Two records with one title are an error. `login`, `password`, `url`, and `oneTimeCode` are the record's typed fields; any other field is a masked custom field with its name as the label. The version is the record's Keeper revision.
    - **The fallback:** `credential(community, integration, name)` reads the path first, then the record its `.env` key names (`resolver.LEGACY`; a portal's `<key>_record_uid` by the profile's portal rows), logging the key as deprecated.
    - **Switched (every reader):** PayHOA (`payhoa/login`, `payhoa/test-login`), SMUD and i-doxs (`smud/login`, `idoxs/login`), Accela (`accela/login`), PostScanMail (`postscanmail/api-key`), Zoom (`zoom/app`), the vendor portals (`vendor-portal/<key>`; a bill source counts one by `.env` or `describe`, never a value), and the Google client (`google-workspace/oauth-client`), through `Jason.credential` or, without an agent, `secrets.resolve_credential` (the `get_*_credentials` helpers, `payhoa_session`). A miss in both raises the caller's old error, naming the path too.
    - **Console sign-in:** each client reads `signin/oauth-client/<key>` (community or instance) first, then its row's `record_uid`; the `.env` fallback reads the path its key migrates to. `jason sign-in --import-client` and `jason zoom --store-app` write the vault path (create only) and print it; a `sign_in.json` row names it as `vault`.
    - **"Credential set":** `jason integrations list`/`check` and `jason onboard` also count an entry at the path, from the vault's names listed without a prompt (`vault.keeper.vault_names`); when Keeper wants a sign-in, the `.env` test stands and the reading says so.
-   - **Left on `.env`:** the Google token files (one set for the installation, `google_oauth_token_file`; a token per community and account in the vault is build step 3); the `.env` sign-in fallback is offered only while its key is set (after `vault migrate`, add a `sign_in.json` row naming the path); `jason onboard`'s session and the MCP onboarding tools test `.env` only.
+   - **Left on `.env`:** the `.env` sign-in fallback is offered only while its key is set (after `vault migrate`, add a `sign_in.json` row naming the path); `jason onboard`'s session and the MCP onboarding tools test `.env` only.
    - **Tests:** `MemoryStore` and a fake Keeper; no test signs in to Keeper (`conftest`).
-3. Google Workspace as a Web client per community, with the browser sign-in from the console and tokens by account.
+3. Google Workspace as a Web client per community, with the browser sign-in from the console and tokens by account. **Tokens in the vault: built 2026-10-05** ([below](#google-tokens-in-the-vault)); the Web client, the console's sign-in, and the account label wait.
 4. The console's dialogs ([handoff](console/handoff-instance-and-integrations.md)), each over `jason integrations`.
 5. Later, with containerization: the backend swap (SSM or Secrets Manager; OpenBao off AWS).
 

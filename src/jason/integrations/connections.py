@@ -282,6 +282,11 @@ def _google(settings: Any, community: Any, vault: VaultAsked | None = None) -> P
         return Probe(False, why="no OAuth client is named in the settings or held in the vault" + vault.caveat())
     token = getattr(settings, "google_oauth_token_file", None)
     has_token = bool(token) and Path(token).is_file()
+    if not has_token and vault.community:      # a worktree has no local file; the vault's copy is the token
+        from jason.google.tokens import DRIVE, TOKEN_PREFIX
+        from jason.vault.paths import vault_path
+
+        has_token = vault.holds(vault_path(vault.community, "google-workspace", f"{TOKEN_PREFIX}/{DRIVE}"))
     why = "the vault holds the OAuth client" if in_vault else "the OAuth client is named in the settings"
     return Probe(True, _keeper_login(settings) if via_vault else None, why=why + vault.caveat(),
                  google_token=has_token)

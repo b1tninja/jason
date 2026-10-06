@@ -7,7 +7,9 @@ actions to that parser (``add_arguments``) rather than registering its own, so i
   path by community, and the ``.env`` keys still read in their place. Names only, never a value or a record UID.
 - ``migrate [--community C]``: the plan, each ``*_record_uid`` key in ``.env`` and the vault path its record moves to.
   ``--yes``, run by a person at a terminal, copies them in Keeper (create only: a path already set is left alone).
-  The ``.env`` keys stay until the person has checked each entry and removed them.
+  The ``.env`` keys stay until the person has checked each entry and removed them. The plan and the copy also cover the
+  local Google token files (``jason.google.tokens``: each to ``google-workspace/token/<name>``), and ``status`` says where
+  each Google token would be read from (vault, file, or missing) with its scope count, never the token.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import sys
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from jason.google.tokens import migrate_tokens, plan_token_lines, plan_token_migration, token_store
+from jason.google.tokens import status_lines as token_status_lines
 from jason.vault.keeper import FOLDER
 from jason.vault.paths import Scope, parse_path
 from jason.vault.resolver import MigrationResult, MigrationState, MigrationStep, migrate, plan_migration
@@ -121,15 +125,22 @@ def run(args: argparse.Namespace) -> int:
     settings, key, portals = _context(args)
     if args.action == "status":
         with VaultSession.from_settings(settings, interactive=False) as session:   # status never prompts
-            for line in status_lines(KeeperStore.from_session(session), settings.record_uids, key, portals):
+            store = KeeperStore.from_session(session)
+            for line in status_lines(store, settings.record_uids, key, portals):
+                print(line)
+            print("Google tokens (where each is read from; the token is never shown):")
+            for line in token_status_lines(token_store(settings, store, key)):
                 print(line)
         return 0
 
     if not args.yes:
         with VaultSession.from_settings(settings, interactive=False) as session:
-            steps, problem = plan_migration(key, settings.record_uids, portal_keys=portals,
-                                            store=KeeperStore.from_session(session))
+            store = KeeperStore.from_session(session)
+            steps, problem = plan_migration(key, settings.record_uids, portal_keys=portals, store=store)
+            token_steps = plan_token_migration(token_store(settings, store, key), key, checked=not problem)
         for line in plan_lines(steps, key, problem):
+            print(line)
+        for line in plan_token_lines(token_steps):
             print(line)
         print("Nothing written. A person at a terminal runs it again with --yes to copy them in Keeper.")
         return 0
@@ -149,12 +160,21 @@ def run(args: argparse.Namespace) -> int:
             for line in plan_lines(steps, key):
                 print(line)
             results = migrate(steps, store, settings.record_uids, store.load_by_uid, by=getpass.getuser())
+            tokens = token_store(settings, store, key)
+            token_steps = plan_token_migration(tokens, key)
+            for line in plan_token_lines(token_steps):
+                print(line)
+            token_results = migrate_tokens(token_steps, tokens, by=getpass.getuser())
     except KeeperAuthRequired:
         print("Keeper needs a sign-in: run `jason login` in a terminal, or add --interactive.", file=sys.stderr)
         return 2
     print("Done:")
     for line in result_lines(results):
         print(line)
+    for step, outcome in token_results:
+        print(f"  Google token {step.name} -> {step.path}: {outcome}")
+    if any(o == "copied" for _, o in token_results):
+        print("The local token files stay (a per-checkout cache); a worktree reads the vault copy.")
     return 1 if any(r.outcome.startswith("source") for r in results) else 0
 
 
