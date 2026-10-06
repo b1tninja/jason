@@ -10,6 +10,7 @@ This folder is the `mystique` profile's own documentation: this association's se
 - [rule-authority.md](rule-authority.md): where the governing documents give the board power to make rules, by subject, and which subjects have rules on file (general: [docs/rule-authority.md](../../docs/rule-authority.md)).
 - [document-segments.md](document-segments.md): the owner's manual's parts as the segmentation reads them, the archive scanned in batches, and how the gold labels are kept.
 - [living.md](living.md): the living CC&Rs' readings: the OCR re-read trial and its numbers.
+- [standard-forms.md](standard-forms.md): the provisions that imply a form here (rental application, variance, home improvement, registration, permits, payment plan, records), with their clocks, and the leads for the board and counsel.
 - [improvement-requests.md](improvement-requests.md): home improvement requests mapped to the association's provisions, its forms, the clocks against the meeting schedule, and the gaps where a written policy is needed.
 - [mold-program.md](mold-program.md): the declaration's mold inspection and prevention program: the requirement step by step, the adoption on record, the inspections done against the quarterly clock, the owners' part, proposed obligations, and the program's outline for the board.
 - [maintenance-manual.md](maintenance-manual.md): the declaration's inspection and maintenance manual: the requirement, what the records hold, the review by component, proposed obligations, and the manual's outline for the board.
