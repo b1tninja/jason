@@ -19,6 +19,8 @@ and require ``by``.
     api.record_resources()                              # what jason-mcp lists as resources
     api.new_responses()["arrivals"]                      # what the last `jason responses --check` kept, newest first
     api.response("gmail:abc123")["left"]                 # one arrival: its reading (evidence), its acts, what is left
+    api.followups(days=14)["items"]                      # what we do next, and when, with the basis and the count outstanding
+    api.campaign_status("AC27E")["campaigns"]            # a campaign's funnel by way of answering, and who is unreachable
     api.outstanding_responses()["requests"]              # who was sent a copy and has not responded (disk only)
 
 The MCP server's other tools (the PayHOA catalog, deeds, liens, finance, mail, meetings, the law) are importable from
@@ -58,6 +60,7 @@ from jason.mcp.governance import (
     section_refs,
 )
 from jason.mcp.response_inbox import new_responses, outstanding_responses, response
+from jason.mcp.followups import campaign_status, followups
 
 
 
@@ -83,4 +86,4 @@ def read_record(address: str, data_dir=None) -> dict:
             "lastModified": page.last_modified}
 
 
-__all__ = [t.__name__ for t in TOOLS] + ["new_responses", "outstanding_responses", "read_record", "record_resources", "response"]
+__all__ = [t.__name__ for t in TOOLS] + ["campaign_status", "followups", "new_responses", "outstanding_responses", "read_record", "record_resources", "response"]

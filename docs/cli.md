@@ -6,13 +6,13 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-171 commands, by area:
+172 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (24)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
-- [Owners, requests, notices & forms](#owners-requests-notices--forms) (27)
+- [Owners, requests, notices & forms](#owners-requests-notices--forms) (28)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
@@ -1064,6 +1064,29 @@ The forms built in for the association's law, as it has them: by tier and status
 | `--tier` | {state,family,custom} | only this tier: state, family, or custom |
 | `--json` |  | print JSON |
 
+### `jason followups`
+
+What we do next, and when: dated actions (remind, enter, resend, review) with their basis, the count outstanding, and the command; done, defer, or drop one (a person's act)
+
+| Option | Value | Help |
+|---|---|---|
+| `--done` | ID | a person says it was done (needs --by) |
+| `--defer` | ID | put it off to a later day (needs --to, --by, and --why) |
+| `--drop` | ID | it is not to be done (needs --by and --why) |
+| `--add` |  | a person's own item (needs --date, --text, and --by) |
+| `--campaign` | CODE | only this campaign's follow-ups; with --add, the campaign it belongs to |
+| `--kind` | K | only this kind (remind, return-by, enter-by, reports-mailed, resend, acknowledge, review, decide, answer-due, close, manual) |
+| `--within` | DAYS | how far ahead to list (default 14) |
+| `--overdue` |  | only what is overdue |
+| `--all` |  | every item, in every state and on every date |
+| `--to` | DATE | with --defer: the day it comes back (YYYY-MM-DD) |
+| `--date` | DATE | with --add: the day it is due (YYYY-MM-DD) |
+| `--text` | TEXT | with --add: what is to be done |
+| `--note` | TEXT | with --done: what was done |
+| `--why` | TEXT | with --defer or --drop: the reason (required) |
+| `--by` | NAME | who does it, for the log (every act requires it) |
+| `--json` |  | print JSON |
+
 ### `jason forms`
 
 Create the association's request forms and read their responses
@@ -1178,7 +1201,7 @@ The handler is chosen when a form is made: the campaigns (a form, a cycle, a cha
 
 | Option | Value | Help |
 |---|---|---|
-| `--show` | CODE | one campaign: its form and version, authority, handler, procedure, cycle, and counts |
+| `--show` | CODE | one campaign: its form and version, authority, handler, procedure, cycle, and counts, with its funnel by the way answers came in and the age of each source |
 | `--open` | FORM | open a campaign for a form (needs --channel, --cycle-year, and --by); writes the row only and makes no copy |
 | `--close` | CODE | close a campaign (needs --by) |
 | `--adopt` |  | write the rows for the campaigns the profile's response requests already run |
@@ -1205,12 +1228,16 @@ Has anyone answered? The inbox of responses to a request (PayHOA form, Google Fo
 | `--seen-all` |  | mark every new arrival seen (needs --by; --request narrows) |
 | `--dismiss` | ID | not an answer: a question, a duplicate, not the form (needs --by and --why) |
 | `--outstanding` |  | who was sent a copy and has not responded, and owners never sent one, from the sent-copy catalog less the answers kept (disk only; --request narrows; --json) |
-| `--channel` | {payhoa,gmail,mail,forms} | with --check or --list: only this channel (repeatable) |
+| `--add-manual` |  | key a return that came another way (handed in at the office, taken by phone) as an arrival, channel manual (needs --request, --how, --who, --by; --unit, --file optional); sends nothing |
+| `--how` | TEXT | with --add-manual: how it came in ('handed in at the office', 'by phone') |
+| `--who` | NAME | with --add-manual: the owner's name (no address) |
+| `--file` | PATH | with --add-manual: a scan or photo of the form (repeatable) |
+| `--channel` | {payhoa,gmail,mail,forms,manual} | with --check or --list: only this channel (repeatable) |
 | `--from` | ADDRESS | with --check: every message from this address in the window, marking which were kept (Gmail; the address is not printed or stored) |
 | `--since` | DATE | with --check: read from this day (YYYY-MM-DD), past a closed window |
 | `--state` | {new,seen,read,keyed,recorded,dismissed} | with --list: only arrivals in this state |
-| `--request` | K | with --list, --seen-all, or --outstanding: only this request's key |
-| `--unit` | U | with --list: only units whose label contains this |
+| `--request` | K | with --list, --seen-all, or --outstanding: only this request's key; with --add-manual: the request the return answers |
+| `--unit` | U | with --list: only units whose label contains this; with --add-manual: the unit |
 | `--new` |  | with --list: only new arrivals |
 | `--days` | N | with --list: only arrivals from the last N days |
 | `--model` | NAME | with --read: also read handwriting with this local vision model (after the local-AI preflight, holding the GPU lock) |

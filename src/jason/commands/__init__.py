@@ -32,6 +32,7 @@ MODULES: tuple[str, ...] = (
     "owner_info",
     "responses",
     "campaigns",
+    "followups",
     "qr",
     "rentals",
     "batches",

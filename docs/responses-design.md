@@ -46,6 +46,7 @@ Each channel is a small class: `check(since) -> list[Arrival]`, taking its clien
 | `gmail` | messages since the request opened that reached the association's own addresses or groups | yes | from outside the association's domains and (carrying a PDF or image, or from an address PayHOA holds for a current owner). Headers and attachment names only; nothing downloaded. A group-rewritten sender is read from `X-Original-From` (`tasks.gmail._senders`) |
 | `mail` | PostScanMail items already on disk | no | a scan whose text carries the request's form marker |
 | `forms` | the saved responses of a Google Form | no | a response id not yet kept |
+| `manual` | nothing: a person adds it (`jason responses --add-manual`) | no | a return keyed from paper handed in or taken by phone, with the method named (`--how`); any scan is copied to `files/<id>/`, so `--read` and `--confirm` take it like a scan (with no scan a person keys each answer at `--confirm --set`); never checked, and counted by `manual` in the campaign funnel ([followups-design.md](followups-design.md)) |
 
 `--check --from ADDRESS` is the ad hoc case: it lists every message from that address in the window, candidate or not, and keeps only candidates. A check that fails on one channel (Keeper not signed in, a revoked Google token) reports it and still checks the others; a sign-in failure is the scheduler's sign-in pause, not a retry.
 

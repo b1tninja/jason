@@ -425,6 +425,28 @@ LESSONS: tuple[Lesson, ...] = (
            "a date.",
            "The board supplies each, and the profile fills the slot; `jason form-library --check` names each slot.",
            Status.DECISION, docs=("docs/form-templates/README.md",)),
+    Lesson("outstanding-must-not-depend-on-how-they-answered", date(2026, 10, 5), (Area.OWNER_INFO, Area.FORMS),
+           "A count of who has not answered that was taken by channel would call an owner outstanding who had answered by "
+           "another, and would count an owner no delivery reached as outstanding when no reminder can reach them.",
+           "Each intake method has its own record, and the asked side is the sent-copy catalog.",
+           "Outstanding is by owner and unit, whichever way they answered (PayHOA, email, mailed scan, a form, or keyed "
+           "from paper); an owner every delivery failed for is unreachable and listed apart, never counted as outstanding "
+           "and never hidden; each count carries the age of its source.",
+           Status.FIXED, guards=("tests/test_followups.py", "campaign_funnel.funnel"),
+           docs=("docs/followups-design.md",)),
+    Lesson("a-follow-ups-id-must-not-move-when-its-source-is-reread", date(2026, 10, 5), (Area.OWNER_INFO, Area.FORMS),
+           "Counting a follow-up's due date from the day a source was synced (the notice ledger's sync day) would change "
+           "the item's id on every sync, and a person's done, deferred, or dropped note would be lost.",
+           "The sync day moves; the day an outcome happened does not.",
+           "A due date counts from the day the outcome happened, and an id hashes the kind, the subject, and that day.",
+           Status.FIXED, guards=("tests/test_followups.py (the stable-id test)",)),
+    Lesson("jason-computes-a-follow-up-and-never-completes-it", date(2026, 10, 5), (Area.OWNER_INFO, Area.FORMS),
+           "A date passing, or nobody being outstanding any more, is not a person's act, so an item marked done by the "
+           "calendar or by a count would hide work nobody did.",
+           "A derived item has no author.",
+           "jason never marks a follow-up done; a reminder with nobody outstanding says so and stays open until a person "
+           "acts.",
+           Status.FIXED, guards=("tests/test_followups.py (no auto-done)",)),
     Lesson("a-joined-group-is-a-lead", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
            "A document span joined to a statute by shared subject words can be about something else.",
            "Shared terms are weaker evidence than a shared citation.",

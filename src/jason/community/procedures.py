@@ -100,6 +100,16 @@ PROCEDURES: tuple[Procedure, ...] = (
                  refs=("docs/responses-design.md", "docs/arrivals-design.md"),
                  lessons=("returns-by-the-same-rules", "form-return-found-by-searching-the-mailbox",
                           "payhoa-submission-list-row-shape-unconfirmed", "reading-keeps-no-membership-id"), person=True),
+            Step("Read what is due and who is still outstanding, after a send and after each check for responses: the "
+                 "reminders, the dates the law sets, the resends owed, and the returned forms nobody has read. Mark each "
+                 "item a person has done; an owner no ask has reached is listed apart.",
+                 command="jason followups; jason campaigns --show CODE; jason followups --done ID --by NAME",
+                 check="outstanding counts an owner who answered by any method as answered; unreachable owners are not "
+                       "counted as outstanding and are not hidden; a proposed number says so; nothing is marked done "
+                       "except by a person",
+                 refs=("docs/followups-design.md",),
+                 lessons=("outstanding-must-not-depend-on-how-they-answered", "a-follow-ups-id-must-not-move-when-its-source-is-reread",
+                          "jason-computes-a-follow-up-and-never-completes-it"), person=True),
             Step("Triage the answers as they come in: what to record, enter, confirm, or hold for the board.",
                  command="jason owner-info --responses --canvas",
                  check="each finding's outcome; the board's questions in its canvas (mystique/notes/canvas)",

@@ -18,6 +18,9 @@ carrying the filled form, a mailed return that was scanned. The records, the che
   keyed answers, the same ones a PayHOA submission becomes. Nothing is written to PayHOA: ``jason owner-info --apply``
   plans what it would do, and only its ``--yes`` writes.
 - ``--seen ID ...`` / ``--seen-all``, ``--dismiss ID --by NAME --why TEXT``: a person's act, logged.
+- ``--add-manual --request K --how TEXT --who NAME [--unit U] [--file PATH ...] --by NAME``: a return that came another way
+  (a form handed in at the office, an answer taken by phone), keyed as an arrival of channel ``manual``, state new. Any scan
+  is copied to the private files folder; ``--read`` and ``--confirm`` then take it like any other. Sends nothing.
 - ``--outstanding [--request K] [--json]``: from disk, who was sent a copy of a request and has not responded (the
   sent-copy catalog ``data/forms/references.json`` less the answers kept), with when each copy was sent and by which
   channel, and a short separate list of owners never sent a copy; names and units only. It says how old the catalog, the
@@ -38,12 +41,13 @@ from jason.commands.integrations import at_terminal
 SCHEDULER = "scheduler"
 LIVE_LINE = ("This reads what the last check kept; `jason responses --check` is the live read (Gmail and PayHOA, "
              "read-only).")
-ACTIONS = ("check", "list", "show", "read", "confirm", "seen", "seen_all", "dismiss", "outstanding")
+ACTIONS = ("check", "list", "show", "read", "confirm", "seen", "seen_all", "dismiss", "outstanding", "add_manual")
 # An option and the actions it goes with (None: the inbox view). A stray one is refused rather than ignored.
 MODIFIERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("channel", "--channel", ("check", "list")), ("from_address", "--from", ("check",)), ("since", "--since", ("check",)),
-    ("state", "--state", ("list",)), ("unit", "--unit", ("list",)), ("new", "--new", ("list",)),
-    ("days", "--days", ("list",)), ("request", "--request", ("list", "seen_all", "outstanding")),
+    ("state", "--state", ("list",)), ("unit", "--unit", ("list", "add_manual")), ("new", "--new", ("list",)),
+    ("days", "--days", ("list",)), ("request", "--request", ("list", "seen_all", "outstanding", "add_manual")),
+    ("how", "--how", ("add_manual",)), ("who", "--who", ("add_manual",)), ("file", "--file", ("add_manual",)),
     ("model", "--model", ("read",)),
     ("set", "--set", ("confirm",)), ("why", "--why", ("confirm", "dismiss")))
 
@@ -160,6 +164,9 @@ def _channel_lines(data_dir: Any) -> list[str]:
     for channel in Channel:
         row = known.get(channel.value)
         label = f"  {channel.value:7}"
+        if channel is Channel.MANUAL:                # a person adds these (--add-manual): there is nothing to check
+            out.append(f"{label} keyed by a person from paper or a call (nothing to check)")
+            continue
         if row is None:
             out.append(f"{label} never checked{reads_disk.get(channel.value, '')}")
             continue
@@ -610,6 +617,28 @@ def _seen(args: argparse.Namespace, data_dir: Any) -> int:
     return 0
 
 
+def _add_manual(args: argparse.Namespace, data_dir: Any) -> int:
+    """A person keys a return that came another way (handed in at the office, taken by phone): one more arrival, channel
+    manual, state new. Nothing is sent and nothing is written to PayHOA."""
+    if not (args.request or "").strip():
+        return _refuse("--request is required with --add-manual: the key of the request the return answers (jason responses --list)")
+    if not (args.how or "").strip():
+        return _refuse("--how is required with --add-manual: how it came in, e.g. 'handed in at the office' or 'by phone'")
+    if not (args.who or "").strip():
+        return _refuse("--who is required with --add-manual: the owner's name, as the person gave it")
+    arrival = _ri().add_manual(data_dir, _community(), args.request.strip(), by=args.by or "", how=args.how, who=args.who,
+                               unit=args.unit or "", files=args.file or ())
+    if args.json:
+        _print_json(_mask(arrival.to_json(), addresses=False))
+        return 0
+    print(f"Added {arrival.id} by {args.by.strip()}: {_mask(arrival.who, addresses=False)}, "
+          f"{_mask(arrival.unit, addresses=False) or 'unit not named'}; {_mask(arrival.summary, addresses=False)}; "
+          f"{len(arrival.attachments)} file(s) kept in data/responses/files/{arrival.stem}/.")
+    print(f"Next: `jason responses --read {arrival.id} --by NAME` (a scan is read; with no scan a person keys each answer at "
+          "--confirm), then --confirm. Nothing was sent, and nothing was written to PayHOA.")
+    return 0
+
+
 def _dismiss(args: argparse.Namespace, data_dir: Any) -> int:
     ri = _ri()
     before = ri.get(data_dir, args.dismiss)
@@ -674,6 +703,8 @@ def cmd_responses(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
             return _dismiss(args, data_dir)
         if action == "outstanding":
             return _outstanding(args, data_dir)
+        if action == "add_manual":
+            return _add_manual(args, data_dir)
         return _inbox(args, data_dir)
     except refusals as exc:
         return _refuse(str(exc))
@@ -703,6 +734,12 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     act.add_argument("--outstanding", action="store_true",
                      help="who was sent a copy and has not responded, and owners never sent one, from the sent-copy catalog "
                           "less the answers kept (disk only; --request narrows; --json)")
+    act.add_argument("--add-manual", action="store_true",
+                     help="key a return that came another way (handed in at the office, taken by phone) as an arrival, channel "
+                          "manual (needs --request, --how, --who, --by; --unit, --file optional); sends nothing")
+    p.add_argument("--how", metavar="TEXT", help="with --add-manual: how it came in ('handed in at the office', 'by phone')")
+    p.add_argument("--who", metavar="NAME", help="with --add-manual: the owner's name (no address)")
+    p.add_argument("--file", action="append", metavar="PATH", help="with --add-manual: a scan or photo of the form (repeatable)")
     p.add_argument("--channel", action="append", choices=[c.value for c in Channel], metavar="C",
                    help="with --check or --list: only this channel (repeatable)")
     p.add_argument("--from", dest="from_address", metavar="ADDRESS",
@@ -711,8 +748,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--since", metavar="DATE", help="with --check: read from this day (YYYY-MM-DD), past a closed window")
     p.add_argument("--state", choices=[s.value for s in State], metavar="S",
                    help="with --list: only arrivals in this state")
-    p.add_argument("--request", metavar="K", help="with --list, --seen-all, or --outstanding: only this request's key")
-    p.add_argument("--unit", metavar="U", help="with --list: only units whose label contains this")
+    p.add_argument("--request", metavar="K", help="with --list, --seen-all, or --outstanding: only this request's key; with "
+                                                  "--add-manual: the request the return answers")
+    p.add_argument("--unit", metavar="U", help="with --list: only units whose label contains this; with --add-manual: the unit")
     p.add_argument("--new", action="store_true", help="with --list: only new arrivals")
     p.add_argument("--days", type=int, default=0, metavar="N", help="with --list: only arrivals from the last N days")
     p.add_argument("--model", metavar="NAME", help="with --read: also read handwriting with this local vision model (after the "

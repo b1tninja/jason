@@ -7,9 +7,11 @@ handler and its options, the procedure, the cycle, and who chose it. A reference
 
 Disk only: nothing here calls PayHOA, Google, or Gmail, and no option makes a copy or sends anything.
 
-- No option: the campaigns (code, form, version, handler, cycle, copies sent, answers returned and recorded, status).
-  A campaign the profile's response requests already run, whose row is not written yet, is listed as such.
-- ``--show CODE``: one campaign.
+- No option: the campaigns (code, form, version, handler, cycle, copies sent, answers returned and recorded, status), each
+  with its funnel by the way answers came in (asked, answered, outstanding, unreachable; ``tasks.campaign_funnel``) and its
+  next follow-up (``jason followups``). A campaign the profile's response requests already run, whose row is not written
+  yet, is listed as such.
+- ``--show CODE``: one campaign, with its full funnel and the age of each source.
 - ``--open FORM --channel C --cycle-year Y --by NAME [--handler KEY] [--option NAME=VALUE ...] [--return-by DATE]``: a
   person's act. It writes the campaign's row and nothing else. A form with an authority takes its process handler; a form
   with none needs ``--handler`` from the general handlers.
@@ -57,6 +59,70 @@ def _number(value: Any) -> str:
     return "-" if value is None else str(value)
 
 
+def _ago(hours: float | None) -> str:
+    if hours is None:
+        return "age not known"
+    if hours < 1:
+        return f"{round(hours * 60)}m old"
+    return f"{hours:.0f}h old" if hours < 48 else f"{hours / 24:.0f}d old"
+
+
+def _count(value: Any) -> str:
+    return "-" if value is None else str(value)
+
+
+def _next_line(row: dict[str, Any]) -> str:
+    nxt = row.get("nextFollowUp")
+    if not nxt:
+        return "no follow-up is open for it"
+    return f"{nxt['due']} {nxt['kind']}: {nxt['what']} ({nxt['state']}; jason followups --campaign {row['code']})"
+
+
+def _funnel_brief(f: dict[str, Any]) -> str:
+    from jason.tasks.campaign_funnel import line
+
+    return line(f)
+
+
+def _funnel_lines(f: dict[str, Any]) -> list[str]:
+    """The full funnel of one campaign: what was asked, how each way of answering did, who is outstanding and who is
+    unreachable, and how old each source is. Names and units only."""
+    asked, answered, out, lost, ages = f["asked"], f["answered"], f["outstanding"], f["unreachable"], f["ages"]
+    lines = [f"  funnel as of {f['at'][:16].replace('T', ' ')} UTC (disk only; an owner who answered by any method is not outstanding):",
+             f"    asked: {asked['total']} copies"
+             + (f" ({', '.join(f'{k} {v}' for k, v in asked['byChannel'].items())})" if asked["byChannel"] else "")
+             + (f" and {asked['mailings']} mailing(s)" if asked["mailings"] else "") + f"; the catalog is {_ago(asked['ageHours'])}"]
+    if answered is None:
+        lines.append("    answered: not counted (no request watches this campaign)")
+    else:
+        lines.append(f"    answered: {answered['answered']} to request {answered['request']}; read {answered['read']}, confirmed "
+                     f"{answered['confirmed']}, recorded {answered['recorded']}")
+        for name, row in answered["byChannel"].items():
+            checked = "keyed by a person" if name == "manual" else (f"checked {_ago(row['checkedHoursAgo'])}" if row["checkedHoursAgo"] is not None
+                                                                    else row["checked"])
+            lines.append(f"      {name:7} answered {row['answered']}, read {row['read']}, confirmed {row['confirmed']}, "
+                         f"recorded {row['recorded']}  ({checked})")
+    lines.append(f"    outstanding: {_count(out['count'])}" + (f" ({out['reason']})" if out.get("reason") else "")
+                 + f"; sources {_ago(out['ageHours'])}, last check {_ago(max((v for v in ages['checks'].values() if v is not None), default=None))}"
+                 if out["count"] is not None else f"    outstanding: not known ({out.get('reason') or 'a source is missing'})")
+    for owner in out["owners"]:
+        days = f", sent {owner['daysSinceSent']}d ago" if owner.get("daysSinceSent") is not None else ""
+        lines.append(f"      {owner['unit'] or 'unit not known'}  {owner['name'] or 'owner not known'}  ({owner['channel'] or '?'}{days})")
+    if out.get("neverAsked") is not None:
+        lines.append(f"    never sent a copy: {out['neverAsked']} (`jason responses --outstanding`)")
+    if lost["count"] is None:
+        lines.append(f"    unreachable: not known ({lost.get('reason') or 'no ledger'})")
+    else:
+        lines.append(f"    unreachable: {lost['count']} (no delivery reached them: not counted as outstanding); ledger synced "
+                     f"{_ago(lost['ageHours'])}")
+        for owner in lost["owners"]:
+            lines.append(f"      {owner['unit'] or 'unit not known'}  {owner['why']}")
+    for source in f["missing"]:
+        lines.append(f"    missing: {source['source']}: {source['reason']}")
+    lines += [f"    note: {note}" for note in f["notes"]]
+    return lines
+
+
 def _lines(rows: list[dict[str, Any]]) -> list[str]:
     out = [f"Campaigns: {len(rows)}. Disk only: nothing was asked of PayHOA, Google, or Gmail."]
     if not rows:
@@ -70,6 +136,13 @@ def _lines(rows: list[dict[str, Any]]) -> list[str]:
         if not r["written"]:
             out.append(f"          (not written yet: the profile's request already runs it; `jason campaigns --adopt`, or "
                        "the next send, writes the row)")
+        if r.get("funnel", {}).get("found"):
+            out.append(f"          funnel: {_funnel_brief(r['funnel'])}; next: {_next_line(r)}")
+        elif r.get("funnel"):
+            out.append(f"          funnel: not available ({r['funnel'].get('reason', 'unknown')})")
+    if rows:
+        out.append("A funnel counts what is on disk, by the way each answer came in; `jason campaigns --show CODE` has its ages, "
+                   "who is outstanding, and who is unreachable.")
     if any(not r["written"] for r in rows):
         out.append("A row not written is read from the profile; an arrival with its reference is still recognized.")
     return out
@@ -92,15 +165,32 @@ def _show_lines(r: dict[str, Any]) -> list[str]:
                + (f" (request {r['request']})" if r["request"] else "; no request watches this campaign"))
     if not r["written"]:
         out.append("  not written yet: `jason campaigns --adopt` writes the row")
+    if r.get("funnel", {}).get("found"):
+        out += _funnel_lines(r["funnel"])
+        out.append(f"  next follow-up: {_next_line(r)}")
     return out
 
 
 def _gather(data_dir: Any, community: Any) -> list[dict[str, Any]]:
-    from jason.tasks import campaigns
+    from jason.tasks import campaign_funnel, campaigns, followups
 
     held = campaigns.view(data_dir, community)
     stats = campaigns.counts(data_dir, community, held)
-    return [_row(c, stats[c.code]) for c in sorted(held.values(), key=lambda c: (-c.year, c.code))]
+    try:
+        coming = [i for i in followups.items(data_dir, community) if i.open]
+    except Exception:  # noqa: BLE001 - a follow-up that cannot be derived leaves the campaign list standing
+        coming = []
+    rows = []
+    for c in sorted(held.values(), key=lambda c: (-c.year, c.code)):
+        row = _row(c, stats[c.code])
+        try:
+            row["funnel"] = campaign_funnel.funnel(data_dir, community, c.code)
+        except Exception as exc:  # noqa: BLE001 - a funnel that cannot be read says so, not a traceback
+            row["funnel"] = {"found": False, "reason": f"the funnel could not be read ({type(exc).__name__})"}
+        nxt = next((i for i in coming if c.code in (i.campaign.upper(), i.subject.upper())), None)
+        row["nextFollowUp"] = nxt.to_json() if nxt is not None else None
+        rows.append(row)
+    return rows
 
 
 def _open(args: argparse.Namespace, community: Any, data_dir: Any) -> int:
@@ -187,7 +277,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                                          "their handlers, and what each has sent and received; open or close one (a person's act)")
     add_common(p)
     act = p.add_mutually_exclusive_group()
-    act.add_argument("--show", metavar="CODE", help="one campaign: its form and version, authority, handler, procedure, cycle, and counts")
+    act.add_argument("--show", metavar="CODE", help="one campaign: its form and version, authority, handler, procedure, cycle, and "
+                                                    "counts, with its funnel by the way answers came in and the age of each source")
     act.add_argument("--open", metavar="FORM", help="open a campaign for a form (needs --channel, --cycle-year, and --by); "
                                                     "writes the row only and makes no copy")
     act.add_argument("--close", metavar="CODE", help="close a campaign (needs --by)")

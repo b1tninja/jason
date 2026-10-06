@@ -159,8 +159,10 @@ def test_an_empty_inbox_is_a_miss_with_its_reason_and_every_tool_says_it_is_the_
     out = tools.new_responses(data_dir=data)
     assert out["found"] is False and "no check has been run" in out["reason"] and out["arrivals"] == [] and out["count"] == 0
     assert out["note"] == CHECK_LINE and out["caveats"][0].startswith(CHECK_LINE)
-    assert [c["channel"] for c in out["checked"]] == ["payhoa", "gmail", "mail", "forms"]
-    assert all(c["ended"] == "never checked" and c["ageHours"] is None and c["lastOk"] == "" for c in out["checked"])
+    assert [c["channel"] for c in out["checked"]] == ["payhoa", "gmail", "mail", "forms", "manual"]
+    checked = [c for c in out["checked"] if c["channel"] != "manual"]
+    assert all(c["ended"] == "never checked" and c["ageHours"] is None and c["lastOk"] == "" for c in checked)
+    assert out["checked"][-1]["ended"] == "keyed by a person (nothing to check)"          # a person adds these: none is checked
     for miss in (tools.response("gmail:nope", data_dir=data), tools.response("", data_dir=data),
                  tools.response("  ", data_dir=data)):
         assert miss["found"] is False and miss["reason"] and miss["note"] == CHECK_LINE and miss["caveats"]
@@ -359,7 +361,7 @@ def test_the_tools_are_in_the_board_profile_the_full_set_and_the_python_interfac
     assert {"new_responses", "response", "outstanding_responses"} <= set(PROFILES["board"])
     assert "new_responses" not in PROFILES["governance"] and "response" not in PROFILES["onboarding"]
     assert "outstanding_responses" not in PROFILES["governance"] and "outstanding_responses" not in PROFILES["onboarding"]
-    assert len(PROFILES["board"]) == 41 and len(tools_for("board")) == 41 and tools_for("board")[0].__name__ == "board_digest"
+    assert len(PROFILES["board"]) == 43 and len(tools_for("board")) == 43 and tools_for("board")[0].__name__ == "board_digest"
     served = {t.__name__: t for t in ALL_TOOLS}
     assert served["new_responses"] is tools.new_responses and served["response"] is tools.response
     assert served["outstanding_responses"] is tools.outstanding_responses

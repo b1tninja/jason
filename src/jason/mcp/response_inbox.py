@@ -32,7 +32,7 @@ CAVEATS = (
     "and completes no request because of an email.",
 )
 STATES = ("new", "seen", "read", "keyed", "recorded", "dismissed")
-CHANNELS = ("payhoa", "gmail", "mail", "forms")
+CHANNELS = ("payhoa", "gmail", "mail", "forms", "manual")
 # What each state leaves to do, in order; the command is the person's, never jason's own initiative.
 _APPLY = {"step": "apply", "command": "jason owner-info --apply --payhoa",
           "says": "a dry run plans the writes and what is left for a person; --yes writes them, with a named person"}
@@ -87,6 +87,10 @@ def checked(root: Path) -> list[dict[str, Any]]:
     out = []
     for channel in Channel:
         row = kept.get(channel.value)
+        if channel is Channel.MANUAL:           # a person keys these (`jason responses --add-manual`): nothing is checked
+            out.append({"channel": channel.value, "lastOk": "", "lastTried": "", "ended": "keyed by a person (nothing to check)",
+                        "reason": "", "ageHours": None})
+            continue
         if row is None:
             out.append({"channel": channel.value, "lastOk": "", "lastTried": "", "ended": "never checked", "reason": "",
                         "ageHours": None})

@@ -15,6 +15,7 @@ from typing import Any
 from jason.catalog import PayhoaCatalog
 from jason.config import Settings
 from jason.mcp.discovery import TOOLS as DISCOVERY_TOOLS
+from jason.mcp.followups import TOOLS as FOLLOWUP_TOOLS
 from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
 from jason.mcp.index import recorder_around, recorder_descend, recorder_detail, recorder_priors, recorder_search
 from jason.mcp.response_inbox import TOOLS as RESPONSE_TOOLS
@@ -330,7 +331,7 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
-ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + RESPONSE_TOOLS
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS
 
 # A profile is a named subset, in the order a client lists them. A client picks better from the board set: the
 # digest, the briefs, the law, and the index search, not the research tools behind them.
@@ -341,6 +342,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "records_request", "document_search", "library_search", "manager_context",
         "new_responses", "response",       # has anyone answered the request: what the last check kept (response_inbox.py)
         "outstanding_responses",           # who was sent a copy and has not responded: the sent-copy catalog less the answers
+        "followups", "campaign_status",    # what we do next and when; a campaign's funnel by intake method (followups.py)
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.

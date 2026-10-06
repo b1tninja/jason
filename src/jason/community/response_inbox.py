@@ -27,6 +27,7 @@ class Channel(Enum):
     GMAIL = "gmail"         # a reply email, with its attachments
     MAIL = "mail"           # a mailed return, scanned by the mail service
     FORMS = "forms"         # the saved responses of a Google Form
+    MANUAL = "manual"       # a return a person keyed from paper handed in, or taken by phone (nothing is checked for it)
 
 
 class State(Enum):

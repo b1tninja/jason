@@ -100,7 +100,8 @@ def gather_answers(data_dir: Path, forms: Any, client: Any = None,
     keyed = keyed_answers(data_dir, forms.OWNER_INFO.key)
     answers += keyed
     for prefix, title in (("email", "Returned form (email), confirmed by a person"),
-                          ("mail", "Returned form (mail), confirmed by a person")):
+                          ("mail", "Returned form (mail), confirmed by a person"),
+                          ("manual", "Returned form (keyed by a person from paper or a call), confirmed by a person")):
         if any(a.source.startswith(prefix + ":") for a in keyed):
             titles[prefix] = title
     if client is not None:

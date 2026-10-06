@@ -584,7 +584,7 @@ def _reason(exc: BaseException) -> str:
 def uses(request: ResponseRequest, channel: Channel) -> bool:
     """Whether the request can be answered by the channel."""
     return {Channel.PAYHOA: bool(request.payhoa_form), Channel.GMAIL: True, Channel.MAIL: bool(request.marker_campaigns),
-            Channel.FORMS: bool(request.imports)}[channel]
+            Channel.FORMS: bool(request.imports), Channel.MANUAL: False}[channel]      # manual: a person adds it, none is checked
 
 
 def check(data_dir: Path, community: Any, *, clients: Mapping[Channel, Callable[[], Any]], by: str,
@@ -603,7 +603,7 @@ def check(data_dir: Path, community: Any, *, clients: Mapping[Channel, Callable[
     moment = now or now_utc()
     today = moment.date()
     todo = tuple(requests if requests is not None else community.response_requests())
-    wanted = [c for c in Channel if not channels or c in set(channels)]
+    wanted = [c for c in Channel if c is not Channel.MANUAL and (not channels or c in set(channels))]
     if sender:
         wanted = [c for c in wanted if c is Channel.GMAIL]
     factories: dict[Channel, Callable[[], Any]] = {Channel.MAIL: lambda: DiskMail(data_dir),
@@ -742,6 +742,51 @@ def seen_all(data_dir: Path, *, by: str, request: str = "") -> list[str]:
     ids = [a.id for a in load_inbox(data_dir).arrivals.values()
            if a.state is State.NEW and (not request or a.request == request)]
     return seen(data_dir, ids, by=by)
+
+
+def add_manual(data_dir: Path, community: Any, request_key: str, *, by: str, how: str, who: str, unit: str = "",
+               files: Iterable[Path | str] = (), note: str = "", now: datetime | None = None) -> Arrival:
+    """A person keys a return that came another way: a form handed in at the office, or an answer taken by phone. It is
+    one more arrival, channel ``manual``, state ``new``, with the method named in ``how`` ("handed in at the office", "by
+    phone"). Any scan is copied to ``files/<id>/`` (private), so ``read`` and ``confirm`` take it like a scan or a typed form;
+    with no scan a person keys each answer at ``confirm`` (``--set``). Only a name and a unit are kept: a personal address in
+    ``who``, ``unit``, ``how``, or ``note`` is replaced, and nothing is sent or written to PayHOA. The act is logged."""
+    _need(by, "--by")
+    _need(how, "--how")
+    _need(who, "--who")
+    request = _request(community, request_key)
+    paths = [Path(f) for f in files]
+    for path in paths:
+        if not path.is_file():
+            raise ResponseError(f"no file {path.name!r}: --file names a scan or photo of the form that is on disk")
+        if path.suffix.lower() not in FORM_FILE_TYPES:
+            raise ResponseError(f"{path.name!r} is not a PDF or an image ({', '.join(FORM_FILE_TYPES)})")
+    moment = now or now_utc()
+    with locked("keep a manual arrival"):
+        inbox = load_inbox(data_dir)
+        seed = hashlib.sha1(f"{by}|{who}|{how}|{unit}".encode("utf-8")).hexdigest()[:6]
+        native, n = f"{moment.astimezone(timezone.utc):%Y%m%d-%H%M%S}-{seed}", 1
+        while f"manual:{native}" in inbox.arrivals:
+            n += 1
+            native = f"{moment.astimezone(timezone.utc):%Y%m%d-%H%M%S}-{seed}-{n}"
+        arrival_id = f"manual:{native}"
+        folder = responses_dir(data_dir) / FILES / arrival_id.replace(":", "-")
+        names, taken = [], set()
+        for path in paths:
+            name = _safe(path.name)
+            while name in taken:
+                name = "_" + name
+            taken.add(name)
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, folder / name)
+            names.append(name)
+        arrival = Arrival(arrival_id, request.key, Channel.MANUAL, iso(moment), scrub(who, 80), scrub(unit, 80), scrub(how, 160),
+                          tuple(names), State.NEW, iso(moment), note=scrub(note, 300))
+        inbox.arrivals[arrival_id] = arrival
+        log_act(data_dir, "manual", arrival_id, by.strip(), scrub(how, 160), files=len(names))
+        _supersede(data_dir, inbox, by.strip())
+        save_inbox(data_dir, inbox)
+        return inbox.arrivals[arrival_id]
 
 
 def dismiss(data_dir: Path, arrival_id: str, *, by: str, why: str) -> Arrival:
@@ -904,6 +949,9 @@ def _download(data_dir: Path, community: Any, a: Arrival, clients: Mapping[Chann
         if not scan.is_file():
             raise ResponseError(f"the scan of mail {a.native} is not on disk ({scan}); `jason mail --sync` fetches it")
         return [scan], None
+    if a.channel is Channel.MANUAL:                 # the scans a person handed in, copied when the arrival was added
+        folder = responses_dir(data_dir) / FILES / a.stem
+        return (sorted(p for p in folder.glob("*") if p.is_file()) if folder.is_dir() else []), None
     if a.channel is not Channel.GMAIL:
         raise ResponseError(f"{a.id} came structured ({a.channel.value}); it needs no reading")
     if Channel.GMAIL not in clients:
@@ -1057,7 +1105,12 @@ def read(data_dir: Path, community: Any, arrival_id: str, *, by: str, clients: M
         readings = [do(f, request, layout, None) for f in files]
     chosen = next((r for r in readings if r.how != "not the form"), None)
     notes = [f"{r.name}: {n}" for r in readings for n in r.notes]
-    if not files:
+    by_hand = a.channel is Channel.MANUAL and not files         # a return taken by phone: a person keys each answer at --confirm
+    if a.channel is Channel.MANUAL:
+        notes.append(f"added by a person for {a.who}" + (f", {a.unit}" if a.unit else "") + f" ({a.summary})")
+    if by_hand:
+        notes.append("no scan was handed in: nothing is read, and a person keys each answer (--confirm --set FIELD=VALUE)")
+    elif not files:
         notes.append("the message carries no PDF or image to read")
     campaign = ""
     if chosen is not None and chosen.reference:
@@ -1074,7 +1127,7 @@ def read(data_dir: Path, community: Any, arrival_id: str, *, by: str, clients: M
     notes += list(compared.notes)
     reading = {
         "id": a.id, "request": a.request, "readAt": iso(now_utc()), "by": by, "model": model,
-        "how": chosen.how if chosen else "not the form", "form": chosen is not None,
+        "how": chosen.how if chosen else ("keyed by a person" if by_hand else "not the form"), "form": chosen is not None or by_hand,
         "files": [{"name": r.name, "how": r.how, "linesMatched": r.lines,
                    "sha256": hashlib.sha256(f.read_bytes()).hexdigest()} for r, f in zip(readings, files)],
         "reference": chosen.reference if chosen else "", "referenceHow": chosen.reference_how if chosen else "",
@@ -1146,7 +1199,7 @@ def answers_from_json(raw: Mapping[str, Any]) -> FormAnswers:
                        raw.get("membership_id"), raw.get("unit_id"), raw.get("reference", ""))
 
 
-SOURCES = {Channel.GMAIL: "email", Channel.MAIL: "mail"}         # the answers' source prefix by channel
+SOURCES = {Channel.GMAIL: "email", Channel.MAIL: "mail", Channel.MANUAL: "manual"}   # the answers' source prefix by channel
 
 
 def confirm(data_dir: Path, community: Any, arrival_id: str, *, by: str, corrections: Mapping[str, Any] | None = None,
@@ -1211,7 +1264,7 @@ def keyed_answers(data_dir: Path, form: FormKey | None = None) -> list[FormAnswe
 
 # -- recording: what `jason owner-info --apply --yes` tells the inbox ------------------------------------------------------
 
-_SOURCE_CHANNELS = {"payhoa": "payhoa", "google": "forms", "email": "gmail", "mail": "mail"}
+_SOURCE_CHANNELS = {"payhoa": "payhoa", "google": "forms", "email": "gmail", "mail": "mail", "manual": "manual"}
 
 
 def arrival_id_for(source: str) -> str:
@@ -1346,7 +1399,7 @@ def clear_files(data_dir: Path, arrival_id: str) -> None:
 
 __all__ = ["Answers", "ChannelReport", "CheckReport", "DiskMail", "Ended", "FileReading", "FormsChannel", "GmailChannel", "Inbox",
            "Keyed", "MailChannel", "Message", "OwnerRef", "PayhoaChannel", "RecordedObserver", "ResponseError", "SavedForms",
-           "acts_for", "answered_by", "answers_from_json", "answers_to_json", "arrival_id_for", "channel_status", "check",
+           "acts_for", "add_manual", "answered_by", "answers_from_json", "answers_to_json", "arrival_id_for", "channel_status", "check",
            "confirm", "copy_of", "copy_record", "dismiss", "get", "is_form_file", "keyed_answers", "list_arrivals", "load_inbox",
            "load_reading", "log_act", "mark_recorded", "observe_plan", "owner_directory", "read", "read_file",
            "recognition_of", "request_copies", "save_inbox", "seen", "seen_all", "show", "signed_out", "uses"]

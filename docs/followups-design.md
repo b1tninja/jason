@@ -1,6 +1,6 @@
 # Two views of a request: what we ask, and what we do next
 
-Status: design (2026-10-05). A request to members has two lives, and two people look at it for two reasons. This page designs both views and the record behind the second. It builds on [form-library-design.md](form-library-design.md) (the forms), [arrivals-design.md](arrivals-design.md) (the campaign and the handler), [responses-design.md](responses-design.md) (the inbox), and [notices.md](notices.md) (the delivery follow-ups).
+Status: design (2026-10-05); build steps 1 and 2 built (2026-10-05): the derivation, the funnel, the act log, `jason followups`, the funnel on `jason campaigns`, the `followups` and `campaign_status` tools, and the `manual` intake channel ([Steps 1 and 2, as built](#steps-1-and-2-as-built) lists the deviations). Steps 3 to 5 are not built. A request to members has two lives, and two people look at it for two reasons. This page designs both views and the record behind the second. It builds on [form-library-design.md](form-library-design.md) (the forms), [arrivals-design.md](arrivals-design.md) (the campaign and the handler), [responses-design.md](responses-design.md) (the inbox), and [notices.md](notices.md) (the delivery follow-ups).
 
 ## The two views
 
@@ -87,6 +87,22 @@ A person's act on a derived item (`done`, `deferred`, `dropped`) is kept in an a
 3. The cycle board's per-owner join (asked, delivered, responded, reachable), which the funnel's counts reuse.
 4. Putting follow-ups on the board calendar and tasks, by a person's yes.
 5. The two console screens and the dock.
+
+## Steps 1 and 2, as built
+
+The items are `jason.tasks.followups`, the funnel is `jason.tasks.campaign_funnel`, the command is `jason.commands.followups` (and a funnel and next follow-up on `jason.commands.campaigns`), the tools are `jason.mcp.followups`, and the manual channel is `Channel.MANUAL` with `response_inbox.add_manual` and `jason responses --add-manual`. Tests: `tests/test_followups.py`, `tests/test_followups_command.py`. What differs from the design above:
+
+- **The funnel is its own module** (`campaign_funnel`), which `followups` and `jason campaigns` both read. It reuses `response_outstanding.outstanding` (narrowed to the campaign's copies and without the unreachable) and the notice ledger. Its counts are `None`, never a bare zero, when a source is missing, and `missing` says why.
+- **Answers are the request's.** An arrival is not attributed to a campaign unless it names a copy, so when one request is watched by several campaigns (a form's emailed copies and its mailing) each funnel shows the request's answers and says so in `notes`. "Asked" is the campaign's own copies by the channel each went by (email, mail); "answered" is by the inbox's channels (`payhoa`, `gmail`, `mail`, `forms`, `manual`). A structured arrival (PayHOA, a Google Form) counts as read and confirmed, since its source is its confirmation.
+- **Unreachable** is an owner none of whose attempts for the campaign arrived (the ledger's `ARRIVED`: mailed, delivered, opened, forwarded) and at least one of which bounced, failed, was not shown delivered, was never mailed, or came back. An attempt still pending leaves the owner outstanding; an owner who answered is not unreachable. A letter is attributed to a campaign by its mailing's batch, so a returned letter shows on the mailing's campaign, an emailed copy's bounce on the email campaign.
+- **The kinds.** A returned letter or a bounced email whose follow-up is to ask the member for an address (the ledger's `ASK_ADDRESS`, `ASK_EMAIL`, a policy) is kind `resend`, its `what` says "ask". `close` (the watch window ends a week past the return-by date) is derived for each open campaign. The form library's "stale against an amendment" item is not derived yet.
+- **The numbers are proposed policy** (`followups.PROPOSED_DAYS`): remind 7 days before the return-by date (a campaign sets its own with `jason campaigns --open --option remind-days=N`, which is then a person's setting, not a proposal), resend 3 days and ask 7 days after the outcome was read, read and confirm 3 days and record 7 days after an arrival was kept or its stage reached, close 7 days after the return-by date. There is no profile hook yet to adopt one: that is the rule row the design describes, still open.
+- **A ledger item is counted from the day the outcome happened** (the attempt's `status_at`), not the day it was synced, because the sync day moves on every sync and the id would move with it. One item is made for each notice, follow-up, and outcome day.
+- **Nothing is marked done by jason.** When nobody is outstanding a reminder says so ("mark this done, or drop it") and stays until a person acts.
+- **A campaign the profile's request already runs but whose row is not written** is derived from like a stored one (`campaigns.view`).
+- **Item fields beyond the design's:** `cite` (the citation, the section, or whose setting it is), `due_note` (non-empty when the date is a proposed number of days from a recorded day), `reason` (why a count is not known), `campaign`, `source`, `why`, and `deferred_to`. A deferred item is `deferred` until its day, then due or overdue from it. An act on an item that is no longer derived stays in `acts.jsonl` and is not shown.
+- **The manual channel** is never checked (`ri.check` and `uses` leave it out; `jason responses` and the tools list it as "keyed by a person (nothing to check)"). A scan is copied to `files/<id>/`; with none, `--read` makes a reading `keyed by a person` with no fields and a person keys each answer at `--confirm --set`. Its answers' source is `manual:<id>`.
+- **Not built:** the board calendar and tasks (step 4), the per-owner cycle board (step 3), the console screens (step 5), and a `--state` filter on the command (the tool has one).
 
 ## Open decisions
 

@@ -127,6 +127,7 @@ GROUPS: dict[str, str] = {
     "owner-info": "Owners, requests, notices & forms",
     "responses": "Owners, requests, notices & forms",
     "campaigns": "Owners, requests, notices & forms",
+    "followups": "Owners, requests, notices & forms",
     "delivery": "Owners, requests, notices & forms",
     "broadcast": "Owners, requests, notices & forms",
     "forms": "Owners, requests, notices & forms",
