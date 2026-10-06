@@ -139,6 +139,8 @@
     "../docs/console/handoff-responses.md",
     "../docs/console/handoff-forms-and-arrivals.md",
     "../docs/console/handoff-form-library.md",
+    "../docs/console/handoff-followups.md",
+    "../docs/followups-design.md",
     "../docs/form-templates.md",
     "../docs/form-library-design.md",
     "../docs/standard-forms.md",
