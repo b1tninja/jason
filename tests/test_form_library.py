@@ -115,11 +115,14 @@ def test_the_default_chain_is_us_then_ca_and_the_two_generic_forms_are_the_first
     resolved = resolve(community())
     assert resolved.chain == ("US", "CA")
     ca = [f for f in resolved.forms if f.definition.jurisdiction == "CA"]
-    assert [f.key for f in ca] == ["idr-request", "records-request"]
-    assert all(f.tier is Tier.STATE and f.status is Status.READY for f in ca)
-    assert [t.key for t in community().forms()] == [FormKey.IDR, FormKey.RECORDS, FormKey.OWNER_INFO]
+    assert [f.key for f in ca][:2] == ["idr-request", "records-request"]            # the first two the pack registered
+    assert all(f.tier is Tier.STATE for f in ca)
+    assert all(f.status is Status.READY for f in ca[:2])
+    offered = [t.key for t in community().forms()]
+    assert [k for k in offered if k in (FormKey.IDR, FormKey.RECORDS)] == [FormKey.IDR, FormKey.RECORDS]
+    assert offered[-1] is FormKey.OWNER_INFO
     us = resolve(Stub(chain=("US",)))
-    assert us.forms == () and us.problems == ()                                    # the federal pack is registered, and empty
+    assert us.problems == () and all(f.definition.jurisdiction == "US" for f in us.forms)   # the federal pack is registered
 
 
 def test_importing_the_library_loads_no_pack_and_no_profile():
@@ -144,7 +147,7 @@ def test_an_unknown_jurisdiction_is_a_finding_not_a_crash():
 TODAY = {
     "idr": (
         "Request for Internal Dispute Resolution", "Civil Code 5910 and 5915: a written request to meet and confer with the board.",
-        "Use this form to ask the association to meet and confer about a dispute. A board member will contact you to set a meeting.",
+        None,                                   # version 2 no longer says "a board member will contact you" (5915(b)(3))
         [("Your name", "short", True, (), "name", "", "text"),
          ("Unit address", "short", True, (), "unit-address", "UNIT_ADDRESS", "address"),
          ("Email address", "email", True, (), "email", "", "email"),
@@ -165,14 +168,21 @@ TODAY = {
 
 
 @pytest.mark.parametrize("value", ["idr", "records"])
-def test_the_resolved_generic_forms_equal_what_they_were(value):
+def test_the_resolved_generic_forms_keep_what_a_return_or_a_payhoa_record_could_depend_on(value):
+    """Version 2 of each form (step 2A) added questions and changed some wording, and kept every field, its kind, and every
+    option it had; what changed is recorded in the definition's ``VERSION_NOTES`` and tested in
+    tests/test_form_library_records_money.py."""
     resolved = next(t for t in community().forms() if t.key.value == value)
     title, authority, description, questions = TODAY[value]
     assert (resolved.title, resolved.authority) == (title, authority)
-    assert [(q.title, q.kind.value, q.required, q.options, q.field, q.prefill, q.reads_as.value) for q in resolved.questions] == questions
+    by_field = {q.field: q for q in resolved.questions}
+    for _title, kind, _required, options, field, prefill, reads in questions:
+        assert field in by_field, field
+        now = by_field[field]
+        assert now.kind.value == kind and set(options) <= set(now.options) and now.prefill == prefill
+        assert reads in (now.reads_as.value, "text") or field == "name"
     assert [q.key for q in resolved.questions][:2] == ["name", "unit-address"]
-    assert resolved.code == "" and resolved.signature == "Signature of owner" and resolved.dated is True
-    assert resolved.preamble == () and resolved.attestation == "" and resolved.style.write_height == 22.0
+    assert resolved.dated is True and resolved.style.write_height == 22.0
     if description is not None:
         assert resolved.description == description
 
@@ -415,18 +425,32 @@ def test_two_forms_may_not_share_one_form_key():
     assert resolved.problems[0].item == "template key idr" and "demo, twin" in resolved.problems[0].message
 
 
+# A made-up shelf holding what the two generic forms recite: each subdivision they cite, with made-up words.
+GENERIC_SECTIONS = {
+    "5205": "\n\n".join(f"({c}) made up." for c in "abcdefgh"), "5210": "(a) made up.\n\n(b) made up.",
+    "5215": "\n\n".join(f"({c}) made up." for c in "abcd"), "5230": "(a) made up.", "5235": "(a) made up.", "5900": "(a) made up.",
+    "5910": "(a) made up.\n\n(b) made up.", "5910.1": "A made-up sentence.", "5920": "A made-up sentence.",
+    "5915": "\n\n".join(f"({c}) made up." for c in "abcd"),
+}
+
+
 def test_the_shipped_forms_and_the_profile_pass_every_check_on_a_shelf_that_holds_their_recitals(tmp_path):
-    sections = {"5205": "\n\n".join(f"({c}) made up." for c in "abcdefgh"), "5210": "(a) made up.\n\n(b) made up.",
-                "5910": "(a) made up.\n\n(b) made up.", "5915": "(a) made up.\n\n(b) made up.\n\n(c) made up."}
+    from dataclasses import replace
+
+    sections = GENERIC_SECTIONS
     root = shelf(tmp_path, sections)
-    report = check(resolve(community()), root, community=community())
+    everything = resolve(community())
+    # the two generic forms and the profile's own: the other forms of the library have their own tests, with their own shelves
+    resolved = replace(everything, forms=tuple(f for f in everything.forms if f.key in ("idr-request", "records-request", "owner-info")))
+    report = check(resolved, root, community=community())
     assert report.ok, [f.line() for f in report.failing]
     assert {f.severity for f in report.findings} == {Severity.DEFERRED}
     assert dict(report.statuses) == {"idr-request": Status.READY, "records-request": Status.READY, "owner-info": Status.READY}
     # a subdivision that moved (5205(f) gone) fails the build and names the form
     moved = shelf(tmp_path / "moved", {**sections, "5205": "\n\n".join(f"({c}) made up." for c in "abcde")})
-    failing = check(resolve(community()), moved, community=community()).failing
-    assert [(f.form, f.item) for f in failing] == [("records-request", "CIV 5205(f)"), ("records-request", "CIV 5205(g)")]
+    failing = check(resolved, moved, community=community()).failing
+    assert [(f.form, f.item) for f in failing] == [("records-request", "CIV 5205(f)"), ("records-request", "CIV 5205(g)"),
+                                                   ("records-request", "CIV 5205(h)")]
 
 
 def test_json_words_become_symbols():
@@ -477,7 +501,8 @@ _PROFILE = """
             return ""
 
         def form_slots(self):
-            return (Slot("ASSOCIATION", self.name),)
+            return (Slot("ASSOCIATION", self.name), Slot("RETURN_BY_MAIL", "1 Small St"), Slot("RETURN_BY_EMAIL", "ask@example.test"),
+                    Slot("BOARD_CONTACT", "board@example.test"))
 
         def form_adjustments(self):
             return (Add("records-request", FormQuestion("Which unit's records?", key="which-unit")),
@@ -514,13 +539,14 @@ def test_another_profile_gets_the_library_with_its_own_slots_and_adjustments_and
     mine = community()
     assert mine.name == "Small Community Association" and mine.custom_forms() == () and mine.form_bindings() == ()
     resolved = resolve(mine)
-    assert [f.key for f in resolved.forms] == ["idr-request", "records-request"]            # no owner information: it is mystique's own
+    assert [f.key for f in resolved.forms if f.key in ("idr-request", "records-request")] == ["idr-request", "records-request"]
+    assert resolved.get("owner-info") is None                                               # it is the first profile's own
     records = resolved.get("records-request")
     assert records.status is Status.ADJUSTED and [q.field for q in records.template.questions][-1] == "which-unit"
     governing = next(c for c in records.clocks if c.name == "current-year")
     assert (governing.number, governing.kind, governing.section) == (7, DayKind.CALENDAR, "bylaws#3.2")
     assert governing.note.startswith("stricter than current-year: 10 business days")
-    assert [t.key for t in mine.forms()] == [FormKey.IDR, FormKey.RECORDS]
+    assert [t.key for t in mine.forms() if t.key in (FormKey.IDR, FormKey.RECORDS)] == [FormKey.IDR, FormKey.RECORDS]
     assert resolved.get("idr-request").status is Status.READY
 
 
@@ -570,7 +596,7 @@ def test_every_consumer_reads_the_communitys_forms_not_a_profile_module(small, t
 def test_a_profile_without_form_methods_gets_the_default_library(small):
     small()
     plain = Community.forms
-    assert [t.key.value for t in plain(community())] == ["idr", "records"]
+    assert [t.key.value for t in plain(community()) if t.key.value in ("idr", "records")] == ["idr", "records"]
 
 
 # -- the command ----------------------------------------------------------------------------------------------------------
@@ -579,9 +605,28 @@ def test_a_profile_without_form_methods_gets_the_default_library(small):
 def cmd(monkeypatch, tmp_path):
     from jason.commands import form_library as module
 
-    root = shelf(tmp_path, {"5205": "\n\n".join(f"({c}) made up." for c in "abcdefgh"), "5210": "(a) made up.\n\n(b) made up.",
-                            "5910": "(a) made up.\n\n(b) made up.", "5915": "(a) made up.\n\n(b) made up."})
+    import importlib
+
+    from jason.community.form_library.ca import idr, records
+
+    root = shelf(tmp_path, GENERIC_SECTIONS)
     monkeypatch.setattr(module, "_data_dir", lambda args: root)
+    # the command reads the two generic forms and the profile's own: every other form of the library is tested with its own
+    # shelf and slots (tests/test_form_library_records_money.py and the other forms' files)
+    two = Library()
+    two.register(idr.DEFINITION)
+    two.register(records.DEFINITION)
+    monkeypatch.setattr(importlib.import_module("jason.community.form_library.resolve"), "LIBRARY", two)
+    real = community()
+
+    class CaOnly:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def jurisdictions(self):
+            return ("CA",)
+
+    monkeypatch.setattr(module, "_community", lambda: CaOnly())
 
     def run(*argv, capsys):
         parser = argparse.ArgumentParser()
@@ -599,21 +644,22 @@ def test_the_command_lists_the_forms_by_tier_and_status_and_names_what_is_deferr
     code, out, err = cmd(capsys=capsys)
     assert code == 0 and not err
     assert "3 ready, 0 adjusted, 0 not offered, 0 failing" in out and "ready (3)" in out
-    assert "idr-request" in out and "state, CA" in out and "v1, as of 2026-10-05" in out and "owner-info" in out and "custom" in out
-    assert "5 required item(s) not carried yet" in out
+    assert "idr-request" in out and "state, CA" in out and "v2, as of 2026-10-05" in out and "owner-info" in out and "custom" in out
+    assert "1 required item(s) not carried yet" in out
     _, out, _ = cmd("--tier", "custom", capsys=capsys)
     assert "owner-info" in out and "idr-request" not in out
     _, out, _ = cmd("--tier", "family", capsys=capsys)
     assert "No forms in the family tier." in out
     code, out, _ = cmd("--json", capsys=capsys)
     body = json.loads(out)
-    assert code == 0 and body["chain"] == ["US", "CA"] and [f["key"] for f in body["forms"]] == ["idr-request", "records-request", "owner-info"]
-    assert body["forms"][1]["status"] == "ready" and body["forms"][1]["clocks"][0]["words"].startswith("current-year: 10 business days")
+    assert code == 0 and body["chain"] == ["CA"] and [f["key"] for f in body["forms"]] == ["idr-request", "records-request", "owner-info"]
+    assert body["forms"][1]["status"] == "ready"
+    assert any(c["words"].startswith("current-year: 10 business days") for c in body["forms"][1]["clocks"])
 
 
 def test_check_exits_zero_on_deferrals_and_one_on_a_failing_form(cmd, capsys, monkeypatch, tmp_path):
     code, out, _ = cmd("--check", capsys=capsys)
-    assert code == 0 and "0 failing, 0 not offered, 10 deferred" in out and "1. required content" in out
+    assert code == 0 and "0 failing, 0 not offered, 2 deferred" in out and "1. required content" in out
     code, out, _ = cmd("--check", "--json", capsys=capsys)
     assert code == 0 and json.loads(out)["ok"] is True
     # a shelf that has lost 5205(f): the records form fails, and the exit says so
@@ -633,7 +679,7 @@ def test_show_reads_one_form_by_either_key_with_the_words_and_their_caveat(cmd, 
     assert code == 0
     assert "records-request: Request to Inspect Association Records" in out and "status ready" in out and "the form's own key records" in out
     assert "(b) made up." in out or "(f) made up." in out
-    assert "-> records-requested" in out and "[deferred: not carried yet; the full form's cost estimate and agreement]" in out
+    assert "records-requested" in out and "[deferred: not carried yet; the estimate copy (agree-copying, agree-redaction) needs a stage" in out
     assert "current-year: 10 business days from receipt (statute: CIV 5210(b)(1))" in out
     assert "the law as of 2026-10-05" in out and "not an official restatement" in out
     code, out, _ = cmd("--show", "idr-request", "--json", capsys=capsys)

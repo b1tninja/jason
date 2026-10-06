@@ -126,6 +126,9 @@ class Anchor(Enum):
     CONTRACT = "entering into the management agreement"
     VOTE_TO_FORECLOSE = "the board's vote to foreclose"
     ACCEPTANCE = "the receipt of the acceptance"
+    RECONSIDERATION_REQUESTED = "the receipt of a request for reconsideration"
+    APPLICATION_COMPLETE = "the day the application is complete (determined or deemed)"
+    APPEAL_RECEIVED = "the receipt of the applicant's written appeal"
 
 
 class Unit(Enum):

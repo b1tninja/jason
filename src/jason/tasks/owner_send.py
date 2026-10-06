@@ -413,12 +413,13 @@ class EmailHandler:
         if data.get("failure"):
             raise PayhoaApiError(f"PayHOA did not send it: {data['failure']}", status_code=422)
         if self.data_dir is not None and self.attachment is None:
+            from jason.tasks.campaigns import stamp
             from jason.tasks.form_references import record
             from jason.tasks.owner_prefill import fingerprints
 
             record(self.data_dir, reference, form=self.form.key.value, year=self.year, membershipId=mid, unitId=uid,
                    unit=row.unit, channel="email", sent=fingerprints(row.prefill),
-                   suggested=sorted(row.suggested), fileId=file_id)
+                   suggested=sorted(row.suggested), fileId=file_id, **stamp(self.data_dir, reference))   # its campaign
         return {"fileId": file_id, "reference": reference,
                 "bulkActionBatchId": data.get("bulkActionBatchId") or (sent or {}).get("bulkActionBatchId")}
 

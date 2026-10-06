@@ -226,6 +226,11 @@ def _prefill(args: argparse.Namespace, agent_factory: Callable[[Any], Any], comm
     if not args.out:
         print("--out DIR is required with --prefill (the letters hold owners' addresses; delete them after)", file=sys.stderr)
         return 2
+    if args.emailed:                           # a stamped copy carries a reference: a reference exists only if a handler does
+        from jason.tasks import campaigns
+
+        if refused := campaigns.gate(community, data_dir, forms.OWNER_INFO.key.value, "email", forms.OWNER_INFO_CYCLE.year):
+            return refused
     activity = {}
     with agent_factory(args) as agent:
         units, people = _live(agent.payhoa(), agent.org_id)
@@ -442,6 +447,10 @@ def _email_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], 
 
     engine = ENGINES[Channel.EMAIL]
     year, today = forms.OWNER_INFO_CYCLE.year, date.today()
+    from jason.tasks import campaigns
+
+    if refused := campaigns.gate(community, data_dir, forms.OWNER_INFO.key.value, Channel.EMAIL, year, adopt=bool(args.yes)):
+        return refused                         # no campaign, no handler: no reference is made (a dry run says so too)
     batch_id = engine.batch_id(forms.OWNER_INFO, year)
     sent_to: set[tuple[int, int]] | None = None
     if args.follow_up:
@@ -590,6 +599,10 @@ def _mail_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], c
 
     engine = ENGINES[Channel.MAIL]
     year, today = forms.OWNER_INFO_CYCLE.year, date.today()
+    from jason.tasks import campaigns
+
+    if refused := campaigns.gate(community, data_dir, forms.OWNER_INFO.key.value, Channel.MAIL, year, adopt=bool(args.yes)):
+        return refused                         # no campaign, no handler: no marker is stamped (a dry run says so too)
     batch_id = engine.batch_id(forms.OWNER_INFO, year)
     if args.only:
         # a letter is one Mailroom send per building, keyed by the building: a run for a few units (a test) gets its
@@ -633,7 +646,7 @@ def _mail_batch(args: argparse.Namespace, agent_factory: Callable[[Any], Any], c
                        params={"pdf": str(pdf), "pages": handler.pages, "marker": marker})
         _keep_letters(data_dir, f"{forms.OWNER_INFO.key.value}-{year}", batch_id, pdf, items, args, marker)
         form_references.record(data_dir, marker, form=forms.OWNER_INFO.key.value, year=year, channel=engine.channel.name,
-                               identity=engine.identity.value, batch=batch_id)
+                               identity=engine.identity.value, batch=batch_id, **campaigns.stamp(data_dir, marker))
         counts = batches.run(data_dir, batch_id, handler, pace=engine.pace(), limit=args.limit,
                              remaining=lambda: getattr(client, "rate_remaining", None))
     print("now: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + f"  (jason batches --show {batch_id})")

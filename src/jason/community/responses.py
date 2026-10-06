@@ -27,6 +27,10 @@ class ResponseKind(Enum):
     ARCHITECTURAL = "architectural application"
     SOLAR = "solar application"
     EV_CHARGER = "EV charger application"
+    EV_METER = "EV meter application"
+    RECONSIDERATION = "request for reconsideration"
+    PROTECTED_USE = "protected use"
+    DISASTER_REBUILD = "disaster rebuild application"
     RENTAL = "rental application"
     VARIANCE = "variance request"
     PAYMENT_PLAN = "payment plan request"
@@ -80,12 +84,33 @@ class ResponseRule:
 
 # General classification: the statute's kinds by their words, then the form. A profile's rows come first.
 KIND_RULES: tuple[KindRule, ...] = (
+    # Asking the board to look again at a decision (4765(a)(5)), ahead of the kinds it may also name: a denied solar application.
+    KindRule(ResponseKind.RECONSIDERATION, r"\breconsider\w*\b[^.]{0,80}\b(?:decision|denial|disapprov\w*|application)\b|"
+                                           r"\b(?:decision|denial|disapprov\w*|application)\b[^.]{0,80}\breconsider\w*\b"),
     # An application, not every mention: solar or a charger with the words of installing or asking.
     KindRule(ResponseKind.SOLAR, r"\b(?:solar|photovoltaic|pv)\b[^.]{0,60}\b(?:install\w*|panels?|system|application|"
                                  r"permit|approv\w*|request)\b|\b(?:install\w*|add\w*)\b[^.]{0,40}\bsolar\b"),
+    # The meter is its own statute (4745.1): its words before the charger's, so "EV-dedicated meter" is not a charger.
+    KindRule(ResponseKind.EV_METER, r"\bEV[- ]dedicated\b|\b(?:TOU|time[- ]of[- ]use)\s+meter\b|\b(?:EV|electric\s+vehicle)\s+meter\b"),
     KindRule(ResponseKind.EV_CHARGER, r"\b(?:EV|electric\s+vehicle)\s+charg\w*\b[^.]{0,60}\b(?:install\w*|application|"
                                       r"permit|approv\w*|request)\b|\binstall\w*\b[^.]{0,40}\bcharg(?:er|ing\s+station)\b|"
                                       r"\bcharging\s+station\b"),
+    # A rebuild after a declared disaster runs on 4766's clocks, not the ordinary ones.
+    KindRule(ResponseKind.DISASTER_REBUILD, r"\b(?:rebuild\w*|reconstruct\w*)\b[^.]{0,80}\b(?:disaster|wildfire|fire|flood\w*|"
+                                            r"destroyed|damaged|burn(?:ed|t))\b|\b(?:disaster|wildfire|fire|flood\w*|destroyed|"
+                                            r"burn(?:ed|t))\b[^.]{0,80}\b(?:rebuild\w*|reconstruct\w*)\b|"
+                                            r"\bsubstantially\s+similar\s+reconstruction\b|\b4766\b"),
+    # A use of the owner's home the law protects (4700 to 4753): mostly a notice, so no clock, only the section and a reply.
+    KindRule(ResponseKind.PROTECTED_USE, r"\bflag\s+of\s+the\s+United\s+States\b|\b(?:american|U\.?S\.?)\s+flag\b|\bmezuzah\b|"
+                                         r"\breligious\s+(?:items?|symbols?|objects?)\b|"
+                                         r"\b(?:fly\w*|display\w*|hang\w*|put\w*\s+up)\b[^.]{0,30}\b(?:flag|banner)s?\b|"
+                                         r"\b(?:post\w*|display\w*|put\w*\s+up)\b[^.]{0,20}\b(?:sign|poster)s?\b|"
+                                         r"\b(?:satellite\s+dish|antenna)\b|\b(?:artificial|synthetic)\s+(?:turf|grass|lawn)\b|"
+                                         r"\blow[- ]water\b[^.]{0,30}\bplants?\b|\bpressure\s+wash\w*\b|"
+                                         r"\bdrought\b[^.]{0,60}\b(?:water\w*|landscap\w*|fine)\b|"
+                                         r"\baccessory\s+dwelling\b|\bADU\b|\bgranny\s+(?:flat|unit)\b|\bclothes\s*lines?\b|"
+                                         r"\bdrying\s+racks?\b|\bpersonal\s+agriculture\b|\bvegetable\s+(?:garden|bed)s?\b|"
+                                         r"\b(?:keep\w*|get\w*|adopt\w*)\b[^.]{0,20}\b(?:a|my|another)\s+(?:pet|dog|cat|bird|aquarium)\b"),
     # The documents a sale needs (4525, 4528), not every message that mentions escrow.
     KindRule(ResponseKind.RESALE, r"\b452[58]\b|\bresale\s+(?:disclosure|package|documents?|certificate)\b|"
                                   r"\bdisclosure\s+package\b|\bdemand\s+(?:statement|for\s+payoff)\b|\bpayoff\s+demand\b|"
@@ -140,11 +165,37 @@ RESPONSE_RULES: tuple[ResponseRule, ...] = (
     ResponseRule(ResponseKind.RESALE, ClockSource.STATUTE, notice="resale-documents", authority="CIV 4530",
                  assignment="records-requests", first_step="Send the 4525 documents and the 4528 form, at actual cost."),
     ResponseRule(ResponseKind.SOLAR, ClockSource.STATUTE, notice="solar-decision", authority="CIV 714",
-                 assignment="architecture", first_step="Put it on the next board agenda; a complete application not "
-                 "denied in writing within 45 days is deemed approved."),
+                 assignment="architecture", first_step="Put it on the next board agenda; an application not denied in "
+                 "writing within 45 days from the date of receipt of the application is deemed approved, unless that delay "
+                 "is the result of a reasonable request for additional information (714(e)(2)(B))."),
     ResponseRule(ResponseKind.EV_CHARGER, ClockSource.STATUTE, notice="ev-charger-decision", authority="CIV 4745",
                  assignment="architecture", first_step="Put it on the next board agenda; an application not denied in "
-                 "writing within 60 days is deemed approved."),
+                 "writing within 60 days from the date of receipt of the application is deemed approved, unless that delay "
+                 "is the result of a reasonable request for additional information (4745(e))."),
+    ResponseRule(ResponseKind.EV_METER, ClockSource.STATUTE, notice="ev-meter-decision", authority="CIV 4745.1",
+                 assignment="architecture", acknowledge_days=3, first_step="Put it on the next board agenda; an application "
+                 "not denied in writing within 60 days from the date of receipt of the application is deemed approved, unless "
+                 "that delay is the result of a reasonable request for additional information (4745.1(e))."),
+    ResponseRule(ResponseKind.RECONSIDERATION, ClockSource.POLICY, days=45, authority="proposed policy "
+                 "(improvement-reconsideration); CIV 4765(a)(1) requires the documents to state the maximum",
+                 assignment="architecture", acknowledge_days=3,
+                 first_step="Put it on the next open meeting that can be noticed.",
+                 note="The board's maximum response time is the documents' (4765(a)(1)); the 45 calendar days are a proposed "
+                      "policy until the board adopts one, and a profile's row replaces them. The Act states no period for the "
+                      "request and no consequence of the board's silence."),
+    ResponseRule(ResponseKind.PROTECTED_USE, ClockSource.POLICY, days=45, authority="proposed policy (improvement-review-time); "
+                 "CIV 4765(a)(1) requires the documents to state the maximum", assignment="architecture", acknowledge_days=3,
+                 first_step="Read the mode first: a right (a flag, a sign, a pet, a drought matter) is a notice, acknowledged "
+                 "with the section quoted, with no clock and nothing to decide; an application goes on the next board agenda; "
+                 "another animal is a request for an agreement.",
+                 note="A notice opens no clock. The 45 calendar days are for an application only, and are a proposed policy "
+                      "until the board adopts one; the Act states no deemed approval for it (4725(c): not willfully delayed)."),
+    ResponseRule(ResponseKind.DISASTER_REBUILD, ClockSource.STATUTE, notice="disaster-rebuild-completeness", authority="CIV 4766",
+                 assignment="architecture", acknowledge_days=3,
+                 first_step="Tell the applicant in writing, within 30 calendar days of receipt, whether the application is "
+                 "complete or incomplete, with the list of what is missing and how to supply it in the same letter; one not "
+                 "decided in time is deemed complete (4766(b)(3)). Then 45 calendar days to review (4766(c)), and 60 calendar "
+                 "days to decide a written appeal (4766(e)(2))."),
     ResponseRule(ResponseKind.PAYMENT_PLAN, ClockSource.STATUTE, notice="payment-plan-meeting", authority="CIV 5665",
                  assignment="collections", first_step="Meet with the owner in executive session within 45 days of the "
                  "request's postmark."),

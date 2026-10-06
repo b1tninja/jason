@@ -342,11 +342,12 @@ class FormDefinition:
     channels: tuple[Channel, ...] = ()
     slots: tuple[str, ...] = ()                     # the {SLOT}s the form uses
     bindable: tuple[str, ...] = ()                  # a family form: the clocks a binding must give, by name
+    notes: tuple[str, ...] = ()                     # what a reader of the definition should know (the design page's open points)
 
     def __post_init__(self) -> None:
         if not self.key:
             object.__setattr__(self, "key", self.template.key.value)
-        for name in ("authority", "required_content", "recitals", "association_clocks", "channels", "slots", "bindable"):
+        for name in ("authority", "required_content", "recitals", "association_clocks", "channels", "slots", "bindable", "notes"):
             object.__setattr__(self, name, _tuple(getattr(self, name)))
         for slot in self.slots:
             if not _SLOT.match(slot):

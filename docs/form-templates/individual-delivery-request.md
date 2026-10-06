@@ -1,6 +1,6 @@
 # Request to receive general notices by individual delivery
 
-Status: design (2026-10-05). Key `individual-delivery-request`; proposed marker code `NV`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Request for individual delivery of general notices" in [standard-forms.md](../standard-forms.md). Today this request is not collected on any form ([standard-forms.md](../standard-forms.md), family one); the annual policy statement is where the option must be described.
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05), `src/jason/community/form_library/ca/individual_delivery.py`, marker code `NV`, handler `response-clock` with procedure `respond` (the `delivery-requests` procedure is still a proposal; the module's docstring lists where it departs from this page). Key `individual-delivery-request`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Request for individual delivery of general notices" in [standard-forms.md](../standard-forms.md). Today this request is not collected on any form ([standard-forms.md](../standard-forms.md), family one); the annual policy statement is where the option must be described.
 
 ## 1. Authority and what the law requires
 

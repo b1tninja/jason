@@ -574,6 +574,31 @@ REQUIREMENTS: tuple[NoticeRequirement, ...] = (
         note="Deemed complete if not decided in time; the review follows within 45 calendar days (4766(c)), and an "
              "appeal is decided within 60 calendar days (4766(e)(2))."),
     NoticeRequirement(
+        "disaster-rebuild-review", "Review of a complete application to rebuild after a disaster", "CIV 4766",
+        Recipients.APPLICANT, None, (Method.WRITTEN,), (_after(Anchor.APPLICATION_COMPLETE, 45),),
+        ("approval, or a full set of comments with a comprehensive request for revisions",
+         "if not compliant: the list of items that are noncompliant and how the application can be remedied"),
+        words=r"do either of the following within 45 calendar days",
+        note="Counted from the day the application is deemed complete (4766(c)), whether the body determined it complete or the "
+             "30 days passed. The statute states no deemed approval; once approved the body may not subject the applicant to "
+             "appeals or additional hearings (4766(f)(1))."),
+    NoticeRequirement(
+        "disaster-rebuild-appeal", "Final written determination of an appeal about a rebuild application", "CIV 4766",
+        Recipients.APPLICANT, None, (Method.WRITTEN,), (_after(Anchor.APPEAL_RECEIVED, 60),), ("the final written determination",),
+        words=r"no later than 60 calendar days after receipt of the applicant.s written appeal",
+        note="The appeal is of an incomplete or noncompliant determination, by a process the body provides pursuant to Section "
+             "4765 (4766(e)(1)). The statute states no deemed result; a prevailing applicant is awarded attorney's fees (4766(g))."),
+    NoticeRequirement(
+        "architectural-reconsideration", "Reconsideration by the board of a disapproved physical change", "CIV 4765",
+        Recipients.APPLICANT, None, (Method.WRITTEN,),
+        (_after(Anchor.RECONSIDERATION_REQUESTED, words="within the maximum time the procedure states"),),
+        ("the decision on reconsideration", "if disapproved again: why"),
+        words=r"maximum time for response to an application or a request for reconsideration by the board",
+        also=("CIV 4920",),
+        note="The statute sets no period; the documents' procedure must (4765(a)(1)). The applicant is entitled to "
+             "reconsideration by the board, at an open meeting (4765(a)(5)), noticed at least four days before with its "
+             "agenda (4920)."),
+    NoticeRequirement(
         "pesticide-unit", "Pesticide applied in a unit without a licensed operator", "CIV 4777",
         Recipients.OWNER_AND_TENANT, I, (Method.INDIVIDUAL,), (_before(Anchor.APPLICATION_OF_PESTICIDE, 48, unit=Unit.HOURS),),
         ("the pests", "the product's name and brand", "the statutory caution, verbatim",

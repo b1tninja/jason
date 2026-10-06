@@ -1,6 +1,6 @@
 # Request to be heard at a board meeting, written comment, and request to add an item
 
-Status: design (2026-10-05). Key `meeting-comment-request`; proposed marker code `HM`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Request to be heard at a meeting" in [standard-forms.md](../standard-forms.md) (family one: “Speak at a meeting; be heard”, today “the meeting room’s open forum”). One form holds three requests, each printed with its own words of the law; **only the first is a right the Act gives, so the form is, for the second and third, a courtesy form and says so.**
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05), `src/jason/community/form_library/ca/meeting_comment.py`, marker code `HM`, handler `response-clock` with procedure `respond` (the step this page adds to `board-packet` is not written; the module's docstring lists where it departs from this page). Key `meeting-comment-request`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Request to be heard at a meeting" in [standard-forms.md](../standard-forms.md) (family one: “Speak at a meeting; be heard”, today “the meeting room’s open forum”). One form holds three requests, each printed with its own words of the law; **only the first is a right the Act gives, so the form is, for the second and third, a courtesy form and says so.**
 
 ## 1. Authority and what the law requires
 

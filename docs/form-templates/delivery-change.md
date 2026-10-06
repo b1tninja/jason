@@ -1,6 +1,6 @@
 # Change my notice delivery
 
-Status: design (2026-10-05). Key `delivery-change`; proposed marker code `NC`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Change my notice delivery" in [standard-forms.md](../standard-forms.md). The model for a form that is built is [owner-information.md](owner-information.md) (the annual form this one sits beside). No form of this kind exists today.
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05), `src/jason/community/form_library/ca/delivery_change.py`, marker code `NC`, handler `owner-information` with procedure `owner-info-cycle` (the `delivery-requests` procedure below is still a proposal; the module's docstring lists where it departs from this page). Key `delivery-change`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Change my notice delivery" in [standard-forms.md](../standard-forms.md). The model for a form that is built is [owner-information.md](owner-information.md) (the annual form this one sits beside). No form of this kind exists today.
 
 ## 1. Authority and what the law requires
 

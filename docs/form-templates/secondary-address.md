@@ -1,6 +1,6 @@
 # Secondary address for notices and collection notices
 
-Status: design (2026-10-05). Key `secondary-address`; proposed marker code `NA`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Secondary address for notices and collection notices" in [standard-forms.md](../standard-forms.md). Today the secondary address is collected only inside the annual form (questions `second-email` and `second-mailing-address`, [owner-information.md](owner-information.md)); this design is the stand-alone form that can be used any day of the year and that can also remove one.
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05), `src/jason/community/form_library/ca/secondary_address.py`, marker code `NA`, handler `owner-information` with procedure `owner-info-cycle` (the `delivery-requests` procedure is still a proposal; the module's docstring lists where it departs from this page, including the `other-notices` box, which a community adds when its board adopts the policy). Key `secondary-address`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Secondary address for notices and collection notices" in [standard-forms.md](../standard-forms.md). Today the secondary address is collected only inside the annual form (questions `second-email` and `second-mailing-address`, [owner-information.md](owner-information.md)); this design is the stand-alone form that can be used any day of the year and that can also remove one.
 
 ## 1. Authority and what the law requires
 

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
-from jason.tasks import form_references
+from jason.tasks import campaigns, form_references
 from jason.tasks import response_inbox as ri
 from jason.tasks.recognize import Catalog, SentCopy
 
@@ -64,6 +64,7 @@ def outstanding(data_dir: Path, community: Any, *, request: str = "", now: datet
     owners = list(units) if units is not None else owner_units(data_dir, community)
     names = {o.membership_id: o.name for u in owners or [] for o in u.owners}
     every = catalog.copies()
+    rows = campaigns.view(data_dir, community)            # the campaign record: the handler chosen when each form was made
     sent_stamps = [c.last_sent for c in every if c.last_sent]
     checked = ri.channel_status(data_dir, now=moment)
     last_ok = max((c["lastOk"] for c in checked if c["lastOk"]), default="")
@@ -98,8 +99,12 @@ def outstanding(data_dir: Path, community: Any, *, request: str = "", now: datet
             note = ("A mailed letter's marker names the mailing, not an owner, so the catalog lists no recipients of it"
                     + (f" (batch {', '.join(batches)}: `jason batches --show`)" if batches else "")
                     + ": owners it reached who were sent no emailed copy are listed under never asked until they answer.")
+        named = campaigns.for_request(rows, req)
         out_requests.append({
             "request": req.key, "title": req.title, "year": req.cycle.year,
+            "handler": ", ".join(sorted({c.handler for c in named if c.handler})),
+            "campaigns": [{"code": c.code, "handler": c.handler, "version": c.version, "status": c.status.value,
+                           "recorded": c.stored} for c in named],
             "returnBy": req.cycle.return_by.isoformat() if req.cycle.return_by else "",
             "sent": len(personal), "answered": len(done), "notResponded": len(waiting), "outstanding": waiting,
             "answeredCopies": done, "mailings": [{"reference": c.reference, "channel": c.channel, "sentAt": c.first_sent,

@@ -116,10 +116,43 @@ def _proposal_request(args: argparse.Namespace, agent_factory: Callable[[Any], A
     return 0
 
 
+FORM_OPTIONS = ("create", "pdf", "payhoa", "payhoa_test", "payhoa_submissions", "form")
+
+
+def _form_refusal(args: argparse.Namespace) -> str:
+    """The reason a form option names a form this community does not offer, or "". Checked when the command runs, never
+    when the parser is built (the community is read then, and importing jason loads no profile): the keys are the forms
+    ``Community.forms()`` returns, each by its template's key (``idr``) or the library's (``idr-request``). A key that
+    is accepted is put back in the template's words, so the rest of the command reads one spelling."""
+    asked = [(name, getattr(args, name, None)) for name in FORM_OPTIONS if getattr(args, name, None)]
+    if not asked:
+        return ""
+    from jason.community import community as active
+    from jason.community.form_library.resolve import resolve
+
+    resolved = resolve(active())
+    offered = {f.template.key.value: f for f in resolved.forms if f.offered}
+    for name, value in asked:
+        form = next((f for f in offered.values() if str(value) in (f.key, f.template.key.value)), None)
+        if form is not None:
+            setattr(args, name, form.template.key.value)
+            continue
+        known = resolved.get(str(value))
+        if known is not None and known.missing:
+            return (f"{value} is not offered by {active().name}: {'; '.join(known.missing)} "
+                    f"(jason form-library --show {known.key} says what is needed)")
+        return f"no form {value!r}; {active().name} offers: {', '.join(offered) or 'none'}"
+    return ""
+
+
 def cmd_forms(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
     from jason.google.forms import GoogleForms
     from jason.tasks.forms import create, fetch_responses, load_rows, plan_lines, template
 
+    refusal = _form_refusal(args)
+    if refusal:
+        print(f"jason forms: {refusal}", file=sys.stderr)
+        return 2
     data_dir = _data_dir(args)
     if args.create:
         tpl = template(args.create)
@@ -442,19 +475,19 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     forms = sub.add_parser("forms", help="Create the association's request forms and read their responses")
     add_common(forms)
     act = forms.add_mutually_exclusive_group()
-    act.add_argument("--create", choices=("idr", "records", "owner-info"), help="create a form from its template")
+    act.add_argument("--create", metavar="FORM", help="create a form from its template")
     act.add_argument("--responses", metavar="FORM_ID", help="fetch and list a form's responses")
     act.add_argument("--publish", metavar="FORM_ID", help="publish a Google Form (with --yes): anyone with the link can answer")
     forms.add_argument("--unpublish", action="store_true", help="with --publish: take the form down instead")
-    act.add_argument("--pdf", choices=("idr", "records", "owner-info"),
+    act.add_argument("--pdf", metavar="FORM",
                      help="make a fillable PDF of a form from its definition (no Doc; printed by Chrome or Edge)")
     act.add_argument("--read", nargs="+", metavar="PDF", help="read returned fillable PDFs (with --form) and check them")
-    act.add_argument("--payhoa", choices=("idr", "records", "owner-info"),
+    act.add_argument("--payhoa", metavar="FORM",
                      help="make a form in PayHOA's form builder from its definition (dry run; --yes creates it, switched off)")
-    act.add_argument("--payhoa-test", choices=("idr", "records", "owner-info"),
+    act.add_argument("--payhoa-test", metavar="FORM",
                      help="submit made-up answers to every question as the test owner (payhoa_test_record_uid), "
                           "read them back as the admin, and compare (with --yes)")
-    act.add_argument("--payhoa-submissions", choices=("idr", "records", "owner-info"),
+    act.add_argument("--payhoa-submissions", metavar="FORM",
                      help="read the PayHOA form's submissions by field, check them, and match them to PayHOA's owners")
     forms.add_argument("--enable", action="store_true", help="with --payhoa --yes: leave the new form on for owners")
     forms.add_argument("--replace", action="store_true",
@@ -464,7 +497,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                             "question's id and answers (dry run without --yes; refuses to drop a question)")
     act.add_argument("--match", metavar="FORM_ID",
                      help="read a Google Form's responses by its import rules and match them to PayHOA's current owners")
-    forms.add_argument("--form", choices=("idr", "records", "owner-info"), help="with --read: the form the PDFs are")
+    forms.add_argument("--form", metavar="FORM", help="with --read: the form the PDFs are")
     forms.add_argument("--out", help="with --pdf: where to write it (default data/forms/<form>.pdf); with --read: a CSV")
     forms.add_argument("--prefill", action="append", default=[], metavar="FIELD=VALUE",
                        help="with --pdf: set a field for one recipient (repeatable), e.g. unit-address=\"<the unit's address>\"")

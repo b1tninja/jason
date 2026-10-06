@@ -498,6 +498,8 @@ def _outstanding_lines(body: dict[str, Any]) -> list[str]:
     for req in body["requests"]:
         out += ["", f"{req['request']}: {req['title']} (return by {req['returnBy'] or 'no date'})",
                 f"  {req['sent']} copies sent, {req['answered']} answered, {req['notResponded']} not responded"]
+        if req.get("handler"):                 # chosen when the form was made (jason campaigns)
+            out.append(f"  handler: {req['handler']} (campaigns {', '.join(c['code'] for c in req['campaigns'])})")
         if req["outstanding"]:
             out.append("  Sent a copy and not responded:")
             for row in req["outstanding"]:

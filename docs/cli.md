@@ -6,13 +6,13 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-170 commands, by area:
+171 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (24)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
-- [Owners, requests, notices & forms](#owners-requests-notices--forms) (26)
+- [Owners, requests, notices & forms](#owners-requests-notices--forms) (27)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
@@ -1070,20 +1070,20 @@ Create the association's request forms and read their responses
 
 | Option | Value | Help |
 |---|---|---|
-| `--create` | {idr,records,owner-info} | create a form from its template |
+| `--create` | FORM | create a form from its template |
 | `--responses` | FORM_ID | fetch and list a form's responses |
 | `--publish` | FORM_ID | publish a Google Form (with --yes): anyone with the link can answer |
 | `--unpublish` |  | with --publish: take the form down instead |
-| `--pdf` | {idr,records,owner-info} | make a fillable PDF of a form from its definition (no Doc; printed by Chrome or Edge) |
+| `--pdf` | FORM | make a fillable PDF of a form from its definition (no Doc; printed by Chrome or Edge) |
 | `--read` | PDF | read returned fillable PDFs (with --form) and check them |
-| `--payhoa` | {idr,records,owner-info} | make a form in PayHOA's form builder from its definition (dry run; --yes creates it, switched off) |
-| `--payhoa-test` | {idr,records,owner-info} | submit made-up answers to every question as the test owner (payhoa_test_record_uid), read them back as the admin, and compare (with --yes) |
-| `--payhoa-submissions` | {idr,records,owner-info} | read the PayHOA form's submissions by field, check them, and match them to PayHOA's owners |
+| `--payhoa` | FORM | make a form in PayHOA's form builder from its definition (dry run; --yes creates it, switched off) |
+| `--payhoa-test` | FORM | submit made-up answers to every question as the test owner (payhoa_test_record_uid), read them back as the admin, and compare (with --yes) |
+| `--payhoa-submissions` | FORM | read the PayHOA form's submissions by field, check them, and match them to PayHOA's owners |
 | `--enable` |  | with --payhoa --yes: leave the new form on for owners |
 | `--replace` |  | with --payhoa --yes: delete the form made before (only if it has no submissions) and make it again |
 | `--update` |  | with --payhoa: edit the recorded form in place to match the definition, keeping each question's id and answers (dry run without --yes; refuses to drop a question) |
 | `--match` | FORM_ID | read a Google Form's responses by its import rules and match them to PayHOA's current owners |
-| `--form` | {idr,records,owner-info} | with --read: the form the PDFs are |
+| `--form` | FORM | with --read: the form the PDFs are |
 | `--out` | OUT | with --pdf: where to write it (default data/forms/<form>.pdf); with --read: a CSV |
 | `--prefill` | FIELD=VALUE | with --pdf: set a field for one recipient (repeatable), e.g. unit-address="<the unit's address>" |
 | `--offline` |  | read the saved responses without fetching |
@@ -1171,6 +1171,24 @@ The owner information cycle (CIV 4040, 4041): standing, deadlines, and PayHOA up
 | `--show` | SHOW | with --apply: how many writes to list (default 15) |
 | `--yes` |  | with --apply: write them in PayHOA |
 | `--by` | NAME | with --apply --yes: the person who confirmed the writes, for the approvals audit log and the responses inbox's 'recorded' act (default --confirmed-by, else the operating-system user) |
+
+### `jason campaigns`
+
+The handler is chosen when a form is made: the campaigns (a form, a cycle, a channel), their handlers, and what each has sent and received; open or close one (a person's act)
+
+| Option | Value | Help |
+|---|---|---|
+| `--show` | CODE | one campaign: its form and version, authority, handler, procedure, cycle, and counts |
+| `--open` | FORM | open a campaign for a form (needs --channel, --cycle-year, and --by); writes the row only and makes no copy |
+| `--close` | CODE | close a campaign (needs --by) |
+| `--adopt` |  | write the rows for the campaigns the profile's response requests already run |
+| `--channel` | C | with --open: email, mail, or payhoa (the marker's E, M, or P) |
+| `--cycle-year` | Y | with --open: the year the cycle is for |
+| `--return-by` | DATE | with --open: the day answers are asked by (YYYY-MM-DD) |
+| `--handler` | KEY | with --open: a general handler, for a form with no authority (a form with an authority takes the one its authority names) |
+| `--option` | NAME=VALUE | with --open: a handler option (repeatable) |
+| `--by` | NAME | with --open or --close: who does it, for the record |
+| `--json` |  | print JSON |
 
 ### `jason responses`
 

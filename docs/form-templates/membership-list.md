@@ -1,6 +1,6 @@
 # Request for the membership list, and the opt-out of sharing it
 
-Status: design (2026-10-05). Key `membership-list`; proposed marker code `MN`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Request for the membership list or to opt out of it" ([standard-forms.md](../standard-forms.md)). The records request for everything else is [records-request.md](records-request.md); a member who asks for the list on that form is routed here.
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05, build step 2A: `src/jason/community/form_library/ca/membership_list.py`, which records its departures from this page). Key `membership-list`; proposed marker code `MN`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Request for the membership list or to opt out of it" ([standard-forms.md](../standard-forms.md)). The records request for everything else is [records-request.md](records-request.md); a member who asks for the list on that form is routed here.
 
 One template, one question first (`action`): ask for the list, opt out, or end an opt-out. The three share the member’s identity and the signature, so one form serves them; the questions that belong to one action are required only for that action.
 

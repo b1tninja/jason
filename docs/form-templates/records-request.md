@@ -1,6 +1,6 @@
 # Request to inspect or copy association records
 
-Status: design (2026-10-05). Key `records-request`; proposed marker code `RR`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Records" in [standard-forms.md](../standard-forms.md). The form that exists today is `FormKey.RECORDS` (the profile's `mystique/forms.py`); this design replaces it and records where it has drifted (section 13).
+Status: design (2026-10-05); built in the library as version 2 (2026-10-05, build step 2A: `src/jason/community/form_library/ca/records.py`, which keeps the old fields and records its departures from this page). Key `records-request`; proposed marker code `RR`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Records" in [standard-forms.md](../standard-forms.md). The form that exists today is `FormKey.RECORDS` (the profile's `mystique/forms.py`); this design replaces it and records where it has drifted (section 13).
 
 ## 1. Authority and what the law requires
 

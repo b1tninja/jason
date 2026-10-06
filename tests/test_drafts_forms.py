@@ -122,7 +122,8 @@ def test_create_form_and_responses(tmp_path):
     record = forms_task.create(forms, forms_task.template("idr"), tmp_path)
     assert record["formId"] == "F1"
     update = json.loads(rec.requests[1].content)["requests"]
-    assert "updateFormInfo" in update[0] and len(update) == 1 + len(forms_task.template("idr").questions)
+    questions = forms_task.template("idr").questions                       # one item a question, and one heading a section
+    assert "updateFormInfo" in update[0] and len(update) == 1 + len(questions) + sum(1 for q in questions if q.section)
     assert json.loads(rec.requests[0].content) == {"info": {"title": "Request for Internal Dispute Resolution",
                                                             "documentTitle": "Request for Internal Dispute Resolution"}}
 

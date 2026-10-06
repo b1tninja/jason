@@ -1,6 +1,6 @@
 # Request to meet and confer (internal dispute resolution)
 
-Status: design (2026-10-05). Key `idr-request`; proposed marker code `MC` (meet and confer). It follows the standard in [form-templates.md](../form-templates.md). The inventory row is “Internal dispute resolution” ([standard-forms.md](../standard-forms.md)); the notice catalog row is `meet-and-confer` (CIV 5915); the request kind is `ResponseKind.DISPUTE`. The form that exists today is `FormKey.IDR` (the profile’s `mystique/forms.py`); this design replaces it and records where it has drifted (section 13). The next step after this one, if it fails, is [adr-request.md](adr-request.md).
+Status: design (2026-10-05); built in the library as version 2 (2026-10-05, build step 2A: `src/jason/community/form_library/ca/idr.py`, which keeps the old fields and records its departures from this page). Key `idr-request`; proposed marker code `MC` (meet and confer). It follows the standard in [form-templates.md](../form-templates.md). The inventory row is “Internal dispute resolution” ([standard-forms.md](../standard-forms.md)); the notice catalog row is `meet-and-confer` (CIV 5915); the request kind is `ResponseKind.DISPUTE`. The form that exists today is `FormKey.IDR` (the profile’s `mystique/forms.py`); this design replaces it and records where it has drifted (section 13). The next step after this one, if it fails, is [adr-request.md](adr-request.md).
 
 ## 1. Authority and what the law requires
 

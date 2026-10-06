@@ -312,15 +312,54 @@ LESSONS: tuple[Lesson, ...] = (
            "The shelf keeps the earlier text in its history, and a form written before the amendment recited it.",
            "The electric vehicle form does not ask for either; the library's recital check and the law-review procedure "
            "find an amended citation. A profile's own EV rules are read against the new text.",
-           Status.OPEN, docs=("docs/form-templates/ev-charger.md",)),
+           Status.FIXED,
+           guards=("tests/test_form_library_changes.py::test_the_charger_form_asks_for_no_additional_insured_endorsement_"
+                   "and_no_coverage_amount",),
+           docs=("docs/form-templates/ev-charger.md",)),
     Lesson("response-first-steps-misstate-two-clocks", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
            "The response rules' first step for a solar application says a complete application not denied in writing "
            "within 45 days; Civil Code 714(e)(2)(B) counts from the date of receipt and does not say complete. The "
            "electric vehicle first step omits the exception for a reasonable request for more information.",
            "A first step was worded from a summary of the section, not from its words.",
-           "Reword both first steps from the section's words (recited by token), and add the missing notice-catalog rows "
-           "for the reconsideration answer and the disaster rebuild reviews.",
-           Status.OPEN, docs=("docs/form-templates/solar.md", "docs/form-templates/ev-charger.md")),
+           "Both first steps are reworded from the section's words (from the date of receipt; the reasonable-request "
+           "exception), and the notice catalog gained the reconsideration answer and the disaster rebuild review and "
+           "appeal rows.",
+           Status.FIXED, guards=("tests/test_form_library_changes.py::test_the_reworded_first_steps_count_from_receipt_and_say_nothing_of_a_"
+                   "complete_application",),
+           docs=("docs/form-templates/solar.md", "docs/form-templates/ev-charger.md")),
+    Lesson("a-long-signature-label-loses-the-date-field", date(2026, 10, 5), (Area.FORMS,),
+           "A signature label longer than about one line wraps and pushes the date onto the next line, so the fillable "
+           "PDF is made with no date field.",
+           "The fillable layout places one field a writing line, and a wrapped label takes two.",
+           "The labels on the reconsideration, protected-use, and request-for-resolution forms are short; the render "
+           "test asserts the last two fields are the signature and the date.",
+           Status.FIXED, guards=("tests/test_form_library_records_money.py", "tests/test_form_library_changes.py")),
+    Lesson("a-flat-required-flag-cannot-say-required-only-if", date(2026, 10, 5), (Area.FORMS,),
+           "A question's `required` is one flag, so an email that is needed only when the member chooses email delivery "
+           "is either required (which the standard forbids) or invisible.",
+           "The form model has no condition on a requirement.",
+           "The conditional questions are optional and say \"only if ...\" in their help, and a test checks that no email or "
+           "phone is ever required. A template-level `required_if` is the board's and the administrator's decision.",
+           Status.DECISION, guards=("tests/test_form_library_records_money.py::"
+                                    "test_no_email_or_phone_is_ever_required_and_the_question_says_when_it_is_needed",)),
+    Lesson("statutory-sentences-are-checked-by-a-script-nobody-keeps", date(2026, 10, 5), (Area.FORMS, Area.DOCUMENTS),
+           "The sentences a form must print word for word (the notice in the alternative dispute resolution request, the "
+           "charges form's sentences, the membership list statement) are compared with the shelf only by a script that "
+           "is not in the repository; the recital check proves only that a subdivision exists. Statutes print curly "
+           "apostrophes.",
+           "The check was written for citations, and the exact words were verified once by hand.",
+           "A check that compares each printed statutory sentence with the shelf's words, whitespace-normalized, belongs "
+           "in the form library's checks.",
+           Status.OPEN, docs=("docs/form-library-design.md (What the library checks)",)),
+    Lesson("forms-not-offered-until-the-board-adopts-its-times", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
+           "The architectural application, the reconsideration request, the electric vehicle and solar applications, and "
+           "the protected-use application are not offered by the real profile until it gives the procedure's maximum "
+           "times to answer (Civil Code 4765(a)(1)), and the resale documents and payment plan forms wait for a fee "
+           "schedule and the payment plan standards.",
+           "The law makes the association state the times and standards, and the board has not adopted them here.",
+           "The board adopts the times (a rule on subject 4355(a)(6), 28 days' notice under 4360(a)) and the standards; "
+           "the profile then fills the slots and the forms are offered (`jason form-library --check` names each slot).",
+           Status.DECISION, docs=("docs/form-templates/architectural-application.md", "docs/form-templates/payment-plan.md")),
     Lesson("overstated-the-law-in-an-inventory-row", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
            "The standard-forms inventory said a document's approval requirement is void where it bars a protected use; "
            "the sections void a provision or condition that prohibits or unreasonably restricts the use, and expressly "
@@ -338,6 +377,54 @@ LESSONS: tuple[Lesson, ...] = (
            "The next cycle's definition moves into the form library against the checklist "
            "(docs/form-templates/owner-information.md lists each item).",
            Status.OPEN, docs=("docs/form-templates/owner-information.md",)),
+    Lesson("reference-made-before-a-handler-was-chosen", date(2026, 10, 5), (Area.FORMS, Area.OWNER_INFO),
+           "The owner information cycle sent emailed and mailed copies, each with a reference, before anything recorded "
+           "which handler would process the answers, so a reference could exist for a form nobody could process.",
+           "The reference was made at send time, and a form's handler was a fact of the code, not a choice made when "
+           "the form was made.",
+           "A person opens a campaign (`jason campaigns --open`) and chooses the handler when the form is made; every "
+           "generator calls `campaigns.gate` first and refuses with the reason; each sent copy's entry points at its "
+           "campaign and the form version used.",
+           Status.FIXED, guards=("tests/test_campaigns.py",), docs=("docs/arrivals-design.md",)),
+    Lesson("the-gate-needs-the-unfiltered-form-list", date(2026, 10, 5), (Area.FORMS,),
+           "`Community.forms()` leaves out a form with no handler, so a gate built on it could never let a person choose "
+           "a general form's handler when opening its campaign.",
+           "forms() answers \"what may be made now\", and the gate must ask \"what could be made once a handler is "
+           "chosen\".",
+           "The gate resolves through `form_library.resolve`, not `forms()`; a refusal names the missing handler or slot.",
+           Status.FIXED, guards=("tests/test_campaigns.py",)),
+    Lesson("campaign-gate-leaves-forms-pdf-and-payhoa-open", date(2026, 10, 5), (Area.FORMS,),
+           "The campaign gate covers the three places a marker is stamped today (the emailed and mailed owner "
+           "information copies and the emailed pre-fill); `jason forms --pdf` and `--payhoa` are not gated, and the two "
+           "general handlers (collect-only, sheet-register) are named but have no code.",
+           "Those commands and handlers belong to the forms being added to the library.",
+           "Gate `drafts_forms.py` once the library's forms are in, and build the two general handlers; until then a "
+           "campaign can name an unbuilt handler.",
+           Status.OPEN, docs=("docs/arrivals-design.md (the handler is chosen when the form is made)",)),
+    Lesson("a-delivery-change-would-add-the-years-answered-tag", date(2026, 10, 5), (Area.OWNER_INFO, Area.FORMS),
+           "The delivery-change and secondary-address forms use the owner information handler, but the cycle reads only "
+           "the annual form's PayHOA submissions, and `member_preferences.match` treats any answer sent during the cycle "
+           "as the annual answer, so a delivery-change return would add the year's \"answered\" tag.",
+           "The handler and the matcher were written when the annual form was the only form that set delivery.",
+           "Read those forms' returns into the plan and keep the year's \"answered\" tag off them; until then the test "
+           "compares the delivery tags only.",
+           Status.OPEN, docs=("docs/form-templates/delivery-change.md",)),
+    Lesson("an-accommodation-request-needs-a-restricted-store", date(2026, 10, 5), (Area.FORMS, Area.DOCUMENTS),
+           "An accommodation request's text must be kept where only the people who decide it can read it (level P4), and "
+           "a form template has no restricted-store flag, so the form is not offered by Google Form and waits on a "
+           "counsel slot.",
+           "No form so far held what could disclose a disability.",
+           "Add the flag to the template and keep the returns in the restricted store; until then the form is not "
+           "offered.",
+           Status.OPEN, docs=("docs/form-templates/accommodation-request.md",)),
+    Lesson("forms-wait-for-the-profile-to-name-its-people-and-dates", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
+           "The delivery, nomination, meeting-comment, and accommodation forms are not offered until the profile gives "
+           "the designated person (Civil Code 4035(a)), the election's nomination deadline and inspector, the time limit "
+           "to speak and where the agenda is posted, and who reads an accommodation request first.",
+           "A form with an unfilled slot is not made, so a form never goes out with a blank where the law needs a name or "
+           "a date.",
+           "The board supplies each, and the profile fills the slot; `jason form-library --check` names each slot.",
+           Status.DECISION, docs=("docs/form-templates/README.md",)),
     Lesson("a-joined-group-is-a-lead", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
            "A document span joined to a statute by shared subject words can be about something else.",
            "Shared terms are weaker evidence than a shared citation.",

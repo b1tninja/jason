@@ -47,7 +47,15 @@ HANDLERS: dict[str, Handler] = {h.key: h for h in (
     Handler("owner-information", HandlerKind.PROCESS, "the owner information returns: read, compare, and record in PayHOA",
             ("CIV 4040", "CIV 4041"), "owner-info-cycle"),
     Handler("response-clock", HandlerKind.PROCESS, "a member's request on its clock: classified, acknowledged, and answered "
-            "(jason respond; RESPONSE_RULES)", ("CIV 5205", "CIV 5210", "CIV 5215", "CIV 5900", "CIV 5910", "CIV 5915"), "respond"),
+            "(jason respond; RESPONSE_RULES)", ("CIV 5205", "CIV 5210", "CIV 5215", "CIV 5900", "CIV 5910", "CIV 5915",
+                                                "CIV 4525", "CIV 4530", "CIV 5220", "CIV 5225", "CIV 5658", "CIV 5665",
+                                                "CIV 5930", "CIV 5935",
+                                                "CIV 4045", "CIV 5260", "CIV 5103", "CIV 5105", "CIV 5110", "CIV 5115",
+                                                "CIV 4920", "CIV 4925", "CIV 4930", "CIV 4935", "CIV 4760", "CIV 4765",
+                                                "CIV 4766", "CIV 4745", "CIV 4745.1", "CIV 714", "CIV 714.1", "CIV 4746",
+                                                "CIV 4705", "CIV 4706", "CIV 4710", "CIV 4715", "CIV 4720", "CIV 4725",
+                                                "CIV 4735", "CIV 4736", "CIV 4750", "CIV 4751", "CIV 4752", "CIV 4753"),
+            "respond"),
 )}
 
 

@@ -71,6 +71,13 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Preview one owner's email, then send yourself a test.",
                  command="jason owner-info --email-batch --message NAME.md --only me --preview OUT.html; then --yes",
                  check="the subject names the unit; every form link carries ;unitId=; the pictures show"),
+            Step("Open the cycle's campaigns before any copy is made: each names the form, its version, and the handler "
+                 "that will process the answers. An unwritten row for the running cycle is adopted.",
+                 command="jason campaigns; jason campaigns --adopt (a person)",
+                 check="a campaign is open for each channel the cycle uses (email, mail, PayHOA); every generator refuses "
+                       "a form with no handler, and says which is missing",
+                 refs=("docs/arrivals-design.md",),
+                 lessons=("reference-made-before-a-handler-was-chosen",), person=True),
             Step("Send the email batch.", command="jason owner-info --email-batch --message NAME.md --yes "
                  "--confirmed-by NAME", refs=("docs/batches.md",)),
             Step("Read the emails' delivery: bounced, skipped, or never shown delivered; mail those owners.",

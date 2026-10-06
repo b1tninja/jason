@@ -1,6 +1,6 @@
 # Request to meet with the board about a payment plan
 
-Status: design (2026-10-05). Key `payment-plan`; proposed marker code `PP`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is “Payment plan” ([standard-forms.md](../standard-forms.md)); the notice catalog row is `payment-plan-meeting` (CIV 5665); the request kind is `ResponseKind.PAYMENT_PLAN` with `assignment="collections"`. The form is sent with the pre-lien notice (CIV 5660(d)), which tells the owner of the right, so the owner has it in hand within the 15 days the section allows.
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05, build step 2A: `src/jason/community/form_library/ca/payment_plan.py`, which records its departures from this page). Key `payment-plan`; proposed marker code `PP`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is “Payment plan” ([standard-forms.md](../standard-forms.md)); the notice catalog row is `payment-plan-meeting` (CIV 5665); the request kind is `ResponseKind.PAYMENT_PLAN` with `assignment="collections"`. The form is sent with the pre-lien notice (CIV 5660(d)), which tells the owner of the right, so the owner has it in hand within the 15 days the section allows.
 
 ## 1. Authority and what the law requires
 

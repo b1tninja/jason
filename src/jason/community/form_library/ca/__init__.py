@@ -6,5 +6,16 @@ are slots, and no module here names an association. The forms to come are listed
 """
 
 from jason.community.form_library.ca import idr, records
+from jason.community.form_library.ca import architectural
+from jason.community.form_library.ca import reconsideration
+from jason.community.form_library.ca import ev_charger
+from jason.community.form_library.ca import solar
+from jason.community.form_library.ca import protected_use
+from jason.community.form_library.ca import delivery_change
+from jason.community.form_library.ca import secondary_address
+from jason.community.form_library.ca import individual_delivery
+from jason.community.form_library.ca import candidate_nomination
+from jason.community.form_library.ca import meeting_comment
+from jason.community.form_library.ca import adr, disputed_charge, membership_list, payment_plan, resale
 
 __all__ = ["idr", "records"]

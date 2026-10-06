@@ -1,6 +1,6 @@
 # Candidate nomination and candidate statement
 
-Status: design (2026-10-05). Key `candidate-nomination`; proposed marker code `CN`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Candidate nomination and statement" in [standard-forms.md](../standard-forms.md) (family one: “Run for the board; nominate”, no form today). The election itself is the `election` procedure and the notice rows of [notices.md](../notices.md); this page is the member’s form.
+Status: design (2026-10-05); built in the library as version 1 (2026-10-05), `src/jason/community/form_library/ca/candidate_nomination.py`, marker code `CN`, handler `response-clock` with procedure `respond` (the step this page adds to `election` is not written; the module's docstring lists where it departs from this page). Key `candidate-nomination`. It follows the standard in [form-templates.md](../form-templates.md). The inventory row is "Candidate nomination and statement" in [standard-forms.md](../standard-forms.md) (family one: “Run for the board; nominate”, no form today). The election itself is the `election` procedure and the notice rows of [notices.md](../notices.md); this page is the member’s form.
 
 ## 1. Authority and what the law requires
 

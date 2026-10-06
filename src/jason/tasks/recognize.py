@@ -87,6 +87,9 @@ class SentCopy:
     first_sent: str = ""
     last_sent: str = ""
     batch: str = ""
+    recorded_campaign: str = ""             # the campaign the entry names (``tasks.campaigns``); empty for an older entry
+    handler: str = ""                       # the handler its campaign row chose, when the row is on disk
+    form_version: str = ""                  # the form library's version when the copy was made
 
     @property
     def identity(self) -> str:
@@ -98,22 +101,31 @@ class SentCopy:
         from jason.community.form_refs import parse
 
         markers = parse(self.reference)
-        return markers[0].campaign if markers else ""
+        return markers[0].campaign if markers else self.recorded_campaign
 
     @classmethod
-    def from_entry(cls, reference: str, entry: Mapping[str, Any]) -> SentCopy:
+    def from_entry(cls, reference: str, entry: Mapping[str, Any], campaigns: Mapping[str, Any] | None = None) -> SentCopy:
         def number(key: str) -> int | None:
             value = entry.get(key)
             return int(value) if value is not None and str(value).lstrip("-").isdigit() else None
 
+        from jason.community.form_refs import parse
+
+        named = str(entry.get("campaign") or "")
+        marker = parse(reference)                  # an entry with no campaign belongs to the one its marker's prefix names
+        row = (campaigns or {}).get((named or (marker[0].campaign if marker else "")).upper()) or {}
         return cls(reference, str(entry.get("form") or ""), number("year"), str(entry.get("channel") or "").casefold(),
                    str(entry.get("unit") or ""), number("unitId"), number("membershipId"), str(entry.get("firstSent") or ""),
-                   str(entry.get("lastSent") or ""), str(entry.get("batch") or ""))
+                   str(entry.get("lastSent") or ""), str(entry.get("batch") or ""), named, str(row.get("handler") or ""),
+                   str(entry.get("formVersion") or ""))
 
     def to_json(self) -> dict[str, Any]:
-        return {"reference": self.reference, "form": self.form, "year": self.year, "channel": self.channel,
-                "identity": self.identity, "unit": self.unit, "unitId": self.unit_id, "membershipId": self.membership_id,
-                "firstSent": self.first_sent, "lastSent": self.last_sent}
+        out = {"reference": self.reference, "form": self.form, "year": self.year, "channel": self.channel,
+               "identity": self.identity, "unit": self.unit, "unitId": self.unit_id, "membershipId": self.membership_id,
+               "firstSent": self.first_sent, "lastSent": self.last_sent}
+        if self.recorded_campaign or self.handler:  # the campaign record's pointers, when the copy has a campaign row
+            out.update({"campaign": self.campaign, "handler": self.handler, "formVersion": self.form_version})
+        return out
 
 
 @dataclass(frozen=True)
@@ -131,15 +143,16 @@ class Catalog:
     makes: a marker whose check holds is the sent copy it names; one that fails is taken to the one sent marker it is
     near. Kept apart so a caller reading many messages loads the file once."""
 
-    def __init__(self, refs: Mapping[str, Mapping[str, Any]]) -> None:
+    def __init__(self, refs: Mapping[str, Mapping[str, Any]], campaigns: Mapping[str, Any] | None = None) -> None:
         self.refs = dict(refs)
+        self.campaigns = dict(campaigns or {})          # ``data/forms/campaigns.json``: the handler each copy's campaign chose
         self._sent: list[Any] | None = None
 
     @classmethod
     def load(cls, data_dir: Path) -> Catalog:
-        from jason.tasks import form_references
+        from jason.tasks import campaigns, form_references
 
-        return cls(form_references.load(Path(data_dir)))
+        return cls(form_references.load(Path(data_dir)), campaigns.load_raw(Path(data_dir)))
 
     def __bool__(self) -> bool:
         return bool(self.refs)
@@ -154,10 +167,10 @@ class Catalog:
 
     def copy(self, reference: str) -> SentCopy | None:
         entry = self.refs.get(reference)
-        return SentCopy.from_entry(reference, entry) if entry is not None else None
+        return SentCopy.from_entry(reference, entry, self.campaigns) if entry is not None else None
 
     def copies(self) -> list[SentCopy]:
-        return [SentCopy.from_entry(k, v) for k, v in sorted(self.refs.items())]
+        return [SentCopy.from_entry(k, v, self.campaigns) for k, v in sorted(self.refs.items())]
 
     def find(self, text: str) -> Found | None:
         """The reference ``text`` carries, or None. A sent reference is preferred over one we did not send; a marker

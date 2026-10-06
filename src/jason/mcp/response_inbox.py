@@ -305,8 +305,9 @@ def outstanding_responses(request: str = "", data_dir: Path | None = None) -> di
     answer, with the channel and when it was sent, and a short second list of owners never sent a copy (from the owner
     list on disk). It is the sent-copy catalog jason keeps when it sends a copy, less the answers kept on disk; it says
     how old the catalog, the owner list, and the last check are ("nothing outstanding" always carries its time).
-    Names and units only. Reads disk only: no call to PayHOA or Gmail, and nothing is sent; `jason responses --check` is
-    the live read. Read-only; repeat the caveats."""
+    Names and units only. Each request names the handler its campaign chose when the form was made (`handler`,
+    `campaigns`), when a campaign row is on disk or the profile's request calls for one. Reads disk only: no call to
+    PayHOA or Gmail, and nothing is sent; `jason responses --check` is the live read. Read-only; repeat the caveats."""
     try:
         from jason.community import community
         from jason.tasks import response_inbox as ri
