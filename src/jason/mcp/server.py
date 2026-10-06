@@ -340,6 +340,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "explain_filing", "solar_status", "unit_characteristics", "duty_brief", "records_inventory", "authorities",
         "records_request", "document_search", "library_search", "manager_context",
         "new_responses", "response",       # has anyone answered the request: what the last check kept (response_inbox.py)
+        "outstanding_responses",           # who was sent a copy and has not responded: the sent-copy catalog less the answers
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.
