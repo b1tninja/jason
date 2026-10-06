@@ -470,10 +470,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  "notice requirements.", command="jason conflicts --leads --document KEY",
                  refs=("procedure law-review",), lessons=("law-outdates-provisions",)),
             Step("Read the citations the document makes, scoped to the documents they mean.",
-                 command="jason cite --scan FILE; jason cite EXPR --in KEY --on DAY",
+                 command="jason segments ID --write; jason cite --scan FILE; jason cite EXPR --in KEY --on DAY",
                  check="every ambiguous_document is a question for a person, never a pick; a document's own text is "
-                       "read with --in its key and --on its day",
-                 refs=("docs/rule-citations.md",), lessons=("citation-needs-its-document",), person=True),
+                       "read with --in its key and --on its day; read the scan's notes for each stored segmentation "
+                       "not used and why, and no citation moves to another document",
+                 refs=("docs/rule-citations.md", "docs/document-segmentation.md"),
+                 lessons=("citation-needs-its-document", "exhibit-name-must-not-read-the-documents-section",
+                          "a-reading-is-used-only-for-the-file-it-can-be-checked-against"), person=True),
             Step("Find the rule-making power it grants, and the rules on file for each subject.",
                  command="jason rules --find --model; jason rules --subjects",
                  check="each conflict-tier row is read against its words; a subject with rules on file and no named "

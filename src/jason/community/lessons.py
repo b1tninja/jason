@@ -1834,6 +1834,37 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("rule_rows.TABLES", "tests/test_scoping.py",
                                  "test_every_plan_kinds_rule_is_an_address_the_approvals_screen_recites"),
            docs=("docs/rule-citations.md",)),
+    Lesson("coarse-segment-part-swallows-finer-classification", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "Wiring segmentation into rule authority, a coarse segment \"rules\" part swallowed the manual "
+           "classification's finer bound-in policy parts and moved 12 rules from policy to rule, though the total "
+           "stayed the same.",
+           "The merge let the segmentation win wherever both readings covered a stretch.",
+           "rule_authority.merge_parts keeps a segmentation part only where the two readings agree on the kind; "
+           "where they disagree the classification's part stays and the segmentation's kind is written on it "
+           "(contested), so a segmentation never enlarges the rules on file for a document the classification covers.",
+           Status.FIXED, guards=("rule_authority.merge_parts", "tests/test_segment_scoping.py"),
+           docs=("docs/rule-authority.md",)),
+    Lesson("exhibit-name-must-not-read-the-documents-section", date(2026, 10, 5), (Area.GOVERNING,),
+           "\"Section 3 of Exhibit A\" could have resolved to the containing document's own section 3, because an "
+           "exhibit has no outline of its own.",
+           "A part's name found the document, and the number was then read in the document.",
+           "A section number in a part is checked against the part's own sections; an exhibit with none is a miss "
+           "that says why, never the document's section of that number.",
+           Status.FIXED, guards=("scoping._scope_part",
+                                 "test_a_section_in_an_exhibit_is_a_miss_never_the_documents_section_of_that_number"),
+           docs=("docs/rule-citations.md",)),
+    Lesson("a-reading-is-used-only-for-the-file-it-can-be-checked-against", date(2026, 10, 5),
+           (Area.GOVERNING, Area.DOCUMENTS),
+           "A stored segmentation could be applied to a file whose bytes had changed, to a file holding several "
+           "documents, or to an outline it did not belong to.",
+           "A reading is keyed by the file, and nothing checked the file was still the one read.",
+           "cite_scope.segment_readings uses a reading only when the file is in the library and on disk, its bytes "
+           "are unchanged, and it holds one top-level document that is one outline's document (bound by library path, "
+           "else by text, with a miss if two outlines fit); each reading left out says why in the scan's notes.",
+           Status.FIXED, guards=("cite_scope.segment_readings", "cite_scope.bind_outline", "tests/test_segment_scoping.py"),
+           docs=("docs/rule-citations.md",),
+           notes=("Open: the benefit is unmeasured on real documents until each rule document's PDF is read once "
+                  "(jason segments ID); only citations that already resolved were checked, with none changed.",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",
