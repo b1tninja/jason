@@ -400,8 +400,8 @@ def test_read_downloads_the_attachments_and_keeps_a_reading_with_each_fields_con
     assert gmail.downloaded == [("m1", "att-m1-0"), ("m1", "att-m1-2")]            # the logo was not downloaded
     assert reading["how"] == "scan" and reading["form"] and reading["fields"]["delivery.by-mail"] == {
         "value": True, "how": "mark", "confidence": 0.9}
-    assert reading["owner"] == {"unit": "101 Example Way", "unitId": 1, "name": "Pat Example",
-                                "matchedBy": "the sender's address"}
+    assert reading["owner"] == {"unit": "101 Example Way", "unitId": 1, "membershipId": 11, "name": "Pat Example",
+                                "matchedBy": "the sender's address"}          # the reading keeps the membership id
     assert reading["campaignMatches"] and reading["files"][0]["sha256"]
     a = ri.get(data, arrival)
     assert a.state is State.READ and a.unit == "101 Example Way"

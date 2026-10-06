@@ -18,6 +18,10 @@ carrying the filled form, a mailed return that was scanned. The records, the che
   keyed answers, the same ones a PayHOA submission becomes. Nothing is written to PayHOA: ``jason owner-info --apply``
   plans what it would do, and only its ``--yes`` writes.
 - ``--seen ID ...`` / ``--seen-all``, ``--dismiss ID --by NAME --why TEXT``: a person's act, logged.
+- ``--outstanding [--request K] [--json]``: from disk, who was sent a copy of a request and has not responded (the
+  sent-copy catalog ``data/forms/references.json`` less the answers kept), with when each copy was sent and by which
+  channel, and a short separate list of owners never sent a copy; names and units only. It says how old the catalog, the
+  owner list, and the last check are.
 
 A refusal prints ``jason responses: <reason>`` and exits 2.
 """
@@ -34,12 +38,13 @@ from jason.commands.integrations import at_terminal
 SCHEDULER = "scheduler"
 LIVE_LINE = ("This reads what the last check kept; `jason responses --check` is the live read (Gmail and PayHOA, "
              "read-only).")
-ACTIONS = ("check", "list", "show", "read", "confirm", "seen", "seen_all", "dismiss")
+ACTIONS = ("check", "list", "show", "read", "confirm", "seen", "seen_all", "dismiss", "outstanding")
 # An option and the actions it goes with (None: the inbox view). A stray one is refused rather than ignored.
 MODIFIERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("channel", "--channel", ("check", "list")), ("from_address", "--from", ("check",)), ("since", "--since", ("check",)),
     ("state", "--state", ("list",)), ("unit", "--unit", ("list",)), ("new", "--new", ("list",)),
-    ("days", "--days", ("list",)), ("request", "--request", ("list", "seen_all")), ("model", "--model", ("read",)),
+    ("days", "--days", ("list",)), ("request", "--request", ("list", "seen_all", "outstanding")),
+    ("model", "--model", ("read",)),
     ("set", "--set", ("confirm",)), ("why", "--why", ("confirm", "dismiss")))
 
 
@@ -320,8 +325,14 @@ def _mask_reading(reading: dict[str, Any] | None) -> dict[str, Any] | None:
     and each field's value are masked by the field's name (``_hide``)."""
     if reading is None:
         return None
-    masked = _mask({k: v for k, v in reading.items() if k not in ("owner", "answers", "fields")})
+    kept = ("owner", "answers", "fields", "notes", "copy", "recognition")
+    masked = _mask({k: v for k, v in reading.items() if k not in kept})
     masked["owner"] = _mask(reading.get("owner") or {}, addresses=False)
+    # the notes, the copy sent, and how it was recognized name units (a unit's label is not a contact detail): an email
+    # address or phone number in them is still masked
+    for name in ("notes", "copy", "recognition"):
+        if name in reading:
+            masked[name] = _mask(reading[name], addresses=False)
     masked["answers"] = _hide("", reading.get("answers") or {})
     masked["fields"] = {name: {**{k: v for k, v in _mask(f).items() if k != "value"}, "value": _hide(name, f.get("value"))}
                         for name, f in (reading.get("fields") or {}).items()}
@@ -340,36 +351,19 @@ def _mask_keyed(keyed: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _copy_sent(data_dir: Any, community: Any, reading: dict[str, Any]) -> dict[str, Any]:
-    """The copy the reading's printed reference stands for (``form_references``, which holds ids and hashes) and whether
-    it was sent to the owner and unit the sender's address matched. ``None`` for a comparison that cannot be made."""
-    reference = str(reading.get("reference") or "")
-    out: dict[str, Any] = {"reference": reference, "found": False, "unit": "", "owner": "", "matchesUnit": None,
-                           "matchesOwner": None, "putRight": False}
-    if not reference:
-        return out
-    from jason.tasks import form_references
-
-    hits = form_references.lookup(data_dir, reference)
-    if not hits:
-        return out
-    marker, entry = hits[0]
-    out.update(found=True, unit=str(entry.get("unit") or ""), putRight=_plain(marker) != _plain(reference))
-    owner = reading.get("owner") or {}
-    if entry.get("unitId") is not None and owner.get("unitId") is not None:
-        out["matchesUnit"] = int(entry["unitId"]) == int(owner["unitId"])
-    if entry.get("membershipId") is not None:
-        try:
-            names = {o.membership_id: o.name for o in _ri().owner_directory(data_dir, community).values()}
-        except Exception:  # noqa: BLE001 - no catalog on disk: the comparison is unknown, not wrong
-            names = {}
-        out["owner"] = names.get(int(entry["membershipId"]), "")
-        if out["owner"] and owner.get("name"):
-            out["matchesOwner"] = out["owner"].casefold() == str(owner["name"]).casefold()
-    return out
+    """The copy the reading names (``tasks.response_inbox.copy_of``): the one the reading recorded when it was made, else the
+    one the sent-copy catalog holds under the printed reference, with whether it was sent to the owner and unit the sender's
+    address matched and to the unit the form names. ``None`` for a comparison that cannot be made."""
+    return _ri().copy_of(data_dir, reading, community=community)
 
 
-def _plain(marker: str) -> str:
-    return "".join(ch for ch in marker.upper() if ch.isalnum())
+def _rung_number(name: str) -> int:
+    from jason.tasks.recognize import Rung
+
+    try:
+        return Rung(name).number
+    except ValueError:
+        return 0
 
 
 def _yes(value: bool | None, unknown: str = "not known") -> str:
@@ -395,16 +389,24 @@ def _reading_lines(reading: dict[str, Any], copy: dict[str, Any]) -> list[str]:
     if r.get("reference"):
         out.append(f"  reference: {r['reference']} (read from {r.get('referenceHow') or 'the page'}); the campaign "
                    f"{r.get('campaign') or '?'} {'names this request' if r.get('campaignMatches') else 'is not this request'}")
-        if copy.get("found"):
-            sent = f"sent to {copy.get('owner') or 'an owner'} at {copy.get('unit') or 'a unit'}" \
-                   + (" (the reference was put right by one character)" if copy.get("putRight") else "")
-            out.append(f"  the copy sent under it: {sent}; matches the sender's unit: {_yes(copy.get('matchesUnit'))}; "
-                       f"owner: {_yes(copy.get('matchesOwner'))}")
-        else:
-            out.append("  the copy sent under it: none on file (data/forms/references.json), so unit and owner cannot "
-                       "be compared")
+        if not copy.get("found"):
+            out.append("  the copy sent under it: " + (
+                "a reference we did not send (no copy on file carries it)" if copy.get("unsent") else
+                "none on file (data/forms/references.json), so unit and owner cannot be compared"))
     else:
         out.append("  reference: none read from the page")
+    if copy.get("found"):
+        sent = f"sent to {copy.get('owner') or 'an owner'} at {copy.get('unit') or 'a unit'}" \
+               + (" (the reference was put right by one character)" if copy.get("putRight") else "")
+        written = copy.get("matchesWritten")
+        out.append(f"  the copy sent under it: {sent}; matches the sender's unit: {_yes(copy.get('matchesUnit'))}; "
+                   f"owner: {_yes(copy.get('matchesOwner'))}"
+                   + (f"; the unit written on the form: {_yes(written)}" if written is not None else ""))
+        if copy.get("rung"):
+            out.append(f"  recognized by rung {_rung_number(copy['rung'])}, {copy['rung']} ({copy.get('sure', '?')}): "
+                       "a hint checked against what was sent, not a reading")
+    elif not r.get("reference") and copy.get("unsent"):
+        out.append("  a reference we did not send was found in the subject or an attachment's text")
     fields = r.get("fields") or {}
     if fields:
         out.append("  fields (value, how it was read, confidence):")
@@ -466,6 +468,69 @@ def _show(args: argparse.Namespace, data_dir: Any) -> int:
         print(f"  {act['at']}  {act['by']}  {act['act']}{why}")
     print()
     print(f"Left: {_left(a)}")
+    return 0
+
+
+# -- --outstanding ------------------------------------------------------------------------------------------------------
+
+def _ago(hours: float | None) -> str:
+    return f"{_age(hours)} ago" if hours is not None else "age not known"
+
+
+def _outstanding_lines(body: dict[str, Any]) -> list[str]:
+    cat, check, owners = body["catalog"], body["lastCheck"], body["ownerList"]
+    out = [f"Who was sent a copy and has not responded, as of {_when(body['at'])} UTC. Disk only: nothing was asked of PayHOA "
+           "or Gmail."]
+    if cat["exists"]:
+        out.append(f"  sent-copy catalog: {cat['path']}, written {_when(cat['writtenAt'])} ({_ago(cat['ageHours'])}); "
+                   f"{cat['copies']} copies on record" + (f", {cat['mailings']} mailing(s)" if cat["mailings"] else "")
+                   + (f"; the newest was sent {_when(cat['newestSent'])} ({_ago(cat['newestSentAgeHours'])})"
+                      if cat["newestSent"] else ""))
+    else:
+        out.append(f"  sent-copy catalog: none on disk ({cat['path']}): no copy has been recorded as sent")
+    out.append(f"  last check that succeeded: {_when(check['at'])} ({_ago(check['ageHours'])}); `jason responses --check` "
+               "looks for newer answers" if check["at"] else "  last check: none has succeeded yet, so answers that "
+               "arrived are not counted (`jason responses --check`)")
+    out.append("  owner list: " + (f"data/payhoa.db, written {_when(owners['writtenAt'])} ({_ago(owners['ageHours'])})"
+                                   if owners["exists"] else "none on disk (data/payhoa.db)"))
+    if not body["requests"]:
+        out += ["", "The profile watches no request (Community.response_requests is empty)."]
+    for req in body["requests"]:
+        out += ["", f"{req['request']}: {req['title']} (return by {req['returnBy'] or 'no date'})",
+                f"  {req['sent']} copies sent, {req['answered']} answered, {req['notResponded']} not responded"]
+        if req["outstanding"]:
+            out.append("  Sent a copy and not responded:")
+            for row in req["outstanding"]:
+                days = f" ({row['daysSinceSent']}d)" if row["daysSinceSent"] is not None else ""
+                out.append(f"    {row['unit'] or 'unit not known':28} {row['owner'] or 'owner not known':26} "
+                           f"{row['channel'] or '?':6} sent {_when(row['sentAt'])[:10]}{days}")
+        elif req["sent"]:
+            out.append("  Everyone who was sent a copy has an answer on disk.")
+        else:
+            out.append("  No emailed copy is on record for this request.")
+        if req["neverAsked"] is None:
+            out.append(f"  Never asked: {req['neverAskedNote']}")
+        elif req["neverAsked"]:
+            out.append(f"  Never sent a copy (no copy recorded; {req['neverAskedAnswered']} more answered anyway):")
+            for row in req["neverAsked"]:
+                out.append(f"    {row['unit'] or 'unit not known':28} {row['owner'] or 'owner not known'}"
+                           + ("  (another owner of the unit was sent one)" if row["unitHasASentCopy"] else ""))
+        else:
+            out.append("  Never asked: every current owner was sent a copy or has answered.")
+        if req["note"]:
+            out.append(f"  {req['note']}")
+    out += ["", body["note"].capitalize() + "."]
+    return out
+
+
+def _outstanding(args: argparse.Namespace, data_dir: Any) -> int:
+    from jason.tasks.response_outstanding import outstanding
+
+    body = _mask(outstanding(data_dir, _community(), request=args.request or ""), addresses=False)
+    if args.json:
+        _print_json(body)
+        return 0
+    print("\n".join(_outstanding_lines(body)))
     return 0
 
 
@@ -605,6 +670,8 @@ def cmd_responses(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
             return _seen(args, data_dir)
         if action == "dismiss":
             return _dismiss(args, data_dir)
+        if action == "outstanding":
+            return _outstanding(args, data_dir)
         return _inbox(args, data_dir)
     except refusals as exc:
         return _refuse(str(exc))
@@ -631,6 +698,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     act.add_argument("--seen", nargs="+", metavar="ID", help="mark arrivals looked at and left (needs --by)")
     act.add_argument("--seen-all", action="store_true", help="mark every new arrival seen (needs --by; --request narrows)")
     act.add_argument("--dismiss", metavar="ID", help="not an answer: a question, a duplicate, not the form (needs --by and --why)")
+    act.add_argument("--outstanding", action="store_true",
+                     help="who was sent a copy and has not responded, and owners never sent one, from the sent-copy catalog "
+                          "less the answers kept (disk only; --request narrows; --json)")
     p.add_argument("--channel", action="append", choices=[c.value for c in Channel], metavar="C",
                    help="with --check or --list: only this channel (repeatable)")
     p.add_argument("--from", dest="from_address", metavar="ADDRESS",
@@ -639,7 +709,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--since", metavar="DATE", help="with --check: read from this day (YYYY-MM-DD), past a closed window")
     p.add_argument("--state", choices=[s.value for s in State], metavar="S",
                    help="with --list: only arrivals in this state")
-    p.add_argument("--request", metavar="K", help="with --list or --seen-all: only this request's key")
+    p.add_argument("--request", metavar="K", help="with --list, --seen-all, or --outstanding: only this request's key")
     p.add_argument("--unit", metavar="U", help="with --list: only units whose label contains this")
     p.add_argument("--new", action="store_true", help="with --list: only new arrivals")
     p.add_argument("--days", type=int, default=0, metavar="N", help="with --list: only arrivals from the last N days")

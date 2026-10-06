@@ -285,7 +285,7 @@ def test_the_printed_reference_is_compared_with_the_copy_jason_sent(data, clock)
     copy = tools.response("gmail:m1", data_dir=data)["reading"]["reference"]["copy"]
     assert copy["found"] and copy["matchesUnit"] is True and copy["sentToUnit"] == UNIT and copy["readUnit"] == UNIT
     assert copy["channel"] == "email" and copy["year"] == 2027 and copy["reference"] == marker
-    form_references.record(data, marker, unit="202 Example Way")                               # the copy went to another unit
+    form_references.record(data, marker, unit="202 Example Way", unitId=2)                    # the copy went to another unit
     other = tools.response("gmail:m1", data_dir=data)["reading"]["reference"]["copy"]
     assert other["found"] and other["matchesUnit"] is False and other["sentToUnit"] == "202 Example Way"
 
@@ -356,14 +356,17 @@ def test_the_tools_write_nothing_and_make_no_network_call(data, clock, monkeypat
 # -- where the tools are served ------------------------------------------------------------------------------------------
 
 def test_the_tools_are_in_the_board_profile_the_full_set_and_the_python_interface():
-    assert "new_responses" in PROFILES["board"] and "response" in PROFILES["board"]
+    assert {"new_responses", "response", "outstanding_responses"} <= set(PROFILES["board"])
     assert "new_responses" not in PROFILES["governance"] and "response" not in PROFILES["onboarding"]
-    assert len(PROFILES["board"]) == 40 and len(tools_for("board")) == 40 and tools_for("board")[0].__name__ == "board_digest"
+    assert "outstanding_responses" not in PROFILES["governance"] and "outstanding_responses" not in PROFILES["onboarding"]
+    assert len(PROFILES["board"]) == 41 and len(tools_for("board")) == 41 and tools_for("board")[0].__name__ == "board_digest"
     served = {t.__name__: t for t in ALL_TOOLS}
     assert served["new_responses"] is tools.new_responses and served["response"] is tools.response
+    assert served["outstanding_responses"] is tools.outstanding_responses
     assert len(served) == len(ALL_TOOLS)                                                  # no tool is listed twice
     assert api.new_responses is tools.new_responses and api.response is tools.response
-    assert {"new_responses", "response"} <= set(api.__all__)
+    assert api.outstanding_responses is tools.outstanding_responses
+    assert {"new_responses", "response", "outstanding_responses"} <= set(api.__all__)
 
 
 def test_each_tool_carries_its_caveats_and_names_the_live_read():

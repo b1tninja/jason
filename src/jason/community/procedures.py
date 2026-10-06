@@ -84,13 +84,15 @@ PROCEDURES: tuple[Procedure, ...] = (
             Step("Check for new responses, read each returned form, and confirm what it says. An owner can answer in "
                  "PayHOA, by a reply email, by a mailed scan, or in a Google Form; the check looks at all four.",
                  command="jason responses --check; jason responses --list --new; jason responses --read ID --by NAME; "
-                         "jason responses --confirm ID --by NAME",
+                         "jason responses --confirm ID --by NAME; jason responses --outstanding",
                  check="a reading is evidence for a person; nothing is an answer until a person confirms it; nothing is "
                        "written to PayHOA by a check; a channel that failed says why under its last check (the board's "
-                       "new_responses tool shows each channel's age)",
-                 refs=("docs/responses-design.md",),
+                       "new_responses tool shows each channel's age); the copy a reading names is the one jason sent "
+                       "(owner and unit as sent against the sender and the form's unit: a difference is noted); "
+                       "--outstanding lists who was sent a copy and has not responded, with the ages of what it read",
+                 refs=("docs/responses-design.md", "docs/arrivals-design.md"),
                  lessons=("returns-by-the-same-rules", "form-return-found-by-searching-the-mailbox",
-                          "payhoa-submission-list-row-shape-unconfirmed"), person=True),
+                          "payhoa-submission-list-row-shape-unconfirmed", "reading-keeps-no-membership-id"), person=True),
             Step("Triage the answers as they come in: what to record, enter, confirm, or hold for the board.",
                  command="jason owner-info --responses --canvas",
                  check="each finding's outcome; the board's questions in its canvas (mystique/notes/canvas)",

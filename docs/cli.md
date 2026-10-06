@@ -1175,11 +1175,12 @@ Has anyone answered? The inbox of responses to a request (PayHOA form, Google Fo
 | `--seen` | ID | mark arrivals looked at and left (needs --by) |
 | `--seen-all` |  | mark every new arrival seen (needs --by; --request narrows) |
 | `--dismiss` | ID | not an answer: a question, a duplicate, not the form (needs --by and --why) |
+| `--outstanding` |  | who was sent a copy and has not responded, and owners never sent one, from the sent-copy catalog less the answers kept (disk only; --request narrows; --json) |
 | `--channel` | {payhoa,gmail,mail,forms} | with --check or --list: only this channel (repeatable) |
 | `--from` | ADDRESS | with --check: every message from this address in the window, marking which were kept (Gmail; the address is not printed or stored) |
 | `--since` | DATE | with --check: read from this day (YYYY-MM-DD), past a closed window |
 | `--state` | {new,seen,read,keyed,recorded,dismissed} | with --list: only arrivals in this state |
-| `--request` | K | with --list or --seen-all: only this request's key |
+| `--request` | K | with --list, --seen-all, or --outstanding: only this request's key |
 | `--unit` | U | with --list: only units whose label contains this |
 | `--new` |  | with --list: only new arrivals |
 | `--days` | N | with --list: only arrivals from the last N days |

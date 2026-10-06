@@ -317,11 +317,19 @@ def test_read_prints_each_fields_confidence_the_reference_and_whether_it_matches
     assert "Next: check it against the scan, then `jason responses --confirm gmail:m1 --by NAME" in out
     assert ri.get(env.data, "gmail:m1").state is State.READ
     assert (env.data / "responses" / "files" / "gmail-m1" / "form.pdf").read_bytes() == b"made-up bytes"
-    # a copy sent to another unit does not match
+    path = env.data / "responses" / "readings" / "gmail-m1.json"
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    assert stored["copy"]["membershipId"] == 11 and stored["owner"]["membershipId"] == 11     # the reading keeps the ids
+    assert stored["recognition"]["outcome"] == "recognized" and stored["recognition"]["rung"] == "mark"
+    # a copy sent to another unit does not match. A reading shows the copy it recorded; one made before the catalog was
+    # used (no copy kept) is compared with the catalog as it stands
     refs = json.loads((env.data / "forms" / "references.json").read_text(encoding="utf-8"))
     refs[marker]["unitId"], refs[marker]["membershipId"] = 2, 12
     (env.data / "forms" / "references.json").write_text(json.dumps(refs), encoding="utf-8")
     monkeypatch.setattr(ri, "owner_directory", lambda d, c: {**PAT, "ben@example.org": OwnerRef("102 Example Way", "Ben Sample", 2, 12)})
+    _, out, _ = run(env, capsys, "responses", "--show", "gmail:m1")
+    assert "sent to Pat Example at 101 Example Way; matches the sender's unit: yes; owner: yes" in out
+    path.write_text(json.dumps({k: v for k, v in stored.items() if k not in ("copy", "recognition")}), encoding="utf-8")
     _, out, _ = run(env, capsys, "responses", "--show", "gmail:m1")
     assert "sent to Ben Sample at 101 Example Way; matches the sender's unit: NO; owner: NO" in out
 

@@ -1,19 +1,19 @@
 """The responses inbox, read from disk: has anyone answered the association's request? (docs/responses-design.md)
 
-Two tools for the board profile. ``new_responses`` lists the arrivals the last check kept (new ones by default): each with
+Three tools for the board profile. ``new_responses`` lists the arrivals the last check kept (new ones by default): each with
 the owner's name and unit, when it came, by which channel, and the names of its attachments, and for each channel when
 it last succeeded, how the last try ended, and how old that is. ``response`` is one arrival: its reading, its keyed
-answers, its acts, and what is left to do (read, confirm, apply).
+answers, its acts, and what is left to do (read, confirm, apply). ``outstanding_responses`` is the other side: the
+sent-copy catalog less the answers, who was sent a copy and has not responded, and the owners never sent one.
 
-Neither calls Gmail, PayHOA, Google, or Keeper, and neither writes. They read ``data/responses`` (``jason.tasks.response_inbox``):
-what the last ``jason responses --check`` kept. A reading is evidence for a person, never an answer; a contact value in an
+None calls Gmail, PayHOA, Google, or Keeper, and none writes. They read ``data/responses`` (``jason.tasks.response_inbox``)
+and the sent-copy catalog (``data/forms/references.json``): what the last ``jason responses --check`` kept. A reading is evidence for a person, never an answer; a contact value in an
 answer is masked (``jason.approvals.audit.mask``); no email address or phone number is ever in the output, and none is
 stored on an arrival. A miss carries its reason, never an exception.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +112,7 @@ def _miss(reason: str, root: Path | None = None, **more: Any) -> dict[str, Any]:
         except Exception:  # noqa: BLE001 - a miss still says why
             out["checked"] = []
     out["note"] = CHECK_LINE
-    out["caveats"] = list(CAVEATS)
+    out.setdefault("caveats", list(CAVEATS))
     return out
 
 
@@ -167,10 +167,6 @@ def _id(value: str) -> str:
     return text
 
 
-def _same_unit(a: str, b: str) -> bool:
-    return re.sub(r"\W+", " ", a).casefold().strip() == re.sub(r"\W+", " ", b).casefold().strip()
-
-
 def _copy(root: Path, reading: dict[str, Any], arrival_unit: str) -> dict[str, Any]:
     """The printed reference beside the copy jason sent under it: whether one is on record, and whether it was sent to the
     unit the sender's address belongs to. A hint either way."""
@@ -178,25 +174,30 @@ def _copy(root: Path, reading: dict[str, Any], arrival_unit: str) -> dict[str, A
     out: dict[str, Any] = {"text": reference, "how": reading.get("referenceHow") or "",
                            "campaign": reading.get("campaign") or "",
                            "campaignMatchesRequest": bool(reading.get("campaignMatches"))}
-    if not reference:
-        out["copy"] = {"found": False, "reason": "no printed reference was read"}
-        return out
-    from jason.tasks import form_references
+    from jason.tasks import response_inbox as ri
 
-    found = form_references.lookup(root, reference)
-    if not found:
-        out["copy"] = {"found": False, "reason": "no sent copy is recorded under it (jason keeps a copy's reference only "
-                                                 "when it sent that copy)"}
+    copy = ri.copy_of(root, reading, arrival_unit=arrival_unit)
+    if not copy.get("found"):
+        if not reference and not copy.get("unsent"):
+            out["copy"] = {"found": False, "reason": "no printed reference was read"}
+        elif copy.get("unsent"):
+            out["copy"] = {"found": False, "unsent": True,
+                           "reason": "a reference we did not send: no sent copy is recorded under it (an old test, another "
+                                     "association's, or a misread)"}
+        else:
+            out["copy"] = {"found": False, "reason": "no sent copy is recorded under it (jason keeps a copy's reference "
+                                                     "only when it sent that copy)"}
         return out
-    key, entry = found[0]
-    sent = str(entry.get("unit") or "")
     owner = reading.get("owner") or {}
     read = str(owner.get("unit") or arrival_unit or "")
-    out["copy"] = {"found": True, "reference": key, "channel": entry.get("channel", ""), "year": entry.get("year"),
-                   "firstSent": entry.get("firstSent", ""), "sentToUnit": _mask(sent, addresses=False),
-                   "readUnit": _mask(read, addresses=False),
-                   "matchesUnit": _same_unit(sent, read) if sent and read else None,
-                   "says": "the unit the sender's address belongs to, against the unit the copy was sent to"}
+    out["copy"] = {"found": True, "reference": copy["reference"], "channel": copy.get("channel", ""), "year": copy.get("year"),
+                   "firstSent": copy.get("firstSent", ""), "sentToUnit": _mask(str(copy.get("unit") or ""), addresses=False),
+                   "readUnit": _mask(read, addresses=False), "sentToOwner": _mask(str(copy.get("owner") or ""), addresses=False),
+                   "matchesUnit": copy.get("matchesUnit"), "matchesOwner": copy.get("matchesOwner"),
+                   "matchesWrittenUnit": copy.get("matchesWritten"), "foundBy": copy.get("rung", ""),
+                   "sure": copy.get("sure", ""), "putRight": bool(copy.get("putRight")),
+                   "says": "whether the copy was sent to the unit and owner the sender's address belongs to, and to the unit "
+                           "the form names (null: cannot be told); a hint checked against what was sent, not a reading"}
     return out
 
 
@@ -284,4 +285,47 @@ def response(id: str, data_dir: Path | None = None) -> dict[str, Any]:  # noqa: 
                 "note": CHECK_LINE, "caveats": list(CAVEATS)}
 
 
-TOOLS = (new_responses, response)
+OUTSTANDING_CAVEATS = (
+    "This is the sent-copy catalog (`data/forms/references.json`, written when jason sends a copy) less the answers kept on "
+    "disk. An answer that arrived since the last check is not counted: `jason responses --check` is the live read, and the "
+    "ages say how old the catalog and the last check are.",
+    "A copy is answered when its owner or unit has an arrival that was not dismissed, a PayHOA submission, or keyed answers. "
+    "Answering for one unit does not answer for another, and an unread email is counted as an answer from its sender's "
+    "unit: a reading is still evidence for a person.",
+    "A mailed letter's marker names the mailing, not an owner, so the catalog lists no recipients of it: owners the law "
+    "mails appear under `neverAsked` until they answer.",
+    "Names and units only: no email address, phone number, or mailing address is stored or shown. Following up with an "
+    "owner is a person's act; jason sends and replies to no one.",
+)
+
+
+def outstanding_responses(request: str = "", data_dir: Path | None = None) -> dict[str, Any]:
+    """Who was sent a copy of a request and has not responded? For each request the profile watches (or the one named by
+    ``request``): the copies sent and how many are answered, then each owner and unit that was sent a copy and has no
+    answer, with the channel and when it was sent, and a short second list of owners never sent a copy (from the owner
+    list on disk). It is the sent-copy catalog jason keeps when it sends a copy, less the answers kept on disk; it says
+    how old the catalog, the owner list, and the last check are ("nothing outstanding" always carries its time).
+    Names and units only. Reads disk only: no call to PayHOA or Gmail, and nothing is sent; `jason responses --check` is
+    the live read. Read-only; repeat the caveats."""
+    try:
+        from jason.community import community
+        from jason.tasks import response_inbox as ri
+        from jason.tasks.response_outstanding import LINE, outstanding
+
+        root = _root(data_dir)
+        try:
+            body = outstanding(root, community(), request=(request or "").strip())
+        except ri.ResponseError as exc:
+            return _miss(str(exc), root, caveats=list(OUTSTANDING_CAVEATS))
+        if not body["requests"]:
+            return _miss("the profile watches no request (Community.response_requests is empty), so no copy is tracked", root,
+                         catalog=_mask(body["catalog"], addresses=False), caveats=list(OUTSTANDING_CAVEATS))
+        out = {"found": True, **_mask(body, addresses=False), "note": LINE, "caveats": list(OUTSTANDING_CAVEATS)}
+        out["lastCheck"]["channels"] = checked(root)
+        return out
+    except Exception as exc:  # noqa: BLE001 - a reader that fails is an answer, not a traceback
+        return {"found": False, "reason": f"the catalog could not be read: {_mask(f'{type(exc).__name__}: {exc}')}",
+                "note": CHECK_LINE, "caveats": list(OUTSTANDING_CAVEATS)}
+
+
+TOOLS = (new_responses, response, outstanding_responses)

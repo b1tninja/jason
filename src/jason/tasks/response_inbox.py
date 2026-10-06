@@ -32,10 +32,12 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple
 
 from jason.community.forms import CHOICE_KINDS, FormAnswers, FormKey, option_key
 from jason.community.response_inbox import Arrival, Channel, ResponseRequest, State
+from jason.tasks.recognize import Attachment, Catalog, Rung, SentCopy, compare, identify_reference, recognize, same_place
 
 ROOT = "responses"
 INBOX = "inbox.json"
@@ -274,6 +276,63 @@ class Message(NamedTuple):
     candidate: bool
     reason: str
     unit: str = ""
+    note: str = ""                  # what the subject's reference says (a recognized copy), kept on the arrival
+
+
+class Answers:
+    """Who has answered a request, from jason's own records on disk: every kept arrival that was not dismissed, with the
+    unit it names, and, from its reading and keyed answers, the unit and owner ids the sender matched and the reference of
+    the copy it answered. ``of(copy)`` is the arrivals that answer one sent copy."""
+
+    def __init__(self) -> None:
+        self.arrivals: dict[str, str] = {}                         # arrival id to the unit it names
+        self.unit_ids: dict[int, list[str]] = {}
+        self.memberships: dict[int, list[str]] = {}
+        self.references: dict[str, list[str]] = {}
+
+    def of(self, copy: SentCopy) -> list[str]:
+        ids = set(self.references.get(copy.reference, ())) | set(self.unit_ids.get(copy.unit_id, ())) \
+            | set(self.memberships.get(copy.membership_id, ()))
+        ids |= {i for i, label in self.arrivals.items() if copy.unit and label and same_place(copy.unit, label)}
+        return sorted(ids)
+
+
+def answered_by(data_dir: Path, request_key: str) -> Answers:
+    """The answers kept for a request (``Answers``): a dismissed arrival is not an answer; a superseded one is."""
+    out = Answers()
+    root = responses_dir(data_dir)
+
+    def note(table: dict, key: Any, arrival_id: str) -> None:
+        if key not in (None, ""):
+            table.setdefault(key, []).append(arrival_id)
+
+    for a in load_inbox(data_dir).arrivals.values():
+        if a.request != request_key or a.state is State.DISMISSED:
+            continue
+        out.arrivals[a.id] = a.unit
+        for path, owner_key in ((root / READINGS / f"{a.stem}.json", "owner"), (root / KEYED / f"{a.stem}.json", "")):
+            if not path.is_file():
+                continue
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if owner_key:
+                owner, copy = raw.get("owner") or {}, raw.get("copy") or {}
+                note(out.unit_ids, owner.get("unitId"), a.id)
+                note(out.memberships, owner.get("membershipId"), a.id)
+                note(out.references, copy.get("reference") if copy.get("found") else "", a.id)
+            else:
+                note(out.unit_ids, raw.get("unit_id"), a.id)
+                note(out.memberships, raw.get("membership_id"), a.id)
+    return out
+
+
+def request_copies(catalog: Catalog, request: ResponseRequest) -> list[SentCopy]:
+    """The catalog's sent copies (and mailed campaigns) that belong to a request: by the campaign of the marker, else by the
+    form and the cycle's year."""
+    return [c for c in catalog.copies()
+            if request.names_campaign(c.campaign) or (c.form == request.form.key.value and c.year == request.cycle.year)]
 
 
 class GmailChannel:
@@ -286,13 +345,35 @@ class GmailChannel:
     channel = Channel.GMAIL
 
     def __init__(self, gmail: Any, request: ResponseRequest, *, own: Iterable[str], owners: Mapping[str, OwnerRef] | None = None,
-                 known: Iterable[str] = (), limit: int = 500) -> None:
+                 known: Iterable[str] = (), limit: int = 500, data_dir: Path | None = None) -> None:
         self.gmail, self.request = gmail, request
         self.own = {d.casefold() for d in own}
         self.owners = dict(owners or {})
         self.known, self.limit = set(known), limit
+        self.data_dir = Path(data_dir) if data_dir is not None else None
         self.listed: list[Message] = []
         self.looked = 0
+        self._catalog: Catalog | None = None
+        self._answers: Answers | None = None
+
+    @property
+    def catalog(self) -> Catalog:
+        """The sent-copy catalog, loaded once for the check (empty when no data folder was given)."""
+        if self._catalog is None:
+            self._catalog = Catalog.load(self.data_dir) if self.data_dir is not None else Catalog({})
+        return self._catalog
+
+    def asked(self, owner: OwnerRef | None) -> bool | None:
+        """Rung 7: whether the owner the sender's address belongs to was sent a copy of this request and has not answered.
+        None when that cannot be told (no owner matched, or no sent copy is on record at all)."""
+        if owner is None or owner.membership_id is None or not self.catalog:
+            return None
+        mine = [c for c in request_copies(self.catalog, self.request) if c.membership_id == owner.membership_id]
+        if not mine:
+            return False
+        if self._answers is None:
+            self._answers = answered_by(self.data_dir, self.request.key) if self.data_dir is not None else Answers()
+        return not any(self._answers.of(c) for c in mine)
 
     @staticmethod
     def headers() -> tuple[str, ...]:
@@ -325,8 +406,19 @@ class GmailChannel:
         recipients = _people(_header(head, "To")) + _people(_header(head, "Cc"))
         if not (any(_host(a) in self.own for _, a in recipients) or _groups(head, self.own, via)):
             return Message(**base, candidate=False, reason="did not reach an association address or group")
+        # Rung 1 on the subject already in hand: a reply keeps the copy's [Ref ...]. Rung 7 on the attachments' names: a PDF
+        # or image from an owner who was sent a copy and has not answered. Nothing is downloaded.
+        probe = None
+        if self.catalog:
+            probe = recognize(self.data_dir or Path(), self.request, subject=head.get("Subject") or _header(head, "Subject"),
+                              attachments=[Attachment(name) for name in files], sender_asked=self.asked(owner),
+                              catalog=self.catalog, images=False)
+            if probe.recognized and probe.rung is Rung.SUBJECT:
+                return Message(**base, candidate=True, reason="its subject carries the reference of a copy jason sent",
+                               note=scrub(probe.note, 300))
         if files:
-            return Message(**base, candidate=True, reason="carries a PDF or an image")
+            return Message(**base, candidate=True, reason="carries a PDF or an image" + (
+                ", from an owner who was sent a copy and has not answered" if probe is not None and probe.worth_download else ""))
         if owner:
             return Message(**base, candidate=True, reason="from an address PayHOA holds for a current owner")
         return Message(**base, candidate=False, reason="no PDF or image, and not from a current owner's address")
@@ -350,7 +442,8 @@ class GmailChannel:
         found = self.messages(since, sender=sender)
         if sender:
             self.listed = found
-        return [Arrival(f"gmail:{m.id}", self.request.key, Channel.GMAIL, m.at, m.who, m.unit, m.subject, m.attachments)
+        return [Arrival(f"gmail:{m.id}", self.request.key, Channel.GMAIL, m.at, m.who, m.unit, m.subject, m.attachments,
+                        note=m.note)
                 for m in found if m.candidate and f"gmail:{m.id}" not in self.known]
 
 
@@ -595,7 +688,8 @@ def _channel_for(channel: Channel, client: Any, request: ResponseRequest, data_d
                              known=known, tests=test_memberships() if tests is None else tests)
     if channel is Channel.GMAIL:
         return GmailChannel(client, request, own=community.email_domains(),
-                            owners=owner_directory(data_dir, community) if owners is None else owners, known=known)
+                            owners=owner_directory(data_dir, community) if owners is None else owners, known=known,
+                            data_dir=data_dir)
     if channel is Channel.MAIL:
         return MailChannel(client, request, known=known)
     return FormsChannel(client, request, known=known)
@@ -837,6 +931,100 @@ def _download(data_dir: Path, community: Any, a: Arrival, clients: Mapping[Chann
     return out, owner
 
 
+def recognition_of(data_dir: Path, request: ResponseRequest, a: Arrival, files: list[Path], chosen: FileReading | None,
+                   people: Mapping[str, OwnerRef], notes: list[str]) -> tuple[Any, dict[int, str]]:
+    """Which copy jason sent an arrival answers (``tasks.recognize``): the subject, the files' text layers and hidden
+    reference field, then the marker the reader found on the page. Where the subject and the page name different copies the
+    page's is used and the difference is noted. Returns the recognition and the owners' names by membership id (for the
+    copy's owner as sent). A reference no sent copy carries is noted as one we did not send, when a catalog is on disk."""
+    catalog = Catalog.load(data_dir)
+    mail = DiskMail(data_dir)
+    attachments = [Attachment(f.name, path=f, text=mail.text(a.native) if a.channel is Channel.MAIL else "") for f in files]
+    found = recognize(data_dir, request, subject=a.summary, attachments=attachments, catalog=catalog, images=False)
+    names = {o.membership_id: o.name for o in people.values() if o.membership_id is not None}
+    if chosen is not None and chosen.reference:
+        typed = chosen.how == "typed"
+        page = identify_reference(catalog, chosen.reference, Rung.FIELD if typed else Rung.MARK, request=request,
+                                  where=(f"the hidden reference field of {chosen.name}" if typed
+                                         else f"the marker on {chosen.name}"), reader_how=chosen.reference_how)
+        if page is not None:
+            if found.copy is None:
+                found = page
+            elif found.copy.reference != page.copy.reference:
+                notes.append(f"the {found.rung.value if found.rung else 'message'} names the copy sent to "
+                             f"{found.copy.unit or 'one owner'}, but the page's marker names the copy sent to "
+                             f"{page.copy.unit or 'another owner'}: the page's is used")
+                found = page
+        elif catalog and (hit := catalog.find(chosen.reference)) is not None and not hit.sent:
+            notes.append(f"the page's reference {hit.reference} is one we did not send")
+            found = replace(found, unsent=True, reference=found.reference or hit.reference)
+    if found.copy is None and found.unsent and catalog and not any("did not send" in n for n in notes):
+        notes.append(f"{found.reference} in the subject or an attachment's text is a reference we did not send")
+    return found, names
+
+
+def copy_record(found: Any, compared: Any, names: Mapping[int, str]) -> dict[str, Any]:
+    """The recognition's copy as the reading keeps it: the sent copy (form, cycle, channel, owner and unit as sent, membership
+    id, first sent), how it was found, and whether it was sent to the unit and owner the sender matched and to the unit
+    the page names (None: cannot be told)."""
+    copy = found.copy
+    if copy is None:
+        return {"found": False, "reference": found.reference, "unit": "", "owner": "", "matchesUnit": None,
+                "matchesOwner": None, "matchesWritten": None, "putRight": False, "unsent": bool(found.unsent)}
+    return {**copy.to_json(), "found": True,
+            "owner": names.get(copy.membership_id, "") if copy.membership_id is not None else "",
+            "putRight": found.how != "whole", "rung": found.rung.value if found.rung else "", "sure": found.sure.value,
+            "matchesUnit": compared.matches_unit, "matchesOwner": compared.matches_owner,
+            "matchesWritten": compared.matches_written}
+
+
+def _plain(marker: str) -> str:
+    return "".join(ch for ch in marker.upper() if ch.isalnum())
+
+
+def copy_of(data_dir: Path, reading: Mapping[str, Any], *, community: Any = None, arrival_unit: str = "") -> dict[str, Any]:
+    """The sent copy a reading names, as ``copy_record`` keeps it: the copy the reading recorded when it was made, else (a
+    reading made before the catalog was used, or one whose copy was not on record then) the copy the catalog holds under
+    the reading's printed reference now, compared with the owner and unit the sender matched. ``found`` False says why:
+    no reference, no sent copy under it, or a reference we did not send."""
+    stored = reading.get("copy")
+    if isinstance(stored, dict) and stored.get("found"):
+        return dict(stored)
+    reference = str(reading.get("reference") or "")
+    out: dict[str, Any] = {"found": False, "reference": reference, "unit": "", "owner": "", "matchesUnit": None,
+                           "matchesOwner": None, "matchesWritten": None, "putRight": False,
+                           "unsent": bool(isinstance(stored, dict) and stored.get("unsent"))}
+    if not reference:
+        return out
+    catalog = Catalog.load(data_dir)
+    hit = catalog.find(reference)
+    if hit is None:
+        return out
+    if not hit.sent:
+        out["unsent"] = True
+        return out
+    copy = catalog.copy(hit.reference)
+    raw = reading.get("owner") or {}
+    who = SimpleNamespace(unit=raw.get("unit") or arrival_unit, unit_id=raw.get("unitId"),
+                          membership_id=raw.get("membershipId"), name=raw.get("name") or "")
+    names: dict[int, str] = {}
+    if community is not None and copy.membership_id is not None:
+        try:
+            names = {o.membership_id: o.name for o in owner_directory(data_dir, community).values()}
+        except Exception:  # noqa: BLE001 - no catalog on disk: the comparison is unknown, not wrong
+            names = {}
+    sent_name = names.get(copy.membership_id, "") if copy.membership_id is not None else ""
+    known = who.unit or who.unit_id is not None or who.membership_id is not None
+    compared = compare(copy, owner=who if known else None,
+                       written_unit=str((reading.get("answers") or {}).get("unit-address") or ""), sent_name=sent_name)
+    matches_owner = compared.matches_owner
+    if matches_owner is None and sent_name and who.name:           # a reading made before it kept the membership id
+        matches_owner = sent_name.casefold() == who.name.casefold()
+    return {**copy.to_json(), "found": True, "owner": sent_name, "putRight": hit.how != "whole" or _plain(hit.reference) != _plain(reference),
+            "rung": "mark", "sure": "high" if hit.how == "whole" else "medium", "matchesUnit": compared.matches_unit,
+            "matchesOwner": matches_owner, "matchesWritten": compared.matches_written}
+
+
 def read(data_dir: Path, community: Any, arrival_id: str, *, by: str, clients: Mapping[Channel, Callable[[], Any]],
          model: str = "", owners: Mapping[str, OwnerRef] | None = None, reader: Reader | None = None) -> dict[str, Any]:
     """Download an arrival's attachments to ``files/<id>/`` (an email's; a mailed scan is read where the mail service
@@ -856,7 +1044,8 @@ def read(data_dir: Path, community: Any, arrival_id: str, *, by: str, clients: M
 
         preflight(model)
         vision = VisionReader(model)
-    files, owner = _download(data_dir, community, a, clients, owners)
+    people = owners if owners is not None else owner_directory(data_dir, community)
+    files, owner = _download(data_dir, community, a, clients, people)
     layout = _layout(data_dir, request)
     do = reader or read_file
     if vision is not None:
@@ -878,6 +1067,11 @@ def read(data_dir: Path, community: Any, arrival_id: str, *, by: str, clients: M
         campaign = markers[0].campaign if markers else ""
         if campaign and not request.names_campaign(campaign):
             notes.append(f"the marker names another campaign ({campaign}), not this request's")
+    found, names = recognition_of(data_dir, request, a, files, chosen, people, notes)
+    written = str(chosen.answers.get("unit-address") or "") if chosen is not None else ""
+    compared = compare(found.copy, owner=owner, written_unit=written,
+                       sent_name=names.get(found.copy.membership_id, "") if found.copy is not None else "")
+    notes += list(compared.notes)
     reading = {
         "id": a.id, "request": a.request, "readAt": iso(now_utc()), "by": by, "model": model,
         "how": chosen.how if chosen else "not the form", "form": chosen is not None,
@@ -886,8 +1080,10 @@ def read(data_dir: Path, community: Any, arrival_id: str, *, by: str, clients: M
         "reference": chosen.reference if chosen else "", "referenceHow": chosen.reference_how if chosen else "",
         "campaign": campaign, "campaignMatches": bool(campaign and request.names_campaign(campaign)),
         "residual": chosen.residual if chosen else 0.0, "notes": notes,
-        "owner": ({"unit": owner.unit, "unitId": owner.unit_id, "name": owner.name, "matchedBy": "the sender's address"}
-                  if owner else {}),
+        "owner": ({"unit": owner.unit, "unitId": owner.unit_id, "membershipId": owner.membership_id, "name": owner.name,
+                   "matchedBy": "the sender's address"} if owner else {}),
+        "recognition": {k: v for k, v in found.to_json().items() if k != "copy"},
+        "copy": copy_record(found, compared, names),
         "signature": chosen.signature if chosen else "", "signed": chosen.signed if chosen else "",
         "fields": {k: {"value": v.value, "how": v.how, "confidence": round(float(v.confidence), 2)}
                    for k, v in sorted((chosen.fields if chosen else {}).items())},
@@ -1148,9 +1344,9 @@ def clear_files(data_dir: Path, arrival_id: str) -> None:
         shutil.rmtree(folder)
 
 
-__all__ = ["ChannelReport", "CheckReport", "DiskMail", "Ended", "FileReading", "FormsChannel", "GmailChannel", "Inbox", "Keyed",
-           "MailChannel", "Message", "OwnerRef", "PayhoaChannel", "RecordedObserver", "ResponseError", "SavedForms",
-           "acts_for", "answers_from_json", "answers_to_json", "arrival_id_for", "channel_status", "check", "confirm",
-           "dismiss", "get", "is_form_file", "keyed_answers", "list_arrivals", "load_inbox", "load_reading", "log_act",
-           "mark_recorded", "observe_plan", "owner_directory", "read", "read_file", "save_inbox", "seen", "seen_all",
-           "show", "signed_out", "uses"]
+__all__ = ["Answers", "ChannelReport", "CheckReport", "DiskMail", "Ended", "FileReading", "FormsChannel", "GmailChannel", "Inbox",
+           "Keyed", "MailChannel", "Message", "OwnerRef", "PayhoaChannel", "RecordedObserver", "ResponseError", "SavedForms",
+           "acts_for", "answered_by", "answers_from_json", "answers_to_json", "arrival_id_for", "channel_status", "check",
+           "confirm", "copy_of", "copy_record", "dismiss", "get", "is_form_file", "keyed_answers", "list_arrivals", "load_inbox",
+           "load_reading", "log_act", "mark_recorded", "observe_plan", "owner_directory", "read", "read_file",
+           "recognition_of", "request_copies", "save_inbox", "seen", "seen_all", "show", "signed_out", "uses"]

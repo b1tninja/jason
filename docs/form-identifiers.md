@@ -8,6 +8,8 @@ A form jason sends can carry a **marker**: a short code saying which campaign it
 
 The code is `jason.community.form_refs`. The record of what was sent is `jason.tasks.form_references` (`data/forms/references.json`: ids and hashes, never an address or an email). Each delivery engine decides which kind of marker it uses (`jason.tasks.delivery_engines`).
 
+**Finding the copy.** `jason.tasks.recognize` is the one place that reads a reference in order of cost (the subject, an attachment's text layer, the hidden `reference` field, the bar mark and printed marker on a scan, then the form by its layout and the cited authority when no marker survives) and ends in the sent-copy catalog above: the form, cycle, owner and unit as sent. A reference one character off is taken to the one sent reference it is near; one whose check holds that was never sent is flagged. The corpus and its measured counts are in `tests/test_recognize.py`; the design is [arrivals-design.md](arrivals-design.md) ("Recognition is the crux").
+
 ## Campaign or copy
 
 | Engine | What goes out | Identity | Marker |

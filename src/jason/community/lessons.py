@@ -202,13 +202,19 @@ LESSONS: tuple[Lesson, ...] = (
            guards=("tests/test_responses_command.py::test_a_plan_with_no_writes_marks_the_arrival_recorded",),
            docs=("docs/responses-design.md (Step 2, as built)",)),
     Lesson("reading-keeps-no-membership-id", date(2026, 10, 5), (Area.OWNER_INFO,),
-           "A returned form's reading names the owner and unit the sender matched but keeps no membership id, so "
-           "`jason responses --read` and the `response` tool compare a printed reference's copy with the owner by name "
+           "A returned form's reading named the owner and unit the sender matched but kept no membership id, so "
+           "`jason responses --read` and the `response` tool compared a printed reference's copy with the owner by name "
            "and unit only.",
            "The reading was built before the sent-copy catalog was used to identify an arrival.",
-           "Keep the membership id on the reading and compare it with the id the sent copy names (the catalog lookup is "
-           "the next change: docs/arrivals-design.md, build step 1b).",
-           Status.OPEN, docs=("docs/arrivals-design.md",)),
+           "The reading keeps the owner's membership id and unit id, and `read` now looks the copy up in the sent-copy "
+           "catalog through `tasks.recognize` and keeps it (owner and unit as sent, membership id, channel, the rung that "
+           "found it), compared by id with the owner the sender matched and with the unit written on the form; a "
+           "disagreement is a plain note. The command and the tool read those fields.",
+           Status.FIXED,
+           guards=("tests/test_response_recognition.py::test_a_reading_records_the_copy_as_sent_and_compares_it_with_the_sender_and_the_page",
+                   "tests/test_response_recognition.py::test_a_copy_sent_to_another_unit_and_owner_is_noted_plainly",
+                   "tasks.recognize.compare: ids first, a name only for an older reading (response_inbox.copy_of)"),
+           docs=("docs/arrivals-design.md", "docs/responses-design.md (Step 1b, as built)")),
     Lesson("cli-doc-behind-the-parser", date(2026, 10, 5), (Area.REPOSITORY,),
            "docs/cli.md lists fewer commands than the parser has, because sessions add their command's section by "
            "hand while others' commands are not yet in the file.",
@@ -216,6 +222,48 @@ LESSONS: tuple[Lesson, ...] = (
            "Run scripts/gen_cli_docs.py once the shared files settle, and make the commit hook or a test compare the "
            "documented count with the parser's.",
            Status.OPEN, docs=("docs/cli.md",)),
+    Lesson("recognition-covers-only-the-marker-and-the-layout", date(2026, 10, 5), (Area.FORMS, Area.OWNER_INFO),
+           "A returned scan that lost its printed reference is only a Candidate by layout, at low sureness, and a copy "
+           "sent by mail is known only by its campaign, so the unit and owner then come only from the address written "
+           "on the page.",
+           "The reference is the only thing that names one copy, and a poor scan can lose it (2 of 20 simulated scans "
+           "did).",
+           "A rung that matches a sent copy's filled-in fingerprints (owner_prefill.fingerprints, already in the "
+           "catalog) would name the copy when the marker is lost.",
+           Status.OPEN, docs=("docs/arrivals-design.md (Recognition is the crux)",)),
+    Lesson("catalog-has-no-mailing-recipients", date(2026, 10, 5), (Area.FORMS, Area.MAILROOM),
+           "The sent-copy catalog records a mailing's campaign marker but not whom it reached, so `jason responses "
+           "--outstanding` cannot say which mailed owners are outstanding.",
+           "A mailed letter's marker is the same on every copy, and the recipients live in the batch store.",
+           "Record the recipients' membership ids at send time and read them for the outstanding list.",
+           Status.OPEN, docs=("docs/responses-design.md",)),
+    Lesson("answered-is-matched-by-unit-label", date(2026, 10, 5), (Area.FORMS, Area.OWNER_INFO),
+           "A PayHOA submission or a Google Form response carries only a unit title, so \"answered\" falls back to a "
+           "label comparison (house number and the first street word); a renamed or oddly formatted label can leave a "
+           "copy outstanding that was answered.",
+           "Those channels do not carry the unit id the way a sent copy does.",
+           "tasks.recognize.same_place compares conservatively; a unit id on the submission would end the fallback.",
+           Status.OPEN, guards=("tests/test_response_outstanding.py",)),
+    Lesson("request-seeds-miss-a-request-stated-by-who-acts", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "A list of the phrases a statute is expected to use to create a request missed one stated by who acts rather "
+           "than by what is asked: CIV 5210 (records) was missed until a pattern for a member who properly requests "
+           "was added, and sections for a hearing, alternative dispute resolution, the delivery preferences, resale "
+           "documents, elections, and a member's right to speak still produce no span.",
+           "Statutes state a right in many forms, and a pattern list is built from the forms already seen.",
+           "A person reads the sections the standard-forms inventory names that the seed did not find; the "
+           "rediscovery check in docs/standard-forms.md lists them.",
+           Status.OPEN, docs=("docs/standard-forms.md (Running it)",)),
+    Lesson("a-joined-group-is-a-lead", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
+           "A document span joined to a statute by shared subject words can be about something else.",
+           "Shared terms are weaker evidence than a shared citation.",
+           "Each join keeps its reason, and only a citation, a shared request kind, or three shared top terms joins.",
+           Status.FIXED, guards=("tests/test_form_discovery.py::test_a_pair_with_nothing_in_common_is_not_grouped",)),
+    Lesson("a-reseed-must-not-overwrite-a-persons-act", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "Running the discovery seeds again could replace a candidate a person had confirmed, held, or dropped.",
+           "The seeds write the whole candidate list.",
+           "A re-seed keeps a person's status and note, and drops only an unread candidate no longer found.",
+           Status.FIXED,
+           guards=("tests/test_form_discovery.py::test_a_reseed_keeps_a_persons_status_and_note_and_drops_a_stale_unread_candidate",)),
     Lesson("bounces-are-silent", OCT_2026, (Area.EMAIL,),
            "A bounced email never reached jason.",
            "PayHOA's mailer receives the bounce after the send succeeded.",
