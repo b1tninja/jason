@@ -338,6 +338,19 @@ class Mystique(Community):
 
         return RESPONSE_REQUESTS
 
+    def form_slots(self):
+        """The values this association gives the form library's slots: its name, where answers come back, the portal, and
+        the board's address (forms.py). The library's forms for California are not repeated here."""
+        from .forms import form_slots
+
+        return form_slots(self)
+
+    def custom_forms(self):
+        """The association's own forms: owner information, with the handler and procedure of its cycle (forms.py)."""
+        from .forms import CUSTOM_FORMS
+
+        return CUSTOM_FORMS
+
     def request_forms(self):
         """PayHOA's request forms with their question ids, and the topics each takes (requests.py)."""
         from .requests import REQUEST_FORMS

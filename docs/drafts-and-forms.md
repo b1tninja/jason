@@ -31,10 +31,11 @@ jason forms --pdf owner-info [--out FILE] [--prefill unit-address="<the unit's a
 jason forms --read returned/*.pdf --form owner-info [--out answers.csv] [--json]            # read and check them
 ```
 
-Templates are `FORM_TEMPLATES` in `mystique/forms.py`:
-- the Request for Internal Dispute Resolution (Civil Code 5910, 5915);
-- the Request to Inspect Association Records (Civil Code 5205);
-- the Owner Information and Notice Delivery Preferences form (Civil Code 4041).
+Templates are `Community.forms()`: the form library's forms for the association's law, with its slots, adjustments, and
+bindings applied, then its own (`jason form-library` lists them, [form-library-design.md](form-library-design.md)):
+- the Request for Internal Dispute Resolution (Civil Code 5910, 5915), built in for California;
+- the Request to Inspect Association Records (Civil Code 5205), built in for California;
+- the Owner Information and Notice Delivery Preferences form (Civil Code 4041), the association's own, in `mystique/forms.py`.
 
 ### One definition, every rendering
 

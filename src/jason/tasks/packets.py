@@ -202,11 +202,11 @@ def template_markdown(source: str) -> list[str]:
     """A template part's text: a Markdown file (`template_file`), or ``form:<key>`` for a form rendered for
     paper (``form_render.paper_markdown``)."""
     if source.startswith("form:"):
+        from jason.community import community
         from jason.community.form_render import paper_markdown
-        from jason.community.spec import spec_module
 
         key = source.split(":", 1)[1]
-        form = next(f for f in spec_module("forms").FORM_TEMPLATES if f.key.value == key)
+        form = next(f for f in community().forms() if f.key.value == key)
         return paper_markdown(form, preamble=FORM_PREAMBLE, closing=FORM_CLOSING)
     from jason.tasks.section_refs import fill_markdown
 
@@ -227,10 +227,10 @@ def template_style(source: str) -> Any:
 
     if not source.startswith("form:"):
         return REPORT
-    from jason.community.spec import spec_module
+    from jason.community import community
 
     key = source.split(":", 1)[1]
-    form = next(f for f in spec_module("forms").FORM_TEMPLATES if f.key.value == key)
+    form = next(f for f in community().forms() if f.key.value == key)
     gray = form.style.line_gray
     # the room to write goes to the writing lines; the rest of the form sits a little closer than a report
     return replace(REPORT, write_above=max(0.0, form.style.write_height - LINE_BOX), write_ink=(gray, gray, gray),

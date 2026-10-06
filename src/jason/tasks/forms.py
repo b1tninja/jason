@@ -1,6 +1,7 @@
 """The association's request forms in Google Forms: create one from its template, and read its responses into rows.
 
-Templates are ``FORM_TEMPLATES`` in ``mystique/forms.py``. A created form is recorded in ``data/forms/forms.json``.
+Templates are ``Community.forms()``: the form library's forms for the association's law, resolved with its slots, then its
+own (``jason form-library`` lists them). A created form is recorded in ``data/forms/forms.json``.
 Responses are saved to ``data/forms/<formId>/responses.json`` on local disk only; a response is a member's personal
 data and is not written anywhere shared.
 """
@@ -16,12 +17,10 @@ from jason.google.forms import FormKey, FormTemplate, GoogleForms
 
 
 def template(key: str | FormKey) -> FormTemplate:
-    from jason.community.spec import spec_module
-
-    FORM_TEMPLATES = spec_module("forms").FORM_TEMPLATES
+    from jason.community import community
 
     wanted = FormKey(key) if isinstance(key, str) else key
-    for row in FORM_TEMPLATES:
+    for row in community().forms():
         if row.key is wanted:
             return row
     raise LookupError(f"no form template {wanted.value}")

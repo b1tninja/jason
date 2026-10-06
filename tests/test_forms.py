@@ -65,9 +65,9 @@ def test_google_forms_get_a_date_question_and_text_for_email():
 
 
 def test_every_specification_form_has_unique_fields():
-    from jason.community.spec import spec_module
+    from jason.community import community
 
-    for form in spec_module("forms").FORM_TEMPLATES:
+    for form in community().forms():
         fields = [q.field for q in form.questions]
         assert len(fields) == len(set(fields)), form.key
 

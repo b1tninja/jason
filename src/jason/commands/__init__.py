@@ -36,6 +36,7 @@ MODULES: tuple[str, ...] = (
     "batches",
     "form_fuzz",
     "form_lab",
+    "form_library",
     "discover_forms",
     "leases",
     "signatures",

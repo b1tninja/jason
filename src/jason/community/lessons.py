@@ -259,9 +259,32 @@ LESSONS: tuple[Lesson, ...] = (
            "charge for enhanced records is (g). The form also lacks the written designation of a representative "
            "(5205(b)), the member's agreement to the cost before copying, and the request for a withheld record.",
            "The form paraphrased a subdivision, and the section was amended and its subdivisions moved.",
-           "The form library recites by token from the shelf, so a moved subdivision fails the build "
-           "(docs/form-library-design.md, the checks); the definition cites 5205(f) and (g).",
-           Status.OPEN, docs=("docs/form-templates/records-request.md", "docs/form-library-design.md")),
+           "Forms recite statutes by key and the form library's check reads each recital from the shelf: a subdivision "
+           "that is missing, or a section whose words changed after the form's as-of day, fails the check and names the "
+           "form. The records definition cites 5205(f) and (g). Still open: the form lacks the designation, the agreement "
+           "to the cost, and the withheld-record request (jason form-library --check lists them as deferred).",
+           Status.FIXED,
+           guards=("form_library.check.check_recitals",
+                   "tests/test_form_library.py::test_the_shipped_forms_and_the_profile_pass_every_check_on_a_shelf_that_holds_"
+                   "their_recitals", "jason form-library --check"),
+           docs=("docs/form-templates/records-request.md", "docs/form-library-design.md")),
+    Lesson("moved-forms-still-miss-required-content", date(2026, 10, 5), (Area.FORMS,),
+           "The request to inspect records and the request to meet and confer, moved into the form library, still do not "
+           "carry ten items the sections require (the representative's designation, the agreement to the cost, the "
+           "redaction estimate, the withholding explanation; that the association shall not refuse, no fee, assistance at "
+           "the member's cost, the maximum time, the signed and ratified agreement).",
+           "The first step moved the forms unchanged so that existing returns and markers keep working.",
+           "Build step 2 of the form library closes them; `jason form-library --check` lists each as deferred until then.",
+           Status.OPEN, docs=("docs/form-library-design.md", "docs/form-templates/records-request.md",
+                              "docs/form-templates/idr-request.md")),
+    Lesson("packet-builds-left-iterations-in-drive", date(2026, 10, 5), (Area.DOCUMENTS, Area.OWNER_INFO),
+           "Building the owner information packet while it was being developed left fifteen earlier copies of its form "
+           "in Drive, named alike; only the template and the one filled copy the sent packet came from match what was "
+           "mailed.",
+           "Each build made a new copy until the build learned to refresh its filled copy in place.",
+           "The earlier copies are moved, not deleted, to a Superseded folder with their ids logged, once a person says "
+           "so; the build now refreshes the same filled copy.",
+           Status.DECISION, docs=("docs/packets.md",)),
     Lesson("idr-form-requires-an-email", date(2026, 10, 5), (Area.FORMS,),
            "The request to meet and confer requires an email address, which the association's form standard allows "
            "only when the request is for delivery by email, and it lacks what the section says the process carries "
@@ -299,8 +322,9 @@ LESSONS: tuple[Lesson, ...] = (
            "the sections void a provision or condition that prohibits or unreasonably restricts the use, and expressly "
            "allow reasonable application requirements.",
            "A table row compressed several sections into one clause, and nobody read the sections it summarized.",
-           "The rows now say what the sections say; each form's design page recites the sections and labels a reading.",
-           Status.FIXED, docs=("docs/standard-forms.md", "docs/form-templates.md")),
+           "The rows now say what the sections say; each form's design page recites the sections and labels a reading. "
+           "No check reads a table row against the sections it cites, so a person does.",
+           Status.OPEN, docs=("docs/standard-forms.md", "docs/form-templates.md")),
     Lesson("owner-form-short-of-the-forms-standard", date(2026, 10, 5), (Area.FORMS, Area.OWNER_INFO),
            "The built owner information form has no recitals by token, no statement of the clocks to the member, no "
            "acknowledgment at receipt, and no required-content checklist; it omits the statute's fourth occupancy state "

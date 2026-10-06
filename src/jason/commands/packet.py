@@ -294,10 +294,10 @@ def _fillable_forms(packet: Any, record: list[dict[str, Any]], pdf: Path, out: P
     prints for pen and paper."""
     import pymupdf
 
+    from jason.community import community
     from jason.community.fillable import make_fillable
-    from jason.community.spec import spec_module
 
-    forms = {f.key.value: f for f in spec_module("forms").FORM_TEMPLATES}
+    forms = {f.key.value: f for f in community().forms()}
     for part in packet.parts:
         if not part.source.markdown.startswith("form:"):
             continue

@@ -1191,6 +1191,42 @@ class Community(ABC):
         then no request is watched for arrivals (``jason responses``, docs/responses-design.md)."""
         return ()
 
+    def jurisdictions(self) -> tuple[str, ...]:
+        """The bodies of law whose forms the association is under, most general first (``form_library.JURISDICTIONS``): the
+        default is federal law and California's. Another state is another key, never a change to jason."""
+        return ("US", "CA")
+
+    def form_slots(self) -> tuple:
+        """The values for the form library's ``{SLOT}``s, one ``form_library.Slot`` each: the association's name, where
+        answers are returned, its contacts, its fee schedule. Empty until set, so a form that uses a slot is not offered,
+        and the check names the slot (docs/form-library-design.md)."""
+        return ()
+
+    def form_adjustments(self) -> tuple:
+        """What the association changes in the library's forms, as ``form_library.Adjust`` and ``form_library.Add`` rows:
+        a clock its documents make stricter, a paragraph, a question its documents require. A change that removes or
+        rewords what a form must carry, or lengthens a statutory clock, is refused. Empty until set."""
+        return ()
+
+    def form_bindings(self) -> tuple:
+        """The association's provisions for the forms its documents create, as ``form_library.Bind`` rows: the section that
+        creates each request, who decides, its clocks, what it must carry, what it may not ask. Empty until set, so a
+        family form is not offered."""
+        return ()
+
+    def custom_forms(self) -> tuple:
+        """The association's own forms, as ``form_library.FormDefinition`` rows of the custom tier (each with its handler
+        and procedure). Empty until set."""
+        return ()
+
+    def forms(self) -> tuple:
+        """The forms the association offers, as ``FormTemplate`` rows: the library's forms for its jurisdictions with its
+        slots, adjustments, and bindings applied, then its own. Everything that makes or reads a form asks this, never a
+        profile module's constant. A form whose slot or binding is missing is not here (``jason form-library`` says why)."""
+        from jason.community.form_library.resolve import resolve
+
+        return resolve(self).templates()
+
     def request_topics(self):
         """The topics that make an owner's email a request of the association. Empty until set."""
         return ()

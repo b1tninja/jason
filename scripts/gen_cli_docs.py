@@ -131,6 +131,7 @@ GROUPS: dict[str, str] = {
     "forms": "Owners, requests, notices & forms",
     "form-fuzz": "Owners, requests, notices & forms",
     "form-lab": "Owners, requests, notices & forms",
+    "form-library": "Owners, requests, notices & forms",
     "new-owners": "Owners, requests, notices & forms",
     "rentals": "Owners, requests, notices & forms",
     "leases": "Owners, requests, notices & forms",

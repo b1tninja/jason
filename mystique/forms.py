@@ -1,9 +1,9 @@
-"""The association's request forms, made in Google Forms from these rows.
+"""The association's own forms, and what it gives the form library.
 
-Internal dispute resolution is the association's fair, reasonable, expeditious procedure under Civil Code 5900-5920;
-a member's request is in writing (5910(a)), and the parties meet and confer (5915). A member's records request is in
-writing (5205(a)); the association makes the records available within the periods in 5210, and may charge the direct
-cost of copies and redaction (5205(e)). A response is personal data; it stays in the Forms account and on local disk.
+The forms the law requires of every association under it (the request to meet and confer, the records request) are not
+here: they are built into the form library (``jason.community.form_library.ca``), and the association gives the library
+its slots (``form_slots``) and its own forms (``CUSTOM_FORMS``). ``Community.forms()`` is the resolved set: ask it, never
+this module. A response is personal data; it stays in the Forms account and on local disk.
 """
 
 from __future__ import annotations
@@ -11,10 +11,9 @@ from __future__ import annotations
 from datetime import date
 
 from jason.community import form_refs
+from jason.community.form_library import Channel, FormDefinition, Slot, Tier
 from jason.community.response_inbox import ResponseRequest
 from jason.community.forms import CONTACT, AnswerCycle, EarlierElections, FormImport, SuggestedChoices, FormKey, FormQuestion, FormTemplate, ImportRule, QuestionKind, ReadAs, FormStyle, Assurance, EmailCollection, GoogleFormChannel
-
-_DELIVERY = ("Email", "Mail", "Pick up in person")
 
 # The annual owner notice (Civil Code 4041(a)), with what the solicitation must say (4041(b)(2)): an email address is
 # optional, and a simple way to change the preferred delivery method. The same rows make the PayHOA form's build sheet,
@@ -196,39 +195,30 @@ RESIDENT_REGISTRATION = FormImport(
 
 FORM_IMPORTS: tuple[FormImport, ...] = (RESIDENT_REGISTRATION,)
 
-FORM_TEMPLATES: tuple[FormTemplate, ...] = (
-    FormTemplate(
-        key=FormKey.IDR,
-        title="Request for Internal Dispute Resolution",
-        authority="Civil Code 5910 and 5915: a written request to meet and confer with the board.",
-        description=("Use this form to ask the association to meet and confer about a dispute. A board member will "
-                     "contact you to set a meeting."),
-        questions=(
-            FormQuestion("Your name", key="name"),
-            FormQuestion("Unit address", key="unit-address", prefill="UNIT_ADDRESS", reads=ReadAs.ADDRESS),
-            FormQuestion("Email address", QuestionKind.EMAIL, key="email"),
-            FormQuestion("What is the dispute about?", QuestionKind.PARAGRAPH),
-            FormQuestion("What outcome are you asking for?", QuestionKind.PARAGRAPH),
-            FormQuestion("Preferred meeting days and times", QuestionKind.PARAGRAPH, required=False),
-        ),
-    ),
-    FormTemplate(
-        key=FormKey.RECORDS,
-        title="Request to Inspect Association Records",
-        authority="Civil Code 5205: a member's written request to inspect or copy association records.",
-        description=("Use this form to ask to inspect or receive copies of association records. The association may "
-                     "charge the direct cost of copying and redaction (Civil Code 5205(e))."),
-        questions=(
-            FormQuestion("Your name", key="name"),
-            FormQuestion("Unit address", key="unit-address", prefill="UNIT_ADDRESS", reads=ReadAs.ADDRESS),
-            FormQuestion("Records requested", QuestionKind.PARAGRAPH),
-            FormQuestion("Time period the records cover"),
-            FormQuestion("Inspect or receive copies?", QuestionKind.CHOICE, options=("Inspect", "Copies")),
-            FormQuestion("How should copies be delivered?", QuestionKind.CHOICE, options=_DELIVERY),
-        ),
-    ),
-    OWNER_INFO,
+# The association's own forms, returned by ``Community.custom_forms()``. Owner information is built (Civil Code 4041); its
+# handler and procedure are the owner-information cycle's. The request to meet and confer and the records request were
+# here until October 5, 2026; they are the library's now (``jason.community.form_library.ca``), with the same questions,
+# fields, and options, so the returns, markers, and PayHOA records made from them keep working.
+CUSTOM_FORMS: tuple[FormDefinition, ...] = (
+    FormDefinition(
+        template=OWNER_INFO, tier=Tier.CUSTOM, key="owner-info", version="1", as_of=OWNER_INFO_CYCLE.opened,
+        authority=("CIV 4041",), procedure="owner-info-cycle", handler="owner-information",
+        channels=(Channel.PAPER, Channel.FILLABLE_PDF, Channel.EMAIL, Channel.PAYHOA, Channel.GOOGLE_FORM)),
 )
+
+
+def form_slots(community) -> tuple[Slot, ...]:
+    """What this association gives the form library's ``{SLOT}``s, read from where its notices already get them: its
+    name, the official address and email answers come back to, the PayHOA portal, and the board's group address. No fee
+    schedule or records contact is on record, so a form that uses those slots is not offered until one is."""
+    from jason.community.groups import GroupPurpose
+
+    from .help import PORTAL_SIGN_UP
+    from .templates import IDENTITY
+
+    board = next((g.address for g in community.google_groups() if g.purpose is GroupPurpose.BOARD), "")
+    return (Slot("ASSOCIATION", IDENTITY.name), Slot("RETURN_BY_MAIL", IDENTITY.official_address),
+            Slot("RETURN_BY_EMAIL", IDENTITY.official_email), Slot("PORTAL", PORTAL_SIGN_UP), Slot("BOARD_CONTACT", board))
 
 # The requests that expect answers, watched by `jason responses` (docs/responses-design.md). The owner information
 # request is answered four ways: the PayHOA form, a Google Form (FORM_IMPORTS), a reply email carrying the filled form,

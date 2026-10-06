@@ -6,13 +6,13 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-169 commands, by area:
+170 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (24)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
-- [Owners, requests, notices & forms](#owners-requests-notices--forms) (25)
+- [Owners, requests, notices & forms](#owners-requests-notices--forms) (26)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
@@ -1052,6 +1052,17 @@ Download request attachments, comments, and internal notes
 | Option | Value | Help |
 |---|---|---|
 | `--requests` | REQUEST_IDS | Comma-separated submission ids (default: every request in the catalog) |
+
+### `jason form-library`
+
+The forms built in for the association's law, as it has them: by tier and status, the seven checks, and one form's recitals and clocks (read-only; docs/form-library-design.md)
+
+| Option | Value | Help |
+|---|---|---|
+| `--check` |  | run the seven checks (required content, recitals, slots, adjustments, handler, marker codes, what a binding forbids); exit 1 if any form fails |
+| `--show` | KEY | one form by its library key or its template's: recitals as the words, required content, clocks, slots, adjustments |
+| `--tier` | {state,family,custom} | only this tier: state, family, or custom |
+| `--json` |  | print JSON |
 
 ### `jason forms`
 
