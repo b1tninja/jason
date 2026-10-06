@@ -1998,6 +1998,37 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/rule-citations.md",),
            notes=("Open: the benefit is unmeasured on real documents until each rule document's PDF is read once "
                   "(jason segments ID); only citations that already resolved were checked, with none changed.",)),
+    Lesson("parts-placed-by-heading-text-swallow-the-classification", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "On the real manual a part was placed by its heading text wherever it occurred: a running page header (and "
+           "the association's name) became 16 cover parts that overrode the classification, and a contents part spanned "
+           "the whole guide; guidance parts fell from 31 to 2, copy from 18 to 0, and a rule part was lost.",
+           "A heading found anywhere is not a heading, and a reading that wins wherever two overlap can erase the finer one.",
+           "document_segments.place_parts takes only a line that is the heading, in page order, at or after the previous "
+           "part; a repeated heading is a running header inside its part; each part ends where the next starts; a cover "
+           "or contents part is capped at its own pages' share and never overrides a part of another kind "
+           "(rule_authority.merge_parts, FRAME_KINDS).",
+           Status.FIXED, guards=("document_segments.place_parts", "document_segments.locate_heading",
+                                 "rule_authority.merge_parts", "tests/test_segment_scoping.py"),
+           docs=("docs/rule-authority.md", "docs/document-segmentation.md")),
+    Lesson("a-new-reading-must-not-change-a-covered-document", date(2026, 10, 5), (Area.GOVERNING,),
+           "A new reading (the stored segmentation) changed the parts of a document the older reading already covered, "
+           "and nothing failed: the totals still looked right.",
+           "The tests used made-up documents, where the two readings agreed.",
+           "Before a new reading is trusted on real data, compare the older reading's counts by kind with the new one "
+           "switched off (rule_parts with segments=False), the subjects report, and jason cite --scan with and without "
+           "--no-segments, offset by offset: no citation may change document.",
+           Status.FIXED, guards=("tests/test_segment_scoping.py (same-standing tests)",),
+           docs=("docs/rule-citations.md",)),
+    Lesson("a-new-document-definition-calls-the-existing-fill", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A second document system risks a second copy of the token fill, so the manual could print one thing from "
+           "jason manual --render and another from its definition.",
+           "Two paths over the same tokens drift.",
+           "The definition's manual block calls manual.fill_token, the same function render uses; a migration is proved by "
+           "rendering both paths from the same inputs and comparing the output exactly; a layout never reads a block's "
+           "source (assemble once, render under two layouts, compare the blocks); a directory prints only the fields "
+           "with their own publish flag.",
+           Status.FIXED, guards=("manual.fill_token", "tests/test_document_templates.py"),
+           docs=("docs/document-templates.md",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

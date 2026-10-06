@@ -597,6 +597,11 @@ PROCEDURES: tuple[Procedure, ...] = (
                  lessons=("guide-states-duties", "askkind-classify-is-the-librarys", "grammar-misses-future-and-passive-duties")),
             Step("Check the concordance.", command="jason manual --concordance", check="zero unresolved citations",
                  lessons=("outline-numbers-are-the-readers", "span-is-not-subject")),
+            Step("After changing a base template or a block, render the manual from its document definition and require "
+                 "the same output as jason manual --render. For a generated packet, keep the part map beside the PDF.",
+                 command="jason document-template owners-manual",
+                 check="identical: yes; 0 unlabeled pieces, 0 open tokens, 0 gaps unexplained",
+                 refs=("docs/document-templates.md",), lessons=("a-new-document-definition-calls-the-existing-fill",)),
             Step("Render the rules and the manual, and read the labeled differences and the diff.",
                  command="jason manual --render (the last adopted words); jason manual --render --current (the working "
                          "words)",
