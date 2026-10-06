@@ -20,6 +20,9 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [web-ui-decisions.md](web-ui-decisions.md): where jason needs a person, and the UI component for each.
 - [onboarding-ux.md](onboarding-ux.md): onboarding a community: the portal, the request list a manager sends, and ingestion.
 - [record-intake.md](record-intake.md): the record checklist: one slot for each record an association must hold, where a person picks a Drive file or folder, pastes a link, uploads, or says none exists; the pipeline after a pick; the picker verdict.
+- [rule-records.md](rule-records.md): the rules kept as records: fields, status, sources, grants, the Doc reconciled, the change workflow from proposal to adoption and its effects, the checks before notice, as-of and audit views (design).
+- [annual-disclosures.md](annual-disclosures.md): the annual disclosure packet as a document made of embedded documents: the definition, the requirements checklist read from the notice catalog and the models with visible gaps, the clock and send plan, the run, the checks, and the console (design).
+- [directory-consent.md](directory-consent.md): which contact details of the board, officers, committees, the manager and vendors may appear in documents for which readers (per field, per audience), who agreed and how it is recorded, revoked and reissued, the legal readings labeled for counsel, and how the directory block and part map use it (design).
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
 - [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes; each notice's delivery to every member, and the follow-ups the law asks for (`jason notices`).
 
