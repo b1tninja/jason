@@ -411,3 +411,22 @@ def test_a_word_file_gives_the_same_gold_as_a_doc(tmp_path):
     kinds = [n.kind for n in gold.nodes]
     assert kinds.count("page_break") == 1 and kinds.count("table") == 1 and kinds.count("header") == 1
     assert gold.source == "docx" and [p["title"] for p in gold.parts] == ["SAMPLE RULES"]
+
+
+def test_a_contents_page_the_body_bears_out_closes_the_list(tmp_path):
+    gold, pdf = drawn(tmp_path, style=sg.RenderStyle.sized(toc=True))
+    doc = pymupdf.open(pdf)
+    doc[2].insert_text((72, 700), "UNLISTED NOTICE", fontsize=16, fontname="tibo")
+    doc.save(str(tmp_path / "unlisted.pdf"))
+    closed = read(tmp_path / "unlisted.pdf", toc=False)
+    assert closed.closed
+    extra = [n for n in closed.nodes if n.text == "UNLISTED NOTICE"]
+    assert extra and extra[0].tier == "suggested"                 # by typography alone, and the contents does not list it
+    assert all(n.tier == "likely" for n in closed.nodes if "toc" in n.clues)
+    assert any(f["kind"] == "headings the contents does not list" for f in closed.findings)
+    names = [c.name for c in sp.CLUES if c.name != "closed"]
+    open_ = read(tmp_path / "unlisted.pdf", clues=names, toc=False)
+    assert not open_.closed and [n for n in open_.nodes if n.text == "UNLISTED NOTICE"][0].tier == "likely"     # without the closed list, two families agree
+    s = sc.score(gold, record_of(pdf), closed, samples=10)
+    assert s["likely_precision"] == 1.0 and s["likely_f1"] == pytest.approx(s["likely_precision"] * 2 * s["likely_recall"]
+                                                                              / (s["likely_precision"] + s["likely_recall"]))

@@ -263,14 +263,14 @@ def cmd_report(args: argparse.Namespace) -> int:
     results = score_all(args, ablate=True)
     lines = [f"# Structure recovery: {args.id}", "", "Counts and rates only; no words of the document.", "",
              "## By variant (all clues)", "",
-             "| variant | gold | recovered | P | R | F1 | 95% | level | number | parent | parts | page no. | likely P | suggested P |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| variant | gold | recovered | P | R | F1 | 95% | level | number | parent | parts | page no. | likely P | suggested P | likely-only F1 |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for name, cfgs in results.items():
         s = cfgs["all"]
         lines.append(f"| {name} | {s['findable']} | {s['recovered']} | {pct(s['precision'])} | {pct(s['recall'])} | {pct(s['f1'])} | "
                      f"{pct(s['f1_lo'])}-{pct(s['f1_hi'])} | {pct(s['level_exact'])} | {pct(s['number_roundtrip'])} | "
                      f"{pct(s['parent_correct'])} | {pct(s['part_f1'])} | {pct(s['page_numbers'])} | "
-                     f"{pct(s['likely_precision'])} | {pct(s['suggested_precision'])} |")
+                     f"{pct(s['likely_precision'])} | {pct(s['suggested_precision'])} | {pct(s['likely_f1'])} |")
     names = list(results)
     lines += ["", "## What each clue is worth: F1 lost when the clue is left out (percentage points)", "",
               "| clue | " + " | ".join(names) + " |", "|---|" + "---|" * len(names)]

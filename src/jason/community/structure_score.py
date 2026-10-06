@@ -131,6 +131,8 @@ def score(gold: Gold, record: VariantRecord, rec: Recovery, *, labels: dict[int,
     out["likely_precision"] = likely_right / out["likely"] if out["likely"] else 0.0
     suggested = n_rec - out["likely"]
     out["suggested_precision"] = (tp - likely_right) / suggested if suggested else 0.0
+    out["likely_recall"] = likely_right / n_find if n_find else 0.0
+    out["likely_f1"] = f1(out["likely_precision"], out["likely_recall"])
     # levels
     exact = near = 0
     for m in matches:

@@ -47,6 +47,8 @@ SHORT_CHARS = 100
 SHORT_WORDS = 14
 TEXT_CHARS = 25             # a page with fewer letters and digits than this in its text layer has none to read
 MIN_CONFIDENCE = 35.0       # an OCR line whose words average less than this is not read
+CLOSED_MIN = 5              # a list of this many entries, or more,
+CLOSED_SHARE = 0.9          # of which this share the body bears out, is taken to list the headings
 SIMILAR = 0.82              # two lines this alike (folded) are the same line
 
 
@@ -70,6 +72,8 @@ CLUES: tuple[Clue, ...] = (
     Clue("spacing", "layout", 0.3, 3, "a short line with air above it"),
     Clue("indent", "layout", 0.3, 3, "a short centered line"),
     Clue("sequence", "numbering", 0.4, 4, "a number that follows the one before it in its family"),
+    Clue("closed", "contents", 0.0, 1, "a contents page or a set of bookmarks that the body bears out lists the headings: a heading "
+         "it does not list is suggested, never likely", votes=False),
     Clue("page_order", "order", 0.0, 1, "pages read in the order of their printed numbers when the file's order breaks them",
          votes=False),
 )
@@ -594,6 +598,7 @@ class Recovery:
     parts: list[dict[str, Any]] = field(default_factory=list)
     findings: list[dict[str, str]] = field(default_factory=list)
     toc: dict[str, int] = field(default_factory=dict)
+    closed: bool = False                  # a contents page or bookmarks the body bears out lists the headings
     clues: tuple[str, ...] = ()
     body_size: float = 0.0
 
@@ -719,6 +724,11 @@ def recover(lines: list[PLine], pages: int, *, toc: Sequence[Sequence[Any]] = ()
         out.toc = vote_toc(cands, page_lines, toc_pages, out.labels, out.findings)
     chosen = [c for c in cands if c.votes and c.score(rows) >= min_score]
     chosen = _merge_wrapped(chosen, body_lines, body)
+    closed = "closed" in rows and (
+        (out.toc.get("entries", 0) >= CLOSED_MIN and out.toc.get("verified", 0) >= CLOSED_SHARE * out.toc["entries"])
+        or (len(toc) >= CLOSED_MIN and sum(1 for c in cands if "bookmark" in c.votes) >= CLOSED_SHARE * len(toc)))
+    out.closed = closed
+    unlisted = 0
     levels = assign_levels(chosen, body)
     stack: list[int] = []
     for i, c in enumerate(chosen):
@@ -727,14 +737,18 @@ def recover(lines: list[PLine], pages: int, *, toc: Sequence[Sequence[Any]] = ()
         printed = number.printed if number is not None else ""
         title = number.rest if number is not None and number.rest else (c.text if number is None else "")
         fams = sorted(c.families(rows))
+        listed = bool({"toc", "bookmark"} & set(c.votes))
+        unlisted += closed and not listed
         node = PNode(c.text, printed, title, level, c.line.page, c.line.start, sorted(c.votes), fams,
-                     "likely" if len(fams) >= 2 else "suggested", round(c.score(rows), 2), c.line.size, c.line.bold,
+                     "likely" if len(fams) >= 2 and (listed or not closed) else "suggested", round(c.score(rows), 2), c.line.size, c.line.bold,
                      c.line.caps, c.line.source, level_from=why)
         while stack and out.nodes[stack[-1]].level >= level:
             stack.pop()
         node.parent = stack[-1] if stack else -1
         stack.append(len(out.nodes))
         out.nodes.append(node)
+    if unlisted:
+        out.findings.append({"kind": "headings the contents does not list", "page": "", "printed": str(unlisted), "after": ""})
     out.parts = parts_of(out, chosen, find_parts(lines, pages, toc) if marks is None else marks, toc_pages)
     return out
 
