@@ -24,20 +24,22 @@ For a design pass on the screens an **administrator** uses to run jason and to c
 
 ## The components
 
+Six of these are defined, with their data and every state, in [handoff-admin-components.md](handoff-admin-components.md): `ServiceStatus`, `VaultStatus`, `IntegrationCard`, `ConnectionChip`, `CapabilityList`, `CadenceTable`. **There, not here:** where the two pages differ, that page wins, and the rows below keep only what this page added. The rest (`CommunityRow`, `ConnectDialog`, `StepCheck`, `RedirectUri`, `SecretDrop`, `FileDrop`, `DisconnectConfirm`) are defined here, and `PersonSteps` in [handoff-held-setup-roster.md](handoff-held-setup-roster.md#personsteps) (its single step is the `TerminalStep` of the admin page).
+
 | Component | Where | States to design |
 |---|---|---|
-| `ServiceStatus` | Instance, Service | running (since, by Task Scheduler / a service / a container); a lane busy (its job, elapsed); a stale heartbeat (the process may be hung); stopped; a community's lease held by another host |
-| `VaultStatus` | Instance, Integrations | the backend (Keeper on this PC; later SSM, Secrets Manager, OpenBao) and whether it answers; "Keeper needs a sign-in at the terminal" with `jason login`; Keeper's 30-day logout coming (day 25 on); paths per community (names only, never a value) |
+| `ServiceStatus` (defined in the admin page) | Instance, Service | running (since, by Task Scheduler / a service / a container); a lane busy (its job, elapsed); a stale heartbeat (the process may be hung); stopped; a community's lease held by another host |
+| `VaultStatus` (defined in the admin page) | Instance, Integrations | the backend (Keeper on this PC; later SSM, Secrets Manager, OpenBao) and whether it answers; "Keeper needs a sign-in at the terminal" with `jason login`; Keeper's 30-day logout coming (day 25 on); paths per community (names only, never a value) |
 | `CommunityRow` | Communities | each community with its integration chips; one needing a sign-in; one never set up; one whose data folder is on another host |
-| `IntegrationCard` | Community → Integrations, Instance → Integrations | not set up; needs sign-in (who must, and the step); connected (account, capabilities, last check, next read); failing (the error's plain words and the fix); paused (by whom, why); a capability off |
-| `ConnectionChip` | Communities, Status, Setup | the five states as a word and a glyph: not set up, needs sign-in, connected, failing, paused |
+| `IntegrationCard` (defined in the admin page) | Community → Integrations, Instance → Integrations | not set up; needs sign-in (who must, and the step); connected (account, capabilities, last check, next read); failing (the error's plain words and the fix); paused (by whom, why); a capability off |
+| `ConnectionChip` (defined in the admin page) | Communities, Status, Setup | the five states as a word and a glyph: not set up, needs sign-in, connected, failing, paused |
 | `ConnectDialog` | from an `IntegrationCard` | a stepper over the integration's setup steps (below): each step's instructions, what the administrator does in the provider's console, and what jason then checks; resumable; shows which step failed and why |
 | `StepCheck` | inside `ConnectDialog` | not yet; checking; passed (what jason read, with a `read` seal); failed (the provider's error in plain words, the likely cause, the step to revisit); cannot check (a step only the administrator can confirm) |
-| `CapabilityList` | `ConnectDialog`, `IntegrationCard` | each capability a switch, read-only ones first, write ones marked "writes"; the scopes or permissions each asks for, in the provider's own names; turning a write on asks for one more consent; a capability the plan doesn't allow (Zoom participants without a paid plan) |
+| `CapabilityList` (defined in the admin page) | `ConnectDialog`, `IntegrationCard` | each capability a switch, read-only ones first, write ones marked "writes"; the scopes or permissions each asks for, in the provider's own names; turning a write on asks for one more consent; a capability the plan doesn't allow (Zoom participants without a paid plan) |
 | `RedirectUri` | Google and sign-in dialogs | the exact address to paste, copyable; the loopback form on this PC and the HTTPS form when hosted; "can take from five minutes to a few hours to take effect" |
 | `SecretDrop` | `ConnectDialog` | a **write-only** entry that passes a value straight to the vault and never shows it again (below); "set" with when and by whom; "replace"; unavailable on this PC (the terminal command instead) |
 | `FileDrop` | Google, sign-in dialogs | a provider's credential file (Google's client JSON) going straight into the vault; the file is not kept and its contents never shown |
-| `CadenceTable` | Schedules, `IntegrationCard` | each source's cadence, window, default, floor, source (the integration's default, an admin's change, the board's policy), next run, last result; a change below the floor refused with the reason; paused; a scheduled write marked and showing who confirmed it |
+| `CadenceTable` (defined in the admin page, with `ScheduleRow` and `CadenceEditor`) | Schedules, `IntegrationCard` | each source's cadence, window, default, floor, source (the integration's default, an admin's change, the board's policy), next run, last result; a change below the floor refused with the reason; paused; a scheduled write marked and showing who confirmed it |
 | `DisconnectConfirm` | `IntegrationCard` | what disconnecting does (revoke the provider's token, delete the vault entry, pause the schedules), typed confirmation, recorded by name |
 | `PersonSteps` | dialogs, Service | the steps only a person takes, in order, each with who and the command ([handoff-held-setup-roster.md](handoff-held-setup-roster.md)) |
 
@@ -117,6 +119,27 @@ PostScanMail (an API key), the utilities (a username and password; the City's bi
 ## The service
 
 `ServiceStatus` shows `jason daemon status`: the process and how it was started, each community's lease (holder, heartbeat age), each lane's job, the next five runs, and the last failures, with `jason serve --install-task` and `jason daemon stop` as commands. Nothing on the screen starts or stops the service; that is a terminal step.
+
+## As built (checked against the code, 2026-10-05)
+
+This page's first line ("Nothing here is built") is out of date. The parts behind it are built and [handoff-admin-components.md](handoff-admin-components.md) gives each one's real data, its states, and the corrections; this page keeps the screens, the setup dialogs, and "Secrets in the console".
+
+| This page's screen | What exists | What does not |
+|---|---|---|
+| Instance (`#/instance`) | the Status screen (`#/status`, built, admin only) with its sources and standing; `jason daemon status --json` for the service | the overview itself, and every `/api/instance/*` route |
+| Communities (`#/instance/communities`) | `#/communities` lists the profiles (`communities` loader) | each community's integration row of chips, data folder size, last activity |
+| Integrations (instance and community) | `jason integrations list [--instance] --json` | the routes and the cards |
+| Service | `jason daemon status --json` (`jason.serve.status`), `jason serve --install-task`, `jason daemon stop` | the route and `ServiceStatus` |
+| Schedules | `jason cadence --json`, with `--every`, `--cron`, `--window`, `--pause`, `--resume`, `--restore`, `--run-now` | the route; no write from the console |
+| People | `#/people` (offices, terms, jason's admins, the managers with portfolios), read-only | the Instance route (the same list under another nav group) |
+| The setup dialogs | each integration's `setup_steps` in the registry (`Step`: `title`, `admin_does`, `jason_checks`; 37 across the integrations) | `ConnectDialog`, `StepCheck`, `RedirectUri`, `SecretDrop`, `FileDrop`, `DisconnectConfirm`; the steps are not in `integrations list --json` |
+
+### Where this page's text differed from the code (the code wins)
+
+- **The commands in "Secrets in the console".** `jason integrations import` and `jason integrations connect` do not exist: `jason integrations` has `list` and `check` only. Two registry steps (Google Workspace's and Zoom's "Into the vault") still name `jason integrations import`. Credentials reach the vault today by `.env` record uids read through Keeper and moved by `jason vault migrate --yes` (a plan without `--yes`). The `SecretDrop` and `FileDrop` rules stand; their terminal alternative does not exist yet.
+- **The service's lease and heartbeat** (`ServiceStatus`): one heartbeat file per community and a worker lock (`workerLock`: pid and since); "a community's lease held by another host" is `refused` ("another worker holds this community") and the lock's holder.
+- **The five connection states** are `not set up`, `needs sign-in`, `connected`, `failing`, `paused`, exactly (`ConnectionState`). A setting that is only named in `.env` counts as "set" and a vault path as "set" when the vault answers; a credential set and never read is `not set up`.
+- **Google's nine steps, Zoom's four, PayHOA's four** are in the registry in those counts. The registry's words are the source for each step's text; this page's tables are the summary.
 
 ## What must not change
 

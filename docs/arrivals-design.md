@@ -171,7 +171,7 @@ class Arrival:
     identified: Identification | None         # the form step; see below
     triage: Triage | None                     # the triage step
     route: Route | None                       # the routing step
-    state: State                              # new, seen, read, keyed, recorded, dismissed, superseded
+    state: State                              # new, seen, read, keyed, recorded, dismissed; a later answer sets superseded_by
     kept_at: str
 ```
 

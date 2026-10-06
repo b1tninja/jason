@@ -95,6 +95,19 @@ def test_a_form_that_is_not_offered_is_refused_with_what_is_missing(tmp_path):
     assert "'waiting' is not offered: slot FEE_SCHEDULE" in refused(tmp_path, form="waiting")
 
 
+def test_a_form_whose_cited_section_changed_after_its_day_of_the_law_is_refused_as_stale(tmp_path, monkeypatch):
+    from jason.community.form_library import check as lib_check
+    from jason.community.form_library.tiers import Check, Finding, Severity
+
+    stale = Finding("survey", Check.RECITALS, Severity.FAIL, "CIV 9900(a)",
+                    "stale: the shelf logged a change to its words on 2026-09-30, after the form's as-of 2026-09-01")
+    monkeypatch.setattr(lib_check, "check_recitals", lambda form, data_dir, community=None: [stale])
+    reason = refused(tmp_path)
+    assert "'survey' is stale" in reason and "CIV 9900(a)" in reason and "bump its version" in reason
+    monkeypatch.setattr(lib_check, "check_recitals", lambda form, data_dir, community=None: [])
+    assert open_one(tmp_path).form == "survey"              # a form whose sections are unchanged opens as before
+
+
 def test_a_form_with_no_registered_handler_or_procedure_is_refused_and_the_reason_names_it(tmp_path):
     assert "no handler chosen" in refused(tmp_path, form="no-handler", handler=None)
     assert "'send-to-the-moon' is not registered" in refused(tmp_path, form="unregistered", handler=None)

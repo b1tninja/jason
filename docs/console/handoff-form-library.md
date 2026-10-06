@@ -44,7 +44,7 @@ One anatomy, every channel. Top to bottom:
 +--------------------------------------------------------------------------------+
 ```
 
-- **The recital block** (`RecitalBlock`): the quoted words with their citation and the as-of; "In plain words" follows, in a quieter face and labeled the association's. Never the other way round. The block is short: the operative sentence or two, with a link or a QR code to the full section. Where the section is long, the form quotes the part that answers the member's question and names the rest.
+- **The recital block** (`RecitalBlock`, defined once in [handoff-held-setup-roster.md](handoff-held-setup-roster.md#recitalblock): a statute recited from disk inside a document, with its visible miss; on a console screen the built `Recitation` does the same job): the quoted words with their citation and the as-of; "In plain words" follows, in a quieter face and labeled the association's. Never the other way round. The block is short: the operative sentence or two, with a link or a QR code to the full section. Where the section is long, the form quotes the part that answers the member's question and names the rest.
 - **What happens next** (`MemberClockPanel`): written as a promise in plain words, with the dates filled when the form is returned (the acknowledgment). It is the same panel on every form: when we reply, who decides, how to ask again, what the member can do if we do not act (for example "deemed approved"). Where the clock is the board's proposed policy (the law is silent), it says so: "proposed by the board; the board has not yet adopted it".
 - **Each question** (`QuestionWithWhy`): a label in plain words, one line of help, and a small "why we ask" naming the authority or the document section. An optional question says "optional" and says what happens if it is left blank. A question that asks for something sensitive (a diagnosis is never asked) says why and how it is kept.
 - **The right to use other words** and **the help line** (`HelpFooter`): always present, above the signature, never in a footer a printer cuts off.
@@ -75,7 +75,7 @@ It states the date received (which starts the clock), the due date computed from
 
 ## 2. The member's request center
 
-An owner-view screen, `#/requests`, that answers "what do I do to …?" rather than "which form is it?".
+An owner-view screen, `#/requests` as first proposed, that answers "what do I do to …?" rather than "which form is it?". **The route is taken:** `#/requests` is the manager's Requests screen ([screens/requests.md](screens/requests.md)), and the owner view's allowlist has only `records-requests`. The design names the owner's route (for example `#/ask`); the first name stays below only where it was written.
 
 ```text
 +--------------------------------------------------------------------------------+
@@ -126,7 +126,7 @@ A table of the forms jason provides for this community, by tier.
 | Forms provided for this community             Law: United States, California            |
 | 19 built in · 3 adjusted · 2 not offered · 1 failing        checked Oct 5, 4:30 PM      |
 +--------------------------------------------------------------------------------------+
-| STATE   Request to inspect records          CIV 5205, 5210      v2  ready, adjusted     |
+| STATE   Request to inspect records          CIV 5205, 5210      v2  adjusted            |
 |           adjusted: a stricter clock (the documents' section), a question added         |
 | FAMILY  Rental application                  the documents' §…    v1  not offered        |
 |           missing: which section creates it · the board's decision                      |
@@ -145,12 +145,74 @@ A table of the forms jason provides for this community, by tier.
 
 | Component | On | Job |
 |---|---|---|
-| `FormPage`, `RecitalBlock`, `MemberClockPanel`, `QuestionWithWhy`, `HelpFooter` | every form, every channel | The anatomy |
+| `FormPage`, `MemberClockPanel`, `QuestionWithWhy`, `HelpFooter` | every form, every channel | The anatomy. Its recital is the one `RecitalBlock` of [handoff-held-setup-roster.md](handoff-held-setup-roster.md#recitalblock), followed by the labeled "In plain words" note |
 | `AcknowledgmentReceipt` | the confirmation | The date received, the clock, the next step |
 | `FormPicker`, `RequestTracker` | the request center | "What do I do to …?" and "where is my request?" |
-| `LibraryRow`, `TierBadge`, `VersionStamp`, `StaleNote`, `AdjustmentDiff`, `CheckFinding` | the library | A form's tier, version, status, changes, and findings |
+| `FormRegister`, `LibraryRow`, `TierBadge`, `VersionStamp`, `StaleNote`, `AdjustmentDiff`, `CheckFinding` | the library, and the Forms screen | `FormRegister` is the one table of forms (the library and [handoff-forms-and-arrivals.md](handoff-forms-and-arrivals.md)'s Forms register are the same table; it is a `RegisterGrid` whose row is a `LibraryRow`). A row shows a form's tier, version, status, changes, and findings; `CheckFinding` is one row of the built `Findings` |
 
-Reuse what is built: `Tabs`, `RegisterGrid`, `Recitation`, `Seal` (`read`), `Pill`, `Command`/`TerminalStep`, `Evidence`, `Glyph`, `Caveats`, `AgeStamp`. No `Stamp`: a form is not a decision.
+Reuse what is built: `Tabs`, `RegisterGrid`, `Findings`, `Recitation`, `Seal` (`read`), `Pill`, `Command`/`TerminalStep` ([defined once](handoff-admin-components.md#terminalstep)), `Evidence`, `Glyph`, `Caveats`, `AgeStamp` ([defined once](handoff-forms-and-arrivals.md#agestamp)). No `Stamp`: a form is not a decision.
+
+## As built (checked against the code, 2026-10-05)
+
+The library, its resolver, its seven checks, and `jason form-library` are built ([form-library-design.md](../form-library-design.md)). **Today's data for the library table** is `jason form-library --json` (read-only; resolves the community's forms and runs the checks on every read, so its only "age" is now; the shelf's date is not in it). The member's form page, the request center, and "My requests" are not built: there is no loader, and several of their fields are not in any command's JSON.
+
+### The shapes, with made-up values
+
+`jason form-library --json` (`--tier state|family|custom` narrows; `problems` are library-level, with `form: ""`):
+
+```json
+{"chain": ["US", "CA"],
+ "forms": [{"key": "records-request", "tier": "state", "jurisdiction": "CA", "version": "2", "asOf": "2099-01-01",
+            "title": "Request to inspect records", "formKey": "records", "authority": ["CIV 5205", "CIV 5210"],
+            "recitals": ["CIV 5205(f)"], "handler": "response-clock", "procedure": "respond",
+            "channels": ["paper", "fillable-pdf", "email"], "slots": ["ASSOCIATION", "RETURN_BY_MAIL"],
+            "status": "adjusted", "missing": [],
+            "applied": ["clock replaced: acknowledge: 3 business days from receipt (documents: ccrs#4.15) (was ...)"],
+            "refused": [],
+            "clocks": [{"name": "acknowledge", "countedFrom": "receipt", "number": 3, "kind": "business",
+                        "setBy": "documents", "section": "ccrs#4.15", "ifPasses": "", "note": "stricter than ...",
+                        "words": "acknowledge: 3 business days from receipt (documents: ccrs#4.15)"}],
+            "findings": [{"form": "records-request", "check": "recitals", "checkNumber": 2, "severity": "fail",
+                          "item": "CIV 5205(f)", "message": "stale: the shelf logged a change to its words on 2099-06-01, after the form's as-of 2099-01-01; read the amendment, update the definition, and bump its version (now 2)"}]}],
+ "problems": []}
+```
+
+`jason form-library --show KEY --json` adds `recitalWords` (a list of `{citation, found, words, source, problem, caveats, document}`, the words as the shelf holds them now, with the "not an official restatement" caveat) and `required` (a list of `{item, authority, carriedBy, deferred}`). `--check --json` is `{ok, failing, findings, statuses: {key: status}}`. A finding's `severity` is `fail`, `not offered`, or `deferred`; its `check` is one of: the library, required content, recitals, slots, adjustments, handler and procedure, marker codes, what a binding forbids (numbered 0 to 7).
+
+The campaign record that the library table's "Campaigns" column joins on `form` (the library's key) is `jason campaigns --json` ([handoff-followups.md](handoff-followups.md#as-built-checked-against-the-code-2026-10-05)): each row has `version` and `asOf` (the form's version and the law's day when it was opened), so "the version each used" is built.
+
+### States the code can be in that this page does not draw
+
+| State | The field and value that says so |
+|---|---|
+| A refusal makes the form fail | `refused` is non-empty: each refusal is a `fail` finding of check 4, so after the checks the form's `status` is `failing` even though it was resolved as ready or adjusted. The page's "refused" tag is a failing form |
+| A stale form is a failing one | there is no `stale` status. It is a recitals finding whose `message` starts with "stale:" (and so `status: "failing"`); "not on the shelf" and "no paragraph ... opens with (f)" are the same check's other failures |
+| A required item named as a known gap | a `deferred` finding ("not carried yet; ..."): the form is not failing, and `jason form-library --show` marks the item. Not in the page's seven checks |
+| Not offered, several ways at once | `missing` lists each: `slot NAME`, `binding: section`, `binding: decider`, `binding: clock NAME`, `binding: clock NAME (refused)`. Not offered outranks failing |
+| A form that cannot be made for want of a handler | `status: "failing"` with `cannot be made:` problems: no handler chosen, a handler not registered, a handler that serves other citations, a general handler on a form with an authority, a process handler on a form with none, no procedure named, a procedure that does not exist. Five of the seven registered handlers are general and `built=False` (their code is not written); a campaign may still be opened for one |
+| A library-level problem | `problems[]` with `form: ""`: a jurisdiction with no pack, a key two forms share, an adjustment or binding naming a form the community does not have, one `FormKey` shared by two forms |
+| Adjusted and refused together | `applied` and `refused` both non-empty |
+| Channels | `paper`, `fillable-pdf`, `email`, `payhoa`, `portal`, `google-form` (six, as the code names them) |
+
+### Drawn on this page, not yet producible (proposed, not built)
+
+- **The three tiers' rows:** the shipped library has 18 definitions, all `state` (California and one federal form). There is no family form (build step 3: the rental application and the others wait on bindings the board has not taken up) and no custom template (`custom/` is empty); a profile may add its own through `custom_forms()`. The `family` and `custom` rows are drawn from nothing today.
+- **`FormPage` and its parts:** the data lives on `ResolvedForm` in Python (`member_clock`, `acknowledgment` with `{RECEIVED}`, `{DUE}`, `{DECIDER}`, `{REFERENCE}`, `template.questions` with each question's `kind`, `required`, `help`, `authority`, `section`) but **not in the command's JSON**, which carries only `recitals`, `clocks`, `required` (with `--show`), and the titles. A loader returns the form for the viewer. The recitals are checked and shown but **not yet rendered into a printed form's preamble** (the design's deviation 2); a form's "What the law says" block is not produced.
+- **Question kinds:** the code's are `short`, `paragraph`, `choice`, `checkbox`, `date`, `email`, `phone` (an address is a short answer read as an address; there is no address kind).
+- **`AcknowledgmentReceipt`:** the receipt text is a template string on the definition; computing the due date from the clock and filling the tokens is the request's work (`jason respond`, the acknowledgment draft).
+- **`AdjustmentDiff`:** there is no before and after and no who or why for an adjustment. The JSON has `applied` (words) and `refused` (messages); a clock carries its `setBy` and `section`; an added question carries nothing. A diff is a loader to write.
+- **`StaleNote`'s amendment words:** the finding names the date of the change on the shelf, not the amendment's words; `recitalWords` are the words now.
+- **The header's counts and "checked Oct 5, 4:30 PM":** counted from `statuses`; the stamp is the read's own time. `Law: United States, California` is `chain` (`US`, `CA`) with each jurisdiction's title in the code (`JURISDICTIONS`), not in the JSON.
+- **The request center and `FormPicker`:** no data names a group, an order, or a member's wording for a form. "We reply by 10 business days" would be read from the form's `clocks` (`acknowledge`, `answer`). The groups are the community's, and no `Community` method holds them.
+- **`RequestTracker`:** only a records request has a member-side loader (`/api/records-requests`, with the section 5210 clock as stages and a standing); another kind's request is a PayHOA request answered through `jason respond`. No `my-requests` read exists.
+- **The owner view's allowlist** (`ui/src/ownerScreens.json`) holds no forms or requests screen but `records-requests`.
+
+### Where the first draft's shape or word differed (the code wins; the text above is corrected)
+
+- `ready, adjusted` is one word (`adjusted`; a form is ready or adjusted, never both). `stale` is not a status (above). `failing` includes a refused adjustment.
+- The shipped library holds 18 forms, not 19; none is family or custom.
+- `Recital` words are read from the shelf, not rendered into the form; the check is "recitals resolve", and a statute missing from the shelf is "not on the shelf", never an exception.
+- Check 6 reads the sent-copy catalog (`data/forms/references.json`) for codes already used, not the campaigns on disk as the design says.
 
 ## Words
 

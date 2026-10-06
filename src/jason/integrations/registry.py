@@ -262,8 +262,9 @@ GOOGLE_WORKSPACE = Integration(
                            "(/auth/google/callback); leave JavaScript origins empty; download the JSON (newer projects "
                            "show the secret only then). A new redirect URI can take five minutes to a few hours to take "
                            "effect."),
-        Step("Into the vault", "jason integrations import google-workspace FILE --community C --yes --delete-file, or the "
-                               "dialog's file drop; the file is not kept and its contents are never shown.",
+        Step("Into the vault", "At the terminal: jason sign-in --import-client FILE (it puts the client at the community's "
+                               "vault path and never prints it; delete the downloaded file after). A later release adds "
+                               "the console's write-only file drop; the file is not kept and its contents are never shown.",
              "the vault entry is set"),
         Step("Sign in", "Sign in with Google as the account jason reads with: its own mailbox (recommended), or the "
                         "signed-in officer.",
@@ -383,9 +384,9 @@ ZOOM = Integration(
                        "hearings.",
              "the token's scopes against those asked"),
         Step("Activate", "Activate the app."),
-        Step("Into the vault", "The account id, client id, and client secret: jason integrations import zoom --community "
-                               "C (the secret at a hidden prompt), or the dialog's secure entry. Today: jason zoom "
-                               "--store-app --account-id A --client-id C, the secret in the record's password field.",
+        Step("Into the vault", "The account id, client id, and client secret: jason zoom --store-app --account-id A "
+                               "--client-id C puts the app at the community's vault path (create only), and the secret goes "
+                               "in the record's password field in Keeper. A later release adds the console's secure entry.",
              "a token is issued and one meeting is listed; which capabilities the plan allows"),
     ),
     sources=(

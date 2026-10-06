@@ -447,6 +447,26 @@ LESSONS: tuple[Lesson, ...] = (
            "jason never marks a follow-up done; a reminder with nobody outstanding says so and stays open until a person "
            "acts.",
            Status.FIXED, guards=("tests/test_followups.py (no auto-done)",)),
+    Lesson("a-campaign-could-open-for-a-stale-form", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
+           "The campaign gate judged a form by the resolver's status, which does not run the library's checks, so a form "
+           "whose cited section the shelf had since changed (or whose adjustment the library refused) could still have a "
+           "campaign opened and copies made from it.",
+           "The gate asked \"may this be made\" of the resolver and never asked the checks \"are its words still the law's\".",
+           "Opening a campaign, and every generator through `campaigns.require`, refuses a form with a refused adjustment "
+           "or a \"stale:\" recital finding, naming the section and the step (read the amendment, update the definition, "
+           "bump its version).",
+           Status.FIXED, guards=("tests/test_campaigns.py::test_a_form_whose_cited_section_changed_after_its_day_of_the_law_"
+                                 "is_refused_as_stale",)),
+    Lesson("setup-steps-name-commands-that-do-not-exist", date(2026, 10, 5), (Area.ONBOARDING, Area.DOCUMENTS),
+           "The Google Workspace and Zoom setup steps told the administrator to run `jason integrations import`, which does "
+           "not exist (`jason integrations` has list and check only).",
+           "The steps were written from the design before the commands were built, and nothing compared them with the "
+           "parser.",
+           "The steps name the commands that exist (`jason sign-in --import-client`, `jason zoom --store-app`), and a test "
+           "compares every command a setup step names with the parser.",
+           Status.FIXED, guards=("tests/test_integrations.py::test_every_command_a_setup_step_names_exists_in_the_parser",),
+           notes=("docs/integrations-design.md still describes `jason integrations import` and `connect` as designed, not "
+                  "built.",)),
     Lesson("a-joined-group-is-a-lead", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
            "A document span joined to a statute by shared subject words can be about something else.",
            "Shared terms are weaker evidence than a shared citation.",

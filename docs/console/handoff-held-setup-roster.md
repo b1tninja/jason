@@ -114,7 +114,7 @@ Wherever jason prepares something a person finishes: the notice ("next, each a p
 
 - An ordered list. Each step has:
   - who takes it (an office or "you");
-  - the `Command` or the place (PayHOA, the minutes);
+  - the `Command` or the place (PayHOA, the minutes); a step that is a terminal command is the `TerminalStep` of [handoff-admin-components.md](handoff-admin-components.md#terminalstep) (a `Command` with who runs it and why it is not a button), and a lone one on a screen with no sequence is that component alone;
   - whether it is done, from a record, never from a click here.
 - **States:** none done; some done (each with its record); all done.
 - jason's own finished steps sit above as seals ("jason drafted the notice").
@@ -150,7 +150,7 @@ People and offices is read-only.
 
 ### `RecitalBlock`
 
-A statute recited inside a document: the meeting notice's delivery section, the agenda's reminder, a letter.
+A statute recited inside a document: the meeting notice's delivery section, the agenda's reminder, a letter, and the form page's "What the law says" ([handoff-form-library.md](handoff-form-library.md), which adds the as-of line and the labeled "In plain words" note after it). The one definition; on a console screen the built `Recitation` does the same job.
 
 - **The words:** in the document's serif, set as a quotation, with the citation as its heading ("Civil Code Section 4045(b) reads:") and the edition in small print.
 - **An omission** is an ellipsis inside the quotation, never a paraphrase around it.

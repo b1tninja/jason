@@ -166,8 +166,10 @@ def channel_of(value: Any) -> Channel:
 
 # -- judging a form ------------------------------------------------------------------------------------------------------
 
-def _resolved(community: Any, form_key: str) -> Any:
-    """The community's form by its library key or its template's, offered or refused with the reason."""
+def _resolved(community: Any, form_key: str, data_dir: Path | None = None) -> Any:
+    """The community's form by its library key or its template's, offered or refused with the reason. A form whose
+    adjustment the library refused, or that cites a section the shelf has logged a change to since the form's as-of day,
+    is refused too: a copy is never made from words the law has moved from (``data_dir`` is where the shelf's log is)."""
     from jason.community.form_library.resolve import resolve
     from jason.community.form_library.tiers import Status
 
@@ -179,16 +181,26 @@ def _resolved(community: Any, form_key: str) -> Any:
     if form.status is Status.NOT_OFFERED:
         raise CampaignRefusal(f"form {form.key!r} is not offered: " + ("; ".join(form.missing) or "a slot or binding is missing")
                               + " (jason form-library --show " + form.key + ")")
+    if form.refused:
+        raise CampaignRefusal(f"form {form.key!r} has an adjustment the library refused: "
+                              + "; ".join(map(str, form.refused)) + " (jason form-library --check)")
+    if data_dir is not None:
+        from jason.community.form_library.check import check_recitals
+
+        stale = [f for f in check_recitals(form, Path(data_dir), community) if str(f.message).startswith("stale:")]
+        if stale:
+            raise CampaignRefusal(f"form {form.key!r} is stale: " + "; ".join(f"{f.item}: {f.message}" for f in stale)
+                                  + " (read the amendment, update the definition, bump its version)")
     return form
 
 
-def judge(community: Any, form_key: str, handler: str | None = None) -> tuple[Any, str]:
+def judge(community: Any, form_key: str, handler: str | None = None, data_dir: Path | None = None) -> tuple[Any, str]:
     """The form, and the handler it will take, or a ``CampaignRefusal``: the form is offered; its handler and procedure
     are registered; a form with an authority takes the handler its authority names; a form with none takes a general
     handler a person chose."""
     from jason.community.form_library import handlers as table
 
-    form = _resolved(community, form_key)
+    form = _resolved(community, form_key, data_dir)
     d = form.definition
     given = (handler or "").strip()
     if d.authority:
@@ -225,7 +237,7 @@ def open_campaign(community: Any, form_key: str, *, channel: Any, cycle: Any, by
     if not (by or "").strip():
         raise CampaignRefusal("who chose the handler is required (--by NAME): a person opens a campaign")
     through = channel_of(channel)
-    form, chosen = judge(community, form_key, handler)
+    form, chosen = judge(community, form_key, handler, data_dir)
     for key in (options or {}):
         if not str(key).strip():
             raise CampaignRefusal("a handler option needs a name (--option NAME=VALUE)")
@@ -382,7 +394,7 @@ def require(community: Any, data_dir: Path, form_key: str, channel: Any, year: i
     from jason.community.form_library import handlers as table
 
     through = channel_of(channel)
-    form = _resolved(community, form_key)
+    form = _resolved(community, form_key, data_dir)
     rows = load(data_dir)
     planned = {r.code: r for r in plan_adoption(community, data_dir)[0]}
 

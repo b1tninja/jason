@@ -54,13 +54,13 @@ A person's act on a derived item (`done`, `deferred`, `dropped`) is kept in an a
 ## What each view shows
 
 **Forms and campaigns**
-- The forms, by tier, with each form's status (ready, not offered, stale) and the campaigns that used it.
+- The forms, by tier, with each form's status (ready, adjusted, not offered, or failing: a form stale against an amendment is a failing recitals finding that starts "stale:") and the campaigns that used it.
 - Each campaign: form and version, handler, cycle dates, status, and a **funnel**: asked (copies sent, by channel), answered (by channel), read, confirmed, recorded, and outstanding and unreachable. Each count carries its source's age.
 - A campaign's copies: the references sent, to whom (units and names), when, and whether each has an answer.
 - The commands to open or close a campaign, as commands.
 
 **Follow-ups**
-- A date-ordered list: overdue first, then today, this week, later; a filter by campaign, by kind, by who; a count of what is overdue.
+- A date-ordered list: overdue first, then today, this week, later; a filter by campaign and by kind; a count of what is overdue.
 - Each item with its basis, its outstanding count, and the command.
 - A calendar strip of the next 30 days with the dated actions; the same items appear in the dock's Deadlines.
 - The same items can be put on the board's calendar and as tasks for a role (as `jason schedule --tasks --calendar` does for the duties), by a person's yes.

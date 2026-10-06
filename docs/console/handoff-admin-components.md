@@ -86,7 +86,7 @@ The integrations today. Community: Google Workspace, console sign-in, PayHOA, Zo
 ```
 
 - `setting` is `default` (the integration's) or `admin` (a person's change, with `setBy` and `setAt`); `settingWords` says it in words.
-- `held` is why the row will not run, when it will not: not adopted, manual ("a person runs it: it reads a workbook a person downloads"), refused (it writes), retired (no longer in the registry). Empty when it runs.
+- `held` is why the row will not run, when it will not, as a sentence that begins with its kind: `retired:` (no longer in the registry), `refused:` (it writes), `a person runs it:` (manual, "it reads a workbook a person downloads"), `the default is not adopted`, `paused, needs sign-in:` or `paused by NAME:` (a paused row is held, so its `nextRun` is empty), `its connection is paused:`. Empty when it runs. (Corrected: the first draft left the paused kinds out of `held`.)
 - `paused` is `null` or `{"by", "at", "why", "kind"}`, with `kind` `person` or `sign-in`.
 - `misfire` is `run-once` (one catch-up after downtime) or `skip` (wait for the next slot).
 - Times are stored in UTC (`nextRunLocal` is the community's zone), and the screen names the zone once ("times in Pacific Time").
@@ -99,7 +99,7 @@ The integrations today. Community: Google Workspace, console sign-in, PayHOA, Zo
  "web": {"host": "127.0.0.1", "port": 8765}, "worker": true, "workerRunning": true,
  "scheduler": true, "schedulerRunning": true, "schedulerZone": "America/Los_Angeles", "schedulerTick": "2099-10-05T15:30:40+00:00",
  "schedules": [{"source": "drive", "at": "2099-10-05T15:40:00+00:00", "command": "jason drive --sync"}],
- "lanes": {"google": {"id": 413, "command": "jason drive --sync", "started": "2099-10-05T15:30:41+00:00"}, "payhoa": null, "gpu": null},
+ "lanes": {"google": {"id": 413, "command": "jason drive --sync", "since": "2099-10-05T15:30:41+00:00"}, "payhoa": null, "gpu": null, "county": null, "local": null},
  "workerLock": {"pid": 4120, "since": "2099-10-05T07:00:13+00:00"},
  "refused": "", "failed": ""}
 ```
@@ -143,7 +143,7 @@ Names only. "Answers" can also be "no: Keeper is not signed in on this PC (jason
 | `LaneRow` | `ServiceStatus` | One job lane and what it is doing |
 | `VaultStatus` | Instance, Instance → Integrations | The vault's backend, whether it answers, its entries by owner |
 | `MigrationPlan` | `VaultStatus` | What `.env` still names and where each moves |
-| `StandingWord` | Status | A source's standing, with the threshold it was judged by |
+| `SourceStanding` (a `Pill` preset; named `StandingWord` in the first draft, which the programs handoff and `ui/src/lib/citations.ts` already use for other things) | Status | A source's standing, with the threshold it was judged by |
 | `TerminalStep` | everywhere a person must act at a terminal | The command, who runs it, and why it is not a button |
 
 ### `ConnectionChip`
@@ -204,7 +204,7 @@ One line, never a field.
 
 ### `CheckResult`
 
-- **Passed:** a `Seal` `read` with what was read ("a token issued; 1 meeting listed"), when, and by whom ("checked by A. Admin").
+- **Passed:** a `Seal` `read` with what was read ("a token issued; 1 meeting listed"), when, and by whom: only the first successful check records a person (`connectedBy`, `connectedAt`); a later check records its time and words (`lastChecked`, `lastCheck`) and not who ran it, so the card says "connected by A. Admin on Oct 1" and "last checked Oct 3", and does not say who ran the last one.
 - **Failed:** the words as stored ("failed: 401 invalid client"), the likely cause, and the step to revisit in the setup dialog.
 - **Never checked:** "Never checked" with the `TerminalStep` that checks.
 - A check runs only for a person at a terminal (`jason integrations check KEY --live --by NAME`), never for an agent or a timer. The result says so: "a person's check".
@@ -278,9 +278,9 @@ One panel per community, from its judged heartbeat.
 - It is a plan: the screen never moves anything. The step is `jason vault migrate --yes`, run by a person at a terminal, which copies and never overwrites an entry already there; afterwards the person removes the moved keys from `.env`.
 - When the vault did not answer, the plan says some may already be moved.
 
-### `StandingWord`
+### `SourceStanding`
 
-On Status, each source's standing now comes from its integration's threshold.
+(Renamed from `StandingWord`: [handoff-programs.md](handoff-programs.md) defines `StandingWord` as a program's standing, and `StandingPill` is a statute's; this is a data source's.) On Status, each source's standing now comes from its integration's threshold.
 
 - `current` / `stale` with the threshold as words: "stale after 1h (Google Workspace's default)". Use `staleAfter` ("1h", "2d"), never a fraction of a day.
 - `failed`, `not signed in`, and `never read` as before.
@@ -288,10 +288,68 @@ On Status, each source's standing now comes from its integration's threshold.
 
 ### `TerminalStep`
 
-The existing `Command`, with who runs it and why it is not a button:
+The one definition; every handoff's `Command`/`TerminalStep` points here. The built `Command` (`cmd`, `note`; copies, never runs) with who runs it and why it is not a button:
 - "A person at the terminal on OFFICE-PC" for anything that reads a secret, signs in, or installs (`jason login`, `jason vault migrate --yes`, `jason integrations check KEY --live`, `jason serve --install-task --yes`).
 - The reason in one line: "jason never checks a service live on its own" / "only a person moves credentials" / "the console never starts or stops the service".
 - A copy button for the command; never a placeholder filled with a secret.
+- `PersonSteps` ([handoff-held-setup-roster.md](handoff-held-setup-roster.md#personsteps)) is the ordered list of these steps, each with its own record of whether it is done; a `TerminalStep` is one of them, and a single step on a screen with no sequence is a `TerminalStep` alone.
+
+## As built (checked against the code again, 2026-10-05)
+
+This page was written from the build, so it is mostly right. Checked line by line against `jason.commands.integrations._row`, `jason.integrations.registry`, `jason.scheduler.listing`, `jason.serve.judge` and `status`, `jason.web.extra.status`, and `jason.commands.vault`. What the check found:
+
+### Corrections made above
+
+- A lane's job is `{id, command, since}` (the first draft said `started`); the lane keys are the job classes `gpu`, `google`, `payhoa`, `county`, `local`.
+- `held` carries the paused kinds too (a paused row is held, so it has no `nextRun`).
+- Only the first successful check records who ran it.
+- `StandingWord` is renamed `SourceStanding` (a name clash, below).
+
+### Shapes the page did not give
+
+The heartbeat, beyond the fields above:
+
+```json
+{"profile": "oakview", "dataDir": "D:/data/oakview", "state": "draining", "alive": true, "age": 12.4,
+ "schedulerError": "", "schedulerFailed": "", "web": null,
+ "drain": {"requested": "2099-10-05T15:40:00+00:00", "by": "A. Admin", "pid": 5120, "host": "OFFICE-PC"},
+ "workerLock": {"pid": 4120, "since": "2099-10-05T07:00:13+00:00"}}
+```
+
+`drain` is null unless a stop was asked for. `dataDir` is a machine path: show it only to the administrator. A community that has never run is `{"state": "none", "alive": false, "age": null, "profile", "dataDir", "drain", "workerLock"}` and nothing else. A stale heartbeat keeps `said` (what the process last said). `web` is null with `--no-web`. A GPU job waiting is not in the heartbeat; the lane shows only a running job.
+
+A source's row on Status (`GET /api/status`, built): `{"key", "name", "what", "store", "lastRead", "ageSeconds", "standing", "note", "fix", "staleAfterDays", "staleAfter", "staleSource", "lastJob", "signIn"}` with `standing` one of `current`, `stale`, `failed`, `not signed in`, `never read`, or `""` when the source declares no threshold.
+
+A schedule's `lastResult` is `""`, `queued`, `running`, `done`, `failed`, `cancelled`, or `gone` (the job vanished); "backing off" is `failures > 0` with `backoffUntil`.
+
+`jason integrations list --json` is `{"community": "oakview", "scope": "community", "integrations": [row, ...]}` (`--instance` for the installation's).
+
+### What is not in the data yet (proposed, not built)
+
+- **No administration route.** `/api/instance/*` does not exist; the shapes are the commands' JSON. The five proposed routes read as the table says.
+- **The vault has no JSON.** `jason vault status` prints lines (the backend, "Answers: yes, 6 entries", the names, what `.env` still names); `VaultStatus` and `MigrationPlan` need a JSON form of those lines (the build adds it).
+- **A capability's `note`** (the registry's limit, "needs a paid plan") is not in `_row`'s capabilities; nor are an integration's `setup_steps` (`{title, admin_does, jason_checks}`, 37 in the registry across the integrations) or its `instances` (the signed-in vendor portals' rows). `ConnectDialog`, `StepCheck`, `RateLimitNote`'s "limit" per capability, and the one-card-many-portals state need them added to the reading.
+- **`StepCheck`** is not a per-step check: the only check is the integration's one live read (`jason integrations check KEY --live`, a person at a terminal); the per-step "jason checks" lines are words.
+- **The commands the setup steps name.** Two registry steps tell the administrator to run `jason integrations import ...`; the command has only `list` and `check`. `SecretDrop`, `FileDrop`, `RedirectUri`, `DisconnectConfirm`, and `jason integrations connect|import` are all unbuilt.
+- **An officer's read-only chips.** `Status` is the administrator's (`admin: true`; `jason.web.extra.status` refuses anyone else), so "the community's officer sees `ConnectionChip` on Status and Setup" has no loader today.
+- **Writes from the console** (a cadence change, a pause, a resume, run now): the commands exist (`jason cadence SOURCE --every ... --by NAME`, `--pause`, `--resume`, `--restore`, `--run-now`); no route does.
+- **`LaneRow`'s "waiting for the GPU lane"** and "a model job for another community": the heartbeat shows a lane's own running job only.
+
+### States the code can be in that this page did not draw
+
+- A schedule `retired` (the registry dropped the source) is the only row that can outlive the registry; its `held` begins `retired:`.
+- A schedule that is "faster than the floor": `note: "faster than the floor 2m; the floor applies"` (a stored value below a floor raised since).
+- `misfire` `run-once` or `skip`.
+- An integration with no source and no live check (the law library, the local models) is `connected` when its disk probe passes, and `why` says so ("the lawlibrary checkout is there"): "connected only after a read succeeds" holds, with the disk read standing for the read.
+- A failed check reads as `needs sign-in` when its words name a sign-in (AuthRequired, jason login, `--interactive`), else `failing`; a source's `not signed in` standing makes the integration `needs sign-in`, and a source's `failed` standing makes it `failing`.
+- A paused connection: `state: "paused"` on the integration, and every one of its schedules is held with "its connection is paused".
+- A check that ends the connection in a state other than connected does not overwrite `paused`.
+- `credentialSet: null` for an integration that needs none, and `vaultPath: ""` then.
+- `why` ends with ", the vault could not be asked (...), so only .env was tested" when Keeper is not signed in.
+
+### Glyph conflicts this page creates
+
+`circle-pause` already means "Held for the board, on the record" and `key-round` already means "Access" (keys, fobs, gate codes); the chip's `paused` and `needs sign-in` and the row's "not scheduled" reuse them for other things. `circle-check` means "On the record and complete" and stands in for "connected". One meaning per glyph: the design names replacements or accepts the shared ones in decision 1 below.
 
 ## Words
 

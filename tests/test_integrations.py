@@ -472,3 +472,19 @@ def test_check_from_disk_and_live(env, capsys, monkeypatch):
     assert code == 1 and "needs sign-in" in out
     _no_secret(out)
     _no_secret(json.dumps(cn.load("mystique", env.data / cn.FILE)["zoom"].to_json()))
+
+
+def test_every_command_a_setup_step_names_exists_in_the_parser():
+    """A setup dialog tells the administrator to run a command; one that the parser lacks sends them nowhere
+    (lesson setup-steps-name-commands-that-do-not-exist). `jason integrations` takes list and check only today."""
+    from jason.cli import build_parser
+
+    sub = next(a for a in build_parser()._actions if getattr(a, "choices", None) and "responses" in a.choices)
+    for integration in REGISTRY:
+        for step in integration.setup_steps:
+            # a command is "jason NAME" followed by a flag or a placeholder (or a subcommand and one); "jason reads" is prose
+            for m in re.finditer(r"jason ([a-z][a-z-]*)(?:(?= -| [A-Z])| ([a-z][a-z-]*)(?= -| [A-Z]))", step.admin_does):
+                command, rest = m.group(1), (m.group(2) or "")
+                assert command in sub.choices, f"{integration.key}: {step.title}: jason {command} is not a command"
+            for sub_name in re.findall(r"jason integrations ([a-z][a-z-]*)", step.admin_does):
+                assert sub_name in {"list", "check"}, f"{integration.key}: jason integrations {sub_name} does not exist"

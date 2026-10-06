@@ -59,7 +59,7 @@ class ThisCommunity(Community):
 3. **Slots are filled:** every `{SLOT}` a form uses has a value; a family form's bindings are complete, or the form is "not offered" with the missing slot named.
 4. **Adjustments are lawful:** none removes, rewords, or lengthens a required item or a statutory clock; a document clock that is stricter is recorded as the governing one with its section.
 5. **A handler exists:** the form's handler and procedure are registered, or the form is not made.
-6. **Marker codes are unique** across the resolved set and the campaigns on disk.
+6. **Marker codes are unique** across the resolved set and the sent-copy catalog (`data/forms/references.json`).
 7. **Nothing bars what it asks:** a question a binding forbids (the rental application's "who are the tenants") is not on the form.
 
 The output is a table by tier and form: ready, adjusted (what), not offered (why), failing (what).

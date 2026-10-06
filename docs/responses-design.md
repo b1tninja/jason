@@ -146,7 +146,7 @@ The check is a registry source (`jason.integrations.registry`), so the scheduler
 
 ## Build order
 
-1. The records, the `Community.response_requests()` hook (default `()`) and the profile's row, the inbox store, the four channels, reading and confirming, `gather_answers` taking keyed answers, `apply` marking arrivals recorded. (Built.)
+1. The records, the `Community.response_requests()` hook (default `()`) and the profile's row, the inbox store, the channels (five with the manual one), reading and confirming, `gather_answers` taking keyed answers, `apply` marking arrivals recorded. (Built.)
 2. The command. (Built.)
 3. The MCP tools and `jason.api`, the registry cadences, the procedure step, the lessons, and the docs. (Built; see "Step 3, as built".)
 4. Later: a Responses panel in the console (the dock's count of new responses, the list, the reading beside the scan), once the administrator's and board's screens have components for it.
@@ -154,7 +154,7 @@ The check is a registry source (`jason.integrations.registry`), so the scheduler
 ## Step 3, as built
 
 - **Tools.** `new_responses` and `response` are `jason.mcp.response_inbox` (a module of their own with a `TOOLS` tuple, as `jason.mcp.citations`), in `PROFILES["board"]` (forty tools then; forty-one with `outstanding_responses`) and `jason.api`. They read `data/responses` through `list_arrivals`, `channel_status`, and `show`; they call no service and write nothing. A miss is `{found: False, reason, ...}` with `checked` and the verbatim line "this reads what the last check kept; `jason responses --check` is the live read"; an unreadable inbox is a miss, not an exception.
-- **`checked`** lists all four channels; one no check has reached is `never checked`. A sign-in failure ends as `sign-in`, a failure as `failed`, and `ageHours` is the age of the last success (None when there is none).
+- **`checked`** lists every channel (five, with the manual one); one no check has reached is `never checked`. A sign-in failure ends as `sign-in`, a failure as `failed`, and `ageHours` is the age of the last success (None when there is none).
 - **Masking.** `jason.approvals.audit.mask` (the design's `jason.audit.mask`): an email, phone number, or street address in an answer, a note, or an act becomes `[email]`, `[phone]`, `[address]`; a field named for contact details (email, phone, mailing address) with a value the pattern missed becomes `[masked]`. A unit's own address is the unit's and stays. `response(id)` accepts the file-name form (`gmail-abc`) for an id.
 - **The reference** is compared with `tasks/form_references` (the copies jason sent): `reading.reference.copy` says whether a sent copy is on record under the printed reference and whether it was sent to the unit the sender's address belongs to (`matchesUnit`: true, false, or null when either unit is unknown). The reading now keeps the copy and the membership id, so the owner is compared by id too (see "Step 1b, as built").
 - **What is left** (`left`) is read, confirm, apply for an email or a scan nobody has read; confirm, apply for a read form; apply for a keyed answer or a structured arrival (PayHOA, a Google Form); decide for a reading that found no form; nothing for a recorded, dismissed, or superseded one. Each is a person's step.
