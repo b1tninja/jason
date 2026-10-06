@@ -1663,6 +1663,57 @@ def part_span(part: Part, text: str, exhibits: Sequence[str] = ()) -> tuple[int,
     return first, last
 
 
+def locate_heading(text: str, anchor: str, after: int = 0) -> int | None:
+    """Where a heading line of ``text`` is: the first line at or after ``after`` whose letters and digits are the anchor's
+    (a wrapped heading's first line, a few characters longer, counts), as the offset of its first character. Only a line
+    that is the heading is found, never the heading's words in a sentence or a line of a contents page ("Rules ..... 12").
+    None when there is no such line: a miss, never a guess."""
+    wanted = _stream(anchor)
+    if len(wanted) < 4:
+        return None
+    for m in re.finditer(r"^[^\n]*$", text, re.M):
+        if m.start() < after:
+            continue
+        line = _stream(m.group(0))
+        if line == wanted or (line.startswith(wanted) and len(line) <= len(wanted) + 10 and line[len(wanted):].isalpha()):
+            return m.start() + (len(m.group(0)) - len(m.group(0).lstrip()))
+    return None
+
+
+def place_parts(parts: Sequence[Part], text: str, exhibits: Sequence[str] = (), page_count: int = 0) -> dict[str, tuple[int, int]]:
+    """Each part's characters in ``text``, placed **in page order**: a part's heading is the first heading line at or after
+    the one before it, so the same heading printed again later (a running header, the association's name on each page) is
+    inside the part and is not another part. Every part ends where the next placed part starts, and the last at the end of
+    the text, or at the first exhibit heading (``exhibits``) inside it. A cover or contents part is only a few pages: with
+    ``page_count`` it ends no later than a share of the text that its pages are of the file's (half again as many pages,
+    at least 400 characters), and the text past that is no part's. A part whose heading is not found is left out of the
+    answer (a miss). The same answer for any text of the document that prints the headings as lines."""
+    order = sorted(range(len(parts)), key=lambda i: (parts[i].start, i))
+    placed: list[tuple[int, Part]] = []
+    cursor = 0
+    for i in order:
+        at = locate_heading(text, parts[i].anchor, cursor)
+        if at is None:
+            continue
+        placed.append((at, parts[i]))
+        cursor = at + 1
+    out: dict[str, tuple[int, int]] = {}
+    for k, (start, part) in enumerate(placed):
+        end = next((s for s, _ in placed[k + 1:] if s > start), len(text))
+        for heading in exhibits:
+            folded = _stream(heading)
+            if len(folded) < 4:
+                continue
+            found = re.compile(r"(?m)^[ \t#*]*" + r"[\W_]*".join(re.escape(c) for c in folded), re.I).search(text, start + 1, end)
+            if found:
+                end = found.start()
+        if page_count and part.kind in (PartKind.COVER, PartKind.CONTENTS):
+            pages = part.end - part.start + 1
+            end = min(end, start + max(400, int(1.5 * pages / page_count * len(text))))
+        out[part.key] = (start, end)
+    return out
+
+
 def page_of(seg: Segmentation, snippet: str, texts: Sequence[str]) -> int | None:
     """The 1-based page whose text (``texts[n-1]``) holds ``snippet``'s first twelve words, else None. For scoping a
     passage of some other reading of the file to a part."""
@@ -1717,5 +1768,5 @@ def in_part(part: Part, page: int | None) -> bool:
 
 __all__ = ["Address", "BAND", "Boundary", "CUES", "Cue", "Line", "Mark", "PageInfo", "Part", "PartKind", "Reader",
            "Move", "MoveKind", "Segment", "Segmentation", "THRESHOLD", "Tier", "VERSION", "address", "build_page", "decide", "find_parts",
-           "in_part", "label_of", "locate", "page_cues", "page_of", "parse_address", "part_kind", "part_span", "read_date",
+           "in_part", "label_of", "locate", "locate_heading", "place_parts", "page_cues", "page_of", "parse_address", "part_kind", "part_span", "read_date",
            "MOVE_LETTERS", "move_choices", "move_letter", "open_chain", "read_parties", "read_title", "resolve", "score_pages", "scoping_parts", "segments_from", "slug", "title_line", "walk", "walk_segments", "exhibit_label", "seg_path"]

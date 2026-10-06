@@ -48,7 +48,7 @@ from urllib.parse import urlparse
 from jason.community.deontic import (
     Bearer, DocumentDuty, DutyKind, _descends, find_bearer, read_outline, sentences,
 )
-from jason.community.document_segments import part_span
+from jason.community.document_segments import place_parts
 from jason.community.outlines import DocumentOutline
 from jason.community.reference_model import LOCAL_HOSTS, find_quote, passages
 
@@ -506,21 +506,25 @@ def parts_from_manual(source: str, classification: Any) -> list[RulePart]:
 
 SEGMENT_KINDS = {"rules": "rule", "policy": "policy", "procedure": "policy"}
 RULE_PART_KINDS = ("rule", "policy")
+FRAME_KINDS = ("cover", "contents")      # a segment part that frames a document and never overrides a finer reading of the text
 
 
-def parts_from_segments(source: str, parts: Iterable[Any], text: str, *, exhibits: Iterable[Any] = ()) -> list[RulePart]:
+def parts_from_segments(source: str, parts: Iterable[Any], text: str, *, exhibits: Iterable[Any] = (),
+                        page_count: int = 0) -> list[RulePart]:
     """The parts of a document from a stored segmentation (``document_segments``): each part is found in ``text`` (the
-    outline's) by its heading (``part_span``) and kept with its kind (a rules part is "rule", a policy or procedure
+    outline's) by its heading (``place_parts``: in page order, each part ending where the next begins, a heading printed
+    again later being a running header and not another part, a cover or contents part only its few pages: ``page_count``)
+    and kept with its kind (a rules part is "rule", a policy or procedure
     "policy", anything else its own word: "guidance", "form", "cover"), and each exhibit, from its heading to the next
     exhibit or part, as "exhibit": a grant stated in an exhibit counts as the exhibit's and a rule there is not a rule on
     file. A part whose heading is not in ``text`` is left out, never placed by guess. Each part's ``origin`` is "segments".
     ``merge_parts`` sets them beside the manual classification's."""
     heads = [f"{e.label} {e.title}".strip() for e in exhibits if getattr(e, "label", "")]
     found: list[RulePart] = []
-    for part in parts:
-        if getattr(part, "segment", "") and part.segment.count(".") > 0:
-            continue                     # a part inside an exhibit is the exhibit's
-        span = part_span(part, text, heads)
+    roots = [p for p in parts if not (getattr(p, "segment", "") and p.segment.count(".") > 0)]   # a part in an exhibit is the exhibit's
+    spans = place_parts(roots, text, heads, page_count)
+    for part in roots:
+        span = spans.get(part.key)
         if span is None or span[1] <= span[0]:
             continue
         found.append(RulePart(source, span[0], span[1], SEGMENT_KINDS.get(part.kind.value, part.kind.value), part.book,
@@ -559,6 +563,7 @@ def merge_parts(segmented: Sequence[RulePart], classified: Sequence[RulePart], t
     A stretch with no letter or digit (the line break between two parts) goes with the part before it."""
     cuts = sorted({0, len(text), *(p.start for p in [*segmented, *classified]), *(p.end for p in [*segmented, *classified])})
     pieces: list[RulePart] = []
+    made: list[tuple[int, str]] = []       # which parts each piece was cut from: only a part's own pieces rejoin
     for a, b in zip(cuts, cuts[1:]):
         if b <= a:
             continue
@@ -567,23 +572,27 @@ def merge_parts(segmented: Sequence[RulePart], classified: Sequence[RulePart], t
         if s is None and c is None:
             continue
         if s is not None and c is not None:
-            if s.kind == c.kind or (s.kind not in RULE_PART_KINDS and c.kind not in RULE_PART_KINDS):
+            both_rule, neither = s.kind in RULE_PART_KINDS and c.kind in RULE_PART_KINDS, \
+                s.kind not in RULE_PART_KINDS and c.kind not in RULE_PART_KINDS
+            if s.kind == c.kind:
+                chosen = s
+            elif s.kind in FRAME_KINDS or both_rule:
+                chosen = c             # a cover or contents page is no finer than the classification; a rule and a policy differ in kind only
+            elif neither:
                 chosen = s
             else:
                 chosen = replace(c, contested=s.kind)
         else:
             chosen = s or c
-        if pieces and pieces[-1].end == a and _same_part(pieces[-1], chosen):
+        token = (id(s) if chosen is s else id(c), chosen.contested)
+        if pieces and pieces[-1].end == a and made[-1] == token:
             pieces[-1] = replace(pieces[-1], end=b)
         elif pieces and pieces[-1].end == a and not any(ch.isalnum() for ch in text[a:b]):
             pieces[-1] = replace(pieces[-1], end=b)
         else:
             pieces.append(replace(chosen, start=a, end=b))
+            made.append(token)
     return pieces
-
-
-def _same_part(a: RulePart, b: RulePart) -> bool:
-    return (a.source, a.kind, a.book, a.label, a.origin, a.contested) == (b.source, b.kind, b.book, b.label, b.origin, b.contested)
 
 
 def _find_heading(text: str, heading: str) -> int | None:

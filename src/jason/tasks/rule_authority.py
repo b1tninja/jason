@@ -75,9 +75,9 @@ def segment_parts(data_dir: Path, outlines: Iterable[DocumentOutline] | None = N
     found = cite_scope.segment_readings(SimpleNamespace(data_dir=data_dir, outlines=lambda: held))
     out: list[ra.RulePart] = []
     for key, seg in found.readings:
-        root = seg.top()[0].key
-        exhibits = [s for s in seg.segments if s.role == "exhibit" and s.label and s.parent == root]
-        out += ra.parts_from_segments(key, seg.parts, held[key].text, exhibits=exhibits)
+        tops = {s.key for s in seg.top()}
+        exhibits = [s for s in seg.segments if s.role == "exhibit" and s.label and s.parent in tops]
+        out += ra.parts_from_segments(key, seg.parts, held[key].text, exhibits=exhibits, page_count=seg.page_count)
     if notes is not None:
         notes.extend(found.notes)
     return out

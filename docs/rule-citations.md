@@ -157,7 +157,7 @@ reading left out says why (`jason cite --scan` prints a line for each, and `--js
 |---|---|---|
 | the file is in the library (`library.db`) and on disk | yes | "the file is not in the library, so its bytes and its document cannot be checked", "not on disk" |
 | its bytes are those it was read from | yes | "stale: the file's bytes changed since it was read" (`segments.stale`) |
-| the file holds one top-level document | yes | "the file holds N documents, and none is known to be the outline's" |
+| the file holds one top-level document, or an outline is bound to it and holds every top-level document's title (a policy or a form bound in) | yes | "the file holds N documents, and none is known to be the outline's", "the outline X does not hold N of them" |
 | the file is one outline's document | yes | "no outline's words are the file's", "the file's words fit more than one outline", "too short to match" |
 
 The last row is `bind_outline`: an outline read from the file (`DocumentOutline.library`) is bound by its path; otherwise
@@ -181,9 +181,10 @@ the same. The name then scopes (`scoping._scope_part`, basis `segment`):
   one of them and the document must have it; a section the document has but the part does not is `not_in_document`, and the
   miss says so. An exhibit (or a part inside one) has no outline, so "Section 3 of Exhibit A" is a miss that says its sections
   are not an outline on the shelf: the document's own section 3 is never read in its place.
-- **A part stops at an exhibit**: a part's `numbers` are the sections between its heading and the next part or the first
-  exhibit heading found at the start of a line inside it (`part_span(..., exhibits=)`); a heading that is not found cuts
-  nothing and a part whose heading is not found has no numbers.
+- **A part stops at an exhibit**: a part's `numbers` are the sections between its heading line and the next part or the first
+  exhibit heading found at the start of a line inside it (`place_parts`, which places the parts in page order: a heading
+  printed again is a running header inside the part); a part whose heading is not a line of the text has no numbers. A cover or
+  contents part gives no name to a document (the association's own name is a cover's title).
 
 Where a stored reading gives a document parts with sections, those parts **replace** the manual classification's for that
 document (`Index.part_of` returns the segment part); where it gives only names, or none is stored, the classification stays.

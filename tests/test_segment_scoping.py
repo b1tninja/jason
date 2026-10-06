@@ -171,6 +171,30 @@ def test_a_file_that_holds_several_documents_is_not_taken_for_one(world):
     assert any("9002" in n and "2 documents" in n for n in shelf.index().segment_notes)
 
 
+def test_a_file_of_several_documents_is_one_outlines_when_the_outline_holds_every_one(world):
+    path, community = world
+    bound = AGREEMENT + "COLLECTION POLICY\n1. Notices. Notices are sent.\n"
+    _outline(path, "agreement", "Agreement", "bylaws", bound, library="agreement.pdf")
+    _reading(path, "9002", b"%PDF agreement", [Segment("s1", 1, 3, "Article 1 General", "bylaws"),
+                                                Segment("s2", 4, 6, "Collection Policy", "policy")], [])
+    notes = _shelf(world).index().segment_notes
+    assert any("9002" in n and "2 documents are bound into it" in n for n in notes), notes
+    assert not any("9002" in n and "not used" in n for n in notes)
+
+
+def test_a_cover_or_contents_title_names_nothing_a_citation_could_mean(world):
+    path, _ = world
+    parts = [SegPart("example-community-association", "Example Community Association", PartKind.COVER, 1, 1,
+                     "Example Community Association", segment="s1"),
+             SegPart("table-of-contents", "Table of Contents", PartKind.CONTENTS, 2, 2, "Table of Contents", segment="s1"),
+             SegPart("questions-answers", "Questions and Answers", PartKind.GUIDANCE, 3, 6, "Questions and Answers", segment="s1")]
+    _reading(path, "9002", b"%PDF agreement", [Segment("s1", 1, 6, "Agreement", "bylaws")], parts)
+    shelf = _shelf(world)
+    assert not resolve("Example Community Association", shelf=shelf)["found"]
+    assert not resolve("Table of Contents", shelf=shelf)["found"]
+    assert resolve("Questions and Answers", shelf=shelf)["found"]
+
+
 def test_a_file_not_in_the_library_is_left_out(world):
     path, _ = world
     _reading(path, "sha-0123", b"anything", [Segment("s1", 1, 2, "X")], [])
@@ -331,3 +355,70 @@ def test_stored_readings_become_rule_parts_and_a_stale_one_leaves_the_classifica
     assert [p for p in ra_task.rule_parts(path, None, notes=stale) if p.source == "instrument"] == []
     assert any("stale" in n for n in stale)
     assert ra_task.rule_parts(path, None, segments=False) == []
+
+
+# --- Parts are placed in page order, never by every occurrence of a heading -----------------------------------------------------
+
+from jason.community.document_segments import locate_heading, place_parts  # noqa: E402
+
+GUIDE_TEXT = ("ACME COMMUNITY\nTABLE OF CONTENTS\nRules ........ 4\nPolicy ........ 9\n"
+              + "".join(f"A line of the guide, number {i}, says nothing about parts.\n" for i in range(40))
+              + "Rules\n1.1 Parking. No vehicle shall be parked on the lawn.\nACME COMMUNITY\n1.2 Noise. Quiet after ten.\n"
+              "ACME COMMUNITY\n1.3 Pets. Pets are leashed.\nPolicy\n2.1 Dues. Dues are due monthly.\nACME COMMUNITY\n")
+
+
+def _guide_parts():
+    return [SegPart("acme", "ACME COMMUNITY", PartKind.COVER, 1, 1, "ACME COMMUNITY", segment="s1"),
+            SegPart("toc", "TABLE OF CONTENTS", PartKind.CONTENTS, 2, 3, "TABLE OF CONTENTS", segment="s1"),
+            SegPart("rules", "Rules", PartKind.RULES, 4, 7, "Rules", segment="s1"),
+            SegPart("policy", "Policy", PartKind.POLICY, 8, 9, "Policy", segment="s1")]
+
+
+def test_a_heading_is_a_line_not_a_word_in_a_contents_entry_and_is_found_after_the_part_before_it():
+    assert locate_heading("Rules ........ 4\nRules\n", "Rules") == len("Rules ........ 4\n")
+    assert locate_heading("see the Rules here\n", "Rules") is None
+    assert locate_heading("Rules\nRules\n", "Rules", after=1) == 6
+
+
+def test_a_running_header_printed_again_is_inside_the_part_and_is_not_another_part():
+    spans = place_parts(_guide_parts(), GUIDE_TEXT, (), 9)
+    assert set(spans) == {"acme", "toc", "rules", "policy"}
+    starts = [spans[k][0] for k in ("acme", "toc", "rules", "policy")]
+    assert starts == sorted(starts) and spans["acme"][0] == 0
+    assert GUIDE_TEXT[spans["rules"][0]:spans["rules"][0] + 5] == "Rules" and spans["rules"][0] > spans["toc"][0] + 300
+    assert spans["rules"][1] == spans["policy"][0]                     # each part ends where the next begins
+    assert GUIDE_TEXT[spans["rules"][0]:spans["rules"][1]].count("ACME COMMUNITY") == 2    # its running headers are its own
+
+
+def test_a_contents_part_is_a_few_pages_of_text_not_the_guide_that_follows_it():
+    text = "TABLE OF CONTENTS\n" + "".join(f"Guide line {i} with some words in it.\n" for i in range(400))
+    toc = SegPart("toc", "TABLE OF CONTENTS", PartKind.CONTENTS, 2, 3, "TABLE OF CONTENTS", segment="s1")
+    (start, end), = place_parts([toc], text, (), 30).values()
+    assert end - start <= 1.5 * 2 / 30 * len(text) + 1 and end - start < len(text) / 8
+    assert place_parts([toc], text, (), 0)["toc"][1] == len(text)      # no page count, no cap: the next part's start is all there is
+
+
+def test_a_cover_or_contents_part_never_overrides_a_finer_reading_and_makes_no_new_parts():
+    text = GUIDE_TEXT
+    old = [ra.RulePart("m", 0, text.index("Rules\n1.1"), "guidance", "manual", "g", "classification"),
+           ra.RulePart("m", text.index("Rules\n1.1"), text.index("Policy\n2.1"), "rule", "rules", "r", "classification"),
+           ra.RulePart("m", text.index("Policy\n2.1"), len(text), "policy", "disc", "p", "classification")]
+    new = ra.parts_from_segments("m", _guide_parts(), text, page_count=9)
+    assert [p.kind for p in new][:2] == ["cover", "contents"]
+    merged = ra.merge_parts(new, old, text)
+    assert [(p.kind, p.origin) for p in merged] == [("guidance", "classification"), ("rule", "segments"), ("policy", "segments")]
+    assert all(not p.contested for p in merged)
+    assert len(ra.merge_parts([p for p in new if p.kind in ("cover", "contents")], old, text)) == 3
+    again = ra.merge_parts([p for p in new if p.kind in ("cover", "contents")], old, text)
+    assert [(p.kind, p.origin) for p in again] == [("guidance", "classification"), ("rule", "classification"), ("policy", "classification")]
+
+
+def test_a_file_of_several_documents_is_used_where_the_outline_holds_every_one(world):
+    path, _ = world
+    body = b"%PDF instrument"
+    segments = [Segment("s1", 1, 8, "Community Regulations", "declaration"), Segment("s2", 9, 14, "Schedules", "policy")]
+    _reading(path, "9001", body, segments, [])
+    notes = _shelf(world).index().segment_notes
+    assert any("9001" in n and "2 documents are bound into it" in n for n in notes)
+    _reading(path, "9001", body, [Segment("s1", 1, 8, "Community Regulations", "declaration"), Segment("s2", 9, 14, "Unrelated Matter", "policy")], [])
+    assert any("9001" in n and "does not hold 1 of them" in n for n in _shelf(world).index().segment_notes)

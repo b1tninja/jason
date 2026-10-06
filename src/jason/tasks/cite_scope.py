@@ -135,17 +135,23 @@ def _bound(shelf: Any, seg: Any, row: dict[str, Any]) -> tuple[str, str]:
     return bind_outline(lib.text_for(Path(shelf.data_dir), seg.id), outlines)
 
 
-def _span_numbers(part: Any, outline: DocumentOutline, exhibits: tuple[str, ...] = ()) -> tuple[str, ...]:
-    """The outline's section numbers that start inside the part's words, found by its heading (``part_span``): none where
-    the heading is not in the outline's text. The part stops where an exhibit's heading (its label and title, ``exhibits``)
-    begins inside it: what follows is the exhibit's, and an exhibit's sections are not the document's."""
-    from jason.community.document_segments import part_span
-
-    span = part_span(part, outline.text, exhibits)
+def _span_numbers(span: tuple[int, int] | None, outline: DocumentOutline) -> tuple[str, ...]:
+    """The outline's section numbers that start inside a part's characters (``place_parts``): none where the heading is
+    not in the outline's text."""
     if span is None:
         return ()
     start, end = span
     return tuple(dict.fromkeys(s.number for s in outline.sections if s.number and start <= s.start < end))
+
+
+def _titled_in(outline: DocumentOutline, segment: Any) -> bool:
+    """Whether a top-level segment's title (or label) is in the outline's words, ignoring case and spacing."""
+    def squash(text: str) -> str:
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+
+    words = squash(outline.text)
+    names = [n for n in (segment.title, segment.label, *segment.aliases) if n]
+    return any(len(squash(n)) >= 6 and squash(n) in words for n in names)
 
 
 @dataclass
@@ -189,10 +195,19 @@ def segment_readings(shelf: Any) -> Readings:
             skip(seg, "stale: the file's bytes changed since it was read")
             continue
         tops = seg.top()
-        if len(tops) != 1:
-            skip(seg, f"the file holds {len(tops)} documents, and none is known to be the outline's")
-            continue
         key, how = _bound(shelf, seg, row)
+        if len(tops) != 1:
+            # A file of several documents is one outline's document only where the outline holds them all: the outline is
+            # bound to the file, and every top-level document's title is in the outline's words (a policy or a form
+            # bound in). Otherwise the outline may be only one of them, and a part of another would take its numbers.
+            if not key:
+                skip(seg, f"the file holds {len(tops)} documents, and none is known to be the outline's")
+                continue
+            missing = [s.title or s.label or s.key for s in tops if not _titled_in(shelf.outlines()[key], s)]
+            if missing:
+                skip(seg, f"the file holds {len(tops)} documents, and the outline {key} does not hold {len(missing)} of them")
+                continue
+            how = f"{how}; the file's {len(tops)} documents are bound into it"
         if not key:
             skip(seg, how)
             continue
@@ -205,7 +220,7 @@ def segment_parts(shelf: Any) -> SegmentParts:
     """The parts the stored segmentations give (``segment_readings``), as ``Part`` rows with ``source`` "segments". A part
     inside the document has its own section numbers (``numbers``); an exhibit, or a part inside one, has a name and a path
     and no numbers, since its sections are not an outline."""
-    from jason.community.document_segments import address
+    from jason.community.document_segments import address, place_parts
 
     out = SegmentParts()
     found = segment_readings(shelf)
@@ -222,12 +237,14 @@ def segment_parts(shelf: Any) -> SegmentParts:
             return tuple(names)
 
         exhibits = tuple(f"{c.label} {c.title}" for c in seg.segments if c.role == "exhibit" and c.label)
+        spans = place_parts([p for p in seg.parts if not (nested(p.segment) if p.segment else ())], outline.text, exhibits,
+                            seg.page_count)
         for part in seg.parts:
             way = nested(part.segment) if part.segment else ()
-            numbers = _span_numbers(part, outline, exhibits) if not way else ()
+            numbers = _span_numbers(spans.get(part.key), outline) if not way else ()
             out.parts.append(Part(key, part.anchor, part.book, part.title, part.aliases, part.through, "segments",
                                   (*way, part.title), numbers, address(seg.id, part=part.key), part.pages, part.kind.value))
-            if len((part.title or "").split()) >= 2:
+            if len((part.title or "").split()) >= 2 and part.kind.value not in ("cover", "contents"):
                 for name in (part.title, *part.aliases):
                     out.names.setdefault(name.lower(), key)
             if numbers:
