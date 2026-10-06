@@ -2150,6 +2150,35 @@ LESSONS: tuple[Lesson, ...] = (
            notes=("Open until a person styles the lines or says they are not headings; before a template is built from a "
                   "Doc, run scripts/structure_fuzz.py gold and report on it and its PDF, and carry bookmarks and a contents "
                   "page into the generated PDF (the two cheapest large gains).",)),
+    Lesson("blocks-run-together-in-the-rendering", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A block whose Markdown had no trailing blank line ran into the next (a note and a bold word on one line).",
+           "The renderer joined blocks as they came; a check of the words alone does not see line structure.",
+           "MarkdownRenderer._join puts a blank line between two adjacent blocks that do not already have one; a test "
+           "changes one record and requires exactly one changed line in both documents.",
+           Status.FIXED, guards=("MarkdownRenderer._join",
+                                 "test_a_change_to_one_record_changes_both_documents_and_nothing_else"),
+           docs=("docs/document-templates.md",)),
+    Lesson("docs-api-indexes-shift-after-bullets", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "A Google Doc built from a list of requests put named ranges and styles at the wrong places once a bulleted "
+           "list had been made.",
+           "createParagraphBullets removes the leading tabs, which shifts every later index.",
+           "Requests that name an index (named ranges, named styles) go before the first list is created, and tables "
+           "after it at the shifted places; the Docs API has no request for a table-of-contents field or a smart chip, "
+           "so the Doc carries a marker and a pass of links to the headings, and verify() reads the Doc back after a "
+           "write.",
+           Status.FIXED, guards=("doc_output.contents_requests", "rules_documents.verify",
+                                 "tests/test_rules_document.py (the Doc-text simulator)"),
+           docs=("docs/document-templates.md",)),
+    Lesson("a-status-banner-is-the-records-never-the-codes", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
+           "A draft rules document could lose its \"for board adoption\" banner when one rule, a notice, or a "
+           "later-dated event was adopted.",
+           "A banner kept in code is a decision the code makes.",
+           "The banner goes only when an adoption event naming the whole document is on record; jason never records it. "
+           "A rules document holds no pending suggestion, and a draft is never filed in a folder that syncs to a "
+           "public document list; a held but unpublished seat prints (not published), never (vacant).",
+           Status.FIXED, guards=("rules_document.adoption_status",
+                                 "test_the_draft_banner_is_there_until_an_adoption_event_is_on_record"),
+           docs=("docs/owners-manual.md",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

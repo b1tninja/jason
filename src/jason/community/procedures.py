@@ -630,6 +630,16 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="zero unlabeled differences; render.json's adoption block: the passages changed with no "
                        "adoption, how many have no adopted version on record, and no pending suggestion left",
                  lessons=("working-doc-is-not-adopted-text", "revision-text-reads-suggestions-accepted")),
+            Step("Render the Rules document and the manual template from their definitions, and read the plan before any "
+                 "Doc is made. Nothing is written to Drive without --yes, and a draft rules document is never filed in a "
+                 "folder that syncs to a public list.",
+                 command="jason document-template rules-and-regulations; jason document-template --doc plan",
+                 check="the Rules document equals the manual's rules apart from labeled differences (0 unlabeled); the "
+                       "banner stays until an adoption event is on record; the plan names the folder, the styles and the "
+                       "link between the two Docs",
+                 refs=("docs/document-templates.md", "docs/owners-manual.md"),
+                 lessons=("docs-api-indexes-shift-after-bullets", "a-status-banner-is-the-records-never-the-codes"),
+                 person=True),
             Step("Refetch the Doc's links (chips) before anything is published.", command="jason outlines --fetch"),
             Step("Put the extraction on the board's agenda; a rule change takes the 4360 notice and adoption.",
                  command="jason board --set ITEM ...; jason rule-change", person=True),
