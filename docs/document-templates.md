@@ -192,7 +192,7 @@ The base template's tokens map one for one to blocks:
 | text between tokens | prose block (the manual's base has none; the official rules' base has its title) |
 | layout | the default Markdown layout adds nothing: no header, no contents, blocks separated by a blank line |
 
-`definition_from_template` reads the existing base into a definition; `render_document` fills it through the same `fill_token` the old `render` calls. The proof is the existing check: the new output is identical to `render`'s for the same inputs (tested on the made-up manual in `tests/test_manual.py`'s fixture, and on the profile's real classification by `jason document-template manual --compare`, which renders both and diffs), and `jason manual --render`'s `owners-manual.diff` and `render.json` still pass. Any difference the migration needs is labeled.
+`definition_from_template` reads the existing base into a definition; `render_document` fills it through the same `fill_token` the old `render` calls. The proof is the existing check: the new output is identical to `render`'s for the same inputs (tested on the made-up manual in `tests/test_manual.py`'s fixture, and on the profile's real classification by `jason document-template owners-manual`, which renders both and exits 1 unless the Markdown is identical), and `jason manual --render`'s `owners-manual.diff` and `render.json` still pass. Any difference the migration needs is labeled.
 
 ### 8.2 The candidates
 

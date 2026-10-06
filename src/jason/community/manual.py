@@ -955,6 +955,41 @@ def _history_lines(spec: ManualSpec, events: list[AdoptionEvent], rows: list[Con
     return lines
 
 
+def fill_token(token: str, verb: str, arg: str, flags: set[str], classification: Classification, spec: ManualSpec,
+               source: Source, text: str, rows: list[Concordance], passages: list[Passage],
+               current: bool = False) -> list[Chunk]:
+    """The chunks one template token stands for. ``render`` calls it for each token, and a document template's blocks
+    (``jason.community.document_templates``) call it for the same words, so the two cannot differ. A token that cannot
+    be filled raises ``ManualError``."""
+    made: list[Chunk] = []
+    if verb == "PART":
+        made = _include(classification, source, spec, arg, "", False, text)
+        if not made and "optional" not in flags:
+            raise ManualError(f"{token}: the profile puts nothing in the slot {arg!r}")
+    elif verb == "INCLUDE":
+        book, _, number = arg.partition("#")
+        made = _include(classification, source, spec, book, number, "official" in flags, text, passages, current)
+        if not made and "optional" not in flags:
+            raise ManualError(f"{token}: the profile maps nothing to {arg!r}")
+        if made and "official" in flags and book == "rules":
+            firsts: dict[str, int] = {}
+            for s in classification.segments:
+                if s.target.top not in ("rules", "manual"):
+                    firsts.setdefault(s.target.top, s.start)
+            for other in sorted(firsts, key=firsts.__getitem__):
+                made.append(Chunk(f"_[{spec.title_of(other)}: published as its own document ({other}); "
+                                  "see the concordance.]_", kind=EDITORIAL, label="a part published apart"))
+    elif verb == "LAW":
+        got, label = source.law(arg, "quoted" in flags)
+        made = [Chunk(got.strip(), got, kind="law", label=label)]
+    elif verb == "EXCERPTS":
+        made = [Chunk(source.excerpt(e.ref), kind="excerpt", label=f"quoted from {e.ref}") for e in spec.excerpts]
+    elif verb == "ADOPTION_HISTORY":
+        made = [Chunk("\n".join(_history_lines(spec, source.history(), rows, passages, current=current)),
+                      kind=EDITORIAL, label="adoption history")]
+    return made
+
+
 def render(template: str, classification: Classification, spec: ManualSpec, source: Source, text: str, *,
            values: dict[str, str] | None = None, passages: Iterable[Passage] = (),
            current: bool = False) -> tuple[str, list[Chunk]]:
@@ -982,34 +1017,8 @@ def render(template: str, classification: Classification, spec: ManualSpec, sour
                                 label="the template's own words"))
         at = m.end()
         verb, arg, flags = m.group("verb"), m.group("arg") or "", set((m.group("flags") or "").split())
-        made: list[Chunk] = []
         try:
-            if verb == "PART":
-                made = _include(classification, source, spec, arg, "", False, text)
-                if not made and "optional" not in flags:
-                    raise ManualError(f"{m.group(0)}: the profile puts nothing in the slot {arg!r}")
-            elif verb == "INCLUDE":
-                book, _, number = arg.partition("#")
-                made = _include(classification, source, spec, book, number, "official" in flags, text,
-                                passages, current)
-                if not made and "optional" not in flags:
-                    raise ManualError(f"{m.group(0)}: the profile maps nothing to {arg!r}")
-                if made and "official" in flags and book == "rules":
-                    firsts: dict[str, int] = {}
-                    for s in classification.segments:
-                        if s.target.top not in ("rules", "manual"):
-                            firsts.setdefault(s.target.top, s.start)
-                    for other in sorted(firsts, key=firsts.__getitem__):
-                        made.append(Chunk(f"_[{spec.title_of(other)}: published as its own document ({other}); "
-                                          "see the concordance.]_", kind=EDITORIAL, label="a part published apart"))
-            elif verb == "LAW":
-                got, label = source.law(arg, "quoted" in flags)
-                made = [Chunk(got.strip(), got, kind="law", label=label)]
-            elif verb == "EXCERPTS":
-                made = [Chunk(source.excerpt(e.ref), kind="excerpt", label=f"quoted from {e.ref}") for e in spec.excerpts]
-            elif verb == "ADOPTION_HISTORY":
-                made = [Chunk("\n".join(_history_lines(spec, source.history(), rows, passages, current=current)),
-                              kind=EDITORIAL, label="adoption history")]
+            made = fill_token(m.group(0), verb, arg, flags, classification, spec, source, text, rows, passages, current)
         except ManualError as exc:
             problems.append(str(exc))
             continue
@@ -1074,5 +1083,6 @@ __all__ = ["AdoptionAction", "AdoptionEvent", "BookChoice", "BookSource", "CHOIC
            "Concordance", "CopyHit", "CopyState", "Difference", "Excerpt", "FRONT", "Locator", "ManualError", "ManualRow",
            "ManualSpec", "Norm", "PASSAGE_LABEL", "Passage", "Piece", "RenderCheck", "SectionClass", "SectionKind",
            "Segment", "Source", "Target", "asks", "attach", "check", "classify", "compare", "concordance",
+           "fill_token",
            "passage_note", "places", "render", "resolve_old",
            "segment_markdown", "segments", "words"]
