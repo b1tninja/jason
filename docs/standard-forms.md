@@ -1,6 +1,6 @@
 # Standard forms: the requests an association must accept, and how to find them in the law and the documents
 
-Status: inventory and method (2026-10-05). It lists the requests a member makes of a common interest development that call for a standard form, says which the law makes the association accept, and gives a repeatable way to find more in the statutes, the governing documents, and the reference works. It feeds the known-forms table of [arrivals-design.md](arrivals-design.md): every form jason sends has a procedure that processes its responses, so each row here is a candidate for a form, a handler, and a procedure.
+Status: inventory and method (2026-10-05); the discovery pass is built as `jason discover-forms` (see "Running it"). It lists the requests a member makes of a common interest development that call for a standard form, says which the law makes the association accept, and gives a repeatable way to find more in the statutes, the governing documents, and the reference works. It feeds the known-forms table of [arrivals-design.md](arrivals-design.md): every form jason sends has a procedure that processes its responses, so each row here is a candidate for a form, a handler, and a procedure.
 
 Quotations are from the statutes jason holds (`jason cite`, `authorities`), which are not official restatements. A reading is labeled as one and is never the rule.
 
@@ -77,7 +77,29 @@ The same method serves a new association and a year's law review. It is a search
 5. **Join across sources.** Candidates that share a subject (a statute and the document section that carries it out) are grouped: the statute gives the floor, the document gives the procedure, the owner's manual may already hold a form.
 6. **A person confirms.** Each group is accepted as a known-form row, held for the board (the law is silent on a clock the form needs: a proposed policy), or dropped. A conflict between a document and a statute becomes a `Conflict` row for the board and counsel, never a guess.
 
-`jason forms --discover` is this pass (proposed, not built): `--source statutes|documents|all`, a candidates file under `data/forms/`, and a report a person reads. The seeds in steps 1 and 2 run first and alone; the model runs only on the spans they find.
+`jason discover-forms` is this pass (built, 2026-10-05): `--source statutes|documents|all`, a candidates file under `data/forms/`, and a report a person reads. The seeds in steps 1 and 2 run first and alone (`--seed`); the model runs only on the spans they find (`--read`). Step 3 (the reference works) is not built: a section a reference work cites that the shelf lacks is still found with `citation_gaps`, and its text, once on the shelf, is seeded like any other.
+
+## Running it
+
+The code is `jason.tasks.form_discovery` (the seeds, the groups, the reading, the store), `jason.community.form_candidates` (the records), and `jason.commands.discover_forms` (the command). The seed patterns are a data table, `SEED_PATTERNS`: general legal language only, each with a name and a note. A span stands when one strong pattern matches or two of any kind do.
+
+```bash
+jason discover-forms --seed                 # no model, no GPU: the statutes' and the documents' spans, known-as, groups
+jason discover-forms --list --unknown       # the candidates no existing request kind or notice row matches
+jason discover-forms --report --out data/forms/candidates.md
+jason discover-forms --read --limit 20      # the local model, at a console, after the preflight, holding the GPU lock
+jason discover-forms --show ID              # one candidate: its words, reading, joins, and acts
+jason discover-forms --confirm ID --by NAME [--why TEXT]
+jason discover-forms --hold ID --by NAME --why TEXT     # for the board: the law is silent on a clock the form needs
+jason discover-forms --drop ID --by NAME --why TEXT
+```
+
+- **What it keeps.** `data/forms/candidates.json` (each candidate: id, source, citation, the span's words as `quote`, the seeds that took it, the reading, `known_as`, `group`, status, note) and the log `data/forms/candidate-acts.jsonl` (who, when, what, why). A candidate is `new`, `confirmed`, `held`, or `dropped`. A re-seed adds new spans and never changes a status, note, or reading already kept; a new, unread candidate the seed no longer finds is removed, any other is kept and noted.
+- **What a join is.** A document span goes in the group of the one statute span it best goes with: it cites the section, or both read as one kind of request (`ResponseKind`), or they share three of each other's eight commonest subject words. Each join keeps its reason, and an unjoined span keeps no group. A join is a lead a person reads.
+- **What the model does.** `--read` asks the same local model as the duties reader, through the same path (`DutyModel`: the preflight, the GPU lock around each request), for one record per span. A reading whose `quote` is not in the span word for word (whitespace aside) is dropped with its candidate (status `dropped`, note "quote not found"). It refuses unless a person is at a console and the preflight passes.
+- **What confirming does.** It writes the candidate's status and the log. It makes no form, no procedure, and no known-form row: those are a person's next step, with the known-forms table of [arrivals-design.md](arrivals-design.md) and `jason sop`.
+
+**The rediscovery check** is a manual step, not part of the tests. Run `jason discover-forms --seed`, then `--read`, then `--report`, and compare the report with the profile's inventory ([the worked example](../mystique/docs/standard-forms.md)): each request that inventory lists as required by the law should appear as a statute candidate under its section, each one the documents make the owner ask for as a document candidate, and each document span that carries out a statute should sit in that statute's group. Write down what is missing and why (a phrase no pattern holds, a section not on the shelf, a document not outlined): a missing request is a pattern or a source to add, not a request to add by hand. A seed of the shelf as it stood on 2026-10-05 found spans under the sections the table above names for records, architectural and charger applications, solar, payment plans, internal dispute resolution, and resale documents, and found none under the sections the table names for hearings before discipline, alternative dispute resolution, owner information, elections, and open forum: those sections state a duty to notify, a definition, a solicitation, or a rule for elections in words the request phrases do not hold. A pattern, or a read of the section by a person, closes each gap. The model's readings have not been run against the corpus.
 
 ## What this does not decide
 

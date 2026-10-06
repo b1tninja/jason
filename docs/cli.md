@@ -6,11 +6,11 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-168 commands, by area:
+169 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
-- [Documents & library](#documents--library) (23)
+- [Documents & library](#documents--library) (24)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (25)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
@@ -2322,6 +2322,33 @@ The paint schedule with each color's hex and LRV, checked against the maker's ca
 | `--folder` | DRIVE_ID | with --to-doc: the Drive folder (default: the signed-in Drive's top level) |
 | `--yes` |  | with --to-doc: really make or refresh the Doc |
 | `--descriptions` |  | with --page or --to-doc: also fetch each color's description (one call per color; the rest is read from the catalog on disk) |
+
+### `jason discover-forms`
+
+Find the requests a member makes that a standard form could take: seed from the statutes and the governing documents, read with the local model, a person confirms (docs/standard-forms.md)
+
+| Option | Value | Help |
+|---|---|---|
+| `--seed` |  | run the seeds over the authorities shelf and the governing documents (no model, no GPU); keeps a person's status on a candidate already kept |
+| `--read` |  | read the new, unread candidates with the local model (a person at a console; after the local-AI preflight, holding the GPU lock); a reading whose quote is not in the span is dropped |
+| `--list` |  | the candidates on disk |
+| `--show` | ID | one candidate: its words, reading, joins, and acts |
+| `--report` |  | Markdown for a person, grouped by statute and document |
+| `--confirm` | ID | a person says it is a request a form could take (needs --by); writes only its status and the log |
+| `--hold` | ID | keep it for the board (needs --by and --why) |
+| `--drop` | ID | set it aside (needs --by and --why) |
+| `--source` | {statutes,documents,all} | with --seed, --read, --list, or --report: statutes, documents, or all (default all) |
+| `--model` | NAME | with --read: the local model (default: jason's shared one) |
+| `--limit` | N | with --read: read at most N candidates |
+| `--status` | {new,confirmed,held,dropped} | with --list: only this status |
+| `--known` |  | with --list: only candidates that match an existing request kind or notice-catalog row |
+| `--unknown` |  | with --list: only candidates that match none |
+| `--out` | FILE | with --report: write the report to this file |
+| `--by` | NAME | who does it, for the log (--confirm, --hold, and --drop require it) |
+| `--why` | TEXT | the reason, kept with the act (--hold and --drop require it) |
+| `--json` |  | print JSON |
+
+## Meetings, board & minutes
 
 ### `jason reference`
 
