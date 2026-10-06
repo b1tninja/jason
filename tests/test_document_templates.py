@@ -194,4 +194,4 @@ def test_a_quote_block_needs_its_authority():
 
 
 def test_the_stock_layouts_are_named():
-    assert set(LAYOUTS) == {"plain", "guide"}
+    assert set(LAYOUTS) == {"plain", "guide", "book"}

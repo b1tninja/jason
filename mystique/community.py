@@ -291,6 +291,12 @@ class Mystique(Community):
 
         return DRIVE_HOME
 
+    def manual_documents(self):
+        """The Rules document and the owner's manual template as Docs: their names and folder (templates.MANUAL_DOCUMENTS)."""
+        from .templates import MANUAL_DOCUMENTS
+
+        return MANUAL_DOCUMENTS
+
     def prompt_context(self):
         """Who the association is, for every task prompt: read from the specification (units, buildings, the board's
         group, the mailing address), plus how it is managed (prompts.py)."""

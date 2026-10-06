@@ -625,6 +625,7 @@ def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path
         "adoption": adoption,
     }, indent=1), encoding="utf-8")
     return {"paths": paths, "check": found, "rules_chunks": rules_chunks, "manual_chunks": manual_chunks,
+            "rules_source": clean,
             "classification": result, "passages": passages, "adoption": adoption}
 
 

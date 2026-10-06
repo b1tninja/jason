@@ -1,6 +1,6 @@
 # Document templates: one definition of a document, a layout apart from its blocks
 
-Status: **design, with phase 1 built** (October 2026). Code: `jason.community.document_templates` (pure) and `jason.tasks.document_templates` (disk); command `jason document-template`.
+Status: **design, with phase 1 built** (October 2026), and the Rules document, the owner's manual template, and their Docs built after it ([section 11](#11-the-rules-document-the-owners-manual-template-and-the-docs-they-make)). Code: `jason.community.document_templates` (pure) and `jason.tasks.document_templates` (disk); command `jason document-template`.
 
 The owner's manual ([owners-manual.md](owners-manual.md)) is already most of the way to a generated document. Its base template is a list of tokens (`{PART:front}`, `{INCLUDE:rules}`, `{EXCERPTS}`) and each token is read from a source each time the manual is rendered, so the guide never keeps a stale copy. What it lacks is a name for that shape, so the next document (the annual disclosures, the resale package, a welcome guide) can use it without copying it. This design gives it one: a **document definition** with a **layout** (how it looks) and **blocks** (what it says, each rendered from its source). It adapts the form engine's idea, one definition with many renderers ([forms.md](forms.md)), from a form to a whole document.
 
@@ -221,3 +221,72 @@ The base template's tokens map one for one to blocks:
 - **Phase 1 (built):** the model (`Layout`, block kinds, `DocumentDefinition`, renderers: Markdown, HTML), the manual re-expressed with identical output, the form block, the directory block with publish flags, the embedded-document block with gaps and the part map (block order, no pages), two layouts proven independent of blocks, `jason document-template`.
 - **Phase 2:** the PDF output with page numbers in the part map; the Doc output from a template Doc; the packet-to-definition builder; the requirements checklist; the rule records as a store with ids, versions, and adoption; `jason segments` checked against a part map; the profile's annual disclosures and policy statement as definitions.
 - **Phase 3:** the resale package, the rule-change notice, and the welcome guide; the board edits rules as data if decision 1 says so.
+
+## 11. The Rules document, the owner's manual template, and the Docs they make
+
+Built after phase 1 (code: `jason.community.rules_document`, `jason.community.doc_output`, `jason.tasks.rules_documents`, `jason.tasks.document_docs`; command: `jason document-template`). It takes the model of section 4 (the rules by reference) from design to a document and puts the rules in one place.
+
+### 11.1 The rule records
+
+A **rule record** (`RuleRecord`) is one operating rule or one of its subdivisions: a stable `id`, the `number` it prints now, its heading (`title`, `level`), its outline address (`segment`, kept as an alias), the editorial `notes` that follow it, and its `versions` (`RuleVersion`: the words, the day the board adopted that version and the board item, or `proposed`).
+
+- **The id is the permanent id** (`permanent_ids`) of the outline section when the document has an id table, else its address in its book. It does not change when the rule is renumbered or reworded; a piece of a section is the id with `/n`.
+- **The version in force on a day** (`version_on`) is the newest adopted version on or before that day. A version with no adoption day is the words as the source document has them. A **proposed** version is in force on no day. A rule with no version in force on the document's day prints a visible line saying so and is reported as a gap.
+- **Where they come from.** `derive_book` reads the classification: it groups the official rules' own pieces by the section each stands for, so the words are exactly the official rules' words (copies the board adopted as rules keep their note naming the source; a change with no adoption found keeps jason's note). A person may keep the records as data instead: `--export-records` writes them to `data/rule-records/<document>.json` (never over an existing file), and `--records stored|derived|auto` chooses. Where a stored record's words are edited, the owner's manual that reads from the Rules document shows a **labeled** difference from the working Doc.
+- **A change is a proposal until the board adopts it.** Saving a record never makes a rule: an added version is `proposed` until a person records the adoption (its day and board item). jason proposes; the board adopts (Civil Code 4350, 4355, 4360; section 4.4).
+
+### 11.2 The Rules document (`rules-and-regulations`)
+
+The rules book only, as one document. In order:
+
+1. **Title** (`{RULES_TITLE}`) and the association's name, from the identity tokens.
+2. **The status line**, the token `{ADOPTION_STATUS}`. It is the draft banner, "DRAFT FOR BOARD ADOPTION: not an adopted rule until the board adopts it (Civil Code 4350, 4355, 4360)", until an adoption event for the whole document is on record: an `AdoptionEvent` of action `adopted`, dated on or before the document's day, whose `sections` name `rules-and-regulations`. Then it is replaced by a line giving the day and the evidence. An adoption of one rule does not adopt the document, a notice is not an adoption, and this code never decides: it reads the record, and a person records the event.
+3. **The adoption history** (the same table `{ADOPTION_HISTORY}` prints), then the contents (the layout puts them after the title and the status line).
+4. **The rules**, each its own block (`rule:<id>`), with the printed numbers as headings and the subdivisions under them.
+5. **An appendix naming the policies bound in apart** by their book keys (`PolicyReferencesBlock`). They are separate documents, read from their own sources; nothing of them is copied here.
+
+Rendered, it equals `jason manual --render`'s `rules-and-regulations.md` line for line, apart from labeled differences (the title block, the status line, the heading over the rules, the appendix in place of the "published as its own document" notes, the official rules' introduction, and the notes on guidance left in the manual). `jason document-template rules-and-regulations` proves it and exits 1 on any other difference.
+
+### 11.3 The owner's manual template (`owners-manual-template`)
+
+The guide, the directory, the governing documents' excerpts, **a reference to the Rules document where the rules go**, the policies and statutory notices bound into the manual (the discipline policy and the collection policy with the notice the law requires), the forms, and the rest of the guidance. It contains no rule and no rules book (a test asserts it).
+
+`RulesReferenceBlock` renders the reference in one of two modes from the same records, so the words are never typed twice:
+
+| Mode | Where | What it prints |
+|---|---|---|
+| `full` | the Markdown and HTML outputs | the rules, rendered from the Rules document's records, one heading level under the reference |
+| `index` | the Google Doc template form | a line that links the Rules document (`RULES_DOC_URL`) and an index of the parts' and rules' numbers and titles; `--with-rules` renders the full text in the Doc instead |
+
+The directory is a directory block with publish flags (section 5); an office the profile has but nobody has agreed to publish prints "(not published)", never "(vacant)". A form is a form block: the application is the paper form from its `FormTemplate`, and where the profile has no such form the manual's own words for it (the `arch` book) are included, so the template does not lose it. In the Doc template form the association's name and the date stay `{TOKENS}`, filled when the Doc is copied.
+
+### 11.4 The option: the manual reads its rules from the Rules document
+
+`jason document-template owners-manual --rules-from-document` reads the rule and copy words of the existing `owners-manual` definition from the records instead of the classification. It is off by default and nothing changes without it. With it on:
+
+- **the check:** every rule the manual places has its record's words (`rules_section_check`), a record the manual does not place is reported, and the Markdown equals the manual read from the classification **except** at pieces whose words differ, each labeled "read from the Rules document (rule ID)";
+- **the usual cause** of a labeled difference is that the Rules document holds no pending suggestion: the working Doc may carry suggested insertions that are not rules ([owners-manual.md](owners-manual.md), "The last adopted words, not the working ones": a pending suggestion is never printed).
+
+### 11.5 The Doc output (`--doc`)
+
+`jason document-template [rules-and-regulations|owners-manual-template] --doc plan|create`. **A dry run unless `--doc create --yes`.** The plan prints, for each Doc: the action, the name, the folder, the requests, the styles, the tables, the page breaks, the header and footer, the `{TOKENS}` left open, and the link between the two Docs.
+
+`doc_output.build` writes the definition as one list of Docs `batchUpdate` requests with the Doc's **real named styles**: the document title is `TITLE`, the line under it `SUBTITLE`, a part or a section `HEADING_1`, a numbered rule `HEADING_2`, its subdivision `HEADING_3` (the Markdown levels moved up one), everything else `NORMAL_TEXT`. The Doc's outline is therefore the document's own: the heading a block prints is the heading the Doc has. A reader of published Docs, and the structure recovery that reads them, can take that heading structure as known.
+
+- **Tables** (the adoption history, the directory): a marker paragraph is written, then replaced by `insertTable` and the cells filled last to first, the head row bold and pinned.
+- **A named range per block**, named by the block's stable id, so a rule is found in the Doc by the id its record has.
+- **The status line** is a ruled box; a page starts before each heading level the layout names.
+- **The link to the Rules document** is a hyperlink on the words that name it, to `https://docs.google.com/document/d/<id>/edit`. The Rules Doc is created first so its id is known when the manual template is written. (A smart chip is not made: the API has no request for one.)
+- **The contents.** The Docs API has no request that inserts a table-of-contents field. The Doc has a marker where the contents go; once the headings have ids a second pass writes the contents as links to the headings (`contents_requests`), and Insert > Table of contents in the Doc editor makes the field from the same headings.
+- **The letterhead** is the existing path: the Letterhead Doc is copied, its sample text and banner removed (`letters.banner_requests`), the header set (`letters.format_requests`), and the layout's footer text appended to its footer.
+- **Verification.** After writing, the Doc is read back and each planned paragraph and heading style is checked; a difference is printed and recorded, never hidden.
+
+**States** are `template_gen`'s, kept in `data/templates/<profile>.json` under `document:<key>` (the Doc id, a hash of the rendered text, a hash of the Doc's text): no Doc yet, **create**; the document changed and the Doc did not, **update** in place; a person edited the Doc and the document did not, **edited**, left alone; both changed, **conflict**, nothing written; neither, **unchanged**. A Doc the profile names that jason did not generate is not overwritten. Nothing is shared, sent, or deleted.
+
+The Docs are the profile's rows (`Community.manual_documents()`, `ManualDocument`): the definition's key, the name its Drive file bears, and the folder (empty: the Templates folder of `drive_home`). A definition with no row takes its own title. The first `--yes` follows a person's confirming the names, the folder, and who adopts the Rules document.
+
+### 11.6 Not built, and what is untested
+
+- The Doc requests are tested against a simulator of the text requests and a fake Docs service, never a live Doc. The table and list index arithmetic follows the Docs structure as documented; the post-write verification and a first run on a scratch Doc are the check.
+- The records as the store (section 4.3): the stored file is the first step; the classifier does not yet write adoption days per rule, and `supersedes` is the order of the versions.
+- The Rules document's proposal path (`jason rule-change` text from a proposed record) is not wired.

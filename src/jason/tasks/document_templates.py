@@ -47,10 +47,16 @@ def manual_definition(layout: Layout = PLAIN) -> DocumentDefinition:
 
 
 def render_manual(data_dir: Path | None = None, community: Any = None, *, layout: str = "plain",
-                  out_dir: Path | None = None, as_of: date | None = None) -> dict[str, Any]:
+                  out_dir: Path | None = None, as_of: date | None = None, rules_from_document: bool = False,
+                  records: str = "auto") -> dict[str, Any]:
     """The owner's manual from its definition. Runs ``jason manual --render`` first (the same classification, passages,
     and sources), renders the definition from them, and reports whether the Markdown equals the manual that render wrote;
-    then writes ``owners-manual.document.md``, ``.html``, and ``owners-manual.parts.json`` beside it."""
+    then writes ``owners-manual.document.md``, ``.html``, and ``owners-manual.parts.json`` beside it.
+
+    ``rules_from_document`` is the option (off unless asked): the manual's rule and copy words are read from the Rules
+    document's records (``jason.community.rules_document``) instead of the classification. The result's ``rules`` is then
+    the check of the manual's rules section against the records' words; ``identical`` still says whether the Markdown equals
+    ``jason manual --render``'s, and a record whose words were changed shows as a labeled difference, never silently."""
     from jason.tasks import manual as task
 
     data_dir = Path(data_dir) if data_dir is not None else task.default_data_dir()
@@ -64,8 +70,15 @@ def render_manual(data_dir: Path | None = None, community: Any = None, *, layout
     result, outline, spec = task.classify(data_dir, community)
     source = task.DiskSource(data_dir, community, spec, outline)
     plain = task._values(community, outline, spec, basis=False)
-    ctx = manual_context(result, spec, source, outline.text, values=plain, passages=made["passages"],
-                         as_of=as_of or date.today())
+    day = as_of or date.today()
+    book = None
+    if rules_from_document:
+        from jason.community.rules_document import RulesDocumentSource
+        from jason.tasks.rules_documents import build_book
+
+        book = build_book(data_dir, made, result, outline, spec, task.adoption_history(data_dir, community, spec), records)
+        source = RulesDocumentSource(source, book, day)
+    ctx = manual_context(result, spec, source, outline.text, values=plain, passages=made["passages"], as_of=day)
     assembly = assemble(manual_definition(LAYOUTS[layout]), ctx)
     chosen = LAYOUTS[layout]
     md = MarkdownRenderer().render(assembly, chosen)
@@ -78,7 +91,15 @@ def render_manual(data_dir: Path | None = None, community: Any = None, *, layout
     paths["markdown"].write_text(md, encoding="utf-8")
     paths["html"].write_text(HtmlRenderer().render(assembly, chosen), encoding="utf-8")
     paths["parts"].write_text(json.dumps(part_map(assembly), indent=1), encoding="utf-8")
-    return {"paths": paths, "identical": same, "check": found, "assembly": assembly}
+    rules = None
+    if book is not None:
+        from jason.community.rules_document import rules_section_check
+
+        rules = rules_section_check(assembly.chunks, book, day)
+    from jason.community.manual import check as piece_check
+
+    return {"paths": paths, "identical": same, "check": found, "assembly": assembly, "rules": rules,
+            "pieces": piece_check(assembly.chunks, outline.text)}
 
 
 def summary(found: DocumentCheck) -> list[str]:

@@ -157,6 +157,24 @@ Rule text is never filled from the declaration by reference. A rule changes only
 
 An unlabeled difference is a defect, and `--render` exits 1. The words are compared line by line in `data/drafts/owners-manual.diff`. The check itself is in `data/manual/KEY/render.json`.
 
+## The Rules document and the manual template
+
+The rules can also stand as one document that other documents refer to, kept as **rule records** with stable ids ([document-templates.md](document-templates.md), section 11). Two documents come from definitions:
+
+- **`rules-and-regulations`**: the Rules document. The rules book only, each rule its own block, a status line (`{ADOPTION_STATUS}`) that is the draft banner until an adoption event for the whole document is on record, the adoption history, and an appendix that names the bound-in policies by their book keys without copying them.
+- **`owners-manual-template`**: the manual with no rules in it. A reference block links the Rules document and indexes its numbers and titles (the Doc form), or renders the rules from the same records (the Markdown and HTML forms).
+
+The existing manual can read its rule words from the Rules document too, as an option that is off unless asked: `jason document-template owners-manual --rules-from-document`. The rule and copy words then come from the records, each piece labeled where it differs from the working Doc (the Rules document holds no pending suggestion). Rule text is still never filled from the declaration by reference.
+
+```bash
+jason document-template rules-and-regulations      # the Rules document, and its proof against the official rules
+jason document-template owners-manual-template     # the manual that refers to it
+jason document-template owners-manual --rules-from-document
+jason document-template rules-and-regulations --export-records   # the records as data, never over an existing file
+jason document-template --doc plan                 # what the two Google Docs would be: a dry run
+jason document-template --doc create --yes         # write them (the Rules Doc first); a person's edit to a Doc is left alone
+```
+
 ## Commands and files
 
 ```bash

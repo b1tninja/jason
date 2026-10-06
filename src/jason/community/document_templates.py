@@ -67,13 +67,19 @@ class Layout:
     separator: str = ""
     page_break_before: tuple[int, ...] = ()
     styles: tuple[tuple[str, str], ...] = ()
+    contents_after: int = 0         # the contents follow this many leading blocks (a title, a status line), not the top
 
 
 PLAIN = Layout()
 GUIDE = Layout("guide", heading_shift=0, numbered=True, header="{DOCUMENT_TITLE}", footer="As of {AS_OF}",
                contents=True, title_heading=True, separator="---", page_break_before=(2,),
                styles=(("font", "Georgia, serif"), ("size", "11pt"), ("accent", "#1f3a5f"), ("rule", "#bbbbbb")))
-LAYOUTS = {PLAIN.key: PLAIN, GUIDE.key: GUIDE}
+# A book of rules and the manual template: the headings carry the printed numbers, so none are added; a title and a status
+# line come before the contents; each part (heading level 2) starts a page; the header and footer are tokens.
+BOOK = Layout("book", header="{DOCUMENT_TITLE}", footer="As of {AS_OF}", contents=True, contents_depth=3,
+              page_break_before=(2,), contents_after=2,
+              styles=(("font", "Georgia, serif"), ("size", "11pt"), ("accent", "#1f3a5f"), ("rule", "#bbbbbb")))
+LAYOUTS = {PLAIN.key: PLAIN, GUIDE.key: GUIDE, BOOK.key: BOOK}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -136,6 +142,7 @@ class Context:
     documents: Mapping[str, Embedded] = field(default_factory=dict)
     quote: Callable[[str], str] | None = None
     computed: Mapping[str, Callable[[Context], list[list[str]]]] = field(default_factory=dict)
+    rules: Any = None                              # a ``rules_document.RulesContext``: the rule records, by reference
 
 
 def manual_context(classification: Any, spec: Any, source: Any, text: str, *, values: dict[str, str] | None = None,
@@ -509,18 +516,25 @@ def _tokens(layout_text: str, assembly: Assembly) -> str:
 class MarkdownRenderer:
     """The Markdown output. With the plain layout it is exactly the blocks' words joined as the template joined them."""
 
-    def body(self, assembly: Assembly, layout: Layout) -> str:
+    def _join(self, results: Sequence[BlockResult], layout: Layout) -> str:
         pieces: list[str] = []
-        for r in assembly.results:
+        for r in results:
+            last = next((p for p in reversed(pieces) if p), "")
+            if last and r.markdown and not last.endswith("\n") and not r.markdown.startswith("\n"):
+                pieces.append("\n\n")                  # two blocks never run together: a definition need not write the gap
             pieces.append(r.markdown)
             if layout.separator and not r.prose and r.markdown:
                 pieces.append(f"\n\n{layout.separator}\n\n")
-        out = "".join(pieces)
-        out = re.sub(r"\n{3,}", "\n\n", out).strip()
+        out = re.sub(r"\n{3,}", "\n\n", "".join(pieces)).strip()
         return shift_headings(out, layout.heading_shift)
 
+    def body(self, assembly: Assembly, layout: Layout) -> str:
+        return self._join(assembly.results, layout)
+
     def render(self, assembly: Assembly, layout: Layout) -> str:
-        body = self.body(assembly, layout)
+        split = layout.contents and layout.contents_after > 0
+        front = self._join(assembly.results[:layout.contents_after], layout) if split else ""
+        body = self._join(assembly.results[layout.contents_after:] if split else assembly.results, layout)
         if layout.numbered:
             body = number_headings(body)
         top: list[str] = []
@@ -529,6 +543,8 @@ class MarkdownRenderer:
         top += [_tokens(c, assembly) for c in layout.cover]
         if layout.title_heading:
             top.append(f"# {assembly.definition.title}")
+        if front:
+            top.append(front)
         if layout.contents:
             heads = [(lv, t) for lv, t in headings_of(body, layout.contents_depth + layout.heading_shift) if lv >= 2]
             if heads:
@@ -669,7 +685,7 @@ def part_map(assembly: Assembly) -> dict[str, Any]:
             "asOf": assembly.as_of.isoformat() if assembly.as_of else None, "parts": parts}
 
 
-__all__ = ["Assembly", "Block", "BlockResult", "ComputedBlock", "ContactField", "Context", "DirectoryBlock",
+__all__ = ["Assembly", "BOOK", "Block", "BlockResult", "ComputedBlock", "ContactField", "Context", "DirectoryBlock",
            "DirectoryEntry", "DocumentCheck", "DocumentDefinition", "DocumentError", "Embedded", "EmbeddedBlock",
            "FormBlock", "GUIDE", "HtmlRenderer", "LAYOUTS", "Layout", "ManualBlock", "ManualContext", "MarkdownRenderer",
            "PLAIN", "ProseBlock", "QuoteBlock", "Renderer", "Requirement", "assemble", "check", "definition_from_template",

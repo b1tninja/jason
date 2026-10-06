@@ -102,6 +102,15 @@ The diff is `data/drafts/owners-manual.diff`.
 
 **The text has gaps where the Doc has chips.** The outline's text has no file or person chips, so the Doc's links are blanks in it. Examples: "submit a  .", "Completed .", "Email , or leave a voicemail", "the Association's adopted .", and the "[ Insert ]" markers. A rendering for owners needs the chips: read the Doc again (read-only) and carry its links.
 
+## The Rules document and the manual template (October 2026)
+
+`jason document-template rules-and-regulations` renders the rules as their own document from rule records (`mystique/templates.py`, `MANUAL_DOCUMENTS`); `owners-manual-template` is the manual that refers to it. ([docs/document-templates.md](../../docs/document-templates.md), section 11.)
+
+- **The Rules document** holds Parts A and B as the official rules do (74 pieces, 77 records): word for word, with the copies named, the changes with no adoption found noted, B-12 read from the parking rules Doc, and an appendix naming Part C, the collection policy, and the application by their book keys (`disc`, `coll`, `arch`). It is a draft: the status line carries the banner until the board's adoption of the document is recorded as an `AdoptionEvent` naming `rules-and-regulations` in `mystique/manual.py`. None is recorded, and adopting it is the board's decision above (item 1: publishing the rules as their own document).
+- **The manual template** has the guide (the questions, the contacts), the board's directory with publish flags (the offices are the secretary and the treasurer; no one has agreed to publish a name, so it prints "(not published)"), the excerpts, the reference to the Rules document, Part C and the collection policy with the 5730 notice, the home improvement application (the profile has no `architectural-application` form, so the manual's own application text is included), and the rest of the guidance.
+- **Pending suggestions.** `--rules-from-document` reads the rule words from the records, so the manual then omits the suggested insertions the Doc carries (B-5(a)'s signs, B-12(j)'s registration words, B-15's pets); each is a labeled difference.
+- **The Docs.** Both are filed in My Drive/Templates (private to the association's account and not synced to PayHOA), not in "Governing Documents", which is synced to PayHOA's public documents: a draft Rules document is not filed there until the board adopts it. The names, "Rules and Regulations (draft for board adoption)" and "Template - Owner's Manual", are proposals for the secretary to confirm before the first `--doc create --yes`.
+
 ## For the board (jason lists; the board decides)
 
 1. **Whether publishing the rules as their own document needs adoption.**

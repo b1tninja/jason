@@ -1526,6 +1526,13 @@ class Community(ABC):
         operating rules, copies, policies, and guidance, and where each goes. None until the specification sets it."""
         return None
 
+    def manual_documents(self) -> tuple:
+        """The Docs generated from the document definitions (``jason document-template ... --doc``), as
+        ``jason.community.rules_document.ManualDocument`` rows: the definition's key (``rules-and-regulations``,
+        ``owners-manual-template``), the name its Drive file bears, and the folder it is filed in (empty: the Templates
+        folder of ``drive_home``). Empty until the specification sets them: a definition with no row takes its own title."""
+        return ()
+
     def packet_reports(self) -> tuple[str, ...]:
         """The reports every board packet carries, as references (``{REPORT:treasurers-report period=previous-month}``),
         shown as already built (``live_reports``). Empty until the specification sets them."""

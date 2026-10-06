@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from jason.community.identity import DriveHome, Identity, LetterheadSpec
 from jason.community.templates import DocumentTemplate, TemplateKind
+from jason.community.rules_document import ManualDocument
 from jason.community.template_values import CitationPurpose
 
 LETTERHEAD_DOC = "1PBWiv7bjmwfZeX_snM3reiabiR9A8GELhrTstoIqnwo"
@@ -75,6 +76,16 @@ CITATIONS = {
 }
 DRIVE_HOME = DriveHome(my_drive=MY_DRIVE, templates=TEMPLATES_FOLDER, meetings=MEETINGS_FOLDER, broadcasts=BROADCASTS_FOLDER,
                        broadcasts_name=BROADCASTS_FOLDER_NAME, disciplinary=DISCIPLINARY_FOLDER)
+
+# The Docs generated from the document definitions (jason document-template ... --doc, jason.community.rules_document):
+# the Rules document and the owner's manual template that refers to it. Both are filed in My Drive/Templates, which is
+# private to the association's account and is not synced to PayHOA; "Governing Documents" is synced to PayHOA's public
+# documents, so a draft Rules document is not filed there until the board has adopted it (mystique/docs/manual.md). The
+# names are proposals for the secretary to confirm before the first --yes.
+MANUAL_DOCUMENTS: tuple[ManualDocument, ...] = (
+    ManualDocument("rules-and-regulations", "Rules and Regulations (draft for board adoption)", folder_id=TEMPLATES_FOLDER),
+    ManualDocument("owners-manual-template", "Template - Owner's Manual", folder_id=TEMPLATES_FOLDER),
+)
 
 TEMPLATES: tuple[DocumentTemplate, ...] = (
     DocumentTemplate(TemplateKind.LETTERHEAD, "Template - Letter on Letterhead", "1Ka_KDdXlOhO6HfW5dTktc-3njSEwkgoAMN2AdsiRpuE"),
