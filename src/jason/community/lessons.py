@@ -2199,6 +2199,18 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("rules_document.adoption_status",
                                  "test_the_draft_banner_is_there_until_an_adoption_event_is_on_record"),
            docs=("docs/owners-manual.md",)),
+    Lesson("a-credential-only-in-a-checkouts-file-is-missing-elsewhere", date(2026, 10, 5), (Area.REPOSITORY,),
+           "A worktree agent got GoogleAuthRequired: the Google refresh token lived only in the git-ignored "
+           "secrets/google-token.json of the main checkout, and the vault held the OAuth client but no token.",
+           "The vault is the system of record for credentials, but the token had only ever been saved to a file beside "
+           "the checkout.",
+           "jason.google.tokens reads the vault first and then the file, and saves to both; jason vault migrate --yes "
+           "copies the existing token files into the vault (create-only), and jason vault status says where each is read "
+           "from, never the token.",
+           Status.OPEN, guards=("tests/test_google_tokens.py::test_worktree_case_vault_only_no_file_and_another_cwd",),
+           docs=("docs/integrations-design.md",),
+           notes=("Open until a person runs jason vault migrate --yes in the main checkout; then any worktree reads the "
+                  "token from Keeper.",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",
