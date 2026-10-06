@@ -96,6 +96,23 @@ class FormKey(Enum):
     IDR = "idr"
     RECORDS = "records"
     OWNER_INFO = "owner-info"
+    # The forms of docs/form-templates/ (each key is its design page's file name), made as the library gains them.
+    ADR_REQUEST = "adr-request"
+    RESALE_DOCUMENTS = "resale-documents"
+    MEMBERSHIP_LIST = "membership-list"
+    PAYMENT_PLAN = "payment-plan"
+    DISPUTED_CHARGE = "disputed-charge"
+    ARCHITECTURAL_APPLICATION = "architectural-application"
+    RECONSIDERATION_REQUEST = "reconsideration-request"
+    EV_CHARGER = "ev-charger"
+    SOLAR = "solar"
+    PROTECTED_USE_APPLICATION = "protected-use-application"
+    DELIVERY_CHANGE = "delivery-change"
+    SECONDARY_ADDRESS = "secondary-address"
+    INDIVIDUAL_DELIVERY_REQUEST = "individual-delivery-request"
+    CANDIDATE_NOMINATION = "candidate-nomination"
+    MEETING_COMMENT_REQUEST = "meeting-comment-request"
+    ACCOMMODATION_REQUEST = "accommodation-request"
 
 
 def slug(text: str, limit: int = 40) -> str:
