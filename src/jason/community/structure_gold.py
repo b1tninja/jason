@@ -196,11 +196,12 @@ def gold_from_doc(doc: dict[str, Any], *, doc_id: str = "") -> Gold:
         return node
 
     def walk(content: list[dict[str, Any]]) -> None:
+        nonlocal at
         for block in content:
             if "paragraph" in block:
                 node = paragraph_node(block["paragraph"])
                 if node is not None:
-                    if node.kind == "heading" and node.level:
+                    if node.kind == "heading":
                         while stack and gold.nodes[stack[-1]].level >= node.level:
                             stack.pop()
                         node.parent = stack[-1] if stack else -1
@@ -263,14 +264,16 @@ def _finish(gold: Gold) -> None:
         counts[n.kind] = counts.get(n.kind, 0) + 1
     counts["lists"] = len({n.list_id for n in gold.nodes if n.list_id})
     gold.styles = counts
-    # A part is a top heading that follows a page break (or the first title): the bound-in documents of a manual.
+    # A part is a document bound in: a title-style heading, or where none is used, a top heading after a page break.
     top = min((n.level for n in gold.nodes if n.kind == "heading" and n.level), default=0)
+    titled = any(n.kind == "heading" and n.title_style for n in gold.nodes)
     parts = []
     after_break = True
     for i, n in enumerate(gold.nodes):
         if n.kind == "page_break":
             after_break = True
-        elif n.kind == "heading" and ((n.title_style and after_break) or (n.level == top and after_break and gold.styles.get("page_break"))):
+        elif n.kind == "heading" and (n.title_style or (not titled and n.level == top and after_break
+                                                        and gold.styles.get("page_break"))):
             parts.append({"title": n.text, "node": i, "page": 0})
             after_break = False
         elif n.kind in ("heading", "paragraph", "list_item"):
@@ -316,11 +319,15 @@ def pair_pages(gold: Gold, pdf: Path | str, *, lines: list[list[str]] | None = N
         want = fold_text(((node.number + " ") if node.number else "") + (node.title or node.text))
         want2 = fold_text(node.title or node.text)
         found = -1
-        for k in range(cursor, len(flat)):
-            cand = flat[k][1]
-            nxt = (cand + " " + flat[k + 1][1]) if k + 1 < len(flat) else cand
-            if cand in (want, want2) or nxt in (want, want2) or (len(want2) > 12 and cand.startswith(want2)):
-                found = k
+        # The line that prints the number and the words together is the heading; the words alone may be a label elsewhere.
+        for forms, window in (((want,), 400 if node.number else 0), ((want, want2), len(flat))):
+            for k in range(cursor, min(len(flat), cursor + window)):
+                cand = flat[k][1]
+                nxt = (cand + " " + flat[k + 1][1]) if k + 1 < len(flat) else cand
+                if cand in forms or nxt in forms or (len(want2) > 12 and cand.startswith(want2)):
+                    found = k
+                    break
+            if found >= 0:
                 break
         if found < 0:
             if node.kind == "heading":
@@ -462,7 +469,7 @@ def render_pdf(gold: Gold, path: Path | str, style: RenderStyle | None = None) -
         pg.insert_text((left, 100), "TABLE OF CONTENTS", fontsize=14, fontname="tibo")
         y = 130.0
         for node, shown in toc_entries:
-            if node.level > 2 or y > 700:
+            if node.level > 2 or node.level == 0 or y > 700:          # a title is not in a Doc's contents
                 continue
             printed = (node.number + " " if node.number and not node.own_number else "") + shown
             x0 = left + 14 * max(0, node.level - 1)
@@ -480,7 +487,7 @@ def render_pdf(gold: Gold, path: Path | str, style: RenderStyle | None = None) -
         for part in gold.parts:
             part["page"] = gold.nodes[part["node"]].page
     if style.bookmarks:
-        doc.set_toc([[max(1, n.level or 1), s[:80], n.page] for n, s in toc_entries if n.page])
+        doc.set_toc([[n.level, s[:80], n.page] for n, s in toc_entries if n.page and n.level])
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(path))
@@ -548,5 +555,148 @@ def made_up(*, articles: int = 4, sections: int = 3, seed: int = 3, numbering: s
     return gold
 
 
-__all__ = ["Gold", "GoldNode", "RenderStyle", "gold_from_doc", "gold_from_outline", "load", "made_up", "pair_pages",
+__all__ = ["Gold", "GoldNode", "RenderStyle", "docx_to_doc", "gold_from_docx", "gold_from_doc", "gold_from_outline", "load", "made_up", "pair_pages",
            "pdf_lines", "render_pdf", "save"]
+
+
+# --- from a Word file -----------------------------------------------------------------------------------------------
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_NUMFMT = {"decimal": "DECIMAL", "lowerLetter": "ALPHA", "upperLetter": "UPPER_ALPHA", "lowerRoman": "ROMAN",
+           "upperRoman": "UPPER_ROMAN", "decimalZero": "ZERO_DECIMAL"}
+
+
+def docx_to_doc(path: Path | str) -> dict[str, Any]:
+    """A Word file (a Doc's ``.docx`` export, or a revision Drive kept) as a document shaped like the Docs API's, so
+    ``gold_from_doc`` reads it: paragraph styles by name, list numbering by the file's numbering part, page breaks, tables,
+    headers, and footers. Offline: nothing is fetched."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    def val(el: Any, tag: str, attr: str = "val") -> str | None:
+        child = el.find(f"{_W}{tag}") if el is not None else None
+        return child.get(f"{_W}{attr}") if child is not None else None
+
+    with zipfile.ZipFile(path) as z:
+        names = set(z.namelist())
+        root = ET.fromstring(z.read("word/document.xml"))
+        styles = ET.fromstring(z.read("word/styles.xml")) if "word/styles.xml" in names else None
+        numbering = ET.fromstring(z.read("word/numbering.xml")) if "word/numbering.xml" in names else None
+        parts = {n: ET.fromstring(z.read(n)) for n in sorted(names) if re.fullmatch(r"word/(header|footer)\d+\.xml", n)}
+
+    style_named: dict[str, str] = {}
+    style_num: dict[str, tuple[str, int]] = {}
+    style_text: dict[str, dict[str, Any]] = {}
+    if styles is not None:
+        for st in styles.iter(f"{_W}style"):
+            sid = st.get(f"{_W}styleId", "")
+            name = (val(st, "name") or "").lower()
+            mapped = {"title": "TITLE", "subtitle": "SUBTITLE"}.get(name)
+            if mapped is None and (m := re.fullmatch(r"heading (\d)", name)):
+                mapped = f"HEADING_{m.group(1)}"
+            style_named[sid] = mapped or "NORMAL_TEXT"
+            ppr, rpr = st.find(f"{_W}pPr"), st.find(f"{_W}rPr")
+            num = ppr.find(f"{_W}numPr") if ppr is not None else None
+            if num is not None and val(num, "numId") not in (None, "0"):
+                style_num[sid] = (val(num, "numId") or "", int(val(num, "ilvl") or 0))
+            ts: dict[str, Any] = {}
+            if rpr is not None:
+                if rpr.find(f"{_W}b") is not None and val(rpr, "b") not in ("0", "false"):
+                    ts["bold"] = True
+                if (sz := val(rpr, "sz")):
+                    ts["fontSize"] = {"magnitude": int(sz) / 2}
+            style_text[sid] = ts
+
+    lists: dict[str, Any] = {}
+    if numbering is not None:
+        abstract: dict[str, list[dict[str, Any]]] = {}
+        for an in numbering.iter(f"{_W}abstractNum"):
+            levels = []
+            for lv in sorted(an.findall(f"{_W}lvl"), key=lambda e: int(e.get(f"{_W}ilvl", 0))):
+                fmt = val(lv, "numFmt") or "decimal"
+                text = val(lv, "lvlText") or ""
+                level: dict[str, Any] = {"glyphType": _NUMFMT.get(fmt, "DECIMAL")}
+                if fmt == "bullet" or not text:
+                    level["glyphSymbol"] = text or "-"
+                else:
+                    level["glyphFormat"] = re.sub(r"%(\d)", lambda m: f"%{int(m.group(1)) - 1}", text)
+                levels.append(level)
+            abstract[an.get(f"{_W}abstractNumId", "")] = levels
+        for num in numbering.iter(f"{_W}num"):
+            ref = val(num, "abstractNumId")
+            if ref in abstract:
+                lists[num.get(f"{_W}numId", "")] = {"listProperties": {"nestingLevels": abstract[ref]}}
+
+    def run_text(r: Any) -> str:
+        return "".join((t.text or "") for t in r.iter(f"{_W}t")) + ("\t" if r.find(f"{_W}tab") is not None else "")
+
+    def paragraph(p: Any) -> dict[str, Any]:
+        ppr = p.find(f"{_W}pPr")
+        sid = val(ppr, "pStyle") or ""
+        named = style_named.get(sid, "NORMAL_TEXT")
+        elements: list[dict[str, Any]] = []
+        for r in p.iter(f"{_W}r"):
+            br = r.find(f"{_W}br")
+            if br is not None and br.get(f"{_W}type") == "page":
+                elements.append({"pageBreak": {}})
+            text = run_text(r)
+            if not text:
+                continue
+            rpr = r.find(f"{_W}rPr")
+            ts = dict(style_text.get(sid, {}))
+            if rpr is not None:
+                if rpr.find(f"{_W}b") is not None:
+                    ts["bold"] = val(rpr, "b") not in ("0", "false")
+                if (sz := val(rpr, "sz")):
+                    ts["fontSize"] = {"magnitude": int(sz) / 2}
+                if rpr.find(f"{_W}smallCaps") is not None:
+                    ts["smallCaps"] = True
+            elements.append({"textRun": {"content": text, "textStyle": ts}})
+        if elements and "textRun" in elements[-1]:
+            elements[-1]["textRun"]["content"] += "\n"
+        else:
+            elements.append({"textRun": {"content": "\n", "textStyle": {}}})
+        pstyle: dict[str, Any] = {"namedStyleType": named}
+        if (jc := val(ppr, "jc")):
+            pstyle["alignment"] = {"center": "CENTER", "right": "END", "both": "JUSTIFIED"}.get(jc, "START")
+        ind = ppr.find(f"{_W}ind") if ppr is not None else None
+        if ind is not None and (left := ind.get(f"{_W}left") or ind.get(f"{_W}start")):
+            pstyle["indentStart"] = {"magnitude": int(left) / 20}
+        if ppr is not None and ppr.find(f"{_W}pageBreakBefore") is not None and val(ppr, "pageBreakBefore") not in ("0", "false"):
+            pstyle["pageBreakBefore"] = True
+        out: dict[str, Any] = {"paragraphStyle": pstyle, "elements": elements}
+        num = ppr.find(f"{_W}numPr") if ppr is not None else None
+        pair = None
+        if num is not None:
+            pair = (val(num, "numId") or "", int(val(num, "ilvl") or 0))
+        elif sid in style_num:
+            pair = style_num[sid]
+        if pair and pair[0] not in ("", "0") and pair[0] in lists:
+            out["bullet"] = {"listId": pair[0], "nestingLevel": pair[1]}
+        return {"paragraph": out}
+
+    def plain(part: Any) -> list[dict[str, Any]]:
+        return [paragraph(p) for p in part.iter(f"{_W}p")]
+
+    content: list[dict[str, Any]] = []
+    body = root.find(f"{_W}body")
+    for child in body:
+        if child.tag == f"{_W}p":
+            content.append(paragraph(child))
+        elif child.tag == f"{_W}tbl":
+            cells = [{"content": plain(tc)} for tr in child.iter(f"{_W}tr") for tc in tr.findall(f"{_W}tc")]
+            content.append({"table": {"tableRows": [{"tableCells": cells}]}})
+    doc: dict[str, Any] = {"documentId": Path(path).stem, "title": Path(path).stem, "body": {"content": content},
+                           "lists": lists, "headers": {}, "footers": {}}
+    for name, part in parts.items():
+        group = "headers" if "header" in name else "footers"
+        doc[group][name] = {"content": plain(part)}
+    return doc
+
+
+def gold_from_docx(path: Path | str, *, doc_id: str = "") -> Gold:
+    """The gold structure of a Word file: a Doc's ``.docx`` export, which keeps its styles, list numbering, page breaks,
+    tables, headers, and footers (``docx_to_doc``)."""
+    gold = gold_from_doc(docx_to_doc(path), doc_id=doc_id or Path(path).stem)
+    gold.source = "docx"
+    return gold

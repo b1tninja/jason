@@ -39,8 +39,10 @@ from jason.community.structure_numbering import (Number, NumberKind, SequenceChe
                                                  fold_text, is_contents_page, split_number)
 
 MIN_SCORE = 0.8
-TOP_BAND = 0.085            # a header lies in this share of the page's height from the top edge
-BOTTOM_BAND = 0.915         # and a footer or page number below this
+TOP_BAND = 0.085            # a page number alone lies in this share of the page's height from the top edge
+BOTTOM_BAND = 0.915         # or below this share from the top
+TOP_ZONE = 0.16             # a running header lies in this share of the page's height from the top edge
+BOTTOM_ZONE = 0.86          # and a running footer below this
 SHORT_CHARS = 100
 SHORT_WORDS = 14
 TEXT_CHARS = 25             # a page with fewer letters and digits than this in its text layer has none to read
@@ -117,6 +119,9 @@ class PLine:
         return cls(**raw)
 
 
+_ZERO_WIDTH = re.compile("[\\u200b\\u200c\\u200d\\ufeff\\u00ad]")
+
+
 def _alnum(text: str) -> int:
     return sum(c.isalnum() for c in text)
 
@@ -136,7 +141,7 @@ def text_lines(page: Any, number: int) -> list[PLine]:
                                                                                               s["font"], re.I))
             size = max(s["size"] for s in spans)
             x0, y0, x1, y1 = line["bbox"]
-            raw.append(PLine(number, "".join(s["text"] for s in line["spans"]).strip(), x0, x1, y0, y1, round(size, 2),
+            raw.append(PLine(number, _ZERO_WIDTH.sub("", "".join(s["text"] for s in line["spans"])).strip(), x0, x1, y0, y1, round(size, 2),
                              bold_n * 2 >= n, pw, ph))
     raw.sort(key=lambda ln: (round(ln.bottom), ln.x0))
     out: list[PLine] = []
@@ -156,7 +161,7 @@ def text_lines(page: Any, number: int) -> list[PLine]:
 
 def ocr_lines(words: Sequence[Any], number: int, *, dpi: int, pw: float = 612.0, ph: float = 792.0) -> list[PLine]:
     """The lines of Tesseract's words on one page (``ocr.TesseractWord``), pixels at ``dpi`` taken to points. The size
-    is the 75th percentile of the words' heights (a word without an ascender is shorter than its line)."""
+    is the height of the line's tallest word (the second tallest of four or more), which holds an ascender and a descender."""
     k = 72.0 / dpi
     groups: dict[tuple, list[Any]] = {}
     for w in words:
@@ -164,8 +169,10 @@ def ocr_lines(words: Sequence[Any], number: int, *, dpi: int, pw: float = 612.0,
     out = []
     for g in groups.values():
         g = sorted(g, key=lambda w: w.left)
-        heights = sorted(w.height for w in g)
-        size = heights[min(len(heights) - 1, int(0.75 * len(heights)))] * k / 0.72       # cap and descender, about
+        heights = sorted((w.height for w in g), reverse=True)
+        # The tallest word holds an ascender and a descender, so its box is the line's full extent; with four words or more the
+        # second tallest is taken, so one word with a speck on it does not stand for the line.
+        size = heights[1 if len(heights) >= 4 else 0] * k / 0.72
         text = " ".join(w.text for w in g)
         conf = statistics.mean(w.confidence for w in g)
         if conf < MIN_CONFIDENCE or _alnum(text) < 0.4 * len(text.replace(" ", "")):
@@ -222,45 +229,81 @@ _PAGE_NUMBER = re.compile(r"^[\s\-–—~•.|]*(?:page\s*)?(\d{1,4}|[ivxlc]{1,6
 
 
 def _band(ln: PLine) -> str:
-    if ln.bottom <= TOP_BAND * ln.ph:
+    """The zone a line sits in: "header" in the top of the page, "footer" in the bottom, else "". A running line may be set
+    well down the margin (a header in 18 point type ends at a tenth of the page), so the zones are wide; only lines that
+    repeat are taken out of them."""
+    if ln.bottom <= TOP_ZONE * ln.ph:
         return "header"
-    if ln.top >= BOTTOM_BAND * ln.ph:
+    if ln.top >= BOTTOM_ZONE * ln.ph:
         return "footer"
     return ""
 
 
+def _edge(ln: PLine) -> bool:
+    """In the strip at the very edge, where a page number alone is one."""
+    return ln.bottom <= TOP_BAND * ln.ph or ln.top >= BOTTOM_BAND * ln.ph
+
+
+def _runs(pages: Iterable[int]) -> list[list[int]]:
+    runs: list[list[int]] = []
+    for p in sorted(set(pages)):
+        if runs and p == runs[-1][-1] + 1:
+            runs[-1].append(p)
+        else:
+            runs.append([p])
+    return runs
+
+
 def mark_furniture(lines: list[PLine], pages: int) -> dict[int, str]:
     """Marks running headers and footers and page numbers (``line.furniture``) and returns the printed page number of the
-    pages that carry one. A line in the band at a page's edge is a running line when a line like it (digits ignored,
-    ``SIMILAR`` alike) sits in the same band on at least three pages and a quarter of them."""
+    pages that carry one. A line in a zone at a page's edge is a running line when lines like it (digits ignored,
+    ``SIMILAR`` alike, about the same place) run down three pages in a row, or down a quarter of the pages; of two pages
+    in a row the second is the running one (the first is a title). A page number is a line of a number alone at the edge."""
     labels: dict[int, str] = {}
-    banded = [(ln, _band(ln)) for ln in lines]
-    clusters: list[tuple[str, str, set[int]]] = []       # (band, folded text, pages)
-    for ln, band in banded:
-        if not band:
+    zoned = [(ln, _band(ln)) for ln in lines]
+    clusters: list[dict[str, Any]] = []
+    for ln, zone in zoned:
+        if not zone:
             continue
         key = fold_text(re.sub(r"\d+", "", ln.text))
         if not key:
             continue
         for c in clusters:
-            if c[0] == band and (c[1] == key or SequenceMatcher(None, c[1], key).ratio() >= SIMILAR):
-                c[2].add(ln.page)
+            if c["zone"] == zone and abs(c["y"] - ln.top) <= 0.012 * ln.ph and (
+                    c["key"] == key or SequenceMatcher(None, c["key"], key).ratio() >= SIMILAR):
+                c["pages"].add(ln.page)
                 break
         else:
-            clusters.append((band, key, {ln.page}))
+            clusters.append({"zone": zone, "key": key, "y": ln.top, "pages": {ln.page}})
     need = max(3, int(0.25 * pages + 0.999))
-    running = {(c[0], c[1]) for c in clusters if len(c[2]) >= need}
-    for ln, band in banded:
-        if not band:
+    running: list[tuple[dict[str, Any], set[int]]] = []
+    for c in clusters:
+        marked: set[int] = set()
+        if len(c["pages"]) >= need:
+            marked = set(c["pages"])
+        else:
+            for run in _runs(c["pages"]):
+                if len(run) >= 3:
+                    marked |= set(run)
+                elif len(run) == 2:
+                    marked.add(run[1])
+        if marked:
+            running.append((c, marked))
+    for ln, zone in zoned:
+        if not zone:
             continue
         key = fold_text(re.sub(r"\d+", "", ln.text))
-        if (m := _PAGE_NUMBER.match(ln.text.strip())):
+        if _edge(ln) and (m := _PAGE_NUMBER.match(ln.text.strip())):
             ln.furniture = "page number"
             labels.setdefault(ln.page, m.group(1))
-        elif any(b == band and (k == key or SequenceMatcher(None, k, key).ratio() >= SIMILAR) for b, k in running):
-            ln.furniture = band
-            if band == "footer" and (m := re.search(r"\bpage\s*(\d{1,4})\b|(?<!\d)(\d{1,4})\s*$", ln.text, re.I)):
-                labels.setdefault(ln.page, m.group(1) or m.group(2))
+            continue
+        for c, marked in running:
+            if (c["zone"] == zone and ln.page in marked and abs(c["y"] - ln.top) <= 0.012 * ln.ph
+                    and (c["key"] == key or SequenceMatcher(None, c["key"], key).ratio() >= SIMILAR)):
+                ln.furniture = zone
+                if zone == "footer" and (m := re.search(r"\bpage\s*(\d{1,4})\b|(?<!\d)(\d{1,4})\s*$", ln.text, re.I)):
+                    labels.setdefault(ln.page, m.group(1) or m.group(2))
+                break
     return labels
 
 
@@ -336,6 +379,8 @@ def _sentence(ln: PLine) -> bool:
     first = next((c for c in ln.text if c.isalpha()), "")
     if first.islower() and not ln.text.lstrip()[:1] in "([":
         return True
+    if ln.text.rstrip().endswith(":") and ln.words <= 5 and not re.match(r"^\W*(?:\d|[A-Z]\.|\()", ln.text):
+        return True                      # a field's label ("NAME:") is not a heading
     return ln.words >= 4 and ln.text.rstrip().endswith((".", ",", ";"))
 
 
@@ -418,10 +463,24 @@ def _norm_title(text: str) -> str:
     return fold_text(n.rest if n and n.rest else text)
 
 
-def _like(a: str, b: str) -> float:
+def _like(a: str, b: str, floor: float = 0.0) -> float:
+    """How alike two folded titles are, 0 to 1; 0 when the cheap bounds already put them under ``floor``."""
     if not a or not b:
         return 0.0
-    return 1.0 if a == b else SequenceMatcher(None, a, b).ratio()
+    if a == b:
+        return 1.0
+    m = SequenceMatcher(None, a, b)
+    if m.real_quick_ratio() < floor or m.quick_ratio() < floor:
+        return 0.0
+    return m.ratio()
+
+
+def _folds(c: Candidate) -> tuple[str, str]:
+    """A candidate's words folded, with and without its number, worked out once."""
+    got = getattr(c, "_folds", None)
+    if got is None:
+        got = c._folds = (_norm_title(c.text), fold_text(c.text))
+    return got
 
 
 def vote_bookmarks(cands: list[Candidate], toc: Sequence[Sequence[Any]], findings: list[dict[str, str]]) -> list[tuple[int, str, int]]:
@@ -436,7 +495,8 @@ def vote_bookmarks(cands: list[Candidate], toc: Sequence[Sequence[Any]], finding
         best, best_r = None, 0.0
         for p in (page, page + 1, page - 1):
             for c in by_page.get(p, ()):
-                r = max(_like(want, _norm_title(c.text)), _like(fold_text(title), fold_text(c.text)))
+                a, b = _folds(c)
+                r = max(_like(want, a, 0.85), _like(fold_text(title), b, 0.85))
                 if r > best_r + (0.0 if p == page else -0.05):
                     best, best_r = c, r
         if best is not None and best_r >= 0.85:
@@ -478,8 +538,12 @@ def vote_toc(cands: list[Candidate], page_lines: dict[int, list[PLine]], toc_pag
             else:
                 pool = body
             best, best_r = None, 0.0
+            full = fold_text(title)
             for c in pool:
-                r = max(_like(want, _norm_title(c.text)), _like(fold_text(title), fold_text(c.text)))
+                if not _short(c.line):
+                    continue
+                a, b = _folds(c)
+                r = max(_like(want, a, 0.85), _like(full, b, 0.85))
                 if r > best_r:
                     best, best_r = c, r
             if best is not None and best_r >= 0.85:
@@ -611,7 +675,7 @@ def assign_levels(chosen: list[Candidate], body: float) -> dict[int, tuple[int, 
 
 
 def recover(lines: list[PLine], pages: int, *, toc: Sequence[Sequence[Any]] = (), clues: Iterable[str] | None = None,
-            min_score: float = MIN_SCORE, sources: Sequence[str] = (), marks: Sequence[dict[str, Any]] = ()) -> Recovery:
+            min_score: float = MIN_SCORE, sources: Sequence[str] = (), marks: Sequence[dict[str, Any]] | None = None) -> Recovery:
     """Headings and their levels from a PDF's lines. ``clues`` names the rows to use (all by default): a run with one left
     out is how a clue's worth is measured. ``toc`` is the file's bookmarks ([level, title, page])."""
     rows = {c.name: c for c in CLUES if clues is None or c.name in set(clues)}
@@ -671,7 +735,7 @@ def recover(lines: list[PLine], pages: int, *, toc: Sequence[Sequence[Any]] = ()
         node.parent = stack[-1] if stack else -1
         stack.append(len(out.nodes))
         out.nodes.append(node)
-    out.parts = parts_of(out, chosen, marks, toc_pages)
+    out.parts = parts_of(out, chosen, find_parts(lines, pages, toc) if marks is None else marks, toc_pages)
     return out
 
 
@@ -711,9 +775,7 @@ def _merge_wrapped(chosen: list[Candidate], body_lines: list[PLine], body: float
 # --- parts ----------------------------------------------------------------------------------------------------------
 
 
-def find_parts(lines: Sequence[PLine], pages: int, toc: Sequence[Sequence[Any]] = ()) -> list[dict[str, Any]]:
-    """The parts of a file bound together, where a part's name changes: the running header's runs, the titles at the top of
-    a page, and the file's top-level bookmarks (``document_segments.header_runs``, ``title_marks``, ``bookmark_marks``)."""
+def _infos(lines: Sequence[PLine], pages: int) -> list[Any]:
     from jason.community import document_segments as ds
 
     by_page: dict[int, list[PLine]] = {}
@@ -726,8 +788,18 @@ def find_parts(lines: Sequence[PLine], pages: int, toc: Sequence[Sequence[Any]] 
         ph = ls[0].ph if ls else 792.0
         ds_lines = [ds.Line(l.text, l.top / ph, l.bottom / ph, l.x0 / pw, l.x1 / pw, l.size, bool(l.bold)) for l in ls]
         infos.append(ds.build_page(n, pw, ph, ds_lines))
-    runs = ds.header_runs(infos, 1, pages)
-    marks = (runs if len(runs) > 1 else []) + ds.title_marks(infos, 1, pages) + ds.bookmark_marks(toc, 1, pages)   # one run is the document's own name
+    return infos
+
+
+def find_parts(lines: Sequence[PLine], pages: int, toc: Sequence[Sequence[Any]] = ()) -> list[dict[str, Any]]:
+    """The parts of a file bound together, where a part's name changes: the running header's runs, the titles at the top of
+    a page (a running header is not one: lines marked as furniture are left out of the titles), and the file's top-level
+    bookmarks (``document_segments.header_runs``, ``title_marks``, ``bookmark_marks``)."""
+    from jason.community import document_segments as ds
+
+    runs = ds.header_runs(_infos(lines, pages), 1, pages)          # the running headers themselves are the evidence here
+    body = _infos([l for l in lines if not l.furniture], pages)
+    marks = (runs if len(runs) > 1 else []) + ds.title_marks(body, 1, pages) + ds.bookmark_marks(toc, 1, pages)   # one run is the document's own name
     best: dict[int, Any] = {}
     for m in marks:
         if m.page not in best or m.weight > best[m.page].weight:
@@ -777,8 +849,7 @@ def outline_from_pdf(path: Path | str, *, key: str = "", title: str = "", kind: 
     with pymupdf.open(path) as doc:
         lines, sources = extract_lines(doc, words_of=words_of)
         toc = doc.get_toc(simple=True)
-        rec = recover(lines, doc.page_count, toc=toc, clues=clues, sources=sources,
-                      marks=find_parts(lines, doc.page_count, toc))
+        rec = recover(lines, doc.page_count, toc=toc, clues=clues, sources=sources)
     return to_outline(rec, key=key or Path(path).stem, title=title, kind=kind)
 
 

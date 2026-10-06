@@ -36,7 +36,7 @@ def read(pdf, clues=None, min_score=sp.MIN_SCORE, toc=True):
     with pymupdf.open(pdf) as doc:
         lines, sources = sp.extract_lines(doc)
         return sp.recover(lines, doc.page_count, toc=doc.get_toc(simple=True) if toc else (), clues=clues,
-                          min_score=min_score, sources=sources, marks=sp.find_parts(lines, doc.page_count))
+                          min_score=min_score, sources=sources)
 
 
 # --- the numbering grammar -------------------------------------------------------------------------------------------
@@ -368,3 +368,46 @@ def test_the_headings_of_an_image_only_page_come_from_the_height_of_the_ocr_word
     s = sc.score(gold, image, rec, samples=20)
     assert s["f1"] >= 0.9 and s["number_roundtrip"] >= 0.9
     assert not any("weight" in n.clues for n in rec.nodes)    # no weight is known from an image
+
+
+# --- a Word file -------------------------------------------------------------------------------------------------------
+
+
+def _docx(tmp_path):
+    import zipfile
+
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    styles = (f'<w:styles {w}><w:style w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:numPr><w:ilvl w:val="0"/>'
+              f'<w:numId w:val="1"/></w:numPr></w:pPr><w:rPr><w:sz w:val="40"/></w:rPr></w:style>'
+              f'<w:style w:styleId="Heading2"><w:name w:val="heading 2"/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>'
+              f'<w:style w:styleId="Title"><w:name w:val="Title"/></w:style></w:styles>')
+    numbering = (f'<w:numbering {w}><w:abstractNum w:abstractNumId="7"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/>'
+                 f'<w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1"><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="(%2)"/></w:lvl>'
+                 f'</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="7"/></w:num></w:numbering>')
+
+    def p(text, style="", num=None, extra=""):
+        ppr = (f'<w:pStyle w:val="{style}"/>' if style else "") + (
+            f'<w:numPr><w:ilvl w:val="{num[1]}"/><w:numId w:val="{num[0]}"/></w:numPr>' if num else "") + extra
+        return f"<w:p><w:pPr>{ppr}</w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    body = (p("SAMPLE RULES", "Title") + p("Parking", "Heading1") + p("Cars are kept in the lot.")
+            + p("Guests", "Heading2", num=(1, 1)) + p("Noise", "Heading1", extra="<w:pageBreakBefore/>")
+            + "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>")
+    path = tmp_path / "sample.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", f'<w:document {w}><w:body>{body}</w:body></w:document>')
+        z.writestr("word/styles.xml", styles)
+        z.writestr("word/numbering.xml", numbering)
+        z.writestr("word/header1.xml", f'<w:hdr {w}><w:p><w:r><w:t>Running header</w:t></w:r></w:p></w:hdr>')
+    return path
+
+
+def test_a_word_file_gives_the_same_gold_as_a_doc(tmp_path):
+    gold = sg.gold_from_docx(_docx(tmp_path), doc_id="w")
+    heads = gold.headings()
+    assert [(h.level, h.number, h.title) for h in heads] == [(0, "", "SAMPLE RULES"), (1, "1.", "Parking"),
+                                                             (2, "(a)", "Guests"), (1, "2.", "Noise")]
+    assert heads[1].size == 20.0 and heads[2].bold and heads[2].size == 14.0
+    kinds = [n.kind for n in gold.nodes]
+    assert kinds.count("page_break") == 1 and kinds.count("table") == 1 and kinds.count("header") == 1
+    assert gold.source == "docx" and [p["title"] for p in gold.parts] == ["SAMPLE RULES"]

@@ -1,6 +1,7 @@
 """A benchmark for recovering a document's structure from its PDF alone (docs/structure-recovery.md).
 
     python scripts/structure_fuzz.py gold --id ID --doc GOOGLE_DOC_ID --cache D:/scratch/jason/structure-fuzz
+    python scripts/structure_fuzz.py gold --id ID --docx REVISION.docx --pdf FILE.pdf --cache ...
     python scripts/structure_fuzz.py gold --id ID --outline KEY --data D:/code/jason/data --pdf FILE.pdf --cache ...
     python scripts/structure_fuzz.py gold --id ID --made-up dotted --cache ...
     python scripts/structure_fuzz.py variants --id ID --cache ... [--only clean,image300,dpi150]
@@ -50,6 +51,14 @@ def cmd_gold(args: argparse.Namespace) -> int:
         gold.id = args.id
         sg.render_pdf(gold, pdf, style)
         how = "made up and drawn"
+    elif args.docx:
+        gold = sg.gold_from_docx(args.docx, doc_id=args.id)
+        if args.pdf:
+            pdf.write_bytes(Path(args.pdf).read_bytes())
+            how = "the Word file; the PDF on disk"
+        else:
+            sg.render_pdf(gold, pdf, style)
+            how = "the Word file; a PDF drawn from its text"
     elif args.outline:
         from jason.community.outlines import DocumentOutline
 
@@ -179,8 +188,7 @@ def read_lines(args: argparse.Namespace, record: sv.VariantRecord) -> dict:
         lines, sources = sp.extract_lines(doc, words_of=words_of if record.image_only else None)
         toc = doc.get_toc(simple=True)
         pages = doc.page_count
-    parts = sp.find_parts(lines, pages, toc)
-    data = {"lines": [ln.to_dict() for ln in lines], "sources": sources, "toc": toc, "pages": pages, "parts": parts}
+    data = {"lines": [ln.to_dict() for ln in lines], "sources": sources, "toc": toc, "pages": pages}
     cached.parent.mkdir(parents=True, exist_ok=True)
     cached.write_text(json.dumps(data), encoding="utf-8")
     return data
@@ -188,8 +196,7 @@ def read_lines(args: argparse.Namespace, record: sv.VariantRecord) -> dict:
 
 def run_recovery(data: dict, *, clues=None, min_score: float = sp.MIN_SCORE) -> sp.Recovery:
     lines = [sp.PLine.from_dict(d) for d in data["lines"]]
-    return sp.recover(lines, data["pages"], toc=data["toc"], clues=clues, min_score=min_score, sources=data["sources"],
-                      marks=data["parts"])
+    return sp.recover(lines, data["pages"], toc=data["toc"], clues=clues, min_score=min_score, sources=data["sources"])
 
 
 def cmd_recover(args: argparse.Namespace) -> int:
@@ -306,6 +313,7 @@ def parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gold", help="the Doc's structure and its paired PDF")
     common(g)
     g.add_argument("--doc", help="a Google Doc id (read-only)")
+    g.add_argument("--docx", help="a Word file (a Doc's .docx export or a stored revision): its styles are the gold")
     g.add_argument("--outline", help="a stored outline's key (with --data)")
     g.add_argument("--data", default="data")
     g.add_argument("--pdf", help="a PDF already on disk to pair")

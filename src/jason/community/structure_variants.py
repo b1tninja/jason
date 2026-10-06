@@ -34,6 +34,7 @@ class VariantSpec:
 
 VARIANTS: dict[str, VariantSpec] = {v.name: v for v in (
     VariantSpec("clean", 0, (), "the text-layer PDF as it is"),
+    VariantSpec("nobookmarks", 0, ("nobookmarks",), "the text layer with the file's own bookmarks taken out"),
     VariantSpec("image300", 300, (), "the text layer removed; each page an image at 300 dpi"),
     VariantSpec("dpi200", 200, (), "images at 200 dpi"),
     VariantSpec("dpi150", 150, (), "images at 150 dpi"),
@@ -156,12 +157,12 @@ def change_header(src: Any, *, from_page: int, text: str) -> str:
     document ``src``. Returns the header text that was replaced ("" when there is none)."""
     from collections import Counter
 
-    from jason.community.structure_pdf import TOP_BAND, text_lines
+    from jason.community.structure_pdf import TOP_ZONE, text_lines
 
     seen: Counter[str] = Counter()
     for i, page in enumerate(src):
         for ln in text_lines(page, i + 1):
-            if ln.bottom <= TOP_BAND * ln.ph:
+            if ln.bottom <= TOP_ZONE * ln.ph:
                 seen[ln.text] += 1
     if not seen:
         return ""
@@ -169,7 +170,7 @@ def change_header(src: Any, *, from_page: int, text: str) -> str:
     for i in range(from_page - 1, src.page_count):
         page = src[i]
         for rect in page.search_for(old):
-            if rect.y1 <= TOP_BAND * page.rect.height:
+            if rect.y1 <= TOP_ZONE * page.rect.height:
                 page.add_redact_annot(rect, fill=(1, 1, 1))
                 page.apply_redactions()
                 page.insert_text((rect.x0, rect.y1 - 2.5), text, fontsize=9, fontname="tiro")
@@ -241,6 +242,9 @@ def make_variant(source: Path | str, spec: VariantSpec | str, out_dir: Path | st
         if "header" in spec.ops:
             old = change_header(src, from_page=max(2, n // 2), text="Revised Edition Rules")
             record.extra = {"header_was": old != "", "from_page": max(2, n // 2)}
+            src.save(str(path))
+        elif "nobookmarks" in spec.ops:
+            src.set_toc([])
             src.save(str(path))
         elif "combined" in spec.ops:
             out = pymupdf.open()
