@@ -193,29 +193,34 @@ _LEADER = re.compile(r"^(?P<title>.*?\S)\s*(?:\.{2,}|\s{2,}|\s)\s*(?P<page>\d{1,
 _LEADER_DOTS = re.compile(r"\.{3,}|(?:\. ){3,}")
 
 
-def contents_entries(lines: list[str]) -> list[tuple[str, str]]:
+def contents_entries(lines: list[str], *, loose: bool = False) -> list[tuple[str, str]]:
     """(title, printed page) of each line of a contents page: "Title ..... 12". A line whose words end in a number
-    without a leader counts only when the title has two words or more."""
+    without a leader counts only when the title has two words or more. With ``loose`` (a page that says it is the
+    contents, read by OCR, which drops the leaders and often the numbers) a short line that begins like a heading
+    counts with no page: (title, "")."""
     out = []
     for line in lines:
         s = line.strip()
         m = _LEADER.match(s)
-        if not m:
-            continue
-        title = _LEADER_DOTS.sub(" ", m["title"]).strip(" .")
-        if len(title) < 3 or not re.search(r"[A-Za-z]", title):
-            continue
-        if not _LEADER_DOTS.search(s) and len(title.split()) < 2:
-            continue
-        out.append((title, m["page"]))
+        if m:
+            title = _LEADER_DOTS.sub(" ", m["title"]).strip(" .")
+            if len(title) >= 3 and re.search(r"[A-Za-z]", title) and (_LEADER_DOTS.search(s) or len(title.split()) >= 2):
+                out.append((title, m["page"]))
+                continue
+        if loose and 3 <= len(s) <= 90:
+            title = re.sub(r"[\s.,:;_\-]*[^\w\s]{0,3}[a-z]{0,2}[.,:;_\-]{3,}.*$", "", s).strip(" .,:;_-")
+            if split_number(title) is not None or title.isupper() or re.match(r"^[A-Z][a-z]+(?: [A-Za-z]+){0,6}$", title):
+                if title and fold_text(title) != "table of contents" and "contents" not in title.casefold():
+                    out.append((title, ""))
     return out
 
 
 def is_contents_page(lines: list[str]) -> bool:
     """A page most of whose lines are entries ("Title ..... 12"), five or more of them, or one that is headed "contents"
-    and has three."""
-    entries = contents_entries(lines)
-    head = " ".join(lines[:4]).casefold()
-    if "contents" in head and len(entries) >= 3:
+    (a short line near the top) and has three entries."""
+    head = [l for l in lines[:4] if len(l.strip()) <= 40]
+    titled = any("contents" in l.casefold() for l in head)
+    entries = contents_entries(lines, loose=titled)
+    if titled and len(entries) >= 3:
         return True
     return len(entries) >= 5 and len(entries) >= 0.5 * max(1, len(lines))
