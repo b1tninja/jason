@@ -13,6 +13,14 @@ LESSONS = (
            "The board decides whether each owner gets an envelope by name next cycle (one send per owner, at the "
            "letter price each).",
            Status.DECISION, docs=("data/owner-info/send-plan-2026-10-02.md",)),
+    Lesson("parking-permit-price-and-section-disagree", date(2026, 10, 5), (Area.GOVERNING,),
+           "The Owner's Manual's Part C prices a resident parking permit at $25, while the Enforcement Policy's fee "
+           "schedule and the 2022 minutes say $15 a month; and B-12(o) cites CC&Rs 4.20 (variances) for the permit "
+           "program, whose parking provisions are in 4.11.",
+           "Three documents state the permit program and were written at different times.",
+           "The board reads the three, and whether each permit is a variance under 4.20 or a rule under 4.11, before the "
+           "permit form is offered (mystique/docs/form-templates/parking-permit.md).",
+           Status.DECISION, docs=("mystique/docs/form-templates/parking-permit.md",)),
     Lesson("occupancy-waits-for-the-board", date(2026, 10, 2), (Area.OWNER_INFO,),
            "Returns came back with occupancy blank, and some units the records read as not owner-occupied are not "
            "tagged Rental (which ones: jason report occupancy-signals).",

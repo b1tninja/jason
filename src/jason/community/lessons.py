@@ -253,6 +253,63 @@ LESSONS: tuple[Lesson, ...] = (
            "A person reads the sections the standard-forms inventory names that the seed did not find; the "
            "rediscovery check in docs/standard-forms.md lists them.",
            Status.OPEN, docs=("docs/standard-forms.md (Running it)",)),
+    Lesson("records-form-recites-a-moved-subdivision", date(2026, 10, 5), (Area.FORMS, Area.DOCUMENTS),
+           "The request to inspect records recites Civil Code 5205(e) for the charge for copying and redaction; in the "
+           "text on disk (e) is individual delivery, the copying and mailing cost is (f), and the hourly redaction "
+           "charge for enhanced records is (g). The form also lacks the written designation of a representative "
+           "(5205(b)), the member's agreement to the cost before copying, and the request for a withheld record.",
+           "The form paraphrased a subdivision, and the section was amended and its subdivisions moved.",
+           "The form library recites by token from the shelf, so a moved subdivision fails the build "
+           "(docs/form-library-design.md, the checks); the definition cites 5205(f) and (g).",
+           Status.OPEN, docs=("docs/form-templates/records-request.md", "docs/form-library-design.md")),
+    Lesson("idr-form-requires-an-email", date(2026, 10, 5), (Area.FORMS,),
+           "The request to meet and confer requires an email address, which the association's form standard allows "
+           "only when the request is for delivery by email, and it lacks what the section says the process carries "
+           "(that the association shall not refuse, that no fee is charged, the written agreement and its ratification, "
+           "assistance by another person).",
+           "The form was written for convenience before the standard stated what a form may require.",
+           "The library's definition drops the required email and carries the section's items.",
+           Status.OPEN, docs=("docs/form-templates/idr-request.md",)),
+    Lesson("no-request-kind-for-a-protest", date(2026, 10, 5), (Area.FORMS, Area.ENFORCEMENT),
+           "A member's payment under protest of a disputed charge (Civil Code 5658) is not a request kind, and the "
+           "response rules have no row for an internal dispute resolution request, so neither gets a clock or a handler.",
+           "The kinds were taken from the requests seen, and the Act gives no association duty for a protest.",
+           "Add the kind with its proposed-policy clocks once the board adopts them; until then the form is designed, "
+           "not offered.",
+           Status.DECISION, docs=("docs/form-templates/disputed-charge.md",)),
+    Lesson("ev-insurance-text-changed-on-2026-01-01", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
+           "Civil Code 4745(f)(1)(C) was amended (SB 770, operative 2026-01-01): the owner's certificate of insurance "
+           "no longer must name the association as an additional insured \"in the amount set forth in paragraph (3)\"; "
+           "it is now \"as required by paragraph (3)\", which names no amount. A form or a profile that still asks for an "
+           "additional-insured endorsement or a coverage amount rests on the old text.",
+           "The shelf keeps the earlier text in its history, and a form written before the amendment recited it.",
+           "The electric vehicle form does not ask for either; the library's recital check and the law-review procedure "
+           "find an amended citation. A profile's own EV rules are read against the new text.",
+           Status.OPEN, docs=("docs/form-templates/ev-charger.md",)),
+    Lesson("response-first-steps-misstate-two-clocks", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
+           "The response rules' first step for a solar application says a complete application not denied in writing "
+           "within 45 days; Civil Code 714(e)(2)(B) counts from the date of receipt and does not say complete. The "
+           "electric vehicle first step omits the exception for a reasonable request for more information.",
+           "A first step was worded from a summary of the section, not from its words.",
+           "Reword both first steps from the section's words (recited by token), and add the missing notice-catalog rows "
+           "for the reconsideration answer and the disaster rebuild reviews.",
+           Status.OPEN, docs=("docs/form-templates/solar.md", "docs/form-templates/ev-charger.md")),
+    Lesson("overstated-the-law-in-an-inventory-row", date(2026, 10, 5), (Area.FORMS, Area.GOVERNING),
+           "The standard-forms inventory said a document's approval requirement is void where it bars a protected use; "
+           "the sections void a provision or condition that prohibits or unreasonably restricts the use, and expressly "
+           "allow reasonable application requirements.",
+           "A table row compressed several sections into one clause, and nobody read the sections it summarized.",
+           "The rows now say what the sections say; each form's design page recites the sections and labels a reading.",
+           Status.FIXED, docs=("docs/standard-forms.md", "docs/form-templates.md")),
+    Lesson("owner-form-short-of-the-forms-standard", date(2026, 10, 5), (Area.FORMS, Area.OWNER_INFO),
+           "The built owner information form has no recitals by token, no statement of the clocks to the member, no "
+           "acknowledgment at receipt, and no required-content checklist; it omits the statute's fourth occupancy state "
+           "(undeveloped land), has no way to remove a second address, and asks a representative's and a manager's phone "
+           "numbers where docs/forms.md says no phones are asked.",
+           "It was built before the standard in docs/form-templates.md stated what a form carries.",
+           "The next cycle's definition moves into the form library against the checklist "
+           "(docs/form-templates/owner-information.md lists each item).",
+           Status.OPEN, docs=("docs/form-templates/owner-information.md",)),
     Lesson("a-joined-group-is-a-lead", date(2026, 10, 5), (Area.DOCUMENTS, Area.GOVERNING),
            "A document span joined to a statute by shared subject words can be about something else.",
            "Shared terms are weaker evidence than a shared citation.",

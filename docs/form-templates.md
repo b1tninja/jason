@@ -71,7 +71,7 @@ Grouped by what the member is asking. Each has a design page in [form-templates/
 | Request for reconsideration of a disapproval | CIV 4765(a)(5) | L | reconsideration at an open board meeting |
 | Electric vehicle charging station application | CIV 4745, 4745.1 | L | decision in writing within 60 days or deemed approved |
 | Solar energy system application | CIV 714, 714.1, 4746 | L | the notice to owners in the building; the insurance certificate |
-| Protected-use application (landscaping, accessory dwelling unit, and others the documents make an owner ask about) | CIV 4735, 4751, and the other sections of CIV 4700 to 4753 | L | the same clock; a document's approval requirement is void where it bars the use |
+| Protected-use application (landscaping, accessory dwelling unit, and others the documents make an owner ask about) | CIV 4735, 4751, and the other sections of CIV 4700 to 4753 | L | the same clock; a governing provision or condition that prohibits or unreasonably restricts the use is void, while the sections allow reasonable application requirements and conforming rules (4725(b)(1), 4735(b)) |
 | **Notices and delivery** | | | |
 | Owner information and notice delivery preferences | CIV 4041 | P (the solicitation) | built; the cycle |
 | Change my notice delivery | CIV 4041(b)(2)(B) | P ("a simple method ... in writing") | tags, the cycle |
