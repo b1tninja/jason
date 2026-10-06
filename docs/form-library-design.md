@@ -37,7 +37,7 @@ A pack is a package of definitions and nothing else: `jason.community.form_libra
 A profile does not write the forms the law requires. It gives the library what is its own:
 
 ```python
-class Mystique(Community):
+class ThisCommunity(Community):
     def jurisdictions(self):    return ("US", "CA")                       # the default
     def form_slots(self):       return FORM_SLOTS                          # the name, return address, contacts, fee schedule, letterhead
     def form_adjustments(self): return (Adjust("records-request", clocks=(...)),    # a clock the documents make stricter
