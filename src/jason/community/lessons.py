@@ -282,9 +282,13 @@ LESSONS: tuple[Lesson, ...] = (
            "in Drive, named alike; only the template and the one filled copy the sent packet came from match what was "
            "mailed.",
            "Each build made a new copy until the build learned to refresh its filled copy in place.",
-           "The earlier copies are moved, not deleted, to a Superseded folder with their ids logged, once a person says "
-           "so; the build now refreshes the same filled copy.",
-           Status.DECISION, docs=("docs/packets.md",)),
+           "The build finds its filled copy by name and refreshes it in place (tasks/packets), and on October 5, 2026 the "
+           "fifteen earlier copies, the unused Google Form, and an older duplicate email draft were moved to Drive's "
+           "trash on the administrator's word (listed in data/drive/trashed-2026-10-05.jsonl); the template and the "
+           "mailed filled copy were kept. The annual disclosures' earlier copies are still there.",
+           Status.FIXED, guards=("tasks/packets: the filled copy is found by name and refreshed in place",
+                                 "GoogleDrive.trash (tests/test_google_drive.py)"),
+           docs=("docs/packets.md",)),
     Lesson("idr-form-requires-an-email", date(2026, 10, 5), (Area.FORMS,),
            "The request to meet and confer requires an email address, which the association's form standard allows "
            "only when the request is for delivery by email, and it lacks what the section says the process carries "

@@ -65,6 +65,31 @@ def test_download_rejects_google_site(tmp_path: Path):
         raise AssertionError("expected GoogleError")
 
 
+def test_trash_moves_a_file_to_the_trash_and_never_deletes_it():
+    class _Patch:
+        def patch(self, url, *, params=None, content=None, headers=None):
+            self.url, self.params, self.body = url, params, json.loads(content)
+            return _response(200, {"id": "f1", "name": "Old copy", "trashed": True})
+
+    http = _Patch()
+    row = GoogleDrive("token", http=http).trash("f1")        # type: ignore[arg-type]
+    assert http.url.endswith("/files/f1") and http.body == {"trashed": True}
+    assert row["trashed"] is True
+
+
+def test_trash_refuses_when_drive_refuses():
+    class _Refuse:
+        def patch(self, url, *, params=None, content=None, headers=None):
+            return _response(403, {"error": {"message": "no"}})
+
+    try:
+        GoogleDrive("token", http=_Refuse()).trash("f1")      # type: ignore[arg-type]
+    except GoogleError as exc:
+        assert "403" in str(exc) and "f1" in str(exc)
+    else:
+        raise AssertionError("expected GoogleError")
+
+
 def test_upload_bytes_posts_the_file_and_returns_its_id():
     class _Upload:
         def post(self, url, *, params=None, content=None, headers=None, data=None):

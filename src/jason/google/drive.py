@@ -359,6 +359,20 @@ class GoogleDrive:
             raise GoogleError(f"HTTP {response.status_code} updating {file_id}")
         return body
 
+    def trash(self, file_id: str) -> dict[str, Any]:
+        """Move a file to Drive's trash (``trashed: true``): reversible from the trash for thirty days, never a permanent
+        delete. The caller names the file and has a person's word for it."""
+        response = self._http.patch(
+            f"{_API}/files/{file_id}",
+            params={"supportsAllDrives": True, "fields": "id,name,trashed"},
+            headers={**self._headers(), "Content-Type": "application/json"},
+            content=json.dumps({"trashed": True}),
+        )
+        body = _json(response)
+        if not response.is_success:
+            raise GoogleError(f"HTTP {response.status_code} trashing {file_id}")
+        return body
+
     def copy(self, file_id: str, name: str, parent_id: str | None = None) -> str:
         """Copy a file (a template Doc) under a new name into ``parent_id``; return the copy's id. The original is
         unchanged."""
