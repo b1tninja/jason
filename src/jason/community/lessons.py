@@ -2116,6 +2116,18 @@ LESSONS: tuple[Lesson, ...] = (
            "with their own publish flag.",
            Status.FIXED, guards=("manual.fill_token", "tests/test_document_templates.py"),
            docs=("docs/document-templates.md",)),
+    Lesson("a-docs-missing-styles-read-as-false-positives", date(2026, 10, 5), (Area.DOCUMENTS,),
+           "Scoring a PDF's recovered headings against a Google Doc's styles counted about nine numbered capital lines "
+           "the Doc leaves as plain paragraphs as the reader's false positives.",
+           "A gold made of paragraph styles is only as complete as the Doc.",
+           "structure_score reports likely and suggested precision and the findings apart; the closed contents row "
+           "demotes headings a complete contents page does not list to suggested; the benchmark counts such lines for "
+           "the Doc's keeper to style (or to say they are not headings).",
+           Status.OPEN, guards=("tests/test_structure_recovery.py::test_a_contents_page_the_body_bears_out_closes_the_list",),
+           docs=("docs/structure-recovery.md",),
+           notes=("Open until a person styles the lines or says they are not headings; before a template is built from a "
+                  "Doc, run scripts/structure_fuzz.py gold and report on it and its PDF, and carry bookmarks and a contents "
+                  "page into the generated PDF (the two cheapest large gains).",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

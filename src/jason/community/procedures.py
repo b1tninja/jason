@@ -599,6 +599,11 @@ PROCEDURES: tuple[Procedure, ...] = (
         "Keep the official rules word for word, the manual generated from its sources, and every citation resolving.",
         (
             Step("Refresh the outlines (read-only) and the copies scan.", command="jason outlines --fetch; jason section-refs --scan"),
+            Step("Before a template is built from the Doc, check its headings against its PDF: unstyled visual headings "
+                 "are fixed in the Doc first, and the generated PDF carries bookmarks and a contents page.",
+                 command="python scripts/structure_fuzz.py gold ...; python scripts/structure_fuzz.py report ...",
+                 check="every numbered capital line is a styled heading or a person says it is not one",
+                 refs=("docs/structure-recovery.md",), lessons=("a-docs-missing-styles-read-as-false-positives",)),
             Step("Classify each section by rule rows and evidence, and answer the questions.",
                  command="jason manual --classify --asks; jason intake",
                  lessons=("guide-states-duties", "askkind-classify-is-the-librarys", "grammar-misses-future-and-passive-duties")),
