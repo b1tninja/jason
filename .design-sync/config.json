@@ -137,6 +137,8 @@
     "../docs/console/handoff-instance-and-integrations.md",
     "../docs/console/handoff-admin-components.md",
     "../docs/console/handoff-responses.md",
+    "../docs/console/handoff-forms-and-arrivals.md",
+    "../docs/standard-forms.md",
     "../docs/responses-design.md",
     "../docs/integrations-design.md",
     "../docs/scheduler-daemon-design.md",
