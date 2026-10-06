@@ -19,6 +19,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [web-ui.md](web-ui.md): the React UI, its WSGI server, and the API.
 - [web-ui-decisions.md](web-ui-decisions.md): where jason needs a person, and the UI component for each.
 - [onboarding-ux.md](onboarding-ux.md): onboarding a community: the portal, the request list a manager sends, and ingestion.
+- [record-intake.md](record-intake.md): the record checklist: one slot for each record an association must hold, where a person picks a Drive file or folder, pastes a link, uploads, or says none exists; the pipeline after a pick; the picker verdict.
 - [jobs.md](jobs.md): the job queue; `jason jobs` adds commands and `jason worker` runs them later, in order.
 - [batches.md](batches.md): bulk PayHOA writes sent one at a time with a ledger, so a stopped run resumes; each notice's delivery to every member, and the follow-ups the law asks for (`jason notices`).
 
