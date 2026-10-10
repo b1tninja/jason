@@ -444,6 +444,22 @@ def schedules(data_dir: Path) -> list[Schedule]:
         return [_row(r) for r in conn.execute("SELECT * FROM schedules ORDER BY key").fetchall()]
 
 
+def read_schedules(data_dir: Path) -> list[Schedule] | None:
+    """The schedules read without writing: ``None`` when the community has no ``jobs.db`` or no schedule table yet
+    (``connect`` would create both), so a read-only caller says "never seeded" and ``jason cadence`` seeds."""
+    path = Path(data_dir) / "jobs.db"
+    if not path.is_file():
+        return None
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        return [_row(r) for r in conn.execute("SELECT * FROM schedules ORDER BY key").fetchall()]
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+
+
 def get(data_dir: Path, key: str) -> Schedule:
     with closing(connect(data_dir)) as conn:
         r = conn.execute("SELECT * FROM schedules WHERE key = ?", (key,)).fetchone()
@@ -894,9 +910,10 @@ def run_now(data_dir: Path, key: str, *, by: str, now: datetime | None = None) -
 
 # --- reading ------------------------------------------------------------------------------------------------------------
 
-def listing(data_dir: Path, *, now: datetime | None = None, zone: tzinfo | None = None) -> list[dict[str, Any]]:
+def listing(data_dir: Path, *, now: datetime | None = None, zone: tzinfo | None = None,
+            rows: list[Schedule] | None = None) -> list[dict[str, Any]]:
     """Each source's schedule as JSON: its cadence, window, floor, where the setting came from, the next run, the last
-    result, and a pause or why it is held."""
+    result, and a pause or why it is held. ``rows`` are the schedules already read (``read_schedules``)."""
     now = now or datetime.now(timezone.utc)
     zone = zone or ZoneInfo(DEFAULT_ZONE)
     conns = _connections(data_dir)
@@ -906,7 +923,7 @@ def listing(data_dir: Path, *, now: datetime | None = None, zone: tzinfo | None 
         return at.astimezone(zone).isoformat(timespec="minutes") if at else ""
 
     out = []
-    for r in schedules(data_dir):
+    for r in (schedules(data_dir) if rows is None else rows):
         why = held(r, conns.get(r.integration))
         at = None if why else when_next(r, now, zone)
         setting = (f"changed by {r.set_by} {local(r.set_at)}" if r.setting is Setting.ADMIN

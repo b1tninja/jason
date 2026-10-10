@@ -126,13 +126,22 @@ This page's first line ("Nothing here is built") is out of date. The parts behin
 
 | This page's screen | What exists | What does not |
 |---|---|---|
-| Instance (`#/instance`) | the Status screen (`#/status`, built, admin only) with its sources and standing; `jason daemon status --json` for the service | the overview itself, and every `/api/instance/*` route |
+| Instance (`#/instance`) | the Status screen (`#/status`, built, admin only) with its sources and standing; `jason daemon status --json` for the service | the overview itself; the three routes below are built (`instance-service`, `instance-integrations`, `instance-schedules`) |
 | Communities (`#/instance/communities`) | `#/communities` lists the profiles (`communities` loader) | each community's integration row of chips, data folder size, last activity |
-| Integrations (instance and community) | `jason integrations list [--instance] --json` | the routes and the cards |
-| Service | `jason daemon status --json` (`jason.serve.status`), `jason serve --install-task`, `jason daemon stop` | the route and `ServiceStatus` |
-| Schedules | `jason cadence --json`, with `--every`, `--cron`, `--window`, `--pause`, `--resume`, `--restore`, `--run-now` | the route; no write from the console |
+| Integrations (instance and community) | `jason integrations list [--instance] --json`; `GET /api/instance-integrations[?scope=instance][&vault=1]` | the cards |
+| Service | `jason daemon status --json` (`jason.serve.status`), `jason serve --install-task`, `jason daemon stop`; `GET /api/instance-service` | `ServiceStatus` |
+| Schedules | `jason cadence --json`, with `--every`, `--cron`, `--window`, `--pause`, `--resume`, `--restore`, `--run-now`; `GET /api/instance-schedules` | no write from the console |
 | People | `#/people` (offices, terms, jason's admins, the managers with portfolios), read-only | the Instance route (the same list under another nav group) |
 | The setup dialogs | each integration's `setup_steps` in the registry (`Step`: `title`, `admin_does`, `jason_checks`; 37 across the integrations) | `ConnectDialog`, `StepCheck`, `RedirectUri`, `SecretDrop`, `FileDrop`, `DisconnectConfirm`; the steps are not in `integrations list --json` |
+
+### The three routes (built 2026-10-10; `jason.web.extra.instance`)
+
+- **Keys, not paths.** The loaders are `instance-service`, `instance-integrations`, and `instance-schedules` (`GET /api/<key>`), not `/api/instance/*`.
+- **Who.** One of jason's admins as themselves (401 with no sign-in, 403 for anyone else and while viewing as someone else); never the owner view; read only.
+- **Disk only.** Heartbeat files and locks, the connections' stored rows, the stores' own stamps, and the schedules table opened read-only. No Google, PayHOA, Keeper, or network, and nothing written. A community whose scheduler has not run is `seeded: false` with the command that seeds it (`jason cadence`); the loader never seeds.
+- **Service** is each community's judged heartbeat: `none`, `running`, `draining`, `stale` (older than `staleAfterSeconds`, 90, the beat every 30), `stopped`; `alive`; the worker lock; a drain request; the lanes; the next runs.
+- **Integrations** are `jason integrations list --json`'s rows: names, states, the vault *path*, whether a credential is set, never a value. The vault is asked only with `?vault=1` (names only, non-interactive); without it a credential held only in the vault reads "not set" and `vault.asked` says the vault was not asked.
+- **Schedules** are `jason cadence --json`'s rows for every community: cadence, window, floor, default, where the setting came from, adoption, and next run.
 
 ### Where this page's text differed from the code (the code wins)
 

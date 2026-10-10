@@ -881,6 +881,9 @@ EXTRA_LOADERS: dict[str, str] = {
     "community-profile": "jason.web.extra.community_profile:community_profile",
     "community": "jason.web.extra.community_record:community_record",  # the standing facts, each sourced: board only
     "status": "jason.web.extra.status:status",  # the administrator's Status: sources' last reads, sign-ins, gates, failures
+    "instance-service": "jason.web.extra.instance:service",  # the administrator's Instance: each community's heartbeat, lease, lanes, next runs; disk only
+    "instance-integrations": "jason.web.extra.instance:integrations",  # ?scope=instance&vault=1: connections' states and vault paths, never a value
+    "instance-schedules": "jason.web.extra.instance:schedules",  # every community's cadences with floor, adoption, next run; read without seeding
     "associations": "jason.web.extra.discovery:associations",
     "documents-located": "jason.web.extra.discovery:documents_located",
     "key-documents": "jason.web.extra.key_documents:key_documents",

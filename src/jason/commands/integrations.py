@@ -115,6 +115,9 @@ def _row(reading: Any) -> dict[str, Any]:
     }
 
 
+reading_json = _row            # the console's Instance loader reads the same row
+
+
 def _lines(rows: list[dict[str, Any]], heading: str) -> list[str]:
     out = [heading, NO_VALUE, ""]
     for r in rows:
