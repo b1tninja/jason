@@ -520,6 +520,10 @@ COUNTY = Integration(
                 note="daily during the installment windows"),
         Cadence("county-secured", ("sync-secured",), cron="30 5 1 * *", floor="1d", stale_after="35d",
                 manual="it reads the secured roll's workbook, which a person downloads and names"),
+        Cadence("county-land", ("land-sync",), cron="0 6 * * *", floor="6h", stale_after="3d",
+                note="the map's transfers since the last read, new plans and maps, and the recorder watch's liens, defaults, and annexations"),
+        Cadence("county-land-full", ("land-sync", "--full", "--no-watch"), cron="0 3 * * 0", floor="3d", stale_after="9d",
+                note="every parcel, so a retired or split parcel is found"),
     ),
     instances="the county the profile names; the stores are each community's",
 )

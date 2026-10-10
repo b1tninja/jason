@@ -155,7 +155,7 @@ def test_rate_limits_say_where_or_none_published():
 
 
 def test_cadences_by_scope():
-    assert {c.source_key for c in cadences(Scope.INSTANCE)} == {"county-tax", "county-secured"}
+    assert {c.source_key for c in cadences(Scope.INSTANCE)} == {"county-tax", "county-secured", "county-land", "county-land-full"}
     assert set(cadences(Scope.COMMUNITY)) | set(cadences(Scope.INSTANCE)) == set(cadences())
     with pytest.raises(KeyError, match="known"):
         integration("nope")

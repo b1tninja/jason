@@ -189,6 +189,8 @@ GROUPS: dict[str, str] = {
     "sync-liens": "Property records & county",
     "sync-secured": "Property records & county",
     "sync-tax": "Property records & county",
+    "land-sync": "Property records & county",
+    "hoa-reports": "Property records & county",
     "brief": "Property records & county",
     "title-watch": "Property records & county",
     "recent-filings": "Property records & county",

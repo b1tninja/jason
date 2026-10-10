@@ -1505,6 +1505,15 @@ LESSONS: tuple[Lesson, ...] = (
                    "tests/test_instrument_graph.py (a second candidate is a lead; a PRTN person stays private)",
                    "tests/test_process_report.py (owners by role, the strand by prior)"),
            docs=("docs/placer.md", "docs/instrument-graph.md")),
+    Lesson("a-first-sync-is-a-baseline", date(2026, 10, 10), (Area.ONBOARDING,),
+           "The first read of the county's land store logged every condominium plan and final map on the map (8,122) "
+           "as a new recording, so a watch would have reported decades of plans as news.",
+           "The parcel sync treated an empty store as a baseline; the plan-and-map sync, written beside it, did not.",
+           "Every sync that logs changes treats its first read of an empty store as the baseline and logs nothing; the "
+           "8,122 entries were cleared. A new watch is tested for its first read as well as its second.",
+           Status.FIXED,
+           guards=("asspy tests/test_land.py (the first read is the baseline; a later plan or map is an event)",),
+           docs=("docs/county-land.md",)),
     Lesson("utility-screen-wrong-shape", date(2026, 10, 3), (Area.DOCUMENTS,),
            "The utility payments screen read fields its loader never had, so its bills showed no document when it moved "
            "to Doc.",

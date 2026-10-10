@@ -114,7 +114,7 @@ _CLASS_OF_COMMAND: dict[str, JobClass] = {
     "labels": JobClass.GOOGLE, "drive-activity": JobClass.GOOGLE, "meetings": JobClass.GOOGLE,
     "books": JobClass.PAYHOA, "budget": JobClass.PAYHOA, "reconcile": JobClass.PAYHOA, "invoices": JobClass.PAYHOA,
     "sync-bills": JobClass.PAYHOA, "catalog": JobClass.PAYHOA, "sync-catalog": JobClass.PAYHOA,
-    "sync-tax": JobClass.COUNTY, "request-links": JobClass.PAYHOA, "ledger": JobClass.PAYHOA,
+    "sync-tax": JobClass.COUNTY, "land-sync": JobClass.COUNTY, "hoa-reports": JobClass.COUNTY, "request-links": JobClass.PAYHOA, "ledger": JobClass.PAYHOA,
     "models": JobClass.GPU, "classify": JobClass.GPU, "read-documents": JobClass.GPU,
 }
 

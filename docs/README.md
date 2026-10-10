@@ -180,6 +180,7 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 
 ## Property records and county
 
+- [county-land.md](county-land.md): every association's footprint on the county's map (common parcels, maps, plans), its pages, and watching for transfers, liens, defaults, and annexations.
 - [property-histories.md](property-histories.md): each unit's chain of title, deed prices, assessed bases, and the audit against the tax bills.
 - [recorded-instruments.md](recorded-instruments.md): every filing in the county's public index other than conveyances, and the lifecycle each opens or closes.
 - [key-documents.md](key-documents.md): the key documents checklist (declaration, amendments, annexations, plans, maps, deeds) with each copy's link, upload, and unlink.
