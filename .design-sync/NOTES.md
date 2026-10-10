@@ -226,3 +226,26 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 - **Inspections and portals previews** (`DocumentCodes`, `ReportPortalCard`, `PortalReportRow`, `HoldingChips`, `FilingPlan`, `NoticeClock`, `AssemblyRegister`, `Discrepancy`, `TesterCheck`, `TextGrade`, `NotOursNotice`, `WatchRow`) draw their plainly fake data from `inspectionFixtures`, exported by `jason-ui`, so they import from the library alone. Synced 2026-10-04 (every cell graded good; the project's README carries the conventions section for them). Still unchecked: their dark-mode and 320 px layouts. `NotOursNotice` has no loader yet.
 
 - 2026-10-05 re-sync: guidelines only (41 pages, incl. the forms, responses, follow-ups, form-library, and admin-components handoffs and design brief). Components, bundle, styles, and the anchor were not uploaded, so other sessions' unfinished ui/src work is not published; the remote anchor stays older than the local one. validate: ActionRegister render timed out (load); not investigated.
+
+## Citation components (previews authored and graded 2026-10-10; not uploaded)
+
+- **Ten components, all cells graded good, previews in `previews/`**: `StandingPill`, `StandingStrip`, `CitationChip`, `CitedSections`
+  (its `Proposal` and `Freshness` are cells of that preview, not files), `CitationGaps`, `ReferenceShelf`, `WorkCard`, `ReferencePage`,
+  `WorkReader`, `IngestCitations`. They were floor cards in the project (four threw on empty props). The design handoff is
+  `docs/console/handoff-citations.md`, now in `guidelinesGlob`; the screen and its loaders are in the repo (commit 5ce32c0).
+- **Overrides.** Every list and card is `cardMode: column` with its own viewport (`CitedSections`, `CitationGaps` 1100x1500,
+  `ReferenceShelf` 1000x1800, `WorkCard`/`ReferencePage`/`WorkReader` 1000x900-1000, `IngestCitations` 1100x1400); the tables overflow a grid cell.
+- **`WorkReader` fetches** `/api/reference-page?work=&page=`; its preview installs the same module-scope `fetch` stub as `AskPanel`, keyed by the
+  exact URL the component builds (`work` is `encodeURIComponent`-ed, so the file name keeps its dot). Change the component's URL and the stub's keys change with it.
+- **The standing words are the server's codes** (`ON_SHELF`, `NOT_EXPORTED`, `NOT_FOUND`, `RENUMBERED`, `REGULATION`, `OTHER_CODE`,
+  `UNCHECKED`); the previews pass them as `standing`, and `lib/citations.ts` maps them to words and tones. A gap is the warn tone, never bad.
+- **Known cosmetic nits (graded good, for the design pass):** the `not exported` pill wraps to two lines in the narrow Standing column of
+  `CitedSections`, `CitationGaps`, and `IngestCitations`; in `CitationGaps` a second "Cited by" source wraps with its `;` separator.
+- **Not uploaded.** The remote anchor is still the 2026-10-05 one; the driver ran locally with no anchor (`anchor: not_provided`, grades
+  carried forward from `.cache/review`). A component and bundle upload publishes everything in `ui/src` at once, and other sessions' unfinished
+  work is in that tree, so it waits (see the 2026-10-05 note). To publish: fetch the project's `_ds_sync.json` to `.cache/remote-sync.json`, run the driver
+  with `--remote`, and upload the atomic way.
+- **Re-sync risks.** The previews copy the shapes of `CitationRow`, `CitationsData`, `GapsData`, `ReferenceWork`, and `ReferencePageData` from
+  `ui/src/lib/citations.ts`; a changed type fails the preview's compile (the card falls back to the floor), not the bundle. The page text in
+  `ReferencePage` and `WorkReader` is made-up prose that quotes statute numbers only as names.
+

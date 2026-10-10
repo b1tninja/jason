@@ -121,6 +121,34 @@
     },
     "ColorDetail": {
       "cardMode": "column"
+    },
+    "CitedSections": {
+      "cardMode": "column",
+      "viewport": "1100x1500"
+    },
+    "CitationGaps": {
+      "cardMode": "column",
+      "viewport": "1100x1500"
+    },
+    "ReferenceShelf": {
+      "cardMode": "column",
+      "viewport": "1000x1800"
+    },
+    "WorkCard": {
+      "cardMode": "column",
+      "viewport": "1000x900"
+    },
+    "ReferencePage": {
+      "cardMode": "column",
+      "viewport": "1000x1000"
+    },
+    "WorkReader": {
+      "cardMode": "column",
+      "viewport": "1000x1000"
+    },
+    "IngestCitations": {
+      "cardMode": "column",
+      "viewport": "1100x1400"
     }
   },
   "readmeHeader": ".design-sync/conventions.md",
@@ -164,6 +192,7 @@
     "../docs/console/handoff-inspections-and-portals.md",
     "../docs/console/screens/life-safety.md",
     "../docs/cross-connection-control.md",
-    "../docs/life-safety-inspections.md"
+    "../docs/life-safety-inspections.md",
+    "../docs/console/handoff-citations.md"
   ]
 }
