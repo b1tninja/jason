@@ -546,16 +546,10 @@ class WithoutSuggestions:
         return getattr(self.source, name)
 
 
-def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path | None = None,
-           current: bool = False) -> dict[str, Any]:
-    """Render the official rules and the generated manual to ``data/drafts`` and compare the manual's rendering with
-    the Doc's text. Returns the paths and the check.
-
-    The official rules hold the last adopted words: each passage the revision history finds changed with no adoption
-    (``manual_rule_change.partition``, (b)) shows its last adopted words where an adoption on record covers them, with
-    jason's note reciting the working words, and only the note where no adopted version is on record. ``current``
-    renders the working words instead (to ``rules-and-regulations-current.md``), with the same notes. Pending
-    suggestions (c) never appear. With no revision history on disk the rules are the working words, and say so."""
+def read_rules(data_dir: Path | None = None, community: Any = None) -> dict[str, Any]:
+    """What ``render`` reads before it writes anything: the classification, the source with the pending suggestions left
+    out (``clean``), the revision-history partition (``part``, or None with ``why``), and the placed passages. Disk reads
+    only; nothing is written."""
     from jason.tasks import manual_rule_change as mrc
 
     data_dir = Path(data_dir) if data_dir is not None else default_data_dir()
@@ -589,6 +583,25 @@ def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path
     passages = [replace(p, working=working_of(p),
                         earlier=strip_inserts(p.earlier, [s for s in inserts if s.since and s.since <= p.from_on])[0])
                 for p in passages]
+    return {"data_dir": data_dir, "community": community, "result": result, "outline": outline, "spec": spec,
+            "source": source, "plain": plain, "part": part, "why": why, "passages": passages, "inserts": inserts,
+            "clean": clean}
+
+
+def render(data_dir: Path | None = None, community: Any = None, *, out_dir: Path | None = None,
+           current: bool = False) -> dict[str, Any]:
+    """Render the official rules and the generated manual to ``data/drafts`` and compare the manual's rendering with
+    the Doc's text. Returns the paths and the check.
+
+    The official rules hold the last adopted words: each passage the revision history finds changed with no adoption
+    (``manual_rule_change.partition``, (b)) shows its last adopted words where an adoption on record covers them, with
+    jason's note reciting the working words, and only the note where no adopted version is on record. ``current``
+    renders the working words instead (to ``rules-and-regulations-current.md``), with the same notes. Pending
+    suggestions (c) never appear. With no revision history on disk the rules are the working words, and say so."""
+    read = read_rules(data_dir, community)
+    data_dir, community, result, outline, spec = read["data_dir"], read["community"], read["result"], read["outline"], read["spec"]
+    source, plain, part, why = read["source"], read["plain"], read["part"], read["why"]
+    passages, inserts, clean = read["passages"], read["inserts"], read["clean"]
     values = _values(community, outline, spec, basis=True, current=current, separated=part is not None)
     rules_md, rules_chunks = render_(template("rules.md"), result, spec, clean, outline.text, values=values,
                                      passages=passages, current=current)
@@ -652,6 +665,6 @@ def diff_text(chunks: list[Chunk], text: str, key: str) -> str:
 
 __all__ = ["CURRENT_FILE", "DiskSource", "RULES_FILE", "adoption_history", "answers", "classification_lines",
            "classify", "concordance_lines", "copy_hits", "counts_by_letter", "diff_text", "history_path", "law_for",
-           "load_outline", "merge_asks", "norms", "place_passages", "quoted", "references", "render",
+           "load_outline", "merge_asks", "norms", "place_passages", "quoted", "read_rules", "references", "render",
            "save_classification", "spec_of", "statute_words", "store", "strip_inserts", "template", "unwrap",
            "working_rules"]

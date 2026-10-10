@@ -54,6 +54,8 @@ from jason.mcp.governance import (
     paint_colors,
     paint_match,
     record_completion,
+    rule_record,
+    rule_records,
     request_kinds_measure,
     schedule_agenda,
     schedule_assignments,

@@ -77,6 +77,18 @@ class RuleVersion:
     board_item: str = ""
     proposed: bool = False
     note: str = ""
+    # Fields rule records add (docs/rule-records.md, section 3). Each is empty until a person fills it; a miss stays a miss.
+    version: str = ""                         # the version's id ("v2"); empty: its place in the record names it
+    source: str = ""                          # which words these are (see ``jason.community.rule_records``); empty: read from the other fields
+    source_file: str = ""                     # the stored file the words were entered from (minutes, instrument)
+    decision: str = ""                        # the board's decision id, read from the Decisions tab
+    recorded_by: str = ""                     # who recorded the adoption
+    recorded_at: str = ""
+    effective: date | None = None             # the day it takes effect, when not the adoption day
+    expires: date | None = None               # an emergency version's end day, from the catalog row
+    notice: tuple[str, ...] = ()              # the notice ledger keys
+    supersedes: str = ""                      # the version id this one replaced
+    proposed_by: str = ""
 
     def in_force(self, day: date | None) -> bool:
         if self.proposed:
@@ -92,12 +104,54 @@ class RuleVersion:
                 raw[key] = value
         if self.proposed:
             raw["proposed"] = True
+        for key, value in (("version", self.version), ("source", self.source), ("sourceFile", self.source_file),
+                           ("decision", self.decision), ("recordedBy", self.recorded_by), ("recordedAt", self.recorded_at),
+                           ("supersedes", self.supersedes), ("proposedBy", self.proposed_by)):
+            if value:
+                raw[key] = value
+        for key, day in (("effective", self.effective), ("expires", self.expires)):
+            if day:
+                raw[key] = day.isoformat()
+        if self.notice:
+            raw["notice"] = list(self.notice)
         return raw
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> RuleVersion:
-        return cls(raw.get("text", ""), raw.get("words", ""), date.fromisoformat(raw["adopted"]) if raw.get("adopted") else None,
-                   raw.get("boardItem", ""), bool(raw.get("proposed")), raw.get("note", ""))
+        def day(key: str) -> date | None:
+            return date.fromisoformat(raw[key]) if raw.get(key) else None
+
+        return cls(raw.get("text", ""), raw.get("words", ""), day("adopted"), raw.get("boardItem", ""),
+                   bool(raw.get("proposed")), raw.get("note", ""), raw.get("version", ""), raw.get("source", ""),
+                   raw.get("sourceFile", ""), raw.get("decision", ""), raw.get("recordedBy", ""), raw.get("recordedAt", ""),
+                   day("effective"), day("expires"), tuple(raw.get("notice") or ()), raw.get("supersedes", ""),
+                   raw.get("proposedBy", ""))
+
+
+@dataclass(frozen=True)
+class RuleAct:
+    """A suspension or a repeal on record: what a person recorded, from ``on`` (a suspension to ``until``). The event log
+    that writes these is a later phase; a stored record may already carry them."""
+
+    kind: str                                 # "suspension" or "repeal"
+    on: date
+    until: date | None = None
+    by: str = ""
+    evidence: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        raw: dict[str, Any] = {"kind": self.kind, "on": self.on.isoformat()}
+        if self.until:
+            raw["until"] = self.until.isoformat()
+        for key, value in (("by", self.by), ("evidence", self.evidence)):
+            if value:
+                raw[key] = value
+        return raw
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> RuleAct:
+        return cls(raw["kind"], date.fromisoformat(raw["on"]), date.fromisoformat(raw["until"]) if raw.get("until") else None,
+                   raw.get("by", ""), raw.get("evidence", ""))
 
 
 @dataclass(frozen=True)
@@ -117,6 +171,10 @@ class RuleRecord:
     copies: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
     versions: tuple[RuleVersion, ...] = ()
+    subjects: tuple[str, ...] = ()            # ``rule_authority.Subject`` words a person confirmed; empty: read by the rule reader
+    authority: tuple[str, ...] = ()           # grant ids (``jason rules``) a person tied the rule to; empty: found by subject
+    confidentiality: str = ""                 # "open" or "board"; empty: an adopted version is open
+    acts: tuple[RuleAct, ...] = ()            # suspensions and repeals on record
 
     def version_on(self, day: date | None) -> RuleVersion | None:
         live = [(v.adopted or date.min, i, v) for i, v in enumerate(self.versions) if v.in_force(day)]
@@ -127,15 +185,27 @@ class RuleRecord:
         return self.title or self.number or self.id
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "number": self.number, "title": self.title, "level": self.level, "book": self.book,
-                "segment": self.segment, "kind": self.kind, "copies": list(self.copies), "notes": list(self.notes),
-                "versions": [v.to_dict() for v in self.versions]}
+        raw: dict[str, Any] = {
+            "id": self.id, "number": self.number, "title": self.title, "level": self.level, "book": self.book,
+            "segment": self.segment, "kind": self.kind, "copies": list(self.copies), "notes": list(self.notes),
+            "versions": [v.to_dict() for v in self.versions]}
+        if self.subjects:
+            raw["subjects"] = list(self.subjects)
+        if self.authority:
+            raw["authority"] = list(self.authority)
+        if self.confidentiality:
+            raw["confidentiality"] = self.confidentiality
+        if self.acts:
+            raw["acts"] = [a.to_dict() for a in self.acts]
+        return raw
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> RuleRecord:
         return cls(raw["id"], raw.get("number", ""), raw.get("title", ""), int(raw.get("level", 0)), raw.get("book", "rules"),
                    raw.get("segment", ""), raw.get("kind", "rule"), tuple(raw.get("copies") or ()),
-                   tuple(raw.get("notes") or ()), tuple(RuleVersion.from_dict(v) for v in raw.get("versions") or ()))
+                   tuple(raw.get("notes") or ()), tuple(RuleVersion.from_dict(v) for v in raw.get("versions") or ()),
+                   tuple(raw.get("subjects") or ()), tuple(raw.get("authority") or ()), raw.get("confidentiality", ""),
+                   tuple(RuleAct.from_dict(a) for a in raw.get("acts") or ()))
 
 
 @dataclass
@@ -187,6 +257,11 @@ class RulesContext:
 def _covers(section: str, number: str) -> bool:
     return bool(section) and bool(number) and (number == section or number.startswith(section + "(")
                                                or number.startswith(section + "-"))
+
+
+def event_covers(event: AdoptionEvent, *numbers: str) -> bool:
+    """Whether an adoption event names any of ``numbers`` (a section covers its subdivisions)."""
+    return any(_covers(sec, n) for sec in event.sections for n in numbers)
 
 
 def adopted_day(events: Iterable[AdoptionEvent], *numbers: str) -> date | None:
@@ -514,6 +589,6 @@ def book_values(values: dict[str, str], rules_url: str = "") -> dict[str, str]:
 
 
 __all__ = ["DRAFT_BANNER", "LooseNotesBlock", "MANUAL_TEMPLATE_KEY", "ManualDocument", "PolicyReferencesBlock", "RULES_KEY", "RuleBlock",
-           "RuleBook", "RuleRecord", "RuleVersion", "RulesContext", "RulesDocumentSource", "RulesReferenceBlock",
+           "RuleAct", "RuleBook", "RuleRecord", "RuleVersion", "RulesContext", "RulesDocumentSource", "RulesReferenceBlock",
            "RulesSectionCheck", "STATUS_ID", "StatusBlock", "adopted_day", "adoption_status", "book_values",
-           "derive_book", "manual_template_definition", "rules_definition", "rules_section_check"]
+           "derive_book", "event_covers", "manual_template_definition", "rules_definition", "rules_section_check"]

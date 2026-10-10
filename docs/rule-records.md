@@ -1,6 +1,6 @@
 # Rule records: keeping the association's rules as data, and the way a change reaches them
 
-Status: **design** (October 2026). Nothing in this page is built except what the first table says is. It extends the rule records of [document-templates.md](document-templates.md#11-the-rules-document-the-owners-manual-template-and-the-docs-they-make) (section 11) from "the words of the rules, with versions" to "the rules, their grounds, their history, and the acts that change them". The console's design for it is [console/handoff-rule-records.md](console/handoff-rule-records.md).
+Status: **phase 1 built (read only)**, the rest design (October 2026). What is built: the rule on any day, its history, its comparison with the working Doc, its grounds, and its linked uses, as `jason rule-records`, the MCP tools `rule_records` and `rule_record`, and the console loaders `rule-records`, `rule-record`, `rule-record-history`, `rule-record-compare`, `rule-uses` and `rule-events` (section 12 says what each does and what is left). The proposal workflow, the event log, the writes, and the effects plan are not built. It extends the rule records of [document-templates.md](document-templates.md#11-the-rules-document-the-owners-manual-template-and-the-docs-they-make) (section 11) from "the words of the rules, with versions" to "the rules, their grounds, their history, and the acts that change them". The console's design for it is [console/handoff-rule-records.md](console/handoff-rule-records.md).
 
 This page is general. The association's own rules, subjects, grants, and board items are the profile's data. Every example here is made up.
 
@@ -19,7 +19,7 @@ This page is general. The association's own rules, subjects, grants, and board i
 | Board items and decisions | `jason board`, `jason.tasks.board_items` (`propose`), `jason.tasks.decisions` (`data/board/decisions.json`), [console/approval-workflow.md](console/approval-workflow.md#12-the-board-decides-by-vote) | A matter for the board, laned by status; the board's vote recorded at a meeting by an officer | Reused. The change's board item is one of these; the vote is read from where it is recorded |
 | Registers | [registers.md](registers.md) ("Rule changes (4360)") | A sheet row per change: proposed text link, notice deadline, decision date, adoption deadline, notice sent, comments, adopted, adopted text link | The register keeps its place for what the board keeps up to date; where the records live is decision 1 |
 
-**New:** the record's grounds, subject, status, source, and confidentiality; the proposal as a stored draft; the event log; the checks that run before a notice; the as-of and history views; and the link from a use of a rule to the record.
+**New:** the record's grounds, subject, status, source, and confidentiality; the proposal as a stored draft; the event log; the checks that run before a notice; the as-of and history views; and the link from a use of a rule to the record. **Built in phase 1:** the grounds, subject, status, source and confidentiality fields (on `RuleRecord` and `RuleVersion`, empty until a person fills them), the pure readers in `jason.community.rule_records` (`status_on`, `version_on`, `history`, `compare`, `grounds_for`, `uses_view`), the task `jason.tasks.rule_records`, and the as-of, history, compare and uses views. The proposal, the event log, the checks, and the use-link write are phases 2 and 3.
 
 ## 2. The idea in one line
 
@@ -275,14 +275,16 @@ jason rule-records --link-use ID --ref ADDRESS --on DAY --by NAME      # a use
 
 ## 12. Phases
 
-- **Phase 1 (read):** `jason rule-records` (list, one rule as of a day, history), the compare against the Doc, and the use view, over the records that exist, with the new fields empty.
+- **Phase 1 (read), built:** `jason rule-records` (`--list`, `--show ID --as-of DAY`, `--history`, `--compare`, `--uses`, each with `--json`), over the records that exist (stored in `data/rule-records/<document>.json`, or derived from the classification: `--records auto|derived|stored`), with the new fields empty until a person fills them. Status is folded from the versions, the adoption events and the acts a stored record carries (`suspension`, `repeal`), never typed; a derived record's first version is shown as **in force, adoption not on record**. The compare uses the four words of section 4.1 (a rule the Doc does not hold, or a Doc not read, is shown as that and not as a word). Grounds are `jason rules`' stored grants matched by the rule's subject (stored, else read from its heading and words and labeled jason's), with the Civil Code 4355 reading; none found is a question. A rule's uses are the hearings and open-session board decisions whose own record cites `jason://rules/<id>`; none exists until the link write of phase 3, so "no use linked" is the usual answer. Read only: `--list` and the others write nothing, and the MCP tools take no person's name.
 - **Phase 2 (the proposal):** the proposal store and event log; `--propose` through `--to-board`; the checks; the `RuleChange` built from a proposal; the notice through the existing path.
 - **Phase 3 (adoption and effects):** `--record-adoption` reading the decision; the effects plan; the status fold; the use links written by the hearing and request tasks.
 - **Phase 4:** `source: records` for a document, with the Doc generated; the second person where decided.
 
 ## 13. Not done
 
-- Nothing here is built; the first table says what is.
+- Only phase 1 (section 12) is built. The proposal, the event log, the checks, the effects plan, the use-link write, and `source: records` are not.
+- The compare reads the Doc through `jason manual`'s classification and `jason revisions`; where either is missing the comparison says so and is not "same". A rule piece the classification does not tie to a section of the Doc's outline is "not in the Doc". A pending suggestion is counted for the document, not per rule.
+- A sub-piece with no heading of its own (for example a lettered paragraph) has no subject read, so its grounds say "no subject read"; it inherits nothing from its parent yet. A person confirms subjects (`RuleRecord.subjects`) when the records are kept as data.
 - Comparing proposed words to the declaration is a reading, not a test, and is not measured.
 - Which subjects an annual statement must carry is the catalog's; it is read, not copied.
 - The reversal vote's own steps (a petition, a ballot) are not here: [notices.md](notices.md) and the election procedures.

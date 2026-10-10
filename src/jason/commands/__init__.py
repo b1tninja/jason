@@ -24,6 +24,7 @@ MODULES: tuple[str, ...] = (
     "minutes_privacy",
     "registers",
     "rule_change",
+    "rule_records",
     "broadcast",
     "review",
     "packet",

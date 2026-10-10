@@ -342,6 +342,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "records_request", "document_search", "library_search", "manager_context",
         "new_responses", "response",       # has anyone answered the request: what the last check kept (response_inbox.py)
         "outstanding_responses",           # who was sent a copy and has not responded: the sent-copy catalog less the answers
+        "rule_records", "rule_record",     # the association's rules as records, read only: a rule on a day, its history, the Doc beside it, its uses (governance.py)
         "followups", "campaign_status",    # what we do next and when; a campaign's funnel by intake method (followups.py)
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the

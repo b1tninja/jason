@@ -647,11 +647,52 @@ def evidence(address: str, approval_id: str = "", data_dir: Path | None = None) 
     return resolve(address, approval_id=approval_id, data_dir=data_dir)
 
 
+# --- Rule records -----------------------------------------------------------------------------------------------------
+
+def rule_records(as_of: str = "", status: str = "", subject: str = "", records: str = "auto",
+                 data_dir: Path | None = None) -> dict[str, Any]:
+    """The association's operating rules as records, read only: each rule's number, title, status on the day (``as_of``,
+    default today: proposed, noticed, adopted, suspended, repealed, expired, and 'in force, adoption not on record' for a
+    version whose adoption day no record shows), the version in force, its subjects, the grounds standing from ``jason rules``
+    ('rules on file, no grant found' is a question for the board and counsel, never 'no authority'), and how the working
+    Doc compares (same, the record is behind, the Doc ran ahead, changed with no adoption found). ``status`` and ``subject``
+    narrow it; ``records`` is auto, derived or stored. The status, the subjects, the grounds and the comparison are jason's
+    readings; the words are the stored words. A Doc's words are never the rule. It adopts, approves, and recommends
+    nothing, and writes nothing."""
+    from jason.tasks import rule_records as task
+
+    return task.list_view(_root(data_dir), as_of=as_of, status=status, subject=subject, records=records)
+
+
+def rule_record(id: str, as_of: str = "", view: str = "", records: str = "auto", data_dir: Path | None = None) -> dict[str, Any]:
+    """One rule record (``id`` or its printed number), its words first. Default: the version in force on ``as_of`` recited
+    with its citation, source and adoption, then the status, the grounds (the grants of rule-making power it may rest on,
+    recited with their tier and review; none found is a question, not 'no authority'), jason's reading of Civil Code 4355 for
+    the subject, and the comparison with the working Doc. ``view`` is ``history`` (every version, who adopted it, its notice
+    and source, the change from the one before), ``compare`` (the adopted words beside the Doc's, never merged; no adoption
+    found is a finding for a person, not proof that none happened) or ``uses`` (the hearings and board decisions whose own
+    record cites the rule: a list, never a finding that the rule was or was not applied consistently; none linked is shown
+    as that). jason's text of an adopted rule: the minutes and the recorded instrument govern. Quote the words, label the
+    reading, and decide nothing; the board adopts rules."""
+    from jason.tasks import rule_records as task
+
+    root = _root(data_dir)
+    if view == "history":
+        return task.history_detail(id, root, as_of=as_of, records=records)
+    if view == "compare":
+        return task.compare_detail(id, root, as_of=as_of, records=records)
+    if view == "uses":
+        return task.uses_detail(id, root, as_of=as_of, records=records)
+    if view:
+        return {"found": False, "note": "view is history, compare, or uses (or empty for the rule on the day)"}
+    return task.record_detail(id, root, as_of=as_of, records=records)
+
+
 TOOLS = (living_document, document_conflicts, intake_questions, answer_intake_question, schedule_agenda,
          schedule_assignments, record_completion, member_requests, request_kinds_measure, acknowledgment_draft,
          notice_requirements, notice_delivery, document_duties, governance_digest, cite_document, law_in_force,
          section_refs, embedded_copies, onboarding_status, next_questions, onboarding_confirm, approvals_list,
-         approval_show, evidence)
+         approval_show, evidence, rule_records, rule_record)
 
 from jason.mcp.paint import TOOLS as _PAINT_TOOLS, paint_check, paint_colors, paint_match  # noqa: E402
 

@@ -894,6 +894,12 @@ EXTRA_LOADERS: dict[str, str] = {
     "unit-record": "jason.web.extra.unit_records:unit_record",  # ?unit=&plan= a unit's effective components and both coverage lists
     "loss-packet": "jason.web.extra.unit_records:loss_packet",  # ?unit=&incident=&address= the ladder, recited from the shelf
     "library-kinds": "jason.web.extra.library_kinds:library_kinds",  # the kinds' shelf; ?kind= one kind's files; disk only
+    "rule-records": "jason.web.extra.rule_records:rule_records",  # the association's rules as records; ?as_of=&status=&subject=; read only
+    "rule-record": "jason.web.extra.rule_records:rule_record",  # ?id=&as_of= one rule on a day
+    "rule-record-history": "jason.web.extra.rule_records:rule_record_history",  # ?id= every version
+    "rule-record-compare": "jason.web.extra.rule_records:rule_record_compare",  # ?id= the working Doc against the adopted words
+    "rule-uses": "jason.web.extra.rule_records:rule_uses",  # ?id= the uses linked to a rule
+    "rule-events": "jason.web.extra.rule_records:rule_events",  # ?id= the acts on record for a rule
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
