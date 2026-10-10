@@ -128,6 +128,14 @@
    "status": "keyed",
    "reason": "keyed by the Drive client object, which is one community's account"
   },
+  "jason.vault.pool:container:_sessions": {
+   "status": "keyed",
+   "reason": "Keeper sessions by (community, interactive); the pool refuses a request for a community other than the active one"
+  },
+  "jason.vault.pool:global:_atexit_registered": {
+   "status": "program-start",
+   "reason": "set once, the first time a session is pooled, so the pool is closed at exit"
+  },
   "jason.vault.resolver:container:_noted": {
    "status": "shared",
    "reason": "fallback sources already reported once, by source name"
