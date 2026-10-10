@@ -205,9 +205,9 @@ class KeeperStore:
     @classmethod
     def from_settings(cls, settings: Any, *, interactive: bool = False, folder: str = FOLDER) -> KeeperStore:
         """A store with its own session. ``interactive=False`` (the default) fails fast with ``KeeperAuthRequired``."""
-        from jason.secrets import VaultSession
+        from jason.vault.pool import session_for
 
-        return cls.from_session(VaultSession.from_settings(settings, interactive=interactive), folder=folder)
+        return cls.from_session(session_for(settings, interactive=interactive), folder=folder)
 
     def load_by_uid(self, uid: str) -> dict[str, str]:
         """A Keeper record's fields by UID: how an ``.env``-named record is read before it is migrated."""
@@ -278,11 +278,12 @@ def vault_names(settings: Any, *, prefix: str = "jason/"):
     from jason.vault.resolver import VaultNames, list_names
 
     try:
-        from jason.secrets import VaultSession, keeper_config_path
+        from jason.secrets import keeper_config_path
+        from jason.vault.pool import session_for
 
         if settings is None or not keeper_config_path(getattr(settings, "keeper_config", None)).is_file():
             return VaultNames(None, "the vault's login is not on this machine")
-        with VaultSession.from_settings(settings, interactive=False) as session:
+        with session_for(settings, interactive=False) as session:
             return list_names(KeeperStore.from_session(session), prefix)
     except Exception as exc:  # noqa: BLE001 - a vault that does not answer is reported, not raised
         return VaultNames(None, type(exc).__name__)

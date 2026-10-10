@@ -110,9 +110,9 @@ class Jason:
 
     def _vault_session(self) -> VaultSession:
         if self._vault is None:
-            self._vault = VaultSession.from_settings(
-                self.settings, interactive=self._interactive
-            )
+            from jason.vault.pool import session_for
+
+            self._vault = session_for(self.settings, interactive=self._interactive)
         return self._vault
 
     def vault_store(self):

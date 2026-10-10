@@ -215,6 +215,17 @@ Built 2026-10-05 (`src/jason/google/tokens.py`). A refresh token is a credential
 4. The console's dialogs ([handoff](console/handoff-instance-and-integrations.md)), each over `jason integrations`.
 5. Later, with containerization: the backend swap (SSM or Secrets Manager; OpenBao off AWS).
 
+## One Keeper session per community per process
+
+A Keeper login plus a full `sync_down` is the expensive part of reading the vault. A one-shot command pays it once. A long-lived process (`jason serve`, the daemon, the web sign-in) used to build a new `VaultSession` per request or per `Jason`. `jason.vault.pool.session_for(settings, community=..., interactive=...)` returns one session per (community, interactive) key per process:
+
+- **Lazy and leased.** Nothing logs in until first use. `close()` and `with` on a pooled session do nothing; the pool closes it at interpreter exit (`atexit`) or on `close_all()`.
+- **Idle.** After `JASON_KEEPER_IDLE_SECONDS` without use (default 900; 0 = never) the session is closed and the next use logs in again, so a long-running server does not hold a stale vault and a revoked device is noticed.
+- **Refresh.** `session.refresh(min_interval)` re-syncs (never re-logs-in) at most once per interval, so another process's write shows up.
+- **Errors are not cached.** A failed login leaves no half-open session. A non-interactive retry within 30 seconds raises `KeeperAuthRequired` without calling Keeper; a person's interactive retry is never held back.
+- **One community.** The key's community is `profile_name()`. A request for another community raises `CommunityMismatch` ([tenancy.md](tenancy.md) section 2).
+- **Counts.** `pool.stats()` (logins, reuses, closes, failures; counts only) and the last line of `jason vault status`. Nothing secret is logged.
+
 ## Open decisions
 
 1. ~~A Cloud project per community, or one verified jason app?~~ Decided 2026-10-05: a Cloud project per community.

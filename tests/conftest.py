@@ -61,3 +61,14 @@ def _no_statute_fetch(monkeypatch):
 def _own_lock_dir(monkeypatch, tmp_path_factory):
     """Each test takes jason's locks in its own folder, never the machine's (a real run may hold the GPU lock)."""
     monkeypatch.setenv("JASON_LOCK_DIR", str(tmp_path_factory.mktemp("locks")))
+
+
+@pytest.fixture(autouse=True)
+def _no_pooled_keeper_session():
+    """The Keeper session pool (jason.vault.pool) is per process: no test inherits another's session or counts."""
+    from jason.vault import pool
+
+    pool.close_all()
+    pool.reset_stats()
+    yield
+    pool.close_all()

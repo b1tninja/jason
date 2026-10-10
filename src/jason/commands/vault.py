@@ -119,22 +119,24 @@ def run(args: argparse.Namespace) -> int:
     """``jason vault status`` or ``jason vault migrate``."""
     import getpass
 
-    from jason.secrets import KeeperAuthRequired, VaultSession
+    from jason.secrets import KeeperAuthRequired
+    from jason.vault.pool import session_for, stats_line
     from jason.vault.keeper import KeeperStore
 
     settings, key, portals = _context(args)
     if args.action == "status":
-        with VaultSession.from_settings(settings, interactive=False) as session:   # status never prompts
+        with session_for(settings, interactive=False) as session:   # status never prompts
             store = KeeperStore.from_session(session)
             for line in status_lines(store, settings.record_uids, key, portals):
                 print(line)
             print("Google tokens (where each is read from; the token is never shown):")
             for line in token_status_lines(token_store(settings, store, key)):
                 print(line)
+        print(stats_line())
         return 0
 
     if not args.yes:
-        with VaultSession.from_settings(settings, interactive=False) as session:
+        with session_for(settings, interactive=False) as session:
             store = KeeperStore.from_session(session)
             steps, problem = plan_migration(key, settings.record_uids, portal_keys=portals, store=store)
             token_steps = plan_token_migration(token_store(settings, store, key), key, checked=not problem)
@@ -151,7 +153,7 @@ def run(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 2
     try:
-        with VaultSession.from_settings(settings, interactive=bool(getattr(args, "interactive", False))) as session:
+        with session_for(settings, interactive=bool(getattr(args, "interactive", False))) as session:
             store = KeeperStore.from_session(session)
             steps, problem = plan_migration(key, settings.record_uids, portal_keys=portals, store=store)
             if problem:

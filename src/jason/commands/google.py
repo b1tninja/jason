@@ -41,10 +41,10 @@ def _settings(args: argparse.Namespace) -> Any:
 @contextmanager
 def _vault(settings: Any, *, interactive: bool = False) -> Iterator[tuple[Any, Any]]:
     """The credential vault (Keeper) as ``(store, session)``; never prompts unless ``interactive``."""
-    from jason.secrets import VaultSession
     from jason.vault.keeper import KeeperStore
+    from jason.vault.pool import session_for
 
-    with VaultSession.from_settings(settings, interactive=interactive) as session:
+    with session_for(settings, interactive=interactive) as session:
         yield KeeperStore.from_session(session), session
 
 

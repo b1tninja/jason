@@ -211,11 +211,11 @@ def keeper_client(record_uid: str, path: str = "", source: str = "") -> Callable
     login raises KeeperAuthRequired."""
 
     def load() -> Client:
-        from jason.secrets import VaultSession
+        from jason.vault.pool import session_for
         from jason.vault.keeper import KeeperStore
         from jason.vault.resolver import read_secret
 
-        with VaultSession.from_settings(_settings(), interactive=False) as session:
+        with session_for(_settings(), interactive=False) as session:
             store = KeeperStore.from_session(session)
             found = read_secret(path, store=store if path else None, record_uid=record_uid,
                                 load_record=getattr(store, "load_by_uid", None), source=source or "a sign-in client's record UID")
