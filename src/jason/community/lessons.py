@@ -2224,6 +2224,24 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/integrations-design.md",),
            notes=("Open until a person runs jason vault migrate --yes in the main checkout; then any worktree reads the "
                   "token from Keeper.",)),
+    Lesson("a-read-only-reader-must-not-build-a-cache", date(2026, 10, 10), (Area.DOCUMENTS,),
+           "A read-only reader of the rule records rebuilt a versions cache in the main checkout's data folder on its "
+           "first run from a worktree, because the worktree's code has a different hash.",
+           "A reader that falls back to a cache fingerprint writes when the fingerprint differs.",
+           "The records loader reads the grants only if their file exists, creates no folder, and a test requires the "
+           "tree before and after a read to be equal. The versions cache itself is still unguarded.",
+           Status.OPEN, guards=("tests/test_rule_records.py (tree before equals tree after)",),
+           docs=("docs/rule-records.md",),
+           notes=("Extends reciting-writes-the-versions-cache: guard that cache too.",)),
+    Lesson("a-derived-first-version-has-no-adoption-day", date(2026, 10, 10), (Area.GOVERNING, Area.DOCUMENTS),
+           "Rule records derived from the working Doc have a first version with no adoption day; shown as adopted they "
+           "would claim an adoption nobody recorded (45 of 77 on the real data).",
+           "A rule in the Doc and a rule the board adopted are not the same fact.",
+           "rule_records.status_on keeps such a version adopted with adoption_on_record false, shown as \"in force, "
+           "adoption not on record\", never promoted; a person records the adoption from the minutes.",
+           Status.OPEN, guards=("rule_records.status_on", "rule_records.NOT_ON_RECORD", "tests/test_rule_records.py"),
+           docs=("docs/rule-records.md",),
+           notes=("Open until a person records those adoptions; the board may want them as an action item.",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

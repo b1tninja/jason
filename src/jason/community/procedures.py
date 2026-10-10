@@ -666,6 +666,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="data/reports/revisions-KEY.md", lessons=("docx-carries-pending-suggestions",)),
             Step("Before quoting a copy someone was sent as 'the rules', compare it with its revision.",
                  command="jason revisions KEY --diff A B"),
+            Step("Before proposing a change, read the rule as a record: the version in force on the day, and the working "
+                 "Doc's words beside it. 'Changed with no adoption found' and 'adoption not on record' are findings for a "
+                 "person.",
+                 command="jason rule-records --show ID --as-of DAY; jason rule-records --compare ID",
+                 check="the words recited with their source and day first; nothing written",
+                 refs=("docs/rule-records.md",),
+                 lessons=("a-derived-first-version-has-no-adoption-day", "a-read-only-reader-must-not-build-a-cache")),
             Step("Put findings on the board's action register. Never edit the Doc or accept its suggestions.",
                  command="jason board --set ITEM ...", person=True),
             Step("For the owner's manual, rerun the extraction so the official rules read the detected history.",
