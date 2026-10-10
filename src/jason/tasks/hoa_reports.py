@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from asspy import County
+from asspy.associations import name_ties
 from asspy.geo import kml, svg
 from asspy.sacramento.gis import map_extension
 from asspy.land import (
@@ -56,6 +57,7 @@ class HoaPage:
     owned: int = 0
     maps: list[str] = field(default_factory=list)
     events: int = 0
+    tie: str = ""            # how its land was found: "deed", "plan", "name" (a lead), or "" (none yet)
 
 
 def slug(text: str) -> str:
@@ -84,6 +86,11 @@ class _Context:
         self.land = land
         with county.associations() as directory:
             self.associations = {a.key: a for a in directory.associations()}
+            self.choosable = [a.key for a in directory.all()]
+            subdivisions = land.subdivision_names()
+            self.by_name: dict[str, list[str]] = defaultdict(list)
+            for subdivision, association in name_ties(directory, subdivisions).items():
+                self.by_name[association].append(subdivision)
             self.sightings = directory.sightings_by_association()
             self.governing = {g.number: g for g in directory.governing()}
             self.links: dict[str, list] = defaultdict(list)
@@ -134,6 +141,13 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
     owned = ctx.owners.get(key, [])
     found = footprint(ctx.land, key, owned)
     parcels = {p["apn"]: p for p in found.parcels}
+    # No common parcel of its own: the subdivisions whose names point to it, a lead by name, not by deed.
+    named = ctx.by_name.get(key, []) if not owned else []
+    if named:
+        marks = ",".join("?" * len(named))
+        for row in ctx.land.parcels(where=f"subdivision_name IN ({marks}) AND status = 'ACTIVE'", args=tuple(named)):
+            parcels.setdefault(row["apn"], row)
+        found.maps = sorted({p["subdivision"] for p in parcels.values() if re.fullmatch(r"[SP]\d{6}", p["subdivision"] or "")})
     plans = []
     for link in ctx.links.get(key, []):
         plan = ctx.plans.get(link.number)
@@ -165,6 +179,12 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
             lines.append(f"- Also indexed as: {'; '.join(spellings[:8])}")
     else:
         lines.append("- Not yet in the association directory: found by the deed of a common-area parcel.")
+    if named:
+        lines.append(f"- Its land is found by subdivision name only ({'; '.join(named[:6])}): a lead by name, not by "
+                     "deed. Check it against the map before relying on it.")
+    elif not parcels:
+        lines.append("- No land tied to it yet: no common parcel's deed names it, no plan is tied to it, and no "
+                     "subdivision's name points to it alone.")
     lines += [f"- Parcels on its map: {len(parcels)}; common parcels its deeds took: {len(owned)}; "
               f"maps: {', '.join(found.maps) or 'none'}; condominium plans: {len(plans)}",
               f"- Written {today.isoformat()} from the county's map (parcels, plans, maps) and recorder index. "
@@ -305,12 +325,13 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
                     lines.append(f"- [{page[:3]}-{page[3:]}](map-book/{held.name})")
     lines.append("")
     (out / "README.md").write_text("\n".join(lines), encoding="utf-8")
-    return HoaPage(key, out.name, out / "README.md", len(parcels), len(owned), list(found.maps), len(events))
+    return HoaPage(key, out.name, out / "README.md", len(parcels), len(owned), list(found.maps), len(events),
+                   "deed" if owned else "plan" if plans else "name" if named else "")
 
 
 def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), limit: int = 0, shapes: bool = True,
                   names: bool = False, map_books: bool = False, deeds: bool = False, progress: Callable[[str], None] | None = None,
-                  today: date | None = None) -> list[HoaPage]:
+                  today: date | None = None, tied_only: bool = False) -> list[HoaPage]:
     """Write a page for every association the land shows (or those whose names hold ``only``'s words), and an index.
     ``shapes`` reads each footprint's shapes from the county's map; ``map_books`` the assessor's map pages; ``deeds``
     reads every parcel's last deed from the recorder (the owners' names, kept in the cache; shown only with ``names``)."""
@@ -322,7 +343,9 @@ def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), lim
     pages: list[HoaPage] = []
     with county.land() as land:
         ctx = _Context(county, land)
-        keys = sorted(set(ctx.owners) | {k for k, links in ctx.links.items() if any(l.number in ctx.plans for l in links)})
+        tied = set(ctx.owners) | {k for k, links in ctx.links.items() if any(l.number in ctx.plans for l in links)}
+        # Every association a person would choose from, tied to land or not, unless only the tied ones are asked for.
+        keys = sorted(tied | set(ctx.by_name) | (set() if tied_only else set(ctx.choosable)))
         wanted = [w.upper() for w in only]
         if wanted:
             keys = [k for k in keys if all(w in k for w in wanted)]
@@ -338,8 +361,11 @@ def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), lim
     index = [f"# Owners' associations on {county.name} County's map", "",
              f"{len(pages)} associations whose common land or condominium plan the records tie to them. "
              "Each tie is a reading of the records, a lead, not a pin.", ""]
-    index += _md_table(["Association", "Parcels", "Common parcels owned", "Maps", "Changes"],
-                       ((f"[{p.key}]({p.slug}/README.md)", p.parcels, p.owned, ", ".join(p.maps), p.events)
-                        for p in sorted(pages, key=lambda p: -p.parcels)))
+    ties = Counter(p.tie or "none" for p in pages)
+    index += ["Land found by: " + ", ".join(f"{k} {n}" for k, n in ties.most_common()) + " (deed: a common parcel's deed "
+              "names it; plan: a condominium plan tied to it; name: a subdivision's name points to it, a lead).", ""]
+    index += _md_table(["Association", "Land by", "Parcels", "Common parcels owned", "Maps", "Changes"],
+                       ((f"[{p.key}]({p.slug}/README.md)", p.tie, p.parcels, p.owned, ", ".join(p.maps[:4]), p.events)
+                        for p in sorted(pages, key=lambda p: (-p.parcels, p.key))))
     (root / "README.md").write_text("\n".join(index) + "\n", encoding="utf-8")
     return pages

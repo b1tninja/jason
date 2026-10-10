@@ -26,7 +26,7 @@ def _context(store: LandStore) -> _Context:
                                                      last=date(2024, 5, 6), evidence=__import__("collections").Counter({"assessment lien": 2}),
                                                      names=(ASSOCIATION,))}
     ctx.sightings = {ASSOCIATION: (Sighting(ASSOCIATION, ASSOCIATION, "201501020100", "NOTICE OF ASSOCIATION LIEN", date(2015, 1, 2)),)}
-    ctx.governing, ctx.links, ctx.plans = {}, {}, {}
+    ctx.governing, ctx.links, ctx.plans, ctx.by_name, ctx.choosable = {}, {}, {}, {}, [ASSOCIATION]
     ctx.divisions = []
     ctx.maps = {"S401012": {"name": "EXAMPLE TERRACE UNIT 1", "number": "199001020100", "recorded": "1990-01-02", "lots": 3, "lettered_lots": 1}}
     from asspy.land import common_area_owners

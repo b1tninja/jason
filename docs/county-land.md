@@ -33,7 +33,10 @@ The records tie each piece by a number, not by a guess:
 3. **A condominium plan holds its units.** The map draws each plan under its recorder number, with the name the
    project goes by. The directory ties a plan to its association by that name (`asspy.associations.tie_names`,
    `--tie-plans`). The plan's polygon then holds the units' parcels (`SacramentoGis.parcels_in`).
-4. **A map's number is the recorder's.** The map's book and page for a plan or final map is the recording day and its
+4. **A subdivision's name is a lead.** An association with no common parcel of its own, often a condominium whose
+   members own the common area in undivided shares, may still have subdivisions whose names point to it alone
+   (`asspy.associations.name_ties`). Its page says its land was found by name, a lead and not a tie by deed.
+5. **A map's number is the recorder's.** The map's book and page for a plan or final map is the recording day and its
    page (`document_number`). The recorder's row for a final map names the builder and the map's full title, and the
    title often cites the deed, parent map, or certificate it subdivides.
 
@@ -68,7 +71,9 @@ The integration registry declares two cadences under County sources: `county-lan
 
 ## The pages
 
-`jason hoa-reports` writes a page for each association the land ties to it (`data/reports/hoa/<county>/`):
+`jason hoa-reports` writes a page for every association in the directory, and for any a deed found that the
+directory lacks (`data/reports/hoa/<county>/`). `--tied-only` writes pages only where land is tied. The index says how
+each association's land was found: by deed, plan, name, or not yet. A page has:
 
 - formation: maps, plans, governing instruments, first recording;
 - parcels by land use, with the common parcels its deeds took;
