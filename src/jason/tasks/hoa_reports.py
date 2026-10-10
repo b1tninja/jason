@@ -30,7 +30,7 @@ from typing import Any, Callable, Iterable
 from asspy import County
 from asspy.associations import name_ties
 from asspy.geo import kml, svg
-from asspy.sacramento.gis import map_extension
+from asspy.sacramento.gis import MISCELLANEOUS, common_land, land_use_general, map_extension
 from asspy.land import (
     COMMON_LAND_USES,
     LandStore,
@@ -43,8 +43,10 @@ from asspy.land import (
     sync_land_uses,
 )
 
-# Land uses a community holds in common, beyond the codes its deeds prove: the assessor's miscellaneous family.
-_COMMONISH = re.compile(r"^(AQ|M)")
+
+def _common(code: str | None) -> bool:
+    """Land a community holds in common by the assessor's published codes (``asspy.sacramento.gis.common_land``)."""
+    return common_land(code or "")
 
 
 @dataclass
@@ -113,7 +115,10 @@ class _Context:
 
     def label(self, code: str) -> str:
         found = self.land.land_use(code) if code else None
-        return " / ".join(p for p in (found["general"], found["specific"], found["occupancy"]) if p) if found else code
+        if found:
+            return " / ".join(p for p in (found["general"], found["specific"], found["occupancy"]) if p)
+        # Not learned from the viewer: the published scheme's family, and a miscellaneous kind by its letters.
+        return " / ".join(p for p in (land_use_general(code), MISCELLANEOUS.get(code[:5], "")) if p) or code
 
 
 def _recorded_by(ctx: "_Context", number: str) -> str:
@@ -245,7 +250,7 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
                            ((p["apn"], p["lot"], ctx.label(p["land_use"]), p["deed"], _day(p["deed"]) or "", p["deed_filing"].lower()) for p in owned))
     else:
         lines.append("None found by deed.")
-    others = [p for p in parcels.values() if p["apn"] not in owned_apns and _COMMONISH.match(p["land_use"] or "")]
+    others = [p for p in parcels.values() if p["apn"] not in owned_apns and _common(p["land_use"])]
     if others:
         lines += ["", "### Other parcels set apart from the homes (owner not read)", ""]
         lines += _md_table(["APN", "Lot", "Land use", "Last transfer"],
@@ -259,7 +264,7 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
               "at its latest):", ""]
     lines += _md_table(["Year", "Parcels last transferred"], sorted(years.items(), reverse=True)[:25]) if years else ["None."]
     lines += ["", "Last transfers by the assessor's document type: " + ", ".join(f"{k} {n}" for k, n in kinds.most_common()) or "none", ""]
-    homes = sorted((p for p in parcels.values() if not _COMMONISH.match(p["land_use"] or "")), key=lambda p: p["apn"])
+    homes = sorted((p for p in parcels.values() if not _common(p["land_use"])), key=lambda p: p["apn"])
     owner_col = names and deeds
     header = ["APN", "Lot", "Unit", "Land use", "Last transfer", "Recorded", "Type"] + (["Owners (last deed)"] if owner_col else [])
 
@@ -311,7 +316,7 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
             def look(props: dict) -> dict:
                 if props.get("owned"):
                     return {"fill": "#7fbf7f", "stroke": "#2f6f2f"}
-                if _COMMONISH.match(props.get("LANDUSE") or ""):
+                if _common(props.get("LANDUSE")):
                     return {"fill": "#cfe8c4", "stroke": "#5f8f5f"}
                 return {"fill": "#dce6f2", "stroke": "#4a6785"}
 

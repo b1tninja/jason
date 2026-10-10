@@ -44,7 +44,7 @@ def cmd_hoa_reports(args: argparse.Namespace) -> int:
 
 def cmd_land_sync(args: argparse.Namespace) -> int:
     from asspy import County
-    from asspy.land import COMMON_LAND_USES, read_deeds, sync_divisions, sync_land_uses, sync_parcels, watch_filings
+    from asspy.land import common_land_uses, read_deeds, record_owners, sync_divisions, sync_land_uses, sync_parcels, watch_filings
 
     county = County(args.county)
     gis = getattr(county.assessor, "gis", None)
@@ -58,11 +58,15 @@ def cmd_land_sync(args: argparse.Namespace) -> int:
         for event in sync_parcels(gis, land, full=args.full):
             changes[event.kind] += 1
         sync_land_uses(gis, land)
-        marks = ",".join("?" * len(COMMON_LAND_USES))
-        numbers = [p["document_number"] for p in land.parcels(where=f"land_use IN ({marks}) AND status = 'ACTIVE'", args=COMMON_LAND_USES)]
+        common = common_land_uses(land)
+        marks = ",".join("?" * len(common))
+        numbers = [p["document_number"] for p in land.parcels(where=f"land_use IN ({marks}) AND status = 'ACTIVE'", args=common)]
         # The plans' and maps' own rows: who recorded each and what its title cites (once; then only new ones).
         numbers += [d["number"] for d in land.divisions() if d["number"]]
         read_deeds(county.recorder, land, numbers)
+        # The associations those deeds name join the directory, as recordings under their names.
+        with county.associations() as directory:
+            changes["association found by a deed"] += record_owners(land, directory)
         if not args.no_watch:
             after = date.fromisoformat(args.since) if args.since else None
             for event in watch_filings(county.recorder, land, after=after):
