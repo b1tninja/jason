@@ -2359,7 +2359,7 @@ LESSONS: tuple[Lesson, ...] = (
            "cli._bill_sources tolerates a missing or unknown profile while the parser is built.",
            Status.FIXED, guards=("tests/test_community_choice.py",), docs=("docs/tenancy.md",)),
     Lesson("a-default-community-must-be-visible", date(2026, 10, 10), (Area.REPOSITORY, Area.ONBOARDING),
-           "The built-in default community (mystique) was chosen silently when nothing was configured, so a second "
+           "The built-in default community was chosen silently when nothing was configured, so a second "
            "community on the same machine could have been written to by mistake.",
            "A default that is never shown is a decision nobody made.",
            "A choice by default prints one line on stderr and can be turned off (JASON_DEFAULT_COMMUNITY_SHIM=0); every "
