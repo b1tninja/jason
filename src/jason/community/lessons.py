@@ -2242,6 +2242,25 @@ LESSONS: tuple[Lesson, ...] = (
            Status.OPEN, guards=("rule_records.status_on", "rule_records.NOT_ON_RECORD", "tests/test_rule_records.py"),
            docs=("docs/rule-records.md",),
            notes=("Open until a person records those adoptions; the board may want them as an action item.",)),
+    Lesson("a-test-that-points-the-spec-folder-elsewhere-first-poisons-the-rest", date(2026, 10, 10),
+           (Area.ONBOARDING, Area.REPOSITORY),
+           "A new test pointed the spec folder at an empty temp folder before the profile first loaded, so every later "
+           "test read an empty profile and test_utilities failed far from the cause.",
+           "The profile loads once, on first use; whichever test touches it first decides what the rest see.",
+           "The records tests load the community under the fixtures before they redirect the spec folder (the world "
+           "fixture), and a test that must use another folder says so.",
+           Status.FIXED, guards=("tests/test_record_slots.py (the world fixture)",),
+           docs=("docs/record-intake.md",)),
+    Lesson("one-record-may-have-several-specification-pins", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Seven false collisions appeared on the real checklist: the specification lists several files for one record "
+           "(a Doc and its PDF export), which looked like two holders of a one-copy slot.",
+           "A specification pin is a list; a collision was read as any two files.",
+           "A collision is a person's pin against the specification's, or two people's pins; several files in the "
+           "specification itself are not a collision.",
+           Status.OPEN, guards=("record_slots.merge_holders", "tests/test_record_slots.py"),
+           docs=("docs/record-intake.md",),
+           notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
+                  "pin the same file twice.",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

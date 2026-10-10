@@ -698,6 +698,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="the paths are data/spec/<key>.json and data/spec/<key>/ only; a backup before any copy",
                  refs=("docs/profiles.md (Each profile's data)",),
                  lessons=("second-profile-shared-stores", "profile-module-reads-active-facts")),
+            Step("Read the record checklist: which records the association holds, which are pinned to a file, and "
+                 "which a person said do not exist. A file pinned to the wrong slot is a finding; an answer of 'none "
+                 "exists' or 'waiting' is a named person's, never inferred from an empty slot.",
+                 command="jason records --list; jason records --state problem; jason records --slot KEY",
+                 check="every write is a dry run until --yes and names a person; the history file holds no file name",
+                 refs=("docs/record-intake.md",),
+                 lessons=("one-record-may-have-several-specification-pins",)),
             Step("Read the checklist.", command="jason onboard --items"),
             Step("Run the session: the stage gates, then the ranked questions. Park the fact and mapping questions, "
                  "answer in the order given, have a second person confirm the high-stakes ones, then apply.",
