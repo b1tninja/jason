@@ -1547,6 +1547,12 @@ class Community(ABC):
         allows. Empty until the specification records some."""
         return ()
 
+    def limits(self) -> dict:
+        """The association's own values for jason's limits (``jason.limits``): a mapping of a limit's key to its value, such
+        as ``{"upload.max_bytes": 52428800}``. A setting in the environment or the machine's config comes first; a value
+        outside a limit's range is held to it. Empty until the specification sets some."""
+        return {}
+
     def record_slots(self) -> tuple:
         """The association's changes to the record checklist (``jason.community.record_slots.SlotRule``): a slot it needs
         that jason's own list lacks (a local permit condition), or a slot that cannot apply, hidden with its reason (shown as

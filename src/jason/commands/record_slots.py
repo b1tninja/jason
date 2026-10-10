@@ -26,12 +26,17 @@ The writes are a person's and each is a **dry run** until ``--yes``:
   pin, ``--force`` reads again though the bytes are unchanged, ``--no-ocr`` leaves scans unread by OCR.
 
 - ``--upload KEY --file PATH --by NAME`` keeps a file from this computer in jason's own store (never Drive; hash-addressed, at
-  most 25 MB, a PDF, an image, or a Word file, checked by its first bytes) and pins it, then reads it back as ``--read`` does
+  most the `upload.max_bytes` limit (`jason limits`; 100 MB unless set), a PDF, an image, or a Word file, checked by its first bytes) and pins it, then reads it back as ``--read`` does
   (``--no-ocr`` as there). ``--period`` and ``--entry`` as for ``--pick``. A dry run checks the file and keeps nothing.
-- ``--split KEY [--pin ID] --part SEGMENT=SLOT[@PERIOD] ... --by NAME`` confirms parts of a combined scan's proposal (what ``--read``
+- ``--split KEY [--pin ID] --part SEGMENT=SLOT[@PERIOD][#ENTRY] ... --by NAME`` confirms parts of a combined scan's proposal (what ``--read``
   printed), each into the slot named; only the parts named are filled, each as a new file of just those pages, and a slot that
   already holds a file is a collision, shown and left alone. With no ``--part`` it prints the proposal and the slots each part fits.
-  ``--decline`` records that you want none of it.
+  ``--decline`` records that you want none of it. ``#ENTRY`` is the recording number of a repeating key-document row. After a
+  confirmed split each new part is queued as a read-back job in your name (the `split.auto_read` limit; off: read each by hand).
+- ``--replace KEY --file PATH_OR_LINK [--pin OLD] --by NAME`` swaps a slot's file for a new one in one act: ``--file`` is a path on this
+  computer (an upload) or a Drive link, id, or ``library:ID`` (a pick); the old pin is unpinned after the new one is pinned (``--pin``
+  names it when the slot has several). History keeps both; a dry run shows both halves. A pin a person kept is not replaced without
+  ``--force``.
 - ``--ack KEY [--pin ID] --by NAME`` records that you have seen that the file changed since it was last read.
 
 Reads disk only, except ``--pick --resolve``, ``--bind --resolve`` (a folder's name), and ``--read`` (Drive).
@@ -60,9 +65,9 @@ def cmd_records(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
     root = data_dir(args)
     community = _community()
     acts = [x for x in (args.pick, args.answer, args.unpin, args.bind, args.keep, args.repin, args.more, args.reopen, args.read,
-                        args.upload, args.split, args.ack) if x]
+                        args.upload, args.split, args.ack, args.replace) if x]
     if len(acts) > 1:
-        print("one act at a time: --pick, --answer, --unpin, --bind, --keep, --repin, --more, --reopen, --read, --upload, --split, or --ack",
+        print("one act at a time: --pick, --answer, --unpin, --bind, --keep, --repin, --more, --reopen, --read, --upload, --split, --ack, or --replace",
               file=sys.stderr)
         return 2
     dry = not args.yes
@@ -107,6 +112,8 @@ def cmd_records(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
             return _upload(args, community, root, dry, to_json)
         if args.split:
             return _split(args, community, root, dry, to_json)
+        if args.replace:
+            return _replace(args, agent_factory, community, root, dry, to_json)
         if args.ack:
             from jason.tasks import record_upload
 
@@ -234,6 +241,40 @@ def _upload(args: argparse.Namespace, community: Any, root: Any, dry: bool, to_j
         return 0
     print(f"kept {out['size']:,} bytes (sha256 {out['sha256']}); pinned {out['pin']} for {out['slot']}" + (" (already pinned)" if out.get("already") else ""))
     for r in (out.get("read") or {}).get("reads") or ():
+        _print_read(r, False)
+    return 0
+
+
+def _replace(args: argparse.Namespace, agent_factory: Callable[[Any], Any], community: Any, root: Any, dry: bool,
+             to_json: Callable[[Any], str]) -> int:
+    from contextlib import ExitStack
+    from pathlib import Path
+
+    from jason.tasks import record_upload
+
+    if not args.file:
+        print("--replace KEY needs --file PATH (an upload) or a Drive link, id, or library:ID (a pick)", file=sys.stderr)
+        return 2
+    is_path = Path(args.file).expanduser().is_file()
+    with ExitStack() as stack:
+        drive = _connect(args, agent_factory, stack, needed=True) if (args.resolve and not is_path) else None
+        out = record_upload.replace(args.replace, by=args.by or "", pin=args.pin or "", period=args.period or "", entry=args.entry or "",
+                                    note=args.note or "", force=bool(args.force), dry_run=dry, ocr=not args.no_ocr, drive=drive,
+                                    community=community, root=root, **({"path": args.file} if is_path else {"file": args.file}))
+    if args.json:
+        print(to_json(out))
+        return 0 if out.get("ok", True) else 1
+    if out.get("dryRun"):
+        would = out["would"]
+        print(f"dry run: would pin the new file and unpin {would['old']} on {would['slot']}")
+        print("  new: " + ", ".join(f"{k}={v}" for k, v in would["new"].items() if v and not isinstance(v, dict)))
+        print(out["note"])
+        return 0
+    if out.get("partial"):
+        print(out["why"], file=sys.stderr)
+        return 1
+    print(f"replaced {out['replaced']} with {out['pin']} on {out['slot']}")
+    for r in (out["new"].get("read") or {}).get("reads") or ():
         _print_read(r, False)
     return 0
 
@@ -388,8 +429,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--force", action="store_true", help="with --read: read again although the file's bytes are unchanged")
     p.add_argument("--no-ocr", action="store_true", help="with --read: leave a scan unread by OCR")
     p.add_argument("--upload", metavar="KEY", help="keep a file from this computer in jason's store and pin it to this slot (with --file PATH, --by)")
+    p.add_argument("--replace", metavar="KEY", help="swap this slot's file for a new one: pin or upload the new (--file), then unpin the old (--pin)")
     p.add_argument("--split", metavar="KEY", help="confirm parts of a combined scan's proposal into slots (with --part SEGMENT=SLOT, --by)")
-    p.add_argument("--part", metavar="SEGMENT=SLOT", action="append", help="with --split: a part and the slot it fills (SEGMENT=SLOT@2099-06 for a series); repeat")
+    p.add_argument("--part", metavar="SEGMENT=SLOT", action="append", help="with --split: a part and the slot it fills (SEGMENT=SLOT@2099-06 for a series, SEGMENT=SLOT#NUMBER for a repeating row); repeat")
     p.add_argument("--decline", action="store_true", help="with --split: you want none of the proposed split")
     p.add_argument("--ack", metavar="KEY", help="record that you have seen that a pinned file changed since it was read (with --by)")
     p.add_argument("--by", metavar="NAME", help="the person making the write (required for every write)")

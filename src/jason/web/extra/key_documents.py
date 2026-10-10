@@ -19,7 +19,7 @@ named, never the names). The default stays masked, so a screenshot or an export 
   PayHOA library document id;
 - ``{"action": "upload-ref", "path": ...}``: a file the server can read, copied into ``data/key-documents/<profile>/
   files/`` and linked;
-- ``{"action": "upload", "name": ..., "base64": ...}``: the browser's file, at most ``MAX_UPLOAD_BYTES`` (25 MB)
+- ``{"action": "upload", "name": ..., "base64": ...}``: the browser's file, at most the ``upload.max_bytes`` limit (100 MB unless set)
   decoded, kept the same way; a larger file goes on Drive and is linked there;
 - ``{"action": "unlink", "link": "<link id>"}``: the link is marked removed; the file stays;
 - ``{"action": "status", "value": "missing"|"held"|"located"|"expected", "note": ...}``.

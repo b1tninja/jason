@@ -77,6 +77,7 @@ MODULES: tuple[str, ...] = (
     "reference",
     "key_documents",
     "record_slots",
+    "limits",
     "instrument_graph",
     "placer",
     "hoa",

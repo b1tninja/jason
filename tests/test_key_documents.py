@@ -13,7 +13,6 @@ from jason.community.documents import Amendment, Document, GoverningDocument, de
 from jason.community.governing import GoverningRecord, Supersession
 from jason.community.key_documents import (
     KEY_DOCUMENTS,
-    MAX_UPLOAD_BYTES,
     Copy,
     Entry,
     KeyDocumentStore,
@@ -21,6 +20,7 @@ from jason.community.key_documents import (
     LinkKind,
     drive_id,
     expected_entries,
+    max_upload_bytes,
     status_of,
     valid_key,
 )
@@ -157,7 +157,8 @@ def test_the_store_links_unlinks_and_records_who(tmp_path):
     assert store.set_status("maps", "missing", by="Jane Example", note="asked the prior manager")["value"] == "missing"
 
 
-def test_uploads_keep_the_name_never_overwrite_and_are_capped(tmp_path):
+def test_uploads_keep_the_name_never_overwrite_and_are_capped(tmp_path, monkeypatch):
+    monkeypatch.setenv("JASON_LIMIT_UPLOAD_MAX_BYTES", "1048576")                 # the limit's smallest value: a small file shows the cap
     store = KeyDocumentStore(tmp_path, "example")
     rel, digest, size = store.save_upload("Declaration.pdf", b"%PDF one")
     assert rel.startswith("key-documents/example/files/") and rel.endswith("/Declaration.pdf") and size == 8
@@ -168,7 +169,8 @@ def test_uploads_keep_the_name_never_overwrite_and_are_capped(tmp_path):
     with pytest.raises(ValueError):
         store.save_upload("run.exe", b"x")
     with pytest.raises(ValueError):
-        store.save_upload("big.pdf", b"x" * (MAX_UPLOAD_BYTES + 1))
+        store.save_upload("big.pdf", b"x" * (max_upload_bytes() + 1))
+    assert max_upload_bytes() == 1048576
 
 
 def test_drive_ids_come_from_links_or_ids():

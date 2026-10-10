@@ -467,7 +467,13 @@ def status_of(entry: Entry | None, stored: Mapping[str, Any] | None) -> tuple[Ke
 
 # The store ----------------------------------------------------------------------------------------------------------
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+def max_upload_bytes() -> int:
+    """The largest upload, from the `upload.max_bytes` limit (jason.limits; 100 MB unless a person set it)."""
+    from jason import limits
+
+    return int(limits.value("upload.max_bytes"))
+
+
 UPLOAD_SUFFIXES = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".tif", ".tiff", ".txt", ".md", ".doc", ".docx"})
 _DRIVE_ID = re.compile(r"^[A-Za-z0-9_-]{10,}$")
 _DRIVE_URL = re.compile(r"(?:/d/|[?&]id=|/folders/)([A-Za-z0-9_-]{10,})")
@@ -614,8 +620,9 @@ class KeyDocumentStore:
             raise ValueError(f"{original}: jason keeps documents and scans ({', '.join(sorted(UPLOAD_SUFFIXES))})")
         if not data:
             raise ValueError(f"{original} is empty")
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise ValueError(f"{original} is {len(data) // (1024 * 1024)} MB; the limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB. "
+        cap = max_upload_bytes()
+        if len(data) > cap:
+            raise ValueError(f"{original} is {len(data) // (1024 * 1024)} MB; the limit is {cap // (1024 * 1024)} MB. "
                              "Put it on Drive and link it there")
         digest = hashlib.sha256(data).hexdigest()
         target = self.files / digest[:16] / original
@@ -641,7 +648,7 @@ def file_digest(path: Path) -> tuple[str, int]:
 
 
 __all__ = [
-    "Copy", "Entry", "KEY_DOCUMENTS", "KeyDocument", "KeyDocumentStore", "KeyStatus", "LinkKind", "MAX_UPLOAD_BYTES",
+    "Copy", "Entry", "KEY_DOCUMENTS", "KeyDocument", "KeyDocumentStore", "KeyStatus", "LinkKind", "max_upload_bytes",
     "OTHER", "PERSON_STATUSES", "STATUS_MEANING", "UPLOAD_SUFFIXES", "active_links", "drive_id", "drive_url",
     "expected_entries", "file_digest", "item_of", "key_document", "numbers_in", "payhoa_id", "safe_name", "slug",
     "status_of", "valid_key", "why_of",

@@ -21,7 +21,7 @@ from typing import Any
 
 from jason.community.key_documents import (
     KEY_DOCUMENTS,
-    MAX_UPLOAD_BYTES,
+    max_upload_bytes,
     STATUS_MEANING,
     UPLOAD_SUFFIXES,
     Entry,
@@ -279,7 +279,7 @@ def checklist(community: Any = None, root: Path | None = None, profile: str | No
                        "held": sum(v["held"] for v in slot_summary.values())} if slot_summary else None,
         "statuses": [{"value": s.value, "meaning": STATUS_MEANING[s]} for s in KeyStatus],
         "groups": groups,
-        "limits": {"maxUploadBytes": MAX_UPLOAD_BYTES, "suffixes": sorted(UPLOAD_SUFFIXES)},
+        "limits": {"maxUploadBytes": max_upload_bytes(), "suffixes": sorted(UPLOAD_SUFFIXES)},
         "notes": notes,
         "caveats": list(CAVEATS),
     }
@@ -457,24 +457,25 @@ def _set_link_field(store: KeyDocumentStore, key: str, link_id: str, field: str,
 def upload(key: str, *, by: str, name: str = "", data: bytes | None = None, base64_body: str = "", path: str = "",
            note: str = "", title: str = "", root: Path | None = None, profile: str | None = None) -> dict[str, Any]:
     """Copy a file a person chose into ``key-documents/<profile>/files/`` and link it. The bytes come from ``data``,
-    from ``base64_body`` (the browser's upload, at most ``MAX_UPLOAD_BYTES`` decoded), or from ``path``, a file the
+    from ``base64_body`` (the browser's upload, at most the ``upload.max_bytes`` limit decoded), or from ``path``, a file the
     server can read (a regular file with a document suffix, under the same limit)."""
     root = _root(root)
     key = _check_key(key)
     if not str(by or "").strip():
         raise ValueError("say who is doing this: a write records its person (by)")
     store = KeyDocumentStore(root, _profile(profile))
+    cap = max_upload_bytes()
     if path:
         source = Path(path).expanduser()
         if not source.is_file():
             raise ValueError(f"{path}: no such file on this machine")
-        if source.stat().st_size > MAX_UPLOAD_BYTES:
-            raise ValueError(f"{source.name} is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB; put it on Drive and link it there")
+        if source.stat().st_size > cap:
+            raise ValueError(f"{source.name} is over {cap // (1024 * 1024)} MB; put it on Drive and link it there")
         name = name or source.name
         data = source.read_bytes()
     elif base64_body:
-        if len(base64_body) > (MAX_UPLOAD_BYTES // 3 + 2) * 4 + 4:
-            raise ValueError(f"the file is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB; put it on Drive and link it there")
+        if len(base64_body) > (cap // 3 + 2) * 4 + 4:
+            raise ValueError(f"the file is over {cap // (1024 * 1024)} MB; put it on Drive and link it there")
         try:
             data = base64.b64decode(base64_body.split(",", 1)[-1] if base64_body.startswith("data:") else base64_body, validate=True)
         except (ValueError, TypeError) as exc:

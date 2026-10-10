@@ -76,9 +76,9 @@ def test_a_file_that_is_too_big_or_the_wrong_type_is_refused_in_words(world, mon
         _up(world, data=b"")
     with pytest.raises(ValueError, match="not a Word package"):
         _up(world, name="Letter.docx", data=b"PK\x03\x04junk")
-    monkeypatch.setattr(up, "MAX_UPLOAD_BYTES", 100)
-    with pytest.raises(ValueError, match="the limit is"):
-        _up(world, data=_pdf(3))
+    monkeypatch.setenv("JASON_LIMIT_UPLOAD_MAX_BYTES", "1048576")                  # the limit's smallest value
+    with pytest.raises(ValueError, match="the limit is 1 MB"):
+        _up(world, data=b"%PDF-" + b"x" * 1048576)
     assert not (world.spec / "example" / "records.json").exists()
 
 
@@ -289,7 +289,7 @@ def test_the_console_uploads_bytes_queues_the_read_and_splits_and_acknowledges(w
     assert c.post(url, json={**body, "path": "C:/secret.pdf"}).status_code == 400
     assert c.post(url, json={"act": "upload", "name": "x.exe", "base64": base64.b64encode(b"MZ").decode(), "by": BY}).status_code == 400
     assert c.post(url, json={"act": "upload", "name": "x.pdf", "base64": "not base64!!", "by": BY}).status_code == 400
-    assert c.post(url, json={"act": "replace", "by": BY}).status_code == 400
+    assert c.post(url, json={"act": "replace", "by": BY}).status_code == 400        # replace needs the new file
     assert c.post(url, json={"act": "ack", "by": BY}).status_code == 400            # nothing changed to acknowledge
 
 

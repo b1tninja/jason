@@ -62,7 +62,7 @@ A new kind of key document is a new row, not a branch in a task. A person may ad
 ```
 
 - **Link** a copy: a file under `data/` (its path and sha256 are kept), a Drive file (an id, or any Drive or Docs link; the name comes from the Drive catalog on disk when it holds the id), or a PayHOA library document (its number; the name and the local copy come from the catalog on disk). The same copy linked again is one link.
-- **Upload**: a file a person chose is copied to `data/key-documents/<profile>/files/<first 16 of its sha256>/<its original name>` and linked. The same file twice is one copy; a different file with the same name lands in another folder; nothing is ever overwritten. Documents and scans only (`.pdf`, images, `.tif`, `.txt`, `.md`, `.doc`, `.docx`), at most 25 MB (`MAX_UPLOAD_BYTES`); a larger file goes on Drive and is linked there.
+- **Upload**: a file a person chose is copied to `data/key-documents/<profile>/files/<first 16 of its sha256>/<its original name>` and linked. The same file twice is one copy; a different file with the same name lands in another folder; nothing is ever overwritten. Documents and scans only (`.pdf`, images, `.tif`, `.txt`, `.md`, `.doc`, `.docx`), at most the `upload.max_bytes` limit (100 MB unless set; `jason limits`); a larger file goes on Drive and is linked there.
 - **Unlink** marks the link removed with who and when. The file is never deleted.
 - **Status** records a person's word, as above. `linked` comes only from a link.
 
@@ -89,12 +89,12 @@ jason key-documents --status maps --set missing --note "asked the prior manager 
 | Body | Does |
 |---|---|
 | `{"action": "link", "kind": "file" \| "drive" \| "payhoa", "ref": "...", "by": "..."}` | links an existing copy |
-| `{"action": "upload", "name": "Map.pdf", "base64": "...", "by": "..."}` | the browser's file, at most 25 MB decoded |
+| `{"action": "upload", "name": "Map.pdf", "base64": "...", "by": "..."}` | the browser's file, at most the `upload.max_bytes` limit decoded |
 | `{"action": "upload-ref", "path": "C:/...", "by": "..."}` | a file the server can read, under the same limit and suffixes |
 | `{"action": "unlink", "link": "l-...", "by": "..."}` | marks the link removed |
 | `{"action": "status", "value": "missing", "note": "...", "by": "..."}` | a person's word |
 
-The base64 body was chosen over a multipart upload so the write goes through the same JSON route, guard, and sign-in hook as every other store write; 25 MB covers a recorded declaration's scan, and anything larger belongs on Drive. A link to a file opens through `/api/file` when its type is one that route serves.
+The base64 body was chosen over a multipart upload so the write goes through the same JSON route, guard, and sign-in hook as every other store write; the limit (100 MB unless set) covers a recorded declaration's scan, and anything larger belongs on Drive. A link to a file opens through `/api/file` when its type is one that route serves.
 
 `KeyDocuments` (`ui/src/components/KeyDocuments.tsx`) takes `data` (the payload), `by` (the signed-in name; without it the component asks for a name), `onChanged` (reload after a write), and `post` (for tests). Each write is a `Confirm` that names the copy, the entry, and the person; a refusal is an alert that says nothing was written.
 

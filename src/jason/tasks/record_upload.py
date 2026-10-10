@@ -28,7 +28,8 @@ import secrets
 from pathlib import Path
 from typing import Any, Callable
 
-from jason.community.key_documents import MAX_UPLOAD_BYTES, key_document, safe_name
+from jason import limits
+from jason.community.key_documents import key_document, max_upload_bytes, safe_name
 from jason.community.record_slots import Cardinality, PinKind
 from jason.tasks import record_readback
 from jason.tasks import record_slots as rs
@@ -57,15 +58,25 @@ def _spec(name: str) -> tuple[str, str, tuple[bytes, ...]]:
     return found[0], found[1], found[2]
 
 
-def check(name: str, data: bytes) -> tuple[str, str]:
-    """The safe name and what the file is, after the cap and the type check. The suffix and the first bytes must agree, and a
+def cap_for(slot: Any = None, community: Any = None) -> int:
+    """The largest upload, the ``upload.max_bytes`` limit. A key document's slot stores through the key documents' writer, so it
+    is held to that writer's reading of the same limit as well."""
+    cap = int(limits.value("upload.max_bytes", community=community))
+    if slot is not None and getattr(slot, "key_document", ""):
+        cap = min(cap, max_upload_bytes())
+    return cap
+
+
+def check(name: str, data: bytes, cap: int | None = None) -> tuple[str, str]:
+    """The safe name and what the file is, after the cap (``cap``, else the limit) and the type check. The suffix and the first bytes must agree, and a
     Word file must be a Word package. Raises ValueError in words a person can act on."""
+    cap = cap if cap is not None else cap_for()
     clean = safe_name(name)
     suffix, what, magics = _spec(clean)
     if not data:
         raise ValueError(f"{clean} is empty")
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise ValueError(f"{clean} is {len(data) // (1024 * 1024)} MB; the limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB. "
+    if len(data) > cap:
+        raise ValueError(f"{clean} is {len(data) // (1024 * 1024)} MB; the limit is {cap // (1024 * 1024)} MB. "
                          "Split the scan or put it on Drive and pick it there")
     head = data[:1024] if suffix == ".pdf" else data[:16]
     if not any((m in head) if suffix == ".pdf" else head.startswith(m) for m in magics):
@@ -102,17 +113,17 @@ def _keep(root: Path, profile: str, name: str, data: bytes) -> tuple[str, str]:
     return target.relative_to(Path(root)).as_posix(), digest
 
 
-def _bytes(name: str, data: bytes | None, base64_body: str, path: str) -> tuple[str, bytes]:
+def _bytes(name: str, data: bytes | None, base64_body: str, path: str, cap: int) -> tuple[str, bytes]:
     if path:
         source = Path(path).expanduser()
         if not source.is_file():
             raise ValueError(f"{path}: no such file on this machine")
-        if source.stat().st_size > MAX_UPLOAD_BYTES:
-            raise ValueError(f"{source.name} is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB; split it or put it on Drive and pick it there")
+        if source.stat().st_size > cap:
+            raise ValueError(f"{source.name} is over {cap // (1024 * 1024)} MB; split it or put it on Drive and pick it there")
         return name or source.name, source.read_bytes()
     if base64_body:
-        if len(base64_body) > (MAX_UPLOAD_BYTES // 3 + 2) * 4 + 4:
-            raise ValueError(f"the file is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB; split it or put it on Drive and pick it there")
+        if len(base64_body) > (cap // 3 + 2) * 4 + 4:
+            raise ValueError(f"the file is over {cap // (1024 * 1024)} MB; split it or put it on Drive and pick it there")
         try:
             raw = base64.b64decode(base64_body.split(",", 1)[-1] if base64_body.startswith("data:") else base64_body, validate=True)
         except (ValueError, TypeError) as exc:
@@ -149,8 +160,9 @@ def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None,
     slot, hidden = rs._slot(community, slot_key)
     if hidden:
         raise ValueError(f"{slot_key} is hidden by the profile: {hidden}. Nothing was written.")
-    given, raw = _bytes(name, data, base64_body, path)
-    clean, what = check(given, raw)
+    cap = cap_for(slot, community)
+    given, raw = _bytes(name, data, base64_body, path, cap)
+    clean, what = check(given, raw, cap)
     when = rs._period(slot, period)
     text = rs._words(note, "note", required=False)
     entry_key = _entry_key(slot, entry)
@@ -167,7 +179,7 @@ def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None,
     if slot.cardinality is Cardinality.ONE and active and twin is None:
         would["collision"] = f"{slot_key} already holds a file; the upload is added beside it and the slot shows two holders"
     if dry_run:
-        return {"dryRun": True, "would": would, "already": twin is not None, "alsoIn": elsewhere, "caveats": list(CAVEATS),
+        return {"dryRun": True, "would": would, "already": twin is not None, "twin": twin.id if twin else "", "alsoIn": elsewhere, "caveats": list(CAVEATS),
                 "note": "A dry run: nothing was kept or written. Add --yes to keep the file in jason's store and pin it to the slot."}
     if twin is not None:
         out: dict[str, Any] = {"dryRun": False, "ok": True, "pin": twin.id, "written": target, "already": True, "slot": slot_key,
@@ -202,13 +214,15 @@ def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None,
 # The confirmed split -------------------------------------------------------------------------------------------------------
 
 def _parse_part(spec: Any) -> dict[str, str]:
-    """A part to fill: ``{"segment": "s2", "slot": KEY, "period": ""}`` or the text ``s2=KEY`` / ``s2=KEY@2099-06``."""
+    """A part to fill: ``{"segment": "s2", "slot": KEY, "period": "", "entry": ""}`` or the text ``s2=KEY``, ``s2=KEY@2099-06``,
+    ``s2=KEY#NUMBER`` (a repeating key-document row, by its recording number), or ``s2=KEY@2099-06#NUMBER``."""
     if isinstance(spec, dict):
         return {"segment": str(spec.get("segment") or "").strip(), "slot": str(spec.get("slot") or "").strip(),
-                "period": str(spec.get("period") or "").strip()}
+                "period": str(spec.get("period") or "").strip(), "entry": str(spec.get("entry") or "").strip()}
     seg, _, rest = str(spec or "").partition("=")
+    rest, _, entry = rest.partition("#")
     slot, _, period = rest.partition("@")
-    return {"segment": seg.strip(), "slot": slot.strip(), "period": period.strip()}
+    return {"segment": seg.strip(), "slot": slot.strip(), "period": period.strip(), "entry": entry.strip()}
 
 
 def _proposal(root: Path, profile: str, pin_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -304,16 +318,19 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
         period = rs._period(dest, w["period"])
         if dest.cardinality is Cardinality.SERIES and not period:
             raise ValueError(f"{dest.key} is a series: name the part's period (SEGMENT={dest.key}@2099-06)")
-        if dest.key_document and key_document(dest.key_document).repeats:
-            raise ValueError(f"{dest.key} takes a recorded instrument by its recording number: pick or upload the part there "
-                             "(--entry NUMBER), not through a split")
+        entry_key = _entry_key(dest, w["entry"])         # a repeating row needs its recording number; any other takes none
+        if w["entry"] and not entry_key:
+            raise ValueError(f"{dest.key} takes no instrument number: leave off #{w['entry']}")
+        if w["entry"] and entry_key == dest.key_document:
+            raise ValueError(f"{dest.key} is not a repeating row: leave off #{w['entry']}")
         holding = next(c for c in computed if c.slot.key == dest.key)
-        busy = [h for h in holding.holders if h.kind is not PinKind.FOLDER and (dest.cardinality is not Cardinality.SERIES or h.period == period)]
-        slot_id = f"{dest.key}@{period}"
-        row: dict[str, Any] = {"segment": w["segment"], "pages": part["pages"], "slot": dest.key, "period": period,
+        busy = [h for h in holding.holders if h.kind is not PinKind.FOLDER and (dest.cardinality is not Cardinality.SERIES or h.period == period)
+                and (not w["entry"] or h.store_id == entry_key)]
+        slot_id = f"{dest.key}@{period}#{entry_key}"
+        row: dict[str, Any] = {"segment": w["segment"], "pages": part["pages"], "slot": dest.key, "period": period, "entry": w["entry"],
                                "kind": part.get("kind"), "fits": dest.key in {x["key"] for x in part.get("slots") or ()},
                                "action": "fill"}
-        if dest.cardinality is not Cardinality.SEVERAL and (busy or slot_id in taken):
+        if (dest.cardinality is not Cardinality.SEVERAL or w["entry"]) and (busy or slot_id in taken):      # a numbered row holds one file
             row.update({"action": "collision", "why": f"{dest.key} already holds a file" if busy else
                         f"another part of this request fills {dest.key}", "kept": "the file already there; this part was not written"})
         if row["action"] == "fill":
@@ -337,7 +354,7 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
         if dest.key_document:
             from jason.tasks import key_documents as kd
 
-            link = kd.upload(key_document(dest.key_document).key, by=person, name=label, data=data, note=why, root=root, profile=profile)
+            link = kd.upload(_entry_key(dest, r["entry"]), by=person, name=label, data=data, note=why, root=root, profile=profile)
             r["pin"] = "k-" + str(link["id"])
             made.append({"segment": r["segment"], "slot": r["slot"], "pin": r["pin"]})
             continue
@@ -349,6 +366,9 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
         rs._write_store(profile, lambda d, row=row: d["pins"].append(row), purpose="record slots: split")
         r["pin"] = pin_id
         made.append({"segment": r["segment"], "slot": r["slot"], "pin": pin_id})
+    auto = bool(limits.value("split.auto_read", community=community))
+    queued = _queue_reads(root, made, person) if auto else {
+        "reading": "the new files are not read yet (the split.auto_read limit is off): jason records --read SLOT for each"}
     confirmed = dict(done.get("confirmed") or {})
     for m in made:
         confirmed[m["segment"]] = {"slot": m["slot"], "pin": m["pin"], "by": person, "at": rs._now()}
@@ -362,8 +382,32 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
                               "parts": made, "collisions": [r["slot"] for r in plan if r["action"] == "collision"],
                               "store": f"spec/{profile}/{rs.STORE}"})
     return {"dryRun": False, "ok": True, "pin": pin, "slot": slot_key, "parts": plan, "filled": made,
-            "written": f"spec/{profile}/{rs.STORE}", "caveats": list(CAVEATS),
-            "reading": "the new files are not read yet: jason records --read SLOT for each"}
+            "written": f"spec/{profile}/{rs.STORE}", "caveats": list(CAVEATS), "autoRead": auto, **queued}
+
+
+def queue_read(root: Path, slot_key: str, pin: str, by: str) -> dict[str, Any]:
+    """Queue a read-back of one pin as a job on Google's lane, in ``by``'s name. It never reads inline."""
+    from jason import jobs
+
+    argv = ["records", "--read", slot_key, "--yes", "--by", by, "--pin", pin]
+    job = jobs.add(root, argv, confirmed_by=by, job_class_override=jobs.JobClass.GOOGLE)
+    return {"pin": pin, "slot": slot_key, "job": job.id, "command": "jason " + " ".join(argv)}
+
+
+def _queue_reads(root: Path, made: list[dict[str, Any]], by: str) -> dict[str, Any]:
+    """A read-back job for each new part file. A part that cannot be queued is named; the split itself stands."""
+    from jason import jobs
+
+    queued, failed = [], []
+    for m in made:
+        try:
+            queued.append(queue_read(root, m["slot"], m["pin"], by))
+        except jobs.JobRefused as exc:
+            failed.append({"pin": m["pin"], "slot": m["slot"], "why": str(exc)})
+    out: dict[str, Any] = {"queued": queued, "reading": f"{len(queued)} read-back job(s) queued in {by}'s name (jason worker --once)"}
+    if failed:
+        out["notQueued"] = failed
+    return out
 
 
 # Acknowledging a change ----------------------------------------------------------------------------------------------------
@@ -401,4 +445,81 @@ def ack(slot_key: str, *, pin: str = "", by: str, note: str = "", dry_run: bool 
             "written": f"{record_readback.FOLDER}/{profile}/readings/"}
 
 
-__all__ = ["CAVEATS", "UPLOAD_TYPES", "ack", "check", "split", "upload"]
+# Replacing a file in one act ----------------------------------------------------------------------------------------------
+
+def replace(slot_key: str, *, by: str, file: str = "", name: str = "", data: bytes | None = None, base64_body: str = "", path: str = "",
+            pin: str = "", period: str = "", entry: str = "", note: str = "", force: bool = False, dry_run: bool = True,
+            read: bool = True, ocr: bool = True, drive: Any = None, segmenter: Callable[..., Any] | None = None,
+            preflighter: Callable[..., Any] | None = None, private: bool = True, community: Any = None, root: Path | None = None,
+            profile: str | None = None) -> dict[str, Any]:
+    """Swap the file a slot holds for a new one in one act: pin or upload the new file, then unpin the old. ``pin`` names the old
+    pin (needed when the slot holds several; with a repeating key-document row, ``entry`` narrows to that instrument). The new
+    file is a path on this computer or its bytes (``path``/``data``/``base64_body``, an upload), or ``file``: a Drive link or id,
+    or ``library:ID`` (a pick). History keeps both pins, the old one marked unpinned. The old file is never touched.
+
+    A pin a person **kept** (they confirmed it although jason reads the file as another kind) is not replaced without ``force``.
+    Everything is checked before anything is written; a dry run shows both halves. If the old pin cannot be unpinned after the new
+    one is pinned, the result says so (``partial``) and the slot shows two holders until a person unpins one."""
+    root = rs._root(root)
+    profile = rs._profile(profile, community)
+    person = rs._who(by)
+    slot, hidden = rs._slot(community, slot_key)
+    if hidden:
+        raise ValueError(f"{slot_key} is hidden by the profile: {hidden}. Nothing was written.")
+    if bool(file) == bool(path or data is not None or base64_body):
+        raise ValueError("replace needs the new file: a path on this computer (an upload) or a Drive link, id, or library:ID (a pick), not both")
+    entry_key = _entry_key(slot, entry) if slot.key_document and entry else ""
+    active = rs._active_pins(root, profile, slot_key)
+    if entry_key:
+        active = [p for p in active if p.store_id == entry_key]
+    if not pin:
+        if len(active) != 1:
+            raise ValueError(f"{slot_key} holds {len(active)} pins to replace; name the old one with --pin (" +
+                             ", ".join(p.id for p in active) + ")" if active else f"{slot_key} holds no pin of a person's to replace; "
+                             "use --upload or --pick")
+        pin = active[0].id
+    old = next((p for p in active if p.id == pin), None)
+    if old is None:
+        coded = any(p.id == pin for p in rs.code_pins(community, rs.assemble(community).slots).get(slot_key, []))
+        raise ValueError("that pin is the specification's, not a person's: replacing it is a change to the profile" if coded
+                         else f"{slot_key} has no active pin {pin}")
+    held = next((h for c in rs.compute(community, root, profile) if c.slot.key == slot_key for h in c.holders if h.id == pin), None)
+    if held is not None and held.kept and not force:
+        raise ValueError(f"pin {pin} was kept by {held.kept_by}, who confirmed it although jason reads the file as another kind. "
+                         "Replacing it overrides that person's decision; add --force if you mean to")
+    if file and rs.parse_file_ref(file)[1] == old.ref:
+        raise ValueError("that is the file the slot already holds")
+    kw = {"by": person, "period": period, "note": note, "community": community, "root": root, "profile": profile}
+    if file:
+        first = rs.pick(slot_key, file, entry=entry, drive=drive, dry_run=True, **kw)
+    else:
+        first = upload(slot_key, name=name, data=data, base64_body=base64_body, path=path, entry=entry, dry_run=True, read=read, **kw)
+        if first.get("twin") == pin:
+            raise ValueError("that is the file the slot already holds")
+    second = rs.unpin(slot_key, pin=pin, by=person, note=note or "replaced", dry_run=True, community=community, root=root, profile=profile)
+    would = {"act": "replace", "slot": slot_key, "old": pin, "by": person, "new": first["would"], "unpin": second["would"],
+             "forced": bool(force and held is not None and held.kept)}
+    if dry_run:
+        return {"dryRun": True, "would": would, "first": first, "then": second, "caveats": list(CAVEATS),
+                "note": "A dry run: nothing was written. Add --yes to pin the new file and then unpin the old one. History keeps both; "
+                        "no file is deleted."}
+    if file:
+        new = rs.pick(slot_key, file, entry=entry, drive=drive, dry_run=False, **kw)
+    else:
+        new = upload(slot_key, name=name, data=data, base64_body=base64_body, path=path, entry=entry, dry_run=False, read=read, ocr=ocr,
+                     segmenter=segmenter, preflighter=preflighter, private=private, **kw)
+    out: dict[str, Any] = {"dryRun": False, "ok": True, "slot": slot_key, "pin": new["pin"], "replaced": pin, "new": new, "written": new.get("written"),
+                           "caveats": list(CAVEATS)}
+    try:
+        gone = rs.unpin(slot_key, pin=pin, by=person, note=note or "replaced", dry_run=False, community=community, root=root, profile=profile)
+    except Exception as exc:  # noqa: BLE001 - the new pin stands; say what is left to do
+        out.update({"ok": False, "partial": True, "why": f"the new file is pinned ({new['pin']}) but the old pin {pin} was not unpinned: {exc}. "
+                    f"Unpin it: jason records --unpin {slot_key} --pin {pin} --yes --by NAME"})
+        return out
+    out["unpinned"] = gone
+    rs._append_history(root, {"at": rs._now(), "profile": profile, "act": "replace", "slot": slot_key, "pin": new["pin"], "replaced": pin,
+                              "by": person, "forced": would["forced"]})
+    return out
+
+
+__all__ = ["CAVEATS", "UPLOAD_TYPES", "ack", "cap_for", "check", "queue_read", "replace", "split", "upload"]
