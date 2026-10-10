@@ -2325,6 +2325,26 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-split-must-check-the-file-it-was-proposed-from", date(2026, 10, 10), (Area.ONBOARDING,),
+           "A split makes new files from page ranges, so a file whose bytes changed after the reading would be cut by "
+           "the old proposal's pages.",
+           "The proposal was stored apart from the file it described.",
+           "The source file is hash-checked against the reading first, and a stale file is refused.",
+           Status.FIXED, guards=("record_upload._source_file", "tests/test_record_intake_phase3.py"),
+           docs=("docs/record-intake.md",)),
+    Lesson("a-queue-item-needs-its-own-cleared-state", date(2026, 10, 10), (Area.REPOSITORY,),
+           "A combined-scan item and a changed-since-read mark had no way to clear, so each would stay open forever.",
+           "The flag was derived from the reading alone.",
+           "Declining, acknowledging, or confirming every part clears the item, and the act stays in the trail.",
+           Status.FIXED, guards=("record_upload._split_state", "record_upload._open_change"),
+           docs=("docs/record-intake.md",)),
+    Lesson("a-conflict-matches-a-slot-by-the-more-general-citation", date(2026, 10, 10), (Area.ONBOARDING,),
+           "A conflict citing a whole section matched every slot of that section, so each 5200 conflict appeared on all "
+           "of them.",
+           "Citations were compared at the same level of detail.",
+           "A match compares at the more general level, and a subsection citation matches only its slot.",
+           Status.FIXED, guards=("record_standing._shared", "tests/test_record_intake_phase3.py"),
+           docs=("docs/record-intake.md",)),
     Lesson("a-google-refusal-carries-the-file-id", date(2026, 10, 10), (Area.REPOSITORY, Area.ONBOARDING),
            "A Drive refusal's exception text includes the file id, so returning or logging it would have exposed an id "
            "the console masks.",
