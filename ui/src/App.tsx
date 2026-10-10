@@ -48,6 +48,7 @@ import { OwnerPageView } from "./views/OwnerPageView";
 import { OwnerDigestView } from "./views/OwnerDigestView";
 import { PeopleView } from "./views/PeopleView";
 import { LimitsView } from "./views/LimitsView";
+import { RecordsView } from "./views/RecordsView";
 import { StatusView } from "./views/StatusView";
 
 function BoardDigest() {
@@ -135,14 +136,23 @@ export const SCREENS: ScreenDef[] = [
   // of jason's admins as themselves. The routes are `#/setup/limits` and `#/instance/limits`.
   { id: "setup/limits", label: "Limits", group: "Setup", roles: ["officer", "manager", "administrator"], view: () => <LimitsView scope="community" /> },
   { id: "instance/limits", label: "Instance limits", group: "Instance", admin: true, view: () => <LimitsView scope="instance" /> },
+  // Records (docs/record-intake.md, docs/console/screens/records.md): the checklist of slots at `#/setup/records` and one slot at
+  // `#/setup/records/<key>` (the key URL-encoded). Board only: officers, managers, and administrators; never the owner view.
+  { id: "setup/records", label: "Records", group: "Setup", roles: ["officer", "manager", "administrator"], view: () => <RecordsView /> },
 ];
 
 /** The screen a hash id names, through its aliases; in the owner view, an owner alias first. */
 export function findScreen(id: string, audience: Audience = "board"): ScreenDef | undefined {
   const owned = audience === "owner" ? SCREENS.find((s) => s.ownerAliases?.includes(id)) : undefined;
   const same = (key: string) => SCREENS.find((s) => s.id === key || s.aliases?.includes(key));
-  // A route may be two segments (`setup/limits`): the whole path first, then its first segment (`actions/…` still lands).
-  return owned ?? same(id) ?? same(id.split("/")[0]);
+  // A route may be several segments (`setup/limits`, `setup/records/<key>`): the whole path first, then each shorter prefix
+  // down to its first segment (`actions/…` still lands).
+  const parts = id.split("/");
+  for (let n = parts.length; n >= 1 && !owned; n--) {
+    const hit = same(parts.slice(0, n).join("/"));
+    if (hit) return hit;
+  }
+  return owned;
 }
 
 const DOCK_WIDE = 1200;
