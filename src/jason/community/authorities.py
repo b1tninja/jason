@@ -193,6 +193,12 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
     Authority("CIV", "885.010", "885.060", "a condition in a grant of real property: why a declaration's \"conditions\" are read as covenants", Basis.DEVELOPER),
     Authority("CIV", "895", "945.5", "the Right to Repair Act: a builder's standards, warranty periods, and the claim process for new homes", Basis.DEVELOPER),
     Authority("CCP", "726", "726", "the one-action rule for a foreclosure and a deficiency, which an assessment lien is not bound by (CIV 5700)", Basis.DEVELOPER),
+    Authority("CIV", "1675", "1675", "liquidated damages in a contract to buy residential property: the limit a developer's deposit terms for a "
+              "pre-sold unit are read against", Basis.DEVELOPER),
+    # The manager article, BPC 11500-11506, in two spans so it does not overlap 11504 and 11505, which the duties already cite.
+    Authority("BPC", "11500", "11503", "common interest development managers: the definitions (11500), who a manager is and that no real estate "
+              "license is required (11501), what a certified manager must have met (11502, 11502.5), and that a firm is not one (11503)", Basis.DUTY),
+    Authority("BPC", "11506", "11506", "common interest development managers: the chapter's review by the Legislature's policy committees", Basis.DUTY),
     Authority("CORP", "7210", "7215", "the board of a nonprofit mutual benefit corporation", Basis.GOVERNANCE),
     Authority("BPC", "7026", "7031", "contractor licensing: who needs a license, the license number a contract prints (7030.5), and an unlicensed contractor's pay", Basis.CONTRACTS),
     Authority("BPC", "7151", "7159.14", "home improvement contracts: the required terms, the down payment limit, and payment ahead of the work (7159.5)", Basis.CONTRACTS),
