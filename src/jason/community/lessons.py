@@ -2261,6 +2261,18 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-consent-gives-the-refresh-token-once-save-it-first", date(2026, 10, 10), (Area.REPOSITORY,),
+           "A consent screen was shown for a preview and its token was written to a scratch file and deleted: the "
+           "community's administrator approved, and the one refresh token Google issues for that consent was lost, so "
+           "the administrator had to approve again.",
+           "A refresh token is returned once, in the code exchange after a person consents. A flow that completes the "
+           "exchange and then discards the token has spent the consent for nothing, and each re-consent counts toward "
+           "the 100 tokens per account per client.",
+           "Every sign-in saves the token before anything else touches it: to the vault (the community's own record), or "
+           "the local file if the vault refuses, and the temporary copy is removed only after the save. A preview of a "
+           "consent screen is not built from the real exchange.",
+           Status.FIXED, guards=("session._sign_in", "tests/test_google_tokens.py"),
+           docs=("docs/integrations-design.md",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

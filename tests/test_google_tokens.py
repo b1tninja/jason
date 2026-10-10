@@ -150,7 +150,7 @@ def test_rejected_token_fails_fast_when_not_interactive(tmp_path):
         open_drive(settings, object(), store=store, http=_Http(accept=False))   # type: ignore[arg-type]
 
 
-def test_interactive_sign_in_saves_to_both(tmp_path):
+def test_interactive_sign_in_saves_to_the_vault_alone(tmp_path):
     settings = _settings(tmp_path)
     store = _vault_with_client()
 
@@ -159,9 +159,22 @@ def test_interactive_sign_in_saves_to_both(tmp_path):
         return SECRET_A
 
     open_drive(settings, object(), store=store, authorize=person, http=_Http(), interactive=True)   # type: ignore[arg-type]
-    assert FileTokenStore(settings.google_oauth_token_file).load("drive")["refresh_token"] == SECRET_A
+    assert FileTokenStore(settings.google_oauth_token_file).load("drive") is None   # no local copy beside the vault
+    assert not settings.google_oauth_token_file.exists()
     held = VaultTokenStore(store, _community()).load("drive")
     assert held["refresh_token"] == SECRET_A and set(GOOGLE_SCOPES) == set(held["scopes"])
+
+
+def test_a_refused_vault_keeps_the_sign_in_in_the_local_file_rather_than_losing_it(tmp_path):
+    settings = _settings(tmp_path)
+    tokens = token_store(settings, _Refuses(), _community())
+    assert tokens.save("drive", SECRET_A, list(GOOGLE_SCOPES)) == ("file",)
+    assert FileTokenStore(settings.google_oauth_token_file).load("drive")["refresh_token"] == SECRET_A
+
+
+class _Refuses(MemoryStore):
+    def put(self, *a, **k):
+        raise KeeperAuthRequired("sign in")
 
 
 class _Down(MemoryStore):
@@ -219,13 +232,14 @@ def test_migrate_plan_writes_nothing_and_yes_copies_create_only(tmp_path):
     assert {s.name: s.state for s in steps} == {"drive": "copy", "tasks": "copy", "vault": "no file", "photos": "no file"}
     assert store.list("jason/") == []                              # the plan wrote nothing
     results = migrate_tokens(steps, tokens, by="a person")
-    assert {s.name: o for s, o in results} == {"drive": "copied", "tasks": "copied"}
+    assert {s.name: o for s, o in results} == {"drive": "copied; local file removed", "tasks": "copied; local file removed"}
+    assert not settings.google_oauth_token_file.exists()           # the vault is the only copy now
     assert VaultTokenStore(store, "oakview").load("drive")["refresh_token"] == SECRET_A
     assert store.list("jason/") == ["jason/community/oakview/google-workspace/token/drive",
                                     "jason/community/oakview/google-workspace/token/tasks"]   # no backup copied
-    # a second run leaves what is there alone
+    # a second run has nothing left to do
     again = plan_token_migration(tokens, "oakview")
-    assert {s.name: s.state for s in again}["drive"] == "in vault"
+    assert {s.name: s.state for s in again}["drive"] == "no file"
     assert migrate_tokens(again, tokens) == []
 
 
@@ -235,8 +249,9 @@ def test_migrate_never_overwrites_a_path_set_between_plan_and_copy(tmp_path):
     _write_file(settings, "drive", SECRET_A, GOOGLE_SCOPES)
     steps = plan_token_migration(tokens, "oakview")
     VaultTokenStore(store, "oakview").save("drive", SECRET_B, list(GOOGLE_SCOPES))
-    assert [o for _, o in migrate_tokens(steps, tokens)] == ["already in the vault"]
+    assert [o for _, o in migrate_tokens(steps, tokens)] == ["already in the vault; local file differs"]
     assert VaultTokenStore(store, "oakview").load("drive")["refresh_token"] == SECRET_B
+    assert FileTokenStore(settings.google_oauth_token_file).load("drive")["refresh_token"] == SECRET_A   # kept: it differs
 
 
 def test_status_names_the_source_and_scope_fit_and_holds_no_token(tmp_path):

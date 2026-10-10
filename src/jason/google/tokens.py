@@ -1,8 +1,10 @@
 """Where jason's Google refresh tokens are kept, and how a command reads them from any working directory.
 
-A refresh token is a credential, so the credential vault (Keeper) is its system of record. The local file
-(``secrets/google-token.json`` and its siblings) is a per-checkout cache: a git worktree or another working directory has
-none, and used to fail with ``GoogleAuthRequired`` although the vault held the means to sign in.
+A refresh token is a credential, so the credential vault (Keeper) is its system of record, one set per community. With a
+vault, the token lives there and nowhere else on disk: a sign-in saves it to the vault only, and ``jason vault migrate``
+copies an older local file (``secrets/google-token.json`` and its siblings) in and then removes the file. The files exist
+only for an installation with no vault, and as a read-only fallback while the vault cannot be reached. A git worktree or
+another working directory therefore finds the token in the vault, and no checkout carries a copy.
 
 ``GoogleTokenStore`` is the small interface: ``load(name)`` gives ``{"refresh_token", "scopes"}`` or None, and
 ``save(name, refresh_token, scopes)`` stores one. A *name* is one of ``NAMES``: ``drive`` (the Drive, Docs, Sheets, Gmail,
@@ -12,13 +14,15 @@ never asks the others to consent again.
 - ``VaultTokenStore``: the vault path ``jason/community/<profile>/google-workspace/token/<name>``, fields
   ``refresh_token`` and ``scopes`` (space separated). One token set per community; an account label is not added until a
   community signs in with more than one Google account (docs/integrations-design.md, build step 3).
-- ``FileTokenStore``: the files as before, where ``google_oauth_token_file`` puts them.
+- ``FileTokenStore``: the files, where ``google_oauth_token_file`` puts them: the home of the token only when there is no
+  vault, and the source ``jason vault migrate`` reads.
 - ``LayeredTokenStore``: the two together. **Reads are vault first, then the file.** The vault is the record every checkout
   shares, so a worktree finds the token there and a token a person re-authorized on another machine wins over a stale
   local copy. The file is the fallback when the vault holds nothing at the path, **and when the vault cannot be reached
   and the file has a token that covers the scopes** (logged by error name only). A vault that cannot be reached and a
-  file that cannot answer is the vault's own error (``KeeperAuthRequired``), never a silent miss. **Writes go to both**
-  (the vault when reachable; an unreachable vault is logged and the file still has it).
+  file that cannot answer is the vault's own error (``KeeperAuthRequired``), never a silent miss. **With a vault, a write
+  goes to the vault only.** If the vault will not take it (logged by error name), the token is kept in the local file
+  rather than lost, and ``jason vault status`` says so until it is migrated. With no vault, the file alone.
 
 No token, and no part of one, is ever printed, logged, or put in an error message here.
 """
@@ -133,7 +137,8 @@ class Location:
 
 
 class LayeredTokenStore:
-    """Vault first, then the file; saves go to both. ``vault`` may be None (no vault session): the file alone."""
+    """Vault first, then the file; a save goes to the vault when there is one (the file only if the vault refuses it).
+    ``vault`` may be None (no vault session): the file alone."""
 
     def __init__(self, vault: VaultTokenStore | None, file: FileTokenStore) -> None:
         self.vault, self.file = vault, file
@@ -172,17 +177,36 @@ class LayeredTokenStore:
         return found.token
 
     def save(self, name: str, refresh_token: str, scopes: list[str]) -> tuple[str, ...]:
-        """Store the token in the file and, when reachable, the vault. The places stored."""
-        self.file.save(name, refresh_token, scopes)
-        placed = ["file"]
+        """Store the token in the vault; with no vault, or when the vault will not take it, in the local file (so a
+        sign-in is never lost). The places stored."""
         if self.vault is not None:
             try:
                 self.vault.save(name, refresh_token, scopes)
-                placed.append("vault")
-            except Exception as exc:  # noqa: BLE001 - the sign-in worked; the vault copy is reported, not fatal
-                log.warning("the token for %s is saved in the local file only: the vault did not take it (%s)",
+                return ("vault",)
+            except Exception as exc:  # noqa: BLE001 - the sign-in worked; keep it rather than lose it
+                log.warning("the token for %s is kept in the local file: the vault did not take it (%s)",
                             name, type(exc).__name__)
-        return tuple(placed)
+        self.file.save(name, refresh_token, scopes)
+        return ("file",)
+
+    def retire_local(self, name: str) -> str:
+        """Remove the local file of ``name`` once the vault holds the same token. An outcome word, never a token:
+        ``removed``, ``no file``, ``vault does not hold it`` (the file stays), or ``differs`` (the file stays)."""
+        if self.vault is None:
+            return "no vault"
+        local = self.file.load(name)
+        if local is None:
+            return "no file"
+        try:
+            held = self.vault.load(name)
+        except Exception as exc:  # noqa: BLE001
+            return f"vault not read ({type(exc).__name__})"
+        if held is None:
+            return "vault does not hold it"
+        if held["refresh_token"] != local["refresh_token"]:
+            return "differs"
+        self.file.path_of(name).unlink()
+        return "removed"
 
 
 def token_store(settings: Any, store: Any = None, community: str = "") -> LayeredTokenStore:
@@ -213,7 +237,8 @@ def status_lines(tokens: LayeredTokenStore) -> list[str]:
         held = found.token.get("scopes") or []
         fit = "covers the scopes asked now" if covers(found.token, asked) else f"lacks scopes asked now (needs {len(asked)})"
         tail = f"; the vault was not read: {found.problem}" if found.problem else ""
-        lines.append(f"  {name}: read from the {found.where}, {len(held)} scopes, {fit}{tail}")
+        legacy = "; a local file, not the vault: run jason vault migrate" if found.where == "file" and tokens.vault else ""
+        lines.append(f"  {name}: read from the {found.where}, {len(held)} scopes, {fit}{tail}{legacy}")
     return lines
 
 
@@ -247,7 +272,8 @@ def plan_token_migration(tokens: LayeredTokenStore, community: str, *, checked: 
 
 
 def plan_token_lines(steps: list[TokenStep]) -> list[str]:
-    lines = ["Google tokens: copy each local token file to its vault path (a path already set is left alone)."]
+    lines = ["Google tokens: copy each local token file to its vault path (a path already set is left alone), "
+             "then remove the local file once the vault holds the same token."]
     for s in steps:
         what = {"copy": "copy", "in vault": "already in the vault", "no file": "no local file",
                 "not checked": "copy unless already set"}[s.state]
@@ -270,10 +296,11 @@ def migrate_tokens(steps: list[TokenStep], tokens: LayeredTokenStore, *, by: str
             continue
         try:
             tokens.vault.save(s.name, local["refresh_token"], list(local.get("scopes") or []), if_version=0)
+            outcome = "copied"
         except VersionConflict:
-            out.append((s, "already in the vault"))
-            continue
-        out.append((s, "copied"))
+            outcome = "already in the vault"
+        gone = tokens.retire_local(s.name)
+        out.append((s, f"{outcome}; local file {gone}" if gone != "no file" else outcome))
     return out
 
 

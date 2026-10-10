@@ -9,6 +9,7 @@ deprecated). The refresh token is read vault first (``google-workspace/token/<na
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -138,18 +139,37 @@ def _sign_in(
     scopes: tuple[str, ...],
     interactive: bool,
 ) -> str:
-    """A person's browser sign-in (``interactive`` only). The sign-in writes the local file; the token is then saved
-    again through ``tokens.save``, which writes the file and the vault."""
+    """A person's browser sign-in (``interactive`` only). With a vault the sign-in writes only a temporary file, which
+    is read back for the scopes Google granted and removed; the token is then saved through ``tokens.save``, to the
+    vault alone. With no vault the sign-in writes the local file as before."""
     if not interactive:
         raise GoogleAuthRequired(
             "Google sign-in needs a browser. Pass interactive=True."
         )
-    refresh = sign_in(client_id, client_secret, tokens.file.path_of(name))
-    written = tokens.file.load(name)
-    granted = list(written["scopes"]) if written and written["refresh_token"] == refresh and written["scopes"] \
-        else list(scopes)
-    tokens.save(name, refresh, granted)
+    # A refresh token is given once, at consent. Nothing may discard it before it is saved: the temporary copy is
+    # removed only after ``tokens.save`` has put the token in the vault (or, if the vault refuses, the local file).
+    if tokens.vault is None:
+        refresh = sign_in(client_id, client_secret, tokens.file.path_of(name))
+        written = tokens.file.load(name)
+        granted = _granted(written, refresh, scopes)
+        tokens.save(name, refresh, granted)
+        return refresh
+    import tempfile
+
+    from jason.google.tokens import FileTokenStore
+
+    with tempfile.TemporaryDirectory(prefix="jason-signin-") as scratch:
+        temporary = FileTokenStore(Path(scratch) / "token.json")
+        refresh = sign_in(client_id, client_secret, temporary.path_of(name))
+        granted = _granted(temporary.load(name), refresh, scopes)
+        tokens.save(name, refresh, granted)
     return refresh
+
+
+def _granted(written: Any, refresh: str, asked: tuple[str, ...]) -> list[str]:
+    """The scopes Google granted (a person may untick one on the consent screen), else those asked."""
+    return list(written["scopes"]) if written and written["refresh_token"] == refresh and written["scopes"] \
+        else list(asked)
 
 
 def _vault_store(vault: Any, store: Any) -> Any:
