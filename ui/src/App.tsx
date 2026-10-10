@@ -49,6 +49,7 @@ import { OwnerDigestView } from "./views/OwnerDigestView";
 import { PeopleView } from "./views/PeopleView";
 import { LimitsView } from "./views/LimitsView";
 import { RecordsView } from "./views/RecordsView";
+import { SplitView } from "./views/SplitView";
 import { StatusView } from "./views/StatusView";
 
 function BoardDigest() {
@@ -139,6 +140,9 @@ export const SCREENS: ScreenDef[] = [
   // Records (docs/record-intake.md, docs/console/screens/records.md): the checklist of slots at `#/setup/records` and one slot at
   // `#/setup/records/<key>` (the key URL-encoded). Board only: officers, managers, and administrators; never the owner view.
   { id: "setup/records", label: "Records", group: "Setup", roles: ["officer", "manager", "administrator"], view: () => <RecordsView /> },
+  // The PDF splitter (docs/pdf-splitter.md, docs/console/screens/split.md): drafts and entry points at `#/setup/split`, one draft at
+  // `#/setup/split/<id>`, a made-up demo at `#/setup/split/demo`. Board only; never the owner view.
+  { id: "setup/split", label: "Split document", group: "Setup", roles: ["officer", "manager", "administrator"], view: () => <SplitView /> },
 ];
 
 /** The screen a hash id names, through its aliases; in the owner view, an owner alias first. */
