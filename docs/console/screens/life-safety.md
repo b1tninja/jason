@@ -39,6 +39,16 @@ The question it answers is "are our fire protection systems inspected, tested, a
 
 A new loader, `life-safety` in `jason.web.extra.life_safety`, composes these by system. Nothing on load calls Gmail, Drive, PayHOA, or a vendor's portal. A sync is a person's job: `jason gmail --file-vendor`, `jason sync-report-portals`, or `jason vendors --sync`.
 
+## As built (2026-10-10)
+
+`GET /api/life-safety[?system=KEY]` (`jason.web.extra.life_safety`) is built, read only, for a signed-in roster person. It composes `jason.tasks.inspections.review` (each system's obligations with their periods and the deadlines calendar's row), the backflow program and the watchlist (`jason.tasks.backflow`), and the report portal with the last filing plan (`jason.tasks.report_portals`). Every standing is a word the loader says (`current`, `done late`, `upcoming`, `due soon`, `overdue`, `needs input`, `none on record`, `no evidence`), and the counts are made there: `summary` has `systems`, `obligations`, `overdue`, `dueSoon`, `needsInput`, `noneOnRecord`, `unplaced`, `questions`. A part that cannot be read is `{found: false, note}` and the rest stands.
+
+**The deficiency register is built** (`jason.tasks.deficiencies`, `data/life-safety/deficiencies.json`, `jason life-safety`). A row is proposed once from a report's reading (`--propose`), then a person confirms it, says whether it impairs a scheduled safeguard, links the library record that cleared it (an invoice's line items, an AES 10, or a later passing report that reads passed with nothing open; free text and a subject line are refused), and records that the insurer was told (the day and the record of what was sent; jason contacts no insurer). It is append only: each act carries who and when, the latest word on a question wins, and a correction is a later act. `POST /api/write/life-safety/<id>` takes `{act: confirm | impairs | cleared | insurer-told}` (and `propose` for key `propose`) in the signer's own name, for an office that opens P2, never while an admin views as someone else.
+
+The loader reads it. The proposed, open, and cleared counts show to every signed-in person; which deficiencies impair a safeguard, what cleared each, and whether the insurer was told are P2 (they may bear on a claim), so for a viewer whose office does not open P2 `impairments` and `insurerNotTold` are `null` and `deficiencies.rows` is empty with `held`. The banner ("A person recorded an impairment on a scheduled safeguard, and no record shows the insurer was told") is raised only from what a person recorded, never inferred.
+
+**Not composed yet,** each listed under `notComposed` with its command: the insurer's condition, the vendors' licences and payments (P1), and the board items.
+
 ## Layout
 
 ```
