@@ -77,10 +77,20 @@ def plan(data_dir: Any, build_sources: tuple | None = None) -> list[dict[str, An
     return list(rows.values())
 
 
+SCOPE_FLAGS = ("catalog", "standing", "kind", "folder", "confidential")
+
+
 def cmd_index(args: argparse.Namespace) -> int:
     from jason.community import passage_index as pi
     from jason.config import data_dir as active_data_dir
 
+    scoped = [f"--{name}" for name in SCOPE_FLAGS if getattr(args, name, None)]
+    if args.build and scoped:
+        # A build takes every source and drops the files that are gone, so a narrower build would delete the other catalogs'
+        # passages; it used to ignore the flags and re-cut and re-embed the whole index (a model failure then left it half-embedded).
+        print(f"{', '.join(scoped)} scope a search; a build always takes every source. Run `jason index --build` alone "
+              "(`--plan` says what it will take).", file=sys.stderr)
+        return 2
     data = active_data_dir()
     if args.plan:
         print(json.dumps(plan(data), indent=1))
@@ -145,10 +155,10 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--search", metavar="QUESTION", help="rank the passages for a question")
     p.add_argument("--mode", default="hybrid", choices=("keyword", "exact", "dense", "hybrid"))
     p.add_argument("-k", type=int, default=8)
-    p.add_argument("--catalog", action="append", default=[], help="only this catalog (repeat)")
+    p.add_argument("--catalog", action="append", default=[], help="search only this catalog (repeat); a build refuses it")
     p.add_argument("--standing", action="append", default=[], help="authority, record, reference, or page (repeat)")
     p.add_argument("--kind", action="append", default=[], help="only this document kind (repeat)")
     p.add_argument("--folder", action="append", default=[], help="only under this data folder (repeat)")
-    p.add_argument("--confidential", action="store_true", help="include the files held back unless asked")
+    p.add_argument("--confidential", action="store_true", help="include the files held back unless asked (a search)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_index)

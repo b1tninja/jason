@@ -290,6 +290,22 @@ def test_a_file_another_source_gives_openly_is_held_when_the_library_holds_its_b
     assert "Budget memo.pdf.md" in {p.path.name for p in pi.load(data, vectors=False).passages}
 
 
+def test_a_build_refuses_a_search_scope_instead_of_ignoring_it(monkeypatch, capsys):
+    """`--catalog` on a build used to be ignored: the whole index was re-cut and re-embedded. A build drops the files that are
+    gone, so honoring it would delete the other catalogs' passages; it is refused, and nothing is built."""
+    from argparse import Namespace
+
+    from jason.commands import index
+
+    monkeypatch.setattr(pi, "build", lambda *a, **k: (_ for _ in ()).throw(AssertionError("built")))
+    for flag in ("catalog", "standing", "kind", "folder"):
+        scope = {"catalog": [], "standing": [], "kind": [], "folder": [], "confidential": False, flag: ["x"]}
+        assert index.cmd_index(Namespace(build=True, plan=False, no_embed=True, search=None, json=False, **scope)) == 2
+        assert f"--{flag} scope a search" in capsys.readouterr().err
+    assert index.cmd_index(Namespace(build=True, plan=False, no_embed=True, search=None, json=False, catalog=[], standing=[],
+                                     kind=[], folder=[], confidential=True)) == 2
+
+
 def test_the_build_takes_the_new_sources_and_the_plan_counts_them(data, monkeypatch):
     from jason.commands import index
 

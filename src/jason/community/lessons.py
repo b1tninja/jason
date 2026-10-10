@@ -3147,6 +3147,19 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED,
            guards=("tests/test_unit_records_view.py::test_every_provision_of_the_profiles_ladder_recites_words_from_the_shelf",),
            docs=("docs/unit-records-backend.md",)),
+    Lesson("index-build-ignored-its-scope", date(2026, 10, 10), (Area.DOCUMENTS,),
+           "`jason index --build --catalog authorities`, run to make three new shelf pages searchable, re-cut 1,412 files and tried to embed "
+           "20,864 texts across the whole index. The embedding model answered HTTP 400 at 6,208, so 14,656 passages had no vector until a "
+           "second run of about fifteen minutes finished them; dense and hybrid search ranked those passages worse meanwhile.",
+           "`--catalog`, `--standing`, `--kind`, `--folder`, and `--confidential` are search scopes, and the build ignored them without "
+           "a word. A build cannot honor them: it drops the files that are gone, so a narrower build would delete the other catalogs' "
+           "passages.",
+           "A build with a scope flag is refused (exit 2) and says why; the help text of each flag says which command takes it. To make one "
+           "catalog's new pages searchable, run `jason index --build` alone: it re-cuts only the files whose bytes changed, so a small "
+           "change is a small build unless the cut rules changed (then it is all of them), and `jason index --plan` says what it will take.",
+           Status.FIXED, guards=("tests/test_index_sources.py::test_a_build_refuses_a_search_scope_instead_of_ignoring_it",),
+           docs=("docs/cli.md",),
+           notes=("Unload the embedding model after a build (`ollama stop qwen3-embedding:8b`): a loaded 12 GB model can crash numpy in a test run.",)),
 )
 
 
