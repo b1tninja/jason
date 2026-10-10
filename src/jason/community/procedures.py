@@ -729,7 +729,8 @@ PROCEDURES: tuple[Procedure, ...] = (
                          "jason records --split KEY (the proposal, then --part SEGMENT=SLOT --yes --by NAME)",
                  check="the reading record exists once per file hash; the history line holds no file name",
                  refs=("docs/record-intake.md",),
-                 lessons=("a-google-refusal-carries-the-file-id", "a-reading-must-be-idempotent-by-hash")),
+                 lessons=("a-google-refusal-carries-the-file-id", "a-reading-must-be-idempotent-by-hash",
+                          "a-confirmed-split-left-its-parts-unread", "replace-is-one-act-with-a-finishing-command")),
             Step("Set up the community's own Google Workspace: its OAuth client in its vault path, then one sign-in per "
                  "token it needs. The refresh token is given once, at consent, and is saved to the vault at once; do not "
                  "ask for consent again while a token covers the scopes.",
