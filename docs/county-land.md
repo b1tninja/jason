@@ -24,10 +24,14 @@ All of it is cache: owners' names in `deeds` stay there. Pages name an owner onl
 
 The records tie each piece by a number, not by a guess:
 
-1. **Common areas lead to the association.** The assessor codes common land (`AQ000A` "Residential / Common Area";
-   `MPARKA` park or greenbelt, `MAWAYA` walkway, `MROADA` private road). A common parcel's last transfer number is a
-   recorder document. Its grantee is the association that took it (`asspy.land.common_area_owners`). In a sample of 40,
-   35 went to an association; the others went to a city, a district, or a builder.
+1. **Common areas lead to the association.** The assessor codes common land. Its Land Use Code Quick Reference
+   (assessor.saccounty.gov) describes six-place codes. The first place is the general use. A `Q` in the second place is
+   "Common Area (condo/PUD)" in the residential, retail, office, and industrial families (`AQ`, `BQ`, `CQ`, `GQ`). The
+   miscellaneous family names walkways, trails, parks, private roads, and odd lots (`MAWAY`, `MBRID`, `MPARK`, `MROAD`,
+   `MSMAL`). Its ditches, levees, flood plains, utility lots, and wells belong to districts
+   (`asspy.sacramento.gis.common_land`). A common parcel's last transfer number is a recorder document, and its grantee
+   is the association that took it (`asspy.land.common_area_owners`). `record_owners` writes those associations into
+   the directory: 156 of the first 455 were not in it.
 2. **The parcel's map holds the community.** A parcel's `SUBDIVISION` is its final map's id (`S`, then the map book's
    book and page). Every active parcel on that map is in the footprint (`asspy.land.footprint`).
 3. **A condominium plan holds its units.** The map draws each plan under its recorder number, with the name the
@@ -42,6 +46,23 @@ The records tie each piece by a number, not by a guess:
 
 Pages 7000 to 7999 and 9000 to 9999 of a day's book are the assessor's own unrecorded documents ("scratch"), and a
 page of 0 is unknown. Neither is a recorder number (`asspy.land.recorded_number`).
+
+### How well it works (Sacramento, October 2026)
+
+Checked against the assessor's secured roll (a check, not a source):
+
+- **Last deed numbers.** The map and the roll agree on 480,073 parcels and differ on 24,941 (5%). The roll is
+  dated the January lien date, and transfers since account for the gap.
+- **The common-area method.** The deeds gave an association for 2,742 common parcels. The roll names the same
+  association for 2,029 (74%), another for 428, and none for 285. Most "another" were one association spelled two
+  ways (`PK` and `PARK`, `HMOWRS` and `HOMEOWNERS`, `NO 3` and `3`); `asspy.associations.key` now reads them alike.
+- **What the method missed.** The roll gives 879 associations land, against 455 found by deeds. Much of the gap
+  was land coded odd lot, trail, or commercial common area, which the published scheme now includes.
+- **The name lead.** Against the deed footprints, a subdivision's name pointed to the same association 149 times,
+  to another 78 times (mostly the spellings since fixed), and to none 381 times. Treat it as a lead.
+
+The watch's first week read 753 filings: 381 utility liens and 101 releases, 226 tax liens, 33 defaults, and 9
+association liens with 3 releases.
 
 What does not tie:
 
