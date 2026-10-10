@@ -4,7 +4,7 @@ jason is the implementation. A **profile** is one association: its buildings, un
 
 ## Choosing a profile
 
-`JASON_PROFILE` (environment or `.env`) names the active profile; it defaults to `mystique`. `jason.community.community()` returns it, loaded once. (`mystique()` is the older name for the same call.) The package is found, in order, at:
+Which profile is active is decided in one place, `jason.community.profile.resolve_community()`, which says the name and where the choice came from (docs/tenancy.md, "Phase 1: what was built"). First set wins: the `--community KEY` flag (`jason --community KEY ...`), `JASON_COMMUNITY`, `JASON_PROFILE` (the old name, still read and noted once), the project's `.env`, then the saved context in the user config that `jason use KEY` writes (`JASON_COMMUNITY=KEY` in `~/.jason/.env`). `jason use` shows the current one and `jason use --list` the installed ones. With none set, a compatibility shim chooses the only installed profile, or else the built-in default, and prints one line on standard error saying so; `JASON_DEFAULT_COMMUNITY_SHIM=0` turns the built-in default off, and then a missing choice among several installed profiles stops the command with exit code 2. `jason.community.community()` returns the active profile, loaded once. (`mystique()` is the older name for the same call.) The package is found, in order, at:
 
 1. `JASON_PROFILE_DIR`, a folder with an `__init__.py`;
 2. `profiles/<name>/` or `<name>/` in a folder above jason's source;

@@ -24,6 +24,14 @@ def _root(data_dir: Path | None) -> Path:
     return Path(data_dir) if data_dir is not None else Settings.load().payhoa_catalog.parent
 
 
+def _write_banner(root: Path) -> None:
+    """A tool that writes a person's record says first which community it changes (docs/tenancy.md): one line on
+    standard error, which an MCP client does not read as protocol."""
+    from jason.tenancy import write_banner
+
+    write_banner(data=root)
+
+
 def _community() -> Any:
     from jason.community import community
 
@@ -150,6 +158,7 @@ def answer_intake_question(question_id: str, answer: str, by: str, data_dir: Pat
     if not by.strip():
         return {"error": f"cannot answer {question_id}: an answer names who gave it (by)"}
     root = _root(data_dir)
+    _write_banner(root)
     with hold(Resource.STORE, "intake-asks", timeout=120, purpose="answer_intake_question"):
         asks = intake.load(root)
         if not any(a.id == question_id for a in asks):
@@ -245,6 +254,7 @@ def record_completion(key: str, due: str, by: str, evidence: str, done_on: str =
 
     if not any(a.key == key for a in assignments(_community())):
         return {"error": f"no assignment {key}"}
+    _write_banner(_root(data_dir))
     try:
         row = task.record_done(_root(data_dir), key, date.fromisoformat(due),
                                date.fromisoformat(done_on) if done_on else date.today(), by, evidence)
@@ -581,6 +591,7 @@ def onboarding_confirm(question_id: str, by: str, data_dir: Path | None = None) 
     if not by.strip():
         return {"error": f"cannot confirm {question_id}: a confirmation names who gave it (by)"}
     root = _root(data_dir)
+    _write_banner(root)
     with hold(Resource.STORE, "intake-asks", timeout=120, purpose="onboarding_confirm"):
         asks = intake.load(root)
         try:

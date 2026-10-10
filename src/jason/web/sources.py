@@ -299,6 +299,7 @@ def templates(args: Args) -> dict[str, Any]:
     import os
     import shlex
 
+    from jason.community.profile import profile_name
     from jason.community.template_values import lint, profile_values
     from jason.community.templates import TemplateKind, body_markdown
     from jason.mcp.county import _data_dir
@@ -306,7 +307,7 @@ def templates(args: Args) -> dict[str, Any]:
     from jason.tasks.template_gen import templates as rows
 
     community = _community()
-    state = load_state(_data_dir(None), os.environ.get("JASON_PROFILE", "mystique"))
+    state = load_state(_data_dir(None), profile_name())
     found = rows(community, state)
     kind = args.get("kind", "").strip()
     if not kind:

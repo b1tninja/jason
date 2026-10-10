@@ -363,7 +363,7 @@ def run_job(data_dir: Path, job: Job, *, python: str = sys.executable, env_file:
         else:
             # Unbuffered, so `jason jobs show` follows a long job as it prints.
             env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
-                   **({"JASON_PROFILE": profile} if profile else {})}
+                   **({"JASON_PROFILE": profile, "JASON_COMMUNITY": profile, "JASON_COMMUNITY_VIA": "job row"} if profile else {})}
             proc = subprocess.Popen([python, "-m", "jason.cli", *argv], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                     env=env, cwd=os.getcwd())
             with _connect(data_dir) as conn:

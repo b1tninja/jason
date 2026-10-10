@@ -11,7 +11,7 @@ Today nothing in jason runs on a timer. [jobs.md](jobs.md) tells a person to cre
 
 ## The shape
 
-One process per installation, `jason serve`, runs three parts:
+One process per installation, `jason serve`, runs three parts (tenancy.md: in a portal each community is its own set of processes, a web and a worker with its scheduler, over its own volume; `--all` stays for a PC that serves a few communities):
 
 | Part | What it does | Today |
 |---|---|---|
@@ -115,7 +115,7 @@ Logs: `data/<profile>/jobs/logs/<id>.log` (exists), `data/<profile>/serve.log` (
    - The heartbeat is `<profile data>/jobs/heartbeat.json`, written every 30 seconds and when a lane takes or finishes a job; `jason daemon status` calls one older than 90 seconds stale.
    - `jason daemon stop` writes `<profile data>/jobs/drain.json`; the process drains that community and ends when every community it serves is drained. A request from before the process started is cleared at start.
    - The task is "At startup" (a minute after boot), runs as the person with no password stored (S4U), restarts every minute on failure, and has no time limit. Creating it needs a terminal run as administrator. Task Scheduler restarts a task that fails; a process that hangs is not restarted, only shown stale.
-   - The web serves the active profile; `--all` runs every profile's worker beside it.
+   - The web serves the active profile; `--all` runs every profile's worker beside it. (tenancy.md: the web is community-bound, `jason serve --community KEY` in phase 3.)
 4. Incremental Google reads: Drive `changes.list` from a saved start page token, Gmail `history.list` from the stored `historyId` (2 units a call against 6,000 a minute per user), Calendar `syncToken`. Today Drive re-lists every file and Gmail reads by `newer_than:`.
 5. Leases with fencing tokens, for when the data moves to a container volume.
 

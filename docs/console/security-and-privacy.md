@@ -75,7 +75,7 @@ A person on the roster can sign in with their Google Workspace account (`jason.w
 
 Without `--dev`, being an admin gives no view-as.
 
-**A portfolio in one console: not yet.** One jason-web serves one community (the active profile). A manager with several communities runs a jason-web for each until jason serves more than one profile at once ([mvp.md](mvp.md#open-decisions), decision 14).
+**A portfolio in one console: not yet.** One jason-web serves one community (the active profile). A manager with several communities runs a jason-web for each. tenancy.md: the portal keeps this shape, one process per community behind a gateway, with the portfolio as an instance-level list that only decides what the switcher offers, and no session that spans communities ([tenancy.md](../tenancy.md#5-the-web-portal); [mvp.md](mvp.md#open-decisions), decision 14).
 
 Without sign-in set up, or with no one signed in and sign-in not required, the console behaves as before (below), except that no file or document opens (Roles, file and document access).
 

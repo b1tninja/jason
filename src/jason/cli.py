@@ -12,8 +12,12 @@ from pathlib import Path
 def _bill_sources() -> tuple[str, ...]:
     """The bill sources `--source` accepts: the two utilities, then each vendor portal in the specification."""
     from jason.community import community as active
+    from jason.community.profile import ProfileNotFound
 
-    return ("smud", "idoxs", *(p.key for p in active().vendor_portals()))
+    try:
+        return ("smud", "idoxs", *(p.key for p in active().vendor_portals()))
+    except ProfileNotFound:      # no community chosen (or a wrong name): `jason use KEY`, `jason cite`, --help still run
+        return ("smud", "idoxs")
 
 
 def _agent(args: argparse.Namespace):
@@ -3495,6 +3499,10 @@ def build_parser() -> argparse.ArgumentParser:
         prog="jason",
         description="Jason HOA agent — PayHOA and utility administration",
     )
+    # Read before the subcommand by main() (jason.tenancy.pull_community_flag); listed here so --help shows it.
+    parser.add_argument("--community", dest="global_community", metavar="KEY", default=None,
+                        help="the community this command serves (before the subcommand); otherwise JASON_COMMUNITY, "
+                             "the project's .env, or `jason use KEY` (docs/tenancy.md)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     login = sub.add_parser(
@@ -4811,12 +4819,46 @@ def _apply_temp_dir(args: argparse.Namespace) -> None:
             raise
 
 
+def _choose_community_flag(argv: list[str] | None) -> list[str] | None:
+    """The global ``--community KEY`` (before the subcommand): taken out of ``argv`` and put into effect for this
+    process and the programs it starts (``jason.tenancy.choose_community``). A key that is no installed profile stops
+    the command with exit code 2, listing the installed ones."""
+    from jason.community.profile import installed_profiles
+    from jason.tenancy import choose_community, pull_community_flag
+
+    rest, key = pull_community_flag(sys.argv[1:] if argv is None else argv)
+    if not key:
+        return rest
+    names = sorted(row["name"] for row in installed_profiles())
+    if key.strip().lower() not in names:
+        print(f"Error: no profile {key!r} is installed here (installed: {', '.join(names) or 'none'})", file=sys.stderr)
+        raise SystemExit(2)
+    choose_community(key)
+    return rest
+
+
+def _write_banner(args: argparse.Namespace) -> None:
+    """Before a command that writes (anything given ``--yes``) runs, say which community it will change and where its
+    data is: ``community: KEY (from SOURCE); data: PATH`` on standard error (``jason.tenancy.write_banner``)."""
+    if getattr(args, "yes", False) is True:
+        from jason.tenancy import write_banner
+
+        write_banner(getattr(args, "env", None))
+
+
 def main(argv: list[str] | None = None) -> None:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    from jason.community.profile import CommunityNotChosen
+
     try:
+        argv = _choose_community_flag(argv)
+        parser = build_parser()
+        args = parser.parse_args(argv)
         _apply_temp_dir(args)
+        _write_banner(args)
         code = args.func(args)
+    except CommunityNotChosen as exc:     # no community chosen and the shim is off: never a guess
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
     except Exception as exc:  # noqa: BLE001 — CLI surface
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

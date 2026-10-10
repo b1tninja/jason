@@ -9,6 +9,12 @@ os.environ["JASON_SPEC_DIR"] = str(Path(__file__).parent / "fixtures" / "spec")
 # The tests are written against the mystique profile, whatever profile this machine's .env chooses.
 os.environ["JASON_PROFILE"] = "mystique"
 os.environ.pop("JASON_PROFILE_DIR", None)
+# Which community is chosen is JASON_PROFILE here (the old spelling, read after JASON_COMMUNITY): a developer's own
+# JASON_COMMUNITY, flag, or shim setting must not change a test, and the one-line notices stay out of the output
+# (tests/test_tenancy.py and tests/test_community_choice.py test them with their own settings).
+for _name in ("JASON_COMMUNITY", "JASON_COMMUNITY_VIA", "JASON_DEFAULT_COMMUNITY_SHIM"):
+    os.environ.pop(_name, None)
+os.environ["JASON_COMMUNITY_NOTICED"] = "shim,alias"
 
 # JASON_TEMP_DIR (environment or .env) puts scratch, and pytest's tmp_path (PYTEST_DEBUG_TEMPROOT, which pytest-xdist's
 # workers inherit), on that drive. Unset, nothing changes. pytest prunes only the pytest-of-<user> folders it made.
@@ -55,6 +61,18 @@ def _no_statute_fetch(monkeypatch):
     """A statute missing from a test's shelf stays a miss: no test spawns the lawlibrary worker (tests/test_statute_fetch.py
     turns the read-through on with a fake worker)."""
     monkeypatch.setenv("JASON_AUTHORITIES_FETCH", "0")
+
+
+@pytest.fixture(autouse=True)
+def _keep_the_community_choice(monkeypatch):
+    """A test that starts `jason serve --profile X` or `jason --community X` makes the code set the community's
+    environment variables itself (jason.tenancy.choose_community); they are put back after every test."""
+    for name in ("JASON_COMMUNITY", "JASON_PROFILE", "JASON_COMMUNITY_VIA", "JASON_COMMUNITY_NOTICED"):
+        if name in os.environ:
+            monkeypatch.setenv(name, os.environ[name])
+        else:
+            monkeypatch.setenv(name, "")
+            monkeypatch.delenv(name)
 
 
 @pytest.fixture(autouse=True)

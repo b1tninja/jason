@@ -69,7 +69,7 @@ jason/<scope>/<community or "instance">/<integration>/<name>
 **Token rules** (Google's own guidance and RFC 9700):
 - Refresh tokens are encrypted at rest, kept off the browser, and never logged.
 - A new refresh token is saved before the access token it came with is used, under the version check or the store lock.
-- The web flow is the authorization-code flow with PKCE even for a confidential client, a one-time `state` bound to the server session **and the community**, and a `nonce` for OpenID Connect. One callback path (`/auth/<provider>/callback`) serves every community; the community travels in the server-side `state`, never in the URL.
+- The web flow is the authorization-code flow with PKCE even for a confidential client, a one-time `state` bound to the server session **and the community**, and a `nonce` for OpenID Connect. One callback path (`/auth/<provider>/callback`) serves every community; the community travels in the server-side `state`, never in the URL. tenancy.md: with a subdomain per community the callback is on the community's own origin, which is the redirect URI that community registered.
 - jason notices the ways a Google token dies: unused for six months; a Gmail-scoped token after the user changes their password; the 101st token for one user on one client (the oldest is dropped silently); seven days for any app left in "Testing" that asks for more than `openid email profile`. Each becomes "needs sign-in", never a silent gap.
 - A community that leaves has its tokens revoked and its vault prefix deleted.
 
@@ -111,7 +111,7 @@ The alternatives, for later:
 - **A Gmail-only community** (no Workspace) is not supported (decided 2026-10-05): it could not use an Internal app, only an unverified External one with a warning screen and fewer than 100 users. A community needs Google Workspace. And never "Testing" for Drive or Gmail: those tokens die in seven days.
 
 **The setup guide becomes the dialog.** The steps in [setup.md](setup.md#google-workspace) are the dialog's content, changed in four places:
-1. **The client is a Web application**, not a Desktop app: a hosted jason cannot receive a Desktop client's loopback redirect. Its authorized redirect URI is `https://<jason's host>/auth/google/callback` (and `http://127.0.0.1:8080/auth/google/callback` on this PC).
+1. **The client is a Web application**, not a Desktop app: a hosted jason cannot receive a Desktop client's loopback redirect. Its authorized redirect URI is `https://<the community's origin>/auth/google/callback`, one per community (tenancy.md) (and `http://127.0.0.1:8080/auth/google/callback` on this PC).
 2. **The client goes into the vault under the community's path** (`jason integrations import google-workspace client_secret.json --yes --delete-file`), never into `.env`.
 3. **The first sign-in happens in the browser,** from the dialog, with the account jason uses (its mailbox, or the signed-in officer's), and its token is stored under that account's path.
 4. **The scopes come from the capabilities switched on,** read-only first; turning a write capability on asks for one more consent.

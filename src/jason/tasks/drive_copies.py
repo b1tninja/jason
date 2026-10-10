@@ -200,9 +200,10 @@ def _template_ids(root: Path) -> frozenset[str]:
     """The Drive ids of the profile's letter templates (built or adopted), or none when the profile cannot be read."""
     try:
         from jason.community import community
+        from jason.community.profile import profile_name
         from jason.tasks.template_gen import load_state, templates
 
-        state = load_state(Path(root), os.environ.get("JASON_PROFILE", "mystique"))
+        state = load_state(Path(root), profile_name())
         return frozenset(t.drive_id for t in templates(community(), state) if t.drive_id)
     except Exception:  # noqa: BLE001 - a profile that cannot be read places no template
         return frozenset()

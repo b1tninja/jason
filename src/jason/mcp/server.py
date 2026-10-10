@@ -370,32 +370,75 @@ def tools_for(profile: str = "") -> tuple:
     return tuple(by_name[name] for name in PROFILES[wanted])
 
 
+def _option(args: list[str], flag: str) -> str | None:
+    """The value after ``flag`` (or in ``flag=value``) on the command line, else None."""
+    for i, arg in enumerate(args):
+        if arg == flag and i + 1 < len(args):
+            return args[i + 1]
+        if arg.startswith(flag + "="):
+            return arg.split("=", 1)[1]
+    return None
+
+
 def _profile() -> str:
-    """``--profile NAME`` on the command line, else ``JASON_MCP_PROFILE``, else every tool."""
+    """The tool set: ``--tools NAME``, else ``JASON_MCP_TOOLS``, else the deprecated ``--profile NAME`` (it names a tool
+    set, not a community; a message says so) or ``JASON_MCP_PROFILE``, else every tool."""
     import os
     import sys
 
     args = sys.argv[1:]
-    if "--profile" in args:
-        index = args.index("--profile")
-        if index + 1 < len(args):
-            return args[index + 1]
+    named = _option(args, "--tools")
+    if named is not None:
+        return named
+    if os.environ.get("JASON_MCP_TOOLS"):
+        return os.environ["JASON_MCP_TOOLS"]
+    old = _option(args, "--profile")
+    if old is not None:
+        print("jason-mcp: --profile names a tool set and is deprecated; use --tools "
+              f"{old} (the community is --community KEY)", file=sys.stderr)
+        return old
     return os.environ.get("JASON_MCP_PROFILE", "")
 
 
+def _community_arg() -> str:
+    """``--community KEY`` on the command line ("" when absent)."""
+    import sys
+
+    return (_option(sys.argv[1:], "--community") or "").strip()
+
+
+def instructions_for(key: str, name: str = "") -> str:
+    """What the server tells its client first. It begins ``Community: KEY.``: one server serves one community
+    (docs/tenancy.md), and no tool takes a community argument."""
+    whose = f" This server answers for {name} only." if name else " This server answers for this community only."
+    return (f"Community: {key}.{whose} Do not carry a fact from one server to another's. No tool takes a community: it "
+            "was fixed when the server started. Each tool carries its caveats; repeat them. A confidential file is held "
+            "back unless asked; a reading or a hit is evidence, not a pin; check an answer that quotes with "
+            "verify_quotes before giving it. A tool that writes a person's record needs `by`.")
+
+
 def build(profile: str = "", *, community: Any = None, data_dir: Path | None = None) -> Any:
-    """The server for a profile: its tools; under ``all`` and ``governance`` the record addresses as resources
+    """The server for a tool set: its tools; under ``all`` and ``governance`` the record addresses as resources
     (``jason.mcp.resources``); and under ``all``, ``governance``, and ``onboarding`` the onboarding prompts
-    (``jason.mcp.prompts``)."""
+    (``jason.mcp.prompts``). The server serves ONE community: its name is ``jason-KEY`` and its instructions begin
+    ``Community: KEY.``."""
     try:
         from mcp.server.mcpserver import MCPServer
     except ImportError as exc:
         raise SystemExit(
             'The mcp package is not installed. pip install -e ".[mcp]"'
         ) from exc
+    from jason.community.profile import profile_name
     from jason.mcp import prompts, resources
 
-    server = MCPServer("jason")
+    key = profile_name()
+    try:
+        from jason.community import community as active
+
+        whose = str(getattr(community if community is not None else active(), "name", "") or "")
+    except Exception:  # noqa: BLE001 - a profile that cannot be read still names its key
+        whose = ""
+    server = MCPServer(f"jason-{key}", instructions=instructions_for(key, whose))
     for tool in tools_for(profile):
         server.add_tool(tool)
     wanted = (profile or "all").strip().lower()
@@ -407,8 +450,23 @@ def build(profile: str = "", *, community: Any = None, data_dir: Path | None = N
 
 
 def main() -> None:
+    import sys
+
+    from jason.community.profile import CommunityNotChosen, installed_profiles
+    from jason.tenancy import choose_community
+
+    key = _community_arg()
+    if key:
+        names = sorted(row["name"] for row in installed_profiles())
+        if key.lower() not in names:
+            raise SystemExit(f"jason-mcp: no profile {key!r} is installed here (installed: {', '.join(names) or 'none'})")
+        choose_community(key)
     _working_directory()
     from jason.config import apply_temp_dir_or_exit
 
     apply_temp_dir_or_exit()
-    build(_profile()).run(transport="stdio")
+    try:
+        build(_profile()).run(transport="stdio")
+    except CommunityNotChosen as exc:
+        print(f"jason-mcp: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

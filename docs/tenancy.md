@@ -1,6 +1,6 @@
 # One community on a machine, many in a portal: how jason behaves in each, and where they meet
 
-Status: design (2026-10-10). Nothing in this page is built unless it says so. It settles how the command line (`jason`), the MCP server (`jason-mcp`), and `jason serve` behave when they serve **one** association, how the same code behaves as a **multi-tenant portal** for many, and what the two share. It builds on [profiles.md](profiles.md) (a profile is one association), [integrations-design.md](integrations-design.md) (the vault, instance and community integrations), [scheduler-daemon-design.md](scheduler-daemon-design.md) (the daemon and its leases), [deployment-research.md](deployment-research.md) (cells, volumes, the cost of each), [onboarding-ux.md](onboarding-ux.md) (the communities screen), and the console's [security-and-privacy.md](console/security-and-privacy.md) (roles, data levels, the private view). The examples use a made-up "Example Village HOA" (`example`).
+Status: design (2026-10-10); **phase 1 built (2026-10-10), see [Phase 1: what was built](#phase-1-what-was-built)**. Nothing else in this page is built unless it says so. It settles how the command line (`jason`), the MCP server (`jason-mcp`), and `jason serve` behave when they serve **one** association, how the same code behaves as a **multi-tenant portal** for many, and what the two share. It builds on [profiles.md](profiles.md) (a profile is one association), [integrations-design.md](integrations-design.md) (the vault, instance and community integrations), [scheduler-daemon-design.md](scheduler-daemon-design.md) (the daemon and its leases), [deployment-research.md](deployment-research.md) (cells, volumes, the cost of each), [onboarding-ux.md](onboarding-ux.md) (the communities screen), and the console's [security-and-privacy.md](console/security-and-privacy.md) (roles, data levels, the private view). The examples use a made-up "Example Village HOA" (`example`).
 
 ## The idea in one line
 
@@ -20,7 +20,7 @@ Three words are used with one meaning each:
 
 The CLI, `jason-mcp`, and optionally `jason serve` for one association, on one machine or in one container.
 
-- **Which community.** `JASON_PROFILE` (or `--community`, [below](#3-the-cli)) names it. The data folder is `<JASON_DATA_DIR>` for the default profile or `<JASON_DATA_DIR>/<key>/` for any other ([profiles.md](profiles.md#each-profiles-data)); `PAYHOA_CATALOG` in `.env` may move it.
+- **Which community.** `JASON_COMMUNITY` (or `--community`, [below](#3-the-cli); `JASON_PROFILE` is the old name and still works) names it. The data folder is `<JASON_DATA_DIR>` for the default profile or `<JASON_DATA_DIR>/<key>/` for any other ([profiles.md](profiles.md#each-profiles-data)); `PAYHOA_CATALOG` in `.env` may move it.
 - **Credentials.** In that community's vault prefix (`jason/community/<key>/...`, [integrations-design.md](integrations-design.md#the-vault)), Keeper on a PC. The machine's own settings (scratch, caches, where the data lives) are in `~/.jason/.env`.
 - **People.** The person at the terminal. Their name goes on a write as `--by NAME`; the audit log records the operating-system user beside it (`os:<user>`, `via: cli`). A signed-in console adds Google accounts for the board's officers.
 - **No community picker.** There is nothing to pick. A command that cannot tell which community it serves stops and says so ([3](#3-the-cli)).
@@ -140,7 +140,7 @@ In this order, first one set wins, and `jason which` prints the winner and where
 2. the environment, `JASON_COMMUNITY`, else `JASON_PROFILE` (the same setting; `JASON_COMMUNITY` is the new spelling, `JASON_PROFILE` keeps working);
 3. the project's `.env`;
 4. the **current context**, if the person set one (below), in the user config `~/.jason/.env`;
-5. the only profile this machine has, if there is exactly one, *and* a line on standard error saying so.
+5. the only profile this machine has, if there is exactly one, *and* a line on standard error saying so. **Built with one addition:** while the compatibility shim is on (the default), several installed profiles and no choice means the built-in default profile, with the same line ([phase 1](#phase-1-what-was-built)).
 
 **None configured, or more than one could apply.** The command stops with exit code 2 before it reads a store or opens a connection:
 
@@ -160,13 +160,14 @@ An operator who runs several communities from one machine switches by a **named 
 | Command | What it does |
 |---|---|
 | `jason communities` | lists the communities this machine can load, the current one marked (names and data folders; no content) |
-| `jason use KEY` | sets the current context: writes `JASON_PROFILE=KEY` in `~/.jason/.env` (a person's act; it prints the file it changed) |
+| `jason use KEY` | sets the current context: writes `JASON_COMMUNITY=KEY` in `~/.jason/.env` (a person's act; it prints the file it changed) |
 | `jason use --show` / `jason which` | prints the community, its data folder, the vault prefix, the user config, and where each came from |
 | `JASON_COMMUNITY=KEY jason ...` | one shell, one community, without touching the file: the safest habit for a script |
 
 **Rules that keep the data apart:**
 - **Every command that writes** prints one line first, on standard error: `community: Example Village HOA (example), data C:\...\example`. A write run through a context set days ago shows which community it will change before it does.
 - **A write across a changed context is refused in a script.** `--yes` with a context taken from the user config (not the flag, the environment, or the project) asks for `--community KEY` too when standard input is not a terminal. A person at a terminal sees the line and may proceed; a script must be explicit.
+- **Built in phase 1:** the write line is printed for anything given `--yes` (and for a console or MCP write). The refusal of a script's `--yes` under a saved context is **not** built (open).
 - **A job** carries its community in its row and runs as that community (built).
 - **`--community` is on every command** that reads a store, a connection, or a vault; one that cannot honor it says so. A command that names two communities does not exist (a comparison across communities is not a feature; [the rule](#the-idea-in-one-line)).
 
@@ -208,8 +209,8 @@ Three kinds of work, and the CLI treats them differently:
 
 `jason-mcp` is a stdio server over the stores on disk; it calls no PayHOA, Google, or Keeper ([mcp.md](mcp.md)). Its **tool sets** (`board`, `governance`, `onboarding`, and all) are not communities, and the flag that picks one is called `--profile` today, which collides with the profile that *is* a community. Going forward:
 
-- **`--tools SET`** picks the tool set (`--profile SET` and `JASON_MCP_PROFILE` keep working as aliases and are described as the tool set).
-- **`--community KEY`** (or `JASON_COMMUNITY`) picks the community, by the CLI's precedence above.
+- **`--tools SET`** picks the tool set (`--profile SET` and `JASON_MCP_PROFILE` keep working as aliases and are described as the tool set; `--profile` prints a deprecation message). **Built.**
+- **`--community KEY`** (or `JASON_COMMUNITY`) picks the community, by the CLI's precedence above. **Built.**
 
 ### One server per community
 
@@ -221,8 +222,8 @@ A client that serves several communities registers **one server per community**:
     "jason-sample-board":       { "command": "jason-mcp", "args": ["--community", "sample",  "--tools", "board"] } } }
 ```
 
-- **The server's name carries the community** (`jason-example`), and its `instructions` begin: "This server answers for Example Village HOA only." Every tool's result carries `community: "example"` at its top, so a pasted answer says whose it is.
-- **No `community` argument on any tool.** A tool that took one would let a model, or a prompt hidden in a document, ask for the other community by naming it. The community is fixed when the server starts, by the person who configured the client. **Never both:** a server does not have an argument *and* a configured community, and one that does is rejected by a test.
+- **The server's name carries the community** (`jason-example`), and its `instructions` begin: "Community: example. This server answers for Example Village HOA only." **Built.** Every tool's result carries `community: "example"` at its top, so a pasted answer says whose it is (**not built**: phase 2).
+- **No `community` argument on any tool.** A tool that took one would let a model, or a prompt hidden in a document, ask for the other community by naming it. The community is fixed when the server starts, by the person who configured the client. **Never both:** a server does not have an argument *and* a configured community, and one that does is rejected by a test (`tests/test_tenancy.py::test_no_mcp_tool_takes_a_community`, built).
 - **A caller cannot cross.** There is no tool that lists, names, or opens another community. `jason://` addresses resolve inside the started community only.
 - **Caveats repeat**, as they do now ("Each tool carries its caveats. Repeat them"): a confidential file is held back unless asked; a reading or a hit is evidence, not a pin; an answer that quotes is checked with `verify_quotes` first. A multi-community client adds one more, said once in the server's instructions: *the answer is for this community; do not carry a fact from one server to another's.*
 - **Writes need `by`.** The three tools that write a person's record to `data/` refuse a call without `by`. On a local server `by` is a claim, labeled as in [3](#attribution-and-the-approvals-one--and-two-person-rules). On a hosted server `by` comes from the token and a conflicting value is refused.
@@ -391,8 +392,8 @@ Each phase is small, and each says what it proves.
 
 | # | Phase | What changes | What it proves |
 |---|---|---|---|
-| 1 | **Single-community is explicit, and isolation is tested** | `jason which`, `jason communities`; the community choice and its refusal when none or several; `--community` on every command that reads a store (alias `--profile` kept); the `DEFAULT_PROFILE` built-in replaced by "the one installed profile"; `tests/test_tenancy.py` (the two-community test, same interpreter, then separate); the module-state lint with its baseline; the jail (`assert_inside`) at store open | a second profile on one disk crosses nothing, and no new module state can be added unnoticed |
-| 2 | **Contexts and an MCP that names its community** | `jason use`; the context line on every write; `jason-mcp --community` and `--tools`; the server name, instructions, and result `community` key; no `community` argument on any tool, tested | one operator, many communities, and a model cannot reach across |
+| 1 | **Single-community is explicit, and isolation is tested (built 2026-10-10; see [what was built](#phase-1-what-was-built))** | `jason which`, `jason communities`; the community choice and its refusal when none or several; `--community` on every command that reads a store (alias `--profile` kept); the `DEFAULT_PROFILE` built-in replaced by "the one installed profile"; `tests/test_tenancy.py` (the two-community test, same interpreter, then separate); the module-state lint with its baseline; the jail (`assert_inside`) at store open | a second profile on one disk crosses nothing, and no new module state can be added unnoticed |
+| 2 | **Contexts and an MCP that names its community** | (`jason use`, the write line, `jason-mcp --community` and `--tools`, the server name and instructions, and the no-`community`-argument test came in phase 1); what remains: the result `community` key, and the script refusal | one operator, many communities, and a model cannot reach across |
 | 3 | **A community-bound web** | `jason serve --community KEY` serves only KEY; session and cookie bound to the community; `/api/health` states the key; `/api/communities` filtered by who may see it | two web processes on two ports, one cookie jar, no session accepted by the other |
 | 4 | **A gateway and the instance app** | the router (subdomain per community), the instance door and its sign-in client, the manager's switcher and the signed exchange; the roster split (operator, community administrator); instance MCP | one front door; the operator sees states and no content; a portfolio manager moves between communities with a fresh, community-bound session each time |
 | 5 | **Hosted foundations** | a vault backend with a policy per community prefix; a volume per community; the identity stamp check at start; backups and restore per community; logging with the community in every line; the fair-share GPU lock; `cost.jsonl` | a restore, a lock, a vault read, and a log line each stay in their community |
@@ -401,6 +402,35 @@ Each phase is small, and each says what it proves.
 | 8 | **The owner's page** | the unit-scoped route tree and its sign-in, if the board wants it | an owner reaches their unit and nothing else |
 
 Phases 1 and 2 are useful on one PC with no portal. Phases 3 to 6 are what a hosted deployment needs. Nothing in 1 to 6 changes a store's format.
+
+## Phase 1: what was built
+
+Single-community is the explicit, tested mode of the CLI and `jason-mcp`, and a second community on the same disk is shown to cross nothing.
+
+**One resolver.** `jason.community.profile.resolve_community()` is pure (it reads the environment and the two `.env` files and loads no profile) and returns the name and where it came from. `profile_name()` and `community()` use it; their signatures are unchanged. Precedence, first set wins:
+
+| # | Source | Reported as |
+|---|---|---|
+| 1 | the global `--community KEY` flag, before the subcommand (`jason --community KEY SUBCOMMAND ...`; it sets `JASON_COMMUNITY` and `JASON_COMMUNITY_VIA` for the process and what it starts) | `--community flag` |
+| 2 | `JASON_COMMUNITY` in the environment | `JASON_COMMUNITY` |
+| 3 | `JASON_PROFILE` in the environment (the old name; noted once on standard error) | `JASON_PROFILE (old name)` |
+| 4 | the project's `.env`: `JASON_COMMUNITY`, then `JASON_PROFILE` | `project .env, ...` |
+| 5 | the user config `~/.jason/.env` (`JASON_CONFIG`): `JASON_COMMUNITY`, then `JASON_PROFILE` | `user config, ...` |
+| 6 | the shim: the only installed profile, else the built-in default unless `JASON_DEFAULT_COMMUNITY_SHIM=0` | `the only installed profile`, `built-in default` |
+
+With nothing chosen and the shim off, `CommunityNotChosen` stops the command with exit code 2 and the message of [section 3](#3-the-cli); a data folder is never guessed either (`default_data_dir` and `private.profile_of` re-raise it). Commands that need no community (`jason use`, `jason which`, `jason communities`, `--help`) still run: building the parser no longer needs the profile.
+
+**Commands.** `jason use` shows the community and its source. `jason use KEY` writes `JASON_COMMUNITY=KEY` to the user config (`jason.config.set_user_config_value`, which keeps every other line), prints `wrote JASON_COMMUNITY=KEY to PATH`, refuses a profile that is not installed (exit 2), and says when a nearer source still wins. `jason use --list` and `jason communities` list the installed profiles with the current one marked. `jason which` is `jason use` without a key.
+
+**The write line.** Anything given `--yes` prints first, on standard error, `community: KEY (from SOURCE); data: PATH`. The CLI does it once in `cli.main` (`jason.tenancy.write_banner`), the console in `jason.web.guard` for every write that passes the guard, and the three MCP tools that write a person's record before they write. A write with no community chosen stops before it runs.
+
+**MCP.** The server is named `jason-KEY` and its instructions begin `Community: KEY.`. `--tools board|governance|onboarding` picks the tool set; `--profile` and `JASON_MCP_PROFILE` stay as aliases (`--profile` prints a deprecation message); `--community KEY` picks the community. No tool takes a community (tested over `ALL_TOOLS`).
+
+**The isolation test** (`tests/test_tenancy.py`, `tests/tenancy_support.py`). Two throwaway profiles carry a sentinel in the private facts, the PayHOA catalog, the classified library, an outline, the intake questions, a job, and a file in each folder jason writes to. Fourteen public reads (the profile, lessons, private facts, settings, the catalog search, the library, the outline, intake, jobs, the data listing, lock names, and three console loaders) run alpha, beta, alpha in one interpreter, then as separate processes. The test also checks, by Python's audit events, that serving one community opens no file of the other, that one community's lock does not block the other's, and that the harness finds a deliberate leak and names the module. **Result today: none of those reads crosses.** What phase 2 must still change is what the reads cannot show: the list `process_global` in `tests/fixtures/tenancy_state.json` (the community as a process setting, `.env` values applied to every community, the one scratch folder, the shared access folder, the shared lock folder). A read that crosses later is listed under `crosses` there with its module; a new one fails the test, and one that stops crossing must be removed.
+
+**The module-state lint** (`jason.community.tenancy_state`, run by the same test file). It reads the syntax of `src/jason` for module-level mutable containers, `global` singletons, caches whose key holds no profile or path, writes to the settings that name the community, `Path("data")`, and default arguments that ask for the community. The ones that exist are in `tests/fixtures/tenancy_state.json` with a status (`keyed`, `shared`, `program-start`) and a one-line reason; a new one fails the test, and a cleared one must be removed (`python -m jason.community.tenancy_state --update`). None is `process-global`.
+
+**Decided in phase 1.** (a) The compatibility shim stays: this PC's installation depends on the built-in default, so a missing choice prints one line on standard error per run and `JASON_DEFAULT_COMMUNITY_SHIM=0` turns the default off. (b) The data folder layout is unchanged: the built-in default's folder is still `<data root>/`, any other's `<data root>/<key>/` ([profiles.md](profiles.md#each-profiles-data)). (c) `jason use` is a person's command with no `--yes`: it prints exactly what it wrote. (d) The jail (`assert_inside`) is not part of phase 1. The flag is global, so every command honors it, but a subcommand's own `--community` or `--profile` (`jason cadence`, `jason vault`, `jason serve`) keeps its meaning.
 
 ## Axioms this keeps
 
@@ -414,7 +444,7 @@ Phases 1 and 2 are useful on one PC with no portal. Phases 3 to 6 are what a hos
 
 1. **Process per community, or one process for all.** Recommended: per community, with a gateway; one process later only if the two-community test passes unchanged.
 2. **The URL scheme.** Recommended: a subdomain per community (needs a wildcard certificate); path prefix as the fallback.
-3. **The CLI's context.** `jason use` writing the user config, with the stderr line on every write; or an environment-only choice with no saved context.
+3. **The CLI's context.** `jason use` writing the user config, with the stderr line on every write; or an environment-only choice with no saved context. **Built as recommended** (both exist: the saved context, and `JASON_COMMUNITY=KEY jason ...` for one shell).
 4. **A CLI against a remote portal.** Recommended: local disk only for now; a narrow, read-only remote later.
 5. **Two-person kinds in the portal.** Recommended: the second signature only from a second signed-in session, as the board's recorded policy; on a PC a labeled claim.
 6. **The operator's access to a community.** Recommended: no standing access; break-glass by the community's grant, time-limited and logged.
@@ -423,11 +453,11 @@ Phases 1 and 2 are useful on one PC with no portal. Phases 3 to 6 are what a hos
 9. **The owner's page.** Whether it exists in jason, and its sign-in: none, a single-use link, or Google.
 10. **Exports and secrets.** Recommended: reconnect by default; an encrypted bundle only on the administrator's request; the retention period before deletion.
 11. **The fair-share rule** for the GPU, and whether a community may buy a lane of its own.
-12. **Whether the default profile built into the code may stay** for the existing PC install during phase 1 (a compatibility shim with a warning) or is removed at once.
+12. **Whether the default profile built into the code may stay** for the existing PC install during phase 1 (a compatibility shim with a warning) or is removed at once. **Decided in phase 1 (for the user to confirm): it stays as a shim.** A missing choice is made visible (a line on standard error each run) and `JASON_DEFAULT_COMMUNITY_SHIM=0` turns it off. When to remove it is open.
 
 ## Not part of this pass
 
-- Code: `jason which`, `jason use`, `jason community ...`, `jason.tenancy`, the gateway, the instance app, and the tests are named here and not built.
+- Code: `jason community ...`, the jail (`jason.tenancy.assert_inside`), the gateway, and the instance app are named here and not built. Phase 1's code is `jason.tenancy`, `jason.community.profile.resolve_community`, `jason.commands.use`, `jason.community.tenancy_state`, `tests/test_tenancy.py`, and `tests/test_community_choice.py`.
 - The vault backend for a hosted deployment, the choice of the host, and prices ([credential-store-research.md](credential-store-research.md), [deployment-research.md](deployment-research.md)).
 - A billing system between the operator and a community.
 - Moving the stores off SQLite.

@@ -103,7 +103,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return 2
     names = _names(args)
     if args.profile:
-        os.environ["JASON_PROFILE"] = args.profile        # the web part and every job serve this community
+        from jason.tenancy import choose_community
+
+        choose_community(args.profile)                    # the web part and every job serve this community
     dirs = {n: serve.profile_data_dir(n, args.env) for n in names}
     web, info = None, None
     if not args.no_web:

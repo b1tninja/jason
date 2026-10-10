@@ -79,6 +79,12 @@ def install(app: Flask, *, hosts: Iterable[str] = (), token: str | None = None) 
         sent = request.headers.get(TOKEN_HEADER) or request.cookies.get(COOKIE) or ""
         if not _same(sent, token):
             return _refuse(403, f"a write carries this server's token ({TOKEN_HEADER}, from GET /api/session)")
+        try:                                   # which community this write changes (docs/tenancy.md); never blocks a request
+            from jason.tenancy import write_banner
+
+            write_banner()
+        except Exception:  # noqa: BLE001
+            pass
         return None
 
     @app.after_request

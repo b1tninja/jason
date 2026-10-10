@@ -1,0 +1,163 @@
+{
+ "state": {
+  "jason.approvals.docref:container:_CATALOG": {
+   "status": "keyed",
+   "reason": "Drive listing by the data folder it was read from, with the file's version"
+  },
+  "jason.approvals.registry:container:_registered": {
+   "status": "shared",
+   "reason": "action kinds are code registered at import; the same for every community"
+  },
+  "jason.community.contract_terms:container:_PREPARED": {
+   "status": "shared",
+   "reason": "keyed by a digest of the text; holds only what was computed from that text"
+  },
+  "jason.community.document_models:cache:_class_version": {
+   "status": "shared",
+   "reason": "a reader class's source digest; code, not data"
+  },
+  "jason.community.document_models:container:REGISTRY": {
+   "status": "shared",
+   "reason": "document readers registered at import; code, the same for every community"
+  },
+  "jason.community.document_models:global:_LOADED": {
+   "status": "shared",
+   "reason": "a flag that the reader modules are imported; code"
+  },
+  "jason.community.incidents:cache:_address_patterns": {
+   "status": "keyed",
+   "reason": "keyed by the profile's streets, which are the argument"
+  },
+  "jason.community.lexicon:cache:_frequencies": {
+   "status": "shared",
+   "reason": "an English word list by language; public"
+  },
+  "jason.community.licenses:container:_CUSTOMERS": {
+   "status": "shared",
+   "reason": "keyed by a hash of the text; holds only names read from that text"
+  },
+  "jason.community.models.contracts_insurance:container:_LIBRARY_CACHE": {
+   "status": "keyed",
+   "reason": "keyed by the data folder and the document kind"
+  },
+  "jason.community.models.invoices:cache:_street_address": {
+   "status": "keyed",
+   "reason": "keyed by the profile's streets, which are the argument"
+  },
+  "jason.community.models.invoices:container:_NAMES_CACHE": {
+   "status": "keyed",
+   "reason": "keyed by the community object and its data folder"
+  },
+  "jason.community.ocr:container:_READY": {
+   "status": "shared",
+   "reason": "whether the local model server answers; compute, no community data"
+  },
+  "jason.community.outline_align:cache:_nearest": {
+   "status": "shared",
+   "reason": "a token against a fixed label set; no data"
+  },
+  "jason.community.passage_index:container:_MEMO": {
+   "status": "keyed",
+   "reason": "keyed by the data folder, the file's version, the scope, and the model"
+  },
+  "jason.community.profile:container:_LOADED": {
+   "status": "keyed",
+   "reason": "loaded profile classes by name; one per community, never merged"
+  },
+  "jason.community.quote_check:container:_MEMO": {
+   "status": "keyed",
+   "reason": "keyed by the index file's path and version"
+  },
+  "jason.community.reviews:container:_HINTS": {
+   "status": "shared",
+   "reason": "a record class's field types; code"
+  },
+  "jason.community.reviews:container:_VERSIONS": {
+   "status": "shared",
+   "reason": "a digest of check source files; code"
+  },
+  "jason.community.revision_detection:cache:_runs_of": {
+   "status": "shared",
+   "reason": "keyed by the text; holds shingles of that text only"
+  },
+  "jason.community.tax:global:_COOKIE_JAR": {
+   "status": "shared",
+   "reason": "a county's public session file; no community data"
+  },
+  "jason.config:environ:tempfile.tempdir": {
+   "status": "program-start",
+   "reason": "apply_temp_dir at program start; one scratch drive for the process (phase 7: per community)"
+  },
+  "jason.config:global:_SYSTEM_TEMP": {
+   "status": "program-start",
+   "reason": "the system temp folder noted once at program start"
+  },
+  "jason.google.workspace:container:_noted": {
+   "status": "keyed",
+   "reason": "communities already warned about the installation client, by community key"
+  },
+  "jason.locks:container:_held": {
+   "status": "keyed",
+   "reason": "locks held by this thread, by the lock's name, which carries the community"
+  },
+  "jason.tasks.drive_copies:container:_HEARING_IDS": {
+   "status": "keyed",
+   "reason": "keyed by the file's path (under the data folder) and its version"
+  },
+  "jason.tasks.form_discovery:cache:_compiled": {
+   "status": "shared",
+   "reason": "a compiled regular expression by its text"
+  },
+  "jason.tasks.invoice_review:container:_PLACES": {
+   "status": "keyed",
+   "reason": "keyed by the data folder and the store's version"
+  },
+  "jason.tasks.packets:container:FORM_CLOSING": {
+   "status": "shared",
+   "reason": "an empty constant list the letter builder reads; never filled"
+  },
+  "jason.tasks.reserves:container:_LATEST": {
+   "status": "keyed",
+   "reason": "keyed by the data folder's resolved path and the files' versions"
+  },
+  "jason.tasks.statute_fetch:container:_misses": {
+   "status": "shared",
+   "reason": "statute lookups that missed, by statute; public law"
+  },
+  "jason.tasks.vendor_files:container:_ROOT": {
+   "status": "keyed",
+   "reason": "keyed by the Drive client object, which is one community's account"
+  },
+  "jason.vault.resolver:container:_noted": {
+   "status": "shared",
+   "reason": "fallback sources already reported once, by source name"
+  },
+  "jason.web.access:container:_MAIL_FLAGS": {
+   "status": "keyed",
+   "reason": "keyed by the data folder and the file's version"
+  },
+  "jason.web.access:container:_PLACES": {
+   "status": "keyed",
+   "reason": "keyed by the report's path and its version"
+  },
+  "jason.web.access:container:_SIGNALS": {
+   "status": "keyed",
+   "reason": "keyed by the meeting folder and its files' versions"
+  },
+  "jason.web.extra.owner_view:container:_STUDIES": {
+   "status": "keyed",
+   "reason": "keyed by the data folder and the studies' versions"
+  }
+ },
+ "crosses": {},
+ "process_global": {
+  "jason.community.profile:resolve_community": "the community is a process setting: JASON_COMMUNITY / JASON_PROFILE in os.environ, then the two .env files; one interpreter serves one community at a time (phase 7 replaces it with a context)",
+  "jason.config:Settings.load": "the project .env and the user config apply to every community in the process: PAYHOA_CATALOG, PAYHOA_ORG_ID, SMUD_DB_PATH and the *_record_uid ids set there override each profile's own defaults (installation-wide, not per community)",
+  "jason.config:data_root": "JASON_DATA_DIR and JASON_SPEC_DIR are process-wide roots; the community's folder is derived under them by name",
+  "jason.config:apply_temp_dir": "one scratch folder for the process (tempfile.tempdir and TEMP), not one per community; the design wants <temp>/<key>/",
+  "jason.access:access_dir": "admins.json and managers.json sit in <data root>/access, shared by every community on the machine: the instance-level roster by design (a manager's portfolio), not a community's",
+  "jason.locks:lock_dir": "one lock folder per machine; names carry the community for accounts and stores, and the GPU lock is shared on purpose",
+  "jason.secrets:login_to_vault": "one Keeper session per process; a community's credentials are read by its vault path, but the session is the operator's",
+  "jason.cli:_choose_community_flag": "--community sets os.environ for the process and the programs it starts (program start)"
+ }
+}

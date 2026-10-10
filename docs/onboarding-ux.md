@@ -30,7 +30,7 @@ then spends weeks matching what trickles back against it. Three things make it h
 
 ## The portal
 
-`#/communities`: one card per profile jason can load, with the active one marked. Each card shows the stage and
+`#/communities`: one card per profile jason can load (the installed profiles; a process serves one community, [tenancy.md](tenancy.md)), with the active one marked. Each card shows the stage and
 the progress behind it: accounts connected (which service credentials are set, as yes/no, never a value), profile
 facts supplied (how many `Community` methods return something), records pinned against the 5200 inventory,
 developer deliveries found, library files classified, and open gaps. A community is **set up** when the accounts

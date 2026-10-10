@@ -64,6 +64,26 @@ def user_config_path() -> Path:
     return Path(named).expanduser() if named else Path.home() / ".jason" / ".env"
 
 
+def set_user_config_value(key: str, value: str) -> Path:
+    """Set ``key=value`` in the user config (``user_config_path``), keeping every other line as it was: the line that
+    sets ``key`` is replaced in place, else one is appended. Creates the file and its folder. Returns the path. A
+    person's act (``jason use``); nothing else in jason writes the user config."""
+    import re
+
+    path = user_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    line = f"{key}={value}"
+    pattern = re.compile(rf"^\s*(export\s+)?{re.escape(key)}\s*=", re.IGNORECASE)
+    hit = next((i for i, existing in enumerate(lines) if pattern.match(existing)), None)
+    if hit is None:
+        lines.append(line)
+    else:
+        lines[hit] = line
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def env_file_values(env_file: str | Path | None = None) -> dict[str, str | None]:
     """The settings the .env files give: the user config (``user_config_path``) as the base and the project's .env
     (``resolve_env_path``) over it, each key as written. An unreadable file gives nothing."""
@@ -109,9 +129,11 @@ def _is_default_profile(profile: str = "") -> bool:
     """Whether ``profile`` (the active one by default) is the default profile. Reading the name loads no profile; a name
     that is not a profile's counts as the default, as ``default_data_dir`` reads it."""
     try:
-        from jason.community.profile import DEFAULT_PROFILE, profile_name
+        from jason.community.profile import DEFAULT_PROFILE, CommunityNotChosen, profile_name
 
         return (profile or profile_name()) == DEFAULT_PROFILE
+    except CommunityNotChosen:
+        raise                      # never guess a folder when no community is chosen
     except Exception:  # noqa: BLE001
         return True
 
@@ -122,9 +144,11 @@ def default_data_dir(profile: str = "") -> Path:
     ``profile`` defaults to the active one; reading its name loads no profile."""
     root = data_root()
     try:
-        from jason.community.profile import DEFAULT_PROFILE, profile_name
+        from jason.community.profile import DEFAULT_PROFILE, CommunityNotChosen, profile_name
 
         name = profile or profile_name()
+    except CommunityNotChosen:
+        raise                      # never guess a folder when no community is chosen
     except Exception:  # noqa: BLE001 - a name that is not a profile's leaves the first profile's folder
         return root
     return root if name == DEFAULT_PROFILE else root / name

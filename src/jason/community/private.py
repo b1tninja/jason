@@ -47,9 +47,11 @@ def profile_of(profile: str = "") -> str:
     if profile:
         return profile
     try:
-        from jason.community.profile import profile_name
+        from jason.community.profile import CommunityNotChosen, profile_name
 
         return profile_name()
+    except CommunityNotChosen:
+        raise
     except Exception:  # noqa: BLE001 - a name that is not a profile's reads as the default, as the data folder does
         return default_profile()
 
