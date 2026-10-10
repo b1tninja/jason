@@ -19,6 +19,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from jason import limits
 from jason.community.key_documents import (
     KEY_DOCUMENTS,
     max_upload_bytes,
@@ -470,12 +471,12 @@ def upload(key: str, *, by: str, name: str = "", data: bytes | None = None, base
         if not source.is_file():
             raise ValueError(f"{path}: no such file on this machine")
         if source.stat().st_size > cap:
-            raise ValueError(f"{source.name} is over {cap // (1024 * 1024)} MB; put it on Drive and link it there")
+            raise limits.refusal("upload.max_bytes", source.stat().st_size, cap)
         name = name or source.name
         data = source.read_bytes()
     elif base64_body:
         if len(base64_body) > (cap // 3 + 2) * 4 + 4:
-            raise ValueError(f"the file is over {cap // (1024 * 1024)} MB; put it on Drive and link it there")
+            raise limits.refusal("upload.max_bytes", len(base64_body) // 4 * 3, cap)
         try:
             data = base64.b64decode(base64_body.split(",", 1)[-1] if base64_body.startswith("data:") else base64_body, validate=True)
         except (ValueError, TypeError) as exc:

@@ -1,8 +1,8 @@
 # Configurable limits: what an operator and an administrator may change, and what they may not
 
-Status: design (2026-10-10). Nothing in this page is built except what the first section says. It settles how jason's limits (an upload's size, a job's pages, a mailing's ceiling) are named, layered, stored, changed, shown, enforced, and audited, for one association on one machine and for many in a portal. It builds on [tenancy.md](tenancy.md) (a community is the unit of isolation; the instance is what is not any community's), [setup.md](setup.md) (the machine's settings and the user config), [record-intake.md](record-intake.md) (the first limits: an upload's size and the automatic read of a split), [integrations-design.md](integrations-design.md) (the vault and the rate floors), [scheduler-daemon-design.md](scheduler-daemon-design.md) (lanes, the worker, cadences and their floors), and the console's [instance and integrations handoff](console/handoff-instance-and-integrations.md) and [security-and-privacy.md](console/security-and-privacy.md). Examples use made-up keys and a made-up "Example Village HOA" (`example`).
+Status: design (2026-10-10), **phases 1 and 2 built** (the registry and resolver, the write path and the trail: `src/jason/limits.py`, `jason limits`; [the decisions taken](#decisions-taken-in-phases-1-and-2) are at the end). Phase 3 is begun: `upload.max_bytes` is enforced through the registry's words at every upload point. Phases 4 to 7 are design only. It settles how jason's limits (an upload's size, a job's pages, a mailing's ceiling) are named, layered, stored, changed, shown, enforced, and audited, for one association on one machine and for many in a portal. It builds on [tenancy.md](tenancy.md) (a community is the unit of isolation; the instance is what is not any community's), [setup.md](setup.md) (the machine's settings and the user config), [record-intake.md](record-intake.md) (the first limits: an upload's size and the automatic read of a split), [integrations-design.md](integrations-design.md) (the vault and the rate floors), [scheduler-daemon-design.md](scheduler-daemon-design.md) (lanes, the worker, cadences and their floors), and the console's [instance and integrations handoff](console/handoff-instance-and-integrations.md) and [security-and-privacy.md](console/security-and-privacy.md). Examples use made-up keys and a made-up "Example Village HOA" (`example`).
 
-**What is being built elsewhere.** A sibling change adds `jason.limits`: a registry of limit records (key, default, minimum, maximum, unit, description), `effective(settings)` returning a value and its source (`default`, `env`, `instance`, `community`), the first two limits (`upload.max_bytes`, default 100 MB; `split.auto_read`, default on), and a read-only `jason limits`. This page is the design that registry grows into. Where the two differ, the registry's code wins until this page's phase 1 lands, and the difference is recorded here.
+**What was built first.** (Now grown into phases 1 and 2; see the status line.) A sibling change added `jason.limits`: a registry of limit records (key, default, minimum, maximum, unit, description), `effective(settings)` returning a value and its source (`default`, `env`, `instance`, `community`), the first two limits (`upload.max_bytes`, default 100 MB; `split.auto_read`, default on), and a read-only `jason limits`. This page is the design that registry grows into. Where the two differ, the registry's code wins until this page's phase 1 lands, and the difference is recorded here.
 
 ## The idea in one line
 
@@ -384,6 +384,32 @@ Phases 1 to 3 are useful on one PC with no portal. A new limit after phase 3 is 
 8. **How a limit is announced.** When the operator lowers a ceiling under a community's value, the community's administrator is told on the Limits screen and in the next digest, not by mail. Recommended: that, with the change in the community's trail as an instance act.
 9. **Whether a limit's findings feed the board's digest** or stay on the Limits screen. Recommended: the screen, plus one digest line for a repeated refusal.
 10. **Retention duties.** What the association must keep is read with `jason cite` and decided by the board and counsel; the registry's `retention.*` minimums are a safety floor for running jobs, not a statement of that duty. For the board.
+
+## Decisions taken in phases 1 and 2
+
+The open decisions above were answered with their **recommended** answers; the code adds these choices where the page was silent.
+
+| # | Decision | Taken |
+|---|---|---|
+| 1 | Instance file in a portal | `~/.jason/limits.json`, beside the user config (so `JASON_CONFIG` moves both in tests); `JASON_LIMITS_FILE` moves it alone. The trail sits beside the file (`limits-log.jsonl`) |
+| 2 | Environment layer | read as the operator's own: `JASON_LIMIT_<KEY>` in the process is `env`; the same name in the project's `.env` or the user config stays `instance` (as it was before this change). Neither sets a ceiling; only the instance file does. In a portal a community's cell would not read the environment for a key the community may set: not built (phase 7) |
+| 3 | Community administrator on the CLI | a claim: `--by` is recorded as given, with `who: claim: <operating-system user>`; no extra approval |
+| 4 | Second person for a raised limit | no |
+| 5 | The first keys | the two that exist (`upload.max_bytes`, `split.auto_read`), each now a full record |
+| 6 | Overrides | none built (phase 5); the `override` and `override_max` fields exist and `check(..., act=)` accepts the act and ignores it |
+| 7 | Cost limits | not built |
+
+Choices the page left open:
+
+- **Order of layers.** Default, then the profile's `Community.limits()` (still `community`), `.env`/user config, process environment, the instance file, the community file. The last that sets a value wins, so the community file is the final word inside the instance's ceiling. The profile's `Community.limits()` is held to the same ceiling.
+- **The ceiling.** An instance entry with only a `value` is also the ceiling (as written above), so a community can then only go lower; to leave communities room, the operator sets `--ceiling`. For a switch the instance's value is the ceiling: an instance `off` keeps the switch off for every community.
+- **What "stricter" means when a file cannot be read.** The code's default is the baseline. The value is the stricter (smaller number, or switch off) of the default and the values that could be read; an unreadable instance file means no ceiling above the default. So an unreadable file never loosens anything, and never tightens below what a readable layer chose. An empty file counts as unreadable; a missing file is no layer and no note. A file with a value that does not parse for one key is unreadable for that key.
+- **`effective()` fields.** `value`, `source`, `clamped` (a bool), `note` (the clamp or the unreadable file, in words), `minimum`, `maximum`, `ceiling`, `set` (by, at, reason of a file's winning entry), `layers`, `unreadable`. Clamping is on read as well as on write.
+- **Writes.** `set_limits` and `reset_limits` take the store lock for the file, stage the new file beside it, append the trail line, then rename the file into place; a failure before the rename leaves the old file and no line. A file that cannot be read is never written over. A reset logs `to: null`. The trail line carries `at, kind, scope, key, from, from_source, to, unit, reason, by, via, who, role` (and `ceiling`); no file name or path. Not built: `clamped` and `refused` trail kinds, and the instance trail's line for a community-targeted act (the portal's).
+- **Refusal text.** `LimitReached` (a `ValueError`, so existing handlers still catch it) carries `key, amount, limit, source, words`. `when_hit` is a template with `{amount}` (rounded up), `{limit}`, `{ceiling}`. Callers whose cap is the smaller of two readings use `limits.refusal(key, amount, cap)`; a plain comparison uses `limits.check`. The upload refusal no longer names the file.
+- **Not yet.** The console screens (phase 4), the web server's request ceiling and the temp-drive guard at the upload point, the other enforcement points, and `jason-mcp`'s `limits` tool.
+
+The lint (`tests/test_limits_used.py`) finds a bare copy of a size limit's default or maximum, a registered key that nothing reads, and a read of an unregistered key. Two literals of the same size that are other limits not yet rows (a stored-file copy and a read-back fetch) are listed there with their reason, and the test fails when one is no longer needed.
 
 ## Axioms this keeps
 

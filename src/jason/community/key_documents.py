@@ -622,8 +622,9 @@ class KeyDocumentStore:
             raise ValueError(f"{original} is empty")
         cap = max_upload_bytes()
         if len(data) > cap:
-            raise ValueError(f"{original} is {len(data) // (1024 * 1024)} MB; the limit is {cap // (1024 * 1024)} MB. "
-                             "Put it on Drive and link it there")
+            from jason import limits
+
+            raise limits.refusal("upload.max_bytes", len(data), cap)
         digest = hashlib.sha256(data).hexdigest()
         target = self.files / digest[:16] / original
         if target.exists():

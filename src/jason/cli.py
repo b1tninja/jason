@@ -4840,7 +4840,7 @@ def _choose_community_flag(argv: list[str] | None) -> list[str] | None:
 def _write_banner(args: argparse.Namespace) -> None:
     """Before a command that writes (anything given ``--yes``) runs, say which community it will change and where its
     data is: ``community: KEY (from SOURCE); data: PATH`` on standard error (``jason.tenancy.write_banner``)."""
-    if getattr(args, "yes", False) is True:
+    if getattr(args, "yes", False) is True and getattr(args, "scope", "") != "instance":      # an instance act names no community
         from jason.tenancy import write_banner
 
         write_banner(getattr(args, "env", None))

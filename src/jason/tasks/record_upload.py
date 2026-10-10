@@ -76,8 +76,7 @@ def check(name: str, data: bytes, cap: int | None = None) -> tuple[str, str]:
     if not data:
         raise ValueError(f"{clean} is empty")
     if len(data) > cap:
-        raise ValueError(f"{clean} is {len(data) // (1024 * 1024)} MB; the limit is {cap // (1024 * 1024)} MB. "
-                         "Split the scan or put it on Drive and pick it there")
+        raise limits.refusal("upload.max_bytes", len(data), cap)
     head = data[:1024] if suffix == ".pdf" else data[:16]
     if not any((m in head) if suffix == ".pdf" else head.startswith(m) for m in magics):
         raise ValueError(f"{clean} does not read as {what}: its contents are something else, so it was not kept")
@@ -119,11 +118,11 @@ def _bytes(name: str, data: bytes | None, base64_body: str, path: str, cap: int)
         if not source.is_file():
             raise ValueError(f"{path}: no such file on this machine")
         if source.stat().st_size > cap:
-            raise ValueError(f"{source.name} is over {cap // (1024 * 1024)} MB; split it or put it on Drive and pick it there")
+            raise limits.refusal("upload.max_bytes", source.stat().st_size, cap)
         return name or source.name, source.read_bytes()
     if base64_body:
         if len(base64_body) > (cap // 3 + 2) * 4 + 4:
-            raise ValueError(f"the file is over {cap // (1024 * 1024)} MB; split it or put it on Drive and pick it there")
+            raise limits.refusal("upload.max_bytes", len(base64_body) // 4 * 3, cap)
         try:
             raw = base64.b64decode(base64_body.split(",", 1)[-1] if base64_body.startswith("data:") else base64_body, validate=True)
         except (ValueError, TypeError) as exc:
