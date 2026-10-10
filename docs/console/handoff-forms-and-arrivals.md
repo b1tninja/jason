@@ -209,6 +209,23 @@ A form candidate (`jason discover-forms --show ID --json`; `--list --json` gives
 | A held candidate | `status: "held"`; `hold` requires a reason |
 | A form with a handler that is not written | `handler` names one of the five general handlers; its `built` is false and a campaign may still be opened for it (not in the JSON) |
 
+### Routes built (2026-10-10; `jason.web.extra.request_views`)
+
+Loaders over what the CLI and the MCP tools read, so the console and a terminal show the same numbers. Keys, not paths (`GET /api/<key>`):
+
+| Key | Reads | Takes | Replaces the proposed |
+|---|---|---|---|
+| `responses` | the arrivals the last `jason responses --check` kept, with each channel's last check | `state`, `channel`, `unit`, `request`, `days` | `/api/arrivals` |
+| `response` | one arrival: reading (evidence), keyed answers, acts, what is left | `id` (`gmail:ID`, `payhoa:ID`, `mail:ID`, `forms:ID`) | `/api/arrivals/<id>` |
+| `outstanding-responses` | who was sent a copy and has no answer, by owner and unit | `request` | part of `/api/cycle` |
+| `campaign-status` | a campaign's funnel by channel, outstanding, unreachable | `code` | part of `/api/cycle` |
+| `followups` | the dated actions with their basis and state ([handoff-followups.md](handoff-followups.md)) | `days`, `campaign`, `kind`, `state` | |
+| `form-library` | the forms the profile offers, each with status and findings | `tier` | `/api/forms` |
+
+- **Who.** A signed-in person whose office opens owners' names and units (P2); anyone else gets the sentence `access.may_see` gives (403), and the owner view never reads them.
+- **An arrival's own words are held.** `response` returns the arrival (who, unit, channel, state, attachments' names) to P2, but its reading, keyed answers, and acts only where the viewer may see an owner's private material (P3, in the private view); otherwise `held: true` with the reason. Each opening is logged to `access/served.jsonl`, never its contents; an opening that cannot be logged is not served.
+- **Read only.** No write route: marking a follow-up done, confirming a reading, and applying an answer stay terminal steps (`Command`) until a sign-in-guarded writer exists. Not built: `/api/cycle` (the per-owner join of asked, delivered, responded, reachable), `/api/instance/gaps`, `/api/form-candidates`, and a counts-only variant for directors.
+
 ### Drawn on this page, not yet producible (proposed, not built)
 
 - Everything in **Arrivals** beyond the forms lane: lanes and their counts, the party class and kind as words, the clock ("respond by Oct 18, the sender's date"), the correction act that may become a proposed rule row, "needs a person" and its waiting time. `Needs a person` is the unknown lane of [arrivals-design.md](../arrivals-design.md) build step 3.

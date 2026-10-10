@@ -884,6 +884,12 @@ EXTRA_LOADERS: dict[str, str] = {
     "instance-service": "jason.web.extra.instance:service",  # the administrator's Instance: each community's heartbeat, lease, lanes, next runs; disk only
     "instance-integrations": "jason.web.extra.instance:integrations",  # ?scope=instance&vault=1: connections' states and vault paths, never a value
     "instance-schedules": "jason.web.extra.instance:schedules",  # every community's cadences with floor, adoption, next run; read without seeding
+    "responses": "jason.web.extra.request_views:responses",  # ?state=&channel=&unit=&request=&days=: the arrivals the last check kept; names and units, P2
+    "response": "jason.web.extra.request_views:response",  # ?id=: one arrival; its reading, keyed answers, and acts only where P3 opens (private view), logged
+    "outstanding-responses": "jason.web.extra.request_views:outstanding",  # ?request=: who was sent a copy and has no answer, by owner and unit
+    "campaign-status": "jason.web.extra.request_views:campaign",  # ?code=: a campaign's funnel by channel, outstanding, unreachable
+    "followups": "jason.web.extra.request_views:followups",  # ?days=&campaign=&kind=&state=: the dated actions, each with its basis; sends and completes nothing
+    "form-library": "jason.web.extra.request_views:form_library",  # ?tier=: the forms the profile offers with status and findings
     "associations": "jason.web.extra.discovery:associations",
     "documents-located": "jason.web.extra.discovery:documents_located",
     "key-documents": "jason.web.extra.key_documents:key_documents",

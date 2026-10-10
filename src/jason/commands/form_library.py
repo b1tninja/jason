@@ -64,6 +64,9 @@ def _form_dict(f: Any, report: Any) -> dict[str, Any]:
             "findings": [x.as_dict() for x in report.for_form(f.key)]}
 
 
+form_json = _form_dict            # the console's form-library loader reads the same row
+
+
 def _listing(args: argparse.Namespace, resolved: Any, report: Any) -> int:
     from jason.community.form_library import Tier
 
