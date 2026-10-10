@@ -85,6 +85,7 @@ MODULES: tuple[str, ...] = (
     "preflight",
     "serve",
     "integrations",
+    "google",
     "cadence",
     "life_safety",
 )

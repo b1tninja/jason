@@ -21,14 +21,17 @@ from jason.google.scopes import GOOGLE_SCOPES
 from jason.google.tokens import DRIVE, name_of_file, token_store
 
 INTEGRATION, CLIENT = "google-workspace", "oauth-client"
+NEEDS_BROWSER = "Google sign-in needs a browser. Pass interactive=True."
 
 
 def oauth_client(settings: Any, vault: Any, *, store: Any = None, community: str = "") -> tuple[str, str]:
-    """The OAuth client's id and secret: the vault path first (``store``; a ``VaultSession`` given as ``vault``
-    supplies one when ``store`` is not), else the Keeper record ``google_oauth_record_uid`` names."""
+    """The OAuth client's id and secret: the community's own vault path first (``store``; a ``VaultSession`` given as
+    ``vault`` supplies one when ``store`` is not; the profile may pin the entry's name, ``Community.google_workspace``),
+    else, while ``settings.google_installation_client`` allows (default), the Keeper record ``google_oauth_record_uid``
+    names: the installation's record, logged as not this community's. Another community's path is never read."""
+    from jason.google import workspace
     from jason.secrets import VaultSession
-    from jason.vault.keeper import KeeperStore, record_fields
-    from jason.vault.resolver import CredentialMissing, credential, credential_path, record_uids_of
+    from jason.vault.keeper import KeeperStore
 
     if not community:
         from jason.community.profile import profile_name
@@ -36,14 +39,17 @@ def oauth_client(settings: Any, vault: Any, *, store: Any = None, community: str
         community = profile_name()
     if store is None and isinstance(vault, VaultSession):
         store = KeeperStore.from_session(vault)
-    uids = record_uids_of(settings)
-    try:
-        secret = credential(community, INTEGRATION, CLIENT, store=store, record_uids=uids,
-                            load_record=lambda uid: record_fields(vault.load_record(uid)))
-    except CredentialMissing:
-        raise GoogleError(f"google_oauth_record_uid is not set (and the vault holds nothing at "
-                          f"{credential_path(community, INTEGRATION, CLIENT)})") from None
-    return _field(secret, "client_id"), _field(secret, "client_secret")
+    own = workspace.community_client(store, community)
+    if own is not None:
+        return own.client_id, own.client_secret
+    path = workspace.client_path(community)
+    if workspace.installation_allowed(settings) and workspace.installation_uid(settings):
+        found = workspace.installation_client(vault, settings)
+        if found is not None:
+            workspace.note_installation(community, path)
+            return found.client_id, found.client_secret
+    raise GoogleError(f"google_oauth_record_uid is not set (and the vault holds nothing at {path}); "
+                      "`jason google setup` stores this community's own OAuth client")
 
 
 def open_drive(
@@ -143,9 +149,7 @@ def _sign_in(
     is read back for the scopes Google granted and removed; the token is then saved through ``tokens.save``, to the
     vault alone. With no vault the sign-in writes the local file as before."""
     if not interactive:
-        raise GoogleAuthRequired(
-            "Google sign-in needs a browser. Pass interactive=True."
-        )
+        raise GoogleAuthRequired(NEEDS_BROWSER)
     # A refresh token is given once, at consent. Nothing may discard it before it is saved: the temporary copy is
     # removed only after ``tokens.save`` has put the token in the vault (or, if the vault refuses, the local file).
     if tokens.vault is None:

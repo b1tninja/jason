@@ -743,6 +743,18 @@ class IdentityProvider(Enum):
 
 
 @dataclass(frozen=True)
+class GoogleWorkspace:
+    """What a community pins about its own Google Workspace (``jason google``; docs/google-workspace-setup.md).
+    ``client`` is the name of its OAuth client entry under ``jason/community/<profile>/google-workspace/`` (empty: the
+    default, ``oauth-client``); ``domain`` the Workspace domain it expects, shown by ``jason google status``; ``note`` a
+    sentence for the administrator. All empty by default: a profile with no pins is served by the defaults."""
+
+    client: str = ""
+    domain: str = ""
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class SignInProvider:
     """One way to sign in to the console for this community: the identity provider, where its OAuth client
     (``client_id``, ``client_secret``) is kept, and the email domains whose accounts it accepts (empty: the
@@ -1015,6 +1027,12 @@ class Community(ABC):
         """Each director's and officer's term (``Term``) with the election record that set it, from the private facts
         (``data/spec/<profile>/terms.json``, read by ``jason.community.roster.terms_of``); empty until recorded."""
         return ()
+
+    def google_workspace(self) -> GoogleWorkspace:
+        """This community's own Google Workspace pins (``GoogleWorkspace``): its OAuth client's entry name, the domain
+        it expects, a note. Empty: the defaults. Its OAuth client and tokens are in its own vault paths, never another
+        community's."""
+        return GoogleWorkspace()
 
     def sign_in(self) -> tuple[SignInProvider, ...]:
         """How people sign in to the console for this community (``SignInProvider``): its own Google Workspace

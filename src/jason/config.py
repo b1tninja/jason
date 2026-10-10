@@ -253,6 +253,9 @@ class Settings:
     secured_db: Path = _in_data("secured.db")
     characteristics_db: Path = _in_data("characteristics.db")
     google_oauth_record_uid: str = ""
+    # Whether the .env record above may stand in for a community whose own vault path holds no OAuth client (default on,
+    # deprecated: `jason google adopt-installation-record` copies it to the community's path). GOOGLE_INSTALLATION_CLIENT=0 turns it off.
+    google_installation_client: bool = True
     google_oauth_client_file: Path | None = None
     google_oauth_token_file: Path = _anchored("secrets/google-token.json")
     google_notebook_url: str = ""
@@ -377,6 +380,9 @@ class Settings:
             "GOOGLE_OAUTH_RECORD_UID",
             default="",
         )
+        google_installation_client = _get(
+            values, "google_installation_client", "GOOGLE_INSTALLATION_CLIENT", default="1"
+        ).strip().lower() not in ("0", "false", "no", "off")
         google_notebook_url = _get(
             values,
             "google_notebook_url",
@@ -434,6 +440,7 @@ class Settings:
             secured_db=payhoa_catalog.parent / "secured.db",
             characteristics_db=payhoa_catalog.parent / "characteristics.db",
             google_oauth_record_uid=google_oauth_record_uid,
+            google_installation_client=google_installation_client,
             google_oauth_client_file=(
                 Path(google_client_raw) if google_client_raw else None
             ),

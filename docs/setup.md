@@ -65,7 +65,9 @@ Check the new records in Keeper, then remove the moved `*_record_uid` keys from 
 
 ## Google Workspace
 
-jason signs in as a Workspace user (SSO). The OAuth client's id and secret live in a Keeper record. The refresh token from a browser sign-in is saved in the vault (`jason/community/<profile>/google-workspace/token/drive`) and in `secrets/google-token.json`. A command reads the vault first and the file second, so a worktree or any working directory with no `secrets/` folder works once `jason vault migrate --yes` has copied the token (or after the next sign-in). Google Photos, Vault, and Tasks each keep their own token (`token/photos`, `token/vault`, `token/tasks`), so adding one never asks the others to consent again. Which scopes are asked for is in `jason.google.scopes`.
+**Each community sets up its own Google Workspace** (its own Cloud project, OAuth client and tokens, in its own vault paths): the steps are in [google-workspace-setup.md](google-workspace-setup.md), and `jason google status` shows where a community stands. The steps below are the short form.
+
+jason signs in as a Workspace user (SSO). The OAuth client's id and secret live in the community's vault entry (`google-workspace/oauth-client`); the installation's `.env` record `google_oauth_record_uid` is a deprecated fallback that `jason google adopt-installation-record` copies in. The refresh token from a browser sign-in is saved in the vault (`jason/community/<profile>/google-workspace/token/drive`) and nowhere else on disk. A command reads the vault first and the file second, so a worktree or any working directory with no `secrets/` folder works once `jason vault migrate --yes` has copied the token (or after the next sign-in). Google Photos, Vault, and Tasks each keep their own token (`token/photos`, `token/vault`, `token/tasks`), so adding one never asks the others to consent again. Which scopes are asked for is in `jason.google.scopes`.
 
 ### 1. The Cloud project and APIs
 
@@ -77,22 +79,22 @@ In the [Google Cloud Console](https://console.cloud.google.com/), select or crea
 2. Set the app name to `jason` and the support email to a Workspace address. Add the scopes in `jason.google.scopes`.
 3. Under **Credentials**, choose **Create credentials → OAuth client ID**, with the application type **Desktop app** and the name `jason`. Download the JSON.
 
-### 3. Store the client in Keeper
+### 3. Store the client in the vault
 
-1. Create a **Login** record titled `jason Google OAuth`. Add custom fields labeled exactly `client_id` and `client_secret` (hidden), and paste the values. Delete the downloaded JSON; never commit it or paste it into `.env`.
-2. Put the record UID in `.env` as `google_oauth_record_uid`. Or title the record with its vault path, `jason/community/<profile>/google-workspace/oauth-client`, in the Keeper folder `jason`, and no `.env` key is needed ([The vault](#the-vault)).
+```bash
+jason google setup --from-file client_secret_XXXX.json          # the plan; writes nothing
+jason google setup --from-file client_secret_XXXX.json --yes     # a person at a terminal
+```
 
-Do not use Keeper's JSON import on the Google download: it expects Keeper's record schema.
+This stores `client_id`, `client_secret` and `project_id` at `jason/community/<profile>/google-workspace/oauth-client` (create only; `--replace` overwrites), and never prints them. Delete the downloaded JSON afterwards; never commit it or paste it into `.env`. Do not use Keeper's JSON import on the Google download: it expects Keeper's record schema. An installation that still has the older `google_oauth_record_uid` in `.env` runs `jason google adopt-installation-record --yes` once.
 
 ### 4. Sign in once
 
-Run any Google command once with `--interactive`, for example:
-
 ```bash
-jason drive --sync --interactive
+jason google sign-in --name drive --interactive
 ```
 
-The first call with `--interactive` opens a browser at `http://127.0.0.1` for one sign-in and saves the refresh token to the vault and the local file. Later runs reuse it and never open a browser. A missing or rejected token raises `GoogleAuthRequired` at once in an unattended run. A new scope (a capability added later) asks for one more consent the same way. `jason photos --login --interactive` and `jason vault --interactive` do the same for their own tokens.
+The first call opens a browser at `http://127.0.0.1` for one sign-in and saves the refresh token to the vault alone. Any Google command with `--interactive` does the same when it has no token (`jason drive --sync --interactive`). Later runs reuse it and never open a browser. A missing or rejected token raises `GoogleAuthRequired` at once in an unattended run. A new scope (a capability added later) asks for one more consent the same way. `jason photos --login --interactive` and `jason vault --interactive` do the same for their own tokens.
 
 New Google Sites has no content API. The published site is a Drive file, so Drive can move or share it, but not edit its pages ([mystique-site.md](mystique-site.md)). The consumer NotebookLM at notebook.google.com has no API that jason can query.
 
