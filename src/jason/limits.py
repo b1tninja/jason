@@ -45,6 +45,9 @@ RESTARTS = ("none", "next_job", "next_start")
 FILE_VERSION = 1
 LOG_NAME = "limits-log.jsonl"
 FILE_NAME = "limits.json"
+ROLE_INSTANCE = "instance operator"
+ROLE_COMMUNITY = "community administrator"
+OVERRIDE_ROLES = (ROLE_COMMUNITY, ROLE_INSTANCE)
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 _UNLIMITED = frozenset({"inf", "+inf", "-inf", "infinity", "nan", "none", "null", "unlimited", "nolimit", "off-limit", ""})
@@ -53,9 +56,20 @@ _UNLIMITED = frozenset({"inf", "+inf", "-inf", "infinity", "nan", "none", "null"
 class LimitRefused(ValueError):
     """A change to a limit that is not allowed. ``nearest`` is the closest allowed value, when there is one."""
 
-    def __init__(self, message: str, nearest: Any = None):
+    def __init__(self, message: str, nearest: Any = None, key: str = ""):
         super().__init__(message)
         self.nearest = nearest
+        self.key = key
+
+    def describe(self) -> str:
+        """The refusal in words with the nearest allowed value, for a screen or a terminal."""
+        if self.nearest in (None, "") or not self.key:
+            return str(self)
+        try:
+            near = limit(self.key).format(self.nearest)
+        except Exception:  # noqa: BLE001 - an unknown key has no unit to say it in
+            return str(self)
+        return f"{self}. The nearest allowed value is {near}."
 
 
 class LimitReached(ValueError):
@@ -195,9 +209,18 @@ LIMITS: tuple[Limit, ...] = (
           kind="size", why="A very large upload fills the disk and makes the reading of a scan very slow. The limit keeps one "
                            "file from using the machine for an hour.",
           when_hit="This file is {amount}; the limit is {limit}. Nothing was saved. You can split the scan into smaller files, "
-                   "or put it on Drive and pick it there. Your community's administrator can change the limit.",
+                   "or put it on Drive and pick it there. Your community's administrator can change the limit, or allow this one "
+                   "file up to {override_max} with a reason.",
           applies_to=("tasks.record_upload.check", "tasks.record_upload._bytes", "community.key_documents.max_upload_bytes"),
-          restart="next_job"),
+          restart="next_job", override=True, override_max=250 * MB),
+    Limit("fetch.max_bytes", 100 * MB, 1 * MB, 500 * MB, "bytes",
+          "The largest file jason fetches from Drive in one act (a stored PDF or image copied for the console, or a file read "
+          "back for a record slot).",
+          kind="size", why="A very large download fills the disk and keeps the machine busy for a long time. The limit keeps one "
+                           "fetch from using the machine for an hour.",
+          when_hit="This file is {amount}; the largest jason fetches is {limit}. Nothing was copied. Open it in Google, or ask "
+                   "your community's administrator to raise the limit (the most allowed is {ceiling}).",
+          applies_to=("tasks.drive_copies.export", "tasks.record_readback._problem"), restart="next_job"),
     Limit("split.auto_read", True, None, None, "switch",
           "After a person confirms a split, queue a read-back job for each new part file (on the same lane, in the confirming "
           "person's name). Off: each part is read by hand.",
@@ -480,7 +503,8 @@ def refusal(key: str, amount: Any, limit_value: Any, *, source: str = "default",
     reading (the smaller of two limits) and has already compared; ``check`` is the one for a direct comparison."""
     l = limit(key)
     words = l.when_hit.format_map(_Words(amount=l.format(amount, up=True), limit=l.format(limit_value),
-                                         ceiling=l.format(ceiling if ceiling is not None else l.top), unit=l.unit))
+                                         ceiling=l.format(ceiling if ceiling is not None else l.top), unit=l.unit,
+                                         override_max=l.format(l.override_max) if l.override_max is not None else ""))
     return LimitReached(key, amount, limit_value, source, words)
 
 
@@ -489,16 +513,143 @@ class _Words(dict):
         return "{" + key + "}"
 
 
-def check(key: str, amount: Any, *, act: Any = None, community: Any = None, settings: Any = None, **where: Any) -> Effective:
+@dataclass(frozen=True)
+class Override:
+    """One act's request to pass a limit once (docs/instance-limits.md, the per-act override). It is the act's, never a setting:
+    ``check`` honours it only for a limit whose row allows it, up to ``override_max``, with a reason and a person in the role that
+    may confirm it, and writes one ``override`` line to the community's trail. ``allowed`` is the most this one act may carry."""
+
+    key: str
+    allowed: Any
+    reason: str
+    by: str
+    role: str = ROLE_COMMUNITY
+    via: str = "cli"
+    what: str = "an act"             # the kind of act ("an upload"), never the thing: no file name, no unit, no owner
+
+
+def override_from(act: Any) -> "Override | None":
+    """The override an act carries: an ``Override``, a dict with ``limit_override`` (the act's record), or None."""
+    if act is None:
+        return None
+    if isinstance(act, Override):
+        return act
+    held = act.get("limit_override") if isinstance(act, dict) else getattr(act, "limit_override", None)
+    if isinstance(held, Override):
+        return held
+    if isinstance(held, dict):
+        fields = {k: held[k] for k in ("key", "allowed", "reason", "by", "role", "via", "what") if k in held}
+        try:
+            return Override(**fields)
+        except TypeError:
+            return None
+    return None
+
+
+def parse_override(pair: str, *, reason: str, by: str, role: str = ROLE_COMMUNITY, via: str = "cli", what: str = "an act") -> Override:
+    """``KEY=VALUE`` (``upload.max_bytes=200MB``) as an ``Override``. Raises ``LimitRefused`` for a pair that is not one."""
+    key, eq, raw = str(pair or "").partition("=")
+    key = key.strip()
+    if not eq or not key or not raw.strip():
+        raise LimitRefused("an override is KEY=VALUE, for example upload.max_bytes=200MB")
+    l = limit(key)
+    parsed = l.parse(raw.strip())
+    if parsed is None or l.unit == "switch":
+        raise LimitRefused(f"{key}: {raw.strip()!r} is not a size or count to allow once; a switch has no override", None, key)
+    return Override(key, parsed, reason, by, role, via, what)
+
+
+def _validated_override(l: Limit, ov: Override) -> int:
+    """The most ``ov`` lets one act carry, or ``LimitRefused`` in words (with the nearest allowed value)."""
+    if not l.override or l.override_max is None:
+        raise LimitRefused(f"{l.key} cannot be passed, even once: its row allows no override", None, l.key)
+    if not str(ov.reason or "").strip():
+        raise LimitRefused(f"{l.key}: allowing it once needs a reason", None, l.key)
+    if not str(ov.by or "").strip():
+        raise LimitRefused(f"{l.key}: allowing it once needs the name of the person who allows it", None, l.key)
+    if ov.role not in OVERRIDE_ROLES:
+        raise LimitRefused(f"{l.key}: only a community administrator may allow a limit to be passed once", None, l.key)
+    allowed = l.parse(ov.allowed)
+    if allowed is None or isinstance(allowed, bool):
+        raise LimitRefused(f"{l.key}: {ov.allowed!r} is not a value to allow once", l.override_max, l.key)
+    if allowed > l.override_max:
+        raise LimitRefused(f"{l.key}: {l.format(allowed)} is more than may be allowed once, {l.format(l.override_max)}",
+                           l.override_max, l.key)
+    return int(allowed)
+
+
+def override_cap(key: str, act: Any, base: int) -> int:
+    """The largest amount ``act`` may carry for ``key``: ``base`` (the limit in force), or the act's validated override when that is
+    higher. Reads only: nothing is logged here (``check`` logs the override when it is used). Raises ``LimitRefused`` for an
+    override the row does not allow, or one without a reason, a name, or the role."""
+    l = limit(key)
+    ov = override_from(act)
+    if ov is None or ov.key != key:
+        return int(base)
+    return max(int(base), _validated_override(l, ov))
+
+
+def _trail_scope(source: str) -> str:
+    return "community" if source == "community" else "instance"
+
+
+def _try_log(scope: str, line: dict, *, community: Any = None, data_folder: Any = None, instance_file_: Any = None) -> bool:
+    """Append one line to a layer's trail; False when it could not be written (a read never fails because of it)."""
+    try:
+        _, log = _paths(scope, community, data_folder, instance_file_)
+        _append_log(log, [line])
+        return True
+    except Exception:  # noqa: BLE001 - no community chosen, a folder that cannot be written
+        return False
+
+
+def _note_clamp(l: Limit, eff: Effective, community: Any, where: dict) -> None:
+    """A read found the winning setting outside its range or ceiling: one ``clamped`` line in the layer's trail, once for each
+    setting (the same key and raw value is not written twice in a row). Best effort: the read does not depend on it."""
+    scope = _trail_scope(eff.source)
+    kw = {"community": community, "data_folder": where.get("data_folder"), "instance_file": where.get("instance_file")}
+    try:
+        history = read_log(scope, key=l.key, **kw)
+    except Exception:  # noqa: BLE001 - no community chosen: nowhere to note it
+        return
+    mine = [r for r in history if r.get("kind") == "clamped"]
+    if mine and mine[-1].get("from") == eff.raw and mine[-1].get("to") == eff.value:
+        return
+    _try_log(scope, {"at": _now(), "kind": "clamped", "scope": scope, "key": l.key, "from": eff.raw, "to": eff.value,
+                     "from_source": eff.source, "unit": l.unit, "reason": eff.note, "by": "jason", "via": "read", "who": "", "role": ""},
+             community=community, data_folder=where.get("data_folder"), instance_file_=where.get("instance_file"))
+
+
+def check(key: str, amount: Any, *, act: Any = None, community: Any = None, settings: Any = None, record: bool = True,
+          **where: Any) -> Effective:
     """The one call at an enforcement point. Returns the limit in force when ``amount`` is within it; raises ``LimitReached``
-    (a ValueError) with the words when it is over, or when a switch is off and ``amount`` is truthy. ``act`` is where a
-    per-act override would be read (phase 5; none is built, so it changes nothing yet)."""
+    (a ValueError) with the words when it is over, or when a switch is off and ``amount`` is truthy.
+
+    ``act`` may carry an ``Override`` (see there): when ``amount`` is over the limit, an override the row allows, up to its
+    ``override_max``, lets this act through once, and ``check`` writes one ``override`` line to the community's trail (``record``
+    False, for a dry run, writes none). An override the row does not allow, or one without a reason, raises ``LimitRefused``;
+    an amount past even the override raises ``LimitReached``. The override is never stored as a setting. A stored value that was
+    held to its range is noted once in the trail as ``clamped``."""
     l = limit(key)
     eff = l.effective(settings, community, **where)
+    if record and eff.clamped:
+        _note_clamp(l, eff, community, where)
     over = (not eff.value and bool(amount)) if l.unit == "switch" else int(amount) > int(eff.value)
-    if over:
-        raise refusal(key, amount, eff.value, source=eff.source, ceiling=eff.ceiling)
-    return eff
+    if not over:
+        return eff
+    ov = override_from(act)
+    if ov is not None and ov.key == key and l.unit != "switch":
+        allowed = _validated_override(l, ov)
+        if int(amount) > allowed:
+            raise refusal(key, amount, max(allowed, int(eff.value)), source="override", ceiling=eff.ceiling)
+        if record:
+            line = {"at": _now(), "kind": "override", "scope": "community", "key": key, "from": eff.value, "from_source": eff.source,
+                    "to": allowed, "amount": int(amount), "unit": l.unit, "reason": str(ov.reason).strip(), "by": str(ov.by).strip(),
+                    "via": ov.via, "who": _who(), "role": ov.role, "what": ov.what}
+            if not _try_log("community", line, community=community, data_folder=where.get("data_folder")):
+                raise LimitRefused(f"{l.key}: the override could not be recorded in this community's trail, so it was not allowed")
+        return eff
+    raise refusal(key, amount, eff.value, source=eff.source, ceiling=eff.ceiling)
 
 
 def megabytes(n: int) -> int:
@@ -592,27 +743,61 @@ def _effects(l: Limit, scope: str, before: Any, after: Any) -> str:
             + ("; the operator's ceiling still binds every community" if scope == "instance" else ""))
 
 
-def _change(scope: str, keys: dict[str, Any], *, reset: bool, ceiling: Any, reason: str, by: str, via: str, community: Any,
-            data_folder: Any, instance_file_: Any, dry_run: bool, settings: Any) -> dict[str, Any]:
+ROLE_SCOPES = {ROLE_INSTANCE: "instance", ROLE_COMMUNITY: "community"}      # the layer each role may change
+
+
+def _plan(scope: str, keys: dict[str, Any], *, reset: bool, ceiling: Any, reason: str, by: str, role: str | None, community: Any,
+          where: dict, settings: Any) -> list[dict]:
     if scope not in SCOPES:
         raise LimitRefused(f"the scope is instance or community, not {scope!r}")
+    if role is not None and ROLE_SCOPES.get(role) != scope:
+        mine = ROLE_SCOPES.get(role)
+        raise LimitRefused(f"a {role} changes the {mine} layer only; the {scope} layer is changed by the "
+                           f"{ROLE_INSTANCE if scope == 'instance' else ROLE_COMMUNITY}" if mine else
+                           f"{role!r} may not change a limit; a limit is changed by an instance operator or a community administrator")
     if not str(reason or "").strip() or not str(by or "").strip():
         raise LimitRefused("a reason and a name are required")
     if ceiling not in (None, "") and len(keys) != 1:
         raise LimitRefused("a ceiling goes with exactly one limit")
-    path, log = _paths(scope, community, data_folder, instance_file_)
-    where = {"data_folder": data_folder, "instance_file": instance_file_}
     plan: list[dict] = []
     # a community change is held to the instance ceiling as it stands now
     for key, raw in keys.items():
         l = limit(key)
         before = l.effective(settings, community, **where)
         if reset:
+            if scope not in l.scopes:
+                raise LimitRefused(f"{l.key} is not set in the {scope} layer: nothing to reset", None, key)
             plan.append({"limit": l, "key": key, "from": before.value, "from_source": before.source, "remove": True})
             continue
         inst_ceiling = before.ceiling if scope == "community" else l.top
-        parsed, new_ceiling = _validate_set(l, scope, raw, ceiling, inst_ceiling)
+        try:
+            parsed, new_ceiling = _validate_set(l, scope, raw, ceiling, inst_ceiling)
+        except LimitRefused as exc:
+            exc.key = exc.key or key
+            raise
         plan.append({"limit": l, "key": key, "from": before.value, "from_source": before.source, "to": parsed, "ceiling": new_ceiling})
+    return plan
+
+
+def _change(scope: str, keys: dict[str, Any], *, reset: bool, ceiling: Any, reason: str, by: str, via: str, community: Any,
+            data_folder: Any, instance_file_: Any, dry_run: bool, settings: Any, role: str | None = None,
+            who: str | None = None) -> dict[str, Any]:
+    where = {"data_folder": data_folder, "instance_file": instance_file_}
+    try:
+        plan = _plan(scope, keys, reset=reset, ceiling=ceiling, reason=reason, by=by, role=role, community=community, where=where,
+                     settings=settings)
+    except LimitRefused as exc:
+        # a refused change that was meant to be applied leaves a line saying so and why; a dry run writes nothing
+        if not dry_run and scope in SCOPES:
+            _try_log(scope, {"at": _now(), "kind": "refused", "scope": scope, "key": exc.key or ",".join(keys), "from": None,
+                             "to": None if reset else (next(iter(keys.values())) if len(keys) == 1 else None), "unit": "",
+                             "reason": str(reason or "").strip(), "refusal": str(exc), "by": str(by or "").strip() or "unknown",
+                             "via": via, "who": who or _who(), "role": role or (ROLE_INSTANCE if scope == "instance" else ROLE_COMMUNITY)},
+                     community=community, data_folder=data_folder, instance_file_=instance_file_)
+        raise
+    path, log = _paths(scope, community, data_folder, instance_file_)
+    held_role = role or (ROLE_INSTANCE if scope == "instance" else ROLE_COMMUNITY)
+    held_who = who or _who()
 
     def doc() -> dict[str, Any]:
         return {"dryRun": dry_run, "scope": scope, "path": str(path), "log": str(log), "reason": reason, "by": by,
@@ -650,8 +835,8 @@ def _change(scope: str, keys: dict[str, Any], *, reset: bool, ceiling: Any, reas
             for p in plan:
                 lines.append({"at": at, "kind": "reset" if p.get("remove") else "set", "scope": scope, "key": p["key"],
                               "from": p["from"], "from_source": p["from_source"], "to": None if p.get("remove") else p["to"],
-                              "unit": p["limit"].unit, "reason": reason, "by": by, "via": via, "who": _who(),
-                              "role": "instance operator" if scope == "instance" else "community administrator"})
+                              "unit": p["limit"].unit, "reason": reason, "by": by, "via": via, "who": held_who,
+                              "role": held_role})
                 if p.get("ceiling") is not None:
                     lines[-1]["ceiling"] = p["ceiling"]
             _append_log(log, lines)
@@ -689,26 +874,31 @@ def _stage(path: Path, entries: dict[str, dict]) -> str:
 
 def set_limits(changes: dict[str, Any], *, scope: str, reason: str, by: str, ceiling: Any = None, via: str = "cli",
                dry_run: bool = True, community: Any = None, data_folder: Any = None, instance_file: Any = None,
-               settings: Any = None) -> dict[str, Any]:
+               settings: Any = None, role: str | None = None, who: str | None = None) -> dict[str, Any]:
     """Set one or more limits in one layer, in one write with one reason. A dry run (the default) says what would change and
     writes nothing. Raises ``LimitRefused`` (nothing is written) for an unknown key, a layer that may not set it, a value
-    out of range, above the operator's ceiling or a ``lower_only`` default, or a missing reason or name."""
+    out of range, above the operator's ceiling or a ``lower_only`` default, or a missing reason or name. ``role`` (``instance
+    operator`` or ``community administrator``) is the role the person acts in: it may change only its own layer, and it is the
+    ``role`` of the trail line; ``who`` is the signed-in account's subject (the console), else the claim of the terminal's user.
+    A refused change that was meant to be applied leaves a ``refused`` line."""
     for key in changes:
         limit(key)
     return _change(scope, dict(changes), reset=False, ceiling=ceiling, reason=reason, by=by, via=via, community=community,
-                   data_folder=data_folder, instance_file_=instance_file, dry_run=dry_run, settings=settings)
+                   data_folder=data_folder, instance_file_=instance_file, dry_run=dry_run, settings=settings, role=role, who=who)
 
 
 def reset_limits(keys: list[str], *, scope: str, reason: str, by: str, via: str = "cli", dry_run: bool = True,
-                 community: Any = None, data_folder: Any = None, instance_file: Any = None, settings: Any = None) -> dict[str, Any]:
+                 community: Any = None, data_folder: Any = None, instance_file: Any = None, settings: Any = None,
+                 role: str | None = None, who: str | None = None) -> dict[str, Any]:
     """Remove the layer's value for each key, so the layer above (or the code's default) is in force again. It never writes the
     built-in value as if the layer chose it."""
     for key in keys:
         limit(key)
     return _change(scope, {k: None for k in keys}, reset=True, ceiling=None, reason=reason, by=by, via=via, community=community,
-                   data_folder=data_folder, instance_file_=instance_file, dry_run=dry_run, settings=settings)
+                   data_folder=data_folder, instance_file_=instance_file, dry_run=dry_run, settings=settings, role=role, who=who)
 
 
 __all__ = ["Effective", "FILE_NAME", "LIMITS", "LOG_NAME", "Limit", "LimitReached", "LimitRefused", "SOURCES", "all_limits",
            "check", "community_folder", "default", "effective", "format_value", "instance_file", "instance_listing", "limit",
-           "listing", "megabytes", "parse_value", "read_file", "read_log", "refusal", "reset_limits", "set_limits", "value"]
+           "listing", "megabytes", "parse_value", "read_file", "read_log", "refusal", "reset_limits", "set_limits", "value",
+           "OVERRIDE_ROLES", "Override", "ROLE_COMMUNITY", "ROLE_INSTANCE", "override_cap", "override_from", "parse_override"]

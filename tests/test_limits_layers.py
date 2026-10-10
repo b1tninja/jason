@@ -267,7 +267,8 @@ def test_a_reason_and_a_name_are_required_and_a_refusal_writes_nothing(where):
                            ({OPS: "5m"}, "only the instance"), ({CAP: "151"}, "above 150"), ({KEY: "50MB", CAP: "999"}, "above 150")):
         with pytest.raises(LimitRefused, match=match):
             _set(where, changes)
-    assert not comm.exists() and not (where["data_folder"] / limits.LOG_NAME).exists()
+    assert not comm.exists()                                          # nothing was set; each applied refusal left one "refused" line
+    assert {r["kind"] for r in limits.read_log("community", data_folder=where["data_folder"])} == {"refused"}
     with pytest.raises(LimitRefused) as hit:
         _set(where, {KEY: "9GB"})
     assert hit.value.nearest == 500 * MB

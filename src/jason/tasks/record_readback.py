@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from jason import limits
 from jason.community.record_slots import Pin, PinKind, Reading, Slot
 from jason.google.drive import DOCX_MIME_TYPE, FOLDER_MIME_TYPE, GOOGLE_DOC_MIME_TYPE
 from jason.tasks import record_slots as rs
@@ -39,7 +40,6 @@ from jason.tasks import record_slots as rs
 log = logging.getLogger(__name__)
 
 FOLDER = "record-intake"
-MAX_FETCH = 100 * 1024 * 1024
 TIERS = ("likely", "suggested", "conflict")
 CAVEATS = (
     "A reading is jason's, not a finding of law: a kind is a suggestion until a person confirms it, and a combined scan's "
@@ -234,8 +234,10 @@ def _problem(meta: dict[str, Any]) -> str:
         size = int(meta.get("size") or 0)
     except (TypeError, ValueError):
         size = 0
-    if size > MAX_FETCH:
-        return f"the file is over {MAX_FETCH // (1024 * 1024)} MB; jason does not fetch it"
+    try:
+        limits.check("fetch.max_bytes", size)
+    except limits.LimitReached as over:
+        return over.words
     return ""
 
 

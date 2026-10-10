@@ -19,6 +19,7 @@ from jason.mcp.discovery import TOOLS as DISCOVERY_TOOLS
 from jason.mcp.followups import TOOLS as FOLLOWUP_TOOLS
 from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
 from jason.mcp.index import recorder_around, recorder_descend, recorder_detail, recorder_priors, recorder_search
+from jason.mcp.limits import TOOLS as LIMIT_TOOLS
 from jason.mcp.record_slots import TOOLS as RECORD_SLOT_TOOLS
 from jason.mcp.response_inbox import TOOLS as RESPONSE_TOOLS
 from jason.mcp.rolls import (
@@ -333,7 +334,7 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
-ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + CITATION_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS + RECORD_SLOT_TOOLS
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + CITATION_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS + RECORD_SLOT_TOOLS + LIMIT_TOOLS
 
 # A profile is a named subset, in the order a client lists them. A client picks better from the board set: the
 # digest, the briefs, the law, and the index search, not the research tools behind them.
@@ -347,11 +348,12 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "rule_records", "rule_record",     # the association's rules as records, read only: a rule on a day, its history, the Doc beside it, its uses (governance.py)
         "followups", "campaign_status",    # what we do next and when; a campaign's funnel by intake method (followups.py)
         "record_slots", "record_slot",     # the record checklist: what the association holds, what a person answered (record_slots.py)
+        "limits",                          # the limits in force for this community, read only; a person changes one (limits.py)
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.
     # The statutes documents cite and where each stands against the authorities shelf (citations.py) belong here too.
-    "governance": tuple(tool.__name__ for tool in GOVERNANCE_TOOLS + CITATION_TOOLS),
+    "governance": tuple(tool.__name__ for tool in GOVERNANCE_TOOLS + CITATION_TOOLS + LIMIT_TOOLS),
     # Onboarding by conversation (docs/onboarding.md): the session, its questions, and the two writes, with the
     # onboard and onboard_review prompts. A small set, so a local model picks the right tool.
     "onboarding": ("onboarding_status", "next_questions", "intake_questions", "answer_intake_question",

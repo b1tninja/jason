@@ -48,14 +48,6 @@ def test_nothing_reads_a_key_the_registry_does_not_hold():
     assert not unknown, unknown
 
 
-# A literal that is the same number as a registered limit but another limit's own (not yet a row). Each is the work of its row:
-# when `fetch.max_bytes` is registered the line reads the registry and its entry here is removed (the test fails on a stale one).
-OTHER_LIMITS = {
-    "tasks/drive_copies.py": "DOWNLOAD_LIMIT: the most bytes a stored Drive file is copied (a future fetch.max_bytes), not an upload",
-    "tasks/record_readback.py": "MAX_FETCH: the most a read-back fetches (a future fetch.max_bytes), not an upload",
-}
-
-
 def test_no_bare_number_stands_for_a_registered_size_limit():
     """A size limit's default or maximum written out where its key exists is a second copy of the number."""
     numbers = {}
@@ -70,8 +62,7 @@ def test_no_bare_number_stands_for_a_registered_size_limit():
                 n = _fold(node)
                 if n in numbers:
                     found.append((path.relative_to(SRC).as_posix(), f"{path.relative_to(SRC)}:{node.lineno} is {numbers[n]}'s number; ask jason.limits"))
-    assert not [text for name, text in found if name not in OTHER_LIMITS], found
-    assert not [name for name in OTHER_LIMITS if name not in {n for n, _ in found}], "an exemption no longer needed; remove it"
+    assert not found, [text for _, text in found]
 
 
 def test_every_applies_to_point_names_a_real_module():

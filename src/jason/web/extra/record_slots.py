@@ -26,7 +26,10 @@ key of a slot is in the URL, never a file's name or id.
   never reads inline.
 
 - ``{"act": "upload", "name": "scan.pdf", "base64": "...", "period": "", "entry": "", "note": ""}``: a file from the computer,
-  at most the `upload.max_bytes` limit (100 MB unless set), a PDF, an image, or a Word file (type and size checked). The bytes are kept in jason's own store (never Drive)
+  at most the `upload.max_bytes` limit (100 MB unless set), a PDF, an image, or a Word file (type and size checked). With
+  ``"override": {"allowed": "200MB", "reason": "..."}`` the community's administrator (signed in as themselves) lets this one file
+  past the limit, up to the limit's once-only maximum (not for a key document's slot): the override is this upload's, never a
+  setting, and leaves a line in the limits trail. The bytes are kept in jason's own store (never Drive)
   and pinned; the read-back is **queued** as a job in the signed-in person's name (the page never reads inline). A server path
   is never taken from the console;
 - ``{"act": "split", "pin": ID, "parts": [{"segment": "s2", "slot": SLOT_KEY, "period": "", "entry": ""}], "note": ""}``: confirm the parts of a
@@ -159,6 +162,33 @@ def _queue_read(key: str, body: dict[str, Any], by: str, community: Any, root: A
             "note": "queued; the worker fetches the file into jason's store and reads it (jason worker --once)"}
 
 
+def _override(body: dict[str, Any], by: str) -> Any:
+    """The once-only pass of ``upload.max_bytes`` an upload asks for (``{"override": {"allowed": "200MB", "reason": "..."}}``), as a
+    ``limits.Override``, or None. Only the community's administrator, signed in as themselves, may ask: anyone else is refused in
+    words (403). It is the upload's own and is never stored as a setting."""
+    asked = body.get("override")
+    if not asked:
+        return None
+    from flask import abort, has_request_context
+
+    from jason import limits
+    from jason.web import access
+
+    if not isinstance(asked, dict):
+        raise ValueError('override is {"allowed": "200MB", "reason": "..."}')
+    if has_request_context():
+        viewer = access.signed_in()
+        if viewer.acting or not viewer.admin:
+            abort(access.refusal(403, "Only the community's administrator, signed in as themselves, may allow a file past the "
+                                      "limit. Ask your administrator."))
+    try:
+        return limits.parse_override(f"{asked.get('key') or 'upload.max_bytes'}={asked.get('allowed') or ''}",
+                                     reason=str(asked.get("reason") or ""), by=by, role=limits.ROLE_COMMUNITY,
+                                     via="console:google", what="an upload")
+    except limits.LimitRefused as exc:
+        raise ValueError("Refused: " + exc.describe()) from exc
+
+
 def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     from jason.tasks import record_acts, record_readback, record_upload
     from jason.tasks import record_slots as rs
@@ -197,7 +227,8 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             if body.get("path"):
                 raise ValueError("the console uploads the file's bytes, never a path on the server")
             out = record_upload.upload(key, name=str(body.get("name") or ""), base64_body=str(body.get("base64") or ""),
-                                       period=str(body.get("period") or ""), entry=str(body.get("entry") or ""), note=note, read=False, **kw)
+                                       period=str(body.get("period") or ""), entry=str(body.get("entry") or ""), note=note, read=False,
+                                       override=_override(body, by), **kw)
             if not dry and out.get("pin") and not out.get("already"):
                 out.update(_queue_read(key, {"pin": out["pin"]}, by, community, root))
         elif act == "split":

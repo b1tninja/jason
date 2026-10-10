@@ -579,7 +579,7 @@ def test_the_tools_write_nothing_and_make_no_network_call(board, served, monkeyp
 def test_the_tools_are_in_the_board_profile_the_full_set_and_the_python_interface():
     assert {"followups", "campaign_status"} <= set(PROFILES["board"])
     assert "followups" not in PROFILES["governance"] and "campaign_status" not in PROFILES["onboarding"]
-    assert len(PROFILES["board"]) == 47 and len(tools_for("board")) == 47
+    assert len(PROFILES["board"]) == 48 and len(tools_for("board")) == 48
     served_by_name = {t.__name__: t for t in ALL_TOOLS}
     assert served_by_name["followups"] is tools.followups and served_by_name["campaign_status"] is tools.campaign_status
     assert len(served_by_name) == len(ALL_TOOLS)

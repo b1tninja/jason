@@ -28,6 +28,8 @@ The writes are a person's and each is a **dry run** until ``--yes``:
 - ``--upload KEY --file PATH --by NAME`` keeps a file from this computer in jason's own store (never Drive; hash-addressed, at
   most the `upload.max_bytes` limit (`jason limits`; 100 MB unless set), a PDF, an image, or a Word file, checked by its first bytes) and pins it, then reads it back as ``--read`` does
   (``--no-ocr`` as there). ``--period`` and ``--entry`` as for ``--pick``. A dry run checks the file and keeps nothing.
+  ``--override upload.max_bytes=200MB --reason TEXT`` allows this one file past the limit (up to the limit's own once-only maximum, for a
+  slot that is not a key document); the override is the act's, never a setting, and a real run leaves a line in ``jason limits --log``.
 - ``--split KEY [--pin ID] --part SEGMENT=SLOT[@PERIOD][#ENTRY] ... --by NAME`` confirms parts of a combined scan's proposal (what ``--read``
   printed), each into the slot named; only the parts named are filled, each as a new file of just those pages, and a slot that
   already holds a file is a collision, shown and left alone. With no ``--part`` it prints the proposal and the slots each part fits.
@@ -229,8 +231,29 @@ def _upload(args: argparse.Namespace, community: Any, root: Any, dry: bool, to_j
     if not args.file:
         print("--upload KEY needs --file PATH (a PDF, an image, or a Word file on this computer)", file=sys.stderr)
         return 2
-    out = record_upload.upload(args.upload, path=args.file, by=args.by or "", period=args.period or "", note=args.note or "",
-                               entry=args.entry or "", dry_run=dry, ocr=not args.no_ocr, community=community, root=root)
+    override = None
+    if getattr(args, "override", None):
+        from jason import limits
+
+        if not str(args.reason or "").strip() or not str(args.by or "").strip():
+            print("--override needs --reason and --by (a limit is passed once by a named person, with a reason)", file=sys.stderr)
+            return 2
+        try:
+            override = limits.parse_override(args.override, reason=args.reason, by=args.by, via="cli", what="an upload")
+        except limits.LimitRefused as exc:
+            print("refused: " + exc.describe(), file=sys.stderr)
+            return 1
+    try:
+        out = record_upload.upload(args.upload, path=args.file, by=args.by or "", period=args.period or "", note=args.note or "",
+                                   entry=args.entry or "", dry_run=dry, ocr=not args.no_ocr, community=community, root=root,
+                                   override=override)
+    except Exception as exc:  # noqa: BLE001
+        from jason import limits
+
+        if not isinstance(exc, limits.LimitRefused):
+            raise
+        print("refused: " + exc.describe(), file=sys.stderr)
+        return 1
     if args.json:
         print(to_json(out))
         return 0
@@ -429,6 +452,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--force", action="store_true", help="with --read: read again although the file's bytes are unchanged")
     p.add_argument("--no-ocr", action="store_true", help="with --read: leave a scan unread by OCR")
     p.add_argument("--upload", metavar="KEY", help="keep a file from this computer in jason's store and pin it to this slot (with --file PATH, --by)")
+    p.add_argument("--override", metavar="KEY=VALUE", help="with --upload: allow this one file past a limit the row lets a "
+                   "community administrator pass once (upload.max_bytes=200MB; with --reason and --by; a dry run without --yes)")
     p.add_argument("--replace", metavar="KEY", help="swap this slot's file for a new one: pin or upload the new (--file), then unpin the old (--pin)")
     p.add_argument("--split", metavar="KEY", help="confirm parts of a combined scan's proposal into slots (with --part SEGMENT=SLOT, --by)")
     p.add_argument("--part", metavar="SEGMENT=SLOT", action="append", help="with --split: a part and the slot it fills (SEGMENT=SLOT@2099-06 for a series, SEGMENT=SLOT#NUMBER for a repeating row); repeat")

@@ -43,13 +43,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from jason import limits
+
 COPIES = Path("drive") / "copies"
 HOLDINGS = Path("drive") / "holdings.json"
 HEARINGS = Path("zoom") / "hearings.json"      # jason hearing's plans; a plan's notice Doc is P3
 CATALOG = Path("drive") / "files.json"
 LOCK = "drive-copies"                          # the store lock an export holds while it writes one copy
 EXPORT_LIMIT = 10 * 1024 * 1024                # Google's export limit
-DOWNLOAD_LIMIT = 100 * 1024 * 1024             # the most bytes a stored file is copied
 
 DOC = "application/vnd.google-apps.document"
 SHEET = "application/vnd.google-apps.spreadsheet"
@@ -357,9 +358,10 @@ def export(drive: Any, root: Path, file_id: str, *, via: str = "", by: str = "")
         if reused:
             record["reused"] = reused
         else:
-            if int(meta.get("size") or 0) > DOWNLOAD_LIMIT:
-                raise CopyRefused(f"{name} is too large to copy ({int(meta['size']) // (1024 * 1024)} MB); open it in "
-                                  "Google.")
+            try:
+                limits.check("fetch.max_bytes", int(meta.get("size") or 0))
+            except limits.LimitReached as over:
+                raise CopyRefused(over.words) from over
             data = drive.download_bytes(file_id)
             if mime == PDF:
                 if not data.startswith(b"%PDF"):

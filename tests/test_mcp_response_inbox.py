@@ -361,7 +361,7 @@ def test_the_tools_are_in_the_board_profile_the_full_set_and_the_python_interfac
     assert {"new_responses", "response", "outstanding_responses"} <= set(PROFILES["board"])
     assert "new_responses" not in PROFILES["governance"] and "response" not in PROFILES["onboarding"]
     assert "outstanding_responses" not in PROFILES["governance"] and "outstanding_responses" not in PROFILES["onboarding"]
-    assert len(PROFILES["board"]) == 47 and len(tools_for("board")) == 47 and tools_for("board")[0].__name__ == "board_digest"
+    assert len(PROFILES["board"]) == 48 and len(tools_for("board")) == 48 and tools_for("board")[0].__name__ == "board_digest"
     served = {t.__name__: t for t in ALL_TOOLS}
     assert served["new_responses"] is tools.new_responses and served["response"] is tools.response
     assert served["outstanding_responses"] is tools.outstanding_responses

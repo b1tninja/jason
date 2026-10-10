@@ -28,7 +28,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Callable
 
-from jason import limits
+from jason import limits, storage
 from jason.community.key_documents import key_document, max_upload_bytes, safe_name
 from jason.community.record_slots import Cardinality, PinKind
 from jason.tasks import record_readback
@@ -105,6 +105,7 @@ def _keep(root: Path, profile: str, name: str, data: bytes) -> tuple[str, str]:
         if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
             raise ValueError("a different file is already kept under that address; nothing was written")
     else:
+        storage.require_room(Path(root), len(data))
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(target.name + ".part")
         tmp.write_bytes(data)
@@ -149,10 +150,14 @@ def _entry_key(slot: Any, entry: str) -> str:
 def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None, base64_body: str = "", path: str = "",
            period: str = "", note: str = "", entry: str = "", dry_run: bool = True, read: bool = True, ocr: bool = True,
            segmenter: Callable[..., Any] | None = None, preflighter: Callable[..., Any] | None = None, private: bool = True,
-           community: Any = None, root: Path | None = None, profile: str | None = None) -> dict[str, Any]:
+           community: Any = None, root: Path | None = None, profile: str | None = None,
+           override: Any = None) -> dict[str, Any]:
     """Keep a file from the computer in jason's store and pin it to a slot, then (``read``) read it back as a pick is read. A dry
     run (the default) checks the file and says what it would write; it keeps nothing. ``path`` is for the terminal; the console
-    sends ``base64_body``."""
+    sends ``base64_body``. ``override`` (a ``limits.Override`` for ``upload.max_bytes``, made by a community administrator with a
+    reason) lets this one file past the limit, up to the row's ``override_max``: it is the act's, never a setting, and a real run
+    leaves one ``override`` line in the community's limits trail and the override on the pin. A key document's file is held to the
+    limit and takes none. The drive must also have room for the file (the temp-drive guard); no limit overrides that."""
     root = rs._root(root)
     profile = rs._profile(profile, community)
     person = rs._who(by)
@@ -160,8 +165,19 @@ def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None,
     if hidden:
         raise ValueError(f"{slot_key} is hidden by the profile: {hidden}. Nothing was written.")
     cap = cap_for(slot, community)
-    given, raw = _bytes(name, data, base64_body, path, cap)
-    clean, what = check(given, raw, cap)
+    top = cap
+    if override is not None:
+        if slot.key_document:
+            raise ValueError("A key document's file is held to the upload limit and cannot be allowed past it. Nothing was saved.")
+        top = limits.override_cap("upload.max_bytes", override, cap)
+    given, raw = _bytes(name, data, base64_body, path, top)
+    storage.require_room(Path(root), len(raw))       # the temp-drive guard speaks first; no limit or override gets past it
+    passed = None
+    if len(raw) > cap:
+        limits.check("upload.max_bytes", len(raw), act=override, community=community, record=not dry_run)
+        ov = limits.override_from(override)
+        passed = {"key": "upload.max_bytes", "limit": cap, "allowed": top, "by": ov.by, "reason": ov.reason, "at": rs._now()}
+    clean, what = check(given, raw, top)
     when = rs._period(slot, period)
     text = rs._words(note, "note", required=False)
     entry_key = _entry_key(slot, entry)
@@ -175,6 +191,8 @@ def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None,
     would = {"act": "upload", "slot": slot_key, "type": what, "size": len(raw), "sha256": digest[:12], "period": when,
              "by": person, "writes": target, "keeps": f"{record_readback.FOLDER}/{profile}/files/{digest[:16]}/",
              "entry": entry_key, "then": "read it back as a pick is read" if read else "queue the read-back"}
+    if passed:
+        would["limitOverride"] = f"{len(raw)} bytes is past the {cap}-byte limit; allowed once, up to {top} bytes, with a reason"
     if slot.cardinality is Cardinality.ONE and active and twin is None:
         would["collision"] = f"{slot_key} already holds a file; the upload is added beside it and the slot shows two holders"
     if dry_run:
@@ -195,12 +213,15 @@ def upload(slot_key: str, *, by: str, name: str = "", data: bytes | None = None,
         pin_id = "p-" + secrets.token_hex(4)
         row = {"id": pin_id, "slot": slot_key, "kind": PinKind.FILE.value, "ref": rel, "name": clean, "period": when, "by": person,
                "at": rs._now(), "note": text, "unpinned": None, "sha256": digest, "size": len(raw)}
+        if passed:
+            row["limit_override"] = passed
         rs._write_store(profile, lambda d: d["pins"].append(row), purpose="record slots: upload")
         out = {"dryRun": False, "ok": True, "pin": pin_id, "written": target, "slot": slot_key, "sha256": digest[:12], "size": len(raw),
                "alsoIn": elsewhere}
     if twin is None:
         rs._append_history(root, {"at": rs._now(), "profile": profile, "act": "upload", "slot": slot_key, "pin": out["pin"], "by": person,
-                                  "size": len(raw), "sha256": digest[:12], "period": when, "store": target})
+                                  "size": len(raw), "sha256": digest[:12], "period": when, "store": target,
+                                  **({"limit_override": passed} if passed else {})})
     out["caveats"] = list(CAVEATS)
     if read:
         out["read"] = record_readback.read(slot_key, pin=out["pin"], by=person, dry_run=False, ocr=ocr, segmenter=segmenter,

@@ -69,6 +69,48 @@ def free_bytes(path: Path | str) -> int | None:
     return None
 
 
+UPLOAD_RESERVE = 256 * 1024 ** 2     # room that must stay free on a drive after a file is kept there
+
+
+class DriveShort(ValueError):
+    """A drive cannot take a file: told in words. The temp-drive guard speaks first; a limit never overrides it."""
+
+
+def _mb(n: int) -> str:
+    return f"{n / GB:.1f} GB" if n >= GB else f"{max(1, round(n / 1024 ** 2))} MB"
+
+
+def room_problem(dest: Path | str, need: int, *, free: Callable[[Path | str], int | None] | None = None,
+                 scratch: Path | str | None = None, reserve: int = UPLOAD_RESERVE) -> str:
+    """Why ``need`` bytes cannot be kept at ``dest`` (and read from scratch afterwards) without leaving a drive under ``reserve``
+    free, or "". A drive that cannot be read is not a reason to refuse. Reads only; names a drive, never a path or a file."""
+    measure = free or free_bytes
+    if scratch is None:
+        import tempfile
+
+        scratch = tempfile.gettempdir()
+    asks: dict[str, tuple[int, int | None, str]] = {}
+    for where, owed, label in ((dest, need + reserve, "jason keeps its files"), (scratch, need, "jason works on a file")):
+        drive = drive_of(where)
+        have = measure(where)
+        total = owed + (asks[drive][0] if drive in asks else 0)
+        labels = (asks[drive][2] + " and " if drive in asks else "") + label
+        asks[drive] = (total, have, labels)
+    for drive, (owed, have, label) in asks.items():
+        if have is not None and have < owed:
+            return (f"This file is {_mb(need)}, but {drive} has {_mb(have)} free and it is where {label}. Nothing was saved. "
+                    "Free some room on that drive, or ask the administrator to move jason's data or temp folder to a roomier "
+                    "one (jason storage --check says which). A limit never makes room that is not there.")
+    return ""
+
+
+def require_room(dest: Path | str, need: int, **kw: Any) -> None:
+    """Raise ``DriveShort`` in words when a drive cannot take ``need`` bytes (see ``room_problem``)."""
+    why = room_problem(dest, need, **kw)
+    if why:
+        raise DriveShort(why)
+
+
 def folder_size(path: Path | str) -> int:
     """Bytes in a file or in every file below a folder; an entry that cannot be read counts as nothing."""
     p = Path(path)

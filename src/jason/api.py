@@ -66,6 +66,7 @@ from jason.mcp.governance import (
     section_refs,
 )
 from jason.mcp.citations import citation_gaps, document_citations
+from jason.mcp.limits import limits
 from jason.mcp.record_slots import record_slot, record_slots
 from jason.mcp.response_inbox import new_responses, outstanding_responses, response
 from jason.mcp.followups import campaign_status, followups
@@ -94,5 +95,5 @@ def read_record(address: str, data_dir=None) -> dict:
             "lastModified": page.last_modified}
 
 
-__all__ = [t.__name__ for t in TOOLS] + ["campaign_status", "citation_gaps", "document_citations", "followups", "new_responses",
+__all__ = [t.__name__ for t in TOOLS] + ["campaign_status", "citation_gaps", "document_citations", "followups", "limits", "new_responses",
                                          "outstanding_responses", "read_record", "record_resources", "response"]
