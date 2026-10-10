@@ -137,6 +137,25 @@ A screen that names a document (a letter, a scan, a statute, a Google Doc, a Pay
 - **Never frame Google, PayHOA, or Gmail.** The original opens in a new tab from the card. `DocumentViewer` is the
   pop-out a `Doc` opens; `PrivateSwitch` (`view`, `name`, `onOpen`) opens P3 material for a stated reason.
 
+## Inspections, portals, and notices
+
+Twelve pieces show what a paper points to, a vendor's report portal, a program's notice, and the life-safety watchlist. Each
+takes a loader's payload as props and fetches nothing; samples are plainly fake.
+
+- **`DocumentCodes`** (`codes`, `decoderMissing`, `installCommand`, `onOpenLink`, `onOpenPortal`) lists the QR codes read off a
+  document. A link shows its host first and never opens on one click: opening is a second step that shows the host again.
+- **`ReportPortalCard`** (`portal`, `onSync`, `onPlanFiling`) with `PortalReportRow` and `HoldingChips` (`holdings`): a vendor's
+  public portal, each report held (library, Drive) or not filed. A protected portal is a stop for a person, never an error.
+- **`FilingPlan`** (`plan`, `onConfirmFile`, `busy`, `running`) shows every row and count before the one `Confirm` that writes; a
+  copy leaves the original, a move keeps the file's id, and nothing deletes.
+- **`NoticeClock`** (`clock`) counts a notice's days from every date it could run from, side by side, and picks none.
+- **`AssemblyRegister`** (`assemblies`, `discrepancies`) and **`Discrepancy`** (`discrepancy`) keep each source in its own column;
+  a difference is shown, never settled. **`TesterCheck`** (`check`) says "listed", never certified, and shows no contact.
+- **`TextGrade`** (`grade`) marks a recital as the Legislature's, official, a digest, quoted by a notice, or not found; a digest
+  stays visible beside its words. **`WatchRow`** (`item`) shows overdue, unknown, partly answered, current, or not applicable:
+  unknown never reads as not done. **`NotOursNotice`** marks mail for another party.
+- A document in any of them is an evidence entry: a `Doc` reference, a command, or the name as text. Never build one as a link.
+
 ## One idiomatic screen
 
 ```jsx

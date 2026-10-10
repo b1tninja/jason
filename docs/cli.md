@@ -6,7 +6,7 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-180 commands, by area:
+181 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
@@ -19,7 +19,7 @@ Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASO
 - [Property records & county](#property-records--county) (19)
 - [Local AI & search](#local-ai--search) (4)
 - [Setup & maintenance](#setup--maintenance) (12)
-- [Other](#other) (18)
+- [Other](#other) (19)
 
 ## PayHOA & finance
 
@@ -1635,6 +1635,7 @@ Read the association's Gmail, headers only: PostScanMail notices against the syn
 | `--yes` |  | With --file-vendor: upload the attachments the plan marks file |
 | `--hold` | GLOB | With --file-vendor: hold back attachments whose names match (repeatable), for a person to verify |
 | `--why` |  | With --file-vendor: under each document, the filing rule's condition and the facts that decided it |
+| `--life-safety` |  | With --file-vendor: also file the life-safety reports (inspection reports) Drive already holds in their filing-rule folder: one loose in the root of My Drive is moved (it keeps its id, link, and sharing); one in another folder is copied there and the original stays. --yes does it |
 | `--via-gmail` |  | With --file-vendor: use Gmail's own Add to Drive, which links the file to its email. Lists what to save (data/gmail/save-to-drive.md) from Gmail's metadata only; --yes moves the copies saved to My Drive into their folders. Nothing is downloaded or uploaded |
 | `--filters-xml` | PATH | Write Gmail filters (the file Gmail imports) that label each vendor's mail Vendors/<vendor> by its known domains and emails (default data/gmail/vendor-filters.xml) |
 | `--json` |  | Print JSON |
@@ -1867,6 +1868,10 @@ Vendor customer portals (ProActive): sync visits, products, files, and invoices 
 | `--key` | KEY | One portal from mystique/vendors.py (default every portal) |
 | `--sync` |  | Sign in and download what is new (non-interactive with the Keeper record) |
 | `--full` |  | With --sync: download every invoice and file again |
+| `--reports` |  | Sync the vendor's public report portal (the one a QR code on its reports names): the list and each PDF; needs no sign-in |
+| `--drive` |  | With --reports: file the kept reports in Drive by the profile's filing rules (skips what Drive holds; a life-safety report loose in the root moves into its folder, and one in another folder is copied there). Prints the plan; --yes does it |
+| `--yes` |  | With --reports --drive: upload and move what the plan marks |
+| `--from` | FILE | With --reports: also read QR codes from these PDFs or images to find portals |
 | `--verify` |  | Match PayHOA payments to the portal's payments and attached invoices |
 | `--visits` | VISITS | Latest visits to print per property |
 | `--limit` | LIMIT | With --verify: findings to print |
@@ -2298,6 +2303,15 @@ Each source's schedule in jason serve's scheduler: list; change one (never faste
 | `--by` | NAME | who makes the change (recorded with when) |
 
 ## Other
+
+### `jason backflow`
+
+The annual backflow program: assemblies, notices and their clocks, where sources differ, and whether the tester is on the published lists
+
+| Option | Value | Help |
+|---|---|---|
+| `--fetch-testers` |  | Download the City's and the County's tester lists and keep a dated snapshot under data/backflow (names, ids, and businesses only; no phone numbers or emails) |
+| `--json` |  | Print JSON |
 
 ### `jason rule-records`
 

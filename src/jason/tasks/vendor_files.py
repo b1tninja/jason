@@ -64,6 +64,8 @@ class Attachment:
     why: str = ""                    # the rule's condition and the facts that decided it (``EmailFiling.explain``)
     file_id: str = ""
     thread: str = ""                 # the message's thread, for a link to it in Gmail
+    url: str = ""                    # for a report from a vendor's report portal: where the PDF is (message_id is empty)
+    copy_of: str = ""                # for a "copy": the Drive path of the original, which stays
 
 
 @dataclass
@@ -507,10 +509,13 @@ def file_plan(drive: Any, community: Any, plan: VendorPlan, blobs: dict[str, byt
         for name in att.path:
             parent = _folder(drive, parent, name, made)
         ext = att.name.rsplit(".", 1)[-1].lower()
-        description = f"From Gmail, {att.at[:10]}: {att.sender} — {att.subject}"[:900]
+        portal = not att.message_id
+        description = (f"From the vendor's report portal, report dated {att.at[:10]}: {att.subject} ({att.url})" if portal
+                       else f"From Gmail, {att.at[:10]}: {att.sender} — {att.subject}")[:900]
+        source = {"reportUrl": att.url[:100]} if portal else {"gmailMessageId": att.message_id}
         att.file_id = drive.upload_bytes(att.name, blobs[att.sha256], mime_type=MIME.get(ext, "application/octet-stream"),
                                          parent_id=parent, description=description,
-                                         app_properties={"gmailMessageId": att.message_id, APP_SHA: att.sha256,
+                                         app_properties={**source, APP_SHA: att.sha256,
                                                          "vendor": att.vendor[:100], "kind": att.kind or "unclassified"})
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({**asdict(att), "filedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -518,6 +523,109 @@ def file_plan(drive: Any, community: Any, plan: VendorPlan, blobs: dict[str, byt
         done += 1
         if log:
             log(f"filed {att.name} -> {att.where}")
+    return done
+
+
+# --- Life-safety records -----------------------------------------------------------------------------------------------
+#
+# The life-safety records (``_life_safety_kinds``: inspection reports) belong in the folder the filing rules give them,
+# one per system (fire alarm, sprinklers, backflow), so a board or an insurer's agent finds a system's whole history in
+# one place. Drive may hold a record already, somewhere else:
+#
+# - loose in the root of My Drive (saved from an email and never filed): it is **moved** to its folder. A move keeps the
+#   file's id, link, and sharing; nothing is copied or deleted;
+# - in a folder somebody chose (an appeal's exhibits, the prior manager's archive): it stays, and a **copy** is made in
+#   its folder by Drive itself (the original untouched), so neither folder loses what it was for.
+#
+# Each filing is tagged (``APP_SHA``, ``via``) and logged, and a record tagged is not filed again. Nothing else moves.
+
+def _life_safety_kinds() -> frozenset[Any]:
+    from jason.community.symbols import DocumentKind as K
+
+    return frozenset({K.INSPECTION_REPORT, K.ELEVATED_ELEMENT_INSPECTION})
+
+
+def _mirror_ids(data_dir: Path) -> dict[str, str]:
+    """The id of each file in the Drive sync, by its path."""
+    path = Path(data_dir) / "drive" / "files.json"
+    if not path.is_file():
+        return {}
+    return {f["path"]: f["id"] for f in json.loads(path.read_text(encoding="utf-8"))["files"]}
+
+
+def plan_loose(drive: Any, community: Any, plan: VendorPlan, sender: Any, data_dir: Path) -> int:
+    """Mark each life-safety document Drive holds but not in its own folder: "move" when it is loose in the root (read from
+    Drive itself, not trashed, matched by content), "copy" when it is in another folder (the file found in the Drive
+    sync by path). A document already tagged as filed is left. Returns how many were marked."""
+    from jason.community.symbols import DocumentKind
+
+    filing = community.email_filing()
+    kinds = _life_safety_kinds()
+    ids = _mirror_ids(data_dir)
+    root = drive.root_id()
+    in_root: dict[str, dict[str, Any]] | None = None
+    marked = 0
+    for att in plan.attachments:
+        if att.action not in ("in drive", "copy in drive") or not att.kind or DocumentKind(att.kind) not in kinds:
+            continue
+        if not att.where.startswith("My Drive/"):
+            continue                                    # a file id: a copy jason filed, or one Drive holds by name
+        kind = DocumentKind(att.kind)
+        path, rule = filing.path_for(sender, kind, fiscal_year(att.at, community.fiscal_year_end()))
+        target = "My Drive/" + "/".join(path) if filing.root == "root" else "/".join(path)
+        if att.where.startswith(target + "/"):
+            continue                                    # already in its folder
+        if drive.list_files(f"appProperties has {{ key='{APP_SHA}' and value='{att.sha256}' }} and trashed = false", fields="id"):
+            continue                                    # filed before, by a move or a copy
+        original, loose = att.where, "/" not in att.where[len("My Drive/"):]
+        if loose:
+            if in_root is None:
+                in_root = {f["md5Checksum"]: f for f in drive.list_files(f"'{root}' in parents and trashed = false",
+                                                                          fields="id,name,md5Checksum") if f.get("md5Checksum")} if root else {}
+            found = in_root.get(att.md5)
+            file_id = str(found["id"]) if found else ""
+        else:
+            file_id = ids.get(original, "")
+        if not file_id:
+            continue
+        att.action, att.file_id, att.path, att.rule = ("move" if loose else "copy"), file_id, path, rule_label(rule)
+        att.copy_of = "" if loose else original
+        att.why = filing.explain(sender, kind) + ("" if loose else f"\nAlso in Drive, and left there: {original}")
+        att.where = target
+        marked += 1
+    return marked
+
+
+def move_plan(drive: Any, community: Any, plan: VendorPlan, data_dir: Path,
+              log: Callable[[str], None] | None = None) -> int:
+    """Move each document the plan marks "move" and copy each marked "copy" into its folder, tagged and logged. Returns how many."""
+    filing = community.email_filing()
+    made: dict[tuple[str, str], str] = {}
+    log_path = Path(data_dir) / "drive" / LOG
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    done = 0
+    for att in plan.attachments:
+        if att.action not in ("move", "copy"):
+            continue
+        parent = filing.root
+        for name in att.path:
+            parent = _folder(drive, parent, name, made)
+        tags = {APP_SHA: att.sha256, "vendor": att.vendor[:100], "kind": att.kind or "unclassified", "via": "jason filing"}
+        if att.action == "move":
+            drive.move(att.file_id, parent)
+            drive.update_metadata(att.file_id, app_properties=tags)
+            att.action = "moved"
+        else:
+            att.file_id = drive.copy(att.file_id, att.name, parent_id=parent)
+            drive.update_metadata(att.file_id, app_properties=tags,
+                                  description=f"A copy filed by jason with the system's other records; the original stays at {att.copy_of}"[:900])
+            att.action = "copied"
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({**asdict(att), "filedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                 "parent": parent}) + "\n")
+        done += 1
+        if log:
+            log(f"{att.action} {att.name} -> {att.where}")
     return done
 
 
@@ -533,7 +641,7 @@ def plan_lines(plan: VendorPlan, *, why: bool = False) -> list[str]:
         if a.action == "repeat":
             continue
         kind = a.kind or "unclassified"
-        placed = a.action in ("file", "save", "adopt", "adopted")
+        placed = a.action in ("file", "save", "adopt", "adopted", "move", "moved", "copy", "copied")
         out.append(f"  {a.at[:10]} {a.action:<13} {kind:<18} {a.name}  ->  {a.where}" + (f"  [{a.rule}]" if placed else ""))
         if why and placed and a.why:
             out += [f"      {line}" for line in a.why.splitlines()]
@@ -541,4 +649,4 @@ def plan_lines(plan: VendorPlan, *, why: bool = False) -> list[str]:
 
 
 __all__ = ["Attachment", "Known", "VendorPlan", "vendors", "known_addresses", "query_for", "sent_by", "classify", "in_drive", "plan_vendor",
-           "file_plan", "filters_xml", "hold", "plan_lines", "plan_saves", "adopt_plan", "save_list", "gmail_link", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]
+           "file_plan", "filters_xml", "hold", "plan_lines", "plan_loose", "move_plan", "plan_saves", "adopt_plan", "save_list", "gmail_link", "drive_index", "fiscal_year", "rule_label", "LOG", "APP_SHA"]

@@ -140,6 +140,8 @@ Not in jason-ui and not being added now. Each waits on a decision in [mvp.md](mv
 
 **One component across the handoffs.** `Discrepancy` (the inspections handoff) is the one component for two stored readings that disagree, shown side by side and never resolved; `FactConflictCard` in [handoff-collection-workspace.md](handoff-collection-workspace.md) is that component. `FactQuestionRow`, `GapQuestionRow`, `OpenQuestionRow`, and `OpenQuestion` are one `QuestionCard` preset with a `kind`.
 
+**Built with the inspections handoff.** [handoff-inspections-and-portals.md](handoff-inspections-and-portals.md) specifies, and jason-ui now has, `DocumentCodes` (with `CodeRow`), `ReportPortalCard`, `PortalReportRow`, `HoldingChips`, `FilingPlan`, `NoticeClock`, `AssemblyRegister`, `Discrepancy`, `TesterCheck`, `TextGrade`, `NotOursNotice`, and `WatchRow`. Their loaders are built (`/api/document-codes`, `/api/report-portal`, `/api/filing-plan`, `/api/backflow`, `/api/watchlist`); `NotOursNotice` has no loader yet. Where a loader cannot resolve a document it returns the name as text, so `AssemblyRegister`, `Discrepancy`, and `WatchRow` render an `EvidenceEntry`. The sample data is exported as `inspectionFixtures`, so a preview imports from `jason-ui` alone. `Freshness` and `JobStatus` above are what the portal card and filing plan most need next.
+
 ## Accessibility
 
 The console meets WCAG 2.2 AA ([W3C](https://www.w3.org/TR/WCAG22/)). jason-ui is a React app: there is no no-script baseline, so each component carries these duties itself.

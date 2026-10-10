@@ -1474,6 +1474,18 @@ LESSONS: tuple[Lesson, ...] = (
            guards=("tests/test_citation_coverage.py (the guide's phrasings, and the association default kept)",
                    "tests/test_outlines_references.py"),
            docs=("docs/citations.md", "docs/reference-shelf.md")),
+    Lesson("report-qr-points-at-the-whole-set", date(2026, 10, 3), (Area.DOCUMENTS, Area.ONBOARDING),
+           "One emailed inspection report carried a QR code to the vendor's public report portal, and the portal listed "
+           "fifteen reports back to 2022; the association held two.",
+           "A vendor emails the report it just filed and nobody looks at the portal; the text layer never held the code, "
+           "so ingestion never saw where the paper pointed.",
+           "Ingestion decodes every QR code and keeps it as metadata (`codes`, with the portal it names); `jason vendors "
+           "--reports` reads the portal the code names, keeps each report, and lists those the library lacks; `jason "
+           "ingest` on the kept reports files them. A protected portal is skipped: jason enters no password or phone code.",
+           Status.FIXED,
+           guards=("tests/test_qr.py (codes read off a PDF and kept by ingest)",
+                   "tests/test_report_portals.py (portal found from a code, reports kept, protected portal skipped)"),
+           docs=("docs/vendor-portals.md", "docs/document-tools.md")),
     Lesson("a-name-joined-chain-is-a-braid", date(2026, 10, 3), (Area.ONBOARDING,),
            "A Placer half-plex's chain of title came back with 22 deeds, one estate deed with three candidate priors and "
            "a 2009 deed with seven; drawn as a DAG it was a braid, and the 'line' through every prior took in the twin "

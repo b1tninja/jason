@@ -46,13 +46,33 @@ OBLIGATIONS: tuple[Obligation, ...] = (
                note="Last filed May 5, 2025 (bizfile's approval, attached to the May 12, 2025 payment); the next is due "
                     "by May 31, 2027. Counted from the filing, so the date shown runs a few weeks early. The $5 "
                     "payment of December 2025 is not counted: it comes within the interval, and what it paid for is not on disk."),
-    # CCCPH 3.3.3(a), (b) (adopted December 19, 2023, effective July 1, 2024; the State Water Board's adopted text, read
-    # October 2, 2026): "BPAs must be field tested at least annually" by "certified backflow prevention assembly
-    # testers". The City's own code (City Code ch. 13.04) was not reachable; secondary sources say the same.
-    Obligation("Backflow assembly test", "State Water Board Cross-Connection Control Policy Handbook 3.3.3(b) (effective July 1, "
-               "2024) and the City of Sacramento's annual test notice: each assembly tested at least yearly by a certified tester",
-               every_years=1, categories=("Backflow Prevention",), payee_words=("LEDOUX", "LE DOUX"), applies=_BACKFLOW_ASSEMBLY,
-               note="LeDoux tests the six assemblies (June 2024, June 2025, May 2026). NFPA 25's forward-flow test is separate."),
+    # Read October 4, 2026. State: CCCPH 3.3.3(a), (b) (adopted December 19, 2023, effective July 1, 2024; amended April 21,
+    # 2026): "BPAs must be field tested at least annually" by "certified backflow prevention assembly testers"; HSC 116407
+    # directs the State Water Board to adopt the standards, and the Title 17 articles (7583-7605) it replaced are repealed.
+    # City: its notices of April 16 and June 2, 2026 cite "California Health and Safety Code, Section 116407, City of
+    # Sacramento Code 13.04.240, and the Cross Connection Control Policy Section 9" and warn of "Water Service Termination
+    # ... per City Code 13.04.245". Code 13.04.240 (as the Council's 2024 ordinance packet reads) has the customer comply
+    # with the standards the Council adopts by resolution and makes a violation an infraction; the annual test, the tester,
+    # and the 15 days are in those standards and the notices, and the standards' own text was not found. County: for 2024
+    # and 2025 the County's Environmental Management Department ran the program for the City and cited Sacramento County
+    # Code 6.30.110 (the County's FAQ says the owner tests at least annually and repairs a failed assembly). Details:
+    # mystique/docs/backflow-program.md.
+    Obligation("Backflow assembly test", "California Health and Safety Code 116407 and the State Water Board's Cross-Connection "
+               "Control Policy Handbook 3.3.3(b): \"BPAs must be field tested at least annually\" by a certified tester; City of "
+               "Sacramento Code 13.04.240 and 13.04.245, and the City's Cross Connection Control Policy Section 9, as its "
+               "annual notices cite them; Sacramento County Code 6.30.110 (County notices of 2024 and 2025)",
+               month=5, day=31, categories=("Backflow Prevention",), payee_words=("LEDOUX", "LE DOUX"),
+               applies=_BACKFLOW_ASSEMBLY,
+               note="Six assemblies at 3000 Macon Dr on the City account (the County's and the City's lists agree): a 2\" "
+                    "irrigation RP (meter 34049156), a 4\" domestic RP (meter 70226482), and four fire-line double "
+                    "checks (6\" and 8\"). A City-registered tester tests each, the City's tag goes on each that passes, and "
+                    "the tester files the report in the City's portal. The due date was June 1 in the County's 2024 and "
+                    "2025 notices and May 31 in the City's 2026 notices (the 2026 reports show May 31, 2027). A failed assembly "
+                    "is repaired or replaced within 15 days of the failed test, then retested and tagged; the County's 2025 "
+                    "notice also had a failed report filed within 5 days and passing reports within 20. 2026: five passed May 1; "
+                    "the domestic RP failed May 5 (\"RV FAILED TO OPEN\") and its repair report is June 18. The City's "
+                    "repair notice is dated June 2, was postmarked June 11, and was scanned July 3. NFPA 25's forward-flow "
+                    "test is separate."),
     # Fire protection, researched 2026-09-29: HSC 13195 and 19 CCR 904 adopt NFPA 25 (California edition) for sprinklers;
     # the 2025 California Fire Code (901.6, 907.8) adopts NFPA 72-2025 for the alarm. Checked October 2, 2026: 19 CCR 904
     # as Cornell LII prints it adopts "NFPA 25 (2011 edition) ... (Published as NFPA 25, 2013 California Edition)"
@@ -64,18 +84,21 @@ OBLIGATIONS: tuple[Obligation, ...] = (
     # lease, and The Fire Sprinkler Company's payments since 2024 are repairs (their invoices say so).
     Obligation("Fire alarm inspection and test", "Cal. Fire Code 907.8 (NFPA 72-2025, ch. 14): waterflow and tamper switches and "
                "batteries semiannually; initiating and notification devices, the panel, and the communicator yearly",
-               every_months=6, done_on=date(2025, 9, 19), applies=FIRE_ALARM_SYSTEM,
-               note="Signal Service's reports of September 19, 2025 (buildings 3 and 8) are the last in the library; building 3's "
-                    "waterflow switch failed, two in-unit detectors were not tested, and the batteries (2021, 2022) are past "
-                    "their three-year replacement. Its quarterly invoices (systems P320-4785, building 3, and P320-4786, building 8) "
-                    "bill monitoring and the semi-annual inspection in advance, paid without a gap from February 2024; the visits "
-                    "in the email are March 2025, September 19, 2025, January 28, 2026 (building 3), and an OS&Y tamper test in "
-                    "August 2026, with no report since September 2025. The Fire Sprinkler Company's $995 invoice of December "
-                    "15, 2025 is to \"investigate water flow switch issue\", and the association's email of December 10 says \"the "
-                    "issue isn't solved quite yet\": no record shows building 3's waterflow alarm restored. Signal emailed reports "
-                    "only for its September 2024 and September 2025 visits. The master policy's P-1 protective safeguard (CP 04 11, "
-                    "buildings 1-8) includes the sprinklers' supervisory services, so these reports are its evidence too: "
-                    "mystique/notes/fire-protection-records.md."),
+               every_months=6, done_on=date(2026, 3, 11), applies=FIRE_ALARM_SYSTEM,
+               note="The last reports are Signal Service's of March 11, 2026 (buildings 3 and 8), which the vendor's public "
+                    "report portal lists and the association never received by email (jason vendors --reports found them on "
+                    "October 4, 2026; they are in the library and in Drive). Neither lists a failed device. Building 3's says "
+                    "\"WF and tampers tested okay\"; building 8's adds \"2x 12v 12ah batts need to be replaced upon next "
+                    "inspection\". Six devices in building 3 and nine in building 8 are marked Not Tested, the in-unit smoke "
+                    "detectors as in September 2025: a question of access. The September 19, 2025 reports had building 3's "
+                    "waterflow alarm failing, and The Fire Sprinkler Company's $995 invoice of December 15, 2025 was to "
+                    "\"investigate water flow switch issue\" (the association's email of December 10 said \"the issue isn't "
+                    "solved quite yet\"); the March 2026 comment is the first record that it passes, and a person reads the "
+                    "report for the waterflow device's own result. Signal bills the semi-annual inspection with the quarterly "
+                    "monitoring (systems P320-4785, building 3, and P320-4786, building 8); no report since March 2026 is on "
+                    "file, so the next was due about September 11, 2026. The master policy's P-1 protective safeguard "
+                    "(CP 04 11, buildings 1-8) includes the sprinklers' supervisory services, so these reports are its evidence "
+                    "too: mystique/notes/fire-protection-records.md."),
     Obligation("Fire sprinkler quarterly inspection", "19 CCR 904 (NFPA 25, California edition), form AES 2.1: control valves, "
                "gauges, waterflow and supervisory devices, the fire department connection, and the backflow preventer",
                every_months=3, applies=NFPA_25_SPRINKLERS,

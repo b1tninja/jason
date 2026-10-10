@@ -85,6 +85,31 @@ export { Swatch, PAINT_STATUS_WORDS, ENTERED_WORD, inkFor, luminance, contrastRa
 export { PaletteMatrix, PAINT_CAPTION, NO_SCHEDULE, NO_PAINT_ROW, ageInDays, copyAge, drift as paintDrift, type PaintSchedule } from "./PaletteMatrix";
 export { ColorDetail, TOUCH_UP_CAVEAT, NO_DESCRIPTION, type PaintColorDetail } from "./ColorDetail";
 export { SourcedDate, NEEDS_INPUT_INVITATION, dateText as sourcedDateText } from "./SourcedDate";
+// Inspections and portals (docs/console/handoff-inspections-and-portals.md): a document's codes, report portals and their
+// filing plan, a notice's clock, the assemblies, the tester check, text grades, mail not ours, and the watchlist. Props only.
+export { DocumentCodes, CodeRow } from "./DocumentCodes";
+export { ReportPortalCard } from "./ReportPortalCard";
+export { PortalReportRow } from "./PortalReportRow";
+export { HoldingChips } from "./HoldingChips";
+export { FilingPlan } from "./FilingPlan";
+export { NoticeClock } from "./NoticeClock";
+export { AssemblyRegister, isFailed as assemblyFailed } from "./AssemblyRegister";
+export { Discrepancy } from "./Discrepancy";
+export { TesterCheck } from "./TesterCheck";
+export { TextGrade } from "./TextGrade";
+export { NotOursNotice } from "./NotOursNotice";
+export { WatchRow } from "./WatchRow";
+export {
+  codeKind, codeHost, filingButtonLabel, groupByAction, writeCount, metWord, isCommand, listIsOld, testerSummary, sortWatch,
+  DECODER_MISSING, NOT_OPENED, NO_ZOOM_RECORD, PASSCODE_IN_LINK, HELD_MEANINGS, KIND_MEANINGS, PLACE_WORDS, FILING_MEANINGS, FILING_ACTION_ORDER,
+  STANDING_MEANINGS, RUNS_FROM_MEANINGS, LIST_MEANINGS, GRADES, GRADE_ORDER, WATCH_MEANINGS, WATCH_ORDER, WATCH_GLYPH, TEST_RESULT_MEANINGS, ASSEMBLY_TYPE_WORDS,
+  type DocumentCode, type CodeKind, type ReportPortal, type PortalReport, type Holding, type HeldWord, type FilingAction,
+  type FilingPlan as FilingPlanData, type NoticeClockData, type ClockStanding, type RunsFromLabel, type Assembly, type TestResult,
+  type Discrepancy as DiscrepancyData, type TesterCheck as TesterCheckData, type ListFound, type TextGradeWord, type GradeInfo,
+  type WatchItem, type WatchStanding, type NotOurs,
+} from "../lib/inspections";
+// The sample data the previews and tests draw from (plainly fake): exported so a preview imports from "jason-ui" alone.
+export * as inspectionFixtures from "../lib/inspections.fixtures";
 export { StandingPill, StandingStrip } from "./StandingPill";
 export { CitedSections, Proposal, Freshness } from "./CitedSections";
 export { CitationGaps } from "./CitationGaps";

@@ -174,6 +174,8 @@ The console is the React UI ([web-ui.md](web-ui.md)) with the approvals engine b
 - [mail.md](mail.md): the PostScanMail mailbox: the read-only API, the sync, and the sort into what to act on.
 - [gmail.md](gmail.md): the association's Gmail as a source, headers only, and vendor contacts against PayHOA.
 - [vendor-portals.md](vendor-portals.md): vendor customer portals (ProActive on FieldPortals), the invoice check, and the PayHOA verification.
+- [cross-connection-control.md](cross-connection-control.md): annual backflow testing: the state standard, the City of Sacramento's and the County's programs, the approved tester lists, and the yearly checks.
+- [life-safety-inspections.md](life-safety-inspections.md): the periodic fire and life safety inspections an association meets in California, which jason tracks, and the open questions (the fire department's annual inspection, hydrants, extinguishers, alarms).
 - [pest-management.md](pest-management.md): who is responsible for pests, what the vendor must do, and how jason reads the vendor's record.
 
 ## Property records and county

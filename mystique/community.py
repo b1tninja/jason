@@ -405,6 +405,18 @@ class Mystique(Community):
 
         return OBLIGATIONS
 
+    def backflow_program(self):
+        """The six backflow assemblies, the notices with their clocks, the tester, and the tester lists (backflow.py)."""
+        from .backflow import PROGRAM
+
+        return PROGRAM
+
+    def life_safety_watch(self):
+        """The life-safety items the board should see, with what is on file and what would change each (backflow.py)."""
+        from .backflow import WATCH
+
+        return WATCH
+
     def life_safety_systems(self):
         """The sprinkler, fire alarm, and backflow systems, each with the record that states its standard (life_safety.py)."""
         from .life_safety import SYSTEMS

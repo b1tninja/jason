@@ -1153,6 +1153,18 @@ class Jason:
             return sync_signal(self.vendor_portal(key), portal, self.settings.payhoa_catalog.parent, full=full, log=log)
         return sync_portal(self.vendor_portal(key), portal, self.settings.payhoa_catalog.parent, full=full, log=log)
 
+    def sync_vendor_reports(self, key: str, *, files: Any = (), full: bool = False, log: Any = None):
+        """Sync the public report portal a vendor's reports name by QR code to ``data/vendors/<key>/reports``. It
+        needs no sign-in and no Keeper record; a portal that asks for a password is skipped."""
+        from jason.firenspec.client import Firenspec
+        from jason.tasks.report_portals import sync_reports
+
+        portal = next((p for p in self.community.vendor_portals() if p.key == key and p.reports), None)
+        if portal is None:
+            raise LookupError(f"vendor portal {key!r} has no report portal in the specification")
+        with Firenspec() as client:
+            return sync_reports(client, portal, self.settings.payhoa_catalog.parent, files=files, full=full, log=log)
+
     def attach_bills(
         self,
         *,

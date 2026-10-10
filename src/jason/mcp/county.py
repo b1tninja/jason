@@ -1834,7 +1834,9 @@ def vendor_portal(key: str = "proactive", visits: int = 5, findings: bool = True
     the products applied this year with their EPA numbers, and the counts of invoices, photos, and documents on disk;
     and, when `jason vendors --verify` has run, each PayHOA payment to the vendor against the portal's payment and the
     invoice attached (no portal payment, another property's ticket, wrong category, missing or wrong attachment, the
-    same invoice on two payments). Integer cents. Reads disk only; findings are for the treasurer."""
+    same invoice on two payments). A vendor whose reports sit on a public report portal (`jason vendors --reports`) also
+    carries `reports`: each report the portal listed (date, site, inspector, file) and those the library lacks. Integer
+    cents. Reads disk only; findings are for the treasurer."""
     import json as _json
 
     from jason.community import community as active
@@ -1845,6 +1847,10 @@ def vendor_portal(key: str = "proactive", visits: int = 5, findings: bool = True
         return {"found": False, "note": f"no vendor portal {key!r}; known: " + ", ".join(p.key for p in active().vendor_portals())}
     root = _data_dir(data_dir)
     brief = portal_brief(root, portal, visits=int(visits))
+    if portal.reports:
+        from jason.tasks.report_portals import report_brief
+
+        brief["reports"] = report_brief(root, portal)
     if findings and brief.get("found"):
         path = portal_root(root, key) / "verification.json"
         if path.is_file():

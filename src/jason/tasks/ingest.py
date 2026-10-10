@@ -80,6 +80,7 @@ class FileItem:
     library_id: str = ""
     text_source: str = ""
     text_chars: int = 0
+    codes: list[dict[str, Any]] = field(default_factory=list)     # QR codes read off the pages (``qr_read.Code.as_dict``)
     kind: str = ""
     method: str = ""                         # ``library.Method`` name
     evidence: str = ""
@@ -141,6 +142,7 @@ class FileItem:
         return {"rel": self.rel, "source": self.source, "origin": self.origin, "sha256": self.sha256, "size": self.size,
                 "type": self.type, "dates": [list(d) for d in self.dates], "duplicateOf": self.duplicate_of,
                 "libraryPath": self.library_path, "text": {"source": self.text_source, "chars": self.text_chars},
+                "codes": list(self.codes),
                 "kind": self.kind, "method": self.method, "evidence": self.evidence, "confidence": self.confidence,
                 "period": self.period, "records": list(self.records), "category": self.category,
                 "confidential": self.confidential, "version": self.version, "book": self.book, "bookHow": self.book_how,
@@ -375,6 +377,67 @@ def read_text(item: FileItem, data_dir: Path, *, ocr: bool = True) -> str:
         cache.write_text(text, encoding="utf-8")
         note.write_text(json.dumps({"file": item.rel, "source": source, "chars": len(text)}), encoding="utf-8")
     return text
+
+
+def read_codes(item: FileItem, data_dir: Path) -> list[dict[str, Any]]:
+    """The QR codes printed on the file, decoded from its page images and kept by hash under
+    ``data/onboarding/ingest/codes``. A payload is evidence of what the paper points at; jason never opens it."""
+    from jason.community import qr_read
+
+    cache = Path(data_dir) / WORK / "codes" / f"{item.sha256}.json"
+    if cache.is_file():
+        try:
+            item.codes = list(json.loads(cache.read_text(encoding="utf-8")))
+            for code in item.codes:                  # a code cached before portals were named
+                if "portal" not in code:
+                    code["portal"] = _portal_of(code)
+                if "meeting" not in code:
+                    code["meeting"] = _meeting_of(code)
+            return item.codes
+        except (OSError, ValueError):
+            pass
+    if qr_read.available():
+        return []                            # no decoder: say nothing and cache nothing, so installing one reads them
+    item.codes = [c.as_dict() for c in qr_read.read_codes(item.local)]
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(item.codes), encoding="utf-8")
+    return item.codes
+
+
+def _portal_of(code: dict[str, Any]) -> dict[str, str]:
+    from jason.community.portal_links import identify
+
+    found = identify(code.get("text", "")) if code.get("link") else None
+    return found.as_dict() if found else {}
+
+
+def _meeting_of(code: dict[str, Any]) -> dict[str, str]:
+    from jason.community.portal_links import identify_meeting
+
+    found = identify_meeting(code.get("text", "")) if code.get("link") else None
+    return found.as_dict() if found else {}
+
+
+def unrecorded_meetings(items: Iterable[FileItem], data_dir: Path) -> list[dict[str, Any]]:
+    """The video meetings the files' codes join that ``data/zoom/meetings.json`` holds no record of, each with the files
+    that name it. A lead: the meeting may have gone unrecorded, or been held on another account. Empty when the Zoom
+    index has not been synced, since nothing can be said without it."""
+    path = Path(data_dir) / "zoom" / "meetings.json"
+    if not path.is_file():
+        return []
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    rows = body.get("meetings", []) if isinstance(body, dict) else body       # {"syncedAt", "since", "through", "meetings": [...]}
+    known = {str(r.get("meetingId")) for r in rows if isinstance(r, dict)}
+    found: dict[str, list[str]] = {}
+    for item in items:
+        for code in item.codes:
+            meeting = code.get("meeting") or {}
+            if meeting.get("id") and meeting["id"] not in known:
+                found.setdefault(meeting["id"], []).append(item.rel)
+    return [{"meeting": k, "files": list(dict.fromkeys(v))} for k, v in found.items()]
 
 
 def _without_ocr(path: Path) -> tuple[str, str]:
@@ -921,7 +984,7 @@ def apply(items: list[FileItem], texts: dict[str, str], data_dir: Path, *, repor
                 (text_dir / f"{item.library_doc_id}.txt").write_text(text, encoding="utf-8")
                 (text_dir / f"{item.library_doc_id}.json").write_text(json.dumps(
                     {"path": item.target, "file": str(dest), "source": item.text_source, "sha256": item.sha256,
-                     "chars": len(text), "ingestedFrom": item.origin}), encoding="utf-8")
+                     "chars": len(text), "ingestedFrom": item.origin, "codes": item.codes}), encoding="utf-8")
                 row = _library_row(item, now)
                 values = [",".join(row["records"]) if c == "records" else int(row["confidential"])
                           if c == "confidential" else row[c] for c in (x.strip() for x in COLUMNS.split(","))]
@@ -982,6 +1045,8 @@ class Result:
     report: Path | None = None
     # The statutes the files cite and where each stands against the authorities shelf (``jason.tasks.citation_coverage``).
     citations: Any = None
+    # Meetings the files' QR codes join that the Zoom index has no record of (``unrecorded_meetings``).
+    unrecorded: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def unique(self) -> list[FileItem]:
@@ -994,7 +1059,8 @@ class Result:
         return {"files": len(self.items), "distinct": len(u), "duplicates": len(self.items) - len(u),
                 "inLibrary": sum(1 for i in u if i.library_path), "new": sum(1 for i in u if not i.library_path),
                 "withText": sum(1 for i in u if i.text_chars), "ocr": sum(1 for i in u if i.text_source.startswith("ocr")),
-                "noText": sum(1 for i in u if not i.text_chars), "byMethod": dict(methods.most_common()),
+                "noText": sum(1 for i in u if not i.text_chars), "withCodes": sum(1 for i in u if i.codes),
+                "byMethod": dict(methods.most_common()),
                 "byStatus": dict(status.most_common()), "filed": len(self.filed),
                 "versions": sum(1 for i in u if is_version(i.version)),
                 "copies": sum(1 for i in u if i.version and not is_version(i.version)), "questions": len(self.asks),
@@ -1086,6 +1152,7 @@ def run(community: Any, data_dir: Path, sources: list[str], *, drive: Any = None
             continue
         text = read_text(item, root, ocr=ocr)
         texts[item.sha256] = text
+        read_codes(item, root)
         item.dates = sorted(set(item.dates) | {(d.isoformat(), "printed in the text") for d, _ in printed_dates(text)})
         if item.library_path:
             _from_library(item, held)
@@ -1111,6 +1178,7 @@ def run(community: Any, data_dir: Path, sources: list[str], *, drive: Any = None
                              after_asks=tuple(queue_after))
     result = Result(day, [str(s) for s in sources], apply_files, park, items, notes, asks, groups, [], [])
     result.citations = cited_statutes(items, texts, root, law)
+    result.unrecorded = unrecorded_meetings([i for i in items if not i.duplicate_of], root)
     report_name = f"{REPORT_PREFIX}{day}"
     if apply_files:
         result.filed = apply(items, texts, root, report=report_name)
@@ -1147,7 +1215,7 @@ def report_markdown(result: Result) -> str:
            f"| in the sources | {c['files']} |", f"| distinct (by sha256) | {c['distinct']} |",
            f"| duplicates | {c['duplicates']} |", f"| already in the library | {c['inLibrary']} |",
            f"| new | {c['new']} |", f"| with text | {c['withText']} |", f"| read by OCR | {c['ocr']} |",
-           f"| no text | {c['noText']} |", f"| versions of a document | {c['versions']} |",
+           f"| no text | {c['noText']} |", f"| with a QR code | {c['withCodes']} |", f"| versions of a document | {c['versions']} |",
            f"| confidential | {c['confidential']} |", f"| filed | {c['filed']} |", f"| questions | {c['questions']} |",
            ""]
     out += ["## By status", "", "| Status | Files |", "| --- | ---: |"]
@@ -1160,6 +1228,55 @@ def report_markdown(result: Result) -> str:
         out += [f"| {_cell(k)} | {v} |" for k, v in d[key].items()] + [""]
     out += ["## Duplicates", ""]
     out += [f"- {_cell(x['file'])} is the same file as {_cell(x['of'])}" for x in d["duplicates"]] or ["None."]
+    out += ["", "## QR codes", "",
+            "A code printed on a file, decoded from its page image. It shows where the paper points; jason does not open "
+            "it, and a person looks at the host before following a link.", ""]
+    from jason.community.qr_read import redacted
+
+    coded = [(i, c) for i in result.unique for c in i.codes]
+    if coded:
+        out += ["| File | Page | Host | Portal | Payload |", "| --- | ---: | --- | --- | --- |"]
+        out += [f"| {_cell(i.rel)} | {c['page']} | {_cell(c.get('host', ''))} | "
+                f"{_cell((c.get('portal') or {}).get('platform', ''))} | {_cell(redacted(c['text']))} |" for i, c in coded]
+    else:
+        out.append("None read.")
+    if result.unrecorded:
+        out += ["", "Meetings these codes join that the Zoom index (`jason zoom`) has no record of: the meeting may have gone "
+                    "unrecorded or been held on another account, so this is a lead, not a finding.", ""]
+        out += [f"- meeting {x['meeting']}: {'; '.join(_cell(f) for f in x['files'][:5])}" for x in result.unrecorded]
+    out += ["", "## Kind analysis", "",
+            "Each new file's kind weighed before it was read: every phrase rule, the document's shape, and the kind's "
+            "own reader. A kind the analysis disagrees with is a question, never a change; a proposed kind is the "
+            "CLASSIFY question's suggestion. Then each kind's readers ran (`jason.community.kind_readers`).", ""]
+    analysed = [i for i in result.unique if i.analysis]
+    if analysed:
+        out += ["| File | Chain | Verdict | Leading kinds | Readers | Notes |", "| --- | --- | --- | --- | --- | --- |"]
+        for i in analysed:
+            a = i.analysis
+            lead = ", ".join(f"{c['kind']} {c['score']}" for c in a.get("candidates", [])[:3])
+            readers = ", ".join(f"{k}{' (error)' if v.get('error') else ''}" for k, v in i.readings.items())
+            out.append(f"| {_cell(i.rel)} | {a.get('classified') or '-'} ({a.get('method') or '-'}) | {a.get('verdict')} | "
+                       f"{_cell(lead)} | {_cell(readers) or '-'} | {_cell('; '.join(a.get('notes', [])))} |")
+        modeled = [(i, v) for i in analysed for k, v in i.readings.items() if k == "document-model" and v.get("read")]
+        if modeled:
+            out += ["", "The kind's document model on each file it read (`jason models` reads the library's copy once "
+                        "filed):", ""]
+            out += [f"- {_cell(i.rel)}: {v['model']}, {'complete' if v['complete'] else 'missing ' + ', '.join(v['missing'])}"
+                    + (f"; findings {', '.join(dict.fromkeys(f['code'] for f in v['findings']))}" if v["findings"] else "")
+                    for i, v in modeled]
+    else:
+        out.append("No new file with text.")
+    out += ["", "## Contract terms", "",
+            "Each contract and proposal read for its terms (`jason contract-terms --list`; the full reading is "
+            "data/contracts/terms/ingest-KEY.json). A finding is a lead, not a determination.", ""]
+    termed = [i for i in result.unique if i.terms]
+    if termed:
+        out += ["| File | Counterparty | Read by | Terms | Deliverables | Findings |", "| --- | --- | --- | ---: | --- | --- |"]
+        out += [f"| {_cell(i.rel)} | {_cell(i.terms.get('counterparty', ''))} | {i.terms.get('method', '')} | "
+                f"{i.terms.get('terms', 0)} | {_cell('; '.join(i.terms.get('deliverables', [])[:8]))} | "
+                f"{_cell(', '.join(dict.fromkeys(i.terms.get('findings', []))))} |" for i in termed]
+    else:
+        out.append("No contract or proposal among the files.")
     out += ["", "## Versions", "",
             "A file holding enough of a known document's current text is a version of it. A version not on record of "
             "a living or citable document is reported here and never applied: a person reads it beside the current "

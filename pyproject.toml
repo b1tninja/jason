@@ -39,9 +39,11 @@ models = [
 bedrock = [
     "anthropic[bedrock]>=1.11",
 ]
-# QR codes for the links in letters, notices, and forms (segno: pure Python, SVG and PNG, no other dependencies).
+# QR codes: made for the links in letters, notices, and forms (segno), and read off ingested files (zxing-cpp; PDFs also
+# need the pdf extra).
 qr = [
     "segno>=1.6",
+    "zxing-cpp>=2.2",
 ]
 # OCR post-correction: a general English word list (and others, to name a passage's language) beside the legal
 # corpus on disk; without it the corpus alone decides, and real words it lacks are "corrected" (docs/ocr-correction.md).

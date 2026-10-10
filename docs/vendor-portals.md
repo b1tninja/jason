@@ -58,6 +58,23 @@ The verifier matches each PayHOA payment to the vendor with the portal's own pay
 
 A void line is recognized as the reversal it is. The result is `data/vendors/<key>/verification.json`. It needs the PayHOA snapshot that `jason invoices --fetch` writes.
 
+## Public report portals
+
+Some vendors publish their inspection reports on a public portal that needs no sign-in, and print a QR code to it on every report. The code is the only key. `jason ingest` decodes the codes on its files and keeps each as metadata with the portal it names (`jason.community.portal_links`: a host and the pattern that pulls the portal's key from the link). A vendor's row in the specification names the platform its reports are on (`VendorPortal.reports`); it has no Keeper record.
+
+`jason.firenspec.Firenspec` is the client for Firenspec's portal (`reports.firenspec.com`), a single-page app over Firebase callable functions. It was read from the app's script and checked against a capture of October 3, 2026. The portal's UUID, the one in the code, gives the customer and the vendor (`publicGetPortalDetails`); those give every report the vendor filed for the customer (`publicGetReportsForCustomerPortal`), newest first, and each report's PDF is `viewReport.php?id=<url_uuid>`.
+
+```bash
+jason vendors --reports                    # read the portals the decoded codes name; keep each report
+jason vendors --reports --from report.pdf  # also read the codes on these files
+```
+
+`data/vendors/<key>/reports.json` holds the portals and every report: site, address, template, inspector, dates, the file kept, its sha256, and whether the library already holds those bytes. `reports/<date>-<site>-<id>.pdf` holds each report, kept only when its text prints the site's name; one that does not goes to `reports/_mismatch/`. The sync does not file the reports: `jason ingest data/vendors/<key>/reports --apply` classifies and files them, and the report lists those the library lacks.
+
+`jason vendors --reports --drive` files the kept reports in Drive by the specification's filing rules (`Community.email_filing`), the same rules `jason gmail --file-vendor` uses: a report Drive lacks is uploaded, one loose in the root of My Drive is moved into its folder, and one in another folder is copied there with the original left; nothing is deleted. It prints the plan, and `--yes` does it. The upload names each report by its date, site, and the portal's template, and records the portal's link in the file's description.
+
+A portal can ask for a password or for a code sent to a phone. jason enters neither: it records the portal as protected, skips it, and a person reads it.
+
 ## Attaching bills
 
 A portal vendor is registered as a bill source. So `jason sync-bills` routes an unreviewed PayHOA payment that carries the vendor's bank words to this portal. It syncs the portal when a payment needs it, and attaches the checked invoice for the ticket that payment paid. Nothing is attached without a portal payment of the same amount.

@@ -332,6 +332,7 @@ class PortalPlatform(Enum):
 
     FIELDPORTALS = "fieldportals"
     SIGNAL_SERVICE = "signal_service"
+    FIRENSPEC = "firenspec"                # a public inspection-reports portal, named by the QR code on each report
 
 
 class Utility(Enum):

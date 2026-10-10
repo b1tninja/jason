@@ -1296,6 +1296,54 @@ def cmd_pests(args: argparse.Namespace) -> int:
     return 0 if brief.get("found") else 1
 
 
+def _file_reports_in_drive(args: argparse.Namespace, agent: Any, portal: Any, data_dir: Path) -> None:
+    """The vendor's kept reports into Drive by the filing rules: the plan, then the uploads and moves with --yes."""
+    from jason.community import community
+    from jason.tasks.report_portals import plan_filing
+    from jason.tasks.vendor_files import drive_index, file_plan, move_plan, plan_lines
+
+    profile = community()
+    drive = agent.drive(interactive=args.interactive)
+    known, _ = drive_index(data_dir)
+    plan, blobs = plan_filing(drive, profile, portal, data_dir, known=known)
+    from jason.tasks.report_portals import plan_as_dict, save_plan
+
+    save_plan(data_dir, portal.key, plan_as_dict(plan, f"jason vendors --reports --drive --yes --key {portal.key}"))   # what the console shows
+    for line in plan_lines(plan, why=getattr(args, "why", False)):
+        print(line)
+    if args.yes:
+        print(f"{plan.vendor}: filed {file_plan(drive, profile, plan, blobs, data_dir, log=print)}, "
+              f"moved {move_plan(drive, profile, plan, data_dir, log=print)}")
+    else:
+        print("(plan only: --yes uploads the ones marked file, moves the ones marked move, and copies the ones marked copy)")
+
+
+def cmd_backflow(args: argparse.Namespace) -> int:
+    """The backflow program: assemblies, notices with their clocks, where sources differ, and the tester check."""
+    import json
+
+    from jason.community import community as active
+    from jason.config import Settings
+    from jason.tasks import backflow
+
+    data_dir = Settings.load(args.env).payhoa_catalog.parent
+    profile = active()
+    program = profile.backflow_program()
+    if program is None:
+        print("the specification sets no backflow program (Community.backflow_program)")
+        return 1
+    if args.fetch_testers:
+        snapshot = backflow.fetch_tester_lists(data_dir, program)
+        for kept in snapshot["lists"]:
+            print(f"{kept['name']}: " + (kept["error"] if kept.get("error") else f"{len(kept['entries'])} entries" + (f", dated {kept['dated']}" if kept.get("dated") else "")))
+    result = backflow.view(data_dir, profile)
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print("\n".join(backflow.view_lines(result)))
+    return 0
+
+
 def cmd_vendors(args: argparse.Namespace) -> int:
     """Sync (--sync) and verify (--verify) the vendor portals, then print what each says."""
     import json
@@ -1321,6 +1369,15 @@ def cmd_vendors(args: argparse.Namespace) -> int:
                           f"{portal_name(portal.key)} in the vault; skipped")
                     continue
                 print(agent.sync_vendor_portal(portal.key, full=args.full, log=print).summary())
+    if args.reports:
+        from jason.tasks.report_portals import report_brief, report_lines
+
+        with _agent(args) as agent:
+            for portal in (p for p in portals if p.reports):
+                print(agent.sync_vendor_reports(portal.key, files=[Path(f) for f in args.scan], full=args.full, log=print).summary())
+                print("\n".join(report_lines(report_brief(data_dir, portal))))
+                if args.drive:
+                    _file_reports_in_drive(args, agent, portal, data_dir)
     out: list = []
     for portal in portals:
         brief = portal_brief(data_dir, portal, visits=args.visits)
@@ -2106,7 +2163,7 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
     import json
 
     from jason.community import community
-    from jason.tasks.vendor_files import drive_index, file_plan, hold, plan_lines, plan_vendor, vendors
+    from jason.tasks.vendor_files import drive_index, file_plan, hold, move_plan, plan_lines, plan_loose, plan_vendor, vendors
 
     profile = community()
     if profile.email_filing() is None:
@@ -2127,6 +2184,8 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
         for sender in rows:
             plan, blobs = plan_vendor(gmail, drive, profile, sender, known=known, seen=seen, data_dir=data_dir)
             hold(plan, blobs, tuple(args.hold or ()))
+            if getattr(args, "life_safety", False):
+                plan_loose(drive, profile, plan, sender, data_dir)
             if args.json:
                 out.append({"vendor": plan.vendor, "query": plan.query, "messages": plan.messages,
                             "attachments": [a.__dict__ for a in plan.attachments]})
@@ -2135,6 +2194,8 @@ def _file_vendor_email(args: argparse.Namespace, data_dir: Path) -> int:
                     print(line)
             if args.yes and blobs:
                 print(f"{plan.vendor}: filed {file_plan(drive, profile, plan, blobs, data_dir, log=print)}")
+            if args.yes and any(a.action in ("move", "copy") for a in plan.attachments):
+                print(f"{plan.vendor}: moved {move_plan(drive, profile, plan, data_dir, log=print)}")
     if args.json:
         print(json.dumps(out, indent=1, default=str))
     if not args.yes:
@@ -4076,6 +4137,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="With --file-vendor: hold back attachments whose names match (repeatable), for a person to verify")
     gm.add_argument("--why", action="store_true",
                     help="With --file-vendor: under each document, the filing rule's condition and the facts that decided it")
+    gm.add_argument("--life-safety", action="store_true",
+                    help="With --file-vendor: also file the life-safety reports (inspection reports) Drive already holds in "
+                         "their filing-rule folder: one loose in the root of My Drive is moved (it keeps its id, link, and "
+                         "sharing); one in another folder is copied there and the original stays. --yes does it")
     gm.add_argument("--via-gmail", action="store_true",
                     help="With --file-vendor: use Gmail's own Add to Drive, which links the file to its email. Lists "
                          "what to save (data/gmail/save-to-drive.md) from Gmail's metadata only; --yes moves the copies "
@@ -4410,11 +4475,29 @@ def build_parser() -> argparse.ArgumentParser:
     vendors.add_argument("--key", default="", help="One portal from mystique/vendors.py (default every portal)")
     vendors.add_argument("--sync", action="store_true", help="Sign in and download what is new (non-interactive with the Keeper record)")
     vendors.add_argument("--full", action="store_true", help="With --sync: download every invoice and file again")
+    vendors.add_argument("--reports", action="store_true", help="Sync the vendor's public report portal (the one a QR code on its "
+                                                                "reports names): the list and each PDF; needs no sign-in")
+    vendors.add_argument("--drive", action="store_true",
+                         help="With --reports: file the kept reports in Drive by the profile's filing rules (skips what Drive "
+                              "holds; a life-safety report loose in the root moves into its folder, and one in another folder is "
+                              "copied there). Prints the plan; --yes does it")
+    vendors.add_argument("--yes", action="store_true", help="With --reports --drive: upload and move what the plan marks")
+    vendors.add_argument("--from", dest="scan", nargs="*", default=[], metavar="FILE",
+                         help="With --reports: also read QR codes from these PDFs or images to find portals")
     vendors.add_argument("--verify", action="store_true", help="Match PayHOA payments to the portal's payments and attached invoices")
     vendors.add_argument("--visits", type=int, default=5, help="Latest visits to print per property")
     vendors.add_argument("--limit", type=int, default=40, help="With --verify: findings to print")
     vendors.add_argument("--json", action="store_true", help="Print JSON")
     vendors.set_defaults(func=cmd_vendors)
+
+    backflow = sub.add_parser("backflow", help="The annual backflow program: assemblies, notices and their clocks, where sources "
+                                               "differ, and whether the tester is on the published lists")
+    _add_common(backflow)
+    backflow.add_argument("--fetch-testers", action="store_true",
+                          help="Download the City's and the County's tester lists and keep a dated snapshot under data/backflow "
+                               "(names, ids, and businesses only; no phone numbers or emails)")
+    backflow.add_argument("--json", action="store_true", help="Print JSON")
+    backflow.set_defaults(func=cmd_backflow)
 
     accounts = sub.add_parser("accounts", help="Print the bank balances from the last `jason budget` snapshot")
     _add_common(accounts)

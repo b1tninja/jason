@@ -199,6 +199,18 @@ PROCESS_AUTHORITIES: tuple[Authority, ...] = (
     Authority("HSC", "13195", "13199", "automatic fire extinguishing systems: the State Fire Marshal's inspection, testing, and maintenance "
               "regulations (13195) and who must be licensed to test and maintain them (13196.5), behind Title 19, Chapter 5",
               Basis.LIFE_SAFETY),
+    Authority("HSC", "116407", "116407", "the State Water Board's backflow protection and cross-connection control standards, "
+              "adopted as a policy handbook that replaced the Title 17 regulations", Basis.LIFE_SAFETY),
+    Authority("HSC", "116800", "116820", "cross-connection control by water users: a local health officer's program, the water "
+              "user's duty to comply with its orders on installing, testing, and maintaining backflow devices, certified "
+              "testers, and the supplier's charges", Basis.LIFE_SAFETY),
+    Authority("HSC", "13113.7", "13113.7", "smoke alarms in dwelling units, condominiums included: who tests and maintains them, "
+              "the owner's entry, and the fine", Basis.LIFE_SAFETY),
+    Authority("HSC", "13146.2", "13146.2", "the fire department's annual inspection of apartment houses and other structures the "
+              "State Fire Marshal's standards reach, and its fee", Basis.LIFE_SAFETY),
+    Authority("HSC", "17920", "17921", "the State Housing Law's rules for the buildings it covers, and the State Fire Marshal's "
+              "authority to set fire and panic safety standards for them (17921(b))", Basis.LIFE_SAFETY),
+    Authority("HSC", "17926", "17926", "carbon monoxide devices in existing dwelling units: who installs them and when", Basis.LIFE_SAFETY),
     Authority("CIV", "1549", "1633", "what a contract is and how one is made: the parties, consent, a lawful object, and "
               "consideration (1550), and when a contract must be in writing (1624)", Basis.CONTRACTS),
     Authority("CIV", "1667", "1670.5", "contracts the law will not enforce: exempting a party from its own fraud or willful "

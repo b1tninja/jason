@@ -338,6 +338,9 @@ class VendorPortal:
     payhoa_words: tuple[str, ...] = ()
     service: str = ""
     license: Any = None
+    # The public report portal this vendor's reports are published on (a ``PortalPlatform``), found from the QR codes
+    # on its reports; it needs no sign-in, so it has no Keeper record.
+    reports: Any = None
 
 
 @dataclass(frozen=True)
@@ -1269,6 +1272,17 @@ class Community(ABC):
         """The association's own facts that decide what applies to it (``jason.community.applicability.FactValue``,
         source PROFILE): its kind of development, occupancy class, unit count, city, water purveyor. Empty until set,
         so a condition on them is undetermined, never a crash (docs/applicability.md)."""
+        return ()
+
+    def backflow_program(self) -> Any:
+        """The backflow prevention program the association's water service falls under
+        (``jason.community.backflow.BackflowProgram``): its assemblies, its notices with their clocks, its tester, and
+        where the program publishes its tester lists. None until set, so a view of it says it is not specified."""
+        return None
+
+    def life_safety_watch(self) -> tuple:
+        """The life-safety items the board should see, each a ``jason.community.backflow.WatchEntry``: a standing in
+        words, what is on file, and what would change it. Empty until set."""
         return ()
 
     def life_safety_systems(self) -> tuple:

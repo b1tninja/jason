@@ -809,6 +809,14 @@ PROCEDURES: tuple[Procedure, ...] = (
                        "tracking becomes a board item or a register row, decided by a person",
                  refs=("docs/contracts.md (Contract terms in the ingestion pipeline)",),
                  lessons=("notice-window-has-two-edges",), person=True),
+            Step("Read the report's QR codes: each code is where the paper points. A code that names a vendor's report "
+                 "portal means the vendor holds more reports than the files in hand; sync it and take those in too. A "
+                 "meeting the Zoom index has no record of is a lead.",
+                 command="jason vendors --reports; jason ingest data/vendors/KEY/reports",
+                 check="the portal's reports against the library (vendor_portal reports.missingFromLibrary); a protected "
+                       "portal is skipped, and a person reads it; the report masks a meeting passcode",
+                 refs=("docs/vendor-portals.md (Public report portals)",),
+                 lessons=("report-qr-points-at-the-whole-set",)),
             Step("If many files have no kind, add the local model.", command="jason ingest SOURCE --model",
                  check="preflight passes; the model is unloaded afterwards (jason local-ai)"),
             Step("Park the questions and answer them in the ranked queue.",

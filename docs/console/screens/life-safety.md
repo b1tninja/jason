@@ -1,6 +1,6 @@
 # Life safety
 
-A new screen, `#/life-safety`, under Records beside Insurance · phase 3 · CLI: `jason deadlines`, `jason applies`, `jason inspections`, `jason gmail --file-vendor`, `jason sync-report-portals` · MCP: `life_safety` (to add), with `vendor_portal`, `document_models`, `insurance_review`, `email_threads`, `board_items` behind it
+A new screen, `#/life-safety`, under Records beside Insurance · phase 3 · CLI: `jason deadlines`, `jason applies`, `jason inspections`, `jason gmail --file-vendor`, `jason vendors --reports` · MCP: `life_safety` (to add), with `vendor_portal`, `document_models`, `insurance_review`, `email_threads`, `board_items` behind it
 
 ## In the console
 
@@ -37,7 +37,7 @@ The question it answers is "are our fire protection systems inspected, tested, a
 | The insurer's condition: the policy, the endorsement, the symbol, the buildings scheduled | `insurance_review` (the policy pages' protective-safeguards finding) | P1 |
 | Board items about these systems | `/api/board-items`, those whose evidence or category is safety | P0 |
 
-A new loader, `life-safety` in `jason.web.extra.life_safety`, composes these by system. Nothing on load calls Gmail, Drive, PayHOA, or a vendor's portal. A sync is a person's job: `jason gmail --file-vendor`, `jason sync-report-portals`, or `jason vendors --sync`.
+A new loader, `life-safety` in `jason.web.extra.life_safety`, composes these by system. Nothing on load calls Gmail, Drive, PayHOA, or a vendor's portal. A sync is a person's job: `jason gmail --file-vendor`, `jason vendors --reports`, or `jason vendors --sync`.
 
 ## As built (2026-10-10)
 
@@ -107,7 +107,7 @@ Under 720 px, the cards stack, the schedule becomes a list of name, status, and 
 | Control | What it does | Writes | CLI |
 |---|---|---|---|
 | Refresh | Reads the stores again: deadlines, the library, the filing log, the portal's last sync | nothing | `jason deadlines` |
-| File them (reports on the portal not in Drive) | Queues the report-portal sync and the filing job | a job; Drive writes as an approval | `jason sync-report-portals`; `jason gmail --file-vendor <vendor> --yes` |
+| File them (reports on the portal not in Drive) | Queues the report-portal sync and the filing job | a job; Drive writes as an approval | `jason vendors --reports --drive --yes` (the portal's reports) and `jason gmail --file-vendor <vendor> --life-safety --yes` (the ones Drive already holds) |
 | Confirm a deficiency | Accepts a row proposed from a report into the register | jason's store, with `by`, behind `Confirm` | `jason life-safety --confirm <id> --by <name>` (to add) |
 | Record what cleared it | Links a clearing record (a `DocRef` the person picks) and the date | jason's store, with `by` | `jason life-safety --cleared <id> --record <ref> --by <name>` |
 | Record that the insurer was told | Records the date and the record (the email or letter to the agent) | jason's store, with `by` | `jason life-safety --insurer-told <id> --record <ref> --by <name>` |
@@ -120,7 +120,7 @@ No control books a vendor, accepts a proposal, pays an invoice, tells the insure
 ## States
 
 - **Empty:** "The specification lists no life safety systems." Then point to `Community.life_safety_systems()`.
-- **Unavailable:** a store that could not be read is named with its command. Examples: "Reports are unavailable: no library on disk. Run `jason library`." "The vendor's portal has not been synced. Run `jason sync-report-portals`."
+- **Unavailable:** a store that could not be read is named with its command. Examples: "Reports are unavailable: no library on disk. Run `jason library`." "The vendor's portal has not been synced. Run `jason vendors --reports`."
 - **None on record:** "No quarterly inspection on record. A record kept outside jason's stores is not seen." It never reads as "not done".
 - **Needs input:** a fact the profile lacks, such as a system's install date for the 20-year test or a gauge's date. The command or question that supplies it follows.
 - **A report jason could not read:** listed by name with "not read", never with a guessed result.

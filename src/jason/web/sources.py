@@ -916,6 +916,11 @@ EXTRA_LOADERS: dict[str, str] = {
     "citations": "jason.web.extra.citations:citations",  # ?source=&file=: the statutes a source cites, against the shelf
     "citation-gaps": "jason.web.extra.citations:citation_gaps",  # what surveyed sources cite that the shelf lacks
     "reference-page": "jason.web.extra.citations:reference_page",  # ?work=&page=: one page of a work's text
+    "document-codes": "jason.web.extra.inspections:document_codes",  # ?doc=: the QR codes read off documents, masked; disk only
+    "report-portal": "jason.web.extra.inspections:report_portal",  # ?key=: a vendor's public report portal and its reports; disk only
+    "filing-plan": "jason.web.extra.inspections:filing_plan",  # ?key=: the last Drive filing plan a person ran; never calls Drive
+    "backflow": "jason.web.extra.inspections:backflow",  # the program's assemblies, notices' clocks, discrepancies, tester check
+    "watchlist": "jason.web.extra.inspections:watchlist",  # the life-safety items with their standing in words
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
