@@ -21,7 +21,8 @@ OTHER = "someone else"
 
 def test_every_limit_is_a_record_with_its_range_unit_and_words():
     keys = [l.key for l in limits.all_limits()]
-    assert keys == ["upload.max_bytes", "fetch.max_bytes", "split.auto_read"] and len(set(keys)) == len(keys)
+    assert keys == ["upload.max_bytes", "fetch.max_bytes", "split.auto_read", "split.thumbnail_cache_bytes", "split.max_pages",
+                    "split.max_parts", "split.suggest_enabled", "split.draft_days"] and len(set(keys)) == len(keys)
     for l in limits.all_limits():
         assert l.unit and l.description and l.env_name.startswith("JASON_LIMIT_")
     cap = limits.limit("upload.max_bytes")
@@ -70,7 +71,7 @@ def test_the_listing_is_read_only_and_the_command_prints_it(capsys, monkeypatch)
 
     monkeypatch.setenv("JASON_LIMIT_SPLIT_AUTO_READ", "no")
     rows = limits.listing()
-    assert {r["key"] for r in rows} == {"upload.max_bytes", "fetch.max_bytes", "split.auto_read"}
+    assert {r["key"] for r in rows} == {l.key for l in limits.all_limits()} and len(rows) == 8
     assert next(r for r in rows if r["key"] == "split.auto_read")["source"] == "env"
     assert cmd.cmd_limits(SimpleNamespace(key="", json=False)) == 0
     text = capsys.readouterr().out

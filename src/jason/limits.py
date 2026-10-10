@@ -229,6 +229,41 @@ LIMITS: tuple[Limit, ...] = (
           when_hit="The new files were not read automatically because the automatic read is off. Read each one by hand, or ask "
                    "your community's administrator to turn it on.",
           applies_to=("tasks.record_upload.split",), restart="next_job"),
+    Limit("split.thumbnail_cache_bytes", 512 * MB, 32 * MB, 8 * GB, "bytes",
+          "How much disk the splitter's page pictures (thumbnails) may use in all. The oldest are removed to make room.",
+          kind="size", why="A large scan has thousands of pages and every page is drawn at three sizes; the pictures are a "
+                           "convenience that can be redrawn, so they must never fill the disk.",
+          when_hit="Page pictures are using their whole allowance ({limit}). The oldest were removed to make room; this file's "
+                   "pictures are loading more slowly. Ask your community's administrator to raise the allowance (the most "
+                   "allowed is {ceiling}).",
+          applies_to=("tasks.split_thumbs.store",), restart="next_job"),
+    Limit("split.max_pages", 3000, 50, 10000, "count",
+          "The most pages a file may have for the splitter to open it.",
+          kind="count", why="One draft of thousands of pages is already a great deal of review for a person, and drawing "
+                            "every page keeps the machine busy.",
+          when_hit="This file has {amount} pages; the splitter opens files of up to {limit}. Nothing was changed. Split the "
+                   "scan into smaller files first, or ask your community's administrator to raise the limit (the most "
+                   "allowed is {ceiling}).",
+          applies_to=("tasks.split_session.open_session",), restart="next_job"),
+    Limit("split.max_parts", 500, 2, 2000, "count",
+          "The most files one split may write.",
+          kind="count", why="A split that writes a thousand files at once is more likely a wrong mark than a real archive; "
+                            "the limit makes a person look again.",
+          when_hit="This split would write {amount} files; one split writes at most {limit}. Nothing was written. Merge some "
+                   "segments, or ask your community's administrator to raise the limit (the most allowed is {ceiling}).",
+          applies_to=("tasks.split_session.apply",), restart="next_job"),
+    Limit("split.suggest_enabled", True, None, None, "switch",
+          "Whether the splitter offers suggested first pages. Off: a person marks each first page; the editor still works.",
+          kind="switch", why="Suggestions are guesses from the pages' shapes; a community that wants none can turn them "
+                             "off without losing the splitter.",
+          when_hit="Suggestions are off for this community. You can still mark each first page yourself.",
+          applies_to=("tasks.split_session.suggest",), restart="next_job"),
+    Limit("split.draft_days", 60, 7, 365, "days",
+          "How many days a split draft is kept after its last change before it and its page pictures are removed.",
+          kind="time", why="A draft that never ends is clutter and holds a copy of a large file; the original is never "
+                           "removed.",
+          when_hit="This draft was removed after {limit} without a change. Open the file again to start a new one.",
+          applies_to=("tasks.split_session.sweep",), restart="next_job"),
 )
 _REGISTRY = LIMITS      # the older name
 

@@ -1,6 +1,6 @@
 # The PDF splitter: a person taps the first page of each document, and jason offers to guess
 
-Status: design (2026-10-10). Nothing here is built. It joins what exists (the preflight's per-page facts, the segmentation walk, the record-intake split and its confirm, the limits registry) and adds one new surface: a page-by-page view of a large PDF where a person marks where each document starts. General for any association: no slot, vendor, folder, or id here belongs to one; samples are "Example Village HOA" and "123 Main St".
+Status: design (2026-10-10); **phase 1, the backend, is built** (2026-10-10; section 9.4 says what and which choices were taken), together with the cheap suggestion pass, the `split_suggestions` MCP tool, and the `scripts/split_fuzz.py` skeleton of phase 4. The console screens (phases 2 and 3), the model pass, the joins (phase 5), and the optional vector pane (phase 6) are not built. It joins what exists (the preflight's per-page facts, the segmentation walk, the record-intake split and its confirm, the limits registry) and adds one new surface: a page-by-page view of a large PDF where a person marks where each document starts. General for any association: no slot, vendor, folder, or id here belongs to one; samples are "Example Village HOA" and "123 Main St".
 
 ## The requirement
 
@@ -578,10 +578,10 @@ Conventions follow the rest of the CLI: **dry run is the default**; `--yes` is r
 
 | Phase | What | Size and result |
 |---|---|---|
-| **1. Backend core** | `split_session` records; the session store; the light fact pass over `pdf_preflight`; `render_page` and the hash cache with the three limits; thumb, sprite, and page routes with ETags; `jason split` (open, list, boundaries, review, apply through the existing `split` act, purge) | A person can open a file, set boundaries from the command line, and apply. Measured: first thumbnails, cache bounds |
+| **1. Backend core (built)** | `split_session` records; the session store; the light fact pass over `pdf_preflight`; `render_page` and the hash cache with the three limits; thumb, sprite, and page routes with ETags; `jason split` (open, list, boundaries, review, apply through the existing `split` act, purge) | A person can open a file, set boundaries from the command line, and apply. Measured: first thumbnails, cache bounds |
 | **2. The marking console** | the `SplitView` screen: Album and List views, windowed grid, placeholders from facts, tap and shift-click, the segment rail, autosave, undo/redo, the review step; the handoff page `docs/console/handoff-pdf-splitter.md` | The core requirement, without suggestions. A person splits a 600-page file by tapping |
 | **3. More views and touch** | Filmstrip with the slider and sprite scrub, Scroll (vertical and horizontal), the compare and zoom pane, long-press and drag-a-boundary, keyboard map, the phone layout and bottom sheet | The multiple views and the phone and tablet widths |
-| **4. Suggestions** | the three new cue rows; the rule pass wired to the session; ghost boundaries, accept/edit/reject, bulk acts; the optional model pass; the within-session examples; `split_suggestions` MCP tool; `scripts/split_fuzz.py` and the made-up gold set | Suggestions with reasons, measured |
+| **4. Suggestions (the rule pass, the MCP tool, and the fuzz skeleton built; the rest not)** | the three new cue rows; the rule pass wired to the session; ghost boundaries, accept/edit/reject, bulk acts; the optional model pass; the within-session examples; `split_suggestions` MCP tool; `scripts/split_fuzz.py` and the made-up gold set | Suggestions with reasons, measured |
 | **5. Joins** | the entries from the library menu, record-intake slots, and key-documents rows; the held-uploads shelf; the confirmations-queue link; dedupe against the library; the retention sweep | Everything reaches the same screen |
 | **6. Polish and the optional pane** | the optional vector compare pane (if open item 1 says yes); the accessibility audit; the performance regression test; the measured section filled in | Release |
 
@@ -617,6 +617,52 @@ All inputs are made up (`tests/fixtures`, builders in the style of `tests/test_p
 | 10 | Whether the splitter may write new files into Drive | no / on a separate explicit act | **No**: files go to the store and the library; a copy to Drive is the existing, separate, confirmed act |
 | 11 | Thumbnail format | WebP / JPEG | **WebP with a JPEG fallback** for an old browser; the cache stores both only on a miss for a client that needs it |
 | 12 | Whether the splitter replaces the record-intake proposal list | replace / join | **Join**: the proposal remains the queue item; "Split this scan" opens the splitter on it |
+
+### 9.4 What phase 1's backend built, and the choices taken
+
+Built (all backend; no `ui/`): `jason.community.split_session` (the records: `SplitSession`, `Boundary`, `Suggestion`, `PageFact`, the command stack), `jason.community.split_suggest` (the rule pass), `jason.community.split_gold` (the made-up gold set and the scores), `jason.tasks.split_thumbs` (`render_page`, the cache), `jason.tasks.split_session` (open, the draft's acts, review, apply, purge, the sweep), `jason.commands.split` (`jason split`), `jason.web.split` (the picture route), `jason.web.extra.split` (the session sources and the one writer), `jason.mcp.split` (`split_suggestions`), `scripts/split_fuzz.py`, and the registry rows. Tests: `tests/test_split_records.py`, `test_split_thumbs.py`, `test_split_apply.py`, `test_split_gold.py`, `test_split_surfaces.py`.
+
+**Where things are kept.** `<data>/split/sessions/<id>.json` (the draft; the id is random), `<data>/split/sources/<sha[:2]>/<sha>.pdf` (the splitter's one copy of the file, made once at open, so a picture and a cut read bytes that cannot change under them), `<data>/split/facts/<sha[:2]>/<sha>.json` (the per-page facts, shared by every session on the same bytes), `<data>/split/thumbs/<sha[:2]>/<sha>/<size>/<page>.webp` (the pictures). `PATH_RULES` places `split/*` at P3 so `/api/file` cannot serve any of it; the pictures are served only by `/api/split/thumb`.
+
+**Routes as built** (the design's route names were adjusted to the console's existing source and writer pattern, which takes no slash in a source name):
+
+| Route | What |
+|---|---|
+| `GET /api/split/thumb?id=&page=&size=` | one picture (96, 200, or 800, or `tiny`, `small`, `large`); `ETag` of hash, page, size, render version; `304`; `private, max-age=31536000, immutable`, or `private, no-store` for a confidential file (which also needs P3, the private view); `X-Split-Cache: full` when the drive had no room to keep it; the owner view is refused |
+| `GET /api/split-sessions` | the drafts, a confidential file's label masked |
+| `GET /api/split-session?id=&facts=1-200&review=1` | one draft: source summary (an id, never a name), boundaries, segments, suggestions with reasons, counts, `version`, limits, the renderer in use; optionally the page facts for a range and the dry-run review |
+| `POST /api/write/split/<id or new>` | `act`: `open`, `boundaries` (the autosave), `mark`, `unmark`, `move`, `level`, `clear`, `range`, `label`, `undo`, `redo`, `accept`, `reject`, `suggest`, `review`, `apply`, `decline`; a stale `version` answers `409` with the server's copy. `apply` is a dry run unless `dryRun` is false **and** `confirm` is true |
+
+The sprite strips, `GET .../page/<n>.pdf`, and a separate facts route are not built (phase 3 and the optional pane); the facts ride on the session source.
+
+**Choices taken for the open decisions (section 9.3).**
+
+| # | Decision | Taken |
+|---|---|---|
+| 1 | A PDF engine in the browser | None. Server images only |
+| 2 | The renderer | One function, `render_page(path, page, size, rotate=0, engine="")`. `pypdfium2` is preferred if it imports (new optional extra `split` in `pyproject.toml`: `pip install -e ".[split]"`), else PyMuPDF (already in the tree, AGPL-3.0), else `RendererUnavailable` with words (the route answers 503 and the session source reports `renderer: ""`). A renderer is imported when a page is first drawn, never when a module is imported (a test proves it). The license choice stays the user's; nothing else changes if it is made |
+| 3 | When suggestions run | The rule pass runs when a file of up to 60 pages opens, and from `jason split --suggest` or the `suggest` act; a longer file has its facts and first suggestions made by a job (`jason split ID --facts`, queued on the local lane) that the open queues. Off with `split.suggest_enabled`. The model pass is not built |
+| 4 | `split.max_pages` | 3,000 (50 to 10,000). Checked before anything is kept: a file over it leaves no copy |
+| 5 | `split.thumbnail_cache_bytes` | 512 MB (32 MB to 8 GB). Eviction is least recently used (a served picture is touched), other files' pictures before the open file's own, never the picture just drawn. A single picture larger than the allowance is refused in the registry's words. The "huge" 1600 px size is not built |
+| 6 | `split.draft_days`, `split.max_parts` | Both added: 60 days (7 to 365), 500 files (2 to 2,000). The sweep (`jason split --sweep`) removes a draft, declined, or stale session past its days with its copy, facts, and pictures, and never an applied split's record. Nothing schedules the sweep yet |
+| 7 | Two writers on one draft | Conflict on save: every act may carry the `version` it started from; a draft that moved on raises `SplitConflict` (HTTP 409) with the server's copy and nothing is saved. No live merge |
+| 8 | Nested "take out" | Not built. A nested start's choice is `inside` (the default) or `file` (also make a file); a label with any other value is refused in words. Nested levels are set only by a person; the rule pass suggests level 0 |
+| 9 | Blank pages at apply | A person lists pages to leave out (`drop`, `--drop 7,29`); the default drops none, so every page stays with its segment. The totals must add (pages in files + left out = source pages) or the apply is refused |
+| 10 | Writing to Drive | No. Files go to jason's own store (and the record slots); a Drive source is not accepted yet: `open` says to put the file in the library or upload it |
+| 11 | Thumbnail format | WebP (JPEG when the imaging library lacks WebP); one format per machine, not both |
+| 12 | Replace or join the record-intake proposal | Join. The apply uses the same planner and writer as `jason records --split` (`record_upload.plan_parts`, `write_part`, `cut_pages`, `queue_reads`); `split()` itself was refactored onto them, and its tests pass unchanged. The splitter's session apply is **not yet reachable from a record slot's proposal** (phase 5) |
+
+**Other choices.**
+
+1. *Sources:* a library id, an upload's bytes, or (command line only) a path on this machine. A copy is made once, addressed by SHA-256, so two entries to the same bytes resume the same draft (a declined or applied draft is not resumed). The console refuses a server path.
+2. *Facts:* one light pass over the text layer (`jason.tasks.segments.read_pages`) and the images (`pdf_preflight`'s image and colour readers; a page with no image is not drawn for its colour). It does not reuse a stored preflight reading by hash yet, and `lang` is left empty. Each page's 16 by 16 LQIP is kept in the facts file, not the session.
+3. *Rule pass:* the segmentation's cue table is the engine (`score_pages`). The splitter adds `blank-before` (weight 0.9, in place of the table's `after-blank`, read once, only where blanks are rare), `dpi-change` and `colour-change` (0.35 each), and `size-change` for a page with no text layer (0.9). The new signals live in `split_suggest.SPLIT_SIGNALS`, **not** in `document_segments.CUES`, so the segmentation's stored readings are unchanged (`VERSION` not bumped); moving them into the cue table is a later, measured change (section 10).
+4. *Confidence* is `1/(1+exp(-3(score-0.6)))`: 0.5 at a summed weight of 0.6, 0.65 at the rule pass's own threshold (0.8), 0.94 at 1.5. **It is not calibrated.** `scripts/split_fuzz.py report` prints the calibration table on the made-up set, and a real set must be run before the numbers are believed. Bands: High from 0.85, Medium from 0.6, Low below; a suggestion is listed from a summed weight of 0.55. Every rule suggestion is `reader: rules`, `tier: suggested` (`likely` needs a second reader, which the model pass will be).
+5. *Gold set:* letters from different senders, numbered documents, blank separators, a duplex scan, mixed sizes, and image-only scans at mixed resolution and colour. A stack of letters on one letterhead with the same words reads as one document (the cue table's own limit); the image-only archetype yields Low suggestions only.
+6. *MCP:* `split_suggestions` is in the board set (49 tools) and not in the onboarding set, whose nine tools are kept small on purpose.
+7. *Provenance written on each pin:* `splitFrom` (`session:<id>`), `splitSession`, `splitSource` (the source hash), `pages` (the ranges and the page count), `segment` (key, level, title, kind, `kindIsGuess`), `confirmedBy`, and `ordinal`. A part with no slot is kept in the intake store by hash (a *held* part, listed in the session's `applied`); the Records screen's held-uploads shelf is phase 5.
+8. *Dedupe:* a part whose SHA-256 matches a pinned file, a library file, or bytes already in the intake store is skipped ("identical to ..."), unless `keep_copies`.
+9. *Determinism:* the same pages cut twice give identical bytes (a test asserts it).
 
 ## 10. How this joins the documents
 

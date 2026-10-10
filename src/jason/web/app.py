@@ -58,6 +58,9 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     from jason.web.previews import blueprint as preview_routes
 
     app.register_blueprint(preview_routes())    # page 1 of a recorded PDF under data/, rendered and kept (pdf_thumbs)
+    from jason.web.split import blueprint as split_routes
+
+    app.register_blueprint(split_routes())      # the splitter's page pictures, by session and page (split_thumbs)
 
     @app.get("/api/session")
     def session():

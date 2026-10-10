@@ -471,6 +471,7 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("legal/*", Level.P3),
     PathRule("access/*", Level.P3),
     PathRule("thumbs/*", Level.P3),     # page 1 of any PDF; served only by /api/thumb, at the PDF's own level
+    PathRule("split/*", Level.P3),      # the splitter's copy of a file, its drafts, and its page pictures; served only by /api/split/thumb, at the file's own level
     PathRule("library/files/*", Level.P2, _library_file),
     PathRule("library/text/*", Level.P2, _library_text),
     PathRule("zoom/hearings/*", Level.P3),     # a hearing's notice and record: a member's discipline, as the Zoom index's hearings

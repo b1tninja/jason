@@ -197,7 +197,7 @@ def test_the_resources_are_served_under_governance_and_all_not_the_board(books):
     for profile, served in (("governance", True), ("", True), ("board", False)):
         (listed,) = _ask(_server(community, root, profile), ("list_resources", None))
         assert bool(listed.resources) is served
-    assert len(tools_for("board")) == 48
+    assert len(tools_for("board")) == 49
 
 
 def test_the_reader_writes_linked_pages_and_every_link_resolves_or_is_marked(books, tmp_path):

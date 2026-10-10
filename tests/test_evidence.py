@@ -323,7 +323,7 @@ def test_the_mcp_tool_is_read_only_in_the_governance_set(village):
     a = _plan(village)
     assert governance.evidence in governance.TOOLS and api.evidence is governance.evidence
     assert "evidence" in {t.__name__ for t in tools_for("governance")}
-    assert len(tools_for("board")) == 48
+    assert len(tools_for("board")) == 49
     out = governance.evidence("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
     assert out["found"] and out == resolve("payhoa:submission:502", approval_id=a.id, data_dir=village.data_dir)
 

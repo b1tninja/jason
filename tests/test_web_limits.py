@@ -70,7 +70,7 @@ def test_a_row_carries_value_source_range_ceiling_last_change_why_and_when_hit(w
     assert "built in 100 MB" in row["rangeWords"] and row["clamped"] is False
     assert row["lastChange"]["by"] == "Ada Admin" and row["lastChange"]["reason"] == "The disk is small"
     assert row["why"] and row["whenHit"] and row["override"] is True and row["overrideMaxWords"] == "250 MB"
-    assert {g["kind"] for g in out["groups"]} == {"size", "switch"}
+    assert {g["kind"] for g in out["groups"]} == {"size", "count", "switch", "time"}
     # read-only for an officer, with the reason in words
     assert out["canChange"] is False and row["editable"] is False and "administrator" in row["readOnlyWhy"]
     assert as_(world, "Ada Admin").get("/api/limits").json["canChange"] is True

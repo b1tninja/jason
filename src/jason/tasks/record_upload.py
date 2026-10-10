@@ -278,6 +278,90 @@ def _cut(source: Path, first: int, last: int) -> bytes:
     return buf.getvalue()
 
 
+def plan_parts(community: Any, computed: list[Any], items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """For each part a person names (``segment``, ``slot``, ``period``, ``entry``, its ``pages``, a ``kind`` guess, the ``slots`` it fits):
+    the slot it would fill, or the collision. A slot that already holds a file, or that an earlier part of the same request fills
+    (for a slot that holds one), is a collision: shown, not written. The one planner behind ``split`` and the PDF splitter's apply."""
+    taken: set[str] = set()
+    plan: list[dict[str, Any]] = []
+    for w in items:
+        dest, hidden = rs._slot(community, w["slot"])
+        if hidden:
+            raise ValueError(f"{w['slot']} is hidden by the profile: {hidden}. Nothing was written.")
+        period = rs._period(dest, w["period"])
+        if dest.cardinality is Cardinality.SERIES and not period:
+            raise ValueError(f"{dest.key} is a series: name the part's period (SEGMENT={dest.key}@2099-06)")
+        entry_key = _entry_key(dest, w["entry"])         # a repeating row needs its recording number; any other takes none
+        if w["entry"] and not entry_key:
+            raise ValueError(f"{dest.key} takes no instrument number: leave off #{w['entry']}")
+        if w["entry"] and entry_key == dest.key_document:
+            raise ValueError(f"{dest.key} is not a repeating row: leave off #{w['entry']}")
+        holding = next(c for c in computed if c.slot.key == dest.key)
+        busy = [h for h in holding.holders if h.kind is not PinKind.FOLDER and (dest.cardinality is not Cardinality.SERIES or h.period == period)
+                and (not w["entry"] or h.store_id == entry_key)]
+        slot_id = f"{dest.key}@{period}#{entry_key}"
+        row: dict[str, Any] = {"segment": w["segment"], "pages": w["pages"], "slot": dest.key, "period": period, "entry": w["entry"],
+                               "kind": w.get("kind"), "fits": dest.key in {x["key"] for x in w.get("slots") or ()},
+                               "action": "fill"}
+        if (dest.cardinality is not Cardinality.SEVERAL or w["entry"]) and (busy or slot_id in taken):      # a numbered row holds one file
+            row.update({"action": "collision", "why": f"{dest.key} already holds a file" if busy else
+                        f"another part of this request fills {dest.key}", "kept": "the file already there; this part was not written"})
+        if row["action"] == "fill":
+            taken.add(slot_id)
+        plan.append(row)
+    return plan
+
+
+def write_part(root: Path, profile: str, community: Any, row: dict[str, Any], data: bytes, *, by: str, why: str, source_pin: str,
+               extra: dict[str, Any] | None = None, label: str = "") -> dict[str, Any]:
+    """Keep one part's bytes and pin them to the slot ``row`` plans (a key document's slot takes them through the key documents' one
+    writer). Sets ``row["pin"]`` and returns ``{"segment", "slot", "pin"}``. ``extra`` is provenance written on the pin (the PDF
+    splitter's session, page range, and confirming person). The one writer behind ``split`` and the PDF splitter's apply."""
+    name = label or f"part-pages-{row['pages'][0]}-{row['pages'][1]}.pdf"
+    dest = rs._slot(community, row["slot"])[0]
+    if dest.key_document:
+        from jason.tasks import key_documents as kd
+
+        link = kd.upload(_entry_key(dest, row["entry"]), by=by, name=name, data=data, note=why, root=root, profile=profile)
+        row["pin"] = "k-" + str(link["id"])
+        return {"segment": row["segment"], "slot": row["slot"], "pin": row["pin"]}
+    rel, digest = _keep(root, profile, name, data)
+    pin_id = "p-" + secrets.token_hex(4)
+    pin_row = {"id": pin_id, "slot": row["slot"], "kind": PinKind.FILE.value, "ref": rel, "name": name, "period": row["period"], "by": by,
+               "at": rs._now(), "note": why, "unpinned": None, "sha256": digest, "size": len(data), "splitFrom": source_pin,
+               **(extra or {})}
+    rs._write_store(profile, lambda d, r=pin_row: d["pins"].append(r), purpose="record slots: split")
+    row["pin"] = pin_id
+    return {"segment": row["segment"], "slot": row["slot"], "pin": pin_id}
+
+
+def keep_held(root: Path, profile: str, data: bytes, name: str) -> dict[str, Any]:
+    """A part that fills no slot yet: its bytes kept in jason's store, by hash, pinned nowhere. Returns where, the hash, and the size."""
+    rel, digest = _keep(root, profile, name, data)
+    return {"ref": rel, "sha256": digest, "size": len(data)}
+
+
+def queue_reads(root: Path, made: list[dict[str, Any]], by: str) -> dict[str, Any]:
+    """The read-back jobs for new part files (the ``split.auto_read`` limit's act); a part that cannot be queued is named."""
+    return _queue_reads(root, made, by)
+
+
+def cut_pages(source: Path, ranges: list[tuple[int, int]]) -> bytes:
+    """A new PDF of the pages in ``ranges`` ((first, last) pairs, 1-based, in order). The pages are copied, never changed."""
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(str(source))
+    writer = PdfWriter()
+    for first, last in ranges:
+        if first < 1 or last > len(reader.pages) or first > last:
+            raise ValueError(f"pages {first}-{last} are not in a file of {len(reader.pages)} pages")
+        for n in range(first - 1, last):
+            writer.add_page(reader.pages[n])
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
 def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = (), decline: bool = False, by: str, note: str = "",
           dry_run: bool = True, community: Any = None, root: Path | None = None, profile: str | None = None) -> dict[str, Any]:
     """Confirm parts of a combined scan's proposal. ``parts`` names, for each part to fill, its segment and the slot (and a
@@ -326,36 +410,13 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
             "note": "Name each part you confirm and the slot it fills (--part SEGMENT=SLOT). Parts you do not name fill nothing."}
     if len({w["segment"] for w in wanted}) != len(wanted):
         raise ValueError("a part is named once")
-    taken: set[str] = set()
-    plan: list[dict[str, Any]] = []
+    items = []
     for w in wanted:
         part = proposal.get(w["segment"])
         if part is None:
             raise ValueError(f"the proposal has no part {w['segment']} (it has {', '.join(sorted(proposal))})")
-        dest, hidden = rs._slot(community, w["slot"])
-        if hidden:
-            raise ValueError(f"{w['slot']} is hidden by the profile: {hidden}. Nothing was written.")
-        period = rs._period(dest, w["period"])
-        if dest.cardinality is Cardinality.SERIES and not period:
-            raise ValueError(f"{dest.key} is a series: name the part's period (SEGMENT={dest.key}@2099-06)")
-        entry_key = _entry_key(dest, w["entry"])         # a repeating row needs its recording number; any other takes none
-        if w["entry"] and not entry_key:
-            raise ValueError(f"{dest.key} takes no instrument number: leave off #{w['entry']}")
-        if w["entry"] and entry_key == dest.key_document:
-            raise ValueError(f"{dest.key} is not a repeating row: leave off #{w['entry']}")
-        holding = next(c for c in computed if c.slot.key == dest.key)
-        busy = [h for h in holding.holders if h.kind is not PinKind.FOLDER and (dest.cardinality is not Cardinality.SERIES or h.period == period)
-                and (not w["entry"] or h.store_id == entry_key)]
-        slot_id = f"{dest.key}@{period}#{entry_key}"
-        row: dict[str, Any] = {"segment": w["segment"], "pages": part["pages"], "slot": dest.key, "period": period, "entry": w["entry"],
-                               "kind": part.get("kind"), "fits": dest.key in {x["key"] for x in part.get("slots") or ()},
-                               "action": "fill"}
-        if (dest.cardinality is not Cardinality.SEVERAL or w["entry"]) and (busy or slot_id in taken):      # a numbered row holds one file
-            row.update({"action": "collision", "why": f"{dest.key} already holds a file" if busy else
-                        f"another part of this request fills {dest.key}", "kept": "the file already there; this part was not written"})
-        if row["action"] == "fill":
-            taken.add(slot_id)
-        plan.append(row)
+        items.append({**w, "pages": part["pages"], "kind": part.get("kind"), "slots": part.get("slots") or ()})
+    plan = plan_parts(community, computed, items)
     fills = [r for r in plan if r["action"] == "fill"]
     would = {"act": "split", "slot": slot_key, "pin": pin, "by": person, "fills": [f"{r['slot']} (pages {r['pages'][0]}-{r['pages'][1]})" for r in fills],
              "collisions": [r["slot"] for r in plan if r["action"] == "collision"], "writes": f"spec/{profile}/{rs.STORE}",
@@ -368,24 +429,8 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
     made: list[dict[str, Any]] = []
     for r in fills:
         data = _cut(source, r["pages"][0], r["pages"][1])
-        label = f"part-pages-{r['pages'][0]}-{r['pages'][1]}.pdf"
-        dest = rs._slot(community, r["slot"])[0]
         why = text or f"pages {r['pages'][0]}-{r['pages'][1]} of a combined scan, confirmed"
-        if dest.key_document:
-            from jason.tasks import key_documents as kd
-
-            link = kd.upload(_entry_key(dest, r["entry"]), by=person, name=label, data=data, note=why, root=root, profile=profile)
-            r["pin"] = "k-" + str(link["id"])
-            made.append({"segment": r["segment"], "slot": r["slot"], "pin": r["pin"]})
-            continue
-        rel, digest = _keep(root, profile, label, data)
-        pin_id = "p-" + secrets.token_hex(4)
-        row = {"id": pin_id, "slot": r["slot"], "kind": PinKind.FILE.value, "ref": rel, "name": label, "period": r["period"], "by": person,
-               "at": rs._now(), "note": why, "unpinned": None,
-               "sha256": digest, "size": len(data), "splitFrom": pin}
-        rs._write_store(profile, lambda d, row=row: d["pins"].append(row), purpose="record slots: split")
-        r["pin"] = pin_id
-        made.append({"segment": r["segment"], "slot": r["slot"], "pin": pin_id})
+        made.append(write_part(root, profile, community, r, data, by=person, why=why, source_pin=pin))
     auto = bool(limits.value("split.auto_read", community=community))
     queued = _queue_reads(root, made, person) if auto else {
         "reading": "the new files are not read yet (the split.auto_read limit is off): jason records --read SLOT for each"}
