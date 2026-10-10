@@ -726,7 +726,8 @@ PROCEDURES: tuple[Procedure, ...] = (
                  "compare.verdict; on a difference, keep (with the person's reason), repin, or unpin. A combined scan "
                  "proposes slots and fills none.",
                  command="jason records --read KEY; jason records --read KEY --yes --by NAME; "
-                         "jason records --split KEY (the proposal, then --part SEGMENT=SLOT --yes --by NAME)",
+                         "jason records --split KEY (the proposal, then --part SEGMENT=SLOT --yes --by NAME); "
+                         "for a long combined scan, jason split FILE (mark first pages, review, --apply --yes --by NAME)",
                  check="the reading record exists once per file hash; the history line holds no file name",
                  refs=("docs/record-intake.md",),
                  lessons=("a-google-refusal-carries-the-file-id", "a-reading-must-be-idempotent-by-hash",

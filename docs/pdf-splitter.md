@@ -618,6 +618,10 @@ All inputs are made up (`tests/fixtures`, builders in the style of `tests/test_p
 | 11 | Thumbnail format | WebP / JPEG | **WebP with a JPEG fallback** for an old browser; the cache stores both only on a miss for a client that needs it |
 | 12 | Whether the splitter replaces the record-intake proposal list | replace / join | **Join**: the proposal remains the queue item; "Split this scan" opens the splitter on it |
 
+### 9.3a The renderer decision
+
+An evaluation of pdfcraft, a young Rust PDF tool, found no Python or C binding, an early-beta robustness record, and no JBIG2 or CCITT image export, which scanned archives need. The renderer stays behind `render_page`: `pypdfium2` first (permissive license), PyMuPDF as the fallback, `pypdf` for page extraction. pdfcraft is revisited only as a command-line experiment once it ships its own renderer or a documented JSON output.
+
 ### 9.4 What phase 1's backend built, and the choices taken
 
 Built (all backend; no `ui/`): `jason.community.split_session` (the records: `SplitSession`, `Boundary`, `Suggestion`, `PageFact`, the command stack), `jason.community.split_suggest` (the rule pass), `jason.community.split_gold` (the made-up gold set and the scores), `jason.tasks.split_thumbs` (`render_page`, the cache), `jason.tasks.split_session` (open, the draft's acts, review, apply, purge, the sweep), `jason.commands.split` (`jason split`), `jason.web.split` (the picture route), `jason.web.extra.split` (the session sources and the one writer), `jason.mcp.split` (`split_suggestions`), `scripts/split_fuzz.py`, and the registry rows. Tests: `tests/test_split_records.py`, `test_split_thumbs.py`, `test_split_apply.py`, `test_split_gold.py`, `test_split_surfaces.py`.
