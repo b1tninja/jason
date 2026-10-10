@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date
@@ -181,8 +182,11 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
         if plan is not None:
             plans.append((plan, link))
             if gis is not None:
-                for row in _rows_from_mapped(_plan_parcels(gis, plan)):
-                    parcels.setdefault(row["apn"], row)
+                try:
+                    for row in _rows_from_mapped(_plan_parcels(gis, plan)):
+                        parcels.setdefault(row["apn"], row)
+                except OSError:          # the map service did not answer: the plan's units are read next time
+                    pass
     owned_apns = {p["apn"] for p in owned}
     if deeds and recorder is not None:
         read_deeds(recorder, ctx.land, [p["document_number"] for p in parcels.values()])
@@ -306,7 +310,11 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
         apns = sorted(parcels)
         where = (f"SUBDIVISION IN ({','.join(repr(m) for m in found.maps)})" if found.maps and not plans
                  else "APN_DASH IN ({})".format(",".join(f"'{a}'" for a in apns[:900])))
-        shapes = gis.features(where)
+        try:
+            shapes = gis.features(where)
+        except OSError:                  # the map service did not answer: no drawing this time
+            shapes = []
+            lines.append("The county's map service did not answer; the drawing is made on the next run.")
         if shapes:
             for shape in shapes:
                 props = shape.setdefault("properties", {})
@@ -342,7 +350,11 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
                 held = next(iter(sorted(folder.glob(f"{page}.*"))), None)
                 if held is None:
                     cached = next(iter(sorted(book_cache.glob(f"{page}.*"))), None) if book_cache and book_cache.exists() else None
-                    body = cached.read_bytes() if cached is not None else gis.assessor_map(page)
+                    try:
+                        body = cached.read_bytes() if cached is not None else gis.assessor_map(page)
+                    except OSError:      # the viewer did not answer: the page is fetched on the next run
+                        body = b""
+                    time.sleep(0.3)      # the viewer's firewall resets a client that asks too fast
                     kind = map_extension(body)
                     if kind:
                         held = folder / f"{page}.{kind}"
@@ -354,13 +366,16 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
                     lines.append(f"- [{page[:3]}-{page[3:]}](map-book/{held.name})")
     lines.append("")
     (out / "README.md").write_text("\n".join(lines), encoding="utf-8")
-    return HoaPage(key, out.name, out / "README.md", len(parcels), len(owned), list(found.maps), len(events),
+    page = HoaPage(key, out.name, out / "README.md", len(parcels), len(owned), list(found.maps), len(events),
                    "deed" if owned else "plan" if plans else "name" if named else "")
+    (out / "page.json").write_text(json.dumps({"key": page.key, "parcels": page.parcels, "owned": page.owned,
+                                               "maps": page.maps, "events": page.events, "tie": page.tie}), encoding="utf-8")
+    return page
 
 
 def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), limit: int = 0, shapes: bool = True,
                   names: bool = False, map_books: bool = False, deeds: bool = False, progress: Callable[[str], None] | None = None,
-                  today: date | None = None, tied_only: bool = False) -> list[HoaPage]:
+                  today: date | None = None, tied_only: bool = False, resume: bool = False) -> list[HoaPage]:
     """Write a page for every association the land shows (or those whose names hold ``only``'s words), and an index.
     ``shapes`` reads each footprint's shapes from the county's map; ``map_books`` the assessor's map pages; ``deeds``
     reads every parcel's last deed from the recorder (the owners' names, kept in the cache; shown only with ``names``)."""
@@ -381,9 +396,25 @@ def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), lim
         if limit:
             keys = keys[:limit]
         cache = county.db_path.with_name("map-books")
+        failed: list[str] = []
         for key in keys:
-            page = association_page(ctx, key, root / slug(key), gis=gis, recorder=recorder, names=names, map_books=map_books,
-                                    deeds=deeds, today=today, book_cache=cache)
+            out = root / slug(key)
+            if resume and (out / "page.json").exists():
+                held = json.loads((out / "page.json").read_text(encoding="utf-8"))
+                pages.append(HoaPage(key, out.name, out / "README.md", held["parcels"], held["owned"], held["maps"],
+                                     held["events"], held["tie"]))
+                continue
+            page = None
+            for attempt in range(2):
+                try:
+                    page = association_page(ctx, key, out, gis=gis, recorder=recorder, names=names, map_books=map_books,
+                                            deeds=deeds, today=today, book_cache=cache)
+                    break
+                except OSError:
+                    time.sleep(10)       # a reset connection: wait, and try the page once more
+            if page is None:
+                failed.append(key)
+                continue
             pages.append(page)
             if progress is not None:
                 progress(f"{key}: {page.parcels} parcels, {page.owned} owned, {page.events} events")
@@ -396,5 +427,8 @@ def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), lim
     index += _md_table(["Association", "Land by", "Parcels", "Common parcels owned", "Maps", "Changes"],
                        ((f"[{p.key}]({p.slug}/README.md)", p.tie, p.parcels, p.owned, ", ".join(p.maps[:4]), p.events)
                         for p in sorted(pages, key=lambda p: (-p.parcels, p.key))))
+    if failed:
+        index += ["", f"The county's services did not answer for {len(failed)}; `--resume` writes them next time: "
+                  + ", ".join(failed)]
     (root / "README.md").write_text("\n".join(index) + "\n", encoding="utf-8")
     return pages

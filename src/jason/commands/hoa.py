@@ -34,7 +34,7 @@ def cmd_hoa_reports(args: argparse.Namespace) -> int:
 
     pages = build_reports(args.county, _reports_root(args), only=args.only or (), limit=args.limit, shapes=not args.no_shapes,
                           names=args.names, map_books=args.map_books, deeds=args.deeds,
-                          progress=(lambda line: print(line, flush=True)) if args.verbose else None, tied_only=args.tied_only)
+                          progress=(lambda line: print(line, flush=True)) if args.verbose else None, tied_only=args.tied_only, resume=args.resume)
     if not pages:
         print("no association is tied to land yet: run `jason land-sync --full` first", file=sys.stderr)
         return 1
@@ -91,6 +91,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--only", nargs="*", help="only associations whose names hold these words")
     p.add_argument("--limit", type=int, default=0, help="at most this many pages")
     p.add_argument("--tied-only", action="store_true", help="only associations whose land is tied (by deed, plan, or name)")
+    p.add_argument("--resume", action="store_true", help="keep the pages already written (a run the county's services cut short)")
     p.add_argument("--no-shapes", action="store_true", help="do not read shapes from the county's map (no map.svg or KML)")
     p.add_argument("--map-books", action="store_true", help="download the assessor's map book pages as PDFs")
     p.add_argument("--deeds", action="store_true", help="read every parcel's last deed from the recorder (slow; cached)")
