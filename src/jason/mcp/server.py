@@ -18,6 +18,7 @@ from jason.mcp.discovery import TOOLS as DISCOVERY_TOOLS
 from jason.mcp.followups import TOOLS as FOLLOWUP_TOOLS
 from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
 from jason.mcp.index import recorder_around, recorder_descend, recorder_detail, recorder_priors, recorder_search
+from jason.mcp.record_slots import TOOLS as RECORD_SLOT_TOOLS
 from jason.mcp.response_inbox import TOOLS as RESPONSE_TOOLS
 from jason.mcp.rolls import (
     secured_parcel,
@@ -331,7 +332,7 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
-ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS + RECORD_SLOT_TOOLS
 
 # A profile is a named subset, in the order a client lists them. A client picks better from the board set: the
 # digest, the briefs, the law, and the index search, not the research tools behind them.
@@ -344,6 +345,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
         "outstanding_responses",           # who was sent a copy and has not responded: the sent-copy catalog less the answers
         "rule_records", "rule_record",     # the association's rules as records, read only: a rule on a day, its history, the Doc beside it, its uses (governance.py)
         "followups", "campaign_status",    # what we do next and when; a campaign's funnel by intake method (followups.py)
+        "record_slots", "record_slot",     # the record checklist: what the association holds, what a person answered (record_slots.py)
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.
@@ -351,7 +353,7 @@ PROFILES: dict[str, tuple[str, ...]] = {
     # Onboarding by conversation (docs/onboarding.md): the session, its questions, and the two writes, with the
     # onboard and onboard_review prompts. A small set, so a local model picks the right tool.
     "onboarding": ("onboarding_status", "next_questions", "intake_questions", "answer_intake_question",
-                   "onboarding_confirm", "association_directory", "documents_located"),
+                   "onboarding_confirm", "association_directory", "documents_located", "record_slots", "record_slot"),
 }
 
 

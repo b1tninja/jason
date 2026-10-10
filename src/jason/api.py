@@ -22,6 +22,8 @@ and require ``by``.
     api.followups(days=14)["items"]                      # what we do next, and when, with the basis and the count outstanding
     api.campaign_status("AC27E")["campaigns"]            # a campaign's funnel by way of answering, and who is unreachable
     api.outstanding_responses()["requests"]              # who was sent a copy and has not responded (disk only)
+    api.record_slots(group="governing")["groups"]        # the record checklist: each slot, its law and state (disk only)
+    api.record_slot("governing/declaration")["holders"]  # one slot: what is pinned, how the library read it, any collision
 
 The MCP server's other tools (the PayHOA catalog, deeds, liens, finance, mail, meetings, the law) are importable from
 ``jason.mcp.county``, ``jason.mcp.index``, and ``jason.mcp.rolls`` the same way. ``docs/mcp.md`` lists every tool.
@@ -61,6 +63,7 @@ from jason.mcp.governance import (
     schedule_assignments,
     section_refs,
 )
+from jason.mcp.record_slots import record_slot, record_slots
 from jason.mcp.response_inbox import new_responses, outstanding_responses, response
 from jason.mcp.followups import campaign_status, followups
 

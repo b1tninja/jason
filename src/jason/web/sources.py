@@ -903,6 +903,8 @@ EXTRA_LOADERS: dict[str, str] = {
     "rule-record-compare": "jason.web.extra.rule_records:rule_record_compare",  # ?id= the working Doc against the adopted words
     "rule-uses": "jason.web.extra.rule_records:rule_uses",  # ?id= the uses linked to a rule
     "rule-events": "jason.web.extra.rule_records:rule_events",  # ?id= the acts on record for a rule
+    "record-slots": "jason.web.extra.record_slots:record_slots",  # the record checklist; ?group=&state=; disk only, board only
+    "record-slot": "jason.web.extra.record_slots:record_slot",  # ?key= one slot: holders, the library's reading, the trail
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
@@ -922,6 +924,7 @@ EXTRA_WRITERS: dict[str, str] = {
     "key-documents": "jason.web.extra.key_documents:write",  # link, upload, unlink, status: jason's own store
     "instrument-graph": "jason.web.extra.key_documents:reveal",  # owners' names for a named person, logged
     "intake": "jason.web.extra.onboarding_setup:write",  # a signed-in person's answer, queued; applied in a terminal
+    "records": "jason.web.extra.record_slots:write",  # pick, answer, unpin on a slot: jason's own stores; the file is never touched
 }
 
 

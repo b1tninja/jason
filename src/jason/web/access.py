@@ -503,6 +503,7 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("meetings/*", Level.P1),          # a meeting's plan and the room's open record
     PathRule("tax-bills/*", Level.P1),         # the association's own property tax bills
     PathRule("vendors/*", Level.P2),           # vendors' records: a W-9's taxpayer id can be a sole proprietor's SSN
+    PathRule("records/*", Level.P3),                # the record checklist's history: who pinned which file, and their words
     PathRule("key-documents/*.json", Level.P1),     # the key documents' store: who linked what, and their notes
     PathRule("key-documents/*", Level.P0, _key_document),
     PathRule("authorities/*", Level.P0),

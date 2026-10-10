@@ -1,6 +1,6 @@
 # Record intake: a checklist where a person picks the association's documents
 
-A design (nothing here is built) for one checklist of **slots**, one for each record an association must be able to put its hands on, where a person **picks a file from Google Drive, pastes its link, or uploads one from the computer** for each, and jason reads what was picked and says what it found. The user's idea, in a line: onboarding gets a repository and checklist in which, for each required document, a person goes in and uploads or selects a Drive document.
+**Status: phase 1 is built** (see [Phase 1: what is built](#phase-1-what-is-built)); phases 2, 2b, and 3 are design only. A design for one checklist of **slots**, one for each record an association must be able to put its hands on, where a person **picks a file from Google Drive, pastes its link, or uploads one from the computer** for each, and jason reads what was picked and says what it found. The user's idea, in a line: onboarding gets a repository and checklist in which, for each required document, a person goes in and uploads or selects a Drive document.
 
 The console's side (screens, components, states, the phone layout) is [console/handoff-record-intake.md](console/handoff-record-intake.md). This page is the model and the process, general for any association: no slot, folder, vendor, or id here belongs to one.
 
@@ -226,6 +226,27 @@ Choosing the file; saying a record does not exist or does not apply; confirming 
 | 2 | **jason's chooser** (way A) over the server token; folder binding; the reading back after a pick (steps 1-4) | that the chooser works without a script and a person reaches a file in a shared drive | about a week and a half: a Drive listing route, a dialog |
 | 2b | **The Google Picker** (way C), if wanted | the loopback-origin question and the cross-client scope question | a day to test, a few for the page, a person's decision first |
 | 3 | **Upload** and the whole pipeline (steps 5-11): segmentation proposals, standing, duties, programs, conflicts | that a pick of one scan fills several slots, and the board gets a gap list | two weeks, mostly wiring existing readers |
+
+## Phase 1: what is built
+
+The read-only checklist from jason's own catalog, a paste-a-link pin, and the three answers. Nothing reaches Drive, PayHOA, or the county except an optional, read-only `--resolve` of a pasted link.
+
+| Part | Where |
+|---|---|
+| The model (pure): `Slot`, `SlotRule`, `Pin`, `Answer`, `Reading`, the state words, the link parser, the merge of a code pin and a person's | `jason.community.record_slots` |
+| The profile's hook, empty by default: `Community.record_slots()` returns `SlotRule` rows (add a slot, or hide one with its reason) | `jason.community.base` |
+| The slots assembled from code, the states computed from the records, and the writes | `jason.tasks.record_slots` |
+| The command: `jason records` | `jason.commands.record_slots` |
+| Read-only tools `record_slots` and `record_slot` (profiles `board` and `onboarding`; no write tool), also `jason.api` | `jason.mcp.record_slots` |
+| The console's loaders `record-slots` and `record-slot`, and `POST /api/write/records/<slot key>` behind the write guard | `jason.web.extra.record_slots` |
+
+**Where the slots come from now.** The Civil Code 5200 records (fourteen: the governing documents record is carried by the key documents' slots), the key documents' rows (one slot each; a recorded row is a `SEVERAL` slot read after the declaration), the developer's deliveries no key document carries, the onboarding items that are documents and not already a slot, and a few kinds with no shelf of their own (policies and certificates, contracts, reserve studies, budgets, statements). `requires` is read as citations from the lines jason already has (`citations_in`), never typed again. **Not yet:** the programs the documents mandate (the adoption catalog, [programs.md](programs.md), is not built), the permits and conditions of approval, and the unit records (which are not slots).
+
+**Where a pin or an answer is kept.** A person's pins and answers: `data/spec/<profile>/records.json`, read through `jason.community.private`, written whole under the store lock `record-slots-<profile>` after a backup (`records.json.bak`), signed (`by`, `at`), never deleted (an unpin marks who and when). A pick on a slot that is a recorded instrument is the key documents' link, and "none exists" on a single-copy key document is its `missing`: one writer, one store (a repeating row needs the instrument's recording number, `--entry`). Every write also appends one line to `data/records/history.jsonl` (the slot, the act, who, the pin's id; never a file id or name). The specification's own pins (the declaration's Drive file, pins by kind and delivery, the known files, and the folders and sync rules a 5200 record names) are shown with the person's, and never edited.
+
+**How a state is worked out.** A pin whose file the library has not read is `picked` (or `uploaded`); with a kind, `classified`; with its text cached, `read`; when a person chose the kind (`jason intake`), `confirmed`. A file read as a kind the slot does not expect is a `problem`, with the slots it fits. A slot with several pins is as far along as its least advanced pin; with none, the newest answer; with none, a folder the specification pins; else `empty`. Files the library classified that nobody pinned are **candidates**, counted and listed, never a holder. A file in a confidential kind makes the slot's `held` count; its name is masked and its id shortened outside the private view.
+
+**What the first phase leaves out, on purpose.** The Drive chooser and folder binding (phase 2), upload, segmentation, standing, duties, programs and conflicts reading a pick (phase 3), the wrong-slot overrides (`keep`, `repin`), the "is there another?" answer for a `SEVERAL` slot, the series' span (a series shows the periods that have a pin, not the ones that do not), and reopening an answer. Their `POST` acts answer 400 with "not built yet".
 
 ## Open decisions
 

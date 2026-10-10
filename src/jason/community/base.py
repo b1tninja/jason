@@ -1515,6 +1515,12 @@ class Community(ABC):
         allows. Empty until the specification records some."""
         return ()
 
+    def record_slots(self) -> tuple:
+        """The association's changes to the record checklist (``jason.community.record_slots.SlotRule``): a slot it needs
+        that jason's own list lacks (a local permit condition), or a slot that cannot apply, hidden with its reason (shown as
+        "hidden by the profile", never absent). Empty until the specification adds some."""
+        return ()
+
     def law_readings(self) -> tuple:
         """The board's and counsel's readings of the law and of the governing documents
         (``jason.community.law_readings.LawReading``), each tied to the digest of the words it reads. Empty until
