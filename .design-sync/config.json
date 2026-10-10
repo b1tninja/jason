@@ -193,6 +193,13 @@
     "../docs/console/screens/life-safety.md",
     "../docs/cross-connection-control.md",
     "../docs/life-safety-inspections.md",
-    "../docs/console/handoff-citations.md"
+    "../docs/console/handoff-citations.md",
+    "../docs/console/handoff-record-intake.md",
+    "../docs/record-intake.md",
+    "../docs/pdf-splitter.md",
+    "../docs/instance-limits.md",
+    "../docs/console/screens/limits.md",
+    "../docs/console/screens/records.md",
+    "../docs/console/screens/split.md"
   ]
 }

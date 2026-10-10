@@ -151,8 +151,10 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
 
 ## Known render warns
 
-- `[RENDER_THIN] CitationChip.html`: no authored preview yet, so the card is the typographic floor (its name only).
-  Authoring `.design-sync/previews/CitationChip.tsx` clears it.
+- Uploaded 2026-10-10 (project 0977b54c-…, 631 files, 0 deletes, anchor `_ds_sync.json` written last). It was built
+  from a clean HEAD worktree: the main tree has `core.autocrlf=true`, so its mixed CRLF/LF bytes changed the grade keys;
+  overlay the main tree's bytes for the files HEAD shares, and restore dirty files to HEAD, before grading. `CitationChip`
+  now has a preview, so its old RENDER_THIN warn is gone.
 
 - `[RENDER_ERRORS] RemoteView.html: TypeError: Cannot read properties of undefined (reading '0')`: the preview's
   `ChildrenThrow` cell throws on purpose to show the shape-tolerant fallback; the boundary catches it, React logs
@@ -249,3 +251,8 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `ui/src/lib/citations.ts`; a changed type fails the preview's compile (the card falls back to the floor), not the bundle. The page text in
   `ReferencePage` and `WorkReader` is made-up prose that quotes statute numbers only as names.
 
+- 2026-10-10 (afternoon) re-sync: guidelines only. Seven general docs were added to `guidelinesGlob` (record intake, its console handoff,
+  the PDF splitter and instance limits designs, the Limits, Records and Split screen specs); 48 guideline docs now. The plan named
+  `guidelines/**`, `README.md` (its guideline count), and the sentinel, with no deletes. No component, bundle, or style was uploaded
+  (none changed since the 07:09 upload), and `_ds_sync.json` was left as it was. The new screens (Limits, Records, Split) are views,
+  not `src/components`, so they are not design-system components.
