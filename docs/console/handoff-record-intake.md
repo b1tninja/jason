@@ -32,7 +32,7 @@ New parts only where this table says so; each is built from the parts in [compon
 | `SlotGroup` | `Card`, `Disclosure` | one per group | a group's slots | open or collapsed (the group holding the first closed gate opens); the count in its summary in words |
 | `SlotRow` | `DataTable` row, `SlotWord`, `Doc` chip | each slot | one slot | the states in "The words"; cardinality (one, several with a count, a series with its periods as cells); confidential (name masked); a problem (its reason in words on the row); a row on a phone is a card |
 | `SlotWord` (a `Pill` preset) | `Pill` | in `SlotRow`, `SlotPage`, `SlotProgress` | the slot's `state` | empty, picked, uploaded, classified, read, confirmed, not applicable, does not exist, held, waiting on someone else, problem: each a word, a glyph, a tone that only repeats it |
-| `SlotPage` | `Card`, `Recitation`, `Findings`, `Command` | one slot (`#/onboarding/records/<key>`) | `GET /api/record-slot?key=` | the law first (a `Recitation` of what requires it, or a `CitationChip` where the shelf lacks it); what is held; the candidates; the acts; the log; a slot with no law named ("jason's own design needs it") |
+| `SlotPage` | `Card`, `Recitation`, `Findings`, `Command` | one slot (`#/setup/records/<key>`) | `GET /api/record-slot?key=` | the law first (a `Recitation` of what requires it, or a `CitationChip` where the shelf lacks it); what is held; the candidates; the acts; the log; a slot with no law named ("jason's own design needs it") |
 | `ExistenceAnswer` | `QuestionCard` preset, `Confirm` | in `SlotPage` and beside an empty `SlotRow` | `existence` | not asked; "Does the association hold one?" three answers (a file, none exists, not applicable); each opens its own field (where you looked; why it does not apply; who has it and the day you asked); answered (by whom, when, the words); a `SEVERAL` slot's closing question ("Is there another?") |
 | `SlotActs` | `Confirm`, `Command` | in `SlotPage` | `acts` | pick a file, pick a folder, upload, replace, unpin, the three answers: each a `Confirm` that names the slot, the file, and the person; an act the person's office may not take shows the reason in words |
 | `DriveChooser` | `DataTable`, `SearchBox`, `Breadcrumb`, `Pill` | a dialog opened from `SlotActs` ("Choose from Drive") | `GET /api/drive/list?parent=&q=&drive=`; the pick is `POST /api/write/records/<key>` | see "The chooser's states" below |
@@ -102,7 +102,7 @@ Made-up keys, files, people, and numbers. A slot's `requires` is a citation and 
        {"key": "records/5200/minutes", "title": "Meeting minutes", "requires": ["CIV 5200"],
         "cardinality": "series", "state": "read", "held": 5, "cells": 8,
         "periods": [{"period": "2098", "state": "confirmed"}, {"period": "2099", "state": "read"}, {"period": "2097", "state": "empty"}],
-        "confidential": false, "route": "#/onboarding/records/records%2F5200%2Fminutes"}
+        "confidential": false, "route": "#/setup/records/records%2F5200%2Fminutes"}
      ]}
   ],
   "biggestUnknowns": [
@@ -183,13 +183,13 @@ Made-up keys, files, people, and numbers. A slot's `requires` is a citation and 
   | an upload's bytes | the file's level | through `/api/file` under the level rules, as any file under `data/` |
 
   Opening a held slot's file asks for the private view with a reason, as every restricted screen does ([handoff-held-setup-roster.md](handoff-held-setup-roster.md): `PrivateGate`).
-- **The board-only route.** `#/onboarding?tab=records` and every `#/onboarding/records/<key>` are absent from the owner view; the loaders refuse `view=owner` (403). A URL carries a slot's key, never a file name or id ([security-and-privacy.md](security-and-privacy.md#urls)).
+- **The board-only route.** `#/onboarding?tab=records` and every `#/setup/records/<key>` are absent from the owner view; the loaders refuse `view=owner` (403). A URL carries a slot's key, never a file name or id ([security-and-privacy.md](security-and-privacy.md#urls)).
 - **Nothing is mailed or sent.** "Waiting on someone else" records who and when; the request list writes the letter; a person sends it.
 - **No color-only meaning.** Every state is a word, every count has a table twin, and a selected row says "selected".
 
 ## Where it goes
 
-- **Overview → Onboarding → Records** (proposed): `#/onboarding?tab=records`; one slot `#/onboarding/records/<key>` (the key is URL-encoded, a path with slashes). Filters in the query: `?group=`, `?state=`, `?filter=missing|confidential|waiting`.
+- **Overview → Onboarding → Records** (proposed): `#/onboarding?tab=records`; one slot `#/setup/records/<key>` (the key is URL-encoded, a path with slashes). Filters in the query: `?group=`, `?state=`, `?filter=missing|confidential|waiting`.
 - **The Setup tab** (`ChecklistItem`): a document item shows its slots' count and links to the Records tab filtered to its group.
 - **`#/records`** (the 5200 records page): each record's row gains "pick or answer" linking to its slot; the page's own holdings stay the 5200 inventory.
 - **`#/digest`** under "Waiting on a person": "5 slots wait on someone else; 2 picks read as another kind" linking to the Records tab; the second also appears in the confirmations queue.

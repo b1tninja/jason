@@ -576,7 +576,7 @@ def _row(c: Computed, *, private: bool) -> dict[str, Any]:
         "kinds": [k.value for k in s.kinds], "pins": len(c.holders), "candidates": len(c.candidates), "collision": bool(c.collisions),
         "problem": next((p.problem for p in c.statuses if p.problem), ""), "waitsOn": list(s.waits_on),
         "closed": bool(c.more and c.more.get("value") == "no"), "bindings": len(c.bindings),
-        "route": "#/onboarding/records/" + quote(s.key, safe=""),
+        "route": "#/setup/records/" + quote(s.key, safe=""),
     }
 
 
@@ -706,11 +706,11 @@ def slot_view(key: str, community: Any = None, root: Path | None = None, profile
                  "keep": any(st.wrong_slot and not st.pin.kept for st in found.statuses),
                  "repin": any(h.origin is Origin.DATA for h in found.holders), "more": s.cardinality is Cardinality.SEVERAL,
                  "reopen": found.answer is not None or bool(found.more and found.more.get("value") == "no"),
-                 "upload": not found.hidden, "replace": False,
+                 "upload": not found.hidden, "replace": any(h.origin is Origin.DATA for h in found.holders),
                  "split": any((h.get("readback") or {}).get("split", None) and h["readback"]["split"]["open"] for h in holders),
                  "ack": any(h.get("changed") for h in holders),
                  "why": ("hidden by the profile: " + found.hidden) if found.hidden else
-                        "replacing a file comes later: pick or upload the new one and unpin the old"},
+                        "replace swaps a person's pin for a new file in one act"},
         "log": [{k: v for k, v in r.items() if k not in ("detail",)} if not mask_words else {"at": r.get("at"), "by": r.get("by"), "act": r.get("act")}
                 for r in log],
         "commands": {"slot": f"jason records --slot {key}", "pick": f"jason records --pick {key} --file LINK_OR_ID --by NAME",

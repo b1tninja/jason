@@ -659,7 +659,7 @@ def test_the_key_documents_checklist_shows_its_slot_and_per_instrument_counts_th
     assert summary["bylaws"]["entries"]["bylaws"] == {"pins": 1, "read": 1, "wrongSlot": 0, "held": 0}
     data = kd.checklist(world.community, world.root, "example")
     group = next(g for g in data["groups"] if g["item"] == "bylaws")
-    assert group["slot"]["state"] == "read" and group["slot"]["pins"] == 1 and group["slot"]["route"].startswith("#/onboarding/records/")
+    assert group["slot"]["state"] == "read" and group["slot"]["pins"] == 1 and group["slot"]["route"].startswith("#/setup/records/")
     assert group["entries"][0]["slot"] == {"pins": 1, "read": 1, "wrongSlot": 0, "held": 0}
     assert data["slotCounts"]["pins"] == 1 and data["slotCounts"]["read"] == 1
     # one writer: the pick for this slot is the key documents' own link

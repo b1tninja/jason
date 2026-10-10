@@ -589,7 +589,7 @@ def queue_items(community: Any = None, root: Path | None = None, profile: str | 
             except ValueError:
                 age = ""
             base = {"kind": "record reading", "slot": c.slot.key, "pin": st.pin.id, "title": c.slot.title,
-                    "proposed": at, "age": age, "route": "#/onboarding/records/" + rs.quote(c.slot.key, safe=""), "held": held,
+                    "proposed": at, "age": age, "route": "#/setup/records/" + rs.quote(c.slot.key, safe=""), "held": held,
                     "command": f"jason records --slot {c.slot.key}"}
             if st.wrong_slot and not st.pin.kept:
                 items.append({**base, "id": f"{c.slot.key}#{st.pin.id}", "reason": "wrong slot", "state": "waiting",
@@ -633,7 +633,7 @@ def key_document_summary(community: Any = None, root: Path | None = None, profil
         out[c.slot.key_document] = {
             "slot": c.slot.key, "state": c.state.value, "stateWord": c.state.word, "pins": len(c.statuses),
             "read": sum(v["read"] for v in per.values()), "wrongSlot": sum(v["wrongSlot"] for v in per.values()),
-            "held": c.held, "route": "#/onboarding/records/" + rs.quote(c.slot.key, safe=""), "entries": per}
+            "held": c.held, "route": "#/setup/records/" + rs.quote(c.slot.key, safe=""), "entries": per}
     return out
 
 

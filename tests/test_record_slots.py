@@ -472,7 +472,7 @@ def test_the_console_loaders_match_the_handoffs_shapes_and_mask_a_confidential_s
     monkeypatch.setattr(rs, "_profile", lambda profile, community=None: profile or "example")
     web.write("records/5200/enhanced", {"act": "pick", "file": "library:1003", "by": BY})
     page = web.record_slot({"key": "records/5200/enhanced"})
-    assert page["found"] and page["route"] == "#/onboarding/records/records%2F5200%2Fenhanced"
+    assert page["found"] and page["route"] == "#/setup/records/records%2F5200%2Fenhanced"
     assert page["holders"][0]["name"].startswith("a confidential file") and "stmt-2099-06" not in json.dumps(page)
     assert {"key", "title", "requires", "cardinality", "state", "held", "cells", "periods", "confidential", "route"} <= set(page)
     data = web.record_slots({})
