@@ -60,6 +60,8 @@ def cmd_land_sync(args: argparse.Namespace) -> int:
         sync_land_uses(gis, land)
         marks = ",".join("?" * len(COMMON_LAND_USES))
         numbers = [p["document_number"] for p in land.parcels(where=f"land_use IN ({marks}) AND status = 'ACTIVE'", args=COMMON_LAND_USES)]
+        # The plans' and maps' own rows: who recorded each and what its title cites (once; then only new ones).
+        numbers += [d["number"] for d in land.divisions() if d["number"]]
         read_deeds(county.recorder, land, numbers)
         if not args.no_watch:
             after = date.fromisoformat(args.since) if args.since else None

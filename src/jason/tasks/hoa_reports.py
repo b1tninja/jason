@@ -34,6 +34,7 @@ from asspy.sacramento.gis import map_extension
 from asspy.land import (
     COMMON_LAND_USES,
     LandStore,
+    cited,
     common_area_owners,
     events_for,
     footprint,
@@ -113,6 +114,27 @@ class _Context:
     def label(self, code: str) -> str:
         found = self.land.land_use(code) if code else None
         return " / ".join(p for p in (found["general"], found["specific"], found["occupancy"]) if p) if found else code
+
+
+def _recorded_by(ctx: "_Context", number: str) -> str:
+    """Who recorded a map or plan (its businesses; never a private person) and what its title cites, from the
+    recorder's row when the land store has read it."""
+    from jason.community.instrument_graph import PartyKind, party_kind
+
+    row = ctx.land.deed(number) if number else None
+    if row is None:
+        return ""
+    names = (*row.grantors, *row.grantees)
+    titled = [n for n in names if n.upper().startswith(("FINAL MAP", "SUBDIVISION NO", "MAP OF", "PARCEL MAP"))]
+    business = [n for n in names if n not in titled and party_kind(n) is not PartyKind.PRIVATE]
+    found = cited(" ".join(titled))
+    parts = []
+    if business:
+        parts.append("by " + "; ".join(business[:3]))
+    cites = [*found.numbers, *(f"map {m}" for m in found.maps), *(f"book {b} page {pg}" for b, pg in found.book_pages)]
+    if cites:
+        parts.append("cites " + ", ".join(cites[:4]))
+    return "; ".join(parts)
 
 
 def _plan_parcels(gis, plan: dict) -> list[dict]:
@@ -197,10 +219,12 @@ def association_page(ctx: _Context, key: str, out: Path, *, gis=None, recorder=N
         if made:
             timeline.append((date.fromisoformat(made["recorded"]) if made["recorded"] else None,
                              made["number"] if recorded_number(made["number"] or "") else "",
-                             "final map", f"{made['name']} (map {map_id}; {made['lots'] or '?'} lots, {made['lettered_lots'] or 0} lettered)"))
+                             "final map", "; ".join(part for part in (
+                                 f"{made['name']} (map {map_id}; {made['lots'] or '?'} lots, {made['lettered_lots'] or 0} lettered)",
+                                 _recorded_by(ctx, made["number"] or "")) if part)))
     for plan, link in plans:
         timeline.append((date.fromisoformat(plan["recorded"]) if plan["recorded"] else None, plan["number"], "condominium plan",
-                         f"{plan['name']} (tied by {link.reason})"))
+                         "; ".join(part for part in (f"{plan['name']} (tied by {link.reason})", _recorded_by(ctx, plan["number"])) if part)))
     for g in governing:
         timeline.append((g.recorded, g.number, g.filing.lower(), "; ".join([*g.parties[:3], *g.tracts[:2]])))
     if sightings:
