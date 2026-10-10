@@ -6,9 +6,11 @@ export function daysUntil(iso: string, today = new Date()): number {
   return Math.round((d.getTime() - new Date(today.toDateString()).getTime()) / 86400000);
 }
 
-/** An ISO date with how far off it is; overdue reads bad, within 14 days warn. */
-export function DueDate({ iso, today }: { iso?: string | null; today?: Date }) {
+/** An ISO date with how far off it is; overdue reads bad, within 14 days warn. `settled` (answered, done, dropped)
+ * shows the date alone: a satisfied deadline is never "overdue". */
+export function DueDate({ iso, today, settled }: { iso?: string | null; today?: Date; settled?: boolean }) {
   if (!iso) return <span className="muted">—</span>;
+  if (settled) return <time dateTime={iso}>{iso}</time>;
   const days = daysUntil(iso, today);
   const tone = days < 0 ? "bad" : days <= 14 ? "warn" : "neutral";
   const when = days === 0 ? "today" : days < 0 ? `${-days}d overdue` : `in ${days}d`;

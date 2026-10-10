@@ -19,6 +19,15 @@ const TONES: Record<string, Tone> = {
   planned: "neutral", "in review": "warn", approved: "good", "partially approved": "warn", applying: "good", applied: "good",
   withdrawn: "neutral", undecided: "neutral", rejected: "bad", held: "warn", "not applied": "neutral",
   "changed since review": "warn", blocked: "warn",
+  // conversations and policies: a statutory miss or a missing required policy is not an accusation, so never "bad"
+  stalled: "warn", replied: "good", assigned: "neutral", routed: "neutral", shared: "neutral", reassigned: "neutral",
+  "waiting on us": "warn", "held for the board": "warn", adopted: "good", declined: "neutral",
+  required: "neutral", "required and missing": "warn",
+  // connections, schedules, and the service heartbeat
+  connected: "good", failing: "bad", paused: "warn", "needs sign in": "warn", "needs sign-in": "warn", "not set up": "neutral",
+  stale: "warn", stopped: "neutral", draining: "warn", none: "neutral",
+  // follow-ups and arrivals
+  due: "warn", dropped: "neutral", new: "warn", seen: "neutral", read: "neutral", keyed: "warn", dismissed: "neutral",
 };
 
 export function toneOf(word: string | null | undefined): Tone {
