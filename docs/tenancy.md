@@ -432,6 +432,10 @@ With nothing chosen and the shim off, `CommunityNotChosen` stops the command wit
 
 **Decided in phase 1.** (a) The compatibility shim stays: this PC's installation depends on the built-in default, so a missing choice prints one line on standard error per run and `JASON_DEFAULT_COMMUNITY_SHIM=0` turns the default off. (b) The data folder layout is unchanged: the built-in default's folder is still `<data root>/`, any other's `<data root>/<key>/` ([profiles.md](profiles.md#each-profiles-data)). (c) `jason use` is a person's command with no `--yes`: it prints exactly what it wrote. (d) The jail (`assert_inside`) is not part of phase 1. The flag is global, so every command honors it, but a subcommand's own `--community` or `--profile` (`jason cadence`, `jason vault`, `jason serve`) keeps its meaning.
 
+## Limits per instance and per community
+
+Capacity, cost, and safety limits (an upload's size, a job's pages, a mailing's ceiling) are layered: the code's default and bounds, the instance's value and ceiling, then the community's value inside that ceiling. Each layer is stored apart (the instance's in the user config home, a community's in its own data folder), changed only by a person with a reason, and audited. One community's limits never change another's. The design is in [instance-limits.md](instance-limits.md).
+
 ## Axioms this keeps
 
 - **Nothing crosses a community.** The test, the lint, the jail, and the cell are four ways of holding it.
