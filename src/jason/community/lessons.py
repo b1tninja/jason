@@ -2346,9 +2346,19 @@ LESSONS: tuple[Lesson, ...] = (
     Lesson("a-limit-is-a-registry-row-not-a-bare-number", date(2026, 10, 10), (Area.REPOSITORY,),
            "An operator's ceiling can be bypassed by any caller that holds its own number, and a limit must never override "
            "the preflight or the temp-drive guard.",
-           "The instance limits design is built in phases; only the first limits exist.",
-           "Each limit is a registry row read through one call; the bare-number lint and the guard-order test are phase 1.",
-           Status.OPEN, guards=("jason.limits",), docs=("docs/instance-limits.md",)),
+           "Callers held their own numbers.",
+           "Each limit is a registry row read through jason.limits, and a refusal comes from the row's when_hit; a lint "
+           "fails on a bare number for a registered limit, and a test shows preflight refuses a model job before the GPU "
+           "lane whatever the limits say.",
+           Status.OPEN, guards=("tests/test_limits_used.py", "jason.limits.check"), docs=("docs/instance-limits.md",),
+           notes=("Open: DOWNLOAD_LIMIT and MAX_FETCH are unregistered 100 MB literals (a future fetch.max_bytes), and "
+                  "the upload point lacks the temp-drive free-space check.",)),
+    Lesson("a-limits-file-that-cannot-be-read-must-not-loosen", date(2026, 10, 10), (Area.REPOSITORY,),
+           "A damaged limits file could have been read as no limit.",
+           "A missing value looked the same as an unreadable file.",
+           "An unreadable file gives the stricter of the built-in value and the layers that can be read, and is never "
+           "overwritten.",
+           Status.FIXED, guards=("tests/test_limits_layers.py",), docs=("docs/instance-limits.md",)),
     Lesson("a-split-must-check-the-file-it-was-proposed-from", date(2026, 10, 10), (Area.ONBOARDING,),
            "A split makes new files from page ranges, so a file whose bytes changed after the reading would be cut by "
            "the old proposal's pages.",
