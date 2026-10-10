@@ -1,0 +1,37 @@
+/* Limits (Instance and Setup): the table by kind, the expand lines, and the editor. Tokens only, so dark and light follow. */
+.limits-view .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.limits-view .limits-meta, .limits-view .limits-host { margin: 0; }
+.limit-group { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .75rem; }
+.limit-group > summary { cursor: pointer; display: flex; align-items: baseline; gap: .6rem; }
+.limit-group > summary h2 { display: inline; font-size: 1rem; margin: 0; }
+.limit-group > summary:focus-visible, .limit-table button:focus-visible, .limit-editor :is(input, select, textarea, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.limit-scroll { overflow-x: auto; }
+.limit-table { width: 100%; border-collapse: collapse; min-width: 52rem; }
+.limit-table th[scope="row"] { font-weight: 500; }
+.limit-key { font-size: .78rem; color: var(--muted); }
+.limit-clamped { margin: .3rem 0 0; font-size: .85rem; color: var(--warn); }
+.limit-row-actions { white-space: nowrap; }
+.limit-row-actions button + button { margin-left: .35rem; }
+.limit-readonly { font-size: .85rem; white-space: normal; }
+.limit-table tr[data-changed] { background: color-mix(in srgb, var(--good) 10%, transparent); }
+.limit-expand > td { background: var(--bg); }
+.limit-detail { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 0 0 .75rem; }
+.limit-detail dt { color: var(--muted); font-size: .85rem; } .limit-detail dd { margin: 0; }
+.limit-editor { border: 1px solid var(--rule); border-radius: 8px; padding: .75rem; background: var(--panel); display: grid; gap: .6rem; max-width: 40rem; }
+.limit-editor h3, .limit-editor h4 { margin: 0; font-size: .95rem; }
+.limit-field { display: grid; gap: .2rem; }
+.limit-field :is(input, select, textarea) { padding: .4rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; max-width: 100%; }
+.limit-refusal { align-items: center; flex-wrap: wrap; }
+.limit-preview { border: 1px solid var(--accent); border-radius: 8px; padding: .6rem .75rem; }
+.limit-preview ul { margin: .3rem 0; padding-left: 1.2rem; } .limit-preview p { margin: .3rem 0; }
+.limit-preview:focus-visible { outline: 2px solid var(--accent); }
+@media (max-width: 720px) {
+  .limit-table { min-width: 0; }
+  .limit-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .limit-table, .limit-table tbody, .limit-table tr, .limit-table td, .limit-table th[scope="row"] { display: block; }
+  .limit-table tr { padding: .5rem 0; border-bottom: 1px solid var(--line); }
+  .limit-table td, .limit-table th[scope="row"] { border: 0; padding: .15rem 0; }
+  .limit-table td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: .8rem; }
+  .limit-row-actions { white-space: normal; }
+  .limit-detail { grid-template-columns: 1fr; }
+}

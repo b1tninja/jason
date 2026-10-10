@@ -47,6 +47,7 @@ import { MeetingRoomView } from "./views/MeetingRoomView";
 import { OwnerPageView } from "./views/OwnerPageView";
 import { OwnerDigestView } from "./views/OwnerDigestView";
 import { PeopleView } from "./views/PeopleView";
+import { LimitsView } from "./views/LimitsView";
 import { StatusView } from "./views/StatusView";
 
 function BoardDigest() {
@@ -56,7 +57,7 @@ function BoardDigest() {
   return <DigestView digest={r.data} />;
 }
 
-export const GROUPS = ["Overview", "Governance", "Money", "Records"] as const;
+export const GROUPS = ["Overview", "Governance", "Money", "Records", "Setup", "Instance"] as const;
 
 interface ScreenDef extends ConsoleScreen {
   view: (p: { audience: Audience }) => JSX.Element;
@@ -129,12 +130,19 @@ export const SCREENS: ScreenDef[] = [
   { id: "owner-page", label: "Owner page", group: "Records", owner: true, view: () => <OwnerPageView /> },
   // Who holds each office, read-only; board only (no owner loader: the server refuses /api/people in the owner view).
   { id: "people", label: "People and offices", group: "Records", view: () => <PeopleView /> },
+  // Limits (docs/instance-limits.md section 4). Setup: this community's limits (GET /api/limits); officers, managers, and
+  // administrators read, the community's administrator changes. Instance: the instance layer (GET /api/instance-limits), one
+  // of jason's admins as themselves. The routes are `#/setup/limits` and `#/instance/limits`.
+  { id: "setup/limits", label: "Limits", group: "Setup", roles: ["officer", "manager", "administrator"], view: () => <LimitsView scope="community" /> },
+  { id: "instance/limits", label: "Instance limits", group: "Instance", admin: true, view: () => <LimitsView scope="instance" /> },
 ];
 
 /** The screen a hash id names, through its aliases; in the owner view, an owner alias first. */
 export function findScreen(id: string, audience: Audience = "board"): ScreenDef | undefined {
   const owned = audience === "owner" ? SCREENS.find((s) => s.ownerAliases?.includes(id)) : undefined;
-  return owned ?? SCREENS.find((s) => s.id === id || s.aliases?.includes(id));
+  const same = (key: string) => SCREENS.find((s) => s.id === key || s.aliases?.includes(key));
+  // A route may be two segments (`setup/limits`): the whole path first, then its first segment (`actions/…` still lands).
+  return owned ?? same(id) ?? same(id.split("/")[0]);
 }
 
 const DOCK_WIDE = 1200;
@@ -180,7 +188,7 @@ export function App() {
   const admin = adminSession(session, role, audience);
   const allowed = SCREENS.filter((s) => !s.admin || admin);
   const visible = visibleScreens(allowed, audience, role) as ScreenDef[];
-  const found = findScreen(rawId.split("/")[0], audience);
+  const found = findScreen(rawId, audience);
   const current = found && visible.some((s) => s.id === found.id) ? found : (visible[0] as ScreenDef);
 
   const navigate = (id: string, a: Audience) => { window.location.hash = `/${id}${a === "owner" ? "?view=owner" : ""}`; };
