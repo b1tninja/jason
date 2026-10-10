@@ -192,6 +192,19 @@ LESSONS: tuple[Lesson, ...] = (
                    "jason.tasks.response_inbox and jason.community.response_inbox are the names; the members' clocks keep "
                    "`responses`"),
            docs=("docs/responses-design.md (Step 1, as built: module names)",)),
+    Lesson("a-design-fixture-paraphrases-the-law", date(2026, 10, 10), (Area.GOVERNING, Area.DOCUMENTS),
+           "The design agent's fifth cut showed statute and regulation text in its screens that differed from the stored "
+           "copy: a condition dropped (Civil Code 5665(b)'s postmark basis, 714(e)(2)(B)'s request for information), a "
+           "paragraph mixed (5210(b)), a reading stated as the text (4041(e)), and a regulation quoted for what it does "
+           "not say (19 CCR 904.1(a)). One section was cited for a subject it does not speak to (5610), and the same "
+           "citation sat in our own spec.",
+           "A fixture is written from memory of the law, and a screen marked 'sample text' is still read as the rule. Our "
+           "own spec's citation was never read beside the section.",
+           "Every reconciliation reads each recited or cited section beside the stored text before the page is written "
+           "(`data/authorities`), and a screen's quoted words come from `Recitation` and `cite_document`, whole, with the "
+           "reading labelled. The citation in the spec is corrected the same day.",
+           Status.OPEN,
+           docs=("docs/console/handoff-reconciliation-5.md",)),
     Lesson("a-hook-on-results-is-silent-when-the-step-is-skipped", date(2026, 10, 5), (Area.OWNER_INFO,),
            "An answer a person confirmed from an email stayed `keyed` after `owner-info --apply` found PayHOA already "
            "showed everything it calls for: with no writes, nothing ran the observer that marks an arrival recorded.",

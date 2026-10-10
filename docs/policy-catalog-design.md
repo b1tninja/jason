@@ -76,7 +76,7 @@ Grouped by the capability each configures. Each row is one `PolicyTemplate`. "Bo
 | `payment-plans` | Operating rule | 5665, 4355(a) | Payment plan requests | Minimum terms, the meeting procedure |
 | `reserve-funding-and-borrowing` | Board policy | 5510, 5515, 5550, 5560 | Reserves, transfer findings | The funding plan, the borrowing procedure, repayment |
 | `financial-review` | Board policy | 5500 | Books checks, the review cadence | Monthly or quarterly per item, within the statute's minimum |
-| `spending-authority` | Board policy (and the management agreement) | 5610, the documents | Approvals, invoices | The manager's limit, emergencies, which kinds need two signatures |
+| `spending-authority` | Board policy (and the management agreement) | the documents and the management agreement (Civil Code 5610 is the emergency exception to assessment increases, not a spending authority) | Approvals, invoices | The manager's limit, emergencies, which kinds need two signatures |
 | `vendor-selection` | Board policy | The documents | Vendors, contracts, insurance certificates | Bids above an amount, insurance minimums, conflicts (5350) |
 
 ### Meetings, elections, records
