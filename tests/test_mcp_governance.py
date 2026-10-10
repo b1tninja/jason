@@ -9,7 +9,7 @@ def test_the_governance_profile_serves_the_tools_and_the_api_exports_them():
     names = [t.__name__ for t in tools_for("governance")]
     assert names == [t.__name__ for t in governance.TOOLS]
     assert set(names) <= {t.__name__ for t in ALL_TOOLS}
-    assert len(tools_for("board")) == 45                       # the board's set, with the two response tools
+    assert len(tools_for("board")) == 47                       # the board's set, with the two response tools
     assert set(api.__all__) == set(names) | {"read_record", "record_resources", "new_responses", "outstanding_responses", "response", "followups", "campaign_status"}   # the tools, and the resources
     assert api.member_requests is governance.member_requests
 

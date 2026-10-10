@@ -150,7 +150,7 @@ def test_the_board_profile_serves_a_short_list_with_the_index_search():
     from jason.mcp.server import ALL_TOOLS, PROFILES, tools_for
 
     board = [tool.__name__ for tool in tools_for("board")]
-    assert board[0] == "board_digest" and len(board) == len(PROFILES["board"]) == 45
+    assert board[0] == "board_digest" and len(board) == len(PROFILES["board"]) == 47
     assert set(board) <= {tool.__name__ for tool in ALL_TOOLS} and len(tools_for("")) == len(ALL_TOOLS) == len(tools_for("all"))
     with pytest.raises(SystemExit):
         tools_for("nope")
