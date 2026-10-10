@@ -27,7 +27,7 @@ County assessor and clerk-recorder HTTP, and the **per-county index cache**, liv
 
 - **Dependencies point one way.**
   - A profile imports jason; jason never imports a profile.
-  - Code reaches the active profile through `jason.community.community()` and `JASON_PROFILE` (default `mystique`). Another association means another profile, not a change to jason.
+  - Code reaches the active profile through `jason.community.community()`, chosen by `--community KEY`, `JASON_COMMUNITY` (`JASON_PROFILE` is the old name), the project `.env`, or `jason use KEY` ([docs/tenancy.md](docs/tenancy.md)); a built-in default remains as a visible, switchable shim. Another association means another profile, not a change to jason.
   - `mystique()` is the older name for the same call. New code calls `community()`. Code never imports `mystique` or `jason_mystique` directly.
 - **The interface is `Community`.**
   - A task reads the association only through `Community` methods and records.
@@ -210,7 +210,7 @@ The companion axiom. Where the law and the documents do speak:
 
 ## jason-mcp
 
-`jason-mcp` is a stdio MCP server over the stores already on disk. It does **not** call PayHOA, Google, or Keeper. `jason-mcp --profile board` (or `JASON_MCP_PROFILE=board`) serves the board's forty-seven tools, starting with `board_digest`; its `document_search` searches jason's passage index (`jason index --build`) and returns passages, not answers. Each tool carries its caveats; repeat them. A confidential file is held back unless asked, and a reading or a hit is evidence, not a pin. An answer that quotes is checked with `verify_quotes` (the full set) or `jason verify-quotes` before it is given. `--profile governance` serves the living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog, the documents' duties, and the statutes documents cite against the authorities shelf (`document_citations`, `citation_gaps`). The same functions are the Python interface, `jason.api`. Three of them write a person's record to `data/`, and only with `by`. `--profile onboarding` serves the onboarding tools, with the MCP prompts `onboard` and `onboard_review`. Every tool and its caveat: [docs/mcp.md](docs/mcp.md).
+`jason-mcp` is a stdio MCP server over the stores already on disk. It does **not** call PayHOA, Google, or Keeper. `jason-mcp --tools board` (or `JASON_MCP_TOOLS=board`; `--profile` is the old spelling) serves the board's forty-seven tools for the one community it was started for (`--community KEY`), starting with `board_digest`; its `document_search` searches jason's passage index (`jason index --build`) and returns passages, not answers. Each tool carries its caveats; repeat them. A confidential file is held back unless asked, and a reading or a hit is evidence, not a pin. An answer that quotes is checked with `verify_quotes` (the full set) or `jason verify-quotes` before it is given. `--profile governance` serves the living documents, conflicts, intake questions, the schedule, members' requests, the notice catalog, the documents' duties, and the statutes documents cite against the authorities shelf (`document_citations`, `citation_gaps`). The same functions are the Python interface, `jason.api`. Three of them write a person's record to `data/`, and only with `by`. `--profile onboarding` serves the onboarding tools, with the MCP prompts `onboard` and `onboard_review`. Every tool and its caveat: [docs/mcp.md](docs/mcp.md).
 
 ## Deeper docs
 

@@ -2345,6 +2345,35 @@ LESSONS: tuple[Lesson, ...] = (
            "google_installation_client once every community has its own client.",
            Status.OPEN, guards=("settings.google_installation_client",),
            docs=("docs/google-workspace-setup.md",)),
+    Lesson("a-test-that-sets-the-community-must-restore-it", date(2026, 10, 10), (Area.REPOSITORY,),
+           "A test of jason serve --profile set JASON_COMMUNITY for the process and the next test read the wrong "
+           "community.",
+           "The community is a process setting; whoever sets it leaves it set.",
+           "An autouse fixture restores the community variables after every test, and code that sets them for a child job "
+           "sets the same values the parent reads.",
+           Status.FIXED, guards=("tests/conftest.py::_keep_the_community_choice",), docs=("docs/tenancy.md",)),
+    Lesson("building-the-parser-must-not-load-the-profile", date(2026, 10, 10), (Area.REPOSITORY,),
+           "jason use could not run when no community was chosen or the name was wrong, because building the command "
+           "parser loaded the profile.",
+           "A command that chooses the community cannot need the community already chosen.",
+           "cli._bill_sources tolerates a missing or unknown profile while the parser is built.",
+           Status.FIXED, guards=("tests/test_community_choice.py",), docs=("docs/tenancy.md",)),
+    Lesson("a-default-community-must-be-visible", date(2026, 10, 10), (Area.REPOSITORY, Area.ONBOARDING),
+           "The built-in default community (mystique) was chosen silently when nothing was configured, so a second "
+           "community on the same machine could have been written to by mistake.",
+           "A default that is never shown is a decision nobody made.",
+           "A choice by default prints one line on stderr and can be turned off (JASON_DEFAULT_COMMUNITY_SHIM=0); every "
+           "write prints community, source and data folder first; this machine's .env now names the community.",
+           Status.FIXED, guards=("tests/test_community_choice.py",), docs=("docs/tenancy.md",),
+           notes=("Open: turn the shim off by default once a second profile is installed here.",)),
+    Lesson("a-process-that-builds-a-keeper-session-per-use-logs-in-per-use", date(2026, 10, 10), (Area.REPOSITORY,),
+           "Long-lived processes built a new Keeper session for each use, so each use paid a login and a full sync "
+           "(20 requests meant 20 logins).",
+           "VaultSession.from_settings was called wherever a credential was needed.",
+           "jason.vault.pool.session_for gives one lazily opened session per community per process, leased (a with block "
+           "does not close it), closed at exit or after an idle timeout, with a failed login neither cached nor retried "
+           "inside 30 seconds; jason vault status prints the logins and reuses.",
+           Status.FIXED, guards=("tests/test_keeper_pool.py", "jason.vault.pool"), docs=("docs/integrations-design.md",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",

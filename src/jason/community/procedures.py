@@ -694,6 +694,15 @@ PROCEDURES: tuple[Procedure, ...] = (
         (Area.ONBOARDING,),
         "Gather every record and fact a profile needs, from each source, and keep secrets out of documents.",
         (
+            Step("Choose the community explicitly: jason use KEY or --community KEY, and check which community and data "
+                 "folder before any --yes command. Set JASON_DEFAULT_COMMUNITY_SHIM=0 once a second profile is installed "
+                 "on this machine. A process gets its Keeper session from jason.vault.pool.session_for, never a new "
+                 "VaultSession per use.",
+                 command="jason which; jason use --list; jason use KEY",
+                 check="the write banner names the community you meant; jason vault status ends with the Keeper "
+                       "sessions this process opened",
+                 refs=("docs/tenancy.md",),
+                 lessons=("a-default-community-must-be-visible", "a-process-that-builds-a-keeper-session-per-use-logs-in-per-use")),
             Step("Start the profile: the package from jason's templates and its empty private facts; set JASON_PROFILE; "
                  "with --county and --lookup, the county recorder's finds become questions.",
                  command="jason onboard --new KEY --name NAME --county COUNTY --lookup",
