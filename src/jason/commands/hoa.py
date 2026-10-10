@@ -44,7 +44,7 @@ def cmd_hoa_reports(args: argparse.Namespace) -> int:
 
 def cmd_land_sync(args: argparse.Namespace) -> int:
     from asspy import County
-    from asspy.land import common_land_uses, read_deeds, record_owners, sync_divisions, sync_land_uses, sync_parcels, watch_filings
+    from asspy.land import common_area_owners, common_land_uses, footprint, read_deeds, record_owners, sync_divisions, sync_land_uses, sync_parcels, watch_filings
 
     county = County(args.county)
     gis = getattr(county.assessor, "gis", None)
@@ -67,6 +67,12 @@ def cmd_land_sync(args: argparse.Namespace) -> int:
         # The associations those deeds name join the directory, as recordings under their names.
         with county.associations() as directory:
             changes["association found by a deed"] += record_owners(land, directory)
+        if args.units:
+            # Every unit's last deed in the associations' footprints, so a lien against an owner reaches its community.
+            # The first read is long (hours); later ones read only the deeds of new transfers.
+            units = [p["document_number"] for association, owned in common_area_owners(land).items()
+                     for p in footprint(land, association, owned).parcels]
+            changes["unit deed read"] += read_deeds(county.recorder, land, units)
         if not args.no_watch:
             after = date.fromisoformat(args.since) if args.since else None
             for event in watch_filings(county.recorder, land, after=after):
@@ -98,5 +104,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     q.add_argument("--county", default="sacramento", help="the county (default sacramento)")
     q.add_argument("--full", action="store_true", help="read every parcel (about a minute), finding retired ones")
     q.add_argument("--no-watch", action="store_true", help="skip the recorder watch")
+    q.add_argument("--units", action="store_true",
+                   help="read every unit's last deed in the associations' footprints (hours the first time; then new ones only)")
     q.add_argument("--since", help="read the watch from this day (YYYY-MM-DD) instead of its last read")
     q.set_defaults(func=cmd_land_sync)
