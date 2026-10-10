@@ -418,9 +418,9 @@ def build_reports(county_name: str, root: Path, *, only: Iterable[str] = (), lim
             pages.append(page)
             if progress is not None:
                 progress(f"{key}: {page.parcels} parcels, {page.owned} owned, {page.events} events")
-    index = [f"# Owners' associations on {county.name} County's map", "",
-             f"{len(pages)} associations whose common land or condominium plan the records tie to them. "
-             "Each tie is a reading of the records, a lead, not a pin.", ""]
+    index = [f"# Owners' associations in {county.name.title()} County", "",
+             f"{len(pages)} associations: each one the directory lists or a common parcel's deed names, with the land the "
+             "county's map ties to it. Each tie is a reading of the records, a lead, not a pin.", ""]
     ties = Counter(p.tie or "none" for p in pages)
     index += ["Land found by: " + ", ".join(f"{k} {n}" for k, n in ties.most_common()) + " (deed: a common parcel's deed "
               "names it; plan: a condominium plan tied to it; name: a subdivision's name points to it, a lead).", ""]
