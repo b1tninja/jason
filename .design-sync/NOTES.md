@@ -173,6 +173,11 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   then saved was that session's `ds-bundle/_ds_sync.json`, checked equal to the project's (bundleSha12, auxSha,
   scriptsSha, styleSha, hash counts). The verdict read `upload.aux` only, and the upload was the 21 aux files
   (`guidelines/**`, `README.md`) inside the full-write plan, fenced, then the anchor last.
+- **A guideline only, while `ui/src` holds other sessions' unfinished work** (2026-10-05): the verdict wanted the bundle
+  and styles too, which would have published that work. The plan named just the guideline, `guidelines/index.md` (the
+  project's own index plus one line, so it links no guideline the project lacks), and the sentinel. The anchor was left
+  as it was: it still vouches for the components, and its stale `auxSha` only makes the next sync re-upload the
+  guidelines.
 - The seal's word scales with the disc (no pixel floor) and sits at its centre: the 2026-10-04 capture showed long
   words clipped at the old 5em size. Check a Seal sheet's longest words (approval, confirmed) after any change to
   its CSS.
