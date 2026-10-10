@@ -899,8 +899,11 @@ PROCEDURES: tuple[Procedure, ...] = (
                  lessons=("new-module-name-already-taken",)),
             Step("Use made-up values in fixtures; the operator's own ids go in .env.",
                  refs=(".env.example",), lessons=("no-real-data-in-fixtures",)),
-            Step("Scan what will be committed for names, personal emails, phone numbers, and ids.",
-                 check="no owner or deed party, no personal mailbox, no signed link or token"),
+            Step("Scan what will be committed for names, personal emails, phone numbers, and ids, comments and "
+                 "docstrings included: the boundary test does not read them.",
+                 check="no owner or deed party, no personal mailbox, no signed link or token; no vendor, street, or the "
+                       "association's name in a general module's comment",
+                 lessons=("comment-carried-profile-facts",)),
             Step("Commit, and push only when the person says so.", person=True),
         ),
     ),

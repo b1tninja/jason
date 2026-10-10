@@ -519,6 +519,15 @@ LESSONS: tuple[Lesson, ...] = (
            "repository.",
            Status.FIXED, guards=("payhoa_test_membership_ids, payhoa_my_membership_id, payhoa_my_unit_id in .env",
                                  "mystique/ is its own repository, ignored by jason")),
+    Lesson("comment-carried-profile-facts", OCT_2026, (Area.REPOSITORY,),
+           "A general module's comments named a vendor, a street, and the association, and a test kept digits from a real "
+           "bank line, copied from the documents a reader was tuned on; the boundary test passed.",
+           "The boundary scan reads patterns, word lists, defaults, tables, and string constants, not comments or "
+           "docstrings, so an example quoted from a real document in a comment is never checked.",
+           "Replaced with made-up values (Example Paving Company, 123 Main Street). The check-in scan of what will be "
+           "committed is the only check; still open: a scan of comments and docstrings against the profile's terms, "
+           "reported apart from the ratchet.",
+           Status.OPEN, guards=("procedure check-in, step 4 (a person's scan)",)),
     Lesson("plain-text-loses-the-marks", OCT_2026, (Area.GOVERNING,),
            "A plain-text copy of an amendment read the struck and the added words run together, both versions at once.",
            "The amendment carries its change in type (struck through, bold), and text extraction drops type styles.",

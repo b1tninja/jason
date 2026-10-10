@@ -168,14 +168,14 @@ class LicenseMention:
 
 def _clean(raw: str) -> str:
     name = " ".join(raw.split()).strip(" ,")
-    # A name starts after the last full stop of the sentence it was run into ("... IS PART OF THIS CONTRACT. JB Bostick
+    # A name starts after the last full stop of the sentence it was run into ("... IS PART OF THIS CONTRACT. Example Paving
     # Company"); a stop after an initial or an abbreviation ("T.E.S.C.", "Co.") is not a sentence's end.
     name = re.split(r"(?<=[a-z]{2}|[A-Z]{2})[.!?]\s+(?=[A-Z])", name)[-1]
     name = _LEADING_NOISE.sub("", name)
     words = [w for w in name.split() if not _ENVELOPE_ID.match(w.strip(".,"))]
     name = " ".join(words)
-    # An all-caps name ("SUMMIT ROOFING COMPANY, INC.") is only its all-caps words: the words before it on the same
-    # line ("... Whimsical Lane Mystique Community") are an address or the customer.
+    # An all-caps name ("EXAMPLE ROOFING COMPANY, INC.") is only its all-caps words: the words before it on the same
+    # line ("... 123 Main Street Example Village") are an address or the customer.
     if words and words[-1].strip(".,").isupper():
         tail = []
         for w in reversed(words):

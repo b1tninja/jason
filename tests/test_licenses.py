@@ -34,7 +34,7 @@ def test_classes_boards_and_other_states():
 
 
 def test_what_is_not_a_license():
-    assert not find_licenses("DRE 703 210 03625 NNNN 0000 Example Bank")       # a bank line, not a DRE number
+    assert not find_licenses("DRE 123 456 78901 NNNN 0000 Example Bank")       # a bank line, not a DRE number
     assert not [m for m in find_licenses("We handle business license applications.") if m.board is Board.LOCAL]
 
 
