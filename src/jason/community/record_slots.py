@@ -250,10 +250,17 @@ class Pin:
     unpinned_by: str = ""
     unpinned_at: str = ""
     store_id: str = ""               # the id in the store that holds it, when that is not this pin's id (a key-documents link)
+    kept_by: str = ""                # a person kept this pick although jason reads the file as another kind (who, when, why)
+    kept_at: str = ""
+    kept_reason: str = ""
 
     @property
     def active(self) -> bool:
         return not self.unpinned_by
+
+    @property
+    def kept(self) -> bool:
+        return bool(self.kept_by)
 
     def same_file(self, other: "Pin") -> bool:
         return self.kind == other.kind and self.ref == other.ref
@@ -269,6 +276,13 @@ class Answer:
     at: str
     who: str = ""                    # for waiting: who has it
     source: str = "records.json"
+    reopened_by: str = ""            # a person reopened the question; the answer stays in the trail and no longer counts
+    reopened_at: str = ""
+
+    @property
+    def open(self) -> bool:
+        """Whether the answer still stands (a reopened one is history)."""
+        return not self.reopened_by
 
 
 @dataclass(frozen=True)
@@ -310,7 +324,7 @@ def pin_status(slot: Slot, pin: Pin, reading: Reading | None) -> PinStatus:
     if not seen.found or not seen.kind:
         return PinStatus(pin, start, seen)
     expected = {k.value for k in slot.kinds}
-    if expected and seen.kind not in expected:
+    if expected and seen.kind not in expected and not pin.kept:
         return PinStatus(pin, SlotState.PROBLEM, seen,
                          f"jason reads this as {seen.kind.replace('_', ' ')}; the slot expects "
                          + " or ".join(k.value.replace("_", " ") for k in slot.kinds),
@@ -364,9 +378,11 @@ def merge_holders(slot: Slot, code: Iterable[Pin], data: Iterable[Pin]) -> tuple
 
 
 def latest_answer(answers: Iterable[Answer]) -> Answer | None:
-    """The newest answer (by time, then by order given)."""
+    """The newest answer that still stands (by time, then by order given); a reopened answer is history."""
     out: Answer | None = None
     for a in answers:
+        if not a.open:
+            continue
         if out is None or a.at >= out.at:
             out = a
     return out

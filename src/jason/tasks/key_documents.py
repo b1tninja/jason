@@ -234,6 +234,17 @@ def checklist(community: Any = None, root: Path | None = None, profile: str | No
             by_key[key] = entry
     groups: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
+    # The same slot reader the record checklist uses, so the two screens cannot disagree: each key document's slot (its state
+    # and pins) and, for each instrument, how many files are linked, read, and read as another kind. Reading only: a pick on
+    # a recorded-instrument slot is still this store's link.
+    try:
+        from jason.tasks.record_readback import key_document_summary
+
+        slot_summary = key_document_summary(community, root, profile)
+    except Exception as exc:  # noqa: BLE001 - the checklist stands without the slot reader
+        slot_summary = {}
+        notes.append(f"the record slots could not be read for the counts ({type(exc).__name__})")
+    empty_slot = {"pins": 0, "read": 0, "wrongSlot": 0, "held": 0}
     for row in [*KEY_DOCUMENTS, None]:
         item = row.key if row is not None else "other"
         mine = [e for e in entries if e.item == item]
@@ -243,8 +254,11 @@ def checklist(community: Any = None, root: Path | None = None, profile: str | No
         for entry in mine:
             status, why = status_of(entry, stored.get(entry.key))
             counts[status.value] = counts.get(status.value, 0) + 1
-            rows.append(entry_dict(entry, stored.get(entry.key), status, why, root))
+            made = entry_dict(entry, stored.get(entry.key), status, why, root)
+            made["slot"] = (slot_summary.get(item) or {}).get("entries", {}).get(entry.key, dict(empty_slot)) if item in slot_summary else None
+            rows.append(made)
         groups.append({
+            "slot": ({k: v for k, v in slot_summary[item].items() if k != "entries"} if item in slot_summary else None),
             "item": item,
             "title": row.title if row else "Other documents a person added",
             "why": why_of(row) if row else "",
@@ -260,6 +274,9 @@ def checklist(community: Any = None, root: Path | None = None, profile: str | No
         "county": _county(community),
         "store": f"key-documents/{profile}.json",
         "counts": counts,
+        "slotCounts": {"pins": sum(v["pins"] for v in slot_summary.values()), "read": sum(v["read"] for v in slot_summary.values()),
+                       "wrongSlot": sum(v["wrongSlot"] for v in slot_summary.values()),
+                       "held": sum(v["held"] for v in slot_summary.values())} if slot_summary else None,
         "statuses": [{"value": s.value, "meaning": STATUS_MEANING[s]} for s in KeyStatus],
         "groups": groups,
         "limits": {"maxUploadBytes": MAX_UPLOAD_BYTES, "suffixes": sorted(UPLOAD_SUFFIXES)},

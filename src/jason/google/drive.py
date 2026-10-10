@@ -119,6 +119,46 @@ class GoogleDrive:
             if not page_token:
                 return rows
 
+    def list_page(self, query: str, *, page_token: str = "", page_size: int = 50, fields: str = "", drive_id: str = "",
+                  order_by: str = "") -> tuple[list[dict[str, Any]], str]:
+        """One page of the files matching ``query`` and the token for the next page ("" at the end), read-only
+        (``files.list``): what a chooser shows. Across My Drive and every shared drive the account is in, unless
+        ``drive_id`` narrows it to one shared drive. ``fields`` replaces the default file fields."""
+        params: dict[str, Any] = {
+            "q": query,
+            "pageSize": max(1, min(int(page_size), 100)),
+            "fields": f"nextPageToken,files({fields or _FILE_FIELDS})",
+            "supportsAllDrives": True,
+            "includeItemsFromAllDrives": True,
+            "corpora": "drive" if drive_id else "allDrives",
+        }
+        if drive_id:
+            params["driveId"] = drive_id
+        if order_by:
+            params["orderBy"] = order_by
+        if page_token:
+            params["pageToken"] = page_token
+        body = self._get("/files", params)
+        return list(body.get("files") or []), str(body.get("nextPageToken") or "")
+
+    def list_shared_drives(self, *, page_size: int = 100) -> list[dict[str, Any]]:
+        """The shared drives the account is a member of: id and name (``drives.list``), read-only."""
+        rows: list[dict[str, Any]] = []
+        page_token = ""
+        while True:
+            params: dict[str, Any] = {"pageSize": max(1, min(int(page_size), 100)), "fields": "nextPageToken,drives(id,name)"}
+            if page_token:
+                params["pageToken"] = page_token
+            body = self._get("/drives", params)
+            rows.extend(body.get("drives") or [])
+            page_token = str(body.get("nextPageToken") or "")
+            if not page_token:
+                return rows
+
+    def about_user(self) -> dict[str, Any]:
+        """Whose account this token is: display name and email (``about.get``), read-only."""
+        return dict(self._get("/about", {"fields": "user(displayName,emailAddress)"}).get("user") or {})
+
     def list_comments(self, file_id: str) -> list[dict[str, Any]]:
         """Every comment on a file, with its quoted words and replies (read-only). A comment the API creates on a Google
         Doc shows unanchored; anchored comments need the Docs API's insertComment, in developer preview."""

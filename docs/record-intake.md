@@ -1,6 +1,6 @@
 # Record intake: a checklist where a person picks the association's documents
 
-**Status: phase 1 is built** (see [Phase 1: what is built](#phase-1-what-is-built)); phases 2, 2b, and 3 are design only. A design for one checklist of **slots**, one for each record an association must be able to put its hands on, where a person **picks a file from Google Drive, pastes its link, or uploads one from the computer** for each, and jason reads what was picked and says what it found. The user's idea, in a line: onboarding gets a repository and checklist in which, for each required document, a person goes in and uploads or selects a Drive document.
+**Status: phases 1 and 2 are built** (see [Phase 1: what is built](#phase-1-what-is-built) and [Phase 2: what is built](#phase-2-what-is-built)); phases 2b and 3 are design only. A design for one checklist of **slots**, one for each record an association must be able to put its hands on, where a person **picks a file from Google Drive, pastes its link, or uploads one from the computer** for each, and jason reads what was picked and says what it found. The user's idea, in a line: onboarding gets a repository and checklist in which, for each required document, a person goes in and uploads or selects a Drive document.
 
 The console's side (screens, components, states, the phone layout) is [console/handoff-record-intake.md](console/handoff-record-intake.md). This page is the model and the process, general for any association: no slot, folder, vendor, or id here belongs to one.
 
@@ -246,7 +246,46 @@ The read-only checklist from jason's own catalog, a paste-a-link pin, and the th
 
 **How a state is worked out.** A pin whose file the library has not read is `picked` (or `uploaded`); with a kind, `classified`; with its text cached, `read`; when a person chose the kind (`jason intake`), `confirmed`. A file read as a kind the slot does not expect is a `problem`, with the slots it fits. A slot with several pins is as far along as its least advanced pin; with none, the newest answer; with none, a folder the specification pins; else `empty`. Files the library classified that nobody pinned are **candidates**, counted and listed, never a holder. A file in a confidential kind makes the slot's `held` count; its name is masked and its id shortened outside the private view.
 
-**What the first phase leaves out, on purpose.** The Drive chooser and folder binding (phase 2), upload, segmentation, standing, duties, programs and conflicts reading a pick (phase 3), the wrong-slot overrides (`keep`, `repin`), the "is there another?" answer for a `SEVERAL` slot, the series' span (a series shows the periods that have a pin, not the ones that do not), and reopening an answer. Their `POST` acts answer 400 with "not built yet".
+**What the first phase left out, on purpose.** The Drive chooser, folder binding, the wrong-slot overrides, "is there another?", and reopening an answer are now phase 2 (below). Still out: upload, the confirmed split, standing, duties, programs and conflicts reading a pick (phase 3), and the series' span (a series shows the periods that have a pin, not the ones that do not). Their `POST` acts answer 400 with "not built yet".
+
+## Phase 2: what is built
+
+The chooser's backend and the reading back after a pick (steps 1 to 6 of the pipeline). Backend only: the console's dialog is the handoff's. Nothing here writes to a Drive file, changes its sharing, or opens a browser.
+
+| Part | Where |
+|---|---|
+| Drive reads over jason's server token, a page at a time: `list_folder`, `search`, `resolve`, `bound_files`; `open_client` (non-interactive, fails fast as `DriveUnavailable` with the sentence and the command); `propose_sync_rule` | `jason.tasks.drive_choose` (over `GoogleDrive.list_page`, `list_shared_drives`, `about_user`: `files.list`, `drives.list`, `about.get`) |
+| The read-back: `read` (dry run, fetch, ingest, compare, preflight, segments, the reading record), `queue_items` (the confirmations queue's "record reading" kind), `key_document_summary` | `jason.tasks.record_readback` |
+| The acts: `keep`, `repin`, `more`, `reopen`, `bind` | `jason.tasks.record_acts` |
+| `jason records --read`, `--bind`, `--keep`, `--repin`, `--more`, `--reopen` | `jason.commands.record_slots` |
+| Loaders `drive-list`, `drive-search`, `drive-resolve`, `record-readings`; `POST /api/write/drive/<list, search, resolve, or bound>`; the new acts of `POST /api/write/records/<slot key>` | `jason.web.extra.drive_choose`, `jason.web.extra.record_slots` |
+
+**The chooser.** `GET /api/drive-list?parent=&drive=&page=&size=` is the folder listing (with no parent, the top of My Drive and the shared drives; a page of 50, at most 100, with a `next` token). A search or a pasted link is a **POST** (`/api/write/drive/search` with `{q}`, `/api/write/drive/resolve` with `{ref}`), so a name or a link never sits in a URL; the GET loaders for them only say so (and refuse a name or a link in the query with 400). The folder listing is also a POST (`/api/write/drive/list` with `{parent}`) for a client that keeps a folder's id out of a URL. Each item carries id, name, type word, size, the day modified, parents, the owner's display name, `sharedDrive`, `readable` (with why when not), `held`, and `jason`: what jason knows (`inLibrary` kind, `ruleCovers`, `pinnedFor`). A file the library or the kind rules read as a confidential kind is named "a confidential file (kind: ...)" with an empty id outside the private view. Drive not connected is `{found: false, driveConnected: false, why, command}` (HTTP 200), never a browser. The owner view is refused with 403 on the loaders and on the POSTs; where console sign-in is set up a signed-in roster person is required. A Google refusal is told in jason's words; the exception's text (which can hold an id) is never returned or logged.
+
+**The read-back.** `jason records --read KEY` (or the console's `read` act, which queues the same command as a job on Google's lane in the signed-in person's name) acts on the slot's pinned files:
+
+1. *Dry run* (no `--yes`): metadata only. It says what it would fetch and how big it is (a Doc "as a Word copy; the Doc stays the original"), or that the file is unchanged since the last read. It fetches nothing and writes nothing.
+2. *`--yes --by NAME`*: the bytes are fetched once into `data/record-intake/<profile>/fetched/<hash>/` (a file under `data/` or in the library is read where it is). Drive is not asked again while its modified time and size are the same, and the same hash is the same copy.
+3. The ingest steps run on that one file (`jason.tasks.ingest`: hash, words with OCR as configured, the classification chain: a person's earlier answer, the kind rules, the phrase rules). It is not filed into the library.
+4. The kind is compared with the slot's. **A wrong-slot pick is a finding** (`compare.verdict: differs`, the slots it fits, the acts `repin`, `keep`, `unpin`) and the slot's state is `problem`; the library, the other slot, and the pin are untouched.
+5. For a PDF: `jason preflight`'s facts (pages, blank and marked pages, pages with a text layer, the text layer's suspect share, what to do) and `jason segments`'s rule pass. A combined scan **proposes** a split (each part's pages, kind, tier, readers, and the slots its kind fits, with `held` for a slot that already has a file) and fills no slot: `confirmed` is false on every part until phase 3's confirm.
+6. The reading is kept at `data/record-intake/<profile>/readings/<pin>.json`: the file's hash, size, type, modified time, the readers (`name rule`, `phrase rule`) and the **tier** (`likely`: two readers agree; `suggested`: one; `conflict`: they name different kinds; a person's own earlier answer is "confirmed by a person"), the text's source and length, the preflight and segment facts, the findings, and a history of the hashes read. A changed file is read again and marked `changed` with a **diff of facts** (size, kind, tier, text length, pages, documents in the file), never of text. One line goes in `data/records/history.jsonl` (the slot, the act, who, the pin, whether it fetched or was unchanged, the verdict): never a file name, an id, or a kind.
+
+**The acts.** Each is a signed act through the same guard (`by` required, never jason), a dry run without `--yes` (`dryRun: true` in the console body), the store's lock, `records.json` written whole after a backup, and a history line with no file name:
+
+| Act | CLI | What it writes |
+|---|---|---|
+| keep a pick jason doubts, with a reason | `--keep KEY --reason TEXT [--pin ID]` | a `keeps` row; the slot stops showing a problem, the reading still says what jason read |
+| move a pick to the slot it fits | `--repin KEY --to SLOT [--pin ID] [--entry NUMBER]` | a new pin there (through `pick`, so a recorded instrument still goes through `key_documents.link`), the old one unpinned, the reading copied |
+| "is there another?" for a `SEVERAL` slot | `--more KEY --value yes` or `--value no` | a `more` row; `no` is "this is all", the set's closing, a person's word |
+| reopen the standing answer or a closed set | `--reopen KEY` | the answer is marked reopened (kept in the trail, no longer counted); a key document's "none exists" is set back to expected through its writer |
+| bind a Drive folder | `--bind KEY --folder LINK_OR_ID [--resolve]` | a `bindings` row (its files are candidates, never pins) and, for a Civil Code 5200 record, the **proposed** `SyncRule` text for a person to apply to the profile; no specification is edited |
+
+**The confirmations queue.** The queue itself ([console/handoff-confirmations-queue.md](console/handoff-confirmations-queue.md)) is not built in this tree, so its fourth kind, "record reading", is the loader `record-readings` (`GET /api/record-readings`): one row for each wrong-slot pick not yet kept, moved, or unpinned (`reason: wrong slot`, acts `keep`, `repin`, `unpin`, and the slots it fits) and one for each combined scan whose split nobody confirmed (`reason: combined scan`). Each row carries `id`, `proposed`, `age`, `needs`, `route`, and `command`. The queue merges the rows; nothing is confirmed twice, because a kept, moved, or unpinned pick leaves the list.
+
+**The key documents.** `GET /api/key-documents` now carries, for each key document, `slot` (the Records tab's slot: key, state, pins, how many jason has read, how many read as another kind, how many held, and the route) and, for each instrument, `slot` counts of the same four, with `slotCounts` for the whole list. They are read through the same slot reader as the Records tab, so the two screens cannot disagree; the writer is unchanged (a pick on a recorded-instrument slot is `key_documents.link`).
+
+**Still out.** Upload and replace; the confirmed split (`split`) and the standing, duties, programs, and conflicts steps (phase 3); the Google Picker (phase 2b); acknowledging a `changed` mark (it stays on the reading as history).
 
 ## Open decisions
 

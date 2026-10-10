@@ -913,6 +913,10 @@ EXTRA_LOADERS: dict[str, str] = {
     "rule-events": "jason.web.extra.rule_records:rule_events",  # ?id= the acts on record for a rule
     "record-slots": "jason.web.extra.record_slots:record_slots",  # the record checklist; ?group=&state=; disk only, board only
     "record-slot": "jason.web.extra.record_slots:record_slot",  # ?key= one slot: holders, the library's reading, the trail
+    "record-readings": "jason.web.extra.record_slots:record_readings",  # the confirmations queue's "record reading" items; disk only
+    "drive-list": "jason.web.extra.drive_choose:drive_list",  # ?parent=&drive=&page=: a Drive folder's children over jason's token; board only
+    "drive-search": "jason.web.extra.drive_choose:drive_search",  # a name search is a POST (/api/write/drive/search); board only
+    "drive-resolve": "jason.web.extra.drive_choose:drive_resolve",  # a pasted link is a POST (/api/write/drive/resolve); board only
     "reference-works": "jason.web.extra.citations:reference_works",  # the reference shelf, with each work's kept survey
     "citations": "jason.web.extra.citations:citations",  # ?source=&file=: the statutes a source cites, against the shelf
     "citation-gaps": "jason.web.extra.citations:citation_gaps",  # what surveyed sources cite that the shelf lacks
@@ -942,7 +946,8 @@ EXTRA_WRITERS: dict[str, str] = {
     "key-documents": "jason.web.extra.key_documents:write",  # link, upload, unlink, status: jason's own store
     "instrument-graph": "jason.web.extra.key_documents:reveal",  # owners' names for a named person, logged
     "intake": "jason.web.extra.onboarding_setup:write",  # a signed-in person's answer, queued; applied in a terminal
-    "records": "jason.web.extra.record_slots:write",  # pick, answer, unpin on a slot: jason's own stores; the file is never touched
+    "records": "jason.web.extra.record_slots:write",  # pick, answer, unpin, bind, keep, repin, more, reopen, read on a slot: jason's own stores; the file is never touched
+    "drive": "jason.web.extra.drive_choose:write",  # list, search, resolve, bound: Drive read over jason's token (POST so a name is never in a URL); writes nothing
 }
 
 

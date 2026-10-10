@@ -22,7 +22,7 @@ import json
 import os
 import secrets
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -274,23 +274,29 @@ def load_store(profile: str) -> dict[str, Any]:
         data = {}
     if not isinstance(data, dict):
         data = {}
-    return {"version": 1, "profile": profile, "pins": list(data.get("pins") or []), "answers": list(data.get("answers") or [])}
+    return {"version": 1, "profile": profile, "pins": list(data.get("pins") or []), "answers": list(data.get("answers") or []),
+            "bindings": list(data.get("bindings") or []), "more": list(data.get("more") or []),
+            "keeps": list(data.get("keeps") or [])}
 
 
 def _pin_of(row: dict[str, Any]) -> Pin | None:
     try:
         unpinned = row.get("unpinned") or {}
+        kept = row.get("kept") or {}
         return Pin(str(row["id"]), str(row["slot"]), PinKind(row["kind"]), str(row["ref"]), str(row.get("name") or ""),
                    str(row.get("period") or ""), str(row.get("by") or ""), str(row.get("at") or ""), str(row.get("note") or ""),
-                   Origin.DATA, STORE, str(unpinned.get("by") or ""), str(unpinned.get("at") or ""))
+                   Origin.DATA, STORE, str(unpinned.get("by") or ""), str(unpinned.get("at") or ""),
+                   kept_by=str(kept.get("by") or ""), kept_at=str(kept.get("at") or ""), kept_reason=str(kept.get("reason") or ""))
     except (KeyError, ValueError, AttributeError):
         return None
 
 
 def _answer_of(row: dict[str, Any]) -> Answer | None:
     try:
+        reopened = row.get("reopened") or {}
         return Answer(str(row["id"]), str(row["slot"]), AnswerKind(row["answer"]), str(row.get("reason") or ""),
-                      str(row.get("by") or ""), str(row.get("at") or ""), str(row.get("who") or ""))
+                      str(row.get("by") or ""), str(row.get("at") or ""), str(row.get("who") or ""),
+                      reopened_by=str(reopened.get("by") or ""), reopened_at=str(reopened.get("at") or ""))
     except (KeyError, ValueError):
         return None
 
@@ -471,6 +477,8 @@ class Computed:
     holding: str
     candidates: list[dict[str, Any]]
     folders: list[Pin]
+    bindings: list[dict[str, Any]] = field(default_factory=list)
+    more: dict[str, Any] | None = None             # the newest "is there another?" answer of a person's, when one was given
 
     @property
     def held(self) -> int:
@@ -490,6 +498,7 @@ def compute(community: Any = None, root: Path | None = None, profile: str | None
     code = code_pins(community, slots)
     holdings = _holdings(community, root, library)
     pinned_library = {p.ref for p in data_pins if p.kind is PinKind.LIBRARY and p.active}
+    kept = {str(k.get("pin")): k for k in stored.get("keeps", []) if not k.get("undone")}
     by_kind: dict[str, list[dict[str, Any]]] = {}
     for r in library.rows:
         by_kind.setdefault(str(r.get("kind") or ""), []).append(r)
@@ -498,9 +507,11 @@ def compute(community: Any = None, root: Path | None = None, profile: str | None
         kd_pins, kd_answers = _key_document_records(root, profile, slot)
         mine = [p for p in data_pins if p.slot == slot.key] + kd_pins
         holders, collisions = merge_holders(slot, code.get(slot.key, []), mine)
+        holders = [replace(h, kept_by=str(kept[h.id].get("by") or ""), kept_at=str(kept[h.id].get("at") or ""),
+                           kept_reason=str(kept[h.id].get("reason") or "")) if h.id in kept else h for h in holders]
         files = [h for h in holders if h.kind is not PinKind.FOLDER]
         folders = [h for h in holders if h.kind is PinKind.FOLDER]
-        statuses = [pin_status(slot, h, library.reading(h)) for h in files]
+        statuses = [pin_status(slot, h, _reading_of(library, root, profile, h)) for h in files]
         answers = [a for a in data_answers if a.slot == slot.key] + kd_answers
         answer = latest_answer(answers)
         holding, why = None, ""
@@ -516,9 +527,23 @@ def compute(community: Any = None, root: Path | None = None, profile: str | None
             {"ref": f"library:{r['id']}", "name": r.get("name", ""), "kind": r.get("kind", ""), "confidential": bool(r.get("confidential"))}
             for k in slot.kinds for r in by_kind.get(k.value, []) if str(r["id"]) not in pinned_library
         ]
+        bound = [b for b in stored.get("bindings", []) if b.get("slot") == slot.key and not b.get("unbound")]
+        said = [m for m in stored.get("more", []) if m.get("slot") == slot.key and not m.get("reopened")]
         out.append(Computed(slot, assembly.hidden.get(slot.key, ""), holders, statuses, collisions, answer, answers,
-                            slot_state(slot, statuses, answer, holding=holding), why, candidates, folders))
+                            slot_state(slot, statuses, answer, holding=holding), why, candidates, folders, bound,
+                            max(said, key=lambda m: str(m.get("at") or ""), default=None)))
     return out
+
+
+def _reading_of(library: Library, root: Path, profile: str, pin: Pin) -> Reading:
+    """What is known of a pinned file: the classified library's row, else the reading a person's read-back kept beside the
+    pin (``jason.tasks.record_readback``), else nothing."""
+    seen = library.reading(pin)
+    if seen.found:
+        return seen
+    from jason.tasks import record_readback
+
+    return record_readback.reading_for(root, profile, pin.id) or seen
 
 
 def _holdings(community: Any, root: Path, library: Library) -> dict[str, Any]:
@@ -550,6 +575,7 @@ def _row(c: Computed, *, private: bool) -> dict[str, Any]:
         "confidential": s.confidential, "hidden": c.hidden, "source": s.source.value, "gate": s.gate,
         "kinds": [k.value for k in s.kinds], "pins": len(c.holders), "candidates": len(c.candidates), "collision": bool(c.collisions),
         "problem": next((p.problem for p in c.statuses if p.problem), ""), "waitsOn": list(s.waits_on),
+        "closed": bool(c.more and c.more.get("value") == "no"), "bindings": len(c.bindings),
         "route": "#/onboarding/records/" + quote(s.key, safe=""),
     }
 
@@ -621,7 +647,7 @@ def _holder_dict(st: PinStatus, slot: Slot, others: dict[str, list[tuple[str, st
         "problem": st.problem,
         "wrongSlot": ({"readsAs": st.reads_as, "expects": [k.value for k in slot.kinds],
                        "fits": [{"key": k, "title": t} for k, t in others.get(st.reads_as, [])],
-                       "acts": ["pin it to a slot it fits", "unpin"]} if st.wrong_slot else None),
+                       "acts": ["repin", "keep", "unpin"]} if st.wrong_slot else None),
     }
 
 
@@ -648,23 +674,44 @@ def slot_view(key: str, community: Any = None, root: Path | None = None, profile
         "held": mask_words}
     log = [r for r in read_history(root) if r.get("slot") == key][-12:] if history else []
     row = _row(found, private=private)
+    from jason.tasks import record_readback
+
+    holders = [_holder_dict(st, s, fits, private=private) for st in found.statuses]
+    for h, st in zip(holders, found.statuses):
+        extra = record_readback.detail(root, profile, st.pin.id, private=private)
+        if extra is not None:
+            h["readback"] = extra
+            h["changed"] = extra["changed"]
+        if st.pin.kept:
+            h["kept"] = {"by": st.pin.kept_by, "at": st.pin.kept_at[:10], "reason": "" if mask_words else st.pin.kept_reason,
+                         "readsAs": st.reads_as}
+    more = found.more
     return {
         **row,
         "found": True, "why": s.why, "existence": {"possible": s.existence, "answer": answer},
         "shelf": sorted({_category(k) for k in s.kinds}), "record": s.record, "delivery": s.delivery,
-        "holders": [_holder_dict(st, s, fits, private=private) for st in found.statuses],
+        "holders": holders,
+        "bindings": [{"id": b.get("id"), "name": b.get("name") or "a folder", "by": b.get("by"), "at": str(b.get("at") or "")[:10]}
+                     for b in found.bindings],
+        "more": None if more is None else {"id": more.get("id"), "answer": more.get("value"), "by": more.get("by"),
+                                           "at": str(more.get("at") or "")[:10], "complete": more.get("value") == "no"},
         "specificationFolders": [{"pin": f.id, "folder": f.name, "source": f.source} for f in found.folders],
         "holding": found.holding, "collisions": found.collisions,
         "candidates": [{"ref": c["ref"], "name": ("a confidential file" if c["confidential"] and not private else c["name"]),
                         "kind": c["kind"], "why": f"classified as {c['kind'].replace('_', ' ')}; not pinned"} for c in found.candidates[:8]],
-        "acts": {"pickFile": not found.hidden, "answer": s.existence and not found.hidden, "unpin": bool(found.holders), "pickFolder": False,
+        "acts": {"pickFile": not found.hidden, "answer": s.existence and not found.hidden, "unpin": bool(found.holders),
+                 "pickFolder": not found.hidden, "read": any(h.kind is not PinKind.FOLDER for h in found.holders),
+                 "keep": any(st.wrong_slot and not st.pin.kept for st in found.statuses),
+                 "repin": any(h.origin is Origin.DATA for h in found.holders), "more": s.cardinality is Cardinality.SEVERAL,
+                 "reopen": found.answer is not None or bool(found.more and found.more.get("value") == "no"),
                  "upload": False, "replace": False,
                  "why": ("hidden by the profile: " + found.hidden) if found.hidden else
-                        "choosing a folder, uploading, and replacing come with the chooser (phase 2 and 3)"},
+                        "uploading and replacing come with phase 3"},
         "log": [{k: v for k, v in r.items() if k not in ("detail",)} if not mask_words else {"at": r.get("at"), "by": r.get("by"), "act": r.get("act")}
                 for r in log],
         "commands": {"slot": f"jason records --slot {key}", "pick": f"jason records --pick {key} --file LINK_OR_ID --by NAME",
-                     "answer": f"jason records --answer {key} --not-applicable|--none|--waiting --reason TEXT --by NAME"},
+                     "answer": f"jason records --answer {key} --not-applicable|--none|--waiting --reason TEXT --by NAME",
+                     "read": f"jason records --read {key}", "bind": f"jason records --bind {key} --folder LINK_OR_ID --by NAME"},
         "caveats": list(CAVEATS),
     }
 
@@ -803,8 +850,7 @@ def parse_file_ref(text: str) -> tuple[PinKind, str]:
         return PinKind.LIBRARY, ident
     ref = parse_drive_ref(raw)
     if ref.folder:
-        raise ValueError("That is a folder. Picking a folder (a binding) comes with the chooser; paste the file's link, "
-                         "or open the file in Drive and copy its link.")
+        raise ValueError("That is a folder. A folder is bound, not pinned (jason records --bind); paste the file's link to pick a file.")
     return PinKind.DRIVE, ref.id
 
 
@@ -887,7 +933,7 @@ def pick(slot_key: str, file: str, *, by: str, period: str = "", note: str = "",
         _write_store(profile, lambda data: data["pins"].append(row), purpose="record slots: pick")
     _append_history(root, {"at": _now(), "profile": profile, "act": "pick", "slot": slot_key, "pin": pin_id, "by": who,
                            "kind": kind.value, "period": period, "note": note, "store": target})
-    return {"dryRun": False, "ok": True, "pin": pin_id, "written": target, "slot": slot_key, "reading": "none queued (phase 2 reads a pick)"}
+    return {"dryRun": False, "ok": True, "pin": pin_id, "written": target, "slot": slot_key, "reading": f"not read yet: jason records --read {slot_key}"}
 
 
 def _active_pins(root: Path, profile: str, slot_key: str) -> list[Pin]:
