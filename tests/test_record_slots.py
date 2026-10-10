@@ -73,6 +73,11 @@ class _Community:
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     """A data folder with a library of three files, a spec folder of its own, and the console's data root pointed at it."""
+    # The profile reads its made-up private facts when first loaded: load it now, under the fixtures, before this test points
+    # the spec folder at its own (a profile first loaded under an empty folder would keep no facts for the tests after it).
+    from jason.community import community
+
+    community()
     root = tmp_path / "data"
     (root / "library" / "text").mkdir(parents=True)
     from jason.tasks.library import SCHEMA
