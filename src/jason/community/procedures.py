@@ -705,6 +705,16 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="every write is a dry run until --yes and names a person; the history file holds no file name",
                  refs=("docs/record-intake.md",),
                  lessons=("one-record-may-have-several-specification-pins",)),
+            Step("Set up the community's own Google Workspace: its OAuth client in its vault path, then one sign-in per "
+                 "token it needs. The refresh token is given once, at consent, and is saved to the vault at once; do not "
+                 "ask for consent again while a token covers the scopes.",
+                 command="jason google status; jason google setup --from-file client_secret.json --yes; "
+                         "jason google sign-in --name drive --interactive",
+                 check="status says the client is in this community's vault (not the installation's record) and each "
+                       "needed token is read from the vault and covers its scopes; never retry invalid_grant, sign in again",
+                 refs=("docs/google-workspace-setup.md",),
+                 lessons=("community-google-setup-read-the-developers-env-record",
+                          "a-consent-gives-the-refresh-token-once-save-it-first"), person=True),
             Step("Read the checklist.", command="jason onboard --items"),
             Step("Run the session: the stage gates, then the ranked questions. Park the fact and mapping questions, "
                  "answer in the order given, have a second person confirm the high-stakes ones, then apply.",

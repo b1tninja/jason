@@ -2282,6 +2282,23 @@ LESSONS: tuple[Lesson, ...] = (
            "consent screen is not built from the real exchange.",
            Status.FIXED, guards=("session._sign_in", "tests/test_google_tokens.py"),
            docs=("docs/integrations-design.md",)),
+    Lesson("community-google-setup-read-the-developers-env-record", date(2026, 10, 10), (Area.ONBOARDING,),
+           "A community's Google client came from the developer environment's .env Keeper record, so a second "
+           "community would have signed in with the first one's Cloud project.",
+           "Google setup was written for the one installation; the OAuth client lived in a record .env named.",
+           "oauth_client reads the community's own vault path first (jason google setup stores it there); the .env record "
+           "is a logged fallback labeled as the installation's, with jason google adopt-installation-record to move it; "
+           "one community's client and tokens are never read for another.",
+           Status.FIXED, guards=("tests/test_google_workspace.py::test_one_communitys_client_and_tokens_are_never_read_for_another",),
+           docs=("docs/google-workspace-setup.md",)),
+    Lesson("installation-google-fallback-stays-on-by-default", date(2026, 10, 10), (Area.ONBOARDING,),
+           "The .env installation fallback for the Google client is still on by default, so a community that has not "
+           "adopted its own client silently uses the installation's.",
+           "Turning it off would break installations that have not yet run jason google adopt-installation-record.",
+           "It logs once per community as the installation's record. Close this by flipping the default of "
+           "google_installation_client once every community has its own client.",
+           Status.OPEN, guards=("settings.google_installation_client",),
+           docs=("docs/google-workspace-setup.md",)),
     Lesson("section-printed-twice", date(2026, 10, 5), (Area.GOVERNING, Area.DOCUMENTS),
            "A section number a document prints twice was ambiguous with no way to say which, and a list that numbers "
            "its own sections hung its sublist twice (\"18(18)(a)\").",
