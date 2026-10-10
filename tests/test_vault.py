@@ -657,7 +657,7 @@ def test_the_google_client_comes_from_the_vault_first(monkeypatch, memory_vault)
     record = SimpleNamespace(custom=[{"label": "client_id", "value": ["old-id"]},
                                      {"label": "client_secret", "value": ["old-made-up"]}])
     old = SimpleNamespace(load_record=lambda uid: record)
-    settings = SimpleNamespace(google_oauth_record_uid="FAKEUID")
+    settings = SimpleNamespace(google_oauth_record_uid="FAKEUID", google_installation_client=True)
     assert oauth_client(settings, old, store=memory_vault) == ("old-id", "old-made-up")          # not moved yet
     memory_vault.put("jason/community/oakview/google-workspace/oauth-client",
                      {"client_id": "new-id", "client_secret": VALUE})

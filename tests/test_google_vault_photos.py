@@ -75,7 +75,7 @@ def test_a_scoped_token_lives_beside_drives_and_needs_consent_once(tmp_path) -> 
 
     from jason.google.session import open_vault
 
-    settings = SimpleNamespace(google_oauth_record_uid="uid", google_oauth_token_file=tmp_path / "google-token.json")
+    settings = SimpleNamespace(google_oauth_record_uid="uid", google_installation_client=True, google_oauth_token_file=tmp_path / "google-token.json")
     record = SimpleNamespace(custom=[{"label": "client_id", "value": ["cid"]}, {"label": "client_secret", "value": ["sec"]}])
     keeper = SimpleNamespace(load_record=lambda uid: record)
     from jason.google.errors import GoogleAuthRequired

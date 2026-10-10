@@ -126,6 +126,7 @@ def test_open_drive_asks_for_browser_when_token_missing(tmp_path: Path):
 
     class Settings:
         google_oauth_record_uid = "uid"
+        google_installation_client = True
         google_oauth_token_file = token
 
     class Vault:
@@ -155,6 +156,7 @@ def test_open_drive_asks_for_browser_when_token_missing(tmp_path: Path):
 def test_open_drive_fails_fast_by_default(tmp_path: Path):
     class Settings:
         google_oauth_record_uid = "uid"
+        google_installation_client = True
         google_oauth_token_file = tmp_path / "missing.json"
 
     class Vault:
