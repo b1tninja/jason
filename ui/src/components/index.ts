@@ -85,3 +85,11 @@ export { Swatch, PAINT_STATUS_WORDS, ENTERED_WORD, inkFor, luminance, contrastRa
 export { PaletteMatrix, PAINT_CAPTION, NO_SCHEDULE, NO_PAINT_ROW, ageInDays, copyAge, drift as paintDrift, type PaintSchedule } from "./PaletteMatrix";
 export { ColorDetail, TOUCH_UP_CAVEAT, NO_DESCRIPTION, type PaintColorDetail } from "./ColorDetail";
 export { SourcedDate, NEEDS_INPUT_INVITATION, dateText as sourcedDateText } from "./SourcedDate";
+export { StandingPill, StandingStrip } from "./StandingPill";
+export { CitedSections, Proposal, Freshness } from "./CitedSections";
+export { CitationGaps } from "./CitationGaps";
+export { CitationChip } from "./CitationChip";
+export { ReferenceShelf, WorkCard } from "./ReferenceShelf";
+export { WorkReader, ReferencePage, marked as markCitedSentence } from "./WorkReader";
+export { IngestCitations } from "./IngestCitations";
+export { STANDINGS, STANDING_ORDER, perFile as citationsPerFile, type Standing, type StandingWord, type StandingCounts, type CitationRow, type CitationsData, type GapsData, type ReferenceWork, type WorksData, type ReferencePageData } from "../lib/citations";

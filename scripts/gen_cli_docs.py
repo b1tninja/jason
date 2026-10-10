@@ -102,6 +102,7 @@ GROUPS: dict[str, str] = {
     "section-refs": "Documents & library",
     "cite": "Documents & library",
     "discover-forms": "Documents & library",
+    "reference": "Documents & library",
     "intake": "Documents & library",
     "ingest": "Documents & library",
     "preflight": "Documents & library",

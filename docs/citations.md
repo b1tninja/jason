@@ -155,6 +155,21 @@ Conflict row's `says`, a notice provision's `says`) is never in the words' place
 the section's `recitedWords` so a person can compare the two. A statute's subdivision is split by jason from the
 exported section and says so; the whole section is the official text.
 
+## What other documents cite, and whether the shelf holds it
+
+The walk above is the association's own documents. A guide, a manual, or a file taken in by `jason ingest` also cites the law, and each section it cites is a question: are its words on the authorities shelf? `jason.tasks.citation_coverage` reads a text with the same grammar (`extract`, in its `external` mode for text that is not one of the association's documents) and gives each section a standing: on the shelf; in the law but not exported (a lead for a row); not in the current publication; a pre-2014 Davis-Stirling number; a regulation; or a code lawlibrary does not hold. A section is placed by the sections each exported page lists in the manifest, never by a page's range.
+
+| Who owns | What |
+| --- | --- |
+| `community/references.py` | what a citation says: the grammar, the code names and acts (BPC, SLA, Map Act, DSA, ...), the external mode |
+| `tasks/export_authorities.py` | the shelf and its manifest (`read_manifest`): what is held |
+| `tasks/citation_coverage.py` | a text's standing against the shelf and lawlibrary, the proposal, a kept survey (`data/citations`) |
+| `community/reference_shelf.py` | the reference works and their text by page |
+| `tasks/ingest.py` | the files' text, and the survey in its report |
+| `mcp/citations.py` | the read-only tools (`document_citations`, `citation_gaps`), a thin wrapper over a kept survey |
+
+`jason ingest` surveys every distinct file (in the association's mode for a governing, meeting, membership, or election document, which cite the Davis-Stirling Act bare; in the external mode for every other kind and for a file with no kind yet) and puts the result in its report (`## Statutes cited`) and summary; lawlibrary is asked unless `--no-law`. `jason reference --cites WORK` surveys a work and keeps the survey. `document_citations` and `citation_gaps` read those from disk, placing each section against the shelf as it is now. The proposal is a duty's `sections` string (`BPC 11500; GOV 66427`) for a person to add as a row in `jason.community.authorities`: nothing is added for them. A range (`Sections 10000-10580`) is read as its two ends.
+
 ## Caveats
 
 - Only stored words are recited. A living document is consolidated from the instruments' own words: it is not an

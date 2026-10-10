@@ -936,6 +936,34 @@ def apply(items: list[FileItem], texts: dict[str, str], data_dir: Path, *, repor
     return done
 
 
+# --- The statutes a file cites ----------------------------------------------------------------------------------------
+
+def cited_statutes(items: list[FileItem], texts: dict[str, str], data_dir: Path, law: Any = None) -> Any:
+    """Each distinct file's citations, placed against the authorities shelf (``citation_coverage.survey``). Reads text only.
+
+    The association's own habit of citing the Davis-Stirling Act bare ("Section 5855") belongs to the documents that do it:
+    the governing documents, the meeting records, the membership's and the elections'. A file on any other shelf (a tax
+    return, a contract, a bank statement, a template, a third party's letter), and a file with no kind yet, is read in the
+    grammar's external mode, where a bare four-digit section is not taken for the Civil Code and a regulation needs its
+    own words to say whose it is. A missed citation stays missed; a tax form's "section 4951" is not a Civil Code gap."""
+    from jason.community.documents import profile
+    from jason.community.symbols import DocumentCategory, DocumentKind
+    from jason.tasks.citation_coverage import merge, survey
+
+    own_shelves = (DocumentCategory.GOVERNING, DocumentCategory.MEETING, DocumentCategory.MEMBERSHIP, DocumentCategory.ELECTION)
+    own: dict[str, str] = {}
+    outside: dict[str, str] = {}
+    for item in items:
+        if item.duplicate_of or not texts.get(item.sha256):
+            continue
+        try:
+            shelf = profile(DocumentKind(getattr(item, "kind", ""))).category
+        except ValueError:
+            shelf = None
+        (own if shelf in own_shelves else outside)[item.rel] = texts[item.sha256]
+    return merge([survey(own, data_dir, library=law), survey(outside, data_dir, library=law, external=True)])
+
+
 # --- The run ----------------------------------------------------------------------------------------------------------
 
 @dataclass
@@ -952,6 +980,8 @@ class Result:
     gates: list[dict[str, Any]]
     filed: list[FileItem] = field(default_factory=list)
     report: Path | None = None
+    # The statutes the files cite and where each stands against the authorities shelf (``jason.tasks.citation_coverage``).
+    citations: Any = None
 
     @property
     def unique(self) -> list[FileItem]:
@@ -985,6 +1015,7 @@ class Result:
                                                       "file": a.detail.get("file", ""), "question": a.question,
                                                       "suggestion": a.suggestion, "choices": list(a.choices)}
                                                      for a in self.asks],
+                "citations": self.citations.as_dict() if self.citations is not None else None,
                 "moved": self.moved, "gates": self.gates, "notes": self.notes, "files": [i.row() for i in self.items]}
 
 
@@ -1027,11 +1058,12 @@ def read_terms(items: list[FileItem], texts: dict[str, str], root: Path, **kw: A
 
 def run(community: Any, data_dir: Path, sources: list[str], *, drive: Any = None, model: Any = None, ocr: bool = True,
         apply_files: bool = False, park: bool = False, settings: Any = None, today: date | None = None,
-        terms_backend: Any = None, allow_remote: bool = False,
+        law: Any = None, terms_backend: Any = None, allow_remote: bool = False,
         log: Callable[[str], None] = lambda s: None) -> Result:
     """The whole chain. Writes only under ``data/``: staged copies and text, the report, each contract's terms, and with
-    ``apply_files`` the library, with ``park`` the intake queue. ``terms_backend`` is the model that reviews a
-    contract's terms (``jason.community.term_model``); the grammar reads them without one."""
+    ``apply_files`` the library, with ``park`` the intake queue. ``law`` is a lawlibrary: with one, a cited statute that
+    is off the authorities shelf is looked up there; without, it is reported as unchecked. ``terms_backend`` is the model
+    that reviews a contract's terms (``jason.community.term_model``); the grammar reads them without one."""
     from jason.community import intake
     from jason.tasks.library import person_kinds
 
@@ -1078,6 +1110,7 @@ def run(community: Any, data_dir: Path, sources: list[str], *, drive: Any = None
     before, after = contexts(community, root, rows=rows, asks=tuple(stored), settings=settings,
                              after_asks=tuple(queue_after))
     result = Result(day, [str(s) for s in sources], apply_files, park, items, notes, asks, groups, [], [])
+    result.citations = cited_statutes(items, texts, root, law)
     report_name = f"{REPORT_PREFIX}{day}"
     if apply_files:
         result.filed = apply(items, texts, root, report=report_name)
@@ -1158,6 +1191,8 @@ def report_markdown(result: Result) -> str:
             out.append(f"- {g['group']} ({g['kind'] or 'no kind'}, {g['texts']} distinct text"
                        f"{'s' if g['texts'] != 1 else ''}): " + "; ".join(
                            f"{_cell(f)} ({s.get('existedBy', 'undated')})" for f, s in zip(g["files"], g["dates"])))
+    out += ["", result.citations.markdown("Statutes cited", 2).rstrip() if result.citations is not None else
+            "## Statutes cited\n\nNot read."]
     out += ["", "## Questions", "",
             "Parked in the intake queue: answer them with `jason intake --answer ID TEXT --by NAME` or in the "
             "onboarding session." if result.parked else
@@ -1221,6 +1256,8 @@ def lines(result: Result) -> list[str]:
     if termed:
         out.append(f"contract terms: {len(termed)} contracts read, {sum(len(i.terms.get('deliverables', [])) for i in termed)} "
                    f"deliverables, {sum(len(set(i.terms.get('findings', []))) for i in termed)} kinds of finding")
+    if result.citations is not None and result.citations.rows:
+        out += ["statutes " + line for line in result.citations.lines(6)]
     for m in result.moved:
         out.append(f"checklist {m['key']}: {m['before']} -> {m['after']}")
     for g in result.gates:

@@ -86,6 +86,15 @@ CODES: tuple[tuple[str, str], ...] = (
     (r"(?:California\s+)?Fire\s+Codes?", "CFC"),
     (r"(?:California\s+)?Building\s+Codes?", "CBC"),
     (r"Sacramento\s+City\s+Code", "SCC"),
+    (r"(?:California\s+)?Public\s+Resources\s+Code|Pub\.?\s*Res\.?\s*Code", "PRC"),
+    (r"Revenue\s+(?:and|&)\s+Taxation\s+Code|Rev\.?\s*&\s*Tax\.?\s*Code", "RTC"),
+    (r"Insurance\s+Code|Ins\.?\s*Code", "INS"),
+    (r"Water\s+Code", "WAT"),
+    # Abbreviations and named acts that outside material uses for a code: "BPC Section 11010.4", "Section 66427 of the Map Act".
+    (r"BPC|B\.?\s?&\s?P\.?\s*Code", "BPC"),
+    (r"Subdivided\s+Lands\s+(?:Act|Law)|SLA", "BPC"),
+    (r"Subdivision\s+Map\s+Act|Map\s+Act", "GOV"),
+    (r"Davis[-\s]Stirling(?:\s+Common\s+Interest\s+Development)?\s+Act|DSA", "CIV"),
 )
 _CODE_ALT = "|".join(f"(?:{p})" for p, _ in CODES)
 _CODE_NAME = re.compile(_CODE_ALT, re.I)
@@ -196,8 +205,25 @@ def alias_pattern(aliases: dict[str, str]) -> re.Pattern | None:
     return re.compile(rf"\b(?P<doc>{alt})(?:['’]s)?(?![A-Za-z])", re.I)
 
 
-def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference]:
-    """Every reference in ``outline``'s text. ``aliases`` maps each name a document goes by (lowercase) to its key."""
+def _regulation_title(text: str, start: int) -> str:
+    """The title of the regulations a bare number near ``start`` belongs to, read from the 400 characters of text before it:
+    "Title 10" when it says so, 10 for the Real Estate Commissioner's regulations, else "" (a miss, not a guess)."""
+    window = text[max(0, start - 400):start]
+    if named := list(re.finditer(r"\bTitle\s+(\d{1,2})\b", window)):
+        return named[-1].group(1)
+    if re.search(r"Real\s+Estate\s+Commissioner|Commissioner[’']?s?\s+Regulations", window, re.I):
+        return "10"
+    return ""
+
+
+def extract(outline: DocumentOutline, aliases: dict[str, str], *, external: bool = False) -> list[Reference]:
+    """Every reference in ``outline``'s text. ``aliases`` maps each name a document goes by (lowercase) to its key.
+
+    ``external`` is for material that is not one of the association's documents (a guide, a manual, an agency
+    publication). The association's habits do not hold there: a bare four-digit section is not the Civil Code, and a
+    code named later in the sentence is not the code of a number before it. A bare number is read as a regulation
+    only when the text before it says whose regulations (``_regulation_title``); otherwise it is left alone.
+    """
     text = outline.text
     lower_aliases = {k.lower(): v for k, v in aliases.items()}
     doc_names = alias_pattern(lower_aliases)
@@ -237,7 +263,7 @@ def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference
     default_key = outline.amends or outline.key
     code_near = re.compile(rf"^[^.;]{{0,160}}?\b(?:of\s+(?:the\s+)?)?(?P<code>{_CODE_ALT})", re.I)
     code_right_after = re.compile(rf"^\s*,?\s*(?:of\s+(?:the\s+)?)?(?P<code>{_CODE_ALT})", re.I)
-    code_before = re.compile(rf"(?P<code>{_CODE_ALT})\s*,?\s*$", re.I)
+    code_before = re.compile(rf"(?P<code>{_CODE_ALT})\s*\)?\s*,?\s*\(?\s*$", re.I)
 
     def doc_key(name: str) -> str:
         name = " ".join(name.lower().split())
@@ -305,6 +331,9 @@ def extract(outline: DocumentOutline, aliases: dict[str, str]) -> list[Reference
             bare = re.fullmatch(r"(\d{4,6})((?:\.\d+)?[a-z]?(?:\([a-z0-9]+\))*)", number)
             if code:
                 add(TargetKind.STATUTE, f"{code} {number}", begin, end, _is_prior_davis_stirling(code, number))
+            elif external and bare:
+                if title := _regulation_title(text, begin):
+                    add(TargetKind.STATUTE, f"{title} CCR {number}", begin, end)
             elif not key and bare and 1350 <= int(bare.group(1)) <= 6200:
                 # A bare four-digit section in an association document is the Civil Code (Davis-Stirling).
                 add(TargetKind.STATUTE, f"CIV {number}", begin, end, _is_prior_davis_stirling("CIV", number))

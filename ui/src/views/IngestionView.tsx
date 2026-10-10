@@ -1,4 +1,4 @@
-import { Badge, Card, DataTable, EmptyState, Findings, Pill, RemoteView, Stat, type Column } from "../components";
+import { Badge, Card, DataTable, EmptyState, Findings, IngestCitations, Pill, RemoteView, Stat, type CitationsData, type Column } from "../components";
 import { useApi } from "../lib/useApi";
 import type { LibraryStatus, Readings } from "./types";
 
@@ -31,6 +31,7 @@ const readingCols: Column<Readings["readings"][number]>[] = [
 export function IngestionView() {
   const lib = useApi<LibraryStatus>("/api/library-status");
   const rd = useApi<Readings>("/api/document-readings");
+  const cites = useApi<CitationsData>("/api/citations?source=ingest&limit=500");
   return (
     <div className="stack">
       <RemoteView r={lib}>
@@ -71,6 +72,13 @@ export function IngestionView() {
                 <ul className="muted">{d.unreadable.map((p) => <li key={p}>{p}</li>)}</ul>
               </details>
             )}
+          </Card>
+        )}
+      </RemoteView>
+      <RemoteView r={cites}>
+        {(d) => (
+          <Card title={`Statutes the last ingest cites (${d.total})`}>
+            <IngestCitations data={d} />
           </Card>
         )}
       </RemoteView>

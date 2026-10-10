@@ -912,6 +912,10 @@ EXTRA_LOADERS: dict[str, str] = {
     "rule-events": "jason.web.extra.rule_records:rule_events",  # ?id= the acts on record for a rule
     "record-slots": "jason.web.extra.record_slots:record_slots",  # the record checklist; ?group=&state=; disk only, board only
     "record-slot": "jason.web.extra.record_slots:record_slot",  # ?key= one slot: holders, the library's reading, the trail
+    "reference-works": "jason.web.extra.citations:reference_works",  # the reference shelf, with each work's kept survey
+    "citations": "jason.web.extra.citations:citations",  # ?source=&file=: the statutes a source cites, against the shelf
+    "citation-gaps": "jason.web.extra.citations:citation_gaps",  # what surveyed sources cite that the shelf lacks
+    "reference-page": "jason.web.extra.citations:reference_page",  # ?work=&page=: one page of a work's text
 }
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",

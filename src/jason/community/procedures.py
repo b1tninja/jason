@@ -370,7 +370,8 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Refresh the law and the change history from lawlibrary.",
                  command="jason export-authorities; jason law-history --export",
-                 check="the export's date; the year's chaptered bills are in the change list"),
+                 check="the export's date; the year's chaptered bills are in the change list",
+                 lessons=("span-split-dropped-sections",)),
             Step("Set aside each reading of the law whose words changed.",
                  command="jason readings --stale",
                  check="each stale reading is redone or confirmed by the board or counsel against the words now on "
@@ -381,6 +382,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="0 where the shelf differs from the newest publication; a miss is a citation to correct",
                  refs=("docs/law-readings.md (The words in force on a day)",),
                  lessons=("recital-gave-todays-words-for-an-earlier-day",)),
+            Step("Check the shelf holds the sections the documents and reference works cite: each section cited but "
+                 "not exported, not found, or cited by a pre-2014 number. A person adds the row for each real gap.",
+                 command="jason reference --cites WORK; jason ingest SOURCE; the citation_gaps tool",
+                 check="the proposal lists only sections the shelf still lacks; a 'not in the current publication' row "
+                       "is read in its sentence before it is called an error",
+                 refs=("docs/reference-shelf.md", "docs/citations.md"),
+                 lessons=("outside-text-is-not-an-association-document",)),
             Step("Refresh the documents' outlines.", command="jason outlines --fetch",
                  check="a document added or adopted since is a citable document in the specification, with its "
                        "written date"),

@@ -14,6 +14,7 @@ from typing import Any
 
 from jason.catalog import PayhoaCatalog
 from jason.config import Settings
+from jason.mcp.citations import TOOLS as CITATION_TOOLS
 from jason.mcp.discovery import TOOLS as DISCOVERY_TOOLS
 from jason.mcp.followups import TOOLS as FOLLOWUP_TOOLS
 from jason.mcp.governance import TOOLS as GOVERNANCE_TOOLS
@@ -332,7 +333,7 @@ ALL_TOOLS = (
     unit_characteristics,
 )
 
-ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS + RECORD_SLOT_TOOLS
+ALL_TOOLS = ALL_TOOLS + GOVERNANCE_TOOLS + DISCOVERY_TOOLS + CITATION_TOOLS + RESPONSE_TOOLS + FOLLOWUP_TOOLS + RECORD_SLOT_TOOLS
 
 # A profile is a named subset, in the order a client lists them. A client picks better from the board set: the
 # digest, the briefs, the law, and the index search, not the research tools behind them.
@@ -349,7 +350,8 @@ PROFILES: dict[str, tuple[str, ...]] = {
     ),
     # The governance systems: the living documents, conflicts, intake questions, the schedule, members' requests, the
     # notice catalog and delivery, and the documents' duties. Three tools write a person's record to data/.
-    "governance": tuple(tool.__name__ for tool in GOVERNANCE_TOOLS),
+    # The statutes documents cite and where each stands against the authorities shelf (citations.py) belong here too.
+    "governance": tuple(tool.__name__ for tool in GOVERNANCE_TOOLS + CITATION_TOOLS),
     # Onboarding by conversation (docs/onboarding.md): the session, its questions, and the two writes, with the
     # onboard and onboard_review prompts. A small set, so a local model picks the right tool.
     "onboarding": ("onboarding_status", "next_questions", "intake_questions", "answer_intake_question",

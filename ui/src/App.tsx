@@ -38,6 +38,7 @@ import { MailTriageView } from "./views/MailTriageView";
 import { MeetingsView } from "./views/MeetingsView";
 import { MoneyView } from "./views/MoneyView";
 import { IngestionView } from "./views/IngestionView";
+import { ReferenceShelfView } from "./views/ReferenceShelfView";
 import { LeadsView } from "./views/LeadsView";
 import { ApprovalsView } from "./views/ApprovalsView";
 import { DecisionsView } from "./views/DecisionsView";
@@ -123,6 +124,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "renewals", label: "Insurance renewals", group: "Records", view: ({ audience }) => <InsuranceRenewalsView audience={audience} /> },
   { id: "legal", label: "Legal", group: "Records", view: () => <LegalView /> },
   { id: "ingestion", label: "Document ingestion", group: "Records", view: () => <IngestionView /> },
+  // The reference shelf and the statutes surveyed documents cite against the authorities shelf; board only (no owner loader).
+  { id: "reference", label: "Reference shelf", group: "Records", view: () => <ReferenceShelfView /> },
   { id: "owner-page", label: "Owner page", group: "Records", owner: true, view: () => <OwnerPageView /> },
   // Who holds each office, read-only; board only (no owner loader: the server refuses /api/people in the owner view).
   { id: "people", label: "People and offices", group: "Records", view: () => <PeopleView /> },

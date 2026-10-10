@@ -22,24 +22,16 @@ from typing import Any
 # the user config names another).
 DEFAULT_HOME = Path(__file__).resolve().parents[3].parent / "lawlibrary"
 
-# Runs with lawlibrary's checkout as the working directory. A span too large for one text answer is split
-# at the numeric midpoint until each half answers, so a chapter of forty sections still comes back whole.
+# Runs with lawlibrary's checkout as the working directory. ``limit=None`` asks for every section of the span: lawlibrary
+# otherwise answers a span of more than thirty sections with its outline and no text. (An earlier version split such a span
+# at the numeric midpoint, which reads the part after the dot as a fraction. Splitting 66499 to 66499.28 at 66499.14 and
+# starting the right half at 66499.141 dropped sections .15 to .28 without a word.)
 _WORKER = r'''
 import json, sys
 import query
 
-def texts(code, start, end, depth=0, session=None):
-    r = query.range(code, start, end, text=True, session=session)
-    if r.get("reason") == "span_too_large" and depth < 8:
-        lo, hi = float(start), float(end)
-        mid = (lo + hi) / 2
-        left = texts(code, start, ("%.3f" % mid).rstrip("0").rstrip("."), depth + 1, session)
-        right = texts(code, ("%.3f" % (mid + 0.001)).rstrip("0").rstrip("."), end, depth + 1, session)
-        seen, out = set(), []
-        for s in left + right:
-            if s["citation"] not in seen:
-                seen.add(s["citation"]); out.append(s)
-        return out
+def texts(code, start, end, session=None):
+    r = query.range(code, start, end, text=True, session=session, limit=None)
     if not r.get("found"):
         return []
     return r.get("sections") or []

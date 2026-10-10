@@ -2,7 +2,8 @@
 
 Inventories every file (hash, type, size, dates, where it came from), drops duplicates, reads the text (a text layer,
 then OCR), classifies with the library's chain (the model only with ``--model``), finds versions of the documents jason
-knows, and proposes each file's book, Civil Code 5200 record, and library folder. A dry run by default: ``--apply``
+knows, reads the statutes each file cites and says which the authorities shelf does not hold (looked up in lawlibrary
+unless ``--no-law``), and proposes each file's book, Civil Code 5200 record, and library folder. A dry run by default: ``--apply``
 copies the ready files into ``data/library/files`` and records them in ``library.db``; ``--park`` parks the questions
 (a file's kind, a file's folder) in the intake queue. The report is ``data/onboarding/ingest-<day>.md`` (private).
 Never writes to Drive or PayHOA; a Drive folder is read only, and fails fast without a token.
@@ -49,6 +50,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     parser.add_argument("--allow-remote-confidential", action="store_true",
                         help="let a remote --terms-model read a confidential file, for this run only")
     parser.add_argument("--no-ocr", action="store_true", help="read text layers only; an image-only file is left unread")
+    parser.add_argument("--no-law", action="store_true",
+                        help="do not look the statutes the files cite up in lawlibrary; one off the authorities shelf is then unchecked")
     parser.add_argument("--gate", action="store_true",
                         help="print what the last ingest says for the onboarding session's ingest stage (read-only)")
     parser.add_argument("--json", action="store_true", help="print the run as JSON")
@@ -67,6 +70,11 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
     if not args.source:
         print("jason ingest: name a SOURCE (a folder, a .zip, a Drive folder, or files), or --gate", file=sys.stderr)
         return 2
+    law = None
+    if not args.no_law:
+        from jason.sources.lawlibrary import LawLibrary
+
+        law = LawLibrary() if LawLibrary().available() else None
     model = None
     if args.model is not None:
         from jason.community.content import ModelClassifier
@@ -88,7 +96,7 @@ def run(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -> int:
                 return 2
         try:
             result = task.run(community(), root, list(args.source), drive=drive, model=model, ocr=not args.no_ocr,
-                              apply_files=args.apply, park=args.park, terms_backend=terms_backend,
+                              apply_files=args.apply, park=args.park, law=law, terms_backend=terms_backend,
                               allow_remote=args.allow_remote_confidential, log=lambda s: print(s, file=sys.stderr))
         except ValueError as exc:
             print(f"jason ingest: {exc}", file=sys.stderr)

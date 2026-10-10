@@ -17,6 +17,8 @@ and require ``by``.
     api.section_refs("Declaration 6.2(a)", hops=2, direction="both")
     api.read_record("jason://decl/6.2(a)")["text"]     # the MCP resource's Markdown: the recitation first
     api.record_resources()                              # what jason-mcp lists as resources
+    api.document_citations("ResidentialSubdivisionsGuide.pdf")["proposal"]   # the statutes it cites that the shelf lacks
+    api.citation_gaps()["gaps"]                          # every surveyed source's gaps, one list
     api.new_responses()["arrivals"]                      # what the last `jason responses --check` kept, newest first
     api.response("gmail:abc123")["left"]                 # one arrival: its reading (evidence), its acts, what is left
     api.followups(days=14)["items"]                      # what we do next, and when, with the basis and the count outstanding
@@ -63,6 +65,7 @@ from jason.mcp.governance import (
     schedule_assignments,
     section_refs,
 )
+from jason.mcp.citations import citation_gaps, document_citations
 from jason.mcp.record_slots import record_slot, record_slots
 from jason.mcp.response_inbox import new_responses, outstanding_responses, response
 from jason.mcp.followups import campaign_status, followups
@@ -91,4 +94,5 @@ def read_record(address: str, data_dir=None) -> dict:
             "lastModified": page.last_modified}
 
 
-__all__ = [t.__name__ for t in TOOLS] + ["campaign_status", "followups", "new_responses", "outstanding_responses", "read_record", "record_resources", "response"]
+__all__ = [t.__name__ for t in TOOLS] + ["campaign_status", "citation_gaps", "document_citations", "followups", "new_responses",
+                                         "outstanding_responses", "read_record", "record_resources", "response"]

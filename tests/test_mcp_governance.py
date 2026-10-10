@@ -1,13 +1,14 @@
 from jason import api
 from jason.community import intake
 from jason.community.intake import Ask, AskKind
-from jason.mcp import governance
+from jason.mcp import citations, governance
 from jason.mcp.server import ALL_TOOLS, tools_for
 
 
 def test_the_governance_profile_serves_the_tools_and_the_api_exports_them():
     names = [t.__name__ for t in tools_for("governance")]
-    assert names == [t.__name__ for t in governance.TOOLS]
+    # The governance systems, then the statutes documents cite against the authorities shelf (jason.mcp.citations).
+    assert names == [t.__name__ for t in governance.TOOLS + citations.TOOLS]
     assert set(names) <= {t.__name__ for t in ALL_TOOLS}
     assert len(tools_for("board")) == 47                       # the board's set, with the two response tools
     assert set(api.__all__) == set(names) | {"read_record", "record_resources", "new_responses", "outstanding_responses", "response", "followups", "campaign_status"}   # the tools, and the resources

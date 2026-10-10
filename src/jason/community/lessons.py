@@ -1440,6 +1440,40 @@ LESSONS: tuple[Lesson, ...] = (
            "suffix after a valid number still passes, so that case is open.",
            Status.OPEN, guards=("tests/test_notice_catalog.py (labels are outline numbers or titles)",),
            docs=("docs/notices.md",)),
+    Lesson("span-split-dropped-sections", date(2026, 10, 3), (Area.GOVERNING,),
+           "The authorities export came back short without a word: nineteen sections were missing from three pages "
+           "(BPC 7028.6 on, GOV 66499.29 to .33, CIV 2924.8), among them GOV 66499.30, the ban on selling before a map.",
+           "lawlibrary answers a span of more than thirty sections with its outline and no text, and jason's worker "
+           "split such a span at the numeric midpoint. The part after the dot in a section number is an integer suffix, "
+           "not a fraction: splitting 66499 to 66499.28 at 66499.14 started the right half at 66499.141, past every "
+           "section after it.",
+           "lawlibrary's range() takes a limit (None asks for every section) and the worker asks for all of a span "
+           "and splits nothing. The pages were exported again. The shelf's manifest lists each page's sections, and a "
+           "survey places a number by those, so a page's range is never taken for its contents.",
+           Status.FIXED,
+           guards=("tests/test_citation_coverage.py::test_the_lawlibrary_worker_asks_for_every_section_and_never_splits_a_span_at_a_decimal_midpoint",
+                   "lawlibrary tests/test_query.py::test_range_text_stops_at_the_limit_unless_the_caller_asks_for_every_section",
+                   "jason.tasks.citation_coverage._shelf_standing (a number inside a page's range and missing from it is NOT_FOUND)"),
+           docs=("docs/reference-shelf.md",),
+           notes=("Checked 2026-10-03: the statute-alignment editions under data/authorities/history/alignment/editions "
+                  "came through the same splitter and lack no section. A fresh read differs only where a section has two "
+                  "versions with different operative dates (CIV 4775 and 5300 in 2015): the old split kept the first, a "
+                  "span read whole keeps both.",)),
+    Lesson("outside-text-is-not-an-association-document", date(2026, 10, 3), (Area.GOVERNING,),
+           "The citation reader, run over a state guide, filed Title 10 regulations as Civil Code sections (CIV 2792.8) and "
+           "a Business and Professions section as a Government Code one (GOV 11000), and missed most of the Subdivided "
+           "Lands Act, which the guide cites as 'Section 11010.4 of the SLA'.",
+           "The grammar was written for the association's documents: a bare four-digit section is the Civil Code, a code "
+           "named later in the sentence is the code of a number before it, and an act goes by its code name. A guide "
+           "uses abbreviations and acts, and names the regulations in a sentence before it gives their numbers.",
+           "extract() has an external mode for such text: no Civil Code default, no look-ahead for a code, a bare number is "
+           "a regulation only when the text before it says whose; and the abbreviations and acts (BPC, SLA, Map Act, "
+           "DSA, the Public Resources, Revenue and Taxation, Insurance, and Water Codes) are code names. Association "
+           "documents read as before.",
+           Status.FIXED,
+           guards=("tests/test_citation_coverage.py (the guide's phrasings, and the association default kept)",
+                   "tests/test_outlines_references.py"),
+           docs=("docs/citations.md", "docs/reference-shelf.md")),
     Lesson("a-name-joined-chain-is-a-braid", date(2026, 10, 3), (Area.ONBOARDING,),
            "A Placer half-plex's chain of title came back with 22 deeds, one estate deed with three candidate priors and "
            "a 2009 deed with seven; drawn as a DAG it was a braid, and the 'line' through every prior took in the twin "
