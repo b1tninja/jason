@@ -2220,10 +2220,10 @@ LESSONS: tuple[Lesson, ...] = (
            "jason.google.tokens reads the vault first and then the file, and saves to both; jason vault migrate --yes "
            "copies the existing token files into the vault (create-only), and jason vault status says where each is read "
            "from, never the token.",
-           Status.OPEN, guards=("tests/test_google_tokens.py::test_worktree_case_vault_only_no_file_and_another_cwd",),
+           Status.FIXED, guards=("tests/test_google_tokens.py::test_worktree_case_vault_only_no_file_and_another_cwd",),
            docs=("docs/integrations-design.md",),
-           notes=("Open until a person runs jason vault migrate --yes in the main checkout; then any worktree reads the "
-                  "token from Keeper.",)),
+           notes=("The four token files were copied into the vault on 2026-10-10; jason vault status reads each from the "
+                  "vault. There is no refresh token to download: it comes only from a person's consent.",)),
     Lesson("a-read-only-reader-must-not-build-a-cache", date(2026, 10, 10), (Area.DOCUMENTS,),
            "A read-only reader of the rule records rebuilt a versions cache in the main checkout's data folder on its "
            "first run from a worktree, because the worktree's code has a different hash.",
