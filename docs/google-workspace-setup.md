@@ -35,7 +35,7 @@ The client can be downloaded from the Cloud console. **A refresh token cannot**:
 7. **Sign in for the other tokens when a feature needs them**: `--name tasks`, `--name vault`, `--name photos` (or `--name all`).
 8. **Check**: `jason google status` says whether the client is the community's own, where each token is read from, and which scopes are covered or missing. Nothing it prints is a secret.
 
-An installation that still names the developer environment's record (`google_oauth_record_uid` in `.env`) is served by it for now, and `jason google status` says "this is the installation's record, not this community's". `jason google adopt-installation-record --yes` copies it into the community's own path; `GOOGLE_INSTALLATION_CLIENT=0` turns the fallback off for an installation that has finished moving.
+An installation that still names the developer environment's record (`google_oauth_record_uid` in `.env`) is no longer read by default: a community's client comes from its own vault path. `jason google adopt-installation-record --yes` copies the old record into the community's own path, and `GOOGLE_INSTALLATION_CLIENT=1` turns the fallback back on for an installation that has not moved yet (`jason google status` then says "this is the installation's record, not this community's").
 
 ## The 100-token limit
 

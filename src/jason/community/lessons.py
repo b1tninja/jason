@@ -2341,9 +2341,10 @@ LESSONS: tuple[Lesson, ...] = (
            "The .env installation fallback for the Google client is still on by default, so a community that has not "
            "adopted its own client silently uses the installation's.",
            "Turning it off would break installations that have not yet run jason google adopt-installation-record.",
-           "It logs once per community as the installation's record. Close this by flipping the default of "
-           "google_installation_client once every community has its own client.",
-           Status.OPEN, guards=("settings.google_installation_client",),
+           "It logs once per community as the installation's record. Closed on 2026-10-10: the community adopted its "
+           "own client (jason google adopt-installation-record) and google_installation_client now defaults to off; "
+           "GOOGLE_INSTALLATION_CLIENT=1 brings the fallback back for an installation that has not adopted yet.",
+           Status.FIXED, guards=("settings.google_installation_client", "tests/test_google_workspace.py"),
            docs=("docs/google-workspace-setup.md",)),
     Lesson("a-test-that-sets-the-community-must-restore-it", date(2026, 10, 10), (Area.REPOSITORY,),
            "A test of jason serve --profile set JASON_COMMUNITY for the process and the next test read the wrong "

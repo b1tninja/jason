@@ -3,7 +3,7 @@
 The OAuth client (client id and secret, from a Desktop app client in the community's own Cloud project) is the vault
 entry ``jason/community/<profile>/google-workspace/oauth-client`` with the fields ``client_id``, ``client_secret`` and
 ``project_id``. A community whose path holds nothing may still be served by the installation's ``.env`` record
-(``google_oauth_record_uid``) while ``settings.google_installation_client`` allows (default on, deprecated): that is the
+(``google_oauth_record_uid``) while ``settings.google_installation_client`` allows (default off, deprecated): that is the
 installation's record, not the community's, and the read logs it as such. One community's client and tokens are never
 read for another: every path carries the profile name.
 
@@ -89,7 +89,7 @@ def installation_uid(settings: Any) -> str:
 
 
 def installation_allowed(settings: Any) -> bool:
-    return bool(getattr(settings, "google_installation_client", True))
+    return bool(getattr(settings, "google_installation_client", False))
 
 
 def installation_client(vault: Any, settings: Any, store: Any = None) -> Client | None:
@@ -185,7 +185,7 @@ def status_text(state: ClientState) -> list[str]:
                 "`jason google adopt-installation-record --yes` copies the installation's there."]
     if state.source == "installation-off":
         return [f"OAuth client: none at {state.path}. The .env installation record exists but "
-                "GOOGLE_INSTALLATION_CLIENT turns it off for this community."]
+                "GOOGLE_INSTALLATION_CLIENT=0 turns it off for this community."]
     tail = f" ({state.problem})" if state.problem else ""
     return [f"OAuth client: none at {state.path}{tail}. Run `jason google setup`."]
 

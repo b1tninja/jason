@@ -278,8 +278,9 @@ class Settings:
     characteristics_db: Path = _in_data("characteristics.db")
     google_oauth_record_uid: str = ""
     # Whether the .env record above may stand in for a community whose own vault path holds no OAuth client (default on,
-    # deprecated: `jason google adopt-installation-record` copies it to the community's path). GOOGLE_INSTALLATION_CLIENT=0 turns it off.
-    google_installation_client: bool = True
+    # deprecated: `jason google adopt-installation-record` copies it to the community's path). Off by default since every community
+    # has its own client; GOOGLE_INSTALLATION_CLIENT=1 turns it back on for an installation that has not adopted it yet.
+    google_installation_client: bool = False
     google_oauth_client_file: Path | None = None
     google_oauth_token_file: Path = _anchored("secrets/google-token.json")
     google_notebook_url: str = ""
@@ -405,7 +406,7 @@ class Settings:
             default="",
         )
         google_installation_client = _get(
-            values, "google_installation_client", "GOOGLE_INSTALLATION_CLIENT", default="1"
+            values, "google_installation_client", "GOOGLE_INSTALLATION_CLIENT", default="0"
         ).strip().lower() not in ("0", "false", "no", "off")
         google_notebook_url = _get(
             values,

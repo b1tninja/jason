@@ -367,6 +367,17 @@ def test_a_profile_may_pin_its_client_entry_name(world, monkeypatch):
     assert oauth_client(world.settings, object(), store=world.store, community="oakview") == ("pinned-id", "pinned-secret")
 
 
+def test_the_installation_fallback_is_off_by_default(tmp_path, monkeypatch):
+    from jason.config import Settings
+
+    monkeypatch.delenv("GOOGLE_INSTALLATION_CLIENT", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("", encoding="utf-8")
+    assert Settings.load(str(env)).google_installation_client is False
+    env.write_text("GOOGLE_INSTALLATION_CLIENT=1\n", encoding="utf-8")
+    assert Settings.load(str(env)).google_installation_client is True
+
+
 def test_the_default_hook_pins_nothing():
     from jason.community.base import Community
 
