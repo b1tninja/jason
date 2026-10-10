@@ -135,10 +135,31 @@ def detail(root: Path, profile: str, pin_id: str, *, private: bool) -> dict[str,
         "tier": rec.get("tier", ""), "readsAs": rec.get("kind") or None, "period": rec.get("period", ""),
         "text": rec.get("text") or {}, "alreadyFiled": bool(rec.get("libraryId")),
         "preflight": rec.get("preflight"), "segments": segments, "findings": [] if held else rec.get("findings") or [],
-        "changed": rec.get("lastChange"), "history": [{"at": h.get("at"), "sha256": str(h.get("sha256") or "")[:12]}
+        "changed": _open_change(rec), "acknowledged": (rec.get("lastChange") or {}).get("ack"),
+        "split": _split_state(rec), "history": [{"at": h.get("at"), "sha256": str(h.get("sha256") or "")[:12]}
                                                       for h in rec.get("history") or ()],
         "held": held,
     }
+
+
+def _open_change(rec: dict[str, Any]) -> dict[str, Any] | None:
+    """The changed mark, until a person acknowledges it (it then stays on the reading as history)."""
+    mark = rec.get("lastChange")
+    return mark if mark and not mark.get("ack") else None
+
+
+def _split_state(rec: dict[str, Any]) -> dict[str, Any] | None:
+    """Where a combined scan's proposal stands: which parts a person confirmed (and into which slot), or declined."""
+    seg = rec.get("segments") or {}
+    if not seg.get("proposes"):
+        return None
+    done = rec.get("split") or {}
+    parts = [p["segment"] for p in seg.get("proposal") or ()]
+    confirmed = done.get("confirmed") or {}
+    return {"parts": len(parts), "confirmed": [{"segment": k, "slot": v.get("slot"), "by": v.get("by"), "at": str(v.get("at") or "")[:10]}
+                                               for k, v in confirmed.items()],
+            "declined": done.get("declined") and {"by": done["declined"].get("by"), "at": str(done["declined"].get("at") or "")[:10]},
+            "open": not done.get("declined") and any(k not in confirmed for k in parts)}
 
 
 def _facts(rec: dict[str, Any]) -> dict[str, Any]:
@@ -454,6 +475,12 @@ def _read_one(slot: Slot, pin: Pin, computed: list[rs.Computed], *, community: A
         "preflight": pre, "segments": seg, "findings": findings,
         "history": [*(prior.get("history") if prior else []), {"at": _now(), "sha256": item.sha256}],
     }
+    if prior is not None and prior.get("sha256") == item.sha256 and prior.get("split"):
+        record["split"] = prior["split"]
+        for old in (prior.get("segments") or {}).get("proposal") or ():
+            for new in (record.get("segments") or {}).get("proposal") or ():
+                if new["segment"] == old["segment"] and old.get("confirmed"):
+                    new["confirmed"], new["confirmedBy"] = True, old.get("confirmedBy", "")
     if prior is not None and prior.get("sha256") != item.sha256:
         record["lastChange"] = {"at": _now(), "from": str(prior.get("sha256") or "")[:12], "to": item.sha256[:12],
                                 "diff": diff_facts(prior, record)}
@@ -491,7 +518,7 @@ def _finish(out: dict[str, Any], prior: dict[str, Any] | None, slot: Slot, compu
     if segs and held:
         segs = {**segs, "proposal": [{**p, "title": ""} for p in segs.get("proposal") or ()]}
     out["segments"] = segs
-    out["changed"] = rec.get("lastChange")
+    out["changed"] = _open_change(rec)
     out["confirm"] = ("Say whether this file belongs here: keep it in this slot, move it to the slot it fits, or unpin it. "
                       "A combined scan's split fills no slot until you confirm it." if verdict == "differs" else
                       "Confirm the kind (jason intake) if the reading is right; jason reads, a person confirms.")
@@ -570,10 +597,11 @@ def queue_items(community: Any = None, root: Path | None = None, profile: str | 
                               "fits": [{"key": s.slot.key, "title": s.slot.title} for s in computed
                                        if s.slot.key != c.slot.key and st.reads_as in {k.value for k in s.slot.kinds}]})
             seg = rec.get("segments") or {}
-            if seg.get("proposes"):
+            state = _split_state(rec)
+            if seg.get("proposes") and state and state["open"]:
                 items.append({**base, "id": f"{c.slot.key}#{st.pin.id}#split", "reason": "combined scan", "state": "waiting",
                               "needs": f"A person confirms or declines the proposed split ({seg.get('documents')} documents in one file).",
-                              "acts": ["confirm the split (phase 3)"], "readsAs": rec.get("kind")})
+                              "acts": ["split"], "confirmedParts": len(state["confirmed"]), "readsAs": rec.get("kind")})
     items.sort(key=lambda i: (i["proposed"] or "9999", i["id"]))
     return {"found": True, "kind": "record reading", "items": items,
             "counts": {"total": len(items), "wrongSlot": sum(1 for i in items if i["reason"] == "wrong slot"),

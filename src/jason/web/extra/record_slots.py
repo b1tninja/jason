@@ -25,8 +25,17 @@ key of a slot is in the URL, never a file's name or id.
   person's name; the job fetches the file into jason's store, reads it, and keeps the reading beside the pin. The page
   never reads inline.
 
-Every act takes ``"dryRun": true`` to answer what it would write and write nothing. The upload, the replacement, and the
-confirmed split of the design come in phase 3; asking for one is a 400 that says so. Writes jason's own stores only
+- ``{"act": "upload", "name": "scan.pdf", "base64": "...", "period": "", "entry": "", "note": ""}``: a file from the computer,
+  at most 25 MB, a PDF, an image, or a Word file (type and size checked). The bytes are kept in jason's own store (never Drive)
+  and pinned; the read-back is **queued** as a job in the signed-in person's name (the page never reads inline). A server path
+  is never taken from the console;
+- ``{"act": "split", "pin": ID, "parts": [{"segment": "s2", "slot": SLOT_KEY, "period": ""}], "note": ""}``: confirm the parts of a
+  combined scan's proposal that a person names, each into its slot. A slot that already holds a file is a collision, shown
+  and not overwritten; parts not named fill nothing. With no ``parts`` it answers the proposal and the slots each part fits.
+  ``{"act": "split", "pin": ID, "decline": true}`` records that a person wants none of it;
+- ``{"act": "ack", "pin": ID}``: the person has seen that the file changed since it was read; the mark stays as history.
+
+Every act takes ``"dryRun": true`` to answer what it would write and write nothing. Replacing a file comes later; asking for it is a 400. Writes jason's own stores only
 (``records.json``, the key documents' store for a recorded instrument, and the history); nothing reaches Drive, PayHOA, or the
 county, and the picked file is never touched.
 
@@ -40,11 +49,12 @@ from typing import Any
 
 Args = dict[str, str]
 
-ACTS = ("pick", "answer", "unpin", "bind", "keep", "repin", "more", "reopen", "read")
-LATER = ("upload", "replace", "split", "current")
+ACTS = ("pick", "answer", "unpin", "bind", "keep", "repin", "more", "reopen", "read", "upload", "split", "ack")
+LATER = ("replace", "current")
 VALUES = {"not_applicable": "notApplicable", "notapplicable": "notApplicable", "notApplicable": "notApplicable", "none": "none", "waiting": "waiting"}
 RETURNED = ("written", "pin", "answer", "already", "reading", "keep", "more", "reopened", "unpinned", "from", "to", "binding", "proposal",
-            "dryRun", "would", "note", "reads", "readingMoved", "unchanged")
+            "dryRun", "would", "note", "reads", "readingMoved", "unchanged", "sha256", "size", "alsoIn", "parts", "filled", "declined",
+            "proposal", "acknowledged", "caveats", "job", "queued", "command")
 
 
 def _private() -> bool:
@@ -145,12 +155,12 @@ def _queue_read(key: str, body: dict[str, Any], by: str, community: Any, root: A
 
 
 def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
-    from jason.tasks import record_acts, record_readback
+    from jason.tasks import record_acts, record_readback, record_upload
     from jason.tasks import record_slots as rs
 
     act = str(body.get("act") or "").strip()
     if act in LATER:
-        raise ValueError(f"{act} is not built yet: uploads and the confirmed split come in phase 3")
+        raise ValueError(f"{act} is not built yet: pick or upload the new file and unpin the old one")
     if act not in ACTS:
         raise ValueError(f"act is one of {', '.join(ACTS)}")
     by = _actor(str(body.get("by") or ""))
@@ -178,6 +188,18 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             out = record_acts.more(key, str(body.get("value") or ""), note=note, **kw)
         elif act == "reopen":
             out = record_acts.reopen(key, note=note, what=str(body.get("what") or ""), **kw)
+        elif act == "upload":
+            if body.get("path"):
+                raise ValueError("the console uploads the file's bytes, never a path on the server")
+            out = record_upload.upload(key, name=str(body.get("name") or ""), base64_body=str(body.get("base64") or ""),
+                                       period=str(body.get("period") or ""), entry=str(body.get("entry") or ""), note=note, read=False, **kw)
+            if not dry and out.get("pin") and not out.get("already"):
+                out.update(_queue_read(key, {"pin": out["pin"]}, by, community, root))
+        elif act == "split":
+            out = record_upload.split(key, pin=str(body.get("pin") or ""), parts=list(body.get("parts") or ()),
+                                      decline=bool(body.get("decline")), note=note, **kw)
+        elif act == "ack":
+            out = record_upload.ack(key, pin=str(body.get("pin") or ""), note=note, **kw)
         elif act == "bind":
             client = _drive_or_none()
             try:

@@ -25,6 +25,15 @@ The writes are a person's and each is a **dry run** until ``--yes``:
   a PDF, and keeps the reading beside the pin. A combined scan proposes several slots and fills none. ``--pin ID`` reads one
   pin, ``--force`` reads again though the bytes are unchanged, ``--no-ocr`` leaves scans unread by OCR.
 
+- ``--upload KEY --file PATH --by NAME`` keeps a file from this computer in jason's own store (never Drive; hash-addressed, at
+  most 25 MB, a PDF, an image, or a Word file, checked by its first bytes) and pins it, then reads it back as ``--read`` does
+  (``--no-ocr`` as there). ``--period`` and ``--entry`` as for ``--pick``. A dry run checks the file and keeps nothing.
+- ``--split KEY [--pin ID] --part SEGMENT=SLOT[@PERIOD] ... --by NAME`` confirms parts of a combined scan's proposal (what ``--read``
+  printed), each into the slot named; only the parts named are filled, each as a new file of just those pages, and a slot that
+  already holds a file is a collision, shown and left alone. With no ``--part`` it prints the proposal and the slots each part fits.
+  ``--decline`` records that you want none of it.
+- ``--ack KEY [--pin ID] --by NAME`` records that you have seen that the file changed since it was last read.
+
 Reads disk only, except ``--pick --resolve``, ``--bind --resolve`` (a folder's name), and ``--read`` (Drive).
 """
 
@@ -50,9 +59,11 @@ def cmd_records(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
 
     root = data_dir(args)
     community = _community()
-    acts = [x for x in (args.pick, args.answer, args.unpin, args.bind, args.keep, args.repin, args.more, args.reopen, args.read) if x]
+    acts = [x for x in (args.pick, args.answer, args.unpin, args.bind, args.keep, args.repin, args.more, args.reopen, args.read,
+                        args.upload, args.split, args.ack) if x]
     if len(acts) > 1:
-        print("one act at a time: --pick, --answer, --unpin, --bind, --keep, --repin, --more, --reopen, or --read", file=sys.stderr)
+        print("one act at a time: --pick, --answer, --unpin, --bind, --keep, --repin, --more, --reopen, --read, --upload, --split, or --ack",
+              file=sys.stderr)
         return 2
     dry = not args.yes
     try:
@@ -92,6 +103,15 @@ def cmd_records(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
         if args.reopen:
             return _report(record_acts.reopen(args.reopen, by=args.by or "", note=args.note or "", dry_run=dry,
                                               community=community, root=root), args, to_json)
+        if args.upload:
+            return _upload(args, community, root, dry, to_json)
+        if args.split:
+            return _split(args, community, root, dry, to_json)
+        if args.ack:
+            from jason.tasks import record_upload
+
+            return _report(record_upload.ack(args.ack, pin=args.pin or "", note=args.note or "", by=args.by or "", dry_run=dry,
+                                             community=community, root=root), args, to_json)
         if args.read:
             return _read(args, agent_factory, community, root, dry, to_json)
         if args.pins:
@@ -196,6 +216,57 @@ def _read(args: argparse.Namespace, agent_factory: Callable[[Any], Any], communi
     return 0 if out.get("ok") else 1
 
 
+def _upload(args: argparse.Namespace, community: Any, root: Any, dry: bool, to_json: Callable[[Any], str]) -> int:
+    from jason.tasks import record_upload
+
+    if not args.file:
+        print("--upload KEY needs --file PATH (a PDF, an image, or a Word file on this computer)", file=sys.stderr)
+        return 2
+    out = record_upload.upload(args.upload, path=args.file, by=args.by or "", period=args.period or "", note=args.note or "",
+                               entry=args.entry or "", dry_run=dry, ocr=not args.no_ocr, community=community, root=root)
+    if args.json:
+        print(to_json(out))
+        return 0
+    if out.get("dryRun"):
+        would = out["would"]
+        print("dry run: would keep " + ", ".join(f"{k}={v}" for k, v in would.items() if v and not isinstance(v, dict)))
+        print(out["note"])
+        return 0
+    print(f"kept {out['size']:,} bytes (sha256 {out['sha256']}); pinned {out['pin']} for {out['slot']}" + (" (already pinned)" if out.get("already") else ""))
+    for r in (out.get("read") or {}).get("reads") or ():
+        _print_read(r, False)
+    return 0
+
+
+def _split(args: argparse.Namespace, community: Any, root: Any, dry: bool, to_json: Callable[[Any], str]) -> int:
+    from jason.tasks import record_upload
+
+    out = record_upload.split(args.split, pin=args.pin or "", parts=list(args.part or ()), decline=bool(args.decline), note=args.note or "",
+                              by=args.by or "", dry_run=dry, community=community, root=root)
+    if args.json:
+        print(to_json(out))
+        return 0
+    if out.get("proposal"):
+        print(out["note"])
+        for p in out["proposal"]:
+            fits = ", ".join(x["key"] + (" (held)" if x["held"] else "") for x in p["slots"]) or "no slot"
+            print(f"  {p['segment']}: pages {p['pages'][0]}-{p['pages'][1]} read as {p['kind'] or 'unknown'} ({p['tier']})"
+                  f"{' [confirmed]' if p['confirmed'] else ''} -> {fits}")
+        return 0
+    if out.get("declined"):
+        print(f"recorded: no split of {out['pin']} for {out['slot']}")
+        return 0
+    if out.get("dryRun") and "would" in out and out["would"].get("decline"):
+        print("dry run: would record that no split is wanted")
+        print(out["note"])
+        return 0
+    for r in out.get("parts") or ():
+        print(f"  {r['segment']} pages {r['pages'][0]}-{r['pages'][1]} -> {r['slot']}: {r['action']}" + (f" ({r['why']})" if r.get("why") else "")
+              + (f" [{r['pin']}]" if r.get("pin") else ""))
+    print(out["note"] if out.get("dryRun") else out["reading"])
+    return 0
+
+
 def _print_read(r: dict[str, Any], dry: bool) -> None:
     plan = r.get("plan") or {}
     head = f"  pin {r['pin']} ({r['source']})"
@@ -269,6 +340,16 @@ def _print_slot(d: dict[str, Any]) -> None:
         print(f"  {d['candidates'] and len(d['candidates'])} candidates in the library (not pinned), e.g. {d['candidates'][0]['ref']}")
     for row in d["log"]:
         print(f"  {row.get('at', '')[:10]} {row.get('by', '')}: {row.get('act', '')}")
+    st = d.get("standing") or {}
+    for duty in st.get("duties") or ():
+        print(f"  duty: {duty['anchor']} ({duty['cadence']}; {duty['because']})")
+    cf = st.get("conflicts") or {}
+    for c in cf.get("items") or ():
+        print(f"  conflict: {c['provision']} yields to {c['authority']} [{c['status']}] ({c['because']})")
+    if cf.get("held"):
+        print(f"  {cf['count']} conflict(s) held back in this confidential slot")
+    if st and not (st.get("programs") or {}).get("available"):
+        print(f"  programs: {st['programs']['why']}")
     print(f"  {d['commands']['pick']}")
 
 
@@ -282,7 +363,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--slot", metavar="KEY", help="show one slot: its law, holders, library reading, candidates, and trail")
     p.add_argument("--pins", action="store_true", help="list what the specification itself pins for each slot")
     p.add_argument("--pick", metavar="KEY", help="name a file for this slot (with --file and --by); a dry run without --yes")
-    p.add_argument("--file", metavar="LINK_OR_ID", help="a Drive link or file id, or library:ID, for --pick")
+    p.add_argument("--file", metavar="LINK_OR_ID", help="a Drive link or file id, or library:ID, for --pick; a path on this computer for --upload")
     p.add_argument("--period", metavar="P", help="with --pick on a series slot: the year (2099), month (2099-06), or quarter (2099-Q2)")
     p.add_argument("--entry", metavar="NUMBER", help="with --pick on a recorded-instruments slot: the instrument's recording number")
     p.add_argument("--resolve", action="store_true", help="with --pick or --bind: read the name in Drive first (read-only)")
@@ -306,6 +387,11 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--read", metavar="KEY", help="read the file(s) pinned for this slot; a dry run without --yes fetches nothing")
     p.add_argument("--force", action="store_true", help="with --read: read again although the file's bytes are unchanged")
     p.add_argument("--no-ocr", action="store_true", help="with --read: leave a scan unread by OCR")
+    p.add_argument("--upload", metavar="KEY", help="keep a file from this computer in jason's store and pin it to this slot (with --file PATH, --by)")
+    p.add_argument("--split", metavar="KEY", help="confirm parts of a combined scan's proposal into slots (with --part SEGMENT=SLOT, --by)")
+    p.add_argument("--part", metavar="SEGMENT=SLOT", action="append", help="with --split: a part and the slot it fills (SEGMENT=SLOT@2099-06 for a series); repeat")
+    p.add_argument("--decline", action="store_true", help="with --split: you want none of the proposed split")
+    p.add_argument("--ack", metavar="KEY", help="record that you have seen that a pinned file changed since it was read (with --by)")
     p.add_argument("--by", metavar="NAME", help="the person making the write (required for every write)")
     p.add_argument("--yes", action="store_true", help="make the write; without it every write is a dry run")
     p.set_defaults(func=lambda args: cmd_records(args, agent_factory))

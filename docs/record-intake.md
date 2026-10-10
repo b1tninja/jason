@@ -1,6 +1,6 @@
 # Record intake: a checklist where a person picks the association's documents
 
-**Status: phases 1 and 2 are built** (see [Phase 1: what is built](#phase-1-what-is-built) and [Phase 2: what is built](#phase-2-what-is-built)); phases 2b and 3 are design only. A design for one checklist of **slots**, one for each record an association must be able to put its hands on, where a person **picks a file from Google Drive, pastes its link, or uploads one from the computer** for each, and jason reads what was picked and says what it found. The user's idea, in a line: onboarding gets a repository and checklist in which, for each required document, a person goes in and uploads or selects a Drive document.
+**Status: phases 1, 2, and the backend of 3 are built** (see [Phase 1](#phase-1-what-is-built), [Phase 2](#phase-2-what-is-built), and [Phase 3](#phase-3-what-is-built)); phase 2b and phase 3's console screens are design only. A design for one checklist of **slots**, one for each record an association must be able to put its hands on, where a person **picks a file from Google Drive, pastes its link, or uploads one from the computer** for each, and jason reads what was picked and says what it found. The user's idea, in a line: onboarding gets a repository and checklist in which, for each required document, a person goes in and uploads or selects a Drive document.
 
 The console's side (screens, components, states, the phone layout) is [console/handoff-record-intake.md](console/handoff-record-intake.md). This page is the model and the process, general for any association: no slot, folder, vendor, or id here belongs to one.
 
@@ -189,7 +189,7 @@ Each is a `Confirm` in a named person's name through the write guard; nothing is
 | One slot, with its candidates and its pins | `jason records --slot KEY` | no |
 | Pick a file | `jason records --pick KEY --file ID_OR_LINK --by NAME` | for a recorded instrument: `jason key-documents --link ENTRY --drive LINK --by NAME` already does it |
 | Pick a folder | `jason records --bind KEY --folder ID_OR_LINK --by NAME` | no (a sync rule is a profile row) |
-| Upload | `jason records --upload KEY --file PATH --by NAME` | for a key document: `jason key-documents --upload ENTRY --file PATH` |
+| Upload | `jason records --upload KEY --file PATH --by NAME` (built, phase 3) | for a key document: `jason key-documents --upload ENTRY --file PATH` |
 | Replace | `jason records --pick KEY --file ID --replace --by NAME` | no |
 | Not applicable, does not exist, waiting | `jason records --answer KEY --not-applicable\|--none\|--waiting WHO --note TEXT --by NAME` | for a key document: `jason key-documents --status ENTRY --set missing --note TEXT` |
 | Unpin | `jason records --unpin KEY --pin ID --by NAME` | for a key document: `--unlink` |
@@ -246,7 +246,7 @@ The read-only checklist from jason's own catalog, a paste-a-link pin, and the th
 
 **How a state is worked out.** A pin whose file the library has not read is `picked` (or `uploaded`); with a kind, `classified`; with its text cached, `read`; when a person chose the kind (`jason intake`), `confirmed`. A file read as a kind the slot does not expect is a `problem`, with the slots it fits. A slot with several pins is as far along as its least advanced pin; with none, the newest answer; with none, a folder the specification pins; else `empty`. Files the library classified that nobody pinned are **candidates**, counted and listed, never a holder. A file in a confidential kind makes the slot's `held` count; its name is masked and its id shortened outside the private view.
 
-**What the first phase left out, on purpose.** The Drive chooser, folder binding, the wrong-slot overrides, "is there another?", and reopening an answer are now phase 2 (below). Still out: upload, the confirmed split, standing, duties, programs and conflicts reading a pick (phase 3), and the series' span (a series shows the periods that have a pin, not the ones that do not). Their `POST` acts answer 400 with "not built yet".
+**What the first phase left out, on purpose.** The Drive chooser, folder binding, the wrong-slot overrides, "is there another?", and reopening an answer are now phase 2 (below). Still out: upload, the confirmed split, standing, duties, programs and conflicts reading a pick (phase 3), and the series' span (a series shows the periods that have a pin, not the ones that do not). Their `POST` acts answered 400 with "not built yet" until phase 3.
 
 ## Phase 2: what is built
 
@@ -285,7 +285,28 @@ The chooser's backend and the reading back after a pick (steps 1 to 6 of the pip
 
 **The key documents.** `GET /api/key-documents` now carries, for each key document, `slot` (the Records tab's slot: key, state, pins, how many jason has read, how many read as another kind, how many held, and the route) and, for each instrument, `slot` counts of the same four, with `slotCounts` for the whole list. They are read through the same slot reader as the Records tab, so the two screens cannot disagree; the writer is unchanged (a pick on a recorded-instrument slot is `key_documents.link`).
 
-**Still out.** Upload and replace; the confirmed split (`split`) and the standing, duties, programs, and conflicts steps (phase 3); the Google Picker (phase 2b); acknowledging a `changed` mark (it stays on the reading as history).
+**Still out of phase 2** (built in phase 3 below, except the Google Picker, phase 2b): upload, the confirmed split, the standing view, acknowledging a `changed` mark.
+
+## Phase 3: what is built
+
+The backend only: no screens. Nothing here reaches Drive, PayHOA, Google, or the county; every write is a signed act (`by`, never jason), a dry run without `--yes`, under the store lock, with a history line that holds no file name.
+
+| Part | Where |
+|---|---|
+| `upload`, `split`, `ack` | `jason.tasks.record_upload` |
+| What reads a slot: `standing` (duties, conflicts, programs), shown on `slot_view` as `standing` | `jason.tasks.record_standing` |
+| `jason records --upload`, `--split`, `--ack` | `jason.commands.record_slots` |
+| Console acts `upload`, `split`, `ack` of `POST /api/write/records/<slot key>` | `jason.web.extra.record_slots` |
+
+**Upload.** `jason records --upload KEY --file PATH --yes --by NAME` (console: `{"act": "upload", "name", "base64", "period", "entry", "note"}`; the console never takes a server path). The bytes are kept in jason's own store, never Drive, addressed by their SHA-256 (`data/record-intake/<profile>/files/<first 16>/<name>`, the same bytes twice are one copy and one pin), after a size cap (25 MB, the key documents' limit) and a type check: the name's suffix and the file's own first bytes must agree, for a PDF, a PNG, JPEG, or TIFF image, or a Word package (what a Google Doc exports as). The file is pinned as a `file` pin (state `uploaded`); a recorded instrument's or a key document's slot takes it through the key documents' one writer (`--entry` for a repeating row). The CLI then runs the phase-2 read-back inline (`--no-ocr` as there); the console queues it as a job on Google's lane in the signed-in person's name, as the `read` act does. The dry run checks the file, says what it would keep, and whether the same bytes are already pinned or are in another slot (`alsoIn`); it keeps nothing.
+
+**The confirmed split.** `jason records --split KEY [--pin ID] --part SEGMENT=SLOT[@PERIOD] ... --yes --by NAME` (console: `{"act": "split", "pin", "parts": [{"segment", "slot", "period"}]}`). With no part it prints the phase-2 proposal and the slots each part fits. A person names each part they confirm and the slot it fills; only those are filled, each as a **new file of just those pages** (`pypdf`), kept in the store and pinned to its slot with `splitFrom` naming the scan's pin. The original scan, its pin, and its reading stay. A part whose slot already holds a file, or that an earlier part of the same request fills, is a **collision**: reported (`action: collision`, with what was kept), not written. A series slot needs the period; a recorded instrument's repeating row is refused (pick or upload it with its recording number); a stale file (its bytes changed since the reading) is refused. The reading records who confirmed each part, and the proposal's parts show `confirmed`. The confirmations queue's "combined scan" item stays until every part is confirmed or the proposal is declined (`--decline`, or `{"decline": true}`); the history line holds the slots and pin ids, never a name. The new files are not read yet: read each slot.
+
+**Acknowledge.** `jason records --ack KEY [--pin ID] --yes --by NAME` (console: `{"act": "ack", "pin"}`) marks the `changed` mark seen: it stays on the reading with who and when (`acknowledged`) and the slot's `changed` flag clears until the file changes again.
+
+**What reads a slot.** The slot view carries `standing`: `duties` (the manager's duties, `jason.community.duties.DUTIES`, whose record is the slot's record or that cite a section the slot requires), `conflicts` (the profile's `Conflict` rows, `Community.conflicts()`, whose authority or provision cites a section the slot requires; a confidential slot shows the count only), and `programs` (not built: the adoption catalog of [programs.md](programs.md) does not exist, and the view says so). It is matched by the record and the citations a slot names, not by reading the picked file's words, and it decides nothing. Reading a file's own words for duties stays `jason duties --documents KEY`; it is not wired to a pick.
+
+**Still out.** Replacing a file in one act (pick or upload the new one and unpin the old); reading the new files a split makes (read each slot); programs in the standing view (when the catalog exists); duties read from a pick's words; the Google Picker (phase 2b); and the console's screens.
 
 ## Open decisions
 

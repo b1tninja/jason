@@ -674,7 +674,7 @@ def slot_view(key: str, community: Any = None, root: Path | None = None, profile
         "held": mask_words}
     log = [r for r in read_history(root) if r.get("slot") == key][-12:] if history else []
     row = _row(found, private=private)
-    from jason.tasks import record_readback
+    from jason.tasks import record_readback, record_standing
 
     holders = [_holder_dict(st, s, fits, private=private) for st in found.statuses]
     for h, st in zip(holders, found.statuses):
@@ -699,19 +699,26 @@ def slot_view(key: str, community: Any = None, root: Path | None = None, profile
         "holding": found.holding, "collisions": found.collisions,
         "candidates": [{"ref": c["ref"], "name": ("a confidential file" if c["confidential"] and not private else c["name"]),
                         "kind": c["kind"], "why": f"classified as {c['kind'].replace('_', ' ')}; not pinned"} for c in found.candidates[:8]],
+        "standing": record_standing.standing(s, community, pinned=len(found.statuses), read=sum(1 for st in found.statuses if st.reading.found),
+                                             private=private),
         "acts": {"pickFile": not found.hidden, "answer": s.existence and not found.hidden, "unpin": bool(found.holders),
                  "pickFolder": not found.hidden, "read": any(h.kind is not PinKind.FOLDER for h in found.holders),
                  "keep": any(st.wrong_slot and not st.pin.kept for st in found.statuses),
                  "repin": any(h.origin is Origin.DATA for h in found.holders), "more": s.cardinality is Cardinality.SEVERAL,
                  "reopen": found.answer is not None or bool(found.more and found.more.get("value") == "no"),
-                 "upload": False, "replace": False,
+                 "upload": not found.hidden, "replace": False,
+                 "split": any((h.get("readback") or {}).get("split", None) and h["readback"]["split"]["open"] for h in holders),
+                 "ack": any(h.get("changed") for h in holders),
                  "why": ("hidden by the profile: " + found.hidden) if found.hidden else
-                        "uploading and replacing come with phase 3"},
+                        "replacing a file comes later: pick or upload the new one and unpin the old"},
         "log": [{k: v for k, v in r.items() if k not in ("detail",)} if not mask_words else {"at": r.get("at"), "by": r.get("by"), "act": r.get("act")}
                 for r in log],
         "commands": {"slot": f"jason records --slot {key}", "pick": f"jason records --pick {key} --file LINK_OR_ID --by NAME",
                      "answer": f"jason records --answer {key} --not-applicable|--none|--waiting --reason TEXT --by NAME",
-                     "read": f"jason records --read {key}", "bind": f"jason records --bind {key} --folder LINK_OR_ID --by NAME"},
+                     "read": f"jason records --read {key}",
+                     "upload": f"jason records --upload {key} --file PATH --by NAME",
+                     "split": f"jason records --split {key} --pin ID --part SEGMENT=SLOT --by NAME",
+                     "ack": f"jason records --ack {key} --by NAME", "bind": f"jason records --bind {key} --folder LINK_OR_ID --by NAME"},
         "caveats": list(CAVEATS),
     }
 
