@@ -722,6 +722,13 @@ PROCEDURES: tuple[Procedure, ...] = (
                  check="every write is a dry run until --yes and names a person; the history file holds no file name",
                  refs=("docs/record-intake.md",),
                  lessons=("one-record-may-have-several-specification-pins",)),
+            Step("Read the pick: a dry run first for the size, then the read under --yes by a named person. Check "
+                 "compare.verdict; on a difference, keep (with the person's reason), repin, or unpin. A combined scan "
+                 "proposes slots and fills none.",
+                 command="jason records --read KEY; jason records --read KEY --yes --by NAME",
+                 check="the reading record exists once per file hash; the history line holds no file name",
+                 refs=("docs/record-intake.md",),
+                 lessons=("a-google-refusal-carries-the-file-id", "a-reading-must-be-idempotent-by-hash")),
             Step("Set up the community's own Google Workspace: its OAuth client in its vault path, then one sign-in per "
                  "token it needs. The refresh token is given once, at consent, and is saved to the vault at once; do not "
                  "ask for consent again while a token covers the scopes.",

@@ -2316,6 +2316,25 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-google-refusal-carries-the-file-id", date(2026, 10, 10), (Area.REPOSITORY, Area.ONBOARDING),
+           "A Drive refusal's exception text includes the file id, so returning or logging it would have exposed an id "
+           "the console masks.",
+           "The Google client builds its error message from the request.",
+           "A Drive refusal is told in jason's words and the exception text is never returned or logged.",
+           Status.FIXED, guards=("tests/test_record_intake_phase2.py (the caplog test)",), docs=("docs/record-intake.md",)),
+    Lesson("a-reading-must-be-idempotent-by-hash", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Without Drive's modified time and the file's hash kept, every visit to a pinned slot would fetch the file again.",
+           "A read-back had no memory of what it had fetched.",
+           "The reading record keeps sha256, size and modified time; a repeat read is skipped when they match, and a "
+           "changed file is re-read and shown as a diff of facts.",
+           Status.FIXED, guards=("tests/test_record_intake_phase2.py (the fetched-once test)",),
+           docs=("docs/record-intake.md",)),
+    Lesson("a-queue-that-does-not-exist-is-a-loader-to-merge", date(2026, 10, 10), (Area.REPOSITORY,),
+           "The record-reading rows were built as the record-readings loader because the confirmations queue is not in "
+           "this tree yet.",
+           "The queue is another session's work.",
+           "Whoever builds the queue merges the loader's rows (ids <slot>#<pin> and <slot>#<pin>#split).",
+           Status.OPEN, guards=("web/extra/record_slots.py::record_readings",), docs=("docs/record-intake.md",)),
     Lesson("a-consent-gives-the-refresh-token-once-save-it-first", date(2026, 10, 10), (Area.REPOSITORY,),
            "A consent screen was shown for a preview and its token was written to a scratch file and deleted: the "
            "community's administrator approved, and the one refresh token Google issues for that consent was lost, so "
