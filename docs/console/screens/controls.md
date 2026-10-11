@@ -49,13 +49,13 @@ The provision's words are recited from the stored text of the governing document
 | CONTRACTS                                                                                |
 | Contract authorization     PROPOSED TO THE BOARD · item contract-authorization           |
 | REVIEWS                                                                                  |
-| Monthly review             ADOPTED, NOT IN FORCE · the roster lacks a second director       |
+| Monthly review             ADOPTED · takes effect Dec 1 · the roster lacks a second director |
 +------------------------------------------------------------------------------------------+
 ```
 
 - Groups are the control families (money, contracts, reviews, notices, meetings, onboarding). Within a group: adopted first, then proposed, suggested, deferred, declined, retired.
 - Each row: the title, the state in words and a glyph, the provision's citation, a one-line summary of what it requires, and, when it is a suggestion, "Propose". The provision's citation links to the card.
-- The heading counts are the loader's. "Adopted, not in force" means the board adopted it and the roster cannot satisfy it yet.
+- The heading counts are the loader's. "Adopted" with a future date means the board adopted it and its effective date has not come; a warning says if the roster cannot satisfy it by then. From the effective date it is "in force" and binds.
 
 ## Layout: one control
 
@@ -111,7 +111,7 @@ Built: `Card`, `Pill`, `Glyph`, `Recitation`, `ReadingLabel`, `Caveats`, `Confir
 
 - **No suggestions yet** (the governing documents are not ingested): "jason has not read your governing documents. Ingest them from Onboarding." with the link.
 - **A provision jason cannot read cleanly:** the row is a question for the board or counsel, not a suggestion, with the provision's words and why it is unclear.
-- **Adopted, not in force:** the roster lacks someone the control names; band 5 says who.
+- **Adopted, effective date not yet reached,** and the roster cannot satisfy it: band 5 warns who is missing. **In force and the roster cannot satisfy it** (a seat fell vacant): acts that need it are refused with the reason, and the page says so at the top.
 - **A provision changed since the control was adopted** (an amendment): a `ChangedBanner` on the card; the control stays as adopted and is flagged for the board.
 - **A control that would go below a floor** is never shown as a suggestion; it is listed as refused, with the floor.
 - **Loader fails:** the page says so with the reason; nothing is shown as adopted that is not.
@@ -126,7 +126,7 @@ Built: `Card`, `Pill`, `Glyph`, `Recitation`, `ReadingLabel`, `Caveats`, `Confir
 
 1. `GET /api/controls` signed out is a 401; a roster person without a board office is refused with `access.may_see`'s sentence; the owner view is refused.
 2. A suggestion renders the provision's words from the stored text in a `Recitation` before jason's reading, and the reading is labeled "jason's reading, not the provision".
-3. A suggestion never says it is in force. Only an adopted control with an effective date that has passed and a roster that satisfies it shows "in force".
+3. A suggestion never says it is in force. Only an adopted control whose effective date has passed shows "in force"; if the roster cannot satisfy it, the page says so and the acts it governs are refused, never relaxed.
 4. "Propose to the board" creates a board item with the provision as evidence, in the signer's name, and changes no control's state to adopted.
 5. A control that would loosen a floor is not offered; it is listed as refused with the floor named.
 6. The "required by a control" line appears at the point of the act, links to the card, and the server refuses the same act with the control named.

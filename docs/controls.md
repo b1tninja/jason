@@ -58,7 +58,7 @@ The adoption is a `decision` step in a **control-adoption** run, one run per con
 - **Workflow steps.** A step's `role` and its gates come from the definition; an adopted control can add a gate (a resolution on record before the step, a second person to confirm). The run page shows the gate and why.
 - **Sends.** The Mailroom's class and tracking defaults, and whether a send needs a second person, read the adopted controls.
 - **Spend.** A bill-attach or payment plan over an adopted threshold needs the extra approval. jason computes nothing about the law here: the threshold is the board's number.
-- **The roster check.** Before a control turns on, jason checks the roster can satisfy it (enough directors, an officer for each named role). If not, the control stays `adopted, not in force` and the page says what is missing.
+- **The roster check.** Before the effective date, jason checks the roster can satisfy the control (enough directors, an officer for each named role) and warns the board if it cannot: the control is `adopted`, not yet in force. From the effective date the control binds. If the roster then cannot satisfy it (a seat falls vacant), the act is refused and the reason is given; jason never falls back to the kind's own weaker rule. The board answers by filling the seat, or by deciding to modify or retire the control.
 
 ## 6. The screens
 
@@ -84,6 +84,6 @@ The adoption is a `decision` step in a **control-adoption** run, one run per con
 ## 8. Decisions for the board
 
 - Which control families to offer first (recommended: payment and reserve signers, then contract authorization, then review cadence).
-- Whether a control can apply to one account, one kind, or all (recommended: all three, narrowest wins).
+- Whether a control can apply to one account, one kind, or all (recommended: all three; every control that applies binds, and in each respect the stricter one governs).
 - Whether an adopted control takes effect on the meeting date or a later date the board names (recommended: the board names it).
 - Whether a declined suggestion may be asked again (recommended: only after the date the board set, or when the provision changes).

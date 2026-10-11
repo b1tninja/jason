@@ -153,10 +153,24 @@ def _approval_from(kind: registry.ActionKind, planned: Planned, *, by: str, via:
                     summary=dict(planned.summary), notes=list(planned.notes), supersedes=supersedes)
 
 
-def needs_second(a: Approval, kind: registry.ActionKind | None = None) -> bool:
-    """Whether a second, distinct person must sign before apply: a two-person kind, or a high-stakes approved item."""
+def needs_second(a: Approval, kind: registry.ActionKind | None = None, *, data_dir: Path | None = None) -> bool:
+    """Whether a second, distinct person must sign before apply: a two-person kind, a high-stakes approved item, or a
+    control the board adopted (``jason.controls``; it only adds, and asks nothing when none is configured)."""
     kind = kind or registry.get(a.kind)
-    return kind.approver is registry.Approver.TWO_PERSON or any(i.high_stakes for i in a.approved)
+    if kind.approver is registry.Approver.TWO_PERSON or any(i.high_stakes for i in a.approved):
+        return True
+    from jason.controls.effective import requires_second
+
+    return requires_second(kind.key, a.scope, amount_cents=a.cost_cents, data_dir=data_dir, kind=kind)
+
+
+def control_refusals(a: Approval, kind: registry.ActionKind | None = None, *, data_dir: Path | None = None) -> list[str]:
+    """Why the controls the board adopted refuse this plan (a control in force the roster cannot satisfy); empty when
+    none is configured. A control binds from its effective date whether or not the roster can satisfy it."""
+    kind = kind or registry.get(a.kind)
+    from jason.controls.effective import refusals
+
+    return refusals(kind.key, a.scope, amount_cents=a.cost_cents, data_dir=data_dir, kind=kind)
 
 
 # --- plan ---------------------------------------------------------------------------------------------------------------
@@ -277,8 +291,11 @@ def submit(approval_id: str, *, by: str, role: str = "manager", via: str = "cli"
         orphans = [i.id for i in a.approved if any(a.item(d).decision is not Decision.APPROVED for d in i.depends_on)]
         if orphans:
             raise Refused(f"approved item(s) wait on items not approved: {', '.join(orphans)}")
-        a.first, a.second = Signature(by, _now(), a.fingerprint, role, via), None
         approved = a.approved
+        refused = control_refusals(a, data_dir=data_dir) if approved else []
+        if refused:
+            raise Refused("; ".join(refused))
+        a.first, a.second = Signature(by, _now(), a.fingerprint, role, via), None
         if not approved:
             transition(a, S.WITHDRAWN)
             a.notes.append("nothing approved")
@@ -302,7 +319,7 @@ def confirm(approval_id: str, *, by: str, role: str = "manager", via: str = "cli
         a = store.load(approval_id, data_dir)
         if a.status not in (S.APPROVED, S.PARTIALLY_APPROVED):
             raise Refused(f"{a.id} is {a.status.value}: a second person confirms a submitted approval")
-        if not needs_second(a):
+        if not needs_second(a, data_dir=data_dir):
             raise Refused(f"{a.id} needs no second person")
         if a.second is not None:
             raise Refused(f"{a.id} is already confirmed by {a.second.name}")
@@ -352,14 +369,16 @@ def withdraw(approval_id: str, *, by: str, reason: str, via: str = "cli", data_d
 
 # --- check and apply ----------------------------------------------------------------------------------------------------
 
-def _problems(a: Approval, kind: registry.ActionKind) -> list[str]:
+def _problems(a: Approval, kind: registry.ActionKind, data_dir: Path | None = None) -> list[str]:
     out = []
     if a.status not in (S.APPROVED, S.PARTIALLY_APPROVED):
         out.append(f"{a.id} is {a.status.value}: only an approved or partially approved approval is applied")
     elif a.first is None:
         out.append(f"{a.id} is not submitted")
-    if a.status in (S.APPROVED, S.PARTIALLY_APPROVED) and needs_second(a, kind) and a.second is None:
+    if a.status in (S.APPROVED, S.PARTIALLY_APPROVED) and needs_second(a, kind, data_dir=data_dir) and a.second is None:
         out.append("a second, distinct person must confirm first (jason approvals confirm ID --by NAME)")
+    if a.status in (S.APPROVED, S.PARTIALLY_APPROVED):
+        out += control_refusals(a, kind, data_dir=data_dir)
     try:
         read = datetime.fromisoformat(a.read_at)
     except ValueError:
@@ -369,10 +388,10 @@ def _problems(a: Approval, kind: registry.ActionKind) -> list[str]:
     return out
 
 
-def problems(a: Approval) -> list[str]:
+def problems(a: Approval, data_dir: Path | None = None) -> list[str]:
     """Why ``apply`` would refuse before any live read (its status, a missing second person, its age); empty when it
     would go on to re-plan. A caller that must sign in to read live asks this first."""
-    return _problems(a, registry.get(a.kind))
+    return _problems(a, registry.get(a.kind), data_dir)
 
 
 def compare(a: Approval, planned: Planned) -> tuple[list[Changed], list[PlanItem]]:
@@ -398,7 +417,7 @@ def check(approval_id: str, live: Live, *, data_dir: Path | None = None) -> Rech
     data_dir = data_dir if data_dir is not None else live.data_dir
     a = store.load(approval_id, data_dir)
     kind = registry.get(a.kind)
-    problems = _problems(a, kind)
+    problems = _problems(a, kind, data_dir)
     then = basis_fingerprint(a.approved)
     if a.status not in OPEN:
         return Recheck(a, None, [], [], then, "", problems)
@@ -453,7 +472,7 @@ def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: 
     with hold(Resource.STORE, f"approval-{ident}", timeout=5, purpose=f"apply {ident}"):
         a = store.load(ident, data_dir)
         kind = registry.get(a.kind)
-        problems = _problems(a, kind)
+        problems = _problems(a, kind, data_dir)
         if problems:
             audit.append(data_dir, "apply.refused", approval=a.id, kind=a.kind, actor=by, via=via,
                          fingerprint=a.fingerprint, detail="; ".join(problems))

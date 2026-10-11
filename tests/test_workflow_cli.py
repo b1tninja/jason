@@ -16,6 +16,7 @@ from test_workflows_support import (
     C1, C2, C5, DATES, OWNER, SECRETARY, TREASURER, VISITOR, data, example,
 )
 
+REGISTER_GENERAL, READERS = cli._register_general, cli._readers          # the real ones, before the fixture replaces them
 ASOF = ["--as-of", "2099-09-20"]
 _PARSER = []
 
@@ -36,6 +37,9 @@ def run(data, example, monkeypatch, capsys):
                                                     Officer(OfficerRole.SECRETARY, SECRETARY),
                                                     Officer(OfficerRole.TREASURER, TREASURER)))
     monkeypatch.setattr(cli, "_admins", lambda: ())
+    # the made-up definition only: no general one, and the engine's bare readers (the tests that use the real ones say so)
+    monkeypatch.setattr(cli, "_register_general", lambda args: None)
+    monkeypatch.setattr(cli, "_readers", lambda root, today=None: None)
 
     def go(*argv):
         args = parser().parse_args(["workflow", *argv])
@@ -405,6 +409,62 @@ def test_the_draft_maps_a_procedure_steps_kinds():
     assert "StepKind.CHECK" in text and "StepKind.JOB" in text and "StepKind.PERSON" in text
     assert "needs=('example-procedure.1',)" in text and "command='jason example --report'" in text
     assert "TODO" in text
+
+
+# --- the general definitions and the stores' readers ----------------------------------------------------------------
+
+def test_the_general_definitions_are_registered_when_a_command_asks_and_not_before(run, monkeypatch):
+    assert definitions.find("owner-info-cycle") is None                      # nothing registered them at import
+    monkeypatch.setattr(cli, "_register_general", REGISTER_GENERAL)
+    code, out, err = run("--definitions")
+    assert code == 0 and "owner-info-cycle" in out and "example-cycle" in out and "opens_on" in out and "(has a legal clock)" in out
+    code, out, err = run("--definitions", "--family", "members", "--json")
+    assert [r["key"] for r in json.loads(out)] == ["owner-info-cycle"]
+    definitions.unregister("owner-info-cycle")
+    code, out, err = run("--list")
+    assert code == 0 and definitions.find("owner-info-cycle") is not None   # listing registers them too
+
+
+def test_a_general_definition_that_fails_its_checks_is_left_out_and_named(run, monkeypatch, capsys):
+    from jason.workflows import definitions_general
+
+    real = definitions_general.register_general
+    monkeypatch.setattr(definitions_general, "register_general", lambda root=None, **kw: real(root, plan_kinds={"nothing"}))
+    monkeypatch.setattr(cli, "_register_general", REGISTER_GENERAL)
+    code, out, err = run("--definitions")
+    assert code == 0 and "owner-info-cycle" not in out and "a general definition is left out" in err and "owner-info-tags" in err
+
+
+def test_a_run_of_the_owner_information_cycle_starts_and_opens_through_the_terminal_over_the_stores(run, monkeypatch):
+    monkeypatch.setattr(cli, "_register_general", REGISTER_GENERAL)
+    monkeypatch.setattr(cli, "_readers", READERS)
+    dates = [x for k, v in {"opens_on": "2099-09-15", "return_by": "2099-10-23", "reports_mailed": "2099-12-01"}.items()
+             for x in ("--date", f"{k}={v}")]
+    code, out, err = run("--start", "owner-info-cycle", "--subject", "campaign:OI-2099", "--label", "Owner information 2099",
+                         *dates, "--by", OWNER, "--yes", "--json", *ASOF)
+    assert code == 0, err
+    rid = json.loads(out)["run"]["id"]
+    code, out, err = run("--open", rid, "--by", OWNER, "--yes", "--json", *ASOF)
+    assert code == 0, err
+    body = json.loads(out)
+    assert body["run"]["state"] == "active" and body["run"]["current"] == "owner-info-cycle.1"
+    code, out, err = run("--show", rid, *ASOF)
+    assert code == 0 and "Set the cycle's dates" in out and "CIV 4041(b)(1)" in out and "2099-11-01" in out
+
+
+def test_the_default_readers_are_the_stores_readers_for_the_data_folder_and_the_day():
+    from datetime import date
+
+    from jason.workflows.readers import StoreReaders
+
+    got = READERS("somewhere", date(2099, 9, 20))
+    assert isinstance(got, StoreReaders) and str(got.data_dir) == "somewhere" and got.today == date(2099, 9, 20)
+
+
+def test_opening_through_the_stores_readers_runs_a_plain_check_as_before(run, monkeypatch):
+    monkeypatch.setattr(cli, "_readers", READERS)
+    rid = opened(run)
+    assert states(run, rid)[C1] == "done" and states(run, rid)[C2] == "needs a person"
 
 
 # --- boundaries -----------------------------------------------------------------------------------------------------

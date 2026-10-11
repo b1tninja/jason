@@ -15,7 +15,11 @@ import jason.workflows as pkg
 from jason.workflows.types import ClockBasis, Role, followup_basis
 
 PACKAGE = Path(pkg.__file__).parent
-MODULES = sorted(PACKAGE.glob("*.py"))
+EDGE = {"readers", "definitions_general"}
+"""The two modules at the engine's edge: the readers that look at jason's stores, and the general definitions built over
+the procedures. They are held to the rules in ``test_the_edge_*`` below; the core is everything else."""
+ALL_MODULES = sorted(PACKAGE.glob("*.py"))
+MODULES = [m for m in ALL_MODULES if m.stem not in EDGE]
 EXPECTED = {"__init__", "types", "store", "fold", "resume", "steps", "definitions", "api"}
 
 # The only jason modules the package may import, and why: the locks it appends under, the follow-ups' clock basis (mapped
@@ -39,6 +43,42 @@ def imports(path: Path) -> set[str]:
 
 def test_the_package_has_the_planned_modules():
     assert {m.stem for m in MODULES} == EXPECTED
+    assert {m.stem for m in ALL_MODULES} - EXPECTED == EDGE
+
+
+# The edge reads jason's stores; it may import these (lazily, inside the reads) and nothing else of jason. Each is a reader of
+# a store on disk: none sends, files, or writes. The queue is imported to look at it, never to add to it.
+EDGE_ALLOWED = ("jason.workflows", "jason.locks", "jason.tasks.followups", "jason.tasks.campaigns", "jason.tasks.response_inbox",
+                "jason.tasks.notice_ledger", "jason.community.response_inbox", "jason.community.law_text",
+                "jason.community.procedures", "jason.community", "jason.approvals.registry", "jason.approvals.store",
+                "jason.approvals.model", "jason.jobs")
+
+
+def test_the_edge_imports_only_the_stores_it_reads_and_no_client():
+    stdlib = set(sys.stdlib_module_names)
+    banned = ("payhoa", "google", "jason.google", "smtplib", "imaplib", "email", "requests", "httpx", "urllib", "http", "socket",
+              "keepersdk", "jason.secrets", "jason.vault", "jason.payhoa_tx", "jason.payhoa_session", "jason.integrations",
+              "jason.zoom", "jason.mcp", "jason.web", "jason.agent", "jason.cli", "jason.commands", "jason.approvals.kinds",
+              "jason.approvals.engine", "idoxs", "smud", "asspy", "subprocess", "webbrowser")
+    for module in ALL_MODULES:
+        if module.stem not in EDGE:
+            continue
+        for name in imports(module):
+            top = name.split(".")[0]
+            if top == "jason":
+                ok = any(name == a or name.startswith(a + ".") or a.startswith(name + ".") for a in EDGE_ALLOWED) or name == "jason"
+                assert ok, f"{module.name} imports {name}, which the edge may not"
+            else:
+                assert top in stdlib or top == "__future__", f"{module.name} imports {name}, which is not the standard library"
+            for bad in banned:
+                assert not (name == bad or name.startswith(bad + ".")), f"{module.name} imports {name}"
+
+
+def test_the_edge_names_no_profile():
+    for module in ALL_MODULES:
+        if module.stem in EDGE:
+            text = module.read_text(encoding="utf-8").lower()
+            assert "mystique" not in text and "jason_mystique" not in text, module.name
 
 
 def test_no_module_imports_a_client_or_anything_outside_the_allowed_few():

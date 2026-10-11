@@ -15,6 +15,11 @@ Whether a name holds the role a step needs is read from the community's officers
 which adds the portfolio's managers) and jason's administrators. A profile that names none leaves every role-gated act
 refused, and the refusal says so.
 
+The general definitions (``jason.workflows.definitions_general``) are registered when a command first needs them, not at
+import. A run is read against ``jason.workflows.readers.StoreReaders``: the stores on disk, read only (the follow-ups, the
+response inbox, the campaigns, the notice ledger, the approvals store, the job queue). Opening a run finds the plan or
+job a person made for a step; it makes none.
+
 It sends nothing, files nothing, and writes only under ``data/workflows``.
 """
 
@@ -46,6 +51,32 @@ def _admins() -> tuple[Any, ...]:
     from jason.access import admins
 
     return tuple(admins())
+
+
+def _register_general(args: argparse.Namespace) -> None:
+    """Register the general definitions (``jason.workflows.definitions_general``) the first time a command needs them. A
+    definition that fails its checks is left out and named on stderr; the others still register. A test replaces this."""
+    from jason.workflows.definitions_general import register_general
+    from jason.workflows.types import InvalidWorkflow
+
+    try:
+        from jason.commands._shared import data_dir
+
+        root = data_dir(args)
+    except Exception:  # noqa: BLE001 - no data folder: the statutes are not checked against the shelf
+        root = None
+    try:
+        register_general(root)
+    except InvalidWorkflow as exc:
+        print(f"jason workflow: a general definition is left out: {exc}", file=sys.stderr)
+
+
+def _readers(root: Any, today: date | None = None) -> Any:
+    """The world a run is read against: the stores under ``root`` (``jason.workflows.readers.StoreReaders``). It reads
+    only. A test replaces this with fakes, or ``None`` for the engine's bare default."""
+    from jason.workflows.readers import StoreReaders
+
+    return StoreReaders(root, today=today)
 
 
 class Roster:
@@ -246,10 +277,12 @@ def cmd_workflow(args: argparse.Namespace) -> int:
     try:
         if act == "from_sop":
             return _from_sop(args)
+        _register_general(args)
         if act == "definitions":
             return _definitions(args, definitions)
         root = data_dir(args)
         today = _as_of(args)
+        readers = _readers(root, today)
         roster = Roster() if act in WRITES else None
         by = roster.canonical(by_raw) if roster else by_raw
         roles_of = roster.roles_of if roster else None
@@ -258,7 +291,7 @@ def cmd_workflow(args: argparse.Namespace) -> int:
         if act == "list":
             return _list(args, api, definitions, root)
         if act == "show":
-            out = api.show(root, args.show, today=today, events=args.events)
+            out = api.show(root, args.show, today=today, readers=readers, events=args.events)
             print(_dump(out) if args.json else "\n".join(show_lines(out, events=args.events)))
             return 0
         if act == "verify":
@@ -283,7 +316,7 @@ def cmd_workflow(args: argparse.Namespace) -> int:
             print(_dump(out) if args.json else _summary_line(out, what))
             return 0
         if act == "open":
-            out = api.open_run(root, args.open, by, yes=args.yes, roles_of=roles_of, expect=expect, today=today)
+            out = api.open_run(root, args.open, by, readers=readers, yes=args.yes, roles_of=roles_of, expect=expect, today=today)
             print(_dump(out) if args.json else "\n".join(
                 [_summary_line(out, f"opened by {by}; {len(out['appended'])} event(s) appended")]
                 + [_event_line(e) for e in out["appended"]]))
@@ -291,29 +324,29 @@ def cmd_workflow(args: argparse.Namespace) -> int:
         if act == "attest":
             run, step = args.attest
             out = api.attest(root, run, step, by, roles_of=roles_of, record=args.record or "", what=args.what or "", item=item,
-                             outcome=args.outcome or "", motion=args.motion or "", choice=args.choice or "", expect=expect,
-                             today=today)
+                             outcome=args.outcome or "", motion=args.motion or "", choice=args.choice or "", readers=readers,
+                             expect=expect, today=today)
         elif act == "arrived":
             run, step = args.arrived
-            out = api.arrived(root, run, step, by, roles_of=roles_of, what=args.what or "", item=item, expect=expect, today=today)
+            out = api.arrived(root, run, step, by, roles_of=roles_of, what=args.what or "", item=item, readers=readers, expect=expect, today=today)
         elif act == "skip":
             run, step = args.skip
-            out = api.skip(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, expect=expect, today=today)
+            out = api.skip(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, readers=readers, expect=expect, today=today)
         elif act == "reopen":
             run, step = args.reopen
-            out = api.reopen(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, expect=expect, today=today)
+            out = api.reopen(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, readers=readers, expect=expect, today=today)
         elif act == "pause":
             run = args.pause
-            out = api.pause(root, run, by, reason=args.reason or "", expect=expect, today=today)
+            out = api.pause(root, run, by, reason=args.reason or "", readers=readers, expect=expect, today=today)
         elif act == "resume":
             run = args.resume
-            out = api.resume_run(root, run, by, expect=expect, today=today)
+            out = api.resume_run(root, run, by, readers=readers, expect=expect, today=today)
         elif act == "note":
             run = args.note
-            out = api.note(root, run, by, text=args.text or "", step=args.step or "", expect=expect, today=today)
+            out = api.note(root, run, by, text=args.text or "", step=args.step or "", readers=readers, expect=expect, today=today)
         else:
             run = args.cancel
-            out = api.cancel(root, run, by, roles_of=roles_of, reason=args.reason or "", yes=args.yes, expect=expect, today=today)
+            out = api.cancel(root, run, by, roles_of=roles_of, reason=args.reason or "", yes=args.yes, readers=readers, expect=expect, today=today)
         event = out["event"]
         print(_dump(out) if args.json else "\n".join([_summary_line(out, f"{event['kind']} {event.get('step', '') or 'the run'} by {by}"),
                                                        _event_line(event)]))

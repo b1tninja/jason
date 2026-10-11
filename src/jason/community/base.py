@@ -1557,6 +1557,12 @@ class Community(ABC):
         allows. Empty until the specification records some."""
         return ()
 
+    def controls(self) -> tuple:
+        """The safeguards the board adopted that this profile keeps in code (``jason.controls.types.Control``), beside
+        those in the private facts (``data/spec/<profile>/controls.json``; ``jason.controls.store.load``). Empty until the
+        specification records some."""
+        return ()
+
     def limits(self) -> dict:
         """The association's own values for jason's limits (``jason.limits``): a mapping of a limit's key to its value, such
         as ``{"upload.max_bytes": 52428800}``. A setting in the environment or the machine's config comes first; a value
