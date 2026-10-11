@@ -229,6 +229,36 @@ def recite_law(shelf: Any = None, *, data_dir: Path | None = None, community: An
     return out
 
 
+STATUTE_CAVEAT = ("jason's consolidated text of the statute, exported from the authorities shelf, is not an official "
+                  "restatement; the code as enacted and in force on the date that matters controls.")
+
+#: The subdivisions the rule-change page recites whole, each with why it is there. 4355(a) names the subjects a rule
+#: change must be noticed for; whether this rule is on that list is the board's reading with counsel, not jason's.
+RECITED_STATUTES: tuple[tuple[str, str], ...] = (
+    ("CIV 4360(a)", "What the notice of a proposed rule change must carry, and when it is given"),
+    ("CIV 4355(a)", "The subjects of an operating rule to which sections 4360 and 4365 apply"),
+)
+
+
+def recite_statutes(shelf: Any = None, *, data_dir: Path | None = None, community: Any = None) -> list[dict[str, Any]]:
+    """The operative words of each of ``RECITED_STATUTES``, whole, from ``data/authorities`` through the shelf. A
+    subdivision the shelf lacks is returned with ``found`` false, no words, and a plain note: the page then cites it
+    by number only and never states its words from memory."""
+    shelf = shelf if shelf is not None else open_shelf(data_dir, community)
+    out: list[dict[str, Any]] = []
+    for citation, why in RECITED_STATUTES:
+        words = ""
+        try:
+            c = shelf(citation)
+            if c.found:
+                words = (c.text or "").strip()
+        except Exception:       # a reader that fails is a miss here, shown as not on the shelf
+            words = ""
+        out.append({"citation": citation, "why": why, "found": bool(words), "words": words,
+                    "note": "" if words else "text not on the shelf; cited by number only"})
+    return out
+
+
 def _fold(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -267,7 +297,7 @@ def section_blocks(change: RuleChange, current: dict[str, str], *, recitals: dic
     recitals = recitals or {}
     for section in change.sections:
         now = current.get(section.number, "") or (recitals[section.number].words if section.number in recitals else "")
-        head = f"### {section.label}: {section.title}"
+        head = f"### {section.label}{' (proposed number)' if section.new else ''}: {section.title}"
         source = _recited_from(recitals.get(section.number))
         cur_label = "Current text" + (f" ({source})" if source else "") + ":"
         prop = f" (`{version_address(version, section.number)}`; not in force)" if version is not None else ""
@@ -687,7 +717,8 @@ def keep_notice(data_dir: Path, key: str, notice: Notice, change: RuleChange, *,
                             source=f"jason rule-change {change.key}")
 
 
-__all__ = ["ADOPTED_TEXT_HEADING", "DESCRIPTION_HEADING", "Notice", "Recital", "TEXT_HEADING", "Timeline",
+__all__ = ["ADOPTED_TEXT_HEADING", "DESCRIPTION_HEADING", "Notice", "RECITED_STATUTES", "Recital", "STATUTE_CAVEAT",
+           "TEXT_HEADING", "Timeline", "recite_statutes",
            "adopted_lines", "adoption_notice", "agenda_item", "authority_status", "current_sections", "element_lines",
            "email_draft", "fill_records", "find_change", "first_decision_date", "keep_notice", "member_notice",
            "notice_key", "open_shelf", "proposed_version",

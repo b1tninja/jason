@@ -583,3 +583,39 @@ def test_rule_changes_list_timeline_and_fill(county, tmp_path, monkeypatch):
     soon = sources.rule_changes({"key": "parking-tags", "notice": "2026-10-03", "decision": "2026-10-10"})
     assert soon["stages"] == [] and "28" in soon["timelineNote"]
     assert sources.rule_changes({"key": "nope"})["found"] is False
+
+
+def test_rule_changes_recites_the_statute_or_says_it_is_not_on_the_shelf(county, tmp_path, monkeypatch):
+    import sys
+
+    from jason.community.rule_changes import RuleChange, SectionChange
+    from jason.tasks import rule_change as rc
+    from jason.web import sources
+
+    change = RuleChange("tags", "Visitor tags", "rules", "Rules", "fewer tows", "owners register", (SectionChange("4", "Tags", proposed="Register."),))
+
+    class Community(_FakeCommunity):
+        def rule_changes(self):
+            return (change,)
+
+        def meeting_schedule(self):
+            return None
+
+    class Cited:
+        def __init__(self, text):
+            self.found, self.text = bool(text), text
+
+    monkeypatch.setattr(sys.modules["jason.mcp.county"], "_data_dir", lambda _: tmp_path, raising=False)
+    monkeypatch.setattr(sources, "_community", lambda: Community())
+    monkeypatch.setattr(rc, "open_shelf", lambda *a, **k: (lambda c: Cited("(a) The notice shall include the text." if c == "CIV 4360(a)" else "")))
+    one = sources.rule_changes({"key": "tags"})
+    law = {s["citation"]: s for s in one["law"]}
+    assert law["CIV 4360(a)"]["found"] and law["CIV 4360(a)"]["words"] == "(a) The notice shall include the text."
+    assert law["CIV 4355(a)"]["found"] is False and law["CIV 4355(a)"]["words"] == "" and "not on the shelf" in law["CIV 4355(a)"]["note"]
+    assert "not an official restatement" in one["lawCaveat"]
+
+    def broken(*a, **k):
+        raise OSError("no shelf")
+
+    monkeypatch.setattr(rc, "open_shelf", broken)
+    assert not any(s["found"] for s in sources.rule_changes({"key": "tags"})["law"])

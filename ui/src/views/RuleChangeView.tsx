@@ -1,11 +1,31 @@
 import { useMemo, useState } from "react";
 import { Badge, Card, Caveats, Clock, Command, DataTable, Findings, Markdown, RemoteView, type Column } from "../components";
 import { useApi } from "../lib/useApi";
+import "../styles/rule-change.css";
 
 interface Row { key: string; slug: string; title: string; document: string; documentTitle: string; purpose: string; effect: string; sections: number; placeholders: string[]; decisions: string[]; authorities: string[] }
 interface One {
   found?: boolean; note?: string; key: string; title: string; documentTitle: string; purpose: string; effect: string; authorities: string[]; decisions: string[]; placeholders: string[]; open: string[];
   sectionsMarkdown: string; currentNote: string; stages: { key: string; label: string; date: string; authority?: string }[]; timelineNote: string; today: string; command: string; caveats?: string[];
+  law?: Statute[]; lawCaveat?: string;
+}
+/** A subdivision recited whole from the authorities shelf; `found` false means the shelf lacks it and it is cited by number only. */
+interface Statute { citation: string; why: string; found: boolean; words: string; note: string }
+
+/** Civil Code 4360(a) and 4355(a) in the statute's own words, then the reading beside them, labeled as a reading. */
+function Recital({ law, caveat }: { law: Statute[]; caveat?: string }) {
+  return (
+    <Card title="What the statute says">
+      {law.map((s) => (
+        <div key={s.citation}>
+          <p className="rc-recital-cite">Civil Code {s.citation.replace(/^CIV /, "")} <span className="muted">{s.why}</span></p>
+          {s.found ? <blockquote className="rc-recital" aria-label={`The words of ${s.citation}`}>{s.words}</blockquote> : <p className="rc-miss">Text not on the shelf. See {s.citation} by number; jason does not state its words from memory.</p>}
+        </div>
+      ))}
+      <p className="rc-reading"><strong>Reading, not the statute:</strong> the notice below follows that order, the text of the proposed change first and then the board's description of its purpose and effect. Whether this rule is on the 4355(a) list is the board's reading with counsel.</p>
+      {caveat && <p className="muted">{caveat}</p>}
+    </Card>
+  );
 }
 
 function Change({ k, back }: { k: string; back: () => void }) {
@@ -25,7 +45,17 @@ function Change({ k, back }: { k: string; back: () => void }) {
       {(d) => (
         <div className="stack">
           <div className="row wrap"><button onClick={back}>← Rule changes</button><strong>{d.title}</strong><span className="muted">amends {d.documentTitle}</span>{d.authorities.map((a) => <Badge key={a}>{a}</Badge>)}</div>
-          <Card title="Why, and what it does"><p>{d.purpose}</p><p className="muted">{d.effect}</p></Card>
+          {d.law && <Recital law={d.law} caveat={d.lawCaveat} />}
+          <Card title="The text of the proposed change">
+            <p className="muted">Section numbers marked proposed are the board's to settle; nothing here is in force until the board adopts it.</p>
+            {d.currentNote && <p className="notice notice-warn">{d.currentNote}</p>}
+            <div className="preview"><Markdown text={d.sectionsMarkdown} /></div>
+          </Card>
+          <Card title="The board's description of its purpose and effect">
+            <p className="muted">The board's own description of the change, not the rule itself; the text above is the proposed rule change.</p>
+            <h4>Purpose</h4><p>{d.purpose}</p>
+            <h4>Effect</h4><p>{d.effect}</p>
+          </Card>
           <div className="grid-2">
             <Card title="The board's choices">
               <p className="muted">Each bracket is a choice only the board makes; fill it to see the rule read, nothing is written. The decisions below are settled with counsel before the notice goes out.</p>
@@ -41,13 +71,9 @@ function Change({ k, back }: { k: string; back: () => void }) {
                 <label>Decision meeting <input type="date" value={decision} onChange={(e) => setDecision(e.target.value)} /></label>
               </div>
               {d.timelineNote ? <p className="notice notice-error">{d.timelineNote}</p> : <Clock stages={d.stages} today={new Date(d.today + "T12:00:00")} />}
-              <p className="muted">At least 28 days of notice before the decision (4360(a)); the agenda notice four days before the meeting (4920); notice of adoption within 15 days (4360(c)); members may ask to reverse it within 30 days of that notice (4365).</p>
+              <p className="muted">A summary, not the statute (the words of 4360(a) are above): at least 28 days of notice before the decision (4360(a)); the agenda notice four days before the meeting (4920); notice of adoption within 15 days (4360(c)); members may ask to reverse it within 30 days of that notice (4365).</p>
             </Card>
           </div>
-          <Card title="The sections, current and proposed">
-            {d.currentNote && <p className="notice notice-warn">{d.currentNote}</p>}
-            <div className="preview"><Markdown text={d.sectionsMarkdown} /></div>
-          </Card>
           <Command cmd={d.command} note="Saves the member notice as a Gmail draft with no recipients; a person addresses it by each owner's delivery choice and sends it." />
           <Caveats items={d.caveats} />
         </div>

@@ -732,7 +732,9 @@ def rule_changes(args: Args) -> dict[str, Any]:
     """The proposed rule changes in the specification (`jason rule-change --list`). With ``key``: the change's sections
     as current and proposed text (from the outline on disk), its placeholders ``[in brackets]`` with any ``V_`` values
     filled for the preview, the decisions the board and counsel settle first, and the Civil Code 4360 timeline from
-    ``notice`` (default today) to ``decision`` (default the first meeting 28 days out) with ``comment``. Reads disk only;
+    ``notice`` (default today) to ``decision`` (default the first meeting 28 days out) with ``comment``. ``law`` recites
+    Civil Code 4360(a) and 4355(a) whole from the authorities shelf (``found`` false and a note when the shelf lacks
+    one), with ``lawCaveat``; the page prints the text of the change before its purpose and effect. Reads disk only;
     the member notice is a Gmail draft a person saves with --yes and sends."""
     import re
     from datetime import date as _date
@@ -787,7 +789,13 @@ def rule_changes(args: Args) -> dict[str, Any]:
         stages, timeline_note = [], str(exc)
     cmd = " ".join(["jason rule-change", change.key, *([f"--notice-date {notice.isoformat()}"] if args.get("notice") else []),
                     *([f"--decision {args['decision']}"] if args.get("decision") else []), "--draft-email --yes"])
-    return {"found": True, "key": change.key, "title": change.title, "documentTitle": change.document_title, "purpose": change.purpose, "effect": change.effect,
+    # The statute's own words, whole, from the authorities shelf; a subdivision the shelf lacks is cited by number only.
+    try:
+        law = rc.recite_statutes(rc.open_shelf(root, community))
+    except Exception as exc:  # no shelf at all: every subdivision is a plain miss
+        law = [{"citation": c, "why": why, "found": False, "words": "", "note": f"text not on the shelf ({type(exc).__name__}); cited by number only"}
+               for c, why in rc.RECITED_STATUTES]
+    return {"found": True, "law": law, "lawCaveat": rc.STATUTE_CAVEAT, "key": change.key, "title": change.title, "documentTitle": change.document_title, "purpose": change.purpose, "effect": change.effect,
             "authorities": list(change.authorities), "decisions": list(change.decisions), "placeholders": list(change.placeholders()),
             "open": [p for p in change.placeholders() if p[1:-1] not in values], "sectionsMarkdown": "\n\n".join(blocks), "currentNote": current_note,
             "stages": stages, "timelineNote": timeline_note, "today": today.isoformat(), "command": cmd,

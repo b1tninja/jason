@@ -221,3 +221,48 @@ def test_specification_row_is_well_formed():
     assert "[effective date]" in change.placeholders()
     with pytest.raises(LookupError):
         rc.find_change(tuple(mystique().rule_changes()), "nope")
+
+
+# --- the statute's words, recited whole from the shelf --------------------------------------------------------------
+
+
+class _Cited:
+    def __init__(self, text: str):
+        self.found, self.text = bool(text), text
+
+
+def test_recite_statutes_gives_the_words_whole_or_a_plain_miss():
+    words = {"CIV 4360(a)": "(a) The board shall provide general notice of a proposed rule change. The notice shall include the text."}
+    shelf = lambda citation: _Cited(words.get(citation, ""))   # noqa: E731
+    got = {s["citation"]: s for s in rc.recite_statutes(shelf)}
+    assert got["CIV 4360(a)"]["found"] and got["CIV 4360(a)"]["words"] == words["CIV 4360(a)"] and not got["CIV 4360(a)"]["note"]
+    assert got["CIV 4355(a)"] == {"citation": "CIV 4355(a)", "why": got["CIV 4355(a)"]["why"], "found": False, "words": "",
+                                  "note": "text not on the shelf; cited by number only"}
+
+
+def test_recite_statutes_treats_a_failing_reader_as_a_miss():
+    def shelf(citation):
+        raise RuntimeError("no shelf")
+
+    assert not any(s["found"] for s in rc.recite_statutes(shelf))
+
+
+def test_recited_statute_words_verify_against_the_shelf(tmp_path):
+    from jason.community import quote_check
+    from jason.tasks.cite import Shelf
+
+    shelf = Shelf(None, Path(__file__).resolve().parents[1] / "data")
+    if not shelf("CIV 4360(a)").found:
+        pytest.skip("the authorities shelf lacks Civil Code 4360(a)")
+    page = tmp_path / "recital.md"
+    page.write_text("\n\n".join(f"Civil Code {s['citation'][4:]} provides:\n\n> {s['words']}" for s in rc.recite_statutes(shelf) if s["found"]),
+                    encoding="utf-8")
+    report = quote_check.check(page.read_text(encoding="utf-8"), shelf.data_dir)
+    assert report.clean and report.counts["found"] >= 1
+
+
+def test_a_new_section_is_headed_with_a_proposed_number():
+    new = RuleChange("k", "t", "policy", "Policy", "p", "e", (SectionChange("21", "Fees.", proposed="A fee.", new=True),
+                                                           SectionChange("20", "Methods.", proposed="Online.")))
+    blocks = rc.section_blocks(new, {})
+    assert blocks[0].startswith("### Section 21 (proposed number): Fees.") and blocks[1].startswith("### Section 20: Methods.")

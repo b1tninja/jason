@@ -1,0 +1,6 @@
+/* The rule-change page (RuleChangeView): the statute's recited words and the labeled reading beside them.
+   Tokens only (see styles.css :root). */
+.rc-recital { margin: 0; padding: 8px 12px; border-left: 4px solid var(--line); background: var(--panel); border-radius: var(--r); white-space: pre-wrap; overflow-wrap: anywhere; }
+.rc-recital-cite { font-weight: 600; margin: 8px 0 4px; }
+.rc-reading { margin: 8px 0 0; padding: 6px 12px; border: 1px dashed var(--line); border-radius: var(--r); }
+.rc-miss { margin: 0; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: var(--r); }
