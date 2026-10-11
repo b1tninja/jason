@@ -63,7 +63,7 @@ A **run**: `id`, `definition`, `subject` (with its label), `opened` (by whom, wh
 3. **Idempotence.** A `job` or `plan` step finds its earlier job or plan by a key (the run, the step, the subject) before it makes another.
 4. **Who can act.** A step names a role; the server enforces it (the signed-in office, as the console already does). The run page shows a person *their* steps first, and others' steps as "waiting on the treasurer".
 5. **Clocks have a basis.** Every deadline on a run is `law` (cited and recited from the stored text), `documents`, `counterparty` (a date another party stated, such as a vendor's quote or a notice from a fire authority; labeled, and not the law's), `proposed policy` (labeled, never a stamp), or `person`; a proposed number is the board's to adopt. A run past a legal clock says so in the law's words and opens a follow-up; it does not hide.
-6. **Privacy follows the data.** A step reads and shows at the level of what it touches (P0 to P3, `jason.web.access`); a director sees counts and states where the requests area does; a run's list never carries an owner's contact details or an answer.
+6. **Privacy follows the data.** A step reads and shows at the level of what it touches (P0 to P3, `jason.web.access`); directors and officers have the same access to information, so a director reads what an officer reads at the same level; a run's list never carries an owner's contact details or an answer.
 7. **Links, not copies.** A step links to its approval, job, follow-up, board item, dock task, document (`Doc`), or campaign by id; the run page shows their current state, read from them.
 
 ### 3.3a Child runs and step groups
@@ -90,12 +90,14 @@ Six of the seven family pages asked for the same two things, so they are part of
 
 Routes are proposed, consistent with [console/information-architecture.md](console/information-architecture.md): a **Work** group (the run list and the run page) and a link from each existing screen to the runs it belongs to. Components are the built ones (`StageSteps`, `Findings`, `Command`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`) plus the ones named below.
 
-1. **Work** (`#/work`): every open run, grouped by whose move it is ("Yours", "Waiting on others", "Waiting on a clock", "Board"), each row: the run's label, the current step, its due date and basis, and its age. A director sees counts and states. Filters: definition, role, due soon.
+1. **Work** (`#/work`): every open run, grouped by whose move it is ("Yours", "Waiting on others", "Waiting on a clock", "Board"), each row: the run's label, the current step, its due date and basis, and its age. Filters: definition, role, due soon.
 2. **Run** (`#/work/<definition>/<id>`): the **step rail** (`WorkflowRail`: every step with its state as a word and a glyph, grouped by phase, the current step marked), the **step panel** (`RunStepPanel`; `StepPanel` is already `DriveChooser`'s): what to do, why, the evidence to look at, the command as a `Command`, and the act as a `Confirm` or a `TerminalStep`), the **clocks strip** (`ClockStrip`: each deadline with its basis), the **links** (what the run made, each in its current state), the **history** (the event log, newest first, with who and when), and the **changed-since** banner when a store moved.
 3. **Start a run** (`StartRun`): the definition's subject, its dates (checked: leave room for one correction before an answer-by date), and the roles (who is the manager for this run). It creates a run in `draft`; opening it starts the clocks.
 4. **Skip, pause, reopen, note** are small dialogs, each a `Confirm` recorded by name and each requiring a reason.
 5. **The Today / dock** shows the person's open steps and the next clock on each of their runs.
 6. **Print and export**: a run's history as a document for the board's record (a `Doc`), with its evidence addresses.
+
+The screens are specified in [console/screens/work.md](console/screens/work.md).
 
 The interface never sends, files, or mails anything: a step that does is a plan the person approves or a command they run, and the run records the result.
 
@@ -108,7 +110,7 @@ Each family page in [workflows/](workflows/README.md) is written to one template
 3. **Branches and failure paths:** what happens when a check fails, an arrival never comes, a plan is rejected or held, a store changes under a done step.
 4. **The clocks and their basis:** the law (cited from `data/authorities`, recited whole, never paraphrased), the documents, proposed policy (labeled), or a person's own.
 5. **The screens:** which of §4's screens it uses, what is specific to the family (a campaign funnel, a meeting packet, a ledger), its loaders (built or to add), and its components (built or to add).
-6. **Privacy and roles:** per step, the level and the role; what a director sees.
+6. **Privacy and roles:** per step, the level and the role; who may read it (a director reads what an officer reads at the same level).
 7. **What exists now:** the SOP key, the commands, loaders, stores, approvals kinds, and screens that already do part of it, each verified against the repo.
 8. **Gaps and the build order** for that family.
 9. **A made-up sample run** (a table of steps and states on plainly fake data) the design agent can draw.

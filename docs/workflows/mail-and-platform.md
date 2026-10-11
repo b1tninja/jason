@@ -186,7 +186,7 @@ Subject: a community's service. A run is an episode: an install, or a recovery a
 | `await` never arrives (the scan never shows) | after the median delivery-to-scan time, jason opens a follow-up and the step reads "not scanned yet, N days", not failed | the person decides to ask the service |
 | `email-conversation` `listed` is stale or the store's window is shorter than the question | an older question is a live read-only Gmail search, not a store search | "Last synced 3 days ago; what is awaiting us may be out of date" |
 | A reply went out by phone, in person, or from another mailbox | jason cannot see it | the caveat stays visible; `handled` is the person's word |
-| A thread is executive, legal, or counsel's | held for the private view; a director sees nothing of it | "Held: opens in the private view" |
+| A thread is executive, legal, or counsel's | held for the private view (the offices that open P3 there) | "Held: opens in the private view" |
 | `request` rejected by the person | recorded; the thread stays in the run at `decide` | "Not entered in PayHOA: REASON" |
 | `gmail-draft` `plan` has no recipient | no item; the step reads "nothing to approve: jason never picks who an email goes to" | the subject it would carry |
 | `plan` source changed under a done step | the applier composes again; the hash differs; nothing is saved; the plan is `superseded` | `changed` event: "the source changed since the plan; nothing saved" |
@@ -278,25 +278,26 @@ All routes sit under `#/work`, consistent with [../workflows-design.md](../workf
 | Stale | the mail store's age first, in the page's top line | "last synced 3 days ago" before any row | "the source changed since the plan" | the channel's age and `ended` | the heartbeat's age; a source's standing from `stale_after` |
 | Blocked | by `integration-connect` (the mailbox cannot be read) | by the same (Gmail) | by an unrecorded board decision, only for a commitment | by a channel's sign-in | by the step or fact, named |
 | Changed since | "read again: 3 new letters" | a later inbound message reopens `listed` | the hash differs; nothing saved | a later arrival supersedes | a heartbeat or a connection moved |
-| Director | counts of letters by lane; no senders | counts of threads | none | counts, states, ages; `countsOnly` | none (not shown) |
 - **No send, scan, forward, shred, or discard control exists.** A copied `Command` carries the real command; the page never runs one. A check a live service answers (`integrations check --live`) is a `TerminalStep` ("A person at the terminal on this PC").
 - **Use the existing screens.** `#/mail-triage`, `#/inbox`, `#/approvals`, `#/status`, `#/jobs`, `#/setup/limits`, `#/instance/limits` keep their routes; a run page links to them rather than copying them.
 - **Print and export.** A run's history as a `Doc` with evidence addresses; never a letter's text for a P4 letter.
 
 ## 6. Privacy and roles
 
-| Step or surface | Level | Who acts | Who reads | A director sees |
-|---|---|---|---|---|
-| Letter scan, envelope (`mail/*`) | P2; a credential letter P4 (never served); another association's mail P3 | manager, secretary | offices that open P2 | counts of letters by lane (not enforced on the server today: gap) |
-| Triage choice, note | P1 (a name and a choice) | manager, secretary | the same | counts |
-| Thread headers, subjects, senders | P2 | manager | offices that open P2 | counts |
-| A thread naming a member | P1 name and unit; executive or counsel content P3 | manager | private view for P3 | "held" |
-| Draft body | P1 to P3 by content; a code line withheld from the approval record | manager plans; one named approver | the approvals audience | "held" |
-| Response inbox: list, reading, keyed answers | P3 (`responses/*`) | manager, secretary | offices that open P3 in the private view | counts, states, ages; no names, no `arrivals`; `countsOnly: true` (built) |
-| Integration state, `why`, vault path | not secret; masked of emails, numbers, tokens | administrator | administrator only | nothing |
-| Credential value | P4 | nobody; never shown, logged, copied, or put in a URL | nobody | nothing |
-| Heartbeat `dataDir`, lanes, host | machine detail | administrator | administrator only | nothing |
-| `check-in` | developer's terminal | developer | developer | nothing |
+| Step or surface | Level | Who acts | Who reads |
+|---|---|---|---|
+| Letter scan, envelope (`mail/*`) | P2; a credential letter P4 (never served); another association's mail P3 | manager, secretary | offices that open P2 |
+| Triage choice, note | P1 (a name and a choice) | manager, secretary | the same |
+| Thread headers, subjects, senders | P2 | manager | offices that open P2 |
+| A thread naming a member | P1 name and unit; executive or counsel content P3 | manager | private view for P3 |
+| Draft body | P1 to P3 by content; a code line withheld from the approval record | manager plans; one named approver | the approvals audience |
+| Response inbox: list, reading, keyed answers | P3 (`responses/*`) | manager, secretary | offices that open P3 in the private view |
+| Integration state, `why`, vault path | not secret; masked of emails, numbers, tokens | administrator | administrator only |
+| Credential value | P4 | nobody; never shown, logged, copied, or put in a URL | nobody |
+| Heartbeat `dataDir`, lanes, host | machine detail | administrator | administrator only |
+| `check-in` | developer's terminal | developer | developer |
+
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
 
 - A signed-in write replaces `by` with the signed-in name (the sign-in layer), so the triage screen's typed-name field is only for an installation with no sign-in.
 - A run never shows an email address, phone number, or mailing address on a list. An owner's name appears only where the viewer opens P1 or P2, and only where the step needs it.
@@ -317,7 +318,7 @@ All routes sit under `#/work`, consistent with [../workflows-design.md](../workf
 | Gmail draft approvals kind | `gmail-drafts` (`jason.approvals.kinds.gmail_drafts`): cases `proposal-request`, `hearing`, `meeting-notice`; R1, one-person, 6 hours; `to` and `cc` chosen by the person; apply recomposes and saves nothing on a different hash | built; `jason approvals plan gmail-drafts --scope JSON`; route `POST /api/approvals/plan` exists; **no screen calls it** |
 | `jason draft` | `--hearing`, `--proposal-request`, `--meeting-notice`, `--list`, `--show`, `--edit`, `--to`, `--pdf`, `--signer`, `--horizon`, `--yes` | built; no `--cc`, no `--item`, no `--purpose` |
 | Free-text composer, trail store, per-sentence provenance | [../console/handoff-draft-from-item.md](../console/handoff-draft-from-item.md) | design only |
-| Response inbox | `jason responses` (`--check`, `--list`, `--show`, `--read`, `--confirm`, `--seen`, `--dismiss`, `--outstanding`, `--add-manual`); `jason.tasks.response_inbox`, `recognize` (seven rungs); loaders `responses`, `response`, `outstanding-responses`, `campaign-status`, `followups`, `form-library` with director counts only | built; **no screen** under `ui/src` calls them |
+| Response inbox | `jason responses` (`--check`, `--list`, `--show`, `--read`, `--confirm`, `--seen`, `--dismiss`, `--outstanding`, `--add-manual`); `jason.tasks.response_inbox`, `recognize` (seven rungs); loaders `responses`, `response`, `outstanding-responses`, `campaign-status`, `followups`, `form-library` | built; **no screen** under `ui/src` calls them |
 | Follow-ups | `jason followups` (`--done`, `--defer`, `--drop`, `--add`); loader `followups`; no web writer | built; terminal acts |
 | Integrations | `jason integrations list`, `check [--live --by]` only; registry, connections; `jason google status/scopes/setup/adopt-installation-record/sign-in`; `jason vault status/migrate`; `jason login` | built; **`import`, `connect`, `disconnect` do not exist** |
 | Administrator loaders | `instance-service`, `instance-integrations` (`?scope=instance&vault=1`, vault asked only under `--dev`), `instance-schedules`, `status`, `limits`, `instance-limits`; each refuses a non-admin | built |
@@ -334,7 +335,7 @@ All routes sit under `#/work`, consistent with [../workflows-design.md](../workf
 Gaps found while checking (each is a build item or a decision):
 
 - **The triage choice has no CLI.** The write is web-only, so a run cannot be driven from a terminal. Add `jason mail --choose ID --choice C --by NAME`, calling `choose`.
-- **The triage and Inbox loaders carry no office check,** and director counts-only is applied only to the requests loaders. A director reading `mail-triage` or `open-items` gets letters and threads by name. Enforce on the server, as `counts_only` does for responses.
+- **The triage and Inbox loaders carry no office check.** Any roster person who opens `mail-triage` or `open-items` gets letters and threads by name, though they are P2. Enforce the level on the server (`access.SEE_RULES`).
 - **The Inbox shows no sync age.** The Gmail age is in `status`, which is the administrator's.
 - **No web loader for threads, intents, or reply rates,** and no "handled offline" store.
 - **No approvals kind** for entering an emailed request in PayHOA (`payhoa-requests-from-email`, R2, one person) or for a reply draft in a thread. `gmail-drafts` covers three cases only.
@@ -349,7 +350,7 @@ Gaps found while checking (each is a build item or a decision):
 Build order, smallest first (the spine's order holds: the engine, then one family):
 
 1. **Read-only runs for the administrator's definitions.** `integration-connect` and `service-run` fold entirely from stores that exist (connections, heartbeats, schedules, Status). Build them as derived views over the three instance loaders first, with the three missing views. No run store needed.
-2. **A CLI for the triage choice** and the director counts-only check on `mail-triage` and `open-items`.
+2. **A CLI for the triage choice** and an office check on `mail-triage` and `open-items`.
 3. **`mail-triage` as a run** over `mail-triage` (state folds from `triage.json` and `items.json`).
 4. **The Gmail age on the Inbox** and an `email-threads` loader; then `email-conversation` as a drawer.
 5. **A start form for `gmail-drafts`** (three cases), calling `POST /api/approvals/plan`, landing in the Approvals screen.
@@ -449,7 +450,7 @@ A test could check each:
 4. **Stale first.** An Inbox row with a Gmail store older than the integration's stale-after shows the age before the row; "awaiting us" always carries the phone-or-meeting caveat.
 5. **Draft.** A `gmail-drafts` plan with no `to` has zero items and says "nothing to approve"; a changed source between plan and apply saves nothing and marks the step `changed`; the page has no word "send" except "send it from Gmail".
 6. **Recipient.** No address is pre-filled from a document's text; a malformed address is refused with the kind's own sentence.
-7. **Response inbox.** A director's `responses` and `outstanding-responses` return `countsOnly: true` and no owner key; `response` is refused; no list row shows an email address.
+7. **Response inbox.** A director reads `responses`, `outstanding-responses`, and `response` as an officer does at the same level (the reading and keyed answers in the private view only); no list row shows an email address.
 8. **Recognition.** A reference one character off is "taken to be" the sent one and says so; a reference jason did not send is a finding, not an arrival.
 9. **Integration.** `connected` is never shown before a person's `--live` check succeeds; a credential reads only "set" or "not set" with its path; no response, log line, or URL carries a value; the vault panel says "not asked (not in dev)" outside `--dev`.
 10. **Service.** A heartbeat older than 90 s reads `stale`; `jason daemon stop` writes only the drain request; no start, restart, or kill control exists.

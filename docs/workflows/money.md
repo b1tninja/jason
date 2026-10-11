@@ -105,7 +105,7 @@ Subject: a month. The board's duty is CIV 5500, recited in section 4. Two paths,
 
 ### 2.4 `delinquency-account` (task 3)
 
-Subject: one unit's account (shown by unit to the treasurer and manager; a director sees counts, section 6). Steps follow CIV 5650 to 5720 and 4935. The lien and foreclosure decisions are the **board's**, never delegated (CIV 5673, 5705(c)). jason records a step the board took; it submits to no agency, records no lien, and forecloses on nothing. Standing words are `CollectionStanding`: `OWED_NO_LIEN`, `LIEN_SECURES_DEBT`, `RELEASE_DUE`, `CREDIT`.
+Subject: one unit's account (shown by unit to the treasurer and manager; a director reads what an officer reads at the same level, section 6). Steps follow CIV 5650 to 5720 and 4935. The lien and foreclosure decisions are the **board's**, never delegated (CIV 5673, 5705(c)). jason records a step the board took; it submits to no agency, records no lien, and forecloses on nothing. Standing words are `CollectionStanding`: `OWED_NO_LIEN`, `LIEN_SECURES_DEBT`, `RELEASE_DUE`, `CREDIT`.
 
 | id | title | kind | role | needs | produces | evidence | command | clock (basis) | repeat; skip |
 |---|---|---|---|---|---|---|---|---|---|
@@ -284,7 +284,7 @@ Recited from `data/authorities/CIV/` (the stored text is jason's consolidated co
 | Follow-up after a send | proposed policy | read delivery again after 24 hours (the owner information lesson `bounces-are-silent`) | the send |
 | The collect due-by | proposed policy | the latest day an item can arrive and leave the days the next stage needs | the dated day |
 
-The law is silent on: the day the board adopts the budget (B6); how many days "as soon as reasonably practicable" is (CIV 5810); whether a payment's receipt may stand for its bill at the treasurer's review (`policy`); whether a director may see an account by unit. Each is a `decision` or held question, not a default.
+The law is silent on: the day the board adopts the budget (B6); how many days "as soon as reasonably practicable" is (CIV 5810); whether a payment's receipt may stand for its bill at the treasurer's review (`policy`). Each is a `decision` or held question, not a default.
 
 ## 5. The screens
 
@@ -320,7 +320,6 @@ Uses the spine's screens: **Work** (`#/work`, rows grouped Yours, Waiting on oth
 | changed since | a banner with the difference: "the ledger now shows a balance of 0; the lien is still of record" |
 | waiting on a clock | the clock's words and basis; "proposed policy" is never stamped |
 | waiting on the board | "Waiting on the board: lien decision. Open the decision." with `#/decisions` |
-| director, counts only | counts and states; no unit, owner, or amount per account (section 6) |
 
 ## 6. Privacy and roles
 
@@ -330,7 +329,7 @@ Uses the spine's screens: **Work** (`#/work`, rows grouped Yours, Waiting on oth
 | Attachments, invoices, bank notices, mailed tax bills, Gmail header leads | P2 (`transactions/`, `payhoa/attachments/`, mail, Gmail) | manager, treasurer, officers | an office that does not open P2 sees the lead's kind and amount-match word, not subject, sender, or file |
 | Tender last four on a county receipt | P2 and held back unless `private` | treasurer | a count |
 | Reconciliations, budget, books | P1 | treasurer, manager | directors read budget against actual and reserves |
-| Delinquency by unit and owner | P1 for the treasurer and manager (`personas-and-jobs.md`) | manager (records), board (decides) | executive-session subject (CIV 4935): **a director sees counts and states only, never a unit or an owner** (proposed: the board's 2026-10-10 rule is for the requests area; extending it here is the board's decision) |
+| Delinquency by unit and owner | P1 for the treasurer and manager (`personas-and-jobs.md`) | manager (records), board (decides) | executive-session subject (CIV 4935); a director reads what an officer reads at the same level |
 | Payment plan meeting, foreclosure vote | executive session; the minutes name the parcel number, not the owner (CIV 5705(c)) | board, recorded by the secretary | the open minutes name the matter generally (CIV 4935(e)) |
 | Reserve study | P1 (`reserve-studies/`) | treasurer, manager | owners see only the funding summary in the budget report (`reserves?view=owner`) |
 | Insurance policies, claims, policy numbers | P2 (`insurance/`) | manager, treasurer | the policy number is masked in lists; claims are not in a list |
@@ -338,7 +337,9 @@ Uses the spine's screens: **Work** (`#/work`, rows grouped Yours, Waiting on oth
 | The board's statements, a draft packet's figures | P1 | secretary, treasurer, manager | not delivered to members until the packet is sent |
 | Gmail and mail bodies | never on a list | by explicit draft | headers only by default |
 
-A run's list (the Work screen) never carries an owner's name, address, contact detail, or a delinquency amount; a director's Work screen shows "3 delinquency runs, 1 waiting on the board". A run's export is a `Doc` with evidence addresses and the same level as its most restricted step. The treasurer alone and an admin with no office cannot open P3 (`access.SEE_RULES`); the money runs open no P3.
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
+
+A run's list (the Work screen) never carries an owner's name, address, contact detail, or a delinquency amount; the Work screen shows "3 delinquency runs, 1 waiting on the board". A run's export is a `Doc` with evidence addresses and the same level as its most restricted step. The treasurer alone and an admin with no office cannot open P3 (`access.SEE_RULES`); the money runs open no P3.
 
 ## 7. What exists now
 
@@ -374,7 +375,7 @@ Gaps found in the build:
 - **The treasurer's review leaves no record of who reviewed.** `financial-review-*` evidence is a regular expression over minutes; the independent path (5501) has no named reviewers or ratification record in a store.
 - **`collection_steps.Step` is too coarse for CIV 5650 to 5720.** Missing: meet and confer offered (5670), request to meet received (5665), copy of the recorded notice mailed (5675(e)), ADR offered (5705(b)), notice of default served (5710(b)), small claims, and the separation of the vote (5673) from the recording (the single `lien recorded` step stands for both). No clock is computed from any step: 30 days after the pre-lien notice, 45 days after a request, 10 days after recording, 21 days after payment, 30 days after recording.
 - **No base template for the pre-lien notice** (every element is missing until one is written); no check of late charges or interest against CIV 5650(b); the foreclosure floor uses the ledger's past due, which can include late charges the floor excludes.
-- **Director counts-only is not enforced for delinquency**: `counts_only` is the requests area's rule; the delinquency loader sends owners and units to any roster person who opens it. Needs the board's decision.
+- **The delinquency loader carries no office check**: it sends owners and units to any roster person who opens it. Needs enforcing on the server by level (`access.SEE_RULES`).
 - **The fiscal-year run has no store**: no `annual-*` loaders, no `--freeze`, `--collect`, `--check`, `--read`; no approvals kind for `--make-templates` or `--build` (the docs call it engine kind `google.doc`; not registered) or for a Mailroom send. No computation of the CIV 5605 limits; no typed record of a budget adoption.
 - **`insurance_rows` assumes a January 1 fiscal year start.** For any other fiscal year the term in force on the first day is read on the wrong day.
 - **Revenue and Taxation Code installment sections are not on the authorities shelf**, so a tax clock cannot be recited.
@@ -446,7 +447,7 @@ Example Village HOA, 50 separate interests. Names are plainly fake; amounts are 
 3. `payment-investigation` writes only an outcome row in the signer's name, append only; `attached-bill` and `attached-receipt-only` name a record; no step attaches or approves.
 4. `monthly-review` shows each of CIV 5500(a) to (f) with the store it was read from and that store's age; none is marked done by a click without a reviewer's name; the independent path requires the ratification step.
 5. `delinquency-account` has no control that records a lien, files a notice, submits to an agency, or forecloses; the lien and foreclosure steps are `decision` steps recorded from the board's vote with a date; each clock cites its section and recites it.
-6. A director sees only counts and states on the delinquency runs; the test asserts no unit, owner, or amount in the response.
+6. A director reads what an officer reads at the same level on the delinquency runs, and the owner view reads none of it.
 7. The `fiscal-year` run computes its window from the notice catalog; a missing fiscal year end is "date not on record"; no step says "complies" or "approved".
 8. A clock past its legal day says so in the law's words and opens a follow-up; a proposed number shows "proposed" and no stamp.
 9. A step done once is not repeated on reopen: an applied plan and a finished job are found by key.
@@ -455,7 +456,6 @@ Example Village HOA, 50 separate interests. Names are plainly fake; amounts are 
 ## 11. Decisions for the user (not this page's)
 
 - **May a step open another run** (a child `payment-investigation` from `bill-attach`, a `reserve-borrowing` from `fiscal-year`), or is a link enough? The spine says runs hold links.
-- **May the board extend director counts-only to delinquency**, and to the whole money area?
 - **Whether a receipt may stand in for a bill** at the treasurer's review (`policy`).
 - **Whether `sync-bills --dry-run` is adopted as a scheduled read** (the engine would never schedule `--yes`).
 - **The Revenue and Taxation Code sections** to put on the shelf before the tax clocks are cited.

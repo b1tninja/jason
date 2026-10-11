@@ -48,14 +48,14 @@ Each table is one definition. Columns: `id`, step, `kind`, `who`, `needs` (step 
 | Definition | Runs it | Records it | Decides it | Reads only |
 |---|---|---|---|---|
 | `life-safety-period` | manager | secretary (the occurrence) | board (a proposal) | director, treasurer (amounts) |
-| `deficiency` | manager | manager (an office that opens P2) | board (a repair above the manager's authority) | director (counts) |
+| `deficiency` | manager | manager (an office that opens P2) | board (a repair above the manager's authority) | director |
 | `backflow-annual` | manager | secretary | board (the tester's engagement, if the documents require) | director |
 | `elevated-elements` | manager | manager and the reserve study's preparer | board (the engagement; executive session may be used for a contract's formation) | director |
 | `contract-notice-window` | manager | secretary | board (renew, re-bid, end) | treasurer, director |
-| `improvement-request` | manager | manager, reviewer, the recording officer | board (the vote) | director (counts and states) |
+| `improvement-request` | manager | manager, reviewer, the recording officer | board (the vote) | director |
 | `paint-cycle` | manager | manager | board (a substitute color, an award) | any signed-in person |
 | `loss-claim` | manager | manager | board (the deductible guideline) | counsel on grant |
-| `maintenance-program` | manager | manager | board (adoption, renewal) | director (counts) |
+| `maintenance-program` | manager | manager | board (adoption, renewal) | director |
 
 **What each run links to** (`links[]`; each shown in its current state, read from its own store): `life-safety-period`: approval (`gmail-drafts`), job (`models --filed`, `vendors --reports`), follow-up, board item, library document, child runs. `deficiency`: the register row, board item, library documents (the clearing record, the insurer correspondence reference). `backflow-annual`: library documents (notices, reports), the tester snapshot. `elevated-elements`: the report, the reserve study, the building's private record. `contract-notice-window`: the reading (`data/contracts/terms/KEY.json`), the contract, the letter and its log, board item, the proof of delivery. `improvement-request`: the PayHOA request or thread address, board item, decision, letter, unit-manual entry. `paint-cycle`: the schedule Doc, the catalog copy, the reserve component, the contract. `loss-claim`: incident events, claim papers, the packet, the policy. `maintenance-program`: the vendor portal record, product registrations, notices.
 
@@ -325,7 +325,7 @@ Existing screens the runs link to, by route in `SCREENS`: `#/insurance`, `#/rene
 
 ### 5.3 States every panel shows
 
-Loading (the loader's `found` unset). Empty ("The specification lists no life safety systems"; "The association has no color schedule yet"; "No improvement requests are open"). Missing ("none on record", never "not done"; "not read"; "needs input" with the question). Stale (the catalog copy's age; a tester list older than a year; "last posted to the owner: DATE"). Blocked (by which step or fact, in words; an undetermined obligation). Changed-since (a store moved under a done step: the difference, not a silent update). Past a legal day (in the law's words). Director counts-only: counts and states, never a unit, an owner, an impairment, or an insurer record.
+Loading (the loader's `found` unset). Empty ("The specification lists no life safety systems"; "The association has no color schedule yet"; "No improvement requests are open"). Missing ("none on record", never "not done"; "not read"; "needs input" with the question). Stale (the catalog copy's age; a tester list older than a year; "last posted to the owner: DATE"). Blocked (by which step or fact, in words; an undetermined obligation). Changed-since (a store moved under a done step: the difference, not a silent update). Past a legal day (in the law's words).
 
 ### 5.4 Acts the screens make
 
@@ -333,7 +333,7 @@ Each is a `Confirm` in the signed-in person's name, with the terminal command be
 
 ### 5.5 Today and the dock
 
-The dock already counts approvals, tasks, and deadlines (`dock` loader; `Dock`). A person's open steps from this family show there with the next clock on each run and its basis word: "Tell the insurer about the open impairment (Bldg. 1, 2099-06-02; the policy's words govern)", "Notice window for the management agreement closes 2099-11-01 (documents)", "Solar request: the statute's day is 2099-11-15", "Catalog check: 1 color renamed". A director's dock carries counts and states only. The run's history exports as a document for the board's record with its evidence addresses (`Doc`), including every date the clock could have run from.
+The dock already counts approvals, tasks, and deadlines (`dock` loader; `Dock`). A person's open steps from this family show there with the next clock on each run and its basis word: "Tell the insurer about the open impairment (Bldg. 1, 2099-06-02; the policy's words govern)", "Notice window for the management agreement closes 2099-11-01 (documents)", "Solar request: the statute's day is 2099-11-15", "Catalog check: 1 color renamed". The run's history exports as a document for the board's record with its evidence addresses (`Doc`), including every date the clock could have run from.
 
 ### 5.6 What is specific to this family
 
@@ -344,22 +344,22 @@ The dock already counts approvals, tasks, and deadlines (`dock` loader; `Dock`).
 
 ## 6. Privacy and roles
 
-| Step or data | Level | Who acts | A director sees |
-|---|---|---|---|
-| Systems, schedule, standing, a report's building and date | P0 and P1 | manager; any signed-in roster person reads | the same |
-| A report naming units, a vendor's amount | P1 | manager, treasurer for amounts | the same |
-| Impairment, insurer told, what cleared a deficiency | P2 (may bear on a claim) | offices that open P2, never while an admin views as someone else | counts and the proposed, open, and cleared tallies; detail on request, logged (`access.served`) |
-| Elevated-element inspector, licence number, report name | P3 by source (`data/spec`) | private view only | the building's reach and next due day |
-| Contract terms (they quote the contracts) | P2 (no path row; unplaced files read P2) | manager; a confidential contract held back | the term, the window, the decision; not the quoted words of a confidential one |
-| A model review by Bedrock | the words leave the machine | a named person chooses, per document | not offered |
-| An improvement request and its letter | P2; a request's list never carries a contractor, cost, phone | manager, reviewer, recording officer | counts and states, never an owner's name or unit |
-| The unit's manual: a private entry | the owner's; counted, never read | the owner | none |
-| Paint schedule and catalog | P0 | manager | the same |
-| Loss packet, claim papers | P2; a claim file's snippet is held back | manager; counsel on grant | the packet's steps without the claim's words |
-| Pest records, visits, products | P2 (vendors) | manager | counts |
-| Lock-box and panel codes appearing in a record | never shown | none | none |
+| Step or data | Level | Who acts |
+|---|---|---|
+| Systems, schedule, standing, a report's building and date | P0 and P1 | manager; any signed-in roster person reads |
+| A report naming units, a vendor's amount | P1 | manager, treasurer for amounts |
+| Impairment, insurer told, what cleared a deficiency | P2 (may bear on a claim) | offices that open P2, never while an admin views as someone else |
+| Elevated-element inspector, licence number, report name | P3 by source (`data/spec`) | private view only |
+| Contract terms (they quote the contracts) | P2 (no path row; unplaced files read P2) | manager; a confidential contract held back |
+| A model review by Bedrock | the words leave the machine | a named person chooses, per document |
+| An improvement request and its letter | P2; a request's list never carries a contractor, cost, phone | manager, reviewer, recording officer |
+| The unit's manual: a private entry | the owner's; counted, never read | the owner |
+| Paint schedule and catalog | P0 | manager |
+| Loss packet, claim papers | P2; a claim file's snippet is held back | manager; counsel on grant |
+| Pest records, visits, products | P2 (vendors) | manager |
+| Lock-box and panel codes appearing in a record | never shown | none |
 
-The roster sees P0 and P1; manager, president, vice president, director, secretary, and treasurer open P2; P3 only in the private view (`jason.web.access`). The server enforces who may act (spine, rule 4).
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `jason.web.access.SEE_RULES` the roster sees P0 and P1; manager, president, vice president, director, secretary, and treasurer open P2; P3 opens only in the private view, to all of those but the treasurer. The server enforces who may act (spine, rule 4).
 
 ## 7. What exists now
 
@@ -489,7 +489,7 @@ Checked on October 11, 2026.
 11. Every clock cell shows its basis word; a proposed number is labeled and never appears as a date to an owner.
 12. The statutes in section 4 equal the words on disk (a test that greps `data/authorities` for each quoted string).
 13. A page or doc for the family names no association, county, street, vendor, or person (the boundary test passes).
-14. A director reads counts and states; no impairment, insurer record, owner name, or unit appears in the list.
+14. A director reads what an officer reads at the same level, and the owner view reads none of it; no impairment, insurer record, owner name, or unit appears in a run's list.
 15. A `Bedrock` review is offered only to a named person, per document, and refuses a confidential file without an allowance for the run.
 16. A catalog rename after an award produces `changed since` and a `substitute` step; the schedule is unchanged.
 17. A child run exists for each open deficiency a report lists, and none for a report that passed with nothing open.

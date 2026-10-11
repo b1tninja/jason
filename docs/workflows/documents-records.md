@@ -312,7 +312,7 @@ The common screens are those of workflows-design.md section 4 (Work list, Run pa
 
 | Surface | Route | Shows (from real loader fields) | Built or to add |
 |---|---|---|---|
-| Work list rows | `#/work` | run label, the gate or phase, current step, its clock and basis, age; a director sees counts and states | to add (`work`) |
+| Work list rows | `#/work` | run label, the gate or phase, current step, its clock and basis, age | to add (`work`) |
 | Onboarding run | `#/work/onboard/<profile>` | the rail grouped by gate (`gates[].stage`, `open`, `opensWhen`, `waiting[]`, `checks[]`), `progress` (present, partial, missing), `questions.open`, `.byKind`, `.answeredNotApplied`, the first closed gate; child-run rows | rail to add; `onboarding-session` built; `StageSteps`, `QuestionCard`, `SecondConfirm` built (Setup tab of `#/onboarding`) |
 | Questions step | the Setup tab, or inline | `next[]` ranked: `kind`, `subject`, `question`, `choices`, `suggestion` (not pre-selected), `evidence`, `unblocks`, `highStakes`; where the answer goes | built |
 | Find the association | `#/onboarding` tab | `associations`, `documents-located` (`items[].located`, `not_located`, `job`), "Locate documents" through `Confirm`, polling the job | built (`AssociationPicker`, `DocumentLocator`) |
@@ -343,7 +343,6 @@ The common screens are those of workflows-design.md section 4 (Work list, Run pa
 | Stale | a read longer ago than its source allows (the county index row, the Drive listing's counts "as old as the listing"); said in words with the day |
 | Blocked | by which step or fact (the active community; a first closed gate; a second person needed) |
 | Changed since | the banner of section 3, with the difference in facts, never the text |
-| Director, counts only | a director who holds no other office reads the Work list and rails as counts and states; the step panel withholds file names, owners' names, units, and answers (as the requests area does); a director acting as the second person (R) sees the question and the answer to be confirmed |
 | Owner view | none: every route here is board only; the loaders refuse `view=owner` |
 
 **Loaders and writers to add for the family** (all read disk only):
@@ -359,17 +358,19 @@ The common screens are those of workflows-design.md section 4 (Work list, Run pa
 
 ## 6. Privacy and roles
 
-| Steps | Level | Who acts | What a director (no other office) sees |
-|---|---|---|---|
-| Gates, counts, slot states, stage words | P0 to P1 | any signed-in roster person | counts and states |
-| Slot titles, law, pins, readings | P1; a confidential file's name and reading by kind only outside the private view ("a confidential file: kind legal") | any | counts and states; names withheld |
-| Intake questions and answers | P1; the answer shown to the one who gave it or is confirming it | M, S, any; R confirms | the question text, never evidence naming owners |
-| Standing, conflict leads, rule-power findings | P1; counsel's letters P3 | M, S; B for D18 | states |
-| Private facts, bank signers, account numbers | P3 (`data/spec`); secrets P4 never typed | M with R; A for ST-5, ST-6, OP-3 | not shown |
-| Instruments, parties, title history | owners' names P1: masked by role by default; a named person's reveal is logged and says who and when | M, S | masked |
-| Ingest report, contract terms | P1 to P3 (names the files); a remote model is a person's choice | M | counts |
-| Executive-session records, the membership list, ballots, election materials | P3, listed by kind only; the request's restricted kinds are counted, not named | M, with counsel | counts |
-| Records requests | a member's name is never the key; day and unit; P2 contact details not shown | M; B, T read | counts and states |
+| Steps | Level | Who acts |
+|---|---|---|
+| Gates, counts, slot states, stage words | P0 to P1 | any signed-in roster person |
+| Slot titles, law, pins, readings | P1; a confidential file's name and reading by kind only outside the private view ("a confidential file: kind legal") | any |
+| Intake questions and answers | P1; the answer shown to the one who gave it or is confirming it | M, S, any; R confirms |
+| Standing, conflict leads, rule-power findings | P1; counsel's letters P3 | M, S; B for D18 |
+| Private facts, bank signers, account numbers | P3 (`data/spec`); secrets P4 never typed | M with R; A for ST-5, ST-6, OP-3 |
+| Instruments, parties, title history | owners' names P1: masked by role by default; a named person's reveal is logged and says who and when | M, S |
+| Ingest report, contract terms | P1 to P3 (names the files); a remote model is a person's choice | M |
+| Executive-session records, the membership list, ballots, election materials | P3, listed by kind only; the request's restricted kinds are counted, not named | M, with counsel |
+| Records requests | a member's name is never the key; day and unit; P2 contact details not shown | M; B, T read |
+
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2. A director acting as the second person (R) sees the question and the answer to be confirmed.
 
 A run's list never carries an owner's contact details or an answer. A URL carries a slot's key, a draft's id, or a run id, never a file name, a Drive id, or search words (searches are POSTs). The pin store and `data/spec` are never served as files.
 
@@ -485,7 +486,7 @@ Tests a build can check, on made-up fixtures.
 11. A new version of a known document found by I8 is reported and changes no recited text; D15 needs two different people.
 12. I7 refuses to file a file with an open question; a later `jason library` run keeps the ingested rows.
 13. The log of any step on a confidential file holds the kind and a masked label, never the name or a Drive id.
-14. A director with no other office reads the Work list and rails as counts and states; no file name, owner name, unit, or answer is in the payload.
+14. A director reads what an officer reads at the same level, and the owner view reads none of it.
 15. Every route of the family is refused in the owner view (403).
 16. A county read that fails leaves the step `failed`, never "none found"; a located number is shown as a lead until the recorded copy is read.
 17. `missing` (K7) requires a note naming what was looked for and where; "none exists" and "not applicable" are different answers and neither is ever filled by jason.

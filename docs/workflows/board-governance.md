@@ -320,23 +320,25 @@ Common screens are those of the spine (§4): **Work** (`#/work`), **Run** (`#/wo
 
 **Export.** The run's history prints as a `Doc` for the board's record with its evidence addresses: for `board-meeting` the notice's address (`jason://notice/board-meeting-DATE`), the decision ids, and the minutes' stages; for `rule-change` the noticed and adopted versions (`RECORD@proposed-DATE`); for `hearing`, only in the private view (P3). Executive material is never in an export outside the private view.
 
-**States.** Loading: skeleton and "reading the stores on disk". Empty: "No board meeting in the window: the profile sets no meeting schedule, and the catalog holds none." Missing: the loader's `found: false` note with the command that fills it, never an empty table (for example, "no hearings saved; plan one with `jason hearing`"). Stale: each band shows its freshness ("synced Oct 17, 06:00") with the refresh command; the watch reads the catalog as last built. Blocked: the step names what blocks it ("waiting on the 28-day notice to be delivered"). Changed since: a done step whose store moved (the minutes file changed, a decision re-recorded, the hearing row differs from the decision store) reads "changed since" with the difference. Director, counts only: section 6.
+**States.** Loading: skeleton and "reading the stores on disk". Empty: "No board meeting in the window: the profile sets no meeting schedule, and the catalog holds none." Missing: the loader's `found: false` note with the command that fills it, never an empty table (for example, "no hearings saved; plan one with `jason hearing`"). Stale: each band shows its freshness ("synced Oct 17, 06:00") with the refresh command; the watch reads the catalog as last built. Blocked: the step names what blocks it ("waiting on the 28-day notice to be delivered"). Changed since: a done step whose store moved (the minutes file changed, a decision re-recorded, the hearing row differs from the decision store) reads "changed since" with the difference.
 
 ## 6. Privacy and roles
 
 Levels are `jason.web.access` (P0 public, P1 names and units, P2 contact details, P3 restricted, P4 secrets). The run list never carries an owner's contact details or an answer.
 
-| Family | Steps and level | Who acts | A director (counts only) sees |
-|---|---|---|---|
-| board-meeting | notice, agenda, open packet, minutes: P0 or P1; the directors' packet: P1 to P3 (executive items by 4935 subject only); executive record and minutes: P3, private view | manager, secretary, treasurer, president; board decides | counts: "3 steps open", the clocks' standing words, the agenda by item titles outside executive session |
-| rule-change | rule text, notice, adoption: P0 (open once adopted); draft, reason, conflict flag: board-confidential (P1 board view); comments: P1 | any roster person drafts; secretary records; secretary sends | states and dates; not drafts' reasons |
-| election | notices, results: P0; candidate list and voter list: P1 with addresses P2; ballots and tally sheets: held by the inspector, never in jason | secretary, manager; inspector outside the console | counts and dates; no voter list |
-| hearing | the hearing row, notice Doc, decision, `zoom/hearings/*`: P3 (private view, logged); the run list shows a state and a date, never the unit or the owner | president, manager, secretary | "1 hearing: notice by <date>, state <word>"; no address, no matter |
-| law-review | statutes and leads: P0; conflict flags for counsel: board; counsel's letters: P3 | manager, secretary, counsel (read) | counts of leads and conflicts; statuses |
-| duty-schedule | duties, roles, standings: P0 or P1; people's own task titles masked to the rule's label | each assignment's role; manager | coverage counts and unowned duty names |
-| owners-manual | rules and manual text: P0; open questions: P1 | manager | states; the board's open decisions |
+| Family | Steps and level | Who acts |
+|---|---|---|
+| board-meeting | notice, agenda, open packet, minutes: P0 or P1; the directors' packet: P1 to P3 (executive items by 4935 subject only); executive record and minutes: P3, private view | manager, secretary, treasurer, president; board decides |
+| rule-change | rule text, notice, adoption: P0 (open once adopted); draft, reason, conflict flag: board-confidential (P1 board view); comments: P1 | any roster person drafts; secretary records; secretary sends |
+| election | notices, results: P0; candidate list and voter list: P1 with addresses P2; ballots and tally sheets: held by the inspector, never in jason | secretary, manager; inspector outside the console |
+| hearing | the hearing row, notice Doc, decision, `zoom/hearings/*`: P3 (private view, logged); the run list shows a state and a date, never the unit or the owner | president, manager, secretary |
+| law-review | statutes and leads: P0; conflict flags for counsel: board; counsel's letters: P3 | manager, secretary, counsel (read) |
+| duty-schedule | duties, roles, standings: P0 or P1; people's own task titles masked to the rule's label | each assignment's role; manager |
+| owners-manual | rules and manual text: P0; open questions: P1 | manager |
 
-Roles come from the signed-in person's offices; the server enforces them (`counts_only`: a director who holds no other office reads counts; the president, secretary, treasurer, and manager read names). A step shows a person their own steps first and the rest as "waiting on the secretary". No role may skip a legal step: its absence is recorded as a finding for the board (recommendation of the spine; a decision for the user).
+Directors and officers have the same access to information (the board's decision of 2026-10-11): they differ in duties, not in what they may read. A director sees what an officer sees at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
+
+Roles come from the signed-in person's offices; the server enforces them (`access.SEE_RULES`). A step shows a person their own steps first and the rest as "waiting on the secretary". No role may skip a legal step: its absence is recorded as a finding for the board (recommendation of the spine; a decision for the user).
 
 ## 7. What exists now
 
@@ -471,7 +473,7 @@ Clock strip: notice 2099-10-16 (law, 4920(a)): "on record in time: delivered, wi
 10. An `election` run refuses a date plan in which a rule amendment falls inside the 90-day window of 5105(h)(4)(B)(iii), and moves an election whose notice day has passed.
 11. A nomination's acknowledgment step shows the seven-business-day clock (5103(c)) and opens a follow-up if it passes.
 12. A `hearing` run refuses to mark h10 ready when h8 shows no delivery by the notice-by day; the page says "the hearing must move".
-13. A `hearing` run's list row and URL carry an opaque id, a state, and a date; they carry no address, name, or matter. A director who holds no other office sees counts and states only.
+13. A `hearing` run's list row and URL carry an opaque id, a state, and a date; they carry no address, name, or matter. A director reads what an officer reads at the same level.
 14. A `hearing` decision step shows the decision-notice due day (`noticeDueBy`, 14 days) and goes overdue past it.
 15. Executive-session material appears only in the private view; elsewhere the step reads the 4935 subject in the statute's words.
 16. A `law-review` run lists a lead only with the statute recited first and jason's reading labeled; it creates no `Conflict` row; the row is a profile edit a person commits.

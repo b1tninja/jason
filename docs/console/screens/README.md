@@ -21,6 +21,7 @@ One page per screen of the earlier spec, now read against the console that exist
 | [notices.md](notices.md) | none | Proposed whole, `#/notices` | 2 |
 | [governing-documents.md](governing-documents.md) | none | Proposed whole, `#/documents` | 2 |
 | [mail.md](mail.md) | `#/mail-triage`, `#/inbox`'s letters and requests, `#/insurance`, `#/renewals` | Their documents on `Doc` (built) | 2 |
+| [work.md](work.md) | none (its parts are in Today, `#/approvals`, `#/actions`, `#/followups`) | Proposed whole, `#/work` and `#/work/<definition>/<id>`; the run store is not built | 2 |
 | [board-items.md](board-items.md) | `#/actions` (`ConsoleActions`) | Its evidence on `Doc` (built) | 2 |
 | [requests-and-links.md](requests-and-links.md) | `#/drafts`, the key documents tab, `#/canvases`, `#/templates`, and `Embed` | Their documents on `Doc` (built) | 2 |
 | [people.md](people.md) | `#/people` (`PeopleView`) | Built, read-only: offices, holders, vacancies, sign-in | 2 |

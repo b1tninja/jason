@@ -295,7 +295,7 @@ All routes are the spine's `#/work` group ([workflows-design.md §4](../workflow
 
 | Screen | Route | Specific to this family |
 |---|---|---|
-| Work list | `#/work?definition=owner-info-cycle` (and the other keys) | "Yours" holds IN-02, IN-03, RQ steps; "Waiting on a clock" holds OI-14, OI-21, ND-06, ND-09; "Board" holds OI-03, IN-06, RQ-04, RQ-16, ND-12, RP-04. A director sees counts and states only. |
+| Work list | `#/work?definition=owner-info-cycle` (and the other keys) | "Yours" holds IN-02, IN-03, RQ steps; "Waiting on a clock" holds OI-14, OI-21, ND-06, ND-09; "Board" holds OI-03, IN-06, RQ-04, RQ-16, ND-12, RP-04. |
 | Run | `#/work/owner-info-cycle/2099`, `#/work/notice-delivery/KEY`, `#/work/mailroom-letter/ID`, `#/work/respond-request/ID`, `#/work/owner-document/NAME`, `#/work/form-campaign/CODE` | The step rail, panel, clock strip, links, and history, with the panels in 5.2. |
 | StartRun | each definition's subject | `owner-info-cycle` asks for the three dates and shows the entry day computed; `respond-request` starts from `#/work` or from a row of `jason respond` and is idempotent by request id; `mailroom-letter` is started only by a person and says so. |
 | Today and the dock | the dock's Deadlines | Follow-up items are not in the dock today (verified: `web/extra/dock.py` has none); the dock gains each open run's next clock. |
@@ -317,13 +317,13 @@ All routes are the spine's `#/work` group ([workflows-design.md §4](../workflow
 
 Reuse the existing screens and link to them: Owner information `#/owner-info`, Approvals `#/approvals`, Records requests `#/records-requests`, Drafts `#/drafts`, Templates `#/templates`, Jobs `#/jobs`, Decisions `#/decisions`, Plan a meeting `#/agenda`. The run page links to each and shows its state. The spine's step panel is named `RunStepPanel` because `StepPanel` already names a component in `ui/src/views/DriveChooser.tsx`.
 
-**States, for every panel.** *Loading*: `Loading`. *Empty*: "No arrivals checked yet. `jason responses --check` reads them" (never an empty table). *Missing*: the loader's `found: false` with its reason and the command that fills it ("the delivery sync has not run since 2099-10-02, so bounced notices are not shown", drawn on the band). *Stale*: each count shows its age; a source past its `stale_after` says so on the stage it feeds. *Blocked*: the step says by which step or fact. *Changed since*: the run's banner, the difference, and the step reopened. *Director*: counts-only with `countsOnlyWhy` ("A director sees counts and states; names and units open to the offices that act on them"); decided on the server by `access.counts_only`, never hidden by the page.
+**States, for every panel.** *Loading*: `Loading`. *Empty*: "No arrivals checked yet. `jason responses --check` reads them" (never an empty table). *Missing*: the loader's `found: false` with its reason and the command that fills it ("the delivery sync has not run since 2099-10-02, so bounced notices are not shown", drawn on the band). *Stale*: each count shows its age; a source past its `stale_after` says so on the stage it feeds. *Blocked*: the step says by which step or fact. *Changed since*: the run's banner, the difference, and the step reopened. *Director*: a director reads each panel as an officer does at the same level (section 6); the server decides the level, never the page.
 
 **Specific acts.** Every record a person makes on these screens is a `Confirm` signed by name: attest a link was tested, record a posting, record a records-request decision, confirm a reading, defer or drop a follow-up. The follow-up acts are terminal steps today (`jason followups --done ID --by NAME`); the writer is to add. Nothing on a page sends, mails, completes a request, or posts to an owner; the page shows the text to copy and the command.
 
 ### 5.3 The run pages drawn
 
-The owner-information run (`#/work/owner-info-cycle/2099`). The step rail is the spine's; the family adds the funnel and the follow-ups band to the step panel when the current step is OI-17 or OI-18. A director sees the same page with the numbers and no names.
+The owner-information run (`#/work/owner-info-cycle/2099`). The step rail is the spine's; the family adds the funnel and the follow-ups band to the step panel when the current step is OI-17 or OI-18. A director sees the same page an officer sees at the same level.
 
 ```text
 +--------------------------------------------------------------------------------------------------+
@@ -370,18 +370,20 @@ The notice run (`#/work/notice-delivery/KEY`) is the six bands of [screens/notic
 
 ## 6. Privacy and roles
 
-| Data | Level | Who | A director sees |
-|---|---|---|---|
-| The definitions, the clocks, the statutes recited | P0 | anyone on the roster | all |
-| Funnel counts, follow-up items without names, ages | P0 to P1 | roster | counts only |
-| Outstanding, unreachable, follow-up names, notice member rows (unit and id) | P1 and P2, names and units | M, S, P, T; the Treasurer sees money kinds | counts only (decided 2026-10-10) |
-| An arrival's sender, unit, attachment names | P2 | M, S, P, T | refused |
-| A reading, keyed answers, an arrival's acts | P3, the private view, opened for a stated reason and logged in `access/served.jsonl` | M, P, S, directors in the private view; not T | refused |
-| An email address, phone, mailing address | P2, masked, one field revealed, logged | M, S, P | never |
-| A records request: the unit, kinds, and purpose in the member's words | the store (`records-requests/`) has no path rule, so a file read defaults to P2 (closed); the loader serves the row by unit, never the name; the level of the purpose is **not verified** | M, S | counts |
-| Executive-session kinds (payment plan, hearing, internal dispute, ADR) | P3 | private view | counted without names |
-| A notice's text as sent | P1 (the text sent to all; a member's fills are not in it) | roster | read |
-| Plan items | P1 (names, tags); masked where a value looks like an address | M, one named person, 2P where the kind needs it | counts |
+| Data | Level | Who |
+|---|---|---|
+| The definitions, the clocks, the statutes recited | P0 | anyone on the roster |
+| Funnel counts, follow-up items without names, ages | P0 to P1 | roster |
+| Outstanding, unreachable, follow-up names, notice member rows (unit and id) | P1 and P2, names and units | M, S, P, directors, T; the Treasurer sees money kinds |
+| An arrival's sender, unit, attachment names | P2 | M, S, P, directors, T |
+| A reading, keyed answers, an arrival's acts | P3, the private view, opened for a stated reason and logged in `access/served.jsonl` | M, P, S, directors in the private view; not T |
+| An email address, phone, mailing address | P2, masked, one field revealed, logged | M, S, P |
+| A records request: the unit, kinds, and purpose in the member's words | the store (`records-requests/`) has no path rule, so a file read defaults to P2 (closed); the loader serves the row by unit, never the name; the level of the purpose is **not verified** | M, S |
+| Executive-session kinds (payment plan, hearing, internal dispute, ADR) | P3 | private view |
+| A notice's text as sent | P1 (the text sent to all; a member's fills are not in it) | roster |
+| Plan items | P1 (names, tags); masked where a value looks like an address | M, one named person, 2P where the kind needs it |
+
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
 
 Per step, who acts and at what level it reads (a step shows at the level of what it touches):
 
@@ -389,17 +391,17 @@ Per step, who acts and at what level it reads (a step shows at the level of what
 |---|---|---|---|
 | OI-01..OI-11, OD-01..OD-10, FC-01..FC-05 | M, A, the author | P0 to P1 | templates and documents; no owner's data except OI-09's counts |
 | OI-12, OI-16, ML-04, OI-19 | M plans; T or an officer signs second | P1; recipients by unit and id | cost shown in cents; the approval store masks addresses |
-| ND-02..ND-10 | M, S for ND-05 | P1 counts; member rows (unit, id) only in the private view | a director: counts; the ledger path `notices/*` is P1 |
-| IN-02, IN-03, IN-04 | M, S, P | P3 for a reading and keyed answers (private view, logged) | the arrival list is P2; a director is refused one arrival |
+| ND-02..ND-10 | M, S for ND-05 | P1 counts; member rows (unit, id) only in the private view | the ledger path `notices/*` is P1 |
+| IN-02, IN-03, IN-04 | M, S, P | P3 for a reading and keyed answers (private view, logged) | the arrival list is P2 |
 | IN-06, OI-03, ND-12, RQ-04, RQ-16, RP-04 | B, recorded by S or P with the meeting's date | P0 to P1 on the question; executive-session matters P3 | no click stands in for the board |
-| IN-07, IN-08 | M and one named person; a high-stakes item needs a second | P1 tags; P2 masked | a director: counts |
+| IN-07, IN-08 | M and one named person; a high-stakes item needs a second | P1 tags; P2 masked | |
 | RQ-01..RQ-09 | M | P1 kind and unit; the title may name a person, so it is P1 for M and directors and held from T except on money kinds | |
 | RQ-10..RQ-13 (records) | M, S, counsel by grant | the member's purpose and the records' contents are the member's own words and the association's records; confidential records stay out (5215) | the 5215 list is the manager's decision |
 | FL-01..FL-04 | A, B | P0 | |
 
 The levels of three stores this family writes have no `PathRule`: `followups/*`, `forms/campaigns.json`, `records-requests/*`. A path no row places is P2, closed; the build assigns their level (gap 16).
 
-A URL carries an id or a filter, never a name, an email, or an address. A run's list never carries an owner's contact details or an answer. A director's counts-only scrub drops `names`, `owners`, `unit`, `summary`, `attachments`, and a list under `neverAsked` or `outstanding` at any depth.
+A URL carries an id or a filter, never a name, an email, or an address. A run's list never carries an owner's contact details or an answer.
 
 ## 7. What exists now (checked against the repo, 2026-10-11)
 
@@ -411,7 +413,7 @@ A URL carries an id or a filter, never a name, an email, or an address. A run's 
 | Approvals kinds (`src/jason/approvals/registry.py`) | three: `owner-info-tags` (R2, one person), `payhoa-attach-bills`, `gmail-drafts` (cases `proposal-request`, `hearing`, `meeting-notice` only). No kind for the email batch, the mail batch, a Mailroom send or cancel, a form update, a request comment or creation, or a Google Doc |
 | Letters store | `data/approvals/letters.json`, stages draft, saved, requested, approved, sent; the board approves by a vote an officer records with the meeting's date |
 | Stores | `data/forms/campaigns.json`, `data/forms/references.json`, `data/responses/inbox.json` and `acts.jsonl`, `data/followups/acts.jsonl`, `data/notices/deliveries.db`, `data/notices/KEY/kept.json`, `data/batches.db`, `data/mailroom/sent.jsonl`, `data/records-requests/requests.json`, `data/approvals/` |
-| Loaders (`GET /api/<key>`) | `owner-info`, `responses`, `response`, `outstanding-responses`, `campaign-status`, `followups`, `form-library`, `records-requests`, `approvals`, `request-links`, `templates`, `request-letter`, `dock`, `jobs`. Director counts-only is built in `request_views.py` |
+| Loaders (`GET /api/<key>`) | `owner-info`, `responses`, `response`, `outstanding-responses`, `campaign-status`, `followups`, `form-library`, `records-requests`, `approvals`, `request-links`, `templates`, `request-letter`, `dock`, `jobs`. |
 | Loaders not found | `notices`, `notice`, `mailroom`, `member-requests`, `cycle`, `work`, `work-run` |
 | Views (`ui/src/views`) | `OwnerInfoView`, `RecordsRequestsView`, `ApprovalsView` with `PlanApprovals`, `DraftsView`, `TemplatesView`, `InboxView`, `MailTriageView`, `JobsView`. No view reads `followups`, `campaign-status`, `responses`, or `form-library` (no `ui/src` file mentions them) |
 | Scheduler cadences | `responses-gmail`, `responses-payhoa` (proposed), `payhoa-catalog`, `gmail` in `jason.integrations.registry`. No cadence syncs a notice's delivery |
@@ -424,7 +426,7 @@ Gaps found (each a fact about the repo, not a wish):
 
 1. **Approvals kinds missing for every send.** The email batch, the mail batch, a Mailroom send and cancel, a PayHOA form update, a request comment, a request creation, a Doc, and the acknowledgment draft run as commands with `--yes` and a name; only the tags have a plan. The design is in [approval-workflow.md](../console/approval-workflow.md) (`payhoa.mailroom.send`, R3, two people).
 2. **`jason request-comment` has no dry run and no `--yes`** (lesson `google-writes-without-yes`): RQ-07 stays a person's step.
-3. **No screen reads the follow-ups, the funnel, the arrivals, or the form library**, though their loaders are built and a director's counts-only is decided on the server.
+3. **No screen reads the follow-ups, the funnel, the arrivals, or the form library**, though their loaders are built.
 4. **The notice delivery has no loader or screen** (`notices`, `notice`), and nothing schedules the sync; ND-04, ND-06, ND-09 depend on a person remembering.
 5. **No Mailroom loader.** A send's preview, price, and tracking exist only in the terminal and `data/mailroom`.
 6. **`respond` has no screen** (`member-requests` is specified, not built), and the records-request store (`data/records-requests`) is a second record of the same request as the PayHOA request `jason respond` reads: nothing joins them, so a records request can be overdue in one and produced in the other.
@@ -499,7 +501,7 @@ A third run, `notice-delivery` for key `board-meeting-2099-10-20` (a general not
 7. Every proposed number renders the word "proposed" and its source; none renders as a deadline stamp, and a proposed acknowledgment date is never given to an owner.
 8. A statute clock is recited from `data/authorities` with its citation before any reading, and a reading is labeled with whose it is; every quotation passes `jason verify-quotes`.
 9. A pause on a `STATUTE` or `DOCUMENTS` clock is refused unless the row cites words that allow it.
-10. A viewer whose only office is director reads counts and states on every panel in 5.2 and no owner's name, unit, contact detail, or answer; the response says so (`countsOnly`).
+10. A director reads what an officer reads at the same level on every panel in 5.2, and the owner view reads none of it.
 11. No page offers approve, deny, or assign for a request, or a button that sends, mails, or posts to an owner; each shows the command or the text to copy.
 12. A done step whose store changed (a tag removed, a Doc edited after approval, a request closed elsewhere) reads "changed since".
 13. A mailed letter step shows the number of letters and the cost in cents, requires the count typed, and records the letter and communication ids.

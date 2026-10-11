@@ -18,14 +18,13 @@ The model is [../workflows-design.md](../workflows-design.md): a definition (ste
 - **Writes without a gate.** Drive filing, Doc writes, the Mailroom send and cancel, the email batch, and the PayHOA request comment (`request-comment` writes without `--yes`) are not approvals kinds.
 - **Statutes and clocks that need a reading, not a recital.** The membership-list clock is labeled five business days under Civil Code 5210(b), which points to Corporations Code 8330 and states more than one timeframe; CIV 5301 and the Revenue and Taxation Code installment sections are not on the authorities shelf, so no tax clock is recited as law; a hearing's suspension notice cites Corporations Code 7341, also not on the shelf. Each is held for the board and counsel.
 - **Procedure flaws found on the way:** `onboard` step 13 is not flagged as a person's step, and step 19 cites 5205 for a board request to its outgoing manager, which the stored text does not say; `fire-protection.md` cites 904.1(c) for the duty to correct where the shelf prints it in 904.2(d); the owner-information SOP lists the campaign step after the test send, but `campaigns.require` refuses copies with no open campaign.
-- **Privacy:** the director's counts-only rule is enforced only on the requests loaders; `mail-triage`, `open-items`, and delinquency have no office check; `followups/*`, `forms/campaigns.json`, and `records-requests/*` have no path level.
+- **Privacy:** `mail-triage`, `open-items`, and delinquency have no office check (they hand names to any roster person); `followups/*`, `forms/campaigns.json`, and `records-requests/*` have no path level.
 
 ## Decisions already taken
 
 - **Every confirmed life-safety deficiency becomes a board item** (2026-10-11), prioritized by a severity a person sets and by a deadline a person records; until a severity is set, jason proposes one and says so ([property-safety-vendors.md](property-safety-vendors.md)).
 - **The secretary is the board's official record keeper** (2026-10-11): a `decision` step is recorded by the secretary, and the pages say so. The president recording when the secretary is absent or is the matter's subject is a proposal for the board, not a decision.
-- **Directors and officers have the same access to information** (2026-10-11); they differ in duties, not in what they may read. Nothing in the workflows gives a director a narrower view, so a life-safety board item's impairment sentence is shown to every director. The one narrower view that exists is the requests area's counts-only rule below, which predates this and is open to review.
-- **A director sees counts only** on the requests area, enforced on the server (2026-10-10).
+- **Directors and officers have the same access to information** (2026-10-11); they differ in duties, not in what they may read. Nothing in the workflows gives a director a narrower view, so a life-safety board item's impairment sentence is shown to every director. The director-only requests view built on 2026-10-10 was removed the same day this was decided.
 - **The console may save Gmail drafts, never send**, through the `gmail-drafts` approvals kind (2026-10-10).
 - **The vault is the development environment's store** (2026-10-10).
 
