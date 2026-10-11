@@ -20,21 +20,40 @@ It is ``data/life-safety/deficiencies.json``.
 - **Impairment** is a person's reading of whether the deficiency impairs a scheduled safeguard; it is ``None`` until a
   person says, never inferred.
 
-Each change holds the store's lock (``jason.locks``), asks for ``by``, and writes only this file.
+- **Severity and deadline** are a person's words too. ``set_severity`` records urgent, high, or normal (the board items'
+  own priorities); ``set_deadline`` records a date with the basis word of who set it (the insurer, an authority, a
+  document, a vendor, or a person) and, if there is one, the record. jason never infers a severity and never computes a
+  legal deadline. The latest word on each wins.
+- **A confirmed deficiency is a board item.** ``sync_board_items`` builds (``board_item_of``) and refreshes a board item
+  for each confirmed deficiency, proposed for the next agenda, after every act. The item's priority is a person's
+  severity when one is set, else jason's proposal (``proposed_priority``), labeled so in the item's summary. The
+  deadline is its due date. The board's own fields (status, owner, meeting, notes) are never overwritten, and a cleared
+  deficiency closes nothing: the board closes its items. A failure to write the item never undoes the act: the act's
+  result carries ``boardItem: {ok: false, why}``.
+
+Each change holds the store's lock (``jason.locks``), asks for ``by``, and writes only this file; the board item is
+written after the lock is let go.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from jason.community.board_items import PRIORITY_ORDER, BoardItem, ItemCategory, Priority
+
 STORE = Path("life-safety") / "deficiencies.json"
 LOCK = "life-safety-deficiencies"
 UNPLACED = ""                    # the system key of a deficiency whose report no listed system could be named for
+DEADLINE_WINDOW_DAYS = 14        # jason's default window, not the law's: a deadline this near (or past) raises the proposed priority
+DEADLINE_PAST_LIMIT_DAYS = 365   # a deadline more than a year past is refused as a likely typo; an overdue one within it is real
+ITEM_PREFIX = "life-safety-"     # a board item's id is this and the deficiency's id
+ITEM_SOURCE = "life-safety register"
+ITEM_ASK = "Decide the repair, the vendor, and the date"
 
 
 class Act(Enum):
@@ -44,6 +63,22 @@ class Act(Enum):
     NOT_IMPAIRS = "does not impair"
     CLEARED = "cleared"
     INSURER_TOLD = "insurer told"
+    SEVERITY = "severity"
+    DEADLINE = "deadline"
+
+
+class DeadlineBasis(Enum):
+    """Who set a deadline a person recorded. jason sets none."""
+
+    INSURER = "insurer"
+    AUTHORITY = "authority"
+    DOCUMENTS = "documents"
+    VENDOR = "vendor"
+    PERSON = "person"
+
+
+DEADLINE_BASES = tuple(b.value for b in DeadlineBasis)
+SEVERITIES = tuple(p.value for p in Priority)
 
 
 class ClearedBy(Enum):
@@ -91,6 +126,22 @@ def _locked(fn):
     def wrapper(*args, **kwargs):
         with hold(Resource.STORE, LOCK, timeout=60, purpose=f"deficiency register: {fn.__name__}"):
             return fn(*args, **kwargs)
+    return wrapper
+
+
+def _syncs(fn):
+    """Outside the register's lock (``_locked`` is inside this), refresh the act's board item. A failure there never
+    undoes the act already recorded: the row returned carries ``boardItem``, ``{ok: true, ...}`` or ``{ok: false, why}``."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(data_dir, ident, *args, **kwargs):
+        row = fn(data_dir, ident, *args, **kwargs)
+        try:
+            row["boardItem"] = sync_board_items(data_dir, ident=ident, today=kwargs.get("today"))
+        except Exception as exc:  # noqa: BLE001 - the act stands; the person is told the item was not written
+            row["boardItem"] = {"ok": False, "why": f"{type(exc).__name__}: {exc}"}
+        return row
     return wrapper
 
 
@@ -189,6 +240,19 @@ def _day(value: str | date | None, label: str, today: date | None = None) -> str
     return day.isoformat()
 
 
+def _deadline_day(value: str | date | None, today: date | None = None) -> str:
+    """A deadline a person records: a date, in the future or past. A past one within a year is an overdue deadline, which
+    is real; one more than a year back is refused as likely a typo."""
+    try:
+        day = value if isinstance(value, date) else date.fromisoformat(str(value or "").strip())
+    except ValueError:
+        raise ValueError("date: give the deadline as YYYY-MM-DD") from None
+    now = today or date.today()
+    if day < now - timedelta(days=DEADLINE_PAST_LIMIT_DAYS):
+        raise ValueError(f"date: {day} is more than a year in the past; check it (an overdue deadline within a year is accepted)")
+    return day.isoformat()
+
+
 def _ref(record: str, label: str) -> str:
     record = (record or "").strip()
     if not record or any(ch.isspace() for ch in record):
@@ -211,15 +275,64 @@ def state_of(row: Mapping[str, Any]) -> dict[str, Any]:
     impairs = last(Act.IMPAIRS.value, Act.NOT_IMPAIRS.value)
     cleared = last(Act.CLEARED.value)
     told = last(Act.INSURER_TOLD.value)
+    severity = last(Act.SEVERITY.value)
+    deadline = last(Act.DEADLINE.value)
     standing = "cleared" if cleared else "open" if confirmed else "proposed"
     impairing = bool(impairs and impairs["act"] == Act.IMPAIRS.value and not cleared)
     return {"standing": standing, "confirmed": confirmed, "impairs": (None if impairs is None else impairs["act"] == Act.IMPAIRS.value),
             "impairsBy": impairs, "cleared": cleared, "insurerTold": told,
+            "severity": severity["value"] if severity else None, "severityBy": severity,
+            "deadline": deadline["date"] if deadline else None, "deadlineBy": deadline,
             "impairmentOpen": impairing and bool(confirmed), "insurerNotTold": impairing and bool(confirmed) and told is None}
 
 
+# --- the priority a board item carries --------------------------------------------------------------------------------
+
+def _step_up(priority: Priority) -> Priority:
+    return {Priority.NORMAL: Priority.HIGH, Priority.HIGH: Priority.URGENT}.get(priority, priority)
+
+
+def proposed_priority(state: Mapping[str, Any], today: date | None = None) -> tuple[Priority, str]:
+    """jason's PROPOSED priority for a deficiency's board item, and why. It is jason's proposal, not a legal standard, and a
+    person's severity replaces it (``priority_of``).
+
+    - urgent: the deficiency impairs a safeguard and no record shows the insurer was told;
+    - high: it impairs a safeguard;
+    - otherwise normal.
+
+    A deadline a person recorded that is past, or within ``DEADLINE_WINDOW_DAYS`` (jason's default window, not the law's),
+    raises it one step (normal to high, high to urgent). A cleared deficiency has no deadline pressing."""
+    if state.get("insurerNotTold"):
+        base, why = Priority.URGENT, "it impairs a safeguard and no record shows the insurer was told"
+    elif state.get("impairmentOpen"):
+        base, why = Priority.HIGH, "it impairs a safeguard"
+    else:
+        base, why = Priority.NORMAL, "no impairment of a safeguard is recorded"
+    deadline = state.get("deadline")
+    if deadline and not state.get("cleared"):
+        left = (date.fromisoformat(deadline) - (today or date.today())).days
+        if left <= DEADLINE_WINDOW_DAYS:
+            raised = _step_up(base)
+            when = f"{-left} days past" if left < 0 else "today" if left == 0 else f"in {left} days"
+            return raised, (f"{why}; the deadline {deadline} is {when}, within jason's default window of "
+                            f"{DEADLINE_WINDOW_DAYS} days (not the law's), which raises it one step")
+    return base, why
+
+
+def priority_of(state: Mapping[str, Any], today: date | None = None) -> dict[str, Any]:
+    """The priority a deficiency's board item carries: a person's severity when one is set, else jason's proposal.
+    ``proposed`` says which."""
+    if state.get("severity"):
+        by = state.get("severityBy") or {}
+        return {"value": Priority(state["severity"]), "proposed": False,
+                "why": f"set by {by.get('by', 'a person')} on {str(by.get('at', ''))[:10]}".strip()}
+    value, why = proposed_priority(state, today)
+    return {"value": value, "proposed": True, "why": why}
+
+
+@_syncs
 @_locked
-def confirm(data_dir: Path | str, ident: str, *, by: str, now: str | None = None) -> dict[str, Any]:
+def confirm(data_dir: Path | str, ident: str, *, by: str, now: str | None = None, today: date | None = None) -> dict[str, Any]:
     by = _need(by)
     rows = load(data_dir)
     row = _find(rows, ident)
@@ -236,8 +349,10 @@ def _confirmed(row: Mapping[str, Any], what: str) -> None:
                          f"before recording {what}")
 
 
+@_syncs
 @_locked
-def set_impairs(data_dir: Path | str, ident: str, impairs: bool, *, by: str, now: str | None = None) -> dict[str, Any]:
+def set_impairs(data_dir: Path | str, ident: str, impairs: bool, *, by: str, now: str | None = None,
+                today: date | None = None) -> dict[str, Any]:
     by = _need(by)
     rows = load(data_dir)
     row = _find(rows, ident)
@@ -254,6 +369,7 @@ def _passing(reading: Mapping[str, Any]) -> bool:
     return report.result == "passed" and not report.reports_deficiencies
 
 
+@_syncs
 @_locked
 def clear(data_dir: Path | str, ident: str, *, record: str, kind: str, on: str, by: str, now: str | None = None,
           today: date | None = None) -> dict[str, Any]:
@@ -282,6 +398,7 @@ def clear(data_dir: Path | str, ident: str, *, record: str, kind: str, on: str, 
     return row
 
 
+@_syncs
 @_locked
 def insurer_told(data_dir: Path | str, ident: str, *, record: str, on: str, by: str, now: str | None = None,
                  today: date | None = None) -> dict[str, Any]:
@@ -300,22 +417,198 @@ def insurer_told(data_dir: Path | str, ident: str, *, record: str, on: str, by: 
     return row
 
 
+@_syncs
+@_locked
+def set_severity(data_dir: Path | str, ident: str, value: str, *, by: str, now: str | None = None,
+                 today: date | None = None) -> dict[str, Any]:
+    """Record a person's severity: urgent, high, or normal (the board items' own priorities). It is the person's reading,
+    never inferred; it replaces jason's proposed priority, and the latest word wins."""
+    by = _need(by)
+    if value not in SEVERITIES:
+        raise ValueError(f"value is one of: {', '.join(SEVERITIES)}")
+    rows = load(data_dir)
+    row = _find(rows, ident)
+    _confirmed(row, "a severity")
+    row["acts"].append({"act": Act.SEVERITY.value, "by": by, "at": now or _now(), "value": value})
+    _save(data_dir, rows)
+    return row
+
+
+@_syncs
+@_locked
+def set_deadline(data_dir: Path | str, ident: str, *, day: str, basis: str, record: str = "", by: str,
+                 now: str | None = None, today: date | None = None) -> dict[str, Any]:
+    """Record a deadline a person knows, with who set it (``basis``: the insurer, an authority, the documents, a vendor, or
+    the person) and, if there is one, the record it comes from. jason computes or invents none. A past date within a year is
+    an overdue deadline and is accepted. The latest word wins; it becomes the board item's due date."""
+    by = _need(by)
+    if basis not in DEADLINE_BASES:
+        raise ValueError(f"basis is one of: {', '.join(DEADLINE_BASES)} (who set the deadline)")
+    ref = _ref(record, "record") if (record or "").strip() else ""
+    on = _deadline_day(day, today)
+    rows = load(data_dir)
+    row = _find(rows, ident)
+    _confirmed(row, "a deadline")
+    act = {"act": Act.DEADLINE.value, "by": by, "at": now or _now(), "date": on, "basis": basis}
+    if ref:
+        act["record"] = ref
+    row["acts"].append(act)
+    _save(data_dir, rows)
+    return row
+
+
+# --- the board item ---------------------------------------------------------------------------------------------------
+
+def item_id(ident: str) -> str:
+    return ITEM_PREFIX + ident
+
+
+def _system_name(community: Any, key: str) -> str:
+    for s in tuple(getattr(community, "life_safety_systems", lambda: ())() or ()):
+        if s.key == key:
+            return s.name
+    return key or "a system not placed"
+
+
+def _on(act: Mapping[str, Any] | None) -> str:
+    return str((act or {}).get("at") or "")[:10]
+
+
+def board_item_of(row: Mapping[str, Any], state: Mapping[str, Any], community: Any = None, *,
+                  today: date | None = None) -> BoardItem:
+    """The board item for a confirmed deficiency, from the register alone (no reading or writing). ``community`` only
+    names the system in words. The summary is what the report and the people who recorded say, with a priority line that
+    says whether the priority is jason's proposal or a person's word; ``authority`` and ``evidence`` cite only what the
+    register holds (the report); the deadline a person recorded is ``due``. The category is SAFETY (fire, life safety,
+    inspections)."""
+    report = row.get("report") or {}
+    system = _system_name(community, row.get("system", ""))
+    device = (row.get("device") or "").strip()
+    title = f"Life safety deficiency: {device or 'a device not named in the report'} ({system})"
+    what = " / ".join(p for p in (row.get("location"), row.get("device"), row.get("comment")) if p)
+    found = report.get("day") or "a date not read"
+    lines = [f"The inspection report {report.get('name') or 'on file'} ({found}) lists an open deficiency: {what or 'no detail was read'}.",
+             f"Confirmed by {(state['confirmed'] or {}).get('by', 'a person')} on {_on(state['confirmed'])}."]
+    if state["impairs"] is True:
+        lines.append(f"Recorded as impairing a scheduled safeguard ({state['impairsBy'].get('by')}, {_on(state['impairsBy'])}).")
+    elif state["impairs"] is False:
+        lines.append(f"Recorded as not impairing a scheduled safeguard ({state['impairsBy'].get('by')}, {_on(state['impairsBy'])}).")
+    else:
+        lines.append("Whether it impairs a scheduled safeguard is not yet recorded.")
+    told = state["insurerTold"]
+    if told:
+        lines.append(f"The insurer was told on {told['on']} ({told['by']}; record {told['record']}).")
+    elif state["impairs"] is True:
+        lines.append("No record shows the insurer was told.")
+    dl = state["deadlineBy"]
+    if dl:
+        lines.append(f"Deadline {dl['date']}, set by {dl['basis']} (recorded by {dl['by']}"
+                     + (f"; record {dl['record']}" if dl.get("record") else "") + ").")
+    p = priority_of(state, today)
+    if p["proposed"]:
+        lines.append(f"priority proposed: {p['value'].value} ({p['why']}). This is jason's proposal, not a legal standard; "
+                     "a severity a person records replaces it.")
+    else:
+        lines.append(f"priority: {p['value'].value}, {p['why']} (a person's word, not jason's proposal).")
+    if state["cleared"]:
+        c = state["cleared"]
+        lines.append(f"cleared by {c['record']} on {c['on']} ({c['kind']}; recorded by {c['by']}). jason closes nothing: "
+                     "the board closes this item.")
+    where = report.get("where") or "library"
+    evidence = [f"{where}: {report['name']}"] if report.get("name") else []
+    evidence.append("jason life-safety --list")
+    authority = f"Inspection report: {report.get('name') or report.get('id') or 'on file'}" + (f", {report['day']}" if report.get("day") else "")
+    if dl and dl.get("record"):
+        authority += f"; deadline per {dl['basis']}, record {dl['record']}"
+    return BoardItem(item_id(row["id"]), title=title, summary=" ".join(lines), ask=ITEM_ASK, category=ItemCategory.SAFETY,
+                     priority=p["value"], authority=authority, evidence=tuple(evidence),
+                     due=date.fromisoformat(dl["date"]) if dl else None, source=ITEM_SOURCE)
+
+
+def _active_community() -> Any:
+    try:
+        from jason.community import community
+
+        return community()
+    except Exception:  # noqa: BLE001 - no profile: the system is named by its key
+        return None
+
+
+def sync_board_items(data_dir: Path | str, *, ident: str | None = None, community: Any = None,
+                     today: date | None = None) -> dict[str, Any]:
+    """Build and refresh the board item of each confirmed deficiency (of ``ident`` only, when given). A new item is
+    proposed for the next agenda; an existing one has jason's fields refreshed and the board's kept. A cleared deficiency
+    with no item yet gets none, and one with an item is only refreshed: nothing is closed here. Call it without the
+    register's lock held. Returns ``{ok: True, items: [...], added: [...]}``; a failure raises, for the caller to report."""
+    from jason.tasks import board_items
+
+    day = today or date.today()
+    comm = community if community is not None else _active_community()
+    have = {i.id for i in board_items.load(Path(data_dir))}
+    new: list[BoardItem] = []
+    old: list[BoardItem] = []
+    for row in load(data_dir):
+        if ident and row["id"] != ident:
+            continue
+        state = state_of(row)
+        if not state["confirmed"]:
+            continue
+        item = board_item_of(row, state, comm, today=day)
+        if item.id in have:
+            old.append(item)
+        elif not state["cleared"]:
+            new.append(item)
+    if new:
+        board_items.propose(Path(data_dir), new, today=day)
+    if old:
+        board_items.upsert(Path(data_dir), old, today=day)
+    return {"ok": True, "items": [i.id for i in new + old], "added": [i.id for i in new]}
+
+
 # --- reading ----------------------------------------------------------------------------------------------------------
 
-def view(data_dir: Path | str, *, system: str = "", detail: bool = True) -> dict[str, Any]:
+def _standing_rank(s: Mapping[str, Any]) -> int:
+    return {"open": 0, "proposed": 1, "cleared": 2}[s["standing"]]
+
+
+def view(data_dir: Path | str, *, system: str = "", detail: bool = True, today: date | None = None) -> dict[str, Any]:
     """The register as the Life safety screen reads it. ``detail`` False (a viewer who may not see the impairment and
-    insurer record) gives the counts alone."""
+    insurer record) gives the counts alone, with the counts that reveal an impairment (``impairments``,
+    ``insurerNotTold``, ``urgent``) null, never a bare zero.
+
+    Each detail row also carries ``severity`` (a person's word, or None), ``deadline`` (a day a person recorded, or None),
+    ``priority`` (``value``, ``proposed``, ``why``), and ``boardItem`` (its id and status, or None). Rows are sorted open
+    first, then by priority, deadline ascending (none last), and the date found."""
+    day = today or date.today()
     rows = [r for r in load(data_dir) if not system or r["system"] == system]
-    states = [(r, state_of(r)) for r in rows]
-    counts = {"proposed": sum(1 for _, s in states if s["standing"] == "proposed"),
-              "open": sum(1 for _, s in states if s["standing"] == "open"),
-              "cleared": sum(1 for _, s in states if s["standing"] == "cleared"),
-              "impairments": sum(1 for _, s in states if s["impairmentOpen"]),
-              "insurerNotTold": sum(1 for _, s in states if s["insurerNotTold"])}
+    states = [(r, state_of(r), priority_of(state_of(r), day)) for r in rows]
+    open_ = [(r, s, p) for r, s, p in states if s["standing"] == "open"]
+    full = {"proposed": sum(1 for _, s, _ in states if s["standing"] == "proposed"),
+            "open": len(open_),
+            "cleared": sum(1 for _, s, _ in states if s["standing"] == "cleared"),
+            "impairments": sum(1 for _, s, _ in states if s["impairmentOpen"]),
+            "insurerNotTold": sum(1 for _, s, _ in states if s["insurerNotTold"]),
+            "urgent": sum(1 for _, _, p in open_ if p["value"] is Priority.URGENT),
+            "overdueDeadlines": sum(1 for _, s, _ in open_ if s["deadline"] and s["deadline"] < day.isoformat())}
+    counts = full if detail else {**full, "impairments": None, "insurerNotTold": None, "urgent": None}
     out: dict[str, Any] = {"found": True, "counts": counts, "detail": detail,
                            "command": "jason life-safety", "caveats": list(CAVEATS)}
     if detail:
-        out["rows"] = [{**r, **s} for r, s in states]
+        try:
+            from jason.tasks import board_items
+
+            items = {i.id: i for i in board_items.load(Path(data_dir))}
+        except Exception:  # noqa: BLE001 - an unreadable board list leaves the item column empty
+            items = {}
+
+        def shown(r, s, p):
+            item = items.get(item_id(r["id"]))
+            return {**r, **s, "priority": {"value": p["value"].value, "proposed": p["proposed"], "why": p["why"]},
+                    "boardItem": {"id": item.id, "status": item.status.value} if item else None}
+
+        ordered = sorted(states, key=lambda t: (_standing_rank(t[1]), PRIORITY_ORDER[t[2]["value"]], t[1]["deadline"] is None,
+                                                t[1]["deadline"] or "", (t[0].get("report") or {}).get("day") or "9999", t[0]["id"]))
+        out["rows"] = [shown(*t) for t in ordered]
     else:
         out["rows"] = []
         out["held"] = ("Which deficiencies impair a safeguard, what cleared each, and whether the insurer was told may bear on "
@@ -329,14 +622,24 @@ CAVEATS = (
     "A deficiency is cleared only by a linked record, never by a subject line. jason contacts no insurer: \"insurer told\" "
     "records what a person did.",
     "The register is append only: a correction is a later act, with who and when.",
+    "A severity and a deadline are a person's words. Until a person sets a severity, the priority is jason's proposal "
+    "(urgent if it impairs a safeguard and the insurer is not shown told; high if it impairs one; a near or past "
+    "deadline raises it a step), not a legal standard. jason computes no legal deadline.",
+    "Each confirmed deficiency is a board item proposed for the next agenda; the board's status, owner, meeting, and "
+    "notes on it are never overwritten, and a cleared deficiency closes nothing.",
 )
 
 
-def lines(result: Iterable[Mapping[str, Any]]) -> list[str]:
+def lines(result: Iterable[Mapping[str, Any]], today: date | None = None) -> list[str]:
     out = []
     for r in result:
         s = state_of(r)
         flag = ("  IMPAIRS, insurer not told" if s["insurerNotTold"] else "  impairs" if s["impairmentOpen"] else "")
+        if s["confirmed"] and not s["cleared"]:
+            p = priority_of(s, today)
+            flag += f"  {p['value'].value}{' (proposed)' if p['proposed'] else ''}"
+        if s["deadline"]:
+            flag += f"  deadline {s['deadline']} ({s['deadlineBy']['basis']})"
         where = f"{r['system'] or 'system not placed'}" + (f" ({', '.join(r['buildings'])})" if r["buildings"] else "")
         found = (r.get("report") or {}).get("day") or "?"
         out.append(f"{r['id']}  {s['standing']:<8} {where}; found {found}{flag}")
@@ -346,8 +649,14 @@ def lines(result: Iterable[Mapping[str, Any]]) -> list[str]:
         if s["cleared"]:
             c = s["cleared"]
             out.append(f"    cleared {c['on']} by {c['kind']} {c['record']} (recorded by {c['by']})")
+        note = r.get("boardItem")
+        if note is not None:
+            out.append("    board item: " + (", ".join(note.get("items") or ["none"]) if note.get("ok")
+                                              else f"NOT written ({note.get('why')}); the act is recorded"))
     return out
 
 
-__all__ = ["Act", "CAVEATS", "CLEARED_BY", "ClearedBy", "STORE", "clear", "confirm", "deficiency_id", "insurer_told", "lines",
-           "load", "propose", "set_impairs", "state_of", "view"]
+__all__ = ["Act", "CAVEATS", "CLEARED_BY", "ClearedBy", "DEADLINE_BASES", "DEADLINE_WINDOW_DAYS", "DeadlineBasis", "SEVERITIES",
+           "STORE", "board_item_of", "clear", "confirm", "deficiency_id", "insurer_told", "item_id", "lines", "load",
+           "priority_of", "propose", "proposed_priority", "set_deadline", "set_impairs", "set_severity", "state_of",
+           "sync_board_items", "view"]

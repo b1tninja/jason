@@ -62,9 +62,13 @@ def test_a_recorded_impairment_with_no_insurer_notice_raises_the_banner_only_for
     (tmp_path / "life-safety" / "deficiencies.json").write_text(__import__("json").dumps({"deficiencies": [row]}), encoding="utf-8")
     seen = _read(tmp_path, (ALARM,), (ALARM_TEST,), private=True)
     assert seen["summary"]["impairments"] == 1 and seen["summary"]["insurerNotTold"] == 1
+    assert seen["summary"]["urgentDeficiencies"] == 1 and seen["deficiencies"]["rows"][0]["priority"]["value"] == "urgent"
     assert seen["banner"]["ids"] == ["def-1"] and "no record shows the insurer was told" in seen["banner"]["sentence"]
     held = _read(tmp_path, (ALARM,), (ALARM_TEST,))
     assert held["banner"] is None and held["summary"]["openDeficiencies"] == 1 and held["deficiencies"]["rows"] == []
+    # what reveals an impairment (urgent included) is null for a viewer without P2, in the summary and in the register's counts
+    assert held["summary"]["urgentDeficiencies"] is None and held["summary"]["overdueDeadlines"] == 0
+    assert held["deficiencies"]["counts"]["urgent"] is None and held["deficiencies"]["counts"]["impairments"] is None
     assert register.view(tmp_path)["counts"]["impairments"] == 1
 
 
@@ -158,6 +162,28 @@ def test_the_register_is_written_in_the_signers_name_and_a_body_by_is_not_truste
     assert c.post(f"/api/write/life-safety/{ident}", json={"act": "impairs", "value": "yes"}).status_code == 400
     assert c.post(f"/api/write/life-safety/{ident}", json={"act": "impairs", "value": True}).json["impairmentOpen"] is True
     assert c.post(f"/api/write/life-safety/{ident}", json={"act": "nope"}).status_code == 400
+
+
+def test_severity_and_deadline_are_written_in_the_signers_name_and_reach_the_board_item(wapp, tmp_path):
+    from jason.tasks import board_items
+
+    c = webclient.sign_in(webclient.client(wapp), "Pat Example")
+    ident = c.post("/api/write/life-safety/propose", json={"act": "propose"}).json["ids"][0]
+    url = f"/api/write/life-safety/{ident}"
+    assert c.post(url, json={"act": "severity", "value": "high"}).status_code == 400            # not confirmed yet
+    assert c.post(url, json={"act": "confirm"}).json["boardItem"]["ok"] is True
+    assert c.post(url, json={"act": "severity", "value": "critical"}).status_code == 400
+    resp = c.post(url, json={"act": "severity", "value": "urgent", "by": "Somebody Else"})
+    assert resp.status_code == 403                                                              # a body by is refused
+    row = c.post(url, json={"act": "severity", "value": "urgent"}).json
+    assert row["severity"] == "urgent" and row["severityBy"]["by"] == "Pat Example" and row["boardItem"]["ok"] is True
+    assert c.post(url, json={"act": "deadline", "date": "soon", "basis": "insurer"}).status_code == 400
+    assert c.post(url, json={"act": "deadline", "date": "2999-01-01", "basis": "me"}).status_code == 400
+    row = c.post(url, json={"act": "deadline", "date": "2999-01-01", "basis": "vendor", "record": "gmail:abc"}).json
+    assert row["deadline"] == "2999-01-01" and row["deadlineBy"]["by"] == "Pat Example" and row["deadlineBy"]["basis"] == "vendor"
+    item = next(i for i in board_items.load(tmp_path) if i.id == f"life-safety-{ident}")
+    assert item.priority.value == "urgent" and item.due.isoformat() == "2999-01-01" and item.status.value == "proposed"
+    assert len(board_items.load(tmp_path)) == 1
 
 
 def test_nobody_without_an_office_and_no_admin_viewing_as_someone_writes(wapp):

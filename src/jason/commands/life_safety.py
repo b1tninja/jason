@@ -9,8 +9,15 @@
 - ``--cleared ID --record REF --kind KIND --on DATE --by NAME``: the record that cleared it. ``REF`` is a library id; an
   invoice's subject line is not one.
 - ``--insurer-told ID --record REF --on DATE --by NAME``: that a person told the insurer, and the record of what was sent.
+- ``--severity ID --value urgent|high|normal --by NAME``: a person's severity (replaces jason's proposed priority).
+- ``--deadline ID --date YYYY-MM-DD --basis insurer|authority|documents|vendor|person [--record REF] --by NAME``: a deadline
+  a person knows and who set it (jason computes none); it is the board item's due date.
 
-It writes only ``data/life-safety/deficiencies.json``, append only. It contacts no insurer, vendor, or agent.
+Each confirmed deficiency is a board item (``data/board/items.json``), proposed for the next agenda and refreshed by each
+act; the board's own fields are never overwritten and nothing is closed.
+
+It writes only ``data/life-safety/deficiencies.json`` (append only) and the board items it owns. It contacts no insurer,
+vendor, or agent.
 """
 
 from __future__ import annotations
@@ -32,7 +39,7 @@ def cmd_life_safety(args: argparse.Namespace) -> int:
     from jason.tasks import deficiencies as d
 
     root = data_dir(args)
-    acts = [a for a in ("confirm", "impairs", "cleared", "insurer_told") if getattr(args, a)]
+    acts = [a for a in ("confirm", "impairs", "cleared", "insurer_told", "severity", "deadline") if getattr(args, a, None)]
     if len(acts) > 1 or (acts and args.propose):
         return _refuse("one act at a time")
     try:
@@ -53,6 +60,11 @@ def cmd_life_safety(args: argparse.Namespace) -> int:
             row = d.clear(root, args.cleared, record=args.record, kind=args.kind, on=args.on, by=args.by)
         elif args.insurer_told:
             row = d.insurer_told(root, args.insurer_told, record=args.record, on=args.on, by=args.by)
+        elif getattr(args, "severity", None):
+            row = d.set_severity(root, args.severity, args.value or "", by=args.by)
+        elif getattr(args, "deadline", None):
+            row = d.set_deadline(root, args.deadline, day=getattr(args, "date", None) or "", basis=getattr(args, "basis", None) or "",
+                                 record=args.record or "", by=args.by)
         else:
             body = d.view(root, system=args.system or "")
             if args.json:
@@ -60,7 +72,8 @@ def cmd_life_safety(args: argparse.Namespace) -> int:
                 return 0
             c = body["counts"]
             print(f"{c['proposed']} proposed, {c['open']} open ({c['impairments']} impair a safeguard, "
-                  f"{c['insurerNotTold']} with no record the insurer was told), {c['cleared']} cleared.")
+                  f"{c['insurerNotTold']} with no record the insurer was told, {c['urgent']} urgent, "
+                  f"{c['overdueDeadlines']} past a recorded deadline), {c['cleared']} cleared.")
             for line in d.lines(body["rows"]):
                 print(line)
             return 0
@@ -71,11 +84,12 @@ def cmd_life_safety(args: argparse.Namespace) -> int:
 
 
 def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callable[[Any], Any]) -> None:
-    from jason.tasks.deficiencies import CLEARED_BY
+    from jason.tasks.deficiencies import CLEARED_BY, DEADLINE_BASES, SEVERITIES
 
     p = sub.add_parser("life-safety", help="The deficiency register: propose from the reports' readings, then a person "
                                            "confirms, says whether it impairs a safeguard, links what cleared it, and "
-                                           "records that the insurer was told (append only, with who and when)")
+                                           "records that the insurer was told, a severity, and a deadline (append only, with who "
+                                           "and when); each confirmed deficiency is a board item proposed for the next agenda")
     add_common(p)
     p.add_argument("--list", action="store_true", help="list the register (the default)")
     p.add_argument("--system", metavar="KEY", help="with --list: one system")
@@ -83,7 +97,11 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--propose", action="store_true", help="add a proposed row for each open deficiency in the readings")
     p.add_argument("--confirm", metavar="ID", help="accept a proposed row (with --by)")
     p.add_argument("--impairs", metavar="ID", help="whether it impairs a safeguard (with --value and --by)")
-    p.add_argument("--value", choices=("yes", "no"), help="with --impairs")
+    p.add_argument("--value", choices=("yes", "no", *SEVERITIES), help="with --impairs (yes or no) or --severity (urgent, high, normal)")
+    p.add_argument("--severity", metavar="ID", help="a person's severity for a deficiency (with --value and --by)")
+    p.add_argument("--deadline", metavar="ID", help="a deadline a person knows (with --date, --basis, --by; --record optional)")
+    p.add_argument("--date", metavar="DATE", help="with --deadline: the deadline (YYYY-MM-DD; a past date within a year is overdue)")
+    p.add_argument("--basis", choices=DEADLINE_BASES, help="with --deadline: who set it")
     p.add_argument("--cleared", metavar="ID", help="link the record that cleared it (with --record, --kind, --on, --by)")
     p.add_argument("--insurer-told", dest="insurer_told", metavar="ID",
                    help="record that a person told the insurer (with --record, --on, --by)")

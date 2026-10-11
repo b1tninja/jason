@@ -116,7 +116,7 @@ def compose(data_dir: Path, community: Any, *, today: date | None = None, system
             return {"found": False, "note": "The specification names no vendor with a public report portal."}
         return {"portal": portal_view(data_dir, portal), "filingPlan": filing_plan_view(data_dir, portal.key)}
 
-    reg = _part(lambda: register.view(data_dir, system=system, detail=private))
+    reg = _part(lambda: register.view(data_dir, system=system, detail=private, today=day))
     counts_of = reg.get("counts") if reg.get("found") else None
     banner = [r["id"] for r in reg.get("rows", []) if r.get("insurerNotTold")] if private else []
     return {
@@ -128,7 +128,9 @@ def compose(data_dir: Path, community: Any, *, today: date | None = None, system
                     "openDeficiencies": counts_of["open"] if counts_of else None,
                     "clearedDeficiencies": counts_of["cleared"] if counts_of else None,
                     "impairments": counts_of["impairments"] if counts_of and private else None,
-                    "insurerNotTold": counts_of["insurerNotTold"] if counts_of and private else None, "unplaced": len(body["unplaced"]),
+                    "insurerNotTold": counts_of["insurerNotTold"] if counts_of and private else None,
+                    "urgentDeficiencies": counts_of["urgent"] if counts_of and private else None,
+                    "overdueDeadlines": counts_of["overdueDeadlines"] if counts_of else None, "unplaced": len(body["unplaced"]),
                     "questions": len(body["questions"])},
         "systems": cards, "unplaced": body["unplaced"], "recordKeeping": body["recordKeeping"],
         "questions": body["questions"], "otherFilings": body["otherFilings"], "sources": body["sources"],
@@ -160,7 +162,7 @@ def life_safety(args: Args) -> dict[str, Any]:
     return compose(Path(_data_dir(None)), community(), system=(args.get("system") or "").strip(), private=private)
 
 
-ACTS = ("confirm", "impairs", "cleared", "insurer-told", "propose")
+ACTS = ("confirm", "impairs", "cleared", "insurer-told", "severity", "deadline", "propose")
 ACTING_REFUSED = "Viewing as {who} (admin view): the register is written in a person's own name. Go back to yourself first."
 
 
@@ -168,8 +170,10 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     """``POST /api/write/life-safety/<deficiency id>`` with ``{act, ...}``: a person's entry in the deficiency register
     (``jason.tasks.deficiencies``), append only, in the name of whoever signed in (a ``by`` in the body is not trusted).
     ``act`` is ``confirm``; ``impairs`` (``value``: true or false); ``cleared`` (``record``, ``kind``, ``on``);
-    ``insurer-told`` (``record``, ``on``); or ``propose`` (key ``propose``: read the reports' readings into proposed rows).
-    For an office that opens P2, never while an admin views as someone else. jason contacts no insurer: this records what
+    ``insurer-told`` (``record``, ``on``); ``severity`` (``value``: urgent, high, or normal); ``deadline`` (``date``,
+    ``basis``: insurer, authority, documents, vendor, or person; ``record`` optional); or ``propose`` (key ``propose``: read
+    the reports' readings into proposed rows). Each act on a confirmed deficiency also refreshes its board item; the answer's
+    ``boardItem`` says whether that was written (a failure there never undoes the act). For an office that opens P2, never while an admin views as someone else. jason contacts no insurer: this records what
     a person did."""
     from flask import abort
 
@@ -199,6 +203,11 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     elif act == "cleared":
         row = register.clear(root, key, record=str(body.get("record") or ""), kind=str(body.get("kind") or ""),
                              on=str(body.get("on") or ""), by=by)
+    elif act == "severity":
+        row = register.set_severity(root, key, str(body.get("value") or ""), by=by)
+    elif act == "deadline":
+        row = register.set_deadline(root, key, day=str(body.get("date") or ""), basis=str(body.get("basis") or ""),
+                                    record=str(body.get("record") or ""), by=by)
     else:
         row = register.insurer_told(root, key, record=str(body.get("record") or ""), on=str(body.get("on") or ""), by=by)
     return {**row, **register.state_of(row)}
