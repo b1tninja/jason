@@ -4059,6 +4059,9 @@ def build_parser() -> argparse.ArgumentParser:
     mailroom.add_argument("--approval", metavar="ID", default="",
                           help="A payhoa-mailroom-send approval: check it; with --send --yes, mail it (only a plan "
                                "signed by two distinct people whose fingerprint still matches)")
+    mailroom.add_argument("--count", type=int, metavar="N",
+                          help="With --approval --send --yes: the number of changes (letters) the plan makes, typed, where the "
+                               "board asked for it above some number of changes (jason controls)")
     mailroom.add_argument("--yes", action="store_true", help="Confirm --send or --cancel")
     mailroom.add_argument("--json", action="store_true", help="Print JSON")
     mailroom.set_defaults(func=cmd_mailroom)

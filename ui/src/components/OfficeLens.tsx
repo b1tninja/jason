@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { ApiError, getJson } from "../lib/api";
 import {
-  BANDS, bandTitle, hashWithLens, holdsAny, isOwnLens, lensFromHash, notYours, officesText, theOffice,
+  BANDS, bandTitle, hashWithLens, holdsAny, isOwnLens, lensFromHash, notYours, officesText, theOffice, todayCounts,
   type BandKey, type OfficeInfo, type OfficeRow, type OfficeViewData,
 } from "../lib/officeView";
 import { MINE_HREF, runHref } from "../lib/work";
@@ -91,6 +91,10 @@ function RowMarks({ row }: { row: OfficeRow }) {
   return (
     <>
       {row.urgency && row.urgency !== "coming up" && <Pill word={row.urgency} />}
+      {row.type === "plan-to-apply" && row.stale && <span className="muted">will be planned again</span>}
+      {row.type === "plan-to-apply" && row.terminalOnly && <span className="muted">applied at the terminal</span>}
+      {row.type === "plan-to-apply" && row.pausing && <span className="muted">held by the board's pause</span>}
+      {row.type === "plan-to-apply" && row.reminderDue && <span className="muted">reminder due</span>}
       {row.shared && <span className="muted">the board's</span>}
       {row.backup && <span className="muted">as backup</span>}
       {row.basis && <span className="muted">{row.basis}</span>}
@@ -104,6 +108,7 @@ export function OfficeRowItem({ row }: { row: OfficeRow }) {
   return (
     <li className="office-row" data-type={row.type}>
       <span className="office-row-text">{row.text}</span>
+      {row.type === "plan-to-apply" && row.note && <span className="muted office-row-note">{row.note}</span>}
       <span className="office-row-marks"><RowMarks row={row} /></span>
       {row.due && <DueDate iso={row.due} />}
       {screenLink(row)}
@@ -121,6 +126,7 @@ export function OfficeBand({ band, data }: { band: BandKey; data: OfficeViewData
   const who = own ? "you" : theOffice(data.office);
   const empty: Record<BandKey, string> = {
     waitingOnOffice: `Nothing is waiting on ${who}.`,
+    signedWaiting: "No plan is signed and waiting to be applied.",
     needsAttention: `Nothing needs attention for ${who}.`,
     comingUp: `Nothing is coming up for ${who}.`,
     work: own ? "No run is waiting on you." : `No run is waiting on ${who}.`,
@@ -201,6 +207,7 @@ export function OfficeToday() {
         <h2>{isOwnLens(data) ? "My offices" : `The ${data.office}'s page`}</h2>
         <OfficeLens offices={data.offices} mine={data.mine} value={data.office} onChange={setLens} />
       </header>
+      {todayCounts(data) && <p className="office-today-counts muted" aria-label="Counts">{todayCounts(data)}</p>}
       <OfficeBanner data={data} onBack={() => setLens("")} />
       {data.note && <p className="muted">{data.note}</p>}
       <OfficeBands data={data} />

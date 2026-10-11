@@ -464,7 +464,8 @@ def test_the_show_route_carries_the_exceptions_under_each_flagged_finding(web):
     assert all("exceptions" not in i for i in r.json["items"] if i["class"] != "held_for_board")
     assert r.json["flagged"]["decidedByException"] == 1
     _validator("approval.schema.json").validate({k: v for k, v in r.json.items()
-                                                 if k not in ("kindFacts", "needsSecond", "recitations")})
+                                                 if k not in ("kindFacts", "needsSecond", "recitations", "waitingToApply",
+                                                              "waitingHours", "signedAt", "waitingStale", "terminalOnly", "reminderDue", "reminderHours", "pausing", "pauseEndsAt", "applyPrefs", "applyHold", "typedCount", "serverNow")})
     listed = _signed_in(web, "A Manager").get("/api/approvals").json["approvals"][0]
     assert listed["flaggedCount"] == 2 and listed["decidedByException"] == 1
 

@@ -19,3 +19,10 @@
 .plan-written { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--r); background: var(--panel); }
 .plan-apply-dialog p { margin: 0 0 6px; }
 @media (max-width: 640px) { .plan-steps { grid-template-columns: 1fr; } }
+/* The board's apply preferences (ApplyPanel): the settings in words, the pause's countdown, the typed count. */
+.plan-prefs { border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; background: var(--panel); }
+.plan-prefs > summary { cursor: pointer; font-weight: 600; }
+.plan-prefs-list { margin: 6px 0; padding-left: 18px; display: grid; gap: 4px; }
+.plan-hold { display: grid; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--r); background: var(--panel); }
+.plan-hold p { margin: 0; }
+.plan-hold-clock { font-variant-numeric: tabular-nums; }

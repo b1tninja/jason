@@ -14,7 +14,9 @@
 - **notices** (``jason notices``): every notice in the delivery ledger with follow-ups owed;
 - **living** (``jason living``): living documents with failed rule checks, held sources, or drift, from each one's last
   build (``data/living/<key>/report.json``);
-- **duties** (``jason duties --documents``): the documents' timed duties that nothing tracks and no assignment owns.
+- **duties** (``jason duties --documents``): the documents' timed duties that nothing tracks and no assignment owns;
+- **approvals** (``jason approvals list``): the engine's plans signed and waiting to be applied, how long each has
+  waited since its last signature, and whether it is older than its kind allows (it is planned again before apply).
 
 Each line is an ``Item`` with an ``Urgency`` and the command that gives its detail. A clock the law or the governing
 documents set, passed, is ``LEGAL``, and so is a resend the statute requires; then what is overdue against a policy,
@@ -642,9 +644,31 @@ def people_section(community: Any, root: Path, on: date, *, private: bool = Fals
     return s
 
 
+# --- Approvals --------------------------------------------------------------------------------------------------------
+
+def approvals_section(root: Path) -> Section:
+    """The engine's plans signed and not yet applied (docs/console/approval-clarity.md, section 4): one line a plan,
+    waiting on a person to apply it, with how long since the last signature. Counts, times, and the plan's title only."""
+    from jason.approvals.engine import waiting_to_apply, waiting_words
+
+    s = _new("approvals")
+    waiting = waiting_to_apply(root)
+    for p in waiting:
+        due = " · reminder due" if p.get("reminderDue") else ""             # the board's reminder: it only surfaces, nothing is sent
+        s.items.append(Item(Urgency.OPEN, f"{p['title']}: {waiting_words(p)}{due}", f"jason approvals show {p['id']}"))
+    old = sum(1 for p in waiting if p["stale"])
+    s.counts = {"waiting": len(waiting), "stale": old, "terminalOnly": sum(1 for p in waiting if p["terminalOnly"])}
+    n = len(waiting)
+    s.summary = (f"{n} plan{'s' if n != 1 else ''} signed, waiting to be applied"
+                 + (f" ({old} older than its kind allows, to be planned again first)" if old else "") + "."
+                 if waiting else "No plan is signed and waiting to be applied.")
+    return s
+
+
 # --- The digest -------------------------------------------------------------------------------------------------------
 
-SECTIONS = ("meetings", "requests", "schedule", "people", "notices", "living", "conflicts", "duties", "intake")
+SECTIONS = ("meetings", "requests", "schedule", "people", "notices", "living", "conflicts", "duties", "intake",
+            "approvals")
 TITLES = {"meetings": ("The board meetings' clocks: notice and minutes", "jason schedule-evidence --watch",
                        "governance_digest (section meetings)"),
           "schedule": ("The schedule: overdue and due soon", "jason schedule", "schedule_agenda"),
@@ -654,6 +678,7 @@ TITLES = {"meetings": ("The board meetings' clocks: notice and minutes", "jason 
           "conflicts": ("Provisions that yield to a higher authority", "jason conflicts", "document_conflicts"),
           "notices": ("Notices with follow-ups owed", "jason notices", "notice_delivery"),
           "living": ("Living documents", "jason living", "living_document"),
+          "approvals": ("Plans signed and waiting to be applied", "jason approvals list", "approvals_list"),
           "duties": ("The documents' timed duties nothing tracks", "jason duties --documents all --timed --untracked",
                      "document_duties")}
 
@@ -697,6 +722,7 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
         "notices": lambda: notices_section(root),
         "living": lambda: living_section(community, root, on),
         "duties": lambda: duties_section(community, root),
+        "approvals": lambda: approvals_section(root),
     }
     unknown = [k for k in sections if k not in builders]
     if unknown:
@@ -704,6 +730,7 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
     return Digest(on, [_guard(k, builders[k]) for k in sections], limit)
 
 
-__all__ = ["CAVEAT", "Digest", "Item", "LIMIT", "SECTIONS", "Section", "Urgency", "conflicts_section", "cover_rank",
+__all__ = ["CAVEAT", "Digest", "Item", "LIMIT", "SECTIONS", "Section", "Urgency", "approvals_section", "conflicts_section",
+           "cover_rank",
            "digest", "duties_section", "intake_section", "living_section", "meetings_section", "notices_section",
            "people_section", "request_rank", "requests_section", "schedule_section"]

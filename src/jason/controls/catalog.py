@@ -155,16 +155,52 @@ CATALOG: tuple[ControlType, ...] = (
         {}, ("high-stakes answers at onboarding",)),
 )
 
+# --- apply preferences ---------------------------------------------------------------------------------------------------
+# How a board wants a signed plan applied (docs/console/approval-clarity.md, section 5). They are adopted like a control: the
+# same record, the same act log, an effective date, a history. They are not safeguards, so they are not in ``CATALOG``: they
+# never touch who signs or how many, no suggestion reads the documents for them, and ``jason.controls.apply_prefs`` holds
+# the floors (the console never applies a kind that is terminal-only, costs money, or sends mail). Defaults hold until one is
+# adopted: terminal only, any board member or the manager, no pause, no typed count, a reminder after 24 hours.
+# The shape is the same everywhere: a CHOICE lists its values weakest first, so the later value is the stricter.
+
+_APPLY = (Governs(G.APPLY, "signed plan"),)
+
+PREFERENCES: tuple[ControlType, ...] = (
+    ControlType(
+        "where-apply", "Where a signed plan is applied", F.APPLYING, _APPLY,
+        (ParamSpec("where", K.CHOICE, "Where apply happens", options=("console", "terminal")),), {},
+        ("the board's choice of where a signed plan is applied",), board_sets=("where",)),
+    ControlType(
+        "who-may-apply", "Who may apply a signed plan", F.APPLYING, _APPLY,
+        (ParamSpec("who", K.CHOICE, "Who may apply",
+                   options=("board_or_manager", "any_signer", "not_signer")),), {},
+        ("the board's choice of who applies a signed plan",), board_sets=("who",)),
+    ControlType(
+        "pause-before-apply", "A pause before a signed plan is applied", F.APPLYING, _APPLY,
+        (ParamSpec("minutes", K.COUNT, "Minutes to wait after the last signature", maximum=14 * 24 * 60),
+         ParamSpec("until_next_day", K.FLAG, "Wait until the next day")), {},
+        ("the board's choice to pause between the last signature and apply",), board_sets=("minutes", "until_next_day")),
+    ControlType(
+        "typed-count-over", "A typed count for a large plan", F.APPLYING, _APPLY,
+        (ParamSpec("over", K.CEILING, "Above this many changes the person applying types the count", maximum=100000),),
+        {}, ("the board's choice to have a large plan's count typed at apply",), board_sets=("over",)),
+    ControlType(
+        "reminder-hours", "A reminder for a signed plan", F.APPLYING, _APPLY,
+        (ParamSpec("hours", K.CEILING, "Hours after the last signature when the reminder is due", minimum=1, maximum=24 * 90),
+         ParamSpec("off", K.FLAG, "No reminder")), {},
+        ("the board's choice of when a signed plan that waits is called out",), board_sets=("hours", "off")),
+)
+
 
 def get(key: str) -> ControlType:
-    for t in CATALOG:
+    for t in (*CATALOG, *PREFERENCES):
         if t.key == key:
             return t
-    raise ControlRefused(f"no control type {key!r}: " + ", ".join(t.key for t in CATALOG))
+    raise ControlRefused(f"no control type {key!r}: " + ", ".join(t.key for t in (*CATALOG, *PREFERENCES)))
 
 
 def keys() -> tuple[str, ...]:
     return tuple(t.key for t in CATALOG)
 
 
-__all__ = ["CATALOG", "get", "keys"]
+__all__ = ["CATALOG", "PREFERENCES", "get", "keys"]

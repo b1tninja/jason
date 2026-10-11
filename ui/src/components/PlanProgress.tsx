@@ -2,7 +2,7 @@ import { Command } from "./Command";
 import { Glyph, type GlyphName } from "./Glyph";
 import {
   applyCountsWords, commands, cleanName, isJason, personName, tally, when, writtenTo,
-  type Approval, type KindFacts,
+  type ApplyHold, type Approval, type KindFacts,
 } from "../lib/approvals";
 import "../styles/plan-progress.css";
 
@@ -40,10 +40,12 @@ export function terminalCommand(a: Pick<Approval, "id" | "fingerprint">, me: str
  * named. The Apply step says where apply happens: here (`canApplyHere`, the server allows it), or at a terminal with the
  * command and Copy; a terminal-only kind says it is applied only there. Under it, the standing line: until the plan is
  * applied, **nothing has been written** to the kind's system and what applying will do, in counts; after, the result.
- * It reads from the plan, never from who is looking. `ready` is a signed plan that apply would accept now. */
-export function PlanProgress({ approval: a, me = "", kind, needsSecond: second, canApplyHere = false, ready = false, tooOld = false, blocked = false }: {
+ * It reads from the plan, never from who is looking. `ready` is a signed plan that apply would accept now. `canApplyHere` is
+ * the server's allowance and the board's preference together (a terminal is the default). `hold` is a pause the board adopted
+ * that has not ended: the Apply step says so, and the command waits for it. */
+export function PlanProgress({ approval: a, me = "", kind, needsSecond: second, canApplyHere = false, ready = false, tooOld = false, blocked = false, hold = null }: {
   approval: Approval; me?: string; kind?: KindFacts | null; needsSecond: boolean; canApplyHere?: boolean;
-  ready?: boolean; tooOld?: boolean; blocked?: boolean;
+  ready?: boolean; tooOld?: boolean; blocked?: boolean; hold?: ApplyHold | null;
 }) {
   const keys: StepKey[] = second ? ["review", "sign", "second", "apply", "done"] : ["review", "sign", "apply", "done"];
   const at = currentStep(a, second);
@@ -59,7 +61,8 @@ export function PlanProgress({ approval: a, me = "", kind, needsSecond: second, 
   const to = writtenTo(kind);
   const open = !closed && !["applying", "applied", "failed"].includes(a.status);
   const applyReached = at === "apply";
-  const showCommand = applyReached && ready && (terminalOnly || !canApplyHere);
+  const held = !!hold && applyReached;
+  const showCommand = applyReached && ready && !held && (terminalOnly || !canApplyHere);
 
   /** What each step says: who did it and when once done, else what it waits on or who does it next. */
   const detail = (k: StepKey, done: boolean): string => {
@@ -78,6 +81,7 @@ export function PlanProgress({ approval: a, me = "", kind, needsSecond: second, 
         if (!applyReached) return canApplyHere ? "Once signed, apply from here." : "Once signed, a person applies this at a terminal.";
         if (blocked) return "The plan changed since review: plan it again first.";
         if (tooOld) return "Read too long ago: apply plans it again before it writes anything.";
+        if (held && hold) return `Held by the board's pause until ${when(hold.endsAt)}. It can be withdrawn until then.`;
         return canApplyHere ? "Apply from here." : "A person applies this at a terminal:";
       case "done":
         return a.status === "applied" ? "Read back and recorded: the result is below." : "jason reads back and records what was applied, what failed, and what was refused.";

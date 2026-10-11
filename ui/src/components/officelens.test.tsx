@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetServerSession } from "../lib/api";
-import { bandTitle, hashWithLens, holdsAny, lensFromHash, notYours, officesText } from "../lib/officeView";
+import { bandTitle, hashWithLens, holdsAny, lensFromHash, notYours, officesText, todayCounts } from "../lib/officeView";
 import type { OfficeViewData } from "../lib/officeView";
 import { DisabledForOffice, OfficeBanner, OfficeBands, OfficeLens, OfficeToday } from "./OfficeLens";
 
@@ -18,6 +18,7 @@ const BAND_ROWS = {
     { type: "letter", office: "treasurer", kind: "Sample notice", approver: "the treasurer", count: 2, screen: "approvals", text: "2 Sample notice waiting for the treasurer" },
     { type: "board-item", office: "treasurer", id: "i1", title: "A sample matter", priority: "normal", status: "proposed", due: null, shared: true, screen: "actions", text: "Board item: A sample matter" },
   ],
+  signedWaiting: [] as unknown[],
   needsAttention: [
     { type: "duty", office: "treasurer", key: "books", title: "Review the sample reconciliations", due: "2099-09-05", standing: "overdue", urgency: "LEGAL", basis: "law", screen: "people", text: "Review the sample reconciliations, due 2099-09-05" },
   ],
@@ -33,7 +34,7 @@ function page(over: Partial<OfficeViewData> = {}): OfficeViewData {
   return {
     found: true, asOf: "2099-09-20", office: "treasurer", reading: ["treasurer"], title: "the treasurer", ownOffice: false, vacant: false,
     offices: OFFICES, mine: ["secretary"], bands: BAND_ROWS as never,
-    counts: { waitingOnOffice: 2, needsAttention: 1, comingUp: 1, work: 1 }, bandErrors: {},
+    counts: { waitingOnOffice: 2, signedWaiting: 0, needsAttention: 1, comingUp: 1, work: 1 }, bandErrors: {},
     notComposed: [{ band: "waitingOnOffice", what: "Plans in the approvals engine", why: "No office is attached to a plan." }],
     caveats: ["Reading another office's page is a lens, not that person's session."], ...over,
   };
@@ -172,8 +173,8 @@ describe("OfficeBands", () => {
 
   it("says plainly that a band is empty, and why one could not be read", () => {
     const empty = page({
-      bands: { waitingOnOffice: [], needsAttention: [], comingUp: [], work: [] },
-      counts: { waitingOnOffice: 0, needsAttention: 0, comingUp: 0, work: 0 },
+      bands: { waitingOnOffice: [], signedWaiting: [], needsAttention: [], comingUp: [], work: [] },
+      counts: { waitingOnOffice: 0, signedWaiting: 0, needsAttention: 0, comingUp: 0, work: 0 },
       bandErrors: { needsAttention: "OSError: the schedule store is not readable" },
     });
     render(<OfficeBands data={empty} />);
@@ -190,7 +191,7 @@ describe("OfficeBands", () => {
   });
 
   it("counts the rows a band holds beyond what it shows", () => {
-    render(<OfficeBands data={page({ counts: { waitingOnOffice: 20, needsAttention: 1, comingUp: 1, work: 1 } })} />);
+    render(<OfficeBands data={page({ counts: { waitingOnOffice: 20, signedWaiting: 0, needsAttention: 1, comingUp: 1, work: 1 } })} />);
     expect(screen.getByText("18 more.")).toBeInTheDocument();
   });
 
@@ -245,5 +246,59 @@ describe("OfficeToday", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("is not an office");
     await userEvent.click(screen.getByRole("button", { name: "Back to my offices" }));
     expect(window.location.hash).toBe("#/digest");
+  });
+});
+
+describe("the signed, waiting to be applied band", () => {
+  const PLAN = { type: "plan-to-apply", id: "apr-20990101T000000-0001", kind: "owner-info-tags", title: "A sample plan", office: "", waitingHours: 75, stale: false, terminalOnly: false, needsSecond: false, note: "", screen: "approvals", text: "A sample plan: signed, waiting to be applied · 3 days" };
+  const STALE = { ...PLAN, id: "apr-20990101T000000-0002", waitingHours: 120, stale: true, text: "A sample plan: signed 5 days ago; it will be planned again before it is applied" };
+  const TERMINAL = { ...PLAN, id: "apr-20990101T000000-0003", terminalOnly: true, note: "Applied only at a terminal: jason sample --send --yes", text: "A sample letter plan: signed, waiting to be applied · 3 days" };
+  const withPlans = (rows: unknown[]) => page({ bands: { ...BAND_ROWS, signedWaiting: rows } as never, counts: { waitingOnOffice: 2, signedWaiting: rows.length, needsAttention: 1, comingUp: 1, work: 1 } });
+
+  it("is a band every office reads, titled in the same words for any lens", () => {
+    const { container, rerender } = render(<OfficeBands data={withPlans([PLAN])} />);
+    expect(screen.getByRole("heading", { level: 2, name: "Signed, waiting to be applied" })).toBeInTheDocument();
+    rerender(<OfficeBands data={{ ...withPlans([PLAN]), office: "", ownOffice: false }} />);
+    expect(screen.getByRole("heading", { level: 2, name: "Signed, waiting to be applied" })).toBeInTheDocument();
+    expect(container.querySelector('[data-band="signedWaiting"]')).not.toBeNull();
+  });
+
+  it("lists each plan with how long it has waited and a link to the Approvals screen", () => {
+    const { container } = render(<OfficeBands data={withPlans([PLAN])} />);
+    const band = container.querySelector<HTMLElement>('[data-band="signedWaiting"]')!;
+    expect(within(band).getByText("A sample plan: signed, waiting to be applied · 3 days")).toBeInTheDocument();
+    expect(within(band).getByRole("link", { name: "Open" })).toHaveAttribute("href", "#/approvals");
+  });
+
+  it("says a plan older than its kind allows will be planned again before it is applied", () => {
+    render(<OfficeBands data={withPlans([STALE])} />);
+    expect(screen.getByText("A sample plan: signed 5 days ago; it will be planned again before it is applied")).toBeInTheDocument();
+    expect(screen.getByText("will be planned again")).toBeInTheDocument();
+  });
+
+  it("notes a plan only a terminal applies, with its command", () => {
+    render(<OfficeBands data={withPlans([TERMINAL])} />);
+    expect(screen.getByText("applied at the terminal")).toBeInTheDocument();
+    expect(screen.getByText("Applied only at a terminal: jason sample --send --yes")).toBeInTheDocument();
+  });
+
+  it("says plainly that nothing is signed and waiting, so an empty band is not mistaken for a failure", () => {
+    render(<OfficeBands data={page()} />);
+    expect(screen.getByText("No plan is signed and waiting to be applied.")).toBeInTheDocument();
+  });
+
+  it("carries no person's name from a fixture that has none", () => {
+    const { container } = render(<OfficeBands data={withPlans([PLAN, STALE, TERMINAL])} />);
+    expect(container.textContent).not.toMatch(/Pat Example|Lee President|@example\.org|Owner Example/);
+  });
+
+  it("is counted in the Today heading beside what waits on the office", async () => {
+    expect(todayCounts(withPlans([PLAN, STALE]))).toBe("2 waiting on the treasurer · 2 plans signed, waiting to be applied · 1 needs attention");
+    expect(todayCounts({ ...withPlans([PLAN]), office: "", ownOffice: false })).toBe("2 waiting on you · 1 plan signed, waiting to be applied · 1 needs attention");
+    expect(todayCounts(page({ counts: { waitingOnOffice: 0, signedWaiting: 0, needsAttention: 0, comingUp: 3, work: 0 } }))).toBe("");
+    serve({ treasurer: { body: withPlans([PLAN, STALE]) } });
+    window.location.hash = "#/digest?as=treasurer";
+    render(<OfficeToday />);
+    expect(await screen.findByLabelText("Counts")).toHaveTextContent("2 plans signed, waiting to be applied");
   });
 });

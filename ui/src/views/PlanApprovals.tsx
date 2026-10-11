@@ -3,7 +3,7 @@ import { DataTable, Pill, PlanReview, RemoteView, type Column } from "../compone
 import { postJson, serverSession, type ApiError, type ServerSession } from "../lib/api";
 import { useControlNotice } from "../lib/controls";
 import { useApi } from "../lib/useApi";
-import { planState, STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck } from "../lib/approvals";
+import { listState, plural, STATUS_MEANING, when, type ApplyHold, type ApplyPrefs, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck, type TypedCount } from "../lib/approvals";
 import type { Citation } from "../components/Recitation";
 import { boardItemHref } from "./BoardItemsView";
 
@@ -27,6 +27,8 @@ export function engineApprovals(page: unknown): Listed[] {
 interface Detail {
   found?: boolean; note?: string; approval?: Approval; audit?: AuditEntry[]; chain?: ChainCheck | null; recheck?: Recheck | null; check?: Recheck | null;
   kindFacts?: KindFacts | null; needsSecond?: boolean | null; recitations?: Record<string, Citation>;
+  /** The board's apply preferences for the kind, a pause not yet over, and whether the apply asks for a typed count. */
+  applyPrefs?: ApplyPrefs | null; applyHold?: ApplyHold | null; typedCount?: TypedCount | null;
 }
 
 export function approvalOf(d: Detail & Partial<Approval>): Approval | null {
@@ -84,7 +86,12 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
   const loaded = r.status === "ready" ? approvalOf(r.data) : null;
   // What a control the board adopted requires of this kind; silent when it cannot be read (a viewer the loader refuses, an error).
   const notice = useControlNotice(loaded?.kind ?? "", typeof loaded?.costCents === "number" ? loaded.costCents : undefined, `${loaded?.fingerprint ?? ""}${loaded?.status ?? ""}`);
-  useEffect(() => { if (loaded) onLoaded?.(r.status === "ready" && r.data.needsSecond != null ? { ...loaded, needsSecond: r.data.needsSecond } : loaded); }, [loaded, onLoaded]);
+  // the server's beside-the-record fields follow the plan up to the list, so its row and its "waiting to be applied" stay true
+  useEffect(() => {
+    if (!loaded) return;
+    const d = r.status === "ready" ? r.data : null;
+    onLoaded?.(d ? { ...loaded, ...(d.needsSecond != null ? { needsSecond: d.needsSecond } : {}), waitingToApply: !!d.waitingToApply, waitingHours: d.waitingHours ?? null, waitingStale: !!d.waitingStale, signedAt: d.signedAt ?? "", terminalOnly: !!d.terminalOnly, reminderDue: !!d.reminderDue, reminderHours: d.reminderHours ?? null, pausing: !!d.pausing, pauseEndsAt: d.pauseEndsAt ?? "" } : loaded);
+  }, [loaded, onLoaded]);
   useEffect(() => { let on = true; serverSession().then((s) => on && setServer(s)); return () => { on = false; }; }, []);
   const step = (name: string, pick: (b: Record<string, unknown>) => Record<string, unknown>) => async (body?: object) => {
     setBusy(true); setError("");
@@ -124,7 +131,8 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
             onDecline={step("decline", ({ by, reason }) => ({ by, reason }))}
             onWithdraw={step("withdraw", ({ by, reason }) => ({ by, reason }))}
             onCheck={server?.liveChecks === false ? undefined : () => step("check", () => ({}))()}
-            onApply={step("apply", ({ by, confirm }) => ({ by, confirm }))} applyBlocked={applyBlocked} />
+            onApply={step("apply", ({ by, confirm, count }) => ({ by, confirm, ...(count !== undefined ? { count } : {}) }))} applyBlocked={applyBlocked}
+            prefs={d.applyPrefs} hold={d.applyHold} typedCount={d.typedCount} onPauseOver={r.reload} />
         );
       }}
     </RemoteView>
@@ -140,11 +148,12 @@ export function PlanApprovals({ page, me, open, onOpen }: { page: unknown; me: s
     ...Object.values(fresh).filter((a) => !listed.some((l) => l.id === a.id)),
     ...listed.map((l) => fresh[l.id] ?? l),
   ].sort((x, y) => Number(!OPEN.includes(x.status)) - Number(!OPEN.includes(y.status)) || String(y.requestedAt ?? "").localeCompare(String(x.requestedAt ?? "")));
+  const waiting = rows.filter((a) => a.waitingToApply).length;
   const [onLoaded] = useState(() => (a: Approval) => setFresh((f) => (f[a.id] === a ? f : { ...f, [a.id]: a })));
   const columns: Column<Listed>[] = [
     { key: "title", header: "Plan", render: (a) => <><strong>{a.title}</strong><br /><span className="muted">{a.kind} · {a.id}</span></> },
     { key: "status", header: "Status", render: (a) => <Pill word={a.status} meaning={STATUS_MEANING[a.status]} /> },
-    { key: "state", header: "Where it stands", value: (a) => planState(a, me) },
+    { key: "state", header: "Where it stands", value: (a) => listState(a, me) },
     { key: "items", header: "Items", value: (a) => counts(a) },
     { key: "requestedBy", header: "Asked by", value: (a) => a.requestedBy ?? "" },
     { key: "readAt", header: "Read live", kind: "date", value: (a) => when(a.readAt) },
@@ -153,6 +162,11 @@ export function PlanApprovals({ page, me, open, onOpen }: { page: unknown; me: s
     <section className="approvals-group" aria-label="Plans of writes">
       <h2>Plans of writes</h2>
       <p className="muted">Changes jason planned outside itself (PayHOA tags, request completions), each decided item by item by a named person. jason plans; it never approves.</p>
+      {waiting > 0 && (
+        <p className="notice" role="status" data-waiting-to-apply={waiting}>
+          {plural(waiting, "plan is", "plans are")} signed and waiting to be applied. Nothing has been written for {waiting === 1 ? "it" : "them"} yet.
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="muted">No plan of writes on disk. <code className="chip">jason approvals plan owner-info-tags --by NAME</code> makes one.</p>
       ) : (

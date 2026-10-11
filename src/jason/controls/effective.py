@@ -92,6 +92,10 @@ def validate(control: Control, *, kinds: Iterable[Any] | None = None) -> list[st
         elif kind.approver is Approver.TWO_PERSON and _weaker_than_two(control):
             out.append(f"{kind.key} is a two-person kind: a control cannot ask for less than two, "
                        "or only above an amount")
+    if ctype.governs_apply:                     # a preference for applying: its scope and its floors (apply_prefs)
+        from jason.controls import apply_prefs
+
+        out += apply_prefs.problems(control, kinds)
     return out
 
 

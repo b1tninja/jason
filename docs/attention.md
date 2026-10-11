@@ -25,6 +25,7 @@ jason attention --on 2026-11-01       # read a given day as today
 | Notices | `data/notices/deliveries.db` | every notice in the ledger with a follow-up owed: a resend the law requires, one the association's policy asks, an address to ask for | `jason notices KEY` |
 | Living documents | each one's last build, `data/living/KEY/report.json` | a rule row the current text no longer bears out, a source held, the working copy's drift, the findings, a build over 30 days old, a document never built | `jason living KEY` |
 | Timed duties | `data/duties/*.json` | the association's duties with a deadline or recurrence that no recurring deadline, calendar event, notice rule, or assignment carries; owners' duties as a count | `jason duties --documents KEY --timed --untracked` |
+| Signed plans | `data/approvals/*.json` | each plan of writes outside jason that is signed by everyone it needs and not yet applied, with how long since its last signature, and whether it is older than its kind allows (it is planned again before apply); counts, times, and the plan's title only | `jason approvals list`, `jason approvals show ID` |
 
 Every line names the command that gives its detail; each section names its MCP tool.
 

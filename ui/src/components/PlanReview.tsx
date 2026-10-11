@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useId, useState, type KeyboardEvent } from "react";
+import { ApplyButton, ApplyPrefsNote, PauseHold } from "./ApplyPanel";
 import { ApplyResult } from "./ApplyResult";
 import { Confirm } from "./Confirm";
 import { ApproveBar } from "./ApproveBar";
@@ -20,7 +21,8 @@ import { WriteRow } from "./WriteRow";
 import {
   applyCountsWords, cleanName, commands, decidable, EXCEPTION_NUDGE, flaggedCounts, groupItems, isApprovable, isFlagged, needsSecond, personName,
   planState, plural, SECTIONS, short, signerProblem, staleness, STATUS_MEANING, systemWord, takesEffect, when, type Approval, type AuditEntry, type ChainCheck,
-  type DecideBody, type KindFacts, type PlanItem, type Recheck, type ReferBody, type SignBody,
+  type ApplyHold, type ApplyPrefs, type DecideBody, type KindFacts, type PlanItem, type Recheck, type ReferBody, type SignBody,
+  type TypedCount,
 } from "../lib/approvals";
 import type { ControlNotices } from "../lib/controls";
 
@@ -67,7 +69,7 @@ export const PLAN_CAVEATS = [
 export function PlanReview({
   approval, me = "", audit, chain, recheck, now, maxAgeHours = 24, twoPerson = false, recitations, boardHref, kind, notice,
   onDecide, onSubmit, onConfirmSecond, onDecline, onReplan, onOpen, busy, error, caveats = PLAN_CAVEATS,
-  onCheck, onApply, applyBlocked, onWithdraw, onRefer,
+  onCheck, onApply, applyBlocked, onWithdraw, onRefer, prefs, hold, typedCount, onPauseOver,
 }: {
   approval: Approval; me?: string; audit?: readonly AuditEntry[]; chain?: ChainCheck | null; recheck?: Recheck | null;
   now?: string; maxAgeHours?: number; twoPerson?: boolean; recitations?: Readonly<Record<string, Citation>>;
@@ -82,8 +84,13 @@ export function PlanReview({
   onCheck?: Act<void>;
   /** Apply the approved items, as `me`, confirming the full fingerprint. Without it, or with `applyBlocked` (why the
    * server will not apply), the step is the terminal command. */
-  onApply?: Act<{ by: string; confirm: string }>; applyBlocked?: string;
+  onApply?: Act<{ by: string; confirm: string; count?: number }>; applyBlocked?: string;
   onWithdraw?: Act<{ by: string; reason: string }>;
+  /** The board's apply preferences for this kind (`applyPrefs`): where apply happens, who, a pause, a typed count, a reminder;
+   * the defaults until it adopts one. Absent: the page offers apply wherever the server allows it, as before. `hold` is a pause
+   * not yet over (a countdown and Withdraw; `onPauseOver` runs when it ends), `typedCount` whether the apply dialog asks the
+   * person to type the number of changes. */
+  prefs?: ApplyPrefs | null; hold?: ApplyHold | null; typedCount?: TypedCount | null; onPauseOver?: () => void;
   /** Put a flagged item's finding before the board (makes or refreshes its board item; decides nothing). */
   onRefer?: Act<ReferBody>;
 }) {
@@ -123,8 +130,13 @@ export function PlanReview({
   // says so and offers the re-plan.
   const ready = signed && (!second || !!a.second) && !stale.blocked && !stale.tooOld;
   const terminalOnly = !!kind?.terminalOnly;
-  // Apply from here only where the server allows it and the kind is not terminal-only (a mailing is applied at the terminal).
-  const canApplyHere = !!onApply && !applyBlocked && !terminalOnly;
+  // Apply from here only where the server allows it, the board adopted a console button for the kind (a terminal is the
+  // default; the server asks again), and the kind is not terminal-only (a mailing is applied at the terminal).
+  const consoleChosen = prefs ? prefs.consoleAllowed : true;
+  const canApplyHere = !!onApply && !applyBlocked && !terminalOnly && consoleChosen;
+  const holding = ready && !!hold;
+  const withdrawForm = onWithdraw && ["planned", "in_review", "approved", "partially_approved"].includes(a.status)
+    ? <Withdraw me={me} busy={busy} onWithdraw={(b) => run(onWithdraw, b, `Withdrawn by ${b.by}.`)} /> : null;
   const system = systemWord(kind);
   const today = now ? new Date(now) : undefined;
   const by = (i: PlanItem) => a.items.filter((x) => (i.dependsOn ?? []).includes(x.id));
@@ -165,6 +177,7 @@ export function PlanReview({
           </p>
         )}
         <ControlNotice data={notice} />
+        <ApplyPrefsNote prefs={prefs} />
         {a.clock?.due && <p>Clock: {a.clock.what} <DueDate iso={a.clock.due} today={today} /></p>}
         <Evidence items={a.evidence} label="Read from" approval={a.id} level={3} />
         <RefreshAllEvidence approval={a.id} refs={refs} by={me.trim() ? me : undefined} onDone={() => setEvidenceVersion((v) => v + 1)} />
@@ -177,7 +190,7 @@ export function PlanReview({
       {error && <p className="notice notice-error" role="alert">{error}</p>}
 
       <PlanProgress approval={a} me={me} kind={kind} needsSecond={second} canApplyHere={canApplyHere} ready={ready}
-        tooOld={stale.tooOld} blocked={stale.blocked} />
+        tooOld={stale.tooOld} blocked={stale.blocked} hold={hold} />
 
       <ChangedBanner approval={a} recheck={recheck} now={now} maxAgeHours={maxAgeHours} me={me} onOpen={onOpen} busy={busy}
         onReplan={onReplan ? (b) => run(onReplan, b, `Re-plan asked for as ${b.by}.`) : undefined} />
@@ -257,19 +270,23 @@ export function PlanReview({
           onConfirm={onConfirmSecond ? (b) => run(onConfirmSecond, b, `Confirmed as ${b.by}.`) : undefined}
           onDecline={onDecline ? (b) => run(onDecline, b, `Declined as ${b.by}; back to review.`) : undefined} />
       )}
-      {ready && (
+      {holding && hold && <PauseHold hold={hold} onElapsed={onPauseOver} withdraw={withdrawForm} />}
+      {ready && !holding && (
         <div className="stack-sm plan-apply">
           {canApplyHere ? (
             signerProblem(me) ? <p className="muted">{signerProblem(me)} Pick whose name goes on the record to apply.</p> : (
-              <Confirm busy={busy} onConfirm={() => run(onApply, { by: cleanName(me), confirm: a.fingerprint }, `Apply asked for as ${cleanName(me)}.`)} summary={
+              <ApplyButton busy={busy} typedCount={typedCount}
+                onConfirm={(count) => run(onApply, { by: cleanName(me), confirm: a.fingerprint, ...(count !== undefined ? { count } : {}) }, `Apply asked for as ${cleanName(me)}.`)} summary={
                 <div className="plan-apply-dialog">
                   <p><strong>This is the step that changes {system || "things outside jason"}.</strong> {applyCountsWords(a)}</p>
                   <p>Apply as {cleanName(me)}, on fingerprint <code>{short(a.fingerprint)}</code>. Apply reads the live {system ? `${system} ` : ""}state first: if anything an approved change relies on moved, nothing is written and a new plan is made to review.</p>
                 </div>
-              }>Apply {plural(approvedCount, "change", "changes")}{system ? ` to ${system}` : ""} now</Confirm>
+              }>Apply {plural(approvedCount, "change", "changes")}{system ? ` to ${system}` : ""} now</ApplyButton>
             )
           ) : !terminalOnly && applyBlocked ? (
             <p className="muted">Apply is not available here: {applyBlocked} The command is in the progress strip above.</p>
+          ) : !terminalOnly && onApply && !consoleChosen ? (
+            <p className="muted">Apply is at a terminal. {prefs?.rows.find((r) => r.setting === "where")?.words ?? ""} The command is in the progress strip above.</p>
           ) : null}
         </div>
       )}
@@ -279,7 +296,7 @@ export function PlanReview({
           <span className="muted">Reads live and compares, writing nothing (<code>{commands.check(a.id)}</code>).</span>
         </div>
       )}
-      {onWithdraw && ["planned", "in_review", "approved", "partially_approved"].includes(a.status) && <Withdraw me={me} busy={busy} onWithdraw={(b) => run(onWithdraw, b, `Withdrawn by ${b.by}.`)} />}
+      {!holding && withdrawForm}
       <ApplyResult approval={a} onOpen={onOpen} />
       {a.status === "withdrawn" && <p className="notice">Withdrawn. {(a.notes ?? []).join(" ")}</p>}
       {a.status !== "withdrawn" && (a.notes ?? []).length > 0 && <ul className="muted">{(a.notes ?? []).map((n) => <li key={n}>{n}</li>)}</ul>}

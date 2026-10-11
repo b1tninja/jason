@@ -185,8 +185,8 @@ def control_adoption() -> Workflow:
         step("4", "Record the outcome: the control's act log shows adopted or declined, with the decision id", B, J, ("3",),
              check=named_check("control-outcome"),
              choices=(Choice("adopted", tuple(cid(n) for n in ("5", "6", "7", "8"))), Choice("declined", ())),
-             why="No command records it yet: the secretary records it with jason.controls.store.record (the decision id and, "
-                 "for an adoption, the effective date). A declined control ends the run here."),
+             why="The secretary records it with jason controls --adopt, --decline, or --defer (the meeting, the decision id and, "
+                 "for an adoption, the effective date; nothing is written without --yes). A declined control ends the run here."),
         step("5", "Set the effective date the board named", P, S, ("4",), record="the effective date, YYYY-MM-DD", clock=date_named,
              why="The board names the date (docs/controls.md, section 8); it is in the adoption act, and the secretary confirms it is the one named."),
         step("6", "Check the roster can satisfy it (a warning; nothing is blocked)", C, J, ("5",), check=named_check("control-roster"),

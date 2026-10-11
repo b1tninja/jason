@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -11,7 +11,7 @@ from jason.approvals.engine import Planned
 from jason.approvals.model import PlanItem, Result
 from jason.community.base import Officer
 from jason.community.base import OfficerRole as R
-from jason.controls import catalog
+from jason.controls import catalog, store
 from jason.controls.types import Basis, Control, ControlState, HistoryEntry, ControlAct, Scope
 from jason.locks import Resource
 
@@ -66,3 +66,14 @@ def two_person_kind():
     kind = _kind("fake-two", registry.Approver.TWO_PERSON)
     yield kind
     registry.unregister("fake-two")
+
+
+def adopt_preference(data_dir, type_key, params, *, key=None, scope=None, day: date = LONG_AGO) -> None:
+    """An apply preference (``jason.controls.apply_prefs``) taken through the board's lifecycle the way the secretary's record
+    does it: suggested, proposed, adopted with its values, effective on ``day``."""
+    key = key or type_key
+    control = make(type_key, key=key, scope=scope or Scope(), basis=Basis("the board's choice"))
+    for act, extra in ((ControlAct.SUGGEST, {"control": control}), (ControlAct.PROPOSE, {}),
+                       (ControlAct.ADOPT, {"decision": "dec-1", "effective": day.isoformat(), "parameters": params})):
+        store.record(act, key, by="A Secretary", why="a test", data_dir=data_dir,
+                     now=datetime(2099, 1, 1, tzinfo=timezone.utc), **extra)

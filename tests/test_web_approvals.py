@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 
 import pytest
 import webclient
 
-from jason.approvals import engine, store
+from controls_support import adopt_preference
+from jason.approvals import engine, registry, store
 from jason.approvals.engine import Live
 from jason.approvals.model import ApprovalStatus as S
 from jason.approvals.model import ItemClass
@@ -48,10 +50,16 @@ def web(village, monkeypatch):
     factory = _factory(village.live)
     app = create_app(_dist(village.data_dir), None, approvals_live=factory)
     village.factory, village.app, village.c = factory, app, webclient.client(app)
-    return village
+    yield village
+    registry.unregister("owner-info-tags")                                 # a test's copy of the kind (``_apply_on``)
 
 
 def _apply_on(village):
+    """Apply on, as a board that adopted a console button has it (``jason.controls.apply_prefs``). The real owner-information
+    kind never reaches the console, because a completed request emails the owner (tests/test_apply_preferences.py), so these
+    tests apply a copy of it that sends nothing."""
+    registry.register(replace(registry.get("owner-info-tags"), sends=""))
+    adopt_preference(village.data_dir, "where-apply", {"where": "console"})
     app = create_app(_dist(village.data_dir), None, approvals_live=village.factory, allow_apply=True)
     return webclient.client(app)
 
@@ -90,7 +98,9 @@ def test_list_and_show(web, monkeypatch):
     assert web.c.get("/api/approvals?status=nope").status_code == 400
     shown = web.c.get(f"/api/approvals/{a.id}")
     assert shown.status_code == 200
-    beside = {"kindFacts", "needsSecond", "recitations"}                 # what the screen reads beside the record
+    beside = {"kindFacts", "needsSecond", "recitations", "waitingToApply", "waitingHours", "signedAt", "waitingStale",
+              "terminalOnly", "reminderDue", "reminderHours", "pausing", "pauseEndsAt", "applyPrefs", "applyHold",
+              "typedCount", "serverNow"}                               # what the screen reads beside the record
     assert beside <= set(shown.json)
     _validator("approval.schema.json").validate({k: v for k, v in shown.json.items() if k not in beside})
     assert shown.json["fingerprint"] == a.fingerprint and len(shown.json["items"]) == len(a.items)
@@ -130,6 +140,40 @@ def test_a_signed_plan_waits_only_to_be_applied(web):
     _review(web, a)                                                    # decided and submitted by one person
     listed = web.c.get("/api/approvals").json
     assert listed["approvalsOpen"] == 1 and listed["approvalsWaiting"] == 0
+
+
+def test_a_signed_plan_is_a_row_waiting_to_be_applied_with_how_long(web):
+    from datetime import datetime, timedelta, timezone
+
+    a = _plan(web)
+    row = web.c.get("/api/approvals").json["approvals"][0]
+    assert row["waitingToApply"] is False and row["waitingHours"] is None and row["waitingStale"] is False
+    _review(web, a)                                                    # signed by one person; the kind needs no second
+    listed = web.c.get("/api/approvals").json
+    row = listed["approvals"][0]
+    assert row["waitingToApply"] is True and row["waitingHours"] < 1 and row["waitingStale"] is False
+    assert row["signedAt"] and row["terminalOnly"] is False and listed["approvalsToApply"] == 1
+    shown = web.c.get(f"/api/approvals/{a.id}").json                    # the plan opened carries the same, so the list follows
+    assert shown["waitingToApply"] is True and shown["waitingStale"] is False and shown["signedAt"] == row["signedAt"]
+    # the clock runs from the last signature, and a plan read longer ago than its kind allows says it will be planned again
+    signed = store.load(a.id, web.data_dir)
+    old = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat(timespec="seconds")
+    signed.first = type(signed.first)(signed.first.name, old, signed.first.fingerprint)
+    signed.read_at = old
+    with store.locked("test"):
+        store.save(signed, web.data_dir)
+    row = web.c.get("/api/approvals").json["approvals"][0]
+    assert 99 < row["waitingHours"] < 101 and row["waitingStale"] is True
+
+
+def test_a_plan_not_yet_signed_or_already_applied_is_not_waiting_to_be_applied(web):
+    a = _plan(web)
+    assert web.c.get("/api/approvals").json["approvalsToApply"] == 0
+    _review(web, a)
+    engine.apply(a.id, web.live, by="A Manager")
+    listed = web.c.get("/api/approvals").json
+    assert listed["approvals"][0]["status"] == "applied" and listed["approvals"][0]["waitingToApply"] is False
+    assert listed["approvalsToApply"] == 0
 
 
 def test_the_kinds_route_lists_what_each_kind_declares(web):
@@ -243,6 +287,7 @@ def fake(tmp_path, monkeypatch, fake_kind):
     live = Live(_Tags(), 1, tmp_path)
     factory = _factory(live)
     app = create_app(_dist(tmp_path), None, approvals_live=factory, allow_apply=True)
+    adopt_preference(tmp_path, "where-apply", {"where": "console"})            # the board's console button
     a = engine.plan("fake-tags", live, by="A Manager")
     return a, live, factory, webclient.client(app)
 

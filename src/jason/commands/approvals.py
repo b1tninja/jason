@@ -151,6 +151,7 @@ def show_lines(a: Any) -> list[str]:
         out.append(f"  supersedes {a.supersedes}")
     if a.superseded_by:
         out.append(f"  superseded by {a.superseded_by}")
+    out += _prefs_lines(a)
     out.append("  " + json.dumps(counts(a)))
     for key, title in _SECTIONS:
         section = [i for i in a.items if i.klass.value == key]
@@ -168,6 +169,20 @@ def show_lines(a: Any) -> list[str]:
     for note in a.notes:
         out.append(f"  note: {note}")
     return out
+
+
+def _prefs_lines(a: Any) -> list[str]:
+    """For a signed plan, how the board wants it applied (``jason.controls.apply_prefs``): the default until one is adopted."""
+    if a.status.value not in ("approved", "partially_approved"):
+        return []
+    from jason.approvals import engine, registry
+    from jason.controls import apply_prefs
+
+    try:
+        rows = apply_prefs.rows(engine.prefs_for(registry.get(a.kind)))
+    except KeyError:                                  # a kind this checkout no longer has
+        return []
+    return ["  how it is applied:"] + [f"    {r['title']}: {r['words']} ({r['source']})" for r in rows]
 
 
 def _decision(args: argparse.Namespace) -> Any:
@@ -293,7 +308,8 @@ def cmd_approvals(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
                 return _with_live(args, agent_factory, kind, dry)
 
             def wet(live: Any) -> int:
-                done = engine.apply(args.ref, live, by=args.by or os_actor(), data_dir=data_dir)
+                done = engine.apply(args.ref, live, by=args.by or os_actor(), data_dir=data_dir,
+                                    typed_count=args.count)
                 if done.superseded_by is not None:
                     print(f"changed since review: nothing written. {done.approval.id} is superseded by "
                           f"{done.superseded_by.id} (jason approvals show {done.superseded_by.id})")
@@ -389,6 +405,9 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--reason", help="why: a hold, a rejection, a decline, or a withdrawal")
     p.add_argument("--yes", action="store_true",
                    help="with apply: apply the approved items (without it: re-plan and compare, writing nothing)")
+    p.add_argument("--count", type=int, metavar="N",
+                   help="with apply --yes: the number of changes the plan makes, typed, where the board asked for it "
+                        "above some number of changes (jason controls)")
     p.add_argument("--json", action="store_true", help="with show or exceptions: the approval, or the log, as JSON")
     p.add_argument("--scope", metavar="JSON", help="with plan: the kind's scope as a JSON object (a kind that needs "
                                                    "one, such as gmail-drafts, says what it takes)")

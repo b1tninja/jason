@@ -12,13 +12,13 @@ import { formatCents, isCentsKey, titleCase } from "./format";
 export type ControlState = "suggested" | "proposed" | "adopted" | "declined" | "deferred" | "retired";
 /** The loader's `standing` key: the state, with an adopted control split three ways by its date and the roster. */
 export type Standing = ControlState | "in-force" | "in-force-roster-lacks" | "adopted-not-in-force";
-export type ControlFamily = "money" | "contracts" | "reviews" | "notices" | "meetings" | "onboarding";
+export type ControlFamily = "money" | "contracts" | "reviews" | "notices" | "meetings" | "onboarding" | "applying";
 
-export const FAMILIES: readonly ControlFamily[] = ["money", "contracts", "reviews", "notices", "meetings", "onboarding"];
+export const FAMILIES: readonly ControlFamily[] = ["money", "contracts", "reviews", "notices", "meetings", "onboarding", "applying"];
 /** In the order the list sorts them: adopted first, then proposed, suggested, deferred, declined, retired. */
 export const STATES: readonly ControlState[] = ["adopted", "proposed", "suggested", "deferred", "declined", "retired"];
 export const FAMILY_TITLES: Readonly<Record<ControlFamily, string>> = {
-  money: "Money", contracts: "Contracts", reviews: "Reviews", notices: "Notices", meetings: "Meetings", onboarding: "Onboarding",
+  money: "Money", contracts: "Contracts", reviews: "Reviews", notices: "Notices", meetings: "Meetings", onboarding: "Onboarding", applying: "Applying plans",
 };
 
 /** Fixed words of the screen (the brief, section D). */

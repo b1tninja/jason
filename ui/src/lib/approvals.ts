@@ -59,7 +59,33 @@ export interface Approval {
   supersedes?: string; supersededBy?: string; notes?: string[]; flagged?: FlaggedCounts;
   /** Beside the plan from the server (a list row, `/api/approvals/<id>`): whether a second person must sign, controls included. */
   needsSecond?: boolean | null;
+  /** Signed by everyone the plan needs and not yet applied (the server's `waiting_row`): hours since the last signature,
+   * whether the plan is older than its kind allows (it is planned again before apply), and a terminal-only kind. */
+  waitingToApply?: boolean; waitingHours?: number | null; waitingStale?: boolean; signedAt?: string; terminalOnly?: boolean;
+  /** The board's apply preferences, beside the plan (`jason.controls.apply_prefs`): a reminder is due (it only surfaces; nothing
+   * is sent), the hours it was set to (null: none), and a pause after the last signature with when it ends. */
+  reminderDue?: boolean; reminderHours?: number | null; pausing?: boolean; pauseEndsAt?: string;
 }
+
+/** One of the five apply settings in plain words, with where it comes from: the default, or the board's adoption. */
+export interface ApplyPrefRow {
+  setting: "where" | "who" | "pause" | "typed" | "reminder"; title: string; words: string; default: boolean; source: string; controls: string[];
+}
+
+/** The apply preferences that hold for a plan's kind (`applyPrefs` in `/api/approvals/<id>`). `consoleAllowed` is whether the
+ * preferences let the console apply this kind; the server's `--allow-apply` is asked on its own. `consoleFloored`: the board chose
+ * the console and the floors closed it (a kind that is terminal-only, costs money, or sends mail or email). */
+export interface ApplyPrefs {
+  kind: string; where: "terminal" | "console"; who: string; pauseMinutes: number; pauseUntilNextDay: boolean;
+  typedCountOver: number | null; reminderHours: number | null; consoleFloor: string; consoleFloored: boolean; consoleAllowed: boolean;
+  clash: string; rows: ApplyPrefRow[]; waiting: { control: string; setting: string; why: string }[];
+}
+
+/** A pause after the last signature that has not ended (`applyHold`): when it ends, the seconds left when the page loaded. */
+export interface ApplyHold { endsAt: string; secondsLeft: number; words: string }
+
+/** Whether apply asks the person to type the number of changes, and that number (`typedCount`). */
+export interface TypedCount { needed: boolean; over: number | null; changes: number }
 
 export type AuditEvent =
   | "plan.created" | "plan.failed" | "item.decided" | "approval.submitted" | "approval.confirmed" | "approval.declined"
@@ -88,6 +114,8 @@ export interface KindFacts {
   twoPerson: boolean; reversible: string; maxAgeHours: number; cost?: string; clock?: string; rule?: string;
   /** Only a person at a terminal applies this kind (the server refuses jason-web's apply); `cli` names the command. */
   terminalOnly?: boolean;
+  /** What the kind sends to people when it is applied ("" none): the console never applies a kind that sends. */
+  sends?: string;
 }
 
 /** `engine.Recheck`: a re-plan compared with the approval (what `jason approvals apply ID` prints without --yes). */
@@ -369,6 +397,7 @@ export interface PlanLike {
   byClass?: Record<string, number>; byDecision?: Record<string, number>; byResult?: Record<string, number>;
   first?: Signature | string | null; second?: Signature | string | null;
   needsSecond?: boolean | null; approved?: number; result?: Record<string, unknown>;
+  waitingToApply?: boolean; waitingHours?: number | null; waitingStale?: boolean; terminalOnly?: boolean; reminderDue?: boolean;
 }
 
 const signerOf = (s: Signature | string | null | undefined): string => (typeof s === "string" ? s : s?.name ?? "");
@@ -406,4 +435,49 @@ export function planState(a: PlanLike, me = "", opts: { needsSecond?: boolean | 
     case "superseded": return "Replaced by a newer plan";
     case "withdrawn": return "Withdrawn";
   }
+}
+
+// --- signed, waiting to be applied (docs/console/approval-clarity.md, section 4) ---------------------------------------------
+
+/** How long, in words, as the server says it (`engine.ago`): "less than an hour", "5 hours", "3 days". */
+export function agoWords(hours: number | null | undefined): string {
+  const h = Number(hours ?? 0);
+  if (!(h >= 1)) return "less than an hour";
+  if (h < 48) { const n = Math.floor(h); return `${n} ${n === 1 ? "hour" : "hours"}`; }
+  return `${Math.floor(h / 24)} days`;
+}
+
+/** "Signed, waiting to be applied · 3 days", or for a plan read longer ago than its kind allows, "Signed 5 days ago; it will
+ * be planned again before it is applied". "" for a plan that is not signed and waiting. The server decides which plan
+ * waits (`waitingToApply`) and for how long; this only says it. A terminal-only kind adds where it is applied. */
+export function waitingWords(a: Pick<PlanLike, "waitingToApply" | "waitingHours" | "waitingStale" | "terminalOnly" | "reminderDue">): string {
+  if (!a.waitingToApply) return "";
+  const waited = agoWords(a.waitingHours);
+  const base = a.waitingStale ? `Signed ${waited} ago; it will be planned again before it is applied` : `Signed, waiting to be applied · ${waited}`;
+  const where = a.terminalOnly ? `${base} · applied at the terminal` : base;
+  return a.reminderDue ? `${where} · reminder due` : where;
+}
+
+/** The list's "Where it stands": the waiting words for a signed plan the server says is waiting, else the plan's state. */
+export function listState(a: PlanLike, me = ""): string {
+  return waitingWords(a) || planState(a, me);
+}
+
+// --- the board's apply preferences (docs/console/approval-clarity.md, section 5) -----------------------------------------------
+
+/** The time left in a pause, as a clock: "29:41", or "1:02:09" past an hour. */
+export function holdClock(seconds: number): string {
+  const t = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  const two = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${two(m)}:${two(sec)}` : `${two(m)}:${two(sec)}`;
+}
+
+/** Why the typed count is not the plan's, or "" when none is asked or it is right (the server asks again: `typed_problem`). */
+export function typedCountProblem(tc: TypedCount | null | undefined, typed: string): string {
+  if (!tc?.needed) return "";
+  const t = typed.trim();
+  if (!t) return `Type the number of changes this plan makes (${tc.changes}) to apply it.`;
+  if (!/^\d+$/.test(t) || Number(t) !== tc.changes) return `${t} is not the number of changes this plan makes.`;
+  return "";
 }

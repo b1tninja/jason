@@ -30,6 +30,7 @@ class ControlFamily(Enum):
     NOTICES = "notices"
     MEETINGS = "meetings"
     ONBOARDING = "onboarding"
+    APPLYING = "applying"          # how a board wants signed plans applied (preferences, never safeguards)
 
 
 class GovernsKind(Enum):
@@ -39,6 +40,7 @@ class GovernsKind(Enum):
     WORKFLOW_STEP = "workflow step"
     SEND = "send"
     SPEND = "spend"
+    APPLY = "apply"                # how a signed plan is applied: a preference (``jason.controls.apply_prefs``)
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class ParamKind(Enum):
     DAYS = "days"              # a period: shorter is stricter
     CHOICE = "choice"          # one of ``options``, weakest first: later is stricter
     FLAG = "flag"              # on or off: on is stricter
+    CEILING = "ceiling"        # a whole number at or under which the control acts: lower is stricter (0 is allowed)
 
 
 @dataclass(frozen=True)
@@ -66,8 +69,9 @@ class ParamSpec:
     key: str
     kind: ParamKind
     title: str
-    maximum: int | None = None            # a COUNT, CENTS, or DAYS cannot exceed it (what jason can enforce)
+    maximum: int | None = None            # a COUNT, CENTS, DAYS, or CEILING cannot exceed it (what jason can enforce)
     options: tuple[str, ...] = ()         # a CHOICE's values, weakest first
+    minimum: int | None = None            # the least a whole number may be (default: 1 for a COUNT, else 0)
 
 
 @dataclass(frozen=True)
@@ -130,6 +134,11 @@ class ControlType:
     @property
     def governs_approvals(self) -> bool:
         return any(g.kind is GovernsKind.APPROVAL_KIND for g in self.governs)
+
+    @property
+    def governs_apply(self) -> bool:
+        """An apply preference (``jason.controls.apply_prefs``): it never touches who signs or how many."""
+        return any(g.kind is GovernsKind.APPLY for g in self.governs)
 
     def categories(self, kind: GovernsKind = GovernsKind.APPROVAL_KIND) -> frozenset[str]:
         return frozenset(g.what for g in self.governs if g.kind is kind)
@@ -250,10 +259,10 @@ def _role(raw: Any) -> OfficerRole:
 def normalize(spec: ParamSpec, raw: Any) -> Any:
     """The parameter's value as the record holds it (roles as ``OfficerRole`` in a sorted tuple), or ``ControlRefused``."""
     k = spec.kind
-    if k in (ParamKind.COUNT, ParamKind.CENTS, ParamKind.DAYS):
+    if k in (ParamKind.COUNT, ParamKind.CENTS, ParamKind.DAYS, ParamKind.CEILING):
         if isinstance(raw, bool) or not isinstance(raw, int):
             raise ControlRefused(f"{spec.key} is a whole number")
-        if raw < (1 if k is ParamKind.COUNT else 0):
+        if raw < (spec.minimum if spec.minimum is not None else (1 if k is ParamKind.COUNT else 0)):
             raise ControlRefused(f"{spec.key} is {raw}: too low")
         if spec.maximum is not None and raw > spec.maximum:
             raise ControlRefused(f"{spec.key} is {raw}: jason enforces at most {spec.maximum}")
@@ -278,7 +287,7 @@ def meets(spec: ParamSpec, value: Any, floor: Any) -> bool:
     k = spec.kind
     if k is ParamKind.COUNT or k is ParamKind.FLAG:
         return value >= floor
-    if k in (ParamKind.CENTS, ParamKind.DAYS):
+    if k in (ParamKind.CENTS, ParamKind.DAYS, ParamKind.CEILING):
         return value is not None and value <= floor
     if k is ParamKind.ELIGIBLE:
         return True if not floor else bool(value) and set(value) <= set(floor)
@@ -296,7 +305,7 @@ def stricter(spec: ParamSpec, a: Any, b: Any) -> Any:
     k = spec.kind
     if k is ParamKind.COUNT or k is ParamKind.FLAG:
         return max(a, b)
-    if k in (ParamKind.CENTS, ParamKind.DAYS):
+    if k in (ParamKind.CENTS, ParamKind.DAYS, ParamKind.CEILING):
         return min(a, b)
     if k is ParamKind.ELIGIBLE:
         if not a:

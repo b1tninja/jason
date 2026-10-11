@@ -54,6 +54,13 @@ class ActionKind:
     # A kind whose write only a person at a terminal makes: the engine's apply refuses it unless the caller is that
     # command (``Live.terminal``), so ``jason approvals apply`` and jason-web never run it. ``cli`` names the command.
     terminal_only: bool = False
+    # What the kind sends to people when it is applied, in words ("" when it sends nothing): a mailed letter, an email.
+    # A kind that sends is never applied from the console, whatever a board prefers (jason.controls.apply_prefs).
+    sends: str = ""
+
+    @property
+    def has_sends(self) -> bool:
+        return bool(self.sends)
 
     @property
     def terminal_note(self) -> str:
@@ -92,6 +99,8 @@ KINDS: tuple[ActionKind, ...] = (
         rule="the board's owner-information completion rule "
              "(Community.owner_information: OWNER_INFO_COMPLETED_COMMENT)",
         aliases=("payhoa.owner-info.tags",),
+        # a completed request carries the board's comment, which PayHOA emails to the owner
+        sends="the board's completion comment, emailed to the owner by PayHOA, for each request completed",
     ),
     ActionKind(
         key="payhoa-attach-bills",
@@ -140,6 +149,7 @@ KINDS: tuple[ActionKind, ...] = (
         aliases=("payhoa.mailroom.send",),
         categories=("payment",),               # it commits the association's money: payment-signers controls bind
         terminal_only=True,
+        sends="a printed letter, mailed by USPS to each owner",
     ),
 )
 

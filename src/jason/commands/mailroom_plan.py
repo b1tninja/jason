@@ -120,7 +120,8 @@ def apply_approval(args: argparse.Namespace, client: Any, org_id: int, data_dir:
             print("Nothing mailed. With --send --yes (and --expect FINGERPRINT) this mails the approved letter."
                   if r.ok else "Nothing mailed: this plan would not be applied as it stands.")
             return 0 if r.ok else 1
-        done = engine.apply(a.id, live, by=args.by or os_actor(), data_dir=data_dir)
+        done = engine.apply(a.id, live, by=args.by or os_actor(), data_dir=data_dir,
+                            typed_count=getattr(args, "count", None))
     except (engine.Refused, KeyError, ValueError) as exc:             # a FingerprintMismatch is a ValueError
         print(f"refused, nothing mailed: {exc.args[0] if exc.args else exc}", file=sys.stderr)
         return 2

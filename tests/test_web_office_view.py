@@ -361,3 +361,95 @@ def test_bands_are_capped_with_their_totals_in_counts(app, world):
     items(world, *[(f"i{n}", f"Sample matter {n}", "the treasurer") for n in range(20)])
     got = read(app, "Sam Secretary", "treasurer")
     assert len(got["bands"]["waitingOnOffice"]) == 12 and got["counts"]["waitingOnOffice"] == 20
+
+
+# --- plans signed and waiting to be applied (docs/console/approval-clarity.md, section 4) ------------------------------------
+
+def signed_plan(root, ident, kind="owner-info-tags", *, signed_hours_ago=3.0, read_hours_ago=1.0, title="A sample plan",
+                status="approved", with_second=False):
+    """A stored plan signed `signed_hours_ago` ago (a made-up item with a private value, which no band may show)."""
+    from datetime import datetime, timedelta, timezone
+
+    from jason.approvals import model, store
+
+    def iso(h):
+        return (datetime.now(timezone.utc) - timedelta(hours=h)).isoformat(timespec="seconds")
+
+    item = model.PlanItem(model.item_id(kind, "set", "member:1", "private value"), "set", "member:1", "Owner Example",
+                          "private value", "why", basis="b", decision=model.Decision.APPROVED, decided_by="Lee President")
+    a = model.Approval(ident, kind, title, [item], "fp", iso(read_hours_ago),
+                       "Lee President", iso(5), status=model.ApprovalStatus(status))
+    a.first = model.Signature("Lee President", iso(signed_hours_ago + (30 if with_second else 0)), "fp")
+    if with_second:
+        a.second = model.Signature("Tess Two", iso(signed_hours_ago), "fp")
+    store.save(a, root)
+    return a
+
+
+def test_a_signed_plan_waiting_to_be_applied_is_a_band_every_office_and_the_manager_read(app, world):
+    signed_plan(world, "apr-20990101T000000-0001", signed_hours_ago=75)
+    for who in ("A Manager", "Pat Example", "Dana Director", "Sam Secretary", "Lee President", "Vic Vice", "Tess Two"):
+        for office in OFFICES + [""]:
+            got = read(app, who, office)
+            (row,) = got["bands"]["signedWaiting"]                   # the same row on every office's page
+            assert got["counts"]["signedWaiting"] == 1
+            assert row["id"] == "apr-20990101T000000-0001" and row["screen"] == "approvals" and row["stale"] is False
+            assert row["text"] == "A sample plan: signed, waiting to be applied · 3 days"
+
+
+def test_a_stale_signed_plan_says_it_will_be_planned_again(app, world):
+    signed_plan(world, "apr-20990101T000000-0001", signed_hours_ago=120, read_hours_ago=121)
+    (row,) = read(app, "Sam Secretary", "treasurer")["bands"]["signedWaiting"]
+    assert row["stale"] is True and row["text"] == (
+        "A sample plan: signed 5 days ago; it will be planned again before it is applied")
+
+
+def test_a_terminal_only_plan_is_noted_with_its_command(app, world):
+    signed_plan(world, "apr-20990101T000000-0001", "payhoa-mailroom-send", signed_hours_ago=2, with_second=True)
+    (row,) = read(app, "Pat Example", "")["bands"]["signedWaiting"]
+    assert row["terminalOnly"] is True and row["note"].startswith("Applied only at a terminal: jason ")
+
+
+def test_only_fully_signed_plans_wait_to_be_applied_and_the_rest_stay_out(app, world):
+    signed_plan(world, "apr-20990101T000000-0001", status="in_review")
+    signed_plan(world, "apr-20990101T000000-0002", status="applied")
+    signed_plan(world, "apr-20990101T000000-0003", status="withdrawn")
+    signed_plan(world, "apr-20990101T000000-0004", status="superseded")
+    got = read(app, "Sam Secretary", "treasurer")
+    assert got["bands"]["signedWaiting"] == [] and got["counts"]["signedWaiting"] == 0
+    assert got["bandErrors"] == {}
+
+
+def test_the_band_carries_counts_and_titles_never_an_items_contents(app, world):
+    signed_plan(world, "apr-20990101T000000-0001", title="Sample changes")
+    body = json.dumps(read(app, "Sam Secretary", "treasurer")["bands"]["signedWaiting"])
+    assert "private value" not in body and "Owner Example" not in body and "Lee President" not in body
+
+
+def test_the_band_is_capped_with_its_total_and_the_longest_wait_first(app, world):
+    for n in range(15):
+        signed_plan(world, f"apr-20990101T000000-{n:04d}", signed_hours_ago=1 + n)
+    got = read(app, "Sam Secretary", "treasurer")
+    assert len(got["bands"]["signedWaiting"]) == 12 and got["counts"]["signedWaiting"] == 15
+    assert got["bands"]["signedWaiting"][0]["id"] == "apr-20990101T000000-0014"
+
+
+def test_the_engine_plans_note_no_longer_claims_a_signed_plan_is_not_composed(app, world):
+    signed_plan(world, "apr-20990101T000000-0001")
+    signed_plan(world, "apr-20990101T000000-0002", status="in_review")
+    got = read(app, "Sam Secretary", "treasurer")
+    (note,) = [n for n in got["notComposed"] if n["what"].startswith("Plans in the approvals engine")]
+    assert "still to be decided or signed (1 waiting on a person)" in note["what"]
+    assert "signed-waiting band" in note["why"]
+
+
+def test_a_band_that_cannot_be_read_says_so_and_the_others_stand(app, world, monkeypatch):
+    letters(world, ("l1", "requested", "Sample notice", "the treasurer"))
+
+    def boom(*a, **k):
+        raise OSError("the approvals store is not readable")
+
+    monkeypatch.setattr("jason.approvals.engine.waiting_to_apply", boom)
+    got = read(app, "Sam Secretary", "treasurer")
+    assert "OSError" in got["bandErrors"]["signedWaiting"] and got["bands"]["signedWaiting"] == []
+    assert got["bands"]["waitingOnOffice"]

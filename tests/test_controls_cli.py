@@ -56,17 +56,16 @@ def suggested(run, *extra):
 
 # --- registered, and no way to decide -------------------------------------------------------------------------------------
 
-def test_the_command_is_registered_and_says_it_never_adopts():
+def test_the_command_is_registered_and_says_it_decides_nothing_and_cannot_retire():
     from jason.commands import MODULES
 
     assert "controls" in MODULES
     sub = next(a for a in parser()._actions if a.__class__.__name__ == "_SubParsersAction")
     text = " ".join(sub.choices["controls"].format_help().split())
-    assert "never adopts" in text and "recorded by the secretary" in text
-    for flag in ("--adopt", "--decline", "--defer", "--retire", "--effective"):
-        assert flag not in text
+    assert "it decides nothing" in text and "by the secretary" in text
+    assert "--retire" not in text
     with pytest.raises(SystemExit):
-        parser().parse_args(["controls", "--adopt", "payment-signers"])
+        parser().parse_args(["controls", "--retire", "payment-signers"])
 
 
 def test_an_empty_list_says_the_documents_have_not_been_read(run):

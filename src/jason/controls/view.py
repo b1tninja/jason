@@ -14,7 +14,7 @@ from typing import Any, Iterable, Mapping
 from jason.approvals import registry
 from jason.approvals.registry import Approver
 from jason.controls import effective, store, suggest
-from jason.controls.catalog import CATALOG
+from jason.controls.catalog import CATALOG, PREFERENCES
 from jason.controls.types import (Control, ControlFamily, ControlState, GovernsKind, ParamKind, history_to_dict,
                                   parameters_to_dict, scope_to_dict)
 
@@ -29,7 +29,7 @@ CAVEATS = (
 )
 FAMILY_TITLES = {ControlFamily.MONEY: "Money", ControlFamily.CONTRACTS: "Contracts", ControlFamily.REVIEWS: "Reviews",
                  ControlFamily.NOTICES: "Notices", ControlFamily.MEETINGS: "Meetings",
-                 ControlFamily.ONBOARDING: "Onboarding"}
+                 ControlFamily.ONBOARDING: "Onboarding", ControlFamily.APPLYING: "Applying plans"}
 STATE_ORDER = ("adopted", "proposed", "suggested", "deferred", "declined", "retired")
 FAMILIES = tuple(f.value for f in ControlFamily)
 STATES = tuple(s.value for s in ControlState)
@@ -49,6 +49,8 @@ def _value(spec: Any, value: Any) -> str:
         return f"${value / 100:,.2f}"
     if k is ParamKind.DAYS:
         return f"{value} days"
+    if k is ParamKind.CEILING:
+        return str(value)
     if k is ParamKind.FLAG:
         return "yes" if value else "no"
     return str(value)
@@ -247,7 +249,7 @@ def compose(community: Any, data_dir: Path, *, family: str = "", state: str = ""
             "counts": total, "heading": heading(total), "families": groups, "controls": shown, "questions": asked,
             "refused": [], "read": readings.get("read") or "", "empty": EMPTY if empty else "",
             "rosterRead": roster is not None, "caveats": list(CAVEATS),
-            "types": [{"key": t.key, "title": t.title, "family": t.family.value} for t in CATALOG]}
+            "types": [{"key": t.key, "title": t.title, "family": t.family.value} for t in (*CATALOG, *PREFERENCES)]}
 
 
 def one(community: Any, data_dir: Path, key: str, *, today: date | None = None, profile: str = "") -> dict[str, Any]:
@@ -301,7 +303,7 @@ def _notice(c: Control, why: str = "") -> dict[str, Any]:
 
 def _subjects() -> set[str]:
     out = {k.key for k in registry.kinds()} | {a for k in registry.kinds() for a in k.aliases}
-    for t in CATALOG:
+    for t in (*CATALOG, *PREFERENCES):
         out |= {g.what for g in t.governs if g.kind is not GovernsKind.APPROVAL_KIND}
     return out
 

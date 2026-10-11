@@ -191,6 +191,34 @@ def signer_refusals(a: Approval, signers: Iterable[str], *, final: bool, kind: r
     return asked(kind.key, a.scope, list(signers), final=final, amount_cents=a.cost_cents, data_dir=data_dir, kind=kind)
 
 
+def prefs_for(kind: registry.ActionKind, data_dir: Path | None = None) -> Any:
+    """The apply preferences that hold for a kind (``jason.controls.apply_prefs``): where apply happens, who may apply, a
+    pause, a typed count, and a reminder. The defaults until the board adopts one; reads nothing when no controls source is
+    configured. They never change who signs or how many."""
+    from jason.controls import apply_prefs
+
+    return apply_prefs.effective(kind, data_dir=data_dir)
+
+
+def apply_refusals(a: Approval, *, by: str, typed_count: int | None = None, data_dir: Path | None = None,
+                   kind: registry.ActionKind | None = None) -> list[str]:
+    """Why the preferences the board adopted refuse this person's apply of this plan, empty when none does: who may apply
+    (a person who signed, or who did not), and the typed count above the board's number of changes. The pause is judged by
+    ``problems``, which needs no actor. The console's own choice (``where``) is the web route's."""
+    from jason.controls import apply_prefs
+
+    kind = kind or registry.get(a.kind)
+    prefs = prefs_for(kind, data_dir)
+    out: list[str] = []
+    if prefs.who_adopted or prefs.who == "clash":
+        from jason.controls.effective import _community_roster
+
+        out += apply_prefs.who_problems(prefs, by, [s.name for s in (a.first, a.second) if s is not None],
+                                        _community_roster())
+    typed = apply_prefs.typed_problem(prefs, len(a.approved), typed_count)
+    return out + ([typed] if typed else [])
+
+
 # --- plan ---------------------------------------------------------------------------------------------------------------
 
 def plan(kind_key: str, live: Live, *, by: str, via: str = "cli", scope: dict[str, Any] | None = None) -> Approval:
@@ -506,6 +534,8 @@ def _problems(a: Approval, kind: registry.ActionKind, data_dir: Path | None = No
             # and the missing second is already a problem above
             final = a.second is not None or not needs_second(a, kind, data_dir=data_dir)
             out += signer_refusals(a, signed, final=final, kind=kind, data_dir=data_dir)
+            if final:                       # the pause starts at the last signature
+                out += _pause_problems(a, kind, data_dir)
     try:
         read = datetime.fromisoformat(a.read_at)
     except ValueError:
@@ -515,10 +545,108 @@ def _problems(a: Approval, kind: registry.ActionKind, data_dir: Path | None = No
     return out
 
 
+def _pause_problems(a: Approval, kind: registry.ActionKind, data_dir: Path | None,
+                    now: datetime | None = None) -> list[str]:
+    """The pause the board adopted between the last signature and apply, while it lasts (``apply_prefs.pause_problem``)."""
+    from jason.controls import apply_prefs
+
+    prefs = prefs_for(kind, data_dir)
+    if not prefs.pausing:
+        return []
+    why = apply_prefs.pause_problem(prefs, last_signed_at(a), now or datetime.now(timezone.utc))
+    return [why] if why else []
+
+
 def problems(a: Approval, data_dir: Path | None = None) -> list[str]:
     """Why ``apply`` would refuse before any live read (its status, a missing second person, its age); empty when it
     would go on to re-plan. A caller that must sign in to read live asks this first."""
     return _problems(a, registry.get(a.kind), data_dir)
+
+
+def last_signed_at(a: Approval) -> datetime | None:
+    """When the plan was last signed: the later of the first and the second signature (the second, when there is one);
+    None for a plan nobody has signed or a time that cannot be read."""
+    stamps = []
+    for s in (a.first, a.second):
+        if s is None:
+            continue
+        try:
+            at = datetime.fromisoformat(s.at)
+        except ValueError:
+            continue
+        stamps.append(at if at.tzinfo else at.replace(tzinfo=timezone.utc))
+    return max(stamps) if stamps else None
+
+
+def waiting_row(a: Approval, now: datetime | None = None, data_dir: Path | None = None) -> dict[str, Any] | None:
+    """One plan as ``waiting_to_apply`` lists it, or None when it is not signed and waiting: status approved or partially
+    approved, every signature the plan needs given (a plan still waiting for its second person waits on a signature, not
+    on an apply). Fields: ``id``, ``kind``, ``title``, ``signedAt`` (the **last** signature's time, where the waiting
+    clock starts), ``waitingHours``, ``stale`` (read longer ago than the kind's ``max_age_hours``, so apply plans it
+    again first), ``maxAgeHours``, ``needsSecond``, ``terminalOnly`` (only a person at a terminal applies it), and
+    ``applyCommand`` (the terminal command; NAME stands for the person). The apply preferences the board adopted
+    (``jason.controls.apply_prefs``) add ``reminderHours`` (None: no reminder), ``reminderDue`` (the plan has waited that
+    long: it only surfaces, nothing is sent), ``pausing`` and ``pauseEndsAt`` (a pause after the last signature).
+    A kind this checkout no longer has is listed, not stale, with no command and the default preferences."""
+    if a.status not in (S.APPROVED, S.PARTIALLY_APPROVED) or a.first is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    try:
+        kind: registry.ActionKind | None = registry.get(a.kind)
+    except KeyError:
+        kind = None
+    second = needs_second(a, kind, data_dir=data_dir) if kind is not None else a.second is not None
+    if second and a.second is None:
+        return None
+    signed = last_signed_at(a)
+    hours = max(0.0, (now - signed).total_seconds() / 3600) if signed is not None else 0.0
+    try:
+        read = datetime.fromisoformat(a.read_at)
+        read = read if read.tzinfo else read.replace(tzinfo=timezone.utc)
+    except ValueError:
+        read = None
+    stale = bool(kind is not None and read is not None and now - read > timedelta(hours=kind.max_age_hours))
+    terminal = bool(kind is not None and kind.terminal_only)
+    command = (kind.cli if terminal else f"jason approvals apply {a.id} --yes --by NAME") if kind is not None else ""
+    from jason.controls import apply_prefs
+
+    prefs = prefs_for(kind, data_dir) if kind is not None else apply_prefs.ApplyPrefs(a.kind)
+    ends = apply_prefs.pause_ends(signed, prefs)
+    return {"id": a.id, "kind": a.kind, "title": a.title,
+            "signedAt": signed.isoformat(timespec="seconds") if signed else "", "waitingHours": round(hours, 1),
+            "stale": stale, "maxAgeHours": kind.max_age_hours if kind is not None else None, "needsSecond": second,
+            "terminalOnly": terminal, "applyCommand": command,
+            "reminderHours": prefs.reminder_hours, "reminderDue": apply_prefs.reminder_due(prefs, hours),
+            "pausing": bool(ends is not None and now < ends),
+            "pauseEndsAt": ends.astimezone(timezone.utc).isoformat(timespec="seconds") if ends is not None else ""}
+
+
+def ago(hours: float) -> str:
+    """How long, in words: "less than an hour", "5 hours", "3 days"."""
+    if hours < 1:
+        return "less than an hour"
+    if hours < 48:
+        n = int(hours)
+        return f"{n} hour{'s' if n != 1 else ''}"
+    return f"{int(hours // 24)} days"
+
+
+def waiting_words(row: dict[str, Any]) -> str:
+    """A waiting row in the console's words: "signed, waiting to be applied · 3 days", or, for a plan read longer ago
+    than its kind allows, "signed 5 days ago; it will be planned again before it is applied"."""
+    waited = ago(float(row["waitingHours"]))
+    if row["stale"]:
+        return f"signed {waited} ago; it will be planned again before it is applied"
+    return f"signed, waiting to be applied · {waited}"
+
+
+def waiting_to_apply(data_dir: Path | None = None, now: datetime | None = None) -> list[dict[str, Any]]:
+    """The plans signed and not yet applied (docs/console/approval-clarity.md, section 4), longest waiting first, each as
+    ``waiting_row`` gives it. Counts, times, and the plan's title only: never an item's contents. Reads disk only."""
+    found = (waiting_row(a, now, data_dir) for a in store.load_all(data_dir))
+    return sorted((r for r in found if r is not None), key=lambda r: (-r["waitingHours"], r["id"]))
 
 
 def compare(a: Approval, planned: Planned) -> tuple[list[Changed], list[PlanItem]]:
@@ -589,8 +717,11 @@ class Recorder:
         self._log(_EVENT.get(result, "item.failed"), item, result=result.value, detail=detail)
 
 
-def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: Path | None = None) -> Applied:
-    """Re-plan live; refuse and supersede when an approved item changed; else apply only the approved items."""
+def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: Path | None = None,
+          typed_count: int | None = None) -> Applied:
+    """Re-plan live; refuse and supersede when an approved item changed; else apply only the approved items. Before any live
+    read it also asks the apply preferences the board adopted (``jason.controls.apply_prefs``): a pause not yet over, who
+    may apply, and the typed count (``typed_count``, the number of changes the person typed) above the board's number."""
     from jason.locks import Resource, account, hold
 
     by = _named(by, "an apply")
@@ -602,6 +733,8 @@ def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: 
         problems = _problems(a, kind, data_dir)
         if kind.terminal_only and not live.terminal:
             problems.append(kind.terminal_note)
+        if a.status in (S.APPROVED, S.PARTIALLY_APPROVED):
+            problems += apply_refusals(a, by=by, typed_count=typed_count, data_dir=data_dir, kind=kind)
         if problems:
             audit.append(data_dir, "apply.refused", approval=a.id, kind=a.kind, actor=by, via=via,
                          fingerprint=a.fingerprint, detail="; ".join(problems))
@@ -710,6 +843,7 @@ def _log_exceptions_applied(a: Approval, data_dir: Path | None) -> None:
             store.save(a, data_dir)
 
 
-__all__ = ["Applied", "Changed", "Live", "Planned", "Recheck", "Recorder", "Refused", "apply", "board_item_id", "check",
-           "compare", "confirm", "counts", "decide", "decline", "needs_second", "plan", "problems", "reason_in_words",
-           "refer", "submit", "withdraw"]
+__all__ = ["Applied", "Changed", "Live", "Planned", "Recheck", "Recorder", "Refused", "ago", "apply", "apply_refusals",
+           "board_item_id", "check", "compare", "confirm", "counts", "decide", "decline", "last_signed_at", "needs_second",
+           "plan", "prefs_for", "problems", "reason_in_words", "refer", "submit", "waiting_row", "waiting_to_apply",
+           "waiting_words", "withdraw"]

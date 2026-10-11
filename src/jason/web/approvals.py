@@ -36,9 +36,14 @@
   signed-in roster person whose offices open the level (``jason.web.access``: P2 for a request, P0 for a citation's
   documents, P3 for a confidential one, listed and opened only while the person's private view is open); the record names the signed-in account, never the body's ``by``. A view's link is bound to the sign-in
   that opened it, and each view is logged in ``access/served.jsonl`` too.
-- **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>}``.
-  Off unless jason-web was started with ``--allow-apply``. The engine re-plans and refuses (409) when anything
-  changed, superseding the approval with a new one to review.
+- **Apply, a write to PayHOA.** ``POST /api/approvals/<id>/apply`` with ``{by, confirm: <the fingerprint reviewed>,
+  count?}``. Off unless jason-web was started with ``--allow-apply``, and then only where the board adopted a console
+  button for the kind (``jason.controls.apply_prefs``: a terminal is the default, and the console never applies a kind that is
+  terminal-only, costs money, or sends mail or email); the engine also refuses (400, in its words) a pause not yet over, a
+  person the board's who-may-apply excludes, and a missing or wrong typed ``count`` above the board's number of changes.
+  The engine re-plans and refuses (409) when anything changed, superseding the approval with a new one to review.
+  ``GET /api/approvals/<id>`` carries ``applyPrefs`` (the five settings in words), ``applyHold`` (a pause's countdown) and
+  ``typedCount`` beside the plan.
 
 Privacy: the store holds names and tags (P1). Anything that looks like an email address or a phone number (a reason a
 person typed, a result's detail) is masked before it leaves the server.
@@ -104,6 +109,21 @@ def default_live(kind: Any) -> Iterator[Any]:
 
 # --- reads --------------------------------------------------------------------------------------------------------------
 
+def waiting_fields(a: Any) -> dict[str, Any]:
+    """Whether a plan is signed and waiting to be applied (docs/console/approval-clarity.md, section 4), for a list row
+    and for the plan beside it: ``waitingToApply``, ``waitingHours`` (from the last signature; None when not waiting),
+    ``signedAt``, ``waitingStale`` (older than its kind allows: planned again before apply), and ``terminalOnly``; and
+    the board's apply preferences: ``reminderDue`` (it only surfaces), ``reminderHours``, ``pausing`` and ``pauseEndsAt``."""
+    from jason.approvals.engine import waiting_row
+
+    wait = waiting_row(a)
+    return {"waitingToApply": wait is not None, "waitingHours": wait["waitingHours"] if wait else None,
+            "signedAt": wait["signedAt"] if wait else "", "waitingStale": bool(wait and wait["stale"]),
+            "terminalOnly": bool(wait and wait["terminalOnly"]),
+            "reminderDue": bool(wait and wait["reminderDue"]), "reminderHours": wait["reminderHours"] if wait else None,
+            "pausing": bool(wait and wait["pausing"]), "pauseEndsAt": wait["pauseEndsAt"] if wait else ""}
+
+
 def _row(a: Any) -> dict[str, Any]:
     from jason.approvals.engine import counts, needs_second
 
@@ -111,7 +131,7 @@ def _row(a: Any) -> dict[str, Any]:
         second = needs_second(a)
     except KeyError:                                   # a kind this checkout no longer has
         second = None
-    return {"id": a.id, "kind": a.kind, "title": a.title, "status": a.status.value, "fingerprint": a.fingerprint,
+    return {**waiting_fields(a), "id": a.id, "kind": a.kind, "title": a.title, "status": a.status.value, "fingerprint": a.fingerprint,
             "readAt": a.read_at, "requestedBy": a.requested_by, "requestedAt": a.requested_at,
             "requestedVia": a.requested_via, "approved": len(a.approved), "needsSecond": second,
             "first": a.first.name if a.first else "", "second": a.second.name if a.second else "",
@@ -121,6 +141,7 @@ def _row(a: Any) -> dict[str, Any]:
 def plans(args: Args) -> dict[str, Any]:
     """The engine's approvals, open ones first; ``status`` and ``kind`` filter."""
     from jason.approvals import store
+    from jason.approvals.engine import waiting_row
     from jason.approvals.model import OPEN, ApprovalStatus
 
     status, kind = args.get("status", "").strip(), args.get("kind", "").strip()
@@ -132,6 +153,7 @@ def plans(args: Args) -> dict[str, Any]:
     rows.sort(key=lambda a: (a.status not in OPEN, a.requested_at))
     return {"approvals": mask([_row(a) for a in rows]), "approvalsOpen": sum(1 for a in every if a.status in OPEN),
             "approvalsWaiting": sum(1 for a in every if _waits_on_a_person(a)),
+            "approvalsToApply": sum(1 for a in every if waiting_row(a) is not None),
             "approvalStatuses": statuses, "approvalsCaveat": CAVEAT}
 
 
@@ -176,7 +198,7 @@ def kind_facts(kind: Any) -> dict[str, Any]:
             "riskWords": kind.risk.value, "approver": kind.approver.value,
             "twoPerson": kind.approver is Approver.TWO_PERSON, "reversible": kind.reversible,
             "maxAgeHours": kind.max_age_hours, "cost": kind.cost, "clock": kind.clock, "rule": kind.rule,
-            "terminalOnly": kind.terminal_only}
+            "terminalOnly": kind.terminal_only, "sends": kind.sends}
 
 
 def kinds(_args: Args | None = None) -> dict[str, Any]:
@@ -236,16 +258,44 @@ def show(ident: str) -> dict[str, Any]:
     from jason.approvals.model import to_dict
 
     a = store.load(ident)
-    out = with_exceptions(to_dict(a), a)
+    out = {**with_exceptions(to_dict(a), a), **waiting_fields(a)}
     try:
         kind = registry.get(a.kind)
     except KeyError:
         out["kindFacts"], out["needsSecond"] = None, None
     else:
         out["kindFacts"], out["needsSecond"] = kind_facts(kind), needs_second(a, kind)
+        out.update(apply_view(a, kind))
     rules = sorted({i.rule for i in a.items if i.rule})
     out["recitations"] = {rule: recite(rule) for rule in rules}
     return mask(out)
+
+
+def apply_view(a: Any, kind: Any, now: datetime | None = None) -> dict[str, Any]:
+    """What the plan view shows of the board's apply preferences (``jason.controls.apply_prefs``): ``applyPrefs`` (the five
+    settings in plain words, where each comes from, and ``consoleAllowed``: whether the preferences let the console apply
+    this kind; the server's ``--allow-apply`` is asked on its own), ``applyHold`` (while a pause lasts after the last
+    signature: when it ends and the seconds left, so the page can count down and offer Withdraw; None otherwise),
+    ``typedCount`` (whether the apply asks the person to type the number of changes, and that number), and ``serverNow``."""
+    from jason.approvals import engine
+    from jason.approvals.model import ApprovalStatus as S
+    from jason.controls import apply_prefs
+
+    now = now or datetime.now(timezone.utc)
+    prefs = engine.prefs_for(kind)
+    ends = apply_prefs.pause_ends(engine.last_signed_at(a), prefs)
+    complete = a.status in (S.APPROVED, S.PARTIALLY_APPROVED) and (not engine.needs_second(a, kind) or a.second is not None)
+    hold = None
+    if complete and ends is not None and now < ends:
+        hold = {"endsAt": ends.astimezone(timezone.utc).isoformat(timespec="seconds"),
+                "secondsLeft": int((ends - now).total_seconds()),
+                "words": "Apply is offered after the pause the board adopted. Until then the plan can be withdrawn."}
+    changes = len(a.approved)
+    return {"applyPrefs": {**apply_prefs.as_dict(prefs), "consoleAllowed": not apply_prefs.where_refusal(prefs, kind)},
+            "applyHold": hold,
+            "typedCount": {"needed": apply_prefs.typed_needed(prefs, changes), "over": prefs.typed_count_over,
+                           "changes": changes},
+            "serverNow": now.isoformat(timespec="seconds")}
 
 
 def audit_log(args: Args) -> dict[str, Any]:
@@ -513,6 +563,16 @@ def _who(body: dict[str, Any]) -> tuple[str, str, str]:
 def _text(body: dict[str, Any], key: str) -> str:
     value = body.get(key)
     return "" if value is None else str(value)
+
+
+def _count(body: dict[str, Any]) -> int | None:
+    """The number of changes the person typed to apply (``count``), or None when none was sent."""
+    raw = body.get("count")
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)) or not str(raw).strip().isdigit():
+        raise ValueError("count is the number of changes you typed, a whole number")
+    return int(str(raw).strip())
 
 
 def _require_office() -> None:
@@ -833,15 +893,22 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             kind = registry.get(a.kind)
             if kind.terminal_only:                      # a person at a terminal applies it (a mailing cannot be recalled)
                 return jsonify(error=kind.terminal_note, terminalOnly=True, command=kind.cli), 403
+            from jason.controls import apply_prefs
+
+            nowhere = apply_prefs.where_refusal(engine.prefs_for(kind), kind)
+            if nowhere:                                 # the board has not adopted a console button for this kind
+                return jsonify(error=nowhere, terminalOnly=False, consoleRefused=True, command=kind.cli), 403
             if echoed != a.fingerprint:
                 return jsonify(error=f"the fingerprint reviewed is not {a.id}'s: nothing written. Reload it, review "
                                      "it again, and confirm what it shows", fingerprint=a.fingerprint,
                                status=a.status.value, supersededBy=a.superseded_by), 409
             by, _, via = _who(body)
-            if not by.strip() or engine.problems(a):    # refused (and logged) before any sign-in
-                engine.apply(a.id, engine.Live(), by=by, via=via)
+            typed = _count(body)
+            if (not by.strip() or engine.problems(a)
+                    or engine.apply_refusals(a, by=by, typed_count=typed, kind=kind)):    # refused (and logged) before any sign-in
+                engine.apply(a.id, engine.Live(), by=by, via=via, typed_count=typed)
             with live(registry.get(a.kind)) as lv:
-                done = engine.apply(a.id, lv, by=by, via=via)
+                done = engine.apply(a.id, lv, by=by, via=via, typed_count=typed)
             if done.superseded_by is not None:
                 fresh = done.superseded_by
                 return jsonify(error=f"changed since review: nothing written. {a.id} is superseded by {fresh.id}; "

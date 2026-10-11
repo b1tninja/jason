@@ -18,6 +18,12 @@ administrator who holds no office. Where console sign-in is not set up it answer
 - ``waitingOnOffice``: the letters requested of an approver the office stands for (``Officer.approves``, ``the <office>``,
   and ``the board`` for the two offices that record its vote), by kind and count; the board items the board gave the office
   (or the board) to act on; and, for the secretary, the board's open votes to record.
+- ``signedWaiting``: the engine's plans signed and not yet applied (``jason.approvals.engine.waiting_to_apply``;
+  docs/console/approval-clarity.md, section 4), by kind title and how long each has waited from the last signature, with
+  whether it is older than its kind allows (it is planned again before apply) and whether only a person at a terminal
+  applies it, whether the board's reminder is due (``reminderDue``; it only surfaces, nothing is sent) and whether a pause
+  the board adopted still holds (``pausing``). The same rows for every office read: the board's rule of 2026-10-11 is that directors and officers (and the
+  manager) have the same access, and any of them may apply. Counts, times, and the plan's title; never an item.
 - ``needsAttention`` and ``comingUp``: the schedule's occurrences (``jason.tasks.schedule.agenda``) for the duties the
   profile's assignments give the office, or the board, or name it as the backup: overdue and due soon, then the next weeks;
   and a count of the dock's open tasks the office owns.
@@ -41,7 +47,7 @@ Args = dict[str, str]
 LIMIT = 12                                  # rows a band shows; its total is in ``counts``
 PAST_DAYS = 30                              # how far back the schedule looks for what is overdue
 AHEAD_DAYS = 45                             # how far ahead "coming up" looks
-BANDS = ("waitingOnOffice", "needsAttention", "comingUp", "work")
+BANDS = ("waitingOnOffice", "signedWaiting", "needsAttention", "comingUp", "work")
 BOARD = "the board"
 
 NOT_AN_OFFICE = ("{word!r} is not an office. The offices are {offices}.")
@@ -329,7 +335,8 @@ def runs_for(root: Path, reading: list[str], scope: Any = None) -> list[dict[str
 
 
 def _plans_waiting() -> int | None:
-    """The engine's plans waiting on a person (None when the store cannot be read)."""
+    """The engine's plans waiting on a person to decide or sign (None when the store cannot be read). A plan signed and
+    waiting to be applied is the ``signedWaiting`` band, not counted here."""
     try:
         from jason.approvals import store
         from jason.web.approvals import _waits_on_a_person
@@ -339,14 +346,35 @@ def _plans_waiting() -> int | None:
         return None
 
 
+def signed_waiting(root: Path, now: Any = None) -> list[dict[str, Any]]:
+    """The plans signed and waiting to be applied, longest first, as rows of the ``signedWaiting`` band. The text says
+    "Signed, waiting to be applied" with how long; a plan older than its kind's limit says it will be planned again before
+    it is applied; a terminal-only kind says it is applied at the terminal. Titles are masked like every band's."""
+    from jason.approvals.engine import waiting_to_apply, waiting_words
+    from jason.approvals.evidence import mask_text
+
+    out = []
+    for p in waiting_to_apply(root, now):
+        title = mask_text(str(p["title"]))[0]
+        text = f"{title}: {waiting_words(p)}"
+        note = ("Applied only at a terminal: " + p["applyCommand"]) if p["terminalOnly"] else ""
+        out.append({"type": "plan-to-apply", "id": p["id"], "kind": p["kind"], "title": title, "office": "",
+                    "waitingHours": p["waitingHours"], "signedAt": p["signedAt"], "stale": p["stale"],
+                    "terminalOnly": p["terminalOnly"], "needsSecond": p["needsSecond"], "note": note,
+                    "reminderDue": p["reminderDue"], "pausing": p["pausing"],
+                    "screen": "approvals", "text": text})
+    return out
+
+
 def not_composed(errors: dict[str, str], reading: list[str]) -> list[dict[str, str]]:
     """What this page could not build, and why: the pieces of Today no office owns, and any band that failed."""
     out = []
     waiting = _plans_waiting()
-    out.append({"band": "waitingOnOffice", "what": "Plans in the approvals engine"
+    out.append({"band": "waitingOnOffice", "what": "Plans in the approvals engine still to be decided or signed"
                 + (f" ({waiting} waiting on a person)" if waiting else ""),
                 "why": "An engine plan waits on a named person, or a second one; no office is attached to it unless a "
-                       "control names the offices that may sign. Read them in Approvals."})
+                       "control names the offices that may sign. Read them in Approvals. A plan already signed and "
+                       "waiting to be applied is in the signed-waiting band."})
     out.append({"band": "needsAttention", "what": "The digest's requests, intake, notices, living documents, conflicts, and "
                                                  "people's tasks",
                 "why": "The governance digest attaches no office to those lines; only the schedule's duties carry a role. "
@@ -380,9 +408,11 @@ def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today:
     needs = needs + _band("needsAttention", lambda: _tasks(root, reading, officers, today), errors)
     needs.sort(key=lambda r: (r["rank"], r.get("due") or "9999", r.get("title") or r["text"]))
     work = _band("work", lambda: runs_for(root, reading, scope), errors)
-    counts = {"waitingOnOffice": len(waiting), "needsAttention": len(needs), "comingUp": len(coming), "work": len(work)}
-    return {"bands": {"waitingOnOffice": waiting[:LIMIT], "needsAttention": needs[:LIMIT], "comingUp": coming[:LIMIT],
-                      "work": work[:LIMIT]},
+    signed = _band("signedWaiting", lambda: signed_waiting(root), errors)
+    counts = {"waitingOnOffice": len(waiting), "signedWaiting": len(signed), "needsAttention": len(needs),
+              "comingUp": len(coming), "work": len(work)}
+    return {"bands": {"waitingOnOffice": waiting[:LIMIT], "signedWaiting": signed[:LIMIT],
+                      "needsAttention": needs[:LIMIT], "comingUp": coming[:LIMIT], "work": work[:LIMIT]},
             "counts": counts, "bandErrors": errors, "notComposed": not_composed(errors, reading)}
 
 
@@ -416,4 +446,4 @@ def office_view(args: Args) -> dict[str, Any]:
 
 
 __all__ = ["BANDS", "CAVEATS", "LIMIT", "NOT_AN_OFFICE", "compose", "duty_rows", "lens", "normalize", "office_view",
-           "office_words", "runs_for", "waiting_on_office"]
+           "office_words", "runs_for", "signed_waiting", "waiting_on_office"]

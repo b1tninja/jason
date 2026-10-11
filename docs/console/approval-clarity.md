@@ -62,9 +62,23 @@ Some boards want a console button for apply; some want the terminal only; some w
 | **A pause before apply** | none; N minutes; until the next day | none | after the last signature the plan shows a countdown and a Withdraw button; apply is offered only after it |
 | **A typed count over N changes** | off; N | off | above N changes, the apply dialog asks the person to type the count |
 | **A reminder for a signed plan** | none; after N hours | after 24 hours | surfaces in Today and Work and in the Approvals list; sends nothing |
-| **Apply after the pause, automatically** | never; for named kinds that move no money and send nothing | never | a board's explicit opt-in, per kind, with an effective date; refused for any kind with a cost, any kind that mails or emails, and any terminal-only kind; the plan must be fully signed, the live re-plan must match, and a person can withdraw during the pause |
+| **Apply after the pause, automatically** | never; for named kinds that move no money and send nothing | never | a board's explicit opt-in, per kind, with an effective date; refused for any kind with a cost, any kind that mails or emails, and any terminal-only kind; the plan must be fully signed, the live re-plan must match, and a person can withdraw during the pause. **Not built: the engine has no such flag, and none is offered.** |
 
 Each preference is a control-like row: the provision or the decision it rests on, the board's reading, the decision that adopted it, the date it takes effect, and a history. Until the board adopts one, the defaults hold.
+
+### 5.1 What is built (the first four rows and the reminder)
+
+The five preferences are rows in the control catalog (`jason.controls.catalog.PREFERENCES`: `where-apply`, `who-may-apply`, `pause-before-apply`, `typed-count-over`, `reminder-hours`; family "Applying plans"), adopted through the same record and act log as any control ([../controls.md](../controls.md)). They are preferences and not safeguards, so they sit beside the catalog and not in it: `effective_approver` never reads them, and they cannot change who signs or how many. `jason.controls.apply_prefs` holds the enforcement.
+
+- **Adopting one.** `jason controls --offer TYPE [--scope all|kind:KEY|family:SYSTEM] --by NAME` records it as a suggestion; `--propose KEY --by NAME` puts it before the board; the secretary records the board's decision with `--adopt KEY --meeting DATE --decision ID --effective DATE --param NAME=VALUE --yes`. The values: `where` (`console` or `terminal`), `who` (`board_or_manager`, `any_signer`, `not_signer`), `minutes` and `until_next_day`, `over` (a typed count above this many changes; 0 asks on every plan), `hours` or `off` (no reminder). A preference binds from its effective date. Where several cover a kind (one for all, one for a family, one for the kind), the stricter governs in each respect: a terminal over a console, the longer pause, the lower number for a typed count, the sooner reminder; two `who` choices that leave no one refuse every apply.
+- **The floors, which no choice passes.** The console never applies a kind that is terminal-only, that has a cost, or that sends something to people (`ActionKind.sends`). A console choice scoped to such a kind is refused when it is adopted, with the reason; a console choice for all, or for a family, is floored back to a terminal for such a kind when it is read, and the plan says why. A hand-edited facts file cannot pass the floors either (the same check runs when it is loaded and when it is read). The Mailroom send stays at the terminal whatever is chosen. The kind that completes owner-information requests declares that it sends (PayHOA emails the board's completion comment to the owner), so it is applied at the terminal until its registry row says otherwise.
+- **Where each is enforced.**
+  - *Where apply happens:* the web apply route refuses (403, in words, with the terminal command) unless the board adopted a console button for the kind; the server's `--allow-apply` is still required besides. The plan view shows "Apply is at a terminal" instead of a button.
+  - *Who may apply:* `engine.apply` refuses a person the choice excludes ("only a person who signed this plan", or "does not let a person who signed this plan also apply it"), and, once a `who` preference is adopted, a name that holds no office on the roster. The default (any board member or the manager) is kept by the console's sign-in and by the person at the terminal, and is not checked against the roster where no preference is adopted.
+  - *A pause:* from the last signature, `engine.problems` (so a check, a dry run, and an apply) refuses until it ends. The plan shows a countdown and a Withdraw button, no Apply button, and no terminal command until it is over. "Until the next day" ends at the next midnight on the machine's clock.
+  - *A typed count:* above N approved changes the apply dialog asks the person to type the number; the terminal takes `--count N` (`jason approvals apply`, `jason mailroom --approval`); a missing or wrong number is refused by the engine before any live read.
+  - *A reminder:* a plan signed and waiting for the hours set (24 by default) is marked "reminder due" in the Approvals list, the Today band, and the attention digest. It sends nothing.
+- **Directors and officers read the same.** The effective preferences and the countdown are the same for every viewer; they name offices and counts, never a private fact.
 
 ## 6. What a reviewer sees about the changes
 
@@ -79,8 +93,8 @@ For plans like the owner notice delivery preferences (the owner-information tags
 ## 8. Build order
 
 1. **Wording and the strip** (UI only): the stage words in section 2, `PlanProgress`, the standing "nothing written" line, the six state sentences in the Approvals list and Today's band.
-2. **Waiting to be applied** in the Today band, the Work list, and the Approvals list.
-3. **The preferences** (section 5) as adopted rows: where apply happens, who may apply, a pause, a typed count, a reminder; auto-apply last, and only if the board asks for it.
+2. **Waiting to be applied** in the Today band, the Work list, and the Approvals list. Built for the Today office bands (`signedWaiting`), the Approvals list ("Signed, waiting to be applied · 3 days"; a plan older than its kind's limit reads "Signed 5 days ago; it will be planned again before it is applied"), and the governance digest's `approvals` section; the server's `engine.waiting_to_apply` decides which plans wait (fully signed, not applied, withdrawn, or superseded; the clock runs from the last signature). The Work list is not built.
+3. **The preferences** (section 5) as adopted rows: where apply happens, who may apply, a pause, a typed count, a reminder. **Built** (section 5.1), with the floors. **Auto-apply is not built**, not even as a flag; it stays last, and only if the board asks for it.
 
 ## 9. Acceptance criteria
 
@@ -89,7 +103,7 @@ For plans like the owner notice delivery preferences (the owner-information tags
 3. Until stage 4 finishes, the plan says "Nothing has been written" and how many changes applying will make, in counts.
 4. A signed, unapplied plan is a named state in the Approvals list and in Today, with its waiting time.
 5. A terminal-only kind says it is applied at the terminal and never shows an Apply button.
-6. A preference never lowers a signature count, removes a control, or enables apply for a kind that is terminal-only, costs money, or sends mail.
+6. A preference never lowers a signature count, removes a control, or enables apply for a kind that is terminal-only, costs money, or sends mail. (Guarded by `apply_prefs.console_floor` and `tests/test_apply_preferences.py`.)
 7. Directors and officers read the same plan the same way; the strip names offices, not private facts.
 
 ## 10. Decisions for the board
@@ -98,3 +112,5 @@ For plans like the owner notice delivery preferences (the owner-information tags
 - Whether console apply is offered at all (recommended: only if the board adopts it; the terminal stays the default).
 - Whether a signer may also apply (recommended: yes by default; the board may adopt separation of duties).
 - Whether an automatic apply is ever wanted (recommended: no; offered only on request, for kinds that move no money and send nothing).
+- Whether the kind that completes owner-information requests may ever be applied from the console. It declares that it sends (the completion comment is emailed to the owner), so the floors close it; opening it is a change to its registry row and the board's decision, not a preference.
+- Whether the default "any board member or the manager" should be checked against the roster everywhere (recommended: only where the board adopts a `who` preference, so a terminal apply by a name not on the roster is not refused unasked).

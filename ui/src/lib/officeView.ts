@@ -4,7 +4,7 @@
 export const LENS_PARAM = "as";
 export const OFFICE_WORDS = ["president", "vice president", "secretary", "treasurer", "director", "manager"] as const;
 
-export const BANDS = ["waitingOnOffice", "needsAttention", "comingUp", "work"] as const;
+export const BANDS = ["waitingOnOffice", "signedWaiting", "needsAttention", "comingUp", "work"] as const;
 export type BandKey = (typeof BANDS)[number];
 
 export interface OfficeInfo { office: string; vacant: boolean; holders: number }
@@ -32,6 +32,15 @@ export interface OfficeRow {
   key?: string;
   /** A run row's workflow definition: with `id`, the run's address (`#/work/<definition>/<id>`). */
   definition?: string;
+  /** A `plan-to-apply` row (the signed-waiting band): hours since the last signature, whether the plan is older than its
+   * kind allows (it is planned again before apply), whether only a terminal applies it, and the sentence saying so. */
+  waitingHours?: number;
+  stale?: boolean;
+  terminalOnly?: boolean;
+  /** A plan waiting to be applied: the board's reminder is due (it only surfaces), or its pause has not ended. */
+  reminderDue?: boolean; pausing?: boolean;
+  needsSecond?: boolean;
+  note?: string;
 }
 
 export interface NotComposed { band: string; what: string; why: string }
@@ -93,6 +102,7 @@ export function bandTitle(band: BandKey, d: Pick<OfficeViewData, "office" | "own
   const who = theOffice(d.office);
   switch (band) {
     case "waitingOnOffice": return own ? "Waiting on you" : `Waiting on ${who}`;
+    case "signedWaiting": return "Signed, waiting to be applied";
     case "needsAttention": return own ? "Needs attention" : `Needs attention for ${who}`;
     case "comingUp": return own ? "Coming up" : `Coming up for ${who}`;
     case "work": return own ? "Your work" : `Work for ${who}`;
@@ -109,3 +119,16 @@ export function notYours(needs: string | readonly string[], mine: readonly strin
 /** Whether the viewer's offices include any of `needs`. */
 export const holdsAny = (needs: string | readonly string[], mine: readonly string[]): boolean =>
   (typeof needs === "string" ? [needs] : needs).some((o) => mine.includes(o));
+
+/** The Today heading's counts, said once: what waits on the office, the plans signed and waiting to be applied, and what needs
+ * attention. A count of nothing is left out; "" when every one is nothing. */
+export function todayCounts(d: Pick<OfficeViewData, "counts" | "office" | "ownOffice">): string {
+  const c = d.counts ?? ({} as OfficeViewData["counts"]);
+  const own = isOwnLens(d);
+  const parts = [
+    c.waitingOnOffice ? `${c.waitingOnOffice} waiting on ${own ? "you" : theOffice(d.office)}` : "",
+    c.signedWaiting ? `${c.signedWaiting} ${c.signedWaiting === 1 ? "plan" : "plans"} signed, waiting to be applied` : "",
+    c.needsAttention ? `${c.needsAttention} ${c.needsAttention === 1 ? "needs" : "need"} attention` : "",
+  ];
+  return parts.filter(Boolean).join(" · ");
+}

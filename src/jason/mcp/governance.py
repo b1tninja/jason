@@ -416,13 +416,14 @@ def governance_digest(section: str = "", limit: int = 8, past: int = 30, private
     their due day, tasks a rule says to close, untracked recurring items as proposed clocks; nothing in Google is
     marked or closed); members' requests past or near their clocks (a statute's clock first); open intake questions
     by kind, the likely ones apart; open conflicts by status (counsel, board, noted); notices with follow-ups owed;
-    living documents with failed rule checks, held sources, or drift; and the documents' timed duties nothing tracks.
+    living documents with failed rule checks, held sources, or drift; the documents' timed duties nothing tracks; and
+    the approvals engine's plans signed and waiting to be applied (counts and times, never an item).
     Most urgent first: a passed clock the law or the documents set (LEGAL), then overdue, due soon, open, noted. Each
     section is capped at ``limit`` with its total, and each line names the command that gives the detail (the tools:
     schedule_agenda, member_requests, intake_questions, document_conflicts, notice_delivery, living_document,
     document_duties). ``section`` narrows to one (meetings, schedule, people, requests, intake, conflicts, notices,
-    living, duties); ``private`` leaves units out and replaces each person's task title with its rule's label (a title
-    can name an owner or a unit). A section whose store is missing is reported unavailable, not raised. Reads disk
+    living, duties, approvals); ``private`` leaves units out and replaces each person's task title with its rule's
+    label (a title can name an owner or a unit). A section whose store is missing is reported unavailable, not raised. Reads disk
     only; decides nothing."""
     from jason.tasks import attention
 
