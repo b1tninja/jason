@@ -130,11 +130,14 @@ def test_no_ladder_is_a_miss(tmp_path):
 
 
 def test_the_routes_answer_from_the_profile(tmp_path):
+    import webclient
     from jason.web.app import create_app
 
-    c = create_app().test_client()
-    r = c.get("/api/facts")
+    app = create_app(sign_in=webclient.roster_sign_in(dev=True))
+    r = webclient.client(app).get("/api/facts")                              # not about a member: open as before
     assert r.status_code == 200 and r.json["found"] is True and r.json["total"] >= 1
+    assert webclient.client(app).get("/api/unit-record?unit=7").status_code == 401           # a unit's record is a signed-in P2 read
+    c = webclient.sign_in(webclient.client(app), "A Manager")
     assert c.get("/api/unit-record?unit=7").status_code == 200
     assert c.get("/api/unit-record").status_code == 400
 
