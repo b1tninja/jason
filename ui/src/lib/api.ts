@@ -149,8 +149,8 @@ export async function actAs(setup: SignInSetup | undefined, target: { name?: str
 
 /** The per-process write token: the page's `<meta name="jason-token">`, else `GET /api/session`. Empty when neither has
  * one (the HttpOnly cookie still covers the store writes). */
-async function writeToken(): Promise<[string, string]> {
-  const meta = typeof document !== "undefined" ? document.querySelector('meta[name="jason-token"]')?.getAttribute("content") ?? "" : "";
+async function writeToken(fresh = false): Promise<[string, string]> {
+  const meta = !fresh && typeof document !== "undefined" ? document.querySelector('meta[name="jason-token"]')?.getAttribute("content") ?? "" : "";
   if (meta) return ["X-Jason-Token", meta];
   const s = await serverSession();
   return [s.header || "X-Jason-Token", s.token ?? ""];
@@ -163,8 +163,8 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 /** A write by `method` (POST, DELETE), with the server's write token header when the page has one; `body` is sent as
  * JSON when given. */
-export async function sendJson<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
-  const [header, token] = await writeToken();
+export async function sendJson<T>(method: "POST" | "DELETE", path: string, body?: unknown, retried = false): Promise<T> {
+  const [header, token] = await writeToken(retried);
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers[header] = token;
@@ -176,6 +176,12 @@ export async function sendJson<T>(method: "POST" | "DELETE", path: string, body?
     /* non-JSON body */
   }
   const error = (data as { error?: string } | null)?.error;
+  // The server makes a new write token each time it starts, so a page opened before a restart holds a dead one. The guard
+  // refuses before anything is written, so one retry with a fresh token (not the page's stale meta tag) is safe.
+  if (res.status === 403 && !retried && typeof error === "string" && error.includes("this server's token")) {
+    resetServerSession();
+    return sendJson<T>(method, path, body, true);
+  }
   if (!res.ok || error) throw new ApiError(error ?? `${res.status} ${res.statusText}`, res.status, data);
   return data as T;
 }
