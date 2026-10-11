@@ -107,7 +107,7 @@ def test_a_control_in_force_the_roster_cannot_satisfy_refuses_the_act_and_never_
     assert store_status(plan.id, world) is S.IN_REVIEW                       # nothing was signed
     # the roster fills the seat: the same plan is submitted, and needs the second person
     monkeypatch.setattr(effective, "_community_roster", lambda: roster(R.PRESIDENT, R.DIRECTOR, R.DIRECTOR))
-    a = engine.submit(plan.id, by="A Manager", data_dir=world)
+    a = engine.submit(plan.id, by="Person 1 director", data_dir=world)       # a director signs, as the control names
     assert engine.needs_second(a, data_dir=world) and engine.control_refusals(a, data_dir=world) == []
     # and if the seat empties again after the signature, apply and check name the reason as a problem
     monkeypatch.setattr(effective, "_community_roster", lambda: roster(R.PRESIDENT, R.DIRECTOR))
@@ -161,6 +161,149 @@ def test_a_control_log_that_cannot_be_read_stops_the_check_rather_than_loosen_it
     with pytest.raises(ControlRefused):
         run(world, one_person_kind.key)                                     # submit reads the controls and stops
 
+
+
+# --- who may sign -----------------------------------------------------------------------------------------------------
+# FULL: Person 0 president, Person 1 secretary, Person 2 treasurer, Person 3 director, Person 4 director.
+
+PRES, SEC, TREAS, DIR_A, DIR_B = (f"Person {i} {r}" for i, r in enumerate(("president", "secretary", "treasurer",
+                                                                           "director", "director")))
+
+
+def prepare(world, kind_key, by="A Manager"):
+    live = Live(None, 1, world)
+    a = engine.plan(kind_key, live, by=by)
+    engine.decide(a.id, "all", by=by, data_dir=world)
+    return live, a
+
+
+def test_a_required_office_binds_the_signers_as_a_whole_and_refuses_at_the_last_signature(world, one_person_kind,
+                                                                                         monkeypatch):
+    use_profile(monkeypatch)
+    adopt(world, one_person_kind.key, {"signers": 2, "must_include": [R.TREASURER.value]})
+    live, plan = prepare(world, one_person_kind.key)
+    a = engine.submit(plan.id, by=DIR_A, data_dir=world)                     # the first signer need not be the treasurer
+    assert a.status is S.APPROVED
+    with pytest.raises(Refused, match="a control the board adopted on 2099-01-01 requires the treasurer among the "
+                                      "signers"):
+        engine.confirm(a.id, by=DIR_B, data_dir=world)
+    from jason.approvals import store as approvals
+
+    assert approvals.load(a.id, world).second is None                        # nothing was signed
+    with pytest.raises(Refused, match="second, distinct person"):
+        engine.apply(a.id, live, by="A Manager")                              # and until the second signs, it is not applied
+    engine.confirm(a.id, by=TREAS, data_dir=world)
+    assert engine.apply(a.id, live, by="A Manager").approval.status is S.APPLIED
+
+
+def test_a_treasurer_may_sign_first_and_a_director_second(world, one_person_kind, monkeypatch):
+    use_profile(monkeypatch)
+    adopt(world, one_person_kind.key, {"signers": 2, "must_include": [R.TREASURER.value]})
+    live, plan = prepare(world, one_person_kind.key)
+    a = engine.submit(plan.id, by=TREAS, data_dir=world)
+    engine.confirm(a.id, by=DIR_A, data_dir=world)
+    assert engine.apply(a.id, live, by="A Manager").approval.status is S.APPLIED
+
+
+def test_the_offices_are_asked_again_before_apply_if_the_roster_changed_after_the_signatures(world, one_person_kind,
+                                                                                            monkeypatch):
+    use_profile(monkeypatch)
+    adopt(world, one_person_kind.key, {"signers": 2, "must_include": [R.TREASURER.value]})
+    live, plan = prepare(world, one_person_kind.key)
+    a = engine.submit(plan.id, by=DIR_A, data_dir=world)
+    a = engine.confirm(a.id, by=TREAS, data_dir=world)
+    assert engine.problems(a, world) == []
+    # the treasurer's seat now belongs to someone else (the roster no longer names that signer as treasurer)
+    monkeypatch.setattr(effective, "_community_roster", lambda: roster(R.PRESIDENT, R.SECRETARY, R.DIRECTOR, R.DIRECTOR,
+                                                                         R.DIRECTOR))
+    assert any("requires the treasurer among the signers" in p for p in engine.problems(a, world))
+    with pytest.raises(Refused, match="requires the treasurer among the signers"):
+        engine.apply(a.id, live, by="A Manager")
+
+
+def test_a_lone_signer_must_hold_the_required_office_since_no_second_follows(world, one_person_kind, monkeypatch):
+    use_profile(monkeypatch)
+    adopt(world, one_person_kind.key, {"signers": 1, "must_include": [R.TREASURER.value]})
+    live, plan = prepare(world, one_person_kind.key)
+    with pytest.raises(Refused, match="requires the treasurer among the signers"):
+        engine.submit(plan.id, by=DIR_A, data_dir=world)
+    assert store_status(plan.id, world) is S.IN_REVIEW
+    assert engine.submit(plan.id, by=TREAS, data_dir=world).status is S.APPROVED
+
+
+def test_the_eligible_offices_bind_every_signer_and_a_name_off_the_roster_holds_none(world, one_person_kind,
+                                                                                   monkeypatch):
+    use_profile(monkeypatch)
+    adopt(world, one_person_kind.key, {"signers": 2, "roles": [R.DIRECTOR.value, R.TREASURER.value]})
+    live, plan = prepare(world, one_person_kind.key)
+    with pytest.raises(Refused, match=r"allows only the director or the treasurer to sign; Person 0 president does "
+                                      r"not hold one of those offices"):
+        engine.submit(plan.id, by=PRES, data_dir=world)
+    with pytest.raises(Refused, match="Somebody Else does not hold"):
+        engine.submit(plan.id, by="Somebody Else", data_dir=world)
+    a = engine.submit(plan.id, by=DIR_A.upper(), data_dir=world)               # names compare trimmed and case folded
+    with pytest.raises(Refused, match="Person 1 secretary does not hold"):
+        engine.confirm(a.id, by=SEC, data_dir=world)
+    engine.confirm(a.id, by=TREAS, data_dir=world)
+    assert engine.apply(a.id, live, by="A Manager").approval.status is S.APPLIED
+
+
+def test_a_control_that_asks_only_above_an_amount_asks_its_offices_only_there(world, one_person_kind, monkeypatch):
+    use_profile(monkeypatch)
+    adopt(world, one_person_kind.key,
+          {"signers": 2, "over_cents": 250000, "must_include": [R.TREASURER.value]})
+    live = Live(None, 1, world)
+    below = engine.plan(one_person_kind.key, live, by="A Manager", scope={"cost": 250000})
+    engine.decide(below.id, "all", by="A Manager", data_dir=world)
+    assert engine.submit(below.id, by=DIR_A, data_dir=world).status is S.APPROVED       # no second, no treasurer
+    above = engine.plan(one_person_kind.key, live, by="A Manager", scope={"cost": 250001})
+    engine.decide(above.id, "all", by="A Manager", data_dir=world)
+    a = engine.submit(above.id, by=DIR_A, data_dir=world)
+    with pytest.raises(Refused, match="requires the treasurer among the signers"):
+        engine.confirm(a.id, by=DIR_B, data_dir=world)
+
+
+def test_two_controls_with_no_office_in_common_leave_no_one_who_may_sign(world, one_person_kind, monkeypatch):
+    use_profile(monkeypatch)
+    monkeypatch.setattr(effective, "_community_roster",                       # each office has two holders
+                        lambda: roster(R.PRESIDENT, R.DIRECTOR, R.DIRECTOR, R.TREASURER, R.TREASURER))
+    adopt(world, one_person_kind.key, {"signers": 2, "roles": [R.DIRECTOR.value]}, key="pay")
+    adopt(world, one_person_kind.key, {"signers": 2, "roles": [R.TREASURER.value]}, key="pay-2")
+    live, plan = prepare(world, one_person_kind.key)
+    for who in ("Person 1 director", "Person 3 treasurer"):
+        with pytest.raises(Refused, match="allows only"):
+            engine.submit(plan.id, by=who, data_dir=world)
+
+
+def test_with_no_controls_who_signs_is_not_asked_and_nothing_is_read(world, two_person_kind, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("the controls or the roster were read although no controls are configured")
+
+    monkeypatch.setattr(store, "load", boom)
+    monkeypatch.setattr(effective, "_community_roster", boom)
+    live, plan = prepare(world, two_person_kind.key)
+    a = engine.submit(plan.id, by="Nobody On The Roster", data_dir=world)
+    engine.confirm(a.id, by="Also Not On It", data_dir=world)
+    assert engine.apply(a.id, live, by="A Manager").approval.status is S.APPLIED
+
+
+def test_a_roster_that_cannot_be_read_leaves_the_offices_unchecked_but_the_second_still_signs(world, one_person_kind,
+                                                                                            monkeypatch):
+    use_profile(monkeypatch)
+    monkeypatch.setattr(effective, "_community_roster", lambda: None)
+    adopt(world, one_person_kind.key, {"signers": 2, "must_include": [R.TREASURER.value]})
+    live, plan = prepare(world, one_person_kind.key)
+    a = engine.submit(plan.id, by="Anyone", data_dir=world)
+    assert engine.needs_second(a, data_dir=world)
+    with pytest.raises(Refused, match="second, distinct person"):
+        engine.apply(a.id, live, by="A Manager")
+
+
+def test_registered_kinds_carry_categories_as_data_and_none_is_a_money_kind_yet():
+    from jason.approvals import registry
+
+    assert registry.ActionKind.__dataclass_fields__["categories"].default == ()
+    assert all(k.categories == () for k in registry.KINDS)      # attaching a bill pays nothing: see docs/controls.md
 
 
 def test_the_community_interface_has_an_empty_default():

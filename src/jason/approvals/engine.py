@@ -173,6 +173,17 @@ def control_refusals(a: Approval, kind: registry.ActionKind | None = None, *, da
     return refusals(kind.key, a.scope, amount_cents=a.cost_cents, data_dir=data_dir, kind=kind)
 
 
+def signer_refusals(a: Approval, signers: Iterable[str], *, final: bool, kind: registry.ActionKind | None = None,
+                    data_dir: Path | None = None) -> list[str]:
+    """Why these signers do not hold the offices the controls the board adopted ask for on this plan (``roles``: the
+    offices that may sign; ``must_include``: offices among the signers, asked only when ``final``, the set complete).
+    A signer's offices come from the roster by name; a name not on it holds none. Empty when none is configured."""
+    kind = kind or registry.get(a.kind)
+    from jason.controls.effective import signer_refusals as asked
+
+    return asked(kind.key, a.scope, list(signers), final=final, amount_cents=a.cost_cents, data_dir=data_dir, kind=kind)
+
+
 # --- plan ---------------------------------------------------------------------------------------------------------------
 
 def plan(kind_key: str, live: Live, *, by: str, via: str = "cli", scope: dict[str, Any] | None = None) -> Approval:
@@ -293,6 +304,9 @@ def submit(approval_id: str, *, by: str, role: str = "manager", via: str = "cli"
             raise Refused(f"approved item(s) wait on items not approved: {', '.join(orphans)}")
         approved = a.approved
         refused = control_refusals(a, data_dir=data_dir) if approved else []
+        if approved and not refused:
+            # a first signature need not hold a required office when a second person follows; it is the last when none does
+            refused = signer_refusals(a, [by], final=not needs_second(a, data_dir=data_dir), data_dir=data_dir)
         if refused:
             raise Refused("; ".join(refused))
         a.first, a.second = Signature(by, _now(), a.fingerprint, role, via), None
@@ -327,6 +341,9 @@ def confirm(approval_id: str, *, by: str, role: str = "manager", via: str = "cli
             raise Refused(f"a second, distinct person confirms: {by} submitted it")
         if same_person(by, a.requested_by):
             raise Refused(f"a second, distinct person confirms: {by} asked for the plan")
+        refused = signer_refusals(a, [a.first.name if a.first is not None else "", by], final=True, data_dir=data_dir)
+        if refused:
+            raise Refused("; ".join(refused))
         a.second = Signature(by, _now(), a.fingerprint, role, via)
         store.save(a, data_dir)
     audit.append(data_dir, "approval.confirmed", approval=a.id, kind=a.kind, actor=by, via=via, role=role,
@@ -379,6 +396,12 @@ def _problems(a: Approval, kind: registry.ActionKind, data_dir: Path | None = No
         out.append("a second, distinct person must confirm first (jason approvals confirm ID --by NAME)")
     if a.status in (S.APPROVED, S.PARTIALLY_APPROVED):
         out += control_refusals(a, kind, data_dir=data_dir)
+        signed = [s.name for s in (a.first, a.second) if s is not None]
+        if signed:
+            # the set is final once the second has signed, or when no second is needed; until then it is incomplete
+            # and the missing second is already a problem above
+            final = a.second is not None or not needs_second(a, kind, data_dir=data_dir)
+            out += signer_refusals(a, signed, final=final, kind=kind, data_dir=data_dir)
     try:
         read = datetime.fromisoformat(a.read_at)
     except ValueError:

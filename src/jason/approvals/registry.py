@@ -48,6 +48,9 @@ class ActionKind:
     max_age_hours: int = 24           # an approval older than this is planned again before apply
     default_scope: dict[str, Any] = field(default_factory=dict)
     aliases: tuple[str, ...] = ()
+    # what the kind moves, for the controls scoped to all: "payment" (it pays or commits the association's money) or
+    # "reserve" (it moves reserve funds). Empty for a kind that moves no money (docs/controls.md, section 7).
+    categories: tuple[str, ...] = ()
 
     @property
     def has_cost(self) -> bool:

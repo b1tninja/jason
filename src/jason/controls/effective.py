@@ -12,7 +12,8 @@ the board adopted on DATE requires two signers; the roster lacks a second direct
 come is listed in ``Effective.waiting`` and binds nothing; the roster lack, if any, is a warning in its reason.
 A roster of ``None`` is a roster that was not read: that check is skipped.
 
-The engine asks ``requires_second`` and ``refusals``. They read the controls only when a source is configured
+The engine asks ``requires_second``, ``refusals``, and ``signer_refusals`` (who may sign: the offices a control names,
+checked against the roster when a person signs and again before apply). They read the controls only when a source is configured
 (``store.configured``): no controls, no change.
 """
 
@@ -341,23 +342,78 @@ def touches(control: Control, kinds: Iterable[Any] | None = None) -> list[dict[s
     return out
 
 
+_MUST_TAIL = " must be among the signers"
+_NOT_ELIGIBLE = " does not hold an office that may sign"
+
+
 def signature_problems(effective: Effective, signers: Iterable[str], roster: Iterable[Any] | None) -> list[str]:
-    """Why these named signers do not meet the effective rule's offices, empty when they do. Not wired into the engine
-    yet: the engine records names, and the offices come from the roster."""
+    """Why these named signers do not meet the effective rule's offices, empty when they do. A signer's offices are the
+    roster's rows under the same name (trimmed, case folded); a name not on the roster holds none. The engine asks it
+    through ``signer_refusals``, once for each control in force."""
     if not (effective.roles or effective.must_include):
         return []
     if roster is None:
         return ["the roster was not read, so the offices that may sign cannot be checked"]
     held = _holders(roster)
-    names = [s.strip().casefold() for s in signers]
+    names = [s.strip() for s in signers]
     out = []
     if effective.roles:
         allowed = set().union(*(held.get(r, set()) for r in effective.roles))
-        out += [f"{n} does not hold an office that may sign" for n in names if n not in allowed]
+        out += [f"{n}{_NOT_ELIGIBLE}" for n in names if n.casefold() not in allowed]
     for role in effective.must_include:
-        if not any(n in held.get(role, set()) for n in names):
-            out.append(f"the {role.value} must be among the signers")
+        if not any(n.casefold() in held.get(role, set()) for n in names):
+            out.append(f"the {role.value}{_MUST_TAIL}")
     return out
+
+
+def signer_refusals(kind_key: str, scope: Mapping[str, Any] | None, signers: Iterable[str], *, final: bool = True,
+                    amount_cents: int | None = None, controls: Iterable[Control] | None = None,
+                    roster: Iterable[Any] | None = None, today: date | None = None, data_dir: Path | None = None,
+                    kind: Any = None) -> list[str]:
+    """Why these signers do not meet the offices a control in force asks of this plan, each reason naming the control
+    by the day the board adopted it. Empty, reading nothing, when no controls source is configured.
+
+    Each control is checked on its own, so a signer must satisfy every one (two controls with no office in common leave
+    no one who may sign). ``roles`` (the offices that may sign) binds every signer named. ``must_include`` (offices that
+    must be among the signers) binds the signers as a whole, so it is asked only when ``final``: the set is complete,
+    and a first signature need not be the required office when a second person follows. A control that asks only above
+    an amount is not asked of a plan at or below it (an amount not known counts as above). A roster that cannot be
+    read leaves the offices unchecked, as the roster check does (``roster_problem``); the controls themselves still bind."""
+    if controls is None:
+        from jason.controls import store
+
+        if not store.configured(data_dir):
+            return []
+        controls = store.load(data_dir=data_dir)
+        if roster is None:
+            roster = _community_roster()
+    if roster is None:
+        return []
+    names = [s for s in signers if (s or "").strip()]
+    got = effective_approver(kind_key, scope, controls=tuple(controls), roster=roster, today=today, kind=kind,
+                             amount_cents=amount_cents)
+    out: list[str] = []
+    for c in got.controls:
+        second, threshold, c_roles, c_must = _asks(c)
+        if threshold is not None and amount_cents is not None and amount_cents <= threshold:
+            continue
+        if not (c_roles or c_must):
+            continue
+        own = Effective(got.kind, got.builtin, roles=c_roles, must_include=c_must if final else ())
+        lead = f"a control the board adopted on {c.adopted_at or c.effective}"
+        missing: list[str] = []
+        for p in signature_problems(own, names, roster):
+            if p.endswith(_MUST_TAIL):
+                missing.append(p[:-len(_MUST_TAIL)])
+            elif p.endswith(_NOT_ELIGIBLE):
+                offices = " or ".join(f"the {r.value}" for r in c_roles)
+                out.append(f"{lead} allows only {offices} to sign; {p[:-len(_NOT_ELIGIBLE)]} does not hold "
+                           f"{'that office' if len(c_roles) == 1 else 'one of those offices'}")
+            else:
+                out.append(f"{lead}: {p}")
+        if missing:
+            out.append(f"{lead} requires {' and '.join(missing)} among the signers")
+    return list(dict.fromkeys(out))
 
 
 def _resolved(kind_key: str, scope: Mapping[str, Any] | None, *, amount_cents: int | None,
@@ -407,4 +463,5 @@ def _community_roster() -> tuple[Any, ...] | None:
 
 
 __all__ = ["BOARD_ROLES", "Effective", "InForce", "Waiting", "applies", "effective_approver", "ensure_valid", "in_force",
-           "refusals", "requires_second", "roster_problem", "signature_problems", "touches", "validate"]
+           "refusals", "requires_second", "roster_problem", "signature_problems", "signer_refusals", "touches",
+           "validate"]
