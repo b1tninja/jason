@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   // Vite 6.4.3 enforces server.fs on module loads, so the two tests that import ?raw fixtures from ../tests need that folder allowed.
-  server: { proxy: { "/api": "http://127.0.0.1:8080" }, fs: { allow: [".", "../tests/fixtures"] } },
+  // changeOrigin stays false: the write guard compares the page's Origin with the request Host, so the proxy must keep the browser's Host.
+  server: { proxy: { "/api": { target: "http://127.0.0.1:8080", changeOrigin: false } }, fs: { allow: [".", "../tests/fixtures"] } },
   test: { environment: "jsdom", globals: true, setupFiles: ["./src/setup.ts"] },
 });
