@@ -13,12 +13,13 @@ import { Evidence, EvidenceVersion, RefreshAllEvidence } from "./Evidence";
 import { FlaggedItem } from "./FlaggedItem";
 import { HeldNote } from "./HeldNote";
 import { Pill } from "./Pill";
+import { PlanProgress } from "./PlanProgress";
 import { Recitation, type Citation } from "./Recitation";
 import { SecondConfirm } from "./SecondConfirm";
 import { WriteRow } from "./WriteRow";
 import {
-  cleanName, commands, decidable, EXCEPTION_NUDGE, flaggedCounts, groupItems, isApprovable, isFlagged, needsSecond, personName, plural,
-  SECTIONS, short, signerProblem, staleness, STATUS_MEANING, takesEffect, when, type Approval, type AuditEntry, type ChainCheck,
+  applyCountsWords, cleanName, commands, decidable, EXCEPTION_NUDGE, flaggedCounts, groupItems, isApprovable, isFlagged, needsSecond, personName,
+  planState, plural, SECTIONS, short, signerProblem, staleness, STATUS_MEANING, systemWord, takesEffect, when, type Approval, type AuditEntry, type ChainCheck,
   type DecideBody, type KindFacts, type PlanItem, type Recheck, type ReferBody, type SignBody,
 } from "../lib/approvals";
 import type { ControlNotices } from "../lib/controls";
@@ -121,6 +122,10 @@ export function PlanReview({
   // A plan older than its kind allows is refused at apply ("plan again"), so it is never offered as ready: the banner
   // says so and offers the re-plan.
   const ready = signed && (!second || !!a.second) && !stale.blocked && !stale.tooOld;
+  const terminalOnly = !!kind?.terminalOnly;
+  // Apply from here only where the server allows it and the kind is not terminal-only (a mailing is applied at the terminal).
+  const canApplyHere = !!onApply && !applyBlocked && !terminalOnly;
+  const system = systemWord(kind);
   const today = now ? new Date(now) : undefined;
   const by = (i: PlanItem) => a.items.filter((x) => (i.dependsOn ?? []).includes(x.id));
   const rule = (i: PlanItem) => {
@@ -146,6 +151,7 @@ export function PlanReview({
           <h2 id={`${uid}-title`}>{a.title}</h2>
           <Pill word={a.status} meaning={STATUS_MEANING[a.status]} />
         </div>
+        <p className="plan-state"><strong>{planState(a, me, { needsSecond: second })}</strong></p>
         <p className="muted">
           Planned by jason, asked by {personName(a.requestedBy)}{a.requestedVia ? ` (${a.requestedVia})` : ""} · read live {when(a.readAt)} · fingerprint <code>{short(a.fingerprint)}</code>
           {a.first && <> · signed by {personName(a.first.name)}, {when(a.first.at)}</>}
@@ -165,10 +171,13 @@ export function PlanReview({
         {a.supersedes && <p className="muted">Supersedes <code className="chip">{a.supersedes}</code>; earlier decisions are hints, not counted.</p>}
       </header>
 
-      <p className="visually-hidden" role="status" aria-live="polite">
-        {status}{stale.blocked ? " Approval is blocked: the plan changed since review." : ""}
+      <p className={status ? "notice" : "visually-hidden"} role="status" aria-live="polite">
+        {status}{stale.blocked ? " Signing is blocked: the plan changed since review." : ""}
       </p>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
+
+      <PlanProgress approval={a} me={me} kind={kind} needsSecond={second} canApplyHere={canApplyHere} ready={ready}
+        tooOld={stale.tooOld} blocked={stale.blocked} />
 
       <ChangedBanner approval={a} recheck={recheck} now={now} maxAgeHours={maxAgeHours} me={me} onOpen={onOpen} busy={busy}
         onReplan={onReplan ? (b) => run(onReplan, b, `Re-plan asked for as ${b.by}.`) : undefined} />
@@ -222,7 +231,7 @@ export function PlanReview({
                         {isFlagged(i) && (
                           <FlaggedItem item={i} approval={a} me={me} editable={editable} busy={busy} nudge={nudge} boardHref={boardHref}
                             showNudge={firstOfFinding.get(i.rule ?? "") === i.id}
-                            onDecide={onDecide ? (b) => run(onDecide, b, `Recorded: ${b.decision === "held" ? "kept flagged" : b.decision} (one-off exception) as ${b.by}.`) : undefined}
+                            onDecide={onDecide ? (b) => run(onDecide, b, `Recorded: ${b.decision === "held" ? "kept flagged" : b.decision} (one-off exception) as ${b.by}. Nothing is written.`) : undefined}
                             onRefer={onRefer ? (b) => run(onRefer, b, `Referred to the board as ${b.by}.`) : undefined} />
                         )}
                       </Fragment>
@@ -240,7 +249,7 @@ export function PlanReview({
       {(decidable(a) || signed) && notice?.refusals?.length ? <ControlNotice data={{ ...notice, controls: [], waiting: [], stricter: false, clash: "" }} /> : null}
       {decidable(a) && (
         <ApproveBar approval={a} selected={selected} me={me} blocked={stale.blocked} busy={busy}
-          onDecide={onDecide ? (b) => run(onDecide, b, `Recorded: ${b.decision.replace("held", "held for the board")} ${plural(b.items.length, "change", "changes")} as ${b.by}.`) : undefined}
+          onDecide={onDecide ? (b) => run(onDecide, b, `Marked ${b.decision.replace("held", "held for the board")}. Nothing is written. You still need to sign the plan.`) : undefined}
           onSubmit={onSubmit ? (b) => run(onSubmit, b, `Signed as ${b.by}.`) : undefined} />
       )}
       {signed && second && (
@@ -250,19 +259,18 @@ export function PlanReview({
       )}
       {ready && (
         <div className="stack-sm plan-apply">
-          <p>{plural(approvedCount, "approved change is", "approved changes are")} ready to apply.</p>
-          {onApply && !applyBlocked ? (
+          {canApplyHere ? (
             signerProblem(me) ? <p className="muted">{signerProblem(me)} Pick whose name goes on the record to apply.</p> : (
               <Confirm busy={busy} onConfirm={() => run(onApply, { by: cleanName(me), confirm: a.fingerprint }, `Apply asked for as ${cleanName(me)}.`)} summary={
-                <p>Apply {plural(approvedCount, "approved change", "approved changes")} as {cleanName(me)}, on fingerprint <code>{short(a.fingerprint)}</code>. jason reads the live state again first: if anything an approved change relies on moved, nothing is written and a new plan is made to review.</p>
-              }>Apply {plural(approvedCount, "change", "changes")} now</Confirm>
+                <div className="plan-apply-dialog">
+                  <p><strong>This is the step that changes {system || "things outside jason"}.</strong> {applyCountsWords(a)}</p>
+                  <p>Apply as {cleanName(me)}, on fingerprint <code>{short(a.fingerprint)}</code>. Apply reads the live {system ? `${system} ` : ""}state first: if anything an approved change relies on moved, nothing is written and a new plan is made to review.</p>
+                </div>
+              }>Apply {plural(approvedCount, "change", "changes")}{system ? ` to ${system}` : ""} now</Confirm>
             )
-          ) : (
-            <>
-              {applyBlocked && <p className="muted">Apply is not available here: {applyBlocked}</p>}
-              <Command cmd={commands.apply(a.id, me)} note="Apply from a terminal. jason reads live again first and writes nothing if anything changed." />
-            </>
-          )}
+          ) : !terminalOnly && applyBlocked ? (
+            <p className="muted">Apply is not available here: {applyBlocked} The command is in the progress strip above.</p>
+          ) : null}
         </div>
       )}
       {onCheck && ["planned", "in_review", "approved", "partially_approved"].includes(a.status) && (

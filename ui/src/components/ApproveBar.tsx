@@ -5,20 +5,22 @@ import {
   type Approval, type DecideBody, type DecisionWord, type SignBody,
 } from "../lib/approvals";
 
-const VERBS: Record<DecisionWord, [string, string]> = {
-  approved: ["Approve", "approve"],
-  rejected: ["Reject", "reject"],
-  held: ["Hold for the board", "hold for the board"],
+/** The three marks, each as the word on its radio, the verb in an error, and the word in the button ("Mark 3 as approved"):
+ * a mark is a decision on an item, recorded in jason's own plan record. It writes nothing outside jason. */
+const VERBS: Record<DecisionWord, [string, string, string]> = {
+  approved: ["Approved", "mark as approved", "approved"],
+  rejected: ["Rejected", "mark as rejected", "rejected"],
+  held: ["Held for the board", "mark as held", "held"],
 };
 
-/** Decide the selected changes, then sign. Two parts:
- * 1. Approve, reject, or hold the selected approvable items. Reject and Hold need a reason; held, for-a-person, and
+/** Mark the selected changes, then sign. Two parts:
+ * 1. Mark the selected approvable items approved, rejected, or held ("Mark 5 as approved"). Rejected and held need a reason; held, for-a-person, and
  *    informational items are never in `selected` (they have no checkbox, and any passed are refused). A flagged item
  *    (held for the board by jason's policy finding) is never approved here: it is decided on its own (`FlaggedItem`),
  *    and this bar only counts it.
  * 2. Sign: the tally, the cost (`cost`), the person's full name (pre-filled with `me`; never "jason"), and the button that
- *    says what is signed: "Approve 5 of 8 changes as Jane Example". With changes undecided it stays unavailable and says
- *    how many are left.
+ *    says what it does: "Sign this plan as Jane Example", with the line that signing makes no change. With changes
+ *    undecided it stays unavailable and says how many are left.
  * Each write goes through `Confirm` and posts the plan's fingerprint. `blocked` (changed since review) disables both. */
 export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, blocked = false, busy, cost }: {
   approval: Approval; selected: readonly string[]; me?: string;
@@ -47,16 +49,15 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
   const person = approval.items.filter((i) => i.class === "for_a_person" || i.class === "confirm_with_owner").length;
 
   const problem = nameProblem || decisionProblem(approval, ids, decision, reason);
-  const [Verb, verb] = VERBS[decision];
-  const decideLabel = `${Verb} ${ids.length || ""} selected`.replace("  ", " ");
+  const [, verb, word] = VERBS[decision];
+  const decideLabel = `Mark ${ids.length ? `${ids.length} ` : ""}as ${word}`;
   const refuse = () => {
     setDecideError(problem);
     if (problem && nameProblem) nameRef.current?.focus();
     else if (problem && decision !== "approved" && !reason.trim()) reasonRef.current?.focus();
   };
 
-  const signLabel = (t.approved === t.approvable && t.approvable > 0 ? `Approve all ${plural(t.approvable, "change", "changes")}` : `Approve ${t.approved} of ${plural(t.approvable, "change", "changes")}`)
-    + (t.exceptions ? ` and ${plural(t.exceptions, "exception", "exceptions")}` : "") + (by ? ` as ${by}` : "");
+  const signLabel = `Sign this plan${by ? ` as ${by}` : ""}`;
   const signWhy = !open ? "" : t.undecided > 0 ? `Decide ${t.undecided} more ${t.undecided === 1 ? "change" : "changes"} to submit.` : nameProblem;
   const decideReasonError = decideError && decision !== "approved" && !reason.trim();
 
@@ -64,7 +65,7 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
     <form className={`approve-bar${blocked || !decidable(approval) ? " approve-blocked" : ""}`} aria-label="Decide and sign" onSubmit={(e) => e.preventDefault()}>
       {blocked && <p className="notice notice-warn">The plan changed since review: nothing can be decided or signed on it. Re-plan first.</p>}
       <fieldset className="approve-decide" disabled={!open}>
-        <legend>Decide the selected changes</legend>
+        <legend>Mark the selected changes</legend>
         <output className="approve-count" aria-live="polite">
           {ids.length ? `${ids.length} of ${plural(t.approvable, "change", "changes")} selected` : "Select changes in the list"}
         </output>
@@ -81,7 +82,10 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
         <div className="row wrap">
           {open && !problem ? (
             <Confirm busy={busy} onConfirm={() => onDecide?.({ items: ids, decision, reason: reason.trim(), by, fingerprint, via: "console" })} summary={
-              <p>{Verb} {plural(ids.length, "change", "changes")} as {by}{decision !== "approved" ? `, because: "${reason.trim()}"` : ""}. Recorded with your name, the time, and fingerprint <code>{short(fingerprint)}</code>; nothing is written outside jason.</p>
+              <>
+                <p>Mark {plural(ids.length, "change", "changes")} as {word}, as {by}{decision !== "approved" ? `, because: "${reason.trim()}"` : ""}. Recorded with your name, the time, and fingerprint <code>{short(fingerprint)}</code>.</p>
+                <p><strong>Nothing is written.</strong> You still need to sign the plan.</p>
+              </>
             }>{decideLabel}</Confirm>
           ) : (
             <button type="button" className="primary" aria-disabled="true" disabled={!open || busy} aria-describedby={`${uid}-decide-error`} onClick={refuse}>{decideLabel}</button>
@@ -92,7 +96,7 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
 
       <div className="approve-sign">
         <p className="approve-tally">
-          <strong>{t.approved} of {t.approvable}</strong> approved · {t.rejected} rejected{t.held ? ` · ${t.held} held by a person` : ""} · {t.undecided} undecided{t.exceptions ? ` · ${plural(t.exceptions, "flagged change", "flagged changes")} approved as ${t.exceptions === 1 ? "an exception" : "exceptions"}` : ""}
+          <strong>{t.approved} of {t.approvable}</strong> marked approved · {t.rejected} rejected{t.held ? ` · ${t.held} held by a person` : ""} · {t.undecided} undecided{t.exceptions ? ` · ${plural(t.exceptions, "flagged change", "flagged changes")} approved as ${t.exceptions === 1 ? "an exception" : "exceptions"}` : ""}
         </p>
         {cost}
         <label className="approve-field">
@@ -104,8 +108,8 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
           {open && !signWhy ? (
             <Confirm busy={busy} onConfirm={() => onSubmit?.({ by, fingerprint, via: "console" })} summary={
               <p>
-                Sign as {by}: {t.approved} approved{t.exceptions ? ` and ${plural(t.exceptions, "exception", "exceptions")}` : ""}, {t.rejected} rejected{t.held ? `, ${t.held} held for the board` : ""}, on fingerprint <code>{short(fingerprint)}</code>.
-                {t.approved + t.exceptions === 0 ? " Nothing is approved, so the plan is withdrawn." : " jason re-plans before anything is applied; if the plan changed, nothing is applied."}
+                Sign this plan as {by}: {t.approved} marked approved{t.exceptions ? ` and ${plural(t.exceptions, "exception", "exceptions")}` : ""}, {t.rejected} rejected{t.held ? `, ${t.held} held for the board` : ""}, on fingerprint <code>{short(fingerprint)}</code>.
+                {t.approved + t.exceptions === 0 ? " Nothing is approved, so the plan is withdrawn." : " Signing writes nothing outside jason. jason re-plans before anything is applied; if the plan changed, nothing is applied."}
               </p>
             }>{signLabel}</Confirm>
           ) : (
@@ -113,6 +117,7 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
           )}
           <span id={`${uid}-sign-why`} className="muted" role="status">{signWhy || signError}</span>
         </div>
+        <p className="muted approve-sign-note">Signing does not make the changes. It says these decisions are yours. A second person may still need to sign, and someone must apply.</p>
       </div>
       <p className="muted approve-note">
         {flagged + person > 0 && <>{flagged ? `${flagged} flagged for review` : ""}{flagged && person ? " and " : ""}{person ? `${person} for a person` : ""} {flagged + person === 1 ? "is" : "are"} not part of this approval{flagged ? "; a flagged change is decided on its own, in its section" : ""}. </>}

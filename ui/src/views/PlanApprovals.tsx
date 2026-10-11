@@ -3,7 +3,7 @@ import { DataTable, Pill, PlanReview, RemoteView, type Column } from "../compone
 import { postJson, serverSession, type ApiError, type ServerSession } from "../lib/api";
 import { useControlNotice } from "../lib/controls";
 import { useApi } from "../lib/useApi";
-import { STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck } from "../lib/approvals";
+import { planState, STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck } from "../lib/approvals";
 import type { Citation } from "../components/Recitation";
 import { boardItemHref } from "./BoardItemsView";
 
@@ -11,7 +11,7 @@ import { boardItemHref } from "./BoardItemsView";
  * a count and `byClass` counts the items by class. */
 type Listed = Omit<Partial<Approval>, "items"> & Pick<Approval, "id" | "kind" | "title" | "status"> & {
   items?: Approval["items"] | number;
-  byClass?: Record<string, number>;
+  byClass?: Record<string, number>; byDecision?: Record<string, number>; byResult?: Record<string, number>;
 };
 
 /** The engine approvals in `/api/approvals` (`approvals`, or `plans`), told apart from the letters by their `apr-` ids. */
@@ -84,7 +84,7 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
   const loaded = r.status === "ready" ? approvalOf(r.data) : null;
   // What a control the board adopted requires of this kind; silent when it cannot be read (a viewer the loader refuses, an error).
   const notice = useControlNotice(loaded?.kind ?? "", typeof loaded?.costCents === "number" ? loaded.costCents : undefined, `${loaded?.fingerprint ?? ""}${loaded?.status ?? ""}`);
-  useEffect(() => { if (loaded) onLoaded?.(loaded); }, [loaded, onLoaded]);
+  useEffect(() => { if (loaded) onLoaded?.(r.status === "ready" && r.data.needsSecond != null ? { ...loaded, needsSecond: r.data.needsSecond } : loaded); }, [loaded, onLoaded]);
   useEffect(() => { let on = true; serverSession().then((s) => on && setServer(s)); return () => { on = false; }; }, []);
   const step = (name: string, pick: (b: Record<string, unknown>) => Record<string, unknown>) => async (body?: object) => {
     setBusy(true); setError("");
@@ -144,6 +144,7 @@ export function PlanApprovals({ page, me, open, onOpen }: { page: unknown; me: s
   const columns: Column<Listed>[] = [
     { key: "title", header: "Plan", render: (a) => <><strong>{a.title}</strong><br /><span className="muted">{a.kind} · {a.id}</span></> },
     { key: "status", header: "Status", render: (a) => <Pill word={a.status} meaning={STATUS_MEANING[a.status]} /> },
+    { key: "state", header: "Where it stands", value: (a) => planState(a, me) },
     { key: "items", header: "Items", value: (a) => counts(a) },
     { key: "requestedBy", header: "Asked by", value: (a) => a.requestedBy ?? "" },
     { key: "readAt", header: "Read live", kind: "date", value: (a) => when(a.readAt) },

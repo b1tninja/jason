@@ -55,6 +55,7 @@ export { HeldNote } from "./HeldNote";
 export { FlaggedItem } from "./FlaggedItem";
 export { ChangedBanner } from "./ChangedBanner";
 export { ApproveBar } from "./ApproveBar";
+export { PlanProgress } from "./PlanProgress";
 export { SecondConfirm } from "./SecondConfirm";
 export { CostLine } from "./CostLine";
 export { ApplyResult } from "./ApplyResult";

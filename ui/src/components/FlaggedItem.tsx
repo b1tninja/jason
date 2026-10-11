@@ -49,8 +49,8 @@ function History({ rows, approval }: { rows: readonly ExceptionRow[]; approval: 
 /** One flagged item (held for the board by jason's policy finding), expandable to what a reviewer needs to decide it: the
  * change (target, from, to), why it is flagged (the finding and the rule row), the evidence, the board item, and the
  * exceptions already made under this finding. A director, an officer, or the manager may then, each in a `Confirm`:
- * - approve it as a one-off exception (a reason in words; "One-off decision, not a rule. A second person must sign."),
- * - reject it (a reason),
+ * - mark it approved as a one-off exception (a reason in words; "One-off decision, not a rule. A second person must sign."),
+ * - mark it rejected (a reason),
  * - keep it flagged (a note, for the next reviewer), or
  * - refer it to the board (the board item is made or refreshed; nothing is decided).
  * The actions show only while the plan is open to decisions (`editable`); an item decided shows what was decided. A
@@ -151,13 +151,13 @@ export function FlaggedItem({
                 aria-describedby={`${uid}-error`} placeholder="Why, in a few words" />
             </label>
             <div className="row wrap">
-              {action("approved", "Approve as a one-off exception", (
+              {action("approved", "Mark approved as a one-off exception", (
                 <>
                   <p><strong>One-off decision, not a rule. A second person must sign.</strong></p>
-                  <p>Approve this flagged change as {by}, because: "{reason.trim()}". It goes in the exceptions log with your name and the time; nothing is written outside jason until the plan is signed, a second, distinct person confirms, and it is applied.</p>
+                  <p>Mark this flagged change approved as {by}, because: "{reason.trim()}". It goes in the exceptions log with your name and the time; nothing is written outside jason until the plan is signed, a second, distinct person confirms, and it is applied.</p>
                 </>
               ))}
-              {action("rejected", "Reject", <p>Reject this flagged change as {by}, because: "{reason.trim()}". Nothing is written. Logged with your name and the time.</p>)}
+              {action("rejected", "Mark as rejected", <p>Mark this flagged change rejected as {by}, because: "{reason.trim()}". Nothing is written. Logged with your name and the time.</p>)}
               {action("held", "Keep flagged", <p>Keep this change flagged as {by}, with the note: "{reason.trim()}". It stays flagged for the next reviewer; nothing is decided.</p>)}
               {onRefer && !nameProblem ? (
                 <Confirm busy={busy} label="Refer" onConfirm={() => { void onRefer({ item: item.id, by, fingerprint: approval.fingerprint, via: "console" }); done(); }}

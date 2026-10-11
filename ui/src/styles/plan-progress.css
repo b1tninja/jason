@@ -1,0 +1,21 @@
+/* The plan's progress strip (PlanProgress): up to five steps in a row, the standing "nothing written" line under them.
+   Tokens only (see styles.css :root). */
+.plan-progress { display: grid; gap: 8px; }
+.plan-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 8px; }
+.plan-step { display: grid; align-content: start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-top-width: 3px; border-radius: var(--r); background: var(--panel); min-width: 0; }
+.plan-step-head { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
+.plan-step-name { font-size: 14px; }
+.plan-step-state { font-size: 12px; color: var(--muted); margin-left: auto; }
+.plan-step-detail { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.plan-step-done { border-top-color: var(--good); }
+.plan-step-done .plan-step-head { color: var(--good); }
+.plan-step-done .plan-step-name { color: var(--ink); }
+.plan-step-now { border-color: var(--accent); }
+.plan-step-now .plan-step-head { color: var(--accent); }
+.plan-step-now .plan-step-name { color: var(--ink); }
+.plan-step-now .plan-step-detail { color: var(--ink); }
+.plan-step-later { border-style: dashed; }
+.plan-next, .plan-state { margin: 0; }
+.plan-written { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--r); background: var(--panel); }
+.plan-apply-dialog p { margin: 0 0 6px; }
+@media (max-width: 640px) { .plan-steps { grid-template-columns: 1fr; } }

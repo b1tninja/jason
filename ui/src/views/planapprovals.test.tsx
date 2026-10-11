@@ -69,7 +69,7 @@ describe("the Approvals screen's plans", () => {
     await user.selectOptions(screen.getByLabelText("Signed in as"), "A Manager");
     const first = open.querySelector<HTMLInputElement>("input[data-plan-check]")!;
     await user.click(first);
-    await user.click(within(open).getByRole("button", { name: "Approve 1 selected" }));
+    await user.click(within(open).getByRole("button", { name: "Mark 1 as approved" }));
     await user.click(within(open).getByRole("button", { name: "Yes, do it" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0].url).toBe(`/api/approvals/${ID}/decide`);
@@ -205,7 +205,7 @@ describe("a plan's flagged items (held for the board, decided only as a one-off 
     });
     expect(within(panel).getByText(/1 exception made under this finding/)).toBeInTheDocument();
     await user.type(within(panel).getByLabelText("Reason, in words (for the log)"), WHY);
-    await user.click(within(panel).getByRole("button", { name: "Approve as a one-off exception" }));
+    await user.click(within(panel).getByRole("button", { name: "Mark approved as a one-off exception" }));
     expect(within(panel).getByRole("group", { name: "Exception" })).toHaveTextContent("One-off decision, not a rule. A second person must sign.");
     await user.click(within(panel).getByRole("button", { name: "Yes, do it" }));
     await waitFor(() => expect(posted).toHaveLength(1));
@@ -237,7 +237,7 @@ describe("a plan's flagged items (held for the board, decided only as a one-off 
     render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
     await screen.findByRole("heading", { name: "To decide (12)" });
     await user.click(document.querySelector<HTMLInputElement>("input[data-plan-check]") as HTMLInputElement);
-    await user.click(screen.getByRole("button", { name: "Approve 1 selected" }));
+    await user.click(screen.getByRole("button", { name: "Mark 1 as approved" }));
     await user.click(screen.getAllByRole("button", { name: "Yes, do it" }).pop() as HTMLElement);
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(Object.keys(posted[0].body as object).sort()).toEqual(["by", "decision", "items", "reason"]);

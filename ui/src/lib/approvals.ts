@@ -57,6 +57,8 @@ export interface Approval {
   items: PlanItem[]; decisions: DecisionRecord[]; first?: Signature | null; second?: Signature | null;
   costCents?: number | null; clock?: ApprovalClock | null; summary?: Record<string, unknown>; result?: Record<string, unknown>;
   supersedes?: string; supersededBy?: string; notes?: string[]; flagged?: FlaggedCounts;
+  /** Beside the plan from the server (a list row, `/api/approvals/<id>`): whether a second person must sign, controls included. */
+  needsSecond?: boolean | null;
 }
 
 export type AuditEvent =
@@ -84,6 +86,8 @@ export interface ChangedItem { id: string; op: string; label: string; then: stri
 export interface KindFacts {
   key: string; title: string; cli?: string; system?: string; risk: string; riskWords: string; approver: string;
   twoPerson: boolean; reversible: string; maxAgeHours: number; cost?: string; clock?: string; rule?: string;
+  /** Only a person at a terminal applies this kind (the server refuses jason-web's apply); `cli` names the command. */
+  terminalOnly?: boolean;
 }
 
 /** `engine.Recheck`: a re-plan compared with the approval (what `jason approvals apply ID` prints without --yes). */
@@ -259,7 +263,7 @@ export function decisionProblem(a: Approval, ids: readonly string[], decision: D
     for (const id of ids) {
       const item = by.get(id)!;
       const waits = waitsOn(item, a, ids);
-      if (waits.length) return `${item.op} (${item.label}) waits on ${waits.length} ${waits.length === 1 ? "change" : "changes"} not approved: approve ${waits.length === 1 ? "it" : "them"} first.`;
+      if (waits.length) return `${item.op} (${item.label}) waits on ${waits.length} ${waits.length === 1 ? "change" : "changes"} not approved: mark ${waits.length === 1 ? "it" : "them"} approved first.`;
     }
   }
   return "";
@@ -324,3 +328,82 @@ export const commands = {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 export { plural };
+
+// --- where a plan stands, in words (docs/console/approval-clarity.md) --------------------------------------------------
+
+/** The outside system a kind writes to, as a reader names it: the registry's `system` key ("payhoa"), or "" for a kind
+ * that names none or only `local`. */
+export function systemWord(kind?: Pick<KindFacts, "system"> | null): string {
+  const key = String(kind?.system ?? "").trim().toLowerCase();
+  if (!key || key === "local") return "";
+  return ({ payhoa: "PayHOA", google: "Google", zoom: "Zoom" } as Record<string, string>)[key] ?? key;
+}
+
+/** "to PayHOA", or "outside jason" when the kind names no system: the place a plan's writes go. */
+export function writtenTo(kind?: Pick<KindFacts, "system"> | null): string {
+  const w = systemWord(kind);
+  return w ? `to ${w}` : "outside jason";
+}
+
+/** What applying will do, counted from the approved items (those that take effect): the changes, the records they fall on
+ * (an item's `group`), and the changes by the field each sets (`change.field`, else the item's `op`). */
+export function applyCounts(a: Pick<Approval, "items">): { changes: number; records: number; byField: { name: string; n: number }[] } {
+  const rows = a.items.filter(takesEffect);
+  const by = new Map<string, number>();
+  for (const i of rows) { const k = i.change?.field || i.op; by.set(k, (by.get(k) ?? 0) + 1); }
+  return { changes: rows.length, records: new Set(rows.map((i) => i.group || i.label)).size, byField: [...by].map(([name, n]) => ({ name, n })) };
+}
+
+/** "Applying will make 7 changes on 2 records: member tags (5), request status (2).", or that none is marked approved. */
+export function applyCountsWords(a: Pick<Approval, "items">): string {
+  const c = applyCounts(a);
+  if (!c.changes) return "No change is marked approved yet.";
+  return `Applying will make ${plural(c.changes, "change", "changes")} on ${plural(c.records, "record", "records")}: ${c.byField.map((f) => `${f.name} (${f.n})`).join(", ")}.`;
+}
+
+/** A plan as a list row or the full record carries it: the full `Approval`, or `GET /api/approvals`'s summary, where
+ * `items` is a count and the counts come by class, decision, and result (`engine.counts`), and the signers are names. */
+export interface PlanLike {
+  status: ApprovalStatus;
+  items?: PlanItem[] | number;
+  byClass?: Record<string, number>; byDecision?: Record<string, number>; byResult?: Record<string, number>;
+  first?: Signature | string | null; second?: Signature | string | null;
+  needsSecond?: boolean | null; approved?: number; result?: Record<string, unknown>;
+}
+
+const signerOf = (s: Signature | string | null | undefined): string => (typeof s === "string" ? s : s?.name ?? "");
+
+/** One of the six sentences a plan's state is always shown in (the engine's status words stay in the JSON). `me` is the
+ * signed-in person: "needs your signature" is said only to a person who may sign. `opts.needsSecond` or `opts.twoPerson`
+ * say whether a second person must sign when the record itself does not (a full plan with a two-person kind). */
+export function planState(a: PlanLike, me = "", opts: { needsSecond?: boolean | null; twoPerson?: boolean } = {}): string {
+  const rows = Array.isArray(a.items) ? (a.items as PlanItem[]) : null;
+  const t = rows ? tally({ items: rows }) : null;
+  const r = rows ? results({ items: rows }) : null;
+  const total = t ? t.approvable : a.byClass?.approvable ?? 0;
+  const marked = t ? t.approvable - t.undecided : ["approved", "rejected", "held"].reduce((n, k) => n + (a.byDecision?.[k] ?? 0), 0);
+  const approved = r ? r.approved.length : a.approved ?? a.byDecision?.approved ?? 0;
+  const res = a.byResult ?? {};
+  const applied = r ? r.applied.length : Number(res.applied ?? a.result?.applied ?? 0);
+  const failed = r ? r.failed.length + r.uncertain.length : (res.failed ?? 0) + (res.uncertain ?? 0);
+  switch (a.status) {
+    case "planned":
+    case "in_review":
+      if (total > 0 && marked >= total) return signerProblem(me) ? "Marked, needs a signature." : "Marked, needs your signature.";
+      return `Needs review: ${marked} of ${total} marked.`;
+    case "approved":
+    case "partially_approved": {
+      const second = opts.needsSecond ?? a.needsSecond ?? (rows ? needsSecond({ items: rows }, opts.twoPerson) : false);
+      if (second && !signerOf(a.second)) {
+        const first = signerOf(a.first);
+        return `Waiting for a second signature${first ? ` (someone other than ${first})` : ""}.`;
+      }
+      return "Signed, not applied yet. Nothing has been written.";
+    }
+    case "applying": return `Applying: ${applied} of ${plural(approved, "change", "changes")} written.`;
+    case "applied": return `Applied: ${plural(applied, "change", "changes")} made, ${failed} failed.`;
+    case "failed": return `Failed: ${plural(Math.max(approved - applied, failed), "change was", "changes were")} not made`;
+    case "superseded": return "Replaced by a newer plan";
+    case "withdrawn": return "Withdrawn";
+  }
+}
