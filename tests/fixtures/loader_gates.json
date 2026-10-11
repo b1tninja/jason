@@ -57,6 +57,10 @@
    "gate": "p2",
    "why": "a person's scratchpads, clips of any source"
   },
+  "check-quotes": {
+   "gate": "p2",
+   "why": "how to ask the quote check (the text itself is a POST, /api/write/check-quotes/run, never in a web address); the check shows the stored passage, and the passage index also holds the insurance pages (P2); a confidential file is never named or shown"
+  },
   "citation-gaps": {
    "gate": "open",
    "why": "which statutes surveyed sources cite that the shelf lacks: public law, no member data"
@@ -64,6 +68,10 @@
   "citations": {
    "gate": "open",
    "why": "the statutes a source cites against the shelf: public law, no member data"
+  },
+  "cite": {
+   "gate": "p0",
+   "why": "one provision of the association's documents or the law, recited whole with its citation; a restricted book (CIV 5215) is refused and a confidential record is named without its place on disk"
   },
   "collections": {
    "gate": "p2",
@@ -80,6 +88,10 @@
   "community-profile": {
    "gate": "open",
    "why": "the public owner page's content: names, site pages, contact groups; the owner view reads it before any sign-in"
+  },
+  "conflicts": {
+   "gate": "p0",
+   "why": "the written provisions a higher authority displaces (CIV 4205): the association's documents against the law, noted and never resolved"
   },
   "control": {
    "gate": "p2",
@@ -205,6 +217,10 @@
    "gate": "p0",
    "why": "the key documents checklist and its links"
   },
+  "law-in-force": {
+   "gate": "p0",
+   "why": "a statute section as it stood on a day, from the shelf on disk: public law, no member data, read by the roster"
+  },
   "leads": {
    "gate": "p0",
    "why": "places where the stores show something not yet pinned"
@@ -240,6 +256,10 @@
   "limits": {
    "gate": "p2+admin",
    "why": "this community's limits; officers, managers, and administrators read"
+  },
+  "living": {
+   "gate": "p0",
+   "why": "a governing document as amended: the instruments applied and not in effect, apart, and a section's words and history"
   },
   "loss-packet": {
    "gate": "p2",

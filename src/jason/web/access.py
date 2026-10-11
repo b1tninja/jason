@@ -508,6 +508,7 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("vendors/*", Level.P2),           # vendors' records: a W-9's taxpayer id can be a sole proprietor's SSN
     PathRule("paint/*", Level.P0),             # the paint schedule and the maker's catalog copy: the association's own, no member's
     PathRule("records/*", Level.P3),                # the record checklist's history: who pinned which file, and their words
+    PathRule("workflows/*", Level.P3),              # the workflow runs (jason.workflows.store): a run's subject, evidence addresses, and notes can name a member, a parcel, or a restricted record; read through the Work loaders, which hold a run back outside the private view
     PathRule("key-documents/*.json", Level.P1),     # the key documents' store: who linked what, and their notes
     PathRule("key-documents/*", Level.P0, _key_document),
     PathRule("authorities/*", Level.P0),

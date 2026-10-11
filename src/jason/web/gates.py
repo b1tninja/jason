@@ -61,6 +61,9 @@ GATES: dict[str, str] = {
     "registers": P2,
     "insurance": P2,
     "insurance-renewals": P2,
+    # The rules-and-documents reads (jason.web.extra.rules_docs). The check shows a stored passage, and the passage index
+    # holds the insurance pages (P2 by access.PATH_RULES), so it is the offices' and not the whole roster's.
+    "check-quotes": P2,
     # jason's own operation: job commands and logs may name people.
     "jobs": ADMIN,
     # The association's own records and operations, nothing about a member. (``facts`` is not here: community facts are
@@ -96,6 +99,10 @@ GATES: dict[str, str] = {
     "rule-record-compare": P0,
     "rule-uses": P0,
     "rule-events": P0,
+    "cite": P0,           # the association's documents and the law, recited; a restricted book is refused (CIV 5215)
+    "living": P0,         # a governing document as amended; an amendment not in effect listed apart
+    "conflicts": P0,      # the Conflict rows (CIV 4205): noted, never resolved
+    "law-in-force": P0,   # a statute section on a day, from the shelf
     "record-slots": P0,
     "record-slot": P0,
     "record-bindings": P0,

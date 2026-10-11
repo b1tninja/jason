@@ -21,6 +21,8 @@ the words of that day (``jason.community.law_text.in_force``).
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import os
 import re
@@ -30,7 +32,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from jason.community.authorities import LAWLIBRARY_CODES, number_key
 from jason.sources.lawlibrary import LawLibrary
@@ -80,7 +82,23 @@ class Fetched:
 _misses: dict[tuple[str, str, str, str], tuple[float, Fetched]] = {}
 
 
+_held_off: contextvars.ContextVar[bool] = contextvars.ContextVar("statute_fetch_off", default=False)
+
+
+@contextlib.contextmanager
+def disabled() -> Iterator[None]:
+    """The disk only, for the code inside the block and this thread or task alone: a read that must write nothing (a web
+    loader) holds the read-through off without touching the process's environment, which other requests share."""
+    token = _held_off.set(True)
+    try:
+        yield
+    finally:
+        _held_off.reset(token)
+
+
 def enabled() -> bool:
+    if _held_off.get():
+        return False
     return os.environ.get(FETCH_ENV, "1").strip().lower() not in ("0", "false", "no", "off")
 
 

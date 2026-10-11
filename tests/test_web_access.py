@@ -142,6 +142,10 @@ def data(tmp_path):
     ("leases/unit/lease.pdf", P3), ("insurance/claims/letter.pdf", P2), ("reports/ledger.json", P2),
     ("packets/2026-10-20/item.pdf", P1), ("meetings/plan-2026-10-20.json", P1), ("tax-bills/2026.pdf", P1),
     ("vendors/acme/w9.pdf", P2),
+    # the workflow runs: a run's subject, evidence, and notes can name a member, a parcel, or a restricted record
+    ("workflows/index.json", P3), ("workflows/rule-change/run-0123456789.jsonl", P3),
+    ("workflows/OWNER-INFO-CYCLE/run-abcdef0123.jsonl", P3), ("workflows/x/y/z.json", P3),
+    ("workflowsx/file.json", P2),                                 # not the folder: unplaced, closed
 ])
 def test_level_of_path(data, rel, level):
     assert level_of_path(rel, data) is level
@@ -375,6 +379,29 @@ def test_a_confidential_library_file_needs_the_private_view(files):
     [line] = _served(files)
     assert line["level"] == "P3" and line["private"] is True and line["reason"] == "executive session item 3"
     assert c.get("/api/file?path=library/files/Minutes/open.pdf").status_code == 200    # the open one: P0
+
+
+def test_workflows_are_placed_and_read_only_in_the_private_view(files):
+    """``data/workflows/**`` is P3 (a run's subject and notes can name a member): a manager, who opens P2, reads one only in the
+    private view; an administrator with no office never; the open file next to it is unaffected."""
+    from jason.web.access import placed
+
+    (files / "workflows" / "rule-change").mkdir(parents=True)
+    (files / "workflows" / "rule-change" / "run-0123456789.txt").write_text("a run", encoding="utf-8")
+    assert placed("workflows/rule-change/run-0123456789.txt", files)
+    url = "/api/file?path=workflows/rule-change/run-0123456789.txt"
+    manager = webclient.sign_in(webclient.client(_app(files)), "A Manager")
+    plain = manager.get(url)
+    assert plain.status_code == 403 and "only in the private view" in plain.json["error"]
+    assert manager.get(url + "&private=1&reason=a+query+is+not+the+view").status_code == 403
+    assert _served(files) == []
+    admin = webclient.sign_in(webclient.client(_app(files)), "Ada Admin")
+    assert admin.get(url).status_code == 403
+    assert manager.post("/api/private", json={"reason": "reading a run"}).status_code == 200
+    ok = manager.get(url)
+    assert ok.status_code == 200 and ok.data == b"a run"
+    [line] = _served(files)
+    assert line["level"] == "P3" and line["path"] == "workflows/rule-change/run-0123456789.txt" and line["private"] is True
 
 
 def test_an_admin_viewing_as_a_director_is_judged_as_the_director_and_both_are_logged(files):

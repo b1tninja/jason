@@ -908,6 +908,11 @@ EXTRA_LOADERS: dict[str, str] = {
     "rule-record-compare": "jason.web.extra.rule_records:rule_record_compare",  # ?id= the working Doc against the adopted words
     "rule-uses": "jason.web.extra.rule_records:rule_uses",  # ?id= the uses linked to a rule
     "rule-events": "jason.web.extra.rule_records:rule_events",  # ?id= the acts on record for a rule
+    "cite": "jason.web.extra.rules_docs:cite",  # ?expression=&as_of=&citing=&citing_day=&text=0: one provision recited from the shelf, words whole with the citation and version; a restricted book refused; P0
+    "living": "jason.web.extra.rules_docs:living",  # ?key=&section=&as_of=: a governing document as amended, the instruments applied and not in effect (apart); P0
+    "conflicts": "jason.web.extra.rules_docs:conflicts",  # ?area=&resolved=1&leads=1&document=&since=: the Conflict rows, noted and never resolved; P0
+    "law-in-force": "jason.web.extra.rules_docs:law_in_force",  # ?citation=&as_of=: a statute section as it stood on a day, disk only; P0
+    "check-quotes": "jason.web.extra.rules_docs:check_quotes",  # (a text is refused: POST /api/write/check-quotes/run {text, as_of}, so it is never in a web address) the check of the pasted text against the stored words, results only; P2
     "record-slots": "jason.web.extra.record_slots:record_slots",  # the record checklist; ?group=&state=; disk only, board only
     "record-slot": "jason.web.extra.record_slots:record_slot",  # ?key= one slot: holders, the library's reading, the trail
     "record-bindings": "jason.web.extra.record_slots:record_bindings",  # ?key= a slot's bound folders: counts from the last listing already fetched (here, elsewhere, nowhere, pinned, read); never calls Drive
@@ -933,13 +938,13 @@ EXTRA_LOADERS: dict[str, str] = {
     "control": "jason.web.extra.controls:control",  # ?key=: one control, six bands, with its provision as the documents hold it now; P2
     "control-notices": "jason.web.extra.controls:control_notices",  # ?subject=KIND: the effective rule and the controls waiting or refused, for the one-line notice; read only, P2
     "office-view": "jason.web.extra.office_view:office_view",  # ?office=ROLE (an OfficerRole word; empty: the viewer's own offices): the office's Today bands, a lens for any board member; offices, counts, and titles, never a name; P2
-    "work": "jason.web.extra.work:work",  # ?definition=&role=&due=&state=&mine=1&q=: the open runs, each once, in the group of its most pressing step (yours, others, clock, board), legal dates first; no subject, item, or name in a row; P2
-    "work-run": "jason.web.extra.work:work_run",  # ?definition=&id=: one run (steps, clocks with basis and the statute's words, links, history, changed since); a dry resume, appends nothing; P2
-    "work-definitions": "jason.web.extra.work:work_definitions",  # ?family=&key=&role=&mine=1: the workflows jason has, by family, with drift from their procedures; with key one read whole; read only, P2
+    "work": "jason.web.extra.work:work",  # ?definition=&role=&due=&state=&mine=1&q=: the open runs, each once, in the group of its most pressing step (yours, others, clock, board), legal dates first; no subject, item, or name in a row; p2+admin (the offices that open P2 read the board's and the held runs; an administrator with no office reads the administrator's definitions alone; the loader gates itself)
+    "work-run": "jason.web.extra.work:work_run",  # ?definition=&id=: one run (steps, clocks with basis and the statute's words, links, history, changed since); a dry resume, appends nothing; p2+admin (a held run in full only in the private view, P3, logged; an administrator for the administrator's own runs; the loader gates itself)
+    "work-definitions": "jason.web.extra.work:work_definitions",  # ?family=&key=&role=&mine=1: the workflows jason has, by family, with drift from their procedures; with key one read whole; read only, p2+admin (an administrator alone sees the administrator's definitions; the loader gates itself)
 }
 EXTRA_WRITERS: dict[str, str] = {
     "controls": "jason.web.extra.controls:write",  # <control key> {act: propose}: a board item with the provision as evidence, in the signer's name (P2); adopts nothing
-    "work": "jason.web.extra.work:write",  # <definition>/<run id> {act: attest|arrived|skip|na|set-date|reopen|pause|resume|note|cancel|open, step?, slot?, day?, record?, reason?, text?, expect?, yes?} and <definition>/start {subject, label, dates, yes?, dryRun?}: the engine's own act in the signer's name (P2); records and decides nothing outward
+    "work": "jason.web.extra.work:write",  # <definition>/<run id> {act: attest|arrived|skip|na|set-date|reopen|pause|resume|note|cancel|open, step?, slot?, day?, record?, reason?, text?, expect?, yes?} and <definition>/start {subject, label, dates, yes?, dryRun?}: the engine's own act in the signer's name (the offices that open P2, or an administrator for the administrator's own runs; refused while an admin views as someone else); records and decides nothing outward
     "registers": "jason.web.extra.registers:write",
     "life-safety": "jason.web.extra.life_safety:write",  # <deficiency id> {act}: confirm, impairs, cleared, insurer-told, or propose; append only, in the signer's name (P2)
     "bill-investigation": "jason.web.extra.bill_investigation:write",  # <tx> {outcome, doc?, note?}: a person's outcome, append only, in the signer's name; attaches and approves nothing
@@ -961,6 +966,7 @@ EXTRA_WRITERS: dict[str, str] = {
     "intake": "jason.web.extra.onboarding_setup:write",  # a signed-in person's answer, queued; applied in a terminal
     "records": "jason.web.extra.record_slots:write",  # pick, answer, unpin, bind, keep, repin, more, reopen, read on a slot: jason's own stores; the file is never touched
     "drive": "jason.web.extra.drive_choose:write",  # list, search, resolve, bound: Drive read over jason's token (POST so a name is never in a URL); writes nothing
+    "check-quotes": "jason.web.extra.rules_docs:write",  # run {text, as_of}: the pasted text's quotations and citations against the stored words; a POST so the text is never in a web address; reads disk only, writes nothing, results only; P2 (the writer gates itself)
     "library": "jason.web.extra.library_browse:write",  # files {q, kind, source, ...}: the library explorer's list with a name search (POST so a name is never in a URL); disk only
     "split": "jason.web.extra.split:write",  # <session id|new> {act: open, boundaries, mark, ..., suggest, review, apply, decline}: a draft change as the signed-in person; apply is a dry run unless dryRun is false and confirm is true; writes through the record intake's one split writer
     "limits": "jason.web.extra.limits_view:write",  # <instance|community> {act: set|reset, changes, reason, dryRun}: a dry run unless dryRun is false; the signed-in administrator, with a reason; the one writer is jason.limits
