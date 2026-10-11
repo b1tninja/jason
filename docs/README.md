@@ -18,6 +18,7 @@ The association's own findings (owners, parties, deed chains, review results) ar
 - [mcp-local-dev.md](mcp-local-dev.md): developing the MCP server with one local process for every session (research and proposal).
 - [web-ui.md](web-ui.md): the React UI, its WSGI server, and the API.
 - [web-ui-decisions.md](web-ui-decisions.md): where jason needs a person, and the UI component for each.
+- [console/design-index.md](console/design-index.md): where the design agent starts: every brief and screen spec for the console, in reading order, with the rules that run through them.
 - [workflows-design.md](workflows-design.md): the tasks jason is used for as durable workflows: definition, run, event log, seven step kinds, child runs, clocks, and the Work and Run screens. Not built yet.
 - [workflows-engine.md](workflows-engine.md): the engine: types, the run store and event log, the fold, the resume check, each step kind's contract, `jason workflow`, and the tests. Step 1 (the pure library) is built.
 - [workflows/README.md](workflows/README.md): the six family pages (members, board, money, documents and records, property and vendors, mail and platform), what they found in common, and the decisions waiting.
