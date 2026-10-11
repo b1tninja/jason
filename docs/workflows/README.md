@@ -23,6 +23,7 @@ The model is [../workflows-design.md](../workflows-design.md): a definition (ste
 ## Decisions already taken
 
 - **Every confirmed life-safety deficiency becomes a board item** (2026-10-11), prioritized by a severity a person sets and by a deadline a person records; until a severity is set, jason proposes one and says so ([property-safety-vendors.md](property-safety-vendors.md)).
+- **The secretary is the board's official record keeper** (2026-10-11): a `decision` step is recorded by the secretary, and the pages say so. The president recording when the secretary is absent or is the matter's subject is a proposal for the board, not a decision.
 - **A director sees counts only** on the requests area, enforced on the server (2026-10-10).
 - **The console may save Gmail drafts, never send**, through the `gmail-drafts` approvals kind (2026-10-10).
 - **The vault is the development environment's store** (2026-10-10).
@@ -30,7 +31,7 @@ The model is [../workflows-design.md](../workflows-design.md): a definition (ste
 ## Decisions for you, gathered
 
 1. **Child runs and step groups** (all six pages asked): adopted in the spine as recommended; say if not.
-2. **Who records a board decision** (the secretary or the president), and whether a decision step is a link to a meeting's agenda item or a child run.
+2. **Whether a decision step is a link to a meeting's agenda item or a child run** (who records it is settled: the secretary).
 3. **The counterparty clock basis:** added to the spine; `followups.Basis` gains it with the engine.
 4. **Mail and shredding:** may the manager alone discard a legal, insurance, tax, or escrow letter, or does the board adopt `records-retention` first (a question for the board and counsel)?
 5. **A response standard for general email:** the law is silent, so the board adopts one or none.

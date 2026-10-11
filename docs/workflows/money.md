@@ -47,7 +47,7 @@ No `Procedure` row in `jason.community.procedures` covers any of these six (chec
 
 ## 2. The definitions
 
-Columns: **id**, **title**, **kind** (`check` `job` `plan` `person` `decision` `wait` `branch`), **role**, **needs**, **produces** (link kinds), **evidence**, **command** (terminal), **clock (basis)**, **repeat; skip**. Basis words are the spine's: `law`, `documents`, `proposed policy`, `person`. Roles: manager, treasurer, president, secretary, director, board (a `decision`, recorded by the secretary or president), members, any signed-in person. "Legal" steps may be skipped by nobody (spine section 7, recommended); they are done or their absence is a finding for the board.
+Columns: **id**, **title**, **kind** (`check` `job` `plan` `person` `decision` `wait` `branch`), **role**, **needs**, **produces** (link kinds), **evidence**, **command** (terminal), **clock (basis)**, **repeat; skip**. Basis words are the spine's: `law`, `documents`, `proposed policy`, `person`. Roles: manager, treasurer, president, secretary, director, board (a `decision`, recorded by the secretary), members, any signed-in person. "Legal" steps may be skipped by nobody (spine section 7, recommended); they are done or their absence is a finding for the board.
 
 ### 2.1 `bill-attach` (task 1, the monthly pass)
 
@@ -331,7 +331,7 @@ Uses the spine's screens: **Work** (`#/work`, rows grouped Yours, Waiting on oth
 | Tender last four on a county receipt | P2 and held back unless `private` | treasurer | a count |
 | Reconciliations, budget, books | P1 | treasurer, manager | directors read budget against actual and reserves |
 | Delinquency by unit and owner | P1 for the treasurer and manager (`personas-and-jobs.md`) | manager (records), board (decides) | executive-session subject (CIV 4935): **a director sees counts and states only, never a unit or an owner** (proposed: the board's 2026-10-10 rule is for the requests area; extending it here is the board's decision) |
-| Payment plan meeting, foreclosure vote | executive session; the minutes name the parcel number, not the owner (CIV 5705(c)) | board, recorded by the secretary or president | the open minutes name the matter generally (CIV 4935(e)) |
+| Payment plan meeting, foreclosure vote | executive session; the minutes name the parcel number, not the owner (CIV 5705(c)) | board, recorded by the secretary | the open minutes name the matter generally (CIV 4935(e)) |
 | Reserve study | P1 (`reserve-studies/`) | treasurer, manager | owners see only the funding summary in the budget report (`reserves?view=owner`) |
 | Insurance policies, claims, policy numbers | P2 (`insurance/`) | manager, treasurer | the policy number is masked in lists; claims are not in a list |
 | Tax bills the association owns | P1 (`tax-bills/`) | treasurer | roster |

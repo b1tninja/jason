@@ -28,7 +28,7 @@ records-production       one run per member's records request; reads the checkli
 
 | Term | Meaning on this page |
 |---|---|
-| **Roles** | M manager; S secretary; P president; T treasurer; B the board, by a vote recorded by P or S; A administrator; R a second person (any roster person other than the one who answered); any = any signed-in roster person; J jason (checks and jobs). Counsel and owners have no step. |
+| **Roles** | M manager; S secretary; P president; T treasurer; B the board, by a vote recorded by S; A administrator; R a second person (any roster person other than the one who answered); any = any signed-in roster person; J jason (checks and jobs). Counsel and owners have no step. |
 | **person (signed)** | A `person` step whose act is a signed record in jason's own store (`--by NAME`, a dry run first, `--yes`). Evidence is the store row (`data/intake/asks.json`, `data/spec/<profile>/records.json`, `data/key-documents/<profile>.json`, `data/onboarding/requests.json`, `data/records-requests/requests.json`). The step panel runs the dry run as a `Confirm` where the console has the writer, else shows the `Command`. |
 | **plan** | Only where an approvals kind exists or is proposed. **Built kinds** (`registry.py`): `owner-info-tags`, `payhoa-attach-bills`, `gmail-drafts`; none is in this family. **Proposed** (approval-workflow.md section 8): `local.ingest.apply`, `local.living.reread`, `local.spec.migrate`, `local.section-refs.apply`. Intake answers and confirms are explicitly "not engine kinds". |
 | **Terminal-only acts** | `jason onboard --apply`, `jason intake --apply`, `jason ingest --apply`, `git apply` of a profile proposal. The run shows the `Command` and the person attests; the console has no writer (checked: `EXTRA_WRITERS`). |

@@ -44,7 +44,7 @@ The seven **step kinds**:
 | `job` | a queued command (a read or a sync) | the worker | the job finished (succeeded; or failed, which stops the step and says why) |
 | `plan` | an approvals plan: the writes jason would make, with evidence | a person approves item by item | the plan is applied (every approved item applied); a rejected or held item is recorded |
 | `person` | an act jason cannot do (mail, a call, a vote, a visit, a decision in another system) | a named role | the person attests it, with the date and, where the step asks, the record they point to |
-| `decision` | a decision reserved to the board or the members (a vote, an adoption, a policy) | the board, recorded by its secretary or president | the decision is recorded with its date, the meeting, the vote as taken, and the instrument |
+| `decision` | a decision reserved to the board or the members (a vote, an adoption, a policy) | the board, recorded by its secretary | the decision is recorded with its date, the meeting, the vote as taken, and the instrument |
 | `wait` | until a date, a clock, an arrival (an answer, a reply, a delivery), or another step | nobody (the run is waiting) | the thing arrived, or its date passed (which may open a follow-up) |
 | `branch` | a choice between paths, by a fact or by a person | jason (by fact) or a role | a path is chosen and recorded; the other path's steps are not applicable |
 
