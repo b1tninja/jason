@@ -141,7 +141,7 @@ Six bands. The rail and the step panel are the page; the others read from them.
 
 ## Components
 
-Built: `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`, `AgeStamp`. To add: `DefinitionRow`, `DefinitionPage`, `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
+Built: `StageSteps`, `Findings`, `Command`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`. Specified, not yet built ([../handoff-admin-components.md](../handoff-admin-components.md)): `TerminalStep`, `AgeStamp`. To add: `DefinitionRow`, `DefinitionPage`, `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
 
 ## Actions
 

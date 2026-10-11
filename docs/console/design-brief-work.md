@@ -77,7 +77,7 @@ A `Doc` of the run's events with their evidence addresses, for the board's recor
 
 ## D. The shared components, each once
 
-Reuse (built): `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`, `AgeStamp`, `DataTable`, `Tabs`, `Card`.
+Reuse (built): `StageSteps`, `Findings`, `Command`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`, `DataTable`, `Tabs`, `Card`. Specified, not built (draw them from the built parts and say so): `TerminalStep`, `AgeStamp`.
 
 | Component | What it is | Data | States |
 |---|---|---|---|

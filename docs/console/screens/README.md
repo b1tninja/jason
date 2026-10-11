@@ -22,6 +22,11 @@ One page per screen of the earlier spec, now read against the console that exist
 | [governing-documents.md](governing-documents.md) | none | Proposed whole, `#/documents` | 2 |
 | [mail.md](mail.md) | `#/mail-triage`, `#/inbox`'s letters and requests, `#/insurance`, `#/renewals` | Their documents on `Doc` (built) | 2 |
 | [work.md](work.md) | none (its parts are in Today, `#/approvals`, `#/actions`, `#/followups`) | Proposed whole, `#/work` and `#/work/<definition>/<id>`; the run store is not built | 2 |
+| [mailroom.md](mailroom.md) | none (`jason mailroom` at the terminal) | Proposed whole, `#/mailroom`: the preview and the send plan | 2 to 4 |
+| [elections.md](elections.md) | none (its parts are in the notice catalog, the nomination form, and the decisions store) | Proposed whole, `#/elections`; no election store yet | after Work |
+| [collect-items.md](collect-items.md) | none | Proposed: a tracker inside a run step and the packet's Collect tab | after Work |
+| [incidents.md](incidents.md) | none (the paperwork report and the loss packet) | Proposed whole, `#/incidents`; no incident record yet | 3 |
+| [integration-disconnect.md](integration-disconnect.md) | `#/instance` (connect and check) | Proposed: the disconnect flow | 3 |
 | [board-items.md](board-items.md) | `#/actions` (`ConsoleActions`) | Its evidence on `Doc` (built) | 2 |
 | [requests-and-links.md](requests-and-links.md) | `#/drafts`, the key documents tab, `#/canvases`, `#/templates`, and `Embed` | Their documents on `Doc` (built) | 2 |
 | [people.md](people.md) | `#/people` (`PeopleView`) | Built, read-only: offices, holders, vacancies, sign-in | 2 |
