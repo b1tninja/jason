@@ -217,6 +217,7 @@ Plans of writes outside jason, approved item by item by a named person
 | `--reason` | REASON | why: a hold, a rejection, a decline, or a withdrawal |
 | `--yes` |  | with apply: apply the approved items (without it: re-plan and compare, writing nothing) |
 | `--json` |  | with show: the approval as JSON |
+| `--scope` | JSON | with plan: the kind's scope as a JSON object (a kind that needs one, such as gmail-drafts, says what it takes) |
 | `--status` | STATUS | with list: only this status (planned, in_review, approved, ...) |
 | `--kind` | KIND | with list: only this kind |
 | `--verify` |  | with audit: check the log's hash chain |
@@ -230,7 +231,7 @@ PayHOA-first: list pending utility txs, sync only needed portals (SMUD / i-doxs)
 | Option | Value | Help |
 |---|---|---|
 | `--date-window-days` | DATE_WINDOW_DAYS | Max \|tx date - bill date\| in days (default: 7) |
-| `--source` | {smud,idoxs,proactive,signalservice} | Limit to one bill source (default: all registered) |
+| `--source` | {smud,idoxs,proactive,signalservice,county-tax} | Limit to one bill source (default: all registered) |
 | `--skip-sync` |  | Attach using local caches only (skip portal sync) |
 | `--dry-run` |  | List pending matches without portal sync or uploads (the default without --yes) |
 | `--yes` |  | Sync the portals that are needed and upload the matched PDFs to PayHOA (without it, only the dry run) |
@@ -314,7 +315,7 @@ Match unapproved PayHOA transactions to registered bill sources (SMUD, City of S
 | Option | Value | Help |
 |---|---|---|
 | `--date-window-days` | DATE_WINDOW_DAYS | Max \|tx date - bill date\| in days (default: 7) |
-| `--source` | {smud,idoxs,proactive,signalservice} | Limit to one bill source (default: all registered) |
+| `--source` | {smud,idoxs,proactive,signalservice,county-tax} | Limit to one bill source (default: all registered) |
 | `--dry-run` |  | Print matches without uploading or downloading PDFs |
 | `--approve` |  | Mark transaction approved after successful upload |
 
@@ -1626,7 +1627,7 @@ Written provisions a higher authority displaces: what still governs and what yie
 
 ### `jason life-safety`
 
-The deficiency register: propose from the reports' readings, then a person confirms, says whether it impairs a safeguard, links what cleared it, and records that the insurer was told (append only, with who and when)
+The deficiency register: propose from the reports' readings, then a person confirms, says whether it impairs a safeguard, links what cleared it, and records that the insurer was told, a severity, and a deadline (append only, with who and when); each confirmed deficiency is a board item proposed for the next agenda
 
 | Option | Value | Help |
 |---|---|---|
@@ -1636,7 +1637,11 @@ The deficiency register: propose from the reports' readings, then a person confi
 | `--propose` |  | add a proposed row for each open deficiency in the readings |
 | `--confirm` | ID | accept a proposed row (with --by) |
 | `--impairs` | ID | whether it impairs a safeguard (with --value and --by) |
-| `--value` | {yes,no} | with --impairs |
+| `--value` | {yes,no,urgent,high,normal} | with --impairs (yes or no) or --severity (urgent, high, normal) |
+| `--severity` | ID | a person's severity for a deficiency (with --value and --by) |
+| `--deadline` | ID | a deadline a person knows (with --date, --basis, --by; --record optional) |
+| `--date` | DATE | with --deadline: the deadline (YYYY-MM-DD; a past date within a year is overdue) |
+| `--basis` | {insurer,authority,documents,vendor,person} | with --deadline: who set it |
 | `--cleared` | ID | link the record that cleared it (with --record, --kind, --on, --by) |
 | `--insurer-told` | ID | record that a person told the insurer (with --record, --on, --by) |
 | `--record` | REF | the record's id (a library id, or gmail:ID for a message) |
