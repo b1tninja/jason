@@ -14,10 +14,12 @@ needed here), and nothing of the approvals, tasks, controls, community, or web p
   ``gmail-drafts`` kind, case ``proposal-request``). Every other write the page calls a plan (a filing plan, an insurer's
   notice, a letter, a vendor's question) has no registered kind, so it is a ``person`` step whose ``why`` says what it
   becomes.
-- **A job or a check step** needs a name in ``JOBS`` or ``CHECKS``. Twelve property reads are registered by
+- **A job or a check step** needs a name in ``JOBS`` or ``CHECKS``. Seventeen property reads are registered by
   ``jason.workflows.checks.property`` (the life-safety record, the deficiency register's acts and board item, the loss packet,
-  a contract's notice windows, the backflow tester, the paint catalog, the elevated-elements due day), and each step that
-  names one is a ``check`` step of role ``jason``. A read the page gives to jason that has no store to answer it yet is still
+  a contract's notice windows, what the counterparty owes, the managing agent's statement, the backflow tester and assemblies,
+  the paint catalog, the elevated-elements due day, an improvement request's entry, a program's standing), and each step that
+  names one is a ``check`` step of role ``jason``. Five property jobs are registered as descriptors of an existing command
+  (``jason.workflows.jobs``); no step is a job step yet, because a person runs the command and the page's steps stay a person's. A read the page gives to jason that has no store to answer it yet is still
   a ``person`` step (the manager reads the command's output and attests the result). ``WANTED`` lists, as strings, the checks,
   jobs, plan kinds, templates, and commands the page wants that do not exist, so each step can be made what the page says
   when they do.
@@ -49,7 +51,7 @@ from typing import Any, Callable
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, DateSlot, NotApplicable, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
 )
 
 FAMILY = "property"
@@ -79,17 +81,10 @@ ORDER: dict[str, tuple[str, ...]] = {
 
 WANTED: tuple[str, ...] = (
     # reads the page gives to jason, as checks (readers.CHECKS) once they are written
-    "check:backflow-assemblies -- assemblies from the notice, the water account, and last year's reports, side by side (backflow-annual assemblies)",
-    "check:contract-owed -- what the counterparty owes and whether it is on file (contract-notice-window owed)",
-    "check:contract-statement -- the managing agent's written statement, present or missing (contract-notice-window statement)",
-    "check:improvement-findings -- the five findings of the unit's manual (improvement-request findings)",
-    "check:program-standing -- a maintenance program's document, adoption, and implementation (maintenance-program standing)",
+    "check:improvement-findings-conflicts -- the four findings of the unit's manual the stores cannot answer yet: entry with no approval, records that show work with none, entry that differs, condition open (needs the request store and the change rules; improvement-request findings)",
+    "check:program-standing-catalog -- a maintenance program's document and adoption (needs the program catalog, docs/programs.md; maintenance-program standing)",
+    "check:deliverable-on-file -- whether each deliverable the contract names is on file (needs a link from a deliverable to a document; contract-notice-window owed)",
     # jobs (readers.JOBS)
-    "job:life-safety-read-report -- jason models --filed, after the local-ai preflight (life-safety-period read-report)",
-    "job:life-safety-propose -- jason life-safety --propose (deficiency propose)",
-    "job:contract-terms -- jason contract-terms FILE, by a model a person chose (contract-notice-window read)",
-    "job:paint-refresh -- jason paint --refresh, a person's ask (paint-cycle refresh)",
-    "job:vendor-portal-sync -- jason vendors --sync (maintenance-program sync)",
     "job:gmail-sync -- jason gmail --sync, the arrival of a servicer's, supplier's, or counterparty's mail (every wait)",
     # plan kinds (the approvals registry)
     "plan:gmail-drafts/insurer-notice -- a draft notice to the insurer or agent (deficiency tell-insurer)",
@@ -239,7 +234,7 @@ def life_safety_period() -> Workflow:
           command="jason models --filed", repeat=ITEM,
           record="the reading: inspection date, interval, result, deficiencies, buildings",
           why="Passes when every filed report has a reading and at least one report is on file; a person runs `jason models --filed` "
-              "(GPU lane, after the local-ai preflight; job:life-safety-read-report is wanted). A State form's marks are read by a "
+              "(GPU lane, after the local-ai preflight; the job life-safety-read-report is registered for a person to queue). A State form's marks are read by a "
               "person, and no period is assigned from a file name."),
         s("place", "Place what the reading could not, and record the occurrence", P, S, ("read-report",),
           command="jason inspections; jason schedule-evidence --record KEY DUE --by NAME", sop="duty-schedule#4", repeat=ITEM,
@@ -283,7 +278,7 @@ def deficiency() -> Workflow:
     steps = (
         s("propose", "Propose a row from a reading that lists an open deficiency", P, M, command="jason life-safety --propose",
           record="the proposed row's id",
-          why="The page makes this a job (job:life-safety-propose, wanted). The row id is a hash of report, location, device, and "
+          why="A person runs the command (the job life-safety-propose is registered for a person to queue). The row id is a hash of report, location, device, and "
               "comment, so a second run adds none."),
         s("confirm", "Confirm the row against the report", C, JASON, ("propose",), check=named_check("deficiency-confirmed"),
           command="jason life-safety --confirm ID --by NAME", record="the act 'confirmed': who and when",
@@ -349,9 +344,11 @@ def backflow_annual() -> Workflow:
         s("notice-in", "Record each notice with every date its days could run from", P, M, command="jason backflow", repeat=ITEM,
           clock=_docs("the notice's own words (its days); jason picks no date"),
           record="the notice's library address and each date its days could run from (dated, postmarked, scanned, failed test)"),
-        s("assemblies", "Set the letter's assemblies beside the water account and last year's reports", P, M, command="jason backflow",
-          repeat=PERIOD, record="each source in its own column; the differences, none picked",
-          why="The page gives this read to jason (check:backflow-assemblies, wanted)."),
+        s("assemblies", "Set the letter's assemblies beside the water account and last year's reports", C, JASON,
+          check=named_check("backflow-assemblies"), command="jason backflow", repeat=PERIOD,
+          record="each source in its own column; the differences, none picked",
+          why="Counts only: assemblies for each service, tests on record, counts from another source that differ. It passes when "
+              "the program lists assemblies; a difference is its message, and a person reconciles it (none is picked)."),
         s("ask-program", "Ask which date counts, or about a discrepancy", P, M, ("assemblies",), skip=BY_MANAGER,
           record="the message's reference and the answer recorded",
           why="A message sent by a person (a gmail-drafts case, wanted). Skipped, with the reason, when the notice settles it."),
@@ -472,7 +469,7 @@ def contract_notice_window() -> Workflow:
     steps = (
         s("read", "Read the terms of the contract", P, M, command="jason contract-terms FILE; jason contract-terms --library", sop="ingest#2",
           record="the terms reading's address (term, renewal, each notice's window, delivery, deliverables, findings)",
-          why="The page makes this a job (job:contract-terms, wanted). A model is a person's choice, per document; Bedrock sends the words "
+          why="A person runs the command (the job contract-terms is registered for a person to queue). A model is a person's choice, per document; Bedrock sends the words "
               "to AWS and refuses a confidential file unless allowed for the run. A clause the model proposes that is not in the text is dropped, with its reason."),
         s("confirm-term", "Check the term's start and end on the page", P, M, ("read",),
           clock=_docs("the term's end, as the contract's words give it", slot="term_ends"),
@@ -484,16 +481,21 @@ def contract_notice_window() -> Workflow:
           clock=_docs("the window opens (the contract's words); the earliest day a notice counts", slot="window_opens"),
           record="per clause (non-renewal, termination without cause, breach and cure): opens, closes, delivery",
           why="Counted from the run's term end and the terms reading. A window has two edges; a notice outside either 'may not count'."),
-        s("owed", "Read what the counterparty owes and whether it is on file", P, M, ("read",), command="jason contract-terms --list",
-          record="the list: on file, not on file, not yet due",
-          why="A deliverable worth tracking becomes a board item or a register row, a person's choice (check:contract-owed, wanted)."),
+        s("owed", "Read what the counterparty owes and whether it is on file", C, JASON, ("read",), check=named_check("contract-owed"),
+          command="jason contract-terms --list", record="the list: on file, not on file, not yet due",
+          why="Passes when the terms reading exists; the message counts the deliverables by who owes them and how many carry a time. "
+              "Whether each is on file is not read (no store links a deliverable to a document): a person reads the list. A deliverable "
+              "worth tracking becomes a board item or a register row, a person's choice."),
         s("licence", "Check the licence numbers against the board's page", P, M, ("read",), command="jason licenses", repeat=ITEM,
           clock=_person_day("each contract and each renewal"), record="the check's date; the paper's number is not 'valid'"),
-        s("statement", "A management agreement: is the managing agent's written statement on file", P, M, ("read",),
+        s("statement", "A management agreement: is the managing agent's written statement on file", C, JASON, ("read",),
+          check=named_check("contract-statement"), na=NotApplicable((M,)),
           clock=_law("CIV 5375", "the statement is given 'in no event more than 90 days' before entering into the agreement; the earliest day it may be dated",
                      "agreement_on", -90),
           record="the statement's library address, or why none is needed (a renewal, or an agreement that is not a management agreement)",
-          why="The page gives this to jason (check:contract-statement, wanted). No skip: a run for a renewal records that no statement is needed."),
+          why="Passes when the document reading found the statement in the agreement's own text (it counts the five items). A separate "
+              "statement is not read, so a failure is not a finding that none exists. No skip: a run for a renewal, or an agreement "
+              "that is not a management agreement, is recorded as not applicable by the manager, with a reason and the record."),
         s("review", "Renew, renegotiate, re-bid, or end", D, S, ("window",), command="jason board",
           clock=_docs("before the window closes (the contract's words); a board meeting's notice is at least four days (CIV 4920(a))", slot="window_closes"),
           record="the board's decision record; no decision before the window closes is recorded as 'no action', not as a renewal",
@@ -601,8 +603,12 @@ def improvement_request() -> Workflow:
         s("manual", "Link the entry in the unit's manual", P, M, ("verify",), skip=BY_MANAGER,
           record="the entry's reference (the entry's approval is the request's address)",
           why="Skipped, with the reason, when the owner declines or the request was denied."),
-        s("findings", "Compute the five findings", P, M, ("manual",), skip=BY_MANAGER,
-          why="The page gives this to jason (check:improvement-findings, wanted): approval without an entry, and the others, in their fixed words."),
+        s("findings", "Compute the five findings", C, JASON, ("manual",), check=named_check("improvement-findings"),
+          na=NotApplicable((M,)),
+          why="Passes when an entry shared with the association links to the request (the finding 'approval, no entry'); private "
+              "entries are counted and never read. The other four findings need the request store and the change rules "
+              "(improvement-findings-conflicts, wanted). Recorded as not applicable, with a reason and the record, when the owner "
+              "declines or the request was denied."),
     )
     phases = (
         i.phase("receive", "Receive and classify", "receive", "track", "need", "ack"),
@@ -635,7 +641,7 @@ def paint_cycle() -> Workflow:
     steps = (
         s("refresh", "Refresh the catalog copy", P, M, command="jason paint --refresh", clock=_proposed("the copy is kept a week"),
           record="the copy's age after the refresh",
-          why="A job on a person's ask (job:paint-refresh, wanted); it reads the network."),
+          why="A job on a person's ask (the job paint-refresh is registered for a person to queue); it reads the network."),
         s("watch", "Check each scheduled color against the catalog", C, JASON, check=named_check("paint-catalog"),
           command="jason paint --check", repeat=ITEM,
           clock=_proposed("quarterly, and with the January law review (proposed)"),
@@ -739,16 +745,17 @@ def maintenance_program() -> Workflow:
     i = _Ids(PROG)
     s = i.step
     steps = (
-        s("standing", "Is the program adopted?", P, M, command="to add: jason programs",
+        s("standing", "Is the program adopted?", C, JASON, check=named_check("program-standing"), command="to add: jason programs",
           record="the document, the adoption, and the implementation, each in its own word",
-          why="'No act on record' is not 'not adopted' (check:program-standing, wanted)."),
+          why="'No act on record' is not 'not adopted'. Only implementation is read (the visits on disk for the program's vendor "
+              "portal); document and adoption are 'not read' until the program catalog exists (command:jason programs, wanted)."),
         s("adopt", "Adopt it, if the governing documents make it optional", D, S, ("standing",), skip=BY_SECRETARY, command="jason board",
           clock=_docs("the declaration"), record="the board's decision record",
           why="A vendor proposal's approval is implementation evidence, not an adoption. Skipped, with the reason, when already adopted."),
         s("sync", "Read the vendor's portal", P, M, ("adopt",), command="jason vendors --sync", repeat=PERIOD,
           clock=_person_day("the cadence a person adopted (jason cadence)"),
           record="the visits, products, and reports on disk, or the sync's failure",
-          why="A job when job:vendor-portal-sync is registered. A failed sync shows the last good read and its age; it is never repeated on a timer."),
+          why="A person runs the command (the job vendor-portal-sync is registered for a person to queue). A failed sync shows the last good read and its age; it is never repeated on a timer."),
         s("read", "Read visits, products, activity, and label limits", P, M, ("sync",), command="jason pests; jason pests --fetch", repeat=PERIOD,
           clock=_docs("the label limits as stored"),
           record="the brief's address; a finding is a question (an interval between treatments, a landscape use)"),

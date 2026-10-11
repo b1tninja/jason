@@ -1,5 +1,5 @@
 """The members' family's reads (docs/workflows/members-cycles.md, sections 2.2 to 2.6): the ``check`` steps of
-``notice-delivery``, ``mailroom-letter``, ``respond-sweep``, ``respond-request``, and ``form-campaign`` that an existing read
+``notice-delivery``, ``mailroom-letter``, ``respond-sweep``, ``respond-request``, ``form-campaign``, and ``owner-document`` that an existing read
 function or store answers.
 
 Each one is read-only: it reads a store on disk (the delivery ledger, the notices folder, the Mailroom's saved previews and
@@ -10,15 +10,21 @@ mails, approves, denies, or assigns).
 
 The subject a run carries tells a check what to read: ``notice:KEY`` (the delivery ledger's key), ``letter:ID`` (a saved
 preview's id, or the first characters of its fingerprint), ``request:ID`` (a PayHOA request's id, or ``email:THREAD``), and
-``campaign:CODE`` (a campaign code, or the library's key for the form). A subject of another shape reads the newest of its kind
-where that makes sense (a letter), and otherwise fails the check, saying what was missing.
+``campaign:CODE`` (a campaign code, or the library's key for the form), and ``document:NAME`` (an owner document: its Markdown
+source ``data/drafts/NAME.md``, and its notice's key under ``data/notices/NAME`` once it is kept). A subject of another shape
+reads the newest of its kind where that makes sense (a letter), and otherwise fails the check, saying what was missing.
+
+A document's statutes are read from the authorities shelf **on disk** (``jason.community.law_text``), never fetched: the
+on-demand export of a missing section writes a page, so no read here asks for it. A governing document's section is read
+through the tokens' own resolver with its versions cache read, not built.
 """
 
 from __future__ import annotations
 
 import functools
 import json
-from datetime import date
+import re
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +35,13 @@ from jason.workflows.types import CheckResult, RunView
 MAX_LETTER_PAGES = 4
 """The PDF letter's pages, at most, unless a person chooses otherwise (AGENTS.md; billing by printed page, with PayHOA's address
 page counted, and a sixth billed page adds postage)."""
+
+SHOWN = 5
+"""How many keys or messages a result names; the rest are counted."""
+
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_STATUTE = re.compile(r"\b(?P<code>[A-Z]{2,5})\s+(?P<number>\d+(?:\.\d+)?[a-z]?)(?P<subs>(?:\([A-Za-z0-9]+\))*)")
+_DOCUMENT = re.compile(r"\b(?P<key>[a-z0-9]+(?:-[a-z0-9]+)*)#(?P<section>[A-Za-z0-9][A-Za-z0-9.()\-]*)")
 
 BAD_LETTER = frozenset({"failed", "cancelled", "canceled", "error", "returned", "undeliverable", "rejected"})
 """A letter's status that is not "processing or better" (jason's reading of the vendor's words)."""
@@ -418,12 +431,8 @@ def request_classified(readers: StoreReaders, view: RunView, item: str = "") -> 
 
 # --- form-campaign ------------------------------------------------------------------------------------------------------
 
-@check("form-offered")
-@_guarded
-def form_offered(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
-    """The form is offered: ready or adjusted in the library as this community has it, with no failing finding. A form not
-    offered names the missing slot or binding. The run's subject is the campaign's code or the library's key for the form."""
-    from jason.community.form_library.check import check as library_check
+def _form_of(readers: StoreReaders, view: RunView, item: str) -> tuple[Any, Any, Any] | CheckResult:
+    """(the form, the resolved library, the community) the run's subject names, or the failing result."""
     from jason.community.form_library.resolve import resolve
     from jason.tasks import campaigns
 
@@ -441,6 +450,20 @@ def form_offered(readers: StoreReaders, view: RunView, item: str = "") -> CheckR
     if form is None:
         return CheckResult(False, (), f"{ident} names no form in this community's library "
                                       "(jason form-library --check lists them)")
+    return form, resolved, community
+
+
+@check("form-offered")
+@_guarded
+def form_offered(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The form is offered: ready or adjusted in the library as this community has it, with no failing finding. A form not
+    offered names the missing slot or binding. The run's subject is the campaign's code or the library's key for the form."""
+    from jason.community.form_library.check import check as library_check
+
+    got = _form_of(readers, view, item)
+    if isinstance(got, CheckResult):
+        return got
+    form, resolved, community = got
     report = library_check(resolved, readers.data_dir, community=community)
     mine = report.for_form(form.key)
     status = report.status(form.key) or form.status
@@ -454,5 +477,292 @@ def form_offered(readers: StoreReaders, view: RunView, item: str = "") -> CheckR
     return CheckResult(True, (), f"{form.key} ({tier}) is {status.value}, version {form.definition.version}")
 
 
-__all__ = ["answers_on_time", "form_offered", "mailroom_batch_read", "mailroom_pages", "notice_kept_text", "notice_owed_zero",
-           "notice_proof", "notice_requirement_read", "request_classified", "requests_read"]
+@check("form-stale")
+@_guarded
+def form_stale(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The form's recitals still read the words on the shelf: no statute it recites has had a change logged to its words
+    after the form's as-of day (the library's check 2, read for staleness alone). A change is for a person to read: the
+    amendment first, then the definition and its version. A recital that cannot be read, or a form with recitals and no as-of
+    day, cannot be judged and fails."""
+    from jason.community.form_library.check import check_recitals
+
+    got = _form_of(readers, view, item)
+    if isinstance(got, CheckResult):
+        return got
+    form, _, community = got
+    recitals = tuple(form.definition.recitals)
+    if not recitals:
+        return CheckResult(True, (), f"{form.key} recites no statute or clause, so no amendment can make it stale")
+    as_of = form.definition.as_of
+    if as_of is None:
+        return CheckResult(False, (), f"{form.key} recites {_plural(len(recitals), 'section')} and has no as-of day, so a change "
+                                      "to their words cannot be told from the form's own")
+    found = check_recitals(form, readers.data_dir, community)
+    stale = [f for f in found if f.message.startswith("stale:")]
+    unread = [f for f in found if not f.message.startswith("stale:")]
+    evidence = readers.evidence_entries(("file:authorities/manifest.json", "file:authorities/changes.json"))
+    said = f"{form.key} recites {_plural(len(recitals), 'section')} as of {as_of.isoformat()} (version {form.definition.version})"
+    if stale:
+        names = sorted({f.item for f in stale})
+        return CheckResult(False, evidence, said + f"; {_plural(len(names), 'recital')} changed on the shelf since: {', '.join(names)} "
+                                                   "(read the amendment, update the definition, bump its version)")
+    if unread:
+        names = sorted({f.item for f in unread})
+        return CheckResult(False, evidence, said + f"; {_plural(len(names), 'recital')} cannot be read, so staleness is not known: "
+                                                   f"{', '.join(names)}")
+    return CheckResult(True, evidence, said + "; no change logged to any of them since")
+
+
+# --- reading a document's words without building anything -----------------------------------------------------------------
+
+def _doc_name(view: RunView, item: str, *kinds: str) -> str:
+    """The name after ``KIND:`` in the run's subject for any of ``kinds`` (or the item, when one is given)."""
+    if str(item or "").strip():
+        return str(item).strip()
+    head, _, rest = str(view.subject or "").partition(":")
+    return rest.strip() if head.strip() in kinds else ""
+
+
+def _draft(readers: StoreReaders, name: str) -> tuple[Path | None, str]:
+    """(the Markdown under ``data/drafts``, why not). The name is a file name, never a path."""
+    if not _SAFE_NAME.match(name) or ".." in name:
+        return None, f"{name!r} is not a draft's name (a file name under data/drafts)"
+    path = readers.data_dir / "drafts" / (name if name.endswith(".md") else name + ".md")
+    if not path.is_file():
+        return None, f"no draft data/drafts/{path.name}: the document's one source is written there first"
+    return path, ""
+
+
+def _reader(readers: StoreReaders) -> Any:
+    """The tokens' own resolver with its versions cache read and never built: building a living document's versions writes."""
+    from jason.community.section_refs import SectionRefError
+    from jason.tasks import section_refs as sr
+
+    community = _community(readers)
+    if community is None:
+        raise LookupError("no community is chosen, so the documents cannot be read")
+
+    class ReadOnly(sr.DiskResolver):
+        def versions(self, key: str) -> Any:
+            if key not in self._versions:
+                living = self.living(key)
+                if living is None:
+                    raise SectionRefError(f"{key} is not kept as amended", "not_kept_as_amended")
+                path = sr.store_dir(self.data_dir) / f"versions-{key}.json"
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    raise SectionRefError(f"{key}: its versions are not built (jason cite builds them)", "unreadable") from exc
+                if raw.get("format") != sr.VERSIONS_FORMAT or raw.get("fingerprint") != sr._fingerprint(living, self.data_dir):
+                    raise SectionRefError(f"{key}: its versions are older than its sources (jason cite builds them again)",
+                                          "unreadable")
+                self._versions[key] = sr.Versions.from_dict(raw)
+            return self._versions[key]
+
+    return ReadOnly(readers.data_dir, community)
+
+
+def _on_shelf(readers: StoreReaders, citation: str) -> tuple[bool, str]:
+    """(whether the section's words are on the authorities shelf, a short phrase). The disk only: nothing is fetched."""
+    from jason.community import law_text
+
+    found = law_text.normal_citation(citation)
+    if found is None:
+        return False, f"{citation} is not a code and a section"
+    held = law_text.versions(found[0], readers.data_dir)
+    if not held:
+        return False, f"{found[0]} is not on the authorities shelf"
+    return True, f"{found[0]} is on the shelf"
+
+
+def _cited(text: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """(the statute sections a string cites, once each; the governing documents' ``key#section`` it names)."""
+    statutes = list(dict.fromkeys(f"{m['code']} {m['number']}" for m in _STATUTE.finditer(text or "")))
+    documents = list(dict.fromkeys((m["key"], m["section"]) for m in _DOCUMENT.finditer(text or "")))
+    return statutes, documents
+
+
+@check("clock-authority-recited")
+@_guarded
+def clock_authority_recited(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The authority behind the request's clock can be recited from stored words: a statute section is on the authorities
+    shelf, a governing document's clause (``key#section``) is in the document as it is kept. The words themselves are recited
+    by ``jason cite``; this passes when they are there to recite. A clock that is a proposed policy, or a kind with no clock row,
+    has no authority to recite: it passes saying so, and the next step holds the question for the board."""
+    from jason.community.responses import ClockSource
+    from jason.community.section_refs import SectionRefError
+
+    ident = _subject(view, "request", item)
+    if not ident:
+        return _no_key("request", "request:ID")
+    found, _ = _handled(readers, email=ident.startswith("email:"))
+    mine = next((h for h in found if str(h.request["id"]) == ident), None)
+    if mine is None:
+        return CheckResult(False, (), f"request {ident} is not in the requests read (jason sync-catalog brings the PayHOA requests)")
+    evidence = readers.evidence_entries(("file:payhoa.db",)) if not ident.startswith("email:") else ()
+    rule = mine.rule
+    if rule is None or rule.source in (ClockSource.POLICY, ClockSource.NONE):
+        why = "the kind has no clock row" if rule is None else f"the clock is a {rule.source.value}"
+        statutes, _ = _cited(rule.authority if rule is not None else "")
+        beside = ""
+        if statutes:
+            beside = "; cited beside it: " + ", ".join(
+                f"{s} ({'on the shelf' if _on_shelf(readers, s)[0] else 'not on the shelf'})" for s in statutes)
+        return CheckResult(True, evidence, why + ": no statute or clause sets it, so there are no words to recite; the next step "
+                                           "holds the question for the board, and no due day is made up" + beside)
+    authority = rule.authority
+    if rule.source is ClockSource.STATUTE and rule.notice:
+        from jason.community.notice_catalog import requirement
+
+        try:
+            authority = f"{authority} {requirement(rule.notice).statute}"
+        except KeyError:
+            pass
+    statutes, documents = _cited(authority)
+    if not statutes and not documents:
+        return CheckResult(False, evidence, f"the {rule.source.value} the clock rests on names no section to recite "
+                                            "(a statute as CIV NNNN, or a clause as key#section)")
+    heard: list[str] = []
+    missed: list[str] = []
+    for citation in statutes:
+        ok, phrase = _on_shelf(readers, citation)
+        (heard if ok else missed).append(phrase)
+    if documents:
+        reader = _reader(readers)
+        for key, number in documents:
+            try:
+                got = reader.section(key, number)
+                heard.append(f"{got.citation} is in the document as kept")
+            except SectionRefError as exc:
+                missed.append(str(exc))
+    if missed:
+        return CheckResult(False, evidence, "cannot recite: " + "; ".join(missed[:SHOWN]) + ("; " + "; ".join(heard) if heard else ""))
+    return CheckResult(True, evidence, "the words can be recited: " + "; ".join(heard) + " (jason cite recites them; any reading is "
+                                       "labeled and whose)")
+
+
+# --- owner-document -----------------------------------------------------------------------------------------------------
+
+@check("references-fill")
+@_guarded
+def references_fill(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """Every ``{QUOTE:key#n}`` and ``{CITE:key#n}`` in the document's Markdown (``data/drafts/NAME.md``) fills from the
+    documents as they are kept. Nothing is rendered or kept: the tokens are resolved and every failure is named at once. A
+    document with no token passes saying so."""
+    from jason.community.section_refs import TOKEN, SectionRefError, expand_markdown
+
+    name = _doc_name(view, item, "document")
+    if not name:
+        return _no_key("document", "document:NAME")
+    path, why = _draft(readers, name)
+    if path is None:
+        return CheckResult(False, (), why)
+    text = path.read_text(encoding="utf-8")
+    tokens = list(TOKEN.finditer(text))
+    evidence = readers.evidence_entries((f"file:drafts/{path.name}",))
+    if not tokens:
+        return CheckResult(True, evidence, f"data/drafts/{path.name} has no reference to fill")
+    try:
+        _, records = expand_markdown(text, _reader(readers), caveat=False)
+    except SectionRefError as exc:
+        bad = [m for m in str(exc).split("; ") if m]
+        return CheckResult(False, evidence, f"{_plural(len(bad), 'reference')} of {len(tokens)} do not fill: "
+                           + "; ".join(bad[:SHOWN]) + (f"; and {len(bad) - SHOWN} more" if len(bad) > SHOWN else ""))
+    quotes = sum(1 for r in records if r.verb == "QUOTE")
+    noted = sum(1 for r in records if r.note)
+    said = f"{_plural(len(records), 'reference')} fill ({quotes} quoted, {len(records) - quotes} cited)"
+    if noted:
+        said += f"; {noted} carry a note to check against the recorded copy"
+    return CheckResult(True, evidence, said)
+
+
+@check("notice-elements")
+@_guarded
+def notice_elements(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """When the document is a notice the Act requires, each element its catalog row requires is in its words (``jason
+    notice-check``): present, supplied by a token, or said to be enclosed. The row is the one the document's name starts with
+    (the ledger-key convention), or the one the ``item`` names. An element only some notices need is read against the
+    profile's facts and a person's answers; one they do not settle is never read as not required. Elements words cannot settle
+    are counted for a person to read. A document that serves no requirement fails, saying which names to use."""
+    from jason.community import notice_catalog
+    from jason.community.notice_elements import Status, check as elements
+    from jason.tasks import notice_record
+
+    name = _doc_name(view, "", "document")
+    row = None
+    if str(item or "").strip():
+        try:
+            row = notice_catalog.requirement(str(item).strip())
+        except KeyError:
+            return CheckResult(False, (), f"{item} is not a notice requirement in the catalog (jason notices --catalog lists them)")
+    if not name:
+        return _no_key("document", "document:NAME")
+    if row is None:
+        row, _ = notice_record.requirement_for(name)
+    if row is None:
+        return CheckResult(False, (), f"{name} starts with no requirement's key, so no elements are checked (jason notices "
+                                      "REQUIREMENT --catalog; name the document with the requirement's key)")
+    path, why = _draft(readers, name)
+    if path is None:
+        return CheckResult(False, (), why)
+    facts = None
+    community = _community(readers)
+    if community is not None:
+        from jason.tasks.applicability_asks import association_facts
+
+        try:
+            facts = association_facts(community, readers.data_dir)
+        except AttributeError:               # a profile that states no facts: every condition stays undetermined
+            facts = None
+    found = elements(row, path.read_text(encoding="utf-8"), facts)
+    missing = [f for f in found if f.status is Status.MISSING]
+    unread = sum(1 for f in found if f.status is Status.UNCHECKED)
+    spared = sum(1 for f in found if f.status is Status.NOT_REQUIRED)
+    shown = sum(1 for f in found if f.ok)
+    evidence = readers.evidence_entries((f"file:drafts/{path.name}", "file:intake/asks.json"))
+    if not found:
+        return CheckResult(False, evidence, f"{row.key} lists no element to check")
+    said = (f"{row.key}: {shown} of {len(found)} elements shown, {len(missing)} missing, {unread} for a person to read"
+            + (f", {spared} that do not apply" if spared else ""))
+    if missing:
+        names = [f"{f.element} ({f.cite})" + (f" [{f.needs()}]" if f.needs() else "") for f in missing]
+        return CheckResult(False, evidence, said + ": missing " + "; ".join(names[:SHOWN])
+                           + (f"; and {len(names) - SHOWN} more" if len(names) > SHOWN else ""))
+    return CheckResult(True, evidence, said)
+
+
+@check("kept-text-unchanged")
+@_guarded
+def kept_text_unchanged(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The words kept under the notice's key (``data/notices/KEY``) are the words that were kept: every kept file still has the
+    digest it was kept with. An edit since means the words on file are not the words sent. A source Markdown newer than the last
+    keeping is said, not failed: the sent words are the kept ones. The key is the run's document name, or the ``item``."""
+    from jason.tasks import notice_text
+
+    key = _doc_name(view, item, "document", "notice")
+    if not key:
+        return _no_key("document", "document:NAME")
+    kept = notice_text.read(readers.data_dir, key)
+    if not kept or not kept["entries"]:
+        return CheckResult(False, (), f"no text is kept under data/notices/{key}: the send keeps it (jason.tasks.notice_text)")
+    files = [f for e in kept["entries"] for f in e.get("files") or ()]
+    evidence = readers.evidence_entries((f"file:notices/{key}/kept.json",))
+    if kept["edited"]:
+        return CheckResult(False, evidence, f"EDITED or gone since it was kept: {', '.join(kept['edited'])} - the words on file are "
+                                            "not the words kept")
+    said = f"{_plural(len(files), 'file')} kept in {_plural(len(kept['entries']), 'keeping')}, each unchanged since"
+    source = readers.data_dir / "drafts" / f"{key}.md"
+    when = []
+    for e in kept["entries"]:
+        try:
+            when.append(datetime.fromisoformat(str(e["kept"])))
+        except (KeyError, ValueError):
+            continue
+    if source.is_file() and when and source.stat().st_mtime > max(when).timestamp() + 1:
+        said += f"; the Markdown source data/drafts/{source.name} is newer than the last keeping (the kept words are the ones sent)"
+    return CheckResult(True, evidence, said)
+
+
+__all__ = ["answers_on_time", "clock_authority_recited", "form_offered", "form_stale", "kept_text_unchanged", "mailroom_batch_read",
+           "mailroom_pages", "notice_elements", "notice_kept_text", "notice_owed_zero", "notice_proof", "notice_requirement_read",
+           "references_fill", "request_classified", "requests_read"]

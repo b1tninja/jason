@@ -20,16 +20,21 @@ The rules (docs/workflows-engine.md, section 5):
   That is not a skip: a legal step may carry it, and its clock reads "not applicable, recorded".
 - A date slot that is ``late`` (or optional) is set after the start by a person, with a record; a later act corrects it, with a
   reason (append-only: the latest wins in the fold).
+- A wait with ``ends_by_note`` ends only when a person records a note saying what arrived; the note is required, and no reader or
+  date ends it.
+- Items for a step that repeats over a named set are supplied while the run goes, by the run's owner or a person who may act on
+  one of the set's steps, as a ``note`` event whose detail has ``items_supplied`` (no new event kind); an item id is an opaque handle.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Iterable, Mapping
 
 from jason.workflows.types import (
-    EventKind, Role, RunState, RunView, StepDef, StepKind, StepRefused, StepState, Workflow, is_system,
+    EventKind, Repeat, Role, RunState, RunView, StepDef, StepKind, StepRefused, StepState, Workflow, is_system,
 )
 
 RolesOf = Callable[[str], Iterable["Role | str"]]
@@ -39,6 +44,11 @@ CANCEL_ROLES = (Role.SECRETARY, Role.MANAGER)
 decision for the board (the doc's section 10); a caller passes other roles to ``cancel_act``."""
 
 ACTING = (RunState.ACTIVE, RunState.WAITING, RunState.FAILED)
+
+ITEM_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_.#/-]{0,63}$")
+"""An item id is an opaque handle: letters, digits, and ``: _ . # / -``, at most 64 characters. No space and no ``@``, so a name or
+an address cannot ride in one (an event's detail holds addresses and counts, never a person's details)."""
+MAX_ITEMS_AT_ONCE = 500
 
 
 @dataclass(frozen=True)
@@ -119,6 +129,9 @@ def _step(workflow: Workflow, view: RunView, step_id: str) -> tuple[StepDef, Any
 
 def _unit_state(view: RunView, sd: StepDef, item: str) -> StepState:
     sv = view.step(sd.id)
+    if item and sd.item_aware and not sv.items:
+        raise StepRefused(f"{sd.id} has no items yet: supply them first (item {item} is not in "
+                          f"{'the set ' + sd.item_set if sd.item_set else 'the run'})")
     if item and sv.items:
         known = dict(sv.items)
         if item not in known:
@@ -202,7 +215,9 @@ def arrived_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, rol
     if not may_act(sd, by, roles_of):
         raise _no_standing(by, sd)
     _expect(_unit_state(view, sd, item), StepState.WAITING, sd)
-    detail: dict[str, Any] = {"what": what or sd.title}
+    if sd.ends_by_note and not (what or "").strip():
+        raise StepRefused(f"{sd.id} ends only when a person records a note of what arrived: say what (the note is the record)")
+    detail: dict[str, Any] = {"what": (what or "").strip() if sd.ends_by_note else (what or sd.title)}
     if item:
         detail["item"] = item
     return Act(EventKind.ARRIVED, sd.id, detail)
@@ -291,6 +306,74 @@ def date_set_act(workflow: Workflow, view: RunView, *, slot: str, day: str, by: 
     return Act(EventKind.DATE_SET, "", detail)
 
 
+def _item_entries(workflow: Workflow, items: Iterable[Any], record: str) -> list[Any]:
+    """The entries of a supply, checked: each an id or ``{"id", "dates"}``, ids once, dates only for declared slots and real days
+    (and a record to show them)."""
+    out: list[Any] = []
+    seen: set[str] = set()
+    for entry in items:
+        item, given = (str(entry.get("id", "")), entry.get("dates")) if isinstance(entry, Mapping) else (str(entry), None)
+        item = item.strip()
+        if not ITEM_ID.match(item):
+            raise StepRefused(f"{item!r} is not an item id: letters, digits, and : _ . # / - only, at most 64 characters "
+                              "(an opaque handle, never a name or an address)")
+        if item in seen:
+            continue
+        seen.add(item)
+        if given:
+            if not isinstance(given, Mapping):
+                raise StepRefused(f"item {item}: dates is a map of slot to YYYY-MM-DD")
+            kept: dict[str, str] = {}
+            for slot, day in given.items():
+                if workflow.slot(str(slot)) is None:
+                    raise StepRefused(f"item {item}: no date slot {slot} in {workflow.key}")
+                try:
+                    date.fromisoformat(str(day))
+                except ValueError:
+                    raise StepRefused(f"item {item}: date {slot} is not YYYY-MM-DD: {day}") from None
+                kept[str(slot)] = str(day)
+            if not record:
+                raise StepRefused(f"item {item}: dates for an item need the record that shows them")
+            out.append({"id": item, "dates": kept})
+        else:
+            out.append(item)
+    return out
+
+
+def supply_items_act(workflow: Workflow, view: RunView, *, item_set: str, items: Iterable[Any], by: str,
+                     roles_of: RolesOf | None, record: str = "") -> Act:
+    """A person gives a named item set more items while the run goes. Only a set some step repeats over (``item_set``, "" for the
+    run's own); by the person who opened the run (the steps over some sets are the engine's own reads, which no person acts on) or one who
+    may act on one of those steps; item ids are opaque handles. An id already in the set is not added
+    again (it may be given dates, or have them corrected: the latest wins). The event is a ``note`` whose detail has
+    ``items_supplied``, so the log's format is the one it had."""
+    by = _person(by)
+    if view.state not in ACTING and view.state is not RunState.DRAFT:
+        raise StepRefused(f"the run is {view.state.value}; items are supplied while it is a draft or going")
+    where = f"the set {item_set}" if item_set else "the run's own items"
+    users = [sd for sd in workflow.steps if sd.repeat is not Repeat.ONCE and sd.item_set == item_set]
+    if not users:
+        raise StepRefused(f"no step of {workflow.key} repeats over {where}")
+    if by != view.owner and not any(may_act(sd, by, roles_of) for sd in users):
+        raise StepRefused(f"{by} holds no role that a step over {where} needs, and did not open the run")
+    record = (record or "").strip()
+    entries = _item_entries(workflow, items, record)
+    if not entries:
+        raise StepRefused("no items to supply")
+    if len(entries) > MAX_ITEMS_AT_ONCE:
+        raise StepRefused(f"{len(entries)} items at once; at most {MAX_ITEMS_AT_ONCE}")
+    have = set(view.item_sets.get(item_set, ()))
+    fresh = [e for e in entries if (e["id"] if isinstance(e, dict) else e) not in have]
+    if not fresh and not any(isinstance(e, dict) for e in entries):
+        raise StepRefused("those items are already in the set")
+    detail: dict[str, Any] = {
+        "items_supplied": {"set": item_set, "items": entries},
+        "text": f"supplied {len(fresh)} item{'s' if len(fresh) != 1 else ''} to {where}"}
+    if record:
+        detail["record"] = record
+    return Act(EventKind.NOTE, "", detail)
+
+
 def reopen_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, roles_of: RolesOf | None, reason: str = "",
                item: str = "") -> Act:
     """A person opens a done, skipped, or failed step again. The engine never does: a ``changed`` event does not."""
@@ -363,4 +446,5 @@ def cancel_act(workflow: Workflow, view: RunView, *, by: str, roles_of: RolesOf 
 
 
 __all__ = ["ACTING", "Act", "CANCEL_ROLES", "RolesOf", "activate_act", "arrived_act", "attest_act", "cancel_act", "date_set_act",
-           "may", "may_act", "na_act", "note_act", "pause_act", "reopen_act", "resume_act", "role_phrase", "roles_held", "skip_act"]
+           "may", "may_act", "na_act", "note_act", "pause_act", "reopen_act", "resume_act", "role_phrase", "roles_held", "skip_act",
+           "supply_items_act"]

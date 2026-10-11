@@ -13,7 +13,9 @@ The definitions, by key (ids are ``<key>.<n>``; the table's id is the ``n``, ``S
 ``jason.workflows.checks.records`` are registered, so the steps they answer are ``check`` steps (role jason): ``active-community``
 (onboard ST-1), the five gate reads and ``onboard-checklist`` (onboard ST-7, IN-7, ES-7, OP-4, AD-4, AD-3), ``onboard-gates-read`` and
 ``record-slots-read`` (record-slot 12 and 1), ``ingest-gate`` (ingest 9), ``split-review`` (split-document 4), and
-``key-document-status`` (key-document 1). The engine knows no job of this family (``readers.JOBS`` holds the owner-information
+``key-document-status`` (key-document 1); round two added ``record-compare`` (record-slot 5), ``profile-own-facts`` (onboard ST-4),
+``key-document-verified`` (key-document 5), ``scratch-room`` (careful-reading 1), and ``request-kinds-mapped`` (records-production 3).
+The engine knows no job of this family (``readers.JOBS`` holds the owner-information
 cycle's and the control's), so each remaining read or job here is a ``person`` step: a person runs the command shown and attests
 it, with the record the step asks for. The step's ``why`` says which read or job it becomes, and ``WANTED`` lists every such name
 (``check:NAME``, ``job:NAME``, ``plan:KIND``). No plan step: no approvals kind of this family is registered (the proposed
@@ -56,8 +58,7 @@ FAMILY = "records"
 WANTED: tuple[str, ...] = (
     # reads (a ``check`` step once a read of this name is registered in ``readers.CHECKS``; the reads of
     # ``jason.workflows.checks.records`` are registered and are no longer listed)
-    "check:designation-on-file", "check:document-kind-read", "check:key-document-verified", "check:parcel-strand-gaps",
-    "check:profile-own-facts", "check:quotes-verified", "check:record-compare", "check:request-kinds-mapped", "check:scratch-room",
+    "check:designation-on-file", "check:document-kind-read", "check:parcel-strand-gaps", "check:quotes-verified",
     # queued commands (a ``job`` step once a job of this name is registered in ``readers.JOBS``)
     "job:chronology", "job:citations-scan", "job:conflict-leads", "job:county-lookup", "job:documents-locate",
     "job:index-build", "job:ingest-dry-run", "job:ingest-model", "job:ingest-park", "job:intake-scan", "job:inspections-read", "job:library-drive-sync",
@@ -253,8 +254,9 @@ def record_slot() -> Workflow:
         st("4", "Read what was picked", P, ANY, ("3",), why="One reading for each file hash: kind, tier, preflight, segments, and findings; a dry run first. The GPU lane only when a person asked.",
            command="jason records --read KEY --yes --by NAME", sop="onboard#5", record="the reading's pin id", repeat=ITEM, skip=SKIP_ANY,
            becomes_=("job", "record-read")),
-        st("5", "Compare with the slot", P, ANY, ("4",), why="The verdict is agrees, differs, or unclassified; a difference sets the slot to problem.",
-           sop="onboard#5", record="the verdict", repeat=ITEM, skip=SKIP_ANY, becomes_=("check", "record-compare")),
+        st("5", "Compare with the slot", C, JASON, ("4",), why="The verdict is agrees, differs, or unclassified; a difference sets the slot to problem. "
+           "The read counts the verdicts of the slot's kept readings and passes when every pin has one; a difference is what step 6 resolves.",
+           command="jason records --slot KEY", sop="onboard#5", repeat=ITEM, skip=SKIP_ANY, check=named_check("record-compare")),
         st("6", "Resolve a wrong-slot pick", P, ANY, ("5",), why="A branch by person: repin to the slot it fits, keep with a required reason, or unpin. Nothing moves until a person confirms. Skipped, with a reason, unless step 5 differs.",
            command="jason records --repin KEY --to SLOT; --keep KEY --reason TEXT; --unpin KEY --pin ID", sop="onboard#5",
            record="repinned, kept (with the reason), or unpinned", repeat=ITEM, skip=SKIP_ANY),
@@ -338,8 +340,9 @@ def onboard() -> Workflow:
           command="jason onboard --new KEY --name NAME --county COUNTY", sop=f"{OB}#2", record="the package started"),
         g("ST", "3", "Look up the county's finds", P, M, ("ST-2",), why="Leads under the private facts, each becoming a question; an empty or unreachable recorder is a note, not a row. Skipped, with a reason, when no county reader exists.",
           command="jason onboard --lookup", sop=f"{OB}#2", record="the leads parked (a count)", skip=SKIP_M, becomes_=("job", "county-lookup")),
-        g("ST", "4", "Confirm only its own facts are read", P, M, ("ST-2",), why="Only the profile's own private facts and its topic folder are read.",
-          command="jason spec", sop=f"{OB}#3", record="the paths read", becomes_=("check", "profile-own-facts")),
+        g("ST", "4", "Confirm only its own facts are read", C, JASON, ("ST-2",), why="Only the profile's own private facts and its topic folder are read. "
+          "The read counts the topic files and fails when one is read from the old shared layout; it names no path and reads no value.",
+          command="jason spec", sop=f"{OB}#3", check=named_check("profile-own-facts")),
         g("ST", "5", "Set up the community's Google Workspace", P, A, ("ST-1",), why="The client in this community's vault path and one sign-in for each token needed; never asked for consent again while a token covers the scopes; an invalid_grant is never retried.",
           command="jason google status; jason google setup --from-file F --yes; jason google sign-in --name drive --interactive", sop=f"{OB}#6",
           record="the sign-ins made, by token name"),
@@ -468,8 +471,10 @@ def key_document() -> Workflow:
            skip=SKIP_M, clock=ClockDef(ClockBasis.PERSON, label="a date a person records for the order")),
         st("4", "Link or upload the copy", P, ANY, ("3",), why="A link (a file, a Drive file, or a document) or an upload kept in the profile's folder; unlink marks and never deletes. Skipped, with a reason, when step 7 records none on record.",
            command="jason key-documents --link KEY ...; jason key-documents --upload KEY --file PATH --by NAME", record="the link or upload (a pin id, never a file name)", skip=SKIP_ANY),
-        st("5", "Read the stamp and match the county index", P, M, ("4",), why="The recorded copy is matched in the index and read with a stamp; none is read without one. Skipped, with a reason, when there is no copy.",
-           command="jason onboard", record="the match and the stamp read", skip=SKIP_M, becomes_=("check", "key-document-verified")),
+        st("5", "Read the stamp and match the county index", C, JASON, ("4",), why="The recorded copy is matched in the index and read with a stamp; none is read without one. "
+           "The read passes when the entry has a recording number and a recorded copy on disk carries it; an entry with no number is noted as not recorded. "
+           "Skipped, with a reason, when there is no copy.",
+           command="jason onboard", skip=SKIP_M, check=named_check("key-document-verified")),
         st("6", "Say whether it took effect", P, ANY, ("5",), why="CIV 4270(a)(3): an amendment is effective after, among other things, it \"has been recorded in each county in which a portion of the common interest development is located.\" "
            "An amendment with no number is noted as not recorded. The standing is the document-intake steps 5 and 6.",
            command="jason intake --answer ID TEXT --by NAME", record="the standing answered, and who confirmed it",
@@ -517,8 +522,9 @@ def careful_reading() -> Workflow:
     for a members' task by the review itself."""
     sid, st = _maker(CR)
     steps = (
-        st("1", "Check where scratch and caches go", P, M, why="Temp and the county cache on the data drive with room.",
-           command="jason storage --check", sop=f"{CR}#1", record="the drive named, with room", becomes_=("check", "scratch-room")),
+        st("1", "Check where scratch and caches go", C, JASON, why="Temp and the county cache on the data drive with room. The read names the drives "
+           "and their free space in whole gigabytes, never a path, and fails when a drive is short.",
+           command="jason storage --check", sop=f"{CR}#1", check=named_check("scratch-room")),
         st("2", "See what the index holds and cannot read", P, M, ("1",), why="Unreadable or partly read files are listed for a person; a held-back record is never extracted. Built on the GPU lane; run again when files change.",
            command="jason index --plan; jason cases --extract-text --case KEY; jason index --build", sop=f"{CR}#2", record="the files indexed and the files listed unread",
            becomes_=("job", "index-build")),
@@ -567,9 +573,10 @@ def records_production() -> Workflow:
         st("2", "Designation, if a representative asks", P, M, ("1",), why="The member's written designation is on file. Skipped, with a reason, when the member asks for themselves.",
            record="the designation seen", skip=SKIP_M,
            becomes_=("check", "designation-on-file")),
-        st("3", "Map each kind to its record and its holder", P, M, ("1",), why="Each kind to its paragraph of CIV 5200(a), the slot's state, and the inspection period: \"For the current fiscal year and for each of the previous two fiscal years.\" (CIV 5210(a)(1)).",
-           command="jason records --slot KEY", record="the kinds mapped (a count)", repeat=ITEM,
-           becomes_=("check", "request-kinds-mapped"),
+        st("3", "Map each kind to its record and its holder", C, JASON, ("1",), why="Each kind to its paragraph of CIV 5200(a), the slot's state, and the inspection period: \"For the current fiscal year and for each of the previous two fiscal years.\" (CIV 5210(a)(1)). "
+           "The read counts the kinds mapped to a paragraph and a slot, with the slots' states, and names no kind.",
+           command="jason records --slot KEY", repeat=ITEM,
+           check=named_check("request-kinds-mapped"),
            clock=ClockDef(ClockBasis.LAW, cite="CIV 5210(a)", label="the inspection periods")),
         st("4", "A record not held: look, ask, or say none exists", P, ANY, ("3",), why="The record-slot answer for that kind (none exists, or waiting); 'missing' is not 'none exists'. Skipped, with a reason, when it is held.",
            command="jason records --answer KEY ...", record="the answer given", skip=SKIP_ANY),

@@ -1330,6 +1330,10 @@ class Community(ABC):
         """When the board and the members meet. None until the specification sets it."""
         return None
 
+    def holidays(self) -> tuple[str, ...]:
+        """Days (YYYY-MM-DD) the association's business-day clocks skip besides weekends. Empty: weekends only."""
+        return ()
+
     def rule_changes(self) -> tuple:
         """Proposed operating rule changes (``jason.community.rule_changes.RuleChange``). Empty until the specification sets them."""
         return ()

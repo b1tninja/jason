@@ -59,7 +59,7 @@ EXPECTED = {
     "respond-request": """
         1  check    check    J -
         2  person   person   M 1
-        3  check    person   M 1
+        3  check    check    J 1
         4  decision decision S 3
         5  job      person   M 1
         6  job      person   M 1
@@ -87,18 +87,18 @@ EXPECTED = {
         6 plan     person   M 5""",
     "owner-document": """
         1  person person N -
-        2  check  person N 1
+        2  check  check  J 1
         3  person person N 2
-        4  check  person N 2
+        4  check  check  J 2
         5  plan   person N 3
         6  person person S 5
         7  job    person N 6
         8  person person N 5
         9  branch branch N 8,6
-        10 check  person N 9""",
+        10 check  check  J 9""",
     "form-campaign": """
         1   check    check    J -
-        2   check    person   M 1
+        2   check    check    J 1
         3   branch   branch   M 1
         4   person   person   M 3
         5   person   person   M 4
@@ -185,6 +185,8 @@ def test_a_step_is_built_as_another_kind_only_when_what_the_page_names_is_not_bu
         assert s.command or s.record, f"{sid} shows what a person runs or records"
     # the two steps that are the kind the page gives them and still wait for a kind: the cancel's wait and the form offer
     assert set(members.BECOMES) - differs == {"mailroom-letter.5", "form-campaign.5"}
+    # no read is left to build: the five that remained are checks now (jason.workflows.checks.members)
+    assert not [v for v in members.BECOMES.values() if v.startswith("check ")]
 
 
 def test_wanted_lists_each_unbuilt_read_job_and_kind_once_and_none_of_them_exists_yet():
@@ -213,7 +215,8 @@ def test_plans_jobs_and_checks_name_only_what_is_registered_and_the_module_adds_
     names = {s.check.name for w in built().values() for s in w.steps if s.check is not None}
     assert names == {"outstanding-read", "notice-requirement-read", "notice-owed-zero", "notice-proof", "notice-kept-text",
                      "mailroom-pages", "mailroom-batch-read", "requests-read", "answers-on-time", "request-classified",
-                     "form-offered"} and names <= set(CHECKS)
+                     "form-offered", "clock-authority-recited", "references-fill", "notice-elements", "kept-text-unchanged",
+                     "form-stale"} and names <= set(CHECKS)
     # a step built as a check is jason's, and every one of them stays among the checks the page names
     for w in built().values():
         for s in w.steps:
@@ -526,7 +529,9 @@ def test_a_request_run_with_a_legal_clock_needs_yes_and_a_chosen_path_skips_the_
         return getattr(api, fn)(data, rid, f"respond-request.{step}", by, roles_of=roles_of, readers=readers(), today=DAY, **more)
 
     act("skip", "2", reason="the kind was not read as other")
-    act("attest", "3", record="the authority recited")
+    # the clock's authority is jason's check now: it reads the shelf and the documents, and no person attests it
+    with pytest.raises(StepRefused, match="done by its result"):
+        act("attest", "3", record="the authority recited")
     with pytest.raises(StepRefused, match="secretary"):
         act("skip", "4", by=VISITOR, reason="x")
     act("skip", "4", by=SECRETARY, reason="the authority read gave a clock")

@@ -1,4 +1,4 @@
-"""The money family's reads (src/jason/workflows/checks/money.py): twelve ``check`` names over made-up stores in a temporary
+"""The money family's reads (src/jason/workflows/checks/money.py): twenty-six ``check`` names over made-up stores in a temporary
 data folder. Nothing here reads a real store, reaches the network, or loads a profile. Every read is pinned read-only by
 comparing the folder byte for byte before and after; a store that is missing or cannot be read gives ``ok=False`` with the
 reason, never an exception and never ``ok`` by default. Plainly fake: "A. Manager", "123-456-789-0000", dates in 2026 or 2099.
@@ -27,7 +27,10 @@ from test_workflows_support import data  # noqa: F401 - the `data` fixture
 TODAY = date(2026, 10, 10)
 STAMP = "2026-10-09T02:10:00+00:00"
 NAMES = ("bill-snapshot-fresh", "bill-queue-read", "bill-handed", "payee-class-read", "stores-tried-read", "bill-mail-arrived",
-         "review-reconciliations", "review-budget", "reserve-study-due", "insurance-due", "tax-standing", "tax-bill-files")
+         "review-reconciliations", "review-budget", "reserve-study-due", "insurance-due", "tax-standing", "tax-bill-files",
+         "review-statements", "review-income-expense", "review-registers", "fiscal-window", "reserve-plan-match",
+         "disclosure-reserve-summary", "disclosure-insurance-summary", "insurance-limits", "insurance-changed", "insurance-summary",
+         "disclosure-delivery-read", "reserve-notice", "reserve-restored", "tax-years-closed")
 TAX = PayeeRule(PayeeClass.COUNTY_TAX, description_contains=("EXAMPLE COUNTY TAX",), note="the county tax collector's ACH line")
 
 
@@ -84,10 +87,10 @@ def tax_db(root, rows):
 
 # --- the registry ---------------------------------------------------------------------------------------------------------
 
-def test_the_twelve_reads_are_registered_by_name_and_only_once():
+def test_the_twenty_six_reads_are_registered_by_name_and_only_once():
     checks.load_all()
     assert set(NAMES) <= set(CHECKS)
-    assert len(set(NAMES)) == 12
+    assert len(set(NAMES)) == 26
     before = dict(CHECKS)
     checks.load_all()
     assert CHECKS == before
@@ -518,6 +521,438 @@ def test_a_pdf_path_that_leaves_the_data_folder_is_no_file(tmp_path):
     (tmp_path / "outside.pdf").write_bytes(b"%PDF")
     tax_db(root, [(PAID, "P25", 2025, 1000, 0, 1000, "../outside.pdf")])
     assert result("tax-bill-files", root, "2025").ok is False
+
+
+# === round two ================================================================================================================
+# Made up: "A. Manager", "Example Bank", 2099 or 2026 dates, "123-456-789-000N". The ledger, library, policy report, and notice
+# ledger are written here with sqlite or json; the reserve transfers' review and the studies are replaced where their own tests
+# hold the readers.
+
+from jason.community.base import AccountPurpose, BankAccount
+from jason.community.reserve_study import ProjectionYear, ReserveDisclosure, ReserveStudy
+from jason.tasks import books, library as lib
+
+OPERATING = BankAccount("1111", AccountPurpose.OPERATING, "Example Bank", "Operating")
+RESERVE = BankAccount("2222", AccountPurpose.RESERVE, "Example Bank", "Reserve")
+
+
+def bank_community(*accounts, **extra):
+    return SimpleNamespace(**{**vars(community()), "bank_accounts": lambda: tuple(accounts), **extra})
+
+
+def ledger_rows(root, month, rows, fetched="2026-10-05T00:00:00+00:00"):
+    """rows: (type, account, day, description, category, debit, credit, balance, starting)."""
+    path = root / "payhoa" / books.STORE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.executescript(books.SCHEMA)
+    conn.execute("DELETE FROM entries WHERE month = ?", (month,))
+    conn.executemany("INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                     [(month, i, t, a, d, desc, cat, "", "", dr, cr, bal, int(st)) for i, (t, a, d, desc, cat, dr, cr, bal, st) in enumerate(rows)])
+    conn.execute("INSERT OR REPLACE INTO months VALUES (?,?,?,?,?)", (month, fetched, len(rows), len(rows), None))
+    conn.commit()
+    conn.close()
+
+
+SEPTEMBER = [
+    ("Assets", "Operating", "2026-09-01", "Opening", "", 5000, 0, 5000, True),
+    ("Income Categories", "Dues", "2026-09-03", "Dues", "Dues", 0, 40000, 0, False),
+    ("Assets", "Operating", "2026-09-03", "Dues deposit", "Dues", 40000, 0, 45000, False),
+    ("Expense Categories", "Landscaping", "2026-09-10", "Check 1001", "Landscaping", 12000, 0, 0, False),
+    ("Assets", "Operating", "2026-09-10", "Check 1001", "Landscaping", 0, 12000, 33000, False),
+    ("Accounts Receivable", "Accounts Receivable:Unit 1", "2026-09-15", "Assessment", "", 7000, 0, 7000, False),
+]
+
+
+# --- review-statements ----------------------------------------------------------------------------------------------------------
+
+def library_with(root, *rows):
+    """rows: (id, name, path, kind, period)."""
+    path = root / lib.STORE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.execute(lib.SCHEMA)
+    conn.executemany(f"INSERT INTO documents ({lib.COLUMNS}) VALUES ({','.join('?' * 14)})",
+                     [(i, "payhoa", pth, name, kind, "", "", "name", period, 1, "", 1.0, "2026-10-01", f"sha-{i}") for i, name, pth, kind, period in rows])
+    conn.commit()
+    conn.close()
+
+
+def test_every_account_with_a_statement_of_the_month_in_the_library_passes_and_no_number_is_said(tmp_path):
+    root = tmp_path / "data"
+    library_with(root, ("a", "Statement 1111 Sep.pdf", "Bank/Statement 1111 Sep.pdf", "bank_statement", "2026-09"),
+                 ("b", "Statement 2222 Sep.pdf", "Bank/Statement 2222 Sep.pdf", "bank_statement", "2026-09"),
+                 ("c", "Statement 1111 Aug.pdf", "Bank/Statement 1111 Aug.pdf", "bank_statement", "2026-08"))
+    res = result("review-statements", root, "month:2026-09", comm=bank_community(OPERATING, RESERVE))
+    assert res.ok and "2 of 2 bank account(s) have a statement of 2026-09" in res.message and "2 statement file(s)" in res.message
+    assert "1111" not in res.message and "2222" not in res.message and res.evidence[0].startswith("file:library/library.db@")
+
+
+def test_an_account_with_no_statement_of_the_month_fails_and_is_named_by_its_label(tmp_path):
+    root = tmp_path / "data"
+    library_with(root, ("a", "Statement 1111 Sep.pdf", "Bank/Statement 1111 Sep.pdf", "bank_statement", "2026-09"),
+                 ("b", "Statement 2222 Aug.pdf", "Bank/Statement 2222 Aug.pdf", "bank_statement", "2026-08"))
+    res = result("review-statements", root, "month:2026-09", comm=bank_community(OPERATING, RESERVE))
+    assert res.ok is False and "1 of 2" in res.message and "none filed for Reserve" in res.message
+    one = result("review-statements", root, "month:2026-09", "operating", comm=bank_community(OPERATING, RESERVE))
+    assert one.ok and "1 of 1" in one.message
+    assert result("review-statements", root, "month:2026-09", "nothing", comm=bank_community(OPERATING)).ok is False
+
+
+def test_statements_without_a_month_an_account_or_a_library_say_so(tmp_path):
+    root = tmp_path / "data"
+    assert "names no month" in result("review-statements", root, "the review", comm=bank_community(OPERATING)).message
+    assert "names no bank account" in result("review-statements", root, "month:2026-09").message
+    assert "no library on disk" in result("review-statements", root, "month:2026-09", comm=bank_community(OPERATING)).message
+    assert not (root / "library").exists()
+
+
+# --- review-income-expense and review-registers ----------------------------------------------------------------------------------
+
+def test_the_income_and_expense_of_a_month_read_after_it_ended_is_counted_in_cents(tmp_path):
+    root = tmp_path / "data"
+    ledger_rows(root, "2026-09", SEPTEMBER)
+    res = result("review-income-expense", root, "month:2026-09")
+    assert res.ok and "1 income categories, 40000 cents" in res.message and "1 expense categories, 12000 cents" in res.message
+    assert "net 28000 cents" in res.message and "1 bank account(s) moved money" in res.message and "reviewer's judgment" in res.message
+    assert res.evidence[0].startswith("file:payhoa/ledger.db@") and "$" not in res.message
+
+
+def test_a_month_read_before_it_ended_or_not_stored_or_with_no_income_or_expense_fails(tmp_path):
+    root = tmp_path / "data"
+    assert "no ledger on disk" in result("review-income-expense", root, "month:2026-09").message
+    ledger_rows(root, "2026-09", SEPTEMBER, fetched="2026-09-20T00:00:00+00:00")
+    assert "before the month ended" in result("review-income-expense", root, "month:2026-09").message
+    assert "before the month ended" in result("review-registers", root, "month:2026-09").message
+    assert "holds no rows of 2026-08" in result("review-income-expense", root, "month:2026-08").message
+    assert "names no month" in result("review-registers", root, "the review").message
+    ledger_rows(root, "2026-07", [SEPTEMBER[0], SEPTEMBER[5]], fetched="2026-08-05T00:00:00+00:00")
+    assert "no income or expense entry in 2026-07" in result("review-income-expense", root, "month:2026-07").message
+
+
+def test_the_three_registers_are_drawn_from_the_stored_ledger_without_a_name(tmp_path):
+    root = tmp_path / "data"
+    ledger_rows(root, "2026-09", SEPTEMBER)
+    res = result("review-registers", root, "month:2026-09")
+    assert res.ok and "holds 6 row(s)" in res.message and "1 payment(s) out, 12000 cents" in res.message
+    assert "1 unit(s) owe 7000 cents" in res.message and "Unit 1" not in res.message
+    assert result("review-registers", root, "", dates={"month_end": "2026-09-30"}).ok
+
+
+# --- fiscal-window --------------------------------------------------------------------------------------------------------------
+
+def test_the_window_is_computed_from_the_catalog_and_the_dated_day_must_fall_inside_it(tmp_path):
+    root = tmp_path / "data"
+    res = result("fiscal-window", root, "fiscal-year:2099", dates={"fiscal_year_end": "2099-12-31", "dated_day": "2099-10-15"})
+    assert res.ok and "2099-10-02 to 2099-12-01" in res.message and "CIV 5300, 5310 the same" in res.message
+    assert "2099-10-15 is inside it" in res.message
+    early = result("fiscal-window", root, "fiscal-year:2099", dates={"fiscal_year_end": "2099-12-31", "dated_day": "2099-09-01"})
+    assert early.ok is False and "outside it" in early.message
+    late = result("fiscal-window", root, "fiscal-year:2099", dates={"fiscal_year_end": "2099-12-31", "dated_day": "2099-12-20"})
+    assert late.ok is False and "outside it" in late.message
+
+
+def test_a_date_not_on_record_is_a_state_never_a_guess(tmp_path):
+    root = tmp_path / "data"
+    res = result("fiscal-window", root, "fiscal-year:2099")
+    assert res.ok is False and "fiscal year's end is not on record" in res.message
+    res = result("fiscal-window", root, "fiscal-year:2099", dates={"fiscal_year_end": "2099-12-31"})
+    assert res.ok is False and "2099-10-02 to 2099-12-01" in res.message and "date not on record" in res.message
+
+
+# --- reserve-plan-match and disclosure-reserve-summary ---------------------------------------------------------------------------
+
+def make_study(year=2099, contribution=1200000):
+    row = ProjectionYear(year, 0, contribution, 5000, 300000, 4500000, 6000000, 75.0)
+    return ReserveStudy("Example Reserve Analysts", date(2098, 3, 1), 2098, StudyLevel.FULL, 24, "study.pdf",
+                        ReserveDisclosure(current_balance_cents=3900000), projection=(row,))
+
+
+def budget_snapshot(root, year, transfer):
+    path = root / "payhoa" / f"finance-{year}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"year": year, "throughMonth": 12, "syncedAt": "2099-01-05T00:00:00+00:00",
+                                "expense": {"items": [{"name": "Transfer to Reserves", "expected": transfer}, {"name": "Water", "expected": 5}]}}),
+                    encoding="utf-8")
+
+
+def test_the_budgets_transfer_to_reserves_matches_the_studys_contribution_for_the_year(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    monkeypatch.setattr("jason.tasks.reserves.load_studies", lambda r: [make_study()])
+    budget_snapshot(root, 2099, 1200000)
+    res = result("reserve-plan-match", root, "fiscal-year:2099")
+    assert res.ok and "transfers 1200000 cents" in res.message and "plans 1200000 cents" in res.message and "they agree" in res.message
+    assert res.evidence[0].startswith("file:payhoa/finance-2099.json@")
+    budget_snapshot(root, 2099, 1200050)
+    assert result("reserve-plan-match", root, "fiscal-year:2099").message.endswith("inside a dollar")
+    budget_snapshot(root, 2099, 1000000)
+    off = result("reserve-plan-match", root, "fiscal-year:2099")
+    assert off.ok is False and "differ by -200000 cents" in off.message
+
+
+def test_the_plan_match_and_the_reserve_summary_say_what_is_missing(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    monkeypatch.setattr("jason.tasks.reserves.load_studies", lambda r: [])
+    for name in ("reserve-plan-match", "disclosure-reserve-summary"):
+        assert "no reserve study on disk" in result(name, root, "fiscal-year:2099").message
+    monkeypatch.setattr("jason.tasks.reserves.load_studies", lambda r: [make_study(2099)])
+    assert "has no plan row for 2031" in result("disclosure-reserve-summary", root, "fiscal-year:2031").message
+    assert "no finance snapshot for 2099" in result("reserve-plan-match", root, "fiscal-year:2099").message
+    budget_snapshot(root, 2099, 1)
+    (root / "payhoa" / "finance-2099.json").write_text(json.dumps({"expense": {"items": []}}), encoding="utf-8")
+    assert "no 'Transfer to Reserves' line" in result("reserve-plan-match", root, "fiscal-year:2099").message
+
+
+def test_the_reserve_summary_reads_the_years_figures_from_the_latest_study_in_cents(tmp_path, monkeypatch):
+    monkeypatch.setattr("jason.tasks.reserves.load_studies", lambda r: [make_study()])
+    res = result("disclosure-reserve-summary", tmp_path / "data", "fiscal-year:2099")
+    assert res.ok and "contribution 1200000 cents" in res.message and "projected end 4500000 cents" in res.message
+    assert "fully funded 6000000 cents, 75.0 percent funded" in res.message and "current balance is 3900000 cents" in res.message
+    assert "treasurer's to confirm against the bank" in res.message and "$" not in res.message
+
+
+# --- the policy report: insurance summary, limits, changes -----------------------------------------------------------------------
+
+def term(start, end, number="EX-1000", **limits):
+    return {"start": start, "end": end, "number": number, "carrier": "Example Mutual", "deductible": 2500000,
+            "limits": limits or {"building_limit": 90000000, "each_occurrence": 100000000}}
+
+
+def policy_report(root, *policies):
+    path = root / "reports" / "policies.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"found": True, "builtAt": "2099-01-01T00:00:00", "documents": 3, "policies": list(policies)}), encoding="utf-8")
+
+
+def pol(key="master", number="EX-1000", terms=(), findings=(), kind=None, prior=()):
+    return {"key": key, "kind": kind or key, "building": None, "number": number, "priorNumbers": list(prior), "renewal": None,
+            "terms": list(terms), "findings": list(findings)}
+
+
+def finding(code, severity, authority=""):
+    return {"code": code, "message": "a finding", "severity": severity, "authority": authority}
+
+
+def test_every_policy_with_a_term_in_force_on_the_first_day_of_the_year_makes_the_summary_complete(tmp_path):
+    root = tmp_path / "data"
+    policy_report(root, pol(terms=[term("2098-06-01", "2099-06-01")]),
+                  pol("umbrella", "EX-2000", terms=[term("2098-06-01", "2099-06-01", "EX-2000", each_occurrence=500000000)]))
+    res = result("disclosure-insurance-summary", root, "fiscal-year:2099")
+    assert res.ok and "3 summary row(s) for fiscal year 2099 from 2 policy(ies)" in res.message
+    assert res.evidence[0].startswith("file:reports/policies.json@")
+    one = result("insurance-summary", root, "policy:EX-2000", "", dates={"term_end": "2099-06-01"})
+    assert one.ok and "the named policy" in one.message and "1 summary row(s) for fiscal year 2099 from 1 policy(ies)" in one.message
+
+
+def test_a_policy_with_no_term_on_the_first_day_leaves_a_gap_and_fails(tmp_path):
+    root = tmp_path / "data"
+    policy_report(root, pol(terms=[term("2097-06-01", "2098-06-01")]))
+    res = result("disclosure-insurance-summary", root, "fiscal-year:2099")
+    assert res.ok is False and "1 gap(s)" in res.message and "master has no term on file in force on 2099-01-01" in res.message
+    assert result("insurance-summary", root, "policy:EX-1000", "", dates={"term_end": "2099-06-01"}).ok is False
+    policy_report(root)
+    assert "lists no policy" in result("insurance-summary", root, "policy:EX-1000").message
+
+
+def test_the_insurance_reads_without_a_report_say_how_to_build_it(tmp_path):
+    for name in ("disclosure-insurance-summary", "insurance-summary", "insurance-limits"):
+        assert "jason policies --fetch" in result(name, tmp_path / "data", "policy:EX-1000").message
+    assert not (tmp_path / "data").exists() or not tree(tmp_path / "data")
+
+
+def test_the_limits_read_counts_findings_by_severity_and_passes_when_the_declarations_were_read(tmp_path):
+    root = tmp_path / "data"
+    policy_report(root, pol(findings=[finding("d-and-o", "problem", "CIV 5800(a)(4)"), finding("crime", "check", "CIV 5806(a)"),
+                                       finding("flood", "info", "CIV 5805(b)"), finding("sheet", "check", "")],
+                            terms=[term("2098-06-01", "2099-06-01")]))
+    res = result("insurance-limits", root, "policy:EX-1000")
+    assert res.ok and "the named policy: 3 finding(s)" in res.message and "1 problem, 1 to look at, 1 for information" in res.message
+    assert "0 without declarations read" in res.message and "weighs it before it decides" in res.message      # a shortfall never blocks the decision
+    policy_report(root, pol(findings=[finding("no-declarations", "problem")]))
+    assert result("insurance-limits", root, "policy:EX-1000").ok is False
+    policy_report(root, pol(terms=[term("2098-06-01", "2099-06-01")]), pol("umbrella", "EX-2000", findings=[finding("no-declarations", "problem")]))
+    mixed = result("insurance-limits", root, "policy:next-term")
+    assert mixed.ok is False and "2 policy(ies)" in mixed.message and result("insurance-limits", root, "policy:EX-1000").ok
+
+
+def decisions(root, number="EX-1000", notice=False, decision="renew as quoted"):
+    path = root / "insurance" / "renewals.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"renewals": {number: {"number": number, "decision": decision, "memberNoticeNeeded": notice}}}), encoding="utf-8")
+
+
+def test_the_branch_chooses_changed_when_the_board_recorded_a_notice_or_the_declarations_show_a_cut(tmp_path):
+    root = tmp_path / "data"
+    decisions(root)
+    assert result("insurance-changed", root, "policy:EX-1000").choice == "unchanged"
+    decisions(root, notice=True, decision="let lapse")
+    res = result("insurance-changed", root, "policy:EX-1000")
+    assert res.ok and res.choice == "changed" and "memberNoticeNeeded is yes" in res.message and "let lapse" in res.message
+    decisions(root)
+    cut = pol(terms=[term("2097-06-01", "2098-06-01", building_limit=90000000, each_occurrence=100000000),
+                     term("2098-06-01", "2099-06-01", building_limit=80000000, each_occurrence=100000000)])
+    policy_report(root, cut)
+    res = result("insurance-changed", root, "policy:EX-1000", dates={"term_end": "2098-06-01"})
+    assert res.ok and res.choice == "changed" and "1 change(s), 1 the statute names" in res.message
+    assert result("insurance-changed", root, "policy:EX-1000", dates={"term_end": "2099-05-01"}).choice == "changed"
+
+
+def test_the_branch_does_not_choose_without_the_boards_decision_on_record(tmp_path):
+    root = tmp_path / "data"
+    res = result("insurance-changed", root, "policy:EX-1000")
+    assert res.ok is False and res.choice == "" and "board's decision comes first" in res.message
+    decisions(root, "EX-9999")
+    assert result("insurance-changed", root, "policy:EX-1000").ok is False
+    assert result("insurance-changed", root, "policy:ending-2099").ok is False
+
+
+# --- disclosure-delivery-read ----------------------------------------------------------------------------------------------------
+
+def deliveries(root, *rows):
+    path = root / "notices" / "deliveries.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.execute("create table attempts (notice text, membership_id integer, unit_id integer, unit text, channel text, batch text, "
+                 "key text, sent_at text, status text, status_at text, reason text, synced_at text)")
+    conn.executemany("insert into attempts values (?, ?, 1, 'Unit 1', ?, 'b', ?, '', ?, '', '', '')",
+                     [(n, i, ch, f"k{i}", st) for i, (n, ch, st) in enumerate(rows)])
+    conn.commit()
+    conn.close()
+
+
+def test_a_send_with_no_attempt_pending_is_read_and_the_follow_ups_are_counted(tmp_path):
+    root = tmp_path / "data"
+    deliveries(root, *[("annual-budget-report-2099", "email", "delivered")] * 3, ("annual-budget-report-2099", "email", "bounced"),
+               ("annual-budget-report-2099", "letter", "returned"), ("annual-budget-report-2098", "email", "pending"))
+    res = result("disclosure-delivery-read", root, "fiscal-year:2099")
+    assert res.ok and "5 attempt(s) for annual-budget-report-2099" in res.message and "3 delivered" in res.message
+    assert "1 bounced" in res.message and "2 need a follow-up" in res.message and "Unit 1" not in res.message
+    assert res.evidence[0].startswith("file:notices/deliveries.db@")
+
+
+def test_a_pending_attempt_or_no_send_on_record_does_not_end_the_wait(tmp_path):
+    root = tmp_path / "data"
+    assert "none on record" in result("disclosure-delivery-read", root, "fiscal-year:2099").message
+    assert not (root / "notices").exists()                                              # the ledger's own opener would have made it
+    deliveries(root, ("annual-budget-report-2099", "email", "delivered"), ("annual-budget-report-2099", "email", "pending"))
+    res = result("disclosure-delivery-read", root, "fiscal-year:2099")
+    assert res.ok is False and "1 still pending" in res.message
+    assert "no attempt for annual-budget-report-2031" in result("disclosure-delivery-read", root, "fiscal-year:2031").message
+    assert result("disclosure-delivery-read", root, "fiscal-year:2031", "annual-budget-report-2099").ok is False
+    (root / "notices" / "deliveries.db").write_bytes(b"not a database")
+    assert result("disclosure-delivery-read", root, "fiscal-year:2099").ok is False
+
+
+# --- reserve-notice and reserve-restored -----------------------------------------------------------------------------------------
+
+def loan(**more):
+    return {"day": "2099-02-03", "cents": 500000, "number": "12345", "deadline": "2100-02-03", "repaidCents": 500000,
+            "outstandingCents": 0, "repaidOn": "2099-08-01", "documents": {"notice": {"meeting": "2099-01-20", "id": "a"},
+                                                                             "minutes": {"id": "m", "draft": False}, "resolution": None}, **more}
+
+
+def with_loans(monkeypatch, *loans):
+    monkeypatch.setattr("jason.tasks.reserve_transfers.review", lambda *a, **k: {"found": True, "borrowings": list(loans)})
+
+
+def test_an_agenda_with_the_notice_of_intent_within_the_window_passes(tmp_path, monkeypatch):
+    with_loans(monkeypatch, loan())
+    res = result("reserve-notice", tmp_path / "data", "borrowing:2099-02-03-12345")
+    assert res.ok and "meeting of 2099-01-20" in res.message and "minutes of that meeting are in the library" in res.message
+    assert result("reserve-notice", tmp_path / "data", "borrowing", dates={"transfer_on": "2099-02-03"}).ok
+    with_loans(monkeypatch, loan(documents={"notice": {"meeting": "2099-01-20"}, "minutes": {"draft": True}}))
+    assert "a draft only" in result("reserve-notice", tmp_path / "data", "borrowing:2099-02-03").message
+    with_loans(monkeypatch, loan(documents={"notice": {"meeting": "2099-01-20"}, "minutes": None}))
+    assert "no minutes of that meeting" in result("reserve-notice", tmp_path / "data", "borrowing:2099-02-03").message
+
+
+def test_a_borrowing_with_no_notice_or_no_day_or_no_ledger_fails_with_the_reason(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    with_loans(monkeypatch, loan(documents={"notice": None, "minutes": None, "resolution": None}))
+    res = result("reserve-notice", root, "borrowing:2099-02-03")
+    assert res.ok is False and "no agenda in the library gives notice of intent" in res.message
+    assert "names no day" in result("reserve-notice", root, "the borrowing").message
+    assert "no borrowing of 2099-03-01 among the 1" in result("reserve-notice", root, "borrowing:2099-03-01").message
+    result_ = result("reserve-restored", root, "borrowing:2099-02-03")
+    assert result_.ok
+    monkeypatch.setattr("jason.tasks.reserve_transfers.review", lambda *a, **k: {"found": False, "note": "no ledger on disk"})
+    assert "no ledger on disk" in result("reserve-notice", root, "borrowing:2099-02-03").message
+
+
+def test_the_number_picks_among_borrowings_of_the_same_day(tmp_path, monkeypatch):
+    with_loans(monkeypatch, loan(number="1", cents=100), loan(number="2", cents=200, repaidCents=0, outstandingCents=200, repaidOn=None))
+    root = tmp_path / "data"
+    assert result("reserve-restored", root, "borrowing:2099-02-03-1").ok
+    assert result("reserve-restored", root, "borrowing:2099-02-03-2").ok is False
+
+
+def test_a_restoration_found_by_amount_is_a_lead_and_says_whether_it_was_inside_the_year(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    with_loans(monkeypatch, loan())
+    res = result("reserve-restored", root, "borrowing:2099-02-03")
+    assert res.ok and "500000 cents were restored by 2099-08-01, inside the year that ended 2100-02-03" in res.message and "a lead" in res.message
+    with_loans(monkeypatch, loan(repaidOn="2100-03-01"))
+    assert "after the year" in result("reserve-restored", root, "borrowing:2099-02-03").message
+    with_loans(monkeypatch, loan(repaidCents=200000, outstandingCents=300000, repaidOn=None))
+    short = result("reserve-restored", root, "borrowing:2099-02-03")
+    assert short.ok is False and "200000 of 500000 cents are restored; 300000 cents are not" in short.message
+
+
+def test_the_reserve_reads_over_a_real_empty_ledger_say_what_to_run(tmp_path):
+    res = result("reserve-notice", tmp_path / "data", "borrowing:2099-02-03", comm=bank_community(RESERVE))
+    assert res.ok is False and "jason books --sync" in res.message
+
+
+# --- tax-years-closed ----------------------------------------------------------------------------------------------------------------
+
+def test_a_tax_year_with_every_balance_at_zero_is_closed_and_one_left_open_is_counted_in_cents(tmp_path):
+    root = tmp_path / "data"
+    tax_db(root, [(PAID, "P25", 2025, 1000, 1000, 0, ""), (DUE, "D25", 2025, 1000, 1000, 0, ""), (DUE, "D24", 2024, 1000, 0, 1000, "")])
+    res = result("tax-years-closed", root, "tax-year:2025")
+    assert res.ok and "2 of 2 parcel(s) have every bill of tax year 2025 at a zero balance" in res.message
+    (root / "tax.db").unlink()
+    tax_db(root, [(PAID, "P25", 2025, 1000, 1000, 0, ""), (DUE, "D25", 2025, 1000, 400, 600, ""), (OLD, "O25", 2025, 1000, 0, 1000, "")])
+    open_ = result("tax-years-closed", root, "tax-year:2025")
+    assert open_.ok is False and "1 of 3 parcel(s)" in open_.message and "2 bill(s)" in open_.message and "1600 cents in all" in open_.message
+    assert "ending 0002" in open_.message and "ending 0003" in open_.message and "123-456" not in open_.message
+    assert result("tax-years-closed", root, "", PAID).ok
+    assert result("tax-years-closed", root, "", DUE).ok is False
+
+
+def test_a_tax_year_with_no_bill_or_no_catalog_is_not_closed(tmp_path):
+    root = tmp_path / "data"
+    assert "jason sync-tax" in result("tax-years-closed", root).message
+    assert not (root / "tax.db").exists()
+    tax_db(root, [(PAID, "P25", 2025, 1000, 1000, 0, "")])
+    assert "no bill for tax year 2031" in result("tax-years-closed", root, "tax-year:2031").message
+    assert "no bill for that parcel" in result("tax-years-closed", root, "", "999-999-999-9999").message
+    assert result("tax-years-closed", root).ok                                                     # no year named: the newest in the catalog
+
+
+# --- the wired steps -----------------------------------------------------------------------------------------------------------------
+
+def test_the_steps_that_name_these_reads_run_them_through_the_engine_readers(tmp_path):
+    root = tmp_path / "data"
+    ledger_rows(root, "2026-09", SEPTEMBER)
+    readers = readers_of(root)
+    for name, subject in (("review-income-expense", "month:2026-09"), ("review-registers", "month:2026-09")):
+        step = StepDef("x.1", name, StepKind.CHECK, role=Role.JASON, check=named_check(name))
+        assert readers.check(step, run_view(subject)).ok is True
+    wait = StepDef("x.2", "Wait", StepKind.WAIT, role=Role.MANAGER, check=named_check("disclosure-delivery-read"))
+    assert readers.arrival(wait, run_view("fiscal-year:2099")) is None
+    deliveries(root, ("annual-budget-report-2099", "email", "delivered"))
+    assert "1 attempt(s)" in (readers.arrival(wait, run_view("fiscal-year:2099")) or "")
+    branch = StepDef("x.3", "Changed", StepKind.BRANCH, role=Role.JASON, check=named_check("insurance-changed"))
+    decisions(root)
+    assert readers.check(branch, run_view("policy:EX-1000")).choice == "unchanged"
+
+
+# --- the module's new reads touch no network, library writer, or constructor that creates a table -----------------------------
+
+def test_no_new_read_opens_a_store_through_a_constructor_that_creates_tables():
+    text = Path(reads.__file__).read_text(encoding="utf-8")
+    for token in ("TaxStore(", "notice_ledger.load", "notice_ledger._db", "IndexCache(", "OwnershipStore("):
+        assert token not in text, token
 
 
 # --- the module itself --------------------------------------------------------------------------------------------------------

@@ -29,7 +29,8 @@ checks.load_all()
 TODAY = date(2099, 6, 15)
 NAMES = ("life-safety-standing", "life-safety-reports-read", "deficiency-confirmed", "deficiency-impairs-recorded",
          "deficiency-insurer-told", "deficiency-cleared", "deficiency-board-item", "loss-packet", "contract-window",
-         "backflow-tester", "paint-catalog", "elevated-due")
+         "backflow-tester", "paint-catalog", "elevated-due", "backflow-assemblies", "contract-owed", "contract-statement",
+         "improvement-findings", "program-standing")
 ROW = "def-0a1b2c3d4e"
 
 
@@ -63,8 +64,8 @@ def readers_of(data_dir, community=None):
 
 # --- the family ----------------------------------------------------------------------------------------------------------
 
-def test_the_twelve_reads_are_registered_once_by_name():
-    assert set(NAMES) <= set(CHECKS) and len(NAMES) == 12
+def test_the_seventeen_reads_are_registered_once_by_name():
+    assert set(NAMES) <= set(CHECKS) and len(NAMES) == 17
     before = dict(CHECKS)
     assert checks.load_all() and dict(CHECKS) == before
 
@@ -477,6 +478,184 @@ def test_the_elevated_due_day_fails_for_a_building_with_no_date_and_passes_when_
     assert tree(data) == {}
 
 
+# --- the backflow assemblies ---------------------------------------------------------------------------------------------
+
+def assembly(service, serial, *, passed="", failed="", ids=()):
+    from jason.community.backflow import AssemblyType, BackflowAssembly, Service
+
+    return BackflowAssembly(Service(service), AssemblyType.RP, 1.5, serial, "Bldg. 9 rear", ids=ids, last_passed=passed,
+                            last_failed=failed)
+
+
+def backflow_program(*assemblies, counts=(), notices=()):
+    from jason.community.backflow import BackflowProgram
+
+    return BackflowProgram("Example Backflow Program", "Example Water District", assemblies=tuple(assemblies), notices=tuple(notices),
+                           counts=tuple(counts))
+
+
+def test_the_assemblies_are_counted_by_service_test_and_differing_source_and_name_no_device(data):
+    from jason.community.backflow import ProgramNotice
+
+    program_ = backflow_program(
+        assembly("domestic", "SN-1001", passed="2099-03-01", ids=(("County", "AB1"),)),
+        assembly("irrigation", "SN-1002", passed="2098-03-01", failed="2099-04-01", ids=(("County", "AB2"),)),
+        assembly("irrigation", "SN-1003", ids=(("County", "AB3"),)),
+        counts=(("Example Water District", "irrigation", 3, "letter.pdf"), ("Example Water District", "domestic", 2, "letter.pdf")),
+        notices=(ProgramNotice("Example Backflow Program", "dated", 30, (("dated", "2099-05-01"),)),))
+    readers = readers_of(data, SimpleNamespace(backflow_program=lambda: program_))
+    before = tree(data)
+    res = run("backflow-assemblies", readers)
+    assert res.ok
+    assert res.message == ("3 assembly(ies): 1 domestic, 2 irrigation; 2 with a passed test on record, 1 whose last recorded test "
+                           "failed, 1 with no test on record; 2 count(s) from another source differ from the assemblies' (none "
+                           "picked); 1 notice(s)")
+    for word in ("SN-1001", "Bldg", "AB1", "County", "Example Water"):
+        assert word not in res.message
+    assert tree(data) == before
+
+
+def test_the_assemblies_are_not_ok_without_a_program_or_without_an_assembly(data):
+    assert run("backflow-assemblies", readers_of(data, SimpleNamespace(backflow_program=lambda: None))).message == (
+        "The specification sets no backflow program (Community.backflow_program).")
+    empty = readers_of(data, SimpleNamespace(backflow_program=lambda: backflow_program()))
+    assert run("backflow-assemblies", empty).message == "the program lists no assembly"
+
+
+# --- what a contract's counterparty owes ----------------------------------------------------------------------------------
+
+def test_owed_counts_the_deliverables_by_who_owes_them_and_says_it_does_not_read_whether_they_are_on_file(data):
+    readers = readers_of(data)
+    seed_terms(data, terms=[
+        {"id": "c#1", "section": "3.1", "deliverable": True, "party": "counterparty", "deadline": {"text": "within 30 days"}},
+        {"id": "c#2", "section": "3.2", "deliverable": True, "party": "counterparty", "recurrence_months": 1},
+        {"id": "c#3", "section": "3.3", "deliverable": True, "party": "association"},
+        {"id": "c#4", "section": "4.1", "deliverable": False, "party": "counterparty", "quote": "A term."}])
+    before = tree(data)
+    res = run("contract-owed", readers, "contract:contract-a")
+    assert res.ok and res.message.startswith("3 deliverable(s) among 4 term(s): 1 association, 2 counterparty; 2 with a stated time; ")
+    assert "not read here" in res.message and any(e.startswith("file:contracts/terms/contract-a.json@") for e in res.evidence)
+    only = run("contract-owed", readers, "contract-a", item="3.1")
+    assert only.ok and only.message.startswith("1 deliverable(s) among 1 term(s): 1 counterparty; 1 with a stated time")
+    missing = run("contract-owed", readers, "contract-a", item="9.9")
+    assert missing.ok is False and missing.message == "the reading holds no term for 9.9"
+    assert tree(data) == before
+
+
+def test_owed_is_not_ok_without_a_reading_or_with_no_term_and_says_zero_when_none_is_owed(data):
+    readers = readers_of(data)
+    assert run("contract-owed", readers, "contract-a").message == "no contract terms have been read yet (jason contract-terms)"
+    seed_terms(data, terms=[{"id": "c#1", "section": "1", "deliverable": False, "party": "association"}])
+    assert "no terms reading has the run's contract" in run("contract-owed", readers, "contract-b").message
+    assert run("contract-owed", readers, "contract-a").message.startswith("0 deliverable(s) among 1 term(s): none; 0 with a stated time")
+    seed_terms(data, terms=[])
+    assert run("contract-owed", readers, "contract-a").message == "the reading holds no term"
+    (data / contract_terms.STORE / "contract-a.json").write_text("{broken", encoding="utf-8")
+    assert "cannot be read: JSONDecodeError" in run("contract-owed", readers, "contract-a").message
+
+
+# --- the managing agent's written statement ------------------------------------------------------------------------------
+
+def seed_readings(data_dir, *rows):
+    path = data_dir / "documents" / "readings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"readAt": "2099-01-01", "readings": list(rows)}), encoding="utf-8")
+
+
+def reading_row(ident, *codes, items=None):
+    return {"id": ident, "name": "Example Management Agreement.pdf", "kind": "contract", "findings": [{"code": c} for c in codes],
+            "fields": {"manager_statement": items if items is not None else []}}
+
+
+def test_the_statement_is_read_from_the_agreements_own_text_and_a_miss_is_not_a_finding_that_none_exists(data):
+    readers = readers_of(data)
+    assert run("contract-statement", readers, "library-77").message == "no document readings are on disk (jason models)"
+    seed_readings(data, reading_row("77", "manager-statement", "manager-statement-incomplete", items=["a", "b", "c"]),
+                  reading_row("78", "manager-disclosure"), reading_row("79", "term-ended"))
+    before = tree(data)
+    ok = run("contract-statement", readers, "contract:library-77")
+    assert ok.ok and "3 of 5 item(s) stated" in ok.message and "even when the answer is none" in ok.message
+    assert "90 days before the agreement is a person's to read" in ok.message
+    assert any(e.startswith("file:documents/readings.json@") for e in ok.evidence)
+    assert run("contract-statement", readers, "77").ok                                      # the bare library id is the subject too
+    absent = run("contract-statement", readers, "library-78")
+    assert absent.ok is False and "carries no statement" in absent.message and "a person confirms one is on file" in absent.message
+    other = run("contract-statement", readers, "library-79")
+    assert other.ok is False and "does not take the document for a management agreement" in other.message
+    assert "no document reading is stored" in run("contract-statement", readers, "library-99").message
+    assert "no contract key" in run("contract-statement", readers, "").message
+    assert "Example Management" not in ok.message + absent.message + other.message
+    assert tree(data) == before
+    (data / "documents" / "readings.json").write_text("[", encoding="utf-8")
+    assert "cannot be read: JSONDecodeError" in run("contract-statement", readers, "library-77").message
+
+
+# --- an improvement request's entry in the unit's manual -----------------------------------------------------------------
+
+def seed_entries(data_dir, unit, *entries):
+    folder = unit_records_view._unit_dir(data_dir, unit)
+    folder.mkdir(parents=True, exist_ok=True)
+    rows = [{"id": f"e{n}", "unit": unit, "component": "flooring", "kind": "flooring", "what": "New floor", "visibility": "shared", **e}
+            for n, e in enumerate(entries)]
+    (folder / "entries.json").write_text(json.dumps(rows), encoding="utf-8")
+
+
+def test_the_findings_pass_when_a_shared_entry_links_to_the_request_and_count_what_stays_private(data):
+    readers = readers_of(data)
+    assert run("improvement-findings", readers, "imp-1", item="").message.startswith("the findings are read for one unit")
+    assert run("improvement-findings", readers, "", item="u-1").message == "the run has no request id as its subject"
+    assert run("improvement-findings", readers, "imp-1", item="u-1").message == "no entries are on file for the unit"
+    seed_entries(data, "u-1", {"approval": "improvement:imp-1"}, {"approval": ""}, {"approval": "improvement:imp-2"},
+                 {"approval": "improvement:imp-1", "visibility": "private"})
+    before = tree(data)
+    res = run("improvement-findings", readers, "request:imp-1", item="u-1")
+    assert res.ok and res.evidence == ()
+    assert res.message == ("3 entr(ies) shared with the association, 1 linking to this request, 1 with no approval reference; "
+                           "1 private, counted and not read; the other four findings need the request store and the change rules (not built)")
+    for word in ("u-1", "imp-1", "New floor", "flooring"):
+        assert word not in res.message
+    miss = run("improvement-findings", readers, "imp-9", item="u-1")
+    assert miss.ok is False and miss.message.startswith("no entry shared with the association links to this request (3 entr(ies)")
+    assert tree(data) == before
+    seed_entries(data, "u-1", {"approval": "improvement:imp-1", "visibility": "private"})
+    hidden = run("improvement-findings", readers, "imp-1", item="u-1")
+    assert hidden.ok is False and "0 entr(ies) shared" in hidden.message and "1 private, counted and not read" in hidden.message
+    assert run("improvement-findings", readers, "imp-1", item="../").ok is False
+
+
+# --- a maintenance program's standing ------------------------------------------------------------------------------------
+
+def seed_portal(data_dir, key, *days, customer="cust-1"):
+    from jason.tasks import vendor_portals
+
+    path = vendor_portals.portal_root(data_dir, key) / customer / vendor_portals.ACCOUNT
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"customer": {"customer_id": customer, "name": "A. Owner", "address": "123 Main St"},
+                                "services": [{"day": d} for d in days]}), encoding="utf-8")
+
+
+def test_the_standing_reads_implementation_only_and_says_document_and_adoption_are_not_read(data):
+    community = SimpleNamespace(vendor_portals=lambda: (SimpleNamespace(key="pest"),))
+    readers = readers_of(data, community)
+    assert "no portal data on disk" in run("program-standing", readers, "program:pest").message
+    seed_portal(data, "pest", "2099-05-20", "2099-03-01")
+    before = tree(data)
+    res = run("program-standing", readers, "program:pest")
+    assert res.ok
+    assert res.message == ("implementation: 2 visit(s) on record, the latest 2099-05-20, current; document: not read (no program "
+                           "catalog); adoption: no act read (a vendor's approval is not one)")
+    assert "not adopted" not in res.message and "A. Owner" not in res.message and "123 Main" not in res.message
+    assert any(e.startswith("glob:vendors/pest/*/account.json@") for e in res.evidence)
+    assert run("program-standing", readers, "", item="pest").ok                       # the item may name the portal
+    old = run("program-standing", StoreReaders(data, community=community, today=date(2100, 1, 1)), "pest")
+    assert old.ok and "not current (the latest visit is over 120 days old; proposed)" in old.message
+    assert "declares no vendor portal for this program" in run("program-standing", readers, "program:other").message
+    assert tree(data) == before
+    seed_portal(data, "pest")                                                           # an account with no visit
+    none = run("program-standing", readers, "pest")
+    assert none.ok is False and "no visit on record" in none.message
+
+
 # --- every read leaves the data folder as it was -------------------------------------------------------------------------
 
 def test_every_read_leaves_a_populated_data_folder_byte_identical(data, monkeypatch):
@@ -490,12 +669,22 @@ def test_every_read_leaves_a_populated_data_folder_byte_identical(data, monkeypa
     stub_review(monkeypatch, records(system("alarm", obligation("done", period(COV.COVERED, object())))))
     monkeypatch.setattr(elevated_inspections, "calendar_rows", lambda c, t, **k: [{"name": "B1", "next": "2099-09-01"}])
     monkeypatch.setattr(unit_records_view, "loss_packet_view", lambda *a, **k: PACKET)
-    community = SimpleNamespace(backflow_program=lambda: program(), paint_schedules=lambda: (SCHEDULE,))
+    seed_terms(data, terms=[clause("4.1", DAYS, (60, 90)), {"id": "d", "section": "5", "deliverable": True, "party": "counterparty"}])
+    seed_readings(data, reading_row("a", "manager-statement", items=["x"]))
+    seed_entries(data, "u-1", {"approval": "improvement:imp-1"})
+    seed_portal(data, "pest", "2099-06-01")
+    from dataclasses import replace
+
+    flow = replace(backflow_program(assembly("domestic", "SN-1", passed="2099-03-01")), tester=program().tester, lists=program().lists)
+    community = SimpleNamespace(backflow_program=lambda: flow, paint_schedules=lambda: (SCHEDULE,),
+                                vendor_portals=lambda: (SimpleNamespace(key="pest"),))
     readers = readers_of(data, community)
     before = tree(data)
-    subject = lambda name: "contract-a" if name == "contract-window" else ROW           # noqa: E731
-    results = {name: run(name, readers, subject(name), "u-1" if name == "loss-packet" else "", {"term_ends": "2099-12-31"})
-               for name in NAMES}
+    subjects = {"contract-window": "contract-a", "contract-owed": "contract-a", "contract-statement": "library-a",
+                "improvement-findings": "imp-1", "program-standing": "pest"}
+    subject = lambda name: subjects.get(name, ROW)                                      # noqa: E731
+    items = {"loss-packet": "u-1", "improvement-findings": "u-1"}
+    results = {name: run(name, readers, subject(name), items.get(name, ""), {"term_ends": "2099-12-31"}) for name in NAMES}
     assert tree(data) == before
     assert all(r.ok for n, r in results.items() if n not in ("deficiency-cleared", "life-safety-reports-read")), {
         n: r.message for n, r in results.items() if not r.ok}

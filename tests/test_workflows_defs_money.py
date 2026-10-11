@@ -39,8 +39,8 @@ EXPECTED = {
         ("attach", PL, TR), ("policy", D, SE), ("mail", W, M), ("out", B, M), ("esc", P, TR),
     ),
     "monthly-review": (
-        ("sync", P, M), ("attach", W, M), ("recon", C, JA), ("stmt", P, TR), ("bva", C, JA), ("ie", P, TR),
-        ("regs", P, TR), ("inv", P, TR), ("xfer", P, TR), ("path", B, TR), ("rev", P, DI), ("rat", D, SE),
+        ("sync", P, M), ("attach", W, M), ("recon", C, JA), ("stmt", C, JA), ("bva", C, JA), ("ie", C, JA),
+        ("regs", C, JA), ("inv", P, TR), ("xfer", P, TR), ("path", B, TR), ("rev", P, DI), ("rat", D, SE),
         ("rec", P, SE),
     ),
     "delinquency-account": (
@@ -50,23 +50,23 @@ EXPECTED = {
         ("alt", D, SE), ("hand", P, M), ("off", D, SE), ("close", P, M),
     ),
     "fiscal-year": (
-        ("open", P, M), ("win", P, M), ("R1", C, JA), ("R2", D, SE), ("R3", P, M), ("R4", D, SE), ("R5", D, SE),
-        ("B1", P, TR), ("B2", P, TR), ("B3", B, TR), ("B4", B, TR), ("B5", D, SE), ("B6", D, SE), ("B7", P, M),
-        ("D1", P, M), ("D2", P, M), ("D3", P, TR), ("D4", P, TR), ("D5", P, TR), ("D6", D, SE), ("D7", W, M),
+        ("open", P, M), ("win", C, JA), ("R1", C, JA), ("R2", D, SE), ("R3", P, M), ("R4", D, SE), ("R5", D, SE),
+        ("B1", P, TR), ("B2", C, JA), ("B3", B, TR), ("B4", B, TR), ("B5", D, SE), ("B6", D, SE), ("B7", P, M),
+        ("D1", P, M), ("D2", P, M), ("D3", P, TR), ("D4", C, JA), ("D5", C, JA), ("D6", D, SE), ("D7", W, M),
         ("D8", P, M), ("D9", P, M), ("D10", P, AN), ("D11", P, M), ("D12", P, M), ("D13", W, M), ("D14", P, M),
         ("F1", B, TR), ("F2", D, SE), ("F3", P, TR), ("F4", P, M), ("C1", P, M),
     ),
     "reserve-borrowing": (
-        ("spend", B, TR), ("sig", P, TR), ("appr", D, SE), ("note", P, M), ("fnd", D, SE), ("rst", W, TR),
+        ("spend", B, TR), ("sig", P, TR), ("appr", D, SE), ("note", C, JA), ("fnd", D, SE), ("rst", W, TR),
         ("late", D, SE), ("sa", D, SE), ("lit", P, M),
     ),
     "insurance-renewal": (
-        ("due", C, JA), ("quote", P, M), ("min", P, M), ("dec", D, SE), ("bind", P, M), ("chg", B, M), ("mem", P, M),
-        ("sum", P, M),
+        ("due", C, JA), ("quote", P, M), ("min", C, JA), ("dec", D, SE), ("bind", P, M), ("chg", B, JA), ("mem", P, M),
+        ("sum", C, JA),
     ),
     "county-tax-cycle": (
         ("sync", P, M), ("stand", C, JA), ("bill", C, JA), ("pdf", P, TR), ("mail", P, TR), ("due", W, TR),
-        ("pay", P, TR), ("rcpt", P, TR), ("att", PL, TR), ("cls", P, TR),
+        ("pay", P, TR), ("rcpt", P, TR), ("att", PL, TR), ("cls", C, JA),
     ),
 }
 """Step counts (the page's tables): 9, 11, 13, 22, 33, 9, 8, 10."""
@@ -159,12 +159,16 @@ def test_every_law_clock_resolves_on_the_shelf(key):
 BUILT = {
     "bill-attach": {"snap": "bill-snapshot-fresh", "queue": "bill-queue-read"},
     "payment-investigation": {"class": "payee-class-read", "tried": "stores-tried-read", "mail": "bill-mail-arrived"},
-    "monthly-review": {"attach": "bill-handed", "recon": "review-reconciliations", "bva": "review-budget"},
-    "fiscal-year": {"R1": "reserve-study-due"},
-    "insurance-renewal": {"due": "insurance-due"},
-    "county-tax-cycle": {"stand": "tax-standing", "bill": "tax-bill-files"},
+    "monthly-review": {"attach": "bill-handed", "recon": "review-reconciliations", "stmt": "review-statements", "bva": "review-budget",
+                       "ie": "review-income-expense", "regs": "review-registers"},
+    "fiscal-year": {"win": "fiscal-window", "R1": "reserve-study-due", "B2": "reserve-plan-match", "D4": "disclosure-insurance-summary",
+                    "D5": "disclosure-reserve-summary", "D13": "disclosure-delivery-read"},
+    "reserve-borrowing": {"note": "reserve-notice", "rst": "reserve-restored"},
+    "insurance-renewal": {"due": "insurance-due", "min": "insurance-limits", "chg": "insurance-changed", "sum": "insurance-summary"},
+    "county-tax-cycle": {"stand": "tax-standing", "bill": "tax-bill-files", "cls": "tax-years-closed"},
 }
-"""The twelve reads (jason.workflows.checks.money) and the step each one is the check of: a check step, or a wait step the read ends."""
+"""The twenty-six reads (jason.workflows.checks.money) and the step each one is the check of: a check step, a branch the read
+chooses, or a wait step the read ends."""
 
 
 @pytest.mark.parametrize("key", ALL)
@@ -189,7 +193,7 @@ def test_it_adds_no_job_and_what_it_still_wants_is_not_there_yet_while_what_it_b
     checks.load_all()
     names = {w.split(":")[0].split(" ", 1)[1] for w in money.WANTED}
     built = {name for words in BUILT.values() for name in words.values()}
-    assert len(built) == 12
+    assert len(built) == 26
     assert not names & set(CHECKS) and not names & set(JOBS)
     assert built <= set(CHECKS) and not built & names
 
@@ -329,8 +333,7 @@ def test_the_monthly_review_has_the_boards_the_directors_and_the_subcommittee_pa
     for word, cite in (("recon", "CIV 5500(a)"), ("stmt", "CIV 5500(d)"), ("bva", "CIV 5500(c)"), ("ie", "CIV 5500(e)"),
                        ("regs", "CIV 5500(f)")):
         s = wf.step(sid("monthly-review", word))
-        role = JA if word in ("recon", "bva") else TR                            # a read is jason's; the rest are the treasurer's
-        assert (s.clock.basis, s.clock.cite, s.role) == (ClockBasis.LAW, cite, role) and s.skip is None
+        assert (s.clock.basis, s.clock.cite, s.role) == (ClockBasis.LAW, cite, JA) and s.skip is None           # each is a read now
     assert wf.step(sid("monthly-review", "xfer")).clock.cite == "CIV 5502(a)"
     assert [d.name for d in wf.dates] == ["month_end", "next_meeting"] and [d.required for d in wf.dates] == [True, False]
 
@@ -463,7 +466,8 @@ def passing(monkeypatch, *names):
 
 def test_an_insurance_renewal_runs_from_the_term_end_to_done(data, monkeypatch):
     key = "insurance-renewal"
-    passing(monkeypatch, "insurance-due")
+    passing(monkeypatch, "insurance-due", "insurance-limits", "insurance-summary")
+    monkeypatch.setitem(CHECKS, "insurance-changed", lambda r, v, i="": CheckResult(True, (), "no change", choice="unchanged"))
     general.register_general()
     out = api.start(data, key, "policy:ending-2099", "Example policy", {"term_end": "2099-06-30"}, MANAGER, yes=True, today=DAY)
     RID[0] = out["run"]["id"]
@@ -478,14 +482,17 @@ def test_an_insurance_renewal_runs_from_the_term_end_to_done(data, monkeypatch):
     with pytest.raises(StepRefused):
         drive(data, key, "dec", SECRETARY_, outcome="approved", record="the minutes")                    # not yet: it needs the proposals
     drive(data, key, "quote", MANAGER, record="the agent's proposal, in the library")
-    drive(data, key, "min", MANAGER, record="no finding against the required limits")
+    api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)       # the reads run again
+    assert states()[sid(key, "min")] == "done"                                                           # the limits read passed on its own
     with pytest.raises(StepRefused):
         drive(data, key, "dec", MANAGER, outcome="approved", record="the minutes")                        # only the secretary records the decision
     drive(data, key, "dec", SECRETARY_, outcome="approved", record="the minutes of 2099-03-10", motion="renew as quoted")
     drive(data, key, "bind", MANAGER, record="the declarations are in Drive; the premium is paid")
-    drive(data, key, "chg", MANAGER, choice="unchanged", record="no change in coverage")
+    api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)       # the reads run again
+    assert states()[sid(key, "chg")] == "done" and states()[sid(key, "sum")] == "done"
+    with pytest.raises(StepRefused):
+        drive(data, key, "chg", MANAGER, choice="changed", record="a person's word")                      # a branch a read chooses is not a person's
     assert states()[sid(key, "mem")] == "skipped"                                                          # the member notice is on the changed path
-    drive(data, key, "sum", MANAGER, record="insurance_rows for 2099 carries the term")
     final = api.show(data, RID[0], today=DAY)
     assert final["state"] == "done"
     assert {s["id"] for s in final["steps"] if s["state"] == "skipped"} == {sid(key, "mem")}
@@ -494,7 +501,7 @@ def test_an_insurance_renewal_runs_from_the_term_end_to_done(data, monkeypatch):
 @pytest.mark.parametrize("path, ratified", [("meeting", False), ("every-director", True), ("subcommittee", True)])
 def test_a_monthly_review_asks_for_the_ratification_only_on_the_independent_paths(data, monkeypatch, path, ratified):
     key = "monthly-review"
-    passing(monkeypatch, "review-reconciliations", "review-budget")
+    passing(monkeypatch, "review-reconciliations", "review-budget", "review-statements", "review-income-expense", "review-registers")
     general.register_general()
     out = api.start(data, key, "month:2099-09", "September", {"month_end": "2099-09-30"}, MANAGER, yes=True, today=DAY)
     RID[0] = out["run"]["id"]
@@ -503,9 +510,8 @@ def test_a_monthly_review_asks_for_the_ratification_only_on_the_independent_path
         api.skip(data, RID[0], sid(key, word), MANAGER, roles_of=roles_of, reason="the board reviews the stored books", readers=StoreReaders(data), today=DAY)
     api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)       # the reads run now
     states0 = {s["id"]: s["state"] for s in api.show(data, RID[0], today=DAY)["steps"]}
-    assert states0[sid(key, "recon")] == states0[sid(key, "bva")] == "done"                                  # done by their reads
-    for word in ("stmt", "ie", "regs", "xfer"):
-        drive(data, key, word, TREASURER_, record=f"{word} read")
+    assert {states0[sid(key, w)] for w in ("recon", "bva", "stmt", "ie", "regs")} == {"done"}                # done by their reads
+    drive(data, key, "xfer", TREASURER_, record="xfer read")
     api.skip(data, RID[0], sid(key, "inv"), TREASURER_, roles_of=roles_of, reason="no finding", readers=StoreReaders(data), today=DAY)
     drive(data, key, "path", TREASURER_, choice=path, record=path)
     drive(data, key, "rev", TREASURER_, record="A. Treasurer, 2099-10-09, all parts")

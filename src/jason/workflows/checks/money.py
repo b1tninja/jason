@@ -1,10 +1,27 @@
-"""The money family's reads (docs/workflows/money.md, sections 2 and 7): twelve ``check`` names a money definition may use.
+"""The money family's reads (docs/workflows/money.md, sections 2 and 7): the ``check`` names a money definition may use.
+
+Twelve came first (the bill-attach, payment-investigation, monthly-review, reserve, insurance-due, and tax reads); round two
+added fourteen: ``review-statements``, ``review-income-expense``, ``review-registers`` (the library and the stored
+ledger), ``fiscal-window`` (the notice catalog), ``reserve-plan-match`` and ``disclosure-reserve-summary`` (the reserve
+study, the budget), ``disclosure-insurance-summary``, ``insurance-limits``, ``insurance-changed`` and ``insurance-summary``
+(the policy report and the renewals store), ``disclosure-delivery-read`` (the notice ledger), ``reserve-notice`` and
+``reserve-restored`` (the reserve transfers), and ``tax-years-closed`` (the tax catalog).
 
 Each read is read-only. It looks at stores already on disk (the PayHOA snapshot, the dry run, the reconciliations, the
-finance snapshot, the reserve studies, the insurance sheet, the tax catalog, the run store) and writes nothing, reaches no
-network, and calls no PayHOA, Google, county portal, or Keeper. The tax catalog is opened read only (``mode=ro``), never
-through ``TaxStore``, whose constructor creates tables. A store that is missing or cannot be read gives ``ok=False`` with
+finance snapshot, the stored ledger, the library, the reserve studies, the insurance sheet and policy report, the notice
+ledger, the tax catalog, the run store) and writes nothing, reaches no network, and calls no PayHOA, Google, county portal,
+or Keeper. The tax catalog and the notice ledger are opened read only (``mode=ro``), never through ``TaxStore`` or the ledger
+module's own opener, whose constructors create tables. A store that is missing or cannot be read gives ``ok=False`` with
 the reason; a read never raises and is never ``ok`` by default. Amounts are integer cents.
+
+**Not built here, and why.** ``review-transfers`` (no store holds the board's prior written approval of a transfer),
+``delinquency-ledger-read``, ``delinquency-charges``, ``delinquency-order``, ``delinquency-policy-notice``,
+``delinquency-floor``, ``delinquency-plan-request`` and ``delinquency-closed`` (a delinquent account's run is held and its
+subject is an opaque id, never a parcel, so a read cannot tell which account the run is about; the association-wide counts
+and ages stay with ``jason who-owes`` and ``association_collections``), ``budget-limits`` (the figures are a person's
+until counsel reads CIV 5605), ``reserve-two-signatures`` (the bank's record, which jason does not read),
+``disclosure-send-plan`` (the page counts come from payhoa's pricing, which a read may not import),
+``fiscal-owner-info-cycle`` (the members family reads the cycle), and ``tax-mailed-bill`` (its reader opens ``TaxStore``).
 
 **What ``ok`` means.** For a read a step is *about* (a snapshot is fresh, a policy's term end is near, a reconciliation
 covers the month) ``ok`` says the claim holds and ``message`` says what was found. For a read that only reports (the
@@ -503,3 +520,434 @@ def tax_bill_files(readers: StoreReaders, view: RunView, item: str = "") -> Chec
         names = [f"ending {_last4(r['apn'])} bill {r['number']}" for r, _a in missing]
         return CheckResult(False, evidence, said + f"; no file for {_more(names)}; jason county-tax --import-bill saves one")
     return CheckResult(True, evidence, said)
+
+
+# === round two: the reads the page's remaining check rows wanted ===========================================================
+
+def _day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value or "")[:10])
+    except ValueError:
+        return None
+
+
+def _month_bounds(month: str) -> tuple[date, date]:
+    import calendar
+
+    year, number = int(month[:4]), int(month[5:])
+    return date(year, number, 1), date(year, number, calendar.monthrange(year, number)[1])
+
+
+def _ledger_month(readers: StoreReaders, view: RunView) -> tuple[str, date, date, list[Any], dict[str, Any]]:
+    """(the month, its first and last day, the stored ledger's entries, the month's row in the store): the ledger read for a
+    month that is over, else the reason it cannot be read."""
+    from jason.tasks import books
+
+    month = _month_of(view)
+    if not month:
+        raise _Unreadable("the run names no month, so the ledger cannot be read for one")
+    items = books.load(readers.data_dir)
+    if not items:
+        raise _Unreadable("no ledger on disk; jason books --sync reads it")
+    stored = {m["month"]: dict(m) for m in books.stored_months(readers.data_dir)}
+    if month not in stored:
+        raise _Unreadable(f"the stored ledger holds no rows of {month}; jason books --sync reads it")
+    first, last = _month_bounds(month)
+    fetched = _day(stored[month].get("fetched_at"))
+    if fetched is None or fetched <= last:
+        raise _Unreadable(f"the ledger's rows of {month} were read {fetched or 'at no recorded time'}, before the month ended; "
+                          "jason books --sync reads it again")
+    if not int(stored[month].get("rows") or 0):
+        raise _Unreadable(f"the stored ledger holds no row of {month}")
+    return month, first, last, items, stored[month]
+
+
+def _ledger_evidence(readers: StoreReaders) -> tuple[str, ...]:
+    from jason.tasks import books
+
+    return readers.evidence_entries((_address(Path("payhoa") / books.STORE),))
+
+
+# --- monthly-review: statements, income and expense, registers -----------------------------------------------------------
+
+@_guarded("review-statements")
+def statements_read(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The library holds a bank statement of the month for each bank account the profile names (CIV 5500(d)). An account is
+    matched by the last four digits its statement files carry; a message names an account by its label and never by a number.
+    The statement is counted, never described: a bank statement is a confidential file."""
+    from jason.tasks import library
+
+    month = _month_of(view)
+    if not month:
+        return CheckResult(False, (), "the run names no month, so the statements cannot be looked for")
+    accounts = list(readers.community.bank_accounts())
+    if not accounts:
+        return CheckResult(False, (), "the profile names no bank account, so no statement can be paired with one")
+    if item.strip():
+        wanted = item.strip().casefold()
+        accounts = [a for a in accounts if wanted in {str(a.label).casefold(), a.purpose.value.casefold(), str(a.suffix)}]
+        if not accounts:
+            return CheckResult(False, (), "the profile names no bank account for that item")
+    stored = library.load(readers.data_dir)
+    if not stored:
+        return CheckResult(False, (), "no library on disk; jason library reads it")
+    rows = [r for r in library.distinct(stored) if r.get("kind") == "bank_statement" and str(r.get("period") or "").startswith(month)]
+    have, missing = [], []
+    for account in accounts:
+        suffix = str(account.suffix or "")
+        found = [r for r in rows if suffix and suffix in f"{r.get('name', '')} {r.get('path', '')}"]
+        (have if found else missing).append(account.label or account.purpose.value)
+    evidence = readers.evidence_entries((_address(library.STORE),))
+    said = (f"{len(have)} of {len(accounts)} bank account(s) have a statement of {month} in the library "
+            f"({len(rows)} statement file(s) of the month in all)")
+    if missing:
+        return CheckResult(False, evidence, said + f"; none filed for {_more(missing)} (a person files it, jason library reads it)")
+    return CheckResult(True, evidence, said)
+
+
+@_guarded("review-income-expense")
+def income_expense_read(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The stored ledger can state the month's income and expense (CIV 5500(e)): the category counts and the totals, in cents,
+    from the ledger read after the month ended. Whether the statement is right is the reviewer's."""
+    from jason.community import ledger
+
+    month, first, last, items, _row = _ledger_month(readers, view)
+    pl = ledger.profit_and_loss(items, first, last)
+    if not pl["income"] and not pl["expense"]:
+        return CheckResult(False, _ledger_evidence(readers), f"the ledger has no income or expense entry in {month}")
+    moved = ledger.cash_flow(items, first, last)
+    return CheckResult(True, _ledger_evidence(readers),
+                       f"the ledger states {month}: {len(pl['income'])} income categories, {pl['incomeCents']} cents; "
+                       f"{len(pl['expense'])} expense categories, {pl['expenseCents']} cents; net {pl['netCents']} cents; "
+                       f"{len(moved)} bank account(s) moved money (the statement is the books' reading; whether it is right "
+                       "is the reviewer's judgment)")
+
+
+@_guarded("review-registers")
+def registers_read(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The three reports CIV 5500(f) names can be drawn from the stored ledger for the month: the general ledger (its rows), the
+    check register (the money out of the bank accounts), and the delinquent assessment receivable report (units owing and the
+    total, without names). Counts and cents only."""
+    from jason.community import ledger
+
+    month, first, last, items, row = _ledger_month(readers, view)
+    paid = [e for e in items if e.type == ledger.BANK and not e.starting and first <= e.day <= last and e.credit]
+    owed = ledger.receivables(items, last)
+    return CheckResult(True, _ledger_evidence(readers),
+                       f"{month}: the general ledger holds {int(row.get('rows') or 0)} row(s); the register shows {len(paid)} "
+                       f"payment(s) out, {sum(e.credit for e in paid)} cents; {owed['unitsOwing']} unit(s) owe {owed['owedCents']} "
+                       "cents at the month's end (whether they are right is the reviewer's)")
+
+
+# --- fiscal-year: the window, the reserve, the budget, the disclosures ------------------------------------------------------
+
+@_guarded("fiscal-window")
+def fiscal_window(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The window for the annual budget report and the annual policy statement (CIV 5300(a), 5310(a)), from the notice catalog
+    and the fiscal year's end; and, when the dated day is on record, that it falls inside. A date that is not on record is a
+    state, said as it is, never a guess."""
+    from jason.community import notice_catalog
+    from jason.community.notices import Anchor
+
+    end = _day(_dates(view).get("fiscal_year_end"))
+    if end is None:
+        return CheckResult(False, (), "the fiscal year's end is not on record: a date not on record is a question for the manager, never a guess")
+    windows = {}
+    for key in ("annual-budget-report", "annual-policy-statement"):
+        row = notice_catalog.requirement(key)
+        found = [t.window(end) for t in row.timing if t.anchor is Anchor.FISCAL_YEAR_END]
+        if not found:
+            return CheckResult(False, (), f"the notice catalog gives {row.statute} no window from the fiscal year's end")
+        windows[key] = found[0]
+    first, last = windows["annual-budget-report"]
+    other = windows["annual-policy-statement"]
+    said = (f"the window for the fiscal year ending {end.isoformat()} runs {first} to {last} (CIV 5300"
+            + (", 5310 the same)" if other == (first, last) else f"; the policy statement's differs: {other[0]} to {other[1]})"))
+    dated = _day(_dates(view).get("dated_day"))
+    if dated is None:
+        return CheckResult(False, (), said + "; the dated day is not on record yet (date not on record)")
+    if (first is not None and dated < first) or (last is not None and dated > last):
+        return CheckResult(False, (), said + f"; the dated day {dated.isoformat()} is outside it")
+    return CheckResult(True, (), said + f"; the dated day {dated.isoformat()} is inside it")
+
+
+def _plan_row(readers: StoreReaders, year: int) -> tuple[Any, Any]:
+    from jason.tasks import reserves
+
+    studies = reserves.load_studies(readers.data_dir)
+    if not studies:
+        raise _Unreadable("no reserve study on disk; jason library --fetch, or a PDF under data/reserve-studies")
+    latest = reserves.latest_study(studies)
+    row = latest.year(year)
+    if row is None:
+        raise _Unreadable(f"the latest study (fiscal year {latest.fiscal_year}) has no plan row for {year}")
+    return latest, row
+
+
+@_guarded("reserve-plan-match")
+def reserve_plan_match(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The budget's transfer to reserves for the fiscal year against the latest study's contribution for the year (within one
+    dollar, as the reserve brief reads it). The study's plan is a reading; the board adopts the funding plan."""
+    from jason.tasks import finance, reserves
+
+    year = _year_of(view, readers)
+    latest, row = _plan_row(readers, year)
+    snap = finance.load(readers.data_dir, year)
+    if snap is None:
+        return CheckResult(False, (), f"no finance snapshot for {year}; jason budget reads it")
+    evidence = readers.evidence_entries((_address(Path(finance.FINANCE_DIR) / f"finance-{year}.json"),))
+    line = next((i for i in (snap.get("expense") or {}).get("items", []) if str(i.get("name")) == reserves.TRANSFER_LINE), None)
+    if line is None or line.get("expected") is None:
+        return CheckResult(False, evidence, f"the {year} budget has no '{reserves.TRANSFER_LINE}' line")
+    budget, plan = int(line["expected"]), int(row.contribution_cents)
+    gap = budget - plan
+    said = (f"the {year} budget transfers {budget} cents to reserves; the study of fiscal year {latest.fiscal_year} plans {plan} cents "
+            "(the plan the board adopted is the board's to name)")
+    if abs(gap) > 100:
+        return CheckResult(False, evidence, said + f"; they differ by {gap} cents")
+    return CheckResult(True, evidence, said + ("; they agree" if not gap else f"; they differ by {gap} cents, inside a dollar"))
+
+
+@_guarded("disclosure-reserve-summary")
+def reserve_summary(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The latest study carries the figures the reserve summary needs for the fiscal year (CIV 5300(b)(2), 5565, 5570): the
+    contribution, the projected and the fully funded balances, and the percent funded. The summary counts cash and cash
+    equivalents only; the treasurer confirms that against the bank."""
+    year = _year_of(view, readers)
+    latest, row = _plan_row(readers, year)
+    current = getattr(getattr(latest, "disclosure", None), "current_balance_cents", None)
+    said = (f"the study of fiscal year {latest.fiscal_year} gives {year}: contribution {row.contribution_cents} cents, projected end "
+            f"{row.ending_balance_cents} cents, fully funded {row.fully_funded_cents} cents, {row.percent_funded} percent funded"
+            + (f"; its disclosure summary's current balance is {current} cents" if current is not None else "")
+            + " (cash and cash equivalents only is the treasurer's to confirm against the bank)")
+    return CheckResult(True, (), said)
+
+
+def _policy_report(readers: StoreReaders) -> tuple[dict[str, Any], tuple[str, ...]]:
+    from jason.tasks import policies
+
+    report = policies.load(readers.data_dir)
+    if not report.get("found"):
+        raise _Unreadable("no policy report on disk; jason policies --fetch builds it")
+    return report, readers.evidence_entries((_address(Path("reports") / policies.REPORT),))
+
+
+def _numbers(policy: dict[str, Any]) -> set[str]:
+    from jason.tasks import insurance
+
+    return {insurance.fold_number(str(n)) for n in (policy.get("number"), *(policy.get("priorNumbers") or ())) if n}
+
+
+def _policy_key(view: RunView, item: str) -> str:
+    from jason.tasks import insurance
+
+    key = item.strip() or str(getattr(view, "subject", "") or "").split(":", 1)[-1].strip()
+    return insurance.fold_number(key) if key else ""
+
+
+def _scoped(report: dict[str, Any], view: RunView, item: str) -> tuple[list[dict[str, Any]], bool]:
+    """(the report's policies the run is about, whether it named one): the policy the item or the subject names, else all."""
+    fold = _policy_key(view, item)
+    named = [p for p in report.get("policies") or [] if fold and fold in _numbers(p)]
+    return (named, True) if named else (list(report.get("policies") or []), False)
+
+
+def _summary(readers: StoreReaders, rows: list[dict[str, Any]], year: int, scope: str, evidence: tuple[str, ...]) -> CheckResult:
+    from jason.tasks import packets
+
+    if not rows:
+        return CheckResult(False, evidence, "the policy report lists no policy")
+    not_carried = tuple(getattr(readers.community, "coverages_not_carried", lambda: ())() or ())
+    table, gaps = packets.insurance_rows(rows, year, not_carried=not_carried)
+    said = f"{scope}: {len(table)} summary row(s) for fiscal year {year} from {len(rows)} policy(ies)"
+    if gaps or not table:
+        return CheckResult(False, evidence, said + f"; {len(gaps)} gap(s): "
+                           + (_more(gaps) if gaps else "no policy has a term in force on the first day of the year"))
+    return CheckResult(True, evidence, said + ", each with a term in force on the first day of the year (CIV 5300(b)(9))")
+
+
+@_guarded("disclosure-insurance-summary")
+def insurance_summary_for_disclosures(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The insurance summary of the annual budget report: every policy has a term in force on the first day of the fiscal year,
+    so ``insurance_rows`` has no gap (CIV 5300(b)(9))."""
+    report, evidence = _policy_report(readers)
+    return _summary(readers, list(report.get("policies") or []), _year_of(view, readers), "all policies", evidence)
+
+
+@_guarded("insurance-summary")
+def insurance_summary_for_policy(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The run's policy has its row in the insurance summary for the fiscal year of the new term (CIV 5300(b)(9)): the year of
+    the term's end date when the run has one, else the reader's year."""
+    report, evidence = _policy_report(readers)
+    rows, named = _scoped(report, view, item)
+    day = _day(_dates(view).get("term_end"))
+    return _summary(readers, rows, day.year if day else readers.today.year, "the named policy" if named else "all policies", evidence)
+
+
+@_guarded("insurance-limits")
+def insurance_limits(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The policy report's findings against the required coverages and limits (CIV 5800, 5805, 5806), counted by severity. It
+    passes when every policy in scope has its declarations read, so the limits could be weighed; a finding is information for
+    the board's decision and never blocks it (a shortfall is what the board decides on). A finding is a reading of the
+    declarations; the declarations govern."""
+    report, evidence = _policy_report(readers)
+    rows, named = _scoped(report, view, item)
+    if not rows:
+        return CheckResult(False, evidence, "the policy report lists no policy")
+    tally = {"problem": 0, "check": 0, "info": 0}
+    undeclared = 0
+    for p in rows:
+        for f in p.get("findings") or []:
+            if any(str(f.get("authority") or "").startswith(c) for c in ("CIV 5800", "CIV 5805", "CIV 5806")):
+                severity = str(f.get("severity") or "check")
+                tally[severity if severity in tally else "check"] += 1
+            if f.get("code") == "no-declarations":
+                undeclared += 1
+    scope = "the named policy" if named else f"{len(rows)} policy(ies)"
+    said = (f"{scope}: {sum(tally.values())} finding(s) against the CIV 5800, 5805 and 5806 limits ({tally['problem']} problem, "
+            f"{tally['check']} to look at, {tally['info']} for information); {undeclared} without declarations read "
+            "(a finding is a reading of the declarations, which govern; the board weighs it before it decides)")
+    return CheckResult(not undeclared, evidence, said)
+
+
+@_guarded("insurance-changed")
+def insurance_changed(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """A branch: ``changed`` when the board's recorded decision says a member notice is needed (a lapse, or a change in limits)
+    or the declarations show a change the statute names (CIV 5810: a lapse not replaced, a reduced limit, a higher deductible);
+    ``unchanged`` otherwise. It cannot choose without the board's decision on record."""
+    from jason.tasks import insurance_notice, insurance_renewals
+    from jason.tasks.insurance import fold_number
+
+    fold = _policy_key(view, item)
+    stored = next((d for n, d in insurance_renewals.load(readers.data_dir).items() if fold and fold_number(str(n)) == fold), None)
+    evidence = readers.evidence_entries((_address(insurance_renewals.STORE),))
+    if stored is None:
+        return CheckResult(False, evidence, "no renewal decision is recorded for the policy: the board's decision comes first")
+    significant, seen = 0, "the declarations were not read"
+    try:
+        report, more = _policy_report(readers)
+        evidence += more
+        mine = [p for p in report.get("policies") or [] if fold in _numbers(p)]
+        if mine:
+            changes, gaps = insurance_notice.policy_changes(mine, _day(_dates(view).get("term_end")) or readers.today)
+            significant = sum(1 for c in changes if c.kind.significant)
+            seen = (f"the declarations show {len(changes)} change(s), {significant} the statute names"
+                    + (f", {len(gaps)} gap(s)" if gaps else ""))
+    except _Unreadable:
+        pass
+    notice = bool(stored.get("memberNoticeNeeded"))
+    changed = notice or significant > 0
+    said = (f"the board's decision is recorded ({stored.get('decision', '')}); memberNoticeNeeded is {'yes' if notice else 'no'}; "
+            f"{seen} (CIV 5810): coverage {'changed' if changed else 'is unchanged'}")
+    return CheckResult(True, evidence, said, choice="changed" if changed else "unchanged")
+
+
+# --- the disclosures' delivery -----------------------------------------------------------------------------------------------
+
+@_guarded("disclosure-delivery-read")
+def disclosure_delivery_read(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The notice ledger holds the send of the annual budget report (``annual-budget-report-YEAR``) and no attempt is still
+    pending: the bounces, returns, and failures are counted. It passes when the delivery was read; a bounce is a follow-up for
+    a person (CIV 4041(e)), not a failure of the read. Counts only: no member, unit, or address."""
+    year = _year_of(view, readers)
+    notice = item.strip() or f"annual-budget-report-{year}"
+    path = readers.data_dir / "notices" / "deliveries.db"
+    if not path.is_file():
+        return CheckResult(False, (), "none on record: the notice ledger is not on disk; jason notices KEY --sync reads the delivery")
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    try:
+        rows = conn.execute("SELECT status, COUNT(*) FROM attempts WHERE notice = ? GROUP BY status", (notice,)).fetchall()
+    except sqlite3.OperationalError as exc:
+        raise _Unreadable(f"the notice ledger has no readable attempts table ({exc})") from exc
+    finally:
+        conn.close()
+    evidence = readers.evidence_entries((_address(Path("notices") / "deliveries.db"),))
+    if not rows:
+        return CheckResult(False, evidence, f"none on record: the ledger holds no attempt for {notice}; jason notices {notice} --sync reads the delivery")
+    by = {str(status): int(n) for status, n in rows}
+    said = (f"{sum(by.values())} attempt(s) for {notice}: "
+            + ", ".join(f"{n} {status}" for status, n in sorted(by.items(), key=lambda kv: (-kv[1], kv[0]))))
+    if by.get("pending"):
+        return CheckResult(False, evidence, said + f"; {by['pending']} still pending: the delivery is read again after 24 hours")
+    follow = sum(by.get(s, 0) for s in ("bounced", "returned", "failed", "unknown", "skipped"))
+    return CheckResult(True, evidence, said + f"; {follow} need a follow-up (a bounce, a return, a failure, or no email on file)")
+
+
+# --- reserve-borrowing ---------------------------------------------------------------------------------------------------------
+
+def _loan(readers: StoreReaders, view: RunView, item: str) -> dict[str, Any]:
+    """The borrowing the run is about, from the reserve transfers' review: the day of the initial transfer (the run's date, else
+    the day in its subject) and, when several share it, the ledger number the subject ends with."""
+    from jason.tasks import reserve_transfers
+
+    text = f"{item} {getattr(view, 'subject', '')}".strip()
+    found = _day(_dates(view).get("transfer_on")) or _day(next(iter(re.findall(r"\d{4}-\d{2}-\d{2}", text)), ""))
+    if found is None:
+        raise _Unreadable("the run names no day for the initial transfer")
+    review = reserve_transfers.review(readers.data_dir, readers.community, today=readers.today)
+    if not review.get("found"):
+        raise _Unreadable(str(review.get("note") or "the reserve transfers cannot be read"))
+    mine = [r for r in review.get("borrowings") or [] if r.get("day") == found.isoformat()]
+    number = re.search(r"\d{4}-\d{2}-\d{2}\D*(\d+)\s*$", text)
+    if len(mine) > 1 and number:
+        mine = [r for r in mine if str(r.get("number")) == number.group(1)] or mine
+    if not mine:
+        raise _Unreadable(f"no borrowing of {found.isoformat()} among the {len(review.get('borrowings') or [])} the ledger shows")
+    return mine[0]
+
+
+@_guarded("reserve-notice")
+def reserve_notice(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """An agenda in the library, within 60 days before the transfer, carries a 'Notice of Intent to Borrow' item (CIV 5515(a),
+    4920). A document missing from the library may be in the board's files; the read says only what the library holds."""
+    loan = _loan(readers, view, item)
+    documents = loan.get("documents") or {}
+    notice, minutes = documents.get("notice"), documents.get("minutes")
+    if not notice:
+        return CheckResult(False, (), "no agenda in the library gives notice of intent to borrow within 60 days before the transfer "
+                                      "(the board's files may hold one that is not in PayHOA's library yet)")
+    more = (("; minutes of that meeting are in the library" + (" (a draft only)" if minutes.get("draft") else ""))
+            if minutes else "; no minutes of that meeting are in the library yet")
+    return CheckResult(True, (), f"the agenda of the meeting of {notice.get('meeting')} carries the notice of intent to borrow{more}")
+
+
+@_guarded("reserve-restored")
+def reserve_restored(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """A transfer back to the reserve restores the borrowing, found by amount: a lead, because the board's resolution says which
+    loan a payment restored (CIV 5515(d)). It says whether the restoration came inside the year."""
+    loan = _loan(readers, view, item)
+    cents, back = int(loan.get("cents") or 0), int(loan.get("repaidCents") or 0)
+    if int(loan.get("outstandingCents") or 0) > 0:
+        return CheckResult(False, (), f"{back} of {cents} cents are restored; {loan['outstandingCents']} cents are not, "
+                                      f"and the year ends {loan.get('deadline')}")
+    when = "inside" if str(loan.get("repaidOn") or "") <= str(loan.get("deadline") or "") else "after"
+    return CheckResult(True, (), f"{back} cents were restored by {loan.get('repaidOn')}, {when} the year that ended {loan.get('deadline')} "
+                                 "(found by amount: a lead until the resolution confirms which loan it restored)")
+
+
+# --- county-tax-cycle -------------------------------------------------------------------------------------------------------------
+
+@_guarded("tax-years-closed")
+def tax_years_closed(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """Every stored bill of the tax year (the run's, else the newest in the catalog) has a balance of zero. It passes only when
+    each parcel's bills are paid; a parcel is named by its last four characters and a balance is in cents."""
+    rows = _tax_bills(readers, "apn, number, year, balance_cents")
+    wanted = _digits(item)
+    rows = [r for r in rows if not wanted or _digits(r["apn"]) == wanted]
+    if not rows:
+        return CheckResult(False, (), "the tax catalog holds no bill for that parcel" if wanted
+                           else "the tax catalog holds no bill; jason sync-tax reads it")
+    year = _year_of(view, readers, default=False)
+    if year is None:
+        year = max((r["year"] for r in rows if r["year"] is not None), default=None)
+    mine = [r for r in rows if r["year"] == year]
+    if not mine:
+        return CheckResult(False, (), f"the catalog holds no bill for tax year {year}")
+    unpaid = [r for r in mine if r["balance_cents"] is None or int(r["balance_cents"]) != 0]
+    parcels, owing = {str(r["apn"]) for r in mine}, {str(r["apn"]) for r in unpaid}
+    said = f"{len(parcels) - len(owing)} of {len(parcels)} parcel(s) have every bill of tax year {year} at a zero balance"
+    if unpaid:
+        cents = sum(int(r["balance_cents"] or 0) for r in unpaid)
+        return CheckResult(False, (), said + f"; {len(unpaid)} bill(s) on {_more(f'ending {_last4(a)}' for a in sorted(owing))} "
+                                             f"still show a balance, {cents} cents in all")
+    return CheckResult(True, (), said)

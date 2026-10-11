@@ -8,7 +8,7 @@ changed:
   step reads "changed since" with the difference. A ``changed`` event never un-does a done step; a person reopens it;
 - each ``plan`` step's approval status and each ``job`` step's job state are read, and ``approval-decided``, ``applied``,
   or ``job-finished`` is appended for what moved;
-- a ``wait`` step's arrival is read.
+- a ``wait`` step's arrival is read (not for one that ends only by a person's note: no reader ends that).
 
 It appends nothing when nothing changed, so a second open is a no-op. It never marks a person's step done, never decides,
 submits, or applies an approval, and never sends. ``readers`` is everything it reads and the two things it may start (a
@@ -81,6 +81,11 @@ class Readers:
     def child_state(self, run_id: str) -> str | None:
         return None
 
+    def holidays(self) -> frozenset[date]:
+        """The days a business-day clock skips besides weekends. The default is none (an empty calendar); a reader that knows the
+        community's holidays returns them. The fold is handed them as an argument and reads no calendar itself."""
+        return frozenset()
+
 
 def _last(events: list[Event]) -> dict[tuple[str, str, EventKind], Event]:
     """The latest event of each kind for each (step, item), forgetting what a ``reopened`` event reopened."""
@@ -97,8 +102,24 @@ def _last(events: list[Event]) -> dict[tuple[str, str, EventKind], Event]:
     return out
 
 
+class Outside(dict):
+    """What the fold is told about the world outside the events: the child runs' state words (the mapping itself) and the
+    calendar of holidays (``holidays``). It is a plain dict to every old caller; ``fold.state`` reads ``holidays`` from it."""
+
+    holidays: frozenset[date] = frozenset()
+
+
+def holidays_of(readers: Readers) -> frozenset[date]:
+    """The readers' holidays as days. A calendar that cannot be read is an empty one, never an error."""
+    try:
+        return fold.holiday_days(readers.holidays())
+    except Exception:  # noqa: BLE001 - no calendar means weekends only; the clock is then the earliest it can fall
+        return frozenset()
+
+
 def children_of(events: list[Event], readers: Readers) -> dict[str, str]:
-    out = {}
+    out = Outside()
+    out.holidays = holidays_of(readers)
     for e in events:
         child = str(e.detail.get("child", "")) if e.kind is EventKind.SPAWNED else ""
         if child:
@@ -196,7 +217,7 @@ def pending(view: RunView, events: list[Event], workflow: Workflow, readers: Rea
                 if ev(EventKind.WAITED) is None:
                     due = fold.clock_due(sd.clock, view.dates) if sd.clock else None
                     acts.append(Act(EventKind.WAITED, sd.id, {"until": due.isoformat() if due else "", **tag}))
-                came = readers.arrival(sd, view, item)
+                came = None if sd.ends_by_note else readers.arrival(sd, view, item)
                 if came:
                     acts.append(Act(EventKind.ARRIVED, sd.id, {"what": str(came), **tag}))
         # a done step whose evidence moved: one changed event, not an un-doing
@@ -235,4 +256,4 @@ def resume(run: store.Run, workflow: Workflow, today: date, readers: Readers | N
     return appended
 
 
-__all__ = ["ApprovalState", "JobState", "Readers", "children_of", "idem_key", "pending", "resume"]
+__all__ = ["ApprovalState", "JobState", "Outside", "Readers", "children_of", "holidays_of", "idem_key", "pending", "resume"]

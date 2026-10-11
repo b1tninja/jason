@@ -57,16 +57,19 @@ def named_check(name: str) -> NamedCheck:
 @dataclass(frozen=True)
 class JobSpec:
     """How a job step's command is recognized in the queue: every ``require`` word is among the job's arguments, none of
-    ``forbid`` is, and (with ``prefix``) some argument starts with it. The queue keeps the command and not a key."""
+    ``forbid`` is, and (with ``prefix``) some argument starts with it, and (with ``first``) the first argument is that jason
+    command. The queue keeps the command and not a key."""
 
     name: str
     require: tuple[str, ...]
     forbid: tuple[str, ...] = ()
     prefix: str = ""
+    first: str = ""
 
     def matches(self, argv: Iterable[str]) -> bool:
         words = list(argv)
-        return (all(w in words for w in self.require) and not any(w in words for w in self.forbid)
+        return ((not self.first or bool(words) and words[0] == self.first)
+                and all(w in words for w in self.require) and not any(w in words for w in self.forbid)
                 and (not self.prefix or any(w.startswith(self.prefix) for w in words)))
 
 
@@ -77,6 +80,18 @@ JOBS: dict[str, JobSpec] = {j.name: j for j in (
     JobSpec("notices-sync", ("notices", "--sync"), prefix="owner-info-"),
 )}
 """The job names a definition may use (``definitions.validate`` takes ``JOBS`` as its registry of jobs)."""
+
+
+def _described() -> None:
+    """Add the descriptors of the ready families (``jason.workflows.jobs``): each names an existing jason command by its words.
+    A person runs the command; the engine only recognizes the queued job."""
+    from jason.workflows import jobs as described
+
+    for d in described.registered():
+        JOBS.setdefault(d.name, JobSpec(d.name, d.words, d.forbid, first=d.first))
+
+
+_described()
 
 
 # --- small helpers --------------------------------------------------------------------------------------------------
@@ -122,6 +137,11 @@ class StoreReaders(Readers):
 
             self._community = active()
         return self._community
+
+    def holidays(self) -> frozenset[date]:
+        """The days the community's business-day clocks skip besides weekends (``Community.holidays``); none when it names none."""
+        got = getattr(self.community, "holidays", None)
+        return fold.holiday_days(got()) if callable(got) else frozenset()
 
     # -- a check ------------------------------------------------------------------------------------------------------
 

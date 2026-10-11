@@ -28,6 +28,7 @@ checks.load_all()
 
 NAMES = ("notice-requirement-read", "notice-owed-zero", "notice-proof", "notice-kept-text", "mailroom-pages",
          "mailroom-batch-read", "requests-read", "answers-on-time", "request-classified", "form-offered")
+NEW = ("clock-authority-recited", "references-fill", "notice-elements", "kept-text-unchanged", "form-stale")
 TODAY = date(2099, 3, 10)
 D = notice_ledger.Delivery
 MEETING = "board-meeting-2099-01-14"
@@ -96,18 +97,19 @@ def sync(folder, *statuses, notice=MEETING):
 
 # --- the registration ------------------------------------------------------------------------------------------------
 
-def test_the_members_module_registers_the_ten_reads_and_the_definitions_name_them():
-    assert set(NAMES) <= set(CHECKS)
+def test_the_members_module_registers_the_fifteen_reads_and_the_definitions_name_them():
+    assert set(NAMES) | set(NEW) <= set(CHECKS)
     named = {s.check.name for b in defs.BUILDERS for s in b().steps if s.check is not None}
-    assert named == set(NAMES) | {"outstanding-read"}
+    assert named == set(NAMES) | set(NEW) | {"outstanding-read"}
     for b in defs.BUILDERS:
         for s in b().steps:
-            if s.check is not None and s.check.name in NAMES:
+            if s.check is not None and s.check.name in NAMES + NEW:
                 assert s.kind is StepKind.CHECK and s.role is Role.JASON, s.id
-    assert not any(n in defs.WANTED for n in ("check " + x for x in NAMES))
+    assert not any(n in defs.WANTED for n in ("check " + x for x in NAMES + NEW))
+    assert not [w for w in defs.WANTED if w.startswith("check ")]
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", NAMES + NEW)
 def test_a_read_with_no_subject_and_no_stores_fails_with_a_reason_and_creates_nothing(name, tmp_path):
     missing = tmp_path / "no-data-folder"
     out = CHECKS[name](StoreReaders(missing, community=Community(), today=TODAY), view(""), "")
@@ -479,3 +481,263 @@ def test_no_read_changes_a_byte_of_a_populated_data_folder(folder, readers):
                                                        "mailroom-pages", "mailroom-batch-read", "requests-read", "answers-on-time",
                                                        "request-classified", "form-offered"]
     assert tree(folder) == before
+
+
+# --- the owner-document, authority, and stale-form reads (written after the first ten) -----------------------------------
+
+DRAFT = "rule-change-proposed-example-2099-01-02"
+TEXT_AND_EFFECT = ("NOTICE OF PROPOSED RULE CHANGE\n\nTHE TEXT OF THE PROPOSED RULE CHANGE\nSection 1: replace with a quiet-hours rule.\n\n"
+                   "PURPOSE OF THE PROPOSED CHANGE\nMake the hours plain.\n\nEFFECT OF THE PROPOSED CHANGE\nOwners keep the hours.\n")
+
+
+class DocCommunity(Community):
+    """A profile that keeps no document as amended and states no fact: an outline on disk is the only document there is."""
+
+    def living_documents(self):
+        return ()
+
+    def citable_documents(self):
+        return ()
+
+    def applicability_facts(self):
+        return ()
+
+    region = ""
+
+
+@pytest.fixture
+def docs(folder):
+    return StoreReaders(folder, community=DocCommunity(custom_form()), today=TODAY)
+
+
+def draft(folder, name, text):
+    (folder / "drafts").mkdir(exist_ok=True)
+    (folder / "drafts" / f"{name}.md").write_text(text, encoding="utf-8")
+
+
+def rules_outline(folder):
+    from jason.community.outlines import DocumentOutline, Section
+
+    text = "B-1. Quiet Hours.\nResidents shall keep quiet hours from ten at night until seven in the morning."
+    outline = DocumentOutline("rules", "Rules", kind="operating_rules", text=text, sections=[Section("B-1", "Quiet Hours.", 1, 0, len(text))])
+    (folder / "outlines").mkdir(exist_ok=True)
+    (folder / "outlines" / "rules.json").write_text(json.dumps(outline.to_dict()), encoding="utf-8")
+
+
+def shelf(folder, sections, changed=None):
+    """The authorities shelf of the folder: each made-up CIV section (its number and its words), and the change log."""
+    where = folder / "authorities" / "CIV"
+    where.mkdir(parents=True, exist_ok=True)
+    pages = []
+    for number, words in sections.items():
+        file = f"authorities/CIV/CIV-{number}.md"
+        (folder / file).write_text(f"# CIV {number}: made up\n\n- Source: California Legislature, 2025 session publication, read with "
+                                   f"lawlibrary\n\n## CIV {number}\n\n- History: made up\n\n{number}. (Added by Stats. 2012, Ch. 1, "
+                                   f"Sec. 1.)\n\n{words}\n", encoding="utf-8")
+        pages.append({"file": file, "citation": f"CIV {number}", "title": "Made up", "code": "CIV", "start": number, "end": number,
+                      "sections": [number], "basis": "a duty", "why": ["made up"], "session": "2025"})
+    (folder / "authorities" / "manifest.json").write_text(json.dumps({"exported": "2099-01-01", "session": "2025", "pages": pages}),
+                                                          encoding="utf-8")
+    if changed:
+        rows = [{"citation": f"CIV {n}", "old": "a" * 64, "new": "b" * 64, "when": when} for n, when in changed.items()]
+        (folder / "authorities" / "changes.json").write_text(json.dumps(rows), encoding="utf-8")
+
+
+# --- clock-authority-recited -----------------------------------------------------------------------------------------
+
+def test_a_statute_clock_passes_when_the_section_is_on_the_shelf_and_is_never_fetched(folder, readers):
+    requests_db(folder, ROWS)
+    bare = run("clock-authority-recited", readers, "request:101")
+    assert not bare.ok and "cannot recite" in bare.message and "CIV 5210 is not on the authorities shelf" in bare.message
+    assert not (folder / "authorities").exists()                       # a miss is a miss: the on-demand export is not asked for
+    shelf(folder, {"5210": "A made-up record rule."})
+    before = tree(folder)
+    out = run("clock-authority-recited", readers, "request:101")
+    assert out.ok and "the words can be recited" in out.message and "CIV 5210 is on the shelf" in out.message
+    assert out.evidence and tree(folder) == before
+
+
+def test_a_kind_with_no_clock_row_has_no_authority_to_recite_and_no_due_day_is_made_up(folder, readers):
+    requests_db(folder, ROWS)
+    out = run("clock-authority-recited", readers, "request:105")
+    assert out.ok and "the kind has no clock row" in out.message and "no due day is made up" in out.message
+    assert not run("clock-authority-recited", readers, "request:999").ok
+    assert not run("clock-authority-recited", readers, "").ok
+
+
+def test_a_clock_that_is_a_proposed_policy_passes_saying_there_are_no_words_to_recite(folder):
+    from jason.community.responses import ClockSource, ResponseKind, ResponseRule
+
+    class Policy(DocCommunity):
+        def response_rules(self):
+            return (ResponseRule(ResponseKind.RECORDS, ClockSource.POLICY, days=10, authority="proposed policy (example); CIV 9901 asks "
+                                 "the documents to say"),)
+
+    requests_db(folder, ROWS)
+    readers = StoreReaders(folder, community=Policy(), today=TODAY)
+    out = run("clock-authority-recited", readers, "request:101")
+    assert out.ok and "no words to recite" in out.message and "CIV 9901 (not on the shelf)" in out.message
+
+
+def test_a_documents_clause_is_recited_from_the_document_as_kept(folder):
+    from jason.community.responses import ClockSource, ResponseKind, ResponseRule
+
+    class Documents(DocCommunity):
+        def response_rules(self):
+            return (ResponseRule(ResponseKind.RECORDS, ClockSource.DOCUMENTS, days=30, authority="rules#B-1"),)
+
+    requests_db(folder, ROWS)
+    rules_outline(folder)
+    before = tree(folder)
+    readers = StoreReaders(folder, community=Documents(), today=TODAY)
+    out = run("clock-authority-recited", readers, "request:101")
+    assert out.ok and "is in the document as kept" in out.message
+    assert tree(folder) == before
+    (folder / "outlines" / "rules.json").unlink()
+    gone = run("clock-authority-recited", readers, "request:101")
+    assert not gone.ok and "cannot recite" in gone.message
+
+
+# --- references-fill -------------------------------------------------------------------------------------------------
+
+def test_every_reference_in_the_draft_fills_from_the_document_as_kept(folder, docs):
+    rules_outline(folder)
+    draft(folder, "welcome", "Quiet hours: {QUOTE:rules#B-1}\n\nSee {CITE:rules#B-1} for more.\n")
+    before = tree(folder)
+    out = run("references-fill", docs, "document:welcome")
+    assert out.ok and out.message == "2 references fill (1 quoted, 1 cited)"
+    assert out.evidence and out.evidence[0].startswith("file:drafts/welcome.md@")
+    assert tree(folder) == before                                       # nothing was rendered, kept, or cached
+    draft(folder, "plain", "No tokens here.\n")
+    assert run("references-fill", docs, "document:plain").message == "data/drafts/plain.md has no reference to fill"
+
+
+def test_references_that_do_not_fill_are_all_named_at_once(folder, docs):
+    rules_outline(folder)
+    draft(folder, "welcome", "{QUOTE:rules#Z-9} and {CITE:nodoc#1} and {CITE:rules#B-1}\n")
+    out = run("references-fill", docs, "document:welcome")
+    assert not out.ok and out.message.startswith("2 references of 3 do not fill:")
+    assert "rules has no section Z-9" in out.message and "no document 'nodoc'" in out.message
+
+
+def test_a_draft_that_is_missing_or_is_a_path_is_not_read(folder, docs):
+    assert "no draft data/drafts/nothing.md" in run("references-fill", docs, "document:nothing").message
+    outside = run("references-fill", docs, "document:../secret")
+    assert not outside.ok and "not a draft's name" in outside.message
+    draft(folder, "welcome", "{CITE:rules#B-1}")
+
+    class Nobody(StoreReaders):
+        @property
+        def community(self):
+            raise RuntimeError("no community is chosen")
+
+    out = run("references-fill", Nobody(folder, today=TODAY), "document:welcome")
+    assert not out.ok and "no community is chosen" in out.message
+
+
+# --- notice-elements -------------------------------------------------------------------------------------------------
+
+def test_a_notice_draft_named_with_its_requirements_key_has_its_elements_checked(folder, docs):
+    draft(folder, DRAFT, TEXT_AND_EFFECT)
+    before = tree(folder)
+    out = run("notice-elements", docs, "document:" + DRAFT)
+    assert out.ok and out.message.startswith("rule-change-proposed: 2 of 2 elements shown, 0 missing")
+    assert tree(folder) == before
+    draft(folder, DRAFT, "A friendly hello.\n")
+    bare = run("notice-elements", docs, "document:" + DRAFT)
+    assert not bare.ok and "2 missing" in bare.message and "(CIV 4360(a))" in bare.message and "friendly" not in bare.message
+
+
+def test_the_item_names_the_requirement_when_the_documents_name_does_not(folder, docs):
+    draft(folder, "welcome", TEXT_AND_EFFECT)
+    assert "starts with no requirement's key" in run("notice-elements", docs, "document:welcome").message
+    assert run("notice-elements", docs, "document:welcome", item="rule-change-proposed").ok
+    assert "not a notice requirement" in run("notice-elements", docs, "document:welcome", item="no-such-notice").message
+    assert not run("notice-elements", docs, "").ok
+    assert "no draft" in run("notice-elements", docs, "document:" + DRAFT).message
+
+
+# --- kept-text-unchanged ---------------------------------------------------------------------------------------------
+
+def test_the_kept_words_are_unchanged_until_a_kept_file_is_edited_or_gone(folder, docs):
+    assert "no text is kept" in run("kept-text-unchanged", docs, "document:" + DRAFT).message
+    notice_text.keep(folder, DRAFT, kind="email", state="sent", body="<p>Hello</p>", subject="Subject")
+    before = tree(folder)
+    out = run("kept-text-unchanged", docs, "document:" + DRAFT)
+    assert out.ok and out.message == "1 file kept in 1 keeping, each unchanged since"
+    assert tree(folder) == before
+    assert run("kept-text-unchanged", docs, "", item=DRAFT).ok                      # the item names the key as well
+    assert run("kept-text-unchanged", docs, "notice:" + DRAFT).ok
+    (folder / "notices" / DRAFT / "message.html").write_text("<p>Changed</p>", encoding="utf-8")
+    edited = run("kept-text-unchanged", docs, "document:" + DRAFT)
+    assert not edited.ok and "EDITED or gone since it was kept: message.html" in edited.message
+    (folder / "notices" / DRAFT / "message.html").unlink()
+    assert not run("kept-text-unchanged", docs, "document:" + DRAFT).ok
+    assert not run("kept-text-unchanged", docs, "").ok and "no text is kept" in run("kept-text-unchanged", docs, "document:Bad Key").message
+
+
+def test_a_markdown_source_newer_than_the_keeping_is_said_and_does_not_fail(folder, docs):
+    import os
+
+    notice_text.keep(folder, DRAFT, kind="email", state="sent", body="<p>Hello</p>", subject="Subject")
+    draft(folder, DRAFT, "edited later")
+    os.utime(folder / "drafts" / f"{DRAFT}.md", (4_102_444_800, 4_102_444_800))         # 2100-01-01
+    out = run("kept-text-unchanged", docs, "document:" + DRAFT)
+    assert out.ok and "is newer than the last keeping" in out.message
+
+
+# --- form-stale ------------------------------------------------------------------------------------------------------
+
+def stale_readers(folder, **kw):
+    return StoreReaders(folder, community=DocCommunity(custom_form("survey", **kw)), today=TODAY)
+
+
+def test_a_form_that_recites_nothing_cannot_be_stale(folder):
+    out = run("form-stale", stale_readers(folder), "campaign:survey")
+    assert out.ok and "recites no statute or clause" in out.message
+
+
+def test_a_form_whose_recitals_are_unchanged_since_its_day_is_not_stale(folder):
+    shelf(folder, {"9901": "The made-up association shall do a thing."}, changed={"9901": "2098-12-01T00:00:00+00:00"})
+    before = tree(folder)
+    out = run("form-stale", stale_readers(folder, recitals=("CIV 9901",), as_of=date(2099, 1, 1)), "campaign:survey")
+    assert out.ok and "recites 1 section as of 2099-01-01" in out.message and "no change logged" in out.message
+    assert tree(folder) == before
+
+
+def test_a_form_is_stale_when_the_shelf_logged_a_change_after_its_day(folder):
+    shelf(folder, {"9901": "The made-up association shall do a thing."}, changed={"9901": "2099-02-01T00:00:00+00:00"})
+    out = run("form-stale", stale_readers(folder, recitals=("CIV 9901",), as_of=date(2099, 1, 1)), "campaign:survey")
+    assert not out.ok and "1 recital changed on the shelf since: CIV 9901" in out.message and "bump its version" in out.message
+
+
+def test_recitals_that_cannot_be_read_or_have_no_day_cannot_be_judged(folder):
+    off = run("form-stale", stale_readers(folder, recitals=("CIV 9902",), as_of=date(2099, 1, 1)), "campaign:survey")
+    assert not off.ok and "cannot be read, so staleness is not known: CIV 9902" in off.message
+    undated = run("form-stale", stale_readers(folder, recitals=("CIV 9902",)), "campaign:survey")
+    assert not undated.ok and "no as-of day" in undated.message
+    assert not run("form-stale", stale_readers(folder), "campaign:nothing").ok
+    assert not run("form-stale", stale_readers(folder), "").ok
+
+
+# --- all the new reads, one folder -------------------------------------------------------------------------------------
+
+def test_the_new_reads_change_no_byte_of_a_populated_folder_and_none_is_ok_by_default(folder):
+    requests_db(folder, ROWS)
+    rules_outline(folder)
+    shelf(folder, {"5210": "A made-up record rule.", "9901": "A made-up rule."}, changed={"9901": "2099-02-01T00:00:00+00:00"})
+    draft(folder, DRAFT, TEXT_AND_EFFECT + "\n{CITE:rules#B-1}\n")
+    notice_text.keep(folder, DRAFT, kind="email", state="sent", body="<p>Hello</p>", subject="Subject")
+    readers = StoreReaders(folder, community=DocCommunity(custom_form("survey", recitals=("CIV 9901",), as_of=date(2099, 1, 1))),
+                           today=TODAY)
+    before = tree(folder)
+    subjects = {"clock-authority-recited": "request:101", "references-fill": "document:" + DRAFT,
+                "notice-elements": "document:" + DRAFT, "kept-text-unchanged": "document:" + DRAFT, "form-stale": "campaign:survey"}
+    got = {name: run(name, readers, subject) for name, subject in subjects.items()}
+    assert [n for n, r in got.items() if r.ok] == ["clock-authority-recited", "references-fill", "notice-elements", "kept-text-unchanged"]
+    assert not got["form-stale"].ok
+    assert tree(folder) == before
+    empty = StoreReaders(folder.parent / "nothing-here", community=DocCommunity(), today=TODAY)
+    for name in NEW:
+        assert CHECKS[name](empty, view(""), "").ok is False
+    assert not (folder.parent / "nothing-here").exists()

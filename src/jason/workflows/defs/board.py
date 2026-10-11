@@ -18,8 +18,10 @@ How the page's table became steps (the reasons are in each step's ``why``):
   its number and a dotted one (``duty-schedule.5``, ``duty-schedule.5.1``).
 - **A step the page gives to jason** (a check or a job) is a ``check`` step where the read is registered
   (``jason.workflows.checks.board``: ``meeting-clocks``, ``notice-delivery-read``, ``minutes-checks``, ``run-complete``,
-  ``rule-stages``, ``hearing-dates``, ``readings-stale``, ``shelf-cites``, ``schedule-due``, ``schedule-coverage``), and
-  otherwise a ``person`` step, because no read or job of that name is registered. Its ``why`` says what it becomes, and
+  ``rule-stages``, ``hearing-dates``, ``readings-stale``, ``shelf-cites``, ``schedule-due``, ``schedule-coverage``,
+  ``executive-note-open``, ``rule-in-force``, ``rule-authority``, ``notice-text``, ``election-rules-window``,
+  ``hearing-delivery-read``, ``hearing-requirements-met``, ``hearing-minutes-note``, ``retire-reasons``, ``manual-headings``,
+  ``manual-concordance``, ``manual-template-equal``), and otherwise a ``person`` step, because no read or job of that name is registered. Its ``why`` says what it becomes, and
   ``WANTED`` lists them. A ``plan`` is used only for a registered approvals kind: ``gmail-drafts`` (cases ``meeting-notice``,
   ``hearing``, ``proposal-request``) and ``payhoa-mailroom-send``.
 - **A decision step** is recorded by the secretary at the board's meeting; the run never takes the vote.
@@ -45,11 +47,7 @@ JASON, ANYONE = Role.JASON, Role.ANYONE
 EACH = Repeat.PER_ITEM
 
 WANTED: tuple[str, ...] = (
-    # reads that would be `check` steps (names to add to readers.CHECKS)
-    "check:executive-note-open", "check:rule-in-force", "check:rule-authority", "check:notice-text",
-    "check:election-rules-window", "check:hearing-delivery-read", "check:hearing-requirements-met",
-    "check:hearing-minutes-note", "check:retire-reasons", "check:manual-headings", "check:manual-concordance",
-    "check:manual-template-equal",
+    # reads that would be `check` steps (names to add to readers.CHECKS): all built (jason.workflows.checks.board)
     # jobs (names to add to readers.JOBS)
     "job:meetings-sync", "job:board-reports-refresh", "job:board-packet-build", "job:board-notice-draw",
     "job:minutes-draft", "job:rule-change-timeline", "job:law-export", "job:law-versions", "job:outlines-fetch",
@@ -178,11 +176,10 @@ def board_meeting() -> Workflow:
         step("16", "Each motion decided", D, S, ("15",), repeat=EACH, command="#/room; #/decisions", record="the decision id",
              why="Recorded by the secretary with the roll call by name; a vote taken in executive session is read in the private "
                  "view only. The run never takes the vote."),
-        step("17", "Note any executive session generally in the minutes", P, S, ("15",), skip=skip,
-             record="the open record holds only the 4935 subject and the times",
-             command="jason board --minutes DATE",
+        step("17", "Note any executive session generally in the minutes", C, JASON, ("15",), skip=SkipRule((S,)),
+             check=named_check("executive-note-open"), command="jason board --minutes DATE",
              why="A matter discussed in executive session is generally noted in the minutes of the next open meeting (CIV 4935(e)); "
-                 "skipped, with the reason, if none was held." + _become("the check `executive-note-open`")),
+                 "the open record holds only the 4935 subject and the times. Skipped, with the reason, if none was held."),
         step("18", "Bring in the Zoom record and draft the minutes", P, S, ("15",), sop="board-packet#3",
              command="jason meetings --sync; jason board --minutes DATE", record="the minutes draft, marked DRAFT",
              why="Start soon: the minutes are due within 30 days (step 20). A local model runs only after the GPU preflight; if it "
@@ -228,9 +225,10 @@ def rule_change() -> Workflow:
     skip = SkipRule()
     noticed = _law("CIV 4360(a)", "general notice given by", "decision_on", -28)
     steps = (
-        step("0", "Read the rule as a record: the version in force, and any change with no adoption", P, M, skip=SkipRule((M,)),
-             command="jason revisions KEY --fetch --versions; jason rule-records --show ID --as-of DAY", record="the version read, and the day",
-             why="Skipped, with the reason, only if the rule is new." + _become("the check `rule-in-force`")),
+        step("0", "Read the rule as a record: the version in force, and any change with no adoption", C, JASON, skip=SkipRule((M,)),
+             check=named_check("rule-in-force"),
+             command="jason revisions KEY --fetch --versions; jason rule-records --show ID --as-of DAY",
+             why="Skipped, with the reason, only if the rule is new."),
         step("1", "Say the change's facts and read the reach of CIV 4355", B, ANYONE, ("0",), sop="rule-change#1",
              command="jason notices --catalog --fact rule_scope=listed_subject --fact rule_change=noticed",
              choices=(Choice("listed", tuple(sid(n) for n in ("6", "7", "8", "9", "10", "17", "18"))),
@@ -238,9 +236,10 @@ def rule_change() -> Workflow:
              why="listed: noticed under 4360. not_reached: a one-off board action needs no rule (4355(b)). emergency: 'If the board "
                  "determines that an immediate rule change is required' (4360(d)); it skips the member notice and the reversal window "
                  "(4365(h)). Where two readings remain, the board asks counsel, and the lawful course under either is the notice."),
-        step("2", "Check authority and conflicts", P, M, ("0",), command="jason rules --subjects; jason conflicts",
-             record="the grant of authority, the conflicts, any duplicate of the declaration",
-             why="A flag is acknowledged by a person and does not block." + _become("the check `rule-authority`")),
+        step("2", "Check authority and conflicts", C, JASON, ("0",), check=named_check("rule-authority"),
+             command="jason rules --subjects; jason conflicts",
+             why="The grant of authority, the conflicts, any duplicate of the declaration. A flag is acknowledged by a person and "
+                 "does not block."),
         step("3", "Draft the proposed words, the reason, and the purpose and effect", P, ANYONE, ("1",), sop="rule-change#2",
              command="a RuleChange row in the profile; #/rules", record="the RuleChange key, with the words and the bracketed choices",
              why="jason never fills a bracket; the board's choices stay in brackets."),
@@ -251,11 +250,11 @@ def rule_change() -> Workflow:
                  "from it." + _become("the job `rule-change-timeline`")),
         step("5", "Put it before the board", P, M, ("3", "4"), command="jason board --set ITEM ...; #/actions", record="the board item (id)",
              why="One item, with the text, the clock, and the readings."),
-        step("6", "Check the notice text for its required elements", P, S, ("3",), sop="rule-change#4",
+        step("6", "Check the notice text for its required elements", C, JASON, ("3",), sop="rule-change#4",
+             check=named_check("notice-text"),
              command="jason notice-check FILE --requirement rule-change-proposed --event rule_scope=listed_subject",
-             record="the elements present, none missing",
              why="The notice 'shall include the text of the proposed rule change and a description of the purpose and effect' (CIV 4360(a)); "
-                 "text first." + _become("the check `notice-text`")),
+                 "text first. The read renders the notice from the change for the run's decision day and checks the elements; it saves nothing."),
         step("7", "Save the member notice as a Gmail draft", P, S, ("6",), sop="rule-change#3", clock=noticed,
              command="jason rule-change KEY --draft-email --yes --by NAME", record="the draft, with no recipients, and its text kept",
              why="At least 28 days before the decision (CIV 4360(a)). The `rule-change` case of `gmail-drafts` is not built, so this is "
@@ -350,12 +349,11 @@ def election() -> Workflow:
              choices=(Choice("available", (sid("8"),)), Choice("not_available", ())),
              why="Skips the acclamation notices when it is not. This branch is added because the notice step has a law clock, and a step "
                  "with a law clock cannot be skipped by a person."),
-        step("3", "Check the election rules in force, and that none is amended inside the window", P, S, ("2",),
-             command="jason rule-records; jason record-stages --rules",
+        step("3", "Check the election rules in force, and that none is amended inside the window", C, JASON, ("2",),
+             check=named_check("election-rules-window"), command="jason rule-records; jason record-stages --rules",
              clock=_law("CIV 5105(h)(4)(B)(iii)", "election operating rules not amended less than 90 days prior to the election",
                         "count_on", -90),
-             record="the rules' record, and any rule-change run that amends them",
-             why="Blocks the dates (step 5) if a change falls inside the window." + _become("the check `election-rules-window`")),
+             why="Blocks the dates (step 5) if a change falls inside the window."),
         step("4", "Select the inspector or inspectors", P, S, ("2",), record="the rules' method and who selected, with the record",
              clock=_law("CIV 5110(a)", "one or three independent third parties (a number, not a day)"),
              why="'The number of inspectors of elections shall be one or three' (CIV 5110(a)); none a director, candidate, or contractor "
@@ -490,10 +488,10 @@ def hearing() -> Workflow:
              command="jason hearing ... --notice-on DATE", record="the delivery day and the proof",
              why="'By either personal delivery or individual delivery pursuant to Section 4040' (CIV 5855(a)); the day is the person's "
                  "statement, not read from the ledger."),
-        step("8", "Read delivery", P, M, ("7",), clock=notice_by, command="jason hearing --list; jason notices discipline-hearing-DATE --sync",
-             record="the ledger's strength, or 'no delivery recorded'",
-             why="A notice delivered late moves the hearing: a new date and a new notice. Whether a resend cures is a question for the board "
-                 "or counsel." + _become("the check `hearing-delivery-read`")),
+        step("8", "Read delivery", C, JASON, ("7",), clock=notice_by, check=named_check("hearing-delivery-read"),
+             command="jason hearing --list; jason notices discipline-hearing-DATE --sync",
+             why="The ledger's strength, or 'no delivery recorded'. A notice delivered late moves the hearing: a new date and a new notice. "
+                 "Whether a resend cures is a question for the board or counsel."),
         step("9", "The cure window", W, S, ("7",), command="none yet",
              clock=_law("CIV 5855(c)", "the board shall not impose discipline if the member cures or commits to cure"),
              why="If the member cures, or commits to cure when the cure takes longer than the notice period, the run is cancelled with the "
@@ -513,13 +511,13 @@ def hearing() -> Workflow:
                  + _become("a plan of kind `google.doc` and a `gmail-drafts` case `decision-notice`")),
         step("14", "Read delivery of the decision", W, S, ("13",), clock=decision_by, command="jason notices discipline-decision-DATE --sync",
              why="Ends when a person notes the delivery."),
-        step("15", "State that every requirement was met", P, S, ("8", "9", "13"),
-             record="each requirement of CIV 5855 shown met or not, on record",
-             why="'A disciplinary action ... shall not be effective against a member unless the board fulfills the requirements of this "
-                 "section' (CIV 5855(g)); jason states, and the board and counsel decide." + _become("the check `hearing-requirements-met`")),
-        step("16", "Note the matter generally in the next open minutes", P, S, ("10",), command="jason board --minutes DATE",
-             record="the 4935 subject noted in the open minutes",
-             why="Only by its 4935 subject (CIV 4935(e)). Closes the run." + _become("the check `hearing-minutes-note`")),
+        step("15", "State that every requirement was met", C, JASON, ("8", "9", "13"), check=named_check("hearing-requirements-met"),
+             why="Each requirement of CIV 5855 shown met or not, on record. 'A disciplinary action ... shall not be effective against a "
+                 "member unless the board fulfills the requirements of this section' (CIV 5855(g)); jason states, and the board and "
+                 "counsel decide."),
+        step("16", "Note the matter generally in the next open minutes", C, JASON, ("10",), check=named_check("hearing-minutes-note"),
+             command="jason board --minutes DATE",
+             why="Only by its 4935 subject, noted in the open minutes (CIV 4935(e)). Closes the run."),
     )
     phases = _phases(sid, ("matter", "The matter and the notice", ("1", "2", "3", "4", "5", "6", "7", "8", "9")),
                      ("hearing", "The hearing", ("10", "11", "12")),
@@ -570,9 +568,10 @@ def law_review() -> Workflow:
              command="jason cite --survey; jason cite --stale; jason cite --renumbered; jason cite --migrate-ids",
              record="the misses by reason, and the stale records re-keyed",
              why="A row where more than one section answers is picked by a person." + _become("the job `cite-survey`")),
-        step("10", "Check the people-task rules that retire a duty", P, M, ("1",), sop="law-review#10", repeat=EACH,
-             command="jason schedule --people --all", record="each retire reason still true",
-             why="A repealed filing or an exemption retires a duty only on its source." + _become("the check `retire-reasons`")),
+        step("10", "Check the people-task rules that retire a duty", C, JASON, ("1",), sop="law-review#10",
+             check=named_check("retire-reasons"), command="jason schedule --people --all",
+             why="Each retire reason is still true. A repealed filing or an exemption retires a duty only on its source; the read "
+                 "takes every rule at once and fails on a reason with no source the shelf can show."),
         step("11", "Find the stale copies of the changed sections", P, M, ("1",), sop="law-review#11",
              command="jason section-refs --refresh --scan --guide; jason section-refs --patch", record="the copies scanned and the patch proposed",
              why="A patch is made on a person's word." + _become("the job `section-refs-scan` and a plan of kind `local.section-refs.apply`")),
@@ -689,17 +688,19 @@ def owners_manual() -> Workflow:
         step("2", "Read the versions and the adoption history of the Doc", P, M, ("1",), sop="rule-history#1",
              command="jason revisions KEY --fetch --versions", record="the revisions kept, and pending suggestions listed",
              why="'No adoption found' is a finding, never proof none happened." + _become("the job `revisions-fetch`")),
-        step("3", "Check the headings against the PDF", P, M, ("1",), sop="owners-manual#2", skip=SkipRule((M,)),
-             command="python scripts/structure_fuzz.py gold ...", record="every numbered capital line a styled heading, or a person says it is not",
-             why="Skipped, with the reason, if no template is built." + _become("the check `manual-headings`")),
+        step("3", "Check the headings against the PDF", C, JASON, ("1",), sop="owners-manual#2", skip=SkipRule((M,)),
+             check=named_check("manual-headings"), command="python scripts/structure_fuzz.py gold ...",
+             why="Every numbered capital line a styled heading, or a person says it is not. The read checks the stored outline's own "
+                 "text; the PDF comparison stays the script's. Skipped, with the reason, if no template is built."),
         step("4", "Classify each section and answer the questions", P, M, ("1",), sop="owners-manual#3", repeat=EACH,
              command="jason manual --classify --asks; jason intake --answer ID TEXT --by NAME",
              record="classification.json, and the asks answered", why="Each unclear section is a question to a person."
              + _become("the job `manual-classify`")),
-        step("5", "Check the concordance", P, M, ("4",), sop="owners-manual#4", command="jason manual --concordance",
-             record="zero unresolved citations", why="A citation unresolved blocks the render." + _become("the check `manual-concordance`")),
-        step("6", "Check that the template equals the manual", P, M, ("4",), sop="owners-manual#5", command="jason document-template owners-manual",
-             record="identical: yes; 0 unlabeled pieces", why="After any base or block change." + _become("the check `manual-template-equal`")),
+        step("5", "Check the concordance", C, JASON, ("4",), sop="owners-manual#4", check=named_check("manual-concordance"),
+             command="jason manual --concordance", why="Zero unresolved citations: a citation unresolved blocks the render."),
+        step("6", "Check that the template equals the manual", C, JASON, ("4",), sop="owners-manual#5", check=named_check("manual-template-equal"),
+             command="jason document-template owners-manual",
+             why="Identical, with no unlabeled piece. After any base or block change."),
         step("7", "Render the rules and the manual", P, M, ("5", "6"), sop="owners-manual#6",
              command="jason manual --render; jason manual --render --current",
              record="rules-and-regulations.md, owners-manual.md, owners-manual.diff; 0 unlabeled differences",

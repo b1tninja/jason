@@ -242,13 +242,19 @@ class DateSlot:
 
 @dataclass(frozen=True)
 class ClockDef:
-    """When something is due and on what basis: ``slot`` is a date slot's name, ``days`` an offset from it."""
+    """When something is due and on what basis: ``slot`` is a date slot's name, ``days`` an offset from it.
+
+    ``business_days`` counts the offset in business days (Monday to Friday, less the holidays the world supplies: the fold takes
+    them as an argument, and an empty calendar means weekends only). ``per_item`` gives a step that repeats over items one clock
+    for each item, read from the item's own dates (see ``StepDef.item_set``) before the run's."""
 
     basis: ClockBasis
     slot: str = ""
     days: int = 0
     cite: str = ""                         # a law clock cites its section; a documents clock its document
     label: str = ""
+    business_days: bool = False
+    per_item: bool = False
 
 
 @dataclass(frozen=True)
@@ -294,6 +300,16 @@ class StepDef:
     na: NotApplicable | None = None        # the not-applicable outcome; a legal step may carry it though it cannot be skipped
     waits_on_child: bool = False           # not done until every child run spawned from this step is done or cancelled
     public_title: bool = False             # a ``held`` run may show this step's title outside the private view (it names no matter)
+    remedy_of: str = ""                    # a check this step remedies: the check may stay failed while this step is open (see fold)
+    item_set: str = ""                     # a named set of items this step repeats over, supplied while the run goes ("": the run's own)
+    item_needs: tuple[str, ...] = ()       # steps in ``needs`` read item by item: an item waits only for its own item of them
+    ends_by_note: bool = False             # a wait that only a person's recorded note ends (no reader, no date ends it)
+
+    @property
+    def item_aware(self) -> bool:
+        """Whether the step uses the item-set rules (a named set, or per-item needs): a roll-up by what is most pressing, one
+        branch choice and one clock for each item, and a wait for items not yet supplied."""
+        return bool(self.item_set or self.item_needs)
 
     @property
     def is_legal(self) -> bool:
@@ -303,6 +319,15 @@ class StepDef:
     def acting_roles(self) -> tuple[Role, ...]:
         """Every role that may act on the step: the primary first, then the others, each once."""
         return tuple(dict.fromkeys((self.role, *self.roles)))
+
+
+@dataclass(frozen=True)
+class StepGroup:
+    """A named group of steps (``StepDef.group`` names it). The fold and the readers fold a group into one row that expands while
+    it holds the current step and collapses when it is done or not yet reached; the steps stay what they are."""
+
+    key: str
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -319,6 +344,7 @@ class Workflow:
     visibility: Visibility = Visibility.BOARD
     held_title: str = ""                   # the general words a ``held`` run shows outside the private view ("A member's hearing")
     console_start: bool = True             # whether the console may start a run (False: a terminal procedure the console never starts)
+    groups: tuple[StepGroup, ...] = ()     # titles for the groups steps name; a group no row declares is titled by its key
 
     def step(self, step_id: str) -> StepDef | None:
         return next((s for s in self.steps if s.id == step_id), None)
@@ -445,6 +471,7 @@ class ClockView:
     status: str = ""                       # not running, upcoming, due, overdue, satisfied, undated
     days: int | None = None                # days from today to due; negative when past
     step: str = ""
+    item: str = ""                         # the item a per-item clock is for ("" for a clock on a step or the whole)
 
 
 @dataclass(frozen=True)
@@ -467,6 +494,23 @@ class StepView:
     roles: tuple[Role, ...] = ()           # every role that may act on the step, the primary first
     na: bool = False                       # done as not applicable (a person's recorded outcome, not a skip)
     children: tuple[str, ...] = ()         # child runs spawned from this step, in order
+    remedy: str = ""                       # for a failed check: the step that remedies it, while that step is open
+    item_counts: tuple[tuple[StepState, int], ...] = ()    # for a step with items: how many items are in each state
+
+
+@dataclass(frozen=True)
+class GroupView:
+    """A step group as the fold reads it: its steps, a roll-up state, how many are finished, and whether it is expanded (it
+    holds the run's current step or a failed one) or collapsed (done, or not yet reached)."""
+
+    key: str
+    title: str
+    steps: tuple[str, ...]
+    state: StepState
+    done: int
+    total: int
+    expanded: bool
+    current: str = ""                      # the group's step that is the run's current one, "" when it holds none
 
 
 @dataclass(frozen=True)
@@ -512,6 +556,8 @@ class RunView:
     past_law: tuple[str, ...] = ()         # keys of law clocks that are past; each opens a follow-up (a person's act)
     items: tuple[str, ...] = ()
     date_slots: tuple[DateView, ...] = ()  # each slot the definition declares, with whether a person may set it now
+    groups: tuple[GroupView, ...] = ()     # each step group, in the order the definition's steps first name it
+    item_sets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # each named set's items ("" is the run's own, ``items``)
 
     def step(self, step_id: str) -> StepView | None:
         return next((s for s in self.steps if s.id == step_id), None)

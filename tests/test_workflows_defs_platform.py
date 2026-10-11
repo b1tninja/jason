@@ -55,10 +55,10 @@ EXPECTED = {
     "email-conversation": table("1 C J; 2 P M; 3 C J; 4 P M; 5 B M; 6 P M; 7 P M; 8 B M; 9 P M; 10 P M; 11 P M; 12 W M; "
                                 "13 P M; 14 P M; 15 P M"),
     "gmail-draft": table("1 P M; 2 P M; 3 B M; 4 D S; 5 P M; 6 P M; 7 L M; 8 P M; 9 W M; 10 P M"),
-    "response-inbox": table("1 P M; 2 C J; 3 P M; 4 B M; 5 P M; 6 P M; 7 P M; 8 P M; 9 P M; 10 C J; 11 P M"),
-    "integration-connect": table("1 C J; 2 P A; 3 P A; 4 P A; 5 P A; 6 P A; 7 P A; 8 P A; 9 P A; 10 P A; 11 W A; 12 W A; "
+    "response-inbox": table("1 P M; 2 C J; 3 C J; 4 B M; 5 P M; 6 P M; 7 P M; 8 P M; 9 P M; 10 C J; 11 P M"),
+    "integration-connect": table("1 C J; 2 C J; 3 P A; 4 P A; 5 P A; 6 P A; 7 P A; 8 P A; 9 P A; 10 P A; 11 W A; 12 W A; "
                                  "13 B A; 13.1 P A; 13.2 P A; 13.3 P A; 13.4 P A"),
-    "service-run": table("1 C J; 2 C J; 3 P A; 4 B A; 5 P A; 6 P A; 7 P A; 8 D S; 9 B A; 10 C J; 11 P A; 12 P A"),
+    "service-run": table("1 C J; 2 C J; 3 P A; 4 B A; 5 C J; 6 P A; 7 P A; 8 D S; 9 B A; 10 C J; 11 P A; 12 C J"),
     "check-in": table("1 P A; 2 P A; 3 P A; 4 P A; 5 P A; 6 P A; 7 P A"),
 }
 """{definition: {step number: (kind, role)}}: the page's tables, with a read or a job no registry backs built as a person's step
@@ -67,11 +67,12 @@ and a read that is registered built as a check (a wait that a read ends keeps it
 CHECKS_USED = {
     "mail-triage.1": "mail-fresh", "mail-triage.4": "mail-lanes", "mail-triage.9": "mail-scanned", "mail-triage.12": "mail-period-chosen",
     "email-conversation.1": "gmail-fresh", "email-conversation.3": "thread-status",
-    "response-inbox.2": "responses-channels", "response-inbox.10": "responses-outstanding",
-    "integration-connect.1": "instance-which", "service-run.1": "instance-which", "service-run.2": "service-heartbeat",
-    "service-run.10": "service-queue",
+    "response-inbox.2": "responses-channels", "response-inbox.3": "responses-recognized", "response-inbox.10": "responses-outstanding",
+    "integration-connect.1": "instance-which", "integration-connect.2": "integration-state", "service-run.1": "instance-which",
+    "service-run.2": "service-heartbeat", "service-run.5": "service-limits", "service-run.10": "service-queue",
+    "service-run.12": "service-verify",
 }
-"""{step id: the registered read it names}: the twelve steps a read of ``jason.workflows.checks.platform`` answers."""
+"""{step id: the registered read it names}: the sixteen steps a read of ``jason.workflows.checks.platform`` answers."""
 
 SUBJECTS = {"mail-triage": "period", "email-conversation": "thread", "gmail-draft": "draft", "response-inbox": "request",
             "integration-connect": "integration", "service-run": "service", "check-in": "change"}
@@ -193,15 +194,14 @@ def test_the_wanted_list_names_every_read_job_and_kind_the_person_steps_say_they
                     assert name not in (CHECKS if word == "check" else JOBS), name       # wanted, not yet registered
                     assert s.kind is StepKind.PERSON, s.id
                     named += 1
-    assert named >= 12
+    assert named >= 8
     assert "plan payhoa-requests-from-email (email-conversation.6)" in text and "plan gmail-thread-reply" in text
 
 
 def test_a_wanted_read_is_one_not_yet_built_and_a_built_read_is_no_longer_wanted():
     checks.load_all()
     wanted = {line.split()[1] for line in platform.WANTED if line.startswith("check ")}
-    assert wanted == {"mail-findings", "thread-leads", "thread-closed", "draft-source", "draft-preview", "responses-recognized",
-                      "integration-state", "vault-answers", "service-limits", "service-verify"}
+    assert wanted == {"mail-findings", "thread-leads", "thread-closed", "draft-source", "draft-preview", "vault-answers"}
     assert not wanted & set(CHECKS)
     assert set(CHECKS_USED.values()) <= set(CHECKS) and not set(CHECKS_USED.values()) & wanted
 

@@ -28,7 +28,8 @@ from test_workflows_support import data  # noqa: F401 - the `data` fixture
 BY = "Jane Example"
 GATES = ("start", "ingest", "establish", "operate", "adopt")
 NAMES = ("active-community", "onboard-gates-read", *(f"onboard-gate-{g}" for g in GATES), "onboard-checklist",
-         "record-slots-read", "key-document-status", "ingest-gate", "split-review")
+         "record-slots-read", "key-document-status", "ingest-gate", "split-review", "scratch-room", "profile-own-facts",
+         "key-document-verified", "request-kinds-mapped", "record-compare")
 
 
 def tree(root: Path) -> dict[str, bytes]:
@@ -99,8 +100,8 @@ class Association:
 
 # --- the registry -----------------------------------------------------------------------------------------------------------
 
-def test_the_twelve_reads_are_registered_once_and_loading_twice_changes_nothing(world):
-    assert len(NAMES) == 12 and len(set(NAMES)) == 12
+def test_the_seventeen_reads_are_registered_once_and_loading_twice_changes_nothing(world):
+    assert len(NAMES) == 17 and len(set(NAMES)) == 17
     before = dict(CHECKS)
     checks.load_all()
     assert dict(CHECKS) == before
@@ -116,6 +117,8 @@ def test_no_read_is_ok_by_default_against_nothing(world):
             assert got.ok and "closed" in got.message                       # it reads (information), and every gate reads closed
         elif name == "record-slots-read":
             assert got.ok and "empty" in got.message                # it reads the catalog's slots: all of them empty
+        elif name == "scratch-room":
+            assert got.message and "scratch is on" in got.message   # it reads the machine, not the run: it says what it found
         else:
             assert not got.ok and got.message, name
 
@@ -356,6 +359,180 @@ def test_a_declined_stale_missing_or_damaged_draft_fails(world):
     assert not got.ok and "cannot be read" in got.message
 
 
+# --- round two: scratch, the profile's own facts, a verified key document, a request's kinds, a pick compared ---------------------
+
+def run_item(name, data, subject="association:example", item="", community=None):
+    readers = StoreReaders(data, community=community if community is not None else SimpleNamespace(), today=date(2099, 1, 1))
+    return CHECKS[name](readers, view(subject), item)
+
+
+def fake_report(free_gb=500, **more):
+    gb = 1024 ** 3
+    rep = {"places": [{"name": "data directory", "drive": "C:", "free": free_gb * gb},
+                      {"name": "temp (JASON_TEMP_DIR)", "drive": "D:", "free": 900 * gb},
+                      {"name": "ASSPY_HOME (county index cache)", "drive": "D:", "free": 900 * gb}],
+           "problems": [], "minFreeGb": 20.0}
+    rep.update(more)
+    return lambda *a, **k: rep
+
+
+def test_scratch_on_a_roomy_drive_passes_and_names_drives_and_gigabytes_never_a_path(world, monkeypatch):
+    monkeypatch.setattr("jason.storage.report", fake_report())
+    got = run("scratch-room", world, subject="")
+    assert got.ok and "scratch is on D: with 900 GB free" in got.message and "county cache is on D: with 900 GB free" in got.message
+    assert "data folder is on C: with 500 GB free" in got.message and "floor is 20 GB" in got.message and "no drive is short of room" in got.message
+    assert "\\" not in got.message and "/" not in got.message
+
+
+def test_a_drive_short_of_room_or_a_report_that_cannot_be_made_fails_and_counts_the_problems(world, monkeypatch):
+    monkeypatch.setattr("jason.storage.report", fake_report(problems=["C: has 3.0 GB free, under 20 GB", "JASON_TEMP_DIR is unset"]))
+    got = run("scratch-room", world, subject="")
+    assert not got.ok and "2 problem(s): jason storage --check says which" in got.message and "C: has 3.0" not in got.message
+
+    def broken(*a, **k):
+        raise OSError("the drive is gone")
+
+    monkeypatch.setattr("jason.storage.report", broken)
+    got = run("scratch-room", world, subject="")
+    assert not got.ok and "cannot be made (OSError: the drive is gone)" in got.message
+    monkeypatch.setattr("jason.storage.report", fake_report(places=[{"name": "data directory", "drive": "C:", "free": None}]))
+    assert "none set" in run("scratch-room", world, subject="").message
+
+
+def test_the_real_storage_report_is_read_without_writing_anything(world):
+    before = tree(world)
+    got = run("scratch-room", world, subject="")
+    assert got.message and "scratch is on" in got.message
+    assert tree(world) == before
+
+
+def test_the_profiles_topics_in_its_own_folder_pass_and_none_yet_is_said(world, tmp_path):
+    got = run("profile-own-facts", world)
+    assert got.ok and "0 topic file(s) for the profile: 0 in its own folder, 0 in the old shared layout" in got.message
+    assert "its own facts file is not there yet" in got.message
+    (tmp_path / "spec" / "example").mkdir()
+    (tmp_path / "spec" / "example" / "records.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "spec" / "example" / "senders.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "spec" / "example.json").write_text("{}", encoding="utf-8")
+    got = run("profile-own-facts", world)
+    assert got.ok and "2 topic file(s) for the profile: 2 in its own folder, 0 in the old shared layout" in got.message
+    assert "its own facts file is there" in got.message and "records" not in got.message and "senders" not in got.message
+
+
+def test_a_topic_read_from_the_old_shared_layout_fails_and_another_community_is_not_read(world, tmp_path, monkeypatch):
+    monkeypatch.setattr("jason.community.private.default_profile", lambda: "example")        # the old layout is the default profile's
+    (tmp_path / "spec" / "senders.json").write_text("{}", encoding="utf-8")
+    got = run("profile-own-facts", world)
+    assert not got.ok and "1 in the old shared layout" in got.message and "jason spec --migrate" in got.message
+    got = run("profile-own-facts", world, subject="association:other")
+    assert not got.ok and "not the run's other" in got.message
+    assert not run("profile-own-facts", world, subject="").ok and "names no profile" in run("profile-own-facts", world, subject="").message
+
+
+def entry_listing(*entries):
+    return {"found": True, "groups": [{"item": "x", "entries": list(entries)}]}
+
+
+def entry(key="amendments/2099-0000001", number="2099-0000001", copies=()):
+    return {"key": key, "number": number, "status": "held", "copies": list(copies), "links": []}
+
+
+def test_an_entry_with_a_number_and_a_recorded_copy_on_disk_is_verified_and_nothing_is_named(world, monkeypatch):
+    listing = entry_listing(entry("amendments/first", number="2099-0000009",
+                                  copies=[{"kind": "disk", "name": "Secret-Name.pdf", "ref": "x/secret.pdf"},
+                                          {"kind": "drive", "name": "Drive-Copy.pdf", "ref": "abc"}]))
+    monkeypatch.setattr("jason.tasks.key_documents.checklist", lambda *a, **k: listing)
+    got = run("key-document-verified", world, subject="entry:amendments/first")
+    assert got.ok and "has a recording number" in got.message and "1 recorded copy(ies) on disk carry it" in got.message
+    assert "1 other copy(ies) are pinned" in got.message and "2099-0000009" not in got.message and "Secret" not in got.message
+
+
+def test_an_entry_with_no_number_or_no_recorded_copy_on_disk_is_not_verified(world, monkeypatch):
+    monkeypatch.setattr("jason.tasks.key_documents.checklist",
+                        lambda *a, **k: entry_listing(entry("amendments/a", number=""), entry("amendments/b", copies=[{"kind": "drive"}])))
+    got = run("key-document-verified", world, subject="entry:amendments/zzz")
+    assert not got.ok and got.message == "entry amendments/zzz is not on the key documents list (2 entries read)"
+    got = run("key-document-verified", world, subject="entry:")
+    assert not got.ok and "names no key document entry" in got.message
+    none = run("key-document-verified", world, subject="entry:amendments/a")
+    assert not none.ok and "has no recording number: it is noted as not recorded" in none.message
+    unmatched = run("key-document-verified", world, subject="entry:amendments/b")
+    assert not unmatched.ok and "no recorded copy has been matched to the number yet" in unmatched.message
+
+
+def test_a_key_document_list_that_cannot_be_read_or_another_community_fails(world, monkeypatch):
+    got = run("key-document-verified", world, subject="entry:bylaws", community=Association())
+    assert not got.ok and ("is not on the key documents list" in got.message or "no recording number" in got.message)
+
+    def broken(*a, **k):
+        raise OSError("the store is gone")
+
+    monkeypatch.setattr("jason.tasks.key_documents.checklist", broken)
+    got = run("key-document-verified", world, subject="entry:bylaws")
+    assert not got.ok and "cannot be read (OSError: the store is gone)" in got.message
+
+
+def open_request(world, *kinds):
+    from jason.tasks import records_requests
+
+    return records_requests.open_request(world, "2099-01-05", "123 Main St", "email", list(kinds), by=BY).id
+
+
+def test_each_kind_a_request_asks_for_maps_to_a_paragraph_and_a_slot_and_no_kind_is_named(world):
+    rid = open_request(world, "minutes", "financial_disclosure")
+    got = run("request-kinds-mapped", world, subject=f"request:{rid}", community=Association())
+    assert got.ok and "2 of 2 kind(s) asked map to a paragraph of CIV 5200(a) and a slot of the record checklist" in got.message
+    assert "empty" in got.message and "minutes" not in got.message and "financial" not in got.message and "123 Main" not in got.message
+    assert got.evidence and got.evidence[0].startswith("file:records-requests/requests.json@")
+    one = run_item("request-kinds-mapped", world, subject=f"request:{rid}", item="minutes", community=Association())
+    assert one.ok and "1 of 1 kind(s)" in one.message
+
+
+def test_a_kind_with_no_slot_a_missing_request_or_no_handle_fails(world, monkeypatch):
+    rid = open_request(world, "minutes")
+    other = run_item("request-kinds-mapped", world, subject=f"request:{rid}", item="tax_return", community=Association())
+    assert not other.ok and "does not ask for that kind" in other.message
+    assert "no such request" in run("request-kinds-mapped", world, subject="request:2099-01-01--nobody", community=Association()).message
+    assert not run("request-kinds-mapped", world, subject="", community=Association()).ok
+    monkeypatch.setattr("jason.tasks.record_slots.view", lambda *a, **k: {"groups": [{"slots": [{"key": "k", "state": "empty", "requires": ["CIV 4000"]}]}]})
+    got = run("request-kinds-mapped", world, subject=f"request:{rid}", community=Association())
+    assert not got.ok and "0 of 1 kind(s)" in got.message and "a miss stays a miss" in got.message
+
+
+def slot_with(monkeypatch, world, pins, readings):
+    monkeypatch.setattr("jason.tasks.record_slots.slot_view", lambda key, *a, **k: {"found": key == "governing/bylaws", "holders": [
+        {"pin": p, "kind": "file"} for p in pins] + [{"pin": "folder-1", "kind": "folder"}]})
+    monkeypatch.setattr("jason.tasks.record_readback.load", lambda root, profile, pin: readings.get(pin))
+
+
+def test_every_pin_with_a_kept_reading_passes_whatever_the_verdicts_and_a_difference_is_said(world, monkeypatch):
+    slot_with(monkeypatch, world, ("p1", "p2", "p3"), {"p1": {"compare": {"verdict": "agrees"}}, "p2": {"compare": {"verdict": "differs"}},
+                                                      "p3": {"compare": {"verdict": "unclassified"}}})
+    got = run_item("record-compare", world, item="governing/bylaws")
+    assert got.ok and "3 pinned file(s)" in got.message and "1 agree with the slot, 1 differ, 1 are unclassified, 0 not read yet" in got.message
+    assert "resolved in the next step" in got.message and "p1" not in got.message
+
+
+def test_a_pin_not_read_yet_or_a_slot_with_no_pin_or_no_item_fails(world, monkeypatch):
+    slot_with(monkeypatch, world, ("p1", "p2"), {"p1": {"compare": {"verdict": "agrees"}}, "p2": {}})
+    got = run_item("record-compare", world, item="governing/bylaws")
+    assert not got.ok and "1 not read yet" in got.message and "jason records --read KEY" in got.message
+    slot_with(monkeypatch, world, (), {})
+    assert "nothing to compare" in run_item("record-compare", world, item="governing/bylaws").message
+    assert "not a slot of the record checklist" in run_item("record-compare", world, item="nope").message
+    assert "one slot at a time" in run_item("record-compare", world, item="").message
+    assert not run_item("record-compare", world, subject="association:other", item="governing/bylaws").ok
+
+
+def test_a_slot_that_cannot_be_read_fails_with_the_reason(world, monkeypatch):
+    def broken(*a, **k):
+        raise OSError("the pins are gone")
+
+    monkeypatch.setattr("jason.tasks.record_slots.slot_view", broken)
+    got = run_item("record-compare", world, item="governing/bylaws")
+    assert not got.ok and "cannot be compared (OSError: the pins are gone)" in got.message
+
+
 # --- a read writes nothing ----------------------------------------------------------------------------------------------------
 
 def test_every_read_leaves_the_data_folder_and_the_private_facts_byte_for_byte_as_they_were(world, monkeypatch, tmp_path):
@@ -370,7 +547,8 @@ def test_every_read_leaves_the_data_folder_and_the_private_facts_byte_for_byte_a
     assert len(before) >= 4
     subjects = {"key-document-status": "entry:bylaws", "split-review": f"draft:{sid}"}
     for name in NAMES:
-        community = Association() if name in ("record-slots-read", "key-document-status", "split-review") else COMMUNITY
+        community = (Association() if name in ("record-slots-read", "key-document-status", "split-review", "key-document-verified",
+                                                "request-kinds-mapped", "record-compare") else COMMUNITY)
         run(name, world, subject=subjects.get(name, "association:example"), community=community)
     assert tree(world) == before
     assert tree(tmp_path / "spec") == spec_before

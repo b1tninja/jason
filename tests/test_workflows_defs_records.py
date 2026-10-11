@@ -67,7 +67,7 @@ EXPECTED = {
         2  branch person N 1
         3  person person N 2
         4  job    person N 3
-        5  check  person N 4
+        5  check  check J 4
         6  branch person N 5
         7  person person N 4
         8  person person N 3
@@ -89,7 +89,7 @@ EXPECTED = {
         ST-1  check    check   J -
         ST-2  person   person   A ST-1
         ST-3  job      person   M ST-2
-        ST-4  check    person   M ST-2
+        ST-4  check    check   J ST-2
         ST-5  person   person   A ST-1
         ST-6  person   person   A ST-1
         ST-7  check    check   J ST-4,ST-5,ST-6
@@ -133,7 +133,7 @@ EXPECTED = {
         2 person person M 1
         3 wait   wait   M 2
         4 person person N 3
-        5 check  person M 4
+        5 check  check J 4
         6 person person N 5
         7 person person N 1""",
     "parcel-title": """
@@ -143,7 +143,7 @@ EXPECTED = {
         4 person person M 2
         5 job    person M 2""",
     "careful-reading": """
-        1  check  person M -
+        1  check  check J -
         2  job    person M 1
         3  person person N 2
         4  job    person M 2
@@ -156,7 +156,7 @@ EXPECTED = {
     "records-production": """
         1  person person M -
         2  check  person M 1
-        3  check  person M 1
+        3  check  check J 1
         4  person person N 3
         5  person person M 1
         6  person person M 3
@@ -286,6 +286,8 @@ CHECK_STEPS = {
     "split-document.4": "split-review", "key-document.1": "key-document-status", "onboard.ST-1": "active-community",
     "onboard.ST-7": "onboard-gate-start", "onboard.IN-7": "onboard-gate-ingest", "onboard.ES-7": "onboard-gate-establish",
     "onboard.OP-4": "onboard-gate-operate", "onboard.AD-3": "onboard-checklist", "onboard.AD-4": "onboard-gate-adopt",
+    "record-slot.5": "record-compare", "onboard.ST-4": "profile-own-facts", "key-document.5": "key-document-verified",
+    "careful-reading.1": "scratch-room", "records-production.3": "request-kinds-mapped",
 }
 """The steps built as a read, and the read each names (jason.workflows.checks.records)."""
 
@@ -305,15 +307,13 @@ def test_no_step_names_a_plan_or_a_job_and_each_check_step_is_jasons_and_names_a
                 assert s.check.name in CHECKS, s.id
             else:
                 assert s.check is None, s.id
-    assert found == CHECK_STEPS and len(found) == 12
+    assert found == CHECK_STEPS and len(found) == 17
     assert not set(found.values()) & {w.partition(":")[2] for w in records.WANTED}, "a read built now is no longer wanted"
 
 
 def test_the_reads_wanted_are_the_ones_no_existing_function_answers_safely():
     left = sorted(w for w in records.WANTED if w.startswith("check:"))
-    assert left == [f"check:{n}" for n in (
-        "designation-on-file", "document-kind-read", "key-document-verified", "parcel-strand-gaps", "profile-own-facts",
-        "quotes-verified", "record-compare", "request-kinds-mapped", "scratch-room")]
+    assert left == [f"check:{n}" for n in ("designation-on-file", "document-kind-read", "parcel-strand-gaps", "quotes-verified")]
 
 
 def test_the_child_runs_name_definitions_that_exist():

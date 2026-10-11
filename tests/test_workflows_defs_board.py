@@ -33,23 +33,23 @@ TABLE = {
     "board-meeting": (board.board_meeting, """
         1 p m board-packet#1;  2 c j board-packet#1;  3 b s board-packet#2;  4 p m board-packet#5;  5 p m board-packet#7
         6 p t board-packet#7;  7 p m board-packet#8;  8 p m board-packet#8;  9 p s board-packet#9;  10 p s -
-        11 pl s -;  12 p s -;  13 w j -;  14 p s board-packet#10;  15 p s -;  16 d s -;  17 p s -;  18 p s board-packet#3
+        11 pl s -;  12 p s -;  13 w j -;  14 p s board-packet#10;  15 p s -;  16 d s -;  17 c j -;  18 p s board-packet#3
         19 c j board-packet#3;  20 p s board-packet#4;  21 d s board-packet#4;  22 c j -"""),
     "rule-change": (board.rule_change, """
-        0 p m -;  1 b any rule-change#1;  2 p m -;  3 p any rule-change#2;  4 p m rule-change#2;  5 p m -
-        6 p s rule-change#4;  7 p s rule-change#3;  8 p s rule-change#5;  9 w s rule-change#5;  10 p s -;  11 w s -
+        0 c j -;  1 b any rule-change#1;  2 c j -;  3 p any rule-change#2;  4 p m rule-change#2;  5 p m -
+        6 c j rule-change#4;  7 p s rule-change#3;  8 p s rule-change#5;  9 w s rule-change#5;  10 p s -;  11 w s -
         12 w j -;  13 d s -;  14 c j rule-change#6;  15 p s -;  16 w s -;  17 w s -;  18 b s -;  19 p m rule-change#7
         20 p m -"""),
     "election": (board.election, """
-        1 b s election#1;  2 p any election#2;  2.1 d s -;  2.2 b s -;  3 p s -;  4 p s -;  5 p s -;  6 p s -
+        1 b s election#1;  2 p any election#2;  2.1 d s -;  2.2 b s -;  3 c j -;  4 p s -;  5 p s -;  6 p s -
         7 p s election#4;  8 p s -;  9 p s -;  10 b s -;  10.1 d s -;  11 p s election#4;  12 pl m -;  12.1 p m -
         13 w j -;  14 p s -;  15 b s -;  15.1 p s -;  16 p s -;  17 p s election#6;  18 w s -"""),
     "hearing": (board.hearing, """
-        1 p m -;  2 c j -;  3 w s -;  4 p m -;  5 p m -;  6 pl m -;  7 p m -;  8 p m -;  9 w s -;  10 p s -;  11 d s -
-        12 b s -;  13 p m -;  14 w s -;  15 p s -;  16 p s -"""),
+        1 p m -;  2 c j -;  3 w s -;  4 p m -;  5 p m -;  6 pl m -;  7 p m -;  8 c j -;  9 w s -;  10 p s -;  11 d s -
+        12 b s -;  13 p m -;  14 w s -;  15 c j -;  16 c j -"""),
     "law-review": (board.law_review, """
         1 p m law-review#1;  2 c j law-review#2;  3 p m law-review#3;  4 c j law-review#4;  5 p m law-review#5
-        6 p m law-review#6;  7 p m law-review#7;  8 p a law-review#8;  9 p m law-review#9;  10 p m law-review#10
+        6 p m law-review#6;  7 p m law-review#7;  8 p a law-review#8;  9 p m law-review#9;  10 c j law-review#10
         11 p m law-review#11;  12 d s law-review#12;  13 d s -;  14 p m -"""),
     "duty-schedule": (board.duty_schedule, """
         1 c j duty-schedule#1;  2 p m duty-schedule#2;  3 p m duty-schedule#3;  4 p any duty-schedule#4
@@ -59,8 +59,8 @@ TABLE = {
         1 p m document-duties#1;  2 p m document-duties#2;  3 p m document-duties#3;  4 p m document-duties#4
         5 p a document-duties#5"""),
     "owners-manual": (board.owners_manual, """
-        1 p m owners-manual#1;  2 p m rule-history#1;  3 p m owners-manual#2;  4 p m owners-manual#3;  5 p m owners-manual#4
-        6 p m owners-manual#5;  7 p m owners-manual#6;  8 p m owners-manual#7;  9 d s owners-manual#9;  10 p m owners-manual#8
+        1 p m owners-manual#1;  2 p m rule-history#1;  3 c j owners-manual#2;  4 p m owners-manual#3;  5 c j owners-manual#4
+        6 c j owners-manual#5;  7 p m owners-manual#6;  8 p m owners-manual#7;  9 d s owners-manual#9;  10 p m owners-manual#8
         11 p m owners-manual#10"""),
 }
 
@@ -197,12 +197,17 @@ def test_every_decision_step_is_recorded_by_the_secretary_and_no_person_step_is_
     assert sum(1 for w in build_all().values() for s in w.steps if s.kind is StepKind.DECISION) == 11
 
 
-# step id -> the read it names (jason.workflows.checks.board): the ten person steps that became checks
+# step id -> the read it names (jason.workflows.checks.board): the person steps that became checks
 CHECKED = {
     "board-meeting.2": "meeting-clocks", "board-meeting.13": "notice-delivery-read", "board-meeting.19": "minutes-checks",
     "board-meeting.22": "run-complete", "rule-change.14": "rule-stages", "hearing.2": "hearing-dates",
     "law-review.2": "readings-stale", "law-review.4": "shelf-cites", "duty-schedule.1": "schedule-due",
     "duty-schedule.7": "schedule-coverage",
+    # the twelve that waited for a read (checks/board.py): each step now names it
+    "board-meeting.17": "executive-note-open", "rule-change.0": "rule-in-force", "rule-change.2": "rule-authority",
+    "rule-change.6": "notice-text", "election.3": "election-rules-window", "hearing.8": "hearing-delivery-read",
+    "hearing.15": "hearing-requirements-met", "hearing.16": "hearing-minutes-note", "law-review.10": "retire-reasons",
+    "owners-manual.3": "manual-headings", "owners-manual.5": "manual-concordance", "owners-manual.6": "manual-template-equal",
 }
 
 
@@ -279,12 +284,13 @@ def test_the_module_imports_only_the_engine_types_and_the_standard_library():
     assert mods == {"__future__", "typing", "jason.workflows.readers", "jason.workflows.types"}
 
 
-def test_the_reads_of_this_family_are_the_ten_in_checks_board_and_no_job_was_added():
+def test_the_reads_of_this_family_are_the_twenty_two_in_checks_board_and_no_job_was_added():
     from jason.workflows.checks import board as reads, load_all
 
     load_all()
     assert {n for n in CHECKS if CHECKS[n].__module__ == reads.__name__} == set(CHECKED.values())
     assert not [n for n in board.WANTED if n.partition(":")[2] in CHECKED.values()]
+    assert not [n for n in board.WANTED if n.startswith("check:")]           # every read this family wanted is built
     assert set(JOBS) >= {"payhoa-form-test", "notices-sync"}
 
 
@@ -369,13 +375,13 @@ def test_an_emergency_meeting_skips_the_notice_steps_and_an_executive_only_one_s
 
 def test_an_emergency_rule_change_skips_the_member_notice_and_the_reversal_window(data):
     rid = start(data, "rule-change", {"decision_on": "2099-10-20"}, subject="change-1")
-    attest(data, rid, "rule-change.0", "J. Manager")
+    settle(data, rid)                                                  # step 0 is jason's read now
     attest(data, rid, "rule-change.1", "S. Secretary", choice="emergency")
     got = states(data, rid)
     assert [got[f"rule-change.{i}"] for i in (6, 7, 8, 9, 10, 17, 18)] == ["skipped"] * 7
     assert got["rule-change.13"] != "skipped" and got["rule-change.15"] != "skipped"
     rid2 = start(data, "rule-change", {"decision_on": "2099-10-20"}, subject="change-2")
-    attest(data, rid2, "rule-change.0", "J. Manager")
+    settle(data, rid2)
     attest(data, rid2, "rule-change.1", "S. Secretary", choice="not_reached")
     got2 = states(data, rid2)
     assert got2["rule-change.7"] == "skipped" and got2["rule-change.17"] != "skipped"
@@ -394,7 +400,8 @@ def test_a_member_vote_has_no_nominations_and_an_acclamation_skips_the_ballots(d
     attest(data, rid2, "election.2.1", "S. Secretary", outcome="approved", motion="make acclamation available")
     attest(data, rid2, "election.2.2", "S. Secretary", choice="not_available")
     assert states(data, rid2)["election.8"] == "skipped"
-    for n, who in (("3", "S. Secretary"), ("4", "S. Secretary"), ("5", "S. Secretary")):
+    settle(data, rid2)                                                 # step 3, the election rules' window, is jason's read now
+    for n, who in (("4", "S. Secretary"), ("5", "S. Secretary")):
         attest(data, rid2, f"election.{n}", who)
     attest(data, rid2, "election.7", "S. Secretary")
     attest(data, rid2, "election.9", "S. Secretary")

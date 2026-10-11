@@ -12,7 +12,8 @@ MODULES = sorted(p for p in PACKAGE.glob("*.py") if p.stem != "__init__")
 
 # What a read may import from jason: stores and read functions, never a client that reaches out.
 ALLOWED = ("jason.workflows", "jason.locks", "jason.config", "jason.tasks", "jason.community", "jason.approvals.store",
-           "jason.approvals.registry", "jason.approvals.model", "jason.controls", "jason.mcp.county", "jason.sources.offline")
+           "jason.approvals.registry", "jason.approvals.model", "jason.controls", "jason.mcp.county", "jason.sources.offline",
+           "jason.integrations", "jason.limits", "jason.storage")
 BANNED = ("payhoa", "jason.google", "jason.zoom", "jason.keeper", "jason.vault", "requests", "httpx", "urllib3", "smtplib",
           "anthropic", "jason.web", "mystique", "jason_mystique", "jason.tasks.sync", "subprocess")
 

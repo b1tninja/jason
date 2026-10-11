@@ -23,10 +23,10 @@ mails, scans, forwards, shreds, discards, connects, and revokes nothing in any o
 an approvals plan a person decides.
 
 No step here is a ``job``. A ``check`` names a read in ``readers.CHECKS`` and a ``job`` a name in ``readers.JOBS``; an
-unregistered check can only fail. Eleven reads are registered by ``jason.workflows.checks.platform`` (disk only: no network,
+unregistered check can only fail. Fifteen reads are registered by ``jason.workflows.checks.platform`` (disk only: no network,
 no service contacted, no write, no vault asked), and their steps are ``check`` steps (``mail-triage.1`` and ``.4``, a wait's
-arrival on ``.9``, ``.12``; ``email-conversation.1`` and ``.3``; ``response-inbox.2`` and ``.10``; ``integration-connect.1``;
-``service-run.1``, ``.2``, and ``.10``), role ``jason``. The other steps that want a read, a job, or an approvals kind are
+arrival on ``.9``, ``.12``; ``email-conversation.1`` and ``.3``; ``response-inbox.2``, ``.3``, and ``.10``;
+``integration-connect.1`` and ``.2``; ``service-run.1``, ``.2``, ``.5``, ``.10``, and ``.12``), role ``jason``. The other steps that want a read, a job, or an approvals kind are
 still ``person`` steps whose ``why`` says what they become, and ``WANTED`` lists what is left to add. The one registered
 ``plan`` kind it needs is ``gmail-drafts``.
 """
@@ -58,21 +58,17 @@ CASES: tuple[str, ...] = ("proposal-request", "hearing", "meeting-notice")
 """The three cases of the approvals kind ``gmail-drafts``; a run's subject is ``<case>:<key>``."""
 
 WANTED: tuple[str, ...] = (
-    # reads (readers.CHECKS) still to add; the eleven built are in jason.workflows.checks.platform. Not possible today:
-    #   thread-leads (jason.tasks.threads.threads writes reports/threads.json), mail-findings and draft-source/draft-preview
-    #   (the profile and settings, or Google), thread-closed (a person's note has no store), integration-state (the state needs
-    #   the Status rows and a credential probe), vault-answers (the vault is the development environment's store: not asked),
-    #   service-limits and service-verify (jason.limits and the Status rows are outside the checks package's allow-list)
+    # reads (readers.CHECKS) still to add; the fifteen built are in jason.workflows.checks.platform. Not possible today:
+    #   thread-leads (jason.tasks.threads.threads writes reports/threads.json), mail-findings (mail_links opens the tax store,
+    #   which runs CREATE TABLE IF NOT EXISTS: a write path until it has a read-only open), draft-source and draft-preview
+    #   (the profile and settings, or Google), thread-closed (a person's note has no store), vault-answers (the vault is the
+    #   development environment's store: not asked)
     "check mail-findings (mail-triage.3): the findings of `jason mail --checks` as a count",
     "check thread-leads (email-conversation.7): payments, letters, Drive files, PayHOA requests near the thread, as leads",
     "check thread-closed (email-conversation.15): the status is awaiting them or internal, or a person's note",
     "check draft-source (gmail-draft.1): the system, hearing, or agenda file the draft is about exists and is current",
     "check draft-preview (gmail-draft.6): the dry run of `jason draft` shows a subject and suggested addresses",
-    "check responses-recognized (response-inbox.3): recognized, candidate, or not ours, by rung",
-    "check integration-state (integration-connect.2): not set up, needs sign-in, connected, failing, or paused",
     "check vault-answers (integration-connect.3): the backend answers (names only), or says it is not signed in",
-    "check service-limits (service-run.5): each limit's value, source, range, and last change",
-    "check service-verify (service-run.12): standing per source, a fresh heartbeat, free space on the drive jason writes to",
     # jobs (readers.JOBS)
     "job mail-sync (mail-triage.2): `jason mail`",
     "job gmail-sync (email-conversation.2): `jason gmail --sync`",
@@ -341,10 +337,12 @@ def response_inbox() -> Workflow:
           check=named_check("responses-channels"),
           why="Each channel's end (the check responses-channels): ok, sign-in, failed, skipped, or never checked, with the last "
               "success. A sign-in end pauses that integration's sources; no retry on a timer."),
-        s("3", "Whose copy is it?", P, M, ("1",), repeat=ITEM, command="jason responses --check",
-          record="recognized (a sent copy), candidate (a form, no copy), or not ours",
-          why="Recognition runs inside --check and --read, by rung, with how sure. A reference jason did not send is a finding, "
-              "not an arrival. Becomes a check (responses-recognized)."),
+        s("3", "Whose copy is it?", C, JASON, ("1",), repeat=ITEM, command="jason responses --check",
+          check=named_check("responses-recognized"),
+          why="Recognition runs inside --check and --read, by rung, with how sure. The check responses-recognized says "
+              "recognized (a sent copy), candidate (a form, no copy), or not ours from the arrival's stored reading, or from its "
+              "subject alone when it is not read yet (then a subject naming no copy of ours is 'not decided', never 'not ours'). "
+              "A reference jason did not send is a finding, not an arrival. A lead for the person at the next step, never an answer."),
         s("4", "Recognized, candidate, or not ours", B, M, ("3",), repeat=ITEM,
           choices=(Choice("recognized"), Choice("candidate"), Choice("not-ours")),
           why="Recognized goes on; a candidate is attached to a campaign by a person (the command is not verified); not ours "
@@ -395,10 +393,13 @@ def integration_connect() -> Workflow:
           check=named_check("instance-which"),
           why="Never skipped: a default community must be visible before any --yes command (lesson a-default-community-must-be-visible). "
               "The check instance-which records the community in use and where the choice came from, and says when it is a default."),
-        s("2", "Read the integration's state", P, A, ("1",), command="jason integrations list",
-          record="one of: not set up, needs sign-in, connected, failing, paused, with its reason",
+        s("2", "Read the integration's state", C, JASON, ("1",), command="jason integrations list",
+          check=named_check("integration-state"),
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="stale after the integration's own stale-after (the defaults are proposed)"),
-          why="'Connected' is never taken from here until a live check by a person succeeds. Becomes a check (integration-state)."),
+          why="One of: not set up, needs sign-in, connected, failing, paused (the check integration-state), from disk and the "
+              "settings with counts and dates, never an account, a path, or an error's words. The vault is not asked, so a "
+              "credential kept only there reads as not set. 'Connected' is never taken from here until a live check by a person "
+              "succeeds (step 8)."),
         s("3", "Does the credential store answer?", P, A, ("1",), command="jason vault status", sop="onboard#13",
           skip=ADMIN_ONLY, record="the backend, and whether it answers (names only)",
           clock=ClockDef(ClockBasis.COUNTERPARTY, label="provider: Keeper signs out after 30 days idle; the design warns from day 25 "
@@ -496,9 +497,10 @@ def service_run() -> Workflow:
         s("4", "Why did it refuse?", B, A, ("2",), skip=ADMIN_ONLY, command="jason daemon status",
           choices=(Choice("second-process"), Choice("part-failed")),
           why="Another worker holds the community (a second process), or a part failed. Skipped when it did not refuse."),
-        s("5", "Check the limits in force", P, A, ("1",), command="jason limits",
-          record="the limits read (a count)",
-          why="Each limit's value, source, range, and last change. Becomes a check (service-limits)."),
+        s("5", "Check the limits in force", C, JASON, ("1",), command="jason limits", check=named_check("service-limits"),
+          why="Each limit's value, source, range, and last change (the check service-limits): counts, and for a limit that is not "
+              "the code's default its key, value, layer, range, and day. A limits file that cannot be read fails it: jason holds "
+              "the stricter value until it is fixed."),
         s("6", "Change a limit", P, A, ("5",), repeat=ITEM, skip=ADMIN_ONLY,
           command="jason limits --set KEY=VALUE --reason TEXT --by NAME (then again with --yes)",
           record="the limit and the reason (no names in it)",
@@ -520,9 +522,10 @@ def service_run() -> Workflow:
               "5 minutes apart; a failed write waits for a person."),
         s("11", "Ask it to stop", P, A, ("2",), skip=ADMIN_ONLY, command="jason daemon stop", record="the drain requested, by date",
           why="Writes only the drain request: each lane finishes its running job, a write is never cut, nothing is killed."),
-        s("12", "Everything current?", P, A, ("7",), command="jason storage --check",
-          record="standing per source, a fresh heartbeat, and the free space on the drive jason writes to",
-          why="Each source against its own stale-after. Becomes a check (service-verify)."),
+        s("12", "Everything current?", C, JASON, ("7",), command="jason storage --check", check=named_check("service-verify"),
+          why="Each source against its own stale-after, a fresh heartbeat, and room on the drives jason writes to (the check "
+              "service-verify). A stale, failed, or not-signed-in source fails it; a source never read is counted and does not "
+              "(a community may not use every source). Free space is said as at least or under 20 GB, never as a figure."),
     )
     phases = _phases(SR, ("find", "Where it stands", ("1", "2", "3", "4")), ("limits", "Limits", ("5", "6")),
                      ("schedule", "Schedules", ("7", "8", "9")), ("watch", "Queue and stop", ("10", "11", "12")))

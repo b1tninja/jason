@@ -14,12 +14,17 @@ ok by default.
 - ``key-document-status``: one key document entry's status (``jason.tasks.key_documents``).
 - ``ingest-gate``: the last ingest report (``jason.tasks.ingest.gate``).
 - ``split-review``: one draft split's counts (``jason.tasks.split_session``), flags included when the page facts are measured.
+- round two: ``scratch-room`` (``jason storage --check``, in whole gigabytes and a count of problems, never a path),
+  ``profile-own-facts`` (each private-facts topic is in the profile's own folder, ``jason spec``), ``key-document-verified``
+  (an entry has a recording number and a recorded copy on disk that carries it), ``request-kinds-mapped`` (each kind a
+  records request asks for maps to a paragraph of CIV 5200(a) and a slot of the record checklist), and ``record-compare`` (each
+  pin of a slot has a kept reading, with the verdicts counted).
 
 Not here, and why: ``document-kind-read`` would fail a step that the next step needs done (a library file with no kind is
 what document-intake step 3 answers, and a failed check blocks the steps after it); ``quotes-verified`` has no stored answer to
-read (the answer is a file handed to ``jason verify-quotes``); ``request-kinds-mapped`` measures a gold set of requests, not one
-request's kinds; ``designation-on-file`` has no store. ``record-compare``, ``key-document-verified``, ``parcel-strand-gaps``,
-``profile-own-facts``, and ``scratch-room`` are left for their owners.
+read (the answer is a file handed to ``jason verify-quotes``); ``designation-on-file`` has no store; ``parcel-strand-gaps``
+needs the ownership chain, and the stores that read it (``OwnershipStore``, ``TaxStore``, ``IndexCache``) create their tables
+when they are opened, which a read may not do.
 
 Privacy: a message carries counts, checklist item keys, statuses, and states. It names no file, owner, or confidential kind.
 """
@@ -317,3 +322,190 @@ def split_review(readers: StoreReaders, view: RunView, item: str = "") -> CheckR
     except Exception:  # noqa: BLE001 - the pages' facts are not measured yet: the counts above stand
         flagged = "; the page flags could not be read (the page facts may not be measured yet)"
     return CheckResult(True, (), message + flagged)
+
+
+# === round two: the reads the page's remaining check rows wanted ===========================================================
+
+# --- where scratch and caches go --------------------------------------------------------------------------------------------
+
+GB = 1024 ** 3
+
+
+@check("scratch-room")
+def scratch_room(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The temp folder and the county cache are on a drive with room (``jason storage --check``): no drive jason writes to is
+    under the free-space floor, and scratch is not on the small system drive. It says the drives and the free space in whole
+    gigabytes and counts the problems; a path is never in the message (``jason storage --check`` prints them)."""
+    try:
+        from jason.storage import report
+
+        rep = report(Path(readers.data_dir), sizes=False)
+    except Exception as exc:  # noqa: BLE001 - a report that cannot be made fails the check with the reason
+        return _fail(f"the storage report cannot be made ({type(exc).__name__}: {str(exc)[:160]})")
+
+    def where(prefix: str) -> str:
+        place = next((p for p in rep.get("places") or [] if str(p.get("name", "")).startswith(prefix)), None)
+        if place is None:
+            return "none set"
+        free = place.get("free")
+        return f"{place.get('drive') or 'an unknown drive'} with " + (f"{int(free // GB)} GB free" if free is not None else "free space unknown")
+
+    problems = list(rep.get("problems") or [])
+    said = (f"scratch is on {where('temp')}; the county cache is on {where('ASSPY_HOME')}; the data folder is on {where('data directory')} "
+            f"(the floor is {rep.get('minFreeGb'):g} GB)")
+    if problems:
+        return _fail(said + f"; {len(problems)} problem(s): jason storage --check says which")
+    return CheckResult(True, (), said + "; no drive is short of room")
+
+
+# --- the profile's own facts ------------------------------------------------------------------------------------------------------
+
+@check("profile-own-facts")
+def profile_own_facts(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """Only the chosen profile's private facts are read: each topic file it has is in its own folder, none is read from the
+    old shared layout that is kept for the default profile (``jason spec --migrate`` copies it). It names no file and reads no
+    value: counts only."""
+    if not _handle(view, "association", "profile", "community"):
+        return _fail("the run's subject names no profile (association:KEY), so the facts read cannot be compared with one")
+    problem = _mismatch(view)
+    if problem:
+        return _fail(problem)
+    try:
+        from jason.community import private
+        from jason.tasks import spec_layout
+
+        who = private.profile_of()
+        root = private.spec_dir()
+        found = spec_layout.where(who, root)
+        has_own = (root / f"{who}.json").is_file()
+    except Exception as exc:  # noqa: BLE001 - a folder that cannot be listed fails the check with the reason
+        return _fail(f"the private facts cannot be listed ({type(exc).__name__}: {str(exc)[:160]})")
+    old = [name for name, path in found if path.parent == root]
+    own = len(found) - len(old)
+    said = (f"{len(found)} topic file(s) for the profile: {own} in its own folder, {len(old)} in the old shared layout; "
+            f"its own facts file is {'there' if has_own else 'not there yet'}")
+    if old:
+        return _fail(said + "; the old layout is the default profile's until jason spec --migrate copies it")
+    return CheckResult(True, (), said)
+
+
+# --- one key document, verified ---------------------------------------------------------------------------------------------------
+
+@check("key-document-verified")
+def key_document_verified(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The entry the run is about (the subject, ``entry:KEY``) carries a recording number from the county index (or the
+    specification), and a recorded copy on disk carries that number by its stamp or its name. An entry with no number is noted
+    as not recorded (CIV 4270(a)(3) for an amendment). The number is counted, never said, and a file is never named."""
+    key = _handle(view, "entry", "key-document")
+    if not key:
+        return _fail("the run's subject names no key document entry (entry:KEY)")
+    name, why = _active()
+    if why:
+        return _fail(why)
+    try:
+        from jason.tasks import key_documents
+
+        listing = key_documents.checklist(readers.community, Path(readers.data_dir), name)
+    except Exception as exc:  # noqa: BLE001 - a list that cannot be read fails the check with the reason
+        return _fail(f"the key documents list cannot be read ({type(exc).__name__}: {exc})")
+    rows = [e for g in listing.get("groups") or () for e in g.get("entries") or ()]
+    found = next((e for e in rows if e.get("key") == key), None)
+    if found is None:
+        return _fail(f"entry {key} is not on the key documents list ({len(rows)} entries read)")
+    evidence = readers.evidence_entries((f"file:key-documents/{name}.json",))
+    disk = [c for c in found.get("copies") or () if c.get("kind") == "disk"]
+    if not found.get("number"):
+        return CheckResult(False, evidence, f"entry {key} has no recording number: it is noted as not recorded, "
+                                            f"and {len(disk)} recorded copy(ies) on disk carry one")
+    said = (f"entry {key} has a recording number from the county index or the specification; {len(disk)} recorded copy(ies) on disk "
+            f"carry it by stamp or name, {len(found.get('copies') or ()) - len(disk)} other copy(ies) are pinned")
+    if not disk:
+        return CheckResult(False, evidence, said + ": no recorded copy has been matched to the number yet")
+    return CheckResult(True, evidence, said + " (whether it is the complete recorded copy is for a person to read)")
+
+
+# --- a request's kinds ----------------------------------------------------------------------------------------------------------------
+
+@check("request-kinds-mapped")
+def request_kinds_mapped(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """Each kind of record the request asks for (the subject, ``request:ID``; or the one kind ``item`` names) maps to a
+    paragraph of CIV 5200(a) and to at least one slot of the record checklist, and the slots' states are counted. A kind is
+    never named: the request is a held run's, and the kinds are the member's. Whether a slot holds the record is its state."""
+    handle = _handle(view, "request")
+    if not handle:
+        return _fail("the run's subject names no request (request:ID)")
+    name, why = _active()
+    if why:
+        return _fail(why)
+    try:
+        from jason.community.records import CITATION
+        from jason.community.symbols import AssociationRecord
+        from jason.tasks import record_slots, records_requests
+
+        request = records_requests.get(Path(readers.data_dir), handle)
+        kinds = [k for k in request.records if not item.strip() or k == item.strip()]
+        if not kinds:
+            return _fail("the request asks for no kind of record" if not item.strip() else "the request does not ask for that kind")
+        shown = record_slots.view(readers.community, Path(readers.data_dir), name)
+    except KeyError:
+        return _fail("no such request is in the request store")
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read fails the check with the reason
+        return _fail(f"the request cannot be mapped ({type(exc).__name__}: {str(exc)[:160]})")
+    slots = [s for g in shown.get("groups") or () for s in g.get("slots") or ()]
+    known = {a.value: a for a in AssociationRecord}
+    unmapped, states = 0, {}
+    for kind in kinds:
+        record = known.get(kind)
+        mine = [s for s in slots if record is not None and any(str(r).startswith(CITATION[record]) for r in s.get("requires") or ())]
+        if not mine:
+            unmapped += 1
+        for s in mine:
+            states[s["state"]] = states.get(s["state"], 0) + 1
+    said = (f"{len(kinds) - unmapped} of {len(kinds)} kind(s) asked map to a paragraph of CIV 5200(a) and a slot of the record "
+            "checklist; the slots' states: " + (", ".join(f"{n} {k}" for k, n in sorted(states.items())) or "none"))
+    if unmapped:
+        return _fail(said + f"; {unmapped} kind(s) have no slot: a miss stays a miss, and a person says where the record is held")
+    return CheckResult(True, readers.evidence_entries(("file:records-requests/requests.json",)), said)
+
+
+# --- a pick, compared with its slot ------------------------------------------------------------------------------------------------------
+
+@check("record-compare")
+def record_compare(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The slot the step names (the item) holds a pinned file whose reading was kept, and each reading says whether the file's
+    kind agrees with the slot's, differs (a wrong-slot pick), or is unclassified. It passes when every pin has a reading, whatever
+    the verdicts: a difference is what the next step resolves, and it sets the slot to a problem on its own. Counts only."""
+    slot = item.strip()
+    if not slot:
+        return _fail("the step is read one slot at a time: the item names the slot")
+    problem = _mismatch(view)
+    if problem:
+        return _fail(problem)
+    name, why = _active()
+    if why:
+        return _fail(why)
+    try:
+        from jason.tasks import record_readback, record_slots
+
+        shown = record_slots.slot_view(slot, readers.community, Path(readers.data_dir), name, private=False, history=False)
+        if not shown.get("found"):
+            return _fail(f"{slot} is not a slot of the record checklist")
+        pins = [h["pin"] for h in shown.get("holders") or () if h.get("kind") != "folder"]
+        verdicts = {"agrees": 0, "differs": 0, "unclassified": 0}
+        unread = 0
+        for pin in pins:
+            kept = record_readback.load(Path(readers.data_dir), name, pin)
+            said = str(((kept or {}).get("compare") or {}).get("verdict") or "")
+            if said in verdicts:
+                verdicts[said] += 1
+            else:
+                unread += 1
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read fails the check with the reason
+        return _fail(f"the slot cannot be compared ({type(exc).__name__}: {str(exc)[:160]})")
+    if not pins:
+        return _fail(f"no file is pinned to {slot}, so there is nothing to compare")
+    said = (f"{len(pins)} pinned file(s) in {slot}: {verdicts['agrees']} agree with the slot, {verdicts['differs']} differ, "
+            f"{verdicts['unclassified']} are unclassified, {unread} not read yet")
+    if unread:
+        return _fail(said + "; jason records --read KEY reads them")
+    return CheckResult(True, (), said + ("; a difference sets the slot to problem and is resolved in the next step" if verdicts["differs"] else ""))

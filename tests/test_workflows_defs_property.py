@@ -38,7 +38,7 @@ EXPECTED: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("estimate", "W", "M"), ("repair-decision", "D", "S"), ("repair", "W", "M"), ("clear", "C", "J"), ("lift", "P", "M"),
         ("board-item", "C", "J")),
     "backflow-annual": (
-        ("notice-in", "P", "M"), ("assemblies", "P", "M"), ("ask-program", "P", "M"), ("tester", "C", "J"), ("hire", "P", "M"),
+        ("notice-in", "P", "M"), ("assemblies", "C", "J"), ("ask-program", "P", "M"), ("tester", "C", "J"), ("hire", "P", "M"),
         ("test", "W", "M"), ("receipt", "P", "M"), ("failed", "B", "M"), ("repair-retest", "W", "M"), ("file", "P", "M"),
         ("record", "P", "S"), ("next", "W", "M")),
     "elevated-elements": (
@@ -46,14 +46,14 @@ EXPECTED: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("inspect", "W", "M"), ("read", "P", "M"), ("threat", "B", "M"), ("preventive", "P", "M"), ("reserve", "P", "M"),
         ("keep", "P", "M"), ("next", "W", "M")),
     "contract-notice-window": (
-        ("read", "P", "M"), ("confirm-term", "P", "M"), ("window", "C", "J"), ("owed", "P", "M"), ("licence", "P", "M"),
-        ("statement", "P", "M"), ("review", "D", "S"), ("choice", "B", "M"), ("draft", "P", "M"), ("approve", "P", "PRES"),
+        ("read", "P", "M"), ("confirm-term", "P", "M"), ("window", "C", "J"), ("owed", "C", "J"), ("licence", "P", "M"),
+        ("statement", "C", "J"), ("review", "D", "S"), ("choice", "B", "M"), ("draft", "P", "M"), ("approve", "P", "PRES"),
         ("send", "P", "M"), ("ack", "W", "M"), ("renew", "P", "S"), ("transition", "P", "PRES")),
     "improvement-request": (
         ("receive", "P", "M"), ("track", "B", "M"), ("need", "P", "M"), ("ack", "P", "M"), ("complete", "P", "M"),
         ("missing", "P", "M"), ("wait-owner", "W", "M"), ("review", "P", "M"), ("agenda", "P", "M"), ("vote", "D", "S"),
         ("letter", "P", "M"), ("reconsider", "B", "M"), ("conditions", "P", "S"), ("work", "W", "M"), ("verify", "P", "M"),
-        ("manual", "P", "M"), ("findings", "P", "M")),
+        ("manual", "P", "M"), ("findings", "C", "J")),
     "paint-cycle": (
         ("refresh", "P", "M"), ("watch", "C", "J"), ("substitute", "D", "S"), ("dates", "P", "M"), ("scope", "P", "M"),
         ("bids", "W", "M"), ("award", "D", "S"), ("notice", "P", "M"), ("record", "P", "M"), ("doc", "P", "M"),
@@ -63,7 +63,7 @@ EXPECTED: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("packet", "C", "J"), ("confirm-step", "P", "M"), ("guideline", "D", "S"), ("ask-owner", "P", "M"),
         ("outcome", "W", "M"), ("members", "B", "M"), ("close", "P", "M")),
     "maintenance-program": (
-        ("standing", "P", "M"), ("adopt", "D", "S"), ("sync", "P", "M"), ("read", "P", "M"), ("ask", "P", "M"),
+        ("standing", "C", "J"), ("adopt", "D", "S"), ("sync", "P", "M"), ("read", "P", "M"), ("ask", "P", "M"),
         ("licence", "P", "M"), ("vacate", "B", "M"), ("vacate-notice", "P", "M"), ("complaint", "P", "M"),
         ("renewal", "B", "M"), ("review", "P", "S")),
 }
@@ -83,13 +83,15 @@ LAW_CITES = {
 }
 
 
-# The twelve steps that are read-only checks, with the read each names (src/jason/workflows/checks/property.py).
+# The seventeen steps that are read-only checks, with the read each names (src/jason/workflows/checks/property.py).
 CHECK_STEPS = {
     "life-safety-period.1": "life-safety-standing", "life-safety-period.10": "life-safety-reports-read",
     "deficiency.2": "deficiency-confirmed", "deficiency.3": "deficiency-impairs-recorded", "deficiency.5": "deficiency-insurer-told",
     "deficiency.9": "deficiency-cleared", "deficiency.11": "deficiency-board-item", "backflow-annual.4": "backflow-tester",
     "elevated-elements.3": "elevated-due", "contract-notice-window.3": "contract-window", "paint-cycle.2": "paint-catalog",
-    "loss-claim.6": "loss-packet",
+    "loss-claim.6": "loss-packet", "backflow-annual.2": "backflow-assemblies", "contract-notice-window.4": "contract-owed",
+    "contract-notice-window.6": "contract-statement", "improvement-request.17": "improvement-findings",
+    "maintenance-program.1": "program-standing",
 }
 
 
@@ -310,7 +312,7 @@ def test_wanted_is_a_tuple_of_strings_each_with_a_kind_and_a_purpose():
     assert all(w.split(":", 1)[0] in {"check", "job", "plan", "template", "command", "role"} and " -- " in w for w in prop.WANTED)
     assert not (set(CHECKS) | set(JOBS)) & {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED}
     wanted_checks = {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED if w.startswith("check:")}
-    assert wanted_checks == {"backflow-assemblies", "contract-owed", "contract-statement", "improvement-findings", "program-standing"}
+    assert wanted_checks == {"improvement-findings-conflicts", "program-standing-catalog", "deliverable-on-file"}
     assert not wanted_checks & set(CHECK_STEPS.values())
     for step in (s for wf in built().values() for s in wf.steps if s.id in CHECK_STEPS):
         assert "(check:" not in step.why and "check:" + CHECK_STEPS[step.id] not in step.why, step.id    # no becomes-text left

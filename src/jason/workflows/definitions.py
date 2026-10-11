@@ -10,7 +10,11 @@ legal step (a law clock, or ``legal=True``) with a skip rule; a ``plan`` step wh
 does not resolve; a step whose ``roles`` are not distinct ``Role`` values (the primary ``role`` is not repeated among them);
 a ``na`` (not-applicable outcome) on a branch or with bad roles (a legal step may carry one though it has no skip rule); a
 ``waits_on_child`` with no ``spawns``; a date slot that repeats, or has a bad timing or roles; a held definition with no ``held_title`` (or one with a digit or ``@``
-in it, or on a definition that is not held); a ``public_title`` step on a definition that is not held. Each registry (the approvals kinds, the jobs, the definitions, the statutes) is an argument, so a test
+in it, or on a definition that is not held); a ``public_title`` step on a definition that is not held. Round three adds: a
+``remedy_of`` that is not a check among the step's ``needs``; a step with an item set or per-item ``needs`` that does not repeat,
+``item_needs`` that are not ``needs`` or do not repeat over the same set, a per-item branch whose path steps do not; a per-item
+clock on a step that does not repeat (or on the whole run); an ``ends_by_note`` that is not a wait, names a check, or lets a date
+end it; and step groups declared twice or a step whose group is not among the declared ones. Each registry (the approvals kinds, the jobs, the definitions, the statutes) is an argument, so a test
 supplies its own; with none given, the approvals kinds are read from ``jason.approvals.registry`` when first needed, and
 a registry that is not given and cannot be read is skipped, never guessed. A definition that fails does not register,
 and the failure names the row.
@@ -22,7 +26,7 @@ import re
 from typing import Callable, Collection, Iterable
 
 from jason.workflows.types import (
-    ClockBasis, DateTiming, InvalidWorkflow, Problem, Role, StepKind, Visibility, Workflow, parse_sop,
+    ClockBasis, DateTiming, Elapsed, InvalidWorkflow, Problem, Repeat, Role, StepKind, Visibility, Workflow, parse_sop,
 )
 
 LawResolver = Callable[[str], "bool | None"]
@@ -114,6 +118,7 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
         for sid in ph.steps:
             if sid not in ids:
                 bad(ph.key, "phase", f"phase {ph.key} names {sid}, which is not a step")
+    _round_three(workflow, bad)
     names: set[str] = set()
     for d in workflow.dates:
         if d.name in names:
@@ -143,6 +148,67 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
     for sid in needs:
         visit(sid, [])
     return out
+
+
+_SET_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+
+
+def _round_three(workflow: Workflow, bad) -> None:
+    """The rules for remedies, item sets, per-item needs, branches and clocks, notes that end a wait, and step groups."""
+    key = workflow.key
+    by_id = {s.id: s for s in workflow.steps}
+
+    def repeats(step) -> bool:
+        return step.repeat is not Repeat.ONCE
+
+    for s in workflow.steps:
+        if s.remedy_of:
+            target = by_id.get(s.remedy_of)
+            if target is None:
+                bad(s.id, "remedy", f"remedy_of {s.remedy_of}, which is not a step of {key}")
+            elif s.remedy_of not in s.needs:
+                bad(s.id, "remedy", f"remedy_of {s.remedy_of}: a remedy needs the check it remedies")
+            elif target.kind is not StepKind.CHECK:
+                bad(s.id, "remedy", f"remedy_of {s.remedy_of}: only a check is remedied, and it is a {target.kind.value} step")
+        if s.item_set and not _SET_NAME.match(s.item_set):
+            bad(s.id, "items", f"item set {s.item_set!r} is a lower-case word (letters, digits, hyphens)")
+        if s.item_aware and not repeats(s):
+            bad(s.id, "items", "a step with an item set or per-item needs repeats per item (repeat is not once)")
+        for need in s.item_needs:
+            target = by_id.get(need)
+            if need not in s.needs:
+                bad(s.id, "items", f"item_needs {need}, which the step does not need")
+            elif target is not None and (not repeats(target) or target.item_set != s.item_set):
+                bad(s.id, "items", f"reads {need} item by item, but {need} does not repeat over the same items")
+        if s.kind is StepKind.BRANCH and s.item_aware:
+            for choice in s.choices:
+                for sid in choice.steps:
+                    target = by_id.get(sid)
+                    if target is not None and (not repeats(target) or target.item_set != s.item_set):
+                        bad(s.id, "items", f"per-item path {choice.key} names {sid}, which does not repeat over the same items")
+        if s.clock is not None and s.clock.per_item and not repeats(s):
+            bad(s.id, "clock", "a per-item clock is for a step that repeats per item")
+        if s.ends_by_note:
+            if s.kind is not StepKind.WAIT:
+                bad(s.id, "wait", "ends_by_note is for a wait step")
+            if s.check is not None:
+                bad(s.id, "wait", "a wait that ends by a person's note names no check to read it by")
+            if s.elapsed is not Elapsed.OVERDUE:
+                bad(s.id, "wait", "a wait that ends by a person's note is not ended by a date (elapsed stays overdue)")
+    for i, c in enumerate(workflow.clocks):
+        if c.per_item:
+            bad(f"{key} clock {i}", "clock", "a clock on the whole run is not per item")
+    declared: set[str] = set()
+    for g in workflow.groups:
+        if not g.key:
+            bad(key, "group", "a step group has a key")
+        elif g.key in declared:
+            bad(g.key, "group", f"step group {g.key} repeats")
+        declared.add(g.key)
+    if workflow.groups:
+        for s in workflow.steps:
+            if s.group and s.group not in declared:
+                bad(s.id, "group", f"group {s.group} is not among the definition's step groups")
 
 
 HELD_TITLE_CHARS = 80

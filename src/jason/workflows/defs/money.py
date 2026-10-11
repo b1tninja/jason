@@ -10,8 +10,9 @@ start, a statute is cited by key (``CIV 5500(a)``) and is checked against the au
 word, and ``table_ids(key)`` is the whole map, for a test or a doc.
 
 **What is a person's step now.** The engine registers a ``check`` only by a name in ``jason.workflows.readers.CHECKS`` and a
-``job`` only by a name in ``readers.JOBS``. Twelve money reads exist (``jason.workflows.checks.money``), and the rows that
-name them are ``check`` steps (role jason; a wait step names one as the check that ends it). No money job is registered, so a
+``job`` only by a name in ``readers.JOBS``. Twenty-six money reads exist (``jason.workflows.checks.money``), and the rows that
+name them are ``check`` steps (role jason; a wait step names one as the check that ends it; ``insurance-renewal.chg`` is a
+branch a read chooses). No money job is registered, so a
 page's ``check`` or ``job`` row with no read yet is a ``person`` step whose ``why`` says what it becomes and names it
 ``(wanted: check NAME)`` or ``(wanted: job NAME)``; ``WANTED`` lists each, with what it would read. The same is true of a
 ``plan`` the approvals registry has no kind for. Plans used: ``payhoa-attach-bills`` (the bill, once matched, is attached
@@ -74,36 +75,28 @@ def _plan(name: str) -> str:
 
 WANTED: tuple[str, ...] = (
     # --- checks (readers.CHECKS): read-only, from the stores on disk
-    "check review-statements: the library holds a bank statement for each account for the month (not built: no check pairs "
-    "a statement to a month)",
-    "check review-income-expense: books pl for the month, operating and reserve (CIV 5500(e))",
-    "check review-registers: check register, general ledger, delinquent assessment receivable report runs (CIV 5500(f))",
-    "check review-transfers: reserve_transfers against the board's prior written approval (CIV 5502(a); not built: no run "
-    "check pairs a transfer to an approval)",
-    "check delinquency-ledger-read: delinquency.rows[] {standing, pastDueCents, ledgerSynced} for the account",
+    "check review-transfers: reserve_transfers against the board's prior written approval (CIV 5502(a); not built: no store holds "
+    "the approval, so no read pairs a transfer to one)",
+    "check delinquency-ledger-read: delinquency.rows[] {standing, pastDueCents, ledgerSynced} for the account (not built: the held "
+    "run's subject is an opaque id, never a parcel, so a read cannot tell which account it is about)",
     "check delinquency-charges: the ledger's late charge and interest against CIV 5650(b)(2), (3) and the declaration (not built)",
     "check delinquency-order: the ledger's order of application against CIV 5655(a) (not built)",
-    "check delinquency-policy-notice: the annual policy statement carries the CIV 5730 notice",
-    "check delinquency-floor: assessments alone against the CIV 5720(b) floor (the ledger's past due may include late charges)",
-    "check delinquency-closed: balance zero and no lien of record",
-    "check delinquency-plan-request: a payment plan request arrives within the notice's window (CIV 5665(b))",
-    "check fiscal-window: the CIV 5300(a) and 5310(a) window from the notice catalog; 'date not on record' is a state",
-    "check reserve-plan-match: the budget's reserve contribution against the adopted funding plan",
+    "check delinquency-policy-notice: the annual policy statement carries the CIV 5730 notice (not built: no store holds the sent "
+    "statement's words; the catalog only says the statement must carry it)",
+    "check delinquency-floor: assessments alone against the CIV 5720(b) floor (the ledger's past due may include late charges; "
+    "not built: a per-account read, see delinquency-ledger-read)",
+    "check delinquency-closed: balance zero and no lien of record (not built: a per-account read, see delinquency-ledger-read)",
+    "check delinquency-plan-request: a payment plan request arrives within the notice's window (CIV 5665(b); not built: a "
+    "per-account read, and no store holds the request's postmark)",
     "check budget-limits: the CIV 5605 limits (20 percent of the preceding year's regular assessment; 5 percent of budgeted "
     "gross expenses for special assessments) (not built)",
-    "check disclosure-insurance-summary: packets.insurance_rows, each policy's term in force (CIV 5300(b)(9))",
-    "check disclosure-reserve-summary: the figures from the latest study, cash and cash equivalents only (CIV 5300(b)(2), 5565, 5570)",
-    "check disclosure-send-plan: counts, billed pages, and estimate for the send (payhoa.pricing)",
-    "check disclosure-delivery-read: bounces and returns read from the notice ledger",
-    "check fiscal-owner-info-cycle: the owner information cycle's answers are entered (CIV 4041(b)(1))",
-    "check reserve-notice: borrowings[].documents.notice, the agenda 'Notice of Intent to Borrow' (CIV 5515(a), 4920)",
+    "check disclosure-send-plan: counts, billed pages, and estimate for the send (payhoa.pricing; not built: a check may not "
+    "import payhoa)",
+    "check fiscal-owner-info-cycle: the owner information cycle's answers are entered (CIV 4041(b)(1); the members family reads "
+    "the cycle)",
     "check reserve-two-signatures: the bank's record of two signatures (not read by jason)",
-    "check reserve-restored: a repayment found by amount, a lead (CIV 5515(d))",
-    "check insurance-limits: insurance_policies.findings against the CIV 5800, 5805, 5806 limits",
-    "check insurance-changed: memberNoticeNeeded and the term against the term before (ChangeKind)",
-    "check insurance-summary: insurance_rows for the fiscal year (CIV 5300(b)(9))",
-    "check tax-mailed-bill: tax_bill_checks, a mailed bill's amounts against the stored bill",
-    "check tax-years-closed: balances zero per parcel",
+    "check tax-mailed-bill: tax_bill_checks, a mailed bill's amounts against the stored bill (not built: the reader opens "
+    "TaxStore, whose constructor creates tables)",
     # --- jobs (readers.JOBS): a command a worker runs, found in the queue by its arguments
     "job bill-snapshot-fetch: jason invoices --fetch (a PayHOA read, no write)",
     "job bill-sources-read: jason fetch-bills; jason sync-tax; jason vendors --sync, per source",
@@ -118,9 +111,9 @@ WANTED: tuple[str, ...] = (
     "plan annual-packet-docs: --make-templates --yes and --build --draft --yes (Docs and a draft PDF)",
 )
 """What the page's ``check``, ``job``, and ``plan`` rows would register to become engine steps, each with what it reads.
-Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). The twelve reads the
-stores on disk already answer are built (``jason.workflows.checks.money``) and are no longer wanted; this family adds
-nothing to ``readers.JOBS``."""
+Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). The twenty-six reads the
+stores on disk already answer are built (``jason.workflows.checks.money``) and are no longer wanted; the checks left are
+the ones no store answers safely (each entry says why). This family adds nothing to ``readers.JOBS``."""
 
 
 # --- a table of rows, assembled into a definition ---------------------------------------------------------------------
@@ -309,22 +302,27 @@ def _monthly_review_rows() -> tuple[_Row, ...]:
              clock=_duty("CIV 5500(a)", "review a current reconciliation on a monthly basis, operating and reserve (CIV 5500(a), (b))"),
              why="The read says which month each account is reconciled through and counts the open items. Whether it is 'current' is "
                  "the reviewer's judgment, not jason's."),
-        _row("stmt", "Latest bank statements on file", P, TR, repeat=Repeat.PER_ITEM, command="jason library",
-             record="the statement filed for each account for the month, or none filed",
+        _row("stmt", "Latest bank statements on file", C, JA, repeat=Repeat.PER_ITEM, command="jason library",
+             record="the statement filed for each account for the month, or none filed", check=named_check("review-statements"),
              clock=_duty("CIV 5500(d)", "review the latest account statements from the financial institutions"),
-             why="One item an account." + _check("review-statements")),
+             why="One item an account. The read counts the statement files of the month in the library for each bank account the "
+                 "profile names; it never describes one (a bank statement is a confidential file)."),
         _row("bva", "Actual against budget", C, JA, "sync", command="jason budget", record="the variance by category and the snapshot's age",
              clock=_duty("CIV 5500(c)", "review actual operating revenues and expenses against the budget"),
              check=named_check("review-budget"),
              why="The read counts the categories off budget year to date; what the variance means is the reviewer's."),
-        _row("ie", "Income and expense statement, operating and reserve", P, TR, "sync",
+        _row("ie", "Income and expense statement, operating and reserve", C, JA, "sync",
              command="jason books pl; jason report treasurers-report period=previous-month --doc --yes",
              record="the statement read for the month", clock=_duty("CIV 5500(e)", "review an income and expense statement"),
-             why="" + _check("review-income-expense")),
-        _row("regs", "Check register, general ledger, delinquent receivable report", P, TR, "sync", command="jason books check; jason who-owes",
+             check=named_check("review-income-expense"),
+             why="The read states the month from the stored ledger, read after the month ended: category counts and totals in cents. "
+                 "Whether the statement is right is the reviewer's."),
+        _row("regs", "Check register, general ledger, delinquent receivable report", C, JA, "sync", command="jason books check; jason who-owes",
              record="the three reports read for the month (totals and counts only, no names)",
              clock=_duty("CIV 5500(f)", "review the check register, monthly general ledger, and delinquent assessment receivable reports"),
-             why="" + _check("review-registers")),
+             check=named_check("review-registers"),
+             why="The read draws the three reports from the stored ledger: its rows, the payments out of the bank accounts, and the "
+                 "units owing with the total, never a name."),
         _row("inv", "Invoice findings worked", P, TR, "attach", repeat=Repeat.PER_ITEM, skip=SKIP_TR, command="jason invoices",
              record="per finding: re-attached, re-categorized, or recovered",
              why="One item a payment; skipped with a reason ('not a problem'). A worked list, not a statutory item."),
@@ -475,9 +473,10 @@ def _fiscal_year_rows() -> tuple[_Row, ...]:
     return (
         _row("open", "Start the run; set the dates", P, M, record="the fiscal year end and the dated day set",
              why="The window comes from the notice catalog, not from a typed number. Leave room for one correction."),
-        _row("win", "The window is computed and fits", P, M, "open", clock=window_open, command="jason notices --catalog",
-             record="the window's first and last day, and the dated day inside it",
-             why="'Date not on record' is a state, a question for the manager, never a guess." + _check("fiscal-window")),
+        _row("win", "The window is computed and fits", C, JA, "open", clock=window_open, command="jason notices --catalog",
+             record="the window's first and last day, and the dated day inside it", check=named_check("fiscal-window"),
+             why="'Date not on record' is a state, a question for the manager, never a guess. The read computes the window from the "
+                 "notice catalog and the fiscal year's end, and checks the dated day against it."),
         # --- R: the reserve
         _row("R1", "The study is due", C, JA, "open", skip=SKIP_M, repeat=Repeat.PER_PERIOD, command="jason reserves --year Y",
              record="the latest study date and the next visit and review due", check=named_check("reserve-study-due"),
@@ -497,8 +496,10 @@ def _fiscal_year_rows() -> tuple[_Row, ...]:
         _row("B1", "Draft the pro forma operating budget", P, TR, "R5", command="jason budget; jason reserves --year Y",
              clock=ClockDef(ClockBasis.PERSON, "budget_meeting", 0, label="the board's date; no number is the law's"),
              record="next year's draft in PayHOA"),
-        _row("B2", "Reserve contribution matches the plan", P, TR, "B1 R5", command="jason reserves --year Y",
-             record="the budget's reserve line against the adopted plan", why="" + _check("reserve-plan-match")),
+        _row("B2", "Reserve contribution matches the plan", C, JA, "B1 R5", command="jason reserves --year Y",
+             record="the budget's reserve line against the adopted plan", check=named_check("reserve-plan-match"),
+             why="The read sets the budget's transfer to reserves beside the latest study's contribution for the year; the plan the "
+                 "board adopted (R5) is the board's to name, and a difference is for the treasurer."),
         _row("B3", "Does the budget raise regular assessments", B, TR, "B1", choices=(("increase", "B4 B5 B7"), ("no-increase", "")),
              record="the prior year's regular assessment against the new one, in cents",
              why="Not computed anywhere yet; a person answers until a read is registered."),
@@ -524,13 +525,17 @@ def _fiscal_year_rows() -> tuple[_Row, ...]:
              record="each item: who, asked on, due by, state, and the value or file",
              clock=_policy("the latest day an item can arrive and leave the days the next stage needs", "dated_day", 0),
              why="One item a figure or file; waive with a reason, never 'present'. The collect list is not built."),
-        _row("D4", "The insurance summary is complete", P, TR, "D3", command="jason policies --fetch",
-             record="each policy's term in force, and the gaps",
+        _row("D4", "The insurance summary is complete", C, JA, "D3", command="jason policies --fetch",
+             record="each policy's term in force, and the gaps", check=named_check("disclosure-insurance-summary"),
              clock=_law("CIV 5300(b)(9)", label="a summary of the association's insurance policies"),
-             why="Links to the insurance-renewal run." + _check("disclosure-insurance-summary")),
-        _row("D5", "The reserve summary and the 5570 form", P, TR, "R5", command="jason reserves --year Y",
+             why="Links to the insurance-renewal run. The read fails and lists the gaps when a policy has no term in force on the "
+                 "first day of the fiscal year."),
+        _row("D5", "The reserve summary and the 5570 form", C, JA, "R5", command="jason reserves --year Y",
              record="the figures from the latest study, based only on cash and cash equivalents",
-             clock=_law("CIV 5300(b)(2)", label="the reserve summary (CIV 5565, 5570)"), why="" + _check("disclosure-reserve-summary")),
+             check=named_check("disclosure-reserve-summary"),
+             clock=_law("CIV 5300(b)(2)", label="the reserve summary (CIV 5565, 5570)"),
+             why="The read finds the year's figures in the latest study; that they count cash and cash equivalents only is the "
+                 "treasurer's to confirm against the bank."),
         _row("D6", "The board's statements", D, SE, "B6 R5", repeat=Repeat.PER_ITEM, record="each statement entered by NAME: 'not yet adopted' or the meeting where adopted",
              clock=_law("CIV 5300(b)", label="the board's statements"),
              why="jason never writes the board's statement; a statement not yet adopted prints as such and a final build refuses."),
@@ -554,8 +559,9 @@ def _fiscal_year_rows() -> tuple[_Row, ...]:
              clock=_law("CIV 5320(a)", "dated_day", 0, "individual delivery of the full report or a summary, by the dated day"),
              why="One item a channel; skip never. A send after the window closed says so in the law's words."),
         _row("D13", "Delivery read; follow-ups", W, M, "D12", command="jason notices KEY --sync; jason followups",
-             clock=_policy("read delivery again after 24 hours"),
-             why="Ends when the window closes or a person notes the arrival; 'none on record' until read." + _arrives("disclosure-delivery-read")),
+             clock=_policy("read delivery again after 24 hours"), check=named_check("disclosure-delivery-read"),
+             why="Ends when the notice ledger holds the send with no attempt pending (counts of bounces, returns, and failures are said), "
+                 "when the window closes, or when a person notes the arrival; 'none on record' until read."),
         _row("D14", "Archive with proof", P, M, "D13", record="the sent packet, the map, the hashes, and the proof link"),
         # --- F: the reviewed financial statement
         _row("F1", "Does 5305 apply", B, TR, "open", choices=(("applies", "F2 F3 F4"), ("does-not-apply", "")),
@@ -608,17 +614,19 @@ def _reserve_borrowing_rows() -> tuple[_Row, ...]:
         _row("appr", "Prior written approval over the limit", D, SE, skip=SKIP_SE, record="the written approval on file",
              why="CIV 5502(a): no transfer over the limit without the board's prior written approval. Skipped under the limit "
                  "(the engine cannot say 'a legal step unless it does not apply', so the law clock is cited here, not set)."),
-        _row("note", "Notice of intent in a meeting notice", P, M, "spend", command="jason reserves --transfers",
-             record="the agenda 'Notice of Intent to Borrow' and the meeting notice",
+        _row("note", "Notice of intent in a meeting notice", C, JA, "spend", command="jason reserves --transfers",
+             record="the agenda 'Notice of Intent to Borrow' and the meeting notice", check=named_check("reserve-notice"),
              clock=_law("CIV 5515(a)", label="notice of the intent to consider the transfer in a board meeting notice (CIV 4920)"),
-             why="" + _check("reserve-notice")),
+             why="The read looks in the library for an agenda within 60 days before the transfer that carries the item. A document "
+                 "missing from the library may be in the board's files; the meeting notice itself is a person's to attach."),
         _row("fnd", "The board's written finding in the minutes", D, SE, "note", evidence=("file:payhoa/reserve-findings.json",),
              command="POST /api/write/reserve-findings/<key>", record="the finding, recorded in the minutes",
              clock=_law("CIV 5515(c)", label="a written finding recorded in the board's minutes"), why="Skip never."),
         _row("rst", "Restore the money", W, TR, "fnd", command="jason reserves --transfers --fetch",
              clock=_law("CIV 5515(d)", "transfer_on", 365, "restored within one year of the date of the initial transfer"),
-             why="Keeps waiting past the day and says so; the repayment is a lead found by amount, and the resolution says which loan."
-                 + _arrives("reserve-restored")),
+             check=named_check("reserve-restored"),
+             why="Keeps waiting past the day and says so; the repayment is a lead found by amount, and the resolution says which loan. "
+                 "Ends when the ledger shows a transfer back that restores the amount, or when a person notes the arrival."),
         _row("late", "A delayed restoration", D, SE, "fnd", skip=SKIP_SE, record="the finding for a late restoration, supported by documentation",
              why="Only when late; the same notice as a transfer (CIV 5515(d)). Needs the finding, not the restoration, because the restoration "
                  "is what is late."),
@@ -652,24 +660,30 @@ def _insurance_renewal_rows() -> tuple[_Row, ...]:
                  "renewal is not blocked."),
         _row("quote", "Gather the agent's proposals", P, M, "due", command="jason gmail --sync; jason mail",
              record="the proposals in the library or mail", why="Gmail headers are leads."),
-        _row("min", "Required limits and coverages", P, M, "quote", command="jason policies",
-             record="the findings against the required limits",
-             clock=_law("CIV 5800", label="the required coverages and limits (CIV 5800, 5805, 5806)"), why="" + _check("insurance-limits")),
+        _row("min", "Required limits and coverages", C, JA, "quote", command="jason policies",
+             record="the findings against the required limits", check=named_check("insurance-limits"),
+             clock=_law("CIV 5800", label="the required coverages and limits (CIV 5800, 5805, 5806)"),
+             why="The read counts the findings of the policy report against the required limits by severity and passes when the "
+                 "declarations were read, so the limits could be weighed. A shortfall does not block the decision: it is what the "
+                 "board weighs when it decides."),
         _row("dec", "Decide the renewal", D, SE, "quote min", command="POST /api/write/insurance-renewals/<number>",
              record="the decision (renew as quoted, renew with changes, re-bid, change carrier, let lapse), decidedOn, by, premium, limitsChanged",
              why="Once per term; skip never. The board decides; jason buys nothing."),
         _row("bind", "Confirm the new term is bound", P, M, "dec", command="jason policies --fetch; jason insurance",
              record="the declarations, the premium paid or financed, and the policy sheet updated", why="standing: next term paid."),
-        _row("chg", "Did coverage change or lapse", B, M, "dec bind", choices=(("changed", "mem"), ("unchanged", "")),
-             record="memberNoticeNeeded, and the term against the term before",
-             why="A fact jason will read; a person answers until a read is registered." + _check("insurance-changed")),
+        _row("chg", "Did coverage change or lapse", B, JA, "dec bind", choices=(("changed", "mem"), ("unchanged", "")),
+             record="memberNoticeNeeded, and the term against the term before", check=named_check("insurance-changed"),
+             why="A fact jason reads: the board's recorded decision (memberNoticeNeeded) and the declarations' term against the term "
+                 "before (a lapse not replaced, a reduced limit, or a higher deductible, as CIV 5810 names them). It chooses "
+                 "changed or unchanged only with the decision on record."),
         _row("mem", "Notice to members", P, M, "chg", command="jason notices", record="the ledger row insurance-change",
              clock=_law("CIV 5810", label="individual notice as soon as reasonably practicable (no number: a held question); for a nonrenewal where replacement will not be in effect, immediately"),
              why="Only when coverage changed or lapsed."),
-        _row("sum", "Feed the summary", P, M, "bind", repeat=Repeat.PER_PERIOD, command="jason packet annual-disclosures --year Y",
-             record="insurance_rows for the fiscal year",
+        _row("sum", "Feed the summary", C, JA, "bind", repeat=Repeat.PER_PERIOD, command="jason packet annual-disclosures --year Y",
+             record="insurance_rows for the fiscal year", check=named_check("insurance-summary"),
              clock=_law("CIV 5300(b)(9)", label="the insurance summary in the annual budget report"),
-             why="Links into the fiscal-year run (D4)." + _check("insurance-summary")),
+             why="Links into the fiscal-year run (D4). The read fails and lists the gaps when the policy has no term in force on the "
+                 "first day of the fiscal year."),
     )
 
 
@@ -721,7 +735,8 @@ def _county_tax_rows() -> tuple[_Row, ...]:
              clock=_policy("a plan's max age is 6 hours: the kind's max_age_hours"),
              why="The county-tax source must match one receipt, one bill, and one PDF; a receipt that paid several bills is no match and a "
                  "person decides." + _job("bill-dry-run")),
-        _row("cls", "Close the year's installments", P, TR, "att", record="balances zero per parcel", why="" + _check("tax-years-closed")),
+        _row("cls", "Close the year's installments", C, JA, "att", record="balances zero per parcel", check=named_check("tax-years-closed"),
+             why="The read fails and counts the bills still showing a balance, in cents, naming a parcel by its last four characters."),
     )
 
 

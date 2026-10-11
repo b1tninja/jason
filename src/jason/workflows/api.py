@@ -27,7 +27,7 @@ from typing import Any, Callable, Iterable, Mapping
 from jason.workflows import definitions, fold, resume as resume_mod, steps, store
 from jason.workflows.resume import Readers
 from jason.workflows.types import (
-    ClockView, DateView, EventKind, Gates, GateVerdict, Link, RunChanged, RunState, RunView, StepAsk, StepRefused,
+    ClockView, DateView, EventKind, Gates, GateVerdict, GroupView, Link, RunChanged, RunState, RunView, StepAsk, StepRefused,
     StepView, Workflow, WorkflowError,
 )
 
@@ -53,8 +53,11 @@ def _view(run: store.Run, wf: Workflow, today: date, readers: Readers | None) ->
 # --- dicts ----------------------------------------------------------------------------------------------------------
 
 def _clock(c: ClockView) -> dict[str, Any]:
-    return {"key": c.key, "basis": c.basis.value, "due": c.due, "label": c.label, "cite": c.cite, "status": c.status,
-            "days": c.days, "step": c.step}
+    out = {"key": c.key, "basis": c.basis.value, "due": c.due, "label": c.label, "cite": c.cite, "status": c.status,
+           "days": c.days, "step": c.step}
+    if c.item:
+        out["item"] = c.item
+    return out
 
 
 def _step(s: StepView) -> dict[str, Any]:
@@ -62,7 +65,23 @@ def _step(s: StepView) -> dict[str, Any]:
             "reason": s.reason, "by": s.by, "at": s.at, "record": s.record, "blockedBy": list(s.blocked_by),
             "changed": [dict(c) for c in s.changed], "items": [{"item": i, "state": st.value} for i, st in s.items],
             "choice": s.choice, "roles": [r.value for r in s.roles] or [s.role.value], "na": s.na,
-            "children": list(s.children)}
+            "children": list(s.children), **_extra_step(s)}
+
+
+def _extra_step(s: StepView) -> dict[str, Any]:
+    """What round three adds to a step row, only when there is something to add: the step that remedies a failed check, and how
+    many items are in each state."""
+    out: dict[str, Any] = {}
+    if s.remedy:
+        out["remedy"] = s.remedy
+    if s.item_counts:
+        out["itemCounts"] = {st.value: n for st, n in s.item_counts}
+    return out
+
+
+def _group(g: GroupView) -> dict[str, Any]:
+    return {"key": g.key, "title": g.title, "steps": list(g.steps), "state": g.state.value, "done": g.done, "total": g.total,
+            "expanded": g.expanded, "current": g.current}
 
 
 def _slot(d: DateView) -> dict[str, Any]:
@@ -84,6 +103,11 @@ def view_dict(view: RunView, run: store.Run | None = None) -> dict[str, Any]:
            "links": [_link(l) for l in view.links], "orphans": list(view.orphans), "children": list(view.children),
            "pastLaw": list(view.past_law), "dateSlots": [_slot(d) for d in view.date_slots],
            "openSlots": [d.name for d in view.date_slots if d.settable]}
+    if view.groups:
+        out["groups"] = [_group(g) for g in view.groups]
+    named = {k: list(v) for k, v in view.item_sets.items() if k}
+    if named:
+        out["itemSets"] = named
     if run is not None:
         out["torn"] = run.torn
         out["corrupt"] = run.corrupt
@@ -317,6 +341,17 @@ def arrived(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_o
                expect=expect, today=today, at=at, readers=readers)
 
 
+def supply_items(data_dir: Path | str, run_id: str, item_set: str, items: Iterable[Any], by: str, *,
+                 roles_of: Callable[[str], Iterable[Any]] | None = None, record: str = "", readers: Readers | None = None,
+                 expect: int | None = None, at: str | None = None, today: date | None = None) -> dict[str, Any]:
+    """Give a named item set (``""`` is the run's own) more items while the run goes. Each item is an opaque id, or
+    ``{"id": ..., "dates": {slot: "YYYY-MM-DD"}}`` for the dates its own clocks read (those need a ``record``). The log gets a
+    ``note`` event whose detail has ``items_supplied``; the steps that repeat over the set then take the items."""
+    return _do(data_dir, run_id, by, lambda wf, v: steps.supply_items_act(wf, v, item_set=item_set, items=items, by=by,
+                                                                          roles_of=roles_of, record=record),
+               expect=expect, today=today, at=at, readers=readers)
+
+
 def skip(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
          reason: str = "", item: str = "", readers: Readers | None = None, expect: int | None = None, at: str | None = None,
          today: date | None = None, gates: Gates | None = None) -> dict[str, Any]:
@@ -433,4 +468,4 @@ def reindex(data_dir: Path | str, *, today: date | None = None) -> dict[str, Any
 
 
 __all__ = ["arrived", "attest", "cancel", "not_applicable", "note", "open_run", "pause", "pending_first", "reindex", "reopen",
-           "resume_run", "runs", "set_date", "show", "skip", "spawned", "start", "verify", "view_dict"]
+           "resume_run", "runs", "set_date", "show", "skip", "spawned", "start", "supply_items", "verify", "view_dict"]

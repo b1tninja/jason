@@ -6,7 +6,8 @@
 
 Pure data. It imports only the engine's types, ``named_check``, and the standard library, and it adds nothing to
 ``readers.CHECKS`` or ``readers.JOBS``. A step is the kind the page's table gives it only when its read, job, or approvals
-kind already exists:
+kind already exists (the reads written so far, among them ``clock-authority-recited``, ``references-fill``, ``notice-elements``,
+``kept-text-unchanged`` and ``form-stale``, are in ``jason.workflows.checks.members``):
 
 - a ``plan`` step names a registered approvals kind (``owner-info-tags``, ``payhoa-mailroom-send``);
 - a ``job`` step names a registered job, and a ``check`` step a registered read (``outstanding-read``, or one of the members'
@@ -219,9 +220,10 @@ def respond_request() -> Workflow:
              why="A made-up due day is never shown."),
         step("2", "A kind read as other: decide its kind", P, M, ("1",), skip=by_manager, record="the kind, with a reason",
              why="Skipped unless the kind was read as other; a kind read wrongly is reopened here and the clock is recomputed."),
-        step("3", "Read the clock's authority: the words first, then any reading, labeled", P, M, ("1",), command="jason cite AUTHORITY",
-             becomes="check clock-authority-recited", record="the authority recited, with its citation",
-             why="Recite the operative words with their citation before any reading, and label whose reading it is."),
+        step("3", "Read the clock's authority: the words first, then any reading, labeled", C, JASON, ("1",),
+             check=named_check("clock-authority-recited"), command="jason cite AUTHORITY",
+             why="The read finds the authority's words on disk (a statute on the shelf, a clause in the document as kept). Recite the "
+                 "operative words with their citation before any reading, and label whose reading it is."),
         step("4", "No rule sets a clock for this kind", D, S, ("3",), skip=SkipRule((S, M)), record="the board item that holds the question",
              clock=ClockDef(ClockBasis.PROPOSED_POLICY, cite="CIV 4350",
                             label="the law and the documents are silent: a written policy is proposed for the board"),
@@ -348,18 +350,18 @@ def owner_document() -> Workflow:
     steps = (
         step("1", "Write it once in Markdown under data/drafts, pictures as ![alt](file){width=560}", P, ANY, sop=f"{key}#1",
              record="the source file and its hash", why="Lesson one-source-per-document: the Doc, the PDF, and the email all come from this file."),
-        step("2", "Check the references: every {QUOTE:key#n} and {CITE:key#n} fills", P, ANY, ("1",), command="jason section-refs --check FILE",
-             sop=f"{key}#2", becomes="check references-fill", repeat=Repeat.PER_PERIOD, record="the references resolved, with their digests",
+        step("2", "Check the references: every {QUOTE:key#n} and {CITE:key#n} fills", C, JASON, ("1",),
+             check=named_check("references-fill"), command="jason section-refs --check FILE", sop=f"{key}#2", repeat=Repeat.PER_PERIOD,
              why="A quote noted 'check before sending' is read against the recorded copy. Again after each edit."),
         step("3", "Where it states what a provision requires, read the provision as cited", P, ANY, ("2",),
              command="jason cite EXPRESSION --cited-by --md", sop=f"{key}#3", skip=by_author,
              record="the citation, with the words in force and any reading labeled and whose",
              clock=ClockDef(ClockBasis.DOCUMENTS, label="the law or the documents the text cites"),
              why="Skipped, with the reason, when it states no requirement."),
-        step("4", "Is it a notice the Act requires? If so, check its elements", P, ANY, ("2",),
-             command="jason notices REQUIREMENT --catalog", becomes="check notice-elements", skip=by_author,
-             record="each element present, supplied by a token, enclosed, missing, or not checkable by words",
-             why="Skipped, with the reason, when it is not a required notice. A required notice is handed to a notice-delivery run in step 9."),
+        step("4", "Is it a notice the Act requires? If so, check its elements", C, JASON, ("2",),
+             check=named_check("notice-elements"), command="jason notices REQUIREMENT --catalog", skip=by_author,
+             why="Each element is present, supplied by a token, enclosed, missing, or not checkable by words. Skipped, with the reason, "
+                 "when it is not a required notice. A required notice is handed to a notice-delivery run in step 9."),
         step("5", "Make its Doc on the letterhead", P, ANY, ("3",), command="jason broadcast FILE.md --to-doc --yes", sop=f"{key}#4",
              becomes="kind google-doc", repeat=Repeat.PER_PERIOD, record="the Doc id; the Markdown's hash matches the hash the Doc was made from",
              why="Again after each edit; a Doc edited after approval returns the letter to saved."),
@@ -378,8 +380,8 @@ def owner_document() -> Workflow:
              spawns="notice-delivery",
              why="The text is kept under data/notices/KEY with its hash. The delivery is its own run (notice-delivery, with a "
                  "mailroom-letter run for a mailing)."),
-        step("10", "Read the kept text against the file", P, ANY, ("9",), command="jason cite jason://notice/KEY",
-             becomes="check kept-text-unchanged", record="unchanged, or the difference noted",
+        step("10", "Read the kept text against the file", C, JASON, ("9",), check=named_check("kept-text-unchanged"),
+             command="jason cite jason://notice/KEY",
              why="An edit since the text was kept means the words above are not the words sent."),
     )
     phases = _phases(key, ("write", "Write", ("1", "2", "3", "4")), ("make", "Make", ("5", "6", "7", "8")), ("send", "Send", ("9", "10")))
@@ -395,8 +397,8 @@ def form_campaign() -> Workflow:
     steps = (
         step("1", "Is the form offered? Tier, status, recitals, handler, marker", C, JASON, check=named_check("form-offered"),
              command="jason form-library --check [--tier T]", why="On open."),
-        step("2", "Stale against an amendment?", P, M, ("1",), command="jason form-library --check; jason law-history",
-             becomes="check form-stale", spawns="form-library-review", record="'stale: read the amendment', or none",
+        step("2", "Stale against an amendment?", C, JASON, ("1",), check=named_check("form-stale"),
+             command="jason form-library --check; jason law-history", spawns="form-library-review",
              why="A stale form opens a form-library-review run; the statute's text on the shelf is the authority."),
         step("3", "Choose the handler", B, M, ("1",),
              choices=(Choice("owner-information", (f"{key}.6.6", f"{key}.6.7")), Choice("response-clock", ())),
