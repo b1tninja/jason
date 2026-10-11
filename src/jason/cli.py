@@ -3130,6 +3130,20 @@ def cmd_library(args: argparse.Namespace) -> int:
 
     from jason.community.library import coverage, library_markdown
 
+    if getattr(args, "ocr_doc", ""):
+        from jason.mcp.county import _data_dir
+        from jason.tasks import library_ocr
+
+        if not args.yes or not (args.by or "").strip():
+            print("jason library --ocr-doc: needs --yes and --by NAME (the job is a named person's act)", file=sys.stderr)
+            return 2
+        try:
+            res = library_ocr.run(Path(_data_dir(None)), args.ocr_doc, args.by.strip())
+        except (RuntimeError, OSError) as exc:
+            print(f"jason library --ocr-doc: {exc}", file=sys.stderr)
+            return 1
+        print(f"ocr {res['libraryId']}: " + (f"read {res['chars']} chars with {res['engine']}" if res['read'] else f"skipped ({res['why']})"))
+        return 0
     if args.vision:
         from jason.community.ocr import OllamaVisionOcr
         from jason.tasks.library import distinct, load, vision_read
@@ -4522,6 +4536,10 @@ def build_parser() -> argparse.ArgumentParser:
     library.add_argument("--vision", default="", help="Read these kinds' files (comma-separated) again with the local vision model, as a second text layer")
     library.add_argument("--pages", type=int, default=0, help="With --vision, read only the first N pages (default: every page)")
     library.add_argument("--limit", type=int, default=0, help="With --vision, at most this many files")
+    library.add_argument("--ocr-doc", default="", metavar="ID", help="OCR one library file with the engines on this machine and keep its words "
+                         "(the job jason split --apply --filing library queues; needs --yes --by NAME)")
+    library.add_argument("--by", default="", help="With --ocr-doc, who is doing this")
+    library.add_argument("--yes", action="store_true", help="With --ocr-doc, make the change")
     library.set_defaults(func=cmd_library)
 
     digest = sub.add_parser("digest", help="What the board should know now: what recorded, owners in default, releases owed, the association's liens")

@@ -20,11 +20,12 @@
   - ``suggest``: run the cheap rule pass again (off when ``split.suggest_enabled`` is off); the model pass is not built;
   - ``review``: the dry run of an apply;
   - ``apply`` ``{"dryRun": true (the default), "confirm": false, "parts": [...], "drop": [pages], "keepCopies": false, "filing": "",
-    "rotate": ...}``: **a dry run unless** ``dryRun`` is false **and** ``confirm`` is true, as the signed-in person; it writes through the
+    "rotate": ..., "ocr": true}``: **a dry run unless** ``dryRun`` is false **and** ``confirm`` is true, as the signed-in person; it writes through the
     record intake's one split writer. The original is never changed. ``filing`` is ``held`` (every part kept in jason's store), ``library``
     (every part given to the library intake; one it cannot file is kept held, with the reason) or ``slots`` (each part into the slot it
     names); a part's own ``filing`` (``held``, ``library``, ``slot``) overrides it, and with neither a part with a slot fills it and any
-    other is held. ``rotate`` turns pages **in the new files only**: ``{"61": 90, "66": "fix"}`` (degrees clockwise, or ``fix`` for the
+    other is held. A part filed to the library with no text layer gets a background OCR job in the person's name (``"ocr": false``
+    opts out; at most ``split.ocr_queue_max`` per apply); the answer carries ``ocrQueued``, ``ocrSkipped``, ``notQueued``. ``rotate`` turns pages **in the new files only**: ``{"61": 90, "66": "fix"}`` (degrees clockwise, or ``fix`` for the
     degrees jason measured the page's text needs), or ``"sideways"`` for every page measured sideways. ``review`` takes the same;
   - ``decline`` ``{"dryRun": false}``.
 
@@ -156,7 +157,8 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             if act == "review":
                 return {"ok": True, "act": act, "review": ss.review(sid, **kw)}
             dry = body.get("dryRun", True) is not False
-            out = ss.apply(sid, by=by, confirm=bool(body.get("confirm")) and not dry, dry_run=dry, **kw)
+            out = ss.apply(sid, by=by, confirm=bool(body.get("confirm")) and not dry, dry_run=dry,
+                          ocr=body.get("ocr") is not False, **kw)
             return {"ok": True, "act": act, **out}
         if act == "suggest":
             return {"act": act, **ss.suggest(sid, by=by, community=community, root=root)}

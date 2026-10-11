@@ -867,12 +867,14 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
 def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop: list[int] | None = None, keep_copies: bool = False,
           confirm: bool = False, dry_run: bool | None = None, community: Any = None, root: Path | None = None,
           profile: str | None = None, filing: str = "", rotate: Any = None,
-          library_filer: Callable[..., dict[str, dict[str, Any]]] | None = None) -> dict[str, Any]:
+          library_filer: Callable[..., dict[str, dict[str, Any]]] | None = None, ocr: bool = True) -> dict[str, Any]:
     """Write the new files. ``filing`` (held, library, or slots; see ``review``) and ``rotate`` (pages turned in the new files only) are
     the person's choices and are shown in the dry run; ``library_filer`` is the library intake (a test passes a fake). A **dry run unless a person confirms** (``confirm=True``): it returns the review and writes nothing. On
     confirm the session becomes ``confirmed`` (who, when, the final boundary list), each part is written through the record
     intake's writer in page order, and the session becomes ``applied``. A part that fails leaves the session ``confirmed`` with the
-    parts already written recorded, and the apply can be run again for the rest. Nothing is deleted; the original is not touched."""
+    parts already written recorded, and the apply can be run again for the rest. Nothing is deleted; the original is not touched.
+    ``ocr`` (default on; ``--no-ocr`` turns it off) queues one background OCR job for each part filed to the library that has no text
+    layer, in the person's name, up to ``split.ocr_queue_max``; the result carries ``ocrQueued``, ``ocrSkipped``, and ``notQueued``."""
     from jason.tasks import record_upload
 
     root = _root(root)
@@ -885,7 +887,13 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
     plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile, filing=filing,
                   rotate=rotate)
     if dry_run:
-        return {"dryRun": True, "would": {"act": "apply", "id": sid, "by": person, "files": plan["files"]}, "review": plan,
+        would: dict[str, Any] = {"act": "apply", "id": sid, "by": person, "files": plan["files"]}
+        if ocr:
+            n_lib = sum(1 for r in plan["parts"] if r["action"] == "library")
+            cap = int(limits.value("split.ocr_queue_max", community=community))
+            would["ocr"] = {"jobsAtMost": min(n_lib, cap), "notQueuedAtMost": max(0, n_lib - cap), "limit": cap,
+                            "note": "a part with a text layer, or already read, is skipped when the jobs are queued"}
+        return {"dryRun": True, "would": would, "review": plan,
                 "note": "A dry run: nothing was written. Confirm as a person (--yes) to write the files."}
     if not plan["totalsOk"]:
         raise ValueError("; ".join(plan["problems"]))
@@ -965,6 +973,18 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
         elif slotted:
             out["reading"] = "the new files are not read yet (the split.auto_read limit is off): jason records --read SLOT for each"
         out["autoRead"] = auto
+        out["ocr"] = bool(ocr)
+        out.setdefault("ocrQueued", [])
+        out.setdefault("ocrSkipped", [])
+        if ocr and out["library"]:
+            from jason.tasks import library_ocr
+
+            got = library_ocr.queue(root, [m.get("libraryId", "") for m in out["library"]], person, community=community)
+            out["ocrQueued"], out["ocrSkipped"] = got["ocrQueued"], got["ocrSkipped"]
+            out["notQueued"] = list(out.get("notQueued") or []) + got["notQueued"]
+        elif out["library"]:
+            out["notQueued"] = list(out.get("notQueued") or []) + [
+                {"libraryId": m.get("libraryId", ""), "why": "OCR was turned off for this split (--no-ocr)"} for m in out["library"]]
         if out["held"]:
             out["notQueued"] = [{"segment": m["segment"], "why": "held with no slot yet; read it when it is filed"} for m in out["held"]]
         session.status = "applied"
@@ -974,7 +994,7 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
         save(root, session)
     _history(root, {"profile": profile, "act": "split-apply", "session": sid, "by": person, "files": len(made), "dropped": len(plan["dropped"]),
                     "slots": sorted({m["slot"] for m in made if m.get("slot")}), "pins": [m["pin"] for m in made if m.get("pin")],
-                    "filing": _filing_word(filing) or "as labelled", "library": len(out["library"]), "rotatedPages": len(plan["rotated"]),
+                    "filing": _filing_word(filing) or "as labelled", "library": len(out["library"]), "ocrQueued": len(out["ocrQueued"]), "rotatedPages": len(plan["rotated"]),
                     "boundaries": session.confirmed.get("boundaries", "")})
     return out
 

@@ -328,6 +328,8 @@ The sixth cut's reconciliation ([console/reconciliation-sixth-cut.md](console/re
 
 **Still out.** The Google Picker (phase 2b); undoing a `current`; a limit row for the most files in one pick.
 
+**Library parts are read by OCR in the background (built 2026-10-10).** A split part filed to the library (`--filing library`) is taken in by its text layer only; `apply` then queues one local-lane job per part that has no words, in the confirming person's name (`jason library --ocr-doc ID --yes --by NAME`), skipped by file hash when already read, opt-out `--no-ocr`, at most `split.ocr_queue_max` an apply. See [pdf-splitter.md](pdf-splitter.md), section 9.5.
+
 ## Limits
 
 A decision that a person might reasonably set differently is a **limit** (`jason.limits`): a record with its key, default, minimum, maximum, unit, and words, never a constant in a task. `jason limits` lists them with the value in force and its source; it writes nothing. The source, first match: `env` (`JASON_LIMIT_<KEY>`, `.` as `_`, in the process environment), `instance` (the same name in the project's `.env` or the user config), `community` (the profile's `Community.limits()`, a mapping), `default`. A value outside the range is held to it (`clamped`) and one that does not read is skipped, so a setting cannot switch a guard off. A key document's writer reads the same limit, and holds a record upload to the smaller of its reading and the profile's.
@@ -336,6 +338,7 @@ A decision that a person might reasonably set differently is a **limit** (`jason
 |---|---|---|---|
 | `upload.max_bytes` | 100 MB | 1 MB to 500 MB | The largest file uploaded from the computer (a record slot or a key document) |
 | `split.auto_read` | on | on or off | After a confirmed split, a read-back job is queued for each new part |
+| `split.ocr_queue_max` | 25 | 1 to 200 | The most OCR jobs one split queues for the parts it files to the library |
 
 ## Open decisions
 

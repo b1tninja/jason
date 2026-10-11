@@ -7,7 +7,7 @@
     jason split SESSION --accept all|g12,g20 | --reject g12 | --mark 30 | --unmark 30 | --undo | --redo   (each: --by NAME --yes)
     jason split SESSION --review [--part s2=SLOT[@PERIOD][#ENTRY] ...] [--drop 7,29]     counts, collisions, duplicates; writes nothing
     jason split SESSION --flags                           per-segment flags before the review (disk only)
-    jason split SESSION --apply --yes --by NAME [--part ...] [--drop ...] [--filing held|library|slots] [--rotate 61=90,66=fix|sideways]    write the files (the only command that writes PDFs)
+    jason split SESSION --apply --yes --by NAME [--part ...] [--drop ...] [--filing held|library|slots] [--no-ocr] [--rotate 61=90,66=fix|sideways]    write the files (the only command that writes PDFs)
     jason split SESSION --decline --yes --by NAME
     jason split --purge [SESSION | --all-drafts] --yes --by NAME     drop drafts with their copy and page pictures (never an original)
     jason split --sweep [--yes]                           the retention sweep (split.draft_days)
@@ -225,7 +225,7 @@ def cmd_split(args: argparse.Namespace) -> int:
             final["flags"] = split_flags.flags(sid, community=community, root=root)
         if args.apply:
             res = ss.apply(sid, by=who, parts=parts, drop=drop, keep_copies=args.keep_copies, confirm=yes, community=community, root=root,
-                           filing=args.filing or '', rotate=args.rotate or None)
+                           filing=args.filing or '', rotate=args.rotate or None, ocr=not getattr(args, "no_ocr", False))
             final["apply"] = res
         if args.json:
             from jason.tasks import split_session as _s
@@ -249,6 +249,10 @@ def cmd_split(args: argparse.Namespace) -> int:
                       f"{', ' + str(len(a['library'])) + ' into the library,' if a['library'] else ''} and held {len(a['held'])}; "
                       f"skipped {len(a['skipped'])}{'; turned ' + str(len(a['rotated'])) + ' pages' if a['rotated'] else ''}"
                       f"{'; ' + str(len(a['failed'])) + ' failed' if a['failed'] else ''}")
+                if a.get("ocrQueued") or a.get("ocrSkipped"):
+                    print(f"OCR: {len(a['ocrQueued'])} job(s) queued, {len(a['ocrSkipped'])} skipped (jason worker --once)")
+                for n in a.get("notQueued") or ():
+                    print(f"  not queued {n.get('segment') or n.get('libraryId') or ''}: {n['why']}")
                 for f in a["failed"]:
                     print(f"  failed {f['segment']}: {f['why']}")
         elif not final.get("review"):
@@ -299,6 +303,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--part", action="append", metavar="SEGMENT=SLOT[@PERIOD][#ENTRY]", help="assign a segment to a record slot, as `jason records --split`")
     p.add_argument("--filing", choices=("held", "library", "slots"), help="how the parts are filed: held in jason's store, taken in by the library "
                    "intake, or each into the slot it names (without it, a part with a slot fills it and any other is held)")
+    p.add_argument("--no-ocr", action="store_true", help="with --filing library: do not queue OCR for the parts filed to the library "
+                   "(default: one background job a part, in your name, at most split.ocr_queue_max)")
     p.add_argument("--rotate", metavar="PAGE=DEGREES,...|sideways", help="turn pages in the new files only: 61=90,66=fix (degrees clockwise, or fix for "
                    "the measured turn), or `sideways` for every page measured sideways; the original is never changed")
     p.add_argument("--flags", action="store_true", help="the flags of each segment before the review (blank only, near-duplicate, sideways, over the "

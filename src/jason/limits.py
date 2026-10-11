@@ -252,6 +252,14 @@ LIMITS: tuple[Limit, ...] = (
           when_hit="This split would write {amount} files; one split writes at most {limit}. Nothing was written. Merge some "
                    "segments, or ask your community's administrator to raise the limit (the most allowed is {ceiling}).",
           applies_to=("tasks.split_session.apply",), restart="next_job"),
+    Limit("split.ocr_queue_max", 25, 1, 200, "count",
+          "The most OCR jobs one confirmed split queues for the parts it files to the library.",
+          kind="count", why="OCR of a scan keeps the machine busy for minutes a file; a split that files hundreds of parts would "
+                            "hold it for hours, so the rest wait for a person to ask.",
+          when_hit="This split filed {amount} parts that need OCR; one split queues at most {limit}. The rest were filed but not "
+                   "read: queue them with jason library --ocr-doc ID, or ask your community's administrator to raise the limit "
+                   "(the most allowed is {ceiling}).",
+          applies_to=("tasks.library_ocr.plan",), restart="next_job"),
     Limit("split.suggest_enabled", True, None, None, "switch",
           "Whether the splitter offers suggested first pages. Off: a person marks each first page; the editor still works.",
           kind="switch", why="Suggestions are guesses from the pages' shapes; a community that wants none can turn them "
