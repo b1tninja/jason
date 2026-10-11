@@ -56,6 +56,8 @@ Two columns on a wide screen: the **rail** (left) and the **step** (right). Abov
 | `wait` | what it waits for, the date and its basis, what arrived | "Note an arrival" where the definition allows a person's note |
 | `branch` | the fact it reads and the path chosen, or the question for a person | "Answer" (`Confirm`) where the fact is a person's |
 
+**Where the work happens** (spec: [screens/work.md](screens/work.md), "Where a step's work happens"): the panel embeds reads (the same components as the owning screens, read only) and links writes; only a `person` step's attestation is written in place. Draw an embedded funnel in a step's "Look at" area and the "Part of run NAME, step N" banner on an owning screen.
+
 A step that is not the viewer's shows "Waiting on the treasurer" and no act. A step `blocked` names the step or fact it waits on. A step `failed` shows the message and who may resolve it; nothing retries by a click.
 
 ### C4. Start a run
@@ -128,11 +130,11 @@ These are not the design's: who may skip a step, whether the board approves a de
 |---|---|---|---|---|---|
 | Owner information 2099 | `owner-info-cycle` | 9 of 25, read the returned forms (manager) | Yours | Oct 23, `documents` | The long run; a child notice-delivery run done and a Mailroom run waiting |
 | Bill attach: Example Electric, Oct | `bill-attach` | 4 of 7, approve the attachments (treasurer) | Yours | Oct 14, `person` | A `plan` step |
-| Hearing: 123 Main St | `hearing` | 6, the member's reply | Waiting on others | Nov 2, `documents` | A wait on an owner; no name beyond the address |
+| Hearing H-7 | `hearing` | 6, the member's reply | Waiting on others | Nov 2, `documents` | A wait on an owner; no name beyond the address |
 | Annual backflow test | `backflow-annual` | 3, the vendor's report | Waiting on a clock | Dec 1, `counterparty` | A date the vendor stated |
 | Rule change: quiet hours | `rule-change` | 13, the board decides | The board | Nov 14, `law` | A `decision` step; the secretary records |
 | Election 2099 | `election` | 4, appoint the inspector | The board | Oct 2, `law`, **past** | A run past a legal date |
-| Annual inspection: fire alarm | `inspection-period` | 5, a deficiency run is open | Waiting on others | Nov 30, `documents` | A parent waiting on a child run |
+| Annual inspection: fire alarm | `life-safety-period` | 5, a deficiency run is open | Waiting on others | Nov 30, `documents` | A parent waiting on a child run |
 
 Run states to draw: `draft` (being set up; no clock runs), `active`, `paused` (with a reason), `waiting`, `done`, `cancelled` (with a reason), `failed`.
 

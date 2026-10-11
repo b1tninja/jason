@@ -49,7 +49,7 @@ A run's list never carries an owner's contact details or an answer. A link is an
 | Bill attach: A. Utility, Oct  Step 4 of 7: Approve the attachments       due Oct 14     |
 |                                [your move: treasurer]                     [PERSON]       |
 | WAITING ON OTHERS                                                                        |
-| Hearing: 123 Main St          Step 6: The member's reply                   by Nov 2      |
+| Hearing H-7                   Step 6: The member's reply                   by Nov 2      |
 |                                [waiting on: the member]                   [DOCUMENTS]    |
 | WAITING ON A CLOCK                                                                       |
 | Annual backflow test          Step 3: The vendor's report                  Dec 1         |
@@ -142,6 +142,23 @@ Six bands. The rail and the step panel are the page; the others read from them.
 ## Components
 
 Built: `StageSteps`, `Findings`, `Command`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`. Specified, not yet built ([../handoff-admin-components.md](../handoff-admin-components.md)): `TerminalStep`, `AgeStamp`. To add: `DefinitionRow`, `DefinitionPage`, `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
+
+## Where a step's work happens
+
+One rule settles it for every family: **the run page embeds reads and links writes.** The run never repeats a write that another screen owns, and never holds a second copy of a screen's data.
+
+| The step needs | On the run page | Where the act happens |
+|---|---|---|
+| To look at something a screen already shows (a campaign funnel, the follow-ups band, an arrivals lane, a notice's six bands, a mailing's cost line, a register table) | The same component, fed by the same loader, **read only**, in the step panel's "Look at" area, cut to what the step needs (a filter, a count, the five nearest rows) | None here; a "Open in NAME" link goes to the owning screen already filtered |
+| A `person` step's act with no record of its own (read the forms, check the link as an owner, post the notice) | The instruction, the evidence, and the "Mark done" `Confirm` | **In place**: the attestation is the run's own write, recorded by name with its record |
+| A write another screen owns (record a decision, confirm a reading, record a posting in the ledger, confirm a deficiency) | A summary of its current state, read from that store, and a link | **On the owning screen.** When the store changes, the run's next open appends `applied` or the matching event, and the step reads done. "Mark done" is not offered for it |
+| A `plan` step | The approval's status and its item counts, from the approvals store | `#/approvals`: decided and applied there, never in the run |
+| A `decision` step | The motion and the decision record, once recorded | `#/decisions` (the secretary records it) |
+| A `job` step | The job's state and result, the command with Copy | A terminal, or the job queue |
+
+**Both ways.** A step links out to the owning screen at the right filter. An owning screen shows a one-line banner, "Part of run NAME, step N: TITLE", linking back, when its subject belongs to an open run. The banner is read from the run store and appears only to a viewer who may see the run.
+
+**Why this rule.** The approvals engine, the decisions store, the notice ledger, and each register already enforce their own two-person rules, fingerprints, and logs. Embedding their writes in a run would duplicate that enforcement or bypass it. Reading them in place keeps the run honest: its state is read from the stores, not remembered.
 
 ## Actions
 
