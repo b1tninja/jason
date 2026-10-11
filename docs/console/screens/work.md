@@ -2,6 +2,8 @@
 
 A new group, **Work**, with two screens: `#/work` (the runs that are open) and `#/work/<definition>/<id>` (one run) · phase 2, after the run store · CLI: `jason workflow` (to add) · model: [../../workflows-design.md](../../workflows-design.md), families: [../../workflows/README.md](../../workflows/README.md)
 
+The design brief for the design agent is [../design-brief-work.md](../design-brief-work.md).
+
 ## In the console
 
 None. The nearest are Today and the dock (a person's own tasks and deadlines), `#/approvals` (one kind of step: a plan awaiting a decision), `#/actions` (the board's items), and `#/followups` (dated actions). None follows a task from its start to its end across those parts. A run reads them and shows the result in one line of sight.
