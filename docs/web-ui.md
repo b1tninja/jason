@@ -17,8 +17,21 @@ cd ui && npm install && npm run build   # writes ui/dist
 jason-web                               # http://127.0.0.1:8080
 ```
 
-Development: `jason-web` in one terminal, `npm run dev` in `ui/` in another (Vite proxies `/api` to port 8080).
+Development: `jason-web` in one terminal, `npm run dev` in `ui/` in another (Vite proxies `/api` and `/auth`, Google sign-in's routes, to port 8080, or to `JASON_WEB_URL`). Through Vite the sign-in redirect
+URI is the dev server's, `http://localhost:5173/auth/google/callback`, which the Google client must list; without `/auth` proxied
+the "Sign in with Google" link lands on Vite's own `index.html` and sign-in never finishes.
 `npm test` runs the component tests; `pytest tests/test_web.py` runs the server's.
+
+### End-to-end tests (`e2e/`)
+
+`e2e/` is a Playwright suite that drives the console in a real headless browser. It has its own `package.json` (Playwright is not a
+`ui/` dependency) and never touches the shipped app: `e2e/serve_e2e.py` is a test-only launcher that builds the real
+`jason.web.app` with the pieces the Python tests use (a made-up roster as in `tests/webclient.py`, the made-up facts in
+`tests/fixtures/spec`, a throwaway data folder under `e2e/.run`, nothing reaching Keeper, Google, or PayHOA) and adds two routes to
+its own process, `/__e2e/sign-in` and `/__e2e/sign-out`, to put a roster person in the browser's session. No flag or route in
+`src/jason` skips sign-in. Run it with `npm --prefix ui run build`, then `cd e2e && npm install && npm run e2e` (README in `e2e/`).
+Every test fails on a console error, a request still pending when it ends, or a read asked more than three times, which is the
+guard against a refetch storm; the signed-out splitter test also asserts that a quiet page asks the server for nothing more.
 
 ## API
 

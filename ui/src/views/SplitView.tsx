@@ -3,7 +3,7 @@ import { Badge, Caveats, RemoteView, ScreenHeader, type Tone } from "../componen
 import type { GlyphName } from "../components/Glyph";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
-import { useSession } from "../lib/session";
+import { useSession, NO_PEOPLE } from "../lib/session";
 import { SplitEditor } from "./SplitEditor";
 import { realBackend, type ListAnswer, type OpenAnswer, type OpenRef, type SplitBackend } from "./splitApi";
 import { DemoBackend } from "./splitDemo";
@@ -126,7 +126,7 @@ function Drafts({ rows }: { rows: ListedSession[] }) {
  * a made-up 120-page draft that needs no server. Board only (officers, managers, administrators); never the owner view. */
 function SplitStart() {
   const r = useApi<ListAnswer>("/api/split-sessions");
-  const { me } = useSession([]);
+  const { me } = useSession(NO_PEOPLE);
   return (
     <div className="stack split-view">
       <ScreenHeader title="Split document" summary="Open a combined PDF, see its pages, and tap the first page of each document. jason can suggest starts; you decide. Nothing is written until you review and confirm, and the original is never changed." />

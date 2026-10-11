@@ -1,0 +1,15 @@
+{
+  "name": "jason-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "End-to-end tests of the console in a real browser, sign-in bypassed by a test-only launcher (README.md)",
+  "scripts": {
+    "build:ui": "npm --prefix ../ui run build",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

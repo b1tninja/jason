@@ -12,6 +12,10 @@ import { actAs, closePrivate, getJson, openPrivate, serverSession, signInHref, s
 export interface Person { name: string; role: string; approves: string[]; canApproveBoard: boolean }
 
 export const BOARD = "the board";
+/** The list a screen passes `useSession` when it needs only who is signed in, not the officers. One list for the page's life: a
+ * fresh `[]` each render would make `people` and `canApprove` new each render, and an effect that depends on either would run
+ * on every render and refetch without end. */
+export const NO_PEOPLE: readonly Person[] = Object.freeze([]);
 export const SESSION_KEY = "jason-console-user";
 
 /** Whether `person` may approve for `approver`: "the board" only through the president or the secretary, who record

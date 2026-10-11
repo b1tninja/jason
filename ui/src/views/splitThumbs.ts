@@ -54,6 +54,8 @@ export class ThumbLoader {
   private queue: Job[] = [];
   private inflight = new Map<string, AbortController>();
   private failed = new Map<string, string>();
+  private unwanted = new Set<string>();       // keys a detached picture asked for, to drop at the end of the commit unless asked for again
+  private sweeping = false;
   private center = 1;
   private dir: -1 | 0 | 1 = 0;
   private fast = false;
@@ -85,13 +87,23 @@ export class ThumbLoader {
     const set = this.byPage.get(entry.page);
     set?.delete(entry);
     if (set && set.size === 0) this.byPage.delete(entry.page);
-    for (const size of entry.sizes) {
-      const key = `${size}:${entry.page}`;
-      if (this.wanted(entry.page, size)) continue;
+    for (const size of entry.sizes) this.unwanted.add(`${size}:${entry.page}`);
+    // Not at once: React unmounts a cell and mounts its replacement in one commit (a mark above adds a band row and every row below
+    // takes a new key), so a request is dropped only if nothing has asked for the picture again by the end of that commit. Dropping it
+    // at once aborted every request in flight and asked for it again, and slow pictures never finished.
+    if (!this.sweeping) { this.sweeping = true; queueMicrotask(() => this.sweep()); }
+  }
+
+  private sweep(): void {
+    this.sweeping = false;
+    for (const key of this.unwanted) {
+      const [size, page] = [key.slice(0, key.indexOf(":")) as Size, Number(key.slice(key.indexOf(":") + 1))];
+      if (this.wanted(page, size)) continue;
       this.queue = this.queue.filter((j) => j.key !== key);
       const ctl = this.inflight.get(key);
       if (ctl) { ctl.abort(); this.inflight.delete(key); this.counts.aborted += 1; }
     }
+    this.unwanted.clear();
     this.pump();
   }
 
@@ -130,6 +142,7 @@ export class ThumbLoader {
     for (const ctl of this.inflight.values()) ctl.abort();
     this.inflight.clear();
     this.queue = [];
+    this.unwanted.clear();
     for (const url of this.cache.values()) this.release(url);
     this.cache.clear();
     this.failed.clear();

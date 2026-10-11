@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Badge, Caveats, Recitation, RemoteView, ScreenHeader } from "../components";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
-import { useSession } from "../lib/session";
+import { useSession, NO_PEOPLE } from "../lib/session";
 import { DriveChooser, StepPanel, type ChooserTab, type Step } from "./DriveChooser";
 import { JobWatch, PickRow, SlotWord, pickCounts } from "./RecordActs";
 import { AckPanel, AnswerPanel, CurrentPanel, DeclinePanel, KeepPanel, MorePanel, ReadPanel, ReopenPanel, RepinPanel, ReplacePanel, SplitPanel, UnpinPanel } from "./RecordPanels";
@@ -372,7 +372,7 @@ function StandingBlock({ s }: { s: SlotPageData["standing"] }) {
  * standing block, the acts, and the trail. Every act is a preview, then a confirm in the signed-in person's name. */
 function SlotScreen({ slotKey }: { slotKey: string }) {
   const r = useApi<SlotPageData>(`/api/record-slot?key=${encodeURIComponent(slotKey)}`);
-  const { me } = useSession([]);
+  const { me } = useSession(NO_PEOPLE);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [notice, setNotice] = useState<{ text: string; job?: number; command?: string; bad?: boolean; rows?: { part: PartPlan; name?: string }[]; patch?: string } | null>(null);
   const opener = useRef<HTMLElement | null>(null);

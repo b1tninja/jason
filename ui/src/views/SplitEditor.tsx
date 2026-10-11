@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Badge, Confirm, ScreenHeader } from "../components";
 import { useMediaQuery } from "../lib/useMediaQuery";
-import { useSession } from "../lib/session";
+import { useSession, NO_PEOPLE } from "../lib/session";
 import { PageGrid, type GridApi } from "./PageGrid";
 import { ComparePane, KeyHelp, PageMenu, ZOOMS, Figure, type Zoom } from "./SplitPanes";
 import { FlagsDialog, WalkBar } from "./SplitFlags";
@@ -32,7 +32,7 @@ interface Boot { store: SplitStore; facts: FactsCache; loader: ThumbLoader; firs
 /** The splitter's working screen for one draft (`#/setup/split/<id>`). It loads the draft, then hands a store (the draft and its queue of
  * saves), a facts cache, and a picture loader to the screen. Nothing per page is React state. */
 export function SplitEditor({ backend, id }: { backend: SplitBackend; id: string }) {
-  const { me } = useSession([]);
+  const { me } = useSession(NO_PEOPLE);
   const [boot, setBoot] = useState<Boot | { error: string } | null>(null);
   useEffect(() => {
     let live = true;

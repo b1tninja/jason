@@ -2,7 +2,7 @@ import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { Badge, Caveats, RemoteView, ScreenHeader, type Tone } from "../components";
 import type { GlyphName } from "../components/Glyph";
 import { postJson } from "../lib/api";
-import { useSession } from "../lib/session";
+import { useSession, NO_PEOPLE } from "../lib/session";
 import { useApi } from "../lib/useApi";
 import { stampText } from "./StatusView";
 import "./limits.css";
@@ -191,7 +191,7 @@ function RowDetail({ row, scope }: { row: LimitRow; scope: LimitsPage["scope"] }
  * reason; a reset takes the same two steps. Writes are `POST /api/write/limits/<scope>`. */
 export function LimitsView({ scope }: { scope: "community" | "instance" }) {
   const r = useApi<LimitsPage>(scope === "instance" ? "/api/instance-limits" : "/api/limits");
-  const { account } = useSession([]);
+  const { account } = useSession(NO_PEOPLE);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [changed, setChanged] = useState<string>("");

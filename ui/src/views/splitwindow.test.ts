@@ -308,8 +308,27 @@ describe("the picture loader", () => {
     const c = f.img();
     const detachC = f.loader.attach(c, 4, ["tiny"]);
     detachC();
+    await flush();                                                 // dropped at the end of the commit, not at once
     expect(f.pending.get("/pic/tiny/4")!.signal.aborted).toBe(true);
     expect(f.loader.stats().aborted).toBe(1);
+  });
+
+  it("keeps a request in flight when its cell is replaced in the same commit (a row re-keyed by a mark above it)", async () => {
+    const f = fixture();
+    const old = f.img();
+    const detach = f.loader.attach(old, 12, ["tiny", "small"]);
+    expect(f.calls).toEqual(["/pic/tiny/12", "/pic/small/12"]);
+    // React unmounts the old cell and mounts the new one in one commit: the cleanup runs first, then the new attach
+    detach();
+    const fresh = f.img();
+    f.loader.attach(fresh, 12, ["tiny", "small"]);
+    await flush();
+    expect(f.calls).toEqual(["/pic/tiny/12", "/pic/small/12"]);    // asked once, not again
+    expect(f.pending.get("/pic/tiny/12")!.signal.aborted).toBe(false);
+    expect(f.loader.stats().aborted).toBe(0);
+    f.pending.get("/pic/tiny/12")!.resolve("data:t");
+    await flush();
+    expect(fresh.src).toBe("data:t");
   });
 
   it("in a fast scroll asks for nothing but tiny pictures, and asks again for the rest when it settles", async () => {
