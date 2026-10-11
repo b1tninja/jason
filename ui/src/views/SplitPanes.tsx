@@ -137,8 +137,8 @@ export const KEYS: [string, string][] = [
   ["V and 1 to 4", "Change the view"],
   ["+ and -", "Zoom in the compare drawer, or resize the album"],
   ["F", "Focus: the pages fill the screen (the console's menu and header are hidden); Esc leaves it"],
-  ["E", "Magnifier on or off (M is the merge key). With a mouse, hold the pointer over a page; Esc hides the lens"],
-  ["Alt and arrows", "Magnifier: show the lens beside the focused page and move the spot it shows"],
+  ["E", "Magnifier on or off (M is the merge key), in whichever mode View > Magnifier > Mode chose. With a mouse, hold the pointer over a page; Esc hides the lens or the corner viewer"],
+  ["Alt and arrows", "Magnifier: show the lens beside the focused page (or the corner viewer on it) and move the spot it shows"],
   ["Alt and + or -", "Magnifier: zoom 2 to 6 times (Alt and the mouse wheel does the same)"],
   ["S", "Open or close the segments drawer"],
   ["C or a double click", "Open or close the compare drawer on this page"],
@@ -156,7 +156,8 @@ export function KeyHelp({ onClose }: { onClose(): void }) {
       <div role="dialog" aria-label="Keyboard map" className="split-menu" aria-modal="true">
         <h2>Keyboard map</h2>
         <dl className="split-keys">{KEYS.map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>)}</dl>
-        <p className="muted">On a touch screen: tap marks, press and hold opens the page menu, and the grip on a start can be dragged to another page. With the Magnifier button on, press and hold a page for a moment, then drag: the lens rides above your finger (the page menu is then opened from the Pages menu or with the L key).</p>
+        <p className="muted">On a touch screen: tap marks, press and hold opens the page menu, and the grip on a start can be dragged to another page. With the Magnifier button on, press and hold a page for a moment, then drag: the lens rides above your finger (the page menu is then opened from the Pages menu or with the L key). In the fixed corner viewer mode the same hold shows the page in a band above the action bar.</p>
+        <p className="muted">The corner viewer (the View menu, Magnifier, Mode: fixed corner viewer) keeps the last page after the pointer leaves, can be pinned to a page with its Pin button, shows a region or the whole page, hops to the opposite corner when the pointer stays under it (the View menu's Do not hop turns that off), and is resized by its corner grip (drag it, or focus it and use the arrow keys).</p>
         <button type="button" ref={close} onClick={onClose}>Close</button>
       </div>
     </div>

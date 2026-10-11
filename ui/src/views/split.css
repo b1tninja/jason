@@ -387,5 +387,35 @@ html[data-split-focus] .console-body { gap: 0; }
 .split-loupe[data-size="cell"] { background-color: var(--paper); }
 @media (prefers-reduced-motion: no-preference) { .split-loupe { animation: split-loupe-in .1s ease-out; } }
 @keyframes split-loupe-in { from { opacity: 0; } to { opacity: 1; } }
+/* The fixed viewer (the magnifier's second mode): a panel in a corner of the grid's stage, a band above the action bar on a phone. The panel
+ * and its picture take no pointer event, so the pages under it stay reachable; only the header's buttons and the resize grip do. */
+.split-viewer { position: fixed; left: 0; top: 0; z-index: 88; box-sizing: border-box; width: 360px; pointer-events: none; display: flex; flex-direction: column;
+  background: var(--panel); color: var(--ink); border-radius: 10px; overflow: hidden; will-change: transform; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--paper), 0 10px 28px color-mix(in srgb, var(--ink) 38%, transparent); }
+.split-viewer[hidden] { display: none; }
+.split-viewer-head { pointer-events: auto; flex: 0 0 auto; height: 58px; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: center; gap: .15rem .5rem;
+  padding: .2rem .5rem; font-size: .78rem; border-bottom: 2px solid var(--ink); background: var(--panel); white-space: nowrap; overflow: hidden; }
+.split-viewer-head strong { overflow: hidden; text-overflow: ellipsis; }
+.split-viewer-zoom { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.split-viewer-acts { grid-column: 1 / -1; display: inline-flex; gap: .25rem; justify-content: flex-end; }
+.split-viewer-acts button { padding: .1rem .4rem; font-size: .72rem; min-height: 24px; }
+.split-viewer-acts [aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 700; }
+.split-viewer-acts button:focus-visible, .split-viewer-grip:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.split-viewer-pic { flex: 0 0 auto; width: 100%; height: 360px; background-color: var(--paper); background-repeat: no-repeat; pointer-events: none; }
+.split-viewer[data-size="cell"] .split-viewer-pic { background-color: var(--paper); }
+.split-viewer-grip { position: absolute; width: 22px; height: 22px; padding: 0; min-height: 0; border: 2px solid var(--ink); background: var(--accent); pointer-events: auto; touch-action: none; z-index: 1; border-radius: 4px; }
+.split-viewer[data-corner$="right"] .split-viewer-grip { left: 0; cursor: nwse-resize; }
+.split-viewer[data-corner$="left"] .split-viewer-grip { right: 0; cursor: nesw-resize; }
+.split-viewer[data-corner^="bottom"] .split-viewer-grip { top: 62px; }
+.split-viewer[data-corner^="top"] .split-viewer-grip { bottom: 0; }
+.split-viewer[data-corner^="top"][data-corner$="right"] .split-viewer-grip { cursor: nesw-resize; }
+.split-viewer[data-corner^="top"][data-corner$="left"] .split-viewer-grip { cursor: nwse-resize; }
+.split-viewer[data-mode="band"] .split-viewer-grip { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .split-viewer:not([data-settle]) { transition: transform .18s ease-out; }
+}
+/* the rectangle on the hovered thumbnail that the viewer magnifies: a solid ink line inside a paper line, so it reads on any page */
+.split-viewfinder { position: fixed; left: 0; top: 0; z-index: 86; box-sizing: border-box; pointer-events: none; border: 2px solid var(--ink); outline: 1px solid var(--paper); outline-offset: 0; }
+.split-viewfinder[hidden] { display: none; }
 /* a press and hold on a page is the magnifier's, not the browser's text-selection or image-callout */
 .split-pic img { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }

@@ -1,7 +1,7 @@
 /** The splitter's screen layout (docs/pdf-splitter.md, section 5.9): focus mode, the drawers, and the grid's columns. Pure helpers and the
  * per-tab preferences; nothing here touches React or the page. */
 
-import { clampZoom } from "./splitLoupe";
+import { clampViewerPx, clampZoom, isCorner, VIEWER_DEFAULT_PX, type Corner, type MagMode, type ViewerView } from "./splitLoupe";
 
 export type Side ="left" | "right" | "bottom";
 export type DrawerId = "rail" | "inspect";
@@ -23,9 +23,18 @@ export interface LayoutPrefs {
   magnifier: boolean | null;
   /** how many times the cell the lens shows a spot, 2 to 6 */
   magnifierZoom: number;
+  /** "lens" follows the pointer; "fixed" is a viewer panel in a screen corner */
+  magMode: MagMode;
+  /** the fixed viewer's corner, and the picture area's side in CSS px */
+  magCorner: Corner;
+  magPx: number;
+  /** the fixed viewer shows a magnified region, or the whole hovered page */
+  magView: ViewerView;
+  /** the fixed viewer hops to the opposite corner when the pointer goes under it */
+  magHop: boolean;
 }
 
-export const DEFAULT_PREFS: LayoutPrefs = { focus: false, rail: null, railSide: "left", pinned: null, inspectFull: false, fill: true, showSuggestions: true, showFlags: true, magnifier: null, magnifierZoom: 3 };
+export const DEFAULT_PREFS: LayoutPrefs = { focus: false, rail: null, railSide: "left", pinned: null, inspectFull: false, fill: true, showSuggestions: true, showFlags: true, magnifier: null, magnifierZoom: 3, magMode: "lens", magCorner: "bottom-right", magPx: VIEWER_DEFAULT_PX, magView: "region", magHop: true };
 
 /** The segments drawer opens by itself, docked, only on a screen this wide; under it the default is closed. */
 export const RAIL_OPEN_PX = 1400;
@@ -48,6 +57,11 @@ export function loadPrefs(id: string): LayoutPrefs {
     if (typeof raw.showFlags === "boolean") out.showFlags = raw.showFlags;
     if (typeof raw.magnifier === "boolean" || raw.magnifier === null) out.magnifier = raw.magnifier;
     if (typeof raw.magnifierZoom === "number") out.magnifierZoom = clampZoom(raw.magnifierZoom);
+    if (raw.magMode === "lens" || raw.magMode === "fixed") out.magMode = raw.magMode;
+    if (isCorner(raw.magCorner)) out.magCorner = raw.magCorner;
+    if (typeof raw.magPx === "number") out.magPx = clampViewerPx(raw.magPx);
+    if (raw.magView === "region" || raw.magView === "page") out.magView = raw.magView;
+    if (typeof raw.magHop === "boolean") out.magHop = raw.magHop;
     return out;
   } catch { return { ...DEFAULT_PREFS }; }
 }

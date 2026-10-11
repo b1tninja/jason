@@ -264,3 +264,136 @@ export function sharpLoader(src: SharpSources): SharpLoader {
 
 export function releaseUrl(url: string): void { if (url.startsWith("blob:") && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url); }
 export function releaseSharp(s: Sharp): void { releaseUrl(s.url); }
+
+// ---- the fixed viewer (section 5.12, second mode): a panel in a screen corner that shows the page under the pointer
+
+export type MagMode = "lens" | "fixed";
+export type Corner = "bottom-right" | "bottom-left" | "top-right" | "top-left";
+export type ViewerView = "region" | "page";
+export type ViewerSize = "small" | "medium" | "large";
+export const CORNERS: Corner[] = ["bottom-right", "bottom-left", "top-right", "top-left"];
+export const CORNER_WORDS: Record<Corner, string> = { "bottom-right": "Bottom right", "bottom-left": "Bottom left", "top-right": "Top right", "top-left": "Top left" };
+/** the picture area of the panel, in CSS px (the panel adds its header strip) */
+export const VIEWER_SIZES: Record<ViewerSize, number> = { small: 260, medium: 360, large: 480 };
+export const VIEWER_DEFAULT_PX = 360;
+export const VIEWER_MIN_PX = 160;
+export const VIEWER_MAX_PX = 720;
+export const VIEWER_HEAD_PX = 58;
+/** the pointer must stay under the panel this long before the panel hops to the other corner */
+export const HOP_MS = 280;
+/** the phone's band takes this share of the window's height */
+export const PHONE_BAND = 0.4;
+export const VIEWER_MARGIN = 12;
+
+export function clampViewerPx(px: number): number {
+  if (!Number.isFinite(px)) return VIEWER_DEFAULT_PX;
+  return Math.min(VIEWER_MAX_PX, Math.max(VIEWER_MIN_PX, Math.round(px)));
+}
+
+export function oppositeCorner(c: Corner): Corner {
+  return ({ "bottom-right": "top-left", "top-left": "bottom-right", "bottom-left": "top-right", "top-right": "bottom-left" } as const)[c];
+}
+
+export function isCorner(v: unknown): v is Corner { return typeof v === "string" && (CORNERS as string[]).includes(v); }
+
+/** The part of `a` that is inside `b` (never negative). */
+export function intersectBox(a: Box, b: Box): Box {
+  const left = Math.max(a.left, b.left), top = Math.max(a.top, b.top);
+  const right = Math.min(a.left + a.width, b.left + b.width), bottom = Math.min(a.top + a.height, b.top + b.height);
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+/** The room the panel may use: the grid's stage (which already leaves out a docked drawer), held inside the window. */
+export function stageBox(stage: Box | null, view: { w: number; h: number }): Box {
+  const win: Box = { left: 0, top: 0, width: view.w, height: view.h };
+  return stage ? intersectBox(stage, win) : win;
+}
+
+/** An open overlay drawer takes its side of the stage: the panel is kept out of it. A drawer that is not a side or a bottom sheet is ignored. */
+export function avoidDrawer(stage: Box, drawer: Box, view: { w: number; h: number }): Box {
+  const d = intersectBox(drawer, stage);
+  if (d.width < 8 || d.height < 8) return stage;
+  const tall = d.height >= stage.height * 0.8, wide = d.width >= stage.width * 0.8;
+  if (tall && !wide) {
+    const left = d.left + d.width / 2 < stage.left + stage.width / 2;
+    return left ? { ...stage, left: d.left + d.width, width: stage.left + stage.width - (d.left + d.width) }
+      : { ...stage, width: d.left - stage.left };
+  }
+  if (wide && !tall && d.top + d.height / 2 > view.h / 2) return { ...stage, height: d.top - stage.top };
+  return stage;
+}
+
+/** The picture area's side, and the panel's whole size, for a wanted size: no bigger than the room leaves. */
+export function viewerSize(want: number, stage: Box, margin = VIEWER_MARGIN): { pic: number; w: number; h: number } {
+  const room = Math.min(stage.width - 2 * margin, stage.height - 2 * margin - VIEWER_HEAD_PX);
+  const pic = Math.max(96, Math.min(clampViewerPx(want), Math.floor(room)));
+  return { pic, w: pic, h: pic + VIEWER_HEAD_PX };
+}
+
+/** The panel's top-left corner for a corner of the stage, held inside it. */
+export function cornerPlacement(corner: Corner, stage: Box, w: number, h: number, margin = VIEWER_MARGIN): Pt {
+  const right = corner.endsWith("right"), bottom = corner.startsWith("bottom");
+  const x = right ? stage.left + stage.width - w - margin : stage.left + margin;
+  const y = bottom ? stage.top + stage.height - h - margin : stage.top + margin;
+  return { x: Math.max(stage.left, Math.round(x)), y: Math.max(stage.top, Math.round(y)) };
+}
+
+/** The phone's band: a fixed share of the window's height, full width, just above the action bar (or the window's bottom). */
+export function phoneBand(view: { w: number; h: number }, barTop: number | null, share = PHONE_BAND, margin = 6): Box & { pic: number } {
+  const bottom = Math.min(view.h, barTop ?? view.h) - margin;
+  const height = Math.max(VIEWER_HEAD_PX + 60, Math.round(view.h * share));
+  const top = Math.max(0, bottom - height);
+  return { left: margin, top, width: Math.max(96, view.w - 2 * margin), height: bottom - top, pic: Math.max(60, bottom - top - VIEWER_HEAD_PX) };
+}
+
+export function underPanel(pt: Pt, panel: Box, pad = 10): boolean {
+  return pt.x >= panel.left - pad && pt.x <= panel.left + panel.width + pad && pt.y >= panel.top - pad && pt.y <= panel.top + panel.height + pad;
+}
+
+/** The corner the panel should hop to: the opposite one, when the pointer is under it and hopping is allowed; otherwise nothing. */
+export function hopTarget(corner: Corner, pt: Pt, panel: Box, allowed: boolean, pad = 10): Corner | null {
+  return allowed && underPanel(pt, panel, pad) ? oppositeCorner(corner) : null;
+}
+
+/** The region the panel shows: the page drawn `zoom` times as wide as on screen, with the spot `at` in the panel's centre, kept so the panel
+ * never shows beyond the page's edge (a page narrower than the panel is centred). `cx`/`cy` are the spot actually centred. */
+export function regionView(at: Pt, page: Box, zoom: number, w: number, h: number): { width: number; height: number; x: number; y: number; cx: number; cy: number } {
+  const width = page.width * zoom, height = page.height * zoom;
+  const centre = (f: number, len: number, view: number) => (len <= view ? 0.5 : Math.min(1 - view / 2 / len, Math.max(view / 2 / len, f)));
+  const cx = centre(at.x, width, w), cy = centre(at.y, height, h);
+  return { width, height, x: w / 2 - cx * width, y: h / 2 - cy * height, cx, cy };
+}
+
+/** The rectangle to draw on the hovered thumbnail so a person sees which part the panel magnifies (on screen, in the page's own pixels). */
+export function viewfinderRect(at: Pt, page: Box, zoom: number, w: number, h: number): Box {
+  const r = regionView(at, page, zoom, w, h);
+  const vw = Math.min(page.width, w / zoom), vh = Math.min(page.height, h / zoom);
+  return { left: page.left + r.cx * page.width - vw / 2, top: page.top + r.cy * page.height - vh / 2, width: vw, height: vh };
+}
+
+/** The whole page fitted inside the panel's picture area, centred (a background's size and position). */
+export function pageFit(natural: { w: number; h: number } | null, page: Box, w: number, h: number): { width: number; height: number; x: number; y: number } {
+  const aw = natural && natural.w > 0 ? natural.w : page.width, ah = natural && natural.h > 0 ? natural.h : page.height;
+  const s = aw > 0 && ah > 0 ? Math.min(w / aw, h / ah) : 1;
+  const width = aw * s, height = ah * s;
+  return { width, height, x: (w - width) / 2, y: (h - height) / 2 };
+}
+
+/** Which page the panel shows. It keeps the last page seen when the pointer leaves, and, pinned, ignores every other page. */
+export class ViewerTarget {
+  page = 0;
+  pinned = false;
+  /** a page is under the pointer or has the focus; false when a pin keeps the panel on another page */
+  see(page: number): boolean {
+    if (this.pinned && this.page && page !== this.page) return false;
+    this.page = page;
+    return true;
+  }
+  /** Pin to the page shown (nothing to pin before one is shown), or let go. Returns the new state. */
+  pin(on = !this.pinned): boolean {
+    this.pinned = on && this.page > 0;
+    return this.pinned;
+  }
+  clear(): void { this.page = 0; this.pinned = false; }
+  words(): string { return this.page ? (this.pinned ? `Pinned to page ${this.page}` : `Page ${this.page}`) : "No page"; }
+}

@@ -136,7 +136,7 @@ test.describe("the magnifier on the demo draft", () => {
     await expect(page.locator(".split-live")).toContainText("Magnifier on page 3");
     const bg1 = await lens(page).evaluate((e: HTMLElement) => e.style.backgroundPosition);
     await page.keyboard.press("Alt+ArrowDown");
-    expect(await lens(page).evaluate((e: HTMLElement) => e.style.backgroundPosition)).not.toBe(bg1);
+    await expect.poll(() => lens(page).evaluate((e: HTMLElement) => e.style.backgroundPosition)).not.toBe(bg1);          // placed in an animation frame
     await page.keyboard.press("Alt+=");
     await expect(lens(page)).toHaveAttribute("data-zoom", "3.5");
     // arrow keys to another page: the lens goes with the focus

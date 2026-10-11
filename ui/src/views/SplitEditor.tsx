@@ -21,7 +21,7 @@ import { ThumbLoader, fetchPicture } from "./splitThumbs";
 import type { ClientPictures, PictureStatus } from "./splitClient";
 import { budgetFor, pixelMegabytes } from "./splitWindow";
 import { Loupe } from "./Loupe";
-import { FINE_HOVER, LOUPE_MAX_PX, LOUPE_ZOOM_MAX, LOUPE_ZOOM_MIN, SERVER_MAX_PX, clampZoom, loupeBudget, magnifierOn, releaseSharp, sharpLoader, zoomWords } from "./splitLoupe";
+import { CORNERS, CORNER_WORDS, FINE_HOVER, LOUPE_MAX_PX, LOUPE_ZOOM_MAX, LOUPE_ZOOM_MIN, SERVER_MAX_PX, VIEWER_SIZES, clampViewerPx, clampZoom, loupeBudget, magnifierOn, releaseSharp, sharpLoader, zoomWords, type ViewerSize } from "./splitLoupe";
 import "./split.css";
 
 type View = "album" | "filmstrip" | "scroll" | "list";
@@ -383,7 +383,15 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
   const magTouch = prefs.magnifier === true;
   const toggleMagnifier = (on = !magOn) => {
     setPrefs({ magnifier: on });
-    setMessage(on ? (phone || !fineHover ? "Magnifier on. Press and hold a page, then drag to magnify it." : "Magnifier on. Hold the pointer over a page to magnify it.") : "Magnifier off.");
+    const fixedWords = prefs.magMode === "fixed";
+    setMessage(on
+      ? (phone || !fineHover ? `Magnifier on. Press and hold a page, then drag to magnify it${fixedWords ? " in the band above the action bar" : ""}.`
+        : fixedWords ? `Magnifier on, in a fixed viewer at the ${CORNER_WORDS[prefs.magCorner].toLowerCase()}. Hold the pointer over a page to magnify it.` : "Magnifier on. Hold the pointer over a page to magnify it.")
+      : "Magnifier off.");
+  };
+  const setMagMode = (mode: "lens" | "fixed") => {
+    setPrefs({ magMode: mode });
+    setMessage(mode === "fixed" ? `Magnifier: a fixed viewer in the ${CORNER_WORDS[prefs.magCorner].toLowerCase()}.` : "Magnifier: a lens that follows the pointer.");
   };
   const setMagZoom = useCallback((z: number) => setPrefs({ magnifierZoom: clampZoom(z) }), [setPrefs]);
   const sharp = useMemo(() => sharpLoader({
@@ -401,7 +409,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const t = e.target as HTMLElement;
-    if (t.closest("input, textarea, select, [role=dialog]")) return;
+    if (t.closest("input, textarea, select, [role=dialog], [data-viewer]")) return;
     if (reviewing) return;
     const focus = focusRef.current;
     const k = e.key;
@@ -554,6 +562,14 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
     checkbox(`Magnifier (${magOn ? "on" : "off"})`, magOn, () => toggleMagnifier(), { keys: "E" }),
     ...Array.from({ length: LOUPE_ZOOM_MAX - LOUPE_ZOOM_MIN + 1 }, (_, i) => LOUPE_ZOOM_MIN + i).map((z) =>
       radio(`Magnifier zoom: ${zoomWords(z)} the page`, prefs.magnifierZoom === z, () => setMagZoom(z), { disabled: !magOn })),
+    radio("Mode: lens follows the pointer", prefs.magMode === "lens", () => setMagMode("lens")),
+    radio("Mode: fixed corner viewer", prefs.magMode === "fixed", () => setMagMode("fixed")),
+    ...CORNERS.map((c) => radio(`Viewer corner: ${CORNER_WORDS[c].toLowerCase()}`, prefs.magCorner === c, () => setPrefs({ magCorner: c }), { disabled: prefs.magMode !== "fixed" || phone })),
+    ...(Object.keys(VIEWER_SIZES) as ViewerSize[]).map((k) =>
+      radio(`Viewer size: ${k} (${VIEWER_SIZES[k]} px)`, prefs.magPx === VIEWER_SIZES[k], () => setPrefs({ magPx: VIEWER_SIZES[k] }), { disabled: prefs.magMode !== "fixed" || phone })),
+    radio("Viewer shows: a magnified region", prefs.magView === "region", () => setPrefs({ magView: "region" }), { disabled: prefs.magMode !== "fixed" }),
+    radio("Viewer shows: the whole page", prefs.magView === "page", () => setPrefs({ magView: "page" }), { disabled: prefs.magMode !== "fixed" }),
+    checkbox("Do not hop (keep the viewer in its corner)", !prefs.magHop, () => setPrefs({ magHop: !prefs.magHop }), { disabled: prefs.magMode !== "fixed" || phone }),
     { type: "sep" },
     { type: "heading", label: "Panels" },
     checkbox("Focus: hide the console's menu and header", prefs.focus, toggleFocus, { keys: "F" }),
@@ -641,7 +657,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       {head}
       <div className="split-live" role="status" aria-live="polite">{message}</div>
       <Loupe enabled={magOn} touchMode={magTouch} zoom={prefs.magnifierZoom} onZoom={setMagZoom} load={sharp} release={releaseSharp} budget={magBudget}
-        maxPx={pictureStatus?.client ? LOUPE_MAX_PX : SERVER_MAX_PX} announce={setMessage} />
+        maxPx={pictureStatus?.client ? LOUPE_MAX_PX : SERVER_MAX_PX} announce={setMessage}
+        mode={prefs.magMode} corner={prefs.magCorner} size={prefs.magPx} view={prefs.magView} hop={prefs.magHop} phone={phone}
+        onView={(v) => setPrefs({ magView: v })} onSize={(px) => setPrefs({ magPx: clampViewerPx(px) })} />
       {backend.demo && <p className="notice" role="note"><Badge tone="warn" glyph="info">Demo</Badge> Made-up pages, kept in this tab only; reload to start over. <a href="#/setup/split">Back to the splitter</a></p>}
       {snap.save === "offline" && <p className="notice notice-warn" role="alert">You are offline. Your marks are kept on this device and will be saved when you are back. <button type="button" onClick={() => store.retry()}>Retry now</button></p>}
       {snap.save === "error" && <p className="notice notice-error" role="alert"><span>Not saved. {snap.message} Your marks are kept on this device.</span><button type="button" onClick={() => store.retry()}>Retry</button></p>}
@@ -676,7 +694,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
           <ToolButton onClick={() => store.redo()} disabled={redoOff} title="Redo (Y)">Redo</ToolButton>
           <ToolButton aria-pressed={railOpen} aria-controls="split-drawer-rail" onClick={() => setRail(!railOpen)} title="Segments drawer (S)">Segments <span className="split-count">{topCount}</span></ToolButton>
           <ToolButton aria-pressed={inspect} aria-controls="split-drawer-inspect" onClick={() => openInspect(!inspect)} title="Compare drawer (C)">Compare</ToolButton>
-          <ToolButton aria-pressed={magOn} onClick={() => toggleMagnifier()} title="Magnifier: a lens over the page under the pointer (E)">Magnifier</ToolButton>
+          <ToolButton aria-pressed={magOn} onClick={() => toggleMagnifier()} title={prefs.magMode === "fixed" ? "Magnifier: a viewer in a screen corner (E)" : "Magnifier: a lens over the page under the pointer (E)"}>Magnifier</ToolButton>
           <ToolButton aria-pressed={prefs.focus} onClick={toggleFocus} title="Focus: the pages fill the screen (F)">Focus</ToolButton>
           <ToolButton className="primary" disabled={reviewOff} onClick={() => setReviewing(true)}>Review and split</ToolButton>
         </>)}
