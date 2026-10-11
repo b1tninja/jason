@@ -25,7 +25,7 @@ A request to members has two lives. The first is the thing itself: a form, sent 
 |   asked        90 copies   (email 90 · 1 mailing, no recipients listed · PayHOA —) · 17 never sent |
 |   answered      47          (PayHOA 20 · email 18 · mailed scan 7 · Google Form 0 · keyed 2)       |
 |   read 46 · confirmed 44 · recorded 38   (each includes the later stages)                         |
-|   outstanding   58 owners   unreachable 2          next: remind Oct 16 · answers due Oct 23     |
+|   outstanding   41 owners   unreachable 2          next: remind Oct 16 · answers due Oct 23     |
 +----------------------------------------------------------------------------------------------+
 | Request to inspect records · form v2 · handler: response clock                        Not opened |
 +----------------------------------------------------------------------------------------------+
@@ -43,10 +43,10 @@ One drawing, used on the card, the campaign page, and the dock. Four stages left
 ```text
 Asked 90 ──▶ Answered 47 ──▶ Confirmed 44 ──▶ Recorded 38
   by how asked: email 90 · 1 mailing · PayHOA —     by how answered: PayHOA 20 · email 18 · mailed scan 7 · keyed 2
-Outstanding 58      Unreachable 2 (apart)
+Outstanding 41      Unreachable 2 (apart)
 ```
 
-- **Outstanding** is the headline and is **by owner, whichever way**: it is "asked" minus "answered by any method". It is a number and a list of names (units and names), never a share of channels.
+- **Outstanding** is the headline and is **by owner, whichever way**: it is the owners sent a personal copy, less those who answered by any method, less the unreachable (90 − 47 − 2 = 41 in the sample). Owners never sent a copy (17) are their own line, not outstanding, and are not reminded; "asked" counts copies, not owners. It is a number and a list of names (units and names), never a share of channels.
 - **By how asked** and **by how answered** are two small breakdowns, each channel a word and a count, never a color alone. They are different questions: an owner emailed a copy may answer on the PayHOA form, and that is one answer.
 - **Unreachable** is drawn apart, with its own count and the follow-up the law asks (resend by first-class mail, CIV 4041(e)). It is never counted in outstanding and never hidden; the owners on it are the ones a reminder cannot reach.
 - **A channel with nothing** is "—" in a quiet face, not "0", unless it was checked and found empty ("0 as of 2 h ago").
@@ -66,7 +66,7 @@ Outstanding 58      Unreachable 2 (apart)
 | TODAY                                                                                            |
 |  ☑ Oct 5   Read 3 returned forms                                 proposed policy         [cmd] |
 | THIS WEEK                                                                                        |
-|  ✉ Oct 16  Remind the 58 owners who have not answered            proposed: 7 days before         |
+|  ✉ Oct 16  Remind the 41 owners who have not answered            proposed: 7 days before         |
 |  ▤ Oct 23  Answers asked by                                      the campaign's date             |
 | LATER                                                                                            |
 |  ▤ Nov 1   Enter the answers in PayHOA                           CIV 4041(b)(1) · the law        |
@@ -124,7 +124,7 @@ A campaign's funnel (`campaign_status`'s `campaigns[]`; `jason campaigns --show 
                  "forms": {"answered": 0, "read": 0, "confirmed": 0, "recorded": 0, "checkedHoursAgo": null, "checked": "never checked"},
                  "manual": {"answered": 2, "read": 2, "confirmed": 2, "recorded": 2, "checkedHoursAgo": null, "checked": "keyed by a person: nothing to check"}},
    "inboxExists": true, "inboxAgeHours": 2.0, "source": "the response inbox, as the last check and the people who keyed returns kept it"},
- "outstanding": {"count": 58, "owners": [{"unit": "456 Oak Ln", "name": "B. Owner", "channel": "email", "sentAt": "2099-10-01T15:00:00+00:00", "daysSinceSent": 4}],
+ "outstanding": {"count": 41, "owners": [{"unit": "456 Oak Ln", "name": "B. Owner", "channel": "email", "sentAt": "2099-10-01T15:00:00+00:00", "daysSinceSent": 4}],
                  "neverAsked": 17, "source": "the sent-copy catalog less the answers kept", "ageHours": 6.0},
  "unreachable": {"count": 2, "owners": [{"unit": "789 Elm Ct", "why": "email bounced"}], "source": "the notice ledger",
                  "ageHours": 30.0, "syncedAt": "2099-10-04T14:00:00+00:00", "attempts": 3},
@@ -139,9 +139,9 @@ A follow-up (`followups`, and `jason followups --json`'s `items`; the tool adds 
 
 ```json
 {"id": "fu-1a2b3c4d5e", "kind": "remind", "due": "2099-10-16", "windowEnd": "2099-10-23", "subject": "NP27E",
- "what": "Remind 58 owners who have not answered the NP27E request", "basis": "proposed policy",
+ "what": "Remind 41 owners who have not answered the NP27E request", "basis": "proposed policy",
  "cite": "proposed: remind 7 days before the return-by date (the board has not adopted a number)",
- "dueNote": "proposed: 7 days before 2099-10-23", "outstanding": 58, "names": ["456 Oak Ln (B. Owner)"], "reason": "",
+ "dueNote": "proposed: 7 days before 2099-10-23", "outstanding": 41, "names": ["456 Oak Ln (B. Owner)"], "reason": "",
  "state": "upcoming", "by": "", "at": "", "why": "", "deferredTo": "",
  "command": "jason owner-info --email-batch --follow-up reminder --message FILE.md (a dry run; --yes sends)",
  "campaign": "NP27E", "source": "campaign",
