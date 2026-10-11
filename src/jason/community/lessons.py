@@ -95,8 +95,9 @@ LESSONS: tuple[Lesson, ...] = (
            "has given no valid delivery method. Standard is not on that list.",
            "`jason mailroom` takes --mail-class first-class, --tracking certified|registered, and --color, checks the "
            "rules PayHOA's page applies (tracking and invoices need first class), and prints a note on a standard "
-           "preview. The default is still standard: the board decides whether a letter for a notice defaults to first "
-           "class, and whether an earlier mailing needed it (counsel reads which provisions require individual delivery).",
+           "preview. A letter kept as a notice (--notice) now defaults to first class; any other letter stays standard unless "
+           "asked. The board decides whether an earlier mailing needed it (counsel reads which provisions require "
+           "individual delivery).",
            Status.DECISION, docs=("docs/console/screens/mailroom.md",),
            notes=("Guard so far: the preview note and the checks; nothing refuses a standard send.",)),
     Lesson("paper-cannot-require", OCT_2026, (Area.FORMS, Area.OWNER_INFO),

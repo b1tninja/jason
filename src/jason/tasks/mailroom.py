@@ -36,6 +36,12 @@ STANDARD_NOTE = ("standard class is not one of the delivery methods CIV 4040(a)(
                  "member has given no valid method, use --mail-class first-class (jason cite CIV 4040)")
 
 
+def default_mail_class(notice: str = "") -> str:
+    """The class a letter goes when none is asked for: first class for a notice (``--notice KEY``: the letter is kept as
+    the notice's record), standard for any other letter. A person may still ask for standard."""
+    return "first-class" if notice else "standard"
+
+
 def check_options(mail_class: str, *, tracking: str = "", with_invoices: bool = False, double_sided: bool = False) -> str:
     """The PayHOA ``mailClass`` for the options asked, or a ``ValueError`` saying which rule PayHOA's own page applies.
     Tracking needs first class; an invoice needs first class and single-sided printing."""
@@ -319,5 +325,5 @@ def keep_notice(data_dir: Path, key: str, prepared: Prepared, record: dict[str, 
                             recipients=plan, batch=batches, by=by, source=str(prepared.pdf))
 
 
-__all__ = ["ADDRESS_PAGES", "MAIL_CLASSES", "STANDARD_NOTE", "TRACKING", "check_options", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "keep_notice",
+__all__ = ["ADDRESS_PAGES", "MAIL_CLASSES", "STANDARD_NOTE", "default_mail_class", "TRACKING", "check_options", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "keep_notice",
            "letter_history", "price_check", "resolve_units", "status", "prepare", "send", "page_count", "printed"]

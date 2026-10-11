@@ -161,6 +161,13 @@ def test_a_first_class_certified_send_passes_its_options_and_logs_them(tmp_path:
     assert len(client.sent) == 1
 
 
+def test_a_notice_letter_defaults_to_first_class_and_any_other_to_standard():
+    from jason.tasks.mailroom import check_options, default_mail_class
+
+    assert default_mail_class("owner-info-2099") == "first-class" and default_mail_class("") == "standard"
+    assert check_options(default_mail_class("owner-info-2099")) == "first class"
+
+
 def test_a_standard_send_carries_the_note_about_the_statutes_methods():
     from jason.tasks.mailroom import STANDARD_NOTE
 

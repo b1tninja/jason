@@ -867,7 +867,7 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
     from dataclasses import asdict
     from pathlib import Path as _Path
 
-    from jason.tasks.mailroom import STANDARD_NOTE, check_options, prepare, printed, send, status
+    from jason.tasks.mailroom import STANDARD_NOTE, check_options, default_mail_class, prepare, printed, send, status
 
     if (args.send or args.cancel) and not args.yes:
         print("--send and --cancel act on real mail (a letter is printed, mailed, and charged to the association); add --yes. "
@@ -936,7 +936,8 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
                 print("--pdf needs --units (street addresses, PayHOA unit ids, or 'all')", file=sys.stderr)
                 return 2
             try:
-                mail_class = check_options(args.mail_class, tracking=args.tracking, with_invoices=args.with_invoices,
+                asked = args.mail_class or default_mail_class(args.notice or "")
+                mail_class = check_options(asked, tracking=args.tracking, with_invoices=args.with_invoices,
                                            double_sided=args.double_sided)
             except ValueError as exc:
                 print(exc, file=sys.stderr)
@@ -976,7 +977,7 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
                       + (f"; the letter is then kept in {data_dir / 'notices' / args.notice}" if args.notice else ""))
                 return 0
             record = send(client, org_id, data_dir, prepared, double_sided=args.double_sided, with_invoices=args.with_invoices,
-                          color=color, mail_class=args.mail_class, tracking=args.tracking, by=args.by or "")
+                          color=color, mail_class=asked, tracking=args.tracking, by=args.by or "")
             cost = sum(b["costCents"] for b in record["batches"])
             print(f"mailed: batch {', '.join(str(b['id']) for b in record['batches']) or '(not listed yet)'}"
                   f"{f', ${cost / 100:.2f}' if cost else ''}; logged in {data_dir / 'mailroom' / 'sent.jsonl'}")
@@ -3993,9 +3994,10 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Each owner's mailing address (default) or the unit's own address")
     mailroom.add_argument("--with-invoices", action="store_true", help="Mail each owner's invoice with the letter")
     mailroom.add_argument("--double-sided", action="store_true", help="Print on both sides")
-    mailroom.add_argument("--mail-class", choices=("standard", "first-class"), default="standard",
+    mailroom.add_argument("--mail-class", choices=("standard", "first-class"), default=None,
                           help="Standard (PayHOA: 2-3 weeks) or first class (5-8 business days; needed for tracking and invoices). "
-                               "Standard is not a method CIV 4040(a)(2) lists for an individual notice")
+                               "Default: first class with --notice, else standard. Standard is not a method CIV 4040(a)(2) "
+                               "lists for an individual notice")
     mailroom.add_argument("--tracking", choices=("certified", "registered"), default="",
                           help="Certified or registered mail (extra cost a letter; first class only)")
     mailroom.add_argument("--color", action="store_true", help="Print in color (extra cost a page)")
