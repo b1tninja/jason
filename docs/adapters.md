@@ -61,6 +61,7 @@ A baseline entry is not a declaration. `tests/fixtures/code_boundary.json` and `
 | `The Helsing Group` | `src/jason/community/reserve_study.py` | reserve funding update (the disclosure and its 30-year plan) |
 | `Browning Reserve Group` | `src/jason/community/reserve_study.py` | reserve study (expenditures by year) |
 | `Signal Service` | `src/jason/signalservice/client.py` | the customer portal's invoices and work orders |
+| `Grant Street Group` | `src/jason/tasks/tax_receipts.py` | the payment platform (`GovHub`) a county tax collector's site runs on: the payment receipts a person saves from it (`jason county-tax --import-receipts`). Reading the site itself needs a person's sign-in and is not built |
 
 Several of these modules are also the general reader for their kind of document: they read the vendor's layout first and the usual labels from any other vendor after it. The declaration covers the vendor's name only.
 

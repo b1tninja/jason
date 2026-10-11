@@ -272,6 +272,22 @@ class TaxStore:
         self._conn.commit()
         return new
 
+    def bill_rows(self, apn: str) -> list[sqlite3.Row]:
+        """The stored bill rows of one parcel (number, year, pdf_path, pdf_sha256), newest first."""
+        return self._conn.execute(
+            "SELECT number, year, pdf_path, pdf_sha256 FROM bills WHERE apn = ? ORDER BY year DESC, number DESC",
+            (parcel_number(apn),),
+        ).fetchall()
+
+    def record_pdf(self, apn: str, number: str, pdf_path: str, pdf_sha256: str) -> bool:
+        """Record a bill PDF a person saved on the bill's row. False when the store holds no such bill."""
+        cursor = self._conn.execute(
+            "UPDATE bills SET pdf_path = ?, pdf_sha256 = ? WHERE apn = ? AND number = ?",
+            (pdf_path, pdf_sha256, parcel_number(apn), number),
+        )
+        self._conn.commit()
+        return cursor.rowcount > 0
+
     def start_run(self) -> int:
         cursor = self._conn.execute(
             "INSERT INTO sync_runs (started_at) VALUES (?)",

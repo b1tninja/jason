@@ -78,6 +78,8 @@ ADAPTERS: tuple[Adapter, ...] = (
     Adapter("src/jason/community/reserve_study.py", "The Helsing Group", "reserve funding update (the disclosure and its 30-year plan)"),
     Adapter("src/jason/community/reserve_study.py", "Browning Reserve Group", "reserve study (expenditures by year)"),
     Adapter("src/jason/signalservice/client.py", "Signal Service", "the customer portal's invoices and work orders"),
+    Adapter("src/jason/tasks/tax_receipts.py", "Grant Street Group",
+            "a county tax collector's payment receipts, saved from its payment site (`jason county-tax`)", signature=("GovHub",)),
 )
 
 

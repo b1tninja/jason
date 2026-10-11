@@ -10,6 +10,9 @@ is listed as ``not read`` with the command or the human step.
 
 - A **document** (a bill, a statement) and **proof of payment** (a bank notice) are different things: a candidate says which,
   and a bank notice is never offered as the bill.
+- A county payment receipt (``data/tax/receipts.json``, ``jason county-tax``) is proof of payment that names the bill: when
+  the catalog holds that bill's PDF it is the recommended document. The tender's bank last four is P2 and is held back
+  unless ``private``.
 - ``confidence``: ``exact`` is the amount and a date inside the window; ``near`` is the amount alone, or a date outside the
   window; ``lead`` is a subject or a name only. A candidate is a lead until a person attaches it.
 - A candidate in mail or Gmail is P2: without ``private`` its label says only that a message or letter names the amount, and
@@ -138,6 +141,128 @@ def _tax(data_dir: Path, tx: dict[str, Any], day: date | None) -> tuple[list[dic
     return out, _tried("the county tax catalog", _result(out), f"{len(rows)} bills read", stamp)
 
 
+RECEIPT_SOURCE = "county payment receipts"
+
+
+def _tender_fours(community: Any, tx: dict[str, Any]) -> set[str]:
+    """The bank-account last fours the payment may have been made from: what the PayHOA snapshot says of this payment,
+    else the fours of the association's accounts the profile lists. Empty when neither says (no constraint)."""
+    own = {str(tx.get(k) or "")[-4:] for k in ("accountLast4", "bankLast4", "last4") if tx.get(k)}
+    if own:
+        return own
+    try:
+        return {str(a.suffix)[-4:] for a in community.bank_accounts() if getattr(a, "suffix", "")}
+    except Exception:  # noqa: BLE001 - a profile with no accounts constrains nothing
+        return set()
+
+
+def _bill_rows(data_dir: Path) -> list[dict[str, Any]]:
+    path = data_dir / "tax.db"
+    if not path.is_file():
+        return []
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in conn.execute("SELECT apn, number, year, pdf_path FROM bills")]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def _bill_of(item: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The catalog bill a receipt's paid item names: the parcel's digits, then the bill number, else the tax year."""
+    from jason.tasks.tax_receipts import digits
+
+    mine = [r for r in rows if digits(item.get("apn")) and digits(r["apn"]) == digits(item.get("apn"))]
+    for narrowed in ([r for r in mine if item.get("bill") and r["number"] == item["bill"]],
+                     [r for r in mine if item.get("year") and r["year"] == item["year"]]):
+        if len(narrowed) == 1:
+            return narrowed[0]
+    return mine[0] if len(mine) == 1 else None
+
+
+def _receipts(data_dir: Path, community: Any, tx: dict[str, Any], day: date | None,
+              private: bool) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The county's own receipts (``jason county-tax --import-receipts``): payment proof, and the bill each names.
+
+    A receipt whose total is this amount and whose posted day is within the notice window is ``exact``; the amount alone
+    (or a tender that is not one of the association's accounts) is ``near``. The bank account's last four is P2: it
+    decides the match but is shown only with ``private``. A bill the receipt names that the catalog holds with a PDF is
+    a document candidate, which is the one to attach.
+    """
+    from jason.tasks import tax_receipts as tr
+
+    path = data_dir / tr.STORE
+    if not path.is_file():
+        return [], _tried(RECEIPT_SOURCE, "not read",
+                          "no county receipts on disk; `jason county-tax --import-receipts FILE` keeps one a person saved")
+    rows = tr.load(data_dir)
+    stamp = _store_time(path, "importedAt")
+    amount, expected = int(tx["amount"]), _tender_fours(community, tx)
+    hits: list[dict[str, Any]] = []
+    for r in rows:
+        total, fee = int(r.get("totalCents") or 0), int(r.get("feeCents") or 0)
+        if total <= 0 or amount not in (total, total + fee):
+            continue
+        posted = tr.posted_day(r)
+        four = str(r.get("tenderLast4") or "")
+        mismatch = bool(expected and four and four not in expected)
+        exact = _within(posted, day, NOTICE_DAYS) and not mismatch
+        hits.append({"receipt": r, "exact": exact, "posted": posted, "mismatch": mismatch, "four": four})
+    hits.sort(key=lambda h: (not h["exact"], _gap(h["posted"].isoformat() if h["posted"] else None, day)))
+    extra, hits = len(hits) - MAX_PER_SOURCE, hits[:MAX_PER_SOURCE]
+    catalog = _bill_rows(data_dir)
+    proofs: list[dict[str, Any]] = []
+    documents: list[dict[str, Any]] = []
+    for h in hits:
+        r, conf = h["receipt"], h["receipt"]["confirmation"]
+        confidence = "exact" if h["exact"] else "near"
+        named = []
+        for item in r.get("items") or []:
+            bill = _bill_of(item, catalog)
+            if bill is None:
+                named.append(f"a bill of the parcel ending {tr.tail(item.get('apn'))}")
+                continue
+            named.append(f"tax bill {bill['number']} ({bill['year']}), parcel ending {tr.tail(bill['apn'])}")
+            pdf = (data_dir / bill["pdf_path"]) if bill["pdf_path"] else None
+            if pdf and pdf.is_file() and not any(d["link"] == f"tax:{bill['apn']}:{bill['number']}" for d in documents):
+                documents.append({"kind": "tax-catalog", "label": named[-1], "amountCents": amount, "date": None,
+                                  "confidence": confidence, "evidence": "document", "viaReceipt": conf,
+                                  "why": f"the county's receipt {conf} paid this bill", "hasPdf": True,
+                                  "link": f"tax:{bill['apn']}:{bill['number']}"})
+        why = ("the county's own receipt for this amount, posted within "
+               f"{NOTICE_DAYS} days of the payment: proof it was paid, naming the bill" if h["exact"] else
+               "the county's receipt for this amount, but " + ("the account it was paid from is not one of the association's"
+                                                              if h["mismatch"] else "its posted day is outside the window"))
+        proofs.append({"kind": "receipt", "label": f"county receipt {conf}", "amountCents": amount,
+                       "date": h["posted"].isoformat() if h["posted"] else None, "dateMeaning": "posted",
+                       "confidence": confidence, "evidence": "payment-proof", "why": why, "bills": named,
+                       **({"tender": f"{r.get('tenderType') or 'account'} ending {h['four']}"} if private and h["four"] else {})})
+    note = f"{len(rows)} receipts" + (f"; {extra} more of the same amount not shown" if extra > 0 else "")
+    return proofs + documents, _tried(RECEIPT_SOURCE, _result(proofs), note, stamp)
+
+
+def _merge_receipt_bills(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A bill the catalog search and a receipt both name is one candidate, with both reasons."""
+    out: list[dict[str, Any]] = []
+    for c in candidates:
+        if "viaReceipt" not in c:
+            out.append(c)
+    for c in candidates:
+        if "viaReceipt" not in c:
+            continue
+        same = next((o for o in out if o.get("kind") == "tax-catalog" and o.get("link") == c["link"]), None)
+        if same is None:
+            out.append(c)
+            continue
+        same["why"] += f"; and the county's receipt {c['viaReceipt']} paid it"
+        same["viaReceipt"] = c["viaReceipt"]
+        if c["confidence"] == "exact":
+            same["confidence"] = "exact"
+    return out
+
+
 def _library(data_dir: Path, tx: dict[str, Any], day: date | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     try:
         from jason.tasks.library import load
@@ -249,8 +374,12 @@ def _recommend(payee: PayeeClass, candidates: list[dict[str, Any]], tried: list[
                           "whether one bill fits", "command": "jason sync-bills --dry-run",
                 "reason": f"{routed} owns this payment; the bill is found by its own sync, not by this search"
                           + ("; the bank notice found is proof of payment only" if proofs else "")}
+    if payee is PayeeClass.COUNTY_TAX and any(c["kind"] == "receipt" and c["confidence"] == "exact" for c in proofs):
+        return {"action": "Download the bill PDF the county's receipt names, import it, then check it against the payment",
+                "command": "jason county-tax --import-bill",
+                "reason": "the county's own receipt proves this payment and names the bill; the catalog holds no PDF of it yet"}
     if payee is PayeeClass.COUNTY_TAX:
-        missing = any(t["source"] == "the county tax catalog" and t["result"] == "not read" for t in tried)
+        missing =any(t["source"] == "the county tax catalog" and t["result"] == "not read" for t in tried)
         return {"action": ("Read the county tax catalog, then look for this amount" if missing else
                            "Check the mail for a property tax bill, or download it from the county's site and attach it"),
                 "command": "jason sync-tax",
@@ -295,17 +424,19 @@ def investigate(data_dir: Path | str, community: Any, registry: Any, transaction
     candidates: list[dict[str, Any]] = []
     for found, entry in (
         (_twins(snap, tx, day), _tried("other attachments of the same amount", "none", "", snap.get("syncedAt"))),
-        _tax(root, tx, day), _library(root, tx, day), _mail(root, tx, day, private), _gmail(root, tx, day, private),
+        _tax(root, tx, day), _receipts(root, community, tx, day, private),
+        _library(root, tx, day), _mail(root, tx, day, private), _gmail(root, tx, day, private),
         _portals(root, community, tx, day),
     ):
         if entry["source"] == "other attachments of the same amount":
             entry["result"] = _result(found)
-        if len(found) > MAX_PER_SOURCE:
+        if entry["source"] != RECEIPT_SOURCE and len(found) > MAX_PER_SOURCE:
             found.sort(key=lambda c: (c["confidence"] != "exact", _gap(c.get("date"), day)))
             entry["note"] = (entry["note"] + "; " if entry["note"] else "") + f"{len(found) - MAX_PER_SOURCE} more of the same amount not shown"
             found = found[:MAX_PER_SOURCE]
         candidates += found
         tried.append(entry)
+    candidates = _merge_receipt_bills(candidates)
     tried.append(_tried("the county's or a vendor's own site", "not read",
                         "jason reads no site when a page opens; a person downloads the bill, or a command reads the portal"))
     rank = {"exact": 0, "near": 1, "lead": 2}

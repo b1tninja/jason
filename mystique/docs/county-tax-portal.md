@@ -4,7 +4,7 @@ What the county's property tax site does when the association signs in, as read 
 (`county-taxes.net.har`, ignored by git; **it holds the session's live tokens**: see "Handling the capture"). It answers one
 question for [the mail and payment attachments handoff](../../docs/console/handoff-mail-and-payment-attachments.md): when a
 PayHOA payment goes to the county tax collector and no bill is attached, can a reader find the **bill** and the **receipt**?
-The answer is yes for both, behind a sign-in a person makes. Nothing is built from this yet. No parcel number, address, name,
+The answer is yes for both, behind a sign-in a person makes. The import side is built since (see "What is built"); the sign-in is not. No parcel number, address, name,
 amount, or token from the capture is written here.
 
 ## What the site is
@@ -70,9 +70,32 @@ from a second source, so a reader can cross-check the two.
 - The refresh token is a secret (P4): it lives in the vault at a path like `county-tax-portal/refresh-token`, never in the
   repository, a log, or the console.
 
+## What is built (2026-10-10) and what still needs a person
+
+Built, offline, and tested with made-up documents only:
+- **The adapter is declared** (`Grant Street Group`, `GovHub`, in `jason.community.adapters` and [adapters.md](../../docs/adapters.md)).
+- **The receipts store and import** (`jason.tasks.tax_receipts`, `jason county-tax --import-receipts FILE --by NAME`): a receipt (or
+  a list) a person saved from the payment history is trimmed to the fields under "Privacy" and kept once by confirmation number in
+  `data/tax/receipts.json`. The receipt's parcel is read from the item's description line, its bill from the item's `external_id`
+  and `display_name`, its tax year from `tax_rate_year`, and the bank account's last four from the tender's summary; **the shape is
+  read from one receipt in the capture, whose body is truncated after the first item**, so a field beyond that (a total, a second
+  item's layout) is unverified, and the importer takes the total as the sum of the items.
+- **The bill import** (`jason county-tax --import-bill FILE --apn --year --by`): a PDF saved from the print route is filed where
+  `sync-tax` files its own and recorded on the stored bill's row, so the catalog and the investigation treat it like any other.
+- **The investigation reads the receipts offline** and names the bill each one paid (see the handoff's "What the build adds").
+- **The live reader is a stub** (`read_live_receipts` raises `NeedsSignIn`); nothing calls it.
+
+Still needs a person at a terminal, with the vault ready:
+1. **The sign-in:** the OIDC and PKCE exchange in a browser, and the refresh token put in the vault (never `.env`, a log, or the
+   console).
+2. **The refresh-token check:** whether it lasts, rotates, or is bound to the browser, tried once with the person present, before
+   any cadence is adopted.
+3. **The list's page size** (the receipts list returned only a count with `perPage=0`) and **the iframe session** the print route
+   needs outside a browser. Until then a person saves a receipt and a bill from the site and imports them.
+
 ## If it is built
 
-Two parts, in this order, each read only:
+Two parts, in this order, each read only (the import half above is done; the sign-in half is not):
 1. **A receipts reader** (`jason county-tax --receipts`): sign in once at a terminal, keep the refresh token in the vault, list the
    receipts, keep the trimmed fields in `data/tax/receipts.json` with their age. The investigation reads that file offline, so a
    county payment finds its receipt without a network call when a page opens.

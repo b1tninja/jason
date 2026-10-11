@@ -91,6 +91,7 @@ MODULES: tuple[str, ...] = (
     "google",
     "cadence",
     "life_safety",
+    "county_tax",
     "use",
 )
 

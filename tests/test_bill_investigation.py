@@ -199,3 +199,114 @@ def test_a_payment_a_source_owns_is_sent_to_the_dry_run_not_to_a_guess(root):
     out = inv.investigate(root, community(), Owned(), 1, now=NOW)
     assert out["routing"]["source"] == "smud" and out["recommend"]["command"] == "jason sync-bills --dry-run"
     assert "smud owns this payment" in out["recommend"]["reason"]
+
+
+# --- the county's payment receipts (data/tax/receipts.json) --------------------------------------------------------
+
+def receipts(root, *rows, now=datetime(2026, 10, 9, 8, tzinfo=timezone.utc)):
+    from jason.tasks import tax_receipts as tr
+
+    docs = []
+    for conf, posted, amounts, four in rows:
+        docs.append(tr.parse_receipt({
+            "confirmationNumber": conf, "postedDatetime": posted,
+            "tender": {"type": "bank", "name": "Example Bank - Operating", "summary": f"Checking ending in {four}"},
+            "billing": {"name": "Example Association", "email": "billing@example.test"},
+            "transactions": [{"fee": "0.00", "items": [
+                {"amount": a, "path": "/Example/v0/items/x?installment=second-installment",
+                 "details": {"display_name": "2026 Secured Annual Bill #B1", "external_id": "B1",
+                             "description": "Parcel #123-456-789-0000\nSitus Address: 123 Main St",
+                             "custom_parameters": {"tax_rate_year": "2026"}}} for a in amounts]}]}))
+    tr.import_receipts(root, docs, by="Pat", now=now)
+
+
+def accounts(*suffixes):
+    return SimpleNamespace(payee_rules=lambda: (TAX,), vendor_portals=lambda: (),
+                           bank_accounts=lambda: tuple(SimpleNamespace(suffix=s) for s in suffixes))
+
+
+def test_a_receipt_for_the_amount_inside_the_window_is_exact_proof_and_names_the_bill(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    tax_db(root, 72714)
+    receipts(root, ("W0000000001", "2026-10-06T15:00:00Z", ("363.57",), "1234"))
+    out = card(root)
+    proof = [c for c in out["candidates"] if c["kind"] == "receipt"]
+    assert len(proof) == 1 and proof[0]["confidence"] == "exact" and proof[0]["evidence"] == "payment-proof"
+    assert proof[0]["label"] == "county receipt W0000000001" and proof[0]["date"] == "2026-10-06"
+    assert proof[0]["bills"] == ["tax bill B1 (2026), parcel ending 0000"]
+    # the catalog's own match and the receipt's bill are one candidate, not two documents
+    docs = [c for c in out["candidates"] if c["evidence"] == "document"]
+    assert len(docs) == 1 and docs[0]["hasPdf"] is True and "W0000000001 paid it" in docs[0]["why"]
+    assert out["recommend"]["action"].startswith("Check tax bill B1")
+    tried = next(t for t in out["tried"] if t["source"] == "county payment receipts")
+    assert tried["result"] == "exact" and tried["readAt"].startswith("2026-10-09")
+
+
+def test_the_receipt_names_the_bill_even_when_the_catalog_matches_no_amount(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    tax_db(root, 99999)                                              # neither the whole bill nor half of it
+    receipts(root, ("W0000000001", "2026-10-06T15:00:00Z", ("363.57",), "1234"))
+    out = card(root)
+    docs = [c for c in out["candidates"] if c["evidence"] == "document"]
+    assert len(docs) == 1 and docs[0]["why"] == "the county's receipt W0000000001 paid this bill" and docs[0]["confidence"] == "exact"
+    assert out["recommend"]["action"].startswith("Check tax bill B1")
+
+
+def test_a_receipt_for_a_bill_with_no_pdf_asks_for_the_pdf(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    receipts(root, ("W0000000001", "2026-10-06T15:00:00Z", ("363.57",), "1234"))
+    out = card(root)
+    assert [c["kind"] for c in out["candidates"]] == ["receipt"]
+    assert out["recommend"]["command"] == "jason county-tax --import-bill"
+    assert "proves this payment and names the bill" in out["recommend"]["reason"]
+
+
+def test_the_amount_alone_is_near_and_a_date_outside_the_window_is_not_exact(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    receipts(root, ("W0000000001", "2026-09-01T15:00:00Z", ("363.57",), "1234"),
+             ("W0000000002", "2026-10-07T15:00:00Z", ("363.58",), "1234"))        # one a month early, one a cent off
+    out = card(root)
+    proof = [c for c in out["candidates"] if c["kind"] == "receipt"]
+    assert [(c["label"], c["confidence"]) for c in proof] == [("county receipt W0000000001", "near")]
+    assert "outside the window" in proof[0]["why"]
+    assert not out["recommend"]["command"] == "jason county-tax --import-bill"
+
+
+def test_a_tender_that_is_not_one_of_the_associations_accounts_is_near(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    receipts(root, ("W0000000001", "2026-10-06T15:00:00Z", ("363.57",), "1234"),
+             ("W0000000002", "2026-10-06T15:00:00Z", ("363.57",), "9999"))
+    out = inv.investigate(root, accounts("1234", "5678"), Registry(), 1, now=NOW)
+    by = {c["label"]: c["confidence"] for c in out["candidates"] if c["kind"] == "receipt"}
+    assert by == {"county receipt W0000000001": "exact", "county receipt W0000000002": "near"}
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR", bankLast4="9999")])      # the snapshot says which
+    again = inv.investigate(root, accounts("1234"), Registry(), 1, now=NOW)
+    by = {c["label"]: c["confidence"] for c in again["candidates"] if c["kind"] == "receipt"}
+    assert by == {"county receipt W0000000001": "near", "county receipt W0000000002": "exact"}
+
+
+def test_the_tender_last_four_is_held_back_unless_private_and_no_contact_detail_is_ever_shown(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    receipts(root, ("W0000000001", "2026-10-06T15:00:00Z", ("363.57",), "1234"))
+    held, shown = card(root), card(root, private=True)
+    assert "1234" not in json.dumps(held) and "tender" not in held["candidates"][0]
+    assert shown["candidates"][0]["tender"] == "bank ending 1234"
+    for body in (held, shown):
+        text = json.dumps(body)
+        assert "Example Association" not in text and "billing@example.test" not in text and "123 Main St" not in text
+        assert "123-456-789" not in text                                           # a parcel is its last four
+
+
+def test_a_receipt_is_never_offered_as_the_bill_and_the_store_is_capped(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    receipts(root, *[(f"W000000000{n}", f"2026-10-0{n}T15:00:00Z", ("363.57",), "1234") for n in range(1, 8)])
+    out = card(root)
+    proofs = [c for c in out["candidates"] if c["kind"] == "receipt"]
+    assert len(proofs) == inv.MAX_PER_SOURCE and not [c for c in out["candidates"] if c["evidence"] == "document"]
+    assert "2 more of the same amount not shown" in next(t for t in out["tried"] if t["source"] == "county payment receipts")["note"]
+
+
+def test_no_receipts_on_disk_is_listed_as_not_read_with_the_command(root):
+    snapshot(root, [tx(1, 36357, "ACH EXAMPLE COUNTY TAX COLLECTOR")])
+    tried = next(t for t in card(root)["tried"] if t["source"] == "county payment receipts")
+    assert tried["result"] == "not read" and "jason county-tax --import-receipts" in tried["note"]

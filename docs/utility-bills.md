@@ -93,6 +93,22 @@ jason probe-transactions --interactive     # live probes: server search against 
 jason dump-transactions --out data/payhoa_txs.jsonl
 ```
 
+## County property tax: receipts and saved bills
+
+`jason sync-tax` reads the county's public pages into `data/tax.db` and saves each bill's print PDF under `data/tax-bills/{parcel}/{year}-{bill number}.pdf`. A county tax collector's payment site also gives what the public pages do not: a **receipt** for each payment made through it (the county's own record, with a confirmation number and the bill each item paid), and the bill as a PDF. Both sit behind a person's sign-in. `jason county-tax` keeps what a person saved from that site; it contacts nothing, and no reader that signs in is built (`jason.tasks.tax_receipts.read_live_receipts` raises, and is called by nothing). The site and what it exposes are the profile's note on the payment portal; the platform is declared in [adapters.md](adapters.md).
+
+```bash
+jason county-tax --import-receipts receipt.json --by NAME   # one receipt, or a list response, saved from the payment history
+jason county-tax --import-bill bill.pdf --apn 123-4567-890-0000 --year 2025 --by NAME
+jason county-tax --import-bill bill.pdf --apn 123-4567-890-0000 --year 2025 --bill NUMBER --by NAME   # two bills that year, or none stored yet
+jason county-tax --list [--json]                            # receipts held; which stored bills have a PDF
+```
+
+- **A receipt is trimmed.** It keeps the confirmation number, the posted time, each paid item (amount in integer cents, the parcel as given, the bill's number and name, the tax year, the installment), the fee, the tender's type, and the bank account's **last four digits**. It drops the billing party's name, address, phone, and email, the delivery party, the user id, the processor details, the account's name, and the item's long description. A list shows a parcel by its last four characters.
+- **`data/tax/receipts.json` is append only.** A receipt is added once, by its confirmation number; a second import changes nothing. The store's `importedAt` is the latest import, and each row carries its own `importedAt` and `by`. Each write holds the store's lock.
+- **A bill PDF goes where `sync-tax` puts its own,** and is recorded on the stored bill's `pdf_path` and `pdf_sha256`. A file already filed with other content is not replaced. With no stored bill and `--bill NUMBER`, the file is filed for a later `sync-tax` to find (it reuses a PDF already on disk). Each import is logged with who and when in `data/tax/bill-imports.jsonl`.
+- **The bill investigation reads the receipts offline** (`jason.tasks.bill_investigation`): a receipt whose total is the payment's amount and whose posted day is within five days is `exact` proof of payment, the amount alone is `near`, and a tender that is not one of the association's accounts (or not the one the PayHOA snapshot names) is `near`. The bill the receipt names becomes the recommended document when the catalog holds its PDF. The tender's last four is P2: it decides the match and is shown only to an office that opens P2.
+
 ## The payment audit
 
 `jason utilities --payments --fetch` reads every PayHOA transaction and keeps the SMUD and City payments. It downloads the attachments the portal files do not already cover into `data/payhoa/attachments/`. Then it checks each payment. PayHOA shows a split payment as child rows that share a hidden parent, and the audit treats those rows as one payment.
