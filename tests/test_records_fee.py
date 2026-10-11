@@ -28,6 +28,9 @@ def fake_words(citation):
     return {"citation": citation, "text": text, "found": bool(text), "inForce": "a test shelf", "reason": ""}
 
 
+REAL_WORDS = fee.words
+
+
 @pytest.fixture(autouse=True)
 def shelf(monkeypatch):
     monkeypatch.setattr(fee, "words", fake_words)
@@ -189,7 +192,9 @@ def test_the_membership_list_date_is_labeled_as_jasons_computed_date_and_its_cou
 # --- the real shelf -----------------------------------------------------------------------------------------------------
 
 def test_the_real_5205g_states_the_figures_the_check_uses(monkeypatch):
-    monkeypatch.undo()
+    # Only the stand-in words come off: an undo() would also lift the autouse hold on the statute fetch, which would then
+    # write a page into the real data folder.
+    monkeypatch.setattr(fee, "words", REAL_WORDS)
     got = fee.words(fee.REDACTION)
     if not got["found"]:
         pytest.skip("CIV 5205 is not on this checkout's authorities shelf")

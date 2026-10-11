@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import shelf_support
 
 from jason.workflows import api, definitions
 from jason.workflows import definitions_general as general
@@ -336,10 +337,8 @@ def test_every_definition_validates_against_the_real_registries():
 
 
 def test_every_statute_a_law_clock_cites_is_on_the_real_shelf_when_there_is_one():
-    shelf = ROOT / "data" / "authorities"
-    if not (shelf / "CIV").is_dir():
-        pytest.skip("the authorities shelf is not on this machine")
-    resolve = general.shelf_resolver(ROOT / "data")
+    shelf_support.require(ROOT / "data")
+    resolve = shelf_support.resolver(ROOT / "data")
     cites = {c.cite for w in everything().values() for s in w.steps if (c := s.clock) and c.cite}
     assert {"CIV 4270(a)(3)", "CIV 5210(b)", "CIV 5210(b)(2)", "CIV 5210(a)", "CIV 5215"} <= cites
     for cite in sorted(cites):

@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -167,8 +168,11 @@ def test_register_general_is_explicit_idempotent_and_loads_no_profile():
     assert keys[:2] == ["owner-info-cycle", "control-adoption"]            # the two general definitions come first
     assert keys == [w.key for w in again] == [w.key for w in definitions.all_definitions()]
     assert len(keys) == len(set(keys))                                      # and no family clashes with another
+    # -I ignores PYTHONPATH and the working directory, so the child is pointed at the jason under test: in a worktree the
+    # editable install names another checkout.
     code = (
         "import sys, json\n"
+        f"sys.path.insert(0, {str(Path(general.__file__).resolve().parents[2])!r})\n"
         "from jason.workflows import definitions_general as g, definitions\n"
         "assert definitions.find('owner-info-cycle') is None\n"
         "g.register_general()\n"

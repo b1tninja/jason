@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import shelf_support
 
 import jason.workflows.defs.platform as platform
 from jason.workflows import api, checks, definitions
@@ -106,7 +107,7 @@ def roles_of(by):
 
 
 def shelf():
-    return general.shelf_resolver(REPO / "data")
+    return shelf_support.resolver(REPO / "data")
 
 
 # --- the definitions ------------------------------------------------------------------------------------------------------
@@ -223,6 +224,7 @@ def test_every_clock_has_a_basis_a_label_and_the_two_statutes_are_the_only_law_c
 
 
 def test_the_statutes_cited_resolve_on_the_authorities_shelf_when_it_is_here():
+    shelf_support.require(REPO / "data")
     resolve = shelf()
     if resolve is None or resolve("CIV 4530(a)(1)") is None:
         pytest.skip("the authorities shelf is not on this checkout")
@@ -342,7 +344,7 @@ def test_the_administrators_runs_are_registered_as_admin_definitions_and_check_i
 # --- registration ---------------------------------------------------------------------------------------------------------
 
 def test_register_general_registers_the_seven_beside_the_existing_two_the_administrators_three_as_admin_definitions():
-    keys = [w.key for w in general.register_general(REPO / "data")]
+    keys = [w.key for w in general.register_general(resolve_law=shelf_support.resolver(REPO / "data"))]
     assert {"owner-info-cycle", "control-adoption", *platform.KEYS, *platform.ADMIN_KEYS} <= set(keys)
     assert all(definitions.find(k) is not None for k in (*platform.KEYS, *platform.ADMIN_KEYS))
     assert all(definitions.find(k).visibility is Visibility.ADMIN for k in platform.ADMIN_KEYS)

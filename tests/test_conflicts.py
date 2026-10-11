@@ -81,8 +81,9 @@ def test_a_conflicts_civil_code_sections_are_on_disk():
     from jason.tasks.export_authorities import authority_text
 
     data = Path(__file__).resolve().parents[1] / "data"
-    if not (data / "authorities" / "CIV").is_dir():
-        pytest.skip("the statutes are not exported here (jason export-authorities)")
+    import shelf_support
+
+    shelf_support.require(data)
     for c in conflicts(community()):
         if not c.authority.startswith("CIV "):
             continue

@@ -474,8 +474,9 @@ def test_a_use_that_is_a_right_is_a_notice_not_a_request_and_has_its_own_acknowl
 def test_the_statute_words_the_forms_quote_are_on_the_shelf_when_it_is_here():
     from jason.tasks.export_authorities import authority_text
 
-    if not (DATA / "authorities" / "CIV").is_dir():
-        pytest.skip("the shelf is not exported here (jason export-authorities)")
+    import shelf_support
+
+    shelf_support.require(DATA)
     cited = {c.split("(")[0] for d in mine().values() for c in (*d.authority, *d.recitals)} | {"CIV 5300"}
     shelf_text = ""
     for citation in sorted(cited):

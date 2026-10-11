@@ -19,6 +19,8 @@ from jason.workflows.defs import all_builders, board
 from jason.workflows.readers import CHECKS, JOBS
 from jason.workflows.resume import Readers
 from jason.workflows.types import CheckResult, ClockBasis, Role, StepKind, StepState, Visibility, parse_sop
+import shelf_support
+from shelf_support import needs_shelf
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 REPO = Path(__file__).resolve().parents[1]
@@ -140,16 +142,16 @@ def test_each_definition_is_a_board_family_row_and_names_its_procedure():
 # --- the checks against the real registries ------------------------------------------------------------------------------
 
 def test_every_definition_validates_against_the_real_registries_including_the_left_out_one():
-    resolver = general.shelf_resolver(SHELF)
+    resolver = shelf_support.resolver(SHELF)
     every = build_all()
     for key, wf in every.items():
         problems = definitions.validate(wf, jobs=set(JOBS), resolve_law=resolver, workflows=set(every) | {"election", "owners-manual"})
         assert problems == [], (key, [str(p) for p in problems])
 
 
-@pytest.mark.skipif(not (SHELF / "authorities" / "CIV").is_dir(), reason="the authorities shelf is not on this machine")
+@needs_shelf(SHELF)
 def test_every_law_clock_resolves_on_the_shelf_and_corporations_code_7341_is_not_cited():
-    resolve = general.shelf_resolver(SHELF)
+    resolve = shelf_support.resolver(SHELF)
     seen = set()
     for wf in build_all().values():
         for s in wf.steps:
@@ -441,7 +443,7 @@ def test_dates_are_checked_at_start():
 # --- registration ---------------------------------------------------------------------------------------------------------
 
 def test_register_general_registers_the_family_beside_the_existing_two_with_hearing_held():
-    registered = general.register_general(SHELF if (SHELF / "authorities").is_dir() else None)
+    registered = general.register_general(resolve_law=shelf_support.resolver(SHELF))
     keys = {w.key for w in registered}
     assert {"owner-info-cycle", "control-adoption"} <= keys
     assert set(BUILT) <= keys and "hearing" in keys
@@ -451,7 +453,7 @@ def test_register_general_registers_the_family_beside_the_existing_two_with_hear
 
 def test_the_held_hearing_validates():
     wf = board.hearing()
-    assert definitions.validate(wf, jobs=set(JOBS), resolve_law=general.shelf_resolver(SHELF)) == []
+    assert definitions.validate(wf, jobs=set(JOBS), resolve_law=shelf_support.resolver(SHELF)) == []
     assert wf.has_legal_clock() and all(s.sop == "" for s in wf.steps) and not any(s.public_title for s in wf.steps)
 
 

@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import shelf_support
 
 from jason.approvals import registry
 from jason.workflows import api, definitions
@@ -98,7 +99,8 @@ def fresh():
 
 
 def shelf_resolver():
-    resolve = general.shelf_resolver(SHELF)
+    shelf_support.require(SHELF)
+    resolve = shelf_support.resolver(SHELF)
     if resolve is None or resolve("CIV 5500") is not True:
         pytest.skip("the statutes are not on the authorities shelf here")
     return resolve

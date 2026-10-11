@@ -318,9 +318,10 @@ def test_every_plan_kinds_rule_is_an_address_the_approvals_screen_recites():
     from jason.approvals import registry
     from jason.web import approvals
 
+    import shelf_support
     from jason.config import data_dir
 
-    statutes = (data_dir() / "authorities" / "CIV").is_dir()
+    statutes = not shelf_support.gap(data_dir())
     unread = []
     for kind in registry.kinds():
         r = approvals.recite(kind.rule)

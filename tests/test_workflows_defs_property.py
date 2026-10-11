@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import shelf_support
 
 from jason.community import procedures
 from jason.workflows import api, definitions
@@ -139,7 +140,7 @@ def test_a_definition_has_the_pages_steps_in_order_with_their_kinds_and_roles(ke
 @pytest.mark.parametrize("key", KEYS)
 def test_it_validates_against_the_real_registries(key):
     wf = built()[key]
-    problems = definitions.validate(wf, jobs=set(JOBS), workflows=set(KEYS), resolve_law=general.shelf_resolver(SHELF))
+    problems = definitions.validate(wf, jobs=set(JOBS), workflows=set(KEYS), resolve_law=shelf_support.resolver(SHELF))
     assert problems == []
     assert definitions.drift([wf]) == []                       # every sop address names a step of an existing procedure
 
@@ -235,7 +236,8 @@ def test_no_fire_code_regulation_is_a_law_clock_and_the_ones_the_page_cites_are_
 
 
 def test_every_law_clock_cite_is_on_the_shelf_when_the_shelf_is_here():
-    resolve = general.shelf_resolver(SHELF)
+    shelf_support.require(SHELF)
+    resolve = shelf_support.resolver(SHELF)
     if resolve is None or resolve("CIV 5551(b)(1)") is None:
         pytest.skip("the authorities shelf is not here")
     for key, cites in LAW_CITES.items():
