@@ -7,7 +7,8 @@ against a second live read, and applied only as approved, every step in an appen
 - ``audit``: ``audit.jsonl`` beside it, hash-chained and append only.
 - ``registry``: the action kinds, each with its planner, applier, approver rule, and cost.
 - ``engine``: ``plan``, ``decide``, ``submit``, ``confirm``, ``decline``, ``withdraw``, ``check``, and ``apply``.
-- ``kinds``: the adapters over the task functions the CLI already calls (``owner-info-tags``, ``payhoa-attach-bills``).
+- ``kinds``: the adapters over the task functions the CLI already calls (``owner-info-tags``, ``payhoa-attach-bills``,
+  ``gmail-drafts``).
 
 The CLI is ``jason approvals``; ``jason-mcp`` reads approvals and never decides or applies one. The JSON contracts
 for a console are in ``schemas/``. The design is docs/console/approval-workflow.md.

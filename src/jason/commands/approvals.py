@@ -49,6 +49,12 @@ def _with_live(args: argparse.Namespace, agent_factory: Callable[[Any], Any], ki
     if kind.system == "payhoa":
         with agent_factory(args) as agent:
             return fn(_live(args, agent, kind))
+    if kind.system == "google":                  # Google Drive's client, never interactive (the web's default_live)
+        from jason.approvals import Live
+        from jason.approvals.evidence import drive_live
+
+        with drive_live() as drive:
+            return fn(Live(drive.client, 0, _data_dir(args), getattr(args, "env", None)))
     return fn(_live(args, None, kind))
 
 
@@ -181,8 +187,19 @@ def cmd_approvals(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
         if action == "plan":
             kind = registry.get(args.ref)
             by = args.by or os_actor()
-            a = _with_live(args, agent_factory, kind, lambda live: _planned(engine.plan(kind.key, live, by=by)))
-            return a
+            try:
+                scope = json.loads(args.scope) if args.scope else {}
+            except ValueError:
+                scope = None
+            if not isinstance(scope, dict):
+                print("--scope is a JSON object", file=sys.stderr)
+                return 2
+            try:
+                return _with_live(args, agent_factory, kind,
+                                  lambda live: _planned(engine.plan(kind.key, live, by=by, scope=scope)))
+            except (ValueError, LookupError, FileNotFoundError) as exc:     # a scope or a source the kind refuses
+                print(f"refused: {exc.args[0] if exc.args else exc}", file=sys.stderr)
+                return 2
         if action == "show":
             a = store.load(args.ref, data_dir)
             print(json.dumps(to_dict(a), indent=1, ensure_ascii=False) if args.json else "\n".join(show_lines(a)))
@@ -284,6 +301,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--yes", action="store_true",
                    help="with apply: apply the approved items (without it: re-plan and compare, writing nothing)")
     p.add_argument("--json", action="store_true", help="with show: the approval as JSON")
+    p.add_argument("--scope", metavar="JSON", help="with plan: the kind's scope as a JSON object (a kind that needs "
+                                                   "one, such as gmail-drafts, says what it takes)")
     p.add_argument("--status", help="with list: only this status (planned, in_review, approved, ...)")
     p.add_argument("--kind", help="with list: only this kind")
     p.add_argument("--verify", action="store_true", help="with audit: check the log's hash chain")

@@ -127,7 +127,18 @@ def _response_rules(community: Any) -> list[Row]:
     return out
 
 
+def _gmail_drafts(_community: Any) -> list[Row]:
+    from jason.approvals.kinds import gmail_drafts as module
+
+    where = _rel(module.__file__)
+    return [Row(c.key, c.words, {"composer": c.composer, "key": c.key_is, "sent": module.SENT}, where)
+            for c in module.CASES]
+
+
 TABLES: dict[str, Table] = {t.name: t for t in (
+    Table("gmail_drafts.CASES", "the emails the console may save as Gmail drafts (never sent)",
+          "src/jason/approvals/kinds/gmail_drafts.py", _gmail_drafts,
+          "each is composed by the function `jason draft` calls; a person sends the draft from Gmail"),
     Table("owner_responses.RULES", "the owner-information response policy (how each answer is handled)",
           "src/jason/tasks/owner_responses.py", _owner_responses,
           "applied in order; each row's condition is the function it tests"),

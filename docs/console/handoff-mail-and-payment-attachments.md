@@ -90,7 +90,7 @@ Add for this cut:
 ### Hard rules (mail)
 
 - Headers by default; bodies only on explicit draft or signature paths ([../gmail.md](../gmail.md)).
-- jason never sends; Save to Gmail only. A Gmail draft is a Google write the web layer does not make today: until a draft approvals kind exists, “Draft a reply” is a `Command` (`jason draft …`) the person runs, and the drawer shows the draft's trail after.
+- jason never sends; Save to Gmail only. A Gmail draft is a Google write, and it is an approvals kind (`gmail-drafts`, decided October 10, 2026; [approval-workflow.md](approval-workflow.md)): a person approves one planned email and the applier saves it as a draft, never sent. The kind covers the three emails `jason draft` composes (a proposal request, a hearing notice, a meeting notice) with a recipient the person chooses. “Draft a reply” to a thread is not one of them: until the free-text composer exists, it is a `Command` (`jason draft …`) the person runs, and the drawer shows the draft's trail after.
 - Committing purposes (accept a bid, authorize work) need a recorded board decision ([handoff-draft-from-item.md](handoff-draft-from-item.md)).
 - Owner PII never goes to a vendor recipient.
 - The “awaiting us” caveat is always visible: “A thread is listed when the last message was not ours. Someone may have answered by phone or at a meeting; jason cannot see that.”
@@ -99,7 +99,7 @@ Add for this cut:
 ### Backend already usable
 
 - `jason gmail --sync --days N`, `jason threads`, MCP `email_threads`, `reply_needed`, `email_intents`, `open_items`
-- Draft CLI; a future approvals kind for Gmail drafts ([mvp.md](mvp.md) phase 3)
+- Draft CLI; the approvals kind `gmail-drafts` for the three cases `jason draft` composes ([approval-workflow.md](approval-workflow.md)); the free-text composer is not built
 
 ## Part B — Payments / bill attach workbench
 

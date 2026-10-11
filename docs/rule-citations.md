@@ -194,7 +194,7 @@ document (`Index.part_of` returns the segment part); where it gives only names, 
 A plan item names the rule it rests on. When that rule is a row jason keeps (a decision written as data), `jason cite`
 recites the row, in `jason.tasks.rule_rows`:
 
-- **Addresses.** `owner_responses.RULES: delivery` (one row of a table), `owner_info.FOR_A_PERSON` (a whole table), and
+- **Addresses.** `owner_responses.RULES: delivery` (one row of a table), `owner_info.FOR_A_PERSON` (a whole table), `gmail_drafts.CASES: hearing` (the emails the console may save as Gmail drafts), and
   `Community.owner_information: EARLIER_ELECTIONS` (one attribute the specification holds, through a no-argument `Community`
   method). The tables are a closed list (`rule_rows.TABLES`): an address never names an arbitrary module's attribute. The
   address may sit in a sentence ("the response policy's delivery row (owner_responses.RULES: delivery)").

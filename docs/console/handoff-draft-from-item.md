@@ -4,7 +4,16 @@ For the design pass on a flow that does not exist yet as a screen. The CLI has i
 `jason draft --proposal-request SYSTEM`, which drafts a request to a life safety system's servicer from the record and saves
 it as a Gmail draft ([../fire-protection.md](../fire-protection.md), "Asking the servicer"). This page generalizes that case
 into one console flow. It lists the components, their states, the data shapes, sample data, what the design must keep, and
-the decisions the design is asked to make. Nothing here is built.
+the decisions the design is asked to make. The flow below is not built.
+
+**As built.** Saving a draft is now an approvals kind, `gmail-drafts` (decided October 10, 2026: the console may create a
+Gmail draft and never sends; [approval-workflow.md](approval-workflow.md)). It covers the three cases `jason draft` already
+composes, and no others: a proposal request (`--proposal-request SYSTEM`), a hearing notice (`--hearing ADDRESS`, with the
+notice Doc as PDF when asked), and a meeting notice (`--meeting-notice DATE`). The recipient (and `cc`) is the person's
+choice, never a default; a person plans it (`jason approvals plan gmail-drafts --scope JSON`), approves one planned email,
+and the applier composes it again, saves nothing if the source changed, and otherwise creates the draft. The free-text
+composer this page designs (purposes, per-sentence provenance, regenerate, thread replies) is still unbuilt, and so is the
+trail store.
 
 ## The idea in four sentences
 

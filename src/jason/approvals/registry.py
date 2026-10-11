@@ -98,6 +98,20 @@ KINDS: tuple[ActionKind, ...] = (
         default_scope={"date_window_days": 7},
         aliases=("payhoa.attach-bills",),
     ),
+    ActionKind(
+        key="gmail-drafts",
+        title="Gmail draft: save a prepared email as a draft (never sent)",
+        cli="jason draft --yes",
+        # R1, not R2: the draft is in the signed-in Gmail account's own drafts, seen by no one else. Nothing is sent
+        # (the drafts client has no send method), no member is contacted, and no record about a member changes.
+        system="google", resource=Resource.GOOGLE, risk=Risk.R1, approver=Approver.ONE_PERSON,
+        reversible="yes: a person deletes the draft in Gmail; nothing is sent",
+        planner="jason.approvals.kinds.gmail_drafts:plan",
+        applier="jason.approvals.kinds.gmail_drafts:apply",
+        rule="gmail_drafts.CASES",
+        max_age_hours=6,                       # the plan rests on the stores the email is composed from
+        aliases=("google.gmail-drafts",),
+    ),
 )
 
 _registered: dict[str, ActionKind] = {}
