@@ -207,6 +207,11 @@ PROCEDURES: tuple[Procedure, ...] = (
         (
             Step("Keep the PDF to four pages (PayHOA's address page is billed; a sixth billed page adds $2.25).",
                  command="jason mailroom --prices", refs=("payhoa.pricing", "AGENTS.md (Boundaries)")),
+            Step("Choose the mail class: first class or better for an individual notice (Civil Code 4040(a)(2)); "
+                 "tracking is certified or registered, first class only.", person=True,
+                 command="jason mailroom --pdf FILE --units UNITS --mail-class first-class",
+                 check="the preview names the class, tracking, color, and sides",
+                 lessons=("mailroom-class-for-individual-notice",)),
             Step("Preview the recipients and the cost.", command="jason mailroom --pdf FILE --units UNITS",
                  check="each recipient and the price per letter"),
             Step("Test every link and QR code in the letter as its reader would.", person=True,

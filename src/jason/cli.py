@@ -867,7 +867,7 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
     from dataclasses import asdict
     from pathlib import Path as _Path
 
-    from jason.tasks.mailroom import prepare, printed, send, status
+    from jason.tasks.mailroom import STANDARD_NOTE, check_options, prepare, printed, send, status
 
     if (args.send or args.cancel) and not args.yes:
         print("--send and --cancel act on real mail (a letter is printed, mailed, and charged to the association); add --yes. "
@@ -935,17 +935,29 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
             if not wanted:
                 print("--pdf needs --units (street addresses, PayHOA unit ids, or 'all')", file=sys.stderr)
                 return 2
+            try:
+                mail_class = check_options(args.mail_class, tracking=args.tracking, with_invoices=args.with_invoices,
+                                           double_sided=args.double_sided)
+            except ValueError as exc:
+                print(exc, file=sys.stderr)
+                return 2
+            color = "color" if args.color else "bw"
             prepared = prepare(client, org_id, data_dir, _Path(args.pdf), wanted, send_to=args.send_to, with_invoices=args.with_invoices)
             included = [r for r in prepared.recipients if r.get("isIncluded", True)]
             print(f"{_Path(prepared.pdf).name}: {prepared.pages} pages to {len(included)} recipients at their "
                   f"{'mailing' if prepared.send_to == 'mailing' else 'unit'} address; preview saved to {prepared.preview}")
-            run = printed(prepared.pages, double_sided=args.double_sided)
+            run = printed(prepared.pages, double_sided=args.double_sided, first_class=mail_class != "standard", color=args.color,
+                          tracking=args.tracking)
             print(f"  prints as {run.pages} pages on {run.sheets} sheets ({'double' if args.double_sided else 'single'}-sided), "
                   f"PayHOA's address page first (billed; not in its preview); ${run.cents / 100:.2f} a letter by the "
                   f"pricing guide, ${run.cents * len(included) / 100:.2f} for {len(included)}"
                   + ("; the last sheet's back is blank (free: billing is by page)" if run.blank_back else ""))
             if run.heavy:
                 print(f"  {run.pages} billed pages: $2.25 more postage a letter; a page fewer would save it")
+            print(f"  {mail_class}{', ' + args.tracking if args.tracking else ''}{', color' if args.color else ', black and white'}"
+                  f"{', two-sided' if args.double_sided else ', one-sided'}")
+            if mail_class == "standard":
+                print(f"  note: {STANDARD_NOTE}")
             for name in prepared.missing:
                 print(f"  no PayHOA unit matched '{name}'")
             for r in prepared.recipients:
@@ -963,7 +975,8 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
                 print("not mailed: read the preview, then rerun with --send --yes to print and mail it (postage is charged)"
                       + (f"; the letter is then kept in {data_dir / 'notices' / args.notice}" if args.notice else ""))
                 return 0
-            record = send(client, org_id, data_dir, prepared, double_sided=args.double_sided, with_invoices=args.with_invoices)
+            record = send(client, org_id, data_dir, prepared, double_sided=args.double_sided, with_invoices=args.with_invoices,
+                          color=color, mail_class=args.mail_class, tracking=args.tracking, by=args.by or "")
             cost = sum(b["costCents"] for b in record["batches"])
             print(f"mailed: batch {', '.join(str(b['id']) for b in record['batches']) or '(not listed yet)'}"
                   f"{f', ${cost / 100:.2f}' if cost else ''}; logged in {data_dir / 'mailroom' / 'sent.jsonl'}")
@@ -3980,6 +3993,12 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Each owner's mailing address (default) or the unit's own address")
     mailroom.add_argument("--with-invoices", action="store_true", help="Mail each owner's invoice with the letter")
     mailroom.add_argument("--double-sided", action="store_true", help="Print on both sides")
+    mailroom.add_argument("--mail-class", choices=("standard", "first-class"), default="standard",
+                          help="Standard (PayHOA: 2-3 weeks) or first class (5-8 business days; needed for tracking and invoices). "
+                               "Standard is not a method CIV 4040(a)(2) lists for an individual notice")
+    mailroom.add_argument("--tracking", choices=("certified", "registered"), default="",
+                          help="Certified or registered mail (extra cost a letter; first class only)")
+    mailroom.add_argument("--color", action="store_true", help="Print in color (extra cost a page)")
     mailroom.add_argument("--send", action="store_true", help="Mail the letter after the preview (needs --yes; charges postage)")
     mailroom.add_argument("--cancel", type=int, default=0, help="Cancel a letter still processing, by its letter id (needs --yes)")
     mailroom.add_argument("--prices", action="store_true",

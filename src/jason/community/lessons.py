@@ -87,6 +87,18 @@ LESSONS: tuple[Lesson, ...] = (
            "or the written route only with a QR code to the sign-in page.",
            Status.DECISION, docs=(RUNBOOK,),
            notes=("First test whether ;unitId= survives PayHOA's sign-in page.",)),
+    Lesson("mailroom-class-for-individual-notice", date(2026, 10, 11), (Area.MAILROOM, Area.OWNER_INFO),
+           "Every letter jason has mailed through the Mailroom went standard class, which PayHOA's own page says "
+           "delivers in 2-3 weeks; first class is 5-8 business days.",
+           "The Mailroom send defaulted to standard, and Civil Code 4040(a)(2) lists first-class mail, registered or "
+           "certified mail, express mail, or overnight delivery as the methods for an individual notice to a member who "
+           "has given no valid delivery method. Standard is not on that list.",
+           "`jason mailroom` takes --mail-class first-class, --tracking certified|registered, and --color, checks the "
+           "rules PayHOA's page applies (tracking and invoices need first class), and prints a note on a standard "
+           "preview. The default is still standard: the board decides whether a letter for a notice defaults to first "
+           "class, and whether an earlier mailing needed it (counsel reads which provisions require individual delivery).",
+           Status.DECISION, docs=("docs/console/screens/mailroom.md",),
+           notes=("Guard so far: the preview note and the checks; nothing refuses a standard send.",)),
     Lesson("paper-cannot-require", OCT_2026, (Area.FORMS, Area.OWNER_INFO),
            "A returned PDF left the occupancy question, required by law, blank.",
            "No PDF or paper form can refuse to be sent; the question sat at number 12, after the optional sections.",

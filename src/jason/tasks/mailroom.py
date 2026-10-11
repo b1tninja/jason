@@ -26,6 +26,32 @@ SEND_LOG = "sent.jsonl"
 # Seconds to wait before each read of the new batch after a send.
 READ_BACK = (1.0, 2.0, 4.0, 8.0)
 
+# PayHOA's Mailroom options, read from its own Mail Options step (captured 2026-10-11). ``mailClass`` is "standard"
+# (delivers in 2-3 weeks) or "first class" (5-8 business days); tracking is "certified" or "registered", and PayHOA
+# offers it only with first class; an invoice goes only first class and single-sided.
+MAIL_CLASSES = {"standard": "standard", "first-class": "first class", "first class": "first class"}
+TRACKING = ("certified", "registered")
+STANDARD_NOTE = ("standard class is not one of the delivery methods CIV 4040(a)(2) lists (first-class mail, registered or "
+                 "certified mail, express mail, overnight delivery): where a provision requires individual delivery and the "
+                 "member has given no valid method, use --mail-class first-class (jason cite CIV 4040)")
+
+
+def check_options(mail_class: str, *, tracking: str = "", with_invoices: bool = False, double_sided: bool = False) -> str:
+    """The PayHOA ``mailClass`` for the options asked, or a ``ValueError`` saying which rule PayHOA's own page applies.
+    Tracking needs first class; an invoice needs first class and single-sided printing."""
+    if mail_class not in MAIL_CLASSES:
+        raise ValueError(f"mail class is one of: {', '.join(sorted({'standard', 'first-class'}))}")
+    if tracking and tracking not in TRACKING:
+        raise ValueError(f"tracking is one of: {', '.join(TRACKING)}")
+    value = MAIL_CLASSES[mail_class]
+    if tracking and value == "standard":
+        raise ValueError(f"{tracking} mail needs first class (PayHOA offers tracking only with first class)")
+    if with_invoices and value == "standard":
+        raise ValueError("an invoice can only be sent by first class (PayHOA)")
+    if with_invoices and double_sided:
+        raise ValueError("an invoice cannot be sent double-sided (PayHOA)")
+    return value
+
 
 def _address_key(text: str) -> str:
     """"123 Main Street" and "123 MAIN ST" as one key."""
@@ -135,14 +161,16 @@ class Printed:
     heavy: bool          # six pages or more: the extra postage
 
 
-def printed(pages: int, *, double_sided: bool, first_class: bool = False, color: bool = False) -> Printed:
+def printed(pages: int, *, double_sided: bool, first_class: bool = False, color: bool = False,
+            tracking: str = "") -> Printed:
     """How a letter of ``pages`` pages prints and what it costs: the address page first, then the letter, one or two
     pages a sheet. Two-sided printing saves paper, not money."""
     from payhoa.pricing import PRICING
 
     total = pages + ADDRESS_PAGES
     sheets, blank = (total, False) if not double_sided else ((total + 1) // 2, total % 2 == 1)
-    return Printed(total, sheets, blank, PRICING.letter(pages, first_class=first_class, color=color),
+    return Printed(total, sheets, blank, PRICING.letter(pages, first_class=first_class, color=color,
+                                                         certified=tracking == "certified", registered=tracking == "registered"),
                    total >= PRICING.heavy_from)
 
 
@@ -241,15 +269,17 @@ def prepare(client: Any, org_id: int, data_dir: Path, pdf: Path, wanted: list[st
 
 
 def send(client: Any, org_id: int, data_dir: Path, prepared: Prepared, *, double_sided: bool = False,
-         with_invoices: bool = False, color: str = "bw", mail_class: str = "standard") -> dict[str, Any]:
+         with_invoices: bool = False, color: str = "bw", mail_class: str = "standard", tracking: str = "",
+         by: str = "") -> dict[str, Any]:
     """Mail the prepared letter. This prints and mails real letters and charges the association; the CLI calls it only
     with a person's ``--yes``. The new batch is read back and the sending logged in ``data/mailroom/sent.jsonl``."""
     if not prepared.owner_ids:
         raise ValueError("PayHOA named no recipient for these units")
+    mail_class = check_options(mail_class, tracking=tracking, with_invoices=with_invoices, double_sided=double_sided)
     before = {b.get("id") for b in client.mail_pdf_batches(org_id)}
     client.send_mail_pdf(org_id, Path(prepared.pdf), unit_ids=prepared.unit_ids, owner_ids=prepared.owner_ids,
                          num_pages=prepared.pages, send_to=prepared.send_to, mail_class=mail_class, color=color,
-                         double_sided=double_sided, include_invoices=with_invoices)
+                         double_sided=double_sided, include_invoices=with_invoices, tracking=tracking)
     new: list[dict[str, Any]] = []
     for wait in READ_BACK:                            # PayHOA makes the batch a moment after the send returns
         time.sleep(wait)
@@ -258,10 +288,12 @@ def send(client: Any, org_id: int, data_dir: Path, prepared: Prepared, *, double
             break
     letters = [{"id": x.get("id"), "communication": x.get("commActivityId"), "costCents": x.get("totalCost"),
                 "status": x.get("status")} for b in new for x in client.mail_batch(org_id, int(b["id"]))]
-    run = printed(prepared.pages, double_sided=double_sided, first_class=mail_class != "standard", color=color != "bw")
+    run = printed(prepared.pages, double_sided=double_sided, first_class=mail_class != "standard", color=color != "bw",
+                  tracking=tracking)
     record = {"sent": datetime.now(timezone.utc).isoformat(timespec="seconds"), "pdf": prepared.pdf, "pages": prepared.pages,
               "sendTo": prepared.send_to, "units": prepared.unit_ids, "ownerIds": prepared.owner_ids,
               "doubleSided": double_sided, "withInvoices": with_invoices, "color": color, "mailClass": mail_class,
+              "tracking": tracking, "by": by,
               "guideCents": run.cents, "batches": [_batch(b, "pdf") for b in new], "letters": letters,
               "preview": prepared.preview}
     log = Path(data_dir) / MAIL_DIR / SEND_LOG
@@ -287,5 +319,5 @@ def keep_notice(data_dir: Path, key: str, prepared: Prepared, record: dict[str, 
                             recipients=plan, batch=batches, by=by, source=str(prepared.pdf))
 
 
-__all__ = ["ADDRESS_PAGES", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "keep_notice",
+__all__ = ["ADDRESS_PAGES", "MAIL_CLASSES", "STANDARD_NOTE", "TRACKING", "check_options", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "keep_notice",
            "letter_history", "price_check", "resolve_units", "status", "prepare", "send", "page_count", "printed"]

@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 
 import pymupdf
+import pytest
 
 from jason.tasks.mailroom import prepare, resolve_units, send, status
 
@@ -118,3 +119,49 @@ def test_charged_letters_are_checked_against_the_pricing_guide():
     ])
     assert [(r.id, r.matches) for r in rows] == [(1, "guide"), (2, "guide"), (3, "guide, address page not billed"),
                                                  (6, "differs")]
+
+
+def test_mail_options_follow_the_rules_on_payhoas_own_page():
+    from jason.tasks.mailroom import check_options
+
+    assert check_options("standard") == "standard" and check_options("first-class") == "first class"
+    assert check_options("first-class", tracking="certified", double_sided=True) == "first class"
+    for bad in (dict(mail_class="standard", tracking="certified"), dict(mail_class="standard", with_invoices=True),
+                dict(mail_class="first-class", with_invoices=True, double_sided=True),
+                dict(mail_class="first-class", tracking="express"), dict(mail_class="priority")):
+        with pytest.raises(ValueError):
+            check_options(**bad)
+
+
+def test_certified_and_registered_mail_are_priced_by_the_guide():
+    from jason.tasks.mailroom import printed
+
+    base = printed(4, double_sided=False, first_class=True).cents
+    assert base == 125 + 20 * 4                                           # first class; 5 billed pages
+    assert printed(4, double_sided=False, first_class=True, tracking="certified").cents == base + 1000
+    assert printed(4, double_sided=False, first_class=True, tracking="registered").cents == base + 2500
+    assert printed(4, double_sided=False, first_class=True, color=True).cents == base + 20 * 5
+
+
+def test_a_first_class_certified_send_passes_its_options_and_logs_them(tmp_path: Path, monkeypatch):
+    import jason.tasks.mailroom as mailroom
+
+    monkeypatch.setattr(mailroom, "READ_BACK", (0.0,))
+    data, client = _data(tmp_path), FakeClient()
+    prepared = prepare(client, 1, data, _letter(tmp_path), ["3024 Macon Dr"])
+    record = send(client, 1, data, prepared, mail_class="first-class", tracking="certified", color="color", by="A. Manager")
+    assert client.sent[0]["mail_class"] == "first class" and client.sent[0]["tracking"] == "certified"
+    assert client.sent[0]["color"] == "color"
+    logged = json.loads((data / "mailroom" / "sent.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert (logged["mailClass"], logged["tracking"], logged["by"]) == ("first class", "certified", "A. Manager")
+    assert record["guideCents"] == mailroom.printed(prepared.pages, double_sided=False, first_class=True, color=True,
+                                                    tracking="certified").cents
+    with pytest.raises(ValueError):                                       # refused before anything is mailed
+        send(client, 1, data, prepared, mail_class="standard", tracking="registered")
+    assert len(client.sent) == 1
+
+
+def test_a_standard_send_carries_the_note_about_the_statutes_methods():
+    from jason.tasks.mailroom import STANDARD_NOTE
+
+    assert "CIV 4040(a)(2)" in STANDARD_NOTE and "--mail-class first-class" in STANDARD_NOTE

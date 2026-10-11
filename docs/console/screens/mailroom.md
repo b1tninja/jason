@@ -35,7 +35,7 @@ One letter, from the PDF to the mail slot to the mailbox: what it is, whom it re
 | Charged against the guide | `price-check.json` (`price_check`): per kind, month, pages, options: letters, charged, guide, `matches` (`guide`, `guide, address page not billed`, `differs`) |
 | A letter after the send | live PayHOA only: `--batch ID` (status, last event, tracking), `--letters KIND`, `--events COMMUNICATION` (Lob's events). On disk afterward only through the notice ledger (`data/notices/deliveries.db`, `jason notices KEY --sync`), and only for a send with a notice key |
 | Lessons for the area | `for_area(Area.MAILROOM, open_only=True)`: the dry run prints them for owner-information sends today |
-| **The preview record (to add)** | `data/mailroom/previews/STAMP-STEM.json` beside PayHOA's PDF: `id`, `read`, `by`; `pdf` (`name`, `sha256`, `pages`); options (`sendTo`, `withInvoices`, `doubleSided`; the command mails standard class, black and white); `named[]` and `missing[]` (what the person typed and what matched no unit); `units[]` (`id`, `title`, and the `payhoa.db` sync time); `recipients[]` (`unitTitles`, `name`, `address`, `ownerId`, `isIncluded`, `isDuplicate`); `printed` (billed pages, sheets, blank back, heavy); `lettersExpected`, `totalCents`; `fingerprint`; `notice` (key, if any); `linksTested` (`by`, `at`) |
+| **The preview record (to add)** | `data/mailroom/previews/STAMP-STEM.json` beside PayHOA's PDF: `id`, `read`, `by`; `pdf` (`name`, `sha256`, `pages`); options (`sendTo`, `withInvoices`, `doubleSided`, `mailClass`, `tracking`, `color`); `named[]` and `missing[]` (what the person typed and what matched no unit); `units[]` (`id`, `title`, and the `payhoa.db` sync time); `recipients[]` (`unitTitles`, `name`, `address`, `ownerId`, `isIncluded`, `isDuplicate`); `printed` (billed pages, sheets, blank back, heavy); `lettersExpected`, `totalCents`; `fingerprint`; `notice` (key, if any); `linksTested` (`by`, `at`) |
 | The fingerprint (to add) | first 12 hex of sha256 over the PDF's sha256, the sorted included `ownerId`s with a hash of each address, and the options. Safe to show and to put in a command: it carries no address |
 
 `resolve_units` reads the local `data/payhoa.db` units table (street address after `_address_key` normalizing, or a unit id, or `all`); a name that matches none is a miss and stays one. `mail_recipients` then asks PayHOA live whom a letter to those units reaches, at the owner's mailing address (`mailing`) or the unit's own (`unit`). A count, a total, or an address is never computed from memory: it is the record's.
@@ -67,8 +67,8 @@ Five bands, always in this order. The rail on the left of the first band is the 
 | 129 Main St     D. Owner      129 Main St                 mailing = unit address [DUPLICATE]|
 +------------------------------------------------------------------------------------------+
 | 3 HOW IT PRINTS AND WHAT IT COSTS                                                        |
-| [address page][p1][p2][p3]  4 billed pages · 2 sheets double-sided · standard, b&w       |
-| $1.65 a letter: $1.05 first page + 3 x $0.20      11 letters = $18.15       [CostLine]   |
+| [address page][p1][p2][p3]  4 billed pages · 2 sheets double-sided · first class, b&w    |
+| $1.85 a letter: $1.25 first page + 3 x $0.20      11 letters = $20.35       [CostLine]   |
 | Guide read 2026-10-01. Four letter pages is the most before the $2.25 postage.           |
 +------------------------------------------------------------------------------------------+
 | 4 BEFORE IT GOES                                                                         |
@@ -103,6 +103,25 @@ Built: `ScreenHeader`, `Card`, `DataTable`, `Doc`, `DocumentPreview`, `CostLine`
 | Open the notice | `#/notices?key=KEY` (its requirement, text as sent, proof, follow-ups) | No | `jason notices KEY` |
 
 The console never queues `--send` or `--cancel` (a queued send would mail from a worker, unattended). To add: `jobs.add` refuses a `mailroom` command with either flag.
+
+## The mail options (read from PayHOA's own Mail Options step, captured 2026-10-11)
+
+The options the page shows, and the rules PayHOA's page itself applies. The command takes them as `--mail-class`, `--tracking`, and `--color` (built); the page shows what was chosen and never offers a combination PayHOA refuses.
+
+| Option | Choices | Cost | Rule |
+|---|---|---|---|
+| Shipping | Standard (delivers in 2-3 weeks); First class (5-8 business days) | $1.05; $1.25 for the first page | An invoice goes only first class |
+| Tracking | None; Certified mail; Registered mail | none; +$10.00; +$25.00 a letter | Offered only with first class |
+| Printing | Black and white; Color | none; +$0.20 a page | |
+| Two-sided | One-sided; Two-sided | the same price (saves paper) | An invoice cannot be double-sided |
+| Send to | Unit address; owner mailing addresses (duplicates removed; the unit's address where an owner has none) | | |
+| Pages | The first is the base cost; each after, $0.20 | | PayHOA's address page is billed; a sixth billed page adds $2.25 a letter |
+
+The captured page also shows a return-envelope stub at $0.10 (a `return_envelope` field in a letter's options). The command does not offer it.
+
+**Which class a notice needs.** Civil Code 4040(a)(2), from the stored text: "If the member has not provided a valid delivery method pursuant to Section 4041, the association shall deliver the document by first-class mail, registered or certified mail, express mail, or overnight delivery by an express service carrier addressed to the recipient at the address last shown on the books of the association." (4040(a)(1) first requires delivery by the member's preferred method.) Standard class is not among those methods. **jason's reading, not the statute's:** an individual notice to a member with no valid delivery method on record goes first class or better, so the preview shows the class in the first line, and a standard preview carries the note (`STANDARD_NOTE`, citing the section, not paraphrasing it). Whether a given mailing is an "individual delivery" or "individual notice" is the board's and counsel's to say; the page does not decide it. The default is still standard until the board decides.
+
+**What the logs show.** `data/mailroom/sent.jsonl` records the class, tracking, and who sent it (`by`) from now on; sends before this change logged the class and no tracking or sender.
 
 ## The send plan: a proposal
 
@@ -148,7 +167,7 @@ Example Village HOA, 11 units on Example Rd. The PDF `annual-notice.pdf`, 3 page
 
 1. **Adopt the two-person kind** `payhoa-mailroom-send` (recommended: phase 4, terminal apply only, after the fingerprint ships), or keep a command with `--preview ID --expect`? And the key: `payhoa-mailroom-send` (the registry's style, members-cycles.md) or `mailroom-send`? Adopting changes the AGENTS.md sentence on who mails.
 2. **Drop the `payhoa.mailroom.cancel` kind** (recommended) and log cancels as commands?
-3. **Mail class.** The command always mails PayHOA's `standard` class (2 to 3 weeks; no flag selects another), while `notice_delivery` calls the Mailroom "first-class mail" and the notice ledger's resend follow-ups say first-class mail. Is standard enough for a notice the law sends to a member individually, or must the command gain `--first-class` ($1.25 first page) and require it when `--notice` is given? Counsel reads this; jason has not verified it.
+3. **Mail class (settled in part, 2026-10-11).** First class or better is what 4040(a)(2) lists for an individual notice to a member with no valid delivery method; the command now takes `--mail-class first-class`. Open: does a letter sent with `--notice` default to first class (recommended), is standard allowed only for a mailing that is not an individual delivery (counsel reads which), and is an earlier standard mailing a matter for the board? Lesson `mailroom-class-for-individual-notice`.
 4. **Co-owners and secondary records.** The command mails every `isIncluded` row, with no way to leave one out. Add `--exclude OWNER_ID`? And whether PayHOA bills one letter per owner row or per address for a one-off send is not verified; the read-back's count settles it after the fact.
 5. **Where the PDF comes from.** A path under `data/` the person names, the approved letter's file, or a Drive export? A picker needs a folder the loader may list.
 6. **More than four pages.** Warn only (as drawn), or require a named person's choice recorded in the plan?
@@ -172,3 +191,4 @@ Example Village HOA, 11 units on Example Rd. The PDF `annual-notice.pdf`, 3 page
 12. No `/api/file` link, absolute path, address, or name appears in a URL; PayHOA's proof opens through `Doc` and is logged.
 13. Under the proposal: the plan has one item, two distinct signers, the cost, and the fingerprint; a re-plan that differs supersedes it; nothing is sent until a person runs the printed command.
 14. A director reads the same page an officer reads at the same level.
+15. The preview's first line names the class, tracking, color, and sides; a standard preview shows the note and the 4040(a)(2) words in a `Recitation` before jason's labeled reading; a combination PayHOA refuses (tracking or an invoice with standard; an invoice two-sided) is never offered.
