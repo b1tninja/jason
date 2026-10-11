@@ -6,12 +6,12 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-190 commands, by area:
+191 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (26)
-- [Meetings, board & minutes](#meetings-board--minutes) (13)
+- [Meetings, board & minutes](#meetings-board--minutes) (14)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (28)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (15)
 - [Google Workspace](#google-workspace) (8)
@@ -976,6 +976,26 @@ What needs attention across the governance systems: clocks passed or near, quest
 | `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
 | `--private` |  | leave units out, as the board packet does |
 | `--json` |  | print JSON |
+
+### `jason controls`
+
+The safeguards the board opts into, and the ones jason suggests from the governing documents: list, show, suggest (and record), and put one before the board. jason suggests; the board adopts. This never adopts, declines, defers, or retires a control: those are the board's decisions, recorded by the secretary
+
+| Option | Value | Help |
+|---|---|---|
+| `--list` |  | list the controls (the default) |
+| `--family` | {money,contracts,reviews,notices,meetings,onboarding} | with --list: one family |
+| `--state` | {suggested,proposed,adopted,declined,deferred,retired} | with --list: one state |
+| `--json` |  | print JSON |
+| `--show` | KEY | one control, from its provision to its history |
+| `--roster-check` | KEY | what the control needs, what is seated, and what is missing, by office |
+| `--suggest` |  | read the governing documents and print the controls they suggest (after the duties are read) |
+| `--document` | KEY | with --suggest: read only this document (repeatable) |
+| `--duties-read` |  | with --suggest: a person confirms the documents' duties were read and are right |
+| `--record` |  | with --suggest and --by: append the suggestions to the act log as suggested acts by jason |
+| `--propose` | KEY | put a suggested control before the board as a board item (with --by); it adopts nothing |
+| `--by` | NAME | who asks for the write (kept with when) |
+| `--as-of` | DATE | read as of this day (YYYY-MM-DD); default today |
 
 ### `jason workflow`
 
