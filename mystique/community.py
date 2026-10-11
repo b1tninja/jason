@@ -37,6 +37,7 @@ from .vendors import EMAIL_FILING, VENDOR_PORTALS
 from .reports import HELD_UNITS, PLAN_BLOCKS, UNIT_BLOCKS, REPORTS
 from .insurance import CATALOG
 from .reserves import COMPONENTS as RESERVE_COMPONENTS
+from .payees import PAYEE_RULES
 from .transactions import RULES as TRANSACTION_RULES
 from jason.community.symbols import DocumentKind, DocumentRule, KnownFile, PayhoaFolder
 
@@ -820,6 +821,10 @@ class Mystique(Community):
 
     def transaction_rules(self) -> tuple[TransactionRule, ...]:
         return TRANSACTION_RULES
+
+    def payee_rules(self):
+        """What kind of payee a bank line is, for payments no bill source owns (payees.py)."""
+        return PAYEE_RULES
 
     def reserve_components(self):
         return RESERVE_COMPONENTS

@@ -144,6 +144,10 @@ def cmd_sync_bills(args: argparse.Namespace) -> int:
             skip_sync=args.skip_sync,
             sources=sources,
         )
+        if args.dry_run:
+            from jason.tasks.bill_dry_run import record
+
+            kept = record(agent.settings.payhoa_catalog.parent, report, window_days=args.date_window_days)
 
     print("=== Pending PayHOA utility transactions ===")
     if not report.pending:
@@ -157,6 +161,14 @@ def cmd_sync_bills(args: argparse.Namespace) -> int:
                 f"amount={tx.amount_cents} date={tx.transaction_date}"
                 f"{attached} — {desc}"
             )
+
+    if report.unrouted:
+        print()
+        print("=== Not routed to a bill source (no rule or portal owns them; each needs a person) ===")
+        for tx in report.unrouted:
+            desc = tx.description.replace("\n", " ")[:70]
+            print(f"  [{tx.payee}] tx={tx.transaction_id} amount={tx.amount_cents} date={tx.transaction_date}"
+                  f"{' attached' if tx.has_attachments else ''} — {desc}")
 
     print()
     needed = ", ".join(report.sources_needed) or "(none)"
@@ -177,6 +189,8 @@ def cmd_sync_bills(args: argparse.Namespace) -> int:
         _print_upload_report(report.upload, dry_run=args.dry_run)
     else:
         print("(no upload step)")
+    if args.dry_run:
+        print(f"(kept as {kept.name}: the console shows this run with its age)")
     return 0
 
 

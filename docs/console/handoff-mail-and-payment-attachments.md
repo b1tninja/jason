@@ -141,7 +141,7 @@ Steps 1-2 are the page. Step 3 and the dry run are reads a person starts. Step 5
 
 Routing is the profile's `TransactionRule` rows (description pattern, category, the utility they select), applied in order by `first_utility`; **a miss stays a miss**. Today a rule can only select a `Utility` (a closed set). The design needs the engine to say what a transaction is when no source owns it:
 
-- **`PayeeClass`** (closed set, general): `electric-utility`, `city-utility`, `field-vendor`, `insurance`, `county-tax`, `platform-fee`, `unknown`. A rule row carries one; the profile's rows say which description text selects which class. The county tax collector's ACH text is **a rule row in the profile**, never a pattern in general code.
+- **`PayeeClass`** (closed set, general; `jason.community.payees`): `electric-utility`, `city-utility`, `field-vendor`, `insurance`, `county-tax`, `government`, `platform-fee`, `transfer`, `bank-item`, `unknown`. A `transfer`, a `bank-item`, and a `platform-fee` **expect no bill** (the statement or the ledger is the record), so they are not work items. A rule row carries one; the profile's rows say which description text selects which class. The county tax collector's ACH text is **a rule row in the profile**, never a pattern in general code.
 - **`unrouted`** is the engine's result when no row matches: the transaction is still listed (amount, date, description, category, vendor, attachments), with class `unknown` and the investigation open.
 - A transaction a rule selects for a class with no `BillSource` (`county-tax` until its reader exists; `insurance`) is **routed, with no source**: the queue shows the class and the investigation's first step, not “needs sync”.
 
@@ -170,7 +170,7 @@ Routing is the profile's `TransactionRule` rows (description pattern, category, 
 
 | Component | Role | Data and states |
 |---|---|---|
-| `PendingUtilityQueue` | Unapproved transactions with class, source, amount, date, status | One `DataTable`. Status words: `not checked`, `matched`, `ambiguous`, `no match`, `already attached`, `uploaded`, `error`, `unrouted`, `no source yet`. Amounts right-aligned, integer cents shown as dollars. Filter by source and status; sort by date. Empty: “No unapproved transaction without a PDF in the snapshot of DATE.” Stale and missing snapshot: first row of the page, with `jason invoices --fetch` |
+| `PendingUtilityQueue` | Unapproved transactions with class, source, amount, date, status | One `DataTable`. Status words: `not checked`, `matched`, `ambiguous`, `no match`, `already attached`, `uploaded`, `error`, `unrouted`, `no source yet`, `no bill expected` (hidden by default, its count shown). Amounts right-aligned, integer cents shown as dollars. Filter by source and status; sort by date. Empty: “No unapproved transaction without a PDF in the snapshot of DATE.” Stale and missing snapshot: first row of the page, with `jason invoices --fetch` |
 | `SourceSyncStrip` | Per source: last sync summary (accounts, bills new, PDFs) | From each source's own store stamp (`syncedAt`, `sync_runs`), as the Status screen reads sources; “never synced” and “failed (the command)” are states. Reads no portal |
 | `MatchPanel` | The chosen bill, PDF preview via `Doc`, attach Confirm | Shows exactly what the engine would upload (file name, bill id, bill date, which date matched, amount) beside the transaction. Confirm text: “Upload BILL.pdf to transaction N (AMOUNT, DATE) in PayHOA, in the name of NAME. PayHOA marks nothing approved.” **Attach is a `Command` until an approvals kind exists.** |
 | `InvestigationCard` | See Part C | |
@@ -342,12 +342,18 @@ Routes are proposed, consistent with [information-architecture.md](information-a
 
 ### What the build adds (in this order)
 
-1. **`PayeeClass` and an `unrouted` result** in the engine, so a transaction no source owns is listed instead of dropped; the profile's rule rows carry the class. (Pure code and tests; no network.)
-2. **`sync-bills` gains `--yes` for uploads** (a dry run needs none), so it joins every other write and the scheduler's guard covers it. The resolve stage reports ambiguity as the cache stage does.
-3. **A kept dry run** (`data/bills/last-dry-run.json`: the results, the snapshot's `syncedAt`, the date window, when and by whom) written by `sync-bills --dry-run`.
-4. **`bill-attach` and `bill-investigation` loaders** over the snapshot, the kept dry run, and the offline stores; the investigation helper (`jason.tasks.bill_investigation`), pure over stores.
-5. **A county-tax `BillSource` over `TaxStore`** (where the profile's county has a tax adapter), so a catalog bill with its PDF attaches like any other.
-6. **The outcome store and its writer**, then an approvals kind `payhoa-attach-bills` (plan = transaction → PDF), parallel to `owner-info-tags`.
+Built 2026-10-10 (the first three):
+1. **`PayeeClass` and `PayeeRule`** (`jason.community.payees`; `Community.payee_rules()`, empty by default; the profile's rows in its `payees.py`) and an **unrouted** list in the engine: `SyncBillsReport.unrouted` and `jason sync-bills` print every unapproved transaction no source owns, with its payee class, instead of dropping it.
+2. **A kept dry run** (`jason.tasks.bill_dry_run`): `sync-bills --dry-run` writes `data/bills/last-dry-run.json` (the results, the window, who, when, and the PayHOA snapshot it ran against).
+3. **The queue** (`jason.tasks.bill_queue`, `jason.sources.offline.routing_registry`, `GET /api/bill-attach?source=&status=`): the stored snapshot routed with no store, client, or network, the snapshot's age against its source's own stale-after (the PayHOA transactions default), and the kept dry run applied to a row only when it ran against this snapshot (otherwise it is shown as `earlier`).
+
+Still to build:
+4. **`sync-bills` gains `--yes` for uploads** (a dry run needs none), so it joins every other write and the scheduler's guard covers it. The resolve stage reports ambiguity as the cache stage does. *Not done: it changes a command people run; see the open decisions.*
+5. **The investigation helper** (`jason.tasks.bill_investigation`, pure over stores) and the `bill-investigation` loader.
+6. **A county-tax `BillSource` over `TaxStore`** (where the profile's county has a tax adapter), so a catalog bill with its PDF attaches like any other.
+7. **The outcome store and its writer**, then an approvals kind `payhoa-attach-bills` (plan = transaction → PDF), parallel to `owner-info-tags`.
+
+**What the first read of the live snapshot showed.** Before the profile's payee rows, 44 of the 74 unapproved, unattached transactions were `unrouted`: most were transfers between the association's own accounts, interest, and platform fees that have no bill. With the rows, 26 read `no bill expected`, 8 `no source yet` (insurance, a servicer's card charges, an agency), 10 `unrouted`, and 1 `not checked`. **The lesson for the design:** without classes the work list is mostly noise, so the queue hides `no bill expected` by default (a filter, with its count shown).
 
 ## Approvals and writes
 

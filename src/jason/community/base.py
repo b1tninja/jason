@@ -9,9 +9,13 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 from jason.community.documents import DocumentPin, GoverningDocument
+
+if TYPE_CHECKING:
+    from jason.community.payees import PayeeRule
+
 from jason.community.symbols import (
     AssociationRecord,
     Building,
@@ -933,6 +937,12 @@ class Community(ABC):
 
     def paint_schedules(self) -> tuple:
         """The association's paint schedules (``jason.community.paint.PaintSchedule``). Empty until the specification sets them."""
+        return ()
+
+    def payee_rules(self) -> tuple["PayeeRule", ...]:
+        """What kind of payee a PayHOA transaction is paid to, for a payment no bill source owns
+        (``jason.community.payees``): the profile's rows, in match order. Empty until the specification sets them; a
+        transaction no row selects is ``UNKNOWN``, never guessed."""
         return ()
 
     def vendor_portals(self) -> tuple[VendorPortal, ...]:

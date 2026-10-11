@@ -892,6 +892,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "followups": "jason.web.extra.request_views:followups",  # ?days=&campaign=&kind=&state=: the dated actions, each with its basis; sends and completes nothing
     "form-library": "jason.web.extra.request_views:form_library",  # ?tier=: the forms the profile offers with status and findings
     "life-safety": "jason.web.extra.life_safety:life_safety",  # ?system=: each listed system with its schedule, periods on file, questions, and standing in words; disk only
+    "bill-attach": "jason.web.extra.bill_attach:bill_attach",  # ?source=&status=: unapproved PayHOA transactions waiting on a bill, from the stored snapshot, routed offline; reads no PayHOA
     "associations": "jason.web.extra.discovery:associations",
     "documents-located": "jason.web.extra.discovery:documents_located",
     "key-documents": "jason.web.extra.key_documents:key_documents",

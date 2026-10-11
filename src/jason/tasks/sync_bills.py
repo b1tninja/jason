@@ -24,9 +24,24 @@ class PendingUtilityTx:
     has_attachments: bool = False
 
 
+@dataclass(frozen=True)
+class UnroutedTx:
+    """An unapproved PayHOA transaction no bill source owns. It used to be dropped from every list here; it is a work item
+    (docs/console/handoff-mail-and-payment-attachments.md, Part C). ``payee`` is the profile's payee class for it
+    (``jason.community.payees``), ``unknown`` when no row selects it."""
+
+    transaction_id: int
+    amount_cents: int
+    transaction_date: date
+    description: str
+    payee: str
+    has_attachments: bool = False
+
+
 @dataclass
 class SyncBillsReport:
     pending: list[PendingUtilityTx] = field(default_factory=list)
+    unrouted: list[UnroutedTx] = field(default_factory=list)
     sources_needed: list[str] = field(default_factory=list)
     sources_synced: list[str] = field(default_factory=list)
     sync_summaries: dict[str, str] = field(default_factory=dict)
@@ -36,6 +51,7 @@ class SyncBillsReport:
     def summary(self) -> str:
         lines = [
             f"pending_utility={len(self.pending)}",
+            f"unrouted={len(self.unrouted)}",
             f"sources_needed={','.join(self.sources_needed) or '(none)'}",
             f"sources_synced={','.join(self.sources_synced) or '(none)'}",
         ]
@@ -52,15 +68,30 @@ def list_pending_utility_transactions(
     *,
     org_id: int | None = None,
     fetch_details: bool = True,
+    unrouted: list[UnroutedTx] | None = None,
 ) -> list[PendingUtilityTx]:
-    """Return unapproved PayHOA txs that route to a registered bill source."""
+    """Return unapproved PayHOA txs that route to a registered bill source. A transaction no source owns is appended to
+    ``unrouted`` when the caller gives a list (with its payee class from the profile's rows), not dropped silently."""
     org_id = profile_org_id(org_id)
     pending: list[PendingUtilityTx] = []
+    rules = None
     for tx in client.iter_transactions(org_id, reviewed=False):
         if tx.get("approved") is True:
             continue
         source = registry.route(tx)
         if source is None:
+            if unrouted is not None:
+                if rules is None:
+                    from jason.community import community
+
+                    rules = tuple(community().payee_rules())
+                from jason.community.payees import payee_of
+
+                unrouted.append(UnroutedTx(
+                    transaction_id=int(tx["id"]), amount_cents=int(tx["amount"]),
+                    transaction_date=parse_tx_date(tx["transactionDate"]),
+                    description=str(tx.get("description") or ""), payee=payee_of(tx, rules).value,
+                    has_attachments=bool(active_attachments(tx))))
             continue
 
         tx_id = int(tx["id"])
@@ -113,11 +144,12 @@ def sync_bills(
     if sources:
         registry = registry.filter(set(sources))
 
+    unrouted: list[UnroutedTx] = []
     pending = list_pending_utility_transactions(
-        client, registry, org_id=org_id, fetch_details=True
+        client, registry, org_id=org_id, fetch_details=True, unrouted=unrouted
     )
     needed = sources_needing_sync(pending)
-    report = SyncBillsReport(pending=pending, sources_needed=list(needed))
+    report = SyncBillsReport(pending=pending, unrouted=unrouted, sources_needed=list(needed))
 
     if not needed:
         report.skipped_reason = "no unreviewed utility txs without attachments"

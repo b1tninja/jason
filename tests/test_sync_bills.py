@@ -172,3 +172,24 @@ def test_sync_bills_noop_when_nothing_pending():
     assert report.sources_needed == []
     assert synced == []
     assert "no unreviewed" in report.skipped_reason
+
+
+def test_a_transaction_no_source_owns_is_listed_not_dropped(monkeypatch):
+    from types import SimpleNamespace
+
+    from jason.community.payees import PayeeClass, PayeeRule
+
+    tax = PayeeRule(PayeeClass.COUNTY_TAX, description_contains=("EXAMPLE COUNTY TAX",))
+    monkeypatch.setattr("jason.community.community", lambda: SimpleNamespace(payee_rules=lambda: (tax,)))
+    txs = [
+        {"id": 1, "amount": 6129, "transactionDate": "2026-10-07", "description": "ELECTRIC", "approved": False},
+        {"id": 2, "amount": 36357, "transactionDate": "2026-10-07", "description": "ACH EXAMPLE COUNTY TAX", "approved": False},
+        {"id": 3, "amount": 41200, "transactionDate": "2026-10-05", "description": "ACH SOMEONE", "approved": False,
+         "attachments": [{"id": 5}]},
+    ]
+    registry = BillSourceRegistry([_FakeSource("smud", lambda tx: "ELECTRIC" in tx["description"])])
+    report = sync_bills(_FakePayhoa(txs), registry, sync_source=lambda n: None, org_id=7, dry_run=True)
+    assert [(u.transaction_id, u.payee, u.has_attachments) for u in report.unrouted] == [
+        (2, "county-tax", False), (3, "unknown", True)]
+    assert [p.transaction_id for p in report.pending] == [1]
+    assert "unrouted=2" in report.summary()
