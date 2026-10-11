@@ -1,0 +1,113 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>client pdf bench</title>
+<!-- Measurement page for docs/pdf-splitter-client-side.md. Driven by scripts/client_pdf_bench.mjs; loads pdf.js from the same
+     origin (self-hosted, no CDN). Made-up PDFs only. -->
+<script type="module">
+import * as pdfjs from "/pdfjs/build/pdf.min.mjs";
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/build/pdf.worker.min.mjs";
+
+const med = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+const mean = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+const longTasks = [];
+try { new PerformanceObserver((l) => l.getEntries().forEach((e) => longTasks.push(e.duration))).observe({ entryTypes: ["longtask"] }); } catch {}
+
+async function mem() {
+  const out = {};
+  if (performance.memory) out.heapMB = +(performance.memory.usedJSHeapSize / 1e6).toFixed(1);
+  if (performance.measureUserAgentSpecificMemory) {
+    try { out.uaMB = +((await performance.measureUserAgentSpecificMemory()).bytes / 1e6).toFixed(1); } catch (e) { out.uaErr = String(e).slice(0, 60); }
+  }
+  return out;
+}
+
+async function load(url, mode) {
+  const t0 = performance.now();
+  const buf = await (await fetch(url)).arrayBuffer();
+  const tFetch = performance.now() - t0;
+  const nbytes = buf.byteLength;          // read before pdf.js takes the buffer (it is transferred to the worker)
+  const t1 = performance.now();
+  const assets = window.NOASSETS ? {} : { wasmUrl: "/pdfjs/wasm/", cMapUrl: "/pdfjs/cmaps/", standardFontDataUrl: "/pdfjs/standard_fonts/" };
+  const task = pdfjs.getDocument(mode === "range" ? { url, disableAutoFetch: true, disableStream: false, rangeChunkSize: 1 << 16, ...assets } : { data: new Uint8Array(buf), ...assets });
+  const doc = await task.promise;
+  return { doc, tFetch, tOpen: performance.now() - t1, bytes: nbytes };
+}
+
+async function draw(doc, n, longest, encode) {
+  const page = await doc.getPage(n);
+  const v0 = page.getViewport({ scale: 1 });
+  const scale = longest / Math.max(v0.width, v0.height);
+  const vp = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: false });
+  const t = performance.now();
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  const tRender = performance.now() - t;
+  let tEnc = 0, bytes = 0;
+  if (encode) {
+    const t2 = performance.now();
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/webp", 0.65));
+    tEnc = performance.now() - t2; bytes = blob.size;
+  }
+  page.cleanup();
+  return { tRender, tEnc, bytes, canvas };
+}
+
+window.setAssets = (on) => { window.NOASSETS = !on; };
+window.bench = {
+  async env() {
+    return { ua: navigator.userAgent, cores: navigator.hardwareConcurrency, deviceMemory: navigator.deviceMemory ?? null,
+      offscreen: typeof OffscreenCanvas !== "undefined", worker: typeof Worker !== "undefined", subtle: !!(crypto && crypto.subtle),
+      isolated: self.crossOriginIsolated, secure: isSecureContext, wasm: typeof WebAssembly !== "undefined", imageBitmap: typeof createImageBitmap !== "undefined" };
+  },
+  async render(url, pagesList, sizes, mode = "data") {
+    const m0 = await mem();
+    const { doc, tFetch, tOpen, bytes } = await load(url, mode);
+    const m1 = await mem();
+    const out = { url, fileMB: +(bytes / 1e6).toFixed(1), pages: doc.numPages, tFetch: +tFetch.toFixed(0), tOpen: +tOpen.toFixed(0), memBefore: m0, memAfterOpen: m1, sizes: {} };
+    for (const size of sizes) {
+      const r = [], e = [], b = [];
+      for (const n of pagesList) { const x = await draw(doc, n, size, true); r.push(x.tRender); e.push(x.tEnc); b.push(x.bytes); }
+      out.sizes[size] = { n: r.length, renderMed: +med(r).toFixed(1), renderMean: +mean(r).toFixed(1), renderFirst: +r[0].toFixed(1), encodeMed: +med(e).toFixed(1), bytesMean: Math.round(mean(b)),
+        perPageMed: +(med(r) + med(e)).toFixed(1) };
+    }
+    // throughput: the same pages, six at a time (pdf.js decodes in its worker; painting is on this thread)
+    const tp = performance.now();
+    const batch = pagesList.slice(0, 30);
+    for (let i = 0; i < batch.length; i += 6) await Promise.all(batch.slice(i, i + 6).map((n) => draw(doc, n, 200, false)));
+    out.throughput200PagesPerS = +(batch.length / ((performance.now() - tp) / 1000)).toFixed(1);
+    out.memAfterRender = await mem();
+    out.longTaskMaxMs = +Math.max(0, ...longTasks).toFixed(0);
+    await doc.destroy();
+    return out;
+  },
+  async pageDataUrl(url, n, size) {
+    const { doc } = await load(url, "data");
+    const x = await draw(doc, n, size, false);
+    const g = x.canvas.getContext("2d").getImageData(0, 0, x.canvas.width, x.canvas.height).data;
+    // ink share (grey < 200) as a client-side blank/marked fact, and its cost at this size
+    const t = performance.now(); let ink = 0;
+    for (let i = 0; i < g.length; i += 4) if ((g[i] + g[i + 1] + g[i + 2]) / 3 < 200) ink++;
+    const tFact = performance.now() - t;
+    const url2 = x.canvas.toDataURL("image/png");
+    await doc.destroy();
+    return { dataUrl: url2, w: x.canvas.width, h: x.canvas.height, inkShare: ink / (g.length / 4), tFactMs: +tFact.toFixed(2) };
+  },
+  async hash(url) {
+    const buf = await (await fetch(url)).arrayBuffer();
+    const t = performance.now();
+    const d = await crypto.subtle.digest("SHA-256", buf);
+    const ms = performance.now() - t;
+    const hex = [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return { mb: +(buf.byteLength / 1e6).toFixed(0), ms: +ms.toFixed(0), mbPerS: +(buf.byteLength / 1e6 / (ms / 1000)).toFixed(0), hex };
+  },
+  async hashSlice(url, mb) {  // reading a File/Blob in slices: the cost of hashing a big file without holding it all
+    const blob = await (await fetch(url)).blob();
+    const t = performance.now();
+    const d = await crypto.subtle.digest("SHA-256", await blob.slice(0, mb << 20).arrayBuffer());
+    return { mb, ms: +(performance.now() - t).toFixed(0), len: d.byteLength };
+  },
+};
+window.ready = true;
+</script>
