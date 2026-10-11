@@ -91,3 +91,7 @@
 @media (prefers-reduced-motion: reduce) { .records-view *, .record-dialog * { transition: none !important; animation: none !important; } }
 .record-recital { display: grid; gap: .3rem; }
 .record-recital > * { margin: 0; }
+.record-many { margin: 0; padding-left: 1.3rem; display: grid; gap: .6rem; }
+.record-bound, .record-bound-counts { margin: 0; padding-left: 1.2rem; }
+.record-bound > li { padding-bottom: .4rem; }
+.record-current-acts { margin-top: .4rem; }

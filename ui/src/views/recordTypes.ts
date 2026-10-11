@@ -98,7 +98,24 @@ export interface DriveResolved extends Partial<DriveItem> {
 }
 
 /** What a dry run or a confirmed act answers. Fields are read as the server sends them; any may be missing. */
-export interface PartPlan { segment: string; pages: [number, number]; slot: string; period?: string; entry?: string; kind?: string | null; fits?: boolean; action: string; why?: string; kept?: string }
+export interface PartPlan {
+  /** A split's part has `segment` and `pages`; a several-file pick's row has `n` (its place in the request) and, once pinned, `pin`. */
+  segment?: string; pages?: [number, number]; n?: number; pin?: string; holders?: string[]; slot?: string; period?: string; entry?: string; note?: string;
+  kind?: string | null; fits?: boolean; action: string; why?: string; kept?: string;
+}
+/** The words for each row of a several-file pick, from the server's `action`. */
+export const PICK_ACTIONS = ["pin", "already", "collision", "duplicate", "refused"] as const;
+export type PickAction = (typeof PICK_ACTIONS)[number];
+/** The most files one pick takes: what the chooser lists at a time (`drive_choose.MAX_PAGE` on the server, a constant there, not a limit row). */
+export const MAX_PICK_FILES = 100;
+/** What the server says of a collision's patch: text for a person to apply to the profile. */
+export interface Patch { kind?: string; text?: string; note?: string }
+/** One folder binding's counts (`GET /api/record-bindings?key=`), from the folder's last listing, never from Drive now. */
+export interface BindingCard {
+  binding: string; slot: string; by: string; at: string; listed: boolean; note?: string; listedAt?: string; more?: boolean;
+  files?: number; here?: number; elsewhere?: number; nowhere?: number; pinned?: number; read?: number; notPinned?: number; held?: number;
+}
+export interface BindingCounts { slot: string; bindings: BindingCard[]; caveats?: string[] }
 export interface ReadPlan { pin: string; slot: string; ok?: boolean; problem?: string; plan?: { name: string; type?: string; size: number | null; export?: string; willFetch: boolean }; reads?: string; note?: string; unchanged?: boolean }
 export interface Plan {
   ok?: boolean; dryRun?: boolean; act?: string; key?: string; note?: string; would?: Record<string, unknown>;
@@ -107,7 +124,19 @@ export interface Plan {
   proposal?: { kind?: string; record?: string; text?: string; note?: string } | Segment[] | null;
   job?: number; queued?: boolean; command?: string; pin?: string; replaced?: string; partial?: boolean; why?: string;
   filled?: unknown[]; notQueued?: unknown[]; declined?: boolean; caveats?: string[]; written?: string;
+  counts?: Partial<Record<PickAction, number>>; pins?: string[]; patch?: Patch | null; stillTwo?: boolean; current?: string; unpinned?: string[];
+  /** Set by the page, not the server: the names of a several-file pick's files, by place in the request, so a row can be read. */
+  fileNames?: string[];
 }
+
+/** A several-file pick's row, in words. The word leads, so the meaning never rests on colour. */
+export const PICK_WORDS: Record<PickAction, string> = {
+  pin: "Will be pinned",
+  already: "Already pinned here",
+  collision: "Left alone: a collision",
+  duplicate: "Left alone: named twice",
+  refused: "Refused",
+};
 
 export interface JobState { found?: boolean; job?: { id: number; status: string; summary?: string | null; note?: string | null }; log?: string[] }
 

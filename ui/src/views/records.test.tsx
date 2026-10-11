@@ -670,10 +670,224 @@ describe("the Drive chooser", () => {
     render(<RecordsView />);
     await user.click(await screen.findByRole("button", { name: "Choose from Drive" }));
     const dialog = await screen.findByRole("dialog");
-    await user.click(await within(dialog).findByRole("radio", { name: /Policy 2099\.pdf/ }));
+    await user.click(await within(dialog).findByRole("checkbox", { name: /Policy 2099\.pdf/ }));
     await user.click(within(dialog).getByRole("button", { name: "Pick" }));
     expect(within(dialog).getByRole("button", { name: "Preview the pick" })).toBeDisabled();
     await user.type(within(dialog).getByLabelText(/Period this file is for/), "2099-06");
     expect(within(dialog).getByRole("button", { name: "Preview the pick" })).toBeEnabled();
+  });
+});
+
+describe("choosing several files in one pick", () => {
+  const files = ["A1", "A2", "A3", "A4", "A5"].map((id, i) => ({ id, name: `Minutes 2099-0${i + 1}.pdf`, type: "PDF", size: 1000, modified: "2099-09-30", owner: "", sharedDrive: false, readable: true, why: "", held: false, opens: "", doc: "", jason: {} }));
+  const LIST: DriveListing = { found: true, driveConnected: true, account: "jason@example.org", parent: { name: "My Drive", path: [{ name: "My Drive" }] }, items: [...files, { ...files[0], id: "L1", name: "Locked.pdf", readable: false, why: "not shared with jason's account" }], drives: [], empty: "", next: null };
+  const PARTS = [
+    { n: 1, action: "pin", period: "2099-01", entry: "", note: "" },
+    { n: 2, action: "already", period: "2099-02", pin: "p-2", why: "this file is already pinned here" },
+    { n: 3, action: "collision", period: "2099-03", why: "example/policy already holds a different file for 2099-03: it was left alone" },
+    { n: 4, action: "duplicate", period: "2099-04", why: "named twice in this request" },
+    { n: 5, action: "refused", period: "", why: "example/policy is a series: name this file's period" },
+  ];
+  const COUNTS = { pin: 1, already: 1, collision: 1, duplicate: 1, refused: 1 };
+  const go = async (user: ReturnType<typeof userEvent.setup>, slot: Partial<SlotPageData>, write?: Route) => {
+    const calls = serve((c) => {
+      if (c.url.startsWith("/api/record-slot?key=")) return SLOT({ holders: [], ...slot });
+      if (c.url === "/api/limits") return { limits: [] };
+      if (c.url === "/api/write/drive/list") return LIST;
+      return write?.(c);
+    });
+    at("example/policy");
+    render(<RecordsView />);
+    await user.click(await screen.findByRole("button", { name: "Choose from Drive" }));
+    return { calls, dialog: await screen.findByRole("dialog", { name: "Choose a file from Drive for Example policy" }) };
+  };
+
+  it("offers checkboxes for a series, counts the files chosen, and keeps a locked file out", async () => {
+    const user = userEvent.setup();
+    const { dialog } = await go(user, { cardinality: "series" });
+    const boxes = await within(dialog).findAllByRole("checkbox");
+    expect(boxes).toHaveLength(6);
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    expect(within(dialog).getByRole("checkbox", { name: /Locked\.pdf/ })).toBeDisabled();
+    expect(within(dialog).getByText(/Up to 100 files go in one pick/)).toBeInTheDocument();
+    expect(within(dialog).getByText("No file selected for Example policy")).toBeInTheDocument();
+    await user.click(boxes[0]); await user.click(boxes[1]);
+    expect(within(dialog).getByText("2 files selected for Example policy")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Clear the selection" }));
+    expect(within(dialog).getByText("No file selected for Example policy")).toBeInTheDocument();
+  });
+
+  it("keeps one radio for a slot that holds one file", async () => {
+    const user = userEvent.setup();
+    const { dialog } = await go(user, { cardinality: "one" });
+    expect((await within(dialog).findAllByRole("radio")).length).toBe(6);
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+  });
+
+  it("sends one act with every file, and shows each file's result in words, the rows left alone included", async () => {
+    const user = userEvent.setup();
+    const { calls, dialog } = await go(user, { cardinality: "series" }, (c) => (c.url === SLOT_URL
+      ? (c.body?.dryRun ? { ok: true, dryRun: true, would: { act: "pick" }, parts: PARTS, counts: COUNTS, note: "A dry run: nothing was written." }
+        : { ok: true, pins: ["p-9"], pin: "p-9", parts: PARTS.map((p) => (p.action === "pin" ? { ...p, pin: "p-9" } : p)), counts: COUNTS }) : undefined));
+    for (const b of await within(dialog).findAllByRole("checkbox")) if (!(b as HTMLInputElement).disabled) await user.click(b);
+    await user.click(within(dialog).getByRole("button", { name: "Pick 5 files" }));
+    const preview = within(dialog).getByRole("button", { name: "Preview the pick of 5 files" });
+    expect(preview).toBeDisabled();
+    expect(within(dialog).getByText("Name the period each file is for.")).toBeInTheDocument();
+    for (let i = 1; i <= 5; i += 1) await user.type(within(dialog).getByLabelText(new RegExp(`^Period this file is for.*Minutes 2099-0${i}\\.pdf$`)), `2099-0${i}`);
+    await user.click(preview);
+    const writes = () => calls.filter((c) => c.url === SLOT_URL);
+    expect(writes()[0].body).toMatchObject({ act: "pick", by: "Ada Admin", dryRun: true });
+    expect(writes()[0].body?.files).toEqual([
+      { file: "A1", period: "2099-01", entry: "" }, { file: "A2", period: "2099-02", entry: "" }, { file: "A3", period: "2099-03", entry: "" },
+      { file: "A4", period: "2099-04", entry: "" }, { file: "A5", period: "2099-05", entry: "" },
+    ]);
+    const region = await within(dialog).findByRole("region", { name: "What will be recorded" });
+    expect(region).toHaveTextContent("5 files named: 1 to pin, 1 already pinned, 1 in a collision, 1 named twice, 1 refused.");
+    const rows = within(region).getAllByRole("listitem");
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toHaveTextContent("Will be pinned. File 1: Minutes 2099-01.pdf (2099-01)");
+    expect(rows[1]).toHaveTextContent("Already pinned here. File 2: Minutes 2099-02.pdf (2099-02) this file is already pinned here.");
+    expect(rows[2]).toHaveTextContent("Left alone: a collision. File 3");
+    expect(rows[2]).toHaveTextContent("it was left alone");
+    expect(rows[3]).toHaveTextContent("Left alone: named twice. File 4");
+    expect(rows[4]).toHaveTextContent("Refused. File 5: Minutes 2099-05.pdf example/policy is a series: name this file's period");
+    await user.click(within(dialog).getByRole("button", { name: "Pin 1 of 5 files to Example policy" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(writes()[1].body).toMatchObject({ act: "pick", dryRun: false });
+    expect(await screen.findByText(/1 of 5 files were pinned; 1 already pinned, 1 in a collision, 1 named twice, 1 refused\./)).toBeInTheDocument();
+    const left = screen.getByRole("list", { name: "Files left alone" });
+    expect(within(left).getAllByRole("listitem")).toHaveLength(4);
+    expect(left).toHaveTextContent("Refused. File 5: Minutes 2099-05.pdf");
+  });
+
+  it("will not confirm when no file would be written, and says so", async () => {
+    const user = userEvent.setup();
+    const { dialog } = await go(user, { cardinality: "several", source: "document kinds" }, (c) => (c.url === SLOT_URL
+      ? { ok: true, dryRun: true, parts: [{ n: 1, action: "already", why: "this file is already pinned here" }, { n: 2, action: "refused", why: "not a file link" }], counts: { already: 1, refused: 1 } } : undefined));
+    const boxes = await within(dialog).findAllByRole("checkbox");
+    await user.click(boxes[0]); await user.click(boxes[1]);
+    await user.click(within(dialog).getByRole("button", { name: "Pick 2 files" }));
+    await user.click(within(dialog).getByRole("button", { name: "Preview the pick of 2 files" }));
+    expect(await within(dialog).findByRole("button", { name: "Pin 0 of 2 files to Example policy" })).toBeDisabled();
+    expect(within(dialog).getByText("No file would be written, so there is nothing to confirm.")).toBeInTheDocument();
+  });
+
+  it("shows a refusal of the whole act in the server's words and writes nothing", async () => {
+    const user = userEvent.setup();
+    const { dialog } = await go(user, { cardinality: "several", source: "document kinds" }, (c) => (c.url === SLOT_URL ? refuse(400, "one pick takes at most 100 files (what the chooser lists at a time); pick the rest in another act") : undefined));
+    const boxes = await within(dialog).findAllByRole("checkbox");
+    await user.click(boxes[0]); await user.click(boxes[1]);
+    await user.click(within(dialog).getByRole("button", { name: "Pick 2 files" }));
+    await user.click(within(dialog).getByRole("button", { name: "Preview the pick of 2 files" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("one pick takes at most 100 files");
+  });
+});
+
+describe("which holder is current", () => {
+  const two = (over: Partial<SlotPageData> = {}) => SLOT({
+    state: "problem", stateWord: "problem", collision: true,
+    holders: [holder({ pin: "p-1", name: "Policy 2099 draft.pdf" }), holder({ pin: "p-2", origin: "specification", source: "sync rule", name: "Policy 2099 final.pdf", by: "" })],
+    collisions: [{ slot: "example/policy", note: "Two files hold this slot.", holders: [
+      { pin: "p-1", origin: "person", source: "a person", by: "Jane Example", at: "2099-10-03" }, { pin: "p-2", origin: "specification", source: "sync rule", by: "", at: "" }] }],
+    ...over,
+  });
+  const open = (data: SlotPageData, write?: Route) => { at(data.key); return serve((c) => (c.url.startsWith("/api/record-slot?key=") ? data : write?.(c))); };
+  const PATCH = { kind: "profile change", text: "# Proposed for the profile (a person applies it; jason edits nothing).\n#   remove: pin p-2 (sync rule)\n", note: "The profile changes only by a patch a person applies. Until then the slot still shows two holders." };
+
+  it("asks for a reason, previews, shows the patch text with the profile unedited, and says two holders remain", async () => {
+    const calls = open(two(), (c) => (c.url === SLOT_URL
+      ? (c.body?.dryRun ? { dryRun: true, would: { act: "current", slot: "example/policy", pin: "p-1", unpins: [], patchFor: ["p-2"] }, patch: PATCH, note: "A dry run: nothing was written." }
+        : { dryRun: false, ok: true, current: "cu-1", pin: "p-1", unpinned: [], patch: PATCH, stillTwo: true }) : undefined));
+    const user = userEvent.setup();
+    render(<RecordsView />);
+    const alert = (await screen.findAllByRole("alert")).find((a) => a.textContent?.includes("Two holders"))!;
+    await user.click(within(alert).getByRole("button", { name: "Which is current: Policy 2099 draft.pdf" }));
+    expect(within(alert).getByRole("button", { name: "Which is current: Policy 2099 final.pdf" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Say that Policy 2099 draft.pdf is the current one" })).toHaveFocus();
+    const preview = screen.getByRole("button", { name: "Preview which holder is current" });
+    expect(preview).toBeDisabled();
+    expect(screen.getByText("Write why this one is current.")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Why this one is current (required)"), "The board adopted the final.");
+    await user.click(preview);
+    expect(calls[0].body).toMatchObject({ act: "current", pin: "p-1", note: "The board adopted the final.", by: "Ada Admin", dryRun: true });
+    const region = await screen.findByRole("region", { name: "What will be recorded" });
+    expect(region).toHaveTextContent("The profile is not edited here: a person applies it.");
+    expect(within(region).getByLabelText("Proposed change to the profile")).toHaveTextContent("remove: pin p-2");
+    await user.click(screen.getByRole("button", { name: "Record that Policy 2099 draft.pdf is current for Example policy" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1].body).toMatchObject({ act: "current", dryRun: false });
+    const status = await screen.findByText(/Recorded which holder is current\./);
+    expect(status).toHaveTextContent("The profile is not edited, and two holders remain until a person applies the change below to it.");
+    expect(status.className).toContain("notice-warn");
+    expect(screen.getAllByLabelText("Proposed change to the profile").length).toBeGreaterThan(0);
+  });
+
+  it("says which pins were unpinned when only the person's own pins were the others", async () => {
+    const calls = open(two(), (c) => (c.url === SLOT_URL
+      ? (c.body?.dryRun ? { dryRun: true, would: { act: "current", pin: "p-2", unpins: ["p-1"], patchFor: [] }, patch: null } : { dryRun: false, ok: true, current: "cu-2", pin: "p-2", unpinned: ["p-1"], patch: null, stillTwo: false }) : undefined));
+    const user = userEvent.setup();
+    render(<RecordsView />);
+    await user.click(await screen.findByRole("button", { name: "Which is current: Policy 2099 final.pdf" }));
+    await user.type(screen.getByLabelText("Why this one is current (required)"), "Final wins.");
+    await user.click(screen.getByRole("button", { name: "Preview which holder is current" }));
+    await user.click(await screen.findByRole("button", { name: "Record that Policy 2099 final.pdf is current for Example policy" }));
+    const status = await screen.findByText(/Recorded which holder is current\./);
+    expect(status).toHaveTextContent("1 other pin was unpinned; the files stay.");
+    expect(status).not.toHaveTextContent("two holders remain");
+    expect(calls[0].body).toMatchObject({ pin: "p-2" });
+  });
+
+  it("shows the server's refusal and writes nothing", async () => {
+    open(two(), (c) => (c.url === SLOT_URL ? refuse(400, "example/policy has no two holders to settle: nothing to choose between") : undefined));
+    const user = userEvent.setup();
+    render(<RecordsView />);
+    await user.click(await screen.findByRole("button", { name: "Which is current: Policy 2099 draft.pdf" }));
+    await user.type(screen.getByLabelText("Why this one is current (required)"), "x");
+    await user.click(screen.getByRole("button", { name: "Preview which holder is current" }));
+    expect(await screen.findByText("example/policy has no two holders to settle: nothing to choose between")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /is current for Example policy/ })).toBeNull();
+  });
+});
+
+describe("a bound folder's counts", () => {
+  const bound = (over: Partial<SlotPageData> = {}) => SLOT({ holders: [], bindings: [{ id: "b-1", name: "Example folder", by: "Jane Example", at: "2099-10-01" }, { id: "b-2", name: "Other folder", by: "Jane Example", at: "2099-10-02" }], ...over });
+  const COUNTS = { slot: "example/policy", caveats: ["Counts come from the folder's last listing, not from Drive now."], bindings: [
+    { binding: "b-1", slot: "example/policy", by: "Jane Example", at: "2099-10-01", listed: true, listedAt: "2099-10-04T09:00:00", more: true, files: 12, here: 5, elsewhere: 3, nowhere: 4, pinned: 6, read: 2, notPinned: 6, held: 1 },
+    { binding: "b-2", slot: "example/policy", by: "Jane Example", at: "2099-10-02", listed: false, note: "This folder has not been listed yet. Browse it in the chooser (POST /api/write/drive/bound), and the counts appear." },
+  ] };
+  const urls = () => (fetch as unknown as { mock: { calls: [string][] } }).mock.calls.map((c) => String(c[0]));
+
+  it("says each count in words, says 'not listed yet' for a folder never listed, and makes no Drive call", async () => {
+    at("example/policy");
+    serve((c) => (c.url.startsWith("/api/record-slot?key=") ? bound() : c.url === "/api/record-bindings?key=example%2Fpolicy" ? COUNTS : undefined));
+    render(<RecordsView />);
+    const list = await screen.findByRole("list", { name: "Counts for Example folder" });
+    expect(list).toHaveTextContent("12 files when the folder was last listed, 2099-10-04.");
+    expect(list).toHaveTextContent("5 read as this slot's kind (here), 3 as another slot's (elsewhere), 4 as none (nowhere).");
+    expect(list).toHaveTextContent("6 pinned for some slot, 6 not pinned; 2 of the pinned read by jason.");
+    expect(list).toHaveTextContent("1 held back (confidential; no id kept).");
+    expect(list).toHaveTextContent("The folder holds more than the one page listed");
+    expect(screen.getByText("not listed yet")).toBeInTheDocument();
+    expect(screen.getByText(/This folder has not been listed yet\. Browse it in the chooser/)).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Counts for Other folder" })).toBeNull();
+    expect(screen.getByText("Counts come from the folder's last listing, not from Drive now.")).toBeInTheDocument();
+    expect(urls().some((u) => u.includes("/api/write/drive/"))).toBe(false);
+  });
+
+  it("keeps the folder listed when the counts cannot be read, and says so", async () => {
+    at("example/policy");
+    serve((c) => (c.url.startsWith("/api/record-slot?key=") ? bound() : c.url.startsWith("/api/record-bindings") ? refuse(500, "the keep is unreadable") : undefined));
+    render(<RecordsView />);
+    expect(await screen.findByText("Example folder")).toBeInTheDocument();
+    expect(await screen.findByText(/The counts could not be read: the keep is unreadable/)).toBeInTheDocument();
+  });
+
+  it("asks for no counts when no folder is bound", async () => {
+    at("example/policy");
+    serve((c) => (c.url.startsWith("/api/record-slot?key=") ? SLOT({ holders: [] }) : undefined));
+    render(<RecordsView />);
+    await screen.findByRole("heading", { name: "Choose a file" });
+    expect(urls().some((u) => u.includes("record-bindings"))).toBe(false);
   });
 });

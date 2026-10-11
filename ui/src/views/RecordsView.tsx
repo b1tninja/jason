@@ -4,11 +4,11 @@ import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
 import { useSession } from "../lib/session";
 import { DriveChooser, StepPanel, type ChooserTab, type Step } from "./DriveChooser";
-import { JobWatch, SlotWord } from "./RecordActs";
-import { AckPanel, AnswerPanel, DeclinePanel, KeepPanel, MorePanel, ReadPanel, ReopenPanel, RepinPanel, ReplacePanel, SplitPanel, UnpinPanel } from "./RecordPanels";
+import { JobWatch, PickRow, SlotWord, pickCounts } from "./RecordActs";
+import { AckPanel, AnswerPanel, CurrentPanel, DeclinePanel, KeepPanel, MorePanel, ReadPanel, ReopenPanel, RepinPanel, ReplacePanel, SplitPanel, UnpinPanel } from "./RecordPanels";
 import {
   CARDINALITY, LIST_ROUTE, STATE_ORDER, parseRoute, sizeWords, slotRoute, words,
-  type Holder, type Plan, type SlotPageData, type SlotRow, type SlotsPage,
+  type BindingCard, type BindingCounts, type Holder, type PartPlan, type Plan, type SlotPageData, type SlotRow, type SlotsPage,
 } from "./recordTypes";
 import "./records.css";
 
@@ -19,7 +19,48 @@ type Panel =
   | { kind: "reopen"; what: "answer" | "more" }
   | { kind: "bind" }
   | { kind: "step"; step: Step }
-  | { kind: "read" | "unpin" | "keep" | "repin" | "replace" | "split" | "decline" | "ack"; pin: string };
+  | { kind: "read" | "unpin" | "keep" | "repin" | "replace" | "split" | "decline" | "ack" | "current"; pin: string };
+
+/** A folder binding's counts in words, from the folder's last listing (never from Drive now). */
+function bindingWords(c: BindingCard): string[] {
+  if (!c.listed) return [];
+  const n = (x: number | undefined) => x ?? 0;
+  const out = [
+    `${n(c.files)} ${n(c.files) === 1 ? "file" : "files"} when the folder was last listed${c.listedAt ? `, ${c.listedAt.slice(0, 10)}` : ""}.`,
+    `${n(c.here)} read as this slot's kind (here), ${n(c.elsewhere)} as another slot's (elsewhere), ${n(c.nowhere)} as none (nowhere).`,
+    `${n(c.pinned)} pinned for some slot, ${n(c.notPinned)} not pinned; ${n(c.read)} of the pinned read by jason.`,
+  ];
+  if (n(c.held) > 0) out.push(`${n(c.held)} held back (confidential; no id kept).`);
+  if (c.more) out.push("The folder holds more than the one page listed, so these counts are as far as it was listed.");
+  return out;
+}
+
+/** The bound folders of a slot with their counts. The counts are read from the server's keep of the last listing: no Drive call is
+ * made, so a folder not listed yet says so and points to the chooser. */
+function BoundFolders({ slotKey, bindings }: { slotKey: string; bindings: SlotPageData["bindings"] }) {
+  const r = useApi<BindingCounts>(`/api/record-bindings?key=${encodeURIComponent(slotKey)}`);
+  const got = r.status === "ready" ? r.data : null;
+  const cards = new Map((got?.bindings ?? []).map((c) => [c.binding, c]));
+  return (
+    <Section title="Bound folders">
+      <ul className="record-bound">
+        {bindings.map((b) => {
+          const c = cards.get(b.id);
+          const lines = c ? bindingWords(c) : [];
+          return (
+            <li key={b.id}>
+              <strong>{b.name}</strong> <span className="muted">bound by {b.by}, {b.at}. Its files are candidates, never pins.</span>
+              {c && !c.listed && <p className="muted"><Badge tone="neutral" glyph="clock">not listed yet</Badge> {c.note ?? "Browse the folder in the chooser and the counts appear."}</p>}
+              {lines.length > 0 && <ul className="record-bound-counts" aria-label={`Counts for ${b.name}`}>{lines.map((l) => <li key={l}>{l}</li>)}</ul>}
+            </li>
+          );
+        })}
+      </ul>
+      {r.status === "error" && <p className="muted" role="note">The counts could not be read: {r.error}</p>}
+      {(got?.caveats ?? []).map((c) => <p key={c} className="muted">{c}</p>)}
+    </Section>
+  );
+}
 
 /** What a person can do next, in the page's own few words, keyed by the state the server computed. */
 function nextStep(r: SlotRow): string {
@@ -333,7 +374,7 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
   const r = useApi<SlotPageData>(`/api/record-slot?key=${encodeURIComponent(slotKey)}`);
   const { me } = useSession([]);
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [notice, setNotice] = useState<{ text: string; job?: number; command?: string; bad?: boolean } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; job?: number; command?: string; bad?: boolean; rows?: { part: PartPlan; name?: string }[]; patch?: string } | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const status = useRef<HTMLDivElement | null>(null);
   const open = (p: Panel) => { opener.current = document.activeElement as HTMLElement | null; setNotice(null); setPanel(p); };
@@ -351,8 +392,19 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
     if (out.partial) bits.push(out.why ?? "Only half of the replace was written.");
     if (out.notQueued && out.notQueued.length > 0) bits.push("A part could not be queued for reading; read it by hand.");
     if (out.job) bits.push(`The reading is queued as job ${out.job}.`);
+    const many = !!out.parts && out.parts.length > 0 && out.parts.every((p) => !p.pages);
+    if (many) bits.push(`${out.counts?.pin ?? 0} of ${out.parts?.length} files were pinned${pickCounts({ ...out.counts, pin: 0 }) ? `; ${pickCounts({ ...out.counts, pin: 0 })}` : ""}.`);
+    if (out.current) {
+      bits.push("Recorded which holder is current.");
+      if (out.unpinned && out.unpinned.length > 0) bits.push(`${out.unpinned.length} other ${out.unpinned.length === 1 ? "pin was" : "pins were"} unpinned; the files stay.`);
+      if (out.stillTwo) bits.push("The profile is not edited, and two holders remain until a person applies the change below to it.");
+    }
     bits.push("Nothing in Drive was changed.");
-    setNotice({ text: bits.join(" "), job: out.job, command: out.command, bad: !!out.partial });
+    setNotice({
+      text: bits.join(" "), job: out.job, command: out.command, bad: !!out.partial || (many && (out.counts?.pin ?? 0) < (out.parts?.length ?? 0)) || !!out.stillTwo,
+      rows: many ? (out.parts ?? []).filter((p) => p.action !== "pin").map((p) => ({ part: p, name: out.fileNames?.[(p.n ?? 1) - 1] })) : undefined,
+      patch: out.patch?.text,
+    });
     r.reload();
     requestAnimationFrame(() => status.current?.focus());
   };
@@ -361,6 +413,8 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
       <p className="record-back"><a href={LIST_ROUTE}>Back to the records checklist</a></p>
       <div ref={status} tabIndex={-1} className="record-status" role="status" aria-live="polite">
         {notice && <><p className={notice.bad ? "notice notice-warn" : "notice notice-good"}>{notice.text}</p>
+          {notice.rows && notice.rows.length > 0 && <ul className="record-parts" aria-label="Files left alone">{notice.rows.map(({ part, name }, i) => <PickRow key={part.n ?? i} part={part} name={name} />)}</ul>}
+          {notice.patch && <pre className="record-rule" aria-label="Proposed change to the profile"><code>{notice.patch}</code></pre>}
           {notice.job ? <JobWatch id={notice.job} command={notice.command} onFinished={() => r.reload()} /> : null}</>}
       </div>
       <RemoteView r={r}>
@@ -391,7 +445,15 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
               {d.collisions.map((c) => (
                 <div key={c.period ?? c.slot} className="notice notice-warn" role="alert">
                   <strong>Two holders{c.period ? ` for ${c.period}` : ""}.</strong> {c.note} {c.holders.map((h) => `${h.origin === "specification" ? "the specification" : h.by || "a person"} (${h.source})`).join(" and ")}.
-                  {" "}Unpin the one that is not current.
+                  {" "}Neither wins silently: say which is current, with your reason, or unpin the one that is not.
+                  {d.acts.unpin && (
+                    <div className="row wrap record-current-acts">
+                      {c.holders.map((h) => {
+                        const known = holders.find((x) => x.pin === h.pin);
+                        return <button key={h.pin} type="button" onClick={() => open({ kind: "current", pin: h.pin })}>Which is current: {known?.name ?? h.source ?? h.pin}</button>;
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
               <Section title={`What holds it (${holders.length})`}>
@@ -430,6 +492,7 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
                     {panel.kind === "step" && <StepPanel slot={chooserSlot} step={panel.step} by={me} onDone={done} onBack={() => close()} />}
                     {hp && panel.kind === "read" && <ReadPanel {...hp} />}
                     {hp && panel.kind === "unpin" && <UnpinPanel {...hp} />}
+                    {hp && panel.kind === "current" && <CurrentPanel {...hp} />}
                     {hp && panel.kind === "keep" && <KeepPanel {...hp} />}
                     {hp && panel.kind === "repin" && <RepinPanel {...hp} />}
                     {hp && panel.kind === "replace" && <ReplacePanel {...hp} />}
@@ -439,11 +502,7 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
                   </div>
                 )}
               </Section>
-              {d.bindings.length > 0 && (
-                <Section title="Bound folders">
-                  <ul>{d.bindings.map((b) => <li key={b.id}>{b.name} <span className="muted">bound by {b.by}, {b.at}. Its files are candidates, never pins.</span></li>)}</ul>
-                </Section>
-              )}
+              {d.bindings.length > 0 && <BoundFolders slotKey={d.key} bindings={d.bindings} />}
               {d.candidates.length > 0 && (
                 <Section title="Files jason classified for this slot">
                   <ul>{d.candidates.map((c) => (

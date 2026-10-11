@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Glyph } from "../components/Glyph";
 import { postJson } from "../lib/api";
 import { ActPanel, useFileBytes, useUploadCap } from "./RecordActs";
-import { sizeWords, type Cardinality, type DriveItem, type DriveListing, type DriveResolved, type Plan } from "./recordTypes";
+import { MAX_PICK_FILES, sizeWords, type Cardinality, type DriveItem, type DriveListing, type DriveResolved, type Plan } from "./recordTypes";
 
 export interface ChooserSlot { key: string; title: string; cardinality: Cardinality; source: string }
 export type ChooserTab = "drive" | "paste" | "upload";
@@ -11,7 +11,7 @@ const TABS: { id: ChooserTab; label: string }[] = [
   { id: "drive", label: "Drive" }, { id: "paste", label: "Paste a link" }, { id: "upload", label: "From this computer" },
 ];
 
-export interface Step { kind: "pick" | "bind"; ref: string; name: string }
+export interface Step { kind: "pick" | "bind"; ref: string; name: string; /** Several files chosen together: one pick of them all. */ many?: { ref: string; name: string }[] }
 
 /** The fields every pick shares: the period of a series, the instrument number of a repeating key document, and a note. */
 function PickFields({ slot, period, setPeriod, entry, setEntry, note, setNote }: {
@@ -41,6 +41,7 @@ export function StepPanel({ slot, step, by, onDone, onBack }: { slot: ChooserSlo
   const [entry, setEntry] = useState("");
   const [note, setNote] = useState("");
   const bind = step.kind === "bind";
+  if (step.many && step.many.length > 1) return <ManyPanel slot={slot} files={step.many} by={by} onDone={onDone} onBack={onBack} />;
   return (
     <ActPanel
       slot={slot.key} by={by} onDone={onDone} onCancel={onBack}
@@ -56,6 +57,50 @@ export function StepPanel({ slot, step, by, onDone, onBack }: { slot: ChooserSlo
         : "This records a pick. It moves, copies, renames, and shares nothing in Drive."}</p>
       {!bind && <PickFields slot={slot} period={period} setPeriod={setPeriod} entry={entry} setEntry={setEntry} note={note} setNote={setNote} />}
       {bind && <div className="record-field"><label htmlFor="bind-note">Note (optional)</label><input id="bind-note" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" /></div>}
+    </ActPanel>
+  );
+}
+
+/** Several files in one pick: one preview, one confirm. The server checks each file against what the slot holds and answers a row for
+ * each (pin, already, collision, duplicate, refused); only the rows marked pin are written, so a refusal never blocks the rest. */
+function ManyPanel({ slot, files, by, onDone, onBack }: { slot: ChooserSlot; files: { ref: string; name: string }[]; by: string; onDone: (p: Plan) => void; onBack: () => void }) {
+  const id = useId();
+  const [periods, setPeriods] = useState<string[]>(() => files.map(() => ""));
+  const [entries, setEntries] = useState<string[]>(() => files.map(() => ""));
+  const [note, setNote] = useState("");
+  const series = slot.cardinality === "series";
+  const keyed = slot.cardinality === "several" && slot.source === "key documents";
+  const set = (list: string[], put: (l: string[]) => void, i: number, v: string) => put(list.map((x, j) => (j === i ? v : x)));
+  const n = files.length;
+  return (
+    <ActPanel
+      slot={slot.key} by={by} onDone={onDone} onCancel={onBack} names={files.map((f) => f.name)}
+      title={`Pick ${n} files for ${slot.title}`}
+      body={() => ({ act: "pick", note, files: files.map((f, i) => ({ file: f.ref, period: periods[i], entry: entries[i] })) })}
+      ready={!series || periods.every((p) => !!p.trim())} whyNot="Name the period each file is for."
+      previewLabel={`Preview the pick of ${n} files`}
+      confirmLabel={(p) => `Pin ${p.counts?.pin ?? 0} of ${n} files to ${slot.title}`}
+      confirmBlock={(p) => ((p.counts?.pin ?? 0) === 0 ? "No file would be written, so there is nothing to confirm." : "")}
+      watch={[periods, entries, note, files]}
+    >
+      <p className="muted">This records {n} picks, one for each file. It moves, copies, renames, and shares nothing in Drive. At most {MAX_PICK_FILES} files go in one pick.</p>
+      <ol className="record-many">
+        {files.map((f, i) => (
+          <li key={`${f.ref}-${i}`}>
+            <span className="record-file-name">{f.name}</span>
+            {series && (
+              <div className="record-field"><label htmlFor={`${id}-p${i}`}>Period this file is for (required, for example 2099-06): {f.name}</label>
+                <input id={`${id}-p${i}`} value={periods[i]} onChange={(e) => set(periods, setPeriods, i, e.target.value)} autoComplete="off" /></div>
+            )}
+            {keyed && (
+              <div className="record-field"><label htmlFor={`${id}-e${i}`}>Instrument's recording number (only for a repeating key document): {f.name}</label>
+                <input id={`${id}-e${i}`} value={entries[i]} onChange={(e) => set(entries, setEntries, i, e.target.value)} autoComplete="off" /></div>
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="record-field"><label htmlFor={`${id}-n`}>Note for every file (optional; no names or secrets)</label>
+        <input id={`${id}-n`} value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" /></div>
     </ActPanel>
   );
 }
@@ -82,7 +127,9 @@ function NotConnected({ d }: { d: { why?: string; command?: string } }) {
   );
 }
 
-function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (it: DriveItem) => void; onBind: (c: Crumb) => void }) {
+function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (its: DriveItem[]) => void; onBind: (c: Crumb) => void }) {
+  // A series or a set that grows takes several files in one pick; a slot that holds one takes one.
+  const multi = slot.cardinality !== "one";
   const [crumbs, setCrumbs] = useState<Crumb[]>([]);
   const [listing, setListing] = useState<DriveListing | null>(null);
   const [items, setItems] = useState<DriveItem[]>([]);
@@ -90,12 +137,16 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (it: Dr
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [searched, setSearched] = useState("");
-  const [selected, setSelected] = useState<DriveItem | null>(null);
+  // The files chosen, kept across folders and searches (a pick may gather files from several folders).
+  const [chosen, setChosen] = useState<DriveItem[]>([]);
   const [said, setSaid] = useState("");
+  const isChosen = (it: DriveItem) => chosen.some((c) => c.id === it.id);
+  const toggle = (it: DriveItem) => setChosen((prev) => (multi ? (prev.some((c) => c.id === it.id) ? prev.filter((c) => c.id !== it.id) : [...prev, it]) : [it]));
+  const full = multi && chosen.length >= MAX_PICK_FILES;
   const id = useId();
 
   const run = async (path: "list" | "search", payload: Record<string, unknown>, append: boolean, label: string) => {
-    setBusy(true); setError(""); setSelected(null);
+    setBusy(true); setError("");
     try {
       const out = await postJson<DriveListing>(`/api/write/drive/${path}`, payload);
       setListing(out);
@@ -160,7 +211,7 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (it: Dr
           )}
           {items.length > 0 && (
             <fieldset className="record-files-set">
-              <legend className="sr-only">Files in this folder</legend>
+              <legend className="sr-only">{multi ? "Files in this folder: choose one or more" : "Files in this folder"}</legend>
               <ul className="record-files">
                 {items.map((it, i) => {
                   const notes = itemNotes(it);
@@ -176,12 +227,12 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (it: Dr
                   const ok = it.readable && !!it.id;
                   return (
                     <li key={`${it.id}-${i}`} className={ok ? undefined : "record-file-off"}>
-                      <input type="radio" id={rid} name={`${id}-pick`} disabled={!ok} checked={selected === it} onChange={() => setSelected(it)} />{" "}
+                      <input type={multi ? "checkbox" : "radio"} id={rid} name={`${id}-pick`} disabled={!ok || (full && !isChosen(it))} checked={isChosen(it)} onChange={() => toggle(it)} />{" "}
                       <label htmlFor={rid}>
                         <span className="record-file-name">{it.name}</span>{" "}
                         <span className="muted">{it.type}, {sizeWords(it.size)}, modified {it.modified}{it.owner ? `, owner ${it.owner}` : ""}</span>
                       </label>
-                      {selected === it && <span className="record-selected"> selected</span>}
+                      {isChosen(it) && <span className="record-selected"> selected</span>}
                       {!it.readable && <p className="record-file-why">jason cannot open this file{it.why ? `: ${it.why}` : ""}. Share it with the account shown, or upload it.</p>}
                       {notes.length > 0 && <p className="muted record-file-notes">{notes.join(" · ")}</p>}
                     </li>
@@ -194,9 +245,12 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (it: Dr
           {listing.next && <button type="button" onClick={more} disabled={busy}>Show more</button>}
         </>
       )}
+      {multi && <p className="muted">This slot takes several files: tick each one, in any folder. Up to {MAX_PICK_FILES} files go in one pick.{full ? ` You have chosen the most (${MAX_PICK_FILES}); untick one to add another.` : ""}</p>}
       <div className="record-chooser-foot row wrap">
-        <span role="status">{selected ? `1 file selected for ${slot.title}: ${selected.name}` : `No file selected for ${slot.title}`}</span>
-        <button type="button" className="primary" disabled={!selected} onClick={() => selected && onPick(selected)}>Pick</button>
+        <span role="status">{chosen.length === 0 ? `No file selected for ${slot.title}`
+          : chosen.length === 1 ? `1 file selected for ${slot.title}: ${chosen[0].name}` : `${chosen.length} files selected for ${slot.title}`}</span>
+        <button type="button" className="primary" disabled={chosen.length === 0} onClick={() => onPick(chosen)}>{chosen.length > 1 ? `Pick ${chosen.length} files` : "Pick"}</button>
+        {multi && chosen.length > 0 && <button type="button" onClick={() => setChosen([])}>Clear the selection</button>}
         {here && !searched && <button type="button" onClick={() => onBind(here)}>Choose this folder for {slot.title}</button>}
       </div>
     </div>
@@ -332,7 +386,7 @@ export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone }: 
               ))}
             </div>
             <div role="tabpanel" id={`${id}-p-${tab}`} aria-labelledby={`${id}-t-${tab}`} className="record-tabpanel">
-              {tab === "drive" && <DriveTab slot={slot} onPick={(it) => setStep({ kind: "pick", ref: it.id, name: it.name })} onBind={(c) => setStep({ kind: "bind", ref: c.id, name: c.name })} />}
+              {tab === "drive" && <DriveTab slot={slot} onPick={(its) => setStep(its.length === 1 ? { kind: "pick", ref: its[0].id, name: its[0].name } : { kind: "pick", ref: its[0].id, name: `${its.length} files`, many: its.map((i) => ({ ref: i.id, name: i.name })) })} onBind={(c) => setStep({ kind: "bind", ref: c.id, name: c.name })} />}
               {tab === "paste" && <PasteTab slot={slot} onPick={(ref, name) => setStep({ kind: "pick", ref, name })} onBind={(ref, name) => setStep({ kind: "bind", ref, name })} />}
               {tab === "upload" && <UploadTab slot={slot} by={by} onDone={onDone} onCancel={onClose} />}
             </div>

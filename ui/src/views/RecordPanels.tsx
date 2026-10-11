@@ -81,6 +81,23 @@ export function UnpinPanel({ data, holder, by, onDone, onCancel }: HolderPanel) 
   );
 }
 
+/** Say which of two holders is current. The reason is required and goes on the record under the person's name. The other holder
+ * that is a person's own pin is unpinned (the file stays). A holder the specification pins cannot be removed here: the answer carries
+ * the text of a change to the profile for a person to apply, and two holders remain until they do. */
+export function CurrentPanel({ data, holder, by, onDone, onCancel }: HolderPanel) {
+  const [reason, setReason] = useState("");
+  return (
+    <ActPanel
+      slot={data.key} by={by} onDone={onDone} onCancel={onCancel} title={`Say that ${label(holder)} is the current one`}
+      body={() => ({ act: "current", pin: holder.pin, note: reason })} ready={!!reason.trim()} whyNot="Write why this one is current."
+      previewLabel="Preview which holder is current" confirmLabel={`Record that ${label(holder)} is current for ${data.title}`} watch={[holder.pin, reason]}
+    >
+      <p className="muted">This is your choice, with your reason, on the record under your name. A pin that a person made and that is not the current one is unpinned (its file stays, and the trail keeps both). A pin the specification holds is not touched: the preview shows the change a person would make to the profile, and until it is made the slot still shows two holders.</p>
+      <Field label="Why this one is current (required)">{(id) => <textarea id={id} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+    </ActPanel>
+  );
+}
+
 /** Keep a pick that jason reads as another kind, in the person's words. The reading still says what jason read. */
 export function KeepPanel({ data, holder, by, onDone, onCancel }: HolderPanel) {
   const [reason, setReason] = useState("");

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Badge } from "../components";
 import { getJson, postJson } from "../lib/api";
-import { STATE_LOOK, sizeWords, words, type JobState, type Plan, type ReadPlan } from "./recordTypes";
+import { PICK_ACTIONS, PICK_WORDS, STATE_LOOK, sizeWords, words, type JobState, type PartPlan, type PickAction, type Plan, type ReadPlan } from "./recordTypes";
 
 /** The state of a slot or a pick, as the server's word with a glyph and a tone that only repeat it. */
 export function SlotWord({ state, word }: { state: string; word?: string }) {
@@ -96,6 +96,25 @@ export function JobWatch({ id, command, onFinished, every = 3000 }: { id: number
 
 /** What a dry run says, in the server's own words: the note, the facts it would write, both halves of a replace, each part of a
  * split with its collisions, a proposed rule's text, and how big a reading is. Nothing here is a claim of the page's. */
+/** One row of a several-file pick: the server's word for it (pin, already, collision, duplicate, refused), then its reason. */
+export function PickRow({ part, name }: { part: PartPlan; name?: string }) {
+  const known = (PICK_ACTIONS as readonly string[]).includes(part.action);
+  const word = known ? PICK_WORDS[part.action as PickAction] : part.action;
+  return (
+    <li className={part.action === "collision" || part.action === "refused" ? "record-collision" : undefined} data-action={part.action}>
+      <strong>{word}.</strong> File {part.n ?? ""}{name ? <>: <span className="record-file-name">{name}</span></> : null}{part.period ? ` (${part.period})` : ""}
+      {part.why ? <> {part.why}{/[.!?]$/.test(part.why) ? "" : "."}</> : null}
+    </li>
+  );
+}
+
+/** How many of a several-file pick are in each state, in words, from the server's counts. */
+export function pickCounts(counts?: Plan["counts"]): string {
+  if (!counts) return "";
+  const say: Record<PickAction, string> = { pin: "to pin", already: "already pinned", collision: "in a collision", duplicate: "named twice", refused: "refused" };
+  return PICK_ACTIONS.filter((a) => (counts[a] ?? 0) > 0).map((a) => `${counts[a]} ${say[a]}`).join(", ");
+}
+
 export function PlanPreview({ plan, by, innerRef }: { plan: Plan; by: string; innerRef?: React.Ref<HTMLDivElement> }) {
   const facts = (would?: Record<string, unknown>) => Object.entries(would ?? {}).filter(([, v]) => v !== null && v !== "" && v !== false && typeof v !== "object" || Array.isArray(v) && v.length > 0 && v.every((x) => typeof x !== "object"));
   const show = (k: string, v: unknown) => k === "size" && typeof v === "number" ? `${sizeWords(v)} (${v} bytes)` : Array.isArray(v) ? v.join(", ") : String(v);
@@ -123,16 +142,28 @@ export function PlanPreview({ plan, by, innerRef }: { plan: Plan; by: string; in
       {plan.would && list(plan.would)}
       {plan.first && (<><h5>First</h5>{plan.first.note && <p className="muted">{plan.first.note}</p>}{list(plan.first.would)}</>)}
       {plan.then && (<><h5>Then</h5>{plan.then.note && <p className="muted">{plan.then.note}</p>}{list(plan.then.would)}</>)}
-      {plan.parts && plan.parts.length > 0 && (
+      {plan.parts && plan.parts.length > 0 && plan.parts.every((p) => !p.pages) && (
+        <>
+          <p>{plan.parts.length} {plan.parts.length === 1 ? "file" : "files"} named: {pickCounts(plan.counts)}. Only the files marked <strong>Will be pinned</strong> are written; the others are shown and left alone, and a refusal does not stop the rest.</p>
+          <ul className="record-parts">{plan.parts.map((p, i) => <PickRow key={p.n ?? i} part={p} name={plan.fileNames?.[(p.n ?? i + 1) - 1]} />)}</ul>
+        </>
+      )}
+      {plan.parts && plan.parts.length > 0 && plan.parts.some((p) => p.pages) && (
         <ul className="record-parts">
-          {plan.parts.map((p) => (
+          {plan.parts.map((p) => p.pages ? (
             <li key={p.segment} className={p.action === "collision" ? "record-collision" : undefined}>
               <strong>Pages {p.pages[0]} to {p.pages[1]}</strong> into <code>{p.slot}</code>{p.period ? ` (${p.period})` : ""}:{" "}
               {p.action === "collision" ? <>a collision, so this part is <strong>not written</strong>. {p.why} {p.kept}</> : "would be filled as a new file of just those pages."}
               {p.action !== "collision" && p.fits === false && " jason's reading does not put this part there; you chose it."}
             </li>
-          ))}
+          ) : null)}
         </ul>
+      )}
+      {plan.patch?.text && (
+        <>
+          <p>{plan.patch.note ?? "A proposed change to the profile."} <strong>The profile is not edited here: a person applies it.</strong></p>
+          <pre className="record-rule" aria-label="Proposed change to the profile"><code>{plan.patch.text}</code></pre>
+        </>
       )}
       {proposal?.text && (
         <>
@@ -146,9 +177,13 @@ export function PlanPreview({ plan, by, innerRef }: { plan: Plan; by: string; in
 
 /** One act: its fields, a preview (the dry run), then one confirm button spelled with the act. Changing any field discards the
  * preview, so what is confirmed is what was previewed. A refusal is shown in the server's words with nothing written. */
-export function ActPanel({ slot, title, by, body, ready, confirmLabel, previewLabel = "Preview", children, watch, onDone, onCancel, whyNot }: {
-  slot: string; title: string; by: string; body: () => Record<string, unknown>; ready: boolean; confirmLabel: string; previewLabel?: string;
+export function ActPanel({ slot, title, by, body, ready, confirmLabel, previewLabel = "Preview", children, watch, onDone, onCancel, whyNot, names, confirmBlock }: {
+  slot: string; title: string; by: string; body: () => Record<string, unknown>; ready: boolean; confirmLabel: string | ((plan: Plan) => string); previewLabel?: string;
   children?: ReactNode; watch: unknown[]; onDone: (out: Plan) => void; onCancel: () => void; whyNot?: string;
+  /** A several-file pick's file names, by place in the request, so the preview and the result can name each file. */
+  names?: string[];
+  /** Words that stop the confirm after a preview (for example, when no file would be written); empty lets it through. */
+  confirmBlock?: (plan: Plan) => string;
 }) {
   const id = useId();
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -165,7 +200,8 @@ export function ActPanel({ slot, title, by, body, ready, confirmLabel, previewLa
     setBusy(true); setError("");
     try {
       const out = await postJson<Plan>(writePath(slot), { ...body(), by, dryRun: dry });
-      if (dry) setPlan(out); else onDone(out);
+      const named = names ? { ...out, fileNames: names } : out;
+      if (dry) setPlan(named); else onDone(named);
     } catch (e) {
       setPlan(null); setError((e as Error).message);
     } finally {
@@ -173,6 +209,7 @@ export function ActPanel({ slot, title, by, body, ready, confirmLabel, previewLa
     }
   };
   const blocked = !ready || !signedIn;
+  const stop = plan && confirmBlock ? confirmBlock(plan) : "";
   return (
     <section className="record-act" aria-labelledby={`${id}-h`}>
       <h3 id={`${id}-h`} tabIndex={-1} ref={head}>{title}</h3>
@@ -182,9 +219,10 @@ export function ActPanel({ slot, title, by, body, ready, confirmLabel, previewLa
       <div className="row wrap record-act-buttons">
         {!plan
           ? <button type="button" className="primary" disabled={busy || blocked} onClick={() => send(true)}>{previewLabel}</button>
-          : <button type="button" className="primary" disabled={busy || blocked || plan.ok === false} onClick={() => send(false)}>{confirmLabel}</button>}
+          : <button type="button" className="primary" disabled={busy || blocked || plan.ok === false || !!stop} onClick={() => send(false)}>{typeof confirmLabel === "function" ? confirmLabel(plan) : confirmLabel}</button>}
         <button type="button" onClick={onCancel} disabled={busy}>Cancel</button>
         {!signedIn && <span className="muted">Sign in so this goes on the record under your name.</span>}
+        {stop && <span className="muted">{stop}</span>}
         {signedIn && !ready && <span className="muted">{whyNot ?? "Fill in the fields above to continue."}</span>}
       </div>
     </section>
