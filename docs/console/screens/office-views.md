@@ -66,7 +66,7 @@ Built: `Card`, `DataTable`, `Pill`, `Stat`, `Confirm`, `Command`, `DueDate`, `Ca
 
 - **Switch the lens:** a read; nothing is written; it is remembered in the URL, not on the server.
 - **Open a row** goes to the owning screen (Approvals, Work, Decisions, Notices), where the viewer's own offices decide which controls are live.
-- **Every act on the page belongs to the viewer's own offices.** An act that needs an office the viewer does not hold is `DisabledForOffice`: second signature on a money plan (whoever `Officer.approves` names), recording the board's decision (the secretary), the manager's one-person kinds (the manager), and a step of a run whose `role` the viewer does not hold.
+- **Every act on the page belongs to the viewer's own offices.** An act that needs an office the viewer does not hold is `DisabledForOffice`. What counts as an officer's alone comes from the association's bylaws (a profile's reading of its Article on officers; the example profile's is `mystique/docs/officer-duties.md`): presiding at a meeting (the president, or the vice president while the president is absent or disabled); recording the board's decisions, the minutes, and that a notice was given (the secretary); and answering for the books, deposits, and disbursements (the treasurer). Everything else is the board's act and open to any director, including a second signature on a payment (the bylaws let any two directors, or an officer and a director, sign). Also live only for their holder: the manager's one-person kinds, and a step of a run whose `role` the viewer does not hold.
 
 ## States
 
@@ -102,4 +102,4 @@ Built: `Card`, `DataTable`, `Pill`, `Stat`, `Confirm`, `Command`, `DueDate`, `Ca
 4. Nothing narrows the "Screens" column: every board member opens every screen their data levels allow, and the security page keeps only "Can sign".
 
 **Still to confirm:**
-5. **Which controls are officer-only** beyond signing and recording the board's decision: the definitions' `role` per step and each approvals kind's signers decide, and the board confirms the list once.
+5. **Which controls are officer-only** (answered from the bylaws, 2026-10-11, pending the board's confirmation of the reading in the profile's officer-duties page; not signing, which the bylaws open to any two directors): the definitions' `role` per step and each approvals kind's signers decide, and the board confirms the list once.

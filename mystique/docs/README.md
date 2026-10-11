@@ -10,6 +10,7 @@ This folder is the `mystique` profile's own documentation: this association's se
 - [responses.md](responses.md): what the association's members' requests held, and how well their kinds are read.
 - [manual.md](manual.md): the Owner's Manual and Rules taken apart: its parts, the classification and its questions, the books, the official rules and their adoption history, the generated manual, and what the board decides.
 - [rule-citations.md](rule-citations.md): how this association's rule documents number their sections, which numbers more than one document prints, the parts of the manual, and what the scoping reads for this profile (general: [docs/rule-citations.md](../../docs/rule-citations.md)).
+- [officer-duties.md](officer-duties.md): Article 10 of the Bylaws on the officers, quoted whole with the sections that bear on it, and the reading of what is an officer's alone (presiding, recording, the books) and what is the board's (signing, the monthly review, the manager's limits).
 - [rule-authority.md](rule-authority.md): where the governing documents give the board power to make rules, by subject, and which subjects have rules on file (general: [docs/rule-authority.md](../../docs/rule-authority.md)).
 - [document-segments.md](document-segments.md): the owner's manual's parts as the segmentation reads them, the archive scanned in batches, and how the gold labels are kept.
 - [living.md](living.md): the living CC&Rs' readings: the OCR re-read trial and its numbers.
