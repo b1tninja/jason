@@ -272,6 +272,21 @@ LIMITS: tuple[Limit, ...] = (
                            "removed.",
           when_hit="This draft was removed after {limit} without a change. Open the file again to start a new one.",
           applies_to=("tasks.split_session.sweep",), restart="next_job"),
+    Limit("pick.enabled", False, None, None, "switch",
+          "Whether a person may choose files from their own Google Drive with Google's Picker (the narrow drive.file grant, read "
+          "once by the server). Off until a community's administrator turns it on.",
+          kind="switch", why="Choosing from a person's own Drive sends the person to Google and needs a redirect address and a "
+                             "scope on the community's Web client; a community that has not set that up, or does not want it, "
+                             "keeps it off.",
+          when_hit="Choosing from your own Google Drive is off for this community. Pick the file in the community's Drive "
+                    "chooser, paste a link, or upload it. Ask your community's administrator to turn it on.",
+          applies_to=("web.pick.start",), restart="next_job"),
+    Limit("pick.state_minutes", 10, 1, 30, "count",
+          "How many minutes a person has to finish choosing in Google's Picker before the pick must be started again.",
+          kind="time", why="A pick that waits open can be finished by someone else at the same screen; a short life for the "
+                           "one-use state keeps the window small.",
+          when_hit="The pick took longer than {limit} minutes and was not used. Start it again from the same button.",
+          applies_to=("tasks.drive_pick.new_state",), restart="next_job"),
 )
 _REGISTRY = LIMITS      # the older name
 

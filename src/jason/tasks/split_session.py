@@ -172,6 +172,14 @@ def _resolve(ref: dict[str, Any], root: Path) -> dict[str, Any]:
         if not clean.lower().endswith(".pdf"):
             raise ValueError("the splitter takes a PDF")
         return {"path": None, "data": data, "kind": kind, "ref": "", "confidential": False, "stamp": ""}
+    if kind == "held":
+        from jason.tasks import drive_pick
+
+        path = drive_pick.held_path(Path(root), str(ref.get("id") or ""))
+        if path is None:
+            raise ValueError("No held copy with that id (it may have been purged); choose the file from Drive again. Nothing was opened.")
+        confidential = bool(drive_pick.provenance(Path(root), str(ref["id"])).get("confidential"))
+        return {"path": path, "data": None, "kind": "drive", "ref": "", "confidential": confidential, "stamp": ""}
     if kind == "drive":
         raise ValueError("A Drive file is fetched by open_session (it needs the Drive client); nothing was opened.")
     raise ValueError("a file to split is a library id, a path on this machine, or an upload")

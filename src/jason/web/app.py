@@ -36,7 +36,7 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
                hearing_writer: Writer | None = write_hearing_decision, extra_writes: bool = True,
                approvals_live: LiveFactory | None = default_live, allow_apply: bool = False,
                approvals_writes: bool = True, hosts: tuple[str, ...] = (),
-               sign_in: signin.SignIn | None = None) -> Flask:
+               sign_in: signin.SignIn | None = None, pick_deps: Any = None) -> Flask:
     """``allow_apply`` turns on ``POST /api/approvals/<id>/apply``, a write to PayHOA (``jason-web --allow-apply``);
     ``approvals_live`` builds the live context a check or an apply reads (None turns both off); ``hosts`` adds a
     name the Host check accepts beside the loopback names (``--host``); ``sign_in`` is Google sign-in
@@ -61,6 +61,9 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
     from jason.web.split import blueprint as split_routes
 
     app.register_blueprint(split_routes())      # the splitter's page pictures, by session and page (split_thumbs)
+    from jason.web import pick as pick_routes
+
+    pick_routes.install(app, pick_deps)         # choose from the person's own Drive with Google's Picker (docs/google-picker.md); off until pick.enabled
 
     @app.get("/api/session")
     def session():
@@ -69,7 +72,7 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         it is open, until when and why, and whether this person may open it, with why not)."""
         resp = jsonify(token=token, header=guard.TOKEN_HEADER, applyEnabled=app.config["JASON_ALLOW_APPLY"],
                        liveChecks=approvals_live is not None, approvalsWrites=approvals_writes, **signin.session_info(),
-                       private=access.private_info())
+                       private=access.private_info(), pick=pick_routes.session_info())
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
