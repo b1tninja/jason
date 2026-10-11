@@ -893,6 +893,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "form-library": "jason.web.extra.request_views:form_library",  # ?tier=: the forms the profile offers with status and findings
     "life-safety": "jason.web.extra.life_safety:life_safety",  # ?system=: each listed system with its schedule, periods on file, questions, and standing in words; disk only
     "bill-attach": "jason.web.extra.bill_attach:bill_attach",  # ?source=&status=: unapproved PayHOA transactions waiting on a bill, from the stored snapshot, routed offline; reads no PayHOA
+    "bill-investigation": "jason.web.extra.bill_investigation:bill_investigation",  # ?tx=: what to try for a payment with no bill; every store on disk searched by amount; P2 items held back
     "associations": "jason.web.extra.discovery:associations",
     "documents-located": "jason.web.extra.discovery:documents_located",
     "key-documents": "jason.web.extra.key_documents:key_documents",
@@ -936,6 +937,7 @@ EXTRA_LOADERS: dict[str, str] = {
 EXTRA_WRITERS: dict[str, str] = {
     "registers": "jason.web.extra.registers:write",
     "life-safety": "jason.web.extra.life_safety:write",  # <deficiency id> {act}: confirm, impairs, cleared, insurer-told, or propose; append only, in the signer's name (P2)
+    "bill-investigation": "jason.web.extra.bill_investigation:write",  # <tx> {outcome, doc?, note?}: a person's outcome, append only, in the signer's name; attaches and approves nothing
     "unit-record": "jason.web.extra.unit_records:write_unit_record",  # an owner's entry, its visibility (jason's own store)
     "loss-packet": "jason.web.extra.unit_records:write_loss_packet",  # a person's confirmation of one step
     "delinquency": "jason.web.extra.delinquency:write",

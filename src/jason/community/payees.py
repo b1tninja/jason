@@ -70,12 +70,15 @@ class PayeeRule:
         return TransactionRule.matches(self, tx)       # type: ignore[arg-type]
 
 
+def rule_of(tx: dict[str, Any], rules: Iterable[PayeeRule]) -> PayeeRule | None:
+    """The first row that matches ``tx``, or None."""
+    return next((rule for rule in rules if rule.matches(tx)), None)
+
+
 def payee_of(tx: dict[str, Any], rules: Iterable[PayeeRule]) -> PayeeClass:
     """The class of the first row that matches ``tx``; ``UNKNOWN`` when none does."""
-    for rule in rules:
-        if rule.matches(tx):
-            return rule.payee
-    return PayeeClass.UNKNOWN
+    rule = rule_of(tx, rules)
+    return rule.payee if rule is not None else PayeeClass.UNKNOWN
 
 
-__all__ = ["PayeeClass", "PayeeRule", "payee_of"]
+__all__ = ["PayeeClass", "PayeeRule", "payee_of", "rule_of"]

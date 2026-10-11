@@ -342,16 +342,20 @@ Routes are proposed, consistent with [information-architecture.md](information-a
 
 ### What the build adds (in this order)
 
-Built 2026-10-10 (the first three):
+Built 2026-10-10:
 1. **`PayeeClass` and `PayeeRule`** (`jason.community.payees`; `Community.payee_rules()`, empty by default; the profile's rows in its `payees.py`) and an **unrouted** list in the engine: `SyncBillsReport.unrouted` and `jason sync-bills` print every unapproved transaction no source owns, with its payee class, instead of dropping it.
 2. **A kept dry run** (`jason.tasks.bill_dry_run`): `sync-bills --dry-run` writes `data/bills/last-dry-run.json` (the results, the window, who, when, and the PayHOA snapshot it ran against).
 3. **The queue** (`jason.tasks.bill_queue`, `jason.sources.offline.routing_registry`, `GET /api/bill-attach?source=&status=`): the stored snapshot routed with no store, client, or network, the snapshot's age against its source's own stale-after (the PayHOA transactions default), and the kept dry run applied to a row only when it ran against this snapshot (otherwise it is shown as `earlier`).
+4. **The investigation** (`jason.tasks.bill_investigation`, `GET /api/bill-investigation?tx=`): the payee class and the row that selected it, then a search of every store on disk by amount (other attachments of the same amount, the county tax catalog `tax.db` for the whole bill, an installment, or a payment already on it, the library's readings, scanned mail, Gmail headers, the vendors' ledgers), each listed with the store's age, and one recommended step. A bank notice is proof of payment, never a bill; mail and Gmail items are P2 (an office that does not open P2 sees only that a letter or message names the amount); at most five candidates per store are shown, the rest counted. A payment a source owns is sent to the dry run, not to a guess.
+5. **The outcome** (`jason.tasks.bill_outcomes`, `POST /api/write/bill-investigation/<tx>` `{outcome, doc?, note?}`): a person's word in the signer's name, append only, `data/bills/investigations.json`. `attached-bill` and `attached-receipt-only` name the record they point to. It attaches nothing and approves nothing.
 
 Still to build:
-4. **`sync-bills` gains `--yes` for uploads** (a dry run needs none), so it joins every other write and the scheduler's guard covers it. The resolve stage reports ambiguity as the cache stage does. *Not done: it changes a command people run; see the open decisions.*
-5. **The investigation helper** (`jason.tasks.bill_investigation`, pure over stores) and the `bill-investigation` loader.
-6. **A county-tax `BillSource` over `TaxStore`** (where the profile's county has a tax adapter), so a catalog bill with its PDF attaches like any other.
-7. **The outcome store and its writer**, then an approvals kind `payhoa-attach-bills` (plan = transaction → PDF), parallel to `owner-info-tags`.
+6. **`sync-bills` gains `--yes` for uploads** (a dry run needs none), so it joins every other write and the scheduler's guard covers it. The resolve stage reports ambiguity as the cache stage does. *Not done: it changes a command people run; see the open decisions.*
+7. **A county-tax `BillSource` over `TaxStore`** (where the profile's county has a tax adapter), so a catalog bill with its PDF attaches like any other. The investigation already reads the catalog; this makes the attach itself work.
+8. **The attach**: an approvals kind `payhoa-attach-bills` (plan = transaction → PDF), parallel to `owner-info-tags`; until then the attach is the terminal command.
+9. **The screens** over the three loaders (the tab, the queue, the card); the same-amount lead below.
+
+**A same-amount attachment is a lead, never the bill.** The first run of the investigation recommended attaching an earlier month's bill to a recurring payment of the same amount. A twin (the same amount, an attachment already on another transaction) is now a `lead` that says "how that one was filed, not this payment's bill", and is never the recommendation.
 
 **What the first read of the live snapshot showed.** Before the profile's payee rows, 44 of the 74 unapproved, unattached transactions were `unrouted`: most were transfers between the association's own accounts, interest, and platform fees that have no bill. With the rows, 26 read `no bill expected`, 8 `no source yet` (insurance, a servicer's card charges, an agency), 10 `unrouted`, and 1 `not checked`. **The lesson for the design:** without classes the work list is mostly noise, so the queue hides `no bill expected` by default (a filter, with its count shown).
 
